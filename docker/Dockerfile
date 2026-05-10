@@ -16,6 +16,8 @@ RUN go mod download || true
 COPY cmd ./cmd
 COPY internal ./internal
 
+COPY embed.go ./
+
 ARG VERSION=0.0.0-dev
 ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown
