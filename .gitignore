@@ -1,0 +1,39 @@
+# Build artifacts
+/bin/
+/dist/
+chalkd
+chalkd.exe
+*.test
+*.out
+coverage.*
+
+# Go
+vendor/
+
+# Node (Playwright)
+node_modules/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Local environment
+.env
+.env.local
+*.local
+
+# Bootstrap markers (committed selectively, see .gitattributes)
+# .bootstrap/*.done is tracked by git so collaborators see project state
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Generated docs
+/docs/_generated/
+
+# Local data dirs (only relevant outside of containers)
+/var/

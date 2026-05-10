@@ -1,0 +1,16 @@
+* text=auto eol=lf
+
+# Binaries
+*.woff2 binary
+*.woff  binary
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.wasm  binary
+
+# Generated/vendored
+web/vendor/** linguist-vendored
+test/e2e/node_modules/** linguist-vendored
+
+# Scripts must be LF
+*.sh text eol=lf

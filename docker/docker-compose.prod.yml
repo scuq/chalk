@@ -1,0 +1,73 @@
+# chalk -- docker-compose.prod.yml
+#
+# Production-style stack: 2 chalkd instances behind Caddy (auto-TLS) + Postgres.
+# Edit Caddyfile and CHALK_AUTOCERT_HOST before running on a real host.
+# Run via:  docker compose -f docker/docker-compose.prod.yml up -d
+
+name: chalk-prod
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: chalk
+      POSTGRES_USER: chalk
+      POSTGRES_PASSWORD: ${CHALK_PG_PASSWORD:-chalk}
+    volumes:
+      - chalk-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chalk -d chalk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  chalk-1:
+    image: chalk:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CHALK_LISTEN: ":8443"
+      CHALK_DB_URL: "postgres://chalk:${CHALK_PG_PASSWORD:-chalk}@postgres:5432/chalk?sslmode=disable"
+      CHALK_TLS_MODE: "off"   # caddy terminates TLS in front
+      CHALK_LOG_FORMAT: "json"
+      CHALK_INSTANCE_ID: "instance-1"
+    volumes:
+      - chalk-blobs:/var/lib/chalk/blobs
+    restart: unless-stopped
+
+  chalk-2:
+    image: chalk:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CHALK_LISTEN: ":8443"
+      CHALK_DB_URL: "postgres://chalk:${CHALK_PG_PASSWORD:-chalk}@postgres:5432/chalk?sslmode=disable"
+      CHALK_TLS_MODE: "off"
+      CHALK_LOG_FORMAT: "json"
+      CHALK_INSTANCE_ID: "instance-2"
+    volumes:
+      - chalk-blobs:/var/lib/chalk/blobs
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - chalk-1
+      - chalk-2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - chalk-caddy-data:/data
+      - chalk-caddy-config:/config
+    restart: unless-stopped
+
+volumes:
+  chalk-pgdata:
+  chalk-blobs:
+  chalk-caddy-data:
+  chalk-caddy-config:

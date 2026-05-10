@@ -1,0 +1,41 @@
+# chalk -- docker-compose.test.yml
+#
+# Ephemeral stack for CI. No persistent volumes; tuned for speed over durability.
+# Run via:  docker compose -f docker/docker-compose.test.yml up --build --abort-on-container-exit
+
+name: chalk-test
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: chalk
+      POSTGRES_USER: chalk
+      POSTGRES_PASSWORD: chalk
+    command: >
+      postgres
+      -c fsync=off
+      -c synchronous_commit=off
+      -c full_page_writes=off
+      -c log_min_messages=warning
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chalk -d chalk"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  chalk:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CHALK_LISTEN: ":8443"
+      CHALK_DB_URL: "postgres://chalk:chalk@postgres:5432/chalk?sslmode=disable"
+      CHALK_TLS_MODE: "off"
+      CHALK_LOG_LEVEL: "debug"
+      CHALK_LOG_FORMAT: "json"

@@ -1,0 +1,22 @@
+# Caddyfile (example for chalk production)
+# Replace chalk.example.org with your domain before deploying.
+
+chalk.example.org {
+    encode zstd gzip
+
+    # WebSocket upgrade plus sticky sessions hashed by client IP.
+    # The cookie-based hash policy keeps a given browser pinned to one chalkd
+    # instance, which keeps in-memory hub state coherent for that session.
+    reverse_proxy {
+        to chalk-1:8443
+        to chalk-2:8443
+        lb_policy ip_hash
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+    }
+
+    # Optional: serve a custom error page for 5xx
+    handle_errors {
+        respond "chalk is taking a moment, try again" 503
+    }
+}

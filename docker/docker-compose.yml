@@ -1,0 +1,58 @@
+# chalk -- docker-compose.yml (dev)
+#
+# Brings up Postgres + chalkd for local development.
+# Run from the repo root via:  make docker-up
+
+name: chalk
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: chalk-pg
+    environment:
+      POSTGRES_DB: chalk
+      POSTGRES_USER: chalk
+      POSTGRES_PASSWORD: chalk
+    volumes:
+      - chalk-pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chalk -d chalk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  chalk:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        VERSION: 0.0.0-dev
+        GIT_SHA: dev
+    image: chalk:dev
+    container_name: chalk-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      CHALK_LISTEN: ":8443"
+      CHALK_DB_URL: "postgres://chalk:chalk@postgres:5432/chalk?sslmode=disable"
+      CHALK_TLS_MODE: "off"     # dev: plain HTTP. Production overrides to selfsigned/autocert/file.
+      CHALK_LOG_LEVEL: "info"
+      CHALK_LOG_FORMAT: "console"
+      CHALK_BLOB_DIR: "/var/lib/chalk/blobs"
+    volumes:
+      - chalk-blobs:/var/lib/chalk/blobs
+    ports:
+      - "127.0.0.1:8443:8443"
+    # /healthz served by the binary; we exec wget via a sidecar pattern...
+    # ...but distroless has no shell, so we rely on a TCP-level readiness
+    # check from the orchestrator + application logs. For dev compose,
+    # a passive "did the port open" is sufficient.
+    restart: unless-stopped
+
+volumes:
+  chalk-pgdata:
+  chalk-blobs:

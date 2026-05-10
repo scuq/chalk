@@ -1,0 +1,14 @@
+.git
+.github
+.idea
+.vscode
+.bootstrap
+test/e2e/node_modules
+test/e2e/test-results
+test/e2e/playwright-report
+docs
+*.md
+LICENSE
+Makefile
+bootstrap
+tools
