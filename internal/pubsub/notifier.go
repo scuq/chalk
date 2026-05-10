@@ -1,11 +1,17 @@
 // Package pubsub bridges between chalkd instances using Postgres
 // LISTEN/NOTIFY. Sending a message inserts it into the database and emits
 // a NOTIFY in the same transaction; every chalkd instance has a Listener
-// goroutine subscribed to the channel and routes incoming notifications to
-// its local Hub for fan-out to its locally-connected WebSocket clients.
+// goroutine subscribed to the channel and routes incoming notifications
+// to local handlers for fan-out to connected WebSocket clients.
 //
-// This gives us multi-instance scale-out without an additional message
-// broker. Postgres is the source of truth and the message bus.
+// Phase 06 extends the Event envelope with fields for presence and
+// friend operations:
+//   * Kind="message"   -- as phase 05; carries MessageID + TS for fetch
+//   * Kind="presence"  -- carries UserID whose aggregated state changed
+//   * Kind="friend"    -- carries UserID (recipient of the event) and
+//                         FromUserID (the other party); the listener
+//                         pushes a friend_event frame to the recipient's
+//                         locally-connected devices
 package pubsub
 
 import (
@@ -19,38 +25,48 @@ import (
 )
 
 // Channel is the Postgres NOTIFY channel name. We use a single global
-// channel for v1; phase-specific notifications can be routed via the type
-// field in the payload.
+// channel; the Kind field discriminates payload shape.
 const Channel = "chalk_global"
 
-// Event is the shape of every NOTIFY payload. Kept tiny on purpose so we
-// stay well under PG's 8000-byte NOTIFY payload limit -- the actual message
-// content lives in the messages table; this is just a routing pointer.
+// Event is the shape of every NOTIFY payload. Kept tiny on purpose to
+// stay well under PG's 8000-byte NOTIFY payload limit. The actual
+// content (message rows, aggregated presence) lives in the database;
+// this is a routing pointer.
 type Event struct {
-	// Kind discriminates: "message" today; phase 06 will add "presence",
-	// phase 11 "friend_update", etc.
+	// Kind discriminates: "message", "presence", "friend".
 	Kind string `json:"k"`
 
-	// MessageID and TS together identify a row in the partitioned messages
-	// table. Receivers fetch the row to get full content.
-	MessageID uuid.UUID `json:"m,omitempty"`
-	TS        time.Time `json:"t,omitempty"`
-
-	// ChannelID lets receivers filter early before fetching.
-	ChannelID uuid.UUID `json:"c,omitempty"`
-
-	// SenderDeviceID lets the local hub avoid echoing to the sender.
+	// Message fields (Kind="message"). MessageID and TS together
+	// identify a row in the partitioned messages table.
+	MessageID      uuid.UUID `json:"m,omitempty"`
+	TS             time.Time `json:"t,omitempty"`
+	ChannelID      uuid.UUID `json:"c,omitempty"`
 	SenderDeviceID uuid.UUID `json:"s,omitempty"`
 
-	// InstanceID tags which chalkd published this. Currently informational;
-	// future extensions (e.g. avoiding double-fan-out in cluster topologies)
-	// may rely on it.
+	// Presence and friend fields.
+	//   UserID:
+	//     For Kind="presence", the user whose aggregated state changed.
+	//     For Kind="friend",   the recipient of the friend event (the
+	//                          party whose local devices should be
+	//                          notified).
+	//   FriendKind:
+	//     For Kind="friend", one of "request_received", "accepted",
+	//                       "declined", "removed". Mirrors
+	//                       proto.FriendEventPayload.Kind.
+	//   FromUserID:
+	//     For Kind="friend", the other party (the requester, accepter,
+	//                       etc.). For presence, unused.
+	UserID     uuid.UUID `json:"u,omitempty"`
+	FriendKind string    `json:"fk,omitempty"`
+	FromUserID uuid.UUID `json:"f,omitempty"`
+
+	// InstanceID tags which chalkd published this. Informational.
 	InstanceID string `json:"i,omitempty"`
 }
 
-// Encode serializes the event for NOTIFY. Returns an error if the encoded
-// payload exceeds Postgres' NOTIFY limit (8000 bytes; Postgres rejects
-// payloads at that size, so we check earlier with a small safety margin).
+// Encode serializes the event for NOTIFY. Returns an error if the
+// encoded payload exceeds Postgres' NOTIFY limit (we check at 7800
+// bytes with safety margin; Postgres rejects at 8000).
 func (e Event) Encode() ([]byte, error) {
 	b, err := json.Marshal(e)
 	if err != nil {
@@ -62,15 +78,16 @@ func (e Event) Encode() ([]byte, error) {
 	return b, nil
 }
 
-// PublishWithTx emits a NOTIFY inside an existing transaction. NOTIFY is
-// delivered at COMMIT time, so the row referenced in the event MUST be
-// inserted by the same transaction. Any chalkd's listener (including the
-// publishing instance's own) receives the notification post-commit.
+// PublishWithTx emits a NOTIFY inside an existing transaction. NOTIFY
+// is delivered at COMMIT time; the row(s) referenced in the event MUST
+// be inserted/updated by the same transaction. Every chalkd's listener,
+// including the publishing instance's, receives the notification
+// post-commit.
 //
-// We use Exec with parameter binding to avoid manual quoting of the JSON
-// payload. NOTIFY's first argument is the channel name (an identifier), so
-// it can't be parameterized; we use pg_notify() instead, which takes both
-// args as values.
+// We use pg_notify() (the function form) rather than NOTIFY (the
+// statement form) because pg_notify accepts both arguments as values,
+// letting us bind the payload string with placeholder syntax. NOTIFY's
+// channel name is a SQL identifier and cannot be parameterized.
 func PublishWithTx(ctx context.Context, tx pgx.Tx, ev Event) error {
 	payload, err := ev.Encode()
 	if err != nil {

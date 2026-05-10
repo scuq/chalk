@@ -12,8 +12,10 @@
 #
 # Multi-server API (phase 05):
 #   server_up_n N [extra-flags...]
-#   server_stop_n N
-#   server_stop_all          -- stops every started instance
+#   server_stop_n N      -- clean SIGTERM
+#   server_kill_n N      -- SIGKILL (phase 06; simulates unclean shutdown
+#                           for testing the janitor)
+#   server_stop_all      -- stops every started instance
 # Per-N variables: CHALK_TEST_PID_<N>, CHALK_TEST_ADDR_<N>, CHALK_TEST_HTTP_<N>,
 #                  CHALK_TEST_WS_<N>, CHALK_TEST_LOG_FILE_<N>
 #
@@ -156,6 +158,45 @@ server_stop_n() {
       log_warn "chalkd #${n} did not exit on SIGTERM; sending SIGKILL"
       kill -KILL "$pid" 2>/dev/null || true
     fi
+  fi
+
+  [ -n "$info" ] && rm -f "$info"
+  if [ "${CHALK_KEEP_LOGS:-0}" != "1" ]; then
+    [ -n "$logf" ] && rm -f "$logf"
+  fi
+  _server_unset_n "$n"
+}
+
+# server_kill_n N -- SIGKILL without giving the process a chance to
+# clean up. Used by phase 06's integration test to simulate an unclean
+# instance death so the janitor on another instance is forced to reap
+# the stale rows.
+#
+# Differs from server_stop_n in that:
+#   * No SIGTERM grace period -- straight SIGKILL.
+#   * Leaves any stale device_presence / instances rows in the DB; the
+#     janitor on a peer chalkd is expected to clean them.
+#
+# Removes the listen-info temp file and clears per-N vars same as
+# server_stop_n so the indexed bookkeeping stays consistent.
+server_kill_n() {
+  local n="$1"
+  local pid logf info
+  pid="$(_server_get_var PID "$n")"
+  logf="$(_server_get_var LOG_FILE "$n")"
+  info="$(_server_get_var LISTEN_INFO_FILE "$n")"
+
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    log_step "killing chalkd #${n} (pid ${pid}, SIGKILL)"
+    kill -KILL "$pid" 2>/dev/null || true
+    # Brief wait so the process is actually reaped by the kernel.
+    local i
+    for i in $(seq 1 20); do
+      if ! kill -0 "$pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.1
+    done
   fi
 
   [ -n "$info" ] && rm -f "$info"

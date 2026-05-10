@@ -7,15 +7,21 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/scuq/chalk/internal/friends"
+	"github.com/scuq/chalk/internal/presence"
 	"github.com/scuq/chalk/internal/proto"
 	"github.com/scuq/chalk/internal/pubsub"
 	"github.com/scuq/chalk/internal/store"
 )
 
-// Options bundles dependencies and tunables for NewServer.
+// Options bundles dependencies and tunables.
 type Options struct {
 	Listen     string
 	Store      *store.Store
@@ -23,10 +29,20 @@ type Options struct {
 	WSConfig   WSConfig
 	InstanceID string
 	Logger     *log.Logger
+
+	// Phase 06 dependencies. If nil, the server starts but the
+	// corresponding features are disabled. Production callers always
+	// pass both.
+	Presence *presence.Store
+	Friends  *friends.Store
+
+	// PresenceLoopConfig overrides DefaultLoopConfig if non-nil; tests
+	// shrink these for faster sweeps.
+	PresenceLoopConfig *presence.LoopConfig
 }
 
-// Server wraps an http.Server, its bound listener, the local hub, and the
-// pubsub listener that bridges to other chalkd instances.
+// Server wraps the http.Server, hub, pubsub listener, presence/friends
+// background goroutines, and lifecycle plumbing.
 type Server struct {
 	http       *http.Server
 	listener   net.Listener
@@ -36,6 +52,10 @@ type Server struct {
 	instanceID string
 
 	pubsub *pubsub.Listener
+
+	presence *presence.Store
+	friends  *friends.Store
+	loopCfg  presence.LoopConfig
 
 	served    chan struct{}
 	serveOnce sync.Once
@@ -55,6 +75,10 @@ func NewServer(opts Options) (*Server, error) {
 	if opts.InstanceID == "" {
 		opts.InstanceID = "default"
 	}
+	loopCfg := presence.DefaultLoopConfig()
+	if opts.PresenceLoopConfig != nil {
+		loopCfg = *opts.PresenceLoopConfig
+	}
 
 	ln, err := net.Listen("tcp", opts.Listen)
 	if err != nil {
@@ -67,6 +91,9 @@ func NewServer(opts Options) (*Server, error) {
 		listener:   ln,
 		logger:     opts.Logger,
 		instanceID: opts.InstanceID,
+		presence:   opts.Presence,
+		friends:    opts.Friends,
+		loopCfg:    loopCfg,
 		served:     make(chan struct{}),
 	}
 
@@ -74,9 +101,20 @@ func NewServer(opts Options) (*Server, error) {
 		s.pubsub = pubsub.NewListener(opts.Store.Pool, s.handlePubsubEvent, opts.Logger.Printf)
 	}
 
+	var pubPresence presence.Notifier
+	var pubFriend FriendPublisher
+	if opts.Presence != nil && opts.Store != nil {
+		pubPresence = presence.PublishPresenceChange(opts.Store.Pool, s.instanceID)
+		pubFriend = s.publishFriendEvent
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
-	mux.Handle("GET /ws", NewWSHandler(s.hub, s.store, opts.WSConfig, s.instanceID, s.logger))
+	mux.Handle("GET /ws", NewWSHandler(
+		s.hub, s.store, opts.WSConfig, s.instanceID, s.logger,
+		opts.Presence, opts.Friends,
+		pubPresence, pubFriend,
+	))
 
 	s.http = &http.Server{
 		Handler:           mux,
@@ -85,17 +123,11 @@ func NewServer(opts Options) (*Server, error) {
 	return s, nil
 }
 
-// Addr returns the listener's bound address.
-func (s *Server) Addr() net.Addr {
-	return s.listener.Addr()
-}
+// Addr returns the bound address.
+func (s *Server) Addr() net.Addr { return s.listener.Addr() }
 
 // PubsubReady returns a channel closed when the cross-instance listener
-// has subscribed to NOTIFY at least once. Returns an already-closed channel
-// if the server has no store (no pubsub).
-//
-// Useful in tests to avoid races between sending and the listener being
-// live. Production code rarely needs to wait on this.
+// has subscribed to NOTIFY at least once.
 func (s *Server) PubsubReady() <-chan struct{} {
 	if s.pubsub == nil {
 		ch := make(chan struct{})
@@ -105,33 +137,76 @@ func (s *Server) PubsubReady() <-chan struct{} {
 	return s.pubsub.Ready()
 }
 
-// Serve runs the HTTP server, the pubsub listener, and the partition
-// maintenance loop until ctx is canceled. Returns http.ErrServerClosed on
-// clean shutdown.
+// Serve runs all background goroutines + HTTP. Returns http.ErrServerClosed
+// on clean shutdown.
 func (s *Server) Serve(ctx context.Context) error {
 	s.logger.Printf("listening on %s (instance=%s)", s.listener.Addr(), s.instanceID)
 
 	bgCtx, cancelBG := context.WithCancel(ctx)
+	var wg sync.WaitGroup
 
-	// Pubsub listener (cross-instance fan-out).
-	var pubsubDone chan struct{}
+	// Pubsub listener.
 	if s.pubsub != nil {
-		pubsubDone = make(chan struct{})
+		wg.Add(1)
 		go func() {
-			defer close(pubsubDone)
+			defer wg.Done()
 			if err := s.pubsub.Run(bgCtx); err != nil && err != context.Canceled {
 				s.logger.Printf("pubsub listener exited: %v", err)
 			}
 		}()
 	}
 
-	// Partition maintenance loop. Once a day is plenty.
-	var partsDone chan struct{}
+	// Partition maintenance.
 	if s.store != nil {
-		partsDone = make(chan struct{})
+		wg.Add(1)
 		go func() {
-			defer close(partsDone)
+			defer wg.Done()
 			s.store.PartitionMaintenanceLoop(bgCtx, 24*time.Hour, s.logger.Printf)
+		}()
+	}
+
+	// Phase 06 background loops.
+	if s.presence != nil && s.store != nil {
+		// Register self in instances table; clear any stale presence
+		// belonging to our instance_id (from a prior unclean shutdown).
+		regCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		host, _ := os.Hostname()
+		if err := s.presence.RegisterInstance(regCtx, s.instanceID, host, "phase06"); err != nil {
+			cancel()
+			cancelBG()
+			return fmt.Errorf("register instance: %w", err)
+		}
+		users, err := s.presence.ClearInstancePresence(regCtx, s.instanceID)
+		cancel()
+		if err != nil {
+			cancelBG()
+			return fmt.Errorf("clear stale presence: %w", err)
+		}
+		if len(users) > 0 {
+			s.logger.Printf("cleared %d stale presence rows on startup", len(users))
+			// Publish transitions for users whose stale rows we cleared.
+			notifier := presence.PublishPresenceChange(s.store.Pool, s.instanceID)
+			for _, u := range users {
+				if err := notifier(bgCtx, u); err != nil {
+					s.logger.Printf("publish stale-clear: %v", err)
+				}
+			}
+		}
+
+		notifier := presence.PublishPresenceChange(s.store.Pool, s.instanceID)
+		wg.Add(3)
+		go func() {
+			defer wg.Done()
+			presence.HeartbeatLoop(bgCtx, s.presence, s.instanceID, host, "phase06",
+				s.loopCfg, s.logger)
+		}()
+		go func() {
+			defer wg.Done()
+			presence.JanitorLoop(bgCtx, s.presence, s.loopCfg, notifier, s.logger)
+		}()
+		go func() {
+			defer wg.Done()
+			presence.DemotionLoop(bgCtx, s.presence, s.loopCfg, notifier, s.logger)
 		}()
 	}
 
@@ -141,6 +216,20 @@ func (s *Server) Serve(ctx context.Context) error {
 		<-ctx.Done()
 		ctxShutdown, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
+		// Clean shutdown: clear our own presence rows so other
+		// instances see our devices go offline immediately rather
+		// than waiting for the janitor.
+		if s.presence != nil {
+			if users, err := s.presence.ClearInstancePresence(ctxShutdown, s.instanceID); err == nil {
+				notifier := presence.PublishPresenceChange(s.store.Pool, s.instanceID)
+				for _, u := range users {
+					_ = notifier(ctxShutdown, u)
+				}
+				// Remove our instance row too.
+				_, _ = s.store.Pool.Exec(ctxShutdown,
+					`DELETE FROM instances WHERE id = $1`, s.instanceID)
+			}
+		}
 		s.hub.CloseAll(ctxShutdown, nil)
 		_ = s.http.Shutdown(ctxShutdown)
 		cancelBG()
@@ -149,18 +238,11 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	err := s.http.Serve(s.listener)
 	<-shutDone
-	if pubsubDone != nil {
-		<-pubsubDone
-	}
-	if partsDone != nil {
-		<-partsDone
-	}
+	wg.Wait()
 	s.serveOnce.Do(func() { close(s.served) })
 	return err
 }
 
-// healthz probes the database. Returns 200 only when both the HTTP server
-// is up and Postgres is reachable.
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -177,31 +259,22 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-// handlePubsubEvent is invoked by the pubsub listener for every event
-// observed on the chalk_global channel (whether published locally or by
-// another chalkd instance). For "message" events we fetch the row from the
-// store and broadcast it to every locally-connected client except the
-// originating sender.
-//
-// We use BroadcastFresh, not Broadcast, so connections registered AFTER
-// the message's timestamp don't receive it via the live feed. This guards
-// against a real race: listener processing can be slow (cold prepared
-// statements, pool contention), during which time new connections can
-// join the hub. Those new connections should not retroactively receive
-// historical messages -- they should fetch history explicitly. Without
-// this filter, the symptom is fresh tabs receiving messages from before
-// they were opened.
-//
-// Self-events (published by this instance) are processed identically; the
-// sender device_id is excluded either way.
-//
-// Errors are logged. Dropping a notification is preferable to crashing
-// the listener: the message is still in PG, and a reconnecting client
-// can fetch_history (phase 08) to recover.
+// handlePubsubEvent dispatches by Kind. Phase 05 had only "message";
+// phase 06 adds "presence" and "friend".
 func (s *Server) handlePubsubEvent(ev pubsub.Event) {
-	if ev.Kind != "message" {
-		return
+	switch ev.Kind {
+	case "message":
+		s.handleMessageEvent(ev)
+	case "presence":
+		s.handlePresenceEvent(ev)
+	case "friend":
+		s.handleFriendEvent(ev)
 	}
+}
+
+// handleMessageEvent: phase 05 path. Fetch the row, build the frame,
+// BroadcastFresh (skip sender + skip conns registered after msg.TS).
+func (s *Server) handleMessageEvent(ev pubsub.Event) {
 	if s.store == nil {
 		return
 	}
@@ -214,9 +287,13 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 		return
 	}
 
+	senderStr := ""
+	if msg.SenderDeviceID != uuid.Nil {
+		senderStr = msg.SenderDeviceID.String()
+	}
 	frame, err := proto.NewFrame(proto.TypeMessage, "", proto.MessagePayload{
 		ID:     msg.ID.String(),
-		Sender: msg.SenderDeviceID.String(),
+		Sender: senderStr,
 		TS:     msg.TS.UnixMilli(),
 		Body:   string(msg.Ciphertext),
 	})
@@ -229,6 +306,142 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 		s.logger.Printf("pubsub marshal: %v", err)
 		return
 	}
-
 	s.hub.BroadcastFresh(ev.SenderDeviceID.String(), wire, msg.TS)
+}
+
+// handlePresenceEvent: re-aggregate the user's state, find local
+// subscribers, push a presence frame to each.
+//
+// Re-checking friendship on every push (rather than at subscribe time
+// only) means an un-friend during an active subscription is honored
+// immediately: the next presence change won't reach the now-ex-friend.
+func (s *Server) handlePresenceEvent(ev pubsub.Event) {
+	if s.presence == nil || s.friends == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	state, at, err := s.presence.AggregateUserState(ctx, ev.UserID)
+	if err != nil {
+		s.logger.Printf("presence aggregate %s: %v", ev.UserID, err)
+		return
+	}
+
+	subscriberDevices, err := s.presence.SubscribersOfUser(ctx, ev.UserID, s.instanceID)
+	if err != nil {
+		s.logger.Printf("presence subscribers %s: %v", ev.UserID, err)
+		return
+	}
+	if len(subscriberDevices) == 0 {
+		return
+	}
+
+	frame, err := proto.NewFrame(proto.TypePresence, "", proto.PresencePayload{
+		UserID: ev.UserID.String(),
+		State:  string(state),
+		At:     at.UnixMilli(),
+	})
+	if err != nil {
+		return
+	}
+	wire, _ := json.Marshal(frame)
+
+	for _, subDev := range subscriberDevices {
+		// Re-check friendship -- subscriber might have un-friended us
+		// since they subscribed. Look up the subscriber's user_id, then
+		// re-check.
+		var subUser uuid.UUID
+		err := s.store.Pool.QueryRow(ctx,
+			`SELECT user_id FROM devices WHERE id = $1`, subDev,
+		).Scan(&subUser)
+		if err != nil {
+			continue
+		}
+		ok, err := s.friends.AreAcceptedFriends(ctx, subUser, ev.UserID)
+		if err != nil || !ok {
+			continue
+		}
+		c := s.hub.Get(subDev.String())
+		if c == nil {
+			continue
+		}
+		if err := c.Enqueue(wire); err != nil {
+			go c.Close(err)
+		}
+	}
+}
+
+// handleFriendEvent: push a friend_event frame to every connected
+// device of the recipient user.
+//
+// Look up the requester's handle to include in the push so the client
+// doesn't have to do another round trip to render the notification.
+func (s *Server) handleFriendEvent(ev pubsub.Event) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var handle string
+	if err := s.store.Pool.QueryRow(ctx,
+		`SELECT handle FROM users WHERE id = $1`, ev.FromUserID,
+	).Scan(&handle); err != nil {
+		// User might have been deleted between request and push;
+		// still send the event with an empty handle.
+		handle = ""
+	}
+
+	frame, _ := proto.NewFrame(proto.TypeFriendEvent, "", proto.FriendEventPayload{
+		Kind:       ev.FriendKind,
+		FromUserID: ev.FromUserID.String(),
+		Handle:     handle,
+	})
+	wire, _ := json.Marshal(frame)
+
+	// Find recipient's currently-connected devices on this instance.
+	rows, err := s.store.Pool.Query(ctx,
+		`SELECT device_id FROM device_presence
+		   WHERE user_id = $1 AND instance_id = $2`,
+		ev.UserID, s.instanceID,
+	)
+	if err != nil {
+		s.logger.Printf("friend event recipient lookup: %v", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var dev uuid.UUID
+		if err := rows.Scan(&dev); err != nil {
+			continue
+		}
+		c := s.hub.Get(dev.String())
+		if c == nil {
+			continue
+		}
+		if err := c.Enqueue(wire); err != nil {
+			go c.Close(err)
+		}
+	}
+}
+
+// publishFriendEvent is the implementation of FriendPublisher. Opens a
+// fresh tx and emits a Kind="friend" NOTIFY.
+func (s *Server) publishFriendEvent(ctx context.Context, recipient, fromUser uuid.UUID, kind string) error {
+	if s.store == nil {
+		return nil
+	}
+	tx, err := s.store.Pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := pubsub.PublishWithTx(ctx, tx, pubsub.Event{
+		Kind:       "friend",
+		UserID:     recipient,
+		FromUserID: fromUser,
+		FriendKind: kind,
+		InstanceID: s.instanceID,
+	}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

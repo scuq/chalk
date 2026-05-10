@@ -77,6 +77,7 @@ func (f Frame) DecodePayload(dst any) error {
 //   server → client:  welcome, message, error, pong
 //
 // Later phases add: publish_keypkgs, create_channel, fetch_history, etc.
+// Phase 06 adds presence_* and friend_* (see frames_phase06.go).
 
 const (
 	// Client → server.
@@ -92,8 +93,14 @@ const (
 // HelloPayload is sent by the client immediately after connect.
 // In phase 04 the server trusts the device_id; phase 11 ties it to a
 // passkey-authenticated session.
+//
+// DeviceType is optional; phase 06 added it to inform per-device-type
+// presence heartbeat cadence. Recognized values: "phone", "tablet",
+// "desktop". Missing or unrecognized values default server-side to
+// "browser-unknown" (the longest, safest TTL).
 type HelloPayload struct {
-	DeviceID string `json:"device_id"`
+	DeviceID   string `json:"device_id"`
+	DeviceType string `json:"device_type,omitempty"`
 }
 
 // WelcomePayload is the server's reply to Hello. Channels list is empty
