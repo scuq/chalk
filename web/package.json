@@ -1,0 +1,19 @@
+{
+  "name": "chalk-web",
+  "version": "0.0.0-phase07",
+  "private": true,
+  "description": "chalk single-page client",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "preact": "10.24.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.0",
+    "typescript": "5.6.3"
+  }
+}

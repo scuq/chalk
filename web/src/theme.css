@@ -1,0 +1,286 @@
+/*
+ * chalk -- theme.css (matrix-green-on-black, Hack font)
+ *
+ * Design tokens live as CSS custom properties on :root so future
+ * themes (a "dim" or "high-contrast" variant) can override by setting
+ * data-theme="dim" on <html>. Phase 07 ships only the default theme.
+ *
+ * Hack font is bundled locally so the page renders the right glyphs
+ * even with no network -- fonts/ contains the woff2 (phase 07 ships
+ * a placeholder; drop in the real Hack font file there).
+ *
+ * No CSS framework -- the whole sheet is ~6 KB after minify.
+ */
+
+/* Phase 07 ships without a bundled font file. The font chain
+ * below names "Hack" first; OS monospace fallback covers the
+ * gap. To enable a real font later, add an @font-face block
+ * here with a RELATIVE url so esbuild can resolve it. */
+
+:root {
+  /* Palette -- matrix green tuned just a hair off pure #00FF41 so it
+     isn't retina-vibrating on OLED. */
+  --chalk-bg:           #000000;
+  --chalk-bg-elev:      #001a00;
+  --chalk-bg-elev-2:    #002a00;
+  --chalk-fg:           #00ff41;
+  --chalk-fg-dim:       #4ca96a;
+  --chalk-fg-bright:    #5cffb1;
+  --chalk-fg-muted:     #338050;
+  --chalk-border:       #003a00;
+  --chalk-accent:       #5cffb1;
+  --chalk-warn:         #ffcc00;
+  --chalk-error:        #ff4d4d;
+
+  /* Type */
+  --chalk-font: "Hack", ui-monospace, "Cascadia Code", "JetBrains Mono",
+                "SF Mono", Consolas, "Roboto Mono", monospace;
+  --chalk-size-base: 14px;
+  --chalk-size-small: 12px;
+  --chalk-size-title: 18px;
+
+  /* Spacing rhythm -- 4px grid */
+  --chalk-s1: 4px;
+  --chalk-s2: 8px;
+  --chalk-s3: 12px;
+  --chalk-s4: 16px;
+  --chalk-s5: 24px;
+  --chalk-s6: 32px;
+
+  /* Radii. Keep tiny -- the matrix-green aesthetic is sharp. */
+  --chalk-radius: 2px;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+  font-family: var(--chalk-font);
+  font-size: var(--chalk-size-base);
+  line-height: 1.4;
+  min-height: 100dvh;
+  /* Prevent iOS double-tap zoom on the composer button without
+     disabling pinch-zoom on text. */
+  touch-action: manipulation;
+}
+
+::selection {
+  background: var(--chalk-fg);
+  color: var(--chalk-bg);
+}
+
+/* -- App shell ---------------------------------------------------- */
+
+.chalk-app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100dvh;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 var(--chalk-s4);
+}
+
+.chalk-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--chalk-s4) 0 var(--chalk-s3) 0;
+  border-bottom: 1px solid var(--chalk-border);
+}
+
+.chalk-header h1 {
+  margin: 0;
+  font-size: var(--chalk-size-title);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-main {
+  overflow-y: auto;
+  padding: var(--chalk-s4) 0;
+}
+
+.chalk-footer {
+  border-top: 1px solid var(--chalk-border);
+  padding: var(--chalk-s3) 0 var(--chalk-s4) 0;
+}
+
+/* -- StatusBar ---------------------------------------------------- */
+
+.chalk-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--chalk-fg-muted);
+}
+
+.chalk-status-dot--open       { background: var(--chalk-fg); box-shadow: 0 0 6px var(--chalk-fg); }
+.chalk-status-dot--connecting { background: var(--chalk-warn); animation: chalk-pulse 1s infinite; }
+.chalk-status-dot--closed     { background: var(--chalk-fg-muted); }
+.chalk-status-dot--error      { background: var(--chalk-error); }
+
+@keyframes chalk-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+.chalk-status-detail {
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-status-user {
+  color: var(--chalk-fg-bright);
+  margin-left: var(--chalk-s2);
+}
+
+/* -- Messages ----------------------------------------------------- */
+
+.chalk-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+.chalk-messages--empty {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+  color: var(--chalk-fg-muted);
+  font-style: italic;
+}
+
+.chalk-empty-hint {
+  margin: 0;
+}
+
+.chalk-message {
+  display: grid;
+  grid-template-columns: 7ch 9ch 1fr;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  border-radius: var(--chalk-radius);
+  background: transparent;
+}
+
+.chalk-message:hover {
+  background: var(--chalk-bg-elev);
+}
+
+.chalk-message--own {
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-message-time {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  align-self: center;
+}
+
+.chalk-message-sender {
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+  align-self: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chalk-message-body {
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* -- Composer ----------------------------------------------------- */
+
+.chalk-composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--chalk-s2);
+}
+
+.chalk-composer-input {
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  font-family: inherit;
+  font-size: var(--chalk-size-base);
+  resize: vertical;
+  min-height: 2.4em;
+  max-height: 30dvh;
+}
+
+.chalk-composer-input:focus {
+  outline: 1px solid var(--chalk-fg);
+  outline-offset: -1px;
+  background: var(--chalk-bg-elev-2);
+}
+
+.chalk-composer-input::placeholder {
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-composer-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chalk-composer-send {
+  align-self: stretch;
+  padding: 0 var(--chalk-s4);
+  background: transparent;
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-fg);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-base);
+  text-transform: lowercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.chalk-composer-send:hover:not(:disabled) {
+  background: var(--chalk-fg);
+  color: var(--chalk-bg);
+}
+
+.chalk-composer-send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: var(--chalk-fg-muted);
+  color: var(--chalk-fg-muted);
+}
+
+/* -- Errors ------------------------------------------------------- */
+
+.chalk-errors {
+  margin-top: var(--chalk-s2);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  border-left: 2px solid var(--chalk-error);
+  background: var(--chalk-bg-elev);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-error-code {
+  color: var(--chalk-error);
+  font-weight: 700;
+  margin-right: var(--chalk-s2);
+}

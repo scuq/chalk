@@ -156,7 +156,20 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	conn := NewConn(hello.DeviceID, "", func(reason error) {
+	// Phase 07 fix: look up the user_id for this device so we can
+	// populate Conn.UserID and the welcome frame. The lookup uses
+	// the same code path phase 06 uses for presence; if it fails,
+	// we keep UserID empty (welcome still goes out; the client just
+	// shows an empty badge -- which is what every pre-fix4 build
+	// did). For the typical case, the phase-05 device-ensure shim
+	// above just inserted the row with alice as owner, so the
+	// lookup succeeds and we return alice's UUID.
+	var connUserID string
+	if uid := h.lookupUserForDevice(ctx, deviceID); uid != uuid.Nil {
+		connUserID = uid.String()
+	}
+
+	conn := NewConn(hello.DeviceID, connUserID, func(reason error) {
 		msg := "closed"
 		if reason != nil {
 			msg = reason.Error()

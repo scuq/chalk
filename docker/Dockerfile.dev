@@ -3,14 +3,28 @@
 # chalk -- Dockerfile.dev
 # Dev image with a shell for debugging. Not for production.
 
+# ---- Frontend stage ------------------------------------------------------
+FROM node:20-alpine AS frontend
+WORKDIR /web
+COPY web/package.json web/package-lock.json* ./
+RUN npm ci --prefer-offline --no-audit || npm install
+COPY web/ ./
+RUN npm run build
+
+# ---- Build stage ---------------------------------------------------------
 FROM golang:1.23-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum* ./
 RUN go mod download || true
+COPY embed.go ./
 COPY cmd ./cmd
 COPY internal ./internal
+COPY migrations ./migrations
+COPY web/ ./web/
+COPY --from=frontend /web/dist ./web/dist
 RUN CGO_ENABLED=0 go build -o /out/chalkd ./cmd/chalkd
 
+# ---- Runtime stage -------------------------------------------------------
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates curl tini
 COPY --from=build /out/chalkd /usr/local/bin/chalkd

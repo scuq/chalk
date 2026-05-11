@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -39,6 +40,14 @@ type Options struct {
 	// PresenceLoopConfig overrides DefaultLoopConfig if non-nil; tests
 	// shrink these for faster sweeps.
 	PresenceLoopConfig *presence.LoopConfig
+
+	// Phase 07: SPA hosting. If WebFS is non-nil, the server mounts
+	// the SPA at "/" by serving WebFS rooted at WebDir (typically
+	// "web", with dist/ inside). If WebFS is nil, "/" is unhandled
+	// (404). Tests for the WS layer pass nil; the chalkd entry point
+	// passes the embedded chalk.Web from the module root.
+	WebFS  fs.FS
+	WebDir string
 }
 
 // Server wraps the http.Server, hub, pubsub listener, presence/friends
@@ -115,6 +124,23 @@ func NewServer(opts Options) (*Server, error) {
 		opts.Presence, opts.Friends,
 		pubPresence, pubFriend,
 	))
+
+	// Phase 07: mount the SPA at "/". A WebFS provided via Options is
+	// mounted; if it's nil (some tests pass nil because they don't care
+	// about HTML), "/" stays unhandled and returns 404. The dist/
+	// subdirectory inside webFS is the esbuild output the SPA handler
+	// serves at the URL root.
+	if opts.WebFS != nil {
+		webDir := opts.WebDir
+		if webDir == "" {
+			webDir = "web"
+		}
+		spaH, err := spaHandler(opts.WebFS, webDir+"/dist")
+		if err != nil {
+			return nil, fmt.Errorf("spa handler: %w", err)
+		}
+		mux.Handle("GET /", spaH)
+	}
 
 	s.http = &http.Server{
 		Handler:           mux,
