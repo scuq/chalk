@@ -123,6 +123,7 @@ func NewServer(opts Options) (*Server, error) {
 		s.hub, s.store, opts.WSConfig, s.instanceID, s.logger,
 		opts.Presence, opts.Friends,
 		pubPresence, pubFriend,
+		s.pubsub, // phase 08: listener for per-channel subscribe
 	))
 
 	// Phase 07: mount the SPA at "/". A WebFS provided via Options is
@@ -286,7 +287,7 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePubsubEvent dispatches by Kind. Phase 05 had only "message";
-// phase 06 adds "presence" and "friend".
+// phase 06 added "presence" and "friend"; phase 08 adds "channel".
 func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 	switch ev.Kind {
 	case "message":
@@ -295,11 +296,18 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 		s.handlePresenceEvent(ev)
 	case "friend":
 		s.handleFriendEvent(ev)
+	case "channel":
+		s.handleChannelEvent(ev)
 	}
 }
 
-// handleMessageEvent: phase 05 path. Fetch the row, build the frame,
-// BroadcastFresh (skip sender + skip conns registered after msg.TS).
+// handleMessageEvent: fetch the row, build the frame, BroadcastFresh
+// (skip sender + skip conns registered after msg.TS).
+//
+// Phase 08: MessagePayload now carries ChannelID and Seq so clients
+// can route the incoming message to the correct channel pane. Phase
+// 08 also routes recipients by channel membership: only members of
+// the message's channel receive the frame.
 func (s *Server) handleMessageEvent(ev pubsub.Event) {
 	if s.store == nil {
 		return
@@ -318,10 +326,12 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 		senderStr = msg.SenderDeviceID.String()
 	}
 	frame, err := proto.NewFrame(proto.TypeMessage, "", proto.MessagePayload{
-		ID:     msg.ID.String(),
-		Sender: senderStr,
-		TS:     msg.TS.UnixMilli(),
-		Body:   string(msg.Ciphertext),
+		ID:        msg.ID.String(),
+		ChannelID: msg.ChannelID.String(),
+		Seq:       msg.Seq,
+		Sender:    senderStr,
+		TS:        msg.TS.UnixMilli(),
+		Body:      string(msg.Ciphertext),
 	})
 	if err != nil {
 		s.logger.Printf("pubsub frame: %v", err)
@@ -332,7 +342,118 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 		s.logger.Printf("pubsub marshal: %v", err)
 		return
 	}
-	s.hub.BroadcastFresh(ev.SenderDeviceID.String(), wire, msg.TS)
+
+	// Phase 08: membership filter. The default channel is special-
+	// cased: broadcast to everyone (phase 07 fallback). Real channels
+	// only fan out to members.
+	if msg.ChannelID == store.DefaultChannelID {
+		s.hub.BroadcastFresh(ev.SenderDeviceID.String(), wire, msg.TS)
+		return
+	}
+	s.broadcastToChannelMembers(ctx, msg.ChannelID, ev.SenderDeviceID, wire, msg.TS)
+}
+
+// broadcastToChannelMembers sends wire to every locally-connected
+// device whose UserID is in the channel's member set, skipping the
+// sender device. Stale (registered after msg.TS) connections are
+// skipped via BroadcastFresh-equivalent logic.
+//
+// We loop over members + lookup conns; this is O(members * devices).
+// For phase 08's small group sizes this is fine. A scale optimization
+// would maintain a Hub-side index from user_id to conn set, but the
+// hub.Get(deviceID) primitive is enough for now.
+func (s *Server) broadcastToChannelMembers(
+	ctx context.Context,
+	channelID uuid.UUID,
+	senderDevice uuid.UUID,
+	wire []byte,
+	ts time.Time,
+) {
+	if s.store == nil {
+		return
+	}
+	// Members of the channel.
+	rows, err := s.store.Pool.Query(ctx,
+		`SELECT user_id FROM channel_members WHERE channel_id = $1`,
+		channelID,
+	)
+	if err != nil {
+		s.logger.Printf("broadcast members query: %v", err)
+		return
+	}
+	defer rows.Close()
+	members := make([]uuid.UUID, 0, 8)
+	for rows.Next() {
+		var u uuid.UUID
+		if err := rows.Scan(&u); err != nil {
+			s.logger.Printf("broadcast scan: %v", err)
+			return
+		}
+		members = append(members, u)
+	}
+
+	senderStr := senderDevice.String()
+	for _, m := range members {
+		// All locally-connected devices for this user. The Hub doesn't
+		// have a "list conns by user_id" primitive, so we iterate the
+		// hub. For phase 08's scale this is acceptable.
+		s.hub.ForEachConn(func(c *Conn) {
+			if c.UserID != m.String() {
+				return
+			}
+			if c.DeviceID == senderStr {
+				return // echo suppression
+			}
+			if c.CreatedAt.After(ts) {
+				return // stale: registered after the message was sent
+			}
+			if err := c.Enqueue(wire); err != nil {
+				// Slow client; the hub closes it elsewhere.
+				_ = err
+			}
+		})
+	}
+}
+
+// handleChannelEvent: push a channel_event frame to every locally-
+// connected device whose user_id is ev.UserID. The event was published
+// on chalk_global by handleCreateChannel (or future add_member,
+// remove_member, etc.) on whichever chalkd instance handled the
+// originating frame.
+func (s *Server) handleChannelEvent(ev pubsub.Event) {
+	if ev.UserID == uuid.Nil {
+		return
+	}
+	var summary proto.ChannelSummary
+	if len(ev.ChannelEventPayload) > 0 {
+		if err := json.Unmarshal(ev.ChannelEventPayload, &summary); err != nil {
+			s.logger.Printf("channel event decode: %v", err)
+			return
+		}
+	}
+	frame, err := proto.NewFrame(proto.TypeChannelEvent, "", proto.ChannelEventPayload{
+		Kind:    ev.FriendKind, // overloaded: added/removed
+		Channel: summary,
+	})
+	if err != nil {
+		s.logger.Printf("channel event frame: %v", err)
+		return
+	}
+	wire, err := json.Marshal(frame)
+	if err != nil {
+		s.logger.Printf("channel event marshal: %v", err)
+		return
+	}
+
+	recipient := ev.UserID.String()
+	s.hub.ForEachConn(func(c *Conn) {
+		if c.UserID != recipient {
+			return
+		}
+		if err := c.Enqueue(wire); err != nil {
+			_ = err
+		}
+	})
 }
 
 // handlePresenceEvent: re-aggregate the user's state, find local

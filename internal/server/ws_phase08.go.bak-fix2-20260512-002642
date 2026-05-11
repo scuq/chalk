@@ -1,0 +1,343 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/coder/websocket"
+	"github.com/google/uuid"
+
+	"github.com/scuq/chalk/internal/proto"
+	"github.com/scuq/chalk/internal/pubsub"
+	"github.com/scuq/chalk/internal/store"
+)
+
+// channelSummaryFromStore builds a proto.ChannelSummary from a
+// store.ChannelWithMembers. Centralized so the two call sites
+// (create_channel ack and list_channels ack) format identically.
+func channelSummaryFromStore(c store.ChannelWithMembers) proto.ChannelSummary {
+	createdBy := ""
+	if c.CreatedBy != nil {
+		createdBy = c.CreatedBy.String()
+	}
+	memberIDs := make([]string, 0, len(c.MemberIDs))
+	for _, m := range c.MemberIDs {
+		memberIDs = append(memberIDs, m.String())
+	}
+	return proto.ChannelSummary{
+		ID:        c.ID.String(),
+		Name:      c.Name,
+		IsDM:      c.IsDM,
+		CreatedBy: createdBy,
+		CreatedAt: c.CreatedAt.UnixMilli(),
+		MemberIDs: memberIDs,
+	}
+}
+
+// handleCreateChannel inserts a channel + members and acks with the
+// full summary. The caller becomes 'owner'; all other members must be
+// accepted friends of the caller (phase 06 friends table).
+//
+// On success, also pushes a channel_event{kind="added"} to each new
+// member's locally-connected devices via a Kind="channel" pubsub event.
+// Cross-instance push happens automatically through the listener.
+func (h *WSHandler) handleCreateChannel(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	var p proto.CreateChannelPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	if strings.TrimSpace(p.Name) == "" || len(p.Name) > 80 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel,
+			"name must be 1-80 chars after trim")
+		return
+	}
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id invalid")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember,
+			"anonymous senders cannot create channels")
+		return
+	}
+
+	// Parse + de-dup member IDs.
+	memberSet := make(map[uuid.UUID]struct{}, len(p.MemberIDs)+1)
+	for _, m := range p.MemberIDs {
+		mu, perr := uuid.Parse(m)
+		if perr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload,
+				"member_id not a uuid: "+m)
+			return
+		}
+		if mu == callerID {
+			continue // caller added automatically
+		}
+		memberSet[mu] = struct{}{}
+	}
+
+	// Friends check: every other member must be an accepted friend
+	// of the caller.
+	if h.friends == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "friends store unavailable")
+		return
+	}
+	for m := range memberSet {
+		ok, err := h.friends.AreAcceptedFriends(ctx, callerID, m)
+		if err != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal,
+				"friend check: "+err.Error())
+			return
+		}
+		if !ok {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotFriends,
+				"must be friends with "+m.String())
+			return
+		}
+	}
+
+	// DM constraint preflight: exactly 1 other member (so 2 total
+	// with caller). Server returns a friendly error rather than letting
+	// the trigger fire with a generic message.
+	if p.IsDM && len(memberSet) != 1 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeDMCardinality,
+			"DM channels need exactly 1 other member")
+		return
+	}
+
+	// Build the member list and create.
+	others := make([]uuid.UUID, 0, len(memberSet))
+	for m := range memberSet {
+		others = append(others, m)
+	}
+	created, err := h.store.CreateChannel(ctx, store.CreateChannelInput{
+		Name:      strings.TrimSpace(p.Name),
+		IsDM:      p.IsDM,
+		CreatedBy: callerID,
+		MemberIDs: others,
+	})
+	if err != nil {
+		if errors.Is(err, store.ErrDMCardinality) {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeDMCardinality, err.Error())
+			return
+		}
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "create channel: "+err.Error())
+		return
+	}
+
+	summary := channelSummaryFromStore(created)
+
+	// Ack the caller.
+	ack, _ := proto.NewFrame(proto.TypeCreateChannelAck, f.Ref,
+		proto.CreateChannelAckPayload{Channel: summary})
+	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("create_channel_ack write: %v", err)
+		// Don't return -- the channel exists; we still need to push events
+		// to other members so they can see it on their side.
+	}
+
+	// Push channel_event{kind="added"} to every member's devices,
+	// including the caller's other devices. We publish per-member via
+	// chalk_global with a new Kind="channel" event; server.go's
+	// handlePubsubEvent dispatches by Kind and pushes channel_event.
+	//
+	// Why chalk_global and not the per-channel topic: members haven't
+	// subscribed to this channel's topic yet (we just created it).
+	// chalk_global is always subscribed, so it's the safe path.
+	for _, m := range created.MemberIDs {
+		if err := h.publishChannelEvent(ctx, m, created.ID, "added", summary); err != nil {
+			h.logger.Printf("publish channel_event added to %s: %v", m, err)
+		}
+	}
+}
+
+// handleListChannels returns every channel the caller is a member of.
+func (h *WSHandler) handleListChannels(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id invalid")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		// Anonymous callers get an empty list -- not an error.
+		ack, _ := proto.NewFrame(proto.TypeListChannelsAck, f.Ref,
+			proto.ListChannelsAckPayload{Channels: []proto.ChannelSummary{}})
+		_ = writeFrame(ctx, c, ack, h.cfg.WriteTimeout)
+		return
+	}
+	channels, err := h.store.ListChannelsForUser(ctx, callerID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "list: "+err.Error())
+		return
+	}
+	summaries := make([]proto.ChannelSummary, 0, len(channels))
+	for _, ch := range channels {
+		summaries = append(summaries, channelSummaryFromStore(ch))
+	}
+	ack, _ := proto.NewFrame(proto.TypeListChannelsAck, f.Ref,
+		proto.ListChannelsAckPayload{Channels: summaries})
+	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("list_channels_ack write: %v", err)
+	}
+}
+
+// handleFetchHistory returns up to limit messages with seq < before_seq
+// in descending seq order. Membership is enforced.
+func (h *WSHandler) handleFetchHistory(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	var p proto.FetchHistoryPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id must be a UUID")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id invalid")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember,
+			"anonymous senders cannot fetch history")
+		return
+	}
+
+	// The default channel is special-cased: it's not in
+	// channel_members but is "always open" for the phase 07 transition.
+	// Every other channel requires membership.
+	if channelID != store.DefaultChannelID {
+		isMember, mErr := h.store.IsMember(ctx, channelID, callerID)
+		if mErr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership: "+mErr.Error())
+			return
+		}
+		if !isMember {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member")
+			return
+		}
+	}
+
+	msgs, err := h.store.ListMessagesByChannel(ctx, channelID, p.BeforeSeq, p.Limit)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "fetch: "+err.Error())
+		return
+	}
+
+	out := make([]proto.MessagePayload, 0, len(msgs))
+	for _, m := range msgs {
+		senderStr := ""
+		if m.SenderDeviceID != uuid.Nil {
+			senderStr = m.SenderDeviceID.String()
+		}
+		out = append(out, proto.MessagePayload{
+			ID:        m.ID.String(),
+			ChannelID: m.ChannelID.String(),
+			Seq:       m.Seq,
+			Sender:    senderStr,
+			TS:        m.TS.UnixMilli(),
+			Body:      string(m.Ciphertext),
+		})
+	}
+
+	ack, _ := proto.NewFrame(proto.TypeFetchHistoryAck, f.Ref,
+		proto.FetchHistoryAckPayload{
+			ChannelID: p.ChannelID,
+			BeforeSeq: p.BeforeSeq,
+			Messages:  out,
+		})
+	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("fetch_history_ack write: %v", err)
+	}
+}
+
+// publishChannelEvent emits a Kind="channel" event on chalk_global so
+// every chalkd's listener can route it to locally-connected devices of
+// the named member. Implementation in server.go calls back here.
+//
+// Defined as a method-shaped hook so tests can stub via WSHandler
+// composition; production wiring is set up in server.go.
+func (h *WSHandler) publishChannelEvent(
+	ctx context.Context,
+	recipient uuid.UUID,
+	channelID uuid.UUID,
+	kind string,
+	summary proto.ChannelSummary,
+) error {
+	if h.store == nil {
+		return errors.New("no store")
+	}
+	// Encode the summary into the Event's Payload-equivalent. The
+	// Event envelope is minimal; we need to carry the full summary so
+	// receivers don't have to query. Encode as JSON into a sub-field.
+	// pubsub.Event today has no generic payload; we shoehorn via a
+	// new field added in channel_event.go below.
+	return pgxBegin(ctx, h.store, func(tx pgx.Tx) error {
+		ev := pubsub.Event{
+			Kind:       "channel",
+			UserID:     recipient,
+			ChannelID:  channelID,
+			InstanceID: h.instanceID,
+			FriendKind: kind, // overload: reuse string field for kind discriminator
+		}
+		// We also need to ship the summary itself. Stuff it in a JSON
+		// blob carried via the "fk" field is wrong shape; we use a
+		// new field on Event added by channel_event_payload.go.
+		// (See server.go::handleChannelEvent for how this is unwrapped.)
+		buf, err := json.Marshal(summary)
+		if err != nil {
+			return err
+		}
+		ev.ChannelEventPayload = buf
+		return pubsub.PublishWithTx(ctx, tx, ev)
+	})
+}
+
+// writeFrame is a convenience wrapper around writeOne for the JSON-
+// marshal case. Used by the phase 08 handlers; phase 06 handlers
+// inline this pattern.
+func writeFrame(ctx context.Context, c *websocket.Conn, f proto.Frame, timeout time.Duration) error {
+	b, err := json.Marshal(f)
+	if err != nil {
+		return err
+	}
+	return writeOne(ctx, c, b, timeout)
+}

@@ -60,10 +60,18 @@ type WSHandler struct {
 
 	publishPresenceChange presence.Notifier
 	publishFriend         FriendPublisher
+
+	// Phase 08: listener is used for dynamic per-channel subscribe/
+	// unsubscribe at WS connect/disconnect time. nil disables phase 08
+	// channel routing -- the SPA can still talk to the default channel
+	// via the fallback path, but won't receive cross-instance pushes
+	// for any other channel.
+	listener *pubsub.Listener
 }
 
 // NewWSHandler constructs a handler. Phase 06 adds the presence/friends
-// stores and the two publishers.
+// stores and the two publishers. Phase 08 adds the listener so the WS
+// layer can subscribe/unsubscribe per-channel topics.
 func NewWSHandler(
 	hub *Hub,
 	st *store.Store,
@@ -74,6 +82,7 @@ func NewWSHandler(
 	friendsStore *friends.Store,
 	pubPresence presence.Notifier,
 	pubFriend FriendPublisher,
+	listener *pubsub.Listener,
 ) *WSHandler {
 	if logger == nil {
 		logger = log.Default()
@@ -88,6 +97,7 @@ func NewWSHandler(
 		friends:               friendsStore,
 		publishPresenceChange: pubPresence,
 		publishFriend:         pubFriend,
+		listener:              listener,
 	}
 }
 
@@ -158,14 +168,11 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Phase 07 fix: look up the user_id for this device so we can
 	// populate Conn.UserID and the welcome frame. The lookup uses
-	// the same code path phase 06 uses for presence; if it fails,
-	// we keep UserID empty (welcome still goes out; the client just
-	// shows an empty badge -- which is what every pre-fix4 build
-	// did). For the typical case, the phase-05 device-ensure shim
-	// above just inserted the row with alice as owner, so the
-	// lookup succeeds and we return alice's UUID.
+	// the same code path phase 06 uses for presence.
+	var connUserUUID uuid.UUID
 	var connUserID string
 	if uid := h.lookupUserForDevice(ctx, deviceID); uid != uuid.Nil {
+		connUserUUID = uid
 		connUserID = uid.String()
 	}
 
@@ -182,11 +189,48 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.hub.Register(conn)
 	defer h.hub.Unregister(conn)
 
+	// Phase 08: subscribe to per-channel NOTIFY topics for every
+	// channel this user is a member of. Each Subscribe is refcounted
+	// inside the listener, so multiple connected devices for the same
+	// user share a single LISTEN. We track the list of topics we
+	// subscribed FROM THIS CONNECTION so disconnect can unsubscribe
+	// the same set (decrementing refcounts).
+	//
+	// If the user lookup failed (connUserUUID == Nil), we skip --
+	// phase 08 features require a real user identity. The user can
+	// still send to the default channel via the fallback path.
+	var subscribedTopics []string
+	channelIDs := []string{}
+	if connUserUUID != uuid.Nil && h.store != nil && h.listener != nil {
+		channels, err := h.store.ListChannelsForUser(ctx, connUserUUID)
+		if err != nil {
+			h.logger.Printf("list channels on hello: %v", err)
+		} else {
+			for _, ch := range channels {
+				topic := pubsub.ChannelTopic(ch.ID)
+				subCtx, subCancel := context.WithTimeout(ctx, 2*time.Second)
+				err := h.listener.Subscribe(subCtx, topic)
+				subCancel()
+				if err != nil {
+					h.logger.Printf("subscribe %s: %v", topic, err)
+					continue
+				}
+				subscribedTopics = append(subscribedTopics, topic)
+				channelIDs = append(channelIDs, ch.ID.String())
+			}
+		}
+	}
+	defer func() {
+		for _, t := range subscribedTopics {
+			h.listener.Unsubscribe(t)
+		}
+	}()
+
 	// Welcome.
 	welcome, _ := proto.NewFrame(proto.TypeWelcome, "", proto.WelcomePayload{
 		UserID:   conn.UserID,
 		DeviceID: conn.DeviceID,
-		Channels: []string{},
+		Channels: channelIDs,
 	})
 	wb, _ := json.Marshal(welcome)
 	if err := writeOne(ctx, c, wb, h.cfg.WriteTimeout); err != nil {
@@ -324,6 +368,14 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 		case proto.TypeFriendList:
 			h.handleFriendList(ctx, c, conn, f)
 
+		// Phase 08: channels
+		case proto.TypeCreateChannel:
+			h.handleCreateChannel(ctx, c, conn, f)
+		case proto.TypeListChannels:
+			h.handleListChannels(ctx, c, conn, f)
+		case proto.TypeFetchHistory:
+			h.handleFetchHistory(ctx, c, conn, f)
+
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,
 				"unknown frame type: "+f.Type)
@@ -331,9 +383,15 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 	}
 }
 
-// handleSend persists the message and emits a NOTIFY, same as phase 05.
-// Unchanged from phase 05 except routing through h.publishMessage if
-// non-nil (not used in phase 06; left as the hook for future cleanup).
+// handleSend persists the message and emits a NOTIFY.
+//
+// Phase 08 routing: payload.ChannelID names the destination channel.
+//   * Empty/omitted falls back to store.DefaultChannelID (transitional
+//     compatibility with phase 07 SPAs that don't yet send channel_id).
+//   * Non-empty is verified against channel_members; non-members get
+//     errCodeNotAMember.
+//   * The NOTIFY goes out on the per-channel topic so only chalkds with
+//     subscribers for this channel receive it.
 func (h *WSHandler) handleSend(
 	ctx context.Context,
 	c *websocket.Conn,
@@ -359,13 +417,42 @@ func (h *WSHandler) handleSend(
 		return
 	}
 
+	// Resolve channel_id. Empty -> default channel (phase 07 fallback).
+	channelID := store.DefaultChannelID
+	if p.ChannelID != "" {
+		cid, perr := uuid.Parse(p.ChannelID)
+		if perr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id must be a UUID")
+			return
+		}
+		channelID = cid
+
+		// Membership check (skipped for default channel -- phase 07 fallback).
+		// The sender is a real user lookup; if connUserUUID is Nil
+		// (anonymous), reject.
+		userID := h.lookupUserForDevice(ctx, deviceID)
+		if userID == uuid.Nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "anonymous senders cannot post to channels")
+			return
+		}
+		isMember, mErr := h.store.IsMember(ctx, channelID, userID)
+		if mErr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership check: "+mErr.Error())
+			return
+		}
+		if !isMember {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of channel")
+			return
+		}
+	}
+
 	err = pgxBegin(ctx, h.store, func(tx pgx.Tx) error {
 		var seq int64
 		if err := tx.QueryRow(ctx,
 			`UPDATE channel_seq SET next_seq = next_seq + 1
 			   WHERE channel_id = $1
 			 RETURNING next_seq - 1`,
-			store.DefaultChannelID,
+			channelID,
 		).Scan(&seq); err != nil {
 			return err
 		}
@@ -376,18 +463,24 @@ func (h *WSHandler) handleSend(
 			   (id, channel_id, sender_device_id, seq, content_type, ciphertext)
 			 VALUES ($1, $2, $3, $4, 'application', $5)
 			 RETURNING ts`,
-			msgID, store.DefaultChannelID, deviceID, seq, []byte(p.Body),
+			msgID, channelID, deviceID, seq, []byte(p.Body),
 		).Scan(&ts); err != nil {
 			return err
 		}
-		return pubsub.PublishWithTx(ctx, tx, pubsub.Event{
+		ev := pubsub.Event{
 			Kind:           "message",
 			MessageID:      msgID,
 			TS:             ts,
-			ChannelID:      store.DefaultChannelID,
+			ChannelID:      channelID,
 			SenderDeviceID: deviceID,
 			InstanceID:     h.instanceID,
-		})
+		}
+		// Phase 08 routing: default channel uses chalk_global (phase 07
+		// fallback); real channels use their per-channel topic.
+		if channelID == store.DefaultChannelID {
+			return pubsub.PublishWithTx(ctx, tx, ev)
+		}
+		return pubsub.PublishMessageWithTx(ctx, tx, ev)
 	})
 	if err != nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "send failed")

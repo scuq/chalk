@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -221,7 +220,7 @@ func (l *Listener) runOnce(ctx context.Context) error {
 	defer hijacked.Close(context.Background())
 
 	// Always LISTEN on chalk_global (friend/presence events).
-	if _, err := hijacked.Exec(ctx, `LISTEN `+Channel); err != nil {
+	if _, err := hijacked.Exec(ctx, `LISTEN `+Channel).ReadAll(); err != nil {
 		return fmt.Errorf("LISTEN %s: %w", Channel, err)
 	}
 	l.logf("listener subscribed to %s", Channel)
@@ -236,7 +235,7 @@ func (l *Listener) runOnce(ctx context.Context) error {
 	}
 	l.subMu.Unlock()
 	for _, t := range topics {
-		if _, err := hijacked.Exec(ctx, `LISTEN `+quoteIdent(t)); err != nil {
+		if _, err := hijacked.Exec(ctx, `LISTEN `+quoteIdent(t)).ReadAll(); err != nil {
 			l.logf("listener: re-LISTEN %s failed: %v", t, err)
 		}
 	}
@@ -280,19 +279,19 @@ func (l *Listener) runOnce(ctx context.Context) error {
 // blocking. Returns an error only if a command's Exec fails AND the
 // listener should reconnect; per-topic LISTEN failures are logged and
 // the refcount stays in the map for retry on reconnect.
-func (l *Listener) drainCmds(ctx context.Context, conn *pgx.Conn) error {
+func (l *Listener) drainCmds(ctx context.Context, conn *pgconn.PgConn) error {
 	for {
 		select {
 		case cmd := <-l.cmds:
 			var execErr error
 			switch cmd.op {
 			case "sub":
-				_, execErr = conn.Exec(ctx, `LISTEN `+quoteIdent(cmd.topic))
+				_, execErr = conn.Exec(ctx, `LISTEN `+quoteIdent(cmd.topic)).ReadAll()
 				if execErr == nil {
 					l.logf("listener subscribed to %s", cmd.topic)
 				}
 			case "unsub":
-				_, execErr = conn.Exec(ctx, `UNLISTEN `+quoteIdent(cmd.topic))
+				_, execErr = conn.Exec(ctx, `UNLISTEN `+quoteIdent(cmd.topic)).ReadAll()
 				if execErr == nil {
 					l.logf("listener unsubscribed from %s", cmd.topic)
 				}

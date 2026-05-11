@@ -4,14 +4,24 @@
 // goroutine subscribed to the channel and routes incoming notifications
 // to local handlers for fan-out to connected WebSocket clients.
 //
-// Phase 06 extends the Event envelope with fields for presence and
-// friend operations:
-//   * Kind="message"   -- as phase 05; carries MessageID + TS for fetch
-//   * Kind="presence"  -- carries UserID whose aggregated state changed
-//   * Kind="friend"    -- carries UserID (recipient of the event) and
-//                         FromUserID (the other party); the listener
-//                         pushes a friend_event frame to the recipient's
-//                         locally-connected devices
+// Phase 06 extended the Event envelope for presence and friend
+// operations. Phase 08 added Kind="channel" (channel_event push) and
+// the ChannelEventPayload field to carry the proto.ChannelSummary.
+//
+// Event Kind discriminator:
+//   * "message"   -- message inserted into a channel; carries MessageID, TS,
+//                    ChannelID. Published per-channel via PublishMessageWithTx;
+//                    receivers fetch the row.
+//   * "presence"  -- aggregated state change; carries UserID. Published on
+//                    chalk_global.
+//   * "friend"    -- friend op; carries UserID (recipient), FromUserID, and
+//                    FriendKind (request_received/accepted/declined/removed).
+//                    Published on chalk_global.
+//   * "channel"   -- channel membership change (phase 08); carries UserID
+//                    (recipient), ChannelID, FriendKind (overloaded as
+//                    channel-event-kind: added/removed), and
+//                    ChannelEventPayload (JSON-encoded proto.ChannelSummary).
+//                    Published on chalk_global so non-members receive it.
 package pubsub
 
 import (
@@ -24,16 +34,19 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Channel is the Postgres NOTIFY channel name. We use a single global
-// channel; the Kind field discriminates payload shape.
+// Channel is the Postgres NOTIFY channel name for non-channel-scoped
+// events (presence, friend, channel-membership pushes). Per-channel
+// message events use ChannelTopic(channelID) instead.
 const Channel = "chalk_global"
 
 // Event is the shape of every NOTIFY payload. Kept tiny on purpose to
 // stay well under PG's 8000-byte NOTIFY payload limit. The actual
-// content (message rows, aggregated presence) lives in the database;
-// this is a routing pointer.
+// content (message rows, channel rows) lives in the database; this is
+// mostly a routing pointer, with one exception: Kind="channel" events
+// carry the full ChannelSummary so receivers don't have to query to
+// render the sidebar entry.
 type Event struct {
-	// Kind discriminates: "message", "presence", "friend".
+	// Kind discriminates: "message", "presence", "friend", "channel".
 	Kind string `json:"k"`
 
 	// Message fields (Kind="message"). MessageID and TS together
@@ -43,22 +56,28 @@ type Event struct {
 	ChannelID      uuid.UUID `json:"c,omitempty"`
 	SenderDeviceID uuid.UUID `json:"s,omitempty"`
 
-	// Presence and friend fields.
+	// Presence, friend, and channel fields.
 	//   UserID:
 	//     For Kind="presence", the user whose aggregated state changed.
-	//     For Kind="friend",   the recipient of the friend event (the
-	//                          party whose local devices should be
-	//                          notified).
+	//     For Kind="friend",   the recipient (whose local devices
+	//                          should be notified).
+	//     For Kind="channel",  the recipient (a member of the channel).
 	//   FriendKind:
-	//     For Kind="friend", one of "request_received", "accepted",
-	//                       "declined", "removed". Mirrors
-	//                       proto.FriendEventPayload.Kind.
+	//     For Kind="friend",   one of "request_received", "accepted",
+	//                          "declined", "removed".
+	//     For Kind="channel",  one of "added", "removed".
 	//   FromUserID:
-	//     For Kind="friend", the other party (the requester, accepter,
-	//                       etc.). For presence, unused.
+	//     For Kind="friend",   the other party.
+	//                          Unused for "presence" and "channel".
 	UserID     uuid.UUID `json:"u,omitempty"`
 	FriendKind string    `json:"fk,omitempty"`
 	FromUserID uuid.UUID `json:"f,omitempty"`
+
+	// ChannelEventPayload is the JSON-encoded proto.ChannelSummary
+	// for Kind="channel" events. Pubsub doesn't import proto (cycle),
+	// so we carry it as opaque bytes; the receiver in server.go
+	// decodes into proto.ChannelEventPayload.
+	ChannelEventPayload json.RawMessage `json:"cp,omitempty"`
 
 	// InstanceID tags which chalkd published this. Informational.
 	InstanceID string `json:"i,omitempty"`
@@ -78,16 +97,13 @@ func (e Event) Encode() ([]byte, error) {
 	return b, nil
 }
 
-// PublishWithTx emits a NOTIFY inside an existing transaction. NOTIFY
-// is delivered at COMMIT time; the row(s) referenced in the event MUST
-// be inserted/updated by the same transaction. Every chalkd's listener,
-// including the publishing instance's, receives the notification
-// post-commit.
+// PublishWithTx emits a NOTIFY on chalk_global inside an existing
+// transaction. Use this for presence, friend, and channel-event
+// notifications. Per-channel message events use PublishMessageWithTx
+// (see channel_topics.go).
 //
-// We use pg_notify() (the function form) rather than NOTIFY (the
-// statement form) because pg_notify accepts both arguments as values,
-// letting us bind the payload string with placeholder syntax. NOTIFY's
-// channel name is a SQL identifier and cannot be parameterized.
+// NOTIFY is delivered at COMMIT; the row(s) referenced in the event
+// MUST be inserted/updated by the same transaction.
 func PublishWithTx(ctx context.Context, tx pgx.Tx, ev Event) error {
 	payload, err := ev.Encode()
 	if err != nil {
