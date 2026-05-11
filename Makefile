@@ -78,6 +78,20 @@ docker-logs: ## Tail container logs
 bootstrap: ## Run all phases (idempotent)
 	bootstrap/run-all.sh
 
+.PHONY: dev
+dev: ## Bring up a full local stack (Postgres + chalkd + SPA) in foreground
+	tools/dev.sh
+
+.PHONY: dev-down
+dev-down: ## Stop and remove the dev Postgres container
+	@docker stop $${CHALK_DEV_PG_NAME:-chalk-dev-pg} >/dev/null 2>&1 || true
+	@docker rm   $${CHALK_DEV_PG_NAME:-chalk-dev-pg} >/dev/null 2>&1 || true
+	@echo "dev postgres container removed"
+
+.PHONY: dev-logs
+dev-logs: ## Tail the dev Postgres container logs
+	docker logs -f --tail=100 $${CHALK_DEV_PG_NAME:-chalk-dev-pg}
+
 .PHONY: clean
 clean: ## Remove build artifacts
 	rm -rf bin/ dist/ coverage.*
