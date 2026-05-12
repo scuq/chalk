@@ -1,6 +1,6 @@
 # Phase Log
 
-What each bootstrap phase delivers and what it tests. Kept in sync with `bootstrap/`.
+What each bootstrap phase delivers and what it tests. Kept in sync with `bootstrap/` and `README.md`.
 
 ## 00 — init ✅
 
@@ -43,90 +43,167 @@ What each bootstrap phase delivers and what it tests. Kept in sync with `bootstr
 - Container starts and `/healthz` returns 200 over HTTP
 - Image size < 30MB target (warning, not failure)
 
-## 03 — postgres ⏳
+## 03 — postgres ✅
 
-**Will deliver**
+**Delivers**
 - pgx connection pool (`internal/store`)
-- Embedded migrations runner
-- Initial schema (`migrations/0001_init.sql` — users, devices)
-- Store interfaces and implementations for users, devices
+- Embedded migrations runner (`internal/migrate`)
+- Initial schema: `0001_init.sql` (users, devices), `0002_channels.sql`, `0003_messages.sql`
+- Store interfaces for users (`CreateUser`, `UpsertUser`, `GetUserByID`, `GetUserByHandle`, `CountUsers`), devices, channels, messages
 
-**Will test**
-- Spin ephemeral PG, apply migrations, idempotent re-apply
-- Seed alice/bob/carol via fixture, query them back
-- Concurrent inserts (race detector enabled)
+**Tests**
+- Ephemeral PG, migrations apply + are idempotent
+- Seed alice/bob/carol via `fixtures/users.sql`, query them back
+- Concurrent insert race tests
 
-## 04 — ws-relay ⏳
+## 04 — ws-relay ✅
 
-**Will deliver**
-- `internal/server/ws.go` — WebSocket handler
-- `internal/server/hub.go` — local connection registry
-- Ping/pong with 15s/30s timing
-- Plaintext echo protocol (placeholder for MLS in phase 10)
+**Delivers**
+- `internal/server/ws.go` — WebSocket handler with coder/websocket
+- `internal/server/hub.go` — local connection registry keyed by deviceID
+- Ping/pong with configurable timing
+- Wire protocol v0: `hello` / `welcome` / `send` / `message`
+- Plaintext payload (placeholder for MLS in phase 10)
 
-**Will test**
-- Two clients connect, one sends, the other receives
-- Ping/pong keeps connection alive 60s
-- Idle connection torn down after missed pongs
+**Tests**
+- Two clients connect, A sends, B receives
+- Ping/pong keeps connection alive
+- Hub eviction on duplicate deviceID
 
-## 05 — pubsub ⏳
+## 05 — pubsub ✅
 
-**Will deliver**
+**Delivers**
 - `internal/pubsub` — NOTIFY publisher + dedicated LISTEN connection
-- Per-instance NOTIFY channels for routing
+- `chalk_global` channel for cross-instance routing
 - Hub integration: incoming NOTIFY → fan out to local sockets
 
-**Will test**
-- Two chalkd instances on different ports
-- Client A on instance 1 sends, client B on instance 2 receives within 50ms
-- Postgres restart → instances reconnect listener cleanly
+**Tests**
+- Two chalkd instances on different ports, message from A reaches B
+- Postgres restart → listener reconnects cleanly
+- Drain semantics for hijacked connection
 
-## 06 — presence ⏳
+## 06 — presence ✅
 
-**Will deliver**
-- `device_presence` table with `device_type` and TTL logic
-- Multi-device aggregate (`active`/`away`/`dnd`/`offline`)
-- Instance heartbeat + janitor for crash recovery
-- Coarse online/offline broadcast via NOTIFY
+**Delivers**
+- `migrations/0006_user_lifecycle.sql` — user account states
+- `migrations/0007_friendships.sql` — friend requests + acceptance
+- `migrations/0008_presence.sql` — `device_presence` with TTL
+- `internal/presence` — multi-device aggregate (`active`/`away`/`offline`), heartbeats, janitor
+- `internal/friends` — friend store with bucketed queries
+- Frames: `friend_request`, `friend_accept`, `friend_list`, presence broadcasts
 
-**Will test**
-- Connect alice from "phone", bob sees alice online within 1s
-- Phone idle 90s → alice shows away (TTL decay)
-- Desktop active overrides phone away → alice shows active
-- Kill chalkd hard → janitor cleans up within 20s
+**Tests**
+- Friend lifecycle (request → accept → list)
+- Presence TTL decay and janitor cleanup
+- Cross-instance presence propagation
 
-## 07 — frontend-shell ⏳
+Note: phase 06 ships the user-lifecycle schema but defers the write paths (deactivate/delete/reactivate) to phase 11. Phase 06's lifecycle is read-only state.
 
-**Will deliver**
-- `web/` SPA scaffold (vanilla ES modules, no build step)
-- Theming system (CSS vars, default Matrix theme, alternates)
+## 07 — frontend-shell ✅
+
+**Delivers**
+- `web/` SPA (Preact + TypeScript, esbuild)
+- Matrix-green-on-black theme via CSS variables
 - Hack font (4 weights, WOFF2)
-- Sound engine (synthesized + sample pack hooks)
-- Roster UI shell
-- Composer with optimistic local rendering
+- StatusBar with connection state, Composer with optimistic-append
+- `tools/dev.sh` and `make dev` for the full local stack
+- `embed.go` serves the built SPA from the chalkd binary
 
-**Will test**
+**Tests**
 - Binary serves SPA from `embed.FS`
-- Composer keystroke → paint < 16ms (measured in browser harness)
-- Theme switching via `data-theme` attribute
-- User overrides via injected `<style>`
-- Roster shows seeded users with online status
+- Playwright smoke: page loads, connects to chalkd, status indicator goes green
 
-## 08 — channels ⏳
+## 08 — channels ✅
+
+**Delivers**
+- `migrations/0009_messages_nullable_sender.sql`
+- `migrations/0010_channel_members.sql`
+- Per-channel pubsub topics (`chalk_chan_<id>`) with dynamic LISTEN refcounting
+- DM cardinality trigger (max 2 members for `is_dm=true`)
+- Frames: `create_channel`, `create_channel_ack`, `list_channels`, `list_channels_ack`, `fetch_history`, `fetch_history_ack`, `channel_event`
+- Echo-suppression: sender device never gets its own message back
+- `internal/server/ws_phase08.go` — channel handlers
+- `internal/proto/frames_phase08.go` — wire frame definitions
+
+**Tests**
+- alice creates DM with bob, both receive `channel_event{added}`
+- Cross-instance fan-out via per-channel topics
+- DM cardinality trigger refuses 3rd member
+- `fetch_history` pagination with `before_seq` cursor
+
+### 08b — channels SPA ✅
+
+**Delivers**
+- Sidebar with channel list and "+" button
+- `CreateChannelModal` with `FriendPicker` (bucketed friend_list)
+- `subscribe_channel` wire frame for SPA-driven topic subscriptions
+- Reducer state for channels, friends, messages keyed by channelID
+- Optimistic-append for own messages (echo-suppressed by server)
+- Integration test `test/e2e/channels.spec.ts`
+
+**Tests**
+- Create DM from picker, verify both ends receive `channel_event`
+- Send + receive via per-channel topic
+- Reload page → channels restored, history fetched
+
+### 08c — handles ✅
+
+**Delivers**
+- `internal/store/users.go::HandlesByID` batched lookup
+- `WelcomePayload.handle` — status badge shows `you (alice)`
+- `ChannelSummary.members []ChannelMember{user_id, handle}` — DM labels show `@bob`
+- Friend picker renders `@<handle>` with UUID fallback
+
+**Tests**
+- Browser smoke: status badge, sidebar DM, channel header, friend picker all render handles
+
+## Planned phases (subject to change)
+
+The numbering and scope below reflect the current plan. The bootstrap scaffold still has older stubs at `bootstrap/phase-09-blobs.sh` etc. — those will be renamed/rewritten as each phase actually starts.
+
+## 09 — auth 🔮
 
 **Will deliver**
-- `channels`, `channel_members`, `messages` tables
-- Wire protocol: `create_channel`, `send`, `fetch_history`, `fetch_thread`
-- Threading model (thread_id, parent_id)
-- Channel UI with thread pane
+- WebAuthn passkey registration and authentication
+- 24-word recovery codes (BIP-39 wordlist)
+- Replace the phase-05 device-ensure shim with real account creation
+- User handles bound to passkey-derived account
+- Multi-conn-per-user (rewrites the hub's deviceID-keyed map to userID-keyed)
 
 **Will test**
-- alice creates channel, adds bob+carol
-- Top-level message → all three receive
-- Reply in thread → fetch_thread returns only that thread
-- Reconnect → catch-up via `seq` returns missed messages in order
+- Register passkey, log out, log back in via passkey
+- Recovery code restores account on a fresh device
+- Two browser tabs (same user) both stay connected without eviction
 
-## 09 — blobs ⏳
+## 10 — mls 🔮
+
+**Will deliver**
+- CoreCrypto WASM in `web/vendor/`
+- Web Worker harness for crypto
+- KeyPackage publish/fetch with `FOR UPDATE SKIP LOCKED`
+- MLS group creation, Add, Remove, Welcome flows
+- Wire ciphertext only; server never sees plaintext
+
+**Will test**
+- alice + bob + carol form an MLS group
+- Server logs verified to contain only ciphertext
+- Member add/remove works
+- KeyPackage refill triggered when low
+
+## 11 — lifecycle 🔮
+
+**Will deliver**
+- Wire frames + handlers for `deactivate_account`, `delete_account`, `reactivate_account`
+- Cascading cleanup (presence, friendships, channel memberships)
+- Self-service UI in the SPA
+- Completes the phase-06 schema with the missing write paths
+
+**Will test**
+- Deactivate hides user from friend lists, freezes presence
+- Reactivate restores prior friendships
+- Delete is cascading and irreversible
+
+## 12 — blobs 🔮
 
 **Will deliver**
 - `blobs` table, blob upload endpoint with token auth
@@ -139,40 +216,13 @@ What each bootstrap phase delivers and what it tests. Kept in sync with `bootstr
 - Server bytes ≠ uploaded bytes (encrypted)
 - GC removes unreferenced blobs after TTL
 
-## 10 — mls ⏳
-
-**Will deliver**
-- CoreCrypto WASM in `web/vendor/`
-- Web Worker harness for crypto
-- KeyPackage publish/fetch with `FOR UPDATE SKIP LOCKED`
-- MLS group creation, Add, Remove, Welcome flows
-
-**Will test**
-- alice + bob + carol form an MLS group
-- All three exchange messages; server logs verified to contain only ciphertext
-- Member add/remove works
-- KeyPackage refill triggered when low
-
-## 11 — friending ⏳
-
-**Will deliver**
-- `friendships`, `friend_requests` tables
-- Encrypted presence over per-friendship MLS group
-- Last-seen sharing (encrypted, opt-out)
-- Roster UI showing per-device breakdown on hover
-
-**Will test**
-- alice sends request to bob, bob accepts, both rosters update
-- alice goes away, bob's roster reflects in <2s
-- Remove friend → presence subscription revoked
-
-## 12 — hardening ⏳
+## 13 — hardening 🔮
 
 **Will deliver**
 - Per-connection rate limit (`golang.org/x/time/rate`)
 - Payload size caps
 - Blob quota per user
-- Structured JSON logging (zerolog)
+- Structured JSON logging tightening
 - Prometheus `/metrics` endpoint
 - `chalkd --migrate-only` flag
 
@@ -181,7 +231,7 @@ What each bootstrap phase delivers and what it tests. Kept in sync with `bootstr
 - Oversized payload rejected
 - `/metrics` exposes request counts and ws connections
 
-## 13 — cross-browser ⏳
+## 14 — cross-browser 🔮
 
 **Will deliver**
 - `test/e2e/` Playwright config
