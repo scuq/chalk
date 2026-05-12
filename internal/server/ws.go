@@ -183,7 +183,14 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		connUserID = uid.String()
 	}
 
-	conn := NewConn(hello.DeviceID, connUserID, func(reason error) {
+	// Phase 09a: each connection gets a fresh server-generated UUID
+	// distinct from the (client-provided) device_id. Two browser tabs
+	// from the same device share a device_id but each get their own
+	// connID, which step 2 will use as the routing key so the tabs
+	// don't evict each other.
+	connID := uuid.New().String()
+
+	conn := NewConn(connID, hello.DeviceID, connUserID, func(reason error) {
 		msg := "closed"
 		if reason != nil {
 			msg = reason.Error()

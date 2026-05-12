@@ -29,14 +29,25 @@ import (
 )
 
 // Hub registers connections and dispatches messages between them.
+//
+// Phase 09a adds a parallel byConnID index keyed by the per-connection
+// UUID. This is a transitional state: production code still routes by
+// device_id (the conns map). The byConnID map is built alongside so
+// step 2 can switch fan-out and echo-suppression to be per-conn
+// without further touching Register/Unregister/CloseAll. Both maps
+// are kept consistent under the same write lock.
 type Hub struct {
-	mu    sync.RWMutex
-	conns map[string]*Conn // key: device_id
+	mu        sync.RWMutex
+	conns     map[string]*Conn // key: device_id (legacy; primary today)
+	byConnID  map[string]*Conn // key: Conn.ID (phase 09a; not yet used by production code)
 }
 
 // NewHub constructs an empty Hub.
 func NewHub() *Hub {
-	return &Hub{conns: make(map[string]*Conn)}
+	return &Hub{
+		conns:    make(map[string]*Conn),
+		byConnID: make(map[string]*Conn),
+	}
 }
 
 // Register adds c to the hub. If a previous connection exists for the same
@@ -55,6 +66,20 @@ func (h *Hub) Register(c *Conn) {
 	h.mu.Lock()
 	prev, exists := h.conns[c.DeviceID]
 	h.conns[c.DeviceID] = c
+	if c.ID != "" {
+		h.byConnID[c.ID] = c
+	}
+	// If we just superseded an earlier conn with the same device_id,
+	// drop its byConnID entry too. The prev conn's writeLoop will
+	// eventually call Unregister, but by then this map should already
+	// reflect that prev is no longer the active conn for its ID. We
+	// also can't rely on Unregister(prev) to clean byConnID because the
+	// device-id path of Unregister no-ops when prev is no longer the
+	// current device-id entry, and we'd be left with a stale byConnID
+	// pointer.
+	if exists && prev != c && prev != nil && prev.ID != "" {
+		delete(h.byConnID, prev.ID)
+	}
 	h.mu.Unlock()
 
 	if exists && prev != c {
@@ -70,6 +95,16 @@ func (h *Hub) Unregister(c *Conn) {
 	if cur, ok := h.conns[c.DeviceID]; ok && cur == c {
 		delete(h.conns, c.DeviceID)
 	}
+	// Phase 09a: byConnID is keyed per-conn, so the cleanup rule is
+	// simpler than the device_id rule: if c.ID is currently mapped to
+	// c, drop it. If a same-deviceID Register has already superseded
+	// this conn, the byConnID slot was cleared at that point, so this
+	// check just no-ops.
+	if c.ID != "" {
+		if cur, ok := h.byConnID[c.ID]; ok && cur == c {
+			delete(h.byConnID, c.ID)
+		}
+	}
 	h.mu.Unlock()
 }
 
@@ -79,6 +114,16 @@ func (h *Hub) Get(deviceID string) *Conn {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.conns[deviceID]
+}
+
+// GetByConnID returns the connection with the given per-conn UUID, or
+// nil. Phase 09a: provides lookup by Conn.ID for the upcoming fan-out
+// rewrite. Production code in 09a does not yet call this; it is wired
+// up so step 2 can switch routing keys without further plumbing.
+func (h *Hub) GetByConnID(connID string) *Conn {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.byConnID[connID]
 }
 
 // Count returns the number of active connections.
@@ -170,6 +215,7 @@ func (h *Hub) CloseAll(ctx context.Context, reason error) {
 		snap = append(snap, c)
 	}
 	h.conns = make(map[string]*Conn)
+	h.byConnID = make(map[string]*Conn)
 	h.mu.Unlock()
 
 	done := make(chan struct{})
@@ -207,6 +253,14 @@ var ErrSendFull = errors.New("send buffer full")
 // ping/pong) are wired in ws.go; this type holds the hub-facing surface so
 // the hub doesn't need to know about the WebSocket library.
 type Conn struct {
+	// ID is a server-generated per-connection UUID, distinct from
+	// DeviceID. Two browser tabs from the same device share a DeviceID
+	// but get separate IDs. Phase 09a introduces this; step 1 only
+	// populates it. Step 2 switches fan-out and echo-suppression to be
+	// keyed on ID instead of DeviceID so multiple tabs of the same user
+	// coexist without one evicting the other.
+	ID string
+
 	DeviceID string
 	UserID   string
 
@@ -233,8 +287,13 @@ type Conn struct {
 // NewConn builds a Conn with its send buffer and lifecycle channels. closeFn
 // is invoked exactly once when Close is called for the first time; it must
 // be safe to call from any goroutine.
-func NewConn(deviceID, userID string, closeFn func(error)) *Conn {
+//
+// Phase 09a: id is the per-conn UUID. Empty string is tolerated for
+// backward compatibility with tests that don't care; production callers
+// in ws.go pass uuid.New().String().
+func NewConn(id, deviceID, userID string, closeFn func(error)) *Conn {
 	return &Conn{
+		ID:        id,
 		DeviceID:  deviceID,
 		UserID:    userID,
 		Send:      make(chan []byte, sendBufSize),
