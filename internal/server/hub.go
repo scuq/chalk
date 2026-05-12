@@ -309,6 +309,105 @@ func (h *Hub) BroadcastFresh(except string, data []byte, messageTS time.Time) {
 	}
 }
 
+// FanOutFresh is BroadcastFresh with except-by-connID semantics.
+// Phase 09a step 3: production callers use this instead of
+// BroadcastFresh so multi-tab same-device works correctly (the
+// sender's connID is unique even if the deviceID is shared with
+// another tab).
+//
+// Empty exceptConnID delivers to all conns.
+func (h *Hub) FanOutFresh(exceptConnID string, data []byte, messageTS time.Time) {
+	h.mu.RLock()
+	snap := make([]*Conn, 0, len(h.conns))
+	for _, c := range h.conns {
+		if exceptConnID != "" && c.ID == exceptConnID {
+			continue
+		}
+		if c.CreatedAt.After(messageTS) {
+			continue
+		}
+		snap = append(snap, c)
+	}
+	h.mu.RUnlock()
+
+	for _, c := range snap {
+		if err := c.Enqueue(data); err != nil {
+			go c.Close(err)
+		}
+	}
+}
+
+// FanOutToUser enqueues data to every connection of userID, except
+// the connection with ID equal to exceptConnID (typically the
+// sender's conn, to suppress the echo).
+//
+// Phase 09a step 3: replaces the ForEachConn-with-userID-filter
+// pattern previously used in server.go. Empty exceptConnID delivers
+// to all of the user's conns. Returns immediately if userID has no
+// active conns.
+func (h *Hub) FanOutToUser(userID, exceptConnID string, data []byte) {
+	if userID == "" {
+		return
+	}
+	// Snapshot the user's conns under the set's own mutex, holding
+	// h.mu only long enough to look up the set pointer.
+	h.mu.RLock()
+	set, ok := h.byUser[userID]
+	h.mu.RUnlock()
+	if !ok {
+		return
+	}
+	set.mu.Lock()
+	snap := make([]*Conn, 0, len(set.conns))
+	for _, c := range set.conns {
+		if exceptConnID != "" && c.ID == exceptConnID {
+			continue
+		}
+		snap = append(snap, c)
+	}
+	set.mu.Unlock()
+
+	for _, c := range snap {
+		if err := c.Enqueue(data); err != nil {
+			go c.Close(err)
+		}
+	}
+}
+
+// FanOutToUserFresh combines FanOutToUser with the "skip conns
+// registered after messageTS" filter from FanOutFresh. Used for
+// message events where stale conns should not receive the live push
+// (they'll fetch history themselves).
+func (h *Hub) FanOutToUserFresh(userID, exceptConnID string, data []byte, messageTS time.Time) {
+	if userID == "" {
+		return
+	}
+	h.mu.RLock()
+	set, ok := h.byUser[userID]
+	h.mu.RUnlock()
+	if !ok {
+		return
+	}
+	set.mu.Lock()
+	snap := make([]*Conn, 0, len(set.conns))
+	for _, c := range set.conns {
+		if exceptConnID != "" && c.ID == exceptConnID {
+			continue
+		}
+		if c.CreatedAt.After(messageTS) {
+			continue
+		}
+		snap = append(snap, c)
+	}
+	set.mu.Unlock()
+
+	for _, c := range snap {
+		if err := c.Enqueue(data); err != nil {
+			go c.Close(err)
+		}
+	}
+}
+
 // CloseAll terminates every connection. Used during graceful shutdown.
 // Returns when all conns have stopped, or when ctx expires.
 func (h *Hub) CloseAll(ctx context.Context, reason error) {

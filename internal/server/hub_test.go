@@ -708,3 +708,247 @@ func TestHubConnsForUserSnapshotIndependentOfHub(t *testing.T) {
 		t.Fatalf("snapshot mutated after Unregister: len=%d", len(snap))
 	}
 }
+
+// ---- Phase 09a step 3 tests --------------------------------------------
+// FanOutFresh, FanOutToUser, FanOutToUserFresh exercise the new
+// echo-suppression-by-connID + per-user routing semantics. The old
+// Broadcast/BroadcastFresh tests above still pass to prove backwards
+// compatibility.
+
+func TestHubFanOutFreshExcludesByConnID(t *testing.T) {
+	h := NewHub()
+	// Two conns with different connIDs; "sender" should not see its
+	// own message; "other" should.
+	sender, _ := fakeConnWithID("conn-sender", "dev-sender")
+	other, _ := fakeConnWithID("conn-other", "dev-other")
+	h.Register(sender)
+	h.Register(other)
+
+	h.FanOutFresh("conn-sender", []byte("hello"), time.Now())
+
+	select {
+	case <-sender.Send:
+		t.Fatal("sender received its own message under FanOutFresh")
+	default:
+	}
+	select {
+	case got := <-other.Send:
+		if string(got) != "hello" {
+			t.Errorf("other got %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("other did not receive")
+	}
+}
+
+func TestHubFanOutFreshEmptyExceptDeliversToAll(t *testing.T) {
+	// Empty exceptConnID is a valid "deliver to everyone" signal,
+	// for cross-instance traffic where the local conn is not the
+	// originator.
+	h := NewHub()
+	a, _ := fakeConnWithID("conn-a", "dev-a")
+	b, _ := fakeConnWithID("conn-b", "dev-b")
+	h.Register(a)
+	h.Register(b)
+
+	h.FanOutFresh("", []byte("global"), time.Now())
+
+	for _, c := range []*Conn{a, b} {
+		select {
+		case got := <-c.Send:
+			if string(got) != "global" {
+				t.Errorf("%s got %q", c.DeviceID, got)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("%s did not receive", c.DeviceID)
+		}
+	}
+}
+
+func TestHubFanOutFreshSkipsStale(t *testing.T) {
+	// Same fresh-filter semantics as BroadcastFresh, but with
+	// connID-keyed exception.
+	h := NewHub()
+	old, _ := fakeConnWithID("conn-old", "dev-old")
+	old.CreatedAt = time.Unix(1000, 0)
+	fresh, _ := fakeConnWithID("conn-fresh", "dev-fresh")
+	fresh.CreatedAt = time.Unix(3000, 0)
+	h.Register(old)
+	h.Register(fresh)
+
+	h.FanOutFresh("", []byte("hello"), time.Unix(2000, 0))
+
+	select {
+	case <-old.Send:
+		// expected
+	case <-time.After(time.Second):
+		t.Fatal("old did not receive a message it should have")
+	}
+	select {
+	case got := <-fresh.Send:
+		t.Fatalf("fresh received stale message: %q", got)
+	case <-time.After(50 * time.Millisecond):
+		// OK
+	}
+}
+
+func TestHubFanOutToUserSendsOnlyToUser(t *testing.T) {
+	// alice has two conns; bob has one. FanOutToUser("alice") should
+	// reach both alice conns and not bob.
+	h := NewHub()
+	a1, _ := fakeConnWithUser("conn-a1", "dev-phone", "alice")
+	a2, _ := fakeConnWithUser("conn-a2", "dev-laptop", "alice")
+	b, _ := fakeConnWithUser("conn-b", "dev-bob", "bob")
+	h.Register(a1)
+	h.Register(a2)
+	h.Register(b)
+
+	h.FanOutToUser("alice", "", []byte("for alice"))
+
+	for _, c := range []*Conn{a1, a2} {
+		select {
+		case got := <-c.Send:
+			if string(got) != "for alice" {
+				t.Errorf("%s got %q", c.ID, got)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("alice's conn %s did not receive", c.ID)
+		}
+	}
+	select {
+	case got := <-b.Send:
+		t.Fatalf("bob received a message for alice: %q", got)
+	case <-time.After(50 * time.Millisecond):
+		// OK
+	}
+}
+
+func TestHubFanOutToUserExceptConnID(t *testing.T) {
+	// alice's two tabs: sender tab and other tab. exceptConnID
+	// suppresses the sender's tab; the other tab receives.
+	h := NewHub()
+	sender, _ := fakeConnWithUser("conn-sender", "dev-shared", "alice")
+	other, _ := fakeConnWithUser("conn-other", "dev-shared", "alice")
+	// Use Register manually with same deviceID -- step 4 hasn't
+	// landed yet so "shared device" still evicts; for this test we
+	// want both conns live. Use distinct deviceIDs to bypass the
+	// eviction.
+	sender.DeviceID = "dev-tab-A"
+	other.DeviceID = "dev-tab-B"
+	h.Register(sender)
+	h.Register(other)
+
+	h.FanOutToUser("alice", "conn-sender", []byte("echo"))
+
+	select {
+	case <-sender.Send:
+		t.Fatal("sender's conn received its own echo")
+	default:
+	}
+	select {
+	case got := <-other.Send:
+		if string(got) != "echo" {
+			t.Errorf("other tab got %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("other tab did not receive")
+	}
+}
+
+func TestHubFanOutToUserNoOpForUnknownUser(t *testing.T) {
+	h := NewHub()
+	a, _ := fakeConnWithUser("conn-a", "dev-a", "alice")
+	h.Register(a)
+
+	// Should not panic, not block, not deliver to anyone.
+	h.FanOutToUser("nobody", "", []byte("ghost"))
+
+	select {
+	case got := <-a.Send:
+		t.Fatalf("alice received message addressed to 'nobody': %q", got)
+	case <-time.After(50 * time.Millisecond):
+		// OK
+	}
+}
+
+func TestHubFanOutToUserEmptyUserIDIsNoOp(t *testing.T) {
+	// Defensive: empty userID never delivers, even if anonymous
+	// conns exist on the hub.
+	h := NewHub()
+	anon, _ := fakeConnWithUser("conn-anon", "dev-anon", "")
+	h.Register(anon)
+
+	h.FanOutToUser("", "", []byte("nope"))
+
+	select {
+	case got := <-anon.Send:
+		t.Fatalf("anonymous conn received empty-user-target message: %q", got)
+	case <-time.After(50 * time.Millisecond):
+		// OK
+	}
+}
+
+func TestHubFanOutToUserFreshSkipsStale(t *testing.T) {
+	// Same combination: per-user fan-out plus fresh filter.
+	h := NewHub()
+	old, _ := fakeConnWithUser("conn-old", "dev-old", "alice")
+	old.CreatedAt = time.Unix(1000, 0)
+	fresh, _ := fakeConnWithUser("conn-fresh", "dev-fresh", "alice")
+	fresh.CreatedAt = time.Unix(3000, 0)
+	h.Register(old)
+	h.Register(fresh)
+
+	h.FanOutToUserFresh("alice", "", []byte("hello"), time.Unix(2000, 0))
+
+	select {
+	case <-old.Send:
+		// expected
+	case <-time.After(time.Second):
+		t.Fatal("old conn did not receive")
+	}
+	select {
+	case got := <-fresh.Send:
+		t.Fatalf("fresh conn received stale message: %q", got)
+	case <-time.After(50 * time.Millisecond):
+		// OK
+	}
+}
+
+func TestHubFanOutToUserFreshCombinesExceptAndFresh(t *testing.T) {
+	// Three conns for alice:
+	//   - sender (conn-sender, old)        -- exception triggers; no delivery
+	//   - witness (conn-witness, old)      -- delivery
+	//   - latecomer (conn-latecomer, new)  -- stale filter; no delivery
+	h := NewHub()
+	sender, _ := fakeConnWithUser("conn-sender", "dev-a", "alice")
+	sender.CreatedAt = time.Unix(1000, 0)
+	witness, _ := fakeConnWithUser("conn-witness", "dev-b", "alice")
+	witness.CreatedAt = time.Unix(1000, 0)
+	latecomer, _ := fakeConnWithUser("conn-latecomer", "dev-c", "alice")
+	latecomer.CreatedAt = time.Unix(3000, 0)
+	h.Register(sender)
+	h.Register(witness)
+	h.Register(latecomer)
+
+	h.FanOutToUserFresh("alice", "conn-sender", []byte("msg"), time.Unix(2000, 0))
+
+	select {
+	case <-sender.Send:
+		t.Fatal("sender received its own message")
+	default:
+	}
+	select {
+	case got := <-witness.Send:
+		if string(got) != "msg" {
+			t.Errorf("witness got %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("witness did not receive")
+	}
+	select {
+	case got := <-latecomer.Send:
+		t.Fatalf("latecomer received stale message: %q", got)
+	case <-time.After(50 * time.Millisecond):
+		// OK
+	}
+}

@@ -301,13 +301,17 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 	}
 }
 
-// handleMessageEvent: fetch the row, build the frame, BroadcastFresh
-// (skip sender + skip conns registered after msg.TS).
+// handleMessageEvent: fetch the row, build the frame, fan out
+// (skip sender's conn + skip conns registered after msg.TS).
 //
 // Phase 08: MessagePayload now carries ChannelID and Seq so clients
 // can route the incoming message to the correct channel pane. Phase
 // 08 also routes recipients by channel membership: only members of
 // the message's channel receive the frame.
+//
+// Phase 09a step 3: echo-suppression now uses the sender's connID
+// (Event.SenderConnID) instead of deviceID, so multiple tabs of the
+// same browser correctly receive each other's sends.
 func (s *Server) handleMessageEvent(ev pubsub.Event) {
 	if s.store == nil {
 		return
@@ -346,26 +350,37 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 	// Phase 08: membership filter. The default channel is special-
 	// cased: broadcast to everyone (phase 07 fallback). Real channels
 	// only fan out to members.
+	//
+	// Phase 09a step 3: echo-suppression keys on the sender's connID
+	// (Event.SenderConnID) rather than deviceID. This is what lets
+	// step 4 remove the duplicate-tab eviction: two tabs from the
+	// same browser share a deviceID but have distinct connIDs, so
+	// each tab can correctly receive others' sends without seeing
+	// their own.
 	if msg.ChannelID == store.DefaultChannelID {
-		s.hub.BroadcastFresh(ev.SenderDeviceID.String(), wire, msg.TS)
+		s.hub.FanOutFresh(ev.SenderConnID, wire, msg.TS)
 		return
 	}
-	s.broadcastToChannelMembers(ctx, msg.ChannelID, ev.SenderDeviceID, wire, msg.TS)
+	s.broadcastToChannelMembers(ctx, msg.ChannelID, ev.SenderConnID, wire, msg.TS)
 }
 
 // broadcastToChannelMembers sends wire to every locally-connected
 // device whose UserID is in the channel's member set, skipping the
-// sender device. Stale (registered after msg.TS) connections are
-// skipped via BroadcastFresh-equivalent logic.
+// sender connection. Stale (registered after msg.TS) connections
+// are skipped via FanOutFresh-equivalent logic.
 //
-// We loop over members + lookup conns; this is O(members * devices).
-// For phase 08's small group sizes this is fine. A scale optimization
-// would maintain a Hub-side index from user_id to conn set, but the
-// hub.Get(deviceID) primitive is enough for now.
+// Phase 09a step 3: senderConnID replaces senderDevice. Suppression
+// is per-conn now, not per-device, so multiple tabs of the same
+// browser still receive each others' sends (once step 4 removes the
+// same-deviceID eviction; until then it's a no-op difference because
+// only one conn per deviceID exists at a time).
+//
+// Fan-out is per-user via the Hub's byUser index, eliminating the
+// previous O(total_conns * members) scan.
 func (s *Server) broadcastToChannelMembers(
 	ctx context.Context,
 	channelID uuid.UUID,
-	senderDevice uuid.UUID,
+	senderConnID string,
 	wire []byte,
 	ts time.Time,
 ) {
@@ -392,26 +407,8 @@ func (s *Server) broadcastToChannelMembers(
 		members = append(members, u)
 	}
 
-	senderStr := senderDevice.String()
 	for _, m := range members {
-		// All locally-connected devices for this user. The Hub doesn't
-		// have a "list conns by user_id" primitive, so we iterate the
-		// hub. For phase 08's scale this is acceptable.
-		s.hub.ForEachConn(func(c *Conn) {
-			if c.UserID != m.String() {
-				return
-			}
-			if c.DeviceID == senderStr {
-				return // echo suppression
-			}
-			if c.CreatedAt.After(ts) {
-				return // stale: registered after the message was sent
-			}
-			if err := c.Enqueue(wire); err != nil {
-				// Slow client; the hub closes it elsewhere.
-				_ = err
-			}
-		})
+		s.hub.FanOutToUserFresh(m.String(), senderConnID, wire, ts)
 	}
 }
 
@@ -445,15 +442,13 @@ func (s *Server) handleChannelEvent(ev pubsub.Event) {
 		return
 	}
 
-	recipient := ev.UserID.String()
-	s.hub.ForEachConn(func(c *Conn) {
-		if c.UserID != recipient {
-			return
-		}
-		if err := c.Enqueue(wire); err != nil {
-			_ = err
-		}
-	})
+	// Phase 09a step 3: per-user fan-out via the byUser index
+	// instead of scanning every conn. No echo-suppression here:
+	// channel events go to ALL of the recipient's conns (including
+	// the one that may have triggered the channel change), because
+	// the originating frame's ack is sent separately and clients
+	// dedupe by event identity.
+	s.hub.FanOutToUser(ev.UserID.String(), "", wire)
 }
 
 // handlePresenceEvent: re-aggregate the user's state, find local

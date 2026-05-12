@@ -508,6 +508,7 @@ func (h *WSHandler) handleSend(
 			TS:             ts,
 			ChannelID:      channelID,
 			SenderDeviceID: deviceID,
+			SenderConnID:   conn.ID, // phase 09a step 3
 			InstanceID:     h.instanceID,
 		}
 		// Phase 08 routing: default channel uses chalk_global (phase 07

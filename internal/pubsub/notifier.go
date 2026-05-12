@@ -56,6 +56,17 @@ type Event struct {
 	ChannelID      uuid.UUID `json:"c,omitempty"`
 	SenderDeviceID uuid.UUID `json:"s,omitempty"`
 
+	// SenderConnID is the per-conn UUID of the sender's WebSocket
+	// connection (Conn.ID). Phase 09a step 3: receivers suppress the
+	// echo by connID rather than deviceID so multiple tabs of the
+	// same device coexist (each tab has a unique connID).
+	//
+	// Carried as a string because pubsub doesn't import internal/server
+	// and connID is generated server-side via uuid.New().String().
+	// Empty string when the sender isn't a connection (e.g. presence
+	// or friend events that didn't originate from a WebSocket send).
+	SenderConnID string `json:"sc,omitempty"`
+
 	// Presence, friend, and channel fields.
 	//   UserID:
 	//     For Kind="presence", the user whose aggregated state changed.
