@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -67,6 +68,12 @@ type WSHandler struct {
 	// via the fallback path, but won't receive cross-instance pushes
 	// for any other channel.
 	listener *pubsub.Listener
+
+	// Phase 08b: per-conn subscribed-topics tracking. Keyed by *Conn
+	// pointer. Populated by the hello-time loop in ServeHTTP and by
+	// handleSubscribeChannel; drained by releaseConnSubs at disconnect.
+	// See ws_phase08b.go for the helpers.
+	connSubs sync.Map
 }
 
 // NewWSHandler constructs a handler. Phase 06 adds the presence/friends
@@ -193,19 +200,24 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// channel this user is a member of. Each Subscribe is refcounted
 	// inside the listener, so multiple connected devices for the same
 	// user share a single LISTEN. We track the list of topics we
-	// subscribed FROM THIS CONNECTION so disconnect can unsubscribe
-	// the same set (decrementing refcounts).
+	// subscribed FROM THIS CONNECTION via h.connSubs so disconnect
+	// can unsubscribe the same set (decrementing refcounts).
+	//
+	// Phase 08b: the connSubs entry is also used by handleSubscribeChannel
+	// to append topics added mid-session. The defer below drains
+	// whatever's there at close time.
 	//
 	// If the user lookup failed (connUserUUID == Nil), we skip --
 	// phase 08 features require a real user identity. The user can
 	// still send to the default channel via the fallback path.
-	var subscribedTopics []string
+	subsEntry := h.withSubs(conn)
 	channelIDs := []string{}
 	if connUserUUID != uuid.Nil && h.store != nil && h.listener != nil {
 		channels, err := h.store.ListChannelsForUser(ctx, connUserUUID)
 		if err != nil {
 			h.logger.Printf("list channels on hello: %v", err)
 		} else {
+			subsEntry.mu.Lock()
 			for _, ch := range channels {
 				topic := pubsub.ChannelTopic(ch.ID)
 				subCtx, subCancel := context.WithTimeout(ctx, 2*time.Second)
@@ -215,16 +227,13 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					h.logger.Printf("subscribe %s: %v", topic, err)
 					continue
 				}
-				subscribedTopics = append(subscribedTopics, topic)
+				subsEntry.topics = append(subsEntry.topics, topic)
 				channelIDs = append(channelIDs, ch.ID.String())
 			}
+			subsEntry.mu.Unlock()
 		}
 	}
-	defer func() {
-		for _, t := range subscribedTopics {
-			h.listener.Unsubscribe(t)
-		}
-	}()
+	defer h.releaseConnSubs(conn)
 
 	// Welcome.
 	welcome, _ := proto.NewFrame(proto.TypeWelcome, "", proto.WelcomePayload{
@@ -375,6 +384,10 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleListChannels(ctx, c, conn, f)
 		case proto.TypeFetchHistory:
 			h.handleFetchHistory(ctx, c, conn, f)
+
+		// Phase 08b: subscribe to a channel mid-session
+		case proto.TypeSubscribeChannel:
+			h.handleSubscribeChannel(ctx, c, conn, f)
 
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,

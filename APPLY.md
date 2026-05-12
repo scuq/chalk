@@ -1,109 +1,74 @@
-# chalk phase 08a — apply notes (backend channels)
+# chalk phase 08b — apply notes (SPA channels + subscribe_channel)
 
-Phase 08a is the backend half of phase 08. The SPA still talks to the
-default channel as in phase 07; this phase adds:
+Phase 08b is the SPA half of phase 08. Adds:
 
-- `channels.is_dm` flag
-- `channel_members` table with the DM cardinality trigger
-- Wire frames: `create_channel`, `list_channels`, `fetch_history`,
-  `channel_event` push
-- Per-channel Postgres NOTIFY topics with dynamic refcounted LISTEN/
-  UNLISTEN in the pubsub listener
-- WS handlers for the three new client frames + membership-filtered
-  fan-out from the dispatcher
-
-Phase 08b will add the SPA sidebar, channel switching, create modal,
-and history-on-switch.
+- Two-column layout: sidebar (channel list + create button) + main pane
+- Channel switching, with history-on-switch via fetch_history
+- Create channel modal with friend picker (uses friend_list frame)
+- New `subscribe_channel` wire frame so the SPA can pick up newly
+  created channels mid-session without reconnecting
+- Playwright spec for the cross-tab create-and-receive flow
 
 ## What's in the archive
 
 ```
-migrations/0010_channel_members.sql       NEW
-internal/proto/proto.go                   REPLACES (MessagePayload + SendPayload gain channel fields)
-internal/proto/frames_phase08.go          NEW
-internal/pubsub/notifier.go               REPLACES (Event gains ChannelEventPayload)
-internal/pubsub/listener.go               REPLACES (dynamic Subscribe/Unsubscribe)
-internal/pubsub/channel_topics.go         NEW
-internal/store/channels.go                NEW
-internal/server/ws.go                     REPLACES (subscribe-on-hello, channel-routing handleSend)
-internal/server/ws_phase08.go             NEW
-internal/server/server.go                 REPLACES (handleChannelEvent + per-channel fan-out)
-internal/server/hub_phase08.go            NEW (ForEachConn helper)
-test/integration/channels_test.go         NEW
-bootstrap/phase-08-channels.sh            REPLACES the stub
+internal/proto/frames_phase08b.go         NEW
+internal/server/ws_phase08b.go            NEW
+internal/server/ws.go                     REPLACES (adds connSubs + subscribe_channel dispatch)
+web/src/proto.ts                          REPLACES (phase 08 + 08b wire types)
+web/src/state/types.ts                    NEW
+web/src/state/reducer.ts                  NEW
+web/src/components/App.tsx                REPLACES (channel-aware)
+web/src/components/Sidebar.tsx            NEW
+web/src/components/CreateChannelModal.tsx NEW
+web/src/components/FriendPicker.tsx       NEW
+web/src/components/MessageList.tsx        REPLACES (uses Message domain type)
+web/src/theme.css                         REPLACES (sidebar/modal styles)
+test/e2e/channels.spec.ts                 NEW
+test/integration/channels_test.go         PATCHED in-place (subscribe_channel instead of reconnect)
+bootstrap/phase-08b-channels-spa.sh       NEW
 ```
 
 ## Prerequisites
 
-- Phase 07 done (phase 08 requires phase 07's fix 4 ws.go wiring)
-- Go 1.23+, Docker, Postgres 16 (same as previous phases)
+- Phase 08a complete (`.bootstrap/phase-08.done` present)
+- Node 18+ for SPA build + Playwright
 
 ## Apply
 
-The applier script handles everything. From the repo root:
-
 ```sh
-bash apply-phase08a.sh
+bash apply-phase08b.sh
 ```
-
-The applier:
-1. Backs up the 5 REPLACES files
-2. Copies all 13 phase-08a files
-3. Runs `go mod tidy` + `go build ./...` + unit tests for the new packages
-4. Tells you to run `./bootstrap/phase-08-channels.sh` for the integration test
 
 ## Behavioral changes
 
-- `MessagePayload` JSON gains `channel_id` and `seq` fields. Phase 07
-  SPAs ignore the unknown fields (they only read `id`/`sender`/`ts`/
-  `body`); nothing breaks.
-- `SendPayload` JSON gains an optional `channel_id` field. Phase 07
-  SPAs omit it; the server falls back to the default channel. Phase
-  08b SPAs send it explicitly.
-- `WelcomePayload.Channels` now contains the user's actual channel IDs
-  (was always empty). Phase 07 SPAs don't read this field; phase 08b
-  uses it as the initial sidebar state.
-- Pubsub now uses per-channel topics for messages. The default channel
-  still publishes on `chalk_global` for back-compat. Friend/presence/
-  channel-membership events stay on `chalk_global`.
+- The SPA no longer auto-shows the default channel; it shows whatever
+  channels you're in. On first run for a new user with no channels,
+  you see a "no channels yet" message.
+- Sending requires an active channel. The composer is disabled when
+  no channel is selected.
+- Creating a channel requires having friends to add. Since there's no
+  friend-management UI yet, friends are pre-seeded via fixtures (or
+  via manual SQL). Realistic flow lands in phase 09 or later.
 
-## Known limitations of 08a
+## Known limitations of 08b
 
-- **Newly-created channels require reconnect.** The hello-time
-  subscription loop snapshots the user's channels at connect; channels
-  created mid-session aren't auto-subscribed. Phase 08b's SPA handles
-  this transparently (on receiving `channel_event{kind=added}` it
-  reconnects to pick up the new topic). Until then, you'll see the
-  `channel_event` notification but not in-channel messages until you
-  refresh.
-- **No SPA changes yet.** All exercise happens through the integration
-  test or manual wscat. The browser still sees the phase 07 single-
-  channel view.
-- **No add_member / remove_member yet.** Channels are immutable after
-  creation. Future phase.
+- **No friend management UI.** You can create channels with friends
+  from the fixture, but adding new friends still requires direct DB
+  access. Friends UI is phase 09 territory.
+- **No unread badges.** Per-channel unread tracking needs either
+  localStorage persistence or a read_ack server roundtrip; both are
+  bigger than 08b's scope.
+- **No leave/remove member.** Channel membership is immutable after
+  creation in phase 08. Future phase.
+- **No DM auto-creation.** Sending a DM still requires opening the
+  modal and toggling the "direct message" checkbox. A "DM @user"
+  shortcut would land naturally with friend-management UI.
 
-## Heads-up: pubsub listener has a new design
+## Heads-up: integration test patch
 
-The listener now serializes subscribe/unsubscribe commands through a
-buffered channel and drains them between notifications via a short
-WaitForNotification timeout (50ms default, tunable via
-`Listener.CmdPollInterval`). This is the right design for "one
-goroutine owns the dedicated conn" but it adds ~50ms latency to
-Subscribe() in the worst case. Tune down if it matters; 50ms is
-chosen to balance idle CPU vs subscribe responsiveness.
-
-## Tests
-
-The integration test runs four scenarios:
-- `TestPhase08_CreateChannelHappyPath`
-- `TestPhase08_CreateChannelRequiresFriendship`
-- `TestPhase08_MessageFanOutPerChannel`
-- `TestPhase08_FetchHistory`
-
-Run via `./bootstrap/phase-08-channels.sh` (sets up the two-chalkd
-environment) or manually:
-
-```sh
-CHALK_TEST_PGURL=... CHALK_TEST_HTTP_1=http://... CHALK_TEST_HTTP_2=http://... \
-  go test -race -count=1 -v ./test/integration/ -run 'TestPhase08_'
-```
+`test/integration/channels_test.go` is modified in place. The
+`TestPhase08_MessageFanOutPerChannel` test previously reconnected bob
+to pick up the new channel topic; now it uses `subscribe_channel`
+which is cleaner and doesn't risk reconnect timing flakes. A backup
+of the original is kept by the applier.

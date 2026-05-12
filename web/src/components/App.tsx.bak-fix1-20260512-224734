@@ -15,6 +15,7 @@
 
 import { useEffect, useReducer, useRef } from "preact/hooks";
 import {
+  newFrame,
   TypeMessage,
   TypeSend,
   TypeError,
@@ -195,12 +196,11 @@ export function App() {
       }
       case TypeFriendListAck: {
         const p = f.payload as FriendListAckPayload;
-        // Phase 06 wire shape: four bucketed arrays. We want only
-        // accepted friends in the picker -- pending requests should
-        // not show up as channel-creation candidates.
-        const friends = (p.accepted ?? []).map((fs) => ({
-          userID: fs.user_id,
-        }));
+        // Filter to accepted friends only -- the picker shouldn't
+        // include pending requests.
+        const friends = (p.friends ?? [])
+          .filter((fe) => fe.status === "accepted")
+          .map((fe) => ({ userID: fe.user_id }));
         dispatch({ kind: "friends_loaded", friends });
         break;
       }

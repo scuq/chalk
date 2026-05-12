@@ -1,28 +1,24 @@
 import { useEffect, useRef } from "preact/hooks";
-import type { MessagePayload } from "../proto";
+import type { Message } from "../state/types";
 
 interface Props {
-  messages: MessagePayload[];
+  messages: Message[];
   ownDevice: string | null;
+  // empty is the text shown when messages.length === 0. Phase 08b uses
+  // this to distinguish "no messages yet" from "still loading history".
+  empty?: string;
 }
 
-// Format a unix-ms timestamp as HH:MM:SS in local time. Phase 08 will
-// switch to a smarter "today / yesterday / weekday / date" scheme; for
-// the shell, raw time is enough and avoids a date library.
-function fmtTime(ms: number): string {
-  const d = new Date(ms);
+function fmtTime(d: Date): string {
   const hh = d.getHours().toString().padStart(2, "0");
   const mm = d.getMinutes().toString().padStart(2, "0");
   const ss = d.getSeconds().toString().padStart(2, "0");
   return `${hh}:${mm}:${ss}`;
 }
 
-export function MessageList({ messages, ownDevice }: Props) {
+export function MessageList({ messages, ownDevice, empty }: Props) {
   const endRef = useRef<HTMLDivElement | null>(null);
 
-  // Scroll to bottom on every new message. Phase 08 will add "scroll
-  // to bottom only when already near the bottom" so a user scrolled
-  // up to read history isn't yanked back down.
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length]);
@@ -30,7 +26,7 @@ export function MessageList({ messages, ownDevice }: Props) {
   if (messages.length === 0) {
     return (
       <div class="chalk-messages chalk-messages--empty" data-testid="messages">
-        <p class="chalk-empty-hint">no messages yet. say something.</p>
+        <p class="chalk-empty-hint">{empty ?? "no messages yet. say something."}</p>
       </div>
     );
   }
@@ -39,9 +35,7 @@ export function MessageList({ messages, ownDevice }: Props) {
     <div class="chalk-messages" data-testid="messages">
       {messages.map((m) => {
         const own = ownDevice !== null && m.sender === ownDevice;
-        const senderLabel = m.sender === ""
-          ? "[unknown]"
-          : m.sender.slice(0, 8);
+        const senderLabel = m.sender === "" ? "[unknown]" : m.sender.slice(0, 8);
         return (
           <div
             key={m.id}

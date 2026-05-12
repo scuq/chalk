@@ -83,23 +83,16 @@ export const TypeFriendEvent = "friend_event";
 // phase 08b uses friend_list to populate the create-channel friend picker.
 export interface FriendListPayload {} // no fields; server returns the caller's friends
 
-// FriendSummary mirrors proto.FriendSummary. Phase 09 will
-// populate `handle` with usernames; today it is empty for
-// not-yet-implemented user handles.
-export interface FriendSummary {
+export interface FriendListEntry {
   user_id: string;
-  handle: string;
-  account_status: string;
+  status: string; // "accepted" | "request_received" | "request_sent" | ...
+  initiated_by_me: boolean;
+  requested_at: number; // unix-millis
+  accepted_at: number;  // unix-millis, 0 if pending
 }
 
-// FriendListAckPayload mirrors proto.FriendListAckPayload.
-// Server returns four bucketed lists, not a flat array with a
-// status discriminator.
 export interface FriendListAckPayload {
-  pending_outgoing: FriendSummary[];
-  pending_incoming: FriendSummary[];
-  accepted: FriendSummary[];
-  blocked: FriendSummary[];
+  friends: FriendListEntry[];
 }
 
 // --- Phase 08 channels ----------------------------------------------

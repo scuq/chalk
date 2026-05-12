@@ -343,13 +343,22 @@ func TestPhase08_MessageFanOutPerChannel(t *testing.T) {
 	// bob's channel_event consumed.
 	_ = bob.expect(t, proto.TypeChannelEvent, 3*time.Second)
 
-	// Phase 08b: bob asks the server to subscribe his existing
-	// connection to the new channel topic. No reconnect needed.
-	bob.send(t, proto.TypeSubscribeChannel, "sub-1", proto.SubscribeChannelPayload{
-		ChannelID: channelID,
-	})
-	_ = bob.expect(t, proto.TypeSubscribeChannelAck, 2*time.Second)
-	bob2 := bob
+	// Give the listener a moment to subscribe to the per-channel topic
+	// on instance 2 (bob's home). The Subscribe happens at hello-time
+	// for already-known channels; for newly-created channels, we'd
+	// need bob to reconnect to pick it up. Phase 08a accepts that
+	// limitation -- create_channel triggers a channel_event but not
+	// auto-subscribe. Phase 08b SPA reconnects on channel_event to
+	// pick up the new topic.
+	//
+	// For this test, bob needs to reconnect.
+	bob.mu.Lock()
+	if !bob.closed {
+		bob.closed = true
+		_ = bob.conn.Close(websocket.StatusNormalClosure, "reconnect")
+	}
+	bob.mu.Unlock()
+	bob2, _ := dialP08(t, httpB, bobDev, "desktop")
 
 	// alice sends a message in the channel.
 	phrase := "hello bob " + strconv.FormatInt(time.Now().UnixNano(), 10)
