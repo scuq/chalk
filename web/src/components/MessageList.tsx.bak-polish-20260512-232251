@@ -35,16 +35,7 @@ export function MessageList({ messages, ownDevice, empty }: Props) {
     <div class="chalk-messages" data-testid="messages">
       {messages.map((m) => {
         const own = ownDevice !== null && m.sender === ownDevice;
-        // Phase 08b polish: friendlier sender label. Own messages
-        // get "you". Others get the device-id prefix. The full
-        // device id is in the title attribute so hover reveals it.
-        // Phase 09 will replace this with usernames.
-        const senderLabel = own
-          ? "you"
-          : m.sender === ""
-          ? "[unknown]"
-          : m.sender.slice(-8);
-        const senderTitle = m.sender === "" ? "unknown sender" : m.sender;
+        const senderLabel = m.sender === "" ? "[unknown]" : m.sender.slice(0, 8);
         return (
           <div
             key={m.id}
@@ -52,9 +43,7 @@ export function MessageList({ messages, ownDevice, empty }: Props) {
             data-testid="message"
           >
             <span class="chalk-message-time">{fmtTime(m.ts)}</span>
-            <span class="chalk-message-sender" title={senderTitle}>
-              {senderLabel}
-            </span>
+            <span class="chalk-message-sender">{senderLabel}</span>
             <span class="chalk-message-body" data-testid="message-body">
               {m.body}
             </span>

@@ -43,7 +43,7 @@ export function MessageList({ messages, ownDevice, empty }: Props) {
           ? "you"
           : m.sender === ""
           ? "[unknown]"
-          : m.sender.slice(-8);
+          : m.sender.slice(0, 8);
         const senderTitle = m.sender === "" ? "unknown sender" : m.sender;
         return (
           <div

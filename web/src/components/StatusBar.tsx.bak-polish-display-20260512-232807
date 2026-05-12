@@ -25,8 +25,7 @@ export function StatusBar({ state, detail, user }: Props) {
       )}
       {user && state === "open" && (
         <span class="chalk-status-user" data-testid="status-user">
-          {/* phase 08b polish: self-label-you */}
-          <span title={user.id}>you</span>
+          {user.id.slice(0, 8)}
         </span>
       )}
     </div>

@@ -48,7 +48,7 @@ export function FriendPicker({ friends, selected, singleSelect, onChange }: Prop
             tabIndex={-1}
             aria-label={f.userID}
           />
-          <span class="chalk-friend-picker-id" title={f.userID}>@{f.userID.slice(-8)}</span>
+          <span class="chalk-friend-picker-id">@{f.userID.slice(0, 8)}</span>
         </li>
       ))}
     </ul>

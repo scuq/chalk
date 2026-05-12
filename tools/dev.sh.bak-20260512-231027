@@ -136,33 +136,6 @@ else
   ok "users already present ($user_count rows; skipping seed)"
 fi
 
-# ---- 5b. Seed alice<->bob friendship (dev convenience) -----------------
-#
-# Without an accepted friendship, the SPA's new-channel modal shows
-# "no friends yet" and creation is blocked. We seed alice<->bob
-# unconditionally; ON CONFLICT DO UPDATE makes this a no-op on
-# repeat runs.
-#
-# Phase 09 will add real friend-management UI, at which point this
-# dev seed becomes optional.
-log "ensuring alice<->bob friendship"
-docker exec -i "$PG_NAME" psql -U chalk -d chalk -v ON_ERROR_STOP=1 -q >/dev/null <<'SQL'
-INSERT INTO friendships (user_a, user_b, status, requested_at, accepted_at)
-VALUES (
-  LEAST(
-    '00000000-0000-0000-0000-00000000a11c'::uuid,
-    '00000000-0000-0000-0000-000000000b0b'::uuid
-  ),
-  GREATEST(
-    '00000000-0000-0000-0000-00000000a11c'::uuid,
-    '00000000-0000-0000-0000-000000000b0b'::uuid
-  ),
-  'accepted', now(), now()
-) ON CONFLICT (user_a, user_b) DO UPDATE
-  SET status = 'accepted', accepted_at = now();
-SQL
-ok "alice<->bob friendship seeded"
-
 # ---- 6. Run chalkd in foreground ----------------------------------------
 
 cat <<EOF

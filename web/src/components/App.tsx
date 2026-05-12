@@ -257,6 +257,43 @@ export function App() {
     if (!c || !c.isOpen()) return;
     const cid = state.activeChannelID;
     if (!cid) return;
+    if (!state.user) return;
+
+    // Phase 08b polish: optimistic-append. chalkd intentionally
+    // echo-suppresses the sender device so a smarter SPA can
+    // render its own send immediately without double-rendering.
+    // We do that here: dispatch the message into local state
+    // before the WS frame goes out. The server persists it and
+    // fan-outs to *other* members; we never get an echo so no
+    // dedup is needed on this device. On full page reload, the
+    // server-generated row is loaded via fetch_history (with a
+    // different id), and the local-only id is gone since state
+    // is fresh -- so no duplicate rendering across sessions.
+    //
+    // Optimistic seq: max of existing + 1, so the message sorts
+    // to the end (where it visually belongs).
+    const existing = state.messages[cid] ?? [];
+    const nextSeq =
+      existing.length === 0
+        ? 1
+        : Math.max(...existing.map((m) => m.seq)) + 1;
+    const localID =
+      "local-" +
+      (typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Date.now().toString(36) + Math.random().toString(36).slice(2));
+    dispatch({
+      kind: "message",
+      message: {
+        id: localID,
+        channelID: cid,
+        seq: nextSeq,
+        sender: state.user.device,
+        ts: new Date(),
+        body,
+      },
+    });
+
     const payload: SendPayload = { channel_id: cid, body };
     c.send(TypeSend, payload);
   };
@@ -347,10 +384,15 @@ export function App() {
 // "@<other-user-prefix>"; for everything else the channel's name as-is.
 export function displayName(ch: ChannelSummary, ownUserID: string | null): string {
   if (ch.isDM && ownUserID) {
+    // Phase 08b polish: use slice(-8) so fixture UUIDs
+    // (all share leading zeros) remain distinguishable.
+    // Self-as-only-other (degenerate DM with self) labels
+    // as "you".
     const other = ch.memberIDs.find((id) => id !== ownUserID);
     if (other) {
-      return "@" + other.slice(0, 8);
+      return "@" + other.slice(-8);
     }
+    return "@you";
   }
   return ch.name;
 }
