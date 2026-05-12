@@ -110,6 +110,7 @@ type HelloPayload struct {
 type WelcomePayload struct {
 	UserID   string   `json:"user_id"`
 	DeviceID string   `json:"device_id"`
+	Handle   string   `json:"handle"`   // phase 08c
 	Channels []string `json:"channels"`
 }
 

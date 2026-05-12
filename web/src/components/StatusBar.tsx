@@ -3,7 +3,8 @@ import type { ConnectionState } from "../ws-client";
 interface Props {
   state: ConnectionState;
   detail: string;
-  user: { id: string; device: string } | null;
+  // phase 08c: handle optional for backward compat
+  user: { id: string; device: string; handle?: string } | null;
 }
 
 const labels: Record<ConnectionState, string> = {
@@ -26,7 +27,10 @@ export function StatusBar({ state, detail, user }: Props) {
       {user && state === "open" && (
         <span class="chalk-status-user" data-testid="status-user">
           {/* phase 08b polish: self-label-you */}
-          <span title={user.id}>you</span>
+          {/* phase 08c: include handle when known */}
+          <span title={user.id}>
+            {user.handle ? `you (${user.handle})` : "you"}
+          </span>
         </span>
       )}
     </div>

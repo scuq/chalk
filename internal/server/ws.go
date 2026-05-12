@@ -236,9 +236,24 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer h.releaseConnSubs(conn)
 
 	// Welcome.
+	//
+	// Phase 08c: look up the caller's handle and include it so the SPA
+	// can render "you (alice)" in the status badge instead of just
+	// "you". Lookup failure is non-fatal; handle stays empty and the
+	// SPA falls back to "you".
+	var handle string
+	if connUserUUID != uuid.Nil && h.store != nil {
+		hLookup, err := h.store.HandlesByID(ctx, []uuid.UUID{connUserUUID})
+		if err != nil {
+			h.logger.Printf("welcome handle lookup: %v", err)
+		} else {
+			handle = hLookup[connUserUUID]
+		}
+	}
 	welcome, _ := proto.NewFrame(proto.TypeWelcome, "", proto.WelcomePayload{
 		UserID:   conn.UserID,
 		DeviceID: conn.DeviceID,
+		Handle:   handle,
 		Channels: channelIDs,
 	})
 	wb, _ := json.Marshal(welcome)

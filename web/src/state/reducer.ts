@@ -18,7 +18,11 @@ export function reducer(state: AppState, action: Action): AppState {
     case "welcome":
       return {
         ...state,
-        user: { id: action.userID, device: action.deviceID },
+        user: {
+          id: action.userID,
+          device: action.deviceID,
+          handle: action.handle,
+        },
         // welcome.channels is just IDs; the full summaries arrive
         // via a separate list_channels round-trip. We pre-seed
         // channelOrder so the sidebar can show a loading state

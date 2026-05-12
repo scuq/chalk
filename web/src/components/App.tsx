@@ -72,6 +72,11 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
     createdBy: w.created_by,
     createdAt: new Date(w.created_at),
     memberIDs: w.member_ids ?? [],
+    // phase 08c: members carries handles too; SPA prefers it
+    members: (w.members ?? []).map((m) => ({
+      userID: m.user_id,
+      handle: m.handle ?? "",
+    })),
   };
 }
 
@@ -117,6 +122,8 @@ export function App() {
           kind: "welcome",
           userID: w.user_id,
           deviceID: w.device_id,
+          // phase 08c: handle threads to status badge
+          handle: w.handle ?? "",
           channels: w.channels,
         }),
       onFrame: (f: Frame) => handleFrame(f),
@@ -199,7 +206,9 @@ export function App() {
         // accepted friends in the picker -- pending requests should
         // not show up as channel-creation candidates.
         const friends = (p.accepted ?? []).map((fs) => ({
+          // phase 08c: thread handle
           userID: fs.user_id,
+          handle: fs.handle ?? "",
         }));
         dispatch({ kind: "friends_loaded", friends });
         break;
@@ -383,11 +392,17 @@ export function App() {
 // displayName picks the visible label for a channel. For DMs we render
 // "@<other-user-prefix>"; for everything else the channel's name as-is.
 export function displayName(ch: ChannelSummary, ownUserID: string | null): string {
+  // phase 08c: prefer member handle from server
+  if (ch.isDM && ownUserID && ch.members && ch.members.length > 0) {
+    const otherMember = ch.members.find((m) => m.userID !== ownUserID);
+    if (otherMember && otherMember.handle) {
+      return "@" + otherMember.handle;
+    }
+    if (otherMember) {
+      return "@" + otherMember.userID.slice(-8);
+    }
+  }
   if (ch.isDM && ownUserID) {
-    // Phase 08b polish: use slice(-8) so fixture UUIDs
-    // (all share leading zeros) remain distinguishable.
-    // Self-as-only-other (degenerate DM with self) labels
-    // as "you".
     const other = ch.memberIDs.find((id) => id !== ownUserID);
     if (other) {
       return "@" + other.slice(-8);

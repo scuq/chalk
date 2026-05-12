@@ -9,7 +9,6 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
-
 	"github.com/jackc/pgx/v5"
 
 	"github.com/scuq/chalk/internal/proto"
@@ -20,14 +19,25 @@ import (
 // channelSummaryFromStore builds a proto.ChannelSummary from a
 // store.ChannelWithMembers. Centralized so the two call sites
 // (create_channel ack and list_channels ack) format identically.
-func channelSummaryFromStore(c store.ChannelWithMembers) proto.ChannelSummary {
+//
+// Phase 08c: handles is a map of user_id -> handle. When non-nil and a
+// member's handle is found, we include it in the Members slice for the
+// SPA to render @<handle> instead of a UUID prefix. We still populate
+// the deprecated MemberIDs []string for backward compatibility with
+// older clients and the phase 08a integration tests.
+func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]string) proto.ChannelSummary {
 	createdBy := ""
 	if c.CreatedBy != nil {
 		createdBy = c.CreatedBy.String()
 	}
 	memberIDs := make([]string, 0, len(c.MemberIDs))
+	members := make([]proto.ChannelMember, 0, len(c.MemberIDs))
 	for _, m := range c.MemberIDs {
 		memberIDs = append(memberIDs, m.String())
+		members = append(members, proto.ChannelMember{
+			UserID: m.String(),
+			Handle: handles[m], // empty string if unknown, fine
+		})
 	}
 	return proto.ChannelSummary{
 		ID:        c.ID.String(),
@@ -36,6 +46,7 @@ func channelSummaryFromStore(c store.ChannelWithMembers) proto.ChannelSummary {
 		CreatedBy: createdBy,
 		CreatedAt: c.CreatedAt.UnixMilli(),
 		MemberIDs: memberIDs,
+		Members:   members,
 	}
 }
 
@@ -143,7 +154,16 @@ func (h *WSHandler) handleCreateChannel(
 		return
 	}
 
-	summary := channelSummaryFromStore(created)
+	// Phase 08c: fetch handles for all members before building the
+	// summary. Failure here is non-fatal -- we'd just send a summary
+	// with empty handles, and the SPA falls back to UUID prefixes.
+	handles, hErr := h.store.HandlesByID(ctx, created.MemberIDs)
+	if hErr != nil {
+		h.logger.Printf("handles lookup (create_channel): %v", hErr)
+		handles = nil // channelSummaryFromStore tolerates nil
+	}
+
+	summary := channelSummaryFromStore(created, handles)
 
 	// Ack the caller.
 	ack, _ := proto.NewFrame(proto.TypeCreateChannelAck, f.Ref,
@@ -199,8 +219,29 @@ func (h *WSHandler) handleListChannels(
 		return
 	}
 	summaries := make([]proto.ChannelSummary, 0, len(channels))
+
+	// Phase 08c: union all member UUIDs across the channel list and
+	// fetch their handles in one query. Cheaper than one query per
+	// channel, and the union is bounded by (channels * members_per_dm)
+	// which stays small.
+	idSet := make(map[uuid.UUID]struct{})
 	for _, ch := range channels {
-		summaries = append(summaries, channelSummaryFromStore(ch))
+		for _, m := range ch.MemberIDs {
+			idSet[m] = struct{}{}
+		}
+	}
+	uniqIDs := make([]uuid.UUID, 0, len(idSet))
+	for id := range idSet {
+		uniqIDs = append(uniqIDs, id)
+	}
+	handles, hErr := h.store.HandlesByID(ctx, uniqIDs)
+	if hErr != nil {
+		h.logger.Printf("handles lookup (list_channels): %v", hErr)
+		handles = nil
+	}
+
+	for _, ch := range channels {
+		summaries = append(summaries, channelSummaryFromStore(ch, handles))
 	}
 	ack, _ := proto.NewFrame(proto.TypeListChannelsAck, f.Ref,
 		proto.ListChannelsAckPayload{Channels: summaries})

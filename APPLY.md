@@ -1,74 +1,61 @@
-# chalk phase 08b — apply notes (SPA channels + subscribe_channel)
+# chalk phase 08c — apply notes (handles in welcome, channel members, friend picker)
 
-Phase 08b is the SPA half of phase 08. Adds:
+Small UI polish phase. Surfaces existing `users.handle` data in:
 
-- Two-column layout: sidebar (channel list + create button) + main pane
-- Channel switching, with history-on-switch via fetch_history
-- Create channel modal with friend picker (uses friend_list frame)
-- New `subscribe_channel` wire frame so the SPA can pick up newly
-  created channels mid-session without reconnecting
-- Playwright spec for the cross-tab create-and-receive flow
+- The status badge (`you (alice)` instead of just `you`)
+- DM channel labels in the sidebar/header (`@bob` instead of `@00000b0b`)
+- The friend picker (`@bob` instead of `@00000b0b`)
+
+No new database columns; the `handle` field has been in `users` since
+migration 0001. We're just plumbing it through to the wire and the SPA.
 
 ## What's in the archive
 
 ```
-internal/proto/frames_phase08b.go         NEW
-internal/server/ws_phase08b.go            NEW
-internal/server/ws.go                     REPLACES (adds connSubs + subscribe_channel dispatch)
-web/src/proto.ts                          REPLACES (phase 08 + 08b wire types)
-web/src/state/types.ts                    NEW
-web/src/state/reducer.ts                  NEW
-web/src/components/App.tsx                REPLACES (channel-aware)
-web/src/components/Sidebar.tsx            NEW
-web/src/components/CreateChannelModal.tsx NEW
-web/src/components/FriendPicker.tsx       NEW
-web/src/components/MessageList.tsx        REPLACES (uses Message domain type)
-web/src/theme.css                         REPLACES (sidebar/modal styles)
-test/e2e/channels.spec.ts                 NEW
-test/integration/channels_test.go         PATCHED in-place (subscribe_channel instead of reconnect)
-bootstrap/phase-08b-channels-spa.sh       NEW
+internal/store/users.go                 NEW (HandlesByID batched lookup)
+internal/server/ws.go                   REPLACES (welcome includes handle)
+internal/server/ws_phase08.go           REPLACES (channelSummaryFromStore takes handles map)
+web/src/proto.ts                        REPLACES (WelcomePayload.handle, ChannelSummaryWire.members)
+web/src/state/types.ts                  REPLACES (Friend.handle, ChannelMember, user.handle)
+web/src/state/reducer.ts                REPLACES (welcome stores handle)
+```
+
+Plus in-place patches via the applier:
+
+```
+internal/proto/proto.go                 PATCH  (WelcomePayload + Handle field)
+internal/proto/frames_phase08.go        PATCH  (ChannelSummary + Members, new ChannelMember struct)
+web/src/components/App.tsx              PATCH  (onWelcome passes handle, wireToChannel pulls members, friends_loaded reads handle, displayName prefers handle)
+web/src/components/StatusBar.tsx        PATCH  (renders "you (handle)" when handle set)
+web/src/components/FriendPicker.tsx     PATCH  (renders @handle, falls back to slice(-8))
 ```
 
 ## Prerequisites
 
-- Phase 08a complete (`.bootstrap/phase-08.done` present)
-- Node 18+ for SPA build + Playwright
+- Phase 08b complete
+- Phase 08b polish + polish-display applied (the patches depend on
+  post-polish app state for some sed-style matches)
 
 ## Apply
 
 ```sh
-bash apply-phase08b.sh
+bash apply-phase08c.sh
 ```
 
-## Behavioral changes
+## What you'll see after applying
 
-- The SPA no longer auto-shows the default channel; it shows whatever
-  channels you're in. On first run for a new user with no channels,
-  you see a "no channels yet" message.
-- Sending requires an active channel. The composer is disabled when
-  no channel is selected.
-- Creating a channel requires having friends to add. Since there's no
-  friend-management UI yet, friends are pre-seeded via fixtures (or
-  via manual SQL). Realistic flow lands in phase 09 or later.
+- Status badge top-right: `online you (alice)` (hover for full UUID)
+- Sidebar/header DM label: `@bob DM`
+- Friend picker: `@bob` row
+- Messages: still labeled `you` / `<device-id-suffix>` — message frame
+  doesn't carry handles, deferred to phase 09 along with usernames
 
-## Known limitations of 08b
+## Known limitations
 
-- **No friend management UI.** You can create channels with friends
-  from the fixture, but adding new friends still requires direct DB
-  access. Friends UI is phase 09 territory.
-- **No unread badges.** Per-channel unread tracking needs either
-  localStorage persistence or a read_ack server roundtrip; both are
-  bigger than 08b's scope.
-- **No leave/remove member.** Channel membership is immutable after
-  creation in phase 08. Future phase.
-- **No DM auto-creation.** Sending a DM still requires opening the
-  modal and toggling the "direct message" checkbox. A "DM @user"
-  shortcut would land naturally with friend-management UI.
-
-## Heads-up: integration test patch
-
-`test/integration/channels_test.go` is modified in place. The
-`TestPhase08_MessageFanOutPerChannel` test previously reconnected bob
-to pick up the new channel topic; now it uses `subscribe_channel`
-which is cleaner and doesn't risk reconnect timing flakes. A backup
-of the original is kept by the applier.
+- Message sender label still shows device-id suffix for others. The
+  message frame would need an additional `sender_user_id` field (and
+  matching handle lookup on hot path) which is touchy enough to defer
+  to phase 09.
+- Handles aren't unique-stable: the `users.handle` column is a CITEXT
+  UNIQUE that anyone can theoretically change (no UPDATE path exists
+  yet). Phase 09 will introduce a proper username lifecycle.

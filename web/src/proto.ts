@@ -32,6 +32,7 @@ export interface HelloPayload {
 export interface WelcomePayload {
   user_id: string;
   device_id: string;
+  handle: string; // phase 08c; empty for anonymous/legacy
   channels: string[];
 }
 
@@ -112,6 +113,14 @@ export const TypeFetchHistory = "fetch_history";
 export const TypeFetchHistoryAck = "fetch_history_ack";
 export const TypeChannelEvent = "channel_event";
 
+// phase 08c: ChannelMember pairs a user_id with their handle. The
+// server populates `handle` from the users table; empty when unknown.
+// SPA prefers `members` over `member_ids` for DM-label rendering.
+export interface ChannelMemberWire {
+  user_id: string;
+  handle: string;
+}
+
 export interface ChannelSummaryWire {
   id: string;
   name: string;
@@ -119,6 +128,7 @@ export interface ChannelSummaryWire {
   created_by: string;
   created_at: number; // unix-millis
   member_ids: string[];
+  members?: ChannelMemberWire[]; // phase 08c; optional for backward compat
 }
 
 export interface CreateChannelPayload {

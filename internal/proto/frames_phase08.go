@@ -42,6 +42,15 @@ type ChannelSummary struct {
 	CreatedBy  string   `json:"created_by"` // user_id; empty for system channels
 	CreatedAt  int64    `json:"created_at"` // unix-millis
 	MemberIDs  []string `json:"member_ids"` // small; included in summary for DM-name rendering
+	Members   []ChannelMember `json:"members"`    // phase 08c; pairs user_id with handle
+}
+
+// ChannelMember pairs a user_id with their handle. Server
+// returns these alongside MemberIDs so the SPA can render
+// names instead of UUID prefixes. Phase 08c.
+type ChannelMember struct {
+	UserID string `json:"user_id"`
+	Handle string `json:"handle"`
 }
 
 // ---- create_channel ------------------------------------------------------

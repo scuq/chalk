@@ -20,6 +20,12 @@ export interface Message {
   body: string;
 }
 
+// phase 08c: ChannelMember pairs a user_id with their handle.
+export interface ChannelMember {
+  userID: string;
+  handle: string;
+}
+
 export interface ChannelSummary {
   id: string;
   name: string;
@@ -27,11 +33,12 @@ export interface ChannelSummary {
   createdBy: string;
   createdAt: Date;
   memberIDs: string[];
+  members: ChannelMember[]; // phase 08c; empty when server didn't send any
 }
 
 export interface Friend {
   userID: string;
-  // Phase 09 will add usernames; for now display by UUID prefix.
+  handle: string; // phase 08c; empty if server didn't return one
 }
 
 // ---- Reducer state -------------------------------------------------------
@@ -40,7 +47,7 @@ export interface AppState {
   // Connection.
   wsState: ConnectionState;
   wsDetail: string; // human-readable status detail when connecting/closed/error
-  user: { id: string; device: string } | null;
+  user: { id: string; device: string; handle: string } | null;
 
   // Channels.
   channels: Record<string, ChannelSummary>; // by channel id
@@ -77,7 +84,7 @@ export const initialState: AppState = {
 
 export type Action =
   | { kind: "ws_state"; state: ConnectionState; detail?: string }
-  | { kind: "welcome"; userID: string; deviceID: string; channels: string[] }
+  | { kind: "welcome"; userID: string; deviceID: string; handle: string; channels: string[] }
   | { kind: "channels_loaded"; channels: ChannelSummary[] }
   | { kind: "channel_added"; channel: ChannelSummary }
   | { kind: "set_active_channel"; channelID: string | null }

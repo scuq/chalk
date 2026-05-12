@@ -80,3 +80,42 @@ func (s *Store) CountUsers(ctx context.Context) (int64, error) {
 	err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM users`).Scan(&n)
 	return n, err
 }
+
+// HandlesByID returns a map of user_id -> handle for the given user IDs.
+// Missing rows are simply absent from the map (caller treats absence as
+// "unknown user"). Empty input returns an empty map without hitting PG.
+//
+// Used in phase 08c to enrich channel summaries and welcome frames with
+// human-readable handles so the SPA doesn't have to display raw UUIDs.
+//
+// Phase 09 will replace handles with passkey-derived usernames; the
+// signature stays the same -- handle is still just a single string.
+func (s *Store) HandlesByID(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	out := make(map[uuid.UUID]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	// pgx supports passing a []uuid.UUID directly as a single parameter
+	// for the ANY($1) idiom; both ANY($1::uuid[]) and the unnest form work.
+	// We prefer ANY for clarity.
+	rows, err := s.Pool.Query(ctx,
+		`SELECT id, handle FROM users WHERE id = ANY($1::uuid[])`,
+		ids,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query handles: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var handle string
+		if err := rows.Scan(&id, &handle); err != nil {
+			return nil, fmt.Errorf("scan handle: %w", err)
+		}
+		out[id] = handle
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows: %w", err)
+	}
+	return out, nil
+}
