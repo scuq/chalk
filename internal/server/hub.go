@@ -30,16 +30,37 @@ import (
 
 // Hub registers connections and dispatches messages between them.
 //
-// Phase 09a adds a parallel byConnID index keyed by the per-connection
-// UUID. This is a transitional state: production code still routes by
-// device_id (the conns map). The byConnID map is built alongside so
-// step 2 can switch fan-out and echo-suppression to be per-conn
-// without further touching Register/Unregister/CloseAll. Both maps
-// are kept consistent under the same write lock.
+// Phase 09a adds two parallel indices alongside the device_id-keyed
+// primary map:
+//   - byConnID: maps Conn.ID -> *Conn for direct conn lookup
+//   - byUser:   maps userID  -> *userConnSet for per-user fan-out
+//
+// All three maps are kept consistent under the same write lock
+// (h.mu). The byConnID and byUser indices are populated as of step 2
+// but not yet read by production code; step 3 will switch fan-out
+// to iterate byUser, and step 4 will remove the "new wins" eviction
+// on same-device_id Register.
+//
+// userConnSet has its own internal mutex so step 3 can snapshot a
+// user's conns without holding h.mu, letting Register/Unregister
+// proceed even mid-broadcast.
 type Hub struct {
-	mu        sync.RWMutex
-	conns     map[string]*Conn // key: device_id (legacy; primary today)
-	byConnID  map[string]*Conn // key: Conn.ID (phase 09a; not yet used by production code)
+	mu       sync.RWMutex
+	conns    map[string]*Conn         // key: device_id (legacy; primary today)
+	byConnID map[string]*Conn         // key: Conn.ID   (phase 09a step 1)
+	byUser   map[string]*userConnSet  // key: Conn.UserID (phase 09a step 2)
+}
+
+// userConnSet holds every active connection for a single user. Phase
+// 09a step 2 introduces this; step 3 uses it to fan out per-user
+// without taking h.mu for the duration of an enqueue loop.
+//
+// The set is keyed by Conn.ID because two browser tabs from the same
+// device share a DeviceID but each have a distinct ID. Using ID as
+// the key means tabs do not evict each other within the set.
+type userConnSet struct {
+	mu    sync.Mutex
+	conns map[string]*Conn // key: Conn.ID
 }
 
 // NewHub constructs an empty Hub.
@@ -47,6 +68,7 @@ func NewHub() *Hub {
 	return &Hub{
 		conns:    make(map[string]*Conn),
 		byConnID: make(map[string]*Conn),
+		byUser:   make(map[string]*userConnSet),
 	}
 }
 
@@ -69,6 +91,19 @@ func (h *Hub) Register(c *Conn) {
 	if c.ID != "" {
 		h.byConnID[c.ID] = c
 	}
+	// Phase 09a step 2: index by user_id too. Anonymous conns
+	// (UserID=="") are not indexed in byUser; they exist only in
+	// conns and byConnID.
+	if c.UserID != "" && c.ID != "" {
+		set, ok := h.byUser[c.UserID]
+		if !ok {
+			set = &userConnSet{conns: make(map[string]*Conn)}
+			h.byUser[c.UserID] = set
+		}
+		set.mu.Lock()
+		set.conns[c.ID] = c
+		set.mu.Unlock()
+	}
 	// If we just superseded an earlier conn with the same device_id,
 	// drop its byConnID entry too. The prev conn's writeLoop will
 	// eventually call Unregister, but by then this map should already
@@ -76,9 +111,24 @@ func (h *Hub) Register(c *Conn) {
 	// also can't rely on Unregister(prev) to clean byConnID because the
 	// device-id path of Unregister no-ops when prev is no longer the
 	// current device-id entry, and we'd be left with a stale byConnID
-	// pointer.
-	if exists && prev != c && prev != nil && prev.ID != "" {
-		delete(h.byConnID, prev.ID)
+	// pointer. The same reasoning applies to byUser: clean prev's
+	// entry from its user's set now, because Unregister(prev) won't
+	// (it can't tell that prev was superseded vs. still active).
+	if exists && prev != c && prev != nil {
+		if prev.ID != "" {
+			delete(h.byConnID, prev.ID)
+		}
+		if prev.UserID != "" && prev.ID != "" {
+			if set, ok := h.byUser[prev.UserID]; ok {
+				set.mu.Lock()
+				delete(set.conns, prev.ID)
+				empty := len(set.conns) == 0
+				set.mu.Unlock()
+				if empty {
+					delete(h.byUser, prev.UserID)
+				}
+			}
+		}
 	}
 	h.mu.Unlock()
 
@@ -105,6 +155,23 @@ func (h *Hub) Unregister(c *Conn) {
 			delete(h.byConnID, c.ID)
 		}
 	}
+	// Same reasoning for byUser: if c.ID is in its userConnSet and
+	// still points to c, drop it; if the set becomes empty, remove
+	// it. If c was already superseded, Register's cleanup path
+	// removed the entry, so this is a no-op.
+	if c.UserID != "" && c.ID != "" {
+		if set, ok := h.byUser[c.UserID]; ok {
+			set.mu.Lock()
+			if cur, ok := set.conns[c.ID]; ok && cur == c {
+				delete(set.conns, c.ID)
+			}
+			empty := len(set.conns) == 0
+			set.mu.Unlock()
+			if empty {
+				delete(h.byUser, c.UserID)
+			}
+		}
+	}
 	h.mu.Unlock()
 }
 
@@ -124,6 +191,42 @@ func (h *Hub) GetByConnID(connID string) *Conn {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.byConnID[connID]
+}
+
+// ConnsForUser returns a snapshot slice of every active connection
+// for userID. Empty slice if no conns are registered for that user.
+// Phase 09a step 2: production code does not yet call this; step 3
+// will use it to fan out per-user without holding h.mu for the
+// duration of the enqueue loop.
+//
+// The snapshot is taken under the userConnSet's own mutex, so this
+// is cheap (no h.mu held during iteration) and does not block
+// concurrent Register/Unregister of unrelated users.
+func (h *Hub) ConnsForUser(userID string) []*Conn {
+	if userID == "" {
+		return nil
+	}
+	h.mu.RLock()
+	set, ok := h.byUser[userID]
+	h.mu.RUnlock()
+	if !ok {
+		return nil
+	}
+	set.mu.Lock()
+	defer set.mu.Unlock()
+	out := make([]*Conn, 0, len(set.conns))
+	for _, c := range set.conns {
+		out = append(out, c)
+	}
+	return out
+}
+
+// CountUsers returns the number of distinct users with at least one
+// active connection. Phase 09a step 2; mostly for tests and metrics.
+func (h *Hub) CountUsers() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.byUser)
 }
 
 // Count returns the number of active connections.
@@ -216,6 +319,7 @@ func (h *Hub) CloseAll(ctx context.Context, reason error) {
 	}
 	h.conns = make(map[string]*Conn)
 	h.byConnID = make(map[string]*Conn)
+	h.byUser = make(map[string]*userConnSet)
 	h.mu.Unlock()
 
 	done := make(chan struct{})

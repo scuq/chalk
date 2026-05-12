@@ -465,3 +465,246 @@ func contextBackgroundFor(t *testing.T, d time.Duration) (ctx context.Context, c
 	ctx, cancel = context.WithTimeout(context.Background(), d)
 	return
 }
+
+// ---- Phase 09a step 2 tests --------------------------------------------
+// Hub gains a byUser index keyed by userID, each entry holding a
+// userConnSet keyed by Conn.ID. Production code in 09a does not yet
+// read this; step 3 will. These tests prove the new index stays
+// consistent with the device_id and byConnID maps under
+// register / unregister / supersede / multi-user / close-all /
+// anonymous (UserID=="").
+
+func fakeConnWithUser(connID, deviceID, userID string) (*Conn, *atomic.Int32) {
+	var calls atomic.Int32
+	c := NewConn(connID, deviceID, userID, func(error) {
+		calls.Add(1)
+	})
+	return c, &calls
+}
+
+func TestHubByUserRegisterAndUnregister(t *testing.T) {
+	h := NewHub()
+	c, _ := fakeConnWithUser("conn-1", "dev-1", "alice")
+
+	h.Register(c)
+
+	got := h.ConnsForUser("alice")
+	if len(got) != 1 || got[0] != c {
+		t.Fatalf("ConnsForUser(alice) after register: got %v, want [c]", got)
+	}
+	if h.CountUsers() != 1 {
+		t.Fatalf("CountUsers after register: got %d, want 1", h.CountUsers())
+	}
+
+	h.Unregister(c)
+
+	if got := h.ConnsForUser("alice"); len(got) != 0 {
+		t.Fatalf("ConnsForUser(alice) after unregister: got %v, want []", got)
+	}
+	if h.CountUsers() != 0 {
+		t.Fatalf("CountUsers after unregister: got %d, want 0", h.CountUsers())
+	}
+}
+
+func TestHubByUserTwoTabsSameUser(t *testing.T) {
+	// Two conns from same user with DIFFERENT deviceIDs and conn IDs
+	// (e.g. user has chalk open on phone AND laptop). Both should be
+	// in alice's set.
+	h := NewHub()
+	c1, _ := fakeConnWithUser("conn-1", "phone", "alice")
+	c2, _ := fakeConnWithUser("conn-2", "laptop", "alice")
+	h.Register(c1)
+	h.Register(c2)
+
+	got := h.ConnsForUser("alice")
+	if len(got) != 2 {
+		t.Fatalf("ConnsForUser(alice): got %d conns, want 2", len(got))
+	}
+	// Order is map iteration order; check both are present by ID.
+	gotIDs := map[string]bool{}
+	for _, c := range got {
+		gotIDs[c.ID] = true
+	}
+	if !gotIDs["conn-1"] || !gotIDs["conn-2"] {
+		t.Fatalf("expected both conn IDs in set, got %v", gotIDs)
+	}
+}
+
+func TestHubByUserDifferentUsers(t *testing.T) {
+	h := NewHub()
+	a, _ := fakeConnWithUser("a-conn", "a-dev", "alice")
+	b, _ := fakeConnWithUser("b-conn", "b-dev", "bob")
+	h.Register(a)
+	h.Register(b)
+
+	if h.CountUsers() != 2 {
+		t.Fatalf("CountUsers: got %d, want 2", h.CountUsers())
+	}
+	aliceConns := h.ConnsForUser("alice")
+	bobConns := h.ConnsForUser("bob")
+	if len(aliceConns) != 1 || aliceConns[0] != a {
+		t.Fatalf("alice set wrong: %v", aliceConns)
+	}
+	if len(bobConns) != 1 || bobConns[0] != b {
+		t.Fatalf("bob set wrong: %v", bobConns)
+	}
+}
+
+func TestHubByUserUnregisterOneLeavesOther(t *testing.T) {
+	h := NewHub()
+	c1, _ := fakeConnWithUser("conn-1", "phone", "alice")
+	c2, _ := fakeConnWithUser("conn-2", "laptop", "alice")
+	h.Register(c1)
+	h.Register(c2)
+
+	h.Unregister(c1)
+
+	got := h.ConnsForUser("alice")
+	if len(got) != 1 || got[0] != c2 {
+		t.Fatalf("after unregister c1: want [c2], got %v", got)
+	}
+	if h.CountUsers() != 1 {
+		t.Fatalf("CountUsers: got %d, want 1", h.CountUsers())
+	}
+}
+
+func TestHubByUserUnregisterLastDropsSet(t *testing.T) {
+	// When the last conn for a user is unregistered, the userConnSet
+	// itself should be removed from byUser (so CountUsers reflects
+	// "users with active conns" rather than "users we've ever seen").
+	h := NewHub()
+	c, _ := fakeConnWithUser("conn-1", "dev-1", "alice")
+	h.Register(c)
+	if h.CountUsers() != 1 {
+		t.Fatalf("setup: CountUsers=%d", h.CountUsers())
+	}
+	h.Unregister(c)
+	if h.CountUsers() != 0 {
+		t.Fatalf("CountUsers after final unregister: got %d, want 0", h.CountUsers())
+	}
+	// Idempotent: a second Unregister of the same conn must not panic
+	// (the userConnSet was already removed; the byUser lookup misses).
+	h.Unregister(c)
+	if h.CountUsers() != 0 {
+		t.Fatalf("CountUsers after second unregister: got %d, want 0", h.CountUsers())
+	}
+}
+
+func TestHubByUserSupersedeSameDeviceSameUser(t *testing.T) {
+	// Two conns share deviceID and userID (browser reconnect before
+	// old socket was reaped). c2 supersedes c1.
+	// byUser[alice] should end up containing exactly c2, not c1.
+	h := NewHub()
+	c1, _ := fakeConnWithUser("conn-1", "dev-shared", "alice")
+	c2, _ := fakeConnWithUser("conn-2", "dev-shared", "alice")
+	h.Register(c1)
+	h.Register(c2) // supersedes c1
+
+	got := h.ConnsForUser("alice")
+	if len(got) != 1 || got[0] != c2 {
+		t.Fatalf("after supersede: want [c2], got %v", got)
+	}
+}
+
+func TestHubByUserAnonymousNotIndexed(t *testing.T) {
+	// Conns with UserID=="" exist in conns + byConnID but never in
+	// byUser. They're "anonymous" -- still present on the hub for
+	// broadcast purposes, but not addressable by user.
+	h := NewHub()
+	c, _ := fakeConnWithUser("conn-1", "dev-1", "")
+	h.Register(c)
+
+	if h.CountUsers() != 0 {
+		t.Fatalf("anonymous conn should not increment CountUsers: got %d", h.CountUsers())
+	}
+	if got := h.ConnsForUser(""); got != nil {
+		t.Fatalf("ConnsForUser(\"\") should return nil, got %v", got)
+	}
+	// Sanity: the conn is still in the legacy maps.
+	if h.Get("dev-1") != c {
+		t.Fatal("anonymous conn missing from deviceID map")
+	}
+	if h.GetByConnID("conn-1") != c {
+		t.Fatal("anonymous conn missing from byConnID map")
+	}
+
+	h.Unregister(c)
+	if h.Count() != 0 {
+		t.Fatal("unregister failed for anonymous conn")
+	}
+}
+
+func TestHubByUserStaleUnregisterIsNoop(t *testing.T) {
+	// c1 was superseded by c2 for the same (deviceID, userID). A late
+	// Unregister(c1) must not remove c2 from byUser.
+	h := NewHub()
+	c1, _ := fakeConnWithUser("conn-1", "dev-shared", "alice")
+	c2, _ := fakeConnWithUser("conn-2", "dev-shared", "alice")
+	h.Register(c1)
+	h.Register(c2)
+
+	h.Unregister(c1) // stale
+
+	got := h.ConnsForUser("alice")
+	if len(got) != 1 || got[0] != c2 {
+		t.Fatalf("stale unregister of c1 removed c2 from byUser: %v", got)
+	}
+}
+
+func TestHubCloseAllClearsByUser(t *testing.T) {
+	h := NewHub()
+	users := []string{"alice", "bob", "carol"}
+	conns := make([]*Conn, len(users))
+	for i, u := range users {
+		c, _ := fakeConnWithUser("conn-"+u, "dev-"+u, u)
+		go func(c *Conn) {
+			for {
+				select {
+				case <-c.Send:
+				case <-c.closed:
+					return
+				}
+			}
+		}(c)
+		h.Register(c)
+		conns[i] = c
+	}
+	if h.CountUsers() != 3 {
+		t.Fatalf("setup: CountUsers=%d", h.CountUsers())
+	}
+
+	ctx, cancel := contextBackgroundFor(t, time.Second)
+	defer cancel()
+	h.CloseAll(ctx, errors.New("shutdown"))
+
+	if h.CountUsers() != 0 {
+		t.Fatalf("CloseAll left %d users in byUser", h.CountUsers())
+	}
+	for _, u := range users {
+		if got := h.ConnsForUser(u); got != nil && len(got) != 0 {
+			t.Fatalf("CloseAll left conns for %s: %v", u, got)
+		}
+	}
+}
+
+func TestHubConnsForUserSnapshotIndependentOfHub(t *testing.T) {
+	// The slice returned by ConnsForUser is a snapshot. A
+	// subsequent Unregister must not mutate the returned slice.
+	h := NewHub()
+	c1, _ := fakeConnWithUser("conn-1", "phone", "alice")
+	c2, _ := fakeConnWithUser("conn-2", "laptop", "alice")
+	h.Register(c1)
+	h.Register(c2)
+
+	snap := h.ConnsForUser("alice")
+	if len(snap) != 2 {
+		t.Fatalf("setup: snap=%d", len(snap))
+	}
+
+	h.Unregister(c1)
+
+	// snap should still hold 2 references.
+	if len(snap) != 2 {
+		t.Fatalf("snapshot mutated after Unregister: len=%d", len(snap))
+	}
+}
