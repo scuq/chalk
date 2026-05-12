@@ -1,6 +1,6 @@
 # Build artifacts
 /bin/
-/dist/
+dist/
 chalkd
 chalkd.exe
 *.test
@@ -37,3 +37,13 @@ Thumbs.db
 
 # Local data dirs (only relevant outside of containers)
 /var/
+
+# Bootstrap markers
+.bootstrap/*
+!.bootstrap/*.done
+
+# Backup files from in-place patch scripts
+*.bak-*
+
+# Local one-off directory dumps
+/tree.txt
