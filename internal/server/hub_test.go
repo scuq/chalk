@@ -1015,3 +1015,58 @@ func TestHubFanOutToUserFreshCombinesExceptAndFresh(t *testing.T) {
 		// OK
 	}
 }
+
+// ---- Phase 09a step 5 regression test ---------------------------------
+// FanOutFresh must iterate every conn, even when multiple share a
+// deviceID. Pre-step-4 the conns map was 1:1 with deviceIDs (eviction
+// guaranteed uniqueness) so iterating conns reached every conn.
+// Post-step-4 the conns map is "last writer wins" and misses
+// duplicates -- FanOutFresh now iterates byConnID.
+
+func TestHubFanOutFreshReachesAllSameDeviceConns(t *testing.T) {
+	// Two conns sharing deviceID (multi-tab). FanOutFresh from neither
+	// of their connIDs should reach BOTH conns.
+	h := NewHub()
+	a, _ := fakeConnWithID("conn-a", "dev-shared")
+	b, _ := fakeConnWithID("conn-b", "dev-shared")
+	h.Register(a)
+	h.Register(b)
+
+	h.FanOutFresh("", []byte("global"), time.Now())
+
+	for _, c := range []*Conn{a, b} {
+		select {
+		case got := <-c.Send:
+			if string(got) != "global" {
+				t.Errorf("%s got %q", c.ID, got)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("conn %s did not receive (FanOutFresh missed a same-deviceID conn)", c.ID)
+		}
+	}
+}
+
+func TestHubFanOutFreshExcludesByConnIDWithSameDevice(t *testing.T) {
+	// Two same-device conns; exclude conn-a only. conn-b receives.
+	h := NewHub()
+	a, _ := fakeConnWithID("conn-a", "dev-shared")
+	b, _ := fakeConnWithID("conn-b", "dev-shared")
+	h.Register(a)
+	h.Register(b)
+
+	h.FanOutFresh("conn-a", []byte("for-b"), time.Now())
+
+	select {
+	case <-a.Send:
+		t.Fatal("conn-a received message it should have been excluded from")
+	default:
+	}
+	select {
+	case got := <-b.Send:
+		if string(got) != "for-b" {
+			t.Errorf("conn-b got %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("conn-b did not receive")
+	}
+}

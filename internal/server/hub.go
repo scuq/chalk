@@ -293,17 +293,22 @@ func (h *Hub) BroadcastFresh(except string, data []byte, messageTS time.Time) {
 	}
 }
 
-// FanOutFresh is BroadcastFresh with except-by-connID semantics.
-// Phase 09a step 3: production callers use this instead of
-// BroadcastFresh so multi-tab same-device works correctly (the
-// sender's connID is unique even if the deviceID is shared with
-// another tab).
+// FanOutFresh broadcasts data to every connection on this hub
+// except the one whose Conn.ID == exceptConnID, applying the
+// BroadcastFresh staleness filter (conns registered after
+// messageTS are skipped).
+//
+// Phase 09a step 3 introduced this with iteration over h.conns.
+// Step 5 fix: iterate h.byConnID instead. After step 4, multiple
+// conns can share a deviceID (multi-tab) and the conns map is a
+// "last writer wins" lookup -- it does NOT contain every conn.
+// byConnID does. For broadcast semantics we need every conn.
 //
 // Empty exceptConnID delivers to all conns.
 func (h *Hub) FanOutFresh(exceptConnID string, data []byte, messageTS time.Time) {
 	h.mu.RLock()
-	snap := make([]*Conn, 0, len(h.conns))
-	for _, c := range h.conns {
+	snap := make([]*Conn, 0, len(h.byConnID))
+	for _, c := range h.byConnID {
 		if exceptConnID != "" && c.ID == exceptConnID {
 			continue
 		}
