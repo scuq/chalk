@@ -489,39 +489,56 @@ func (s *Server) handlePresenceEvent(ev pubsub.Event) {
 	}
 	wire, _ := json.Marshal(frame)
 
+	// Phase 09a step 4: dedupe subscriber devices to distinct
+	// user_ids, friendship-check once per user, FanOutToUser per
+	// user. This both (a) supports multi-tab correctly (every tab
+	// of a subscribing user receives the update, not just the one
+	// returned by the legacy per-device Hub.Get) and (b) eliminates
+	// N device->user lookups when one user has multiple devices
+	// subscribed.
+	subUserIDs := make(map[uuid.UUID]struct{}, len(subscriberDevices))
 	for _, subDev := range subscriberDevices {
-		// Re-check friendship -- subscriber might have un-friended us
-		// since they subscribed. Look up the subscriber's user_id, then
-		// re-check.
 		var subUser uuid.UUID
-		err := s.store.Pool.QueryRow(ctx,
+		if err := s.store.Pool.QueryRow(ctx,
 			`SELECT user_id FROM devices WHERE id = $1`, subDev,
-		).Scan(&subUser)
-		if err != nil {
+		).Scan(&subUser); err != nil {
 			continue
 		}
+		subUserIDs[subUser] = struct{}{}
+	}
+
+	for subUser := range subUserIDs {
+		// Re-check friendship -- subscriber might have un-friended us
+		// since they subscribed.
 		ok, err := s.friends.AreAcceptedFriends(ctx, subUser, ev.UserID)
 		if err != nil || !ok {
 			continue
 		}
-		c := s.hub.Get(subDev.String())
-		if c == nil {
-			continue
-		}
-		if err := c.Enqueue(wire); err != nil {
-			go c.Close(err)
-		}
+		s.hub.FanOutToUser(subUser.String(), "", wire)
 	}
 }
 
 // handleFriendEvent: push a friend_event frame to every connected
-// device of the recipient user.
+// conn of the recipient user.
 //
 // Look up the requester's handle to include in the push so the client
 // doesn't have to do another round trip to render the notification.
+//
+// Phase 09a step 4: fans out via Hub.FanOutToUser, which iterates the
+// byUser index. The DB query for device_presence that the old version
+// did is gone: byUser already knows which conns are live on this
+// instance, with no DB roundtrip needed. If the recipient has no
+// conns on this instance, FanOutToUser is a no-op.
 func (s *Server) handleFriendEvent(ev pubsub.Event) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
+
+	// Skip the work entirely if the recipient has no local conns.
+	// This is cheap to check and avoids a database lookup for users
+	// who aren't connected here.
+	if len(s.hub.ConnsForUser(ev.UserID.String())) == 0 {
+		return
+	}
 
 	var handle string
 	if err := s.store.Pool.QueryRow(ctx,
@@ -539,30 +556,7 @@ func (s *Server) handleFriendEvent(ev pubsub.Event) {
 	})
 	wire, _ := json.Marshal(frame)
 
-	// Find recipient's currently-connected devices on this instance.
-	rows, err := s.store.Pool.Query(ctx,
-		`SELECT device_id FROM device_presence
-		   WHERE user_id = $1 AND instance_id = $2`,
-		ev.UserID, s.instanceID,
-	)
-	if err != nil {
-		s.logger.Printf("friend event recipient lookup: %v", err)
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var dev uuid.UUID
-		if err := rows.Scan(&dev); err != nil {
-			continue
-		}
-		c := s.hub.Get(dev.String())
-		if c == nil {
-			continue
-		}
-		if err := c.Enqueue(wire); err != nil {
-			go c.Close(err)
-		}
-	}
+	s.hub.FanOutToUser(ev.UserID.String(), "", wire)
 }
 
 // publishFriendEvent is the implementation of FriendPublisher. Opens a

@@ -30,25 +30,25 @@ import (
 
 // Hub registers connections and dispatches messages between them.
 //
-// Phase 09a adds two parallel indices alongside the device_id-keyed
-// primary map:
+// Phase 09a adds two indices alongside the device_id-keyed map:
 //   - byConnID: maps Conn.ID -> *Conn for direct conn lookup
 //   - byUser:   maps userID  -> *userConnSet for per-user fan-out
 //
-// All three maps are kept consistent under the same write lock
-// (h.mu). The byConnID and byUser indices are populated as of step 2
-// but not yet read by production code; step 3 will switch fan-out
-// to iterate byUser, and step 4 will remove the "new wins" eviction
-// on same-device_id Register.
+// As of step 4, the byUser index is the primary routing structure
+// for production fan-out. The conns (device_id) map remains as a
+// "last writer wins" lookup for legacy callers and tests; multiple
+// conns may share a device_id (multi-tab) without one evicting the
+// other. byConnID and byUser see every connection regardless of
+// deviceID collisions.
 //
-// userConnSet has its own internal mutex so step 3 can snapshot a
-// user's conns without holding h.mu, letting Register/Unregister
-// proceed even mid-broadcast.
+// All three maps are kept consistent under the same write lock
+// (h.mu). userConnSet has its own internal mutex so fan-out can
+// snapshot a user's conns without holding h.mu.
 type Hub struct {
 	mu       sync.RWMutex
-	conns    map[string]*Conn         // key: device_id (legacy; primary today)
-	byConnID map[string]*Conn         // key: Conn.ID   (phase 09a step 1)
-	byUser   map[string]*userConnSet  // key: Conn.UserID (phase 09a step 2)
+	conns    map[string]*Conn         // key: device_id (last-writer-wins lookup)
+	byConnID map[string]*Conn         // key: Conn.ID
+	byUser   map[string]*userConnSet  // key: Conn.UserID
 }
 
 // userConnSet holds every active connection for a single user. Phase
@@ -84,9 +84,26 @@ func NewHub() *Hub {
 // Register -- which is the ServeHTTP goroutine of the *new* connection,
 // in the middle of its own setup. Asynchronous teardown lets the new
 // connection's setup proceed without that coupling.
+// Register adds c to the hub. Phase 09a step 4 removed the
+// "same-deviceID supersedes" eviction: two browser tabs that share
+// a localStorage device_id (or any two conns with matching DeviceID
+// for any other reason) now coexist on the hub. Each has its own
+// unique Conn.ID, and fan-out is keyed on byUser/byConnID, not on
+// the deviceID map.
+//
+// The conns map is kept as a deviceID->Conn lookup of "the
+// most-recently-registered conn for this device." It is no longer
+// the primary routing index; production code uses byUser /
+// byConnID. The map is only useful as a fallback for legacy
+// per-device push paths (none remain in production after step 4)
+// and for the tests that still exercise Get(deviceID). When two
+// conns share a deviceID, conns[deviceID] always points at the
+// latest Register; Unregister of an older conn no-ops on the map
+// since cur != c. Unregister of the latest conn deletes the entry.
+// This produces "last writer wins" lookup semantics without the
+// destructive eviction.
 func (h *Hub) Register(c *Conn) {
 	h.mu.Lock()
-	prev, exists := h.conns[c.DeviceID]
 	h.conns[c.DeviceID] = c
 	if c.ID != "" {
 		h.byConnID[c.ID] = c
@@ -104,61 +121,28 @@ func (h *Hub) Register(c *Conn) {
 		set.conns[c.ID] = c
 		set.mu.Unlock()
 	}
-	// If we just superseded an earlier conn with the same device_id,
-	// drop its byConnID entry too. The prev conn's writeLoop will
-	// eventually call Unregister, but by then this map should already
-	// reflect that prev is no longer the active conn for its ID. We
-	// also can't rely on Unregister(prev) to clean byConnID because the
-	// device-id path of Unregister no-ops when prev is no longer the
-	// current device-id entry, and we'd be left with a stale byConnID
-	// pointer. The same reasoning applies to byUser: clean prev's
-	// entry from its user's set now, because Unregister(prev) won't
-	// (it can't tell that prev was superseded vs. still active).
-	if exists && prev != c && prev != nil {
-		if prev.ID != "" {
-			delete(h.byConnID, prev.ID)
-		}
-		if prev.UserID != "" && prev.ID != "" {
-			if set, ok := h.byUser[prev.UserID]; ok {
-				set.mu.Lock()
-				delete(set.conns, prev.ID)
-				empty := len(set.conns) == 0
-				set.mu.Unlock()
-				if empty {
-					delete(h.byUser, prev.UserID)
-				}
-			}
-		}
-	}
 	h.mu.Unlock()
-
-	if exists && prev != c {
-		go prev.Close(errors.New("superseded by new connection"))
-	}
 }
 
 // Unregister removes c from the hub if it's still the active connection
 // for its device_id. A race-safe Unregister is a no-op if c has already
 // been replaced by a newer connection (Register's last-writer-wins).
+// Unregister removes c from the hub. As of phase 09a step 4 there
+// is no eviction, so c.ID is unique in byConnID and a guaranteed
+// member of byUser[c.UserID] (when UserID is non-empty). The
+// deviceID-keyed conns map may have c OR may have been overwritten
+// by a later Register of another conn sharing c.DeviceID; we only
+// delete the entry if it still points at c (last-writer-wins).
 func (h *Hub) Unregister(c *Conn) {
 	h.mu.Lock()
 	if cur, ok := h.conns[c.DeviceID]; ok && cur == c {
 		delete(h.conns, c.DeviceID)
 	}
-	// Phase 09a: byConnID is keyed per-conn, so the cleanup rule is
-	// simpler than the device_id rule: if c.ID is currently mapped to
-	// c, drop it. If a same-deviceID Register has already superseded
-	// this conn, the byConnID slot was cleared at that point, so this
-	// check just no-ops.
 	if c.ID != "" {
 		if cur, ok := h.byConnID[c.ID]; ok && cur == c {
 			delete(h.byConnID, c.ID)
 		}
 	}
-	// Same reasoning for byUser: if c.ID is in its userConnSet and
-	// still points to c, drop it; if the set becomes empty, remove
-	// it. If c was already superseded, Register's cleanup path
-	// removed the entry, so this is a no-op.
 	if c.UserID != "" && c.ID != "" {
 		if set, ok := h.byUser[c.UserID]; ok {
 			set.mu.Lock()
@@ -458,10 +442,9 @@ var ErrSendFull = errors.New("send buffer full")
 type Conn struct {
 	// ID is a server-generated per-connection UUID, distinct from
 	// DeviceID. Two browser tabs from the same device share a DeviceID
-	// but get separate IDs. Phase 09a introduces this; step 1 only
-	// populates it. Step 2 switches fan-out and echo-suppression to be
-	// keyed on ID instead of DeviceID so multiple tabs of the same user
-	// coexist without one evicting the other.
+	// but get separate IDs. Phase 09a uses ID as the routing key for
+	// fan-out (via byConnID) and echo-suppression, so multiple tabs of
+	// the same user coexist without one evicting the other.
 	ID string
 
 	DeviceID string

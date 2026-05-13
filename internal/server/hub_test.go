@@ -52,35 +52,98 @@ func TestHubRegisterAndUnregister(t *testing.T) {
 	}
 }
 
-func TestHubReregisterClosesPrior(t *testing.T) {
+// Phase 09a step 4: same-device_id Register no longer evicts. Two
+// conns sharing a deviceID coexist; neither is closed by Register.
+// They have distinct Conn.IDs (assigned in step 1) and routing
+// goes via byConnID / byUser, so the hub's primary fan-out doesn't
+// care about deviceID collisions.
+func TestHubRegisterSameDeviceCoexists(t *testing.T) {
 	h := NewHub()
 	c1, calls1 := fakeConn("dev-1")
 	c2, calls2 := fakeConn("dev-1")
 
 	h.Register(c1)
-	h.Register(c2) // replaces c1
+	h.Register(c2)
 
-	// c1 should be closed
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		if calls1.Load() == 1 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if calls1.Load() != 1 {
-		t.Fatalf("c1 close: got %d calls, want 1", calls1.Load())
+	// Neither conn should have been closed. Give Register a moment
+	// in case any background goroutine were still expected to fire
+	// (it shouldn't, but assert hard either way).
+	time.Sleep(50 * time.Millisecond)
+	if calls1.Load() != 0 {
+		t.Fatalf("c1 should not be closed; got %d calls", calls1.Load())
 	}
 	if calls2.Load() != 0 {
-		t.Fatalf("c2 close: got %d calls, want 0", calls2.Load())
+		t.Fatalf("c2 should not be closed; got %d calls", calls2.Load())
 	}
 
+	// conns map is "last writer wins" lookup, so Get returns c2.
 	if h.Get("dev-1") != c2 {
-		t.Fatal("c2 should be the active conn")
+		t.Fatal("Get(dev-1) should return the most-recently-registered conn")
+	}
+
+	// Both conns are reachable via byConnID.
+	if h.GetByConnID(c1.ID) != c1 {
+		t.Fatal("c1 missing from byConnID after re-register")
+	}
+	if h.GetByConnID(c2.ID) != c2 {
+		t.Fatal("c2 missing from byConnID after re-register")
+	}
+}
+
+// Phase 09a step 4: when two same-deviceID conns share a userID,
+// both end up in the user's set. Fan-out to that user reaches both
+// tabs.
+func TestHubRegisterSameDeviceSameUserBothInByUser(t *testing.T) {
+	h := NewHub()
+	c1, _ := fakeConnWithUser("conn-1", "dev-shared", "alice")
+	c2, _ := fakeConnWithUser("conn-2", "dev-shared", "alice")
+	h.Register(c1)
+	h.Register(c2)
+
+	got := h.ConnsForUser("alice")
+	if len(got) != 2 {
+		t.Fatalf("expected 2 conns for alice, got %d", len(got))
+	}
+	ids := map[string]bool{got[0].ID: true, got[1].ID: true}
+	if !ids["conn-1"] || !ids["conn-2"] {
+		t.Fatalf("expected both conn IDs in set, got %v", ids)
+	}
+}
+
+// Phase 09a step 4: fan-out to a user with two same-deviceID tabs
+// reaches both, and the sender-conn exception suppresses the
+// sender's tab only.
+func TestHubFanOutToUserMultiTab(t *testing.T) {
+	h := NewHub()
+	sender, _ := fakeConnWithUser("conn-sender", "dev-shared", "alice")
+	other, _ := fakeConnWithUser("conn-other", "dev-shared", "alice")
+	h.Register(sender)
+	h.Register(other)
+
+	h.FanOutToUser("alice", "conn-sender", []byte("echo"))
+
+	select {
+	case <-sender.Send:
+		t.Fatal("sender tab received its own echo")
+	default:
+	}
+	select {
+	case got := <-other.Send:
+		if string(got) != "echo" {
+			t.Errorf("other tab got %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("other tab did not receive sender's message")
 	}
 }
 
 func TestHubUnregisterAfterReregisterIsNoop(t *testing.T) {
+	// Phase 09a step 4: c1 and c2 share dev-1 and coexist. The
+	// conns map points at c2 (last writer). Unregister(c1) doesn't
+	// touch the conns map (cur != c1), so Get(dev-1) still returns
+	// c2. This protects the lookup from spurious deletion when
+	// an older conn's writeLoop calls Unregister after the user
+	// has already opened a newer connection from the same device.
 	h := NewHub()
 	c1, _ := fakeConn("dev-1")
 	c2, _ := fakeConn("dev-1")
@@ -88,11 +151,10 @@ func TestHubUnregisterAfterReregisterIsNoop(t *testing.T) {
 	h.Register(c1)
 	h.Register(c2)
 
-	// c1 calls Unregister late -- it must not remove c2.
 	h.Unregister(c1)
 
 	if h.Get("dev-1") != c2 {
-		t.Fatal("unregister of stale conn should not remove c2")
+		t.Fatal("Unregister(c1) must not remove c2 from the conns map")
 	}
 }
 
@@ -359,32 +421,9 @@ func TestHubByConnIDRegisterAndUnregister(t *testing.T) {
 }
 
 func TestHubByConnIDIsPerConnNotPerDevice(t *testing.T) {
-	// Two conns from the same device get different connIDs. The
-	// byConnID map should contain both -- they do not evict each
-	// other at the connID level. (The deviceID-keyed map DOES evict
-	// the prior in step 1; step 4 will remove that eviction.)
-	h := NewHub()
-	c1, _ := fakeConnWithID("conn-1", "dev-shared")
-	c2, _ := fakeConnWithID("conn-2", "dev-shared")
-
-	h.Register(c1)
-	h.Register(c2) // device-id eviction happens; conn-1 is superseded
-
-	// After the supersede, byConnID should contain only c2: the prior
-	// conn's entry must have been cleaned up by Register, because the
-	// device-id Unregister rule no-ops for superseded conns and would
-	// otherwise leak the entry.
-	if got := h.GetByConnID("conn-2"); got != c2 {
-		t.Fatalf("c2 should be in byConnID: got %v", got)
-	}
-	if got := h.GetByConnID("conn-1"); got != nil {
-		t.Fatalf("c1 should have been cleaned from byConnID on supersede: got %v", got)
-	}
-}
-
-func TestHubByConnIDStaleUnregisterIsNoop(t *testing.T) {
-	// If c1 was superseded by c2 (same deviceID), a later
-	// Unregister(c1) must not remove c2's entries from either map.
+	// Two conns from the same device get different connIDs. As of
+	// phase 09a step 4 they coexist in the hub: there is no
+	// eviction. The byConnID map contains both.
 	h := NewHub()
 	c1, _ := fakeConnWithID("conn-1", "dev-shared")
 	c2, _ := fakeConnWithID("conn-2", "dev-shared")
@@ -392,13 +431,38 @@ func TestHubByConnIDStaleUnregisterIsNoop(t *testing.T) {
 	h.Register(c1)
 	h.Register(c2)
 
-	h.Unregister(c1) // stale unregister
+	if got := h.GetByConnID("conn-1"); got != c1 {
+		t.Fatalf("c1 should be in byConnID: got %v", got)
+	}
+	if got := h.GetByConnID("conn-2"); got != c2 {
+		t.Fatalf("c2 should be in byConnID: got %v", got)
+	}
+}
+
+func TestHubByConnIDStaleUnregisterIsNoop(t *testing.T) {
+	// Unregister(c1) removes c1 from byConnID and removes c1 from
+	// the conns map iff conns[c1.DeviceID] still points at c1.
+	// Since c2 was registered second under the same deviceID, the
+	// conns map points at c2 -- so the deviceID-keyed delete in
+	// Unregister(c1) no-ops, leaving conns[dev-shared] == c2.
+	// byConnID["conn-1"] is deleted; byConnID["conn-2"] survives.
+	h := NewHub()
+	c1, _ := fakeConnWithID("conn-1", "dev-shared")
+	c2, _ := fakeConnWithID("conn-2", "dev-shared")
+
+	h.Register(c1)
+	h.Register(c2)
+
+	h.Unregister(c1)
 
 	if got := h.GetByConnID("conn-2"); got != c2 {
-		t.Fatalf("stale unregister removed c2 from byConnID: got %v", got)
+		t.Fatalf("Unregister(c1) removed c2 from byConnID: got %v", got)
+	}
+	if got := h.GetByConnID("conn-1"); got != nil {
+		t.Fatalf("Unregister(c1) left c1 in byConnID: got %v", got)
 	}
 	if got := h.Get("dev-shared"); got != c2 {
-		t.Fatalf("stale unregister removed c2 from conns: got %v", got)
+		t.Fatalf("Unregister(c1) removed c2 from conns: got %v", got)
 	}
 }
 
@@ -590,19 +654,23 @@ func TestHubByUserUnregisterLastDropsSet(t *testing.T) {
 	}
 }
 
-func TestHubByUserSupersedeSameDeviceSameUser(t *testing.T) {
-	// Two conns share deviceID and userID (browser reconnect before
-	// old socket was reaped). c2 supersedes c1.
-	// byUser[alice] should end up containing exactly c2, not c1.
+func TestHubByUserSameDeviceSameUserCoexists(t *testing.T) {
+	// Phase 09a step 4: two conns sharing deviceID and userID
+	// (two browser tabs of the same user on the same device)
+	// coexist in the hub. byUser[alice] contains both.
 	h := NewHub()
 	c1, _ := fakeConnWithUser("conn-1", "dev-shared", "alice")
 	c2, _ := fakeConnWithUser("conn-2", "dev-shared", "alice")
 	h.Register(c1)
-	h.Register(c2) // supersedes c1
+	h.Register(c2)
 
 	got := h.ConnsForUser("alice")
-	if len(got) != 1 || got[0] != c2 {
-		t.Fatalf("after supersede: want [c2], got %v", got)
+	if len(got) != 2 {
+		t.Fatalf("want 2 conns for alice, got %d", len(got))
+	}
+	ids := map[string]bool{got[0].ID: true, got[1].ID: true}
+	if !ids["conn-1"] || !ids["conn-2"] {
+		t.Fatalf("expected both conn IDs, got %v", ids)
 	}
 }
 
@@ -634,20 +702,20 @@ func TestHubByUserAnonymousNotIndexed(t *testing.T) {
 	}
 }
 
-func TestHubByUserStaleUnregisterIsNoop(t *testing.T) {
-	// c1 was superseded by c2 for the same (deviceID, userID). A late
-	// Unregister(c1) must not remove c2 from byUser.
+func TestHubByUserUnregisterOneOfTwoLeavesOther(t *testing.T) {
+	// Two conns same (deviceID, userID). Unregister one; the other
+	// remains in byUser.
 	h := NewHub()
 	c1, _ := fakeConnWithUser("conn-1", "dev-shared", "alice")
 	c2, _ := fakeConnWithUser("conn-2", "dev-shared", "alice")
 	h.Register(c1)
 	h.Register(c2)
 
-	h.Unregister(c1) // stale
+	h.Unregister(c1)
 
 	got := h.ConnsForUser("alice")
 	if len(got) != 1 || got[0] != c2 {
-		t.Fatalf("stale unregister of c1 removed c2 from byUser: %v", got)
+		t.Fatalf("after Unregister(c1): want [c2], got %v", got)
 	}
 }
 
@@ -824,17 +892,12 @@ func TestHubFanOutToUserSendsOnlyToUser(t *testing.T) {
 }
 
 func TestHubFanOutToUserExceptConnID(t *testing.T) {
-	// alice's two tabs: sender tab and other tab. exceptConnID
-	// suppresses the sender's tab; the other tab receives.
+	// alice's two tabs (same deviceID, distinct connIDs):
+	// exceptConnID suppresses the sender's tab; the other tab
+	// receives.
 	h := NewHub()
 	sender, _ := fakeConnWithUser("conn-sender", "dev-shared", "alice")
 	other, _ := fakeConnWithUser("conn-other", "dev-shared", "alice")
-	// Use Register manually with same deviceID -- step 4 hasn't
-	// landed yet so "shared device" still evicts; for this test we
-	// want both conns live. Use distinct deviceIDs to bypass the
-	// eviction.
-	sender.DeviceID = "dev-tab-A"
-	other.DeviceID = "dev-tab-B"
 	h.Register(sender)
 	h.Register(other)
 
