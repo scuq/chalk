@@ -100,3 +100,38 @@ func TestValidate09bAuthFields(t *testing.T) {
 		t.Errorf("empty AdminUsername should pass Config.Validate: %v", err)
 	}
 }
+
+// TestValidate09bAuthFieldsOpenRegistration covers the sub-step 3
+// OpenRegistration field: default off; env=1 turns it on; --open-
+// registration flag overrides env (per the standard precedence flags
+// > env).
+func TestValidate09bAuthFieldsOpenRegistration(t *testing.T) {
+	// Default: off.
+	c, err := Load([]string{"--db-url", "postgres://x"})
+	if err != nil {
+		t.Fatalf("Load default: %v", err)
+	}
+	if c.OpenRegistration {
+		t.Errorf("default OpenRegistration = true, want false")
+	}
+
+	// Env=1: on.
+	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
+	c, err = Load([]string{"--db-url", "postgres://x"})
+	if err != nil {
+		t.Fatalf("Load env=1: %v", err)
+	}
+	if !c.OpenRegistration {
+		t.Errorf("env=1: OpenRegistration = false, want true")
+	}
+
+	// Env=1 but --open-registration=false: flag wins (off).
+	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
+	c, err = Load([]string{"--db-url", "postgres://x", "--open-registration=false"})
+	if err != nil {
+		t.Fatalf("Load flag override: %v", err)
+	}
+	if c.OpenRegistration {
+		t.Errorf("flag=false should override env=1; got OpenRegistration=true")
+	}
+}

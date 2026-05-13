@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/scuq/chalk/internal/auth"
 	"github.com/scuq/chalk/internal/friends"
 	"github.com/scuq/chalk/internal/presence"
 	"github.com/scuq/chalk/internal/proto"
@@ -48,6 +49,19 @@ type Options struct {
 	// passes the embedded chalk.Web from the module root.
 	WebFS  fs.FS
 	WebDir string
+
+	// Phase 09b sub-step 3: registration HTTP routes.
+	//
+	// If non-nil, the server mounts /api/auth/register/begin,
+	// /api/auth/register/finish, and /api/auth/config. The caller is
+	// responsible for constructing the auth.Service, the ceremony
+	// cache, and starting the cache's janitor goroutine (typically
+	// the chalkd entry point binds the cache to its lifecycle ctx).
+	//
+	// If nil, no auth routes are mounted; the existing WS handler
+	// still runs with its pre-09b ensureDeviceForTesting path. Sub-
+	// step 09b-5 cuts the WS over to session-based auth.
+	Auth *auth.HTTPDeps
 }
 
 // Server wraps the http.Server, hub, pubsub listener, presence/friends
@@ -125,6 +139,16 @@ func NewServer(opts Options) (*Server, error) {
 		pubPresence, pubFriend,
 		s.pubsub, // phase 08: listener for per-channel subscribe
 	))
+
+	// Phase 09b sub-step 3: registration endpoints. Mounted before
+	// the SPA's "/" catch-all (http.ServeMux's longest-prefix-wins
+	// routing puts /api/auth/* ahead of /, but being explicit makes
+	// future reordering safer).
+	if opts.Auth != nil {
+		if err := opts.Auth.MountRegistration(mux); err != nil {
+			return nil, fmt.Errorf("mount auth: %w", err)
+		}
+	}
 
 	// Phase 07: mount the SPA at "/". A WebFS provided via Options is
 	// mounted; if it's nil (some tests pass nil because they don't care

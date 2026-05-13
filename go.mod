@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/coder/websocket v1.8.13
+	github.com/descope/virtualwebauthn v1.0.5
 	github.com/go-webauthn/webauthn v0.17.3
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.1

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -83,6 +84,17 @@ type Config struct {
 	AdminUsername    string
 	AdminEmail       string
 	AdminDisplayName string
+
+	// OpenRegistration, when true, lets POST /api/auth/register/begin
+	// accept requests without an invite token. Off by default;
+	// intended for bootstrap of a self-hosted instance (admin
+	// creates their own account before invites exist) and dev.
+	//
+	// CHALK_OPEN_REGISTRATION, default false. The auth package also
+	// reads the env var directly at request time via
+	// auth.IsOpenRegistration(); this Config field carries the flag
+	// resolution for diagnostic logging at startup.
+	OpenRegistration bool
 }
 
 func Default() Config {
@@ -140,6 +152,8 @@ func Load(args []string) (Config, error) {
 		"admin email on first run (CHALK_ADMIN_EMAIL)")
 	fs.StringVar(&c.AdminDisplayName, "admin-display-name", c.AdminDisplayName,
 		"admin display name on first run (CHALK_ADMIN_DISPLAY_NAME)")
+	fs.BoolVar(&c.OpenRegistration, "open-registration", c.OpenRegistration,
+		"allow registration without an invite token (CHALK_OPEN_REGISTRATION)")
 
 	showVersion := fs.Bool("version", false, "print version and exit")
 	fs.Usage = func() {
@@ -196,6 +210,23 @@ func (c *Config) applyEnv() {
 		if d, err := time.ParseDuration(v); err == nil {
 			c.ShutdownGrace = d
 		}
+	}
+	// Phase 09b sub-step 3: open-registration flag.
+	if v := os.Getenv("CHALK_OPEN_REGISTRATION"); v != "" {
+		c.OpenRegistration = parseBool(v)
+	}
+}
+
+// parseBool accepts the same truthy strings as auth.IsOpenRegistration
+// and auth.IsDevMode (1, true, yes, on; case-insensitive). Anything
+// else is false. Returns the original c.OpenRegistration would be set
+// to (false for empty/unset; caller is expected to guard on env presence).
+func parseBool(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
 	}
 }
 
