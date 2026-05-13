@@ -46,4 +46,4 @@ Thumbs.db
 *.bak-*
 
 # Local one-off directory dumps
-/tree.txt
+/tree.txt.bootstrap/
