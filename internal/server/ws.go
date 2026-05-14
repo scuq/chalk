@@ -166,9 +166,10 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		sessionUser = su
 	}
 
-	// Phase 09b sub-step 5: upsert the device row tied to the
-	// authenticated user, not alice. Replaces the legacy
-	// ensureDeviceForTesting path.
+	// Phase 09b sub-step 6: strict gate. Every WS connection is
+	// bound to the session-resolved user; there's no legacy fallback
+	// anymore. The ensureDeviceForTesting shim that tied unknown
+	// devices to alice was removed in this sub-step.
 	if h.store != nil && sessionUser != nil {
 		if err := ensureDeviceForUser(ctx, h.store, deviceID, sessionUser.UserID); err != nil {
 			h.logger.Printf("ensure device: %v", err)
@@ -608,23 +609,6 @@ func pgxBegin(ctx context.Context, st *store.Store, fn func(pgx.Tx) error) (err 
 		return err
 	}
 	return tx.Commit(ctx)
-}
-
-// ensureDeviceForTesting upserts a minimal device row tied to alice.
-// PHASE 05/06 ONLY -- phase 11 replaces this with session-based device
-// resolution.
-//
-// Phase 06 update: requires that alice is active. If she's not, the
-// caller (ServeHTTP) has already rejected the connection.
-func ensureDeviceForTesting(ctx context.Context, st *store.Store, deviceID uuid.UUID) error {
-	aliceID := uuid.MustParse("00000000-0000-0000-0000-00000000a11c")
-	_, err := st.Pool.Exec(ctx,
-		`INSERT INTO devices (id, user_id, device_type, device_label)
-		 VALUES ($1, $2, 'browser-unknown', 'phase-06-test')
-		 ON CONFLICT (id) DO NOTHING`,
-		deviceID, aliceID,
-	)
-	return err
 }
 
 // writeLoop drains conn.Send.

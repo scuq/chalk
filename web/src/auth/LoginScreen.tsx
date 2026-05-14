@@ -30,6 +30,8 @@ interface Props {
   onSubmitError: (code: string, message: string) => void;
   onLoggedIn: (result: LoginResult) => void;
   onGoRegister: () => void;
+  // Phase 09b sub-step 6: "lost your passkey? recover" link.
+  onGoRecovery?: () => void;
   // showRegisterLink is true when the server's open_registration is
   // true. When false, we still show the link but the server will
   // 403 (registration_closed); the RegisterScreen handles that
@@ -82,6 +84,7 @@ export function LoginScreen({
   onSubmitError,
   onLoggedIn,
   onGoRegister,
+  onGoRecovery,
   showRegisterLink = true,
 }: Props) {
   const errorText = errorMessageFor(form.errorCode, form.errorMessage);
@@ -180,6 +183,21 @@ export function LoginScreen({
               data-testid="login-go-register"
             >
               register
+            </button>
+          </div>
+        )}
+
+        {onGoRecovery && (
+          <div class="chalk-auth-alt">
+            lost your passkey?{" "}
+            <button
+              type="button"
+              class="chalk-auth-link"
+              onClick={onGoRecovery}
+              disabled={form.busy}
+              data-testid="login-go-recovery"
+            >
+              recover with recovery code
             </button>
           </div>
         )}

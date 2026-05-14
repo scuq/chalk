@@ -1,19 +1,22 @@
 // AuthGate: branch on authStage and render the right pre-chat screen.
 //
-// Phase 09b sub-step 5b: bootstrap fetches /api/auth/me. The response
-// decides whether the user is already authed or needs to log in.
+// Phase 09b sub-step 5b: bootstrap fetches /api/auth/me.
+// Phase 09b sub-step 6: added recovery-login and regenerate-after-
+// recovery stages.
 //
 // Stages handled here:
-//   - bootstrapping       → /me fetch + loading spinner
-//   - login               → <LoginScreen>
-//   - registering         → <RegisterScreen>
-//   - confirming-recovery → <RecoveryScreen>
-//   - authed              → not handled here (App renders chat directly)
+//   - bootstrapping              → /me fetch + loading spinner
+//   - login                      → <LoginScreen>
+//   - registering                → <RegisterScreen>
+//   - confirming-recovery        → <RecoveryScreen intent="registered">
+//   - recovery-login             → <RecoveryLoginScreen>
+//   - regenerate-after-recovery  → <RegenerateScreen> (auto-fetches
+//                                  new words, then renders inner
+//                                  RecoveryScreen intent="regenerated")
+//   - authed                     → not handled here (App renders chat)
 //
 // AuthConfig (which RegisterScreen needs for the dev/open badges)
-// is lazy-fetched inside RegisterScreen on its first mount, not here.
-// Keeping the bootstrap path lean means /me is the only call on the
-// happy path of "user already logged in".
+// is lazy-fetched inside AuthGate when entering login or registering.
 
 import { useEffect } from "preact/hooks";
 import type {
@@ -22,6 +25,9 @@ import type {
   AuthStage,
   LoginForm,
   LoginResult,
+  MeResponse,
+  RecoveryLoginForm,
+  RecoveryLoginResult,
   RegistrationForm,
   RegistrationResult,
 } from "./types";
@@ -29,6 +35,8 @@ import { fetchAuthConfig, fetchMe, ApiError } from "./api";
 import { LoginScreen } from "./LoginScreen";
 import { RegisterScreen } from "./RegisterScreen";
 import { RecoveryScreen } from "./RecoveryScreen";
+import { RecoveryLoginScreen } from "./RecoveryLoginScreen";
+import { RegenerateScreen } from "./RegenerateScreen";
 
 interface Props {
   authStage: AuthStage;
@@ -36,6 +44,10 @@ interface Props {
   registration: RegistrationForm;
   registrationResult: RegistrationResult | null;
   login: LoginForm;
+  // Phase 09b sub-step 6 additions:
+  recoveryLogin: RecoveryLoginForm;
+  pendingRegenerateWords: string[] | null;
+  me: MeResponse | null;
   dispatch: (action: AuthAction) => void;
 }
 
@@ -45,6 +57,9 @@ export function AuthGate({
   registration,
   registrationResult,
   login,
+  recoveryLogin,
+  pendingRegenerateWords,
+  me,
   dispatch,
 }: Props) {
   // On mount: fetch /api/auth/me. 200 → authed (skip the screens
@@ -137,6 +152,7 @@ export function AuthGate({
           dispatch({ kind: "auth_logged_in", result })
         }
         onGoRegister={() => dispatch({ kind: "auth_go_register" })}
+        onGoRecovery={() => dispatch({ kind: "auth_go_recovery" })}
       />
     );
   }
@@ -185,8 +201,56 @@ export function AuthGate({
     }
     return (
       <RecoveryScreen
-        result={registrationResult}
+        username={registrationResult.username}
+        userID={registrationResult.userID}
+        recoveryWords={registrationResult.recoveryWords}
+        intent="registered"
         onConfirmed={() => dispatch({ kind: "auth_recovery_confirmed" })}
+      />
+    );
+  }
+
+  if (authStage === "recovery-login") {
+    return (
+      <RecoveryLoginScreen
+        form={recoveryLogin}
+        onFieldChange={(field, value) =>
+          dispatch({ kind: "auth_recovery_login_form_change", field, value })
+        }
+        onSubmitStart={() => dispatch({ kind: "auth_recovery_login_submit_start" })}
+        onSubmitError={(code, message) =>
+          dispatch({ kind: "auth_recovery_login_submit_error", code, message })
+        }
+        onRecovered={(result: RecoveryLoginResult) =>
+          dispatch({ kind: "auth_recovered", result })
+        }
+        onGoLogin={() => dispatch({ kind: "auth_go_login" })}
+      />
+    );
+  }
+
+  if (authStage === "regenerate-after-recovery") {
+    if (!me) {
+      // Shouldn't happen: auth_recovered always populates me before
+      // flipping to this stage. Defensive fallback.
+      return (
+        <div class="chalk-auth" data-testid="auth-regenerate-missing">
+          <div class="chalk-auth-card">
+            <p class="chalk-auth-error">
+              Identity missing. Please refresh and log in.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <RegenerateScreen
+        me={me}
+        pendingWords={pendingRegenerateWords}
+        onWordsLoaded={(words) =>
+          dispatch({ kind: "auth_regenerate_words_loaded", words })
+        }
+        onConfirmed={() => dispatch({ kind: "auth_regenerate_confirmed" })}
       />
     );
   }

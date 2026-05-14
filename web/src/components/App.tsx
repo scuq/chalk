@@ -349,6 +349,9 @@ export function App() {
         registration={state.registration}
         registrationResult={state.registrationResult}
         login={state.login}
+        recoveryLogin={state.recoveryLogin}
+        pendingRegenerateWords={state.pendingRegenerateWords}
+        me={state.me}
         dispatch={dispatch}
       />
     );

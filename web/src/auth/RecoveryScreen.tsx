@@ -1,21 +1,19 @@
-// RecoveryScreen: displays the one-time 24-word recovery code and
-// requires the user to confirm they've saved it before proceeding.
-// Phase 09b sub-step 4.
+// RecoveryScreen: displays a 24-word recovery code and requires
+// the user to confirm they've saved it before proceeding. Phase
+// 09b sub-step 4 introduced this screen; sub-step 6 generalized
+// it for both post-registration and post-recovery-regenerate use.
 //
 // The recovery words are the ONLY mechanism for regaining access if
 // every passkey is lost. They never leave the server again after
-// register/finish; if the user loses them, they're locked out.
+// the originating ceremony; if the user loses them, they're locked
+// out and the admin must intervene.
 //
-// Confirmation gate (sub-step 09b-4 cut):
+// Confirmation gate:
 //   - Checkbox "I have saved these recovery words"
 //   - 3-second countdown after the checkbox is ticked before the
 //     Continue button enables. The countdown is anti-muscle-memory:
 //     if the user reflexively ticks-then-clicks, the delay gives a
 //     beat to actually look at the words.
-//
-// Promoted to a stricter gate in 09b-6 (recovery login lands then,
-// and a stricter gate is appropriate when the user is being told
-// what these words are for).
 //
 // Aids:
 //   - Copy-to-clipboard button (clipboard API; falls back silently)
@@ -23,16 +21,32 @@
 //   - Word index numbers (1..24) so the user can transcribe in order
 
 import { useEffect, useState } from "preact/hooks";
-import type { RegistrationResult } from "./types";
+
+// RecoveryScreen is reused in two contexts:
+//
+//   - intent="registered": shown right after registration to display
+//     the initial 24-word recovery code.
+//   - intent="regenerated": shown right after a successful recovery
+//     login + forced regenerate, to display the freshly-rotated
+//     recovery code. The old one was consumed when the user
+//     recovered; this is its replacement.
+//
+// Copy in the header and warning banner adapts to intent; the
+// acknowledge gate + countdown apply identically because the
+// security model is identical in both cases.
+type RecoveryIntent = "registered" | "regenerated";
 
 interface Props {
-  result: RegistrationResult;
+  username: string;
+  userID: string;
+  recoveryWords: string[];
+  intent: RecoveryIntent;
   onConfirmed: () => void;
 }
 
 const COUNTDOWN_SECONDS = 3;
 
-export function RecoveryScreen({ result, onConfirmed }: Props) {
+export function RecoveryScreen({ username, userID, recoveryWords, intent, onConfirmed }: Props) {
   const [acknowledged, setAcknowledged] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(COUNTDOWN_SECONDS);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
@@ -48,7 +62,7 @@ export function RecoveryScreen({ result, onConfirmed }: Props) {
     return () => window.clearTimeout(id);
   }, [acknowledged, secondsLeft]);
 
-  const wordsText = result.recoveryWords
+  const wordsText = recoveryWords
     .map((w, i) => `${(i + 1).toString().padStart(2, " ")}. ${w}`)
     .join("\n");
 
@@ -72,9 +86,10 @@ export function RecoveryScreen({ result, onConfirmed }: Props) {
     const blob = new Blob(
       [
         "chalk recovery code\n",
-        `user: ${result.username}\n`,
-        `user_id: ${result.userID}\n`,
+        `user: ${username}\n`,
+        `user_id: ${userID}\n`,
         `generated: ${new Date().toISOString()}\n`,
+        `intent: ${intent}\n`,
         "\n",
         "KEEP THIS FILE SAFE. Anyone with these words can recover\n",
         "your chalk account if all your passkeys are lost.\n",
@@ -88,7 +103,7 @@ export function RecoveryScreen({ result, onConfirmed }: Props) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `chalk-recovery-${result.username}.txt`;
+    a.download = `chalk-recovery-${username}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -97,24 +112,34 @@ export function RecoveryScreen({ result, onConfirmed }: Props) {
 
   const canContinue = acknowledged && secondsLeft <= 0;
 
+  const titleText = intent === "registered"
+    ? "your recovery code"
+    : "your new recovery code";
+  const subtitleText = intent === "registered"
+    ? <>registered as <strong>@{username}</strong></>
+    : <>recovered as <strong>@{username}</strong>; your old code was consumed</>;
+  const warningPrefix = intent === "registered"
+    ? <strong>save these {recoveryWords.length} words now.</strong>
+    : <strong>save these {recoveryWords.length} new words now.</strong>;
+
   return (
-    <div class="chalk-auth" data-testid="recovery-screen">
+    <div class="chalk-auth" data-testid="recovery-screen" data-intent={intent}>
       <div class="chalk-auth-card chalk-auth-card--wide">
         <header class="chalk-auth-header">
-          <h2>your recovery code</h2>
+          <h2>{titleText}</h2>
           <p class="chalk-auth-subtitle">
-            registered as <strong>@{result.username}</strong>
+            {subtitleText}
           </p>
         </header>
 
         <div class="chalk-auth-warning" data-testid="recovery-warning">
-          <strong>save these {result.recoveryWords.length} words now.</strong>{" "}
+          {warningPrefix}{" "}
           They are the only way to recover your account if you lose every
           passkey. They will never be shown again.
         </div>
 
         <ol class="chalk-recovery-words" data-testid="recovery-words">
-          {result.recoveryWords.map((w, i) => (
+          {recoveryWords.map((w, i) => (
             <li key={i} class="chalk-recovery-word">
               <span class="chalk-recovery-word-index">{i + 1}.</span>
               <span class="chalk-recovery-word-text">{w}</span>

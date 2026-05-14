@@ -14,6 +14,7 @@ import type {
   AuthStage,
   LoginForm,
   MeResponse,
+  RecoveryLoginForm,
   RegistrationForm,
   RegistrationResult,
 } from "../auth/types";
@@ -79,12 +80,15 @@ export interface AppState {
   // for typing convenience but kept conceptually separate. See
   // src/auth/types.ts for the full shape and stage diagram.
   // Sub-step 5b adds login form state and the /me identity.
+  // Sub-step 6 adds the recovery login form and pending regenerate words.
   authStage: AuthStage;
   authConfig: AuthConfig | null;
   registration: RegistrationForm;
   registrationResult: RegistrationResult | null;
   login: LoginForm;
   me: MeResponse | null;
+  recoveryLogin: RecoveryLoginForm;
+  pendingRegenerateWords: string[] | null;
 }
 
 export const initialState: AppState = {
@@ -108,6 +112,9 @@ export const initialState: AppState = {
   // Phase 09b sub-step 5b additions.
   login: initialAuthState.login,
   me: initialAuthState.me,
+  // Phase 09b sub-step 6 additions.
+  recoveryLogin: initialAuthState.recoveryLogin,
+  pendingRegenerateWords: initialAuthState.pendingRegenerateWords,
 };
 
 // ---- Actions -------------------------------------------------------------

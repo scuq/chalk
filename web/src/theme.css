@@ -867,3 +867,14 @@ html, body {
   background: var(--chalk-bg);
   outline: none;
 }
+
+/* phase 09b sub-step 6: recovery-login textarea + warn-state hint. */
+.chalk-field-input--textarea {
+  resize: vertical;
+  min-height: 6em;
+  font-family: var(--chalk-mono, ui-monospace, monospace);
+}
+
+.chalk-field-hint--warn {
+  color: var(--chalk-warn);
+}

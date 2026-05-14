@@ -837,3 +837,407 @@ func hasSessionCookie(jar *cookiejar.Jar, baseURL string) bool {
 	}
 	return false
 }
+
+// ---- phase 09b sub-step 6: recovery login + regenerate -----------------
+
+// TestRecoveryFlowEndToEnd: register a user (capturing recovery words),
+// log out, then use the words to recover (no passkey required), then
+// regenerate to get a fresh recovery code, then verify the OLD words
+// no longer work and the NEW words do.
+//
+// Requires CHALK_TEST_DATABASE_URL.
+func TestRecoveryFlowEndToEnd(t *testing.T) {
+	dbURL := os.Getenv("CHALK_TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("CHALK_TEST_DATABASE_URL not set; skipping integration test")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	defer pool.Close()
+	st := &store.Store{Pool: pool}
+
+	const username = "recoverytestuser"
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM users WHERE username = $1`, username); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	defer func() {
+		if _, err := pool.Exec(ctx,
+			`DELETE FROM users WHERE username = $1`, username); err != nil {
+			t.Logf("cleanup: %v", err)
+		}
+	}()
+	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
+
+	// ---- server setup -------------------------------------------------
+	srv := httptest.NewUnstartedServer(nil)
+	addr := srv.Listener.Addr().String()
+	originURL := "http://" + addr
+
+	svc, err := auth.NewService(auth.Config{
+		RPID:          testRPID,
+		RPDisplayName: testRPName,
+		RPOrigins:     []string{originURL},
+	})
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	deps := &auth.HTTPDeps{
+		Service: svc,
+		Cache:   auth.NewCeremonyCache(time.Minute),
+		Store:   st,
+	}
+	mux := http.NewServeMux()
+	if err := deps.MountRegistration(mux); err != nil {
+		t.Fatalf("MountRegistration: %v", err)
+	}
+	srv.Config.Handler = mux
+	srv.Start()
+	defer srv.Close()
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookiejar.New: %v", err)
+	}
+	client := &http.Client{Jar: jar}
+
+	rp := virtualwebauthn.RelyingParty{
+		Name:   testRPName,
+		ID:     testRPID,
+		Origin: srv.URL,
+	}
+	vAuth := virtualwebauthn.NewAuthenticator()
+	vCred := virtualwebauthn.NewCredential(virtualwebauthn.KeyTypeEC2)
+
+	// ---- 1. Register and CAPTURE recovery words ------------------------
+	originalWords := registerUserCaptureWords(t, client, srv.URL, rp, vAuth, vCred, username)
+	if len(originalWords) != 24 {
+		t.Fatalf("expected 24 recovery words, got %d", len(originalWords))
+	}
+	vAuth.AddCredential(vCred)
+
+	// ---- 2. Log out to ensure recovery doesn't ride on the session ----
+	logoutResp, err := client.Post(srv.URL+"/api/auth/logout",
+		"application/json", nil)
+	if err != nil {
+		t.Fatalf("logout: %v", err)
+	}
+	logoutResp.Body.Close()
+	if logoutResp.StatusCode != http.StatusNoContent {
+		t.Errorf("logout status = %d, want 204", logoutResp.StatusCode)
+	}
+	if hasSessionCookie(jar, srv.URL) {
+		t.Fatalf("session cookie should be cleared after logout")
+	}
+
+	// ---- 3. Try recovery with the captured words ----------------------
+	recBody, _ := json.Marshal(map[string]any{
+		"username": username,
+		"words":    originalWords,
+	})
+	recResp, err := client.Post(srv.URL+"/api/auth/recovery",
+		"application/json", bytes.NewReader(recBody))
+	if err != nil {
+		t.Fatalf("recovery POST: %v", err)
+	}
+	defer recResp.Body.Close()
+	if recResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(recResp.Body)
+		t.Fatalf("recovery status = %d (%s: %s)",
+			recResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+	var recOut struct {
+		UserID             string `json:"user_id"`
+		Username           string `json:"username"`
+		Role               string `json:"role"`
+		SessionExpiresAt   string `json:"session_expires_at"`
+		RegenerateRequired bool   `json:"regenerate_required"`
+	}
+	if err := json.NewDecoder(recResp.Body).Decode(&recOut); err != nil {
+		t.Fatalf("decode recovery: %v", err)
+	}
+	if recOut.Username != username {
+		t.Errorf("recovery username = %q, want %q", recOut.Username, username)
+	}
+	if !recOut.RegenerateRequired {
+		t.Errorf("recovery regenerate_required = false, want true")
+	}
+	if !hasSessionCookie(jar, srv.URL) {
+		t.Errorf("expected chalk_session cookie after recovery")
+	}
+
+	// ---- 4. /me should now work --------------------------------------
+	checkMe(t, client, srv.URL, username)
+
+	// ---- 5. Reusing the same words should fail (code_used) -----------
+	recResp2, err := client.Post(srv.URL+"/api/auth/recovery",
+		"application/json", bytes.NewReader(recBody))
+	if err != nil {
+		t.Fatalf("recovery retry POST: %v", err)
+	}
+	defer recResp2.Body.Close()
+	if recResp2.StatusCode != http.StatusUnauthorized {
+		t.Errorf("recovery retry status = %d, want 401",
+			recResp2.StatusCode)
+	}
+	eb2, _ := decodeError(recResp2.Body)
+	if eb2.Error.Code != "code_used" {
+		t.Errorf("recovery retry error code = %q, want 'code_used'",
+			eb2.Error.Code)
+	}
+
+	// ---- 6. Regenerate (requires the session from step 3) -------------
+	regResp, err := client.Post(srv.URL+"/api/auth/recovery/regenerate",
+		"application/json", nil)
+	if err != nil {
+		t.Fatalf("regenerate POST: %v", err)
+	}
+	defer regResp.Body.Close()
+	if regResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(regResp.Body)
+		t.Fatalf("regenerate status = %d (%s: %s)",
+			regResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+	var regOut struct {
+		RecoveryWords []string `json:"recovery_words"`
+	}
+	if err := json.NewDecoder(regResp.Body).Decode(&regOut); err != nil {
+		t.Fatalf("decode regenerate: %v", err)
+	}
+	if len(regOut.RecoveryWords) != 24 {
+		t.Fatalf("regenerate words count = %d, want 24",
+			len(regOut.RecoveryWords))
+	}
+	// Verify the new words are different from the original.
+	if equalStringSlices(regOut.RecoveryWords, originalWords) {
+		t.Error("regenerate returned the same words as original; should differ")
+	}
+
+	// ---- 7. Log out again, try recovery with NEW words ----------------
+	logout2, _ := client.Post(srv.URL+"/api/auth/logout",
+		"application/json", nil)
+	logout2.Body.Close()
+
+	newRecBody, _ := json.Marshal(map[string]any{
+		"username": username,
+		"words":    regOut.RecoveryWords,
+	})
+	newRecResp, err := client.Post(srv.URL+"/api/auth/recovery",
+		"application/json", bytes.NewReader(newRecBody))
+	if err != nil {
+		t.Fatalf("recovery with new words: %v", err)
+	}
+	defer newRecResp.Body.Close()
+	if newRecResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(newRecResp.Body)
+		t.Fatalf("recovery (new words) status = %d (%s: %s)",
+			newRecResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+
+	// ---- 8. Old words must NOT work anymore ---------------------------
+	logout3, _ := client.Post(srv.URL+"/api/auth/logout",
+		"application/json", nil)
+	logout3.Body.Close()
+
+	oldRecBody, _ := json.Marshal(map[string]any{
+		"username": username,
+		"words":    originalWords,
+	})
+	oldRecResp, err := client.Post(srv.URL+"/api/auth/recovery",
+		"application/json", bytes.NewReader(oldRecBody))
+	if err != nil {
+		t.Fatalf("recovery with old words: %v", err)
+	}
+	defer oldRecResp.Body.Close()
+	if oldRecResp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("recovery with old words status = %d, want 401",
+			oldRecResp.StatusCode)
+	}
+	ebOld, _ := decodeError(oldRecResp.Body)
+	// Old words: server stored a fresh hash; old words won't match → invalid_words.
+	if ebOld.Error.Code != "invalid_words" {
+		t.Errorf("recovery with old words error code = %q, want 'invalid_words'",
+			ebOld.Error.Code)
+	}
+}
+
+// TestRecoveryUnknownUser: 401 unknown_user for usernames that don't exist.
+func TestRecoveryUnknownUser(t *testing.T) {
+	dbURL := os.Getenv("CHALK_TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("CHALK_TEST_DATABASE_URL not set; skipping integration test")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	defer pool.Close()
+	st := &store.Store{Pool: pool}
+
+	deps := &auth.HTTPDeps{
+		Service: newTestService(t),
+		Cache:   auth.NewCeremonyCache(time.Minute),
+		Store:   st,
+	}
+	mux := mountForTest(t, deps)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	// 24 valid-shape but wrong words.
+	fakeWords := make([]string, 24)
+	for i := range fakeWords {
+		fakeWords[i] = "abandon"
+	}
+	body, _ := json.Marshal(map[string]any{
+		"username": "doesnotexist_xyz",
+		"words":    fakeWords,
+	})
+	resp, err := http.Post(srv.URL+"/api/auth/recovery",
+		"application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", resp.StatusCode)
+	}
+	eb, _ := decodeError(resp.Body)
+	if eb.Error.Code != "unknown_user" {
+		t.Errorf("error code = %q, want 'unknown_user'", eb.Error.Code)
+	}
+}
+
+// TestRecoveryBadWordCount: 400 invalid_words when count != 24.
+func TestRecoveryBadWordCount(t *testing.T) {
+	deps := &auth.HTTPDeps{
+		Service: newTestService(t),
+		Cache:   auth.NewCeremonyCache(time.Minute),
+		Store:   &store.Store{}, // empty shell; validation fires first
+	}
+	mux := mountForTest(t, deps)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	body, _ := json.Marshal(map[string]any{
+		"username": "someuser",
+		"words":    []string{"only", "three", "words"},
+	})
+	resp, err := http.Post(srv.URL+"/api/auth/recovery",
+		"application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+	eb, _ := decodeError(resp.Body)
+	if eb.Error.Code != "invalid_words" {
+		t.Errorf("error code = %q, want 'invalid_words'", eb.Error.Code)
+	}
+}
+
+// TestRegenerateRequiresSession: regenerate without a cookie returns
+// 401 no_session.
+func TestRegenerateRequiresSession(t *testing.T) {
+	deps := &auth.HTTPDeps{
+		Service: newTestService(t),
+		Cache:   auth.NewCeremonyCache(time.Minute),
+		Store:   &store.Store{},
+	}
+	mux := mountForTest(t, deps)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/auth/recovery/regenerate",
+		"application/json", nil)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", resp.StatusCode)
+	}
+	eb, _ := decodeError(resp.Body)
+	if eb.Error.Code != "no_session" {
+		t.Errorf("error code = %q, want 'no_session'", eb.Error.Code)
+	}
+}
+
+// registerUserCaptureWords drives the full registration ceremony and
+// returns the recovery_words from /register/finish. The caller can
+// then use these for /recovery.
+func registerUserCaptureWords(t *testing.T, client *http.Client, baseURL string,
+	rp virtualwebauthn.RelyingParty, vAuth virtualwebauthn.Authenticator,
+	vCred virtualwebauthn.Credential, username string) []string {
+	t.Helper()
+	beginBody, _ := json.Marshal(map[string]any{
+		"username":     username,
+		"display_name": "Recovery Test User",
+		"email":        username + "@example.invalid",
+	})
+	beginResp, err := client.Post(baseURL+"/api/auth/register/begin",
+		"application/json", bytes.NewReader(beginBody))
+	if err != nil {
+		t.Fatalf("register/begin POST: %v", err)
+	}
+	defer beginResp.Body.Close()
+	if beginResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(beginResp.Body)
+		t.Fatalf("register/begin status = %d (%s: %s)",
+			beginResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+	var beginOut struct {
+		Options json.RawMessage `json:"options"`
+	}
+	if err := json.NewDecoder(beginResp.Body).Decode(&beginOut); err != nil {
+		t.Fatalf("decode register/begin: %v", err)
+	}
+	parsedOpts, err := virtualwebauthn.ParseAttestationOptions(string(beginOut.Options))
+	if err != nil {
+		t.Fatalf("ParseAttestationOptions: %v", err)
+	}
+	attResp := virtualwebauthn.CreateAttestationResponse(rp, vAuth, vCred, *parsedOpts)
+
+	finishBody, _ := json.Marshal(map[string]any{
+		"credential": json.RawMessage(attResp),
+	})
+	finishResp, err := client.Post(baseURL+"/api/auth/register/finish",
+		"application/json", bytes.NewReader(finishBody))
+	if err != nil {
+		t.Fatalf("register/finish POST: %v", err)
+	}
+	defer finishResp.Body.Close()
+	if finishResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(finishResp.Body)
+		t.Fatalf("register/finish status = %d (%s: %s)",
+			finishResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+	var finishOut struct {
+		RecoveryWords []string `json:"recovery_words"`
+	}
+	if err := json.NewDecoder(finishResp.Body).Decode(&finishOut); err != nil {
+		t.Fatalf("decode register/finish: %v", err)
+	}
+	return finishOut.RecoveryWords
+}
+
+// equalStringSlices: slice equality by index. Order matters.
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

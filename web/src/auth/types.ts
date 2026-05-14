@@ -47,6 +47,8 @@ export type AuthStage =
   | "login"
   | "registering"
   | "confirming-recovery"
+  | "recovery-login"
+  | "regenerate-after-recovery"
   | "authed";
 
 // AuthConfig mirrors the GET /api/auth/config response body. See
@@ -101,6 +103,25 @@ export const initialLoginForm: LoginForm = {
   errorMessage: null,
 };
 
+// RecoveryLoginForm: SPA-side draft state of the recovery login form.
+// `phrase` holds the raw text the user types/pastes; we normalize at
+// submit time. busy/error mirror LoginForm.
+export interface RecoveryLoginForm {
+  username: string;
+  phrase: string;
+  busy: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
+export const initialRecoveryLoginForm: RecoveryLoginForm = {
+  username: "",
+  phrase: "",
+  busy: false,
+  errorCode: null,
+  errorMessage: null,
+};
+
 // RegistrationResult: what register/finish returned. Held for the
 // duration of the recovery screen so the user can see their identity
 // AND copy the words. After auth_recovery_confirmed it's cleared
@@ -127,6 +148,20 @@ export interface LoginResult {
   sessionExpiresAt: string;
 }
 
+// RecoveryLoginResult: what /api/auth/recovery returned. Same identity
+// shape as LoginResult plus regenerateRequired. In 09b-6 the latter is
+// always true; future flows might set it false (e.g. if a user is
+// going through recovery merely to rotate words proactively from a
+// settings page).
+export interface RecoveryLoginResult {
+  userID: string;
+  username: string;
+  displayName: string;
+  role: string;
+  sessionExpiresAt: string;
+  regenerateRequired: boolean;
+}
+
 // MeResponse: GET /api/auth/me when a valid session exists. Mirrors
 // the server's meResponse shape.
 export interface MeResponse {
@@ -151,6 +186,12 @@ export interface AuthState {
   // StatusBar display, app title bar, future settings panel. Null
   // when not authed.
   me: MeResponse | null;
+  // Sub-step 6: recovery login form + pending regenerate state.
+  recoveryLogin: RecoveryLoginForm;
+  // pendingRegenerateWords is the new 24-word phrase returned by
+  // /recovery/regenerate. Held only for the duration of the
+  // RegenerateScreen; cleared on confirm. Null at all other times.
+  pendingRegenerateWords: string[] | null;
 }
 
 export const initialAuthState: AuthState = {
@@ -160,6 +201,8 @@ export const initialAuthState: AuthState = {
   registrationResult: null,
   login: initialLoginForm,
   me: null,
+  recoveryLogin: initialRecoveryLoginForm,
+  pendingRegenerateWords: null,
 };
 
 // AuthAction is the union of all auth-related reducer actions.
@@ -184,4 +227,12 @@ export type AuthAction =
   | { kind: "auth_logged_out" }
   // Navigation:
   | { kind: "auth_go_register" }
-  | { kind: "auth_go_login" };
+  | { kind: "auth_go_login" }
+  // Sub-step 6: recovery login:
+  | { kind: "auth_go_recovery" }
+  | { kind: "auth_recovery_login_form_change"; field: keyof RecoveryLoginForm; value: string }
+  | { kind: "auth_recovery_login_submit_start" }
+  | { kind: "auth_recovery_login_submit_error"; code: string; message: string }
+  | { kind: "auth_recovered"; result: RecoveryLoginResult }
+  | { kind: "auth_regenerate_words_loaded"; words: string[] }
+  | { kind: "auth_regenerate_confirmed" };
