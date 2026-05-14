@@ -160,6 +160,16 @@ func (d *HTTPDeps) handleRegisterBegin(w http.ResponseWriter, r *http.Request) {
 			"that username is reserved")
 		return
 	}
+	// sub-step 4 fix1: dev-mode email fill
+	// In CHALK_DEV mode, treat an empty email as a request to
+	// auto-fill <username>@localhost.invalid. This lets dev
+	// fixtures register passkeys without inventing throwaway
+	// addresses. Production registrations (CHALK_DEV unset) are
+	// unaffected: the looksLikeEmail check below still fires for
+	// an empty email and returns 400 bad_email.
+	if email == "" && IsDevMode() {
+		email = username + "@localhost.invalid"
+	}
 	if !looksLikeEmail(email) {
 		writeError(w, http.StatusBadRequest, "bad_email",
 			"email must contain @ and a domain")
