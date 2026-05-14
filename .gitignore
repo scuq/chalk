@@ -46,3 +46,9 @@ Thumbs.db
 
 # Local one-off directory dumps
 /tree.txt.bootstrap/
+
+# bootstrap idempotency markers (per-developer state)
+.bootstrap/*.done
+
+# esbuild transpile cache for the test runner
+web/.test-build/
