@@ -19,6 +19,7 @@ import (
 	"github.com/scuq/chalk/internal/auth"
 	"github.com/scuq/chalk/internal/config"
 	"github.com/scuq/chalk/internal/friends"
+	"github.com/scuq/chalk/internal/mail"
 	"github.com/scuq/chalk/internal/migrate"
 	"github.com/scuq/chalk/internal/presence"
 	"github.com/scuq/chalk/internal/server"
@@ -133,16 +134,35 @@ func run(args []string) error {
 		return fmt.Errorf("auth: %w", err)
 	}
 	ceremonyCache := auth.NewCeremonyCache(0) // default TTL
+	// Phase 09c: outbound mail. Uses CHALK_SMTP_HOST/_PORT/_FROM/...
+	// If CHALK_SMTP_HOST is unset, falls back to writing every
+	// message to stderr — handy for dev without a Mailhog container.
+	mailCfg := mail.LoadConfigFromEnv(log.Default())
+	mailer := mail.New(mailCfg)
+	if mailCfg.Host == "" {
+		log.Printf("mail: stderr fallback (set CHALK_SMTP_HOST to enable SMTP)")
+	} else {
+		log.Printf("mail: smtp host=%s port=%d from=%q",
+			mailCfg.Host, mailCfg.Port, mailCfg.From)
+	}
+	publicURL := strings.TrimSpace(os.Getenv("CHALK_PUBLIC_URL"))
 	authDeps := &auth.HTTPDeps{
 		Service:       authSvc,
 		Cache:         ceremonyCache,
 		Store:         st,
 		Logger:        log.Default(),
 		AdminUsername: cfg.AdminUsername,
+		Mailer:        mailer,
+		PublicURL:     publicURL,
 	}
 	log.Printf("auth: rp_id=%q rp_name=%q rp_origins=%v open_registration=%v dev=%v",
 		authCfg.RPID, authCfg.RPDisplayName, authCfg.RPOrigins,
 		auth.IsOpenRegistration(), auth.IsDevMode())
+	if publicURL != "" {
+		log.Printf("auth: public_url=%q (used in outgoing mail)", publicURL)
+	} else {
+		log.Printf("auth: CHALK_PUBLIC_URL unset; mail URLs will be relative")
+	}
 
 	srv, err := server.NewServer(server.Options{
 		Listen:             cfg.Listen,
@@ -200,6 +220,29 @@ func run(args []string) error {
 				}
 				if n > 0 {
 					log.Printf("session janitor: deleted %d expired session(s)", n)
+				}
+			}
+		}
+	}()
+
+	// Phase 09c: invite janitor. Sweeps silently-expired invites
+	// (used and revoked rows are kept for audit). Same hourly
+	// cadence as the session janitor.
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				n, err := st.DeleteExpiredInvites(ctx)
+				if err != nil {
+					log.Printf("invite janitor: %v", err)
+					continue
+				}
+				if n > 0 {
+					log.Printf("invite janitor: deleted %d expired invite(s)", n)
 				}
 			}
 		}

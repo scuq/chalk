@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/scuq/chalk/internal/auth"
+	"github.com/scuq/chalk/internal/mail"
 	"github.com/scuq/chalk/internal/store"
 )
 
@@ -208,15 +209,19 @@ func TestRegisterBeginClosedMode(t *testing.T) {
 }
 
 func TestRegisterBeginClosedModeWithToken(t *testing.T) {
-	// Sub-step 3: invite tokens are accepted-but-unimplemented; any
-	// non-empty token returns the placeholder rejection.
+	// Phase 09c: in closed-registration mode, the invite_token field
+	// is now actually validated. A syntactically malformed token is
+	// rejected at the shape check (400 invite_invalid_shape) before
+	// the store is consulted, which is what we exercise here. The
+	// "valid-shape but unknown token" → 404 invite_not_found path is
+	// covered by TestInvitePeekUnknown.
 	t.Setenv("CHALK_OPEN_REGISTRATION", "0")
 	deps := newDepsNoStore(t)
 	srv := httptest.NewServer(mountForTest(t, deps))
 	defer srv.Close()
 
 	body, _ := json.Marshal(map[string]any{
-		"invite_token": "anything",
+		"invite_token": "not-a-real-token!!", // malformed → 400
 		"username":     "alice",
 		"email":        "alice@example.invalid",
 	})
@@ -226,12 +231,12 @@ func TestRegisterBeginClosedModeWithToken(t *testing.T) {
 		t.Fatalf("POST: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("status = %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
 	}
 	eb, _ := decodeError(resp.Body)
-	if !strings.Contains(eb.Error.Message, "09c") {
-		t.Errorf("expected 09c marker in message, got: %q", eb.Error.Message)
+	if eb.Error.Code != "invite_invalid_shape" {
+		t.Errorf("error code = %q, want 'invite_invalid_shape'", eb.Error.Code)
 	}
 }
 
@@ -1240,4 +1245,624 @@ func equalStringSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// ---- phase 09c: invites + email change --------------------------------
+
+// TestInviteCreatePeekRegisterEndToEnd: existing user creates an
+// invite; peek returns the right metadata; a fresh registration with
+// the token succeeds; the invite is marked used.
+//
+// Requires CHALK_TEST_DATABASE_URL.
+func TestInviteCreatePeekRegisterEndToEnd(t *testing.T) {
+	dbURL := os.Getenv("CHALK_TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("CHALK_TEST_DATABASE_URL not set; skipping integration test")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	defer pool.Close()
+	st := &store.Store{Pool: pool}
+
+	const inviter = "invtestinviter"
+	const invitee = "invtestinvitee"
+	const inviteeEmail = "invtestinvitee@example.invalid"
+	cleanup := func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE username IN ($1, $2)`, inviter, invitee)
+		_, _ = pool.Exec(ctx, `DELETE FROM invites WHERE email = $1`, inviteeEmail)
+	}
+	cleanup()
+	defer cleanup()
+
+	// Inviter registers in open-registration mode (no invite needed).
+	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
+	srv := httptest.NewUnstartedServer(nil)
+	addr := srv.Listener.Addr().String()
+	originURL := "http://" + addr
+	svc, err := auth.NewService(auth.Config{
+		RPID: testRPID, RPDisplayName: testRPName, RPOrigins: []string{originURL},
+	})
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	deps := &auth.HTTPDeps{
+		Service: svc,
+		Cache:   auth.NewCeremonyCache(time.Minute),
+		Store:   st,
+	}
+	mux := http.NewServeMux()
+	if err := deps.MountRegistration(mux); err != nil {
+		t.Fatalf("MountRegistration: %v", err)
+	}
+	srv.Config.Handler = mux
+	srv.Start()
+	defer srv.Close()
+
+	jar, _ := cookiejar.New(nil)
+	inviterClient := &http.Client{Jar: jar}
+	rp := virtualwebauthn.RelyingParty{Name: testRPName, ID: testRPID, Origin: srv.URL}
+	vAuth := virtualwebauthn.NewAuthenticator()
+	vCred := virtualwebauthn.NewCredential(virtualwebauthn.KeyTypeEC2)
+	registerUser(t, inviterClient, srv.URL, rp, vAuth, vCred, inviter)
+	vAuth.AddCredential(vCred)
+
+	// Inviter creates the invite. Should succeed; returns inviteDTO.
+	createBody, _ := json.Marshal(map[string]any{
+		"email": inviteeEmail,
+		"note":  "join us",
+	})
+	createResp, err := inviterClient.Post(srv.URL+"/api/invites",
+		"application/json", bytes.NewReader(createBody))
+	if err != nil {
+		t.Fatalf("invites/create: %v", err)
+	}
+	defer createResp.Body.Close()
+	if createResp.StatusCode != http.StatusCreated {
+		eb, _ := decodeError(createResp.Body)
+		t.Fatalf("invites/create status = %d (%s: %s)",
+			createResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+	var inv struct {
+		Token  string `json:"token"`
+		Email  string `json:"email"`
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(createResp.Body).Decode(&inv); err != nil {
+		t.Fatalf("decode invite: %v", err)
+	}
+	if inv.Email != inviteeEmail {
+		t.Errorf("invite email = %q, want %q", inv.Email, inviteeEmail)
+	}
+	if inv.Status != "active" {
+		t.Errorf("invite status = %q, want active", inv.Status)
+	}
+	if inv.Token == "" {
+		t.Fatalf("invite token is empty")
+	}
+
+	// Peek (no auth required) — public client.
+	peekResp, err := http.Get(srv.URL + "/api/auth/invite/" + inv.Token)
+	if err != nil {
+		t.Fatalf("invites/peek: %v", err)
+	}
+	defer peekResp.Body.Close()
+	if peekResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(peekResp.Body)
+		t.Fatalf("peek status = %d (%s: %s)",
+			peekResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+	var peek struct {
+		Email           string `json:"email"`
+		InviterUsername string `json:"inviter_username"`
+		Status          string `json:"status"`
+	}
+	if err := json.NewDecoder(peekResp.Body).Decode(&peek); err != nil {
+		t.Fatalf("decode peek: %v", err)
+	}
+	if peek.Email != inviteeEmail || peek.InviterUsername != inviter || peek.Status != "active" {
+		t.Errorf("peek = %+v", peek)
+	}
+
+	// Now switch to invite-only mode and have the invitee register
+	// with the token. Use a fresh client + fresh authenticator.
+	t.Setenv("CHALK_OPEN_REGISTRATION", "")
+	inviteeJar, _ := cookiejar.New(nil)
+	inviteeClient := &http.Client{Jar: inviteeJar}
+	vAuth2 := virtualwebauthn.NewAuthenticator()
+	vCred2 := virtualwebauthn.NewCredential(virtualwebauthn.KeyTypeEC2)
+	registerWithInvite(t, inviteeClient, srv.URL, rp, vAuth2, vCred2,
+		invitee, inviteeEmail, inv.Token)
+
+	// Verify the invite is now marked used.
+	peekResp2, err := http.Get(srv.URL + "/api/auth/invite/" + inv.Token)
+	if err != nil {
+		t.Fatalf("invites/peek post-use: %v", err)
+	}
+	defer peekResp2.Body.Close()
+	// "used" invites are returned with 410 Gone.
+	if peekResp2.StatusCode != http.StatusGone {
+		t.Errorf("post-use peek status = %d, want 410", peekResp2.StatusCode)
+	}
+	var peek2 struct {
+		Status string `json:"status"`
+	}
+	_ = json.NewDecoder(peekResp2.Body).Decode(&peek2)
+	if peek2.Status != "used" {
+		t.Errorf("post-use peek status = %q, want 'used'", peek2.Status)
+	}
+
+	// Attempt to re-use the token in a second registration: should
+	// fail at register/begin with invite_used.
+	begin2Body, _ := json.Marshal(map[string]any{
+		"invite_token": inv.Token,
+		"username":     invitee + "2",
+		"email":        inviteeEmail,
+	})
+	beginResp, err := http.Post(srv.URL+"/api/auth/register/begin",
+		"application/json", bytes.NewReader(begin2Body))
+	if err != nil {
+		t.Fatalf("re-use begin: %v", err)
+	}
+	defer beginResp.Body.Close()
+	if beginResp.StatusCode != http.StatusGone {
+		t.Errorf("re-use begin status = %d, want 410", beginResp.StatusCode)
+	}
+	eb, _ := decodeError(beginResp.Body)
+	if eb.Error.Code != "invite_used" {
+		t.Errorf("re-use error code = %q, want invite_used", eb.Error.Code)
+	}
+}
+
+// TestInviteOnlyModeRejectsNoToken: when CHALK_OPEN_REGISTRATION is
+// unset, register/begin without an invite_token returns 403
+// registration_closed.
+func TestInviteOnlyModeRejectsNoToken(t *testing.T) {
+	t.Setenv("CHALK_OPEN_REGISTRATION", "")
+	deps := newDepsNoStore(t)
+	srv := httptest.NewServer(mountForTest(t, deps))
+	defer srv.Close()
+
+	body, _ := json.Marshal(map[string]any{
+		"username": "someuser",
+		"email":    "someuser@example.invalid",
+	})
+	resp, err := http.Post(srv.URL+"/api/auth/register/begin",
+		"application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", resp.StatusCode)
+	}
+	eb, _ := decodeError(resp.Body)
+	if eb.Error.Code != "registration_closed" {
+		t.Errorf("error code = %q, want registration_closed", eb.Error.Code)
+	}
+}
+
+// TestInviteEmailMismatch: registering with an invite token but a
+// different email returns 409 invite_email_mismatch.
+func TestInviteEmailMismatch(t *testing.T) {
+	dbURL := os.Getenv("CHALK_TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("CHALK_TEST_DATABASE_URL not set; skipping integration test")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	defer pool.Close()
+	st := &store.Store{Pool: pool}
+
+	const inviter = "mismatchinviter"
+	const inviteEmail = "intended@example.invalid"
+	cleanup := func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE username = $1`, inviter)
+		_, _ = pool.Exec(ctx, `DELETE FROM invites WHERE email = $1`, inviteEmail)
+	}
+	cleanup()
+	defer cleanup()
+
+	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
+	srv, _, _ := setupTestServerWithStore(t, st)
+	defer srv.Close()
+
+	// Bootstrap inviter via open registration, then create invite.
+	jar, _ := cookiejar.New(nil)
+	inviterClient := &http.Client{Jar: jar}
+	rp := virtualwebauthn.RelyingParty{Name: testRPName, ID: testRPID, Origin: srv.URL}
+	vAuth := virtualwebauthn.NewAuthenticator()
+	vCred := virtualwebauthn.NewCredential(virtualwebauthn.KeyTypeEC2)
+	registerUser(t, inviterClient, srv.URL, rp, vAuth, vCred, inviter)
+
+	createBody, _ := json.Marshal(map[string]any{
+		"email": inviteEmail,
+	})
+	createResp, err := inviterClient.Post(srv.URL+"/api/invites",
+		"application/json", bytes.NewReader(createBody))
+	if err != nil {
+		t.Fatalf("invite create: %v", err)
+	}
+	defer createResp.Body.Close()
+	if createResp.StatusCode != http.StatusCreated {
+		eb, _ := decodeError(createResp.Body)
+		t.Fatalf("invite create: %d %s", createResp.StatusCode, eb.Error.Message)
+	}
+	var inv struct{ Token string `json:"token"` }
+	_ = json.NewDecoder(createResp.Body).Decode(&inv)
+
+	// Now try to register with the invite but a DIFFERENT email.
+	t.Setenv("CHALK_OPEN_REGISTRATION", "")
+	begBody, _ := json.Marshal(map[string]any{
+		"invite_token": inv.Token,
+		"username":     "wronguser",
+		"email":        "wrong@example.invalid",
+	})
+	resp, err := http.Post(srv.URL+"/api/auth/register/begin",
+		"application/json", bytes.NewReader(begBody))
+	if err != nil {
+		t.Fatalf("register/begin mismatch attempt: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("status = %d, want 409", resp.StatusCode)
+	}
+	eb, _ := decodeError(resp.Body)
+	if eb.Error.Code != "invite_email_mismatch" {
+		t.Errorf("code = %q, want invite_email_mismatch", eb.Error.Code)
+	}
+}
+
+// TestInvitePeekUnknown: GET /api/auth/invite/{nonexistent} returns 404.
+func TestInvitePeekUnknown(t *testing.T) {
+	dbURL := os.Getenv("CHALK_TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("CHALK_TEST_DATABASE_URL not set; skipping integration test")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	defer pool.Close()
+	st := &store.Store{Pool: pool}
+
+	srv, _, _ := setupTestServerWithStore(t, st)
+	defer srv.Close()
+
+	// Make a valid-shape but nonexistent token.
+	tok, _ := auth.GenerateInviteToken()
+	encoded := auth.EncodeInviteToken(tok)
+	resp, err := http.Get(srv.URL + "/api/auth/invite/" + encoded)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", resp.StatusCode)
+	}
+	eb, _ := decodeError(resp.Body)
+	if eb.Error.Code != "invite_not_found" {
+		t.Errorf("code = %q, want invite_not_found", eb.Error.Code)
+	}
+}
+
+// TestEmailChangeFlowEndToEnd: register, request email change,
+// finalize via token, verify users.email updated and pending fields
+// cleared.
+func TestEmailChangeFlowEndToEnd(t *testing.T) {
+	dbURL := os.Getenv("CHALK_TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("CHALK_TEST_DATABASE_URL not set; skipping integration test")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	defer pool.Close()
+	st := &store.Store{Pool: pool}
+
+	const user = "ectestuser"
+	const newEmail = "ectestuser-new@example.invalid"
+	cleanup := func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE username = $1`, user)
+	}
+	cleanup()
+	defer cleanup()
+
+	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
+
+	// Capture sent mails: install a capturing mailer in HTTPDeps.
+	cap := &captureMailer{}
+	srv, _, _ := setupTestServerWithMailer(t, st, cap)
+	defer srv.Close()
+
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	rp := virtualwebauthn.RelyingParty{Name: testRPName, ID: testRPID, Origin: srv.URL}
+	vAuth := virtualwebauthn.NewAuthenticator()
+	vCred := virtualwebauthn.NewCredential(virtualwebauthn.KeyTypeEC2)
+	registerUser(t, client, srv.URL, rp, vAuth, vCred, user)
+	vAuth.AddCredential(vCred)
+
+	// Submit email change.
+	cap.reset()
+	chBody, _ := json.Marshal(map[string]any{"new_email": newEmail})
+	chResp, err := client.Post(srv.URL+"/api/auth/email-change",
+		"application/json", bytes.NewReader(chBody))
+	if err != nil {
+		t.Fatalf("email-change: %v", err)
+	}
+	defer chResp.Body.Close()
+	if chResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(chResp.Body)
+		t.Fatalf("email-change status = %d (%s: %s)",
+			chResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+
+	// Expect TWO sent mails: one to the new addr, one to the old.
+	if len(cap.sent) != 2 {
+		t.Fatalf("expected 2 sent mails, got %d", len(cap.sent))
+	}
+
+	// Extract the token from the verify URL in the new-addr mail.
+	var verifyMail capturedMail
+	for _, m := range cap.sent {
+		if m.To == newEmail {
+			verifyMail = m
+			break
+		}
+	}
+	if verifyMail.To == "" {
+		t.Fatalf("no mail captured to new email %s", newEmail)
+	}
+	tokenStr := extractVerifyToken(t, verifyMail.Body)
+
+	// Finalize.
+	verResp, err := http.Post(srv.URL+"/api/auth/verify-email-change/"+tokenStr,
+		"application/json", nil)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	defer verResp.Body.Close()
+	if verResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(verResp.Body)
+		t.Fatalf("verify status = %d (%s: %s)",
+			verResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+	var out struct {
+		Email string `json:"email"`
+	}
+	_ = json.NewDecoder(verResp.Body).Decode(&out)
+	if out.Email != newEmail {
+		t.Errorf("verify response email = %q, want %q", out.Email, newEmail)
+	}
+
+	// DB state: users.email = newEmail, pending_email IS NULL.
+	var dbEmail string
+	var pending *string
+	err = pool.QueryRow(ctx,
+		`SELECT email::text, pending_email::text FROM users WHERE username = $1`,
+		user,
+	).Scan(&dbEmail, &pending)
+	if err != nil {
+		t.Fatalf("post-verify select: %v", err)
+	}
+	if dbEmail != newEmail {
+		t.Errorf("DB email = %q, want %q", dbEmail, newEmail)
+	}
+	if pending != nil {
+		t.Errorf("DB pending_email = %q, want NULL", *pending)
+	}
+
+	// Second verify with same token: 410 verify_failed.
+	verResp2, err := http.Post(srv.URL+"/api/auth/verify-email-change/"+tokenStr,
+		"application/json", nil)
+	if err != nil {
+		t.Fatalf("second verify: %v", err)
+	}
+	defer verResp2.Body.Close()
+	if verResp2.StatusCode != http.StatusGone {
+		t.Errorf("second verify status = %d, want 410", verResp2.StatusCode)
+	}
+}
+
+// TestEmailChangeRejectsSameEmail: submitting the current email as
+// "new" returns 400 same_email.
+func TestEmailChangeRejectsSameEmail(t *testing.T) {
+	dbURL := os.Getenv("CHALK_TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("CHALK_TEST_DATABASE_URL not set; skipping integration test")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	defer pool.Close()
+	st := &store.Store{Pool: pool}
+
+	const user = "sameemailtest"
+	cleanup := func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE username = $1`, user)
+	}
+	cleanup()
+	defer cleanup()
+
+	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
+	srv, _, _ := setupTestServerWithStore(t, st)
+	defer srv.Close()
+
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	rp := virtualwebauthn.RelyingParty{Name: testRPName, ID: testRPID, Origin: srv.URL}
+	vAuth := virtualwebauthn.NewAuthenticator()
+	vCred := virtualwebauthn.NewCredential(virtualwebauthn.KeyTypeEC2)
+	registerUser(t, client, srv.URL, rp, vAuth, vCred, user)
+
+	currentEmail := user + "@example.invalid"
+	chBody, _ := json.Marshal(map[string]any{"new_email": currentEmail})
+	resp, err := client.Post(srv.URL+"/api/auth/email-change",
+		"application/json", bytes.NewReader(chBody))
+	if err != nil {
+		t.Fatalf("email-change: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+	eb, _ := decodeError(resp.Body)
+	if eb.Error.Code != "same_email" {
+		t.Errorf("code = %q, want same_email", eb.Error.Code)
+	}
+}
+
+// ---- helpers for 09c tests --------------------------------------------
+
+// registerWithInvite drives a registration ceremony submitting an
+// invite_token. Mirrors registerUser but adds the token to the
+// register/begin body and uses a specific email rather than the
+// dev-mode auto-fill.
+func registerWithInvite(t *testing.T, client *http.Client, baseURL string,
+	rp virtualwebauthn.RelyingParty, vAuth virtualwebauthn.Authenticator,
+	vCred virtualwebauthn.Credential, username, email, inviteToken string) {
+	t.Helper()
+	beginBody, _ := json.Marshal(map[string]any{
+		"invite_token": inviteToken,
+		"username":     username,
+		"display_name": "Invite Test User",
+		"email":        email,
+	})
+	beginResp, err := client.Post(baseURL+"/api/auth/register/begin",
+		"application/json", bytes.NewReader(beginBody))
+	if err != nil {
+		t.Fatalf("register/begin (invite): %v", err)
+	}
+	defer beginResp.Body.Close()
+	if beginResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(beginResp.Body)
+		t.Fatalf("register/begin (invite) status = %d (%s: %s)",
+			beginResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+	var beginOut struct {
+		Options json.RawMessage `json:"options"`
+	}
+	if err := json.NewDecoder(beginResp.Body).Decode(&beginOut); err != nil {
+		t.Fatalf("decode register/begin: %v", err)
+	}
+	parsedOpts, err := virtualwebauthn.ParseAttestationOptions(string(beginOut.Options))
+	if err != nil {
+		t.Fatalf("ParseAttestationOptions: %v", err)
+	}
+	attResp := virtualwebauthn.CreateAttestationResponse(rp, vAuth, vCred, *parsedOpts)
+	finishBody, _ := json.Marshal(map[string]any{
+		"credential": json.RawMessage(attResp),
+	})
+	finishResp, err := client.Post(baseURL+"/api/auth/register/finish",
+		"application/json", bytes.NewReader(finishBody))
+	if err != nil {
+		t.Fatalf("register/finish (invite): %v", err)
+	}
+	defer finishResp.Body.Close()
+	if finishResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(finishResp.Body)
+		t.Fatalf("register/finish (invite) status = %d (%s: %s)",
+			finishResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+}
+
+// setupTestServerWithStore builds a fresh httptest server with the
+// given store and a default mailer (which won't be exercised; tests
+// that want to assert on mail use setupTestServerWithMailer).
+func setupTestServerWithStore(t *testing.T, st *store.Store) (*httptest.Server, *auth.HTTPDeps, *http.ServeMux) {
+	t.Helper()
+	return setupTestServerWithMailer(t, st, &noopMailer{})
+}
+
+// setupTestServerWithMailer is like setupTestServerWithStore but
+// installs a specific Mailer for assertion-friendly tests.
+func setupTestServerWithMailer(t *testing.T, st *store.Store, mailer mail.Mailer) (*httptest.Server, *auth.HTTPDeps, *http.ServeMux) {
+	t.Helper()
+	srv := httptest.NewUnstartedServer(nil)
+	addr := srv.Listener.Addr().String()
+	originURL := "http://" + addr
+	svc, err := auth.NewService(auth.Config{
+		RPID: testRPID, RPDisplayName: testRPName, RPOrigins: []string{originURL},
+	})
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	deps := &auth.HTTPDeps{
+		Service: svc,
+		Cache:   auth.NewCeremonyCache(time.Minute),
+		Store:   st,
+		Mailer:  mailer,
+	}
+	mux := http.NewServeMux()
+	if err := deps.MountRegistration(mux); err != nil {
+		t.Fatalf("MountRegistration: %v", err)
+	}
+	srv.Config.Handler = mux
+	srv.Start()
+	return srv, deps, mux
+}
+
+// noopMailer discards every Send call. Mailer for tests that don't
+// care about mail content.
+type noopMailer struct{}
+
+func (n *noopMailer) Send(ctx context.Context, to, subject, body string) error {
+	return nil
+}
+
+// capturedMail is one captured email.
+type capturedMail struct {
+	To      string
+	Subject string
+	Body    string
+}
+
+// captureMailer records every Send for later inspection.
+type captureMailer struct {
+	sent []capturedMail
+}
+
+func (c *captureMailer) Send(ctx context.Context, to, subject, body string) error {
+	c.sent = append(c.sent, capturedMail{To: to, Subject: subject, Body: body})
+	return nil
+}
+
+func (c *captureMailer) reset() { c.sent = nil }
+
+// extractVerifyToken pulls the verify token out of a mail body that
+// contains a URL like ".../verify_email=<token>". Used by the
+// email-change test.
+func extractVerifyToken(t *testing.T, body string) string {
+	t.Helper()
+	marker := "verify_email="
+	idx := strings.Index(body, marker)
+	if idx < 0 {
+		t.Fatalf("verify_email= not found in mail body:\n%s", body)
+	}
+	rest := body[idx+len(marker):]
+	end := len(rest)
+	for i, r := range rest {
+		if r == ' ' || r == '\r' || r == '\n' || r == '\t' {
+			end = i
+			break
+		}
+	}
+	return rest[:end]
 }

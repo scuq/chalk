@@ -48,11 +48,16 @@ type CeremonyEntry struct {
 // that we need to remember through to register/finish. None of these
 // have been validated against the database yet — that happens at finish
 // time inside the transaction (collision checks, etc).
+//
+// Phase 09c: InviteToken (if non-nil) is the raw 32-byte invite token
+// that authorized this registration. At finish-time the registration
+// transaction marks it as used. Nil in open-registration mode.
 type PendingUser struct {
 	ID          uuid.UUID
 	Username    string
 	DisplayName string
 	Email       string
+	InviteToken []byte
 }
 
 // DefaultCeremonyTTL is the lifetime of a pending ceremony before it's

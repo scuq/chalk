@@ -92,6 +92,57 @@ dev-down: ## Stop and remove the dev Postgres container
 dev-logs: ## Tail the dev Postgres container logs
 	docker logs -f --tail=100 $${CHALK_DEV_PG_NAME:-chalk-dev-pg}
 
+# ---- dev mail (phase 09c) ------------------------------------------------
+# Mailpit is a developer-facing SMTP sink: it accepts all incoming
+# mail and exposes a web UI to inspect what was sent. chalkd is
+# configured (via CHALK_SMTP_HOST=localhost CHALK_SMTP_PORT=1025)
+# to deliver invite + email-change verification messages to it
+# instead of stderr.
+#
+# Mailpit (axllent/mailpit) is the actively-maintained successor to
+# Mailhog, with native multi-arch images (amd64, arm64, 386). We use
+# it specifically because Mailhog never shipped an ARM64 build and
+# requires QEMU emulation on Apple Silicon / ARM hosts.
+#
+# These targets are independent of `make dev`: run dev-mail-up before
+# (or after) `make dev` and chalkd will start using it on next restart.
+# If Mailpit isn't running, chalkd falls back to logging the message
+# bodies to its own stderr.
+
+CHALK_DEV_MAIL_NAME ?= chalk-dev-mailpit
+CHALK_DEV_MAIL_SMTP_PORT ?= 1025
+CHALK_DEV_MAIL_UI_PORT ?= 8025
+CHALK_DEV_MAIL_IMAGE ?= axllent/mailpit:v1.21
+
+.PHONY: dev-mail-up
+dev-mail-up: ## Start a Mailpit container for dev (SMTP on 1025, UI on 8025)
+	@if docker inspect $(CHALK_DEV_MAIL_NAME) >/dev/null 2>&1; then \
+	  echo "$(CHALK_DEV_MAIL_NAME) already exists; starting it"; \
+	  docker start $(CHALK_DEV_MAIL_NAME) >/dev/null; \
+	else \
+	  echo "creating $(CHALK_DEV_MAIL_NAME)"; \
+	  docker run -d --name $(CHALK_DEV_MAIL_NAME) \
+	    -p $(CHALK_DEV_MAIL_SMTP_PORT):1025 \
+	    -p $(CHALK_DEV_MAIL_UI_PORT):8025 \
+	    $(CHALK_DEV_MAIL_IMAGE) >/dev/null; \
+	fi
+	@echo "mailpit ready:"
+	@echo "  smtp:  localhost:$(CHALK_DEV_MAIL_SMTP_PORT)"
+	@echo "  ui:    http://localhost:$(CHALK_DEV_MAIL_UI_PORT)"
+	@echo ""
+	@echo "to point chalkd at mailpit, run with:"
+	@echo "  CHALK_SMTP_HOST=localhost CHALK_SMTP_PORT=$(CHALK_DEV_MAIL_SMTP_PORT) make dev"
+
+.PHONY: dev-mail-down
+dev-mail-down: ## Stop and remove the dev Mailpit container
+	@docker stop $(CHALK_DEV_MAIL_NAME) >/dev/null 2>&1 || true
+	@docker rm   $(CHALK_DEV_MAIL_NAME) >/dev/null 2>&1 || true
+	@echo "dev mailpit container removed"
+
+.PHONY: dev-mail-logs
+dev-mail-logs: ## Tail the dev Mailpit container logs
+	docker logs -f --tail=100 $(CHALK_DEV_MAIL_NAME)
+
 .PHONY: clean
 clean: ## Remove build artifacts
 	rm -rf bin/ dist/ coverage.*

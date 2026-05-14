@@ -2,10 +2,13 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // User is a chalk account. One person may own multiple devices.
@@ -296,4 +299,141 @@ func (s *Store) namesByIDFromColumn(ctx context.Context, ids []uuid.UUID, col st
 		return nil, fmt.Errorf("rows: %w", err)
 	}
 	return out, nil
+}
+
+// ---- phase 09c: email change ----------------------------------------
+
+// ErrPendingEmailMismatch is returned by FinalizeEmailChange when the
+// submitted token doesn't match the user's stored pending_email_token,
+// the pending_email_expires_at has passed, or no change is pending.
+// All three conditions surface as the same error to avoid disclosing
+// which field disagreed.
+var ErrPendingEmailMismatch = errors.New("pending email mismatch")
+
+// SetPendingEmailParams is the input to SetPendingEmail.
+type SetPendingEmailParams struct {
+	UserID    uuid.UUID
+	NewEmail  string
+	Token     []byte // 32 random bytes, application-generated
+	ExpiresAt time.Time
+}
+
+// SetPendingEmail installs a pending email-change for userID. Idempotent
+// in the sense that calling it again replaces any prior pending state
+// (the user is starting over with a new candidate email). The unique
+// partial index on users.pending_email enforces that no two users can
+// have the same pending change in flight at once; if it fires, the
+// caller gets ErrEmailTaken.
+//
+// Validation NOT done here (caller's responsibility): email shape,
+// blacklist check, collision with users.email. Done at the auth HTTP
+// layer where the error mapping is appropriate.
+func (s *Store) SetPendingEmail(ctx context.Context, p SetPendingEmailParams) error {
+	if p.UserID == uuid.Nil {
+		return fmt.Errorf("SetPendingEmail: user_id required")
+	}
+	if p.NewEmail == "" {
+		return fmt.Errorf("SetPendingEmail: new_email required")
+	}
+	if len(p.Token) == 0 {
+		return fmt.Errorf("SetPendingEmail: token required")
+	}
+	if p.ExpiresAt.IsZero() {
+		return fmt.Errorf("SetPendingEmail: expires_at required")
+	}
+	tag, err := s.Pool.Exec(ctx,
+		`UPDATE users
+		    SET pending_email = $2,
+		        pending_email_token = $3,
+		        pending_email_expires_at = $4
+		  WHERE id = $1`,
+		p.UserID, p.NewEmail, p.Token, p.ExpiresAt,
+	)
+	if err != nil {
+		// pending_email unique constraint name from migration 0011.
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "users_pending_email_idx") ||
+			(strings.Contains(msg, "unique") && strings.Contains(msg, "pending_email")) {
+			return ErrEmailTaken
+		}
+		return fmt.Errorf("set pending email: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ClearPendingEmail wipes any pending email-change state for userID.
+// Called by the user-cancel path and as cleanup when the change is
+// finalized. Idempotent: clearing a user with no pending change is a
+// no-op.
+func (s *Store) ClearPendingEmail(ctx context.Context, userID uuid.UUID) error {
+	if userID == uuid.Nil {
+		return fmt.Errorf("ClearPendingEmail: user_id required")
+	}
+	_, err := s.Pool.Exec(ctx,
+		`UPDATE users
+		    SET pending_email = NULL,
+		        pending_email_token = NULL,
+		        pending_email_expires_at = NULL
+		  WHERE id = $1`,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("clear pending email: %w", err)
+	}
+	return nil
+}
+
+// FinalizeEmailChange atomically:
+//   1. Verifies that the user has a pending email-change matching token
+//      that hasn't expired.
+//   2. Copies pending_email → email, sets email_verified_at = now().
+//   3. Clears all pending_email_* fields.
+//
+// Returns:
+//   - the user's ID + the new email on success
+//   - ErrPendingEmailMismatch if no row matches (token wrong, expired,
+//     or no pending change)
+//   - ErrEmailTaken if a race with another user's same-email registration
+//     has occurred between SetPendingEmail and finalize (vanishingly
+//     rare but possible).
+//
+// Implementation note: the UPDATE clause matches by token AND
+// expires_at > now() AND pending_email IS NOT NULL. If zero rows
+// match, ErrPendingEmailMismatch is returned. A unique-violation on
+// the new users.email value surfaces as ErrEmailTaken.
+func (s *Store) FinalizeEmailChange(ctx context.Context, token []byte) (uuid.UUID, string, error) {
+	if len(token) == 0 {
+		return uuid.Nil, "", fmt.Errorf("FinalizeEmailChange: token required")
+	}
+	var userID uuid.UUID
+	var newEmail string
+	err := s.Pool.QueryRow(ctx,
+		`UPDATE users
+		    SET email = pending_email,
+		        email_verified_at = now(),
+		        pending_email = NULL,
+		        pending_email_token = NULL,
+		        pending_email_expires_at = NULL
+		  WHERE pending_email_token = $1
+		    AND pending_email IS NOT NULL
+		    AND pending_email_expires_at > now()
+		  RETURNING id, email::text`,
+		token,
+	).Scan(&userID, &newEmail)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, "", ErrPendingEmailMismatch
+	}
+	if err != nil {
+		// Race with another user grabbing the same email between
+		// SetPendingEmail and FinalizeEmailChange. The users.email
+		// unique index fires.
+		if isUserUniqueViolation(err, "email") {
+			return uuid.Nil, "", ErrEmailTaken
+		}
+		return uuid.Nil, "", fmt.Errorf("finalize email change: %w", err)
+	}
+	return userID, newEmail, nil
 }

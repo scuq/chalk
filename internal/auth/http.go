@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 
+	"github.com/scuq/chalk/internal/mail"
 	"github.com/scuq/chalk/internal/store"
 )
 
@@ -54,15 +56,41 @@ type HTTPDeps struct {
 	// when unset. The reserved-username check is exempted only for
 	// this exact string match.
 	AdminUsername string
+
+	// Phase 09c additions:
+
+	// Mailer delivers invite emails and email-change verification
+	// links. Required when CHALK_OPEN_REGISTRATION is unset (i.e. in
+	// invite-only mode) and whenever an authenticated user requests
+	// an email change. May be nil in tests that don't exercise mail.
+	Mailer mail.Mailer
+
+	// PublicURL is the externally-visible origin used to build invite
+	// and email-change verification URLs sent in outgoing mail. Empty
+	// → relative URLs ("/?invite=...") which work but require the
+	// recipient to be on the same origin as chalkd.
+	PublicURL string
 }
 
-// MountRegistration registers the sub-step 3 HTTP endpoints on mux.
+// MountRegistration registers the auth HTTP endpoints on mux.
 //
 // Routes:
 //
-//	POST /api/auth/register/begin   → BeginRegistration
-//	POST /api/auth/register/finish  → FinishRegistration
-//	GET  /api/auth/config           → public RP config for the SPA
+//	POST /api/auth/register/begin            → BeginRegistration
+//	POST /api/auth/register/finish           → FinishRegistration
+//	GET  /api/auth/config                    → public RP config for the SPA
+//	POST /api/auth/authenticate/begin        → BeginLogin
+//	POST /api/auth/authenticate/finish       → FinishLogin
+//	POST /api/auth/logout                    → DeleteSession + clear cookie
+//	GET  /api/auth/me                        → identity from session cookie
+//	POST /api/auth/recovery                  → recovery-code login
+//	POST /api/auth/recovery/regenerate       → rotate recovery code
+//	POST /api/invites                        → create invite (session)
+//	GET  /api/invites/mine                   → list my invites (session)
+//	DELETE /api/invites/{token}              → revoke my invite (session)
+//	GET  /api/auth/invite/{token}            → peek invite (no auth)
+//	POST /api/auth/email-change              → start email change (session)
+//	POST /api/auth/verify-email-change/{token} → finalize email change
 //
 // The handlers are stateless apart from the *CeremonyCache; the
 // service is reused across requests.
@@ -84,6 +112,13 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	// Sub-step 6: recovery login + forced regenerate.
 	mux.HandleFunc("POST /api/auth/recovery", d.handleRecovery)
 	mux.HandleFunc("POST /api/auth/recovery/regenerate", d.handleRecoveryRegenerate)
+	// Phase 09c-1: invites + email change.
+	mux.HandleFunc("POST /api/invites", d.handleCreateInvite)
+	mux.HandleFunc("GET /api/invites/mine", d.handleListMyInvites)
+	mux.HandleFunc("DELETE /api/invites/{token}", d.handleRevokeInvite)
+	mux.HandleFunc("GET /api/auth/invite/{token}", d.handlePeekInvite)
+	mux.HandleFunc("POST /api/auth/email-change", d.handleEmailChangeRequest)
+	mux.HandleFunc("POST /api/auth/verify-email-change/{token}", d.handleVerifyEmailChange)
 	return nil
 }
 
@@ -180,8 +215,9 @@ func (d *HTTPDeps) handleRegisterBegin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad_json", err.Error())
 		return
 	}
-	if err := d.checkRegistrationAllowed(req); err != nil {
-		writeError(w, http.StatusForbidden, "registration_closed", err.Error())
+	invite, authErr := d.checkRegistrationAllowed(r.Context(), req)
+	if authErr != nil {
+		writeAuthErr(w, authErr)
 		return
 	}
 	username := strings.ToLower(strings.TrimSpace(req.Username))
@@ -217,6 +253,34 @@ func (d *HTTPDeps) handleRegisterBegin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Phase 09c: when registering with an invite, the chosen email
+	// MUST match the invite's email. We don't let users grab an
+	// invite for one address and register under a different one;
+	// that defeats the email-of-record gate. Open-registration mode
+	// (admin bootstrap, dev) has no invite to compare against.
+	if invite != nil && !strings.EqualFold(invite.Email, email) {
+		writeError(w, http.StatusConflict, "invite_email_mismatch",
+			"invite was issued for a different email address")
+		return
+	}
+
+	// Phase 09c: email blacklist check. Bypassed in open-registration
+	// mode so the admin can be bootstrapped even when their email
+	// was previously blacklisted (e.g. fresh DB after a purge).
+	if invite != nil {
+		blocked, err := d.Store.IsEmailBlacklisted(r.Context(), email)
+		if err != nil {
+			d.Logger.Printf("register/begin: blacklist check: %v", err)
+			writeError(w, http.StatusInternalServerError, "lookup_failed", "internal error")
+			return
+		}
+		if blocked {
+			writeError(w, http.StatusForbidden, "email_blacklisted",
+				"that email cannot be registered")
+			return
+		}
+	}
+
 	// Pre-flight collision checks. The transactional RegisterUser
 	// repeats these at the DB level, so a race during the WebAuthn
 	// ceremony (5min window) is caught there too; doing it here
@@ -246,6 +310,9 @@ func (d *HTTPDeps) handleRegisterBegin(w http.ResponseWriter, r *http.Request) {
 		Username:    username,
 		DisplayName: displayName,
 		Email:       email,
+	}
+	if invite != nil {
+		pending.InviteToken = invite.Token
 	}
 	wauthUser := &User{
 		ID:          pending.ID,
@@ -398,6 +465,25 @@ func (d *HTTPDeps) handleRegisterFinish(w http.ResponseWriter, r *http.Request) 
 			writeError(w, http.StatusInternalServerError, "persist_failed",
 				"could not persist registration")
 			return
+		}
+	}
+
+	// Phase 09c: mark the invite as used now that the user row is
+	// persisted. We do this AFTER RegisterUser (not inside its
+	// transaction) so that an invite-mark failure can't roll back a
+	// successful registration. The cost of this design is that a
+	// crash between the two writes leaves the user registered with
+	// the invite still active; the next registration attempt with
+	// the same token would 409 (username/email collision) so the
+	// invite isn't actually re-usable. Best-effort logging is fine.
+	if len(entry.PendingUser.InviteToken) > 0 {
+		if markErr := d.Store.MarkInviteUsed(r.Context(),
+			entry.PendingUser.InviteToken,
+			entry.PendingUser.ID,
+		); markErr != nil {
+			d.Logger.Printf("register/finish: MarkInviteUsed for user %s: %v",
+				entry.PendingUser.ID, markErr)
+			// Don't fail the registration; the user IS registered.
 		}
 	}
 
@@ -734,24 +820,92 @@ func (d *HTTPDeps) handleMe(w http.ResponseWriter, r *http.Request) {
 // checkRegistrationAllowed enforces the registration-mode policy.
 //
 //   - CHALK_OPEN_REGISTRATION=1: always allow; invite_token ignored.
-//   - default:                   require a non-empty invite_token, but
-//                                until 09c lands invite validation,
-//                                ALWAYS reject (no tokens are valid).
+//     Used for admin bootstrap and during dev. Returns nil and a nil
+//     invite.
+//   - default: require a valid, active invite_token. Returns the
+//     invite for use by downstream checks (email-match) and the
+//     register/finish path (mark used).
 //
-// The two-mode design means production deploys can boot in open mode,
-// register the admin, set CHALK_OPEN_REGISTRATION=0, and from then on
-// rely on invites (which 09c adds). Until 09c, "closed registration"
-// means "registration is locked; only the admin who was created in
-// open mode can use the service".
-func (d *HTTPDeps) checkRegistrationAllowed(req registerBeginRequest) error {
+// Error returns map to HTTP status codes in the caller:
+//   - "registration_closed" + 403 for missing token
+//   - "invite_not_found" + 404 for unknown token
+//   - "invite_invalid_shape" + 400 for malformed token
+//   - "invite_used" / "invite_revoked" / "invite_expired" + 410 for
+//     non-active tokens (Gone is the appropriate status: the token
+//     existed but is no longer usable)
+//
+// Returns (nil, nil) on success in open-registration mode and
+// (&invite, nil) when invite validation succeeded.
+func (d *HTTPDeps) checkRegistrationAllowed(ctx context.Context, req registerBeginRequest) (*store.Invite, *authError) {
 	if IsOpenRegistration() {
-		return nil
+		return nil, nil
 	}
 	if req.InviteToken == "" {
-		return errors.New("registration is closed; an invite token is required")
+		return nil, &authError{
+			status:  http.StatusForbidden,
+			code:    "registration_closed",
+			message: "registration is closed; an invite token is required",
+		}
 	}
-	// We have a token but no validator yet (09c). Always reject.
-	return errors.New("invite tokens not yet implemented (09c)")
+	tokenBytes, err := DecodeInviteToken(req.InviteToken)
+	if err != nil {
+		return nil, &authError{
+			status:  http.StatusBadRequest,
+			code:    "invite_invalid_shape",
+			message: "invite token is malformed",
+		}
+	}
+	inv, err := d.Store.GetInvite(ctx, tokenBytes)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, &authError{
+			status:  http.StatusNotFound,
+			code:    "invite_not_found",
+			message: "invite token not found",
+		}
+	}
+	if err != nil {
+		d.Logger.Printf("checkRegistrationAllowed: GetInvite: %v", err)
+		return nil, &authError{
+			status:  http.StatusInternalServerError,
+			code:    "lookup_failed",
+			message: "could not look up invite",
+		}
+	}
+	switch inv.Status() {
+	case "used":
+		return nil, &authError{
+			status:  http.StatusGone,
+			code:    "invite_used",
+			message: "this invite has already been used",
+		}
+	case "revoked":
+		return nil, &authError{
+			status:  http.StatusGone,
+			code:    "invite_revoked",
+			message: "this invite was revoked by the sender",
+		}
+	case "expired":
+		return nil, &authError{
+			status:  http.StatusGone,
+			code:    "invite_expired",
+			message: "this invite has expired",
+		}
+	}
+	return &inv, nil
+}
+
+// authError is the internal error shape returned by the validation
+// helpers. The caller maps it to an HTTP response via the writeAuthErr
+// helper.
+type authError struct {
+	status  int
+	code    string
+	message string
+}
+
+// writeAuthErr serializes an authError to the HTTP response.
+func writeAuthErr(w http.ResponseWriter, e *authError) {
+	writeError(w, e.status, e.code, e.message)
 }
 
 // looksLikeEmail is a minimal check. Real RFC 5322 validation is the
