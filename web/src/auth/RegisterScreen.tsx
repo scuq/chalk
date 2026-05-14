@@ -32,6 +32,8 @@ interface Props {
   onSubmitStart: () => void;
   onSubmitError: (code: string, message: string) => void;
   onRegistered: (result: RegistrationResult) => void;
+  // Phase 09b sub-step 5b: "have an account? log in" link.
+  onGoLogin?: () => void;
 }
 
 // USER_FACING_ERROR_CODES is the set of server-returned error codes
@@ -70,6 +72,7 @@ export function RegisterScreen({
   onSubmitStart,
   onSubmitError,
   onRegistered,
+  onGoLogin,
 }: Props) {
   // We don't keep form state here -- it's in the reducer so refresh-
   // through-rerenders preserve typing.
@@ -291,6 +294,21 @@ export function RegisterScreen({
             )}
           </div>
         </form>
+
+        {onGoLogin && (
+          <div class="chalk-auth-alt">
+            have an account?{" "}
+            <button
+              type="button"
+              class="chalk-auth-link"
+              onClick={onGoLogin}
+              disabled={form.busy}
+              data-testid="register-go-login"
+            >
+              log in
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

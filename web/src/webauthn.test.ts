@@ -11,7 +11,13 @@ import {
   bytesToBase64url,
   base64urlToBytes,
   classifyWebAuthnError,
+  decodeAssertionOptions,
+  encodeAssertionResponse,
   WebAuthnError,
+} from "./webauthn";
+import type {
+  AssertionResponseJSON,
+  CredentialAssertionOptionsJSON,
 } from "./webauthn";
 
 // ---- base64url round-trips ---------------------------------------------
@@ -136,4 +142,137 @@ test("classifyWebAuthnError passes through existing WebAuthnError", () => {
   const classified = classifyWebAuthnError(original);
   // Should be the same instance, not wrapped again.
   assert.equal(classified, original);
+});
+
+// ---- assertion ceremony (phase 09b sub-step 5b) ------------------------
+
+// Helper: build a base64url-encoded string from a byte sequence.
+function b64u(bytes: number[]): string {
+  return bytesToBase64url(new Uint8Array(bytes));
+}
+
+test("decodeAssertionOptions decodes a minimal assertion options blob", () => {
+  // Server-sent challenge is 32 random bytes; allowCredentials list
+  // has one credential with a 16-byte ID and a transports hint.
+  const challenge = b64u(Array.from({ length: 32 }, (_, i) => i * 3));
+  const credID = b64u(Array.from({ length: 16 }, (_, i) => i + 100));
+  const json: CredentialAssertionOptionsJSON = {
+    publicKey: {
+      challenge,
+      timeout: 60000,
+      rpId: "localhost",
+      allowCredentials: [{
+        type: "public-key",
+        id: credID,
+        transports: ["internal", "hybrid"],
+      }],
+      userVerification: "preferred",
+    },
+  };
+  const decoded = decodeAssertionOptions(json);
+  // Challenge is a BufferSource. Cast to Uint8Array to inspect.
+  const chBytes = new Uint8Array(decoded.publicKey!.challenge as ArrayBuffer);
+  assert.equal(chBytes.length, 32, "challenge length preserved");
+  assert.equal(chBytes[0], 0);
+  assert.equal(chBytes[1], 3);
+  assert.equal(chBytes[31], 31 * 3);
+
+  // allowCredentials decoded with IDs as BufferSource.
+  const allow = decoded.publicKey!.allowCredentials;
+  assert.ok(allow, "allowCredentials present");
+  assert.equal(allow!.length, 1, "single allowed credential");
+  const idBytes = new Uint8Array(allow![0].id as ArrayBuffer);
+  assert.equal(idBytes.length, 16, "credential ID length preserved");
+  assert.equal(idBytes[0], 100);
+  assert.equal(idBytes[15], 115);
+  assert.deepEqual(allow![0].transports, ["internal", "hybrid"]);
+
+  // Pass-through scalar fields.
+  assert.equal(decoded.publicKey!.timeout, 60000);
+  assert.equal(decoded.publicKey!.rpId, "localhost");
+  assert.equal(decoded.publicKey!.userVerification, "preferred");
+});
+
+test("decodeAssertionOptions handles missing optional fields", () => {
+  const challenge = b64u([1, 2, 3, 4]);
+  const json: CredentialAssertionOptionsJSON = {
+    publicKey: { challenge },
+  };
+  const decoded = decodeAssertionOptions(json);
+  // allowCredentials defaults to []; no crash.
+  assert.deepEqual(decoded.publicKey!.allowCredentials, []);
+  assert.equal(decoded.publicKey!.timeout, undefined);
+  assert.equal(decoded.publicKey!.rpId, undefined);
+});
+
+test("encodeAssertionResponse round-trips clientDataJSON bytes", () => {
+  // Fake a PublicKeyCredential whose AssertionResponse has well-known
+  // byte sequences in each binary field. We don't use any DOM types;
+  // just satisfy the shape encodeAssertionResponse reads.
+  const clientData = new Uint8Array([10, 20, 30, 40]);
+  const authData = new Uint8Array([50, 60, 70]);
+  const sig = new Uint8Array([80, 90]);
+  const userHandle = new Uint8Array([100, 110, 120, 130]);
+
+  const fakeResponse = {
+    clientDataJSON: clientData.buffer,
+    authenticatorData: authData.buffer,
+    signature: sig.buffer,
+    userHandle: userHandle.buffer,
+  };
+  const fakeCred = {
+    id: "test-credential-id",
+    rawId: new Uint8Array([1, 2, 3, 4, 5]).buffer,
+    type: "public-key",
+    response: fakeResponse,
+    authenticatorAttachment: "platform",
+    getClientExtensionResults: () => ({}),
+  };
+  // Cast: the function expects PublicKeyCredential but we don't have
+  // DOM types in the test runner. Shape matches.
+  const out: AssertionResponseJSON = encodeAssertionResponse(fakeCred as unknown as PublicKeyCredential);
+  assert.equal(out.type, "public-key");
+  assert.equal(out.id, "test-credential-id");
+  assert.equal(out.authenticatorAttachment, "platform");
+  // Each binary field decodes back to its original bytes.
+  assert.deepEqual(Array.from(base64urlToBytes(out.rawId)), [1, 2, 3, 4, 5]);
+  assert.deepEqual(Array.from(base64urlToBytes(out.response.clientDataJSON)),
+    [10, 20, 30, 40]);
+  assert.deepEqual(Array.from(base64urlToBytes(out.response.authenticatorData)),
+    [50, 60, 70]);
+  assert.deepEqual(Array.from(base64urlToBytes(out.response.signature)),
+    [80, 90]);
+  assert.ok(out.response.userHandle, "userHandle present");
+  assert.deepEqual(Array.from(base64urlToBytes(out.response.userHandle!)),
+    [100, 110, 120, 130]);
+});
+
+test("encodeAssertionResponse omits userHandle when null/absent", () => {
+  const fakeCred = {
+    id: "cred",
+    rawId: new Uint8Array([1]).buffer,
+    type: "public-key",
+    response: {
+      clientDataJSON: new Uint8Array([1]).buffer,
+      authenticatorData: new Uint8Array([2]).buffer,
+      signature: new Uint8Array([3]).buffer,
+      userHandle: null,
+    },
+    authenticatorAttachment: null,
+    getClientExtensionResults: () => ({}),
+  };
+  const out = encodeAssertionResponse(fakeCred as unknown as PublicKeyCredential);
+  assert.equal(out.response.userHandle, undefined,
+    "userHandle should be omitted when null");
+});
+
+// classifyWebAuthnError already has tests above; one more to pin down
+// that assertion-side cancellation (e.g. user dismissed the passkey
+// prompt) maps to user_cancelled the same way registration does.
+test("classifyWebAuthnError maps NotAllowedError for assertion ceremony too", () => {
+  const err = new Error("user cancelled the assertion");
+  (err as { name?: string }).name = "NotAllowedError";
+  const out = classifyWebAuthnError(err);
+  assert.ok(out instanceof WebAuthnError);
+  assert.equal(out.kind, "user_cancelled");
 });

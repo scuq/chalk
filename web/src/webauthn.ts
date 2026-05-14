@@ -228,3 +228,124 @@ export async function performRegistration(
   }
   return encodeAttestationResponse(cred as PublicKeyCredential);
 }
+
+// ---- authentication ceremony ------------------------------------------
+
+// CredentialAssertionOptionsJSON is the JSON shape produced by
+// go-webauthn's BeginLogin and sent as the body of our
+// /api/auth/authenticate/begin response. The structure parallels
+// CredentialCreationOptionsJSON: binary fields (challenge,
+// allowed-credentials IDs) are base64url-encoded strings on the wire
+// and get decoded to BufferSource before being handed to
+// navigator.credentials.get().
+//
+// Only includes the subset we use; extras are tolerated.
+export interface CredentialAssertionOptionsJSON {
+  publicKey: {
+    challenge: string;
+    timeout?: number;
+    rpId?: string;
+    allowCredentials?: Array<{
+      type: "public-key";
+      id: string;
+      transports?: string[];
+    }>;
+    userVerification?: "required" | "preferred" | "discouraged";
+    extensions?: Record<string, unknown>;
+  };
+}
+
+// AssertionResponseJSON is the body of our POST to
+// /api/auth/authenticate/finish. Mirrors the shape go-webauthn's
+// ParseCredentialRequestResponseBytes consumes. Note this is a
+// DIFFERENT response shape than registration: registration returns
+// `attestationObject`, authentication returns
+// `authenticatorData + signature + userHandle`.
+export interface AssertionResponseJSON {
+  id: string;
+  rawId: string;
+  type: "public-key";
+  authenticatorAttachment?: "platform" | "cross-platform" | null;
+  clientExtensionResults: Record<string, unknown>;
+  response: {
+    clientDataJSON: string;
+    authenticatorData: string;
+    signature: string;
+    userHandle?: string;
+  };
+}
+
+// decodeAssertionOptions converts the JSON server response into the
+// BufferSource-shaped object navigator.credentials.get() expects.
+// The `as BufferSource` casts mirror decodeCreationOptions; same
+// rationale (Uint8Array<ArrayBufferLike> vs strict BufferSource).
+export function decodeAssertionOptions(json: CredentialAssertionOptionsJSON): CredentialRequestOptions {
+  const p = json.publicKey;
+  return {
+    publicKey: {
+      challenge: base64urlToBytes(p.challenge) as BufferSource,
+      timeout: p.timeout,
+      rpId: p.rpId,
+      allowCredentials: (p.allowCredentials ?? []).map((c) => ({
+        type: c.type,
+        id: base64urlToBytes(c.id) as BufferSource,
+        transports: c.transports as AuthenticatorTransport[] | undefined,
+      })),
+      userVerification: p.userVerification,
+      extensions: p.extensions as AuthenticationExtensionsClientInputs | undefined,
+    },
+  };
+}
+
+// encodeAssertionResponse converts the browser's PublicKeyCredential
+// (from a get() ceremony) into the JSON shape the server expects.
+export function encodeAssertionResponse(cred: PublicKeyCredential): AssertionResponseJSON {
+  const r = cred.response as AuthenticatorAssertionResponse;
+  // userHandle is optional in the spec; many platform authenticators
+  // omit it for non-resident keys. When present it's the server-
+  // assigned user.id from registration time, which the server can
+  // use as a hint when looking up the credential.
+  const userHandle = r.userHandle ? bytesToBase64url(r.userHandle) : undefined;
+  return {
+    id: cred.id,
+    rawId: bytesToBase64url(cred.rawId),
+    type: "public-key" as const,
+    authenticatorAttachment: cred.authenticatorAttachment as "platform" | "cross-platform" | null | undefined ?? null,
+    clientExtensionResults: cred.getClientExtensionResults() as Record<string, unknown>,
+    response: {
+      clientDataJSON: bytesToBase64url(r.clientDataJSON),
+      authenticatorData: bytesToBase64url(r.authenticatorData),
+      signature: bytesToBase64url(r.signature),
+      ...(userHandle ? { userHandle } : {}),
+    },
+  };
+}
+
+// performAuthentication runs the full client-side half of the
+// authentication ceremony: takes the server's options JSON, calls
+// navigator.credentials.get, returns the encoded response ready to
+// POST to /api/auth/authenticate/finish.
+//
+// Errors are classified just like performRegistration so the caller
+// can distinguish user-cancelled vs unsupported vs security failure.
+export async function performAuthentication(
+  optionsJSON: CredentialAssertionOptionsJSON
+): Promise<AssertionResponseJSON> {
+  if (typeof navigator === "undefined" || !navigator.credentials || typeof navigator.credentials.get !== "function") {
+    throw new WebAuthnError("not_supported", "WebAuthn is not available (HTTPS required, or browser too old)");
+  }
+  const opts = decodeAssertionOptions(optionsJSON);
+  let cred: Credential | null;
+  try {
+    cred = await navigator.credentials.get(opts);
+  } catch (e) {
+    throw classifyWebAuthnError(e);
+  }
+  if (!cred) {
+    throw new WebAuthnError("unknown", "navigator.credentials.get returned null");
+  }
+  if (cred.type !== "public-key") {
+    throw new WebAuthnError("unknown", `unexpected credential type: ${cred.type}`);
+  }
+  return encodeAssertionResponse(cred as PublicKeyCredential);
+}

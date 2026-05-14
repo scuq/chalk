@@ -54,6 +54,7 @@ import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
 import { CreateChannelModal } from "./CreateChannelModal";
 import { AuthGate } from "../auth/AuthGate";
+import { logout as logoutAPI } from "../auth/api";
 
 function classifyDevice(): "phone" | "tablet" | "desktop" {
   const ua = navigator.userAgent;
@@ -110,17 +111,19 @@ export function App() {
 
   // --- WS lifecycle ----------------------------------------------------
 
-  // Phase 09b sub-step 4: defer the WS connect until authStage flips
-  // to "authed". Before that, the user is on the registration/recovery
-  // screens; opening the WS prematurely would cause the legacy alice
-  // identity to show up in StatusBar and produce confusing welcome
-  // frames. The dependency on authStage means the effect re-runs when
-  // the user clicks "continue to chat" in the handoff screen, opening
-  // the WS at the right moment.
+  // Phase 09b sub-step 5b: defer WS connect until authStage is
+  // "authed". Before that the user is on LoginScreen, RegisterScreen,
+  // or RecoveryScreen; opening the WS prematurely would either fail
+  // (no cookie → server rejects) or, worse, succeed with the wrong
+  // identity. After authStage flips to "authed", the cookie is set
+  // (by register/finish or authenticate/finish or persisted from a
+  // previous session), the WS upgrade carries it, and the server
+  // resolves the right user.
   //
-  // Sub-step 09b-5 will replace this with session-based auth: the WS
-  // connect will include a session cookie and the server will resolve
-  // the right user.
+  // On logout the auth_logged_out action flips authStage back to
+  // "login"; this effect's cleanup runs client.stop() and the WS
+  // closes cleanly. Subsequent login fires the effect again with the
+  // new session cookie.
   useEffect(() => {
     if (state.authStage !== "authed") return;
     const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -333,12 +336,11 @@ export function App() {
 
   // --- Render ----------------------------------------------------------
 
-  // Phase 09b sub-step 4: auth gate. Before the user has registered
-  // (and clicked through the transitional handoff), render the auth
-  // flow instead of the chat UI. Once authStage flips to "authed",
-  // the chat UI renders as it did pre-09b — including the legacy
-  // ensureDeviceForTesting path on the WS side, which sub-step 09b-5
-  // replaces with proper session-based auth.
+  // Phase 09b sub-step 5b: auth gate. Before the user is logged in
+  // (or until /me bootstrap completes), render the auth flow instead
+  // of the chat UI. Once authStage flips to "authed", the chat UI
+  // renders. The WS connect effect above is gated on authStage too
+  // so we don't open a WS until the user is authenticated.
   if (state.authStage !== "authed") {
     return (
       <AuthGate
@@ -346,6 +348,7 @@ export function App() {
         authConfig={state.authConfig}
         registration={state.registration}
         registrationResult={state.registrationResult}
+        login={state.login}
         dispatch={dispatch}
       />
     );
@@ -358,11 +361,30 @@ export function App() {
     ? state.messages[state.activeChannelID] ?? []
     : [];
 
+  // Phase 09b sub-step 5b: logout handler. Fires the server-side
+  // session delete, then dispatches auth_logged_out to flip the SPA
+  // back to LoginScreen. Errors are logged but we proceed with the
+  // client-side teardown regardless — the user wants out either way.
+  const handleLogout = async () => {
+    try {
+      await logoutAPI();
+    } catch (err) {
+      console.error("logout API call failed:", err);
+    }
+    dispatch({ kind: "auth_logged_out" });
+  };
+
   return (
     <div class="chalk-app chalk-app--phase08b">
       <header class="chalk-header">
         <h1>chalk</h1>
-        <StatusBar state={state.wsState} detail={state.wsDetail} user={state.user} />
+        <StatusBar
+          state={state.wsState}
+          detail={state.wsDetail}
+          user={state.user}
+          me={state.me}
+          onLogout={handleLogout}
+        />
       </header>
 
       <aside class="chalk-sidebar">

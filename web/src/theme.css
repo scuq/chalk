@@ -801,3 +801,69 @@ html, body {
   font-size: var(--chalk-size-base);
   user-select: all;
 }
+
+/* phase 09b sub-step 5b: cross-link between LoginScreen and
+   RegisterScreen ("no account? register" / "have an account? log in"). */
+.chalk-auth-alt {
+  margin-top: var(--chalk-s4);
+  text-align: center;
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-auth-alt .chalk-auth-link {
+  margin-left: var(--chalk-s1);
+}
+
+/* phase 09b sub-step 5b: StatusBar dropdown menu (logout). */
+.chalk-status-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.chalk-status-menu-trigger {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--chalk-fg);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.chalk-status-menu-trigger:hover,
+.chalk-status-menu-trigger[aria-expanded="true"] {
+  background: var(--chalk-bg-elev);
+  border-color: var(--chalk-fg-muted);
+}
+
+.chalk-status-menu-popover {
+  position: absolute;
+  top: calc(100% + var(--chalk-s1));
+  right: 0;
+  min-width: 8rem;
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-fg-muted);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+}
+
+.chalk-status-menu-item {
+  background: transparent;
+  border: 0;
+  color: var(--chalk-fg);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chalk-status-menu-item:hover,
+.chalk-status-menu-item:focus {
+  background: var(--chalk-bg);
+  outline: none;
+}

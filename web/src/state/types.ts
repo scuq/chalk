@@ -12,6 +12,8 @@ import type {
   AuthAction,
   AuthConfig,
   AuthStage,
+  LoginForm,
+  MeResponse,
   RegistrationForm,
   RegistrationResult,
 } from "../auth/types";
@@ -76,10 +78,13 @@ export interface AppState {
   // Phase 09b sub-step 4: auth-flow state. Spread from AuthState
   // for typing convenience but kept conceptually separate. See
   // src/auth/types.ts for the full shape and stage diagram.
+  // Sub-step 5b adds login form state and the /me identity.
   authStage: AuthStage;
   authConfig: AuthConfig | null;
   registration: RegistrationForm;
   registrationResult: RegistrationResult | null;
+  login: LoginForm;
+  me: MeResponse | null;
 }
 
 export const initialState: AppState = {
@@ -100,6 +105,9 @@ export const initialState: AppState = {
   authConfig: initialAuthState.authConfig,
   registration: initialAuthState.registration,
   registrationResult: initialAuthState.registrationResult,
+  // Phase 09b sub-step 5b additions.
+  login: initialAuthState.login,
+  me: initialAuthState.me,
 };
 
 // ---- Actions -------------------------------------------------------------

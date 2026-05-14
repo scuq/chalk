@@ -1,39 +1,52 @@
 // chalk SPA -- auth state types.
 //
-// Phase 09b sub-step 4 lands the registration flow. The SPA boots in
-// "bootstrapping" stage, fetches GET /api/auth/config, then transitions:
+// Phase 09b sub-step 5b: full session-aware auth flow.
 //
-//   bootstrapping
+// State machine:
+//
+//   bootstrapping ─── (fetch /me)
 //        │
-//        ▼  (config loaded)
-//   registering ──── (user submits, succeeds) ────▶ confirming-recovery
-//        │                                                  │
-//        │                                                  ▼  (confirmed)
-//        │                                          transitional-handoff
-//        │                                                  │
-//        │                                                  ▼  (clicks continue)
-//        ▼                                                authed
-//   (errors stay on registering with error in state)
+//        ├─── 200 (already logged in) ─────────────────────────▶ authed
+//        │
+//        ├─── 401 (no session) ────▶ login ◀───────┐
+//        │                              │           │
+//        │                              ▼           │ ("no account?
+//        │                          (submit         │   register" link)
+//        │                           login          │
+//        │                           ceremony)      │
+//        │                              │           │
+//        │                              ▼           │
+//        │                            authed        │
+//        │                                          │
+//        └─── (user clicks "register" link) ──▶ registering ──┘
+//                                                  │
+//                                                  ▼ (submit)
+//                                          (register ceremony,
+//                                           register/finish
+//                                           Set-Cookies)
+//                                                  │
+//                                                  ▼
+//                                          confirming-recovery
+//                                                  │
+//                                                  ▼ (clicks continue)
+//                                                authed
 //
-// "transitional-handoff" is a stop-gap until sub-step 09b-5: post-
-// registration we don't have a session yet, so we cannot actually
-// auth the WS connection. The screen explains this and offers a
-// "Continue (legacy alice path)" button that flips authStage to
-// "authed", at which point App renders the chat UI which connects
-// the WS the same way it did pre-09b.
-//
-// In 09b-5 the handoff stage either:
-//   - becomes the session-handoff: server returned Set-Cookie, SPA
-//     proceeds to authed automatically
-//   - is removed entirely, replaced by direct authStage='authed' on
-//     register-finish success
+// Notable changes from 09b-4:
+//   - "transitional-handoff" stage is GONE. register/finish now
+//     Set-Cookies, so after confirming recovery we go straight to
+//     authed.
+//   - "login" stage added. AuthGate renders LoginScreen here.
+//   - "bootstrapping" now fetches /api/auth/me. The /me response
+//     decides login vs authed. AuthConfig is fetched lazily by the
+//     screen that needs it (RegisterScreen reads it for the dev/open
+//     badges).
 
 // AuthStage drives which screen renders. authed = show chat.
 export type AuthStage =
   | "bootstrapping"
+  | "login"
   | "registering"
   | "confirming-recovery"
-  | "transitional-handoff"
   | "authed";
 
 // AuthConfig mirrors the GET /api/auth/config response body. See
@@ -73,15 +86,57 @@ export const initialRegistrationForm: RegistrationForm = {
   errorMessage: null,
 };
 
-// RegistrationResult is what register/finish gave us back. We hold
-// it for the duration of the recovery screen so the user can see
-// their identity AND copy the words. After the user confirms, this
-// is cleared (the words MUST NOT linger in state any longer).
+// LoginForm: SPA-side draft state of the login form.
+export interface LoginForm {
+  username: string;
+  busy: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
+export const initialLoginForm: LoginForm = {
+  username: "",
+  busy: false,
+  errorCode: null,
+  errorMessage: null,
+};
+
+// RegistrationResult: what register/finish returned. Held for the
+// duration of the recovery screen so the user can see their identity
+// AND copy the words. After auth_recovery_confirmed it's cleared
+// (the words MUST NOT linger in state any longer).
+//
+// sessionExpiresAt is the cookie's TTL boundary, useful for UI
+// "your session expires in X days" copy.
 export interface RegistrationResult {
   userID: string;
   username: string;
   displayName: string;
   recoveryWords: string[];
+  sessionExpiresAt: string;
+}
+
+// LoginResult: what authenticate/finish returned. Cookie is set by
+// the server in the response headers; the SPA never sees the raw
+// token, just the identity for display purposes.
+export interface LoginResult {
+  userID: string;
+  username: string;
+  displayName: string;
+  role: string;
+  sessionExpiresAt: string;
+}
+
+// MeResponse: GET /api/auth/me when a valid session exists. Mirrors
+// the server's meResponse shape.
+export interface MeResponse {
+  userID: string;
+  username: string;
+  displayName: string;
+  role: string;
+  email: string;
+  emailVerifiedAt: string; // zero value: "0001-01-01T00:00:00Z"
+  sessionExpiresAt: string;
 }
 
 // AuthState is the auth-related slice of AppState. It's spread into
@@ -91,6 +146,11 @@ export interface AuthState {
   authConfig: AuthConfig | null;
   registration: RegistrationForm;
   registrationResult: RegistrationResult | null;
+  login: LoginForm;
+  // me holds the resolved identity once the user is authed. Drives
+  // StatusBar display, app title bar, future settings panel. Null
+  // when not authed.
+  me: MeResponse | null;
 }
 
 export const initialAuthState: AuthState = {
@@ -98,6 +158,8 @@ export const initialAuthState: AuthState = {
   authConfig: null,
   registration: initialRegistrationForm,
   registrationResult: null,
+  login: initialLoginForm,
+  me: null,
 };
 
 // AuthAction is the union of all auth-related reducer actions.
@@ -105,9 +167,21 @@ export const initialAuthState: AuthState = {
 export type AuthAction =
   | { kind: "auth_config_loaded"; config: AuthConfig }
   | { kind: "auth_config_failed"; message: string }
+  // Registration:
   | { kind: "auth_form_change"; field: keyof RegistrationForm; value: string | boolean }
   | { kind: "auth_form_submit_start" }
   | { kind: "auth_form_submit_error"; code: string; message: string }
   | { kind: "auth_registered"; result: RegistrationResult }
   | { kind: "auth_recovery_confirmed" }
-  | { kind: "auth_handoff_continue" };
+  // Login:
+  | { kind: "auth_login_form_change"; field: keyof LoginForm; value: string }
+  | { kind: "auth_login_submit_start" }
+  | { kind: "auth_login_submit_error"; code: string; message: string }
+  | { kind: "auth_logged_in"; result: LoginResult }
+  // Session bootstrap + teardown:
+  | { kind: "auth_me_loaded"; me: MeResponse }
+  | { kind: "auth_me_absent" }
+  | { kind: "auth_logged_out" }
+  // Navigation:
+  | { kind: "auth_go_register" }
+  | { kind: "auth_go_login" };
