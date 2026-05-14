@@ -8,6 +8,14 @@
 // added (e.g. ChannelSummary's createdAt as Date, Message's ts as Date).
 
 import type { ConnectionState } from "../ws-client";
+import type {
+  AuthAction,
+  AuthConfig,
+  AuthStage,
+  RegistrationForm,
+  RegistrationResult,
+} from "../auth/types";
+import { initialAuthState } from "../auth/types";
 
 // ---- Domain types --------------------------------------------------------
 
@@ -64,6 +72,14 @@ export interface AppState {
 
   // UI.
   createModalOpen: boolean;
+
+  // Phase 09b sub-step 4: auth-flow state. Spread from AuthState
+  // for typing convenience but kept conceptually separate. See
+  // src/auth/types.ts for the full shape and stage diagram.
+  authStage: AuthStage;
+  authConfig: AuthConfig | null;
+  registration: RegistrationForm;
+  registrationResult: RegistrationResult | null;
 }
 
 export const initialState: AppState = {
@@ -78,6 +94,12 @@ export const initialState: AppState = {
   friends: [],
   friendsLoaded: false,
   createModalOpen: false,
+
+  // Phase 09b sub-step 4 auth-flow initial values.
+  authStage: initialAuthState.authStage,
+  authConfig: initialAuthState.authConfig,
+  registration: initialAuthState.registration,
+  registrationResult: initialAuthState.registrationResult,
 };
 
 // ---- Actions -------------------------------------------------------------
@@ -92,4 +114,5 @@ export type Action =
   | { kind: "history_loaded"; channelID: string; messages: Message[] }
   | { kind: "friends_loaded"; friends: Friend[] }
   | { kind: "open_create_modal" }
-  | { kind: "close_create_modal" };
+  | { kind: "close_create_modal" }
+  | AuthAction;

@@ -53,6 +53,7 @@ import { Sidebar } from "./Sidebar";
 import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
 import { CreateChannelModal } from "./CreateChannelModal";
+import { AuthGate } from "../auth/AuthGate";
 
 function classifyDevice(): "phone" | "tablet" | "desktop" {
   const ua = navigator.userAgent;
@@ -109,7 +110,19 @@ export function App() {
 
   // --- WS lifecycle ----------------------------------------------------
 
+  // Phase 09b sub-step 4: defer the WS connect until authStage flips
+  // to "authed". Before that, the user is on the registration/recovery
+  // screens; opening the WS prematurely would cause the legacy alice
+  // identity to show up in StatusBar and produce confusing welcome
+  // frames. The dependency on authStage means the effect re-runs when
+  // the user clicks "continue to chat" in the handoff screen, opening
+  // the WS at the right moment.
+  //
+  // Sub-step 09b-5 will replace this with session-based auth: the WS
+  // connect will include a session cookie and the server will resolve
+  // the right user.
   useEffect(() => {
+    if (state.authStage !== "authed") return;
     const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${wsProto}//${window.location.host}/ws`;
     const client = new WSClient({
@@ -132,7 +145,7 @@ export function App() {
     client.start();
     return () => client.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [state.authStage]);
 
   function handleFrame(f: Frame) {
     switch (f.type) {
@@ -319,6 +332,24 @@ export function App() {
   };
 
   // --- Render ----------------------------------------------------------
+
+  // Phase 09b sub-step 4: auth gate. Before the user has registered
+  // (and clicked through the transitional handoff), render the auth
+  // flow instead of the chat UI. Once authStage flips to "authed",
+  // the chat UI renders as it did pre-09b — including the legacy
+  // ensureDeviceForTesting path on the WS side, which sub-step 09b-5
+  // replaces with proper session-based auth.
+  if (state.authStage !== "authed") {
+    return (
+      <AuthGate
+        authStage={state.authStage}
+        authConfig={state.authConfig}
+        registration={state.registration}
+        registrationResult={state.registrationResult}
+        dispatch={dispatch}
+      />
+    );
+  }
 
   const activeChannel = state.activeChannelID
     ? state.channels[state.activeChannelID]

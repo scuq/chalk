@@ -122,5 +122,98 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case "close_create_modal":
       return { ...state, createModalOpen: false };
+
+    // ---- Phase 09b sub-step 4: auth-flow actions ----------------------
+
+    case "auth_config_loaded":
+      // On config arrival, transition from bootstrapping to registering.
+      // Sub-step 09b-5 will add the "is the user already authed?" check
+      // here and skip registration when a session exists.
+      return {
+        ...state,
+        authConfig: action.config,
+        authStage: state.authStage === "bootstrapping" ? "registering" : state.authStage,
+      };
+
+    case "auth_config_failed":
+      // Couldn't reach /api/auth/config. Surface the message via the
+      // registration form's error slot so something visible happens.
+      return {
+        ...state,
+        registration: {
+          ...state.registration,
+          errorCode: "config_failed",
+          errorMessage: `cannot reach server: ${action.message}`,
+        },
+      };
+
+    case "auth_form_change":
+      return {
+        ...state,
+        registration: {
+          ...state.registration,
+          [action.field]: action.value,
+          // Typing clears any previous error on the touched field's
+          // category. Simpler: any input clears the error banner.
+          errorCode: null,
+          errorMessage: null,
+        },
+      };
+
+    case "auth_form_submit_start":
+      return {
+        ...state,
+        registration: {
+          ...state.registration,
+          busy: true,
+          errorCode: null,
+          errorMessage: null,
+        },
+      };
+
+    case "auth_form_submit_error":
+      return {
+        ...state,
+        registration: {
+          ...state.registration,
+          busy: false,
+          errorCode: action.code,
+          errorMessage: action.message,
+        },
+      };
+
+    case "auth_registered":
+      // Registration succeeded. Hold the result (incl. recovery words)
+      // so RecoveryScreen can render. Clear the form so a back-button
+      // accident doesn't leak it.
+      return {
+        ...state,
+        authStage: "confirming-recovery",
+        registrationResult: action.result,
+        registration: {
+          ...state.registration,
+          busy: false,
+          errorCode: null,
+          errorMessage: null,
+        },
+      };
+
+    case "auth_recovery_confirmed":
+      // User has confirmed they saved the recovery code. Move to the
+      // transitional handoff stage; recovery words are NOT cleared
+      // here because the handoff screen may want to show the username
+      // back to the user. They ARE cleared on auth_handoff_continue.
+      return { ...state, authStage: "transitional-handoff" };
+
+    case "auth_handoff_continue":
+      // User has clicked the "continue to chat" button. Clear the
+      // registration form (incl. any leftover error state) and the
+      // recovery words; flip to authed.
+      return {
+        ...state,
+        authStage: "authed",
+        registration: state.registration, // keep username for any UI that wants it
+        registrationResult: null,
+      };
   }
 }
