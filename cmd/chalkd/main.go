@@ -183,6 +183,28 @@ func run(args []string) error {
 	// exits when ctx is canceled (i.e. server shutdown).
 	go ceremonyCache.RunJanitor(ctx, 0)
 
+	// Phase 09b sub-step 5: session janitor. Sweeps expired session
+	// rows from the sessions table hourly. Exits when ctx is canceled.
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				n, err := st.DeleteExpiredSessions(ctx)
+				if err != nil {
+					log.Printf("session janitor: %v", err)
+					continue
+				}
+				if n > 0 {
+					log.Printf("session janitor: deleted %d expired session(s)", n)
+				}
+			}
+		}
+	}()
+
 	errCh := make(chan error, 1)
 	go func() {
 		err := srv.Serve(ctx)

@@ -8,12 +8,37 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-webauthn/webauthn/protocol"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 
 	"github.com/scuq/chalk/internal/store"
 )
+
+// passkeyToWebauthnCredential converts a store.Passkey row into the
+// webauthn library's Credential shape, used at FinishLogin to verify
+// the assertion against the user's known credentials.
+//
+// AAGUID and CloneWarning are zero values — chalk doesn't track AAGUID
+// per credential (we don't filter on authenticator make/model), and
+// clone-warning is a runtime detection that the library handles
+// internally based on sign_count.
+func passkeyToWebauthnCredential(pk store.Passkey) webauthn.Credential {
+	transports := make([]protocol.AuthenticatorTransport, 0, len(pk.Transports))
+	for _, t := range pk.Transports {
+		transports = append(transports, protocol.AuthenticatorTransport(t))
+	}
+	return webauthn.Credential{
+		ID:        pk.CredentialID,
+		PublicKey: pk.PublicKey,
+		Transport: transports,
+		Authenticator: webauthn.Authenticator{
+			SignCount: uint32(pk.SignCount),
+		},
+	}
+}
 
 // HTTPDeps bundles the dependencies the HTTP handlers need. Held by
 // the server's lifecycle and passed in once at construction time.
@@ -51,6 +76,11 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	mux.HandleFunc("POST /api/auth/register/begin", d.handleRegisterBegin)
 	mux.HandleFunc("POST /api/auth/register/finish", d.handleRegisterFinish)
 	mux.HandleFunc("GET /api/auth/config", d.handleConfig)
+	// Sub-step 5: login + identity + logout endpoints.
+	mux.HandleFunc("POST /api/auth/authenticate/begin", d.handleAuthenticateBegin)
+	mux.HandleFunc("POST /api/auth/authenticate/finish", d.handleAuthenticateFinish)
+	mux.HandleFunc("POST /api/auth/logout", d.handleLogout)
+	mux.HandleFunc("GET /api/auth/me", d.handleMe)
 	return nil
 }
 
@@ -93,11 +123,19 @@ type registerFinishRequest struct {
 // plus the one-time-only recovery words. Words are NEVER returned
 // again — the SPA MUST surface them immediately. Cache-Control
 // no-store on this response prevents intermediate caching.
+//
+// Sub-step 5: register/finish also mints a session and sets the
+// chalk_session cookie on the response. The SPA proceeds directly
+// from recovery confirmation to chat; no separate login step.
+// session_expires_at is included in the body so the SPA can show
+// expiry information (and not for any auth purpose — the cookie is
+// the auth credential, the body field is just metadata).
 type registerFinishResponse struct {
-	UserID        string   `json:"user_id"`
-	Username      string   `json:"username"`
-	DisplayName   string   `json:"display_name"`
-	RecoveryWords []string `json:"recovery_words"`
+	UserID            string    `json:"user_id"`
+	Username          string    `json:"username"`
+	DisplayName       string    `json:"display_name"`
+	RecoveryWords     []string  `json:"recovery_words"`
+	SessionExpiresAt  time.Time `json:"session_expires_at"`
 }
 
 // configResponse is what GET /api/auth/config returns. The SPA needs
@@ -360,14 +398,332 @@ func (d *HTTPDeps) handleRegisterFinish(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	// Sub-step 5: mint a session and set the cookie before writing
+	// the response body. Doing this here means a successful
+	// registration leaves the user logged in — no separate login
+	// step needed. The Set-Cookie header is on the same response
+	// the SPA receives, so the cookie is immediately available for
+	// subsequent /api/auth/me and WS upgrade calls.
+	sess, err := MintSession(r.Context(), d.Store, w,
+		entry.PendingUser.ID,
+		UserAgentFromRequest(r),
+		IPFromRequest(r),
+	)
+	if err != nil {
+		// The user row and passkey are committed; we just failed to
+		// mint a session. The user can still log in via /authenticate
+		// to get their session. We return success with no cookie and
+		// log loudly so the operator sees this.
+		d.Logger.Printf("register/finish: MintSession FAILED for user %s: %v",
+			entry.PendingUser.ID, err)
+		// Continue: registration WAS successful even without the session.
+	}
+
 	// Cache-Control: the recovery words must NEVER be cached.
 	w.Header().Set("Cache-Control", "no-store, private")
 	writeJSON(w, http.StatusOK, registerFinishResponse{
-		UserID:        entry.PendingUser.ID.String(),
-		Username:      entry.PendingUser.Username,
-		DisplayName:   entry.PendingUser.DisplayName,
-		RecoveryWords: words,
+		UserID:           entry.PendingUser.ID.String(),
+		Username:         entry.PendingUser.Username,
+		DisplayName:      entry.PendingUser.DisplayName,
+		RecoveryWords:    words,
+		SessionExpiresAt: sess.ExpiresAt,
 	})
+}
+
+// ---- authentication (login) -------------------------------------------
+
+// authBeginRequest is the body of /api/auth/authenticate/begin.
+type authBeginRequest struct {
+	Username string `json:"username"`
+}
+
+// authBeginResponse echoes the WebAuthn options for the assertion
+// ceremony. Shape mirrors registerBeginResponse but for login.
+type authBeginResponse struct {
+	Options *protocol.CredentialAssertion `json:"options"`
+}
+
+// authFinishRequest is the body of /api/auth/authenticate/finish.
+// Like register/finish, we accept raw JSON for the credential so
+// the library's own parser does the base64url decoding.
+type authFinishRequest struct {
+	Credential json.RawMessage `json:"credential"`
+}
+
+// authFinishResponse mirrors the post-login state the SPA needs to
+// initialize itself. user_id and username are echoed for diagnostic
+// purposes; the actual auth credential is the cookie.
+type authFinishResponse struct {
+	UserID           string    `json:"user_id"`
+	Username         string    `json:"username"`
+	DisplayName      string    `json:"display_name"`
+	Role             string    `json:"role"`
+	SessionExpiresAt time.Time `json:"session_expires_at"`
+}
+
+// handleAuthenticateBegin starts a login ceremony. The username is
+// looked up, all passkeys for that user are gathered into the
+// allowed-credentials list, and a challenge is generated. The
+// PendingUser in the cache here carries the user's existing UUID
+// (unlike registration where it's freshly minted).
+func (d *HTTPDeps) handleAuthenticateBegin(w http.ResponseWriter, r *http.Request) {
+	var req authBeginRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_json", err.Error())
+		return
+	}
+	username := strings.ToLower(strings.TrimSpace(req.Username))
+	if !IsValidUsername(username) {
+		writeError(w, http.StatusBadRequest, "bad_username",
+			"username must match ^[a-z0-9_]{3,32}$")
+		return
+	}
+
+	// Look up the user. We intentionally return a generic error for
+	// "user not found" so login doesn't double as a username
+	// enumeration oracle. The plan's threat model says this is a
+	// soft concern (open_registration mode makes usernames public
+	// anyway), but treating it generically here costs nothing.
+	user, err := d.Store.GetUserByUsername(r.Context(), username)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusUnauthorized, "unknown_user",
+				"that account doesn't exist or has no passkeys")
+			return
+		}
+		d.Logger.Printf("authenticate/begin: lookup username: %v", err)
+		writeError(w, http.StatusInternalServerError, "lookup_failed",
+			"internal error")
+		return
+	}
+
+	// Load all active passkeys so go-webauthn can populate the
+	// allowed-credentials list in the challenge. The library will
+	// look up the credential the authenticator returns against this
+	// list at FinishLogin time.
+	passkeys, err := d.Store.GetPasskeysForUser(r.Context(), user.ID)
+	if err != nil {
+		d.Logger.Printf("authenticate/begin: list passkeys: %v", err)
+		writeError(w, http.StatusInternalServerError, "lookup_failed",
+			"internal error")
+		return
+	}
+	if len(passkeys) == 0 {
+		// User exists but has no passkeys. They need to use the
+		// recovery flow (09b-6).
+		writeError(w, http.StatusUnauthorized, "no_passkeys",
+			"that account has no passkeys; use the recovery flow")
+		return
+	}
+
+	creds := make([]webauthn.Credential, 0, len(passkeys))
+	for _, pk := range passkeys {
+		creds = append(creds, passkeyToWebauthnCredential(pk))
+	}
+
+	wauthUser := &User{
+		ID:          user.ID,
+		Name:        user.Username,
+		DisplayName: user.DisplayName,
+		Credentials: creds,
+	}
+	options, sess, err := d.Service.BeginLogin(wauthUser)
+	if err != nil {
+		d.Logger.Printf("authenticate/begin: BeginLogin: %v", err)
+		writeError(w, http.StatusInternalServerError, "ceremony_failed",
+			"could not start ceremony")
+		return
+	}
+
+	// Stash the pending user (existing UUID, not a fresh one).
+	d.Cache.Put(sess.Challenge, CeremonyEntry{
+		Kind:    KindLogin,
+		Session: *sess,
+		PendingUser: PendingUser{
+			ID:          user.ID,
+			Username:    user.Username,
+			DisplayName: user.DisplayName,
+			Email:       user.Email,
+		},
+	})
+	writeJSON(w, http.StatusOK, authBeginResponse{Options: options})
+}
+
+// handleAuthenticateFinish completes a login ceremony. On success
+// mints a session and Set-Cookie, returns the user identity.
+func (d *HTTPDeps) handleAuthenticateFinish(w http.ResponseWriter, r *http.Request) {
+	var req authFinishRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_json", err.Error())
+		return
+	}
+	if len(req.Credential) == 0 {
+		writeError(w, http.StatusBadRequest, "bad_credential", "credential required")
+		return
+	}
+	parsed, err := protocol.ParseCredentialRequestResponseBytes(req.Credential)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "parse_failed", err.Error())
+		return
+	}
+	challenge := parsed.Response.CollectedClientData.Challenge
+	if challenge == "" {
+		writeError(w, http.StatusBadRequest, "missing_challenge",
+			"clientData challenge missing")
+		return
+	}
+	entry, err := d.Cache.Take(challenge)
+	if err != nil {
+		if errors.Is(err, ErrCeremonyExpired) {
+			writeError(w, http.StatusGone, "ceremony_expired",
+				"login ceremony expired; start over")
+			return
+		}
+		writeError(w, http.StatusNotFound, "ceremony_not_found",
+			"no matching login ceremony")
+		return
+	}
+	if entry.Kind != KindLogin {
+		writeError(w, http.StatusBadRequest, "wrong_ceremony",
+			"that challenge is for a different ceremony")
+		return
+	}
+
+	// Re-load the credentials for the user. Could come from the
+	// cache entry but reloading from the store guarantees we use
+	// the current sign_count (post-some-other-login bump). The
+	// authenticator's response carries a sign_count too, and
+	// go-webauthn checks for monotonic increase as a replay defense.
+	passkeys, err := d.Store.GetPasskeysForUser(r.Context(), entry.PendingUser.ID)
+	if err != nil {
+		d.Logger.Printf("authenticate/finish: list passkeys: %v", err)
+		writeError(w, http.StatusInternalServerError, "lookup_failed",
+			"internal error")
+		return
+	}
+	creds := make([]webauthn.Credential, 0, len(passkeys))
+	for _, pk := range passkeys {
+		creds = append(creds, passkeyToWebauthnCredential(pk))
+	}
+	wauthUser := &User{
+		ID:          entry.PendingUser.ID,
+		Name:        entry.PendingUser.Username,
+		DisplayName: entry.PendingUser.DisplayName,
+		Credentials: creds,
+	}
+	cred, err := d.Service.FinishLogin(wauthUser, entry.Session, parsed)
+	if err != nil {
+		d.Logger.Printf("authenticate/finish: FinishLogin: %v", err)
+		writeError(w, http.StatusBadRequest, "ceremony_validation_failed",
+			err.Error())
+		return
+	}
+
+	// Bump the passkey's sign_count and last_used_at so replay
+	// defense works on the next login.
+	if err := d.Store.UpdateSignCount(r.Context(),
+		cred.ID, uint64(cred.Authenticator.SignCount)); err != nil {
+		// Best-effort: log but don't fail. The login is still
+		// valid; we just won't catch a sign-count replay on the
+		// next attempt with this credential.
+		d.Logger.Printf("authenticate/finish: UpdateSignCount: %v", err)
+	}
+
+	// Mint a session and set the cookie.
+	sess, err := MintSession(r.Context(), d.Store, w,
+		entry.PendingUser.ID,
+		UserAgentFromRequest(r),
+		IPFromRequest(r),
+	)
+	if err != nil {
+		d.Logger.Printf("authenticate/finish: MintSession: %v", err)
+		writeError(w, http.StatusInternalServerError, "session_mint_failed",
+			"could not create session")
+		return
+	}
+
+	// Look up the user one more time for role (the cache entry doesn't
+	// carry it because registration's PendingUser was always 'user').
+	user, err := d.Store.GetUserByID(r.Context(), entry.PendingUser.ID)
+	if err != nil {
+		// Session is minted; just fall back to defaults in the response.
+		d.Logger.Printf("authenticate/finish: GetUserByID for response: %v", err)
+		user.Role = "user"
+	}
+
+	writeJSON(w, http.StatusOK, authFinishResponse{
+		UserID:           entry.PendingUser.ID.String(),
+		Username:         entry.PendingUser.Username,
+		DisplayName:      entry.PendingUser.DisplayName,
+		Role:             user.Role,
+		SessionExpiresAt: sess.ExpiresAt,
+	})
+}
+
+// ---- logout / me ------------------------------------------------------
+
+// handleLogout deletes the session row and clears the cookie. No
+// request body. Idempotent: clearing the cookie on an already-logged-
+// out request still returns 204.
+func (d *HTTPDeps) handleLogout(w http.ResponseWriter, r *http.Request) {
+	// Best-effort: if there's a session cookie, delete the row.
+	// Even if the token is unparseable, we still want to clear the
+	// cookie so the browser stops sending it.
+	if token, err := SessionTokenFromRequest(r); err == nil {
+		if delErr := d.Store.DeleteSession(r.Context(), token); delErr != nil {
+			// Don't expose the error; clearing the cookie is what
+			// matters for the user-facing behavior.
+			d.Logger.Printf("logout: DeleteSession: %v", delErr)
+		}
+	}
+	ClearSessionCookie(w)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// meResponse is the body of GET /api/auth/me. Mirrors the plan's
+// shape. session_expires_at is the cookie's TTL boundary, useful for
+// the SPA to know when it'll have to re-login.
+type meResponse struct {
+	UserID            string    `json:"user_id"`
+	Username          string    `json:"username"`
+	DisplayName       string    `json:"display_name"`
+	Role              string    `json:"role"`
+	Email             string    `json:"email"`
+	EmailVerifiedAt   time.Time `json:"email_verified_at"`
+	SessionExpiresAt  time.Time `json:"session_expires_at"`
+}
+
+// handleMe returns the current user's identity if logged in, or 401
+// otherwise. The SPA polls this at boot to decide whether to render
+// LoginScreen or jump straight to chat. RequireSession middleware
+// handles the 401 cases uniformly.
+func (d *HTTPDeps) handleMe(w http.ResponseWriter, r *http.Request) {
+	RequireSession(d.Store, func(w http.ResponseWriter, r *http.Request, su *SessionUser) {
+		// We don't currently store email_verified_at on SessionUser;
+		// fetch it from the user record. Could be added to
+		// SessionUser later if /me becomes a hot path, but it's
+		// once-per-boot from the SPA so an extra query is fine.
+		// Actually we already loaded the user in ResolveSession;
+		// fetch it once more to get the verified_at timestamp.
+		// (Note: an earlier design had the lazy load skip this;
+		// keeping it explicit here for clarity.)
+		user, err := d.Store.GetUserByID(r.Context(), su.UserID)
+		if err != nil {
+			d.Logger.Printf("me: GetUserByID: %v", err)
+			writeError(w, http.StatusInternalServerError, "lookup_failed",
+				"internal error")
+			return
+		}
+		writeJSON(w, http.StatusOK, meResponse{
+			UserID:           su.UserID.String(),
+			Username:         su.Username,
+			DisplayName:      su.DisplayName,
+			Role:             su.Role,
+			Email:            su.Email,
+			EmailVerifiedAt:  user.EmailVerifiedAt,
+			SessionExpiresAt: su.Session.ExpiresAt,
+		})
+	})(w, r)
 }
 
 // ---- helpers -----------------------------------------------------------

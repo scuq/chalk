@@ -106,6 +106,8 @@ func TestValidate09bAuthFields(t *testing.T) {
 // registration flag overrides env (per the standard precedence flags
 // > env).
 func TestValidate09bAuthFieldsOpenRegistration(t *testing.T) {
+	// sub-step 5a fix1: isolate from CHALK_OPEN_REGISTRATION parent-shell leakage
+	t.Setenv("CHALK_OPEN_REGISTRATION", "")
 	// Default: off.
 	c, err := Load([]string{"--db-url", "postgres://x"})
 	if err != nil {

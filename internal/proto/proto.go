@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // Subprotocol is the WebSocket subprotocol token. The server registers it
@@ -107,11 +108,27 @@ type HelloPayload struct {
 // WelcomePayload is the server's reply to Hello. Channels list is
 // populated in phase 08 with the channel IDs the user is a member of.
 // Phase 04-07 always returned an empty list.
+//
+// Phase 09b sub-step 5 extends the welcome to carry the session-
+// resolved user identity: username (the immutable login key),
+// display_name (mutable, free-form), role ('user' | 'admin'),
+// session_expires_at (so the SPA can show a "session expiring"
+// notice), and email_verified (boolean derived from
+// users.email_verified_at non-null). The pre-09b "handle" field
+// stays for transitional wire compatibility -- the SPA may consult
+// either handle or username depending on which sub-phase its build
+// targeted. New SPA code should prefer username.
 type WelcomePayload struct {
-	UserID   string   `json:"user_id"`
-	DeviceID string   `json:"device_id"`
-	Handle   string   `json:"handle"`   // phase 08c
-	Channels []string `json:"channels"`
+	UserID           string    `json:"user_id"`
+	DeviceID         string    `json:"device_id"`
+	Handle           string    `json:"handle"`   // phase 08c (preserved for transition)
+	Channels         []string  `json:"channels"`
+	// Phase 09b sub-step 5 additions:
+	Username         string    `json:"username,omitempty"`
+	DisplayName      string    `json:"display_name,omitempty"`
+	Role             string    `json:"role,omitempty"`
+	SessionExpiresAt time.Time `json:"session_expires_at,omitempty"`
+	EmailVerified    bool      `json:"email_verified,omitempty"`
 }
 
 // SendPayload is a plaintext message in phase 04. From phase 10 onwards the

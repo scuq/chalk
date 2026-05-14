@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -112,6 +115,10 @@ func TestConfigHandlerShape(t *testing.T) {
 func TestRegisterBeginRejectsBadInput(t *testing.T) {
 	// We don't reach the store with these requests; nil Store is OK
 	// because the validation gates fire before the DB lookup.
+	// sub-step 5a fix1: isolate from CHALK_DEV parent-shell leakage
+	// (otherwise sub-step 4 fix1's email auto-fill kicks in and the
+	// "missing_email" case proceeds to GetUserByUsername on a nil pool).
+	t.Setenv("CHALK_DEV", "")
 	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
 	deps := newDepsNoStore(t)
 	srv := httptest.NewServer(mountForTest(t, deps))
@@ -473,4 +480,360 @@ func decodeError(r interface {
 	var b errBody
 	err := json.NewDecoder(r).Decode(&b)
 	return b, err
+}
+
+// Phase 09b sub-step 5: end-to-end tests for authenticate / me / logout.
+//
+// One test exercises the full post-registration flow: log in with the
+// passkey, verify the cookie carries us to /me, then logout and verify
+// the cookie is cleared (subsequent /me 401s).
+//
+// Requires CHALK_TEST_DATABASE_URL like the registration test.
+
+// TestLoginFlowEndToEnd registers a user, then exercises the full
+// session lifecycle: authenticate (login), /me, logout, /me.
+func TestLoginFlowEndToEnd(t *testing.T) {
+	dbURL := os.Getenv("CHALK_TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("CHALK_TEST_DATABASE_URL not set; skipping integration test")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	defer pool.Close()
+	st := &store.Store{Pool: pool}
+
+	const username = "logintestuser"
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM users WHERE username = $1`, username); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	defer func() {
+		if _, err := pool.Exec(ctx,
+			`DELETE FROM users WHERE username = $1`, username); err != nil {
+			t.Logf("cleanup: %v", err)
+		}
+	}()
+	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
+
+	// ---- httptest server with handlers mounted ------------------------
+	srv := httptest.NewUnstartedServer(nil)
+	addr := srv.Listener.Addr().String()
+	originURL := "http://" + addr
+
+	svc, err := auth.NewService(auth.Config{
+		RPID:          testRPID,
+		RPDisplayName: testRPName,
+		RPOrigins:     []string{originURL},
+	})
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	deps := &auth.HTTPDeps{
+		Service: svc,
+		Cache:   auth.NewCeremonyCache(time.Minute),
+		Store:   st,
+	}
+	mux := http.NewServeMux()
+	if err := deps.MountRegistration(mux); err != nil {
+		t.Fatalf("MountRegistration: %v", err)
+	}
+	srv.Config.Handler = mux
+	srv.Start()
+	defer srv.Close()
+
+	// ---- shared cookie jar so register-set cookie carries forward ---
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookiejar.New: %v", err)
+	}
+	client := &http.Client{Jar: jar}
+
+	// ---- virtualwebauthn fixtures (shared across register+login) ----
+	rp := virtualwebauthn.RelyingParty{
+		Name:   testRPName,
+		ID:     testRPID,
+		Origin: srv.URL,
+	}
+	vAuth := virtualwebauthn.NewAuthenticator()
+	vCred := virtualwebauthn.NewCredential(virtualwebauthn.KeyTypeEC2)
+
+	// ---- 1. Register the user via the existing flow ----------------
+	registerUser(t, client, srv.URL, rp, vAuth, vCred, username)
+
+	// virtualwebauthn idiom: AddCredential to the authenticator AFTER
+	// the registration ceremony so subsequent assertion ceremonies can
+	// find the credential. (The registration itself doesn't auto-track.)
+	vAuth.AddCredential(vCred)
+
+	// After register, the client jar should already contain
+	// chalk_session (per sub-step 5: register/finish mints a session).
+	if !hasSessionCookie(jar, srv.URL) {
+		t.Fatalf("expected chalk_session cookie after register/finish; jar empty")
+	}
+
+	// ---- 2. Hit /api/auth/me with the post-register cookie ---------
+	checkMe(t, client, srv.URL, username)
+
+	// ---- 3. Logout: cookie should be cleared --------------------------
+	logoutResp, err := client.Post(srv.URL+"/api/auth/logout",
+		"application/json", nil)
+	if err != nil {
+		t.Fatalf("logout POST: %v", err)
+	}
+	logoutResp.Body.Close()
+	if logoutResp.StatusCode != http.StatusNoContent {
+		t.Errorf("logout status = %d, want 204", logoutResp.StatusCode)
+	}
+	// The server's Set-Cookie with MaxAge=-1 should have cleared the
+	// jar's chalk_session entry.
+	if hasSessionCookie(jar, srv.URL) {
+		t.Errorf("chalk_session cookie should be cleared after logout")
+	}
+
+	// ---- 4. /me should now 401 ----------------------------------------
+	meResp2, err := client.Get(srv.URL + "/api/auth/me")
+	if err != nil {
+		t.Fatalf("me #2 GET: %v", err)
+	}
+	meResp2.Body.Close()
+	if meResp2.StatusCode != http.StatusUnauthorized {
+		t.Errorf("/me after logout status = %d, want 401", meResp2.StatusCode)
+	}
+
+	// ---- 5. Now log in via /authenticate. -----------------------------
+	authBegin, _ := json.Marshal(map[string]any{"username": username})
+	abResp, err := client.Post(srv.URL+"/api/auth/authenticate/begin",
+		"application/json", bytes.NewReader(authBegin))
+	if err != nil {
+		t.Fatalf("authenticate/begin POST: %v", err)
+	}
+	defer abResp.Body.Close()
+	if abResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(abResp.Body)
+		t.Fatalf("authenticate/begin status = %d (%s: %s)",
+			abResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+	var abOut struct {
+		Options json.RawMessage `json:"options"`
+	}
+	if err := json.NewDecoder(abResp.Body).Decode(&abOut); err != nil {
+		t.Fatalf("decode authenticate/begin: %v", err)
+	}
+
+	// virtualwebauthn parses the assertion options, signs.
+	parsedAssertion, err := virtualwebauthn.ParseAssertionOptions(string(abOut.Options))
+	if err != nil {
+		t.Fatalf("ParseAssertionOptions: %v", err)
+	}
+	assertionResp := virtualwebauthn.CreateAssertionResponse(rp, vAuth, vCred, *parsedAssertion)
+
+	// ---- 6. authenticate/finish ---------------------------------------
+	afBody, _ := json.Marshal(map[string]any{
+		"credential": json.RawMessage(assertionResp),
+	})
+	afResp, err := client.Post(srv.URL+"/api/auth/authenticate/finish",
+		"application/json", bytes.NewReader(afBody))
+	if err != nil {
+		t.Fatalf("authenticate/finish POST: %v", err)
+	}
+	defer afResp.Body.Close()
+	if afResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(afResp.Body)
+		t.Fatalf("authenticate/finish status = %d (%s: %s)",
+			afResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+	var afOut struct {
+		UserID           string    `json:"user_id"`
+		Username         string    `json:"username"`
+		DisplayName      string    `json:"display_name"`
+		Role             string    `json:"role"`
+		SessionExpiresAt time.Time `json:"session_expires_at"`
+	}
+	if err := json.NewDecoder(afResp.Body).Decode(&afOut); err != nil {
+		t.Fatalf("decode authenticate/finish: %v", err)
+	}
+	if afOut.Username != username {
+		t.Errorf("authenticate/finish username = %q, want %q", afOut.Username, username)
+	}
+	if afOut.Role != "user" {
+		t.Errorf("authenticate/finish role = %q, want 'user'", afOut.Role)
+	}
+	if afOut.SessionExpiresAt.IsZero() {
+		t.Error("authenticate/finish session_expires_at should be non-zero")
+	}
+	if !hasSessionCookie(jar, srv.URL) {
+		t.Errorf("expected chalk_session cookie after authenticate/finish")
+	}
+
+	// ---- 7. /me with the new session should succeed -------------------
+	checkMe(t, client, srv.URL, username)
+
+	// ---- 8. Sign-count should have bumped on the passkey row ----------
+	var signCount int64
+	if err := pool.QueryRow(ctx,
+		`SELECT sign_count FROM passkeys p
+		   JOIN users u ON u.id = p.user_id
+		  WHERE u.username = $1`, username,
+	).Scan(&signCount); err != nil {
+		t.Fatalf("read sign_count: %v", err)
+	}
+	// virtualwebauthn increments its counter on each assertion so the
+	// stored count after one login should be > 0. We don't assert a
+	// specific value because the library's behavior is internal.
+	t.Logf("passkey sign_count after login = %d", signCount)
+}
+
+// TestAuthenticateBegin_UnknownUser checks the error mapping for an
+// unknown username. Doesn't need a DB session — we just want to
+// confirm the handler returns 401 unknown_user.
+func TestAuthenticateBegin_UnknownUser(t *testing.T) {
+	dbURL := os.Getenv("CHALK_TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("CHALK_TEST_DATABASE_URL not set; skipping integration test")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	defer pool.Close()
+	st := &store.Store{Pool: pool}
+
+	deps := &auth.HTTPDeps{
+		Service: newTestService(t),
+		Cache:   auth.NewCeremonyCache(time.Minute),
+		Store:   st,
+	}
+	mux := mountForTest(t, deps)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	body, _ := json.Marshal(map[string]any{"username": "doesnotexist_zzz"})
+	resp, err := http.Post(srv.URL+"/api/auth/authenticate/begin",
+		"application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", resp.StatusCode)
+	}
+	eb, _ := decodeError(resp.Body)
+	if eb.Error.Code != "unknown_user" {
+		t.Errorf("error code = %q, want 'unknown_user'", eb.Error.Code)
+	}
+}
+
+// ---- shared helpers for login-flow integration tests --------------------
+
+// registerUser drives a fresh registration ceremony for username,
+// using the provided client (which carries the cookie jar) and the
+// shared rp/vAuth/vCred. Returns the recovery words for callers that
+// want them; this test doesn't.
+func registerUser(t *testing.T, client *http.Client, baseURL string,
+	rp virtualwebauthn.RelyingParty, vAuth virtualwebauthn.Authenticator,
+	vCred virtualwebauthn.Credential, username string) {
+	t.Helper()
+	beginBody, _ := json.Marshal(map[string]any{
+		"username":     username,
+		"display_name": "Login Test User",
+		"email":        username + "@example.invalid",
+	})
+	beginResp, err := client.Post(baseURL+"/api/auth/register/begin",
+		"application/json", bytes.NewReader(beginBody))
+	if err != nil {
+		t.Fatalf("register/begin POST: %v", err)
+	}
+	defer beginResp.Body.Close()
+	if beginResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(beginResp.Body)
+		t.Fatalf("register/begin status = %d (%s: %s)",
+			beginResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+	var beginOut struct {
+		Options json.RawMessage `json:"options"`
+	}
+	if err := json.NewDecoder(beginResp.Body).Decode(&beginOut); err != nil {
+		t.Fatalf("decode register/begin: %v", err)
+	}
+
+	parsedOpts, err := virtualwebauthn.ParseAttestationOptions(string(beginOut.Options))
+	if err != nil {
+		t.Fatalf("ParseAttestationOptions: %v", err)
+	}
+	attResp := virtualwebauthn.CreateAttestationResponse(rp, vAuth, vCred, *parsedOpts)
+
+	finishBody, _ := json.Marshal(map[string]any{
+		"credential": json.RawMessage(attResp),
+	})
+	finishResp, err := client.Post(baseURL+"/api/auth/register/finish",
+		"application/json", bytes.NewReader(finishBody))
+	if err != nil {
+		t.Fatalf("register/finish POST: %v", err)
+	}
+	defer finishResp.Body.Close()
+	if finishResp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(finishResp.Body)
+		t.Fatalf("register/finish status = %d (%s: %s)",
+			finishResp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+	// Drain body so the connection can be reused.
+	io.Copy(io.Discard, finishResp.Body)
+}
+
+// checkMe hits /api/auth/me with the client (which carries the
+// cookie jar). Expects 200 and verifies the username matches.
+func checkMe(t *testing.T, client *http.Client, baseURL string, wantUsername string) {
+	t.Helper()
+	resp, err := client.Get(baseURL + "/api/auth/me")
+	if err != nil {
+		t.Fatalf("me GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		eb, _ := decodeError(resp.Body)
+		t.Fatalf("/me status = %d (%s: %s)",
+			resp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+	var meOut struct {
+		UserID           string    `json:"user_id"`
+		Username         string    `json:"username"`
+		DisplayName      string    `json:"display_name"`
+		Role             string    `json:"role"`
+		Email            string    `json:"email"`
+		SessionExpiresAt time.Time `json:"session_expires_at"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&meOut); err != nil {
+		t.Fatalf("decode me: %v", err)
+	}
+	if meOut.Username != wantUsername {
+		t.Errorf("/me username = %q, want %q", meOut.Username, wantUsername)
+	}
+	if meOut.SessionExpiresAt.IsZero() {
+		t.Error("/me session_expires_at should be non-zero")
+	}
+	if meOut.Role != "user" {
+		t.Errorf("/me role = %q, want 'user'", meOut.Role)
+	}
+}
+
+// hasSessionCookie returns true if the jar holds chalk_session for
+// the given base URL.
+func hasSessionCookie(jar *cookiejar.Jar, baseURL string) bool {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return false
+	}
+	for _, c := range jar.Cookies(u) {
+		if c.Name == auth.CookieName && c.Value != "" {
+			return true
+		}
+	}
+	return false
 }

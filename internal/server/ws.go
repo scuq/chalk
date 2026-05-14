@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/scuq/chalk/internal/auth"
 	"github.com/scuq/chalk/internal/friends"
 	"github.com/scuq/chalk/internal/presence"
 	"github.com/scuq/chalk/internal/proto"
@@ -141,11 +142,35 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Phase 05 device-ensure shim (until phase 11 wires real auth). We
-	// also bump last_seen_at on the user as part of this so the
-	// dormancy GC has accurate data.
+	// Phase 09b sub-step 5: resolve session from cookie. The cookie
+	// is sent automatically by the browser in the WS upgrade request.
+	// Missing / invalid cookie → close with policy violation; the
+	// SPA treats that as a signal to render LoginScreen.
+	var sessionUser *auth.SessionUser
 	if h.store != nil {
-		if err := ensureDeviceForTesting(ctx, h.store, deviceID); err != nil {
+		su, sErr := auth.ResolveSession(ctx, h.store, r)
+		if sErr != nil {
+			// Distinguish "no cookie" from "expired/invalid" via the
+			// close reason so the SPA can show a different message
+			// (logged out vs session expired).
+			reason := "no session"
+			if errors.Is(sErr, auth.ErrInvalidSession) {
+				reason = "session expired"
+			} else if !errors.Is(sErr, auth.ErrNoSession) {
+				h.logger.Printf("ws session resolve: %v", sErr)
+				reason = "session error"
+			}
+			_ = c.Close(websocket.StatusPolicyViolation, reason)
+			return
+		}
+		sessionUser = su
+	}
+
+	// Phase 09b sub-step 5: upsert the device row tied to the
+	// authenticated user, not alice. Replaces the legacy
+	// ensureDeviceForTesting path.
+	if h.store != nil && sessionUser != nil {
+		if err := ensureDeviceForUser(ctx, h.store, deviceID, sessionUser.UserID); err != nil {
 			h.logger.Printf("ensure device: %v", err)
 			_ = c.Close(websocket.StatusInternalError, "ensure device failed")
 			return
@@ -173,14 +198,21 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Phase 07 fix: look up the user_id for this device so we can
-	// populate Conn.UserID and the welcome frame. The lookup uses
-	// the same code path phase 06 uses for presence.
+	// Phase 09b sub-step 5: the user is already resolved via the
+	// session cookie above; no need for a separate lookupUserForDevice
+	// round-trip. If sessionUser is nil (only possible when h.store
+	// is nil, i.e. a test that wires no store), fall back to the
+	// legacy device lookup so existing test paths keep working.
 	var connUserUUID uuid.UUID
 	var connUserID string
-	if uid := h.lookupUserForDevice(ctx, deviceID); uid != uuid.Nil {
-		connUserUUID = uid
-		connUserID = uid.String()
+	if sessionUser != nil {
+		connUserUUID = sessionUser.UserID
+		connUserID = sessionUser.UserID.String()
+	} else if h.store != nil {
+		if uid := h.lookupUserForDevice(ctx, deviceID); uid != uuid.Nil {
+			connUserUUID = uid
+			connUserID = uid.String()
+		}
 	}
 
 	// Phase 09a: each connection gets a fresh server-generated UUID
@@ -257,12 +289,29 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			handle = hLookup[connUserUUID]
 		}
 	}
-	welcome, _ := proto.NewFrame(proto.TypeWelcome, "", proto.WelcomePayload{
+	// Phase 09b sub-step 5: populate the extended welcome payload
+	// from the resolved session. The pre-09b "handle" field is kept
+	// (lowercase username) for transitional SPAs.
+	welcomePayload := proto.WelcomePayload{
 		UserID:   conn.UserID,
 		DeviceID: conn.DeviceID,
 		Handle:   handle,
 		Channels: channelIDs,
-	})
+	}
+	if sessionUser != nil {
+		welcomePayload.Username = sessionUser.Username
+		welcomePayload.DisplayName = sessionUser.DisplayName
+		welcomePayload.Role = sessionUser.Role
+		welcomePayload.SessionExpiresAt = sessionUser.Session.ExpiresAt
+		// email_verified is true iff users.email_verified_at is non-null.
+		// SessionUser doesn't carry the timestamp directly; we look it up.
+		if h.store != nil {
+			if u, err := h.store.GetUserByID(ctx, sessionUser.UserID); err == nil {
+				welcomePayload.EmailVerified = !u.EmailVerifiedAt.IsZero()
+			}
+		}
+	}
+	welcome, _ := proto.NewFrame(proto.TypeWelcome, "", welcomePayload)
 	wb, _ := json.Marshal(welcome)
 	if err := writeOne(ctx, c, wb, h.cfg.WriteTimeout); err != nil {
 		h.logger.Printf("ws welcome write: %v", err)
@@ -447,7 +496,22 @@ func (h *WSHandler) handleSend(
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id must be a UUID")
 		return
 	}
-	if err := ensureDeviceForTesting(ctx, h.store, deviceID); err != nil {
+	// Phase 09b sub-step 5: ensureDeviceForUser ensures the device
+	// row's user_id matches the authenticated user from the WS
+	// upgrade. Idempotent (ON CONFLICT DO NOTHING); the row already
+	// exists from the hello-time ensure call, this is defensive
+	// against rare reconnect / migration paths.
+	var sendUserUUID uuid.UUID
+	if conn.UserID != "" {
+		if u, perr := uuid.Parse(conn.UserID); perr == nil {
+			sendUserUUID = u
+		}
+	}
+	if sendUserUUID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no authenticated user on conn")
+		return
+	}
+	if err := ensureDeviceForUser(ctx, h.store, deviceID, sendUserUUID); err != nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "ensure device: "+err.Error())
 		return
 	}
@@ -617,4 +681,18 @@ func writeOne(ctx context.Context, c *websocket.Conn, data []byte, timeout time.
 	wctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	return c.Write(wctx, websocket.MessageText, data)
+}
+
+// ensureDeviceForUser upserts a minimal device row tied to userID.
+// Phase 09b sub-step 5: replaces ensureDeviceForTesting (which
+// hardcoded alice). Idempotent; safe to call multiple times for
+// the same (deviceID, userID) pair.
+func ensureDeviceForUser(ctx context.Context, st *store.Store, deviceID, userID uuid.UUID) error {
+	_, err := st.Pool.Exec(ctx,
+		`INSERT INTO devices (id, user_id, device_type, device_label)
+		 VALUES ($1, $2, 'browser-unknown', 'phase-09b-session')
+		 ON CONFLICT (id) DO NOTHING`,
+		deviceID, userID,
+	)
+	return err
 }
