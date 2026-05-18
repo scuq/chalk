@@ -42,10 +42,23 @@
 //     badges).
 
 // AuthStage drives which screen renders. authed = show chat.
+//
+// Phase 09c-2 adds two new "URL-driven" stages:
+//   - registering-from-invite: user landed at /?invite=<token>
+//     AuthGate peeks the invite, pre-fills email + inviter info,
+//     and renders RegisterFromInviteScreen. On success goes to
+//     confirming-recovery (same as ordinary registration).
+//   - verifying-email-change: user landed at /?verify_email=<token>
+//     AuthGate calls /api/auth/verify-email-change/{token} on mount
+//     and renders VerifyEmailChangeScreen with success/error UX.
+//     Independent of session state (the token alone authorizes the
+//     verify call; a logged-out user can also complete it).
 export type AuthStage =
   | "bootstrapping"
   | "login"
   | "registering"
+  | "registering-from-invite"
+  | "verifying-email-change"
   | "confirming-recovery"
   | "recovery-login"
   | "regenerate-after-recovery"
@@ -192,7 +205,131 @@ export interface AuthState {
   // /recovery/regenerate. Held only for the duration of the
   // RegenerateScreen; cleared on confirm. Null at all other times.
   pendingRegenerateWords: string[] | null;
+  // Phase 09c-2 additions:
+  inviteContext: InviteContext | null;
+  verifyEmailChange: VerifyEmailChangeState | null;
+  myInvites: MyInvitesState;
+  emailChange: EmailChangeState;
 }
+
+// InviteContext holds the parsed ?invite=<token> URL parameter +
+// the result of the peek call. Populated by AuthGate at bootstrap
+// when the URL contains the param; consumed by
+// RegisterFromInviteScreen. Cleared on auth_invite_context_cleared
+// (the user dismissed the invite-driven flow) or on successful
+// registration.
+//
+// peekStatus mirrors the server's "active" | "used" | "revoked" |
+// "expired", plus the SPA-only "loading" (peek in flight) and
+// "error" (peek failed -- token malformed or server unreachable).
+// The RegisterFromInviteScreen branches on this to render the
+// right UX: "active" → the actual form; others → an explanatory
+// screen with a "register normally" or "back to login" escape.
+export interface InviteContext {
+  token: string;
+  peekStatus: "loading" | "active" | "used" | "revoked" | "expired" | "error";
+  // Populated once the peek call returns. Null while loading and
+  // on most error cases.
+  peek: PeekedInvite | null;
+  // For peekStatus === "error". Empty string in success cases.
+  errorMessage: string;
+}
+
+// PeekedInvite mirrors the server's peekInviteResponse plus the
+// status field which is also in the wire body.
+export interface PeekedInvite {
+  email: string;
+  inviterUsername: string;
+  expiresAt: string;
+}
+
+// VerifyEmailChangeState drives VerifyEmailChangeScreen. Populated
+// at bootstrap when ?verify_email=<token> is in the URL. The screen
+// fires the verify call on mount and transitions through these
+// states:
+//   loading → success | failure
+// `newEmail` is filled on success (from the server response) so
+// the success copy can say "your email is now X".
+export interface VerifyEmailChangeState {
+  token: string;
+  phase: "loading" | "success" | "failure";
+  newEmail: string; // populated on success
+  errorCode: string;
+  errorMessage: string;
+}
+
+// MyInvitesState drives InvitesPanel. Holds the list of invites
+// the user has issued plus the create-invite form state.
+export interface MyInvitesState {
+  // List of invites, newest-first per the server response. Null
+  // means "not yet fetched"; empty array means "fetched, no invites".
+  items: import("./api").InviteDTO[] | null;
+  loading: boolean;
+  // Top-level error (e.g. listing failed). Field-level errors on
+  // create/revoke live in createForm.errorCode / lastRevokeError.
+  loadError: string | null;
+
+  // Create-invite form:
+  createForm: {
+    email: string;
+    note: string;
+    busy: boolean;
+    errorCode: string | null;
+    errorMessage: string | null;
+  };
+
+  // The token currently being revoked, if any. Used to disable just
+  // the affected row's revoke button. Null when no revoke is in
+  // flight. revokeError carries the most recent failure (if the
+  // request failed) so the row can render a small inline message.
+  revokingToken: string | null;
+  revokeError: { token: string; code: string; message: string } | null;
+}
+
+export const initialMyInvitesState: MyInvitesState = {
+  items: null,
+  loading: false,
+  loadError: null,
+  createForm: {
+    email: "",
+    note: "",
+    busy: false,
+    errorCode: null,
+    errorMessage: null,
+  },
+  revokingToken: null,
+  revokeError: null,
+};
+
+// EmailChangeState drives the change-email form inside ProfilePanel.
+// Distinct from VerifyEmailChangeState (which handles the click-
+// the-link side); this is the "I want to start a change" side.
+//
+// After a successful submit, `pendingSummary` is populated so the
+// panel can render "we sent a verification email to X. Click the
+// link there to complete the change. Expires at Y." until the user
+// either dismisses the panel or completes the verify (which the
+// SPA learns about on the next /me refresh, not via WS).
+export interface EmailChangeState {
+  draft: string;            // text in the input field
+  busy: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  // pendingSummary is set on a successful start. Held until panel
+  // close + reopen, or user starts another change.
+  pendingSummary: {
+    newEmail: string;
+    expiresAt: string;
+  } | null;
+}
+
+export const initialEmailChangeState: EmailChangeState = {
+  draft: "",
+  busy: false,
+  errorCode: null,
+  errorMessage: null,
+  pendingSummary: null,
+};
 
 export const initialAuthState: AuthState = {
   authStage: "bootstrapping",
@@ -203,6 +340,10 @@ export const initialAuthState: AuthState = {
   me: null,
   recoveryLogin: initialRecoveryLoginForm,
   pendingRegenerateWords: null,
+  inviteContext: null,
+  verifyEmailChange: null,
+  myInvites: initialMyInvitesState,
+  emailChange: initialEmailChangeState,
 };
 
 // AuthAction is the union of all auth-related reducer actions.
@@ -235,4 +376,37 @@ export type AuthAction =
   | { kind: "auth_recovery_login_submit_error"; code: string; message: string }
   | { kind: "auth_recovered"; result: RecoveryLoginResult }
   | { kind: "auth_regenerate_words_loaded"; words: string[] }
-  | { kind: "auth_regenerate_confirmed" };
+  | { kind: "auth_regenerate_confirmed" }
+  // ---- phase 09c-2: invites + email change -------------------------
+  // URL-driven flows:
+  | { kind: "auth_invite_detected"; token: string }
+  | { kind: "auth_invite_peek_loaded"; peek: PeekedInvite; status: "active" | "used" | "revoked" | "expired" }
+  | { kind: "auth_invite_peek_failed"; code: string; message: string }
+  | { kind: "auth_invite_dismissed" } // user clicked "register normally" or similar
+  | { kind: "auth_verify_email_detected"; token: string }
+  | { kind: "auth_verify_email_succeeded"; userID: string; newEmail: string }
+  | { kind: "auth_verify_email_failed"; code: string; message: string }
+  | { kind: "auth_verify_email_dismissed" }
+  // InvitesPanel (in-chat) - listing + create + revoke:
+  | { kind: "invites_load_start" }
+  | { kind: "invites_load_succeeded"; items: import("./api").InviteDTO[] }
+  | { kind: "invites_load_failed"; message: string }
+  | { kind: "invites_create_form_change"; field: "email" | "note"; value: string }
+  | { kind: "invites_create_submit_start" }
+  | { kind: "invites_create_submit_error"; code: string; message: string }
+  | { kind: "invites_create_submit_succeeded"; invite: import("./api").InviteDTO }
+  | { kind: "invites_revoke_start"; token: string }
+  | { kind: "invites_revoke_succeeded"; token: string }
+  | { kind: "invites_revoke_failed"; token: string; code: string; message: string }
+  | { kind: "invites_revoke_error_cleared" }
+  // ProfilePanel (in-chat) - change-email form:
+  | { kind: "email_change_draft_change"; value: string }
+  | { kind: "email_change_submit_start" }
+  | { kind: "email_change_submit_error"; code: string; message: string }
+  | { kind: "email_change_submit_succeeded"; newEmail: string; expiresAt: string }
+  | { kind: "email_change_dismissed" }
+  // me-mutation: after verify-email-change succeeds, refresh /me
+  // copy locally so the ProfilePanel updates without an extra
+  // round-trip. Used by both the VerifyEmailChangeScreen success
+  // path AND the in-chat panel if the user verifies in another tab.
+  | { kind: "auth_me_email_updated"; newEmail: string };

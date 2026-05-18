@@ -54,7 +54,16 @@ import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
 import { CreateChannelModal } from "./CreateChannelModal";
 import { AuthGate } from "../auth/AuthGate";
-import { logout as logoutAPI } from "../auth/api";
+import {
+  logout as logoutAPI,
+  listMyInvites,
+  createInvite as createInviteAPI,
+  revokeInvite as revokeInviteAPI,
+  startEmailChange as startEmailChangeAPI,
+  ApiError,
+} from "../auth/api";
+import { InvitesPanel } from "./InvitesPanel";
+import { ProfilePanel } from "./ProfilePanel";
 
 function classifyDevice(): "phone" | "tablet" | "desktop" {
   const ua = navigator.userAgent;
@@ -275,6 +284,110 @@ export function App() {
     c.send<FriendListPayload>(TypeFriendList, {});
   }, [state.createModalOpen, state.friendsLoaded, state.wsState]);
 
+  // Phase 09c-2: when InvitesPanel opens, fetch the current list of
+  // invites. The reducer's loaded `items` is preserved across closes,
+  // so reopening is cheap; we only fetch when items is null (never
+  // fetched) OR the user explicitly opened the panel a second time.
+  // For simplicity: refetch every open. The endpoint is cheap and
+  // the user wants fresh data (someone might have used an invite
+  // since they last looked).
+  useEffect(() => {
+    if (state.openPanel !== "invites") return;
+    let cancelled = false;
+    dispatch({ kind: "invites_load_start" });
+    listMyInvites()
+      .then((items) => {
+        if (cancelled) return;
+        dispatch({ kind: "invites_load_succeeded", items });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("invites list failed:", err);
+        const message = err instanceof ApiError ? err.message :
+          err instanceof Error ? err.message : "unknown error";
+        dispatch({ kind: "invites_load_failed", message });
+      });
+    return () => { cancelled = true; };
+  }, [state.openPanel]);
+
+  // Phase 09c-2: create-invite handler. Called from InvitesPanel
+  // submit. Reads the draft from state, fires the POST, dispatches
+  // succeed/error. Keep this as a non-effect function (callback)
+  // because the user action drives it, not state transition.
+  const onCreateInvite = async () => {
+    const { email, note, busy } = state.myInvites.createForm;
+    if (busy) return;
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedNote = note.trim();
+    if (!trimmedEmail) return;
+    dispatch({ kind: "invites_create_submit_start" });
+    try {
+      const invite = await createInviteAPI({
+        email: trimmedEmail,
+        note: trimmedNote || undefined,
+      });
+      dispatch({ kind: "invites_create_submit_succeeded", invite });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        dispatch({ kind: "invites_create_submit_error",
+          code: err.code, message: err.message });
+        return;
+      }
+      console.error("create invite failed:", err);
+      dispatch({ kind: "invites_create_submit_error",
+        code: "unknown",
+        message: err instanceof Error ? err.message : "unknown error" });
+    }
+  };
+
+  // Phase 09c-2: revoke-invite handler. Token is the invite's raw
+  // base64url-encoded string from the inviteDTO.
+  const onRevokeInvite = async (token: string) => {
+    dispatch({ kind: "invites_revoke_start", token });
+    try {
+      await revokeInviteAPI(token);
+      dispatch({ kind: "invites_revoke_succeeded", token });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        dispatch({ kind: "invites_revoke_failed",
+          token, code: err.code, message: err.message });
+        return;
+      }
+      console.error("revoke invite failed:", err);
+      dispatch({ kind: "invites_revoke_failed",
+        token,
+        code: "unknown",
+        message: err instanceof Error ? err.message : "unknown error" });
+    }
+  };
+
+  // Phase 09c-2: start-email-change handler. Fires when the user
+  // submits the change-email form in ProfilePanel.
+  const onStartEmailChange = async () => {
+    const draft = state.emailChange.draft.trim().toLowerCase();
+    if (!draft) return;
+    if (state.emailChange.busy) return;
+    dispatch({ kind: "email_change_submit_start" });
+    try {
+      const result = await startEmailChangeAPI(draft);
+      dispatch({
+        kind: "email_change_submit_succeeded",
+        newEmail: result.new_email,
+        expiresAt: result.expires_at,
+      });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        dispatch({ kind: "email_change_submit_error",
+          code: err.code, message: err.message });
+        return;
+      }
+      console.error("email change failed:", err);
+      dispatch({ kind: "email_change_submit_error",
+        code: "unknown",
+        message: err instanceof Error ? err.message : "unknown error" });
+    }
+  };
+
   // --- Event handlers --------------------------------------------------
 
   const onSend = (body: string) => {
@@ -352,6 +465,8 @@ export function App() {
         recoveryLogin={state.recoveryLogin}
         pendingRegenerateWords={state.pendingRegenerateWords}
         me={state.me}
+        inviteContext={state.inviteContext}
+        verifyEmailChange={state.verifyEmailChange}
         dispatch={dispatch}
       />
     );
@@ -387,6 +502,8 @@ export function App() {
           user={state.user}
           me={state.me}
           onLogout={handleLogout}
+          onOpenInvites={() => dispatch({ kind: "open_panel", panel: "invites" })}
+          onOpenProfile={() => dispatch({ kind: "open_panel", panel: "profile" })}
         />
       </header>
 
@@ -439,6 +556,32 @@ export function App() {
           loading={!state.friendsLoaded}
           onClose={() => dispatch({ kind: "close_create_modal" })}
           onSubmit={onCreateChannel}
+        />
+      )}
+
+      {state.openPanel === "invites" && (
+        <InvitesPanel
+          state={state.myInvites}
+          onClose={() => dispatch({ kind: "close_panel" })}
+          onCreateFormChange={(field, value) =>
+            dispatch({ kind: "invites_create_form_change", field, value })
+          }
+          onCreateSubmit={onCreateInvite}
+          onRevoke={onRevokeInvite}
+          onClearRevokeError={() => dispatch({ kind: "invites_revoke_error_cleared" })}
+        />
+      )}
+
+      {state.openPanel === "profile" && state.me && (
+        <ProfilePanel
+          me={state.me}
+          emailChange={state.emailChange}
+          onClose={() => dispatch({ kind: "close_panel" })}
+          onEmailChangeDraft={(value) =>
+            dispatch({ kind: "email_change_draft_change", value })
+          }
+          onEmailChangeSubmit={onStartEmailChange}
+          onEmailChangeDismiss={() => dispatch({ kind: "email_change_dismissed" })}
         />
       )}
     </div>

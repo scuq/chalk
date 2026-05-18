@@ -878,3 +878,204 @@ html, body {
 .chalk-field-hint--warn {
   color: var(--chalk-warn);
 }
+
+/* ===== Phase 09c-2: invites + profile panels ============================ */
+
+/* Wider modal variant for ProfilePanel's rotate-recovery view, which
+   reuses RecoveryScreen (designed for the auth flow's wide card). */
+.chalk-modal--wide {
+  max-width: 720px;
+}
+
+/* Common typography inside modal bodies for these two panels: a small
+   uppercase-ish section heading that matches the modal-header style. */
+.chalk-modal-body h3 {
+  margin: 0 0 var(--chalk-s2);
+  font-size: var(--chalk-size-body);
+  font-weight: 400;
+  color: var(--chalk-fg-bright);
+  text-transform: lowercase;
+  letter-spacing: 0.08em;
+}
+
+.chalk-modal-body > section + section {
+  margin-top: var(--chalk-s5);
+  padding-top: var(--chalk-s5);
+  border-top: 1px solid var(--chalk-border);
+}
+
+/* ---- InvitesPanel ---------------------------------------------------- */
+
+.chalk-invites-create {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+.chalk-invites-list-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+.chalk-invites-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s3);
+}
+
+.chalk-invite-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s1);
+  padding: var(--chalk-s3);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+}
+
+.chalk-invite-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--chalk-s2);
+}
+
+.chalk-invite-email {
+  font-weight: 500;
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-invite-status {
+  font-size: var(--chalk-size-small);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 2px var(--chalk-s2);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+}
+
+.chalk-invite-status--active {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg);
+}
+
+.chalk-invite-status--used {
+  color: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-muted);
+}
+
+.chalk-invite-status--revoked {
+  color: var(--chalk-fg-dim);
+  border-color: var(--chalk-fg-dim);
+}
+
+.chalk-invite-status--expired {
+  color: var(--chalk-warn);
+  border-color: var(--chalk-warn);
+}
+
+.chalk-invite-note {
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+  font-style: italic;
+}
+
+.chalk-invite-meta {
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-invite-url-row {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s1);
+}
+
+.chalk-invite-url {
+  flex: 1;
+  font-family: var(--chalk-font);
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg);
+  background: var(--chalk-bg);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  border: 1px solid var(--chalk-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.chalk-invite-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s1);
+}
+
+/* ---- ProfilePanel ---------------------------------------------------- */
+
+.chalk-profile-identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+.chalk-profile-fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--chalk-s2) var(--chalk-s4);
+  margin: 0;
+}
+
+.chalk-profile-fields dt {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  text-transform: lowercase;
+  letter-spacing: 0.05em;
+}
+
+.chalk-profile-fields dd {
+  margin: 0;
+  color: var(--chalk-fg-bright);
+  word-break: break-word;
+}
+
+.chalk-profile-fields dd em {
+  color: var(--chalk-fg-muted);
+  font-style: italic;
+}
+
+.chalk-profile-email-change {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+.chalk-profile-pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s3);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+}
+
+.chalk-profile-pending p {
+  margin: 0;
+}
+
+.chalk-profile-rotate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+/* Inline dismiss-link inside an error banner (used by InvitesPanel
+   row-level revoke error). */
+.chalk-auth-error .chalk-auth-link {
+  margin-left: var(--chalk-s2);
+}

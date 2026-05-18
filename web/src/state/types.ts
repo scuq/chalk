@@ -12,11 +12,15 @@ import type {
   AuthAction,
   AuthConfig,
   AuthStage,
+  EmailChangeState,
+  InviteContext,
   LoginForm,
   MeResponse,
+  MyInvitesState,
   RecoveryLoginForm,
   RegistrationForm,
   RegistrationResult,
+  VerifyEmailChangeState,
 } from "../auth/types";
 import { initialAuthState } from "../auth/types";
 
@@ -89,6 +93,18 @@ export interface AppState {
   me: MeResponse | null;
   recoveryLogin: RecoveryLoginForm;
   pendingRegenerateWords: string[] | null;
+
+  // Phase 09c-2 auth state:
+  inviteContext: InviteContext | null;
+  verifyEmailChange: VerifyEmailChangeState | null;
+  myInvites: MyInvitesState;
+  emailChange: EmailChangeState;
+
+  // Phase 09c-2 UI: which in-chat panel is open (if any).
+  // null = no panel. "invites" → InvitesPanel modal.
+  // "profile" → ProfilePanel modal. Mutually exclusive with
+  // createModalOpen (only one modal-equivalent at a time).
+  openPanel: "invites" | "profile" | null;
 }
 
 export const initialState: AppState = {
@@ -115,6 +131,12 @@ export const initialState: AppState = {
   // Phase 09b sub-step 6 additions.
   recoveryLogin: initialAuthState.recoveryLogin,
   pendingRegenerateWords: initialAuthState.pendingRegenerateWords,
+  // Phase 09c-2 additions.
+  inviteContext: initialAuthState.inviteContext,
+  verifyEmailChange: initialAuthState.verifyEmailChange,
+  myInvites: initialAuthState.myInvites,
+  emailChange: initialAuthState.emailChange,
+  openPanel: null,
 };
 
 // ---- Actions -------------------------------------------------------------
@@ -130,4 +152,7 @@ export type Action =
   | { kind: "friends_loaded"; friends: Friend[] }
   | { kind: "open_create_modal" }
   | { kind: "close_create_modal" }
+  // Phase 09c-2: in-chat panel toggles.
+  | { kind: "open_panel"; panel: "invites" | "profile" }
+  | { kind: "close_panel" }
   | AuthAction;

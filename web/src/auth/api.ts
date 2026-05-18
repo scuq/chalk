@@ -314,3 +314,194 @@ export async function regenerateRecovery(): Promise<string[]> {
   const body = await parseResponse<RegResponse>(resp);
   return body.recovery_words;
 }
+
+// ---- phase 09c-2: invites + email change -------------------------------
+
+// InviteDTO mirrors internal/auth/invites_http.go::inviteDTO. The
+// timestamps are ISO strings; convert as needed at display time.
+// Note: `url` and `note` are optional in JSON output (omitempty on the
+// Go side); decoded as undefined when absent.
+export interface InviteDTO {
+  token: string;
+  email: string;
+  inviter_id: string;
+  inviter_username?: string;
+  note?: string;
+  created_at: string;
+  expires_at: string;
+  used_at?: string;
+  revoked_at?: string;
+  status: "active" | "used" | "revoked" | "expired";
+  url?: string;
+}
+
+// CreateInviteInput is the body of POST /api/invites.
+export interface CreateInviteInput {
+  email: string;
+  note?: string;
+}
+
+// createInvite posts to /api/invites. Requires a session.
+// Returns the created invite (201). Error codes the SPA may see:
+//   - bad_email             (400)
+//   - note_too_long         (400)
+//   - email_taken           (409)  email already belongs to a user
+//   - email_blacklisted     (403)
+//   - invite_active         (409)  outstanding invite for this email
+//   - lookup_failed         (500)
+//   - persist_failed        (500)
+export async function createInvite(input: CreateInviteInput): Promise<InviteDTO> {
+  const resp = await fetch("/api/invites", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseResponse<InviteDTO>(resp);
+}
+
+// listMyInvites fetches the caller's invites. Requires a session.
+// Newest first. Returns every invite regardless of status; the SPA
+// filters/groups for display.
+export async function listMyInvites(): Promise<InviteDTO[]> {
+  const resp = await fetch("/api/invites/mine", {
+    method: "GET",
+    credentials: "same-origin",
+  });
+  interface ListResponse {
+    invites: InviteDTO[] | null;
+  }
+  const body = await parseResponse<ListResponse>(resp);
+  return body.invites ?? [];
+}
+
+// revokeInvite DELETEs /api/invites/{token}. Requires a session.
+// Owner-checked at the server; non-owners get 404 (not 403). On
+// success returns 204 No Content (no body).
+//
+// Error codes:
+//   - invite_invalid_shape  (400)
+//   - invite_not_found      (404)
+//   - invite_not_active     (409)  already used/revoked/expired
+export async function revokeInvite(token: string): Promise<void> {
+  const resp = await fetch(`/api/invites/${encodeURIComponent(token)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (resp.status === 204) {
+    await resp.body?.cancel();
+    return;
+  }
+  // Error path: parse the JSON body for code+message.
+  if (!resp.ok) {
+    let body: unknown = null;
+    try {
+      body = await resp.json();
+    } catch {
+      throw new ApiError(resp.status, "revoke_failed",
+        resp.statusText || "revoke failed");
+    }
+    const e = (body as ServerError).error;
+    throw new ApiError(
+      resp.status,
+      e?.code ?? "revoke_failed",
+      e?.message ?? "revoke failed"
+    );
+  }
+  // 2xx but not 204 (unexpected). Drain.
+  await resp.body?.cancel();
+}
+
+// PeekInviteResult mirrors the server's peekInviteResponse. The peek
+// endpoint is public (no session) and is what RegisterFromInviteScreen
+// calls on mount when ?invite=<token> is in the URL.
+export interface PeekInviteResult {
+  email: string;
+  inviter_username: string;
+  expires_at: string;
+  status: "active" | "used" | "revoked" | "expired";
+}
+
+// peekInvite reads /api/auth/invite/{token}. No session required.
+// 200 → active invite (returns result + status "active").
+// 410 → exists but inactive (used/revoked/expired); returns result
+//       with the relevant status; caller branches on it to show the
+//       right copy.
+// 404 → unknown token; throws ApiError (code "invite_not_found").
+// 400 → malformed token; throws ApiError (code "invite_invalid_shape").
+//
+// The reason 410 is NOT thrown as an ApiError: the body shape is
+// identical to the 200 success case and the SPA wants to render the
+// inviter + email even for an unusable invite (so the user knows
+// what address it was issued to). The status field carries the
+// distinction.
+export async function peekInvite(token: string): Promise<PeekInviteResult> {
+  const resp = await fetch(`/api/auth/invite/${encodeURIComponent(token)}`, {
+    method: "GET",
+    credentials: "same-origin",
+  });
+  // Treat 200 AND 410 as "we have a result body"; 4xx other than 410
+  // and any 5xx are ApiErrors.
+  if (resp.status === 200 || resp.status === 410) {
+    return (await resp.json()) as PeekInviteResult;
+  }
+  return parseResponse<PeekInviteResult>(resp);
+}
+
+// EmailChangeResult mirrors the server's emailChangeResponse. Returned
+// by /api/auth/email-change after the SPA submits a new email; the
+// actual change isn't complete until the user clicks the link in the
+// verification email, but the SPA can show "we sent you an email"
+// UX based on this response.
+export interface EmailChangeResult {
+  new_email: string;
+  expires_at: string;
+}
+
+// startEmailChange posts to /api/auth/email-change. Requires a session.
+// Server sends two emails (verify-to-new, notify-to-old) and stores
+// the pending state. Returns 200 with the new email + expiry.
+//
+// Error codes:
+//   - bad_email                (400)
+//   - same_email               (400)  new === current
+//   - email_blacklisted        (403)
+//   - email_taken              (409)  another user has this email
+//   - email_pending_elsewhere  (409)  another user has it pending too
+//   - persist_failed           (500)
+//   - lookup_failed            (500)
+export async function startEmailChange(newEmail: string): Promise<EmailChangeResult> {
+  const resp = await fetch("/api/auth/email-change", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ new_email: newEmail }),
+  });
+  return parseResponse<EmailChangeResult>(resp);
+}
+
+// VerifyEmailChangeResult mirrors the server's verifyEmailChangeResponse.
+// Returned on a successful verify-email-change/{token} POST.
+export interface VerifyEmailChangeResult {
+  user_id: string;
+  email: string;
+}
+
+// verifyEmailChange finalizes a pending email change. The token comes
+// from the URL the user clicked in their new-address inbox. Session
+// is OPTIONAL — the token alone authorizes the change (otherwise a
+// user whose session expired between request and click couldn't
+// complete it).
+//
+// Error codes:
+//   - invite_invalid_shape  (400)  malformed token
+//   - verify_failed         (410)  token bad/expired/already-used
+//   - email_taken           (409)  rare race during the verify window
+//   - verify_failed         (500)
+export async function verifyEmailChange(token: string): Promise<VerifyEmailChangeResult> {
+  const resp = await fetch(`/api/auth/verify-email-change/${encodeURIComponent(token)}`, {
+    method: "POST",
+    credentials: "same-origin",
+  });
+  return parseResponse<VerifyEmailChangeResult>(resp);
+}

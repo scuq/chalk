@@ -23,6 +23,7 @@ import type {
   AuthAction,
   AuthConfig,
   AuthStage,
+  InviteContext,
   LoginForm,
   LoginResult,
   MeResponse,
@@ -30,6 +31,7 @@ import type {
   RecoveryLoginResult,
   RegistrationForm,
   RegistrationResult,
+  VerifyEmailChangeState,
 } from "./types";
 import { fetchAuthConfig, fetchMe, ApiError } from "./api";
 import { LoginScreen } from "./LoginScreen";
@@ -37,6 +39,8 @@ import { RegisterScreen } from "./RegisterScreen";
 import { RecoveryScreen } from "./RecoveryScreen";
 import { RecoveryLoginScreen } from "./RecoveryLoginScreen";
 import { RegenerateScreen } from "./RegenerateScreen";
+import { RegisterFromInviteScreen } from "./RegisterFromInviteScreen";
+import { VerifyEmailChangeScreen } from "./VerifyEmailChangeScreen";
 
 interface Props {
   authStage: AuthStage;
@@ -48,6 +52,9 @@ interface Props {
   recoveryLogin: RecoveryLoginForm;
   pendingRegenerateWords: string[] | null;
   me: MeResponse | null;
+  // Phase 09c-2 additions:
+  inviteContext: InviteContext | null;
+  verifyEmailChange: VerifyEmailChangeState | null;
   dispatch: (action: AuthAction) => void;
 }
 
@@ -60,15 +67,48 @@ export function AuthGate({
   recoveryLogin,
   pendingRegenerateWords,
   me,
+  inviteContext,
+  verifyEmailChange,
   dispatch,
 }: Props) {
-  // On mount: fetch /api/auth/me. 200 → authed (skip the screens
-  // entirely), 401 → login (default), network error → surface via
-  // auth_config_failed (reuses the existing error slot in the
-  // registration form; not ideal but covers the rare case where the
-  // server is unreachable at boot).
+  // On mount: bootstrap. Phase 09c-2 adds two URL-driven branches
+  // ahead of the /me fetch:
+  //
+  //   - ?invite=<token>        → registering-from-invite stage
+  //   - ?verify_email=<token>  → verifying-email-change stage
+  //
+  // URL params take precedence over session state. Reason: someone
+  // clicking an invite link in their email expects to land on the
+  // "you've been invited" screen, not on a chat session belonging
+  // to whoever was logged in last in this browser. Similarly for
+  // verify links.
+  //
+  // If neither param is present, fall through to /me fetch (200 →
+  // authed, 401 → login).
   useEffect(() => {
     if (authStage !== "bootstrapping") return;
+
+    // Parse URL params. Use the global location; the SPA doesn't
+    // route to subpaths, but the params can appear on any path.
+    const params = new URLSearchParams(window.location.search);
+    const inviteToken = params.get("invite");
+    const verifyEmailToken = params.get("verify_email");
+
+    if (inviteToken) {
+      // Clean the URL so a refresh doesn't re-fire the flow. Keep
+      // the path; drop the query. (history.replaceState; we don't
+      // need a SPA router.)
+      window.history.replaceState({}, "", window.location.pathname);
+      dispatch({ kind: "auth_invite_detected", token: inviteToken });
+      return;
+    }
+    if (verifyEmailToken) {
+      window.history.replaceState({}, "", window.location.pathname);
+      dispatch({ kind: "auth_verify_email_detected", token: verifyEmailToken });
+      return;
+    }
+
+    // No URL-driven flow → /me fetch as before.
     let cancelled = false;
     fetchMe()
       .then((me) => {
@@ -81,15 +121,10 @@ export function AuthGate({
       })
       .catch((err) => {
         if (cancelled) return;
-        // ApiError with code 'network_failure' is the expected
-        // server-unreachable case. Other errors get logged.
         console.error("auth bootstrap /me failed:", err);
         const message = err instanceof ApiError ? err.message :
           err instanceof Error ? err.message : String(err);
         dispatch({ kind: "auth_config_failed", message });
-        // Also flip to login so the user has somewhere to go (the
-        // error banner will surface inside RegisterScreen if they
-        // navigate there). Better than being stuck on a spinner.
         dispatch({ kind: "auth_me_absent" });
       });
     return () => {
@@ -251,6 +286,73 @@ export function AuthGate({
           dispatch({ kind: "auth_regenerate_words_loaded", words })
         }
         onConfirmed={() => dispatch({ kind: "auth_regenerate_confirmed" })}
+      />
+    );
+  }
+
+  // ---- Phase 09c-2: URL-driven flows ----------------------------------
+
+  if (authStage === "registering-from-invite") {
+    if (!inviteContext) {
+      // Defensive: the reducer always populates inviteContext when
+      // entering this stage; this branch shouldn't fire.
+      return (
+        <div class="chalk-auth" data-testid="auth-invite-missing">
+          <div class="chalk-auth-card">
+            <p class="chalk-auth-error">
+              Invite context missing. Please refresh.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <RegisterFromInviteScreen
+        inviteContext={inviteContext}
+        form={registration}
+        config={authConfig}
+        onPeekLoaded={(peek, status) =>
+          dispatch({ kind: "auth_invite_peek_loaded", peek, status })
+        }
+        onPeekFailed={(code, message) =>
+          dispatch({ kind: "auth_invite_peek_failed", code, message })
+        }
+        onFieldChange={(field, value) =>
+          dispatch({ kind: "auth_form_change", field, value })
+        }
+        onSubmitStart={() => dispatch({ kind: "auth_form_submit_start" })}
+        onSubmitError={(code, message) =>
+          dispatch({ kind: "auth_form_submit_error", code, message })
+        }
+        onRegistered={(result) => dispatch({ kind: "auth_registered", result })}
+        onDismiss={() => dispatch({ kind: "auth_invite_dismissed" })}
+      />
+    );
+  }
+
+  if (authStage === "verifying-email-change") {
+    if (!verifyEmailChange) {
+      return (
+        <div class="chalk-auth" data-testid="auth-verify-missing">
+          <div class="chalk-auth-card">
+            <p class="chalk-auth-error">
+              Verification context missing. Please refresh.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <VerifyEmailChangeScreen
+        verify={verifyEmailChange}
+        hasSession={me !== null}
+        onSucceeded={(userID, newEmail) =>
+          dispatch({ kind: "auth_verify_email_succeeded", userID, newEmail })
+        }
+        onFailed={(code, message) =>
+          dispatch({ kind: "auth_verify_email_failed", code, message })
+        }
+        onDismiss={() => dispatch({ kind: "auth_verify_email_dismissed" })}
       />
     );
   }

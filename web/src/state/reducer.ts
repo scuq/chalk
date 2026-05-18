@@ -123,6 +123,58 @@ export function reducer(state: AppState, action: Action): AppState {
     case "close_create_modal":
       return { ...state, createModalOpen: false };
 
+    // ---- Phase 09c-2: in-chat panel toggles ---------------------------
+
+    case "open_panel":
+      // Opening a panel: clear any stale form state from the OTHER
+      // panel category so re-opens are predictable. Specifically:
+      // opening "invites" clears any in-flight revoke error; opening
+      // "profile" leaves email-change pendingSummary alone (we want
+      // the user to see "your verification is pending" on revisits
+      // until either dismissed or completed).
+      if (action.panel === "invites") {
+        return {
+          ...state,
+          openPanel: "invites",
+          myInvites: {
+            ...state.myInvites,
+            revokeError: null,
+          },
+        };
+      }
+      return { ...state, openPanel: "profile" };
+
+    case "close_panel":
+      // Closing the panel: clear transient form state but preserve
+      // the loaded items list (faster re-open). Specifically:
+      //   - invites: clear create-form errors + revoke errors, but
+      //     keep items[] and createForm draft text (user may
+      //     re-open to finish typing).
+      //   - profile: clear pendingSummary so re-open doesn't show
+      //     stale "we sent X" copy from days ago.
+      return {
+        ...state,
+        openPanel: null,
+        myInvites: {
+          ...state.myInvites,
+          createForm: {
+            ...state.myInvites.createForm,
+            errorCode: null,
+            errorMessage: null,
+          },
+          revokeError: null,
+        },
+        emailChange: {
+          ...state.emailChange,
+          errorCode: null,
+          errorMessage: null,
+          // Note: pendingSummary cleared on close so a future open
+          // starts fresh; the actual change still happens via the
+          // verify link.
+          pendingSummary: null,
+        },
+      };
+
     // ---- Phase 09b sub-step 4/5b: auth-flow actions -------------------
 
     case "auth_config_loaded":
@@ -328,6 +380,32 @@ export function reducer(state: AppState, action: Action): AppState {
           errorMessage: null,
         },
         pendingRegenerateWords: null,
+        // Phase 09c-2: clear URL-driven and panel-driven state so a
+        // subsequent re-login from the same tab starts clean.
+        inviteContext: null,
+        verifyEmailChange: null,
+        myInvites: {
+          items: null,
+          loading: false,
+          loadError: null,
+          createForm: {
+            email: "",
+            note: "",
+            busy: false,
+            errorCode: null,
+            errorMessage: null,
+          },
+          revokingToken: null,
+          revokeError: null,
+        },
+        emailChange: {
+          draft: "",
+          busy: false,
+          errorCode: null,
+          errorMessage: null,
+          pendingSummary: null,
+        },
+        openPanel: null,
       };
 
     case "auth_go_register":
@@ -452,6 +530,367 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         authStage: "authed",
         pendingRegenerateWords: null,
+      };
+
+    // ---- Phase 09c-2: URL-driven flows ------------------------------
+
+    case "auth_invite_detected":
+      // AuthGate parsed ?invite=<token> from the URL at boot. Flip
+      // to the new stage; RegisterFromInviteScreen will trigger the
+      // peek and render accordingly.
+      return {
+        ...state,
+        authStage: "registering-from-invite",
+        inviteContext: {
+          token: action.token,
+          peekStatus: "loading",
+          peek: null,
+          errorMessage: "",
+        },
+        // Pre-fill the registration form's invite token so a submit
+        // carries it. Email will be pre-filled from the peek response
+        // when it lands.
+        registration: {
+          ...state.registration,
+          inviteToken: action.token,
+          errorCode: null,
+          errorMessage: null,
+        },
+      };
+
+    case "auth_invite_peek_loaded": {
+      // Peek returned. Status from the server: active = usable;
+      // used/revoked/expired = display-only with "this invite has
+      // been X" copy and a "register normally / log in" escape.
+      // Pre-fill the registration form's email from the peek.
+      const prev = state.inviteContext;
+      if (!prev) return state;
+      return {
+        ...state,
+        inviteContext: {
+          ...prev,
+          peekStatus: action.status,
+          peek: action.peek,
+          errorMessage: "",
+        },
+        registration: {
+          ...state.registration,
+          email: action.status === "active" ? action.peek.email : state.registration.email,
+          errorCode: null,
+          errorMessage: null,
+        },
+      };
+    }
+
+    case "auth_invite_peek_failed": {
+      // Peek failed: malformed token (400), unknown token (404),
+      // server error (500), or network failure. Show an error
+      // screen with the "register normally" escape.
+      const prev = state.inviteContext;
+      if (!prev) return state;
+      return {
+        ...state,
+        inviteContext: {
+          ...prev,
+          peekStatus: "error",
+          peek: null,
+          errorMessage: action.message,
+        },
+      };
+    }
+
+    case "auth_invite_dismissed":
+      // User clicked the escape link. Clear inviteContext and the
+      // pre-filled invite token; flip to login so they can decide
+      // what to do next (register normally, log in, recover).
+      return {
+        ...state,
+        authStage: "login",
+        inviteContext: null,
+        registration: {
+          ...state.registration,
+          inviteToken: "",
+          email: "",
+          errorCode: null,
+          errorMessage: null,
+        },
+      };
+
+    case "auth_verify_email_detected":
+      // AuthGate parsed ?verify_email=<token> from the URL at boot.
+      // Flip to the verifying stage; VerifyEmailChangeScreen will
+      // fire the verify call on mount.
+      return {
+        ...state,
+        authStage: "verifying-email-change",
+        verifyEmailChange: {
+          token: action.token,
+          phase: "loading",
+          newEmail: "",
+          errorCode: "",
+          errorMessage: "",
+        },
+      };
+
+    case "auth_verify_email_succeeded":
+      // The verify call returned 200; users.email was updated server-
+      // side. Flip phase so the screen can render the success copy.
+      // If the user is currently authed in this tab, also mutate
+      // state.me.email so any panel that re-renders sees the new
+      // value without a /me refresh.
+      return {
+        ...state,
+        verifyEmailChange: state.verifyEmailChange
+          ? {
+              ...state.verifyEmailChange,
+              phase: "success",
+              newEmail: action.newEmail,
+              errorCode: "",
+              errorMessage: "",
+            }
+          : null,
+        me: state.me
+          ? { ...state.me, email: action.newEmail }
+          : state.me,
+      };
+
+    case "auth_verify_email_failed":
+      return {
+        ...state,
+        verifyEmailChange: state.verifyEmailChange
+          ? {
+              ...state.verifyEmailChange,
+              phase: "failure",
+              errorCode: action.code,
+              errorMessage: action.message,
+            }
+          : null,
+      };
+
+    case "auth_verify_email_dismissed":
+      // User clicked through the success/failure card. Clear the
+      // verify state and decide where to send them: if they were
+      // already authed (me is set), close the modal-equivalent by
+      // returning to authed; otherwise to login.
+      return {
+        ...state,
+        authStage: state.me ? "authed" : "login",
+        verifyEmailChange: null,
+      };
+
+    // ---- Phase 09c-2: InvitesPanel data -----------------------------
+
+    case "invites_load_start":
+      return {
+        ...state,
+        myInvites: {
+          ...state.myInvites,
+          loading: true,
+          loadError: null,
+        },
+      };
+
+    case "invites_load_succeeded":
+      return {
+        ...state,
+        myInvites: {
+          ...state.myInvites,
+          items: action.items,
+          loading: false,
+          loadError: null,
+        },
+      };
+
+    case "invites_load_failed":
+      return {
+        ...state,
+        myInvites: {
+          ...state.myInvites,
+          loading: false,
+          loadError: action.message,
+        },
+      };
+
+    case "invites_create_form_change":
+      return {
+        ...state,
+        myInvites: {
+          ...state.myInvites,
+          createForm: {
+            ...state.myInvites.createForm,
+            [action.field]: action.value,
+            errorCode: null,
+            errorMessage: null,
+          },
+        },
+      };
+
+    case "invites_create_submit_start":
+      return {
+        ...state,
+        myInvites: {
+          ...state.myInvites,
+          createForm: {
+            ...state.myInvites.createForm,
+            busy: true,
+            errorCode: null,
+            errorMessage: null,
+          },
+        },
+      };
+
+    case "invites_create_submit_error":
+      return {
+        ...state,
+        myInvites: {
+          ...state.myInvites,
+          createForm: {
+            ...state.myInvites.createForm,
+            busy: false,
+            errorCode: action.code,
+            errorMessage: action.message,
+          },
+        },
+      };
+
+    case "invites_create_submit_succeeded":
+      // Prepend the new invite to the items list so it appears at
+      // the top of the panel. Clear the form for the next create.
+      return {
+        ...state,
+        myInvites: {
+          ...state.myInvites,
+          items: [action.invite, ...(state.myInvites.items ?? [])],
+          createForm: {
+            email: "",
+            note: "",
+            busy: false,
+            errorCode: null,
+            errorMessage: null,
+          },
+        },
+      };
+
+    case "invites_revoke_start":
+      return {
+        ...state,
+        myInvites: {
+          ...state.myInvites,
+          revokingToken: action.token,
+          revokeError: null,
+        },
+      };
+
+    case "invites_revoke_succeeded":
+      // Server returned 204. Update the local row's status to
+      // "revoked" rather than removing it -- users find it
+      // disorienting when revoking makes the row vanish, and the
+      // server actually keeps the row for audit anyway.
+      return {
+        ...state,
+        myInvites: {
+          ...state.myInvites,
+          items: (state.myInvites.items ?? []).map((inv) =>
+            inv.token === action.token
+              ? { ...inv, status: "revoked", revoked_at: new Date().toISOString(), url: undefined }
+              : inv
+          ),
+          revokingToken: null,
+          revokeError: null,
+        },
+      };
+
+    case "invites_revoke_failed":
+      return {
+        ...state,
+        myInvites: {
+          ...state.myInvites,
+          revokingToken: null,
+          revokeError: {
+            token: action.token,
+            code: action.code,
+            message: action.message,
+          },
+        },
+      };
+
+    case "invites_revoke_error_cleared":
+      return {
+        ...state,
+        myInvites: {
+          ...state.myInvites,
+          revokeError: null,
+        },
+      };
+
+    // ---- Phase 09c-2: ProfilePanel email-change ---------------------
+
+    case "email_change_draft_change":
+      return {
+        ...state,
+        emailChange: {
+          ...state.emailChange,
+          draft: action.value,
+          errorCode: null,
+          errorMessage: null,
+        },
+      };
+
+    case "email_change_submit_start":
+      return {
+        ...state,
+        emailChange: {
+          ...state.emailChange,
+          busy: true,
+          errorCode: null,
+          errorMessage: null,
+        },
+      };
+
+    case "email_change_submit_error":
+      return {
+        ...state,
+        emailChange: {
+          ...state.emailChange,
+          busy: false,
+          errorCode: action.code,
+          errorMessage: action.message,
+        },
+      };
+
+    case "email_change_submit_succeeded":
+      return {
+        ...state,
+        emailChange: {
+          ...state.emailChange,
+          busy: false,
+          draft: "",
+          errorCode: null,
+          errorMessage: null,
+          pendingSummary: {
+            newEmail: action.newEmail,
+            expiresAt: action.expiresAt,
+          },
+        },
+      };
+
+    case "email_change_dismissed":
+      // User clicked "ok" on the pending-change summary; clear it
+      // so the form re-renders ready for another draft.
+      return {
+        ...state,
+        emailChange: {
+          ...state.emailChange,
+          pendingSummary: null,
+        },
+      };
+
+    case "auth_me_email_updated":
+      // Used by VerifyEmailChangeScreen (and the in-panel verify
+      // path if we ever add one) to keep `me` in sync locally.
+      return {
+        ...state,
+        me: state.me ? { ...state.me, email: action.newEmail } : state.me,
       };
   }
 }

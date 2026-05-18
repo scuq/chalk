@@ -23,6 +23,9 @@ interface Props {
   me: MeResponse | null;
   // phase 09b-5b: called when the user clicks the logout menu item.
   onLogout: () => void;
+  // phase 09c-2: extra menu items.
+  onOpenInvites?: () => void;
+  onOpenProfile?: () => void;
 }
 
 const labels: Record<ConnectionState, string> = {
@@ -32,7 +35,7 @@ const labels: Record<ConnectionState, string> = {
   error: "error",
 };
 
-export function StatusBar({ state, detail, user, me, onLogout }: Props) {
+export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, onOpenProfile }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -98,6 +101,34 @@ export function StatusBar({ state, detail, user, me, onLogout }: Props) {
               role="menu"
               data-testid="status-user-menu"
             >
+              {onOpenProfile && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="chalk-status-menu-item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenProfile();
+                  }}
+                  data-testid="status-user-menu-profile"
+                >
+                  profile
+                </button>
+              )}
+              {onOpenInvites && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="chalk-status-menu-item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenInvites();
+                  }}
+                  data-testid="status-user-menu-invites"
+                >
+                  invites
+                </button>
+              )}
               <button
                 type="button"
                 role="menuitem"
