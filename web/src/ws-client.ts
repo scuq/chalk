@@ -227,3 +227,44 @@ export function clearDeviceId(): void {
     // harmless.
   }
 }
+
+// Phase 10d: per-user thread-seen state.
+//
+// Key shape: chalk.threadSeen.<userID> -> JSON map { threadID: seq }.
+// Per-user to avoid collisions when multiple accounts use the same
+// browser profile.
+function threadSeenKey(userID: string): string {
+  return "chalk.threadSeen." + userID;
+}
+
+export function getThreadSeen(userID: string): Record<string, number> {
+  if (!userID) return {};
+  try {
+    const raw = window.localStorage.getItem(threadSeenKey(userID));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      const out: Record<string, number> = {};
+      for (const k of Object.keys(parsed)) {
+        const v = parsed[k];
+        if (typeof v === "number" && v > 0) out[k] = v;
+      }
+      return out;
+    }
+  } catch {
+    /* corrupt: fall through */
+  }
+  return {};
+}
+
+export function setThreadSeen(
+  userID: string,
+  seen: Record<string, number>,
+): void {
+  if (!userID) return;
+  try {
+    window.localStorage.setItem(threadSeenKey(userID), JSON.stringify(seen));
+  } catch {
+    /* quota or disabled storage: ignore */
+  }
+}

@@ -143,6 +143,11 @@ type SendPayload struct {
 	ChannelID string `json:"channel_id,omitempty"`
 	// Body is the message text in phase 04. Replaced by Ciphertext in phase 10.
 	Body string `json:"body"`
+	// Phase 10a: optional parent message ID. When set, this send is a
+	// thread reply. The server resolves thread_id from the parent
+	// (parent.thread_id if non-nil, else parent.id) and validates that
+	// the parent exists in the same channel.
+	ParentID string `json:"parent_id,omitempty"`
 }
 
 // MessagePayload is what the server pushes to peers. id and ts are
@@ -164,6 +169,19 @@ type MessagePayload struct {
 	SenderUserID string `json:"sender_user_id,omitempty"`
 	TS           int64  `json:"ts"` // server unix-millis
 	Body         string `json:"body"`
+	// Phase 10a: threading metadata. ParentID set when this message
+	// is a thread reply. ThreadID set whenever the message is part of
+	// a thread (either the head OR a reply); empty for standalone
+	// messages. ReplyCount is the number of replies WHERE thread_id =
+	// this.id (only meaningful for messages that are thread heads);
+	// 0 otherwise.
+	ParentID     string `json:"parent_id,omitempty"`
+	ThreadID     string `json:"thread_id,omitempty"`
+	ReplyCount   int64  `json:"reply_count,omitempty"`
+	// Phase 10d: highest seq among replies in this thread. Used by
+	// clients to compute "unread" badges when compared against a
+	// locally-stored "last seen" seq per thread.
+	LastReplySeq int64  `json:"last_reply_seq,omitempty"`
 }
 
 // ErrorPayload is sent when the server can't process a request. Code is a
@@ -176,6 +194,7 @@ type ErrorPayload struct {
 // Common error codes. Keep stable across versions.
 const (
 	ErrCodeBadFrame      = "bad_frame"
+	ErrCodeInvalidParent = "invalid_parent" // Phase 10a
 	ErrCodeBadPayload    = "bad_payload"
 	ErrCodeUnknownType   = "unknown_type"
 	ErrCodeNotHelloed    = "not_helloed"
@@ -183,3 +202,24 @@ const (
 	ErrCodeRateLimited   = "rate_limited"
 	ErrCodeFrameTooLarge = "frame_too_large"
 )
+
+// Phase 10a: fetch a thread's messages by thread_id. Like
+// fetch_history but scoped to one thread. Ordering: newest-first by
+// seq DESC; client reverses to render oldest-first if it wants.
+const (
+	TypeFetchThread    = "fetch_thread"
+	TypeFetchThreadAck = "fetch_thread_ack"
+)
+
+type FetchThreadPayload struct {
+	ChannelID string `json:"channel_id"`
+	ThreadID  string `json:"thread_id"`
+	BeforeSeq int64  `json:"before_seq,omitempty"` // 0 means newest
+	Limit     int    `json:"limit,omitempty"`      // default 50, max 200
+}
+
+type FetchThreadAckPayload struct {
+	ChannelID string           `json:"channel_id"`
+	ThreadID  string           `json:"thread_id"`
+	Messages  []MessagePayload `json:"messages"`
+}

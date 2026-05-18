@@ -17,6 +17,8 @@ import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
   TypeSend,
+  TypeFetchThread,
+  TypeFetchThreadAck,
   TypeError,
   TypeListChannels,
   TypeListChannelsAck,
@@ -59,6 +61,7 @@ import {
   type ListChannelsAckPayload,
   type FetchHistoryPayload,
   type FetchHistoryAckPayload,
+  type FetchThreadAckPayload,
   type CreateChannelPayload,
   type CreateChannelAckPayload,
   type ChannelEventPayload,
@@ -70,13 +73,14 @@ import {
   type PresenceSubscribePayload,
   type PresenceUnsubscribePayload,
 } from "../proto";
-import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
+import { WSClient, getOrCreateDeviceId, clearDeviceId, getThreadSeen, setThreadSeen } from "../ws-client";
 import { reducer } from "../state/reducer";
 import { initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary } from "../state/types";
 import { StatusBar } from "./StatusBar";
 import { Sidebar } from "./Sidebar";
 import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
+import { ThreadPanel } from "./ThreadPanel";
 // Phase 9.6d: heavy panels are lazy-loaded so the initial bundle
 // can stay small. Each becomes a separate chunk file that fetches
 // the first time the user opens that panel. Subsequent opens use
@@ -144,6 +148,13 @@ function wireToMessage(w: MessagePayload): Message {
     senderUserID: w.sender_user_id ?? "",
     ts: new Date(w.ts),
     body: w.body,
+    // Phase 10a: threading metadata. Undefined when omitted by older
+    // servers or for non-thread messages.
+    parentID: w.parent_id || undefined,
+    threadID: w.thread_id || undefined,
+    replyCount: w.reply_count ?? 0,
+    // Phase 10d:
+    lastReplySeq: w.last_reply_seq ?? 0,
   };
 }
 
@@ -206,6 +217,19 @@ export function App() {
 
   function handleFrame(f: Frame) {
     switch (f.type) {
+      case TypeFetchThreadAck: {
+        // Phase 10c: server returned the replies for a thread.
+        const p = f.payload as FetchThreadAckPayload;
+        const msgs = (p.messages ?? []).map(wireToMessage);
+        // Sort oldest-first for the panel's rendering convention.
+        msgs.sort((a, b) => a.seq - b.seq);
+        dispatch({
+          kind: "thread_loaded",
+          threadID: p.thread_id,
+          messages: msgs,
+        });
+        break;
+      }
       case TypeMessage: {
         const m = wireToMessage(f.payload as MessagePayload);
         dispatch({ kind: "message", message: m });
@@ -651,7 +675,7 @@ export function App() {
 
   // --- Event handlers --------------------------------------------------
 
-  const onSend = (body: string) => {
+  const onSend = (body: string, parentID?: string) => {
     const c = clientRef.current;
     if (!c || !c.isOpen()) return;
     const cid = state.activeChannelID;
@@ -694,10 +718,19 @@ export function App() {
         senderUserID: state.user.id,
         ts: new Date(),
         body,
+        // Phase 10a/10c: thread metadata. parentID is set only when
+        // this send is a thread reply (caller passed parentID). The
+        // optimistic threadID resolves to parentID for first-replies
+        // and inherits otherwise (the server may correct it; we'll
+        // accept the server's value when it echoes back).
+        parentID,
+        threadID: parentID ? (state.openThread?.threadID ?? parentID) : undefined,
+        replyCount: 0,
       },
     });
 
     const payload: SendPayload = { channel_id: cid, body };
+    if (parentID) payload.parent_id = parentID;
     c.send(TypeSend, payload);
   };
 
@@ -980,9 +1013,14 @@ export function App() {
   const activeChannel = state.activeChannelID
     ? state.channels[state.activeChannelID]
     : null;
-  const activeMessages = state.activeChannelID
+  // Phase 10a: hide replies from the main channel feed. They'll
+  // be visible inside the thread panel once 10c lands. Until then,
+  // they're in the cache but not rendered. We keep the full list
+  // in state so 10c can pull from it directly without re-fetching.
+  const allActiveMessages = state.activeChannelID
     ? state.messages[state.activeChannelID] ?? []
     : [];
+  const activeMessages = allActiveMessages.filter((m) => !m.parentID);
 
   // Phase 09b sub-step 5b: logout handler. Fires the server-side
   // session delete, then dispatches auth_logged_out to flip the SPA
@@ -1002,8 +1040,53 @@ export function App() {
     dispatch({ kind: "auth_logged_out" });
   };
 
+  // Phase 10c: when a thread is opened, fetch its replies if we
+  // don't have them cached yet. The "open_thread" action sets
+  // openThread synchronously; this effect picks it up and sends
+  // fetch_thread. The ack arrives as a separate frame handled in
+  // the main WS receive loop.
+  useEffect(() => {
+    if (!state.openThread) return;
+    const { channelID, threadID } = state.openThread;
+    if (state.threadLoaded[threadID]) return;
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    c.send(TypeFetchThread, { channel_id: channelID, thread_id: threadID });
+  }, [state.openThread?.threadID, state.openThread?.channelID, state.threadLoaded]);
+
+  // Phase 10d: load threadSeen from localStorage once we know the
+  // user id. Keyed per-user so multiple accounts on the same browser
+  // don't collide.
+  useEffect(() => {
+    if (!state.user?.id) return;
+    const seen = getThreadSeen(state.user.id);
+    dispatch({ kind: "thread_seen_init", seen });
+  }, [state.user?.id]);
+
+  // Phase 10d: persist threadSeen to localStorage when it changes.
+  useEffect(() => {
+    if (!state.user?.id) return;
+    setThreadSeen(state.user.id, state.threadSeen);
+  }, [state.user?.id, state.threadSeen]);
+
+  // Phase 10d: if a reply arrives while the matching thread panel is
+  // open, immediately mark it as seen. This keeps the badge at 0 for
+  // a thread the user is currently watching. We detect "panel is
+  // open for this thread" by comparing state.openThread.threadID
+  // against state.threadMessages[tid] tail.
+  useEffect(() => {
+    if (!state.openThread) return;
+    const tid = state.openThread.threadID;
+    const replies = state.threadMessages[tid] ?? [];
+    if (replies.length === 0) return;
+    const maxSeq = replies.reduce((mx, r) => (r.seq > mx ? r.seq : mx), 0);
+    if (maxSeq > (state.threadSeen[tid] ?? 0)) {
+      dispatch({ kind: "thread_seen_bump", threadID: tid, seq: maxSeq });
+    }
+  }, [state.openThread?.threadID, state.threadMessages, state.threadSeen]);
+
   return (
-    <div class="chalk-app chalk-app--phase08b">
+    <div class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""}`}>
       <header class="chalk-header">
         <h1>chalk</h1>
         <StatusBar
@@ -1059,6 +1142,24 @@ export function App() {
               members={activeChannel.members ?? []}
               isDM={activeChannel.isDM}
               display={selectChatPrefs(state.prefs)}
+              threadSeen={state.threadSeen}
+              onOpenThread={(parentID, threadID) => {
+                // Phase 10b: store the open thread on AppState. 10c
+                // will render a panel keyed off this. For now, the
+                // dispatch + console.log lets you verify the click
+                // path works.
+                if (!state.activeChannelID) return;
+                console.log("[chalk] open_thread", {
+                  channelID: state.activeChannelID,
+                  threadID,
+                  parentID,
+                });
+                dispatch({
+                  kind: "open_thread",
+                  channelID: state.activeChannelID,
+                  threadID,
+                });
+              }}
               empty={!state.historyLoaded[activeChannel.id]
                 ? "loading history..."
                 : "no messages yet. say something."}
@@ -1072,6 +1173,32 @@ export function App() {
           </div>
         )}
       </main>
+
+      {state.openThread && activeChannel && (() => {
+        // Phase 10c: resolve the panel's inputs.
+        // - parent: thread head from the channel cache (filtered out of
+        //   activeMessages but present in allActiveMessages).
+        // - replies: from threadMessages keyed by threadID.
+        const tid = state.openThread.threadID;
+        const parent = allActiveMessages.find((m) => m.id === tid);
+        const replies = state.threadMessages[tid] ?? [];
+        const loaded = state.threadLoaded[tid] ?? false;
+        return (
+          <ThreadPanel
+            parent={parent}
+            replies={replies}
+            loaded={loaded}
+            ownDevice={state.user?.device ?? null}
+            ownUserID={state.user?.id ?? null}
+            members={activeChannel.members ?? []}
+            isDM={activeChannel.isDM}
+            display={selectChatPrefs(state.prefs)}
+            disabled={state.wsState !== "open"}
+            onClose={() => dispatch({ kind: "close_thread" })}
+            onSend={(body) => onSend(body, tid)}
+          />
+        );
+      })()}
 
       <footer class="chalk-footer">
         <Composer

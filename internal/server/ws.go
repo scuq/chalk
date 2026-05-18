@@ -471,6 +471,10 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 		case proto.TypeSubscribeChannel:
 			h.handleSubscribeChannel(ctx, c, conn, f)
 
+		// Phase 10a: thread fetch
+		case proto.TypeFetchThread:
+			h.handleFetchThread(ctx, c, conn, f)
+
 		// Phase 9.7a: user preferences
 		case proto.TypePrefsGet:
 			h.handlePrefsGet(ctx, c, conn, f)
@@ -562,6 +566,46 @@ func (h *WSHandler) handleSend(
 		}
 	}
 
+	// Phase 10a: thread reply support.
+	//
+	// If the client passed parent_id, validate that the parent
+	// exists in the same channel, then compute thread_id:
+	//   - if the parent already belongs to a thread (parent.thread_id
+	//     non-nil), the reply inherits the same thread_id. Replies-
+	//     to-replies stay in the same thread.
+	//   - if the parent is a top-level message (thread_id is null),
+	//     the new thread's id is the parent's own id.
+	var parentUUID *uuid.UUID
+	var threadUUID *uuid.UUID
+	if p.ParentID != "" {
+		pid, perr := uuid.Parse(p.ParentID)
+		if perr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidParent, "parent_id not a UUID")
+			return
+		}
+		// Validate: parent exists in this channel. Cheap PK-lookup.
+		var parentChannel uuid.UUID
+		var parentThread *uuid.UUID
+		qerr := h.store.Pool.QueryRow(ctx,
+			`SELECT channel_id, thread_id FROM messages WHERE id = $1`,
+			pid,
+		).Scan(&parentChannel, &parentThread)
+		if qerr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidParent, "parent not found")
+			return
+		}
+		if parentChannel != channelID {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidParent, "parent is in a different channel")
+			return
+		}
+		parentUUID = &pid
+		if parentThread != nil {
+			threadUUID = parentThread
+		} else {
+			threadUUID = &pid
+		}
+	}
+
 	err = pgxBegin(ctx, h.store, func(tx pgx.Tx) error {
 		var seq int64
 		if err := tx.QueryRow(ctx,
@@ -576,10 +620,10 @@ func (h *WSHandler) handleSend(
 		var ts time.Time
 		if err := tx.QueryRow(ctx,
 			`INSERT INTO messages
-			   (id, channel_id, sender_device_id, seq, content_type, ciphertext)
-			 VALUES ($1, $2, $3, $4, 'application', $5)
+			   (id, channel_id, parent_id, thread_id, sender_device_id, seq, content_type, ciphertext)
+			 VALUES ($1, $2, $3, $4, $5, $6, 'application', $7)
 			 RETURNING ts`,
-			msgID, channelID, deviceID, seq, []byte(p.Body),
+			msgID, channelID, parentUUID, threadUUID, deviceID, seq, []byte(p.Body),
 		).Scan(&ts); err != nil {
 			return err
 		}

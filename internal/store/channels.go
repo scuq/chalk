@@ -287,15 +287,27 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		beforeSeq = 1 << 62
 	}
 
-	// Phase 9.6i: LEFT JOIN devices so clients can map sender to
-	// username. devices.user_id is null when the device row has
-	// been purged; the SPA falls back to the device-id slice in
-	// that case.
+	// Phase 9.6i + 10a: LEFT JOIN devices for username, plus a
+	// LEFT JOIN over a reply-count subquery so the main feed can
+	// render the "N replies" indicator. The reply-count subquery
+	// counts only messages that have a parent (parent_id IS NOT
+	// NULL); thread heads themselves do not count themselves.
 	rows, err := s.Pool.Query(ctx,
 		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
-		        m.ts, m.seq, m.content_type, m.ciphertext
+		        m.ts, m.seq, m.content_type, m.ciphertext,
+		        m.parent_id, m.thread_id,
+		        COALESCE(r.cnt, 0) AS reply_count,
+		        COALESCE(r.last_seq, 0) AS last_reply_seq
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
+		   LEFT JOIN (
+		     SELECT thread_id,
+		            COUNT(*)      AS cnt,
+		            MAX(seq)      AS last_seq
+		       FROM messages
+		      WHERE parent_id IS NOT NULL
+		      GROUP BY thread_id
+		   ) r ON r.thread_id = m.id
 		  WHERE m.channel_id = $1 AND m.seq < $2
 		  ORDER BY m.seq DESC
 		  LIMIT $3`,
@@ -311,9 +323,14 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		var m Message
 		var senderDev *uuid.UUID
 		var senderUser *uuid.UUID
+		var parentID *uuid.UUID
+		var threadID *uuid.UUID
+		var replyCount int64
+		var lastReplySeq int64
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &senderDev, &senderUser,
 			&m.TS, &m.Seq, &m.ContentType, &m.Ciphertext,
+			&parentID, &threadID, &replyCount, &lastReplySeq,
 		); err != nil {
 			return nil, err
 		}
@@ -323,10 +340,83 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		if senderUser != nil {
 			m.SenderUserID = *senderUser
 		}
+		m.ParentID = parentID
+		m.ThreadID = threadID
+		m.ReplyCount = replyCount
+		m.LastReplySeq = lastReplySeq
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// Phase 10a: ListMessagesByThread returns up to `limit` messages
+// where thread_id = $threadID, ordered by seq DESC (newest first).
+// Includes the thread head (whose id equals its own thread_id only
+// if it had a self-thread row -- but the head's row has thread_id
+// NULL in our model; replies have thread_id = head.id). So this
+// query returns ONLY the replies. Callers wanting head+replies
+// should also fetch the head via GetMessage.
+//
+// We could store thread_id = self.id on the head too (denormalizing)
+// to make a single query return everything; that's a future
+// optimization. For now: replies only.
+func (s *Store) ListMessagesByThread(
+	ctx context.Context,
+	channelID, threadID uuid.UUID,
+	beforeSeq int64,
+	limit int,
+) ([]Message, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if beforeSeq <= 0 {
+		beforeSeq = 1 << 62
+	}
+	rows, err := s.Pool.Query(ctx,
+		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
+		        m.ts, m.seq, m.content_type, m.ciphertext,
+		        m.parent_id, m.thread_id
+		   FROM messages m
+		   LEFT JOIN devices d ON d.id = m.sender_device_id
+		  WHERE m.channel_id = $1 AND m.thread_id = $2 AND m.seq < $3
+		  ORDER BY m.seq DESC
+		  LIMIT $4`,
+		channelID, threadID, beforeSeq, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]Message, 0, limit)
+	for rows.Next() {
+		var m Message
+		var senderDev *uuid.UUID
+		var senderUser *uuid.UUID
+		var parentID *uuid.UUID
+		var tID *uuid.UUID
+		if err := rows.Scan(
+			&m.ID, &m.ChannelID, &senderDev, &senderUser,
+			&m.TS, &m.Seq, &m.ContentType, &m.Ciphertext,
+			&parentID, &tID,
+		); err != nil {
+			return nil, err
+		}
+		if senderDev != nil {
+			m.SenderDeviceID = *senderDev
+		}
+		if senderUser != nil {
+			m.SenderUserID = *senderUser
+		}
+		m.ParentID = parentID
+		m.ThreadID = tID
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }

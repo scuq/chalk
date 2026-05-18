@@ -2468,3 +2468,233 @@ html, body {
 .chalk-user-colors-add:hover {
   border-color: var(--chalk-accent);
 }
+
+/* ============================================================
+   Phase 10b: thread indicator + hover reply button
+   ============================================================ */
+
+/* The group div is display:contents so it doesn\'t alter the
+   existing flex layout of .chalk-messages. The browser ignores it
+   for layout but it still serves as the React key boundary. */
+.chalk-message-group {
+  display: contents;
+}
+
+/* The reply button is positioned at the end of the message grid
+   row, hidden by default, revealed on row hover. */
+.chalk-message {
+  position: relative;
+}
+.chalk-message-reply {
+  /* In the grid, this lands in the body column by default; we
+     pull it visually to the row\'s right edge with margin-left:auto
+     inside a flex... but the row is a grid. Easiest: absolute
+     position relative to .chalk-message, hide by default, show
+     on hover. */
+  position: absolute;
+  right: var(--chalk-s2);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 2px 8px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 80ms ease;
+}
+.chalk-message:hover .chalk-message-reply,
+.chalk-message-reply:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.chalk-message-reply:hover {
+  color: var(--chalk-fg-bright);
+  border-color: var(--chalk-accent);
+}
+.chalk-message-reply:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* Phase 10b-fix: thread indicator.
+   - align-self: flex-start so the button shrinks to its content
+     instead of stretching to the row width (it's inside a flex
+     column).
+   - subtle accent-colored text affordance, no border or background
+     box (which made it look like a banner in 10b).
+   - modest fixed indent that doesn't depend on `ch` arithmetic.
+     Doesn't pixel-align with the body column but reads as
+     intentional regardless of timestamp / compact / no-time mode. */
+.chalk-message-thread-indicator {
+  align-self: flex-start;
+  margin-left: var(--chalk-s5);
+  margin-top: 0;
+  margin-bottom: var(--chalk-s1);
+  background: transparent;
+  border: none;
+  color: var(--chalk-accent);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.chalk-message-thread-indicator:hover {
+  color: var(--chalk-fg-bright);
+  text-decoration: underline;
+}
+.chalk-message-thread-indicator:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Compact mode: zero out vertical margin so the feed stays tight. */
+.chalk-messages--compact .chalk-message-thread-indicator {
+  margin-bottom: 0;
+}
+
+/* ============================================================
+   Phase 10c: thread panel
+   ============================================================
+   When state.openThread is set, the SPA adds the
+   chalk-app--thread-open modifier on the root grid container.
+   This re-defines the grid to add a third column for the panel.
+
+   Desktop (>= 768px): three columns -- sidebar / main / thread.
+   Mobile (< 768px): the panel covers main + the channel footer.
+   ============================================================ */
+
+.chalk-app--phase08b.chalk-app--thread-open {
+  grid-template-columns: 220px 1fr 340px;
+  grid-template-areas:
+    "header  header header"
+    "sidebar main   thread"
+    "footer  footer thread";
+}
+.chalk-app--phase08b.chalk-app--thread-open .chalk-thread-panel {
+  grid-area: thread;
+}
+
+/* Panel: vertical flex with header / scrollable body / footer.
+   Top + bottom borders match the existing chalk-channel-header /
+   chalk-footer aesthetics. */
+.chalk-thread-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* let internal scroll work in grid */
+  border-left: 1px solid var(--chalk-border);
+  background: var(--chalk-bg);
+}
+
+.chalk-thread-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--chalk-s2) var(--chalk-s3);
+  border-bottom: 1px solid var(--chalk-border);
+}
+
+.chalk-thread-panel-title {
+  color: var(--chalk-fg-bright);
+  font-size: var(--chalk-size-body);
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+}
+
+.chalk-thread-panel-close {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: var(--chalk-radius);
+}
+.chalk-thread-panel-close:hover {
+  color: var(--chalk-fg-bright);
+  background: var(--chalk-bg-elev);
+}
+.chalk-thread-panel-close:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* Body scrolls; min-height:0 lets it shrink within the flex layout. */
+.chalk-thread-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--chalk-s2) var(--chalk-s2);
+}
+
+.chalk-thread-panel-parent {
+  /* The head message inherits chalk-messages styling because it\'s
+     wrapped in a MessageList. Just give it a soft separator below. */
+  padding-bottom: var(--chalk-s2);
+}
+
+.chalk-thread-panel-divider {
+  height: 1px;
+  background: var(--chalk-border);
+  margin: var(--chalk-s2) 0;
+}
+
+.chalk-thread-panel-loading,
+.chalk-thread-panel-empty {
+  color: var(--chalk-fg-muted);
+  font-style: italic;
+  padding: var(--chalk-s2) var(--chalk-s2);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-thread-panel-footer {
+  border-top: 1px solid var(--chalk-border);
+  padding: var(--chalk-s2);
+}
+
+/* Mobile: < 768px. The panel takes over the full main + channel
+   composer area. We hide main and the channel footer (which has the
+   channel composer) while a thread is open, and let the panel span
+   from sidebar-edge to right-edge of the viewport. */
+@media (max-width: 767px) {
+  .chalk-app--phase08b.chalk-app--thread-open {
+    grid-template-columns: 220px 1fr;
+    grid-template-areas:
+      "header  header"
+      "sidebar thread"
+      "sidebar thread";
+  }
+  .chalk-app--phase08b.chalk-app--thread-open .chalk-main,
+  .chalk-app--phase08b.chalk-app--thread-open .chalk-footer {
+    display: none;
+  }
+}
+
+/* ============================================================
+   Phase 10d: unread indicator suffix
+   ============================================================
+   When a thread has replies the user hasn\'t seen yet, the indicator
+   ("↳ 3 replies") gets a " · new" suffix in fg-bright. The
+   --unread modifier on the button can also be used for bolder
+   styling if desired; for now just the suffix.
+   ============================================================ */
+
+.chalk-message-thread-indicator--unread {
+  /* Bump the base color so the whole indicator reads a touch
+     more emphatically. Subtle -- the suffix carries most of the
+     signal. */
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-message-thread-indicator-new {
+  color: var(--chalk-fg-bright);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}

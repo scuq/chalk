@@ -40,6 +40,16 @@ export interface Message {
   senderUserID: string;
   ts: Date;
   body: string;
+  // Phase 10a: threading metadata. parentID set on thread replies;
+  // threadID set on every message that's part of a thread (head
+  // included, once 10d denormalizes -- for now, head's threadID is
+  // empty and replies carry the thread_id pointing at the head).
+  // replyCount only meaningful on thread heads in the main feed.
+  parentID?: string;
+  threadID?: string;
+  replyCount?: number;
+  // Phase 10d: highest seq among replies. Used for unread badge.
+  lastReplySeq?: number;
 }
 
 // phase 08c: ChannelMember pairs a user_id with their handle.
@@ -197,6 +207,27 @@ export interface AppState {
   // True once prefs_get_ack has arrived at least once this session.
   // Used to defer "apply theme" until we know what's stored.
   prefsLoaded: boolean;
+
+  // Phase 10b: which thread is currently open in the side panel.
+  // null when no thread is open. The threadID is always the thread
+  // head's id (computed by resolveThreadID).
+  openThread: { channelID: string; threadID: string } | null;
+
+  // Phase 10c: thread message caches.
+  //   threadMessages[threadID] is the list of replies for that thread,
+  //   in seq order (oldest first). The thread head itself is NOT here;
+  //   the panel reads it from the channel cache.
+  //   threadLoaded[threadID] is true once fetch_thread_ack arrived for
+  //   that thread; the panel uses it to distinguish "loading" from
+  //   "empty thread" (latter shouldn't happen but the rendering is
+  //   robust either way).
+  threadMessages: Record<string, Message[]>;
+  threadLoaded: Record<string, boolean>;
+
+  // Phase 10d: highest reply seq the user has "seen" per thread,
+  // used to compute unread badges. Persisted to localStorage per
+  // user. A reply with seq > threadSeen[threadID] counts as unread.
+  threadSeen: Record<string, number>;
   friendsLoaded: boolean;
 
   // UI.
@@ -365,6 +396,16 @@ export const initialState: AppState = {
   // Phase 9.7a:
   prefs: {},
   prefsLoaded: false,
+
+  // Phase 10b:
+  openThread: null,
+
+  // Phase 10c:
+  threadMessages: {},
+  threadLoaded: {},
+
+  // Phase 10d:
+  threadSeen: {},
   createModalOpen: false,
 
   // Phase 09b sub-step 4 auth-flow initial values.
@@ -495,4 +536,20 @@ export type Action =
   // ---- Phase 9.7a: preferences -----------------------------------
   | { kind: "prefs_loaded"; prefs: UserPrefs }
   | { kind: "prefs_merged"; prefs: UserPrefs }
+  // ---- Phase 10b: threading -----------------------------------------
+  | { kind: "open_thread"; channelID: string; threadID: string }
+  | { kind: "close_thread" }
+  // ---- Phase 10c: thread message cache --------------------------------
+  | { kind: "thread_loaded"; threadID: string; messages: Message[] }
+  // ---- Phase 10d: unread tracking ------------------------------------
+  | { kind: "thread_seen_bump"; threadID: string; seq: number }
+  | { kind: "thread_seen_init"; seen: Record<string, number> }
   | AuthAction;
+
+// Phase 10b: resolve the thread head's id from any message in (or
+// starting) a thread.
+//   - if the message is already a reply (threadID set), return that.
+//   - otherwise, the message IS the head: return its own id.
+export function resolveThreadID(msg: { id: string; threadID?: string }): string {
+  return msg.threadID ?? msg.id;
+}

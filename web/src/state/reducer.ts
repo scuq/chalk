@@ -94,7 +94,7 @@ export function reducer(state: AppState, action: Action): AppState {
       if (action.channelID === state.activeChannelID) {
         return state;
       }
-      return { ...state, activeChannelID: action.channelID };
+      return { ...state, activeChannelID: action.channelID, openThread: null };
 
     case "message": {
       const m = action.message;
@@ -109,9 +109,70 @@ export function reducer(state: AppState, action: Action): AppState {
         return state;
       }
       const merged = [...existing, m].sort((a, b) => a.seq - b.seq);
+      // ---- channel cache (Phase 10d) ----
+      // Bind nextMessages so the live-bump branch below can reference
+      // (and rewrite) it without re-deriving the channel list. If
+      // there's no parentID, this is the value used in the return.
+      const nextMessages = { ...state.messages, [m.channelID]: merged };
+      // ---- thread routing (Phase 10c) ----
+      // If this message is a reply (parentID set), also append to
+      // the thread's reply list. Dedup by id (optimistic-then-real,
+      // or push-then-history overlap). Replies for threads we
+      // haven't opened yet are still cached -- when the user opens
+      // the thread the panel reads from this same record.
+      let nextThreadMessages = state.threadMessages;
+      if (m.parentID) {
+        const tid = m.threadID ?? m.parentID;
+        const existingReplies = state.threadMessages[tid] ?? [];
+        const without = existingReplies.filter((x) => x.id !== m.id);
+        const nextReplies = [...without, m].sort((a, b) => a.seq - b.seq);
+        nextThreadMessages = {
+          ...state.threadMessages,
+          [tid]: nextReplies,
+        };
+      }
+
+      // ---- live reply-count bump (Phase 10d) ----
+      // When a reply arrives, find its parent in the channel cache
+      // and bump its replyCount + lastReplySeq so the main feed's
+      // "↳ N replies" indicator updates live. The dedup uses the
+      // reply's id, so push-then-history won't double-count: if the
+      // same reply is dispatched twice (optimistic + server echo, or
+      // push + history overlap), this branch runs twice but the
+      // earlier branch above is idempotent on the threadMessages
+      // map, and we recompute replyCount/lastReplySeq from that.
+      let liveBumpMessages = nextMessages;
+      if (m.parentID) {
+        const parentChannel = m.channelID;
+        const parentID = m.parentID;
+        const channelList = nextMessages[parentChannel];
+        if (channelList) {
+          const tid = m.threadID ?? m.parentID;
+          const updatedReplies = nextThreadMessages[tid] ?? [];
+          const newReplyCount = updatedReplies.length;
+          const newLastSeq = updatedReplies.reduce(
+            (max, r) => (r.seq > max ? r.seq : max),
+            0,
+          );
+          liveBumpMessages = {
+            ...nextMessages,
+            [parentChannel]: channelList.map((x) =>
+              x.id === parentID
+                ? {
+                    ...x,
+                    replyCount: newReplyCount,
+                    lastReplySeq: newLastSeq,
+                  }
+                : x,
+            ),
+          };
+        }
+      }
+
       return {
         ...state,
-        messages: { ...state.messages, [m.channelID]: merged },
+        messages: liveBumpMessages,
+        threadMessages: nextThreadMessages,
       };
     }
 
@@ -1134,6 +1195,76 @@ export function reducer(state: AppState, action: Action): AppState {
         prefs: action.prefs,
         prefsLoaded: true,
       };
+
+    // ---- Phase 10b: threading -----------------------------------------
+
+    case "open_thread": {
+      // No-op if it's already open.
+      if (
+        state.openThread &&
+        state.openThread.channelID === action.channelID &&
+        state.openThread.threadID === action.threadID
+      ) {
+        return state;
+      }
+      // Phase 10d: bump threadSeen for this thread to the current
+      // max reply seq we know about. Sources: threadMessages
+      // (replies arrived via push or fetch) + the parent's
+      // lastReplySeq from the main feed (covers replies we
+      // haven't fetched yet).
+      const repliesNow = state.threadMessages[action.threadID] ?? [];
+      const localMax = repliesNow.reduce(
+        (max, r) => (r.seq > max ? r.seq : max),
+        0,
+      );
+      const channelList = state.messages[action.channelID] ?? [];
+      const parent = channelList.find((x) => x.id === action.threadID);
+      const remoteMax = parent?.lastReplySeq ?? 0;
+      const seenMax = Math.max(localMax, remoteMax);
+      return {
+        ...state,
+        openThread: {
+          channelID: action.channelID,
+          threadID: action.threadID,
+        },
+        threadSeen:
+          seenMax > (state.threadSeen[action.threadID] ?? 0)
+            ? { ...state.threadSeen, [action.threadID]: seenMax }
+            : state.threadSeen,
+      };
+    }
+
+    case "close_thread":
+      if (state.openThread === null) return state;
+      return { ...state, openThread: null };
+
+    case "thread_seen_bump":
+      return {
+        ...state,
+        threadSeen: { ...state.threadSeen, [action.threadID]: action.seq },
+      };
+
+    case "thread_seen_init":
+      return { ...state, threadSeen: action.seen };
+
+    case "thread_loaded": {
+      // Phase 10c: server returned a thread's replies. Merge with
+      // anything we already have (in case a push arrived before the
+      // fetch_thread_ack came back) and sort by seq.
+      const existing = state.threadMessages[action.threadID] ?? [];
+      const existingByID = new Map(existing.map((m) => [m.id, m]));
+      for (const m of action.messages) {
+        existingByID.set(m.id, m); // server version overwrites local
+      }
+      const merged = Array.from(existingByID.values()).sort(
+        (a, b) => a.seq - b.seq,
+      );
+      return {
+        ...state,
+        threadMessages: { ...state.threadMessages, [action.threadID]: merged },
+        threadLoaded: { ...state.threadLoaded, [action.threadID]: true },
+      };
+    }
 
     // ---- Phase 09d-2b: admin panel routing -------------------------
 

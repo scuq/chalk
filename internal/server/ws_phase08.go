@@ -316,6 +316,15 @@ func (h *WSHandler) handleFetchHistory(
 		if m.SenderUserID != uuid.Nil {
 			senderUserStr = m.SenderUserID.String()
 		}
+		// Phase 10a:
+		parentStr := ""
+		if m.ParentID != nil {
+			parentStr = m.ParentID.String()
+		}
+		threadStr := ""
+		if m.ThreadID != nil {
+			threadStr = m.ThreadID.String()
+		}
 		out = append(out, proto.MessagePayload{
 			ID:           m.ID.String(),
 			ChannelID:    m.ChannelID.String(),
@@ -324,6 +333,10 @@ func (h *WSHandler) handleFetchHistory(
 			SenderUserID: senderUserStr,
 			TS:           m.TS.UnixMilli(),
 			Body:         string(m.Ciphertext),
+			ParentID:     parentStr,
+			ThreadID:     threadStr,
+			ReplyCount:   m.ReplyCount,
+			LastReplySeq: m.LastReplySeq,
 		})
 	}
 
@@ -389,4 +402,103 @@ func writeFrame(ctx context.Context, c *websocket.Conn, f proto.Frame, timeout t
 		return err
 	}
 	return writeOne(ctx, c, b, timeout)
+}
+
+// Phase 10a: handleFetchThread returns up to `limit` messages of a
+// given thread, ordered newest-first by seq. Membership is checked
+// the same way as fetch_history (via channel membership). The
+// thread head itself isn't returned by this query (its row has
+// thread_id=NULL); callers wanting head+replies should also have
+// the head in their channel-feed cache, or fetch it via the channel
+// history pagination.
+func (h *WSHandler) handleFetchThread(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	var p proto.FetchThreadPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id must be a UUID")
+		return
+	}
+	threadID, err := uuid.Parse(p.ThreadID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "thread_id must be a UUID")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id invalid")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember,
+			"anonymous senders cannot fetch threads")
+		return
+	}
+	if channelID != store.DefaultChannelID {
+		isMember, mErr := h.store.IsMember(ctx, channelID, callerID)
+		if mErr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership: "+mErr.Error())
+			return
+		}
+		if !isMember {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member")
+			return
+		}
+	}
+	msgs, err := h.store.ListMessagesByThread(ctx, channelID, threadID, p.BeforeSeq, p.Limit)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "fetch thread: "+err.Error())
+		return
+	}
+	out := make([]proto.MessagePayload, 0, len(msgs))
+	for _, m := range msgs {
+		senderStr := ""
+		if m.SenderDeviceID != uuid.Nil {
+			senderStr = m.SenderDeviceID.String()
+		}
+		senderUserStr := ""
+		if m.SenderUserID != uuid.Nil {
+			senderUserStr = m.SenderUserID.String()
+		}
+		parentStr := ""
+		if m.ParentID != nil {
+			parentStr = m.ParentID.String()
+		}
+		threadStr := ""
+		if m.ThreadID != nil {
+			threadStr = m.ThreadID.String()
+		}
+		out = append(out, proto.MessagePayload{
+			ID:           m.ID.String(),
+			ChannelID:    m.ChannelID.String(),
+			Seq:          m.Seq,
+			Sender:       senderStr,
+			SenderUserID: senderUserStr,
+			TS:           m.TS.UnixMilli(),
+			Body:         string(m.Ciphertext),
+			ParentID:     parentStr,
+			ThreadID:     threadStr,
+		})
+	}
+	ack, _ := proto.NewFrame(proto.TypeFetchThreadAck, f.Ref, proto.FetchThreadAckPayload{
+		ChannelID: p.ChannelID,
+		ThreadID:  p.ThreadID,
+		Messages:  out,
+	})
+	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("fetch_thread write: %v", err)
+	}
 }

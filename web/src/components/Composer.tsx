@@ -20,11 +20,15 @@ interface Props {
   // Phase 9.6g: prefer this over `disabled` for accurate UX.
   disabledReason?: DisabledReason;
   onSend: (body: string) => void;
+  // Phase 10c: optional placeholder override (defaults to channel-aware
+  // text from disabledReason mapping). The thread composer passes
+  // "reply...". When disabled, the disabled-reason text still wins.
+  placeholder?: string;
 }
 
 const MAX_LEN = 4000;
 
-export function Composer({ disabled, disabledReason, onSend }: Props) {
+export function Composer({ disabled, disabledReason, onSend, placeholder }: Props) {
   const [draft, setDraft] = useState("");
 
   // Phase 9.6g: derive the effective disabled boolean + the
@@ -68,7 +72,7 @@ export function Composer({ disabled, disabledReason, onSend }: Props) {
     <div class="chalk-composer">
       <textarea
         class="chalk-composer-input"
-        placeholder={placeholderText}
+        placeholder={(disabled ? (placeholderText) : (placeholder ?? (placeholderText)))}
         value={draft}
         onInput={onInput}
         onKeyDown={onKeyDown}

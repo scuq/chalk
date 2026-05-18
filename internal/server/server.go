@@ -377,6 +377,19 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 	if msg.SenderUserID != uuid.Nil {
 		senderUserStr = msg.SenderUserID.String()
 	}
+	// Phase 10a: threading metadata. GetMessage already returns
+	// parent_id + thread_id; reply_count for the push path is left
+	// at 0 (this is the row that's being pushed, not the head). For
+	// reply pushes, the receiver re-renders the thread panel which
+	// will derive its own counts.
+	parentStr := ""
+	if msg.ParentID != nil {
+		parentStr = msg.ParentID.String()
+	}
+	threadStr := ""
+	if msg.ThreadID != nil {
+		threadStr = msg.ThreadID.String()
+	}
 	frame, err := proto.NewFrame(proto.TypeMessage, "", proto.MessagePayload{
 		ID:           msg.ID.String(),
 		ChannelID:    msg.ChannelID.String(),
@@ -385,6 +398,8 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 		SenderUserID: senderUserStr,
 		TS:           msg.TS.UnixMilli(),
 		Body:         string(msg.Ciphertext),
+		ParentID:     parentStr,
+		ThreadID:     threadStr,
 	})
 	if err != nil {
 		s.logger.Printf("pubsub frame: %v", err)

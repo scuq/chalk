@@ -23,6 +23,16 @@ interface Props {
   };
   // Phase 9.7e: is the active channel a DM? Used to filter scoped color rules.
   isDM?: boolean;
+  // Phase 10b: clicked an indicator or hover "reply" button. Dispatches
+  // up to App.tsx, which routes to an open_thread action.
+  // parentID is the message clicked; the parent itself doesn't have
+  // to be the thread head, the caller resolves that.
+  onOpenThread?: (parentID: string, resolvedThreadID: string) => void;
+  // Phase 10d: per-thread "last seen reply seq" map. Used to compute
+  // the unread badge ("↳ 5 replies · 2 new"). Optional -- callers
+  // that don't care (e.g. the thread panel rendering its head)
+  // can omit it.
+  threadSeen?: Record<string, number>;
 }
 
 function fmtTime(d: Date): string {
@@ -59,7 +69,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-export function MessageList({ messages, ownDevice, ownUserID, members, empty, display, isDM }: Props) {
+export function MessageList({ messages, ownDevice, ownUserID, members, empty, display, isDM, onOpenThread, threadSeen }: Props) {
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -139,8 +149,8 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
           ? `${handle ?? "?"} (user ${m.senderUserID.slice(0, 8)}…, device ${m.sender.slice(0, 8)}…)`
           : m.sender;
         return (
+          <div class="chalk-message-group" key={m.id}>
           <div
-            key={m.id}
             class={`chalk-message ${own ? "chalk-message--own" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"}`}
             data-testid="message"
             title={display_.showTimestamps ? undefined : m.ts.toLocaleString()}
@@ -165,6 +175,50 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
             <span class="chalk-message-body" data-testid="message-body">
               {m.body}
             </span>
+            {/* Phase 10b: hover-revealed reply button (desktop;
+                shown via :hover in CSS). Hidden in compact mode to
+                avoid stealing space. */}
+            {onOpenThread && !display_.compactMode && (
+              <button
+                type="button"
+                class="chalk-message-reply"
+                title="reply in thread"
+                onClick={() =>
+                  onOpenThread(m.id, m.threadID ?? m.id)
+                }
+                data-testid={`message-reply-${m.id}`}
+              >
+                ↳ reply
+              </button>
+            )}
+          </div>
+          {/* Phase 10b: thread indicator. Only rendered for messages
+              that are themselves thread heads (no parentID) AND that
+              have at least one reply. Clicking opens the thread. */}
+          {!m.parentID && (m.replyCount ?? 0) > 0 && onOpenThread && (() => {
+            // Phase 10d: compute unread count for this thread.
+            // Server's lastReplySeq is the highest reply seq.
+            // threadSeen[id] is the user's last "read" seq.
+            // unread is a boolean signal here (we don't know how many
+            // unread there are without enumerating replies, which we
+            // may not have in cache). Show " · new" when unread.
+            const seen = threadSeen?.[m.id] ?? 0;
+            const lastSeq = m.lastReplySeq ?? 0;
+            const hasUnread = lastSeq > seen;
+            return (
+              <button
+                type="button"
+                class={`chalk-message-thread-indicator ${hasUnread ? "chalk-message-thread-indicator--unread" : ""}`}
+                onClick={() => onOpenThread(m.id, m.id)}
+                data-testid={`thread-indicator-${m.id}`}
+              >
+                ↳ {m.replyCount} {(m.replyCount === 1) ? "reply" : "replies"}
+                {hasUnread && (
+                  <span class="chalk-message-thread-indicator-new"> · new</span>
+                )}
+              </button>
+            );
+          })()}
           </div>
         );
       });

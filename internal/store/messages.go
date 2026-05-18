@@ -33,6 +33,15 @@ type Message struct {
 	MLSEpoch        int64
 	ContentType     string
 	Ciphertext      []byte
+	// Phase 10a: only populated by ListMessagesByChannel (which
+	// JOINs the reply-count subquery). GetMessage and other lookups
+	// leave this as 0. Callers should treat 0 as "unknown" unless
+	// they got the row from the main-feed query.
+	ReplyCount      int64
+	// Phase 10d: highest seq among the thread's replies. Same population
+	// rules as ReplyCount. Used client-side to compute "unread" badges
+	// (a reply is unread when last_reply_seq > thread_seen[tid]).
+	LastReplySeq    int64
 }
 
 // InsertMessage persists a message and allocates a per-channel sequence

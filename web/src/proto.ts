@@ -39,6 +39,9 @@ export interface WelcomePayload {
 export interface SendPayload {
   channel_id?: string; // phase 08; omitted falls back server-side to default
   body: string;
+  // Phase 10a: optional parent message ID for thread replies. When
+  // set, server validates the parent and computes thread_id.
+  parent_id?: string;
 }
 
 export interface MessagePayload {
@@ -51,6 +54,12 @@ export interface MessagePayload {
   sender_user_id?: string;
   ts: number;
   body: string;
+  // Phase 10a: threading metadata.
+  parent_id?: string;
+  thread_id?: string;
+  reply_count?: number;
+  // Phase 10d: highest seq among replies; used for unread badge.
+  last_reply_seq?: number;
 }
 
 export interface ErrorPayload {
@@ -259,4 +268,22 @@ export interface PrefsSetPayload {
 // Ack payload shared by prefs_get_ack, prefs_set_ack, prefs_changed.
 export interface PrefsAckPayload {
   prefs: Record<string, unknown>;
+}
+
+// ---- Phase 10a: thread fetch ---------------------------------------
+
+export const TypeFetchThread    = "fetch_thread";
+export const TypeFetchThreadAck = "fetch_thread_ack";
+
+export interface FetchThreadPayload {
+  channel_id: string;
+  thread_id: string;
+  before_seq?: number;
+  limit?: number;
+}
+
+export interface FetchThreadAckPayload {
+  channel_id: string;
+  thread_id: string;
+  messages: MessagePayload[];
 }
