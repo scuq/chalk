@@ -838,6 +838,31 @@ func (d *HTTPDeps) handleMe(w http.ResponseWriter, r *http.Request) {
 // (&invite, nil) when invite validation succeeded.
 func (d *HTTPDeps) checkRegistrationAllowed(ctx context.Context, req registerBeginRequest) (*store.Invite, *authError) {
 	if IsOpenRegistration() {
+		// Even in open-registration mode, if the client sent an
+		// invite token, try to honor it so the invite is properly
+		// marked used at register/finish. This handles the common
+		// dev case of flipping between open and invite-only modes
+		// without breaking outstanding invite URLs that still carry
+		// ?invite= in the query.
+		//
+		// Permissive: a malformed/unknown/inactive token does NOT
+		// fail the registration (open-reg means "anyone may join");
+		// we silently drop the invite reference. Only a happy-path
+		// active token gets propagated so MarkInviteUsed runs at
+		// finish.
+		if req.InviteToken != "" {
+			if tokenBytes, decErr := DecodeInviteToken(req.InviteToken); decErr == nil {
+				inv, getErr := d.Store.GetInvite(ctx, tokenBytes)
+				if getErr == nil && inv.IsActive() {
+					return &inv, nil
+				}
+				if getErr != nil && !errors.Is(getErr, store.ErrNotFound) {
+					// Real DB error vs. just "no such invite": log
+					// but don't reject.
+					d.Logger.Printf("checkRegistrationAllowed (open-reg): GetInvite: %v", getErr)
+				}
+			}
+		}
 		return nil, nil
 	}
 	if req.InviteToken == "" {
