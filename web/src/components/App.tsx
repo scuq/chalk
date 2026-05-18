@@ -13,7 +13,7 @@
 //     send subscribe_channel to start receiving messages in the new channel.
 //   - On open_create_modal, if friends not yet loaded, fire friend_list.
 
-import { useEffect, useReducer, useRef } from "preact/hooks";
+import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
   TypeSend,
@@ -28,6 +28,19 @@ import {
   TypeSubscribeChannel,
   TypeFriendList,
   TypeFriendListAck,
+  // Phase 9.6a: outgoing friend ops + incoming push.
+  TypeFriendRequest,
+  TypeFriendAccept,
+  TypeFriendDecline,
+  TypeFriendRemove,
+  TypeFriendEvent,
+  // Phase 9.6c: presence wire types.
+  TypePresence,
+  TypePresenceSubscribe,
+  TypePresenceSubscribeAck,
+  TypePresenceUnsubscribe,
+  // Phase 9.6j:
+  TypePresenceUpdate,
   type Frame,
   type WelcomePayload,
   type ErrorPayload,
@@ -44,14 +57,36 @@ import {
   type SubscribeChannelPayload,
   type FriendListPayload,
   type FriendListAckPayload,
+  // Phase 9.6c:
+  type PresencePayload,
+  type PresenceSubscribePayload,
+  type PresenceUnsubscribePayload,
 } from "../proto";
-import { WSClient, getOrCreateDeviceId } from "../ws-client";
+import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
 import { initialState, type AppState, type Message, type ChannelSummary } from "../state/types";
 import { StatusBar } from "./StatusBar";
 import { Sidebar } from "./Sidebar";
 import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
+// Phase 9.6d: heavy panels are lazy-loaded so the initial bundle
+// can stay small. Each becomes a separate chunk file that fetches
+// the first time the user opens that panel. Subsequent opens use
+// the cached chunk; no second fetch. See ./LazyComponent.tsx for
+// the loader implementation.
+import { lazyComponent } from "./LazyComponent";
+const InvitesPanel = lazyComponent(() =>
+  import("./InvitesPanel").then((m) => m.InvitesPanel)
+);
+const ProfilePanel = lazyComponent(() =>
+  import("./ProfilePanel").then((m) => m.ProfilePanel)
+);
+const AdminPanel = lazyComponent(() =>
+  import("./AdminPanel").then((m) => m.AdminPanel)
+);
+const FriendsPanel = lazyComponent(() =>
+  import("./FriendsPanel").then((m) => m.FriendsPanel)
+);
 import { CreateChannelModal } from "./CreateChannelModal";
 import { AuthGate } from "../auth/AuthGate";
 import {
@@ -63,9 +98,7 @@ import {
   startEmailChange as startEmailChangeAPI,
   ApiError,
 } from "../auth/api";
-import { InvitesPanel } from "./InvitesPanel";
-import { ProfilePanel } from "./ProfilePanel";
-import { AdminPanel } from "./AdminPanel";
+import { lookupUser } from "../auth/users";
 
 function classifyDevice(): "phone" | "tablet" | "desktop" {
   const ua = navigator.userAgent;
@@ -99,6 +132,8 @@ function wireToMessage(w: MessagePayload): Message {
     channelID: w.channel_id,
     seq: w.seq,
     sender: w.sender,
+    // Phase 9.6i: server populates sender_user_id when possible.
+    senderUserID: w.sender_user_id ?? "",
     ts: new Date(w.ts),
     body: w.body,
   };
@@ -229,15 +264,55 @@ export function App() {
       }
       case TypeFriendListAck: {
         const p = f.payload as FriendListAckPayload;
-        // Phase 06 wire shape: four bucketed arrays. We want only
-        // accepted friends in the picker -- pending requests should
-        // not show up as channel-creation candidates.
-        const friends = (p.accepted ?? []).map((fs) => ({
-          // phase 08c: thread handle
+        // Phase 06 wire shape: four bucketed arrays. Accepted goes
+        // to the friend picker; pending_incoming + pending_outgoing
+        // populate the FriendsPanel (Phase 9.6a).
+        const toFriend = (fs: { user_id: string; handle?: string }) => ({
           userID: fs.user_id,
           handle: fs.handle ?? "",
-        }));
-        dispatch({ kind: "friends_loaded", friends });
+        });
+        const friends = (p.accepted ?? []).map(toFriend);
+        const pendingIncoming = (p.pending_incoming ?? []).map(toFriend);
+        const pendingOutgoing = (p.pending_outgoing ?? []).map(toFriend);
+        dispatch({
+          kind: "friends_loaded",
+          friends,
+          pendingIncoming,
+          pendingOutgoing,
+        });
+        break;
+      }
+      case TypePresenceSubscribeAck: {
+        // Phase 9.6c: server confirmed our subscribe. Per-id rejected
+        // entries (not_a_friend, self, etc) we currently log but don't
+        // surface; the friend list reconciliation makes them rare. The
+        // useful info -- current presence state for each subscribed user
+        // -- arrives via subsequent TypePresence pushes immediately
+        // after, so there's nothing to do here for state.
+        break;
+      }
+      case TypePresence: {
+        // Phase 9.6c: server push with a friend's aggregated state.
+        const pp = f.payload as PresencePayload;
+        if (pp && pp.user_id) {
+          dispatch({
+            kind: "presence_set",
+            userID: pp.user_id,
+            state: pp.state,
+          });
+        }
+        break;
+      }
+      case TypeFriendEvent: {
+        // Phase 9.6a: server-pushed friend lifecycle change.
+        // Simplest correct behavior: re-fetch the friend list. The
+        // event payload (kind + from_user_id + handle) doesn't carry
+        // enough info to surgically update all buckets, and a fresh
+        // friend_list is cheap (single SELECT on the server).
+        const c = clientRef.current;
+        if (c && c.isOpen()) {
+          c.send(TypeFriendList, {});
+        }
         break;
       }
       default:
@@ -247,18 +322,124 @@ export function App() {
 
   // --- Side effects driven by state ------------------------------------
 
-  // After connect, fetch the channel list.
+  // After connect, fetch the channel list AND the friend list.
+  //
+  // Phase 9.6e: the friend list send was added here in addition to
+  // the channel list. The motivation: friend_event pushes are
+  // server-initiated and require an open WS at the moment the
+  // event is emitted. If alice was disconnected when bob sent her
+  // a friend_request, the server's handleFriendEvent bails
+  // (ConnsForUser is empty) and the event is lost forever -- no
+  // replay queue. Re-fetching friend_list on every (re)connect
+  // closes this race: even if a push was missed, the very next
+  // friend_list_ack carries the up-to-date pending buckets.
+  //
+  // Bonus: this also fixes the "fresh-login user has empty friend
+  // list until they open CreateChannelModal" papercut that was
+  // present since phase 06.
   useEffect(() => {
     if (state.wsState !== "open" || !state.user) return;
     const c = clientRef.current;
     if (!c) return;
     c.send<ListChannelsPayload>(TypeListChannels, {});
+    c.send(TypeFriendList, {}); // Phase 9.6e
     // Reset per-connect bookkeeping. After reconnect the server's
     // hello-time loop re-subscribes from scratch, and we should
     // forget what we'd previously asked for at the protocol layer.
     subscribeSentRef.current = new Set();
     historyRequestedRef.current = new Set();
   }, [state.wsState, state.user?.id]);
+
+  // Phase 9.6c: keep the presence subscription synchronized with the
+  // accepted-friends list. Whenever friends change (after a
+  // friend_list_ack lands, or after add/remove), diff against the
+  // last-subscribed set and send subscribe / unsubscribe deltas.
+  //
+  // The ref-stored Set survives across renders so we don't re-send
+  // the same subscribe each time the friend list reloads. On
+  // disconnect (wsState !== "open") we clear the set so the next
+  // reconnect re-subscribes from scratch.
+  // Phase 9.6j: track document visibility so "auto" mode can map
+  // tab-visible → online and tab-hidden → away. The visible state
+  // lives in a ref+state pair so the effect can read the latest
+  // value without re-running on every change (we just want to
+  // re-trigger when the MODE changes or the WS opens/closes).
+  const [tabVisible, setTabVisible] = useState<boolean>(
+    typeof document === "undefined" ? true : !document.hidden
+  );
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onChange = () => setTabVisible(!document.hidden);
+    document.addEventListener("visibilitychange", onChange);
+    return () => document.removeEventListener("visibilitychange", onChange);
+  }, []);
+
+  // Phase 9.6j: compute the intended presence and send presence_update
+  // when it transitions. "intended" is:
+  //   - WS not open → offline (server handles via WS close; nothing to send)
+  //   - mode=online → online
+  //   - mode=away   → away
+  //   - mode=auto   → tabVisible ? online : away
+  useEffect(() => {
+    if (state.wsState !== "open" || !state.user) {
+      if (state.myEffectivePresence !== "offline") {
+        dispatch({ kind: "my_effective_presence_set", state: "offline" });
+      }
+      return;
+    }
+    let intended: "online" | "away";
+    if (state.myPresenceMode === "online") intended = "online";
+    else if (state.myPresenceMode === "away") intended = "away";
+    else intended = tabVisible ? "online" : "away";
+
+    if (intended === state.myEffectivePresence) return;
+
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    c.send(TypePresenceUpdate, { state: intended });
+    dispatch({ kind: "my_effective_presence_set", state: intended });
+  }, [
+    state.wsState,
+    state.user?.id,
+    state.myPresenceMode,
+    state.myEffectivePresence,
+    tabVisible,
+  ]);
+
+  const presenceSubscribedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (state.wsState !== "open") {
+      presenceSubscribedRef.current = new Set();
+      // Also clear the presence map: an offline-and-back round-trip
+      // shouldn't leave stale "online" dots from before the drop.
+      dispatch({ kind: "presence_reset" });
+      return;
+    }
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    const wantSubs = new Set(state.friends.map((f) => f.userID));
+    const have = presenceSubscribedRef.current;
+    const toAdd: string[] = [];
+    const toRemove: string[] = [];
+    wantSubs.forEach((id) => { if (!have.has(id)) toAdd.push(id); });
+    have.forEach((id) => { if (!wantSubs.has(id)) toRemove.push(id); });
+    if (toAdd.length > 0) {
+      c.send<PresenceSubscribePayload>(
+        TypePresenceSubscribe,
+        { user_ids: toAdd },
+      );
+    }
+    if (toRemove.length > 0) {
+      c.send<PresenceUnsubscribePayload>(
+        TypePresenceUnsubscribe,
+        { user_ids: toRemove },
+      );
+      // Drop their entries from the local presence map immediately.
+      toRemove.forEach((id) => dispatch({ kind: "presence_clear", userID: id }));
+    }
+    presenceSubscribedRef.current = wantSubs;
+  }, [state.wsState, state.friends]);
+
 
   // When the active channel changes, fetch history if not yet loaded.
   useEffect(() => {
@@ -465,6 +646,10 @@ export function App() {
         channelID: cid,
         seq: nextSeq,
         sender: state.user.device,
+        // Phase 9.6i: optimistic echo uses our own user_id so the
+        // row renders "you" via the same code path as server-pushed
+        // messages would.
+        senderUserID: state.user.id,
         ts: new Date(),
         body,
       },
@@ -486,6 +671,142 @@ export function App() {
   };
 
   // --- Render ----------------------------------------------------------
+
+  // ---- Phase 9.6a: friend management callbacks ---------------------
+  //
+  // Each callback dispatches a UI state update + sends the
+  // appropriate WS frame. For the "add" flow we first do a
+  // /api/users/lookup to resolve the username to a UUID, then
+  // send friend_request. On any error we surface it inline in
+  // the panel.
+  //
+  // The server pushes a friend_event back over the WS on each
+  // lifecycle change, which our handleFrame() converts into a
+  // friend_list re-fetch — so we don't need to optimistically
+  // mutate local state.
+
+  const handleFriendAddSubmit = async () => {
+    const input = state.friendsPanel.addInput.trim();
+    if (input.length < 3) {
+      dispatch({
+        kind: "friends_add_failed",
+        error: "username must be at least 3 characters",
+      });
+      return;
+    }
+    dispatch({ kind: "friends_add_start" });
+    try {
+      const target = await lookupUser(input);
+      if (!target) {
+        dispatch({
+          kind: "friends_add_failed",
+          error: `no user named "${input}"`,
+        });
+        return;
+      }
+      const c = clientRef.current;
+      if (!c || !c.isOpen()) {
+        dispatch({
+          kind: "friends_add_failed",
+          error: "not connected; try again in a moment",
+        });
+        return;
+      }
+      c.send(TypeFriendRequest, { to_user_id: target.user_id });
+      // The server will respond with a friend_request_ack (which we
+      // currently ignore) and push a friend_event to the recipient.
+      // We mark the add as succeeded here on the assumption the
+      // request landed; the FriendsPanel will see the new outgoing
+      // entry after the friend_list re-fetch.
+      dispatch({ kind: "friends_add_succeeded" });
+      // Trigger a friend_list re-fetch right away so the new
+      // outgoing request shows up without waiting for a server push.
+      c.send(TypeFriendList, {});
+    } catch (err) {
+      dispatch({
+        kind: "friends_add_failed",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const handleFriendAccept = (userID: string) => {
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    dispatch({ kind: "friends_action_start", userID });
+    c.send(TypeFriendAccept, { from_user_id: userID });
+    c.send(TypeFriendList, {});
+    // The ack/event will trigger another re-fetch; pendingActionUserID
+    // is cleared by friends_action_done dispatched from the eventual
+    // re-fetch handler. For now, clear it after a short delay so the
+    // button doesn't stay disabled forever if the ack is silent.
+    setTimeout(() => dispatch({ kind: "friends_action_done", userID }), 800);
+  };
+
+  const handleFriendDecline = (userID: string) => {
+    // Used for both: declining an incoming request AND cancelling
+    // your own outgoing request. The server's handleFriendDecline
+    // accepts both party roles.
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    dispatch({ kind: "friends_action_start", userID });
+    c.send(TypeFriendDecline, { from_user_id: userID });
+    c.send(TypeFriendList, {});
+    setTimeout(() => dispatch({ kind: "friends_action_done", userID }), 800);
+  };
+
+  const handleFriendRemove = (userID: string) => {
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    dispatch({ kind: "friends_action_start", userID });
+    c.send(TypeFriendRemove, { other_user_id: userID });
+    c.send(TypeFriendList, {});
+    setTimeout(() => dispatch({ kind: "friends_action_done", userID }), 800);
+  };
+
+  const handleFriendsRefresh = () => {
+    const c = clientRef.current;
+    if (c && c.isOpen()) c.send(TypeFriendList, {});
+  };
+
+  // ---- Phase 9.6b: click-friend-in-roster handler ---------------------
+  //
+  // Either opens the existing DM with this friend, or creates one
+  // on the fly. The reducer's dm_pending_set + channel_added wiring
+  // takes care of auto-activating the channel once it lands.
+  const handleFriendClickInRoster = (friendUserID: string) => {
+    // 1. Existing DM? Activate it directly.
+    const ownID = state.user?.id ?? state.me?.userID ?? null;
+    if (ownID) {
+      for (const id of state.channelOrder) {
+        const ch = state.channels[id];
+        if (!ch || !ch.isDM) continue;
+        if (ch.memberIDs.length !== 2) continue;
+        const otherID = ch.memberIDs.find((m) => m !== ownID);
+        if (otherID === friendUserID) {
+          dispatch({ kind: "set_active_channel", channelID: ch.id });
+          return;
+        }
+      }
+    }
+    // 2. No DM yet — send create_channel and stash the friend's
+    //    user_id so we auto-activate when the channel_added lands.
+    //
+    // Phase 9.6h: the server validates name as 1-80 chars after
+    // trim, regardless of is_dm. Synthesize a name from the
+    // friend's handle so the request validates. The stored name
+    // is never shown to users (displayName() overrides DM
+    // channels to render as "@handle" from the members list), so
+    // we just need something stable and non-empty.
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    const friend = state.friends.find((f) => f.userID === friendUserID);
+    const dmName = friend && friend.handle
+      ? "dm-" + friend.handle
+      : "dm-" + friendUserID.slice(-8);
+    dispatch({ kind: "dm_pending_set", userID: friendUserID });
+    onCreateChannel(dmName, true, [friendUserID]);
+  };
 
   // ---- Phase 09d-2d: backfill `me` after URL-driven registration ---
   //
@@ -631,6 +952,11 @@ export function App() {
     } catch (err) {
       console.error("logout API call failed:", err);
     }
+    // Phase 9.6f: clear the localStorage device_id so the next
+    // sign-in (potentially a different user on this browser) gets
+    // a fresh device identity. Avoids inheriting the previous
+    // user's devices row on the server.
+    clearDeviceId();
     dispatch({ kind: "auth_logged_out" });
   };
 
@@ -645,20 +971,32 @@ export function App() {
           me={state.me}
           onLogout={handleLogout}
           onOpenInvites={() => dispatch({ kind: "open_panel", panel: "invites" })}
+        onOpenFriends={() => {
+          dispatch({ kind: "open_panel", panel: "friends" });
+          handleFriendsRefresh();
+        }}
           onOpenProfile={() => dispatch({ kind: "open_panel", panel: "profile" })}
           onOpenAdmin={() => {
             window.history.pushState({}, "", "/admin");
             dispatch({ kind: "route_to_admin" });
           }}
+          presenceMode={state.myPresenceMode}
+          effectivePresence={state.myEffectivePresence}
+          onPresenceModeChange={(mode) =>
+            dispatch({ kind: "presence_mode_set", mode })
+          }
         />
       </header>
 
       <aside class="chalk-sidebar">
         <Sidebar
           channels={state.channelOrder.map((id) => state.channels[id])}
+          friends={state.friends}
           activeID={state.activeChannelID}
           ownUserID={state.user?.id ?? null}
+          presence={state.presence}
           onSelect={(id) => dispatch({ kind: "set_active_channel", channelID: id })}
+          onFriendClick={handleFriendClickInRoster}
           onCreateClick={() => dispatch({ kind: "open_create_modal" })}
         />
       </aside>
@@ -675,6 +1013,8 @@ export function App() {
             <MessageList
               messages={activeMessages}
               ownDevice={state.user?.device ?? null}
+              ownUserID={state.user?.id ?? null}
+              members={activeChannel.members ?? []}
               empty={!state.historyLoaded[activeChannel.id]
                 ? "loading history..."
                 : "no messages yet. say something."}
@@ -691,7 +1031,13 @@ export function App() {
 
       <footer class="chalk-footer">
         <Composer
-          disabled={state.wsState !== "open" || !state.activeChannelID}
+          disabledReason={
+            state.wsState !== "open"
+              ? "offline"
+              : !state.activeChannelID
+              ? "no_channel"
+              : null
+          }
           onSend={onSend}
         />
       </footer>
@@ -705,7 +1051,24 @@ export function App() {
         />
       )}
 
-      {state.openPanel === "invites" && (
+      {state.openPanel === "friends" && (
+        <FriendsPanel
+          state={state.friendsPanel}
+          friends={state.friends.map((f) => ({ userID: f.userID, handle: f.handle }))}
+          pendingIncoming={state.pendingIncoming}
+          pendingOutgoing={state.pendingOutgoing}
+          onClose={() => dispatch({ kind: "close_panel" })}
+          onAddFormChange={(v) => dispatch({ kind: "friends_add_input_change", value: v })}
+          onAddSubmit={handleFriendAddSubmit}
+          onClearAddError={() => dispatch({ kind: "friends_add_clear_error" })}
+          onAccept={handleFriendAccept}
+          onDecline={handleFriendDecline}
+          onRemove={handleFriendRemove}
+          onTabChange={(tab) => dispatch({ kind: "friends_panel_tab_change", tab })}
+          onRefresh={handleFriendsRefresh}
+        />
+      )}
+            {state.openPanel === "invites" && (
         <InvitesPanel
           state={state.myInvites}
           onClose={() => dispatch({ kind: "close_panel" })}

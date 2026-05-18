@@ -22,6 +22,11 @@ type Message struct {
 	ThreadID        *uuid.UUID
 	ParentID        *uuid.UUID
 	SenderDeviceID  uuid.UUID
+	// Phase 9.6i: the user_id that owns SenderDeviceID at
+	// fetch time. uuid.Nil when the device or its owning user
+	// has been purged (CASCADE wipes both). Used by the WS
+	// handler to populate MessagePayload.SenderUserID.
+	SenderUserID    uuid.UUID
 	Seq             int64
 	TS              time.Time
 	DeliveredAt     *time.Time
@@ -93,15 +98,29 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (Message, error) {
 // the messages table is partitioned by ts.
 func (s *Store) GetMessage(ctx context.Context, ts time.Time, id uuid.UUID) (Message, error) {
 	var m Message
+	// Phase 9.6i: LEFT JOIN devices so the WS handler can pass
+	// sender_user_id to clients (for username rendering). devices
+	// may be missing (purged); coalesce to NULL/uuid.Nil in that
+	// case.
+	var senderUser *uuid.UUID
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, channel_id, thread_id, parent_id, sender_device_id,
-		        seq, ts, delivered_at, mls_epoch, content_type, ciphertext
-		   FROM messages WHERE ts = $1 AND id = $2`,
+		`SELECT m.id, m.channel_id, m.thread_id, m.parent_id,
+		        m.sender_device_id, d.user_id,
+		        m.seq, m.ts, m.delivered_at, m.mls_epoch,
+		        m.content_type, m.ciphertext
+		   FROM messages m
+		   LEFT JOIN devices d ON d.id = m.sender_device_id
+		  WHERE m.ts = $1 AND m.id = $2`,
 		ts, id,
 	).Scan(
-		&m.ID, &m.ChannelID, &m.ThreadID, &m.ParentID, &m.SenderDeviceID,
-		&m.Seq, &m.TS, &m.DeliveredAt, &m.MLSEpoch, &m.ContentType, &m.Ciphertext,
+		&m.ID, &m.ChannelID, &m.ThreadID, &m.ParentID,
+		&m.SenderDeviceID, &senderUser,
+		&m.Seq, &m.TS, &m.DeliveredAt, &m.MLSEpoch,
+		&m.ContentType, &m.Ciphertext,
 	)
+	if senderUser != nil {
+		m.SenderUserID = *senderUser
+	}
 	return m, translateErr(err)
 }
 

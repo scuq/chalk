@@ -156,8 +156,14 @@ type MessagePayload struct {
 	ChannelID string `json:"channel_id"`
 	Seq       int64  `json:"seq"`
 	Sender    string `json:"sender"` // sender device_id, or "" for purged-user msgs
-	TS        int64  `json:"ts"`     // server unix-millis
-	Body      string `json:"body"`
+	// Phase 9.6i: sender_user_id lets clients render the message
+	// author's username instead of a device-id suffix. Empty when
+	// the sender's user account has been purged or the device row
+	// has been deleted. Old clients ignore this field; new clients
+	// fall back to Sender (device_id) when this is empty.
+	SenderUserID string `json:"sender_user_id,omitempty"`
+	TS           int64  `json:"ts"` // server unix-millis
+	Body         string `json:"body"`
 }
 
 // ErrorPayload is sent when the server can't process a request. Code is a

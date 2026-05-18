@@ -1,0 +1,132 @@
+// Lazy-component loader. Phase 9.6d.
+//
+// esbuild's dynamic-import support generates a separate chunk file
+// per import() call. Combined with a route guard ("only render
+// AdminPanel when openPanel === 'admin'"), this lets us defer
+// downloading rarely-touched UI surfaces until they're actually
+// needed.
+//
+// The pattern:
+//
+//   const LazyAdminPanel = lazyComponent(
+//     () => import("./AdminPanel").then((m) => m.AdminPanel)
+//   );
+//
+//   // in JSX:
+//   {route === "admin" && <LazyAdminPanel {...props} />}
+//
+// The loader maintains a tiny per-component state machine:
+//
+//   - On first render: kick off the dynamic import (one network
+//     fetch per chunk file, then cached by the browser for the
+//     rest of the session).
+//   - While loading: render a minimal placeholder so the UI doesn't
+//     blink to nothing.
+//   - Once loaded: render the real component with the forwarded
+//     props.
+//
+// The component reference is cached at module scope via the
+// returned wrapper, so subsequent mounts of the same lazy component
+// reuse the already-resolved module.
+//
+// Limitations:
+//   - No error boundary: if the import() rejects (network failure,
+//     missing chunk), we render a static error message. That's
+//     fine for chalk's local-network use case; could grow later
+//     into a real error UI.
+//   - No suspense / preloading hooks: this is "load on first
+//     render," not "preload on hover." Good enough until we have a
+//     real performance budget.
+
+import { useEffect, useRef, useState } from "preact/hooks";
+import type { ComponentType } from "preact";
+
+type Loader<P> = () => Promise<ComponentType<P>>;
+
+interface LazyState<P> {
+  status: "idle" | "loading" | "ready" | "error";
+  Component: ComponentType<P> | null;
+  error: string | null;
+}
+
+// Per-loader cache so re-mounts don't re-import. Keyed by the
+// loader function reference itself (which is stable across renders
+// because it's declared at module scope where lazyComponent is
+// called).
+const cache = new WeakMap<Loader<unknown>, ComponentType<unknown>>();
+
+export function lazyComponent<P>(loader: Loader<P>): ComponentType<P> {
+  // Cast to the unknown-keyed cache (per-loader-fn map).
+  const cachedLoader = loader as unknown as Loader<unknown>;
+  return function LazyMount(props: P) {
+    const cached = cache.get(cachedLoader);
+    const [state, setState] = useState<LazyState<P>>(() =>
+      cached
+        ? { status: "ready", Component: cached as ComponentType<P>, error: null }
+        : { status: "idle", Component: null, error: null }
+    );
+
+    // Track unmount with a ref. Effect-internal flags don't work here
+    // because setState within the effect triggers a re-run, which
+    // would cancel the in-flight loader prematurely if we used a
+    // closure variable. The ref persists across renders and is only
+    // flipped by the cleanup of the SECOND effect run (the one
+    // triggered after status changes from idle → loading).
+    const unmountedRef = useRef(false);
+    useEffect(() => {
+      unmountedRef.current = false;
+      return () => { unmountedRef.current = true; };
+    }, []);
+
+    // Kick off the load once per LazyMount instance. Guarded by a ref
+    // so we don't double-fire on the strict-mode double-invocation
+    // (Preact's dev mode doesn't do this, but defending anyway).
+    const kickedRef = useRef(false);
+    useEffect(() => {
+      if (state.status !== "idle") return;
+      if (kickedRef.current) return;
+      kickedRef.current = true;
+      setState({ status: "loading", Component: null, error: null });
+      loader()
+        .then((Component) => {
+          if (unmountedRef.current) return;
+          cache.set(cachedLoader, Component as ComponentType<unknown>);
+          setState({ status: "ready", Component, error: null });
+        })
+        .catch((err) => {
+          if (unmountedRef.current) return;
+          setState({
+            status: "error",
+            Component: null,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    }, [state.status]);
+
+    if (state.status === "loading" || state.status === "idle") {
+      return (
+        <div class="chalk-lazy-loading" data-testid="lazy-loading">
+          <span class="chalk-lazy-loading-dot" />
+          <span class="chalk-lazy-loading-dot" />
+          <span class="chalk-lazy-loading-dot" />
+        </div>
+      );
+    }
+    if (state.status === "error") {
+      return (
+        <div class="chalk-lazy-error" data-testid="lazy-error">
+          failed to load: {state.error}
+        </div>
+      );
+    }
+    // state.status === "ready"
+    const C = state.Component!;
+    // The cast through `any` here suppresses a noisy generic-
+    // constraint error: TypeScript can't prove that an arbitrary
+    // `P` is JSX-prop-compatible at this site, even though every
+    // concrete usage IS. The constraint isn't fundamentally wrong
+    // — it's just hard to express without bloating the signature.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return <C {...(props as any)} />;
+  } as ComponentType<P>;
+}

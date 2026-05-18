@@ -62,15 +62,29 @@ export function reducer(state: AppState, action: Action): AppState {
       if (state.channels[ch.id]) {
         return state; // already known; idempotent
       }
+      // Phase 9.6b: when a DM-create is in flight and this is the
+      // matching DM, auto-activate it (overriding the usual "leave
+      // active alone" behavior). memberIDs is a small array for
+      // DMs (always 2 entries), so includes() is cheap.
+      const pending = state.dmPendingForUserID;
+      const isMatchingDM =
+        pending !== null &&
+        ch.isDM &&
+        ch.memberIDs.includes(pending);
+      // Pick the next active channel:
+      //   - If a DM-create is pending and this is it: activate.
+      //   - Else if nothing was active: activate this one.
+      //   - Otherwise keep current selection (don't yank the user).
+      const nextActive = isMatchingDM
+        ? ch.id
+        : state.activeChannelID ?? ch.id;
       // Insert at the top of the order (newest).
       return {
         ...state,
         channels: { ...state.channels, [ch.id]: ch },
         channelOrder: [ch.id, ...state.channelOrder],
-        // If nothing is active, jump to the new channel. Otherwise
-        // leave the active selection alone (don't yank the user
-        // somewhere unexpected).
-        activeChannelID: state.activeChannelID ?? ch.id,
+        activeChannelID: nextActive,
+        dmPendingForUserID: isMatchingDM ? null : state.dmPendingForUserID,
       };
     }
 
@@ -118,7 +132,14 @@ export function reducer(state: AppState, action: Action): AppState {
     }
 
     case "friends_loaded":
-      return { ...state, friends: action.friends, friendsLoaded: true };
+      return {
+        ...state,
+        friends: action.friends,
+        friendsLoaded: true,
+        // Phase 9.6a: if the server sent pending buckets, store them.
+        pendingIncoming: action.pendingIncoming ?? state.pendingIncoming,
+        pendingOutgoing: action.pendingOutgoing ?? state.pendingOutgoing,
+      };
 
     case "open_create_modal":
       return { ...state, createModalOpen: true };
@@ -135,6 +156,12 @@ export function reducer(state: AppState, action: Action): AppState {
       // "profile" leaves email-change pendingSummary alone (we want
       // the user to see "your verification is pending" on revisits
       // until either dismissed or completed).
+      //
+      // Phase 9.6a hotfix: previously this case had an implicit
+      // "anything-not-invites is profile" fallback, which mis-routed
+      // the new "friends" panel into the profile slot. Now we
+      // dispatch on action.panel explicitly so each value lands
+      // where it belongs.
       if (action.panel === "invites") {
         return {
           ...state,
@@ -145,6 +172,19 @@ export function reducer(state: AppState, action: Action): AppState {
           },
         };
       }
+      if (action.panel === "friends") {
+        return {
+          ...state,
+          openPanel: "friends",
+          // Clear any stale add-flow error so a re-open starts clean.
+          friendsPanel: {
+            ...state.friendsPanel,
+            addError: null,
+          },
+        };
+      }
+      // Default: profile. Same behavior as before the hotfix for the
+      // profile case specifically.
       return { ...state, openPanel: "profile" };
 
     case "close_panel":
@@ -963,6 +1003,116 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         me: state.me ? { ...state.me, email: action.newEmail } : state.me,
       };
+
+    // ---- Phase 9.6a: friends panel cases --------------------------------
+
+    case "friends_panel_tab_change":
+      return {
+        ...state,
+        friendsPanel: { ...state.friendsPanel, activeTab: action.tab },
+      };
+
+    case "friends_add_input_change":
+      return {
+        ...state,
+        friendsPanel: { ...state.friendsPanel, addInput: action.value },
+      };
+
+    case "friends_add_clear_error":
+      return {
+        ...state,
+        friendsPanel: { ...state.friendsPanel, addError: null },
+      };
+
+    case "friends_add_start":
+      return {
+        ...state,
+        friendsPanel: { ...state.friendsPanel, addBusy: true, addError: null },
+      };
+
+    case "friends_add_failed":
+      return {
+        ...state,
+        friendsPanel: {
+          ...state.friendsPanel,
+          addBusy: false,
+          addError: action.error,
+        },
+      };
+
+    case "friends_add_succeeded":
+      return {
+        ...state,
+        friendsPanel: {
+          ...state.friendsPanel,
+          addBusy: false,
+          addInput: "",
+          addError: null,
+          // After a successful add, jump the user to the "pending"
+          // tab where the new outgoing request will appear once the
+          // friend_list re-fetch lands.
+          activeTab: "pending",
+        },
+      };
+
+    case "friends_action_start":
+      return {
+        ...state,
+        friendsPanel: {
+          ...state.friendsPanel,
+          pendingActionUserID: action.userID,
+        },
+      };
+
+    case "friends_action_done":
+      return {
+        ...state,
+        friendsPanel: {
+          ...state.friendsPanel,
+          pendingActionUserID:
+            state.friendsPanel.pendingActionUserID === action.userID
+              ? null
+              : state.friendsPanel.pendingActionUserID,
+        },
+      };
+
+    // ---- Phase 9.6b: roster-driven DM creation --------------------------
+
+    case "dm_pending_set":
+      return { ...state, dmPendingForUserID: action.userID };
+
+    case "dm_pending_clear":
+      return { ...state, dmPendingForUserID: null };
+
+    // ---- Phase 9.6c: presence ---------------------------------------
+
+    case "presence_set":
+      return {
+        ...state,
+        presence: { ...state.presence, [action.userID]: action.state },
+      };
+
+    case "presence_clear": {
+      // Drop this user_id from the presence map. Used when an
+      // ex-friend should no longer have presence tracked.
+      if (!(action.userID in state.presence)) return state;
+      const next: typeof state.presence = { ...state.presence };
+      delete next[action.userID];
+      return { ...state, presence: next };
+    }
+
+    case "presence_reset":
+      // Used on WS disconnect / re-connect: clear all known presence
+      // so the next subscribe round-trip rebuilds the map cleanly.
+      return { ...state, presence: {} };
+
+    // ---- Phase 9.6j: manual presence override ---------------------------
+
+    case "presence_mode_set":
+      return { ...state, myPresenceMode: action.mode };
+
+    case "my_effective_presence_set":
+      return { ...state, myEffectivePresence: action.state };
 
     // ---- Phase 09d-2b: admin panel routing -------------------------
 

@@ -1529,3 +1529,511 @@ html, body {
 .chalk-fg-dim {
   color: var(--chalk-fg-dim);
 }
+
+/* ============================================================
+   Phase 9.6a: FriendsPanel styles
+   ============================================================ */
+
+.chalk-friends-panel {
+  width: min(560px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.chalk-friends-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.75rem 1rem 0.5rem;
+  border-bottom: 1px solid var(--chalk-border, #1f2a1f);
+}
+
+.chalk-friends-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.chalk-friends-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem 0;
+  border-bottom: 1px solid var(--chalk-border, #1f2a1f);
+}
+
+.chalk-friends-tab {
+  background: transparent;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  border: none;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.chalk-friends-tab:hover { color: var(--chalk-fg, #c8ffc8); }
+.chalk-friends-tab--active {
+  color: var(--chalk-fg, #c8ffc8);
+  border-bottom-color: var(--chalk-accent, #6effa1);
+}
+
+.chalk-friends-badge {
+  background: var(--chalk-accent, #6effa1);
+  color: var(--chalk-bg, #0a120a);
+  border-radius: 9999px;
+  padding: 0 0.45em;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.chalk-friends-refresh {
+  margin-left: auto;
+  background: transparent;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  border: none;
+  font-family: inherit;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+}
+.chalk-friends-refresh:hover { color: var(--chalk-fg, #c8ffc8); }
+
+.chalk-friends-body {
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.chalk-friends-help {
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-size: 0.85rem;
+  margin: 0 0 0.75rem;
+  line-height: 1.4;
+}
+
+.chalk-friends-add-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.chalk-friends-add-input {
+  flex: 1;
+  background: var(--chalk-bg-elev, #14201a);
+  border: 1px solid var(--chalk-border, #1f2a1f);
+  color: var(--chalk-fg, #c8ffc8);
+  padding: 0.45rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  border-radius: 3px;
+}
+.chalk-friends-add-input:focus {
+  outline: none;
+  border-color: var(--chalk-accent, #6effa1);
+}
+
+.chalk-friends-add-submit {
+  background: var(--chalk-accent, #6effa1);
+  color: var(--chalk-bg, #0a120a);
+  border: none;
+  padding: 0.45rem 1rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.chalk-friends-add-submit:disabled {
+  background: var(--chalk-fg-dim, #5a8a5a);
+  cursor: not-allowed;
+}
+
+.chalk-friends-error {
+  color: var(--chalk-error, #ff7070);
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba(255, 112, 112, 0.08);
+  border-left: 2px solid var(--chalk-error, #ff7070);
+}
+
+.chalk-friends-empty {
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-style: italic;
+  text-align: center;
+  padding: 1.5rem 1rem;
+}
+
+.chalk-friends-section-title {
+  font-size: 0.8rem;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0 0 0.5rem;
+}
+
+.chalk-friends-pending section + section {
+  margin-top: 1rem;
+}
+
+.chalk-friends-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chalk-friends-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.6rem;
+  border-radius: 3px;
+}
+.chalk-friends-row:hover {
+  background: var(--chalk-bg-elev, #14201a);
+}
+
+.chalk-friends-handle {
+  font-family: inherit;
+  color: var(--chalk-fg, #c8ffc8);
+}
+
+.chalk-friends-row-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.chalk-friends-action {
+  background: transparent;
+  border: 1px solid var(--chalk-border, #1f2a1f);
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.chalk-friends-action:hover {
+  color: var(--chalk-fg, #c8ffc8);
+  border-color: var(--chalk-fg-dim, #5a8a5a);
+}
+.chalk-friends-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.chalk-friends-action--accept {
+  color: var(--chalk-accent, #6effa1);
+  border-color: var(--chalk-accent, #6effa1);
+}
+.chalk-friends-action--accept:hover {
+  background: var(--chalk-accent, #6effa1);
+  color: var(--chalk-bg, #0a120a);
+}
+.chalk-friends-action--decline {
+  color: var(--chalk-warn, #ffd060);
+  border-color: var(--chalk-warn, #ffd060);
+}
+.chalk-friends-action--decline:hover {
+  background: var(--chalk-warn, #ffd060);
+  color: var(--chalk-bg, #0a120a);
+}
+
+/* ============================================================
+   Phase 9.6b: sidebar roster section
+   ============================================================ */
+
+/* The sidebar now has two header rows + two lists. Give the
+   second header a top margin so the two sections feel distinct. */
+.chalk-sidebar-header--channels {
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--chalk-border, #1f2a1f);
+}
+
+/* Inline count next to section title. Dimmed by default, takes the
+   accent color when there's something to highlight. */
+.chalk-sidebar-count {
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-size: 0.85em;
+  font-weight: normal;
+  margin-left: 0.25em;
+}
+
+/* Friends section: tighter spacing than channels, slight visual
+   distinction so users feel the hierarchy. */
+.chalk-sidebar-list--friends {
+  /* nothing override-specific; inherits chalk-sidebar-list */
+}
+
+.chalk-sidebar-item--friend .chalk-sidebar-item-name {
+  /* the @ prefix is part of the rendered text; keep typography
+     consistent with channel names */
+}
+
+/* Empty states for both sections use the existing chalk-sidebar-empty
+   rule. No additional CSS needed there. */
+
+/* ============================================================
+   Phase 9.6b tweak: sidebar height + filter
+   ============================================================ */
+
+/* Section wrappers — friends shrinks to fit (with a 40vh cap and
+   internal scroll); channels takes the rest. */
+.chalk-sidebar-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chalk-sidebar-section--friends {
+  /* Don't grow beyond content + cap. The cap prevents one giant
+     roster from pushing channels off-screen. */
+  flex-shrink: 0;
+  max-height: 40vh;
+}
+
+.chalk-sidebar-section--channels {
+  /* Fill the remaining vertical space. */
+  flex: 1;
+  min-height: 0;
+}
+
+/* The friends list within the friends section: scroll INSIDE the
+   section when content overflows the 40vh cap. Override the base
+   .chalk-sidebar-list `flex: 1` (which would cause both sections to
+   fight for space) with `flex: 0 1 auto` so the list sizes to
+   content. */
+.chalk-sidebar-list--friends {
+  flex: 0 1 auto;
+  overflow-y: auto;
+}
+
+/* The channels list keeps the original flex: 1 behavior (inherits
+   from .chalk-sidebar-list); no override needed. */
+
+/* Filter input — only appears when ≥7 friends. Sits between the
+   "friends (N)" header and the list. Inherits the dark theme;
+   matches the .chalk-friends-add-input styling for consistency. */
+.chalk-sidebar-filter {
+  padding: 0 var(--chalk-s2) var(--chalk-s2) var(--chalk-s2);
+  flex-shrink: 0;
+}
+
+.chalk-sidebar-filter-input {
+  width: 100%;
+  background: var(--chalk-bg-elev, #14201a);
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg);
+  padding: 0.3rem 0.5rem;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  box-sizing: border-box;
+}
+.chalk-sidebar-filter-input:focus {
+  outline: none;
+  border-color: var(--chalk-fg-bright);
+}
+.chalk-sidebar-filter-input::placeholder {
+  color: var(--chalk-fg-dim);
+  font-style: italic;
+}
+
+/* ============================================================
+   Phase 9.6c: presence dots
+   ============================================================ */
+
+/* The friend row is a flex layout: dot column, then name. The dot
+   column is fixed width so all names line up regardless of state. */
+.chalk-sidebar-item--friend {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* The dot: 8px circle, always rendered (transparent border for
+   offline so layout doesn't shift). */
+.chalk-presence-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  /* Tiny vertical nudge so the dot optically centers against
+     monospace text baseline. */
+  margin-top: 1px;
+}
+
+/* Online: solid bright green. Uses the same accent as the active
+   channel highlight so it reads as "active." */
+.chalk-presence-dot--online {
+  background: var(--chalk-fg-bright, #6effa1);
+  box-shadow: 0 0 4px rgba(110, 255, 161, 0.4);
+}
+
+/* Away: solid yellow, no glow. */
+.chalk-presence-dot--away {
+  background: var(--chalk-warn, #ffd060);
+}
+
+/* Offline / unknown: hollow grey circle. 1px border, no fill. */
+.chalk-presence-dot--offline {
+  background: transparent;
+  border: 1px solid var(--chalk-fg-dim, #5a8a5a);
+  /* Compensate for the border so the visual diameter still aligns
+     with the filled dots above. */
+  width: 6px;
+  height: 6px;
+}
+
+/* ============================================================
+   Phase 9.6d: alignment fix + lazy-loading indicator
+   ============================================================ */
+
+/* Override .chalk-sidebar-item's `justify-content: space-between`
+   for the friend variant so the dot and name sit together at the
+   start of the row. (The default is appropriate for channels,
+   where "#name" + dm-tag float to opposite edges.) */
+.chalk-sidebar-item--friend {
+  justify-content: flex-start;
+}
+
+/* The name inside a friend row shouldn't try to fill remaining
+   space; it's a label, not a flex grower. */
+.chalk-sidebar-item--friend .chalk-sidebar-item-name {
+  flex: 0 1 auto;
+}
+
+/* Lazy-loading placeholder: three small dots that pulse while a
+   chunk is being fetched. The component sits in place of the
+   real panel, so users see "something is happening" rather than
+   a flash of nothing. */
+.chalk-lazy-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 2rem;
+  min-height: 6rem;
+}
+
+.chalk-lazy-loading-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chalk-fg-dim);
+  animation: chalk-lazy-pulse 1.2s ease-in-out infinite;
+}
+.chalk-lazy-loading-dot:nth-child(2) { animation-delay: 0.15s; }
+.chalk-lazy-loading-dot:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes chalk-lazy-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40%           { opacity: 1;   transform: scale(1.0); }
+}
+
+.chalk-lazy-error {
+  padding: 1.5rem;
+  color: var(--chalk-error, #ff7070);
+  background: rgba(255, 112, 112, 0.08);
+  border-left: 2px solid var(--chalk-error, #ff7070);
+  margin: 1rem;
+  font-size: var(--chalk-size-small);
+}
+
+/* ============================================================
+   Phase 9.6j: presence picker
+   ============================================================ */
+
+.chalk-presence-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.chalk-presence-trigger {
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0 0.5rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 3px;
+}
+.chalk-presence-trigger:hover {
+  border-color: var(--chalk-border, #1f2a1f);
+  background: var(--chalk-bg-elev, #14201a);
+}
+.chalk-presence-trigger:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* Effective-state-driven coloring of the trigger label. */
+.chalk-presence-trigger--online .chalk-status-label {
+  color: var(--chalk-fg-bright, #6effa1);
+}
+.chalk-presence-trigger--away .chalk-status-label {
+  color: var(--chalk-warn, #ffd060);
+}
+.chalk-presence-trigger--offline .chalk-status-label {
+  color: var(--chalk-fg-dim, #5a8a5a);
+}
+
+.chalk-presence-mode-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  padding: 0 0.25rem;
+}
+
+.chalk-presence-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 12rem;
+  background: var(--chalk-bg-elev, #14201a);
+  border: 1px solid var(--chalk-border, #1f2a1f);
+  padding: 0.3rem 0;
+  z-index: 20;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.chalk-presence-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg, #c8ffc8);
+  font: inherit;
+  text-align: left;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+}
+.chalk-presence-menu-item:hover {
+  background: rgba(110, 255, 161, 0.08);
+}
+.chalk-presence-menu-item--active {
+  color: var(--chalk-fg-bright, #6effa1);
+  background: rgba(110, 255, 161, 0.05);
+}
+.chalk-presence-menu-item--active::before {
+  content: "✓ ";
+}
+
+.chalk-presence-menu-hint {
+  font-size: 0.75rem;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-style: italic;
+}

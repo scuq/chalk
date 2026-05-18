@@ -677,11 +677,37 @@ func writeOne(ctx context.Context, c *websocket.Conn, data []byte, timeout time.
 // hardcoded alice). Idempotent; safe to call multiple times for
 // the same (deviceID, userID) pair.
 func ensureDeviceForUser(ctx context.Context, st *store.Store, deviceID, userID uuid.UUID) error {
-	_, err := st.Pool.Exec(ctx,
+	// Phase 9.6f: rebind on conflict instead of skipping. When two
+	// distinct users log in via the same browser, the second login
+	// inherited the first's device row under the old DO NOTHING
+	// behavior, causing lookupUserForDevice to return the wrong
+	// user_id for the second account.
+	//
+	// SECURITY: device_id is non-secret (lives in localStorage,
+	// visible to JS). What gates access is the session cookie on
+	// the WS upgrade; by the time we're here, that's already been
+	// validated. So rebinding to whoever's currently authenticated
+	// is correct. The Phase 9.6f SPA change ALSO clears device_id
+	// on logout so this rebind path is rare in practice (it only
+	// fires on edge cases like cookie-cleared-but-localStorage-
+	// retained).
+	tag, err := st.Pool.Exec(ctx,
 		`INSERT INTO devices (id, user_id, device_type, device_label)
 		 VALUES ($1, $2, 'browser-unknown', 'phase-09b-session')
-		 ON CONFLICT (id) DO NOTHING`,
+		 ON CONFLICT (id) DO UPDATE
+		   SET user_id   = EXCLUDED.user_id,
+		       last_seen = now()
+		   WHERE devices.user_id IS DISTINCT FROM EXCLUDED.user_id`,
 		deviceID, userID,
 	)
+	if err == nil && tag.RowsAffected() > 0 {
+		// RowsAffected is 1 for both INSERT and the rebinding UPDATE;
+		// the WHERE clause on the UPDATE means we only log when
+		// something actually changed. We don't have a logger here
+		// (this is a free function); the caller logs ensure failures.
+		// A more elaborate version could return a sentinel for
+		// "rebound" vs "inserted" so the caller can audit-log it.
+		_ = tag
+	}
 	return err
 }

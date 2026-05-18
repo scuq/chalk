@@ -287,11 +287,17 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		beforeSeq = 1 << 62
 	}
 
+	// Phase 9.6i: LEFT JOIN devices so clients can map sender to
+	// username. devices.user_id is null when the device row has
+	// been purged; the SPA falls back to the device-id slice in
+	// that case.
 	rows, err := s.Pool.Query(ctx,
-		`SELECT id, channel_id, sender_device_id, ts, seq, content_type, ciphertext
-		   FROM messages
-		  WHERE channel_id = $1 AND seq < $2
-		  ORDER BY seq DESC
+		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
+		        m.ts, m.seq, m.content_type, m.ciphertext
+		   FROM messages m
+		   LEFT JOIN devices d ON d.id = m.sender_device_id
+		  WHERE m.channel_id = $1 AND m.seq < $2
+		  ORDER BY m.seq DESC
 		  LIMIT $3`,
 		channelID, beforeSeq, limit,
 	)
@@ -304,13 +310,18 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 	for rows.Next() {
 		var m Message
 		var senderDev *uuid.UUID
+		var senderUser *uuid.UUID
 		if err := rows.Scan(
-			&m.ID, &m.ChannelID, &senderDev, &m.TS, &m.Seq, &m.ContentType, &m.Ciphertext,
+			&m.ID, &m.ChannelID, &senderDev, &senderUser,
+			&m.TS, &m.Seq, &m.ContentType, &m.Ciphertext,
 		); err != nil {
 			return nil, err
 		}
 		if senderDev != nil {
 			m.SenderDeviceID = *senderDev
+		}
+		if senderUser != nil {
+			m.SenderUserID = *senderUser
 		}
 		out = append(out, m)
 	}

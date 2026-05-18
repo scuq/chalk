@@ -158,6 +158,10 @@ func NewServer(opts Options) (*Server, error) {
 		if err := opts.Auth.MountAdminBootstrap(mux); err != nil {
 			return nil, fmt.Errorf("mount admin bootstrap: %w", err)
 		}
+		// Phase 9.6a: exact-username lookup for the friend-add UI.
+		if err := opts.Auth.MountUserLookup(mux); err != nil {
+			return nil, fmt.Errorf("mount user lookup: %w", err)
+		}
 	}
 
 	// Phase 07: mount the SPA at "/". A WebFS provided via Options is
@@ -363,13 +367,20 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 	if msg.SenderDeviceID != uuid.Nil {
 		senderStr = msg.SenderDeviceID.String()
 	}
+	// Phase 9.6i: populate sender_user_id from the store-supplied
+	// SenderUserID (resolved via JOIN on devices in GetMessage).
+	senderUserStr := ""
+	if msg.SenderUserID != uuid.Nil {
+		senderUserStr = msg.SenderUserID.String()
+	}
 	frame, err := proto.NewFrame(proto.TypeMessage, "", proto.MessagePayload{
-		ID:        msg.ID.String(),
-		ChannelID: msg.ChannelID.String(),
-		Seq:       msg.Seq,
-		Sender:    senderStr,
-		TS:        msg.TS.UnixMilli(),
-		Body:      string(msg.Ciphertext),
+		ID:           msg.ID.String(),
+		ChannelID:    msg.ChannelID.String(),
+		Seq:          msg.Seq,
+		Sender:       senderStr,
+		SenderUserID: senderUserStr,
+		TS:           msg.TS.UnixMilli(),
+		Body:         string(msg.Ciphertext),
 	})
 	if err != nil {
 		s.logger.Printf("pubsub frame: %v", err)

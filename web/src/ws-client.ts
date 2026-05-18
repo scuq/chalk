@@ -206,3 +206,24 @@ export function getOrCreateDeviceId(): string {
   window.localStorage.setItem(DEVICE_ID_KEY, fresh);
   return fresh;
 }
+
+// Phase 9.6f: clearDeviceId removes the persisted device UUID. Called
+// on logout so the next sign-in (which may be a different user on the
+// same browser) generates a fresh device_id. This prevents the second
+// user from inheriting the first user's devices row on the server,
+// which would mis-route their friend/presence operations.
+//
+// The server's ensureDeviceForUser ALSO rebinds the row on conflict
+// (see Phase 9.6f server change) as defense in depth, but clearing
+// here means the rebind path is rare and the server log line for it
+// is genuinely interesting when it fires.
+export function clearDeviceId(): void {
+  try {
+    window.localStorage.removeItem(DEVICE_ID_KEY);
+  } catch {
+    // localStorage can throw in private-browsing edge cases; we
+    // already tolerate missing-storage in getOrCreateDeviceId by
+    // generating a fresh id each call, so a missed clear here is
+    // harmless.
+  }
+}

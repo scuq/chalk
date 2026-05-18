@@ -34,6 +34,10 @@ export interface Message {
   channelID: string;
   seq: number;
   sender: string; // device_id; empty for purged-user messages
+  // Phase 9.6i: user_id of the sender, resolved by the server via
+  // JOIN on the devices table at fetch time. Empty when the
+  // sender's device or user has been purged.
+  senderUserID: string;
   ts: Date;
   body: string;
 }
@@ -59,6 +63,37 @@ export interface Friend {
   handle: string; // phase 08c; empty if server didn't return one
 }
 
+// ---- Phase 9.6a: friends panel state ------------------------------------
+//
+// activeTab: which of the three tabs is currently shown.
+// addInput: the username being typed in the "add" tab.
+// addBusy: true between submit and ack (covers the lookup + WS
+//   send + ack roundtrip; the panel disables submit while true).
+// addError: human-readable error to display under the add input.
+// pendingActionUserID: when an accept/decline/remove is mid-flight,
+//   this is the target user's id; UI disables that row's actions.
+export interface FriendsPanelState {
+  activeTab: "add" | "pending" | "friends";
+  addInput: string;
+  addBusy: boolean;
+  addError: string | null;
+  pendingActionUserID: string | null;
+}
+
+export const initialFriendsPanelState: FriendsPanelState = {
+  activeTab: "add",
+  addInput: "",
+  addBusy: false,
+  addError: null,
+  pendingActionUserID: null,
+};
+
+// Phase 9.6c: presence map. Keyed by friend user_id. Values are
+// the server's aggregated state strings ("online", "away", "offline").
+// Absent keys mean "unknown / not subscribed" — treated as offline
+// in the UI.
+export type PresenceMap = Record<string, string>;
+
 // ---- Reducer state -------------------------------------------------------
 
 export interface AppState {
@@ -78,6 +113,27 @@ export interface AppState {
 
   // Friends, fetched lazily when the create-channel modal opens.
   friends: Friend[];
+  // Phase 9.6a: incoming + outgoing pending friend requests.
+  pendingIncoming: Friend[];
+  pendingOutgoing: Friend[];
+  // Phase 9.6a: FriendsPanel UI state.
+  friendsPanel: FriendsPanelState;
+  // Phase 9.6b: when a friend without a DM is clicked, the SPA
+  // sends create_channel and stashes the friend's user_id here.
+  // The matching channel_added action activates that channel and
+  // clears the field. Null when no DM-create is in flight.
+  dmPendingForUserID: string | null;
+  // Phase 9.6c: per-friend presence state. Keys are user_ids.
+  presence: PresenceMap;
+  // Phase 9.6j: presence override for the local user.
+  // "auto" tracks document visibility; "online" / "away"
+  // force the state. The SPA sends presence_update whenever
+  // myEffectivePresence changes.
+  myPresenceMode: "auto" | "online" | "away";
+  // The current effective state we've told the server about.
+  // "offline" means we're disconnected (no need to send
+  // anything; server handles via WS close).
+  myEffectivePresence: "online" | "away" | "offline";
   friendsLoaded: boolean;
 
   // UI.
@@ -109,7 +165,7 @@ export interface AppState {
   // null = no panel. "invites" → InvitesPanel modal.
   // "profile" → ProfilePanel modal. Mutually exclusive with
   // createModalOpen (only one modal-equivalent at a time).
-  openPanel: "invites" | "profile" | null;
+  openPanel: "invites" | "profile" | "friends" | null;
   // Phase 09c-2 refresh: spinner state for the ProfilePanel refresh
   // button. InvitesPanel's spinner uses myInvites.loading (which is
   // already there); for profile we need a dedicated flag because
@@ -231,6 +287,17 @@ export const initialState: AppState = {
   historyLoaded: {},
   friends: [],
   friendsLoaded: false,
+  // Phase 9.6a:
+  pendingIncoming: [],
+  pendingOutgoing: [],
+  friendsPanel: initialFriendsPanelState,
+  // Phase 9.6b:
+  dmPendingForUserID: null,
+  // Phase 9.6c:
+  presence: {},
+  // Phase 9.6j:
+  myPresenceMode: "auto",
+  myEffectivePresence: "offline",
   createModalOpen: false,
 
   // Phase 09b sub-step 4 auth-flow initial values.
@@ -268,11 +335,11 @@ export type Action =
   | { kind: "set_active_channel"; channelID: string | null }
   | { kind: "message"; message: Message }
   | { kind: "history_loaded"; channelID: string; messages: Message[] }
-  | { kind: "friends_loaded"; friends: Friend[] }
+  | { kind: "friends_loaded"; friends: Friend[]; pendingIncoming?: Friend[]; pendingOutgoing?: Friend[] }
   | { kind: "open_create_modal" }
   | { kind: "close_create_modal" }
   // Phase 09c-2: in-chat panel toggles.
-  | { kind: "open_panel"; panel: "invites" | "profile" }
+  | { kind: "open_panel"; panel: "invites" | "profile" | "friends" }
   | { kind: "close_panel" }
   // Phase 09c-2: profile-panel refresh (spinner only; the actual
   // identity update arrives via the existing auth_me_loaded action).
@@ -339,4 +406,23 @@ export type Action =
   | { kind: "admin_blacklist_remove_succeeded"; email: string }
   | { kind: "admin_blacklist_remove_failed"; email: string; message: string }
   | { kind: "admin_blacklist_remove_error_dismissed" }
+  // ---- Phase 9.6a: friends panel actions -------------------------------
+  | { kind: "friends_panel_tab_change"; tab: "add" | "pending" | "friends" }
+  | { kind: "friends_add_input_change"; value: string }
+  | { kind: "friends_add_clear_error" }
+  | { kind: "friends_add_start" }
+  | { kind: "friends_add_failed"; error: string }
+  | { kind: "friends_add_succeeded" }
+  | { kind: "friends_action_start"; userID: string }
+  | { kind: "friends_action_done"; userID: string }
+  // ---- Phase 9.6b: roster-driven DM creation ---------------------------
+  | { kind: "dm_pending_set"; userID: string }
+  | { kind: "dm_pending_clear" }
+  // ---- Phase 9.6c: presence ---------------------------------------------
+  | { kind: "presence_set"; userID: string; state: string }
+  | { kind: "presence_clear"; userID: string }
+  | { kind: "presence_reset" }
+  // ---- Phase 9.6j: manual presence override ---------------------------
+  | { kind: "presence_mode_set"; mode: "auto" | "online" | "away" }
+  | { kind: "my_effective_presence_set"; state: "online" | "away" | "offline" }
   | AuthAction;

@@ -45,7 +45,10 @@ export interface MessagePayload {
   id: string;
   channel_id: string; // phase 08
   seq: number;        // phase 08
-  sender: string;
+  sender: string;     // device_id; legacy field, prefer sender_user_id for display
+  // Phase 9.6i: sender's user_id. Optional because old servers
+  // don't send it and purged-user messages have no user to map to.
+  sender_user_id?: string;
   ts: number;
   body: string;
 }
@@ -64,6 +67,43 @@ export const TypePresenceUnsubscribe = "presence_unsubscribe";
 export const TypePresenceUnsubscribeAck = "presence_unsubscribe_ack";
 export const TypePresenceUpdate = "presence_update";
 export const TypePresenceUpdateAck = "presence_update_ack";
+
+// Phase 9.6c: TS interfaces for the presence payloads. These mirror
+// the server-side proto.PresencePayload + proto.PresenceSubscribePayload
+// + proto.PresenceSubscribeAckPayload + proto.PresenceRejection.
+
+// Single-user presence state. Sent by the server (push) on subscribe
+// confirmation + on subsequent state changes.
+export interface PresencePayload {
+  user_id: string;
+  // "online" | "away" | "offline" -- aggregated across the user's
+  // devices, not any single device's state.
+  state: string;
+  at: number; // unix-millis of most-recent activity
+}
+
+// SPA → server: ask to be told about these users' presence.
+export interface PresenceSubscribePayload {
+  user_ids: string[];
+}
+
+// Server → SPA: the result of a subscribe request. Subscribed list
+// contains the user_ids actually being tracked. Rejected contains
+// per-id refusal reasons (not_found / not_a_friend / self).
+export interface PresenceSubscribeAckPayload {
+  subscribed: string[];
+  rejected: PresenceRejection[];
+}
+
+export interface PresenceRejection {
+  user_id: string;
+  reason: string;
+}
+
+// SPA → server: stop being told about these users.
+export interface PresenceUnsubscribePayload {
+  user_ids: string[];
+}
 
 export const TypeFriendRequest = "friend_request";
 export const TypeFriendRequestAck = "friend_request_ack";

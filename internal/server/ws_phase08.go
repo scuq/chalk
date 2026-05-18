@@ -311,13 +311,19 @@ func (h *WSHandler) handleFetchHistory(
 		if m.SenderDeviceID != uuid.Nil {
 			senderStr = m.SenderDeviceID.String()
 		}
+		// Phase 9.6i:
+		senderUserStr := ""
+		if m.SenderUserID != uuid.Nil {
+			senderUserStr = m.SenderUserID.String()
+		}
 		out = append(out, proto.MessagePayload{
-			ID:        m.ID.String(),
-			ChannelID: m.ChannelID.String(),
-			Seq:       m.Seq,
-			Sender:    senderStr,
-			TS:        m.TS.UnixMilli(),
-			Body:      string(m.Ciphertext),
+			ID:           m.ID.String(),
+			ChannelID:    m.ChannelID.String(),
+			Seq:          m.Seq,
+			Sender:       senderStr,
+			SenderUserID: senderUserStr,
+			TS:           m.TS.UnixMilli(),
+			Body:         string(m.Ciphertext),
 		})
 	}
 

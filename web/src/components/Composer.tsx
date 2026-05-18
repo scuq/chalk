@@ -1,15 +1,47 @@
 import { useState } from "preact/hooks";
 import type { JSX } from "preact";
 
+// Phase 9.6g: disabledReason distinguishes the two reasons the
+// composer might be unusable. "offline" reflects a real connection
+// problem; "no_channel" is informational and means "you haven't
+// picked a chat yet." `null` means the composer is enabled.
+//
+// We keep the existing `disabled` prop as an alternative for
+// callers that don't care about the reason; the component renders
+// from whichever is more specific.
+type DisabledReason = "offline" | "no_channel" | null;
+
 interface Props {
-  disabled: boolean;
+  // Legacy boolean. When provided AND disabledReason is null, we
+  // fall back to a generic placeholder ("offline -- waiting to
+  // reconnect") to preserve old behavior for callers that haven't
+  // been updated to pass disabledReason.
+  disabled?: boolean;
+  // Phase 9.6g: prefer this over `disabled` for accurate UX.
+  disabledReason?: DisabledReason;
   onSend: (body: string) => void;
 }
 
 const MAX_LEN = 4000;
 
-export function Composer({ disabled, onSend }: Props) {
+export function Composer({ disabled, disabledReason, onSend }: Props) {
   const [draft, setDraft] = useState("");
+
+  // Phase 9.6g: derive the effective disabled boolean + the
+  // placeholder text from disabledReason (preferred) or fall back
+  // to the legacy `disabled` prop.
+  const effectiveDisabled =
+    disabledReason !== null && disabledReason !== undefined
+      ? true
+      : disabled ?? false;
+  const placeholderText =
+    disabledReason === "offline"
+      ? "offline -- waiting to reconnect"
+      : disabledReason === "no_channel"
+      ? "select a channel to start chatting"
+      : effectiveDisabled
+      ? "offline -- waiting to reconnect"
+      : "say something...";
 
   const submit = () => {
     const body = draft.trim();
@@ -36,11 +68,11 @@ export function Composer({ disabled, onSend }: Props) {
     <div class="chalk-composer">
       <textarea
         class="chalk-composer-input"
-        placeholder={disabled ? "offline -- waiting to reconnect" : "say something..."}
+        placeholder={placeholderText}
         value={draft}
         onInput={onInput}
         onKeyDown={onKeyDown}
-        disabled={disabled}
+        disabled={effectiveDisabled}
         rows={2}
         maxLength={MAX_LEN}
         data-testid="composer-input"
@@ -50,7 +82,7 @@ export function Composer({ disabled, onSend }: Props) {
         type="button"
         class="chalk-composer-send"
         onClick={submit}
-        disabled={disabled || draft.trim().length === 0}
+        disabled={effectiveDisabled || draft.trim().length === 0}
         data-testid="composer-send"
       >
         send

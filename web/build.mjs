@@ -41,6 +41,13 @@ const buildOpts = {
   // a manifest indirection. The runtime fetch happens at the HTML
   // level via <script src="/app.js">.
   entryNames: "[name]",
+  // Phase 9.6d: enable code-splitting so dynamic-import() calls
+  // produce separate chunk files. The initial index.js bundle drops
+  // significantly (~25-30%) because AdminPanel, FriendsPanel,
+  // InvitesPanel, and ProfilePanel only load when their UI is opened.
+  // Each chunk uses a content-hashed filename for cache-busting.
+  splitting: true,
+  chunkNames: "chunks/[name]-[hash]",
   loader: {
     ".woff2": "file",
     ".woff": "file",

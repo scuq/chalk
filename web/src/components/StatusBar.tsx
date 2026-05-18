@@ -26,9 +26,18 @@ interface Props {
   // phase 09c-2: extra menu items.
   onOpenInvites?: () => void;
   onOpenProfile?: () => void;
+  // Phase 9.6a: friends panel entry point. When provided,
+  // a "friends" item appears in the user menu.
+  onOpenFriends?: () => void;
   // phase 09d-2b: admin moderation panel entry. Only shown when
   // me.role === "admin".
   onOpenAdmin?: () => void;
+  // Phase 9.6j: presence override picker on the connection pill.
+  // When provided, clicking the pill opens a small picker with
+  // auto / online / away options.
+  presenceMode?: "auto" | "online" | "away";
+  effectivePresence?: "online" | "away" | "offline";
+  onPresenceModeChange?: (mode: "auto" | "online" | "away") => void;
 }
 
 const labels: Record<ConnectionState, string> = {
@@ -38,9 +47,12 @@ const labels: Record<ConnectionState, string> = {
   error: "error",
 };
 
-export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenAdmin }: Props) {
+export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenFriends, onOpenAdmin, presenceMode, effectivePresence, onPresenceModeChange }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  // Phase 9.6j: presence picker.
+  const [presenceOpen, setPresenceOpen] = useState(false);
+  const presenceRef = useRef<HTMLDivElement | null>(null);
 
   // Close on outside click or Escape.
   useEffect(() => {
@@ -62,6 +74,26 @@ export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, on
     };
   }, [menuOpen]);
 
+  // Phase 9.6j: same pattern for the presence picker.
+  useEffect(() => {
+    if (!presenceOpen) return;
+    function onDocClick(e: MouseEvent) {
+      if (!presenceRef.current) return;
+      if (e.target instanceof Node && !presenceRef.current.contains(e.target)) {
+        setPresenceOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setPresenceOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [presenceOpen]);
+
   // Display name preference: me.username > user.handle > "you"
   const displayName = me?.username ?? user?.handle ?? null;
   const titleAttr = me?.userID ?? user?.id ?? undefined;
@@ -70,8 +102,60 @@ export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, on
 
   return (
     <div class="chalk-status" data-state={state} data-testid="status-bar">
-      <span class={`chalk-status-dot chalk-status-dot--${state}`} aria-hidden="true" />
-      <span class="chalk-status-label">{labels[state]}</span>
+      {state === "open" && onPresenceModeChange ? (
+        // Phase 9.6j: clickable presence pill with picker.
+        <div class="chalk-presence-picker" ref={presenceRef}>
+          <button
+            type="button"
+            class={`chalk-presence-trigger chalk-presence-trigger--${effectivePresence ?? "online"}`}
+            data-testid="presence-trigger"
+            onClick={() => setPresenceOpen((v) => !v)}
+            aria-haspopup="menu"
+            aria-expanded={presenceOpen}
+            title={`presence: ${effectivePresence ?? "online"} (mode: ${presenceMode ?? "auto"})`}
+          >
+            <span class={`chalk-status-dot chalk-status-dot--${state}`} aria-hidden="true" />
+            <span class="chalk-status-label">
+              {effectivePresence === "away" ? "away" : "online"}
+              {presenceMode && presenceMode !== "auto" ? " ·" : ""}
+            </span>
+            {presenceMode && presenceMode !== "auto" && (
+              <span class="chalk-presence-mode-badge">
+                manual
+              </span>
+            )}
+          </button>
+          {presenceOpen && (
+            <div class="chalk-presence-menu" role="menu" data-testid="presence-menu">
+              {(["auto", "online", "away"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="menuitem"
+                  class={`chalk-presence-menu-item ${presenceMode === m ? "chalk-presence-menu-item--active" : ""}`}
+                  data-testid={`presence-menu-${m}`}
+                  onClick={() => {
+                    onPresenceModeChange(m);
+                    setPresenceOpen(false);
+                  }}
+                >
+                  {m}
+                  {m === "auto" && (
+                    <span class="chalk-presence-menu-hint">
+                      (follows tab visibility)
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          <span class={`chalk-status-dot chalk-status-dot--${state}`} aria-hidden="true" />
+          <span class="chalk-status-label">{labels[state]}</span>
+        </>
+      )}
       {detail && state !== "open" && (
         <span class="chalk-status-detail" data-testid="status-detail">
           ({detail})
@@ -130,6 +214,20 @@ export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, on
                   data-testid="status-user-menu-invites"
                 >
                   invites
+                </button>
+              )}
+              {onOpenFriends && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="chalk-status-menu-item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenFriends();
+                  }}
+                  data-testid="status-user-menu-friends"
+                >
+                  friends
                 </button>
               )}
               {onOpenAdmin && me?.role === "admin" && (

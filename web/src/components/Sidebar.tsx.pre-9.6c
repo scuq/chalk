@@ -1,17 +1,34 @@
 // Sidebar: roster (friends) + group-channels list + new-channel button.
-// Phase 9.6c: presence dots, @ prefix dropped from sidebar roster.
+// Phase 09b (originally Phase 08b channels-only; restructured into a
+// two-section roster in 9.6b; height + filter tweaks in 9.6b-tweak).
+//
+// Two sections, in this order:
+//
+//   1. friends (N)  — accepted friends rendered as @handle. Click a
+//      friend → opens the existing DM with them OR creates one on
+//      the fly. DMs from removed friends don't appear here.
+//
+//      Sizing: the friends section sizes to fit its content (one
+//      row per friend), with a max-height cap of 40vh. When the
+//      cap is exceeded, the list scrolls internally.
+//
+//      Filter input: appears above the list when there are ≥7
+//      friends. Below that threshold the input would be clutter
+//      (you can see everything at a glance). Filter is case-
+//      insensitive substring match on the handle.
+//
+//   2. channels (M) — non-DM group channels rendered as #name.
+//      Takes the remaining vertical space below the friends
+//      section.
 
 import { useState } from "preact/hooks";
-import type { ChannelSummary, Friend, PresenceMap } from "../state/types";
+import type { ChannelSummary, Friend } from "../state/types";
 
 interface Props {
   channels: ChannelSummary[];
   friends: Friend[];
   activeID: string | null;
   ownUserID: string | null;
-  // Phase 9.6c: presence state, keyed by friend user_id. Absent or
-  // "offline" → hollow dot. "online" → green. "away" → yellow.
-  presence: PresenceMap;
   onSelect: (channelID: string) => void;
   onFriendClick: (friendUserID: string) => void;
   onCreateClick: () => void;
@@ -22,6 +39,8 @@ interface Props {
 // would be clutter (you can scan a 1-6 friend list at a glance).
 const FRIEND_FILTER_THRESHOLD = 7;
 
+// Sort helper: keep friends alphabetical by handle. Empty handles
+// (rare; the server didn't return one) sort to the bottom.
 function sortFriends(friends: Friend[]): Friend[] {
   return [...friends].sort((a, b) => {
     if (a.handle && !b.handle) return -1;
@@ -30,6 +49,8 @@ function sortFriends(friends: Friend[]): Friend[] {
   });
 }
 
+// Find the DM channel that's a 1:1 between me and a specific friend.
+// Returns null when no such channel exists yet (next click creates it).
 function findDMWithFriend(
   channels: ChannelSummary[],
   friendUserID: string,
@@ -45,36 +66,23 @@ function findDMWithFriend(
   return null;
 }
 
-// Phase 9.6c: map state string to a CSS modifier class. "online" →
-// solid green; "away" → solid yellow; everything else (including
-// missing entries) → hollow grey.
-function presenceClass(state: string | undefined): string {
-  if (state === "online") return "chalk-presence-dot--online";
-  if (state === "away") return "chalk-presence-dot--away";
-  return "chalk-presence-dot--offline";
-}
-
-function presenceLabel(state: string | undefined): string {
-  if (state === "online") return "online";
-  if (state === "away") return "away";
-  return "offline";
-}
-
 export function Sidebar({
   channels,
   friends,
   activeID,
   ownUserID,
-  presence,
   onSelect,
   onFriendClick,
   onCreateClick,
 }: Props) {
+  // Filter string is local UI state — doesn't need to live in the
+  // reducer, ephemeral, no other component cares about it.
   const [filter, setFilter] = useState("");
 
   const groupChannels = channels.filter((ch) => !ch.isDM);
   const sortedFriends = sortFriends(friends);
 
+  // Apply the substring filter when the input has content.
   const trimmedFilter = filter.trim().toLowerCase();
   const visibleFriends = trimmedFilter
     ? sortedFriends.filter((f) =>
@@ -124,10 +132,6 @@ export function Sidebar({
           {visibleFriends.map((friend) => {
             const dm = findDMWithFriend(channels, friend.userID, ownUserID);
             const isActive = dm !== null && dm.id === activeID;
-            const presenceState = presence[friend.userID];
-            const dotClass = presenceClass(presenceState);
-            const dotLabel = presenceLabel(presenceState);
-            const displayName = friend.handle || friend.userID.slice(-8);
             return (
               <li
                 key={friend.userID}
@@ -135,7 +139,6 @@ export function Sidebar({
                 data-testid="sidebar-friend-item"
                 data-friend-id={friend.userID}
                 data-active={isActive ? "true" : "false"}
-                data-presence={presenceState ?? "offline"}
                 onClick={() => onFriendClick(friend.userID)}
                 role="button"
                 tabIndex={0}
@@ -145,15 +148,10 @@ export function Sidebar({
                     onFriendClick(friend.userID);
                   }
                 }}
-                title={dm ? `${displayName} — ${dotLabel}` : `${displayName} — ${dotLabel} — start chat`}
+                title={dm ? "open chat" : "start chat"}
               >
-                {/* Always-rendered dot column for consistent alignment. */}
-                <span
-                  class={`chalk-presence-dot ${dotClass}`}
-                  aria-label={dotLabel}
-                />
                 <span class="chalk-sidebar-item-name">
-                  {displayName}
+                  @{friend.handle || friend.userID.slice(-8)}
                 </span>
               </li>
             );
