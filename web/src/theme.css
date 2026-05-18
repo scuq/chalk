@@ -1405,6 +1405,15 @@ html, body {
   opacity: 1;
 }
 
+/* Phase 9.5 (B8/C4): on touch devices and narrow viewports, the
+   hover-reveal hides actions permanently because no hover event
+   ever fires. Show them by default in those environments. */
+@media (hover: none), (max-width: 640px) {
+  .chalk-admin-row-actions {
+    opacity: 1;
+  }
+}
+
 .chalk-admin-row-action {
   background: transparent;
   color: var(--chalk-fg);

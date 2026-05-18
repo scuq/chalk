@@ -160,6 +160,11 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				h.logger.Printf("ws session resolve: %v", sErr)
 				reason = "session error"
 			}
+			// Phase 9.5 (C2): log the reject so operators can
+			// distinguish silent 1008 closes from other failures.
+			// Without this, an SPA stuck in 'offline' state with
+			// no server-side trace is mysterious to debug.
+			h.logger.Printf("ws session reject: %s (device=%s)", reason, deviceID)
 			_ = c.Close(websocket.StatusPolicyViolation, reason)
 			return
 		}

@@ -970,12 +970,23 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, route: "admin" };
 
     case "route_to_chat":
-      // Reset the admin panel state on exit so a fresh open
-      // starts clean (empty search, page 1, no errors).
+      // Reset most of the admin panel on exit so a fresh open
+      // starts clean (empty search, page 1, no errors). EXCEPT
+      // for the blacklist add form (Phase 9.5 C3): an admin
+      // who's typed an email + reason and then accidentally
+      // clicked 'back to chat' would lose that work. Preserve
+      // the form so it's still there next time they open the
+      // panel.
       return {
         ...state,
         route: "chat",
-        adminPanel: initialAdminPanelState,
+        adminPanel: {
+          ...initialAdminPanelState,
+          blacklist: {
+            ...initialAdminPanelState.blacklist,
+            addForm: state.adminPanel.blacklist.addForm,
+          },
+        },
       };
 
     // ---- Phase 09d-2b: admin users tab ----------------------------

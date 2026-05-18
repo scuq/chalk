@@ -4,7 +4,7 @@ End-to-end encrypted group chat. Single Go binary, Postgres, browser client. Mat
 
 ## Status
 
-Built phase-by-phase via `bootstrap/` scripts. Each phase is idempotent, self-tested, and resumable. Phases 00–08 are shipped and working; the SPA renders multi-channel chat with cross-instance fan-out, named participants, and optimistic-append. Encryption is the next big chunk of work.
+Built phase-by-phase via `bootstrap/` scripts and (from phase 09 onward) tarball patches. Each phase is idempotent, self-tested, and resumable. Phases 00–09 are shipped and working: multi-channel chat with cross-instance fan-out, named participants, passkey auth, invites, admin moderation. End-to-end encryption (phase 10) is the next big chunk of work; chalkd currently carries plaintext over the wire.
 
 | Phase | Status | What it adds |
 |---|---|---|
@@ -19,14 +19,14 @@ Built phase-by-phase via `bootstrap/` scripts. Each phase is idempotent, self-te
 | 08 channels | ✅ shipped | Per-channel pubsub, DM cardinality, fetch_history |
 | 08b channels-spa | ✅ shipped | Sidebar, create modal, friend picker, subscribe_channel |
 | 08c handles | ✅ shipped | `you (alice)`, `@bob`, named DMs and friend picker |
-| 09 auth | 🔮 planned | Passkeys (WebAuthn), usernames, recovery codes |
+| 09 auth | ✅ shipped | Passkeys (WebAuthn), 24-word recovery codes, invites, profile, email-change, admin moderation |
 | 10 mls | 🔮 planned | CoreCrypto WASM, MLS groups (RFC 9420) |
 | 11 lifecycle | 🔮 planned | Account deactivate/delete/reactivate write paths |
 | 12 blobs | 🔮 planned | Encrypted attachments (AES-256-GCM) |
 | 13 hardening | 🔮 planned | Rate limits, metrics, GC, `--migrate-only` |
 | 14 cross-browser | 🔮 planned | Playwright matrix, mobile emulation |
 
-Phase numbering for 09+ reflects the current plan and differs from the original scaffold (which had 09=blobs, 10=mls). The bootstrap stubs at `bootstrap/phase-09-blobs.sh` etc. will be renamed as each phase actually starts.
+Phase numbering reflects the current plan and differs from the original scaffold (which had 09=blobs, 10=mls). Phase 09 was delivered as a sequence of patches (09a, 09b, 09c, 09d) rather than the single scaffolded `phase-09-*.sh` stub; see `docs/phase-log.md` for the breakdown.
 
 ## Quick start
 
@@ -53,7 +53,7 @@ See [docs/architecture.md](docs/architecture.md). One-line summary:
 
 > Multi-instance Go server using Postgres as both storage and pub/sub bus (LISTEN/NOTIFY). Browser client speaks MLS (RFC 9420) for E2E group encryption via WASM. Server only ever sees ciphertext, routing metadata, and coarse presence.
 
-(MLS lands in phase 10. Phases 00–08 use plaintext over the wire.)
+(MLS lands in phase 10. Phases 00–09 use plaintext over the wire.)
 
 ## License
 

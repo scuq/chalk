@@ -114,15 +114,40 @@ export function AuthGate({
       return;
     }
     if (adminBootstrapToken) {
-      // Phase 09d-2a: first-run admin enrollment. Clean the URL so a
-      // page refresh after success does not re-fire the flow
-      // (admin_already_enrolled would then surface).
+      // Phase 09d-2a: first-run admin enrollment.
+      //
+      // Phase 9.5 (B7): before showing the bootstrap screen, probe
+      // /me. If we're already authed, the token would just be
+      // rejected with admin_already_enrolled, which is a confusing
+      // UX — drop the token and continue as the existing session.
+      // If we're not authed, fire the bootstrap flow as before.
       window.history.replaceState({}, "", window.location.pathname);
-      dispatch({
-        kind: "auth_admin_bootstrap_detected",
-        token: adminBootstrapToken,
-      });
-      return;
+      let cancelled = false;
+      fetchMe()
+        .then((me) => {
+          if (cancelled) return;
+          if (me) {
+            // Already authed — skip the bootstrap card.
+            dispatch({ kind: "auth_me_loaded", me });
+          } else {
+            dispatch({
+              kind: "auth_admin_bootstrap_detected",
+              token: adminBootstrapToken,
+            });
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          // /me threw — fall through to bootstrap; the server's
+          // begin call will sort out the real state.
+          dispatch({
+            kind: "auth_admin_bootstrap_detected",
+            token: adminBootstrapToken,
+          });
+        });
+      return () => {
+        cancelled = true;
+      };
     }
 
     // No URL-driven flow → /me fetch as before.
