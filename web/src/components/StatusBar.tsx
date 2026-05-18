@@ -26,6 +26,9 @@ interface Props {
   // phase 09c-2: extra menu items.
   onOpenInvites?: () => void;
   onOpenProfile?: () => void;
+  // phase 09d-2b: admin moderation panel entry. Only shown when
+  // me.role === "admin".
+  onOpenAdmin?: () => void;
 }
 
 const labels: Record<ConnectionState, string> = {
@@ -35,7 +38,7 @@ const labels: Record<ConnectionState, string> = {
   error: "error",
 };
 
-export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, onOpenProfile }: Props) {
+export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenAdmin }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -127,6 +130,20 @@ export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, on
                   data-testid="status-user-menu-invites"
                 >
                   invites
+                </button>
+              )}
+              {onOpenAdmin && me?.role === "admin" && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="chalk-status-menu-item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenAdmin();
+                  }}
+                  data-testid="status-user-menu-admin"
+                >
+                  admin
                 </button>
               )}
               <button

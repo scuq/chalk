@@ -45,6 +45,15 @@ type User struct {
 	PendingEmail          string
 	PendingEmailToken     []byte // 32 random bytes
 	PendingEmailExpiresAt time.Time
+
+	// Phase 09d-1 lifecycle columns. Both zero by default.
+	// BlockedAt: non-zero when admin has blocked the user. Login
+	// and recovery refuse until UnblockUser clears it.
+	// DeletedAt: non-zero when the user is soft-deleted. Login
+	// and recovery return 410 Gone. The row persists so messages
+	// keep their sender_id and the email stays claimed.
+	BlockedAt time.Time
+	DeletedAt time.Time
 }
 
 // HasPendingEmail returns true when a verification is in flight.
@@ -73,7 +82,9 @@ const userCols = `id,
   COALESCE(email_verified_at, 'epoch'::timestamptz),
   COALESCE(pending_email::text, ''),
   COALESCE(pending_email_token, ''::bytea),
-  COALESCE(pending_email_expires_at, 'epoch'::timestamptz)`
+  COALESCE(pending_email_expires_at, 'epoch'::timestamptz),
+  COALESCE(blocked_at, 'epoch'::timestamptz),
+  COALESCE(deleted_at, 'epoch'::timestamptz)`
 
 // rowScanner is satisfied by both *pgx.Row and *pgx.Rows.
 type rowScanner interface {
@@ -84,7 +95,7 @@ type rowScanner interface {
 // the destination User. Sentinel-zero values for optional timestamps
 // are translated to time.Time{}.
 func scanUserRow(s rowScanner, u *User) error {
-	var verifiedAt, pendingExpAt time.Time
+	var verifiedAt, pendingExpAt, blockedAt, deletedAt time.Time
 	err := s.Scan(
 		&u.ID,
 		&u.Handle,
@@ -97,6 +108,8 @@ func scanUserRow(s rowScanner, u *User) error {
 		&u.PendingEmail,
 		&u.PendingEmailToken,
 		&pendingExpAt,
+		&blockedAt,
+		&deletedAt,
 	)
 	if err != nil {
 		return err
@@ -107,6 +120,12 @@ func scanUserRow(s rowScanner, u *User) error {
 	}
 	if pendingExpAt.Unix() > 0 {
 		u.PendingEmailExpiresAt = pendingExpAt
+	}
+	if blockedAt.Unix() > 0 {
+		u.BlockedAt = blockedAt
+	}
+	if deletedAt.Unix() > 0 {
+		u.DeletedAt = deletedAt
 	}
 	// An empty bytea round-trips as a non-nil zero-length slice.
 	// Normalize to nil for callers' nil-vs-non-nil checks.

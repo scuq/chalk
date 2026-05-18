@@ -148,6 +148,16 @@ func NewServer(opts Options) (*Server, error) {
 		if err := opts.Auth.MountRegistration(mux); err != nil {
 			return nil, fmt.Errorf("mount auth: %w", err)
 		}
+		// Phase 09d-1: admin moderation + unauthenticated admin
+		// bootstrap endpoints. Mounted unconditionally when Auth is
+		// set; RequireAdmin protects moderation, the bootstrap
+		// token protects the bootstrap endpoints.
+		if err := opts.Auth.MountAdmin(mux); err != nil {
+			return nil, fmt.Errorf("mount admin: %w", err)
+		}
+		if err := opts.Auth.MountAdminBootstrap(mux); err != nil {
+			return nil, fmt.Errorf("mount admin bootstrap: %w", err)
+		}
 	}
 
 	// Phase 07: mount the SPA at "/". A WebFS provided via Options is

@@ -70,6 +70,12 @@ type HTTPDeps struct {
 	// → relative URLs ("/?invite=...") which work but require the
 	// recipient to be on the same origin as chalkd.
 	PublicURL string
+
+	// Phase 09d-1: Kicker terminates active WS connections for a user
+	// when admin moderation blocks or soft-deletes them. May be nil;
+	// when nil, the moderation endpoints still kill sessions and the
+	// next WS frame will fail at the session check.
+	Kicker ConnKicker
 }
 
 // MountRegistration registers the auth HTTP endpoints on mux.
@@ -586,6 +592,22 @@ func (d *HTTPDeps) handleAuthenticateBegin(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Phase 09d-1: block-aware login gate. A blocked user cannot
+	// authenticate; a soft-deleted user is gone (410 Gone). Both
+	// statuses are stored on users (blocked_at, deleted_at). Order
+	// matters: a deleted account that was also blocked surfaces as
+	// deleted (the stronger condition).
+	if !user.DeletedAt.IsZero() {
+		writeError(w, http.StatusGone, "user_deleted",
+			"this account has been deleted")
+		return
+	}
+	if !user.BlockedAt.IsZero() {
+		writeError(w, http.StatusForbidden, "user_blocked",
+			"this account has been blocked by an administrator")
+		return
+	}
+
 	// Load all active passkeys so go-webauthn can populate the
 	// allowed-credentials list in the challenge. The library will
 	// look up the credential the authenticator returns against this
@@ -1053,6 +1075,21 @@ func (d *HTTPDeps) handleRecovery(w http.ResponseWriter, r *http.Request) {
 		d.Logger.Printf("recovery: GetUserByUsername: %v", err)
 		writeError(w, http.StatusInternalServerError, "lookup_failed",
 			"could not look up user")
+		return
+	}
+
+	// Phase 09d-1: same block/deleted gate as login. Recovery is a
+	// fallback path but it must not bypass moderation; otherwise a
+	// blocked user could just regenerate their recovery code and
+	// sneak back in.
+	if !user.DeletedAt.IsZero() {
+		writeError(w, http.StatusGone, "user_deleted",
+			"this account has been deleted")
+		return
+	}
+	if !user.BlockedAt.IsZero() {
+		writeError(w, http.StatusForbidden, "user_blocked",
+			"this account has been blocked by an administrator")
 		return
 	}
 

@@ -161,19 +161,82 @@ Note: phase 06 ships the user-lifecycle schema but defers the write paths (deact
 
 The numbering and scope below reflect the current plan. The bootstrap scaffold still has older stubs at `bootstrap/phase-09-blobs.sh` etc. — those will be renamed/rewritten as each phase actually starts.
 
-## 09 — auth 🔮
+## 09 — auth ✅
 
-**Will deliver**
-- WebAuthn passkey registration and authentication
-- 24-word recovery codes (BIP-39 wordlist)
-- Replace the phase-05 device-ensure shim with real account creation
-- User handles bound to passkey-derived account
-- Multi-conn-per-user (rewrites the hub's deviceID-keyed map to userID-keyed)
+Phase 09 shipped in four sub-phases (a, b, c, d), each landing as
+an independent applier package. The aggregate scope:
 
-**Will test**
-- Register passkey, log out, log back in via passkey
-- Recovery code restores account on a fresh device
-- Two browser tabs (same user) both stay connected without eviction
+### 09a — multi-tab
+
+**Delivered**
+- Hub connection map keyed by `userID` instead of `deviceID`.
+- WebSocket sessions scoped to user identity (precursor work for 09b's session cookies).
+- Multiple tabs of the same user no longer evict each other.
+
+**Tested**
+- Two browser tabs (same user) both stay connected without eviction.
+- Per-user fan-out: a message lands in every tab simultaneously.
+
+### 09b — auth
+
+**Delivered**
+- WebAuthn passkey registration + authentication using `github.com/go-webauthn/webauthn`.
+- 24-word BIP-39 recovery codes; recovery flow restores account on a fresh device.
+- Session cookies (HttpOnly, Secure-in-prod, SameSite=Lax) replacing the dev device-id shim.
+- HTTP endpoints under `/api/auth`: `config`, `register/{begin,finish}`, `authenticate/{begin,finish}`, `recovery`, `logout`, `me`.
+- SPA auth flow: LoginScreen, RegisterScreen, RecoveryScreen, RecoveryLoginScreen, RegenerateScreen, gated by `AuthGate` before the chat UI mounts.
+- Migrations 0011–0014: users extension (username, display_name, email, role, email_verified_at), passkeys, sessions, recovery_codes.
+
+**Tested**
+- Register passkey, log out, log back in via passkey.
+- Recovery code restores account on a fresh device.
+- Session expiry + refresh.
+- Go integration tests against ephemeral PG; HTTP tests with `virtualwebauthn`.
+
+### 09c — invites + profile + email-change
+
+**Delivered**
+- Invite-based registration: admin mints a token via API, recipient registers via `?invite=<token>` URL.
+- ProfilePanel for viewing own identity + session.
+- In-chat InvitesPanel for admins (mint / revoke / list invites).
+- Email-change flow: request → verification email → click `?verify_email=<token>` → email updated.
+- Migrations 0015–0018: devices_link, invites, admin_bootstrap (token table, see 09d), email_blacklist.
+
+**Tested**
+- Invite mint → registration flow end-to-end.
+- Email-change request → verify → /me reflects new email.
+- Invite revoke prevents redemption.
+
+### 09d — admin moderation
+
+**Delivered** (across four sub-steps 09d-1 / -2a / -2b / -2c)
+
+09d-1 — **server**:
+- First-run admin user creation via `CHALK_ADMIN_USERNAME` + `CHALK_ADMIN_EMAIL`; chalkd prints a one-time `?admin_bootstrap=<token>` URL to stderr.
+- Admin moderation API: `GET/POST/DELETE /api/admin/users/{id}/{block,unblock,soft-delete}`, `DELETE /api/admin/users/{id}` (purge with auto-blacklist), `GET/POST/DELETE /api/admin/blacklist[/{email}]`.
+- `RequireAdmin` middleware wrapping `RequireSession`.
+- `Hub.CloseConnsForUser` for terminating active WS connections on block/soft-delete/purge.
+- Migration 0019: `users.blocked_at` + `users.deleted_at` columns, partial indexes, `admin_delete_guard` BEFORE-UPDATE trigger preventing role changes on admins and a separate trigger refusing direct DELETE on admin rows.
+
+09d-2a — **SPA bootstrap flow**:
+- `web/src/auth/admin.ts` typed client.
+- `AdminBootstrapScreen` (URL-driven first-run admin enrollment).
+- `AuthGate` detects `?admin_bootstrap=<token>` and routes accordingly.
+
+09d-2b — **moderation panel**:
+- Top-level `/admin` route via browser history API (back button works, refresh stays).
+- StatusBar dropdown entry visible only when `me.role === "admin"`.
+- `AdminPanel` with tabs: users (search, paginate, hover-reveal action buttons, status pills) and blacklist (add form + paginated list + remove).
+- `ConfirmModal` for destructive actions (soft-delete and purge); block/unblock skip the modal because they're reversible.
+
+09d-2c — **e2e + docs**:
+- Playwright spec (`test/e2e/admin.spec.ts`) covering: bootstrap ceremony via Chromium's virtual authenticator, admin panel reach, block/unblock cycle.
+- CHANGELOG + this phase-log update.
+
+**Tested**
+- Server: 23 store tests + 16 HTTP tests, all green.
+- SPA: `tsc --noEmit` clean under strict mode; manual browser smoke through the full bootstrap-to-moderation journey.
+- e2e: `test/e2e/admin.spec.ts` exercises the user-visible flow end-to-end with a virtual authenticator; requires chalkd running + PG via `docker exec chalk-dev-pg`.
 
 ## 10 — mls 🔮
 

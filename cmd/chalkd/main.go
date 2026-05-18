@@ -102,6 +102,17 @@ func run(args []string) error {
 	}
 	log.Printf("default channel ensured")
 
+	// Phase 09d-1: first-run admin bootstrap. If no admin row
+	// exists yet AND the operator set CHALK_ADMIN_USERNAME and
+	// CHALK_ADMIN_EMAIL, insert the admin row (no passkey) and
+	// mint a one-time bootstrap token. The URL is printed to
+	// stderr so the operator can complete enrollment in the
+	// browser. Reuses an existing active token if one is still
+	// in flight (e.g. chalkd restarted mid-bootstrap).
+	if err := maybeBootstrapAdmin(connectCtx, st, cfg); err != nil {
+		return fmt.Errorf("admin bootstrap: %w", err)
+	}
+
 	if cfg.MigrateOnly {
 		log.Printf("--migrate-only set; exiting")
 		return nil
@@ -185,6 +196,12 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("server: %w", err)
 	}
+	// Phase 09d-1: wire the hub into authDeps so admin block /
+	// soft-delete / purge can close active WS conns for the
+	// moderated user. authDeps is a pointer; the auth handlers
+	// read d.Kicker at request time so this late assignment is
+	// safe (no requests are served yet).
+	authDeps.Kicker = srv.Hub()
 
 	if cfg.PrintListen {
 		fmt.Printf("listening on %s\n", srv.Addr())
@@ -360,4 +377,73 @@ func deriveOrigin(listen, tlsMode string) string {
 		host = "localhost"
 	}
 	return fmt.Sprintf("%s://%s:%s", scheme, host, port)
+}
+
+// maybeBootstrapAdmin runs the first-run admin bootstrap if no admin
+// row exists yet AND the operator has set both CHALK_ADMIN_USERNAME
+// and CHALK_ADMIN_EMAIL. Idempotent: skipped if an admin already
+// exists. Phase 09d-1.
+//
+// Output: on a fresh bootstrap, prints the admin enrollment URL to
+// stderr. If an active token already exists (e.g. the previous run
+// minted one but the operator never visited the URL), reuses it
+// rather than minting a new one — this lets a restart not invalidate
+// a still-valid URL.
+func maybeBootstrapAdmin(ctx context.Context, st *store.Store, cfg config.Config) error {
+	// Probe: is an admin already bootstrapped? Use GetAdminUser
+	// which returns ErrNotFound when absent. Any other error is
+	// fatal (we can't reason about admin state).
+	if _, err := st.GetAdminUser(ctx); err == nil {
+		// Admin exists. Bootstrap already done. Nothing more here.
+		return nil
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("probe admin: %w", err)
+	}
+
+	username := strings.ToLower(strings.TrimSpace(cfg.AdminUsername))
+	email := strings.ToLower(strings.TrimSpace(cfg.AdminEmail))
+	displayName := strings.TrimSpace(cfg.AdminDisplayName)
+	if username == "" || email == "" {
+		log.Printf("admin bootstrap: no admin yet; set CHALK_ADMIN_USERNAME and CHALK_ADMIN_EMAIL to bootstrap")
+		return nil
+	}
+
+	// Insert the admin row.
+	admin, err := st.BootstrapAdminUser(ctx, store.BootstrapAdminUserParams{
+		Username:    username,
+		Email:       email,
+		DisplayName: displayName,
+	})
+	if err != nil {
+		if errors.Is(err, store.ErrAdminExists) {
+			// Race with a parallel chalkd: another instance won.
+			log.Printf("admin bootstrap: another instance already bootstrapped; skipping")
+			return nil
+		}
+		return fmt.Errorf("BootstrapAdminUser: %w", err)
+	}
+	log.Printf("admin bootstrap: created admin user %q (id=%s)", admin.Username, admin.ID)
+
+	// Mint a bootstrap token (or reuse an existing active one).
+	tok, err := st.GetActiveAdminBootstrapToken(ctx)
+	if errors.Is(err, store.ErrNotFound) {
+		tok, err = st.CreateAdminBootstrapToken(ctx)
+		if errors.Is(err, store.ErrAdminBootstrapActive) {
+			// Raced with a concurrent instance that won. Re-fetch.
+			tok, err = st.GetActiveAdminBootstrapToken(ctx)
+		}
+		if err != nil {
+			return fmt.Errorf("CreateAdminBootstrapToken: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("GetActiveAdminBootstrapToken: %w", err)
+	}
+
+	publicURL := strings.TrimSpace(os.Getenv("CHALK_PUBLIC_URL"))
+	if _, err := auth.PrintBootstrapURL(os.Stderr, publicURL, tok.Token, tok.ExpiresAt); err != nil {
+		// Logging failure is non-fatal; the token is still in
+		// the DB.
+		log.Printf("admin bootstrap: PrintBootstrapURL: %v", err)
+	}
+	return nil
 }

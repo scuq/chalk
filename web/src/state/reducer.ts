@@ -3,6 +3,9 @@
 // history) live in App.tsx as useEffect hooks driven by state changes.
 
 import type { Action, AppState, Message } from "./types";
+// Phase 09d-2b: runtime import for the admin panel's initial state
+// (used by the route_to_chat handler to reset the panel cleanly).
+import { initialAdminPanelState } from "./types";
 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.kind) {
@@ -250,6 +253,10 @@ export function reducer(state: AppState, action: Action): AppState {
       // Sub-step 5b: register/finish now Set-Cookies, so we ARE logged
       // in at this point. The recovery screen is just a notice; on
       // confirm we go straight to authed (no transitional-handoff).
+      //
+      // Phase 09d-2a: also clear adminBootstrap here because the
+      // admin-bootstrap flow funnels success into this same action.
+      // Stale token in state would be harmless but messy.
       return {
         ...state,
         authStage: "confirming-recovery",
@@ -260,6 +267,7 @@ export function reducer(state: AppState, action: Action): AppState {
           errorCode: null,
           errorMessage: null,
         },
+        adminBootstrap: null,
       };
 
     case "auth_recovery_confirmed":
@@ -686,6 +694,61 @@ export function reducer(state: AppState, action: Action): AppState {
         verifyEmailChange: null,
       };
 
+    // ---- Phase 09d-2a: admin bootstrap (URL-driven) -----------------
+
+    case "auth_admin_bootstrap_detected":
+      // AuthGate parsed ?admin_bootstrap=<token> from the URL at
+      // boot. Flip to the new stage; AdminBootstrapScreen waits for
+      // the operator to click "Register admin passkey" before the
+      // ceremony runs. Mutually exclusive with the other URL-driven
+      // flows: AuthGate checks admin_bootstrap AFTER invite and
+      // verify_email, so a URL with both is treated as belonging to
+      // whichever AuthGate saw first.
+      return {
+        ...state,
+        authStage: "admin-bootstrap",
+        adminBootstrap: {
+          token: action.token,
+          busy: false,
+          errorCode: null,
+          errorMessage: null,
+        },
+      };
+
+    case "auth_admin_bootstrap_submit_start":
+      if (!state.adminBootstrap) return state;
+      return {
+        ...state,
+        adminBootstrap: {
+          ...state.adminBootstrap,
+          busy: true,
+          errorCode: null,
+          errorMessage: null,
+        },
+      };
+
+    case "auth_admin_bootstrap_submit_error":
+      if (!state.adminBootstrap) return state;
+      return {
+        ...state,
+        adminBootstrap: {
+          ...state.adminBootstrap,
+          busy: false,
+          errorCode: action.code,
+          errorMessage: action.message,
+        },
+      };
+
+    case "auth_admin_bootstrap_dismissed":
+      // User clicked the "Go to login" escape after a terminal
+      // error (admin_already_enrolled, no_admin_row). Clear the
+      // bootstrap state and route to the normal login screen.
+      return {
+        ...state,
+        authStage: "login",
+        adminBootstrap: null,
+      };
+
     // ---- Phase 09c-2: InvitesPanel data -----------------------------
 
     case "invites_load_start":
@@ -899,6 +962,369 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         me: state.me ? { ...state.me, email: action.newEmail } : state.me,
+      };
+
+    // ---- Phase 09d-2b: admin panel routing -------------------------
+
+    case "route_to_admin":
+      return { ...state, route: "admin" };
+
+    case "route_to_chat":
+      // Reset the admin panel state on exit so a fresh open
+      // starts clean (empty search, page 1, no errors).
+      return {
+        ...state,
+        route: "chat",
+        adminPanel: initialAdminPanelState,
+      };
+
+    // ---- Phase 09d-2b: admin users tab ----------------------------
+
+    case "admin_tab_change":
+      return {
+        ...state,
+        adminPanel: { ...state.adminPanel, activeTab: action.tab },
+      };
+
+    case "admin_users_search_change":
+      // q changed → reset offset to 0 (new search starts at page 1)
+      // AND set searchPending so the data-loading effect knows to
+      // debounce.
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          users: {
+            ...state.adminPanel.users,
+            q: action.q,
+            offset: 0,
+            searchPending: true,
+          },
+        },
+      };
+
+    case "admin_users_page_change":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          users: {
+            ...state.adminPanel.users,
+            offset: action.offset,
+            // page change is not a search change; don't debounce.
+            searchPending: false,
+          },
+        },
+      };
+
+    case "admin_users_refresh":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          users: {
+            ...state.adminPanel.users,
+            refreshTick: state.adminPanel.users.refreshTick + 1,
+            searchPending: false,
+          },
+        },
+      };
+
+    case "admin_users_load_start":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          users: {
+            ...state.adminPanel.users,
+            loading: true,
+            loadError: null,
+          },
+        },
+      };
+
+    case "admin_users_load_succeeded":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          users: {
+            ...state.adminPanel.users,
+            users: action.users,
+            total: action.total,
+            limit: action.limit,
+            offset: action.offset,
+            loading: false,
+            loadError: null,
+            searchPending: false,
+          },
+        },
+      };
+
+    case "admin_users_load_failed":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          users: {
+            ...state.adminPanel.users,
+            loading: false,
+            loadError: action.message,
+            searchPending: false,
+          },
+        },
+      };
+
+    case "admin_users_action_start":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          users: {
+            ...state.adminPanel.users,
+            pendingActionUserID: action.userID,
+            actionError: null,
+          },
+        },
+      };
+
+    case "admin_users_action_succeeded":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          users: {
+            ...state.adminPanel.users,
+            pendingActionUserID: null,
+            actionError: null,
+          },
+        },
+      };
+
+    case "admin_users_action_failed":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          users: {
+            ...state.adminPanel.users,
+            pendingActionUserID: null,
+            actionError: `${action.action} failed: ${action.message}`,
+          },
+        },
+      };
+
+    case "admin_users_action_error_dismissed":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          users: { ...state.adminPanel.users, actionError: null },
+        },
+      };
+
+    case "admin_users_confirm_open":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          users: {
+            ...state.adminPanel.users,
+            confirm: { userID: action.userID, action: action.action },
+          },
+        },
+      };
+
+    case "admin_users_confirm_close":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          users: { ...state.adminPanel.users, confirm: null },
+        },
+      };
+
+    // ---- Phase 09d-2b: admin blacklist tab ------------------------
+
+    case "admin_blacklist_page_change":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: {
+            ...state.adminPanel.blacklist,
+            offset: action.offset,
+          },
+        },
+      };
+
+    case "admin_blacklist_refresh":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: {
+            ...state.adminPanel.blacklist,
+            refreshTick: state.adminPanel.blacklist.refreshTick + 1,
+          },
+        },
+      };
+
+    case "admin_blacklist_load_start":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: {
+            ...state.adminPanel.blacklist,
+            loading: true,
+            loadError: null,
+          },
+        },
+      };
+
+    case "admin_blacklist_load_succeeded":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: {
+            ...state.adminPanel.blacklist,
+            entries: action.entries,
+            total: action.total,
+            limit: action.limit,
+            offset: action.offset,
+            loading: false,
+            loadError: null,
+          },
+        },
+      };
+
+    case "admin_blacklist_load_failed":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: {
+            ...state.adminPanel.blacklist,
+            loading: false,
+            loadError: action.message,
+          },
+        },
+      };
+
+    case "admin_blacklist_add_form_change":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: {
+            ...state.adminPanel.blacklist,
+            addForm: {
+              ...state.adminPanel.blacklist.addForm,
+              [action.field]: action.value,
+            },
+            addError: null,
+          },
+        },
+      };
+
+    case "admin_blacklist_add_start":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: {
+            ...state.adminPanel.blacklist,
+            addBusy: true,
+            addError: null,
+          },
+        },
+      };
+
+    case "admin_blacklist_add_succeeded":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: {
+            ...state.adminPanel.blacklist,
+            addBusy: false,
+            addError: null,
+            // Clear the form on success.
+            addForm: { email: "", reason: "" },
+          },
+        },
+      };
+
+    case "admin_blacklist_add_failed":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: {
+            ...state.adminPanel.blacklist,
+            addBusy: false,
+            addError: action.message,
+          },
+        },
+      };
+
+    case "admin_blacklist_add_error_dismissed":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: { ...state.adminPanel.blacklist, addError: null },
+        },
+      };
+
+    case "admin_blacklist_remove_start":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: {
+            ...state.adminPanel.blacklist,
+            pendingRemoveEmail: action.email,
+            removeError: null,
+          },
+        },
+      };
+
+    case "admin_blacklist_remove_succeeded":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: {
+            ...state.adminPanel.blacklist,
+            pendingRemoveEmail: null,
+            removeError: null,
+          },
+        },
+      };
+
+    case "admin_blacklist_remove_failed":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: {
+            ...state.adminPanel.blacklist,
+            pendingRemoveEmail: null,
+            removeError: action.message,
+          },
+        },
+      };
+
+    case "admin_blacklist_remove_error_dismissed":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          blacklist: { ...state.adminPanel.blacklist, removeError: null },
+        },
       };
   }
 }

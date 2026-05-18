@@ -65,6 +65,7 @@ import {
 } from "../auth/api";
 import { InvitesPanel } from "./InvitesPanel";
 import { ProfilePanel } from "./ProfilePanel";
+import { AdminPanel } from "./AdminPanel";
 
 function classifyDevice(): "phone" | "tablet" | "desktop" {
   const ua = navigator.userAgent;
@@ -486,6 +487,90 @@ export function App() {
 
   // --- Render ----------------------------------------------------------
 
+  // ---- Phase 09d-2d: backfill `me` after URL-driven registration ---
+  //
+  // AuthGate fetches /api/auth/me only when authStage is
+  // "bootstrapping". After the URL-driven flows (invite registration,
+  // admin bootstrap), state transitions through other stages straight
+  // to "authed" without ever returning to bootstrapping, so `me`
+  // stays null. The StatusBar's user menu requires `!!me`, so the
+  // trigger button never appears until a page reload.
+  //
+  // This effect backfills `me` whenever we land in authed without
+  // it. The `me === null` guard prevents loops (once me is set the
+  // effect's body skips).
+  useEffect(() => {
+    if (state.authStage !== "authed") return;
+    if (state.me !== null) return;
+    let cancelled = false;
+    fetchMe()
+      .then((me) => {
+        if (cancelled) return;
+        if (me) {
+          dispatch({ kind: "auth_me_loaded", me });
+        }
+        // If me is null, the session has somehow gone; the next
+        // gated request will surface the issue. We don't kick to
+        // login from here because the WS welcome path will catch
+        // it if the cookie is genuinely invalid.
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("auth me backfill failed:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state.authStage, state.me]);
+
+  // ---- Phase 09d-2b: admin route + popstate listener ---------------
+  //
+  // Two responsibilities:
+  //
+  //   1. On mount AND whenever me changes, reconcile state.route
+  //      with the URL. If the URL is /admin and the user is an
+  //      admin, dispatch route_to_admin. If the URL is /admin and
+  //      the user is NOT an admin, replace the URL with / and
+  //      stay on chat. If the URL is /, ensure state.route is
+  //      "chat".
+  //
+  //   2. Listen for popstate. The browser's back/forward buttons
+  //      fire popstate; we update state.route to match the new
+  //      location. (pushState alone doesn't fire popstate, so
+  //      programmatic navigation needs an explicit dispatch.)
+  useEffect(() => {
+    const isAdmin = state.me?.role === "admin";
+    const path = window.location.pathname;
+    if (path === "/admin") {
+      if (isAdmin) {
+        if (state.route !== "admin") {
+          dispatch({ kind: "route_to_admin" });
+        }
+      } else {
+        // Non-admin landed on /admin (URL-typed, refreshed after
+        // demotion, etc.). Bounce back to / silently.
+        window.history.replaceState({}, "", "/");
+        if (state.route !== "chat") {
+          dispatch({ kind: "route_to_chat" });
+        }
+      }
+    } else if (state.route !== "chat") {
+      dispatch({ kind: "route_to_chat" });
+    }
+
+    function onPopState() {
+      const isAdmin2 = state.me?.role === "admin";
+      if (window.location.pathname === "/admin" && isAdmin2) {
+        dispatch({ kind: "route_to_admin" });
+      } else {
+        dispatch({ kind: "route_to_chat" });
+      }
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.me?.role]);
+
   // Phase 09b sub-step 5b: auth gate. Before the user is logged in
   // (or until /me bootstrap completes), render the auth flow instead
   // of the chat UI. Once authStage flips to "authed", the chat UI
@@ -504,7 +589,27 @@ export function App() {
         me={state.me}
         inviteContext={state.inviteContext}
         verifyEmailChange={state.verifyEmailChange}
+        adminBootstrap={state.adminBootstrap}
         dispatch={dispatch}
+      />
+    );
+  }
+
+  // Phase 09d-2b: if the route is "admin" AND the user is an
+  // admin, render the moderation panel instead of the chat UI.
+  // Non-admins are bounced by the effect above; reaching this
+  // branch as a non-admin would be a bug, but defensively render
+  // the chat UI anyway.
+  if (state.route === "admin" && state.me?.role === "admin") {
+    return (
+      <AdminPanel
+        state={state.adminPanel}
+        ownUserID={state.me?.userID ?? null}
+        dispatch={dispatch}
+        onBackToChat={() => {
+          window.history.pushState({}, "", "/");
+          dispatch({ kind: "route_to_chat" });
+        }}
       />
     );
   }
@@ -541,6 +646,10 @@ export function App() {
           onLogout={handleLogout}
           onOpenInvites={() => dispatch({ kind: "open_panel", panel: "invites" })}
           onOpenProfile={() => dispatch({ kind: "open_panel", panel: "profile" })}
+          onOpenAdmin={() => {
+            window.history.pushState({}, "", "/admin");
+            dispatch({ kind: "route_to_admin" });
+          }}
         />
       </header>
 

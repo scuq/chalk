@@ -20,6 +20,7 @@
 
 import { useEffect } from "preact/hooks";
 import type {
+  AdminBootstrapState,
   AuthAction,
   AuthConfig,
   AuthStage,
@@ -41,6 +42,7 @@ import { RecoveryLoginScreen } from "./RecoveryLoginScreen";
 import { RegenerateScreen } from "./RegenerateScreen";
 import { RegisterFromInviteScreen } from "./RegisterFromInviteScreen";
 import { VerifyEmailChangeScreen } from "./VerifyEmailChangeScreen";
+import { AdminBootstrapScreen } from "./AdminBootstrapScreen";
 
 interface Props {
   authStage: AuthStage;
@@ -55,6 +57,8 @@ interface Props {
   // Phase 09c-2 additions:
   inviteContext: InviteContext | null;
   verifyEmailChange: VerifyEmailChangeState | null;
+  // Phase 09d-2a:
+  adminBootstrap: AdminBootstrapState | null;
   dispatch: (action: AuthAction) => void;
 }
 
@@ -69,6 +73,7 @@ export function AuthGate({
   me,
   inviteContext,
   verifyEmailChange,
+  adminBootstrap,
   dispatch,
 }: Props) {
   // On mount: bootstrap. Phase 09c-2 adds two URL-driven branches
@@ -93,6 +98,7 @@ export function AuthGate({
     const params = new URLSearchParams(window.location.search);
     const inviteToken = params.get("invite");
     const verifyEmailToken = params.get("verify_email");
+    const adminBootstrapToken = params.get("admin_bootstrap");
 
     if (inviteToken) {
       // Clean the URL so a refresh doesn't re-fire the flow. Keep
@@ -105,6 +111,17 @@ export function AuthGate({
     if (verifyEmailToken) {
       window.history.replaceState({}, "", window.location.pathname);
       dispatch({ kind: "auth_verify_email_detected", token: verifyEmailToken });
+      return;
+    }
+    if (adminBootstrapToken) {
+      // Phase 09d-2a: first-run admin enrollment. Clean the URL so a
+      // page refresh after success does not re-fire the flow
+      // (admin_already_enrolled would then surface).
+      window.history.replaceState({}, "", window.location.pathname);
+      dispatch({
+        kind: "auth_admin_bootstrap_detected",
+        token: adminBootstrapToken,
+      });
       return;
     }
 
@@ -353,6 +370,40 @@ export function AuthGate({
           dispatch({ kind: "auth_verify_email_failed", code, message })
         }
         onDismiss={() => dispatch({ kind: "auth_verify_email_dismissed" })}
+      />
+    );
+  }
+
+  // ---- Phase 09d-2a: admin bootstrap stage --------------------------
+
+  if (authStage === "admin-bootstrap") {
+    if (!adminBootstrap) {
+      // Defensive: the reducer always populates adminBootstrap on
+      // entry to this stage. If somehow missing, fall back to login.
+      return (
+        <div class="chalk-auth" data-testid="auth-admin-bootstrap-missing">
+          <div class="chalk-auth-card">
+            <p class="chalk-auth-error">
+              Admin bootstrap state missing. Please refresh.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <AdminBootstrapScreen
+        token={adminBootstrap.token}
+        busy={adminBootstrap.busy}
+        errorCode={adminBootstrap.errorCode}
+        errorMessage={adminBootstrap.errorMessage}
+        onSubmitStart={() => dispatch({ kind: "auth_admin_bootstrap_submit_start" })}
+        onSubmitError={(code, message) =>
+          dispatch({ kind: "auth_admin_bootstrap_submit_error", code, message })
+        }
+        onBootstrapped={(result) =>
+          dispatch({ kind: "auth_registered", result })
+        }
+        onDismiss={() => dispatch({ kind: "auth_admin_bootstrap_dismissed" })}
       />
     );
   }

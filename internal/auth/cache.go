@@ -58,6 +58,14 @@ type PendingUser struct {
 	DisplayName string
 	Email       string
 	InviteToken []byte
+
+	// Phase 09d-1: admin bootstrap fields. When IsAdminBootstrap is
+	// true, the finish handler takes the admin-bootstrap path (attach
+	// passkey to existing admin row + consume token) instead of the
+	// transactional new-user insert. BootstrapToken carries the raw
+	// 32 bytes so the finish handler can call ConsumeAdminBootstrapToken.
+	IsAdminBootstrap bool
+	BootstrapToken   []byte
 }
 
 // DefaultCeremonyTTL is the lifetime of a pending ceremony before it's

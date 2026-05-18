@@ -62,6 +62,7 @@ export type AuthStage =
   | "confirming-recovery"
   | "recovery-login"
   | "regenerate-after-recovery"
+  | "admin-bootstrap"
   | "authed";
 
 // AuthConfig mirrors the GET /api/auth/config response body. See
@@ -210,6 +211,11 @@ export interface AuthState {
   verifyEmailChange: VerifyEmailChangeState | null;
   myInvites: MyInvitesState;
   emailChange: EmailChangeState;
+  // Phase 09d-2a: first-run admin enrollment driven by
+  // ?admin_bootstrap=<token>. Populated by AuthGate when it sees the
+  // URL param; cleared on success (auth_registered also clears it
+  // so a stale token does not linger in state) or on dismiss.
+  adminBootstrap: AdminBootstrapState | null;
 }
 
 // InviteContext holds the parsed ?invite=<token> URL parameter +
@@ -256,6 +262,19 @@ export interface VerifyEmailChangeState {
   newEmail: string; // populated on success
   errorCode: string;
   errorMessage: string;
+}
+
+// Phase 09d-2a: AdminBootstrapState drives AdminBootstrapScreen.
+// Populated by AuthGate when ?admin_bootstrap=<token> is in the URL.
+// Simpler than InviteContext: no separate peek step, the token is
+// validated on the /bootstrap/begin call itself. Busy + errorCode +
+// errorMessage track the in-flight WebAuthn ceremony so the screen
+// can disable its submit button and surface server errors.
+export interface AdminBootstrapState {
+  token: string;
+  busy: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
 }
 
 // MyInvitesState drives InvitesPanel. Holds the list of invites
@@ -344,6 +363,7 @@ export const initialAuthState: AuthState = {
   verifyEmailChange: null,
   myInvites: initialMyInvitesState,
   emailChange: initialEmailChangeState,
+  adminBootstrap: null,
 };
 
 // AuthAction is the union of all auth-related reducer actions.
@@ -409,4 +429,18 @@ export type AuthAction =
   // copy locally so the ProfilePanel updates without an extra
   // round-trip. Used by both the VerifyEmailChangeScreen success
   // path AND the in-chat panel if the user verifies in another tab.
-  | { kind: "auth_me_email_updated"; newEmail: string };
+  | { kind: "auth_me_email_updated"; newEmail: string }
+  // Phase 09d-2a: admin bootstrap (URL-driven first-run enrollment).
+  // detected   — AuthGate parsed ?admin_bootstrap=<token>; transition
+  //              to the "admin-bootstrap" stage.
+  // submit_start / submit_error — drive the busy + error UI on
+  //              AdminBootstrapScreen during the WebAuthn ceremony.
+  // dismissed  — user clicked "go to login" after a terminal error
+  //              (admin_already_enrolled etc.); clear state, go to
+  //              login.
+  // (Success transitions through auth_registered → confirming-recovery,
+  // reusing the registration flow.)
+  | { kind: "auth_admin_bootstrap_detected"; token: string }
+  | { kind: "auth_admin_bootstrap_submit_start" }
+  | { kind: "auth_admin_bootstrap_submit_error"; code: string; message: string }
+  | { kind: "auth_admin_bootstrap_dismissed" };

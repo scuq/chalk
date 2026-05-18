@@ -1128,3 +1128,395 @@ html, body {
 .chalk-auth-error .chalk-auth-link {
   margin-left: var(--chalk-s2);
 }
+
+/* ---- Phase 09d-2b: admin moderation panel --------------------------- */
+
+.chalk-admin {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+}
+
+.chalk-admin--full {
+  /* When the admin panel is the top-level view (route === "admin"),
+     it owns the whole viewport. */
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+}
+
+.chalk-admin-header {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s4);
+  padding: var(--chalk-s3) var(--chalk-s4);
+  border-bottom: 1px solid var(--chalk-border);
+  background: var(--chalk-bg-elev);
+  flex-shrink: 0;
+}
+
+.chalk-admin-back {
+  flex-shrink: 0;
+}
+
+.chalk-admin-title {
+  margin: 0;
+  font-size: var(--chalk-size-title);
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.chalk-admin-tabs {
+  display: flex;
+  gap: var(--chalk-s2);
+  margin-left: auto;
+}
+
+.chalk-admin-tab-btn {
+  background: transparent;
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  font-family: var(--chalk-font);
+  font-size: var(--chalk-size-base);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.chalk-admin-tab-btn:hover {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg-dim);
+}
+
+.chalk-admin-tab-btn--active {
+  color: var(--chalk-bg);
+  background: var(--chalk-fg);
+  border-color: var(--chalk-fg);
+}
+
+.chalk-admin-tab-btn--active:hover {
+  color: var(--chalk-bg);
+  background: var(--chalk-fg-bright);
+  border-color: var(--chalk-fg-bright);
+}
+
+.chalk-admin-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--chalk-s4);
+}
+
+.chalk-admin-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s3);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.chalk-admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s3);
+}
+
+.chalk-admin-toolbar-title {
+  font-weight: bold;
+  color: var(--chalk-fg-bright);
+  margin-right: auto;
+}
+
+.chalk-admin-search {
+  flex: 1;
+}
+
+.chalk-admin-search .chalk-field-input {
+  width: 100%;
+}
+
+.chalk-admin-refresh {
+  flex-shrink: 0;
+}
+
+.chalk-admin-action-error {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  border: 1px solid var(--chalk-error);
+  border-radius: var(--chalk-radius);
+  background: rgba(255, 77, 77, 0.08);
+  color: var(--chalk-error);
+}
+
+.chalk-admin-action-error-dismiss {
+  background: transparent;
+  color: var(--chalk-error);
+  border: none;
+  cursor: pointer;
+  font-size: 1.2em;
+  padding: 0 var(--chalk-s1);
+  line-height: 1;
+  margin-left: auto;
+}
+
+.chalk-admin-action-error-dismiss:hover {
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-admin-empty {
+  padding: var(--chalk-s6);
+  text-align: center;
+  color: var(--chalk-fg-dim);
+  font-style: italic;
+}
+
+.chalk-admin-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+}
+
+.chalk-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--chalk-size-base);
+}
+
+.chalk-admin-table thead {
+  background: var(--chalk-bg-elev);
+}
+
+.chalk-admin-table th {
+  text-align: left;
+  padding: var(--chalk-s2) var(--chalk-s3);
+  font-weight: bold;
+  color: var(--chalk-fg-dim);
+  border-bottom: 1px solid var(--chalk-border);
+}
+
+.chalk-admin-table td {
+  padding: var(--chalk-s2) var(--chalk-s3);
+  border-bottom: 1px solid var(--chalk-border);
+  vertical-align: middle;
+}
+
+.chalk-admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.chalk-admin-row {
+  position: relative;
+  transition: background 0.1s;
+}
+
+.chalk-admin-row:hover {
+  background: var(--chalk-bg-elev);
+}
+
+.chalk-admin-row--blocked {
+  color: var(--chalk-warn);
+}
+
+.chalk-admin-row--deleted {
+  color: var(--chalk-fg-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--chalk-fg-muted);
+}
+
+.chalk-admin-cell-username {
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.chalk-admin-cell-email {
+  font-family: var(--chalk-font);
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-admin-cell-status {
+  white-space: nowrap;
+}
+
+.chalk-admin-cell-created,
+.chalk-admin-cell-former {
+  white-space: nowrap;
+  color: var(--chalk-fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.chalk-admin-cell-actions {
+  text-align: right;
+  white-space: nowrap;
+  min-width: 220px;
+}
+
+.chalk-admin-table-actions-col {
+  width: 220px;
+}
+
+.chalk-admin-status-pill {
+  display: inline-block;
+  padding: 2px var(--chalk-s2);
+  border-radius: var(--chalk-radius);
+  font-size: var(--chalk-size-small);
+  font-weight: bold;
+  text-transform: lowercase;
+  border: 1px solid;
+}
+
+.chalk-admin-status-pill--active {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg);
+}
+
+.chalk-admin-status-pill--admin {
+  color: var(--chalk-accent);
+  border-color: var(--chalk-accent);
+}
+
+.chalk-admin-status-pill--blocked {
+  color: var(--chalk-warn);
+  border-color: var(--chalk-warn);
+}
+
+.chalk-admin-status-pill--deleted {
+  color: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-muted);
+}
+
+.chalk-admin-row-actions {
+  display: flex;
+  gap: var(--chalk-s1);
+  justify-content: flex-end;
+  /* Hover-reveal: hidden by default, visible when the row is hovered
+     or any button inside is focused (keyboard a11y). */
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.chalk-admin-row:hover .chalk-admin-row-actions,
+.chalk-admin-row-actions:focus-within {
+  opacity: 1;
+}
+
+.chalk-admin-row-action {
+  background: transparent;
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: 2px var(--chalk-s2);
+  font-family: var(--chalk-font);
+  font-size: var(--chalk-size-small);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.chalk-admin-row-action:hover {
+  background: var(--chalk-fg);
+  color: var(--chalk-bg);
+  border-color: var(--chalk-fg);
+}
+
+.chalk-admin-row-action--warn {
+  color: var(--chalk-warn);
+  border-color: var(--chalk-warn);
+}
+
+.chalk-admin-row-action--warn:hover {
+  background: var(--chalk-warn);
+  color: var(--chalk-bg);
+  border-color: var(--chalk-warn);
+}
+
+.chalk-admin-row-action--danger {
+  color: var(--chalk-error);
+  border-color: var(--chalk-error);
+}
+
+.chalk-admin-row-action--danger:hover {
+  background: var(--chalk-error);
+  color: var(--chalk-bg);
+  border-color: var(--chalk-error);
+}
+
+.chalk-admin-row-pending {
+  color: var(--chalk-fg-dim);
+  font-size: 1.2em;
+  display: inline-block;
+  padding: 0 var(--chalk-s2);
+}
+
+.chalk-admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--chalk-s3);
+  padding: var(--chalk-s3) 0;
+}
+
+.chalk-admin-pagination-label {
+  color: var(--chalk-fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.chalk-admin-blacklist-add {
+  display: flex;
+  gap: var(--chalk-s3);
+  align-items: flex-end;
+  padding: var(--chalk-s3);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  background: var(--chalk-bg-elev);
+}
+
+.chalk-admin-blacklist-add .chalk-field {
+  flex: 1;
+}
+
+/* Danger variant for the confirm modal's confirm button. */
+.chalk-button--danger {
+  background: var(--chalk-error);
+  color: var(--chalk-bg);
+  border-color: var(--chalk-error);
+}
+
+.chalk-button--danger:hover:not(:disabled) {
+  background: #ff6666;
+  border-color: #ff6666;
+}
+
+.chalk-button--danger:disabled {
+  background: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-muted);
+}
+
+/* Confirm modal layout */
+.chalk-modal--confirm {
+  max-width: 500px;
+}
+
+.chalk-admin-confirm-warning {
+  font-size: 2em;
+  color: var(--chalk-warn);
+  text-align: center;
+  margin-bottom: var(--chalk-s2);
+}
+
+.chalk-admin-confirm-body p {
+  margin: 0 0 var(--chalk-s2) 0;
+}
+
+.chalk-admin-confirm-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* Utility class for inline dim text (used in table cells for "—") */
+.chalk-fg-dim {
+  color: var(--chalk-fg-dim);
+}
