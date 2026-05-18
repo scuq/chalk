@@ -62,6 +62,9 @@ type WSHandler struct {
 
 	publishPresenceChange presence.Notifier
 	publishFriend         FriendPublisher
+	// Phase 9.7a: fanout for prefs_changed pushes to a user's other
+	// devices/tabs. Optional; nil disables the push.
+	publishPrefsChange    PrefsChangePublisher
 
 	// Phase 08: listener is used for dynamic per-channel subscribe/
 	// unsubscribe at WS connect/disconnect time. nil disables phase 08
@@ -90,6 +93,7 @@ func NewWSHandler(
 	friendsStore *friends.Store,
 	pubPresence presence.Notifier,
 	pubFriend FriendPublisher,
+	pubPrefs PrefsChangePublisher,
 	listener *pubsub.Listener,
 ) *WSHandler {
 	if logger == nil {
@@ -105,6 +109,7 @@ func NewWSHandler(
 		friends:               friendsStore,
 		publishPresenceChange: pubPresence,
 		publishFriend:         pubFriend,
+		publishPrefsChange:    pubPrefs,
 		listener:              listener,
 	}
 }
@@ -465,6 +470,12 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 		// Phase 08b: subscribe to a channel mid-session
 		case proto.TypeSubscribeChannel:
 			h.handleSubscribeChannel(ctx, c, conn, f)
+
+		// Phase 9.7a: user preferences
+		case proto.TypePrefsGet:
+			h.handlePrefsGet(ctx, c, conn, f)
+		case proto.TypePrefsSet:
+			h.handlePrefsSet(ctx, c, conn, f)
 
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,

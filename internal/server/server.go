@@ -137,6 +137,7 @@ func NewServer(opts Options) (*Server, error) {
 		s.hub, s.store, opts.WSConfig, s.instanceID, s.logger,
 		opts.Presence, opts.Friends,
 		pubPresence, pubFriend,
+		s.publishPrefsChangeFn, // Phase 9.7a
 		s.pubsub, // phase 08: listener for per-channel subscribe
 	))
 
@@ -336,6 +337,9 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 		s.handleFriendEvent(ev)
 	case "channel":
 		s.handleChannelEvent(ev)
+	case "prefs":
+		// Phase 9.7a:
+		s.handlePrefsEvent(ev)
 	}
 }
 
@@ -625,4 +629,53 @@ func (s *Server) publishFriendEvent(ctx context.Context, recipient, fromUser uui
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// publishPrefsChangeFn (Phase 9.7a) emits a Kind="prefs" NOTIFY that
+// fans out to the same user's local conns on every chalkd instance.
+// The originating conn ID is carried so receivers can skip self-echo.
+func (s *Server) publishPrefsChangeFn(ctx context.Context, userID uuid.UUID, originConnID string) error {
+	if s.store == nil {
+		return nil
+	}
+	tx, err := s.store.Pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := pubsub.PublishWithTx(ctx, tx, pubsub.Event{
+		Kind:         "prefs",
+		UserID:       userID,
+		SenderConnID: originConnID,
+		InstanceID:   s.instanceID,
+	}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// handlePrefsEvent (Phase 9.7a) re-fetches the user's prefs and
+// pushes prefs_changed to their local conns, skipping the originator.
+func (s *Server) handlePrefsEvent(ev pubsub.Event) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Skip if no local conns for this user.
+	if len(s.hub.ConnsForUser(ev.UserID.String())) == 0 {
+		return
+	}
+
+	prefs, err := s.store.GetPreferences(ctx, ev.UserID)
+	if err != nil {
+		s.logger.Printf("prefs event fetch: %v", err)
+		return
+	}
+	frame, _ := proto.NewFrame(proto.TypePrefsChanged, "", proto.PrefsAckPayload{
+		Prefs: prefs,
+	})
+	wire, _ := json.Marshal(frame)
+
+	// FanOutToUser with skip-conn-ID so the device that triggered the
+	// change doesn't receive its own echo (it already got prefs_set_ack).
+	s.hub.FanOutToUser(ev.UserID.String(), ev.SenderConnID, wire)
 }

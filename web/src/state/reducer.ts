@@ -1114,6 +1114,27 @@ export function reducer(state: AppState, action: Action): AppState {
     case "my_effective_presence_set":
       return { ...state, myEffectivePresence: action.state };
 
+    // ---- Phase 9.7a: preferences --------------------------------------
+
+    case "prefs_loaded":
+      // Initial load after prefs_get_ack. Marks prefsLoaded true so
+      // effects that wait for prefs (like theme application) can fire.
+      return {
+        ...state,
+        prefs: action.prefs,
+        prefsLoaded: true,
+      };
+
+    case "prefs_merged":
+      // Either prefs_set_ack (echo of our own write) or prefs_changed
+      // (push from another device of the same user). Server has
+      // already merged; we just replace our cached copy.
+      return {
+        ...state,
+        prefs: action.prefs,
+        prefsLoaded: true,
+      };
+
     // ---- Phase 09d-2b: admin panel routing -------------------------
 
     case "route_to_admin":

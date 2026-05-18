@@ -42,11 +42,35 @@ interface Props {
   // if the parent doesn't wire it, the refresh button doesn't render.
   onRefresh?: () => void;
   refreshing?: boolean;
+  // Phase 9.7b: theme picker.
+  theme?: string;
+  onSetTheme?: (theme: string) => void;
+  // Phase 9.7d: chat display prefs.
+  chatPrefs?: {
+    showTimestamps: boolean;
+    timestampFormat: "hms" | "hm" | "relative";
+    compactMode: boolean;
+    // Phase 9.7e:
+    userColors: { handle: string; color: string; scope: "all" | "dm" }[];
+  };
+  onSetChatPref?: <K extends "showTimestamps" | "timestampFormat" | "compactMode">(
+    key: K,
+    value: K extends "timestampFormat" ? "hms" | "hm" | "relative" : boolean,
+  ) => void;
+  // Phase 9.7e: replace the entire userColors list. We send the full
+  // array on every change because JSONB || is a shallow merge so a
+  // partial update would clobber the rest of chat prefs anyway.
+  onSetUserColors?: (rules: { handle: string; color: string; scope: "all" | "dm" }[]) => void;
 }
 
 export function ProfilePanel({
   me,
   emailChange,
+  theme,
+  onSetTheme,
+  chatPrefs,
+  onSetChatPref,
+  onSetUserColors,
   onClose,
   onEmailChangeDraft,
   onEmailChangeSubmit,
@@ -185,6 +209,179 @@ export function ProfilePanel({
               <dd>expires {formatTimestamp(me.sessionExpiresAt)}</dd>
             </dl>
           </section>
+
+          {onSetTheme && (
+            <section class="chalk-profile-appearance">
+              <h3>appearance</h3>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-label" for="theme-picker">theme</label>
+                <div class="chalk-profile-theme-picker" id="theme-picker" role="radiogroup" aria-label="theme">
+                  {(["green", "light", "cyberpunk", "solarized-dark"] as const).map((t) => (
+                    <label
+                      key={t}
+                      class={`chalk-profile-theme-option ${(theme ?? "green") === t ? "chalk-profile-theme-option--active" : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="theme"
+                        value={t}
+                        checked={(theme ?? "green") === t}
+                        onChange={() => onSetTheme(t)}
+                        data-testid={`theme-option-${t}`}
+                      />
+                      <span class="chalk-profile-theme-swatch">
+                        <span class={`chalk-profile-theme-swatch-preview chalk-profile-theme-swatch-preview--${t}`} aria-hidden="true" />
+                        <span class="chalk-profile-theme-name">{t}</span>
+                        <span class="chalk-profile-theme-desc">
+                          {
+                            t === "green" ? "default terminal" :
+                            t === "light" ? "warm cream" :
+                            t === "cyberpunk" ? "neon violet-black" :
+                            "solarized dark"
+                          }
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <p class="chalk-profile-hint">
+                  the theme follows you across devices.
+                </p>
+              </div>
+            </section>
+          )}
+
+          {onSetChatPref && chatPrefs && (
+            <section class="chalk-profile-chat">
+              <h3>chat</h3>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={chatPrefs.showTimestamps}
+                    onChange={(e) =>
+                      onSetChatPref("showTimestamps", (e.target as HTMLInputElement).checked)
+                    }
+                    data-testid="chat-show-timestamps"
+                  />
+                  <span>show timestamps</span>
+                </label>
+              </div>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-label" for="timestamp-format">timestamp format</label>
+                <select
+                  id="timestamp-format"
+                  class="chalk-profile-select"
+                  value={chatPrefs.timestampFormat}
+                  disabled={!chatPrefs.showTimestamps}
+                  onChange={(e) =>
+                    onSetChatPref(
+                      "timestampFormat",
+                      (e.target as HTMLSelectElement).value as "hms" | "hm" | "relative",
+                    )
+                  }
+                  data-testid="chat-timestamp-format"
+                >
+                  <option value="hms">22:53:01 (hh:mm:ss)</option>
+                  <option value="hm">22:53 (hh:mm)</option>
+                  <option value="relative">5m ago (relative)</option>
+                </select>
+              </div>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={chatPrefs.compactMode}
+                    onChange={(e) =>
+                      onSetChatPref("compactMode", (e.target as HTMLInputElement).checked)
+                    }
+                    data-testid="chat-compact-mode"
+                  />
+                  <span>compact mode <span class="chalk-profile-theme-desc">(tighter row spacing)</span></span>
+                </label>
+              </div>
+              {onSetUserColors && (
+                <div class="chalk-profile-field">
+                  <div class="chalk-profile-label">username colors</div>
+                  <p class="chalk-profile-hint" style={{ marginTop: 0 }}>
+                    custom display color for specific users in the chat
+                    feed (sender label only, not the roster).
+                  </p>
+                  <div class="chalk-user-colors">
+                    {chatPrefs.userColors.length === 0 && (
+                      <div class="chalk-user-colors-empty">
+                        no rules yet.
+                      </div>
+                    )}
+                    {chatPrefs.userColors.map((rule, idx) => (
+                      <div class="chalk-user-colors-row" key={idx}>
+                        <input
+                          type="text"
+                          class="chalk-user-colors-handle"
+                          placeholder="username"
+                          value={rule.handle}
+                          onInput={(e) => {
+                            const next = chatPrefs.userColors.slice();
+                            next[idx] = { ...rule, handle: (e.target as HTMLInputElement).value };
+                            onSetUserColors(next);
+                          }}
+                          data-testid={`user-color-handle-${idx}`}
+                        />
+                        <input
+                          type="color"
+                          class="chalk-user-colors-color"
+                          value={rule.color || "#888888"}
+                          onChange={(e) => {
+                            const next = chatPrefs.userColors.slice();
+                            next[idx] = { ...rule, color: (e.target as HTMLInputElement).value };
+                            onSetUserColors(next);
+                          }}
+                          data-testid={`user-color-color-${idx}`}
+                        />
+                        <select
+                          class="chalk-profile-select chalk-user-colors-scope"
+                          value={rule.scope}
+                          onChange={(e) => {
+                            const next = chatPrefs.userColors.slice();
+                            next[idx] = { ...rule, scope: (e.target as HTMLSelectElement).value as "all" | "dm" };
+                            onSetUserColors(next);
+                          }}
+                          data-testid={`user-color-scope-${idx}`}
+                        >
+                          <option value="all">all channels</option>
+                          <option value="dm">DMs only</option>
+                        </select>
+                        <button
+                          type="button"
+                          class="chalk-user-colors-delete"
+                          onClick={() => {
+                            const next = chatPrefs.userColors.filter((_, i) => i !== idx);
+                            onSetUserColors(next);
+                          }}
+                          title="delete rule"
+                          data-testid={`user-color-delete-${idx}`}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    class="chalk-user-colors-add"
+                    onClick={() => {
+                      const next = chatPrefs.userColors.slice();
+                      next.push({ handle: "", color: "#88ccff", scope: "all" });
+                      onSetUserColors(next);
+                    }}
+                    data-testid="user-color-add"
+                  >
+                    + add color
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Email change section */}
           <section class="chalk-profile-email-change">

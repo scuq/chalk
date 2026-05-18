@@ -41,9 +41,17 @@ import {
   TypePresenceUnsubscribe,
   // Phase 9.6j:
   TypePresenceUpdate,
+  // Phase 9.7a:
+  TypePrefsGet,
+  TypePrefsGetAck,
+  TypePrefsSet, // Phase 9.7b
+  TypePrefsSetAck,
+  TypePrefsChanged,
   type Frame,
   type WelcomePayload,
   type ErrorPayload,
+  // Phase 9.7a:
+  type PrefsAckPayload,
   type MessagePayload,
   type SendPayload,
   type ChannelSummaryWire,
@@ -64,7 +72,7 @@ import {
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
-import { initialState, type AppState, type Message, type ChannelSummary } from "../state/types";
+import { initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary } from "../state/types";
 import { StatusBar } from "./StatusBar";
 import { Sidebar } from "./Sidebar";
 import { MessageList } from "./MessageList";
@@ -201,6 +209,22 @@ export function App() {
       case TypeMessage: {
         const m = wireToMessage(f.payload as MessagePayload);
         dispatch({ kind: "message", message: m });
+        break;
+      }
+      // Phase 9.7a: preferences round-trip.
+      case TypePrefsGetAck: {
+        const ack = f.payload as PrefsAckPayload;
+        dispatch({ kind: "prefs_loaded", prefs: ack.prefs as never });
+        break;
+      }
+      case TypePrefsSetAck: {
+        const ack = f.payload as PrefsAckPayload;
+        dispatch({ kind: "prefs_merged", prefs: ack.prefs as never });
+        break;
+      }
+      case TypePrefsChanged: {
+        const push = f.payload as PrefsAckPayload;
+        dispatch({ kind: "prefs_merged", prefs: push.prefs as never });
         break;
       }
       case TypeError: {
@@ -343,12 +367,30 @@ export function App() {
     if (!c) return;
     c.send<ListChannelsPayload>(TypeListChannels, {});
     c.send(TypeFriendList, {}); // Phase 9.6e
+    c.send(TypePrefsGet, {}); // Phase 9.7a
     // Reset per-connect bookkeeping. After reconnect the server's
     // hello-time loop re-subscribes from scratch, and we should
     // forget what we'd previously asked for at the protocol layer.
     subscribeSentRef.current = new Set();
     historyRequestedRef.current = new Set();
   }, [state.wsState, state.user?.id]);
+
+  // Phase 9.7b: apply the user's selected theme to the document root.
+  // Runs whenever prefs.theme changes (initial load, picker change,
+  // or push from another device via prefs_changed). Unknown theme
+  // values fall back to the default by removing the attribute.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const theme = state.prefs.theme;
+    if (theme && theme !== "green") {
+      root.setAttribute("data-theme", theme);
+    } else {
+      // "green" is the default (no attribute needed). Also handle
+      // unset / unknown by removing.
+      root.removeAttribute("data-theme");
+    }
+  }, [state.prefs.theme]);
 
   // Phase 9.6c: keep the presence subscription synchronized with the
   // accepted-friends list. Whenever friends change (after a
@@ -1015,6 +1057,8 @@ export function App() {
               ownDevice={state.user?.device ?? null}
               ownUserID={state.user?.id ?? null}
               members={activeChannel.members ?? []}
+              isDM={activeChannel.isDM}
+              display={selectChatPrefs(state.prefs)}
               empty={!state.historyLoaded[activeChannel.id]
                 ? "loading history..."
                 : "no messages yet. say something."}
@@ -1094,6 +1138,39 @@ export function App() {
           onEmailChangeDismiss={() => dispatch({ kind: "email_change_dismissed" })}
           onRefresh={refreshProfile}
           refreshing={state.profileRefreshing}
+          theme={state.prefs.theme ?? "green"}
+          onSetTheme={(t) => {
+            // Phase 9.7b: send prefs_set; server merges, acks, and
+            // fans out to other devices. Local cache updates via
+            // prefs_set_ack arriving back (state.prefs.theme then
+            // changes, the theme-application effect re-fires).
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            c.send(TypePrefsSet, { patch: { theme: t } });
+          }}
+          chatPrefs={selectChatPrefs(state.prefs)}
+          onSetChatPref={(key, value) => {
+            // Phase 9.7d: merge a single chat-pref key. The patch is
+            // shaped {chat: {[key]: value}}; server's JSONB || does
+            // a SHALLOW merge, so we must include the full chat
+            // object with the new value (not just the diff) to
+            // avoid wiping other chat prefs. Reconstruct from the
+            // current resolved prefs.
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            const current = selectChatPrefs(state.prefs);
+            const next = { ...current, [key]: value };
+            c.send(TypePrefsSet, { patch: { chat: next } });
+          }}
+          onSetUserColors={(rules) => {
+            // Phase 9.7e: replace the userColors array. Same JSONB
+            // shallow-merge trick: ship the full chat object.
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            const current = selectChatPrefs(state.prefs);
+            const next = { ...current, userColors: rules };
+            c.send(TypePrefsSet, { patch: { chat: next } });
+          }}
         />
       )}
     </div>

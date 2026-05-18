@@ -241,3 +241,22 @@ export function newFrame<P>(type: string, payload?: P, ref?: string): Frame<P> {
   if (payload !== undefined) f.payload = payload;
   return f;
 }
+
+// ---- Phase 9.7a: user preferences ----------------------------------
+
+export const TypePrefsGet     = "prefs_get";
+export const TypePrefsGetAck  = "prefs_get_ack";
+export const TypePrefsSet     = "prefs_set";
+export const TypePrefsSetAck  = "prefs_set_ack";
+export const TypePrefsChanged = "prefs_changed";
+
+export interface PrefsGetPayload {}
+
+export interface PrefsSetPayload {
+  patch: Record<string, unknown>;
+}
+
+// Ack payload shared by prefs_get_ack, prefs_set_ack, prefs_changed.
+export interface PrefsAckPayload {
+  prefs: Record<string, unknown>;
+}

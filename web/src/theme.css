@@ -459,6 +459,10 @@ html, body {
   min-width: 360px;
   max-width: 500px;
   width: 90%;
+  /* Phase 9.7e: cap the modal to the viewport so growing content
+     (ProfilePanel accumulated many sections) doesn't spill past
+     the bottom. The body becomes the scroll surface. */
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
 }
@@ -539,6 +543,14 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: var(--chalk-s3);
+  /* Phase 9.7e: scroll if the section stack is taller than the
+     remaining modal space. The header stays pinned because it lives
+     outside this element. */
+  overflow-y: auto;
+  /* Allow flex to shrink the body below its content height so the
+     scroll takes effect. (Default min-height: auto would push the
+     body to its content height and bust the parent max-height.) */
+  min-height: 0;
 }
 
 .chalk-modal-footer {
@@ -2036,4 +2048,423 @@ html, body {
   font-size: 0.75rem;
   color: var(--chalk-fg-dim, #5a8a5a);
   font-style: italic;
+}
+
+/* ============================================================
+   Phase 9.7b: light theme
+   ============================================================
+   Activated by setting data-theme="light" on the document root.
+   Redefines every --chalk-* variable so component CSS adapts
+   automatically. Also overrides a handful of hard-coded rgba()
+   values (presence-dot glow) that don't go through variables.
+
+   Palette notes:
+   - bg is a warm cream, not pure white, to reduce eye strain.
+   - fg is warm near-black for similar reasons.
+   - Accent stays a forest green so the brand identity survives the
+     mode switch. (chalk is "the green terminal chat"; making the
+     accent blue would feel like a different product.)
+   - Warn/error nudge toward muted amber/brick so they don't
+     scream against the soft background.
+   ============================================================ */
+
+[data-theme="light"] {
+  --chalk-bg:           #f7f5ee;
+  --chalk-bg-elev:      #ebe7da;
+  --chalk-bg-elev-2:    #ddd7c4;
+  --chalk-fg:           #1f1d17;
+  --chalk-fg-dim:       #6a6657;
+  --chalk-fg-bright:    #1a4d2a;
+  --chalk-fg-muted:     #8e8a7a;
+  --chalk-border:       #c9c2ab;
+  --chalk-accent:       #2d6e3f;
+  --chalk-warn:         #a85f00;
+  --chalk-error:        #9b2a26;
+
+  color-scheme: light;
+}
+
+/* Presence-dot glow uses a hard-coded rgba() in the green theme;
+   override here so the glow color matches the light-theme accent
+   instead of looking like a stray bright-green halo on cream. */
+[data-theme="light"] .chalk-presence-dot--online {
+  box-shadow: 0 0 4px rgba(45, 110, 63, 0.35);
+}
+
+/* The default green theme uses a very dim faux-shadow on most
+   panels (light text on black). In light mode we want a touch of
+   warmth on elevated surfaces -- a 1px inner border reads better
+   than a drop shadow on flat cream. The selectors below add it
+   only to surfaces that visibly elevate (modals, dropdowns,
+   menus). Sidebar and headers already use background contrast. */
+[data-theme="light"] .chalk-modal,
+[data-theme="light"] .chalk-presence-menu,
+[data-theme="light"] .chalk-status-menu {
+  box-shadow: 0 1px 3px rgba(31, 29, 23, 0.08);
+}
+
+/* In light mode, the active-channel highlight in the sidebar is a
+   subtle warm tint rather than the green-on-black we have in the
+   dark theme. Done via opacity of the accent. */
+[data-theme="light"] .chalk-sidebar-item--active {
+  background: rgba(45, 110, 63, 0.10);
+}
+
+/* The presence trigger's hover state in 9.6j uses a bg-elev
+   reference that works fine here -- no override needed. */
+
+/* ============================================================
+   Phase 9.7b: theme picker styling
+   ============================================================ */
+
+.chalk-profile-theme-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s1);
+}
+
+.chalk-profile-theme-option {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  cursor: pointer;
+  transition: border-color 100ms ease;
+}
+.chalk-profile-theme-option:hover {
+  border-color: var(--chalk-accent);
+}
+.chalk-profile-theme-option--active {
+  border-color: var(--chalk-accent);
+  background: var(--chalk-bg-elev);
+}
+
+.chalk-profile-theme-option input[type="radio"] {
+  /* Native radios look out of place; we have a custom visual via
+     the active border + swatch. Hide the native control but keep
+     it focusable for keyboard nav. */
+  appearance: none;
+  -webkit-appearance: none;
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  position: absolute;
+}
+.chalk-profile-theme-option input[type="radio"]:focus-visible
+  + .chalk-profile-theme-swatch {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 2px;
+}
+
+.chalk-profile-theme-swatch {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--chalk-s2);
+  width: 100%;
+}
+
+.chalk-profile-theme-swatch-preview {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--chalk-radius);
+  border: 1px solid var(--chalk-border);
+}
+/* Static preview swatches: do NOT use variables so they show the
+   theme's actual colors regardless of which one is currently active. */
+.chalk-profile-theme-swatch-preview--green {
+  background: linear-gradient(135deg, #000000 0%, #000000 50%, #00ff41 50%, #00ff41 100%);
+}
+.chalk-profile-theme-swatch-preview--light {
+  background: linear-gradient(135deg, #f7f5ee 0%, #f7f5ee 50%, #2d6e3f 50%, #2d6e3f 100%);
+}
+
+.chalk-profile-theme-name {
+  font-weight: 500;
+}
+.chalk-profile-theme-desc {
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-profile-hint {
+  margin-top: var(--chalk-s1);
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+  font-style: italic;
+}
+
+/* ============================================================
+   Phase 9.7c: cyberpunk theme
+   ============================================================
+   Deep violet-black background with hot magenta + electric cyan
+   accents. Body text stays a high-contrast pale lavender for
+   readability (the "neon on pitch-black" movie aesthetic looks
+   great in stills but is brutal to actually read).
+
+   Design choices:
+   - Background is violet-black (#0a0420), not pure black -- the
+     violet undertone is what differentiates this from the green
+     terminal theme.
+   - fg-bright is hot magenta (#ff2eaa) -- emphasis, "you" labels,
+     active states.
+   - Accent is electric cyan (#00f0ff) -- borders, secondary
+     surfaces, links.
+   - Warn keeps an amber/yellow because urgency reads best in
+     yellow regardless of context; pure neon would melt into the
+     rest of the palette.
+   ============================================================ */
+
+[data-theme="cyberpunk"] {
+  --chalk-bg:           #0a0420;
+  --chalk-bg-elev:      #140a32;
+  --chalk-bg-elev-2:    #1f0f4d;
+  --chalk-fg:           #f0e8ff;
+  --chalk-fg-dim:       #8a7ab8;
+  --chalk-fg-bright:    #ff2eaa;
+  --chalk-fg-muted:     #5a4a8a;
+  --chalk-border:       #4a2a8a;
+  --chalk-accent:       #00f0ff;
+  --chalk-warn:         #ffcc00;
+  --chalk-error:        #ff3060;
+
+  color-scheme: dark;
+}
+
+/* Cyberpunk presence-dot glow: cyan halo for online (matches the
+   accent), softer than the default green halo so it doesn't
+   strobe against the violet backdrop. */
+[data-theme="cyberpunk"] .chalk-presence-dot--online {
+  background: var(--chalk-accent);
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
+}
+
+/* Active sidebar item: faint magenta wash instead of the default
+   green tint. */
+[data-theme="cyberpunk"] .chalk-sidebar-item--active {
+  background: rgba(255, 46, 170, 0.12);
+}
+
+/* ============================================================
+   Phase 9.7c: solarized-dark theme
+   ============================================================
+   Ethan Schoonover's well-known palette. Uses the published hex
+   values directly so it matches what people expect from
+   "solarized" in other editors.
+
+   Mapping notes:
+   - chalk-bg          = base03  (#002b36)
+   - chalk-bg-elev     = base02  (#073642)
+   - chalk-fg          = base0   (#839496)  -- body text on dark
+   - chalk-fg-bright   = base1   (#93a1a1)  -- emphasized
+   - chalk-fg-dim      = base01  (#586e75)  -- comments/secondary
+   - chalk-accent      = blue    (#268bd2)  -- the solarized signature
+   - chalk-warn        = yellow  (#b58900)
+   - chalk-error       = red     (#dc322f)
+   ============================================================ */
+
+[data-theme="solarized-dark"] {
+  --chalk-bg:           #002b36;
+  --chalk-bg-elev:      #073642;
+  --chalk-bg-elev-2:    #0e4a5c;
+  --chalk-fg:           #839496;
+  --chalk-fg-dim:       #586e75;
+  --chalk-fg-bright:    #93a1a1;
+  --chalk-fg-muted:     #45626b;
+  --chalk-border:       #073642;
+  --chalk-accent:       #268bd2;
+  --chalk-warn:         #b58900;
+  --chalk-error:        #dc322f;
+
+  color-scheme: dark;
+}
+
+/* Solarized presence-dot glow: a soft blue halo matching the
+   accent. Subtler than the green theme's glow because solarized
+   is a low-saturation palette overall. */
+[data-theme="solarized-dark"] .chalk-presence-dot--online {
+  background: var(--chalk-accent);
+  box-shadow: 0 0 4px rgba(38, 139, 210, 0.45);
+}
+
+/* Active sidebar item: a low-opacity wash of solarized blue. */
+[data-theme="solarized-dark"] .chalk-sidebar-item--active {
+  background: rgba(38, 139, 210, 0.12);
+}
+
+/* ============================================================
+   Phase 9.7c: picker swatches for new themes
+   ============================================================
+   Static preview swatches use hard-coded hex (not variables) so
+   they always show the THEME'S OWN colors regardless of which
+   theme is currently active. Same diagonal-split pattern as the
+   green + light swatches from 9.7b.
+   ============================================================ */
+
+.chalk-profile-theme-swatch-preview--cyberpunk {
+  background: linear-gradient(135deg,
+    #0a0420 0%, #0a0420 50%,
+    #ff2eaa 50%, #ff2eaa 100%);
+}
+
+.chalk-profile-theme-swatch-preview--solarized-dark {
+  background: linear-gradient(135deg,
+    #002b36 0%, #002b36 50%,
+    #268bd2 50%, #268bd2 100%);
+}
+
+/* ============================================================
+   Phase 9.7d: compact mode + no-timestamp grid
+   ============================================================ */
+
+/* Compact: tighter gap between messages, smaller per-row padding. */
+.chalk-messages--compact {
+  gap: 1px;
+}
+.chalk-messages--compact .chalk-message {
+  padding: 1px var(--chalk-s2);
+}
+
+/* No-timestamp variant: drop the leading time column. The grid
+   reflows to sender + body only. */
+.chalk-message--no-time {
+  grid-template-columns: 9ch 1fr;
+}
+
+/* ============================================================
+   Phase 9.7d: ProfilePanel chat section
+   ============================================================
+   Reuses the existing .chalk-profile-field and .chalk-profile-label
+   utilities from earlier phases. Adds a checkbox-row variant and a
+   select-input variant since the appearance section only had
+   radios.
+   ============================================================ */
+
+.chalk-profile-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  cursor: pointer;
+  user-select: none;
+}
+.chalk-profile-checkbox-label input[type="checkbox"] {
+  /* The default checkbox looks fine across themes; just align it. */
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--chalk-accent);
+}
+
+.chalk-profile-select {
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  font: inherit;
+  cursor: pointer;
+}
+.chalk-profile-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.chalk-profile-select:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* ============================================================
+   Phase 9.7e: user color editor
+   ============================================================ */
+
+.chalk-user-colors {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s2);
+}
+
+.chalk-user-colors-empty {
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+  font-style: italic;
+  padding: var(--chalk-s2) 0;
+}
+
+.chalk-user-colors-row {
+  display: grid;
+  grid-template-columns: 1fr 36px minmax(110px, auto) 28px;
+  gap: var(--chalk-s2);
+  align-items: center;
+}
+
+.chalk-user-colors-handle {
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  font: inherit;
+  min-width: 0; /* let it shrink inside grid */
+}
+.chalk-user-colors-handle:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* Native color input -- minimal styling, just align to the row. */
+.chalk-user-colors-color {
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  background: transparent;
+  cursor: pointer;
+}
+
+.chalk-user-colors-scope {
+  /* Reuse .chalk-profile-select but the grid needs a row-aligned
+     height. The native select picks up our padding/font. */
+  height: 28px;
+  padding: 0 var(--chalk-s2);
+}
+
+.chalk-user-colors-delete {
+  background: transparent;
+  color: var(--chalk-fg-dim);
+  border: 1px solid transparent;
+  border-radius: var(--chalk-radius);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: var(--chalk-size-small);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.chalk-user-colors-delete:hover {
+  color: var(--chalk-error);
+  border-color: var(--chalk-error);
+}
+
+.chalk-user-colors-add {
+  align-self: flex-start;
+  margin-top: var(--chalk-s2);
+  background: transparent;
+  color: var(--chalk-fg-bright);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s1) var(--chalk-s3);
+  font: inherit;
+  cursor: pointer;
+}
+.chalk-user-colors-add:hover {
+  border-color: var(--chalk-accent);
 }

@@ -96,6 +96,62 @@ export type PresenceMap = Record<string, string>;
 
 // ---- Reducer state -------------------------------------------------------
 
+// Phase 9.7a: typed view over the server's opaque prefs JSON.
+// Keys with unknown values are tolerated -- the SPA only reads what it
+// knows. Add new keys here as features land. Optional shape means the
+// server's "no row" state maps cleanly to an empty object.
+// Phase 9.7d: typed sub-object for chat display settings. All
+// fields optional; callers resolve defaults via selectChatPrefs().
+// Phase 9.7e: per-user color rule. First-match-wins by handle.
+export interface UserColorRule {
+  // Lowercased on save so matches are case-insensitive at lookup.
+  handle: string;
+  // CSS color. The picker writes #rrggbb hex.
+  color: string;
+  // "all" applies in every channel; "dm" only in 1:1 direct messages.
+  scope: "all" | "dm";
+}
+
+export interface ChatPrefs {
+  showTimestamps?: boolean;       // default true
+  timestampFormat?: "hms" | "hm" | "relative"; // default "hms"
+  compactMode?: boolean;          // default false
+  // Phase 9.7e: per-user color overrides for sender labels in chat.
+  userColors?: UserColorRule[];
+}
+
+export interface UserPrefs {
+  // Phase 9.7b: theme name. "green" = default terminal theme.
+  // Other valid values: "light", "cyberpunk", "solarized-dark".
+  theme?: string;
+  // Phase 9.7d: chat-display sub-prefs.
+  chat?: ChatPrefs;
+  // [extend with more keys in future phases]
+}
+
+// Phase 9.7d: resolved chat prefs (all fields required + defaulted).
+// Components read this shape instead of UserPrefs["chat"] directly so
+// they don't have to deal with undefined at every render.
+export interface ResolvedChatPrefs {
+  showTimestamps: boolean;
+  timestampFormat: "hms" | "hm" | "relative";
+  compactMode: boolean;
+  // Phase 9.7e: defaulted to [] when prefs.chat.userColors is absent.
+  userColors: UserColorRule[];
+}
+
+// selectChatPrefs takes the (possibly sparse) prefs.chat and fills in
+// defaults. Pure function; safe to call inline in render.
+export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs {
+  const c = prefs?.chat ?? {};
+  return {
+    showTimestamps: c.showTimestamps ?? true,
+    timestampFormat: c.timestampFormat ?? "hms",
+    compactMode: c.compactMode ?? false,
+    userColors: Array.isArray(c.userColors) ? c.userColors : [],
+  };
+}
+
 export interface AppState {
   // Connection.
   wsState: ConnectionState;
@@ -134,6 +190,13 @@ export interface AppState {
   // "offline" means we're disconnected (no need to send
   // anything; server handles via WS close).
   myEffectivePresence: "online" | "away" | "offline";
+
+  // Phase 9.7a: user preferences. Loaded via prefs_get on connect;
+  // updated via prefs_set + prefs_changed push.
+  prefs: UserPrefs;
+  // True once prefs_get_ack has arrived at least once this session.
+  // Used to defer "apply theme" until we know what's stored.
+  prefsLoaded: boolean;
   friendsLoaded: boolean;
 
   // UI.
@@ -298,6 +361,10 @@ export const initialState: AppState = {
   // Phase 9.6j:
   myPresenceMode: "auto",
   myEffectivePresence: "offline",
+
+  // Phase 9.7a:
+  prefs: {},
+  prefsLoaded: false,
   createModalOpen: false,
 
   // Phase 09b sub-step 4 auth-flow initial values.
@@ -425,4 +492,7 @@ export type Action =
   // ---- Phase 9.6j: manual presence override ---------------------------
   | { kind: "presence_mode_set"; mode: "auto" | "online" | "away" }
   | { kind: "my_effective_presence_set"; state: "online" | "away" | "offline" }
+  // ---- Phase 9.7a: preferences -----------------------------------
+  | { kind: "prefs_loaded"; prefs: UserPrefs }
+  | { kind: "prefs_merged"; prefs: UserPrefs }
   | AuthAction;
