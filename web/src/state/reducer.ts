@@ -155,6 +155,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         openPanel: null,
+        profileRefreshing: false,
         myInvites: {
           ...state.myInvites,
           createForm: {
@@ -174,6 +175,12 @@ export function reducer(state: AppState, action: Action): AppState {
           pendingSummary: null,
         },
       };
+
+    case "profile_refresh_start":
+      return { ...state, profileRefreshing: true };
+
+    case "profile_refresh_done":
+      return { ...state, profileRefreshing: false };
 
     // ---- Phase 09b sub-step 4/5b: auth-flow actions -------------------
 
@@ -406,6 +413,7 @@ export function reducer(state: AppState, action: Action): AppState {
           pendingSummary: null,
         },
         openPanel: null,
+        profileRefreshing: false,
       };
 
     case "auth_go_register":

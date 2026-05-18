@@ -32,6 +32,10 @@ interface Props {
   onCreateSubmit: () => void;
   onRevoke: (token: string) => void;
   onClearRevokeError: () => void;
+  // Refresh re-fetches the invite list. Reuses the same load action
+  // sequence as the initial open. Optional — if the parent doesn't
+  // wire it, the refresh button doesn't render.
+  onRefresh?: () => void;
 }
 
 export function InvitesPanel({
@@ -41,6 +45,7 @@ export function InvitesPanel({
   onCreateSubmit,
   onRevoke,
   onClearRevokeError,
+  onRefresh,
 }: Props) {
   // Close on Escape.
   useEffect(() => {
@@ -65,15 +70,30 @@ export function InvitesPanel({
       <div class="chalk-modal" data-testid="invites-panel" role="dialog" aria-label="manage invites">
         <header class="chalk-modal-header">
           <h2>invites</h2>
-          <button
-            type="button"
-            class="chalk-modal-close"
-            onClick={onClose}
-            aria-label="close"
-            data-testid="invites-panel-close"
-          >
-            ×
-          </button>
+          <div class="chalk-modal-header-actions">
+            {onRefresh && (
+              <button
+                type="button"
+                class={`chalk-modal-refresh${state.loading ? " chalk-modal-refresh--spinning" : ""}`}
+                onClick={onRefresh}
+                disabled={state.loading}
+                aria-label="refresh"
+                title="refresh"
+                data-testid="invites-panel-refresh"
+              >
+                ↻
+              </button>
+            )}
+            <button
+              type="button"
+              class="chalk-modal-close"
+              onClick={onClose}
+              aria-label="close"
+              data-testid="invites-panel-close"
+            >
+              ×
+            </button>
+          </div>
         </header>
 
         <div class="chalk-modal-body">

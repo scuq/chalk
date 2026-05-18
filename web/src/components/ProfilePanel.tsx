@@ -37,6 +37,11 @@ interface Props {
   onEmailChangeDraft: (value: string) => void;
   onEmailChangeSubmit: () => void;
   onEmailChangeDismiss: () => void;
+  // Refresh re-fetches /api/auth/me so identity fields stay current
+  // (e.g. if you verified an email change in another tab). Optional —
+  // if the parent doesn't wire it, the refresh button doesn't render.
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 export function ProfilePanel({
@@ -46,6 +51,8 @@ export function ProfilePanel({
   onEmailChangeDraft,
   onEmailChangeSubmit,
   onEmailChangeDismiss,
+  onRefresh,
+  refreshing,
 }: Props) {
   // Local UI state: are we in the rotate-recovery sub-view?
   // Local because no other component cares.
@@ -131,15 +138,30 @@ export function ProfilePanel({
       <div class="chalk-modal" data-testid="profile-panel" role="dialog" aria-label="profile">
         <header class="chalk-modal-header">
           <h2>profile</h2>
-          <button
-            type="button"
-            class="chalk-modal-close"
-            onClick={onClose}
-            aria-label="close"
-            data-testid="profile-panel-close"
-          >
-            ×
-          </button>
+          <div class="chalk-modal-header-actions">
+            {onRefresh && (
+              <button
+                type="button"
+                class={`chalk-modal-refresh${refreshing ? " chalk-modal-refresh--spinning" : ""}`}
+                onClick={onRefresh}
+                disabled={refreshing}
+                aria-label="refresh"
+                title="refresh"
+                data-testid="profile-panel-refresh"
+              >
+                ↻
+              </button>
+            )}
+            <button
+              type="button"
+              class="chalk-modal-close"
+              onClick={onClose}
+              aria-label="close"
+              data-testid="profile-panel-close"
+            >
+              ×
+            </button>
+          </div>
         </header>
 
         <div class="chalk-modal-body">

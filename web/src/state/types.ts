@@ -105,6 +105,11 @@ export interface AppState {
   // "profile" → ProfilePanel modal. Mutually exclusive with
   // createModalOpen (only one modal-equivalent at a time).
   openPanel: "invites" | "profile" | null;
+  // Phase 09c-2 refresh: spinner state for the ProfilePanel refresh
+  // button. InvitesPanel's spinner uses myInvites.loading (which is
+  // already there); for profile we need a dedicated flag because
+  // the /me refetch isn't gated on a panel-open transition.
+  profileRefreshing: boolean;
 }
 
 export const initialState: AppState = {
@@ -137,6 +142,7 @@ export const initialState: AppState = {
   myInvites: initialAuthState.myInvites,
   emailChange: initialAuthState.emailChange,
   openPanel: null,
+  profileRefreshing: false,
 };
 
 // ---- Actions -------------------------------------------------------------
@@ -155,4 +161,8 @@ export type Action =
   // Phase 09c-2: in-chat panel toggles.
   | { kind: "open_panel"; panel: "invites" | "profile" }
   | { kind: "close_panel" }
+  // Phase 09c-2: profile-panel refresh (spinner only; the actual
+  // identity update arrives via the existing auth_me_loaded action).
+  | { kind: "profile_refresh_start" }
+  | { kind: "profile_refresh_done" }
   | AuthAction;

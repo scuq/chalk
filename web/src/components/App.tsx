@@ -56,6 +56,7 @@ import { CreateChannelModal } from "./CreateChannelModal";
 import { AuthGate } from "../auth/AuthGate";
 import {
   logout as logoutAPI,
+  fetchMe,
   listMyInvites,
   createInvite as createInviteAPI,
   revokeInvite as revokeInviteAPI,
@@ -291,10 +292,14 @@ export function App() {
   // For simplicity: refetch every open. The endpoint is cheap and
   // the user wants fresh data (someone might have used an invite
   // since they last looked).
-  useEffect(() => {
-    if (state.openPanel !== "invites") return;
-    let cancelled = false;
+  //
+  // Also called by the InvitesPanel refresh button. The cancelled
+  // flag is local to each call; concurrent invocations are tolerated
+  // (last-writer-wins via the reducer; nothing here observes the
+  // ordering across two in-flight fetches, and that's fine).
+  const refreshInvites = () => {
     dispatch({ kind: "invites_load_start" });
+    let cancelled = false;
     listMyInvites()
       .then((items) => {
         if (cancelled) return;
@@ -308,7 +313,39 @@ export function App() {
         dispatch({ kind: "invites_load_failed", message });
       });
     return () => { cancelled = true; };
+  };
+
+  useEffect(() => {
+    if (state.openPanel !== "invites") return;
+    return refreshInvites();
+    // refreshInvites closes over dispatch only, which is stable from
+    // useReducer. We deliberately don't list it as a dep to avoid
+    // re-fetching on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.openPanel]);
+
+  // Phase 09c-2 refresh: ProfilePanel refresh button calls this to
+  // re-fetch /api/auth/me so identity fields stay current (e.g. if
+  // the user verified an email change in another tab). The actual
+  // identity update arrives via the existing auth_me_loaded action;
+  // profile_refresh_start/done just drives the spinner.
+  const refreshProfile = async () => {
+    if (state.profileRefreshing) return;
+    dispatch({ kind: "profile_refresh_start" });
+    try {
+      const me = await fetchMe();
+      if (me) {
+        dispatch({ kind: "auth_me_loaded", me });
+      }
+      // If me is null, the session was lost; we don't kick to login
+      // from here (the WS or the next gated request will). Refresh
+      // just stops spinning.
+    } catch (err) {
+      console.error("profile refresh failed:", err);
+    } finally {
+      dispatch({ kind: "profile_refresh_done" });
+    }
+  };
 
   // Phase 09c-2: create-invite handler. Called from InvitesPanel
   // submit. Reads the draft from state, fires the POST, dispatches
@@ -569,6 +606,7 @@ export function App() {
           onCreateSubmit={onCreateInvite}
           onRevoke={onRevokeInvite}
           onClearRevokeError={() => dispatch({ kind: "invites_revoke_error_cleared" })}
+          onRefresh={refreshInvites}
         />
       )}
 
@@ -582,6 +620,8 @@ export function App() {
           }
           onEmailChangeSubmit={onStartEmailChange}
           onEmailChangeDismiss={() => dispatch({ kind: "email_change_dismissed" })}
+          onRefresh={refreshProfile}
+          refreshing={state.profileRefreshing}
         />
       )}
     </div>
