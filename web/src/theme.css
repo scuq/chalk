@@ -798,6 +798,7 @@ html, body {
 .chalk-button--primary:hover:not(:disabled) {
   background: var(--chalk-fg-bright);
   border-color: var(--chalk-fg-bright);
+  color: var(--chalk-bg);
   /* The base .chalk-button:hover rule sets color to fg-bright, which
      collides with the brighter background on primary and makes the
      label invisible. Re-state the dark text color here so it wins
@@ -806,7 +807,11 @@ html, body {
 }
 
 .chalk-button--primary:disabled {
-  opacity: 0.4;
+  opacity: 1;
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg-muted);
+  border-color: var(--chalk-border);
+  cursor: not-allowed;
 }
 
 .chalk-recovery-words {
