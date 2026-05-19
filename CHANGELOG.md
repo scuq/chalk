@@ -4,6 +4,9 @@ All notable changes to chalk are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **License**: relicensed chalk from MIT to GPL-3.0-or-later. The sole copyright holder (scuq) is the only contributor of substantive code through this date; relicense was performed to align with the GPL-3.0 license of @wireapp/core-crypto, the MLS library introduced in phase 11a. See LICENSE for the full text. Past commits remain available under MIT (their original terms); all releases from phase 11a onward are GPL-3.0-or-later.
+
 ### Added
 - Phase 09d (admin moderation): admin user is bootstrapped at chalkd startup via `CHALK_ADMIN_USERNAME` + `CHALK_ADMIN_EMAIL`; a one-time `?admin_bootstrap=<token>` URL is printed to stderr for first-run passkey enrollment in the browser. Once enrolled, the admin reaches a `/admin` panel from the StatusBar menu. The panel has two tabs: **users** (paginated, searchable list with hover-reveal block / unblock / soft-delete / purge buttons; status pills for active/blocked/deleted/admin) and **blacklist** (add/list/remove blacklisted emails). Purge auto-blacklists the user's email with reason `purged_user`. Block + soft-delete kick all active WebSocket sessions for the affected user via the `Hub.CloseConnsForUser` plumbing. Migration 0019 adds `blocked_at` + `deleted_at` columns plus the `admin_delete_guard` trigger that refuses direct DELETE on admin rows.
 - Phase 09c (invites + profile + email-change verification): invite-based registration with `?invite=<token>` URLs, ProfilePanel for viewing your own session/identity, in-chat InvitesPanel for the admin to mint and revoke invites, email-change with `?verify_email=<token>` verification.

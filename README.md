@@ -57,4 +57,6 @@ See [docs/architecture.md](docs/architecture.md). One-line summary:
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+GPL-3.0-or-later — see [LICENSE](LICENSE).
+
+chalk was previously distributed under the MIT License through the 9.x phase series; the project was relicensed in phase 11a by the sole copyright holder to align with @wireapp/core-crypto.
