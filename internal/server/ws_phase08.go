@@ -44,6 +44,8 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 		ID:        c.ID.String(),
 		Name:      c.Name,
 		IsDM:      c.IsDM,
+		// Phase 11b-2: surface IsMLS so the SPA knows to encrypt/decrypt.
+		IsMLS:     c.IsMLS,
 		CreatedBy: createdBy,
 		CreatedAt: c.CreatedAt.UnixMilli(),
 		MemberIDs: memberIDs,
@@ -143,6 +145,10 @@ func (h *WSHandler) handleCreateChannel(
 	created, err := h.store.CreateChannel(ctx, store.CreateChannelInput{
 		Name:      strings.TrimSpace(p.Name),
 		IsDM:      p.IsDM,
+		// Phase 11b-2 cutover policy: all new DMs are MLS, all new
+		// non-DMs are plaintext. Client doesn't get to choose -- the
+		// server alone decides which channels are encrypted.
+		IsMLS:     p.IsDM,
 		CreatedBy: callerID,
 		MemberIDs: others,
 	})

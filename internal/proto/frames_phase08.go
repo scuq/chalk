@@ -39,6 +39,9 @@ type ChannelSummary struct {
 	ID         string   `json:"id"`
 	Name       string   `json:"name"`
 	IsDM       bool     `json:"is_dm"`
+	// Phase 11b-2: true iff this channel is MLS-encrypted. SPA uses
+	// this to decide whether to encrypt sends and decrypt receives.
+	IsMLS      bool     `json:"is_mls,omitempty"`
 	CreatedBy  string   `json:"created_by"` // user_id; empty for system channels
 	CreatedAt  int64    `json:"created_at"` // unix-millis
 	MemberIDs  []string `json:"member_ids"` // small; included in summary for DM-name rendering

@@ -16,6 +16,11 @@
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
+  // Phase 11b-2: MLS welcome + commit_bundle
+  TypeMlsWelcome,
+  TypeMlsWelcomeAck,
+  ContentTypeMlsCiphertext,
+  type MlsWelcomePayload,
   TypeSend,
   TypeFetchThread,
   TypeFetchThreadAck,
@@ -127,6 +132,9 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
     id: w.id,
     name: w.name,
     isDM: w.is_dm,
+    // Phase 11b-2: surface MLS flag. SPA branches on this for
+    // encrypted-send / decrypted-receive routing.
+    isMls: w.is_mls ?? false,
     createdBy: w.created_by,
     createdAt: new Date(w.created_at),
     memberIDs: w.member_ids ?? [],
@@ -170,6 +178,16 @@ export function App() {
     initialState
   );
   const clientRef = useRef<WSClient | null>(null);
+
+  // Phase 11b-2 fix5: WS callbacks (onFrame, etc.) capture the
+  // handleFrame closure ONCE at WSClient construction, before
+  // state.user has been populated by the welcome event. Reading
+  // state.user from those closures returns null forever. Refs let
+  // us read the live value without re-creating the client.
+  const userRef = useRef(state.user);
+  userRef.current = state.user;
+  const channelsRef = useRef(state.channels);
+  channelsRef.current = state.channels;
 
   // Track which channel we've already fired fetch_history for. The
   // historyLoaded state flag covers ACK; this ref covers REQUEST so
@@ -230,24 +248,135 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.authStage]);
 
+  // Phase 11b-2: decrypt helper for incoming MLS messages.
+  // Lives here so it closes over `state.user` for the input shape.
+  async function decryptIncomingMls(wire: MessagePayload): Promise<string> {
+    const { decryptForGroup, base64ToBytes } = await import("../mls/groups");
+    const ciphertext = base64ToBytes(wire.body);
+    // Group ID is derived from the channel UUID.
+    const groupIDHex = wire.channel_id.replace(/-/g, "");
+    const groupID = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) {
+      groupID[i] = parseInt(groupIDHex.slice(i * 2, i * 2 + 2), 16);
+    }
+    // Phase 11b-2 fix5: read user via ref so stale closures don't see null.
+    const u = userRef.current;
+    if (!u) throw new Error("no user (stale closure?)");
+    const plaintext = await decryptForGroup(groupID, ciphertext, {
+      userID: u.id,
+      deviceID: u.device,
+      databaseKey: getDeviceMlsKey(u.id, u.device),
+    });
+    return new TextDecoder().decode(plaintext);
+  }
+
+  // Phase 11b-2 fix6: decrypt a batch of MLS messages from a
+  // history/thread fetch. Returns the messages with bodies decrypted
+  // in place; non-MLS messages pass through unchanged. Decryption
+  // failures yield a "[unable to decrypt]" placeholder.
+  async function decryptBatch(wires: MessagePayload[]): Promise<MessagePayload[]> {
+    return Promise.all(
+      wires.map(async (w) => {
+        if (w.content_type !== ContentTypeMlsCiphertext) return w;
+        try {
+          const decrypted = await decryptIncomingMls(w);
+          return { ...w, body: decrypted };
+        } catch (err) {
+          console.warn("[chalk] history decrypt failed:", err);
+          return { ...w, body: "[unable to decrypt]" };
+        }
+      }),
+    );
+  }
+
+  // Phase 11a: device-local MLS DB key (32 random bytes) per
+  // (userID, deviceID). Stored in localStorage; generated on first
+  // use. Same accessor session.ts uses for KP publishing.
+  function getDeviceMlsKey(userID: string, deviceID: string): Uint8Array {
+    const k = `chalk.mls.dbkey.${userID}.${deviceID}`;
+    const existing = localStorage.getItem(k);
+    if (existing) {
+      const bytes = new Uint8Array(32);
+      const s = atob(existing);
+      for (let i = 0; i < 32; i++) bytes[i] = s.charCodeAt(i);
+      return bytes;
+    }
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    let str = "";
+    for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+    localStorage.setItem(k, btoa(str));
+    return bytes;
+  }
+
   function handleFrame(f: Frame) {
     switch (f.type) {
       case TypeFetchThreadAck: {
         // Phase 10c: server returned the replies for a thread.
+        // Phase 11b-2 fix6: decrypt MLS rows before assembling.
         const p = f.payload as FetchThreadAckPayload;
-        const msgs = (p.messages ?? []).map(wireToMessage);
-        // Sort oldest-first for the panel's rendering convention.
-        msgs.sort((a, b) => a.seq - b.seq);
-        dispatch({
-          kind: "thread_loaded",
-          threadID: p.thread_id,
-          messages: msgs,
+        decryptBatch(p.messages ?? []).then((wires) => {
+          const msgs = wires.map(wireToMessage);
+          msgs.sort((a, b) => a.seq - b.seq);
+          dispatch({
+            kind: "thread_loaded",
+            threadID: p.thread_id,
+            messages: msgs,
+          });
         });
         break;
       }
       case TypeMessage: {
-        const m = wireToMessage(f.payload as MessagePayload);
-        dispatch({ kind: "message", message: m });
+        const wire = f.payload as MessagePayload;
+        // Phase 11b-2: MLS rows arrive with body=base64(ciphertext)
+        // and content_type="mls_ciphertext". Decrypt before the
+        // reducer ever sees the row. The reducer + UI always see
+        // plaintext bodies (or a "[unable to decrypt]" placeholder).
+        if (wire.content_type === ContentTypeMlsCiphertext) {
+          decryptIncomingMls(wire).then((decrypted) => {
+            const m = wireToMessage({ ...wire, body: decrypted });
+            dispatch({ kind: "message", message: m });
+          }).catch((err) => {
+            console.warn("[chalk] decrypt failed:", err);
+            const m = wireToMessage({ ...wire, body: "[unable to decrypt]" });
+            dispatch({ kind: "message", message: m });
+          });
+        } else {
+          const m = wireToMessage(wire);
+          dispatch({ kind: "message", message: m });
+        }
+        break;
+      }
+      case TypeMlsWelcome: {
+        // Phase 11b-2 (fix3): peer added us to an MLS group. Process
+        // the welcome locally, then ack the server. The group ID is
+        // derived from channel_id (deterministic), not from the
+        // welcome return value (broken getter in 9.3.4).
+        const p = f.payload as MlsWelcomePayload;
+        (async () => {
+          try {
+            // Phase 11b-2 fix5: read user via ref so we see the live
+            // value, not the closure-captured null.
+            const u = userRef.current;
+            if (!u) throw new Error("no user (stale closure?)");
+            const { processWelcome, base64ToBytes } = await import("../mls/groups");
+            const welcomeBytes = base64ToBytes(p.welcome);
+            await processWelcome(welcomeBytes, {
+              userID: u.id,
+              deviceID: u.device,
+              databaseKey: getDeviceMlsKey(u.id, u.device),
+            });
+            console.log("[chalk] MLS welcome processed for channel:", p.channel_id);
+            clientRef.current?.send(TypeMlsWelcomeAck, {
+              channel_id: p.channel_id, ok: true,
+            });
+          } catch (err) {
+            console.warn("[chalk] MLS welcome processing failed:", err);
+            clientRef.current?.send(TypeMlsWelcomeAck, {
+              channel_id: p.channel_id, ok: false,
+            });
+          }
+        })();
         break;
       }
       // Phase 9.7a: preferences round-trip.
@@ -284,10 +413,16 @@ export function App() {
       }
       case TypeFetchHistoryAck: {
         const p = f.payload as FetchHistoryAckPayload;
-        dispatch({
-          kind: "history_loaded",
-          channelID: p.channel_id,
-          messages: (p.messages ?? []).map(wireToMessage),
+        // Phase 11b-2 fix6: decrypt MLS rows before mapping to domain
+        // shape. The async path means a brief flicker is possible
+        // (history arrives, decrypts, then renders) -- acceptable
+        // for now; cleaner UX is a 11c polish.
+        decryptBatch(p.messages ?? []).then((wires) => {
+          dispatch({
+            kind: "history_loaded",
+            channelID: p.channel_id,
+            messages: wires.map(wireToMessage),
+          });
         });
         break;
       }
@@ -690,7 +825,7 @@ export function App() {
 
   // --- Event handlers --------------------------------------------------
 
-  const onSend = (body: string, parentID?: string) => {
+  const onSend = async (body: string, parentID?: string) => {
     const c = clientRef.current;
     if (!c || !c.isOpen()) return;
     const cid = state.activeChannelID;
@@ -744,6 +879,54 @@ export function App() {
       },
     });
 
+    // Phase 11b-2: encrypt for MLS DMs. Plaintext channels: send
+    // body as-is (legacy path). MLS channels: ensure the group
+    // exists (bringing it up if first send), encrypt the body, send
+    // base64 ciphertext with content_type="mls_ciphertext".
+    // Phase 11b-2 fix5: route channel + user lookups through refs.
+    const channel = channelsRef.current[cid];
+    if (channel?.isMls) {
+      (async () => {
+        try {
+          const u = userRef.current;
+          if (!u) throw new Error("no user (stale closure?)");
+          const {
+            ensureGroupForDM, encryptForGroup, bytesToBase64,
+          } = await import("../mls/groups");
+          const input = {
+            userID: u.id,
+            deviceID: u.device,
+            databaseKey: getDeviceMlsKey(u.id, u.device),
+          };
+          // Find the peer (only "other" member of the DM).
+          const peerID = (channel.members ?? []).find(
+            (m: { userID: string }) => m.userID !== u.id,
+          )?.userID;
+          if (!peerID) {
+            throw new Error("DM has no peer (only one member?)");
+          }
+          const groupID = await ensureGroupForDM(
+            cid, peerID, input, {
+              request: (t, p) => clientRef.current!.request(t, p),
+            },
+          );
+          const plaintext = new TextEncoder().encode(body);
+          const ciphertext = await encryptForGroup(groupID, plaintext, input);
+          const payload: SendPayload = {
+            channel_id: cid,
+            body: bytesToBase64(ciphertext),
+            content_type: "mls_ciphertext",
+          };
+          if (parentID) payload.parent_id = parentID;
+          c.send(TypeSend, payload);
+        } catch (err) {
+          console.warn("[chalk] MLS encrypted send failed:", err);
+          // Surface to the user via console for now; a banner is
+          // a polish pass.
+        }
+      })();
+      return;
+    }
     const payload: SendPayload = { channel_id: cid, body };
     if (parentID) payload.parent_id = parentID;
     c.send(TypeSend, payload);

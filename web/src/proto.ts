@@ -42,6 +42,8 @@ export interface SendPayload {
   // Phase 10a: optional parent message ID for thread replies. When
   // set, server validates the parent and computes thread_id.
   parent_id?: string;
+  /** Phase 11b-2: "mls_ciphertext" for encrypted sends; omit for plaintext. */
+  content_type?: string;
 }
 
 export interface MessagePayload {
@@ -64,6 +66,8 @@ export interface MessagePayload {
   // snippet. Both undefined when there's no thread or no replies.
   last_reply_sender_user_id?: string;
   last_reply_body?: string;
+  /** Phase 11b-2: "application" or "mls_ciphertext". Empty = "application". */
+  content_type?: string;
 }
 
 export interface ErrorPayload {
@@ -178,6 +182,8 @@ export interface ChannelSummaryWire {
   id: string;
   name: string;
   is_dm: boolean;
+  /** Phase 11b-2: true iff channel uses MLS encryption. */
+  is_mls?: boolean;
   created_by: string;
   created_at: number; // unix-millis
   member_ids: string[];
@@ -340,4 +346,47 @@ export interface KeyPackageCountPayload {}
 
 export interface KeyPackageCountAckPayload {
   count: number;
+}
+
+// ---- Phase 11b-2: MLS commit_bundle + welcome wire ------------------
+
+export const TypeMlsCommitBundle    = "mls_commit_bundle";
+export const TypeMlsCommitBundleAck = "mls_commit_bundle_ack";
+export const TypeMlsWelcome         = "mls_welcome";
+export const TypeMlsWelcomeAck      = "mls_welcome_ack";
+
+export const ContentTypeApplication   = "application";
+export const ContentTypeMlsCiphertext = "mls_ciphertext";
+
+export interface WelcomeFor {
+  user_id: string;
+  /** base64-encoded TLS-serialized Welcome bytes */
+  welcome: string;
+}
+
+export interface MlsCommitBundlePayload {
+  channel_id: string;
+  /** base64-encoded opaque group ID */
+  mls_group_id: string;
+  /** base64-encoded TLS-serialized Commit; optional for group-creation bundles */
+  commit?: string;
+  welcome_for?: WelcomeFor[];
+  epoch: number;
+}
+
+export interface MlsCommitBundleAckPayload {
+  channel_id: string;
+  delivered: number;
+}
+
+export interface MlsWelcomePayload {
+  channel_id: string;
+  mls_group_id: string;
+  welcome: string;
+  sender_user_id: string;
+}
+
+export interface MlsWelcomeAckPayload {
+  channel_id: string;
+  ok: boolean;
 }
