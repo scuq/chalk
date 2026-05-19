@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -332,6 +333,13 @@ func (h *WSHandler) handleFetchHistory(
 		if m.LastReplySenderUserID != nil {
 			lastReplySender = m.LastReplySenderUserID.String()
 		}
+		// Phase 11b-1: MLS rows ship ciphertext as base64 over the
+		// wire so the SPA can decode and feed to CoreCrypto. Plaintext
+		// rows keep the existing string(bytes) path.
+		bodyStr := string(m.Ciphertext)
+		if m.ContentType == proto.ContentTypeMlsCiphertext {
+			bodyStr = base64.StdEncoding.EncodeToString(m.Ciphertext)
+		}
 		out = append(out, proto.MessagePayload{
 			ID:                    m.ID.String(),
 			ChannelID:             m.ChannelID.String(),
@@ -339,13 +347,16 @@ func (h *WSHandler) handleFetchHistory(
 			Sender:                senderStr,
 			SenderUserID:          senderUserStr,
 			TS:                    m.TS.UnixMilli(),
-			Body:                  string(m.Ciphertext),
+			Body:                  bodyStr,
 			ParentID:              parentStr,
 			ThreadID:              threadStr,
 			ReplyCount:            m.ReplyCount,
 			LastReplySeq:          m.LastReplySeq,
 			LastReplySenderUserID: lastReplySender,
 			LastReplyBody:         string(m.LastReplyBody),
+			// Phase 11b-1: surface row's content_type so the SPA can
+			// label encrypted rows.
+			ContentType: m.ContentType,
 		})
 	}
 
@@ -490,6 +501,11 @@ func (h *WSHandler) handleFetchThread(
 		if m.ThreadID != nil {
 			threadStr = m.ThreadID.String()
 		}
+		// Phase 11b-1: same MLS body-encoding rule as the history path.
+		tBody := string(m.Ciphertext)
+		if m.ContentType == proto.ContentTypeMlsCiphertext {
+			tBody = base64.StdEncoding.EncodeToString(m.Ciphertext)
+		}
 		out = append(out, proto.MessagePayload{
 			ID:           m.ID.String(),
 			ChannelID:    m.ChannelID.String(),
@@ -497,9 +513,10 @@ func (h *WSHandler) handleFetchThread(
 			Sender:       senderStr,
 			SenderUserID: senderUserStr,
 			TS:           m.TS.UnixMilli(),
-			Body:         string(m.Ciphertext),
+			Body:         tBody,
 			ParentID:     parentStr,
 			ThreadID:     threadStr,
+			ContentType:  m.ContentType,
 		})
 	}
 	ack, _ := proto.NewFrame(proto.TypeFetchThreadAck, f.Ref, proto.FetchThreadAckPayload{

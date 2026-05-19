@@ -216,6 +216,15 @@ export function App() {
       onFrame: (f: Frame) => handleFrame(f),
     });
     clientRef.current = client;
+    // Phase 11b-1 debug: expose the live client on window.__chalk so
+    // DevTools can fire WS requests during MLS verification. Pure
+    // debug surface; remove (or gate behind a build flag) before we
+    // ever ship to a non-dev environment.
+    (window as any).__chalk = {
+      get client() { return clientRef.current; },
+      get userID() { return state.user?.id; },
+      get deviceID() { return state.user?.device; },
+    };
     client.start();
     return () => client.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps

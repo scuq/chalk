@@ -298,8 +298,9 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		        m.parent_id, m.thread_id,
 		        COALESCE(r.cnt, 0) AS reply_count,
 		        COALESCE(r.last_seq, 0) AS last_reply_seq,
-		        lr_dev.user_id AS last_reply_sender_user_id,
-		        lr.ciphertext  AS last_reply_body
+		        lr_dev.user_id   AS last_reply_sender_user_id,
+		        lr.ciphertext    AS last_reply_body,
+		        lr.content_type  AS last_reply_content_type
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
 		   LEFT JOIN (
@@ -311,7 +312,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		      GROUP BY thread_id
 		   ) r ON r.thread_id = m.id
 		   LEFT JOIN LATERAL (
-		     SELECT sender_device_id, ciphertext
+		     SELECT sender_device_id, ciphertext, content_type
 		       FROM messages
 		      WHERE thread_id = m.id AND parent_id IS NOT NULL
 		      ORDER BY seq DESC
@@ -339,13 +340,23 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		var lastReplySeq int64
 		var lastReplySender *uuid.UUID
 		var lastReplyBody []byte
+		// Phase 11b-1: capture the latest reply's content_type so we
+		// can blank the preview body for MLS rows (server can't decrypt
+		// and the bytes would render as garbage).
+		var lastReplyContentType *string
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &senderDev, &senderUser,
 			&m.TS, &m.Seq, &m.ContentType, &m.Ciphertext,
 			&parentID, &threadID, &replyCount, &lastReplySeq,
-			&lastReplySender, &lastReplyBody,
+			&lastReplySender, &lastReplyBody, &lastReplyContentType,
 		); err != nil {
 			return nil, err
+		}
+		// Phase 11b-1: blank the body when the preview row is MLS.
+		// The SPA will render "sender: ···" instead of leaking the
+		// ciphertext bytes into the preview line.
+		if lastReplyContentType != nil && *lastReplyContentType == "mls_ciphertext" {
+			lastReplyBody = nil
 		}
 		if senderDev != nil {
 			m.SenderDeviceID = *senderDev

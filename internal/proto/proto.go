@@ -148,6 +148,13 @@ type SendPayload struct {
 	// (parent.thread_id if non-nil, else parent.id) and validates that
 	// the parent exists in the same channel.
 	ParentID string `json:"parent_id,omitempty"`
+	// Phase 11b-1: content_type tells the server how to interpret Body.
+	// Omitted/empty -> "application" (legacy plaintext).
+	//                  Body is treated as UTF-8 text, stored as bytes.
+	// "mls_ciphertext" -> Body is base64-encoded ciphertext bytes.
+	//                     Server decodes b64, stores raw bytes, never
+	//                     attempts to interpret them.
+	ContentType string `json:"content_type,omitempty"`
 }
 
 // MessagePayload is what the server pushes to peers. id and ts are
@@ -188,6 +195,10 @@ type MessagePayload struct {
 	// been purged).
 	LastReplySenderUserID string `json:"last_reply_sender_user_id,omitempty"`
 	LastReplyBody         string `json:"last_reply_body,omitempty"`
+	// Phase 11b-1: content_type so the client can detect encrypted rows.
+	// "application" (or empty) = plaintext; "mls_ciphertext" = MLS bytes.
+	ContentType string `json:"content_type,omitempty"`
+
 }
 
 // ErrorPayload is sent when the server can't process a request. Code is a
@@ -310,4 +321,78 @@ type KeyPackageCountAckPayload struct {
 const (
 	ErrCodeKPClientIDMismatch = "kp_client_id_mismatch"
 	ErrCodeKPMalformed        = "kp_malformed"
+)
+
+// ---- Phase 11b-1: MLS commit/welcome wire ---------------------------
+
+const (
+	// mls_commit_bundle: client uploads a Commit + Welcome bundle
+	// after creating or modifying an MLS group. Server upserts the
+	// mls_groups row and fans each Welcome to its addressee's
+	// connected devices. For 11b-1, offline addressees lose the
+	// welcome silently; later phases can buffer.
+	TypeMlsCommitBundle    = "mls_commit_bundle"
+	TypeMlsCommitBundleAck = "mls_commit_bundle_ack"
+
+	// mls_welcome: server -> client push delivering a welcome to a
+	// newly-added member. Includes the channel_id so the client can
+	// associate the group with a channel, and the sender so the
+	// recipient knows who added them.
+	TypeMlsWelcome    = "mls_welcome"
+	TypeMlsWelcomeAck = "mls_welcome_ack"
+)
+
+// Content-type vocabulary the server understands. Stored in
+// messages.content_type and surfaced to clients via MessagePayload.
+const (
+	ContentTypeApplication   = "application"     // plaintext (legacy default)
+	ContentTypeMlsCiphertext = "mls_ciphertext"  // MLS-encrypted bytes
+)
+
+// WelcomeFor is one (recipient, welcome bytes) pair in an
+// mls_commit_bundle. The recipient is identified by user_id; the
+// server pushes to all of that user's connected devices.
+type WelcomeFor struct {
+	UserID  string `json:"user_id"`
+	// Welcome is base64-encoded TLS-serialized Welcome bytes.
+	Welcome string `json:"welcome"`
+}
+
+type MlsCommitBundlePayload struct {
+	ChannelID  string       `json:"channel_id"`
+	// MlsGroupID is base64-encoded opaque bytes from CoreCrypto.
+	MlsGroupID string       `json:"mls_group_id"`
+	// Commit is base64-encoded TLS-serialized Commit bytes. Optional
+	// for now (a group-creation bundle has no commit_to_others, just
+	// Welcomes for the initial members); future epoch bumps will set
+	// it.
+	Commit     string       `json:"commit,omitempty"`
+	WelcomeFor []WelcomeFor `json:"welcome_for,omitempty"`
+	Epoch      int64        `json:"epoch"`
+}
+
+type MlsCommitBundleAckPayload struct {
+	ChannelID string `json:"channel_id"`
+	// Delivered is how many welcomes were fan'd to at least one
+	// connected device of the recipient. Welcomes for offline users
+	// count as 0.
+	Delivered int    `json:"delivered"`
+}
+
+type MlsWelcomePayload struct {
+	ChannelID     string `json:"channel_id"`
+	MlsGroupID    string `json:"mls_group_id"`
+	Welcome       string `json:"welcome"`
+	SenderUserID  string `json:"sender_user_id"`
+}
+
+type MlsWelcomeAckPayload struct {
+	ChannelID string `json:"channel_id"`
+	OK        bool   `json:"ok"`
+}
+
+// Phase 11b-1 errors.
+const (
+	ErrCodeMlsBadBundle   = "mls_bad_bundle"
+	ErrCodeMlsNotMember   = "mls_not_member"
 )
