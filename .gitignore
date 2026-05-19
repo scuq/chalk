@@ -43,6 +43,7 @@ Thumbs.db
 
 # Backup files from in-place patch scripts
 *.bak-*
+*.pre-*
 
 # Local one-off directory dumps
 /tree.txt.bootstrap/
