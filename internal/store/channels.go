@@ -297,7 +297,9 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		        m.ts, m.seq, m.content_type, m.ciphertext,
 		        m.parent_id, m.thread_id,
 		        COALESCE(r.cnt, 0) AS reply_count,
-		        COALESCE(r.last_seq, 0) AS last_reply_seq
+		        COALESCE(r.last_seq, 0) AS last_reply_seq,
+		        lr_dev.user_id AS last_reply_sender_user_id,
+		        lr.ciphertext  AS last_reply_body
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
 		   LEFT JOIN (
@@ -308,6 +310,14 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		      WHERE parent_id IS NOT NULL
 		      GROUP BY thread_id
 		   ) r ON r.thread_id = m.id
+		   LEFT JOIN LATERAL (
+		     SELECT sender_device_id, ciphertext
+		       FROM messages
+		      WHERE thread_id = m.id AND parent_id IS NOT NULL
+		      ORDER BY seq DESC
+		      LIMIT 1
+		   ) lr ON true
+		   LEFT JOIN devices lr_dev ON lr_dev.id = lr.sender_device_id
 		  WHERE m.channel_id = $1 AND m.seq < $2
 		  ORDER BY m.seq DESC
 		  LIMIT $3`,
@@ -327,10 +337,13 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		var threadID *uuid.UUID
 		var replyCount int64
 		var lastReplySeq int64
+		var lastReplySender *uuid.UUID
+		var lastReplyBody []byte
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &senderDev, &senderUser,
 			&m.TS, &m.Seq, &m.ContentType, &m.Ciphertext,
 			&parentID, &threadID, &replyCount, &lastReplySeq,
+			&lastReplySender, &lastReplyBody,
 		); err != nil {
 			return nil, err
 		}
@@ -344,6 +357,8 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		m.ThreadID = threadID
 		m.ReplyCount = replyCount
 		m.LastReplySeq = lastReplySeq
+		m.LastReplySenderUserID = lastReplySender
+		m.LastReplyBody = lastReplyBody
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {

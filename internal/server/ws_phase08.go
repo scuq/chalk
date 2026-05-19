@@ -325,18 +325,27 @@ func (h *WSHandler) handleFetchHistory(
 		if m.ThreadID != nil {
 			threadStr = m.ThreadID.String()
 		}
+		// Phase 10e: resolve the preview sender (may be nil if the
+		// thread has no replies; LastReplyBody is the empty string in
+		// that case, which the client treats as "no preview").
+		lastReplySender := ""
+		if m.LastReplySenderUserID != nil {
+			lastReplySender = m.LastReplySenderUserID.String()
+		}
 		out = append(out, proto.MessagePayload{
-			ID:           m.ID.String(),
-			ChannelID:    m.ChannelID.String(),
-			Seq:          m.Seq,
-			Sender:       senderStr,
-			SenderUserID: senderUserStr,
-			TS:           m.TS.UnixMilli(),
-			Body:         string(m.Ciphertext),
-			ParentID:     parentStr,
-			ThreadID:     threadStr,
-			ReplyCount:   m.ReplyCount,
-			LastReplySeq: m.LastReplySeq,
+			ID:                    m.ID.String(),
+			ChannelID:             m.ChannelID.String(),
+			Seq:                   m.Seq,
+			Sender:                senderStr,
+			SenderUserID:          senderUserStr,
+			TS:                    m.TS.UnixMilli(),
+			Body:                  string(m.Ciphertext),
+			ParentID:              parentStr,
+			ThreadID:              threadStr,
+			ReplyCount:            m.ReplyCount,
+			LastReplySeq:          m.LastReplySeq,
+			LastReplySenderUserID: lastReplySender,
+			LastReplyBody:         string(m.LastReplyBody),
 		})
 	}
 

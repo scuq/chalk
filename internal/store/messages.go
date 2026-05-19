@@ -42,6 +42,12 @@ type Message struct {
 	// rules as ReplyCount. Used client-side to compute "unread" badges
 	// (a reply is unread when last_reply_seq > thread_seen[tid]).
 	LastReplySeq    int64
+	// Phase 10e: preview of the most recent reply. Same population
+	// rules. *uuid.UUID because the device's user might have been
+	// purged; in that case sender_user_id is nil but the body still
+	// got stored.
+	LastReplySenderUserID *uuid.UUID
+	LastReplyBody         []byte
 }
 
 // InsertMessage persists a message and allocates a per-channel sequence

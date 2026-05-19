@@ -50,6 +50,9 @@ export interface Message {
   replyCount?: number;
   // Phase 10d: highest seq among replies. Used for unread badge.
   lastReplySeq?: number;
+  // Phase 10e: preview of the most recent reply.
+  lastReplySenderUserID?: string;
+  lastReplyBody?: string;
 }
 
 // phase 08c: ChannelMember pairs a user_id with their handle.

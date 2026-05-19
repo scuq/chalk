@@ -60,6 +60,10 @@ export interface MessagePayload {
   reply_count?: number;
   // Phase 10d: highest seq among replies; used for unread badge.
   last_reply_seq?: number;
+  // Phase 10e: preview of the most recent reply, for the indicator
+  // snippet. Both undefined when there's no thread or no replies.
+  last_reply_sender_user_id?: string;
+  last_reply_body?: string;
 }
 
 export interface ErrorPayload {

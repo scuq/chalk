@@ -154,6 +154,19 @@ export function reducer(state: AppState, action: Action): AppState {
             (max, r) => (r.seq > max ? r.seq : max),
             0,
           );
+          // Phase 10e: also update the preview fields so the snippet
+          // beneath the indicator appears immediately for the new
+          // reply. We could use the OLD max-seq reply (if there is
+          // one) when the new arrival isn't actually the newest --
+          // but our merging ensures replies arrive in seq order in
+          // practice, and the optimistic-then-server replacement
+          // (same id, server overwrites) keeps things consistent.
+          //
+          // We pick the reply with the highest seq in the
+          // (post-merge) thread message list to be safe.
+          const tailReply = updatedReplies.length > 0
+            ? updatedReplies[updatedReplies.length - 1]
+            : m;
           liveBumpMessages = {
             ...nextMessages,
             [parentChannel]: channelList.map((x) =>
@@ -162,6 +175,8 @@ export function reducer(state: AppState, action: Action): AppState {
                     ...x,
                     replyCount: newReplyCount,
                     lastReplySeq: newLastSeq,
+                    lastReplySenderUserID: tailReply.senderUserID || undefined,
+                    lastReplyBody: tailReply.body || undefined,
                   }
                 : x,
             ),

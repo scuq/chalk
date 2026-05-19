@@ -155,6 +155,12 @@ function wireToMessage(w: MessagePayload): Message {
     replyCount: w.reply_count ?? 0,
     // Phase 10d:
     lastReplySeq: w.last_reply_seq ?? 0,
+    // Phase 10e: preview snippet from server (history fetches only;
+    // live pushes don't carry these because each push IS a single
+    // reply, not a thread-head summary -- the reducer's live-bump
+    // branch fills the parent's preview from the reply's own body).
+    lastReplySenderUserID: w.last_reply_sender_user_id || undefined,
+    lastReplyBody: w.last_reply_body || undefined,
   };
 }
 

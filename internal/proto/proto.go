@@ -182,6 +182,12 @@ type MessagePayload struct {
 	// clients to compute "unread" badges when compared against a
 	// locally-stored "last seen" seq per thread.
 	LastReplySeq int64  `json:"last_reply_seq,omitempty"`
+	// Phase 10e: preview of the most recent reply, used to render
+	// a one-line snippet beneath the indicator. Both empty when the
+	// message isn't a thread head (or its last reply's sender has
+	// been purged).
+	LastReplySenderUserID string `json:"last_reply_sender_user_id,omitempty"`
+	LastReplyBody         string `json:"last_reply_body,omitempty"`
 }
 
 // ErrorPayload is sent when the server can't process a request. Code is a

@@ -2698,3 +2698,62 @@ html, body {
   font-weight: 500;
   letter-spacing: 0.02em;
 }
+
+/* ============================================================
+   Phase 10e: thread preview row
+   ============================================================
+   Sits directly beneath the indicator with the same left indent.
+   One line, ellipsis-truncated. Subtle by default (fg-dim);
+   clicking it opens the thread.
+   ============================================================ */
+
+.chalk-message-thread-preview {
+  align-self: flex-start;
+  /* Phase 10e-tweak: indent past the indicator's "↳ N " prefix so
+     the preview body aligns roughly under the WORD "replies".
+     Fixed-px offset to avoid coupling with the indicator's ch unit
+     (which would shift when font sizes diverge). */
+  margin-left: calc(var(--chalk-s5) + 28px);
+  margin-top: -2px;       /* tuck up against the indicator */
+  margin-bottom: var(--chalk-s1);
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  /* Phase 10e-tweak: smaller + italic. The italic marks the line as
+     meta-context (preview of another message) so it doesn't read
+     as a primary message row. */
+  font-size: 11px;
+  font-style: italic;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  /* single line with ellipsis. max-width keeps it from overflowing
+     past the message column on very wide threads. */
+  max-width: min(60ch, 80%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+.chalk-message-thread-preview:hover {
+  color: var(--chalk-fg);
+}
+.chalk-message-thread-preview:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.chalk-message-thread-preview-sender {
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-message-thread-preview-body {
+  /* inherits color from the parent button */
+}
+
+/* Compact mode: same shrink as the indicator. */
+.chalk-messages--compact .chalk-message-thread-preview {
+  margin-bottom: 0;
+}

@@ -196,27 +196,52 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
               that are themselves thread heads (no parentID) AND that
               have at least one reply. Clicking opens the thread. */}
           {!m.parentID && (m.replyCount ?? 0) > 0 && onOpenThread && (() => {
-            // Phase 10d: compute unread count for this thread.
-            // Server's lastReplySeq is the highest reply seq.
-            // threadSeen[id] is the user's last "read" seq.
-            // unread is a boolean signal here (we don't know how many
-            // unread there are without enumerating replies, which we
-            // may not have in cache). Show " · new" when unread.
+            // Phase 10d: compute unread state.
             const seen = threadSeen?.[m.id] ?? 0;
             const lastSeq = m.lastReplySeq ?? 0;
             const hasUnread = lastSeq > seen;
+            // Phase 10e: resolve the last-reply preview's sender label.
+            // Mirrors the main row's "you" logic: if the sender_user_id
+            // matches ownUserID, show "you"; else look up in members.
+            let previewSenderLabel: string | null = null;
+            if (m.lastReplyBody && m.lastReplySenderUserID) {
+              if (ownUserID && m.lastReplySenderUserID === ownUserID) {
+                previewSenderLabel = "you";
+              } else {
+                const handle = handleByUser.get(m.lastReplySenderUserID);
+                if (handle) previewSenderLabel = handle;
+              }
+            }
             return (
-              <button
-                type="button"
-                class={`chalk-message-thread-indicator ${hasUnread ? "chalk-message-thread-indicator--unread" : ""}`}
-                onClick={() => onOpenThread(m.id, m.id)}
-                data-testid={`thread-indicator-${m.id}`}
-              >
-                ↳ {m.replyCount} {(m.replyCount === 1) ? "reply" : "replies"}
-                {hasUnread && (
-                  <span class="chalk-message-thread-indicator-new"> · new</span>
+              <>
+                <button
+                  type="button"
+                  class={`chalk-message-thread-indicator ${hasUnread ? "chalk-message-thread-indicator--unread" : ""}`}
+                  onClick={() => onOpenThread(m.id, m.id)}
+                  data-testid={`thread-indicator-${m.id}`}
+                >
+                  ↳ {m.replyCount} {(m.replyCount === 1) ? "reply" : "replies"}
+                  {hasUnread && (
+                    <span class="chalk-message-thread-indicator-new"> · new</span>
+                  )}
+                </button>
+                {previewSenderLabel && m.lastReplyBody && (
+                  <button
+                    type="button"
+                    class="chalk-message-thread-preview"
+                    onClick={() => onOpenThread(m.id, m.id)}
+                    title={m.lastReplyBody}
+                    data-testid={`thread-preview-${m.id}`}
+                  >
+                    <span class="chalk-message-thread-preview-sender">
+                      {previewSenderLabel}:
+                    </span>{" "}
+                    <span class="chalk-message-thread-preview-body">
+                      {m.lastReplyBody}
+                    </span>
+                  </button>
                 )}
-              </button>
+              </>
             );
           })()}
           </div>
