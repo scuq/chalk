@@ -54,6 +54,10 @@ export class WSClient {
   private reconnectTimer: number | null = null;
   private stopped = false;
   private logger: NonNullable<WSClientOptions["logger"]>;
+  // Phase 11a: in-flight requests waiting for an ack-by-ref. Populated
+  // by request(); drained by onMessage() before onFrame() dispatch.
+  private pending: Map<string, { resolve: (v: unknown) => void; reject: (e: unknown) => void }> = new Map();
+  private refCounter = 0;
 
   constructor(opts: WSClientOptions) {
     this.opts = opts;
@@ -88,6 +92,30 @@ export class WSClient {
 
   isOpen(): boolean {
     return this.state === "open";
+  }
+
+  // Phase 11a: request() -- send a frame and resolve with the matching
+  // ack's payload. Uses the existing ref-based correlation in send().
+  // The returned promise rejects on "error" type acks or when the
+  // socket is not open at send time.
+  request<P, R = unknown>(type: string, payload?: P): Promise<R> {
+    if (!this.isOpen() || !this.ws) {
+      return Promise.reject(new Error(`WSClient.request called while state=${this.state}`));
+    }
+    this.refCounter++;
+    const ref = `r${Date.now().toString(36)}-${this.refCounter}`;
+    return new Promise<R>((resolve, reject) => {
+      this.pending.set(ref, {
+        resolve: (v: unknown) => resolve(v as R),
+        reject,
+      });
+      try {
+        this.send(type, payload, ref);
+      } catch (e) {
+        this.pending.delete(ref);
+        reject(e);
+      }
+    });
   }
 
   private connect(): void {
@@ -140,6 +168,23 @@ export class WSClient {
       this.setState("open");
       this.opts.onWelcome(frame.payload as WelcomePayload);
       return;
+    }
+    // Phase 11a: ref-correlated request/response. If the inbound
+    // frame's ref matches one we've registered via request(), settle
+    // that promise and DON'T forward to opts.onFrame (the request's
+    // initiator owns it). Errors with a known ref reject the promise.
+    if (frame.ref) {
+      const waiter = this.pending.get(frame.ref);
+      if (waiter) {
+        this.pending.delete(frame.ref);
+        if (frame.type === "error") {
+          const ep = frame.payload as { code?: string; message?: string };
+          waiter.reject(new Error(`${ep?.code ?? "error"}: ${ep?.message ?? "unknown"}`));
+        } else {
+          waiter.resolve(frame.payload);
+        }
+        return;
+      }
     }
     this.opts.onFrame(frame);
   }

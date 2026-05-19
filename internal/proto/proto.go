@@ -229,3 +229,85 @@ type FetchThreadAckPayload struct {
 	ThreadID  string           `json:"thread_id"`
 	Messages  []MessagePayload `json:"messages"`
 }
+
+// ---- Phase 11a: MLS KeyPackage publish/fetch ------------------------
+
+const (
+	// publish_key_packages: client uploads a batch of KeyPackages
+	// for its current device. Server validates that each KP's
+	// client_id field is "<userID>:<deviceID>" matching the WS
+	// connection.
+	TypePublishKeyPackages    = "publish_key_packages"
+	TypePublishKeyPackagesAck = "publish_key_packages_ack"
+
+	// fetch_key_packages: client requests one fresh KP per listed
+	// user. Server claims (marks used_at) one unused KP per user
+	// and returns the byte blobs. If a user has zero unused KPs,
+	// they are omitted from the response (caller learns who is
+	// "not ready" for MLS).
+	TypeFetchKeyPackages    = "fetch_key_packages"
+	TypeFetchKeyPackagesAck = "fetch_key_packages_ack"
+
+	// key_package_count: client asks "how many unused KPs do I have
+	// on the server for my own device?" -- used to decide whether
+	// to publish more.
+	TypeKeyPackageCount    = "key_package_count"
+	TypeKeyPackageCountAck = "key_package_count_ack"
+)
+
+// PublishKeyPackagesPayload uploads one or more KeyPackages for the
+// publishing device. Ciphersuite + credential_type are repeated per
+// KP because nothing prevents a device from publishing KPs for
+// multiple suites in one frame, though chalk currently only uses one.
+type PublishKeyPackagesPayload struct {
+	KeyPackages []KeyPackageEntry `json:"key_packages"`
+}
+
+type KeyPackageEntry struct {
+	Ciphersuite     int    `json:"ciphersuite"`     // MLS ciphersuite id
+	CredentialType  int    `json:"credential_type"` // 1 = Basic
+	ClientIDClaimed string `json:"client_id_claimed"`
+	// KeyPackageData is base64-encoded TLS-serialized bytes.
+	KeyPackageData  string `json:"key_package_data"`
+}
+
+type PublishKeyPackagesAckPayload struct {
+	Accepted int `json:"accepted"` // how many were valid + stored
+}
+
+// FetchKeyPackagesPayload requests KPs for these users. The server
+// claims one unused KP per user (marks used_at) and returns the
+// blobs. Missing users get omitted, NOT errored -- caller decides
+// what to do (typical: ask the user to come online so they can
+// publish KPs).
+type FetchKeyPackagesPayload struct {
+	UserIDs     []string `json:"user_ids"`
+	Ciphersuite int      `json:"ciphersuite,omitempty"` // default: 1
+}
+
+type FetchKeyPackagesAckPayload struct {
+	KeyPackages []FetchedKeyPackage `json:"key_packages"`
+}
+
+type FetchedKeyPackage struct {
+	UserID         string `json:"user_id"`
+	DeviceID       string `json:"device_id"`
+	ClientID       string `json:"client_id"` // <user_id>:<device_id>
+	Ciphersuite    int    `json:"ciphersuite"`
+	CredentialType int    `json:"credential_type"`
+	KeyPackageData string `json:"key_package_data"` // base64
+}
+
+// KeyPackageCountPayload is empty -- the WS connection identifies
+// the device; no parameters needed.
+type KeyPackageCountPayload struct{}
+
+type KeyPackageCountAckPayload struct {
+	Count int `json:"count"`
+}
+
+// Phase 11a errors.
+const (
+	ErrCodeKPClientIDMismatch = "kp_client_id_mismatch"
+	ErrCodeKPMalformed        = "kp_malformed"
+)

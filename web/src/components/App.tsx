@@ -1091,6 +1091,71 @@ export function App() {
     }
   }, [state.openThread?.threadID, state.threadMessages, state.threadSeen]);
 
+  // Phase 11a: background MLS KeyPackage stock check.
+  //
+  // On first authenticated WS open per session, lazily load
+  // CoreCrypto, derive/load a device DB passphrase, and ensure we
+  // have ≥10 unused KeyPackages on file with the server. This is a
+  // best-effort background task -- if it fails, the chat still works
+  // (just no MLS until next attempt).
+  //
+  // We do NOT lazy-load the MLS module on the critical path. The
+  // import is fired only after the user has been authenticated AND
+  // the WS connection is open.
+  useEffect(() => {
+    if (!state.user?.id || !state.user?.device) return;
+    if (state.wsState !== "open") return;
+
+    let cancelled = false;
+    const userID = state.user.id;
+    const deviceID = state.user.device;
+
+    // Derive a 32-byte database key from a per-device localStorage
+    // entry. If absent, generate one. The key never leaves the
+    // browser (11a). Future phase 11b will encrypt this under a
+    // passkey-derived secret instead.
+    const dbKeyStorageKey = `chalk.mls.dbkey.${userID}.${deviceID}`;
+    let dbKeyHex = window.localStorage.getItem(dbKeyStorageKey);
+    if (!dbKeyHex) {
+      const bytes = new Uint8Array(32);
+      crypto.getRandomValues(bytes);
+      dbKeyHex = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+      window.localStorage.setItem(dbKeyStorageKey, dbKeyHex);
+    }
+    const dbKey = new Uint8Array(
+      dbKeyHex.match(/.{1,2}/g)!.map((h) => parseInt(h, 16)),
+    );
+
+    // Schedule on a microtask so the initial render isn't blocked.
+    Promise.resolve().then(async () => {
+      try {
+        const { ensureKeyPackageStock } = await import("../mls/session");
+        if (cancelled) return;
+        const sendRequest = (type: string, payload: unknown): Promise<unknown> => {
+          // Use the existing WS client's request/response correlation.
+          const c = clientRef.current;
+          if (!c || !c.isOpen()) return Promise.reject(new Error("ws closed"));
+          return c.request(type, payload);
+        };
+        const result = await ensureKeyPackageStock(
+          { userID, deviceID, databaseKey: dbKey },
+          { request: sendRequest },
+        );
+        if (!cancelled) {
+          console.log("[chalk] MLS KP stock:", result);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.warn("[chalk] MLS KP stock check failed:", err);
+        }
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [state.user?.id, state.user?.device, state.wsState]);
+
   return (
     <div class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""}`}>
       <header class="chalk-header">

@@ -475,6 +475,14 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 		case proto.TypeFetchThread:
 			h.handleFetchThread(ctx, c, conn, f)
 
+		// Phase 11a: MLS key package publish/fetch
+		case proto.TypePublishKeyPackages:
+			h.handlePublishKeyPackages(ctx, c, conn, f)
+		case proto.TypeFetchKeyPackages:
+			h.handleFetchKeyPackages(ctx, c, conn, f)
+		case proto.TypeKeyPackageCount:
+			h.handleKeyPackageCount(ctx, c, conn, f)
+
 		// Phase 9.7a: user preferences
 		case proto.TypePrefsGet:
 			h.handlePrefsGet(ctx, c, conn, f)

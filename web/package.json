@@ -12,7 +12,8 @@
     "test": "node test.mjs"
   },
   "dependencies": {
-    "preact": "10.24.3"
+    "preact": "10.24.3",
+    "@wireapp/core-crypto": "9.3.4"
   },
   "devDependencies": {
     "esbuild": "0.24.0",

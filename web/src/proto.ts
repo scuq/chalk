@@ -291,3 +291,53 @@ export interface FetchThreadAckPayload {
   thread_id: string;
   messages: MessagePayload[];
 }
+
+// ---- Phase 11a: MLS KeyPackage publish/fetch ------------------------
+
+export const TypePublishKeyPackages    = "publish_key_packages";
+export const TypePublishKeyPackagesAck = "publish_key_packages_ack";
+export const TypeFetchKeyPackages      = "fetch_key_packages";
+export const TypeFetchKeyPackagesAck   = "fetch_key_packages_ack";
+export const TypeKeyPackageCount       = "key_package_count";
+export const TypeKeyPackageCountAck    = "key_package_count_ack";
+
+export interface KeyPackageEntry {
+  ciphersuite: number;
+  credential_type: number;
+  client_id_claimed: string;
+  /** base64-encoded TLS-serialized KeyPackage bytes */
+  key_package_data: string;
+}
+
+export interface PublishKeyPackagesPayload {
+  key_packages: KeyPackageEntry[];
+}
+
+export interface PublishKeyPackagesAckPayload {
+  accepted: number;
+}
+
+export interface FetchKeyPackagesPayload {
+  user_ids: string[];
+  ciphersuite?: number;
+}
+
+export interface FetchedKeyPackage {
+  user_id: string;
+  device_id: string;
+  client_id: string;
+  ciphersuite: number;
+  credential_type: number;
+  /** base64 */
+  key_package_data: string;
+}
+
+export interface FetchKeyPackagesAckPayload {
+  key_packages: FetchedKeyPackage[];
+}
+
+export interface KeyPackageCountPayload {}
+
+export interface KeyPackageCountAckPayload {
+  count: number;
+}
