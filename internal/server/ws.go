@@ -338,6 +338,11 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Phase 11c-1 PR 4: push any buffered MLS welcomes for this user
+	// AFTER the session-context Welcome frame has landed. Errors are
+	// logged and non-fatal; the row stays buffered until ack.
+	h.drainPendingMlsWelcomes(ctx, c, conn)
+
 	// Presence: register the device, start the heartbeat, ensure the
 	// transition publishes if state changed.
 	deviceType := classifyDeviceType(hello.DeviceType)

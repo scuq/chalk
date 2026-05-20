@@ -2,8 +2,13 @@ package server
 
 // Phase 11b-1: MLS commit_bundle + welcome ack handlers.
 // Phase 11c-1 PR 3: extended with proposed_adds / proposed_removes
-// validation, mls_commits persistence, and atomic channel_members
-// mutation.
+//   validation, mls_commits persistence, and atomic channel_members
+//   mutation.
+// Phase 11c-1 PR 4: welcomes are now buffered to mls_pending_welcomes
+//   alongside the live fanout. handleMlsWelcomeAck deletes the
+//   buffered row. New helper drainPendingMlsWelcomes pushes any
+//   pending welcomes when a user connects (called from ws.go's
+//   hello path).
 //
 // Server-side, the bytes inside commit/welcome/group_id are opaque.
 // Auth invariants:
@@ -12,10 +17,11 @@ package server
 //     must match a recent authorization issued by add_to_channel /
 //     remove_from_channel (within 60s, single-use).
 //   * Welcomes are fan'd to recipients by user_id; the server
-//     iterates a user's connected devices via Hub.FanOutToUser.
-//
-// Offline recipients drop their welcome silently for 11b-1; PR 4 of
-// phase 11c-1 will introduce mls_pending_welcomes to buffer them.
+//     iterates a user's connected devices via Hub.FanOutToUser, AND
+//     buffers them in mls_pending_welcomes for offline / future
+//     reconnects. The client deduplicates: a Welcome for a channel
+//     the recipient already has is harmless (CoreCrypto's
+//     processWelcome returns "already in group" or similar).
 
 import (
 	"context"
@@ -124,7 +130,7 @@ func (h *WSHandler) handleMlsCommitBundle(
 				// Stale-commit race: another member committed first
 				// at this epoch. Client must catch up to the winning
 				// commit (via mls_commit_event push -- handled in
-				// PR 4 of 11c-1 series) and retry at the new epoch.
+				// PR 5 of 11c-1 series) and retry at the new epoch.
 				h.sendError(ctx, c, f.Ref, proto.ErrCodeMlsStaleCommit,
 					"another commit landed first at this epoch; retry against the new epoch")
 				return
@@ -136,10 +142,10 @@ func (h *WSHandler) handleMlsCommitBundle(
 	}
 
 	// Fan welcomes to recipients. Each recipient's user_id maps to
-	// zero or more connected devices via Hub.FanOutToUser, which
-	// expects pre-marshaled bytes -- so we marshal the welcome
-	// frame per-recipient (cheap, the welcome bytes are already in
-	// the frame; just JSON-wrap).
+	// zero or more connected devices via Hub.FanOutToUser. PR 4 ALSO
+	// buffers the welcome in mls_pending_welcomes regardless of online
+	// status (the client dedups; offline / wrong-KP recipients will
+	// pick the buffered copy up on next hello).
 	delivered := 0
 	for i, wf := range p.WelcomeFor {
 		if wf.UserID == "" || wf.Welcome == "" {
@@ -147,7 +153,8 @@ func (h *WSHandler) handleMlsCommitBundle(
 				"welcome_for["+itoa(i)+"]: empty user_id or welcome")
 			return
 		}
-		if _, err := base64.StdEncoding.DecodeString(wf.Welcome); err != nil {
+		welcomeBytes, derr := base64.StdEncoding.DecodeString(wf.Welcome)
+		if derr != nil {
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeMlsBadBundle,
 				"welcome_for["+itoa(i)+"]: welcome b64 invalid")
 			return
@@ -168,17 +175,38 @@ func (h *WSHandler) handleMlsCommitBundle(
 			h.logger.Printf("mls_commit_bundle: marshal welcome frame: %v", mErr)
 			continue
 		}
-		// FanOutToUser writes to every connected device of the user
+		// Live fanout: writes to every connected device of the user
 		// EXCEPT the conn we pass (so the sender doesn't get their
 		// own welcome echoed back). conn.ID is the sender's conn;
 		// recipients are different users so they won't match anyway.
 		h.hub.FanOutToUser(wf.UserID, conn.ID, data)
-		// Did anyone receive it? Crude check: if user has zero conns,
-		// the welcome is lost for 11b-1.
+
+		// Phase 11c-1 PR 4: buffer regardless of live-delivery state.
+		// The client dedups; if the live fanout reached the right
+		// device, that device acks and DeletePendingWelcome fires.
+		// If not (offline, wrong KP), the buffered row is delivered
+		// on the recipient's next hello.
+		recipientUUID, perr := uuid.Parse(wf.UserID)
+		if perr != nil {
+			h.logger.Printf("mls_commit_bundle: welcome_for[%d]: target %q not a UUID; not buffering",
+				i, wf.UserID)
+		} else {
+			berr := h.store.InsertPendingWelcome(
+				ctx, recipientUUID, channelID, groupID, welcomeBytes, userID,
+			)
+			if berr != nil {
+				// Buffering failure is non-fatal: the live fanout may
+				// still succeed. Log and continue.
+				h.logger.Printf("mls_commit_bundle: buffer welcome for %s: %v",
+					wf.UserID, berr)
+			}
+		}
+
+		// "delivered" still reflects live-fanout reach; useful for
+		// the client to know whether to wait for an ack from a fresh
+		// connection or whether the recipient was already online.
 		if len(h.hub.ConnsForUser(wf.UserID)) > 0 {
 			delivered++
-		} else {
-			h.logger.Printf("mls_commit_bundle: user %s offline, welcome dropped", wf.UserID)
 		}
 	}
 
@@ -257,8 +285,6 @@ func (h *WSHandler) handleMlsWelcomeAck(
 	conn *Conn,
 	f proto.Frame,
 ) {
-	// 11b-1: pure bookkeeping log. Future use: cancel a buffered-
-	// welcome retry timer when the recipient confirms processing.
 	var p proto.MlsWelcomeAckPayload
 	if err := f.DecodePayload(&p); err != nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
@@ -266,7 +292,80 @@ func (h *WSHandler) handleMlsWelcomeAck(
 	}
 	h.logger.Printf("mls_welcome_ack: user=%s channel=%s ok=%v",
 		conn.UserID, p.ChannelID, p.OK)
+
+	// Phase 11c-1 PR 4: delete the buffered welcome row (if any) on
+	// successful client-side processing. Failure to ack OK leaves
+	// the buffer in place so the next connection will retry.
+	if p.OK && h.store != nil && conn.UserID != "" && p.ChannelID != "" {
+		userUUID, uerr := uuid.Parse(conn.UserID)
+		channelUUID, cerr := uuid.Parse(p.ChannelID)
+		if uerr != nil || cerr != nil {
+			h.logger.Printf("mls_welcome_ack: skipping delete -- bad UUIDs: u=%v c=%v",
+				uerr, cerr)
+			return
+		}
+		if err := h.store.DeletePendingWelcome(ctx, userUUID, channelUUID); err != nil {
+			h.logger.Printf("mls_welcome_ack: DeletePendingWelcome: %v", err)
+		}
+	}
 	// No response needed; clients fire-and-forget.
+}
+
+// drainPendingMlsWelcomes pushes any buffered Welcomes for the
+// connected user onto this connection. Called from ws.go right after
+// the hello-time Welcome frame is sent, so the client has its
+// session context before any MLS-welcome pushes arrive.
+//
+// Rows are NOT deleted here; the client's mls_welcome_ack triggers
+// DeletePendingWelcome. This means: if the client disconnects
+// between drain and processing, the row stays buffered for the
+// next connection. Multiple devices of the same user each get a
+// copy when they connect (the wrong-KP devices ignore them; the
+// right-KP device acks and clears the row).
+//
+// Errors here are non-fatal: a buffered welcome that fails to push
+// will be retried on the next connect. We log and continue.
+func (h *WSHandler) drainPendingMlsWelcomes(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+) {
+	if h.store == nil || conn.UserID == "" {
+		return
+	}
+	userUUID, err := uuid.Parse(conn.UserID)
+	if err != nil {
+		return
+	}
+	pending, err := h.store.DrainPendingWelcomesForUser(ctx, userUUID)
+	if err != nil {
+		h.logger.Printf("drainPendingMlsWelcomes: %v", err)
+		return
+	}
+	if len(pending) == 0 {
+		return
+	}
+	h.logger.Printf("drainPendingMlsWelcomes: pushing %d welcome(s) to user=%s",
+		len(pending), conn.UserID)
+	for _, w := range pending {
+		push, ferr := proto.NewFrame(proto.TypeMlsWelcome, "",
+			proto.MlsWelcomePayload{
+				ChannelID:    w.ChannelID.String(),
+				MlsGroupID:   base64.StdEncoding.EncodeToString(w.MlsGroupID),
+				Welcome:      base64.StdEncoding.EncodeToString(w.WelcomeBytes),
+				SenderUserID: w.SenderUserID.String(),
+			})
+		if ferr != nil {
+			h.logger.Printf("drainPendingMlsWelcomes: build frame for channel %s: %v",
+				w.ChannelID, ferr)
+			continue
+		}
+		if err := writeFrame(ctx, c, push, h.cfg.WriteTimeout); err != nil {
+			h.logger.Printf("drainPendingMlsWelcomes: write for channel %s: %v",
+				w.ChannelID, err)
+			return // conn is likely gone; bail
+		}
+	}
 }
 
 // itoa avoids pulling in strconv for one int formatter.
