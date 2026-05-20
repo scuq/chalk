@@ -50,6 +50,14 @@ Every phase test gets three canonical users (idempotent upsert):
 | bob    | `00000000-0000-0000-0000-000000000b0b`  |
 | carol  | `00000000-0000-0000-0000-0000000ca201` |
 
+For phases 11a onward, two additional MLS-capable fixture users exist
+that have completed KeyPackage publishing:
+
+| handle | UUID |
+|---|---|
+| alice2 | `00000000-0000-0000-0000-00000000a112` |
+| bob2   | `00000000-0000-0000-0000-000000000b02` |
+
 Use these in tests rather than creating your own. Other test data should
 live in transactions that roll back, or be cleaned up explicitly.
 
@@ -61,7 +69,9 @@ live in transactions that roll back, or be cleaned up explicitly.
 | `lib/checks.sh` | Host environment checks (Go, Docker, OS) |
 | `lib/postgres.sh` | Ephemeral Postgres start/stop/migrate/seed |
 | `lib/testing.sh` | Test runners (Go, shellcheck) |
-| `lib/browsers.sh` | Playwright orchestration (phase 13+) |
+| `lib/frontend.sh` | Frontend test runners (esbuild, Playwright) |
+| `lib/server.sh` | chalkd build + integration test helpers |
+| `lib/browsers.sh` | Playwright browser-installation orchestration |
 
 Source via `chalk_use_lib <name>` after `common.sh` is loaded.
 
@@ -71,11 +81,19 @@ Source via `chalk_use_lib <name>` after `common.sh` is loaded.
 - Go 1.23+
 - Docker 24+
 - `git`
+- Node 18+ (for phases 07 and later)
 - Optional: `shellcheck`, `psql`
 
 ## Phases
 
-| # | Script | Adds |
+Phase numbering reflects the current plan and may diverge from the
+historical scaffold file names. See `CHANGELOG.md` "Phase numbering
+note" for the canonical mapping. Phases 09 and onward shipped (or
+will ship) as tarball patches rather than the original
+`phase-09-*.sh` stubs; this table reflects what each phase actually
+delivers.
+
+| # | Status | Adds |
 |---|---|---|
 | 00 | `phase-00-init.sh` | Repo scaffold, hooks, library |
 | 01 | `phase-01-go-skeleton.sh` | `chalkd` Go binary skeleton |
@@ -84,10 +102,26 @@ Source via `chalk_use_lib <name>` after `common.sh` is loaded.
 | 04 | `phase-04-ws-relay.sh` | WebSocket hub, ping/pong, plaintext echo |
 | 05 | `phase-05-pubsub.sh` | LISTEN/NOTIFY fan-out, multi-instance |
 | 06 | `phase-06-presence.sh` | Multi-device presence with TTL |
-| 07 | `phase-07-frontend-shell.sh` | Theming, Hack font, sounds, roster, composer |
+| 07 | `phase-07-frontend-shell.sh` | Theming, Hack font, SPA shell |
 | 08 | `phase-08-channels.sh` | Channels, threading |
-| 09 | `phase-09-blobs.sh` | Encrypted attachments (AES-256-GCM) |
-| 10 | `phase-10-mls.sh` | CoreCrypto WASM, MLS groups |
-| 11 | `phase-11-friending.sh` | Friend requests, encrypted presence |
-| 12 | `phase-12-hardening.sh` | Rate limits, GC, metrics |
-| 13 | `phase-13-cross-browser.sh` | Playwright matrix |
+| 08b | (tarball patch) | SPA channels: sidebar, create modal, friend picker |
+| 08c | (tarball patch) | Handles in UI: `you (alice)`, `@bob` |
+| 09a | (tarball patch) | Multi-tab: hub keyed by userID |
+| 09b | (tarball patch) | Passkey auth + recovery codes |
+| 09c | (tarball patch) | Invites + profile + email-change |
+| 09d | (tarball patch) | Admin moderation (server + SPA + e2e) |
+| 11a | (tarball patch) | CoreCrypto WASM + KeyPackages; relicense to GPL-3.0 |
+| 11b | (tarball patch) | MLS DM encryption (11b-1, 11b-2, 11b-3 + hotfixes) |
+| 11c | 🔮 planned | MLS multi-member channel encryption |
+| 11d | 📐 designed | Multi-device + history transfer (see `docs/design/`) |
+| 12 | 🔮 planned | Account lifecycle write paths |
+| 13 | 🔮 planned | Encrypted attachments (AES-256-GCM) |
+| 14 | 🔮 planned | Rate limits, metrics, GC, `--migrate-only` |
+| 15 | 🔮 planned | Playwright cross-browser matrix |
+
+The legacy `phase-09-blobs.sh` and `phase-10-mls.sh` stubs in this
+directory remain for historical reference but are no longer the
+canonical path to the current state. New phases land as tarball
+patches that include their own validators; `run-all.sh` skips
+already-done phases via the `.bootstrap/phase-NN.done` markers, so
+the legacy stubs don't need to be deleted.
