@@ -1,24 +1,11 @@
 # Phase 11d Design Doc #3 — HistorySecret Serialization & Restore Flow
 
-**Status:** Revision 3 (complete rewrite from previous revisions)
+**Status:** Draft for review
 **Author:** Claude, per scuq's design choices
 **Date:** 2026-05-27 (Vienna)
 **Scope:** chalk phase 11d — encrypted serialization format for
 HistorySecrets and the export/import procedures around them
-**Depends on:** doc #1 rev 3 (threat model), doc #2 rev 3 (wire protocol)
-
-**Previous revisions** (now obsolete in their entirety):
-- rev 1 (2026-05-27 morning): defined a custom IndexedDB-export
-  approach with tier-1 (identity bootstrap) and tier-2 (full keystore
-  dump) blobs, store-by-store classification, chunked transport.
-- rev 2 (2026-05-27 afternoon): refined the rev 1 design with
-  chronological-order replay during restore (no per-row filtering)
-  for format-independence from CoreCrypto's IndexedDB internals.
-
-**This revision** discards both prior approaches in favor of
-CoreCrypto's built-in history-client mechanism, sandbox-validated
-in 9.3.4 + Node + fake-indexeddb on 2026-05-27. The new design is
-substantially simpler.
+**Depends on:** doc #1 (threat model), doc #2 (wire protocol)
 
 ---
 
@@ -142,57 +129,112 @@ The client must have:
   from the recovery phrase)
 - A live, healthy CoreCrypto session
 - Network connectivity to chalkd
+- An `EpochObserver` registered on the CoreCrypto session, populating
+  a local per-conversation `epochCache: Map<ConversationId, uint64>`.
+  Maintained continuously across the session lifetime.
 
 If any pre-condition fails:
-- **No master_key**: log warning, drop the secret on the floor. The
-  user has not yet set up phase-11d backups. The era's history will
-  be unrecoverable for new devices for this era, but future eras
-  will be uploaded once setup completes. UI should prompt the user
-  to complete backup setup.
-- **CoreCrypto issue**: extremely unlikely (the observer fires from
-  inside CoreCrypto); log and emit a `history_uploads_persistently_failing`
-  critical event candidate if it happens repeatedly.
+- **No master_key**: queue the secret locally (see §4.4) for later
+  upload once master_key becomes available. The user has not yet set
+  up phase-11d backups; UI should prompt them. Failing entirely to
+  upload until setup completes is acceptable because no new device can
+  restore anyway without the master_key.
+- **CoreCrypto unhealthy**: extremely unlikely (the observer fires
+  from inside CoreCrypto); log and emit a
+  `history_uploads_persistently_failing` critical event candidate if
+  it happens repeatedly.
 - **No network**: queue the secret in localStorage for later upload.
   See §4.4.
+- **No cached epoch for the conversation**: this should not happen if
+  the EpochObserver was registered before the first commit on the
+  conversation. If it does (e.g. observer registered late), the
+  client may fall back to querying `cc.conversationEpoch()` OUTSIDE
+  the observer (i.e. in a `setTimeout(..., 0)` or microtask
+  scheduled FROM the observer), accepting the risk that the value
+  read at that later time may have already advanced. See §4.5 for
+  the failure mode.
 
-### 4.2 Step-by-step
+### 4.2 Why the epoch comes from a separate observer
+
+CoreCrypto's `HistoryObserver.historyClientCreated()` is invoked from
+inside CoreCrypto's conversation-guard lock. Calling back into
+CoreCrypto (e.g. `cc.conversationEpoch(conversationId)`) from inside
+the observer risks deadlock or unspecified re-entrancy behavior.
+CoreCrypto's `EpochObserver` documentation explicitly warns:
+"The `epochChanged` callback must return promptly. CoreCrypto holds
+internal locks while dispatching it."
+
+We therefore use a two-observer pattern:
+
+1. **`EpochObserver`** runs continuously. On every `epochChanged`
+   callback, update a synchronous in-memory cache:
+   `epochCache.set(conversationId, newEpoch)`. The callback returns
+   promptly without further async work.
+
+2. **`HistoryObserver`** synchronously looks up the cached epoch when
+   it fires. No callbacks into CoreCrypto.
+
+The ordering invariant we rely on: when `enableHistorySharing` triggers
+a commit, CoreCrypto merges the commit (advancing the epoch) BEFORE
+calling the HistoryObserver. The EpochObserver fires on the merge,
+populating the cache. Then the HistoryObserver fires, reading the now-
+correct cached epoch.
+
+**This ordering is assumed but not formally verified.** CoreCrypto's
+source code structure suggests it (both observers are dispatched
+from the same session lock), but no documentation explicitly
+guarantees the ordering. Integration testing in chalk's
+implementation must verify this empirically before relying on it for
+production. If the ordering turns out NOT to hold, the fallback is
+§4.5: defer epoch-read to a microtask outside the observer.
+
+### 4.3 Step-by-step
 
 ```
 ON_HISTORY_CLIENT_CREATED(conversationId, historySecret):
 
-  # ---- 1. Capture the secret ----
+  # ---- 1. Capture the secret synchronously ----
+  # copyBytes() and Uint8Array() must happen before any async/await,
+  # because CoreCrypto may free the underlying WASM memory after the
+  # observer returns.
   clientIdBytes = historySecret.clientId.copyBytes()
   dataBytes     = new Uint8Array(historySecret.data)
 
-  # CRITICAL: copyBytes() and Uint8Array() must happen before any
-  # other async/await, because CoreCrypto may free the underlying
-  # WASM memory after the observer returns.
+  # ---- 2. Look up epoch from synchronous cache ----
+  eraEpoch = epochCache.get(conversationId)
+  if eraEpoch == undefined:
+    # See §4.5 for the deferred fallback path. For now: queue
+    # without era_epoch and try to resolve later.
+    queueSecretAwaitingEpoch({clientIdBytes, dataBytes, conversationId, ...})
+    return
 
-  # ---- 2. Determine the era ----
-  # The era_epoch is the MLS epoch at which this history client was
-  # added to the conversation. Read it from CoreCrypto.
-  eraEpoch = await cc.conversationEpoch(conversationId)
-  # Note: this returns the CURRENT epoch, which is the epoch AT WHICH
-  # the history client was just added (because enableHistorySharing
-  # merged the commit before firing the observer).
+  # ---- 3. Queue for upload AFTER commit ack ----
+  # CRITICAL: the commit that introduced this history client may
+  # still be rejected by the delivery service. If we upload now and
+  # the commit is later rejected, the secret references an era that
+  # never happened (chalkd would carry junk).
+  #
+  # Per D11: enqueue the encrypted secret, then defer upload until
+  # MlsTransport.sendCommitBundle returns success for the originating
+  # commit.
 
-  # ---- 3. Build CBOR plaintext ----
+  # Build CBOR plaintext
   plaintext = cborEncode({
     schema_version: 1,
     client_id: clientIdBytes,
     data: dataBytes,
   })
 
-  # ---- 4. AEAD encrypt ----
+  # AEAD encrypt
   nonce = randomBytes(24)
   aad = utf8("chalk.history.v1")
-      || userId.bytes()
-      || conversationId.copyBytes()
+      || userIdBytes(16)
+      || conversationIdBytes(16)
       || u64_be(eraEpoch)
   ciphertext = xchacha20poly1305_encrypt(backup_master_key, nonce, aad, plaintext)
 
-  # ---- 5. Upload via WS ----
-  ack = await ws.request("history_secret_put", {
+  # Queue
+  pendingUploads.add({
     conversation_id: uuid_from_bytes(conversationId.copyBytes()),
     era_epoch: eraEpoch,
     envelope_version: currentEnvelopeVersion,
@@ -200,73 +242,166 @@ ON_HISTORY_CLIENT_CREATED(conversationId, historySecret):
     nonce: base64(nonce),
     created_at: nowUnixMs(),
     source_device_id: thisDeviceId,
+    awaiting_commit_for: currentCommitId,  # tracks which commit must succeed
   })
 
-  # ---- 6. Local cleanup ----
-  # Note: we do NOT keep a local copy of the secret. The chalkd-stored
-  # copy is the canonical record. If this device's IndexedDB is wiped,
-  # we'll re-download from chalkd when restoring.
+
+# The commit-success callback path (called from MlsTransport.sendCommitBundle
+# success branch):
+ON_COMMIT_ACK(commitId):
+  toUpload = pendingUploads.filter(p => p.awaiting_commit_for == commitId)
+  for upload of toUpload:
+    pendingUploads.remove(upload)
+    try:
+      ack = await ws.request("history_secret_put", upload)
+    except:
+      # Network error: re-queue with localStorage backing
+      localStorage.set(`chalk.history.upload_queue.${upload.source_device_id}.${uuid()}`,
+                       JSON.stringify(upload))
+
+
+# The commit-rejected callback path:
+ON_COMMIT_REJECTED(commitId):
+  # Drop pending uploads for this commit. CoreCrypto will retry
+  # with a new history client (and a new observer fire).
+  pendingUploads = pendingUploads.filter(p => p.awaiting_commit_for != commitId)
 ```
 
-### 4.3 prepareForTransport callback
-
-Separate from but adjacent to the HistoryObserver. CoreCrypto invokes
-`MlsTransport.prepareForTransport(secret)` when it's about to encrypt
-the secret as an MLS application message bundled into the commit.
-
-```typescript
-async prepareForTransport(secret: HistorySecret): Promise<MlsTransportData> {
-  // The default Wire implementation packages the secret as JSON or
-  // MessagePack for transit. For chalk, since we ALSO independently
-  // upload the secret via history_secret_put on the observer side,
-  // we don't strictly need the MLS-application-message path to do
-  // anything useful. But CoreCrypto requires this callback to
-  // produce *some* bytes, since they will be encrypted and sent.
-  //
-  // We return the raw HistorySecret.data bytes. They'll be encrypted
-  // as MLS application message inside the commit and delivered to
-  // existing group members. Existing members can ignore them
-  // (they already have access to the keystore-internal version of
-  // the same material; the in-band copy is redundant for them).
-
-  return new CC.MlsTransportData(secret.data);
-}
-```
-
-**Why we don't need the in-band path**: the `historyClient` mechanism
-in CoreCrypto's design assumes the secret might be delivered to a new
-device via the encrypted-app-message-in-commit pathway. In Wire's
-architecture, a newly-added device's CoreCrypto could parse incoming
-application messages and identify the history secret. In chalk, we
-use a simpler architecture: the secret is uploaded server-side via
-the dedicated `history_secret_put` family, and the new device fetches
-from there. The in-band copy is functionally a no-op for us but must
-still be present for CoreCrypto's protocol invariants.
+The discipline here is **upload only after the originating commit is
+acknowledged by the delivery service**. This matches D11 and avoids
+storing secrets for eras that never materialize.
 
 ### 4.4 Offline queueing
 
-If the client captures a HistorySecret while offline, it must queue
-it for later upload. We store the encrypted ciphertext in localStorage
-under a queue key:
+If the client captures a HistorySecret while offline OR while the
+commit acknowledgment is pending across a session restart, the
+encrypted ciphertext is stored in localStorage:
 
 ```
-key: "chalk.history.upload_queue.<sourceDeviceId>.<uuid>"
+key:   "chalk.history.upload_queue.<sourceDeviceId>.<uuid>"
 value: JSON({
   conversation_id, era_epoch, envelope_version,
   ciphertext, nonce, created_at, source_device_id,
 })
 ```
 
-When connectivity returns:
+When connectivity returns OR the session resumes:
 1. Enumerate all `chalk.history.upload_queue.*` keys.
 2. For each, send `history_secret_put`.
 3. On success, delete the localStorage entry.
 
+A queued upload that crosses session boundaries cannot be linked back
+to its originating commit (the commit ack came and went while we
+were offline). Two policies are possible:
+- **Strict**: drop queued uploads on session restart. Some history
+  may be lost.
+- **Lenient**: send the queued upload regardless; trust that the
+  commit was acked previously (since the secret made it into the
+  observer at all, the commit had local merge success — the only
+  question is DS acknowledgment).
+
+Recommendation: lenient policy with a flag in the queued entry
+(`crossed_session_boundary: true`) so the server can log it and ops
+can investigate if it correlates with missing-conversation issues.
+
 If multiple devices queue the same `(user_id, conversation_id, era_epoch)`
-secret (e.g. both Alice's devices were online when she enabled history
-sharing on a new conversation), the server's UPSERT semantics (per Q17
-in doc #1) resolve the duplicate gracefully. Last-write-wins; both
-ciphertexts encrypt the same plaintext under master_key.
+secret, the server's UPSERT semantics (Q17 in doc #1) resolve the
+duplicate. Last-write-wins; both ciphertexts encrypt the same
+plaintext under master_key.
+
+### 4.5 Epoch-lookup fallback
+
+If the EpochObserver hasn't populated the epoch cache for a
+conversation by the time the HistoryObserver fires (because the
+EpochObserver was registered late, or in case the assumed ordering
+between the two observers doesn't hold), the secret is queued
+without an era_epoch and processed asynchronously:
+
+```
+DEFERRED_EPOCH_RESOLUTION:
+  for entry in awaitingEpochQueue:
+    # Schedule outside the observer execution context
+    setTimeout(async () => {
+      try:
+        eraEpoch = await cc.conversationEpoch(entry.conversationId)
+        # Continue with normal encrypt-and-queue path
+        ...
+      catch (err):
+        # Could not resolve the epoch (conversation gone, error, etc.)
+        # Log and drop.
+        log.warn("could not resolve era_epoch for queued secret", entry, err)
+    }, 0)
+```
+
+**This path is a degraded mode.** The epoch read at deferred-resolution
+time may have already advanced past the era the secret represents,
+producing a wrong AAD on encryption. Future devices restoring would
+hit AEAD authentication failure on this secret and have to skip it.
+
+Mitigation: register the EpochObserver as the very first step of
+chalk's CoreCrypto initialization, BEFORE any conversation activity.
+This eliminates the late-registration case. Then the only way to hit
+this fallback is if the assumed observer ordering doesn't hold —
+which integration testing must verify.
+
+### 4.6 prepareForTransport callback
+
+Separate from but adjacent to the HistoryObserver. CoreCrypto invokes
+`MlsTransport.prepareForTransport(secret)` when it's about to encrypt
+the secret as an MLS application message bundled into the commit.
+
+**Security note**: chalk's implementation deliberately returns DUMMY
+bytes rather than the real HistorySecret data, to neutralize the
+in-band delivery path. See doc #1 §8.2 for the threat model. The
+in-band path would otherwise let any current group member persistently
+decrypt past messages even after being removed from the conversation,
+which defeats post-compromise security.
+
+```typescript
+async prepareForTransport(secret: HistorySecret): Promise<MlsTransportData> {
+  // Return 32 random bytes as the "transportable" representation.
+  // CoreCrypto will encrypt these as an MLS application message
+  // bundled into the commit. Receiving members can decrypt them but
+  // they're meaningless — the real HistorySecret travels exclusively
+  // via our out-of-band history_secret_put / history_secret_get flow,
+  // encrypted under backup_master_key (which only the user's own
+  // devices know).
+  //
+  // Why we still need to return SOMETHING: CoreCrypto requires the
+  // callback to produce bytes; the in-band MLS application message
+  // is part of the protocol invariant. Returning empty bytes would
+  // likely cause CoreCrypto errors.
+
+  const dummy = new Uint8Array(32);
+  crypto.getRandomValues(dummy);
+  return new CC.MlsTransportData(dummy);
+}
+```
+
+The legitimate transfer of the actual HistorySecret happens via the
+HistoryObserver path (this device captures the secret, encrypts under
+master_key, uploads via `history_secret_put` per §4.3). Only the
+user's own devices that hold master_key can decrypt the uploaded
+ciphertext.
+
+**Receiver-side behavior**: CoreCrypto's `decrypt_message` will
+successfully decrypt the dummy bytes (they're a valid MLS application
+message), and the receiving application (also chalk) sees 32 random
+bytes. chalk's incoming-message handler must recognize these as
+non-content (they don't match chalk's normal message envelope format)
+and ignore them. Doc #5 (client state machines) will specify the
+"ignore application messages that don't match the chalk envelope"
+rule for incoming-message handling.
+
+**Sandbox validation note**: tests A, B, C2 on 2026-05-27 used the
+real secret.data bytes from `prepareForTransport`. The dummy-bytes
+variant was not directly tested. Chalk's implementation should add
+an integration test that verifies:
+1. Sender returns dummy bytes
+2. Receiver decrypts them without errors
+3. Receiver's chalk envelope handler ignores them gracefully
+4. The OUT-of-band history_secret_put / get path still works
+   end-to-end
 
 ---
 
@@ -366,27 +501,58 @@ IMPORT():
 ### 5.3 Per-era decryption routing
 
 A conversation may have many history eras. When the user opens an old
-conversation, chalk must figure out which historyClient (or the
-regular CoreCrypto, for messages from after the device joined) can
+conversation, chalk must figure out which CoreCrypto instance — a
+per-era history-client or the regular session CoreCrypto — can
 decrypt each message.
 
-Approach: store the era boundaries per conversation. For each message,
-look at its MLS epoch (visible in the message metadata) and pick:
+Important observation about MLS membership and eras:
+- Adding a member (the new device joining) does NOT trigger a new
+  history-sharing era. Only member REMOVALS and the ~daily rotation
+  do.
+- So after the new device joins, the last existing era's history
+  client continues to be the authoritative decryptor for that
+  conversation, until the next era boundary.
+- The regular session CoreCrypto can only decrypt epochs it was a
+  member during. For the new device, that's everything from its
+  join-welcome epoch onward — which is a subset of the last era's
+  span.
+
+Approach: store the era boundaries per conversation. For each
+incoming message, look at its MLS epoch (visible in the message
+metadata) and pick a decryptor:
 
 ```
-clientFor(conversationId, messageEpoch):
-  # Sort eras by era_epoch ascending. Each era covers
-  # [era_epoch, next_era_epoch) — i.e. half-open interval.
-  eras = getEras(conversationId)  # sorted ascending by era_epoch
+decryptorFor(conversationId, messageEpoch):
+  # eras = sorted ascending by era_epoch
+  eras = getEras(conversationId)
+
+  # Find the era covering this message epoch
   for i, era of eras:
     nextEra = eras[i+1]
     if messageEpoch >= era.era_epoch AND (nextEra == null OR messageEpoch < nextEra.era_epoch):
+      # We have a history client for this era. It can decrypt.
       return era.historyClient
 
-  # If we get here, the message is from after the last era — i.e.
-  # from after we (the current device) joined. Use the regular CC.
-  return regularCoreCrypto
+  # messageEpoch is before the first era we know about — i.e. before
+  # history sharing was enabled. Not decryptable. (Doc #1 §4.1.)
+  return null
 ```
+
+**The regular session CoreCrypto is not in this routing path.** It
+COULD also decrypt messages from epochs it was a member during, but
+the corresponding history client covers the same span and is the
+primary decryptor. This keeps routing logic simple at the cost of
+slightly redundant decryption capability.
+
+If we wanted to optimize: messages from the join-welcome epoch onward
+could be routed to the regular CoreCrypto (which has them in its
+keystore already and decrypts faster than spinning up a history
+client). But this is an optimization, not a correctness concern.
+Defer to implementation tuning.
+
+The era boundaries are implicit in the list of secrets returned by
+`history_secret_list`; the client builds the routing table from
+that during restore.
 
 This is a client-side concern, not a wire protocol concern. The era
 boundaries are implicit in the list of secrets returned by
@@ -413,14 +579,19 @@ and an indication that 3 had problems.
 
 ## 6. Forward compatibility
 
-### 6.1 Reserved fields
+Two evolution axes need consideration: **our format** (the encrypted
+payload we control) and **CoreCrypto's HistorySecret format** (which
+we treat as opaque but is itself versioned by Wire).
+
+### 6.1 Our format
 
 - `schema_version` at the top of the CBOR plaintext (currently 1).
-  Future format changes bump this. Old clients reject unknown values
-  with a clear error.
+  Future format changes bump this. Old clients on receiving a higher
+  version reject with a clear "client out of date" error.
 - The AAD prefix is `"chalk.history.v1"`. Future incompatible AAD
   changes use `"chalk.history.v2"` etc. Old ciphertexts continue
-  decrypting under the v1 verifier.
+  decrypting under the v1 verifier so a mixed-version deployment can
+  read both.
 - The envelope (doc #2 §2) already has its own version field for
   envelope-format evolution, orthogonal to per-secret format.
 
@@ -432,17 +603,82 @@ without breaking v1. Each new kind needs a corresponding KDF +
 client-side derivation; the envelope structure is forward-compatible
 by design.
 
-### 6.3 Eventual native CoreCrypto API
+### 6.3 CoreCrypto HistorySecret format evolution
 
-If a future CoreCrypto release exports `HistorySecret` as a proper
-WASM class (i.e. constructible from JS), chalk can switch to using
-the class directly. The wire format is unaffected — we always
-serialize the same two byte arrays.
+This is the harder forward-compat question. Our wire/storage format
+treats `data` as opaque bytes — we never parse the inner MessagePack
+format. As long as CoreCrypto's `historyClient(secret)` continues to
+accept the bytes we hand it, we're fine.
 
-The current approach (plain-object `{clientId, data}` consumed via
-`historySecretIntoFfi`) is sandbox-validated for 9.3.4 and survives
-the FFI evolution shown in the main-branch source (where the FFI
-takes plain `{client_id, data}` Rust struct fields too).
+The risk surface:
+
+1. **CoreCrypto upgrades break old `data` blobs.** A chalk user has
+   secrets stored under CoreCrypto vN. Chalk later upgrades to vN+1.
+   The user's secrets in chalkd were encoded by vN; vN+1's
+   `historyClient` may not accept them.
+
+2. **CoreCrypto removes or renames the API.** `enableHistorySharing`
+   or `historyClient` could disappear. There's nothing in our format
+   that protects against this; we'd need to maintain our own
+   compatibility shim or stay pinned to the old CoreCrypto.
+
+3. **CoreCrypto changes the `clientId` format.** Currently the
+   convention is `"history-client-<uuid>"` (51 bytes). If CoreCrypto
+   changes this, our 51-byte expectation in size estimates is wrong
+   but our format (which records the actual bytes verbatim) survives.
+
+4. **`HistorySecret` gains new fields.** A future CoreCrypto might
+   add fields beyond `{clientId, data}`. Our CBOR plaintext has a
+   `schema_version` that can be bumped to carry additional fields.
+   Old secrets stored at v1 still work with `historyClient` because
+   the new fields would be optional from CoreCrypto's perspective.
+
+Mitigations we adopt:
+
+- **Pin CoreCrypto version per chalk release.** chalk's package.json
+  pins `@wireapp/core-crypto` exactly. Upgrades are deliberate,
+  release-gated changes, with migration testing.
+
+- **Validate on upload + restore.** When uploading a HistorySecret,
+  record the CoreCrypto version that produced it in the
+  HistorySecretPutPayload — a new field
+  `producing_corecrypto_version: string`. On restore, the new
+  device's `historyClient()` call is best-effort; if it fails with a
+  version-mismatch error, log the producing version and the
+  consuming version for diagnosis.
+
+- **Treat restored history as eventually-consistent.** If a CoreCrypto
+  upgrade renders some old secrets unparseable, the user loses
+  history for those eras on new devices. Existing devices that
+  already restored work fine. The user-visible impact is "history
+  before <date> is unavailable on this new device," surfaced via the
+  restore_completed critical event's body.
+
+- **In the worst case (API removed)**: chalk maintains its own fork
+  of CoreCrypto pinned to the last-known-good version. Heavy but
+  always available as an escape hatch.
+
+Sandbox testing on 2026-05-27 used 9.3.4 in main; the main-branch
+source we read (~CoreCrypto 10.x) has compatible types but a
+restructured FFI layer. The on-the-wire `data` bytes appear to be
+MessagePack-serialized in both — no observed format break between
+those two reference points. Future CoreCrypto versions may break this.
+
+### 6.4 Format-evolution checklist for chalk releases
+
+When upgrading CoreCrypto in a future chalk release:
+1. Verify the upgraded CoreCrypto's `historyClient()` accepts secrets
+   produced by the old version (via an integration test).
+2. If acceptance breaks, the upgrade is a breaking change. Either:
+   - Migrate: have existing devices re-export their conversations'
+     current history (no help for OLD eras, but new uploads work).
+   - Skip the upgrade for now.
+3. Update the `producing_corecrypto_version` validation rules in
+   chalkd.
+4. Surface the situation to users (critical event, in-app banner) so
+   they know their old history may be lost on new devices.
+
+This is operational discipline, not a magic format property.
 
 ---
 
@@ -452,7 +688,7 @@ takes plain `{client_id, data}` Rust struct fields too).
 
 Same as doc #1 §4.1. If a conversation existed before history sharing
 was enabled, no history client can decrypt the pre-enable messages.
-Phase 11d's D7-new (default-on at conversation creation) minimizes
+Phase 11d's D10 (default-on at conversation creation) minimizes
 this in new conversations. For existing chalk conversations created
 before phase 11d ships, pre-upgrade history is lost to new devices —
 unavoidable.

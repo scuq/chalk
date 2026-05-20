@@ -1,16 +1,17 @@
 # Phase 11d Design Doc #1 — Threat Model & Crypto Primitives
 
-**Status:** Revision 3 (history-client architecture, sandbox-validated)
+**Status:** Draft for review
 **Author:** Claude, per scuq's design choices
 **Date:** 2026-05-27 (Vienna)
 **Scope:** chalk phase 11d — multi-device support + full history transfer
 for MLS-encrypted DMs and groups
-**Previous revisions:** rev 1 (initial), rev 2 (added D7-D9 transparency).
-**This revision** drops the custom IndexedDB-export architecture in favor
-of CoreCrypto's built-in history-client mechanism. The shift is informed
-by source-code reading of `@wireapp/core-crypto` main branch and
-sandbox testing against `@wireapp/core-crypto@9.3.4` in Node +
-fake-indexeddb. See §11 for the change log.
+
+This document defines the threat model, cryptographic primitives, and
+high-level architecture for phase 11d. It is informed by source-code
+reading of `@wireapp/core-crypto` main branch and sandbox testing
+against `@wireapp/core-crypto@9.3.4` in Node + fake-indexeddb. The
+companion sandbox tests live at `/home/claude/sandbox-history/`
+(reproducible with `npm install && node test-*.mjs`).
 
 ---
 
@@ -91,12 +92,12 @@ For A4-A5:
 
 ---
 
-## 3. Architecture overview (revised)
+## 3. Architecture overview
 
-This is the section that changes most relative to prior revisions.
-Phase 11d's architecture now centers on **CoreCrypto's built-in
-history-client mechanism** rather than a custom keystore-export
-pipeline.
+Phase 11d's architecture centers on **CoreCrypto's built-in
+history-client mechanism**. Chalk acts as the persistence and
+transport layer around CoreCrypto's native APIs rather than
+implementing keystore export from scratch.
 
 ### 3.1 What CoreCrypto provides
 
@@ -150,7 +151,7 @@ Chalk's responsibility, given CoreCrypto handles the cryptographic
 material, is reduced to:
 
 1. **Enable history sharing on every new conversation by default**
-   (per D7 from rev 2, restated below).
+   (per D10 below).
 2. **Run a HistoryObserver** that catches every `historyClientCreated`
    event.
 3. **Persist each captured HistorySecret server-side**, encrypted
@@ -168,30 +169,26 @@ The cryptographic concerns chalk owned in earlier revisions —
 keystore serialization, signature keypair extraction, IndexedDB row
 filtering, last-write-wins replay — are all obsolete.
 
-### 3.4 Decisions inherited from rev 1 and rev 2
+### 3.4 Locked decisions
 
-The following decisions from earlier revisions remain in force:
-
-| ID | Decision | Status |
-|----|----------|--------|
-| D1 | Envelope encryption: `backup_master_key` wraps the secrets, itself wrapped under per-credential keys (recovery_phrase v1, passkey_prf v2) | unchanged |
-| D2 | Cache derived `backup_master_key` in localStorage encrypted under device DB key | unchanged |
-| D3 | Recovery-phrase rotation: re-wrap, keep old wrap with `expires_at = now + 30d` | unchanged |
-| D4 | History sharing default-on (was: tier-2 default-on) | restated |
-| D5 | Event-driven snapshot triggers with debounce | restated as "upload secret immediately on observer fire" |
-| D6 | Server keeps N=5 latest backups per user | restated as "per-secret retention; see §5" |
-| D7 | Transparency: status + critical-event notifications | unchanged |
-| D8 | `backup_status_get` family in wire protocol | unchanged |
-| D9 | Critical events require explicit user acknowledgment | unchanged |
-
-### 3.5 New decisions for this revision
+The following decisions are locked. They span backup-key handling,
+transparency UX, and history-client orchestration.
 
 | ID | Decision |
 |----|----------|
-| **D7-new** | History sharing enabled by default on every MLS DM/group at creation time |
-| **D8-new** | Each captured HistorySecret encrypted under `backup_master_key` and uploaded immediately to chalkd, keyed by `(user_id, conversation_id, era_epoch)` |
-| **D9-new** | Restore = download all secrets for user → decrypt → instantiate one history-client CoreCrypto per era |
-| **D10-new** | After history-only restore, the new device pairs (PAKE/QR) or self-adds via `device_announce` to become a regular member for ongoing participation; the two flows are independent |
+| **D1** | Envelope encryption: `backup_master_key` wraps the secrets, itself wrapped under per-credential keys (recovery_phrase v1, passkey_prf v2) |
+| **D2** | Cache derived `backup_master_key` in localStorage encrypted under device DB key |
+| **D3** | Recovery-phrase rotation: re-wrap, keep old wrap with `expires_at = now + 30d` |
+| **D4** | History sharing on by default |
+| **D5** | Upload each captured HistorySecret immediately after the originating commit is acknowledged by the delivery service |
+| **D6** | Envelope versions: server retains the current envelope plus the most recent N=5 rotation-superseded versions; HistorySecrets are retained indefinitely (see §4.3) |
+| **D7** | Transparency UX: backup status awareness + operation visibility + critical-event notifications |
+| **D8** | `backup_status_get` wire frame family for status queries |
+| **D9** | Critical events require explicit user acknowledgment; cross-device synchronized so acking on one device dismisses on all |
+| **D10** | History sharing enabled by default on every MLS DM/group at conversation creation time |
+| **D11** | Each captured HistorySecret encrypted under `backup_master_key` and uploaded to chalkd after the originating commit is acknowledged, keyed by `(user_id, conversation_id, era_epoch)` |
+| **D12** | Restore = download all secrets for user → decrypt → instantiate one history-client CoreCrypto per era |
+| **D13** | After history-only restore, the new device pairs (PAKE/QR) or self-adds via `device_announce` to become a regular member for ongoing participation; the two flows are independent |
 
 ---
 
@@ -208,7 +205,7 @@ decryptable by future history clients. The history client starts
 accumulating epoch secrets from its creation epoch forward, not
 backward.
 
-**Mitigation**: per D7-new, we enable history sharing at conversation
+**Mitigation**: per D10, we enable history sharing at conversation
 creation. New chalk DMs and groups thus get history-from-day-one. For
 conversations created BEFORE phase 11d ships, history before the
 phase-11d upgrade is permanently lost to new devices.
@@ -225,7 +222,7 @@ not by a passive observer, not by chalkd. In the recovery-only case
   that conversation, even with the recovery phrase. The new device
   joins as a fresh member, sees messages from re-join onward.
 
-D7-new (default-on history sharing) plus prompt server upload (D8-new)
+D10 (default-on history sharing) plus prompt server upload (D11)
 minimize but cannot eliminate this risk.
 
 ### 4.3 History clients accumulate over conversation lifetime
@@ -400,7 +397,272 @@ CoreCrypto API surface.
 
 ---
 
-## 8. Forward-compatibility hooks
+## 8. Security considerations
+
+This section catalogues concrete attack vectors and the design's
+response to each. Items are ordered by severity, descending. Each
+identifies the threat, the design's mitigation (if any), and any
+residual risk we accept.
+
+### 8.1 HIGH — Nonce reuse on HistorySecret encryption
+
+**Threat**: XChaCha20-Poly1305 requires unique nonces per
+(key, plaintext) pair. With random 24-byte nonces, collision
+probability is cryptographically negligible — but only if generated
+from a CSPRNG. A buggy or backdoored RNG would compromise the
+`backup_master_key` catastrophically: an attacker observing two
+ciphertexts under the same nonce can recover the keystream and read
+both plaintexts.
+
+**Mitigation**: clients MUST use `globalThis.crypto.getRandomValues`
+for nonce generation. The implementation must abort with an explicit
+error if the WebCrypto API is unavailable rather than fall back to
+`Math.random()` or any non-cryptographic source. chalkd MAY validate
+nonce uniqueness within a user's stored secrets as a defense-in-depth
+check, rejecting any `history_secret_put` whose nonce collides with
+any prior nonce for the same user.
+
+**Residual risk**: a compromised browser runtime (malicious extension,
+hostile WASM polyfill) could substitute the RNG without our knowing.
+Out of scope; we trust the browser.
+
+### 8.2 HIGH — `prepareForTransport` covert channel
+
+**Threat**: CoreCrypto's history-client mechanism delivers the
+HistorySecret to existing group members in two ways: via the
+`HistoryObserver` (local) AND via an encrypted MLS application
+message bundled into the commit (in-band, broadcast to all members).
+The in-band delivery means **any current group member can decrypt the
+HistorySecret** by decrypting that application message.
+
+The implication: if any current member of a conversation is
+compromised, the attacker obtains the HistorySecret for the current
+era. They can then instantiate their own `historyClient(secret)` and
+read all past messages from that era — a persistent decryption
+capability that survives the compromised member being removed from
+the group.
+
+This is not strictly worse than the baseline (a current group member
+can already read all current messages), but the persistence across
+removal is new and undesirable. Removing a compromised member
+SHOULD restore confidentiality going forward, but with the in-band
+path, it doesn't.
+
+**Mitigation**: chalk's `prepareForTransport` implementation should
+return a **dummy value** (e.g. 32 random bytes) rather than the real
+`HistorySecret.data`. This neutralizes the in-band path while
+preserving CoreCrypto's protocol invariants (the callback must return
+SOME bytes; they will still be encrypted and sent, but they're
+meaningless on the receiving end).
+
+The legitimate transfer path is exclusively via `history_secret_put`
++ `history_secret_get`, encrypted under `backup_master_key`. Only
+the user's own devices (which know master_key) can decrypt — current
+group members cannot, even with full session keystore access.
+
+**Documented in doc #3 §4.6.**
+
+**Residual risk**: if CoreCrypto in a future version starts depending
+on the in-band path for some functionality, the dummy return value
+might cause downstream issues. Sandbox testing on 2026-05-27
+confirmed CoreCrypto in 9.3.4 doesn't observably depend on the
+in-band content for the sender side. Receiver-side: CoreCrypto's
+`decrypt_message` handles the bytes as a generic MLS application
+message and doesn't attempt to interpret them as a HistorySecret
+(verified by source-code reading of
+`crypto/src/mls/conversation/conversation_guard/history_sharing.rs`
+where the test pattern shows decrypt + manual handling). Receiver-
+side parsing of the dummy bytes is therefore the application's
+concern, and chalk simply ignores them.
+
+### 8.3 HIGH — Replay of old HistorySecret ciphertexts
+
+**Threat**: a hostile chalkd could store the user's history_secret_put
+uploads, then later serve an OLDER ciphertext for an
+`(conversation_id, era_epoch)` than the most-recent valid one. A new
+device on restore would decrypt the old ciphertext (it still has a
+valid AEAD tag because master_key didn't rotate), instantiate the
+older history client, and miss messages from later in the era.
+
+This is a rollback attack on history coverage.
+
+**Mitigation (partial)**: chalkd's UPSERT semantics on the primary
+key `(user_id, conversation_id, era_epoch)` mean the legitimate
+last-write-wins SHOULD be authoritative. But a malicious chalkd
+that ignores the upsert and serves an old row defeats this.
+
+A stronger mitigation: include a `secret_version` integer in the AAD,
+incremented on every put for the same `(conversation_id, era_epoch)`,
+and have the client track the highest seen version per era. On
+restore, reject any secret whose `secret_version` is lower than one
+previously seen by this user.
+
+**Decision**: defer the strong mitigation to a future hardening
+phase. The threat requires active malicious chalkd behavior, which
+puts it outside the honest-but-curious threat model (§2.1). If we
+ever upgrade the threat model to "fully malicious server," this
+mitigation becomes mandatory.
+
+### 8.4 MEDIUM — Critical event acknowledgment can be forged by chalkd
+
+**Threat**: critical events are acked via `critical_event_ack` WS
+frames. If chalkd is compromised, it could synthesize an
+`critical_event_dismissed_event` and push it to a client, making the
+client remove the event from its UI without the user actually
+acknowledging. The user thinks "no critical events to review" while
+attacker activity (e.g. an unauthorized device add) goes unnoticed.
+
+**Mitigation (partial)**: clients SHOULD maintain a local mirror of
+seen-but-unacked critical events. A `critical_event_dismissed_event`
+push should not silently remove an event from the UI unless the
+client has a record of the corresponding `critical_event_ack` it
+itself sent (or the ack came from another of the user's devices in
+the same session).
+
+This is fundamentally a notification-integrity problem and a fully
+honest-server threat model can't completely close it. Cryptographic
+signing of acks under the user's MLS signature key would close it but
+adds significant client-side complexity. Defer to a future hardening
+phase.
+
+**Residual risk**: a compromised chalkd can silently dismiss critical
+events on all devices that aren't currently online. The user has no
+way to know an event was generated.
+
+### 8.5 MEDIUM — QR-embedded 128-bit secret on pairing
+
+**Threat**: phase 11d's online pairing (doc #6 when written) carries
+a 128-bit shared secret in a QR code on the existing device's screen.
+If the QR is observed by an attacker (camera shoulder-surf, screen
+recording, leaked screenshot), the attacker has the full pairing
+secret. No second factor.
+
+**Mitigation**: QR-pairing should only be used in a private setting.
+This is a user-discipline concern that the UI must reinforce.
+
+A stronger version (deferred to v2): SPAKE2+ with a 6-digit PIN as
+the password equivalent. This gives security even if the PIN is
+observed (an attacker would need an online interaction with the
+session). PIN flow specced in doc #6.
+
+**Residual risk**: documented limitation of v1 pairing flow.
+
+### 8.6 MEDIUM — Master_key never rotates
+
+**Threat**: if `backup_master_key` ever leaks (e.g. via localStorage
+compromise where the device DB key was also exposed), every past
+and future HistorySecret encryption is broken. The attacker can
+decrypt all stored secrets and read all history; they can also
+decrypt all future uploads.
+
+**Current design (doc #3 §8)**: master_key never rotates. Recovery
+from compromise requires re-encrypting every stored secret under a
+new master_key — an expensive O(N) operation where N is the user's
+total secret count.
+
+**Mitigation**: document the response playbook for a known compromise:
+1. Detect compromise (out of scope here; logging / audit).
+2. Generate new master_key on a trusted device.
+3. Download all secrets, decrypt under old key, re-encrypt under
+   new key, re-upload.
+4. Update envelope wrap(s) to wrap the new master_key.
+5. Mark all old secret rows (server-side) as superseded by new ones.
+6. After all devices have re-synced, hard-delete superseded rows.
+
+This is a manual operations procedure for v1. Phase 11g (or later)
+should consider automating it.
+
+**Residual risk**: until rotation is automated, a compromise event
+requires significant manual coordination. Users with many
+conversations may experience temporary inability to read history
+during the rotation.
+
+### 8.7 LOW — `producing_corecrypto_version` leaks to chalkd
+
+**Threat**: each `history_secret_put` carries the producing
+CoreCrypto version (per §6.3 of doc #3) for forward-compat diagnosis.
+This leaks to chalkd which version a given chalk client is running.
+A passive chalkd could scan its stored data for users running
+versions with known vulnerabilities and target them.
+
+**Mitigation**: accept the leak as a diagnostic trade-off. The
+version is already visible in other ways (user-agent header on the
+WS handshake, key-package format details, etc.).
+
+**Residual risk**: minimal. Users running known-vulnerable versions
+should upgrade regardless.
+
+### 8.8 LOW — No documented rate limit on `history_secret_put`
+
+**Threat**: a misbehaving or malicious client could flood chalkd with
+many history_secret_put uploads to consume storage. The 8 KB per-
+secret ceiling caps each upload but not total volume.
+
+**Mitigation**: chalkd implementation should enforce a per-user
+rate limit (recommended: ≤ 100 uploads/hour as a baseline; tunable
+via config). The limit should be high enough not to interfere with
+legitimate group activity (a user in many active groups with frequent
+membership changes is the realistic worst case).
+
+**Status**: rate limit will be specified in doc #4 (server schema)
+when written.
+
+### 8.9 LOW — `era_epoch` in clear leaks group churn rate
+
+**Threat**: chalkd sees the `era_epoch` of every history_secret_put.
+This reveals how often a conversation's history client rotates,
+which correlates with member-add/remove frequency and the ~daily
+auto-rotation. An attacker can model group churn rates per user.
+
+**Mitigation**: accept the leak. The server already knows membership
+changes (it routes MLS commits) and the daily rotation is universal.
+No new information leaked.
+
+**Residual risk**: none beyond what chalkd already observes.
+
+### 8.10 LOW — Master_key in process memory during use
+
+**Threat**: while `backup_master_key` is encrypted at rest in
+localStorage (under the device DB key) and on chalkd (wrapped under
+the recovery-phrase-derived key), it lives in process memory
+unencrypted during use. An attacker with memory-dump capability
+(browser DevTools access, malware) can extract it.
+
+**Mitigation**: WebCrypto's `subtle` API can hold keys as
+non-extractable handles, providing some protection. CoreCrypto does
+not use this API for its own key material (constraint we inherit).
+For our own master_key handling, we could use SubtleCrypto for the
+AEAD operations and avoid exposing master_key as a raw byte buffer.
+
+**Decision for v1**: use raw byte buffers (consistent with the rest
+of chalk's crypto code). Revisit in a future hardening phase if
+memory-dump attacks become a realistic concern.
+
+**Residual risk**: a fully-privileged attacker on the user's device
+has access to everything anyway. This concern is more about defense
+in depth than realistic attack prevention.
+
+### 8.11 Summary
+
+| ID | Severity | Threat | Status |
+|----|----------|--------|--------|
+| 8.1 | HIGH | Nonce reuse via bad RNG | Mitigated (require CSPRNG, abort fallback) |
+| 8.2 | HIGH | prepareForTransport covert channel | Mitigated (return dummy bytes) |
+| 8.3 | HIGH | Replay of old ciphertexts | Partial (UPSERT); strong mitigation deferred |
+| 8.4 | MEDIUM | Ack forgery by chalkd | Partial (client mirror); strong mitigation deferred |
+| 8.5 | MEDIUM | QR-secret observation | Accepted limitation; PIN flow deferred to v2 |
+| 8.6 | MEDIUM | Master_key never rotates | Manual playbook documented; automation deferred |
+| 8.7 | LOW | corecrypto_version leaks | Accepted |
+| 8.8 | LOW | No rate limit documented | To be specified in doc #4 |
+| 8.9 | LOW | era_epoch leaks churn | Accepted |
+| 8.10 | LOW | master_key in memory | Accepted; revisit if memory-dump becomes a concern |
+
+Items 8.3, 8.4, 8.6 should be revisited if the threat model is ever
+upgraded from honest-but-curious to fully-malicious server.
+
+---
+
+## 9. Forward-compatibility hooks
 
 Reserved-now-implementable-later fields in v1:
 
@@ -415,84 +677,74 @@ Reserved-now-implementable-later fields in v1:
 
 ---
 
-## 9. Open questions and resolved items
+## 10. Design questions
 
-### Resolved in rev 2
+### 10.1 Resolved
 
-- **Q1 = c**: No plaintext message caching. ✅ (Carries over.
-  Plaintext messages are only ever ephemeral in client memory.)
-- **Q2**: Backup retention N=5. ↻ Reinterpreted in this rev: applies
-  to envelope versions, not history secrets (which are retained
-  indefinitely per §4.3).
-- **Q3**: Tier-1/tier-2 size ceilings. ✗ Obsolete with this rev. New
-  ceilings: individual secret ≤ 8 KB, envelope ≤ 64 KB.
-- **Q4 = a**: Pairing via WS frames, no new HTTP endpoints. ✅
-- **Q5**: AS deferred. ✅
+- **Q1 = c**: No plaintext message caching. Plaintext messages are
+  only ever ephemeral in client memory.
+- **Q2**: Envelope-version retention N=5. Applies to envelope rotations,
+  not to HistorySecrets (which are retained indefinitely per §4.3).
+- **Q3**: Tier-1/tier-2 size ceilings — superseded. Individual
+  HistorySecret ciphertext ≤ 8 KB; envelope ≤ 64 KB.
+- **Q4 = a**: Pairing and backup both run over WS frames. No new HTTP
+  endpoints introduced.
+- **Q5**: Authentication Service (AS) deferred to phase 11g.
+- **Q17**: Server-side deduplication of HistorySecrets. Resolved:
+  chalkd treats `(user_id, conversation_id, era_epoch)` as a primary
+  key with UPSERT semantics. Last-uploaded-wins.
 
-### Newly open in this rev
+### 10.2 Open
 
-**Q15.** Should the `era_epoch` in the AAD be the MLS epoch at which
-the new history client was added (precise but requires per-conversation
-epoch tracking), or simply a monotonic counter per
-`(user_id, conversation_id)` issued by chalkd?
+**Q15.** What value should `era_epoch` carry in the AAD?
 
-Recommendation: MLS epoch number. It's already available from
-CoreCrypto's epoch observer (orthogonal to history observer) and
-gives semantic meaning to ordering. Locking in: era_epoch = MLS
-epoch number at history-client-add time.
+Recommendation: the MLS conversation epoch at which the history client
+was added. This gives semantic meaning to ordering and aligns with
+the era boundaries in §3.2. The MLS epoch is readable from CoreCrypto
+via `conversationEpoch(convId)`.
 
-**Q16.** What happens when the same conversation has TWO new history
-clients added in close succession (race during enable + immediate
-member removal)? Each fires the observer once, so we upload two
-secrets. Is the observer fired in deterministic order?
+**Caveat**: at the time the HistoryObserver fires, CoreCrypto is
+inside an internal lock dispatched from the conversation guard. We
+cannot reliably call back into CoreCrypto (e.g. `conversationEpoch`)
+from inside the observer without risk of deadlock or unspecified
+behavior. The actual implementation approach is documented in doc #3
+§4.2: maintain a separate per-conversation epoch cache populated via
+an `EpochObserver`, and look up the cached epoch from the
+HistoryObserver synchronously. This is sandbox-untested for ordering
+guarantees between the two observer types and needs integration
+testing in chalk's implementation.
 
-The Rust source (`crypto/src/mls/conversation/conversation_guard/history_sharing.rs`,
-`update_history_client`) shows the observer is fired after the commit
-is sent but before the next operation. So two enables in series → two
-observer fires, in order. We can assume monotonic in our design.
+**Q16.** Is observer firing order deterministic when multiple history
+clients rotate in close succession (e.g. enable + immediate
+member-remove)?
 
-**Q17.** Should we deduplicate secrets server-side? In theory each
-era's secret is unique, but bug-induced re-uploads could happen.
+Working assumption: yes, in order. The Rust source
+(`crypto/src/mls/conversation/conversation_guard/history_sharing.rs`,
+`update_history_client`) shows the observer fires after the commit is
+sent for each history-client rotation. Two operations in series
+should produce two observer fires in series.
 
-Recommendation: chalkd treats `(user_id, conversation_id, era_epoch)`
-as a primary key with UPSERT semantics. Last-uploaded-wins.
+**Caveat**: this assumption has not been verified across async-task
+boundaries or with concurrent operations from multiple browser tabs
+sharing the same CoreCrypto database. Integration testing during
+chalk implementation must verify monotonic ordering before this
+assumption is relied on for production.
 
 ---
 
-## 10. Summary
+## 11. Summary
 
-Phase 11d's architecture, post-revision-3:
+Phase 11d's architecture:
 
 - **Identity bootstrap**: envelope (under recovery phrase) holds
-  `backup_master_key`. Same as rev 1.
+  `backup_master_key`.
 - **History transfer**: per-conversation, per-era HistorySecrets
-  encrypted under `backup_master_key` and stored at chalkd. NEW.
+  encrypted under `backup_master_key` and stored at chalkd.
 - **Restore**: download all secrets → decrypt → instantiate
-  CoreCrypto.historyClient per era. NEW.
+  `CoreCrypto.historyClient` per era.
 - **Multi-device participation**: independent of history. New devices
-  join groups as regular members via PAKE pairing or self-add. Same
-  as rev 1.
-- **Transparency**: Level 1 + Level 2 + critical events. Same as
-  rev 2.
+  join groups as regular members via PAKE pairing or self-add.
+- **Transparency**: backup status awareness + operation visibility +
+  critical events with cross-device synchronized acknowledgment.
 
-The whole IndexedDB-export design from rev 1 is gone. Tier-1 and
-tier-2 distinctions are gone. The Postcard-parsing limitation is
-gone. Net design size: smaller, cleaner, sandbox-validated.
-
----
-
-## 11. Change log
-
-- **rev 1** (2026-05-26): Initial draft. Custom IndexedDB-export with
-  tier-1 (identity) and tier-2 (full keystore dump) blobs. Defined
-  threat model, primitives, D1-D6.
-- **rev 2** (2026-05-27 early): Added D7-D9 for transparency UX
-  (status awareness, operation visibility, critical-event
-  notifications with cross-device sync).
-- **rev 3** (2026-05-27 late, this revision): Replaced custom keystore
-  export with CoreCrypto's built-in history-client mechanism after
-  discovery via web search + source-code reading + sandbox testing.
-  Threat model intact; architecture drastically simplified. Added
-  D7-new through D10-new. Q3 obsoleted. New Q15-Q17.
-
-End of doc #1 revision 3. Vienna 2026-05-27.
+End of doc #1. Vienna 2026-05-27.

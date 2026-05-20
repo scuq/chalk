@@ -1,15 +1,21 @@
 # Phase 11d Design Doc #2 — Wire Protocol Spec
 
-**Status:** Revision 3 (history-client architecture, sandbox-validated)
+**Status:** Draft for review
 **Author:** Claude, per scuq's design choices
 **Date:** 2026-05-27 (Vienna)
 **Scope:** chalk phase 11d — wire format for envelope, history secrets,
 pairing, multi-device, status, and critical events
-**Depends on:** doc #1 rev 3 (threat model & architecture)
-**Previous revisions:** rev 1 (initial 30 frames), rev 2 (added status
-& critical-event families, 39 frames). **This revision** replaces the
-backup family with a simpler history-secrets family. Net frame count
-drops from 39 to 32.
+**Depends on:** doc #1 (threat model & architecture)
+
+This document defines every new WS frame type introduced by phase 11d.
+It is field-by-field exhaustive so doc #4 (server schema) and doc #5
+(client state machines) can be written against a frozen protocol.
+
+The conventions match chalk's existing `internal/proto/` patterns:
+`Type<Name>` constants with `snake_case` wire names, ack types as
+`Type<Name>Ack`, bytes encoded as base64 strings, IDs as UUID strings.
+Phase 11d frame definitions live in
+`internal/proto/frames_phase11d.go`.
 
 ---
 
@@ -39,8 +45,7 @@ HistorySecrets.
 | `history_secret_get`     | C→S | Download a specific secret |
 | `history_secret_get_ack` | S→C | Returns the encrypted secret |
 
-**C. Pairing family** — for online device-to-device pairing
-(unchanged from rev 2).
+**C. Pairing family** — for online device-to-device pairing.
 
 | Type | Direction | Purpose |
 |------|-----------|---------|
@@ -53,8 +58,7 @@ HistorySecrets.
 | `pairing_event`          | S→C | Push to old device: "new device just claimed" |
 | `pairing_cancel`         | C→S | Either party cancels the pairing flow |
 
-**D. Multi-device family** — device announce + remove (unchanged from
-rev 2).
+**D. Multi-device family** — device announce + remove.
 
 | Type | Direction | Purpose |
 |------|-----------|---------|
@@ -66,7 +70,7 @@ rev 2).
 | `device_remove`          | C→S | Mark a device as removed |
 | `device_remove_ack`      | S→C | Confirmation |
 
-**E. Status family** — for transparency UX (D7, unchanged from rev 2).
+**E. Status family** — for transparency UX (D7).
 
 | Type | Direction | Purpose |
 |------|-----------|---------|
@@ -75,7 +79,7 @@ rev 2).
 | `backup_progress_event`    | S→C | Push progress during long ops |
 
 **F. Critical event family** — high-importance notifications with
-cross-device sync (D8/D9, unchanged from rev 2).
+cross-device sync (D8/D9).
 
 | Type | Direction | Purpose |
 |------|-----------|---------|
@@ -96,9 +100,9 @@ strings for IDs. Phase 11d frames live in
 
 ## 2. Envelope family
 
-The envelope structure and put/get semantics are inherited unchanged
-from rev 2 §2.1-§2.3. Reproduced here in condensed form for
-self-containment.
+The envelope holds the user's `backup_master_key` wrapped under one or
+more per-credential keys (recovery phrase in v1; passkey PRF in v2+).
+Put/get semantics are simple replacement with optimistic concurrency.
 
 ### 2.1 Envelope structure
 
@@ -150,7 +154,7 @@ type BackupEnvelopePutAckPayload struct {
 }
 ```
 
-**Server validation** (unchanged from rev 2):
+**Server validation**:
 - Total envelope size ≤ 64 KB
 - ≤ 1024 wraps
 - `wrap.kind` in allowlist (`"recovery_phrase"` for v1)
@@ -172,13 +176,17 @@ fit in a single WS frame.
 
 Each HistorySecret captured by the HistoryObserver is:
 
-1. CBOR-encoded as `{client_id: <bytes>, data: <bytes>}` to produce a
-   plaintext of ~800 bytes.
-2. AEAD-encrypted under `backup_master_key` with a random 24-byte nonce.
-3. AAD = `"chalk.history.v1" || user_id || conversation_id || u64_be(era_epoch)`.
+1. CBOR-encoded as `{schema_version: 1, client_id: <bytes>, data: <bytes>}`
+   to produce a plaintext of ~812 bytes. See doc #3 §3 for full layout.
+2. AEAD-encrypted under `backup_master_key` with a random 24-byte nonce
+   using XChaCha20-Poly1305.
+3. AAD = `"chalk.history.v1" || user_id (16B) || conversation_id (16B) || u64_be(era_epoch)`.
 
 Ciphertext is base64-encoded for JSON transport. Final wire size is
 ~1.1 KB per secret.
+
+Doc #3 is canonical for the encrypted-payload format. Any discrepancy
+between this doc and doc #3 is a doc bug; defer to doc #3.
 
 ### 3.2 `history_secret_put`
 
@@ -198,6 +206,13 @@ type HistorySecretPutPayload struct {
     // SourceDeviceID is the device that captured this secret (i.e.
     // the device whose HistoryObserver fired). Informational.
     SourceDeviceID string `json:"source_device_id"`
+
+    // ProducingCoreCryptoVersion records which version of
+    // @wireapp/core-crypto produced this secret's inner data. Used
+    // at restore time to diagnose future-version incompatibilities
+    // (see doc #3 §6.3 for the forward-compat strategy).
+    // Format: semver string, e.g. "9.3.4". Required.
+    ProducingCoreCryptoVersion string `json:"producing_corecrypto_version"`
 }
 
 type HistorySecretPutAckPayload struct {
@@ -236,13 +251,14 @@ type HistorySecretListAckPayload struct {
 }
 
 type HistorySecretDescriptor struct {
-    SecretID       string `json:"secret_id"`
-    ConversationID string `json:"conversation_id"`
-    EraEpoch       uint64 `json:"era_epoch"`
-    EnvelopeVersion int   `json:"envelope_version"`
-    SourceDeviceID  string `json:"source_device_id"`
-    CreatedAt       int64  `json:"created_at"`
-    SizeBytes       int    `json:"size_bytes"`
+    SecretID                  string `json:"secret_id"`
+    ConversationID            string `json:"conversation_id"`
+    EraEpoch                  uint64 `json:"era_epoch"`
+    EnvelopeVersion           int    `json:"envelope_version"`
+    SourceDeviceID            string `json:"source_device_id"`
+    CreatedAt                 int64  `json:"created_at"`
+    SizeBytes                 int    `json:"size_bytes"`
+    ProducingCoreCryptoVersion string `json:"producing_corecrypto_version"`
 }
 ```
 
@@ -257,12 +273,13 @@ type HistorySecretGetPayload struct {
 }
 
 type HistorySecretGetAckPayload struct {
-    SecretID        string `json:"secret_id"`
-    ConversationID  string `json:"conversation_id"`
-    EraEpoch        uint64 `json:"era_epoch"`
-    EnvelopeVersion int    `json:"envelope_version"`
-    SourceDeviceID  string `json:"source_device_id"`
-    CreatedAt       int64  `json:"created_at"`
+    SecretID                  string `json:"secret_id"`
+    ConversationID            string `json:"conversation_id"`
+    EraEpoch                  uint64 `json:"era_epoch"`
+    EnvelopeVersion           int    `json:"envelope_version"`
+    SourceDeviceID            string `json:"source_device_id"`
+    CreatedAt                 int64  `json:"created_at"`
+    ProducingCoreCryptoVersion string `json:"producing_corecrypto_version"`
 
     Ciphertext string `json:"ciphertext"`
     Nonce      string `json:"nonce"`
@@ -310,11 +327,11 @@ a protocol constraint.
 
 ## 4. Pairing family
 
-**Unchanged from rev 2 §3.** Reproduced descriptions only; for full
-field-by-field specs see prior revision.
-
 The pairing flow runs between two devices of the same user, mediated
-by chalkd which sees only encrypted blobs.
+by chalkd which sees only encrypted blobs. **The detailed PAKE
+mechanics, QR-code format, and field-by-field frame payloads are
+specified in doc #6 (PAKE pairing flow), which has not yet been
+written.** This section provides the protocol surface only.
 
 Key points:
 - 5-frame round trip: `pairing_offer` → `pairing_offer_ack` →
@@ -326,13 +343,17 @@ Key points:
 - `pairing_session_key` encrypts the `backup_master_key` for transit
 - Server in-memory state only; 5-minute TTL
 
-PAKE detail belongs in doc #6.
+Until doc #6 lands, implementers should treat the pairing family as
+unspecified and not yet implementable. Other families (envelope,
+history-secrets, multi-device, status, critical event) are
+fully-specified in this doc and can be implemented independently.
 
 ---
 
 ## 5. Multi-device family
 
-**Unchanged from rev 2 §4.** Key points:
+**Key points** (full field-by-field specs deferred to doc #5,
+client state machines):
 
 - After successful restore (via pairing OR recovery), the new device
   fires `device_announce` with origin_kind = `"paired"` or
@@ -341,14 +362,17 @@ PAKE detail belongs in doc #6.
   other connected devices of the same user.
 - Other devices initiate self-add: for each MLS group they're a
   member of, add the new device via `addClientsToConversation`.
-- Self-add races resolved by random 0-30s delay (per Q9 in rev 2).
+- Self-add races resolved by random 0-30s delay per device (deferring
+  the actual commit) to reduce concurrent-commit collisions.
 - `device_remove` evicts a device via MLS commits.
 
 ---
 
 ## 6. Status family
 
-**Unchanged from rev 2 §5.** Implements D7 transparency.
+Implements D7 transparency. The status family is read-only on the
+server side (no side effects from get queries) and produces push
+events during long-running operations like restore.
 
 ### 6.1 `backup_status_get`
 
@@ -358,17 +382,19 @@ Returns a snapshot:
 type BackupStatusGetAckPayload struct {
     EnvelopePresent      bool   `json:"envelope_present"`
     EnvelopeVersion      int    `json:"envelope_version"`
-    HistorySecretsCount  int    `json:"history_secrets_count"`  // NEW vs rev 2
-    LastSecretUploadAt   *int64 `json:"last_secret_upload_at"`  // NEW vs rev 2
+    HistorySecretsCount  int    `json:"history_secrets_count"`
+    LastSecretUploadAt   *int64 `json:"last_secret_upload_at"`
     LastFailedUpload     *BackupFailedAttempt `json:"last_failed_upload"`
     ActiveRestoresCount  int    `json:"active_restores_count"`
     PendingCriticalEvents int   `json:"pending_critical_events"`
 }
 ```
 
-Note the field changes from rev 2: instead of separate tier-1 and
-tier-2 last-upload tracking, we now have a single
-`HistorySecretsCount` and `LastSecretUploadAt`.
+The server should cache this per-user response briefly (recommended:
+30s) and invalidate on relevant write events (envelope put,
+history_secret put, critical-event ack). Without caching this becomes
+a hot path; with caching the typical user sees a single cache hit per
+tab focus.
 
 ### 6.2 `backup_progress_event`
 
@@ -378,26 +404,37 @@ operations:
 ```go
 type BackupProgressEventPayload struct {
     OperationID string `json:"operation_id"`
-    Kind        string `json:"kind"`
-    Stage       string `json:"stage"`        // "downloading secrets", "decrypting", "instantiating history clients", "joining groups"
-    Percent     int    `json:"percent"`      // 0-100, -1 = indeterminate
-    Items       int    `json:"items"`        // current item index
-    TotalItems  int    `json:"total_items"`  // total items
+    Kind        string `json:"kind"`        // "restore" in v1
+    Stage       string `json:"stage"`       // human-readable stage label
+    Percent     int    `json:"percent"`     // 0-100, -1 = indeterminate
+    Items       int    `json:"items"`       // current item index
+    TotalItems  int    `json:"total_items"` // total items
     Terminal    bool   `json:"terminal"`
     Failed      bool   `json:"failed,omitempty"`
     FailureReason string `json:"failure_reason,omitempty"`
 }
 ```
 
-Kind values are: `"restore"`. The original rev 2 also defined
-`"tier2_upload"` and `"tier2_download"`, both obsolete now. Restore
-progress is the primary use case.
+Stage examples for `Kind="restore"`:
+- "fetching envelope"
+- "decrypting master key"
+- "listing history secrets"
+- "downloading secret N/M"
+- "instantiating history client N/M"
+- "restore complete"
+
+`Kind="restore"` is the only kind in v1. Future kinds may include
+`"envelope_rotation"` (when the user rotates their recovery phrase
+and the envelope re-wrap takes meaningful time).
 
 ---
 
 ## 7. Critical event family
 
-**Unchanged from rev 2 §6.** Implements D8/D9.
+Implements D8/D9: high-importance, user-facing notifications that
+require explicit acknowledgment. Cross-device synchronized — an ack
+on any of the user's devices dismisses on all others. The server is
+the sole emitter of critical events; clients only receive and ack.
 
 Six event kinds:
 
@@ -407,7 +444,7 @@ Six event kinds:
 | `device_added_recovery`       | New device via recovery phrase | "OK" / "Wasn't me — rotate" |
 | `device_removed`              | Device removed | "OK" |
 | `recovery_phrase_rotated`     | Recovery rotation completed | "OK" |
-| `history_uploads_persistently_failing` | Secret uploads failing >1hr (was: `backup_persistently_failing` in rev 2) | "Investigate" |
+| `history_uploads_persistently_failing` | Secret uploads failing >1hr | "Investigate" |
 | `restore_completed`           | Restore finished | "Welcome back" |
 
 Cross-device sync mechanism: an ack on any device dismisses on all
@@ -419,8 +456,10 @@ Retention: pending 90 days TTL, acked 180 days for audit.
 
 ## 8. Error codes
 
-Updated for the new history-secrets family. Codes carried over from
-rev 2 unless marked.
+All errors follow chalk's existing convention: `frame_type=error`,
+payload `{code: string, message: string, ref: string}`.
+
+New codes introduced by phase 11d:
 
 | Code | Frame context | Meaning |
 |------|---------------|---------|
@@ -441,12 +480,6 @@ rev 2 unless marked.
 | `critical_event_not_found` | critical_event_ack | event_id unknown |
 | `critical_event_already_acked` | critical_event_ack | race lost |
 | `critical_event_action_invalid` | critical_event_ack | action_id not allowed |
-
-Removed compared to rev 2: `backup_too_large`, `backup_invalid_device`,
-`backup_clock_skew`, `backup_not_found`, `upload_too_large`,
-`upload_chunk_out_of_order`, `upload_chunk_wrong_size`,
-`upload_sha256_mismatch`, `upload_timeout`. All were for the chunked
-tier-2 flow that no longer exists.
 
 ---
 
@@ -469,15 +502,15 @@ tier-2 flow that no longer exists.
 | Critical event pending TTL | 90 days |
 | Critical event acked retention | 180 days |
 
-Removed compared to rev 2: tier-1/tier-2 ceilings, chunk size limit,
-upload timeout. The new per-secret ceiling (8 KB) is more permissive
-than necessary (typical is 1.1 KB).
+The HistorySecret ceiling of 8 KB is comfortably above typical (~1.1
+KB) and exists primarily as a defensive bound against bug-induced
+bloat.
 
 ---
 
 ## 10. No HTTP endpoints
 
-Per Q4=a (locked in rev 1), all phase-11d traffic flows over the
+Per Q4 (locked in doc #1), all phase-11d traffic flows over the
 existing WS connection. No new HTTP endpoints introduced.
 
 ---
@@ -487,15 +520,11 @@ existing WS connection. No new HTTP endpoints introduced.
 Phase 11d adds **32 new wire types** to chalk:
 
 - 4 envelope family
-- 6 history-secrets family (was: 16 backup family in rev 2)
+- 6 history-secrets family
 - 8 pairing family
 - 7 multi-device family (counting `device_announce_event` push)
 - 3 status family
 - 6 critical event family (counting `_dismissed_event` push)
-
-For comparison: rev 1 had 30 frames, rev 2 had 39. Rev 3 has 32 —
-back near rev 1's count but with the rev 2 transparency additions
-intact.
 
 ---
 
@@ -512,7 +541,7 @@ chalk:
   `backup_progress_event` (enables the restore flow)
 - **Land 4**: critical event family (standalone; depends on Land 1)
 - **Land 5**: pairing family (depends on Land 1-3 to have something
-  to pair)
+  to pair; also depends on doc #6 being written)
 - **Land 6**: `device_announce` + self-add flow + emits
   `device_added_paired` / `device_added_recovery` critical events
 - **Land 7**: `device_list` + `device_remove` + emits `device_removed`
@@ -526,18 +555,22 @@ features layered on top.
 
 ## 13. Open questions
 
-**Q15 (from doc #1)**: era_epoch = MLS epoch number at history-client
-add. Resolved. The HistorySecretPutPayload field `era_epoch` carries
-this directly.
+**Q15** (from doc #1): era_epoch = MLS conversation epoch at the
+moment the history client was added. Resolved at the protocol level —
+the `HistorySecretPutPayload.era_epoch` field carries this value.
+Implementation caveat about how the client OBTAINS the value (cannot
+call back into CoreCrypto from inside the HistoryObserver) is
+documented in doc #3 §4.2. Pending integration testing in chalk.
 
-**Q16 (from doc #1)**: observer fires are in order. Resolved by
-inspection of CoreCrypto source. Protocol assumes ordering; chalk's
-client code uploads in observer-callback order.
+**Q16** (from doc #1): observer fire ordering is assumed monotonic.
+Protocol-level: chalk's client code uploads in observer-callback
+order. The actual monotonicity guarantee from CoreCrypto needs
+integration verification before being relied on in production.
 
-**Q17 (from doc #1)**: server upserts on
+**Q17** (from doc #1): server upserts on
 `(user_id, conversation_id, era_epoch)`. Resolved. See §3.2.
 
-**Q18 (new)**: Should `history_secret_list_ack` include a pagination
+**Q18** (new): Should `history_secret_list_ack` include a pagination
 cursor for users with very many secrets (say, > 10,000)?
 
 Initial recommendation: no pagination in v1. 10,000 descriptors at
@@ -545,28 +578,29 @@ Initial recommendation: no pagination in v1. 10,000 descriptors at
 If pagination becomes necessary, add a `cursor` field in v2 without
 breaking v1 clients.
 
-**Q19 (new)**: Should the encrypted HistorySecret's CBOR include a
+**Q19** (new): Should the encrypted HistorySecret's CBOR include a
 schema version byte so we can evolve the inner format?
 
 Recommendation: yes. The CBOR plaintext is
 `{schema_version: 1, client_id: <bytes>, data: <bytes>}` rather than
-just the two fields. This is a tiny overhead (~5 bytes) and saves us
-from format-evolution pain later. See doc #3 §3 for full layout.
+just the two fields. Doc #3 §3 specifies this as the canonical
+format.
 
 ---
 
 ## 14. Summary
 
-Doc #2 rev 3 defines **32 wire frames** across six families. The shape
-is much simpler than rev 2:
+Doc #2 defines **32 wire frames** across six families:
 
-- Envelope unchanged.
-- Backup blobs replaced with a single per-secret put/list/get family.
-  No chunking, no tier-1/tier-2 split, no chunked-state machine.
-- Pairing, multi-device, status, critical events all unchanged.
+- Envelope (4): manage the wrapped `backup_master_key`
+- History secrets (6): put / list / get per-era HistorySecrets
+- Pairing (8): online device-to-device handoff; details in doc #6
+- Multi-device (7): announce, list, remove devices
+- Status (3): backup-health snapshots + restore progress
+- Critical events (6): high-importance notifications with
+  cross-device acknowledgment sync
 
-Open questions Q18-Q19 are smaller than prior revisions'. Doc #3
-(rev 3) defines what goes INSIDE the encrypted HistorySecret payload
-that this protocol ferries.
+Doc #3 defines what goes INSIDE the encrypted HistorySecret payload
+that the history-secrets family ferries.
 
-End of doc #2 revision 3. Vienna 2026-05-27.
+End of doc #2. Vienna 2026-05-27.
