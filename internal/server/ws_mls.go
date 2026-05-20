@@ -120,6 +120,15 @@ func (h *WSHandler) handleMlsCommitBundle(
 		}
 	}
 
+	// Phase 11c-3 PR 1: for each newly-added user, publish
+	// channel_event{kind="added"} so the new member's other-instance
+	// connected devices (or this-instance peers) see the channel pop
+	// into the sidebar without waiting for a reconnect. Mirrors what
+	// handleCreateChannel does on initial channel creation.
+	if len(addUserIDs) > 0 {
+		h.publishMlsAddChannelEvents(ctx, channelID, addUserIDs)
+	}
+
 	// PR 5: live-broadcast the commit to existing channel members.
 	// Recipient set = (current channel members) - (sender) - (newly
 	// added members from proposed_adds). New members get their
@@ -232,7 +241,7 @@ func (h *WSHandler) fanOutMlsCommitEvent(
 			Epoch:             epoch,
 			Commit:            commitB64,
 			CommittedByUserID: senderID.String(),
-			CommittedAt:       time.Now().UTC().Format(time.RFC3339),
+			CommittedAt:       time.Now().UTC(),
 		})
 	if ferr != nil {
 		h.logger.Printf("fanOutMlsCommitEvent: build frame: %v", ferr)
@@ -327,7 +336,7 @@ func (h *WSHandler) handleFetchMlsCommits(
 				Epoch:             mc.Epoch,
 				Commit:            base64.StdEncoding.EncodeToString(mc.CommitBytes),
 				CommittedByUserID: mc.CommittedByUserID.String(),
-				CommittedAt:       mc.CommittedAt.UTC().Format(time.RFC3339),
+				CommittedAt:       mc.CommittedAt.UTC(),
 			})
 		if ferr != nil {
 			h.logger.Printf("handleFetchMlsCommits: build frame epoch=%d: %v",
@@ -496,3 +505,48 @@ func itoa(n int) string {
 	}
 	return string(buf[i:])
 }
+
+// publishMlsAddChannelEvents publishes a channel_event{kind="added"}
+// to each newly-added user_id. Builds a fresh ChannelSummary using
+// the post-commit membership state (the commit has just applied
+// channel_members changes by this point).
+//
+// Errors are non-fatal and logged: the recipient will still pick up
+// the channel on next reconnect via list_channels. We don't surface
+// the failure to the original committer because the commit itself
+// succeeded -- this is auxiliary UX delivery.
+//
+// Phase 11c-3 PR 1.
+func (h *WSHandler) publishMlsAddChannelEvents(
+	ctx context.Context,
+	channelID uuid.UUID,
+	addUserIDs []uuid.UUID,
+) {
+	if h.store == nil || len(addUserIDs) == 0 {
+		return
+	}
+	ch, err := h.store.GetChannel(ctx, channelID)
+	if err != nil {
+		h.logger.Printf("publishMlsAddChannelEvents: GetChannel: %v", err)
+		return
+	}
+	memberIDs, err := h.store.ListMembersForChannel(ctx, channelID)
+	if err != nil {
+		h.logger.Printf("publishMlsAddChannelEvents: ListMembersForChannel: %v", err)
+		return
+	}
+	handles, hErr := h.store.HandlesByID(ctx, memberIDs)
+	if hErr != nil {
+		h.logger.Printf("publishMlsAddChannelEvents: HandlesByID: %v", hErr)
+		handles = nil // tolerated by channelSummaryFromStore
+	}
+	cwm := store.ChannelWithMembers{Channel: ch, MemberIDs: memberIDs}
+	summary := channelSummaryFromStore(cwm, handles)
+	for _, uid := range addUserIDs {
+		if err := h.publishChannelEvent(ctx, uid, channelID, "added", summary); err != nil {
+			h.logger.Printf("publishMlsAddChannelEvents: publish to %s: %v",
+				uid, err)
+		}
+	}
+}
+

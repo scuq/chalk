@@ -1,5 +1,7 @@
 package proto
 
+import "time"
+
 // Phase 11c-1 adds two C->S frames for managing membership of an
 // existing MLS channel:
 //
@@ -185,7 +187,7 @@ type MlsCommitEventPayload struct {
 	CommittedByUserID string `json:"committed_by_user_id"`
 	// CommittedAt is RFC3339 UTC; used by the client for ordering
 	// hints and for "this commit happened N minutes ago" UI.
-	CommittedAt       string `json:"committed_at"`
+	CommittedAt       time.Time `json:"committed_at"`
 }
 
 // FetchMlsCommitsPayload (C->S). Catchup request. Client supplies
