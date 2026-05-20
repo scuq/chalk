@@ -1,33 +1,23 @@
 package server
 
 // Phase 11b-1: MLS commit_bundle + welcome ack handlers.
-// Phase 11c-1 PR 3: extended with proposed_adds / proposed_removes
-//   validation, mls_commits persistence, and atomic channel_members
-//   mutation.
-// Phase 11c-1 PR 4: welcomes are now buffered to mls_pending_welcomes
-//   alongside the live fanout. handleMlsWelcomeAck deletes the
-//   buffered row. New helper drainPendingMlsWelcomes pushes any
-//   pending welcomes when a user connects (called from ws.go's
-//   hello path).
-//
-// Server-side, the bytes inside commit/welcome/group_id are opaque.
-// Auth invariants:
-//   * The publisher of a commit_bundle must be a channel member.
-//   * Membership changes declared in proposed_adds / proposed_removes
-//     must match a recent authorization issued by add_to_channel /
-//     remove_from_channel (within 60s, single-use).
-//   * Welcomes are fan'd to recipients by user_id; the server
-//     iterates a user's connected devices via Hub.FanOutToUser, AND
-//     buffers them in mls_pending_welcomes for offline / future
-//     reconnects. The client deduplicates: a Welcome for a channel
-//     the recipient already has is harmless (CoreCrypto's
-//     processWelcome returns "already in group" or similar).
+// Phase 11c-1 PR 3: + proposed_adds / proposed_removes validation +
+//   atomic mls_commits write + channel_members mutation.
+// Phase 11c-1 PR 4: + welcomes buffered to mls_pending_welcomes;
+//   handleMlsWelcomeAck deletes; drainPendingMlsWelcomes on hello.
+// Phase 11c-1 PR 5: + LIVE BROADCAST of every Commit to existing
+//   channel members via mls_commit_event push (closes the
+//   "existing members never hear about the commit" gap that was
+//   acceptable for 2-party DMs but breaks for 3+ member channels).
+//   + handleFetchMlsCommits: client-initiated catchup that streams
+//   stored commits in epoch order to a reconnecting client.
 
 import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
@@ -98,27 +88,20 @@ func (h *WSHandler) handleMlsCommitBundle(
 		}
 	}
 
-	// Phase 11c-1 PR 3: parse and validate proposed membership changes.
-	// Each declared add/remove must have a matching authorization
-	// previously issued by handleAddToChannel / handleRemoveFromChannel.
+	// PR 3: validate proposed membership changes.
 	addUserIDs, removeUserIDs, errCode, errMsg := h.validateProposedMembership(p)
 	if errCode != "" {
 		h.sendError(ctx, c, f.Ref, errCode, errMsg)
 		return
 	}
 
-	// Upsert the group row. Idempotent on same (channel_id, group_id);
-	// errors if a different group_id is already on file for the channel.
+	// Upsert the group row.
 	if err := h.store.UpsertMlsGroup(ctx, channelID, groupID, userID, p.Epoch); err != nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeMlsBadBundle, "upsert mls_group: "+err.Error())
 		return
 	}
 
-	// Phase 11c-1 PR 3: persist the commit bytes (so late-joining
-	// devices can replay) AND mutate channel_members in a single
-	// transaction. Skipped if there's no commit (group-creation-only
-	// bundles with welcomes still go through UpsertMlsGroup above
-	// but don't have a separate commit to store).
+	// PR 3: persist commit + atomic channel_members mutation.
 	if len(commitBytes) > 0 {
 		err := h.store.InsertMlsCommitAndApplyMembership(
 			ctx, channelID, p.Epoch, commitBytes,
@@ -127,10 +110,6 @@ func (h *WSHandler) handleMlsCommitBundle(
 		)
 		if err != nil {
 			if errors.Is(err, store.ErrMlsCommitEpochExists) {
-				// Stale-commit race: another member committed first
-				// at this epoch. Client must catch up to the winning
-				// commit (via mls_commit_event push -- handled in
-				// PR 5 of 11c-1 series) and retry at the new epoch.
 				h.sendError(ctx, c, f.Ref, proto.ErrCodeMlsStaleCommit,
 					"another commit landed first at this epoch; retry against the new epoch")
 				return
@@ -141,11 +120,19 @@ func (h *WSHandler) handleMlsCommitBundle(
 		}
 	}
 
-	// Fan welcomes to recipients. Each recipient's user_id maps to
-	// zero or more connected devices via Hub.FanOutToUser. PR 4 ALSO
-	// buffers the welcome in mls_pending_welcomes regardless of online
-	// status (the client dedups; offline / wrong-KP recipients will
-	// pick the buffered copy up on next hello).
+	// PR 5: live-broadcast the commit to existing channel members.
+	// Recipient set = (current channel members) - (sender) - (newly
+	// added members from proposed_adds). New members get their
+	// initial group state via the Welcome path, not the commit
+	// event. Skipped if there's no commit (group-creation bundles).
+	if len(commitBytes) > 0 {
+		h.fanOutMlsCommitEvent(
+			ctx, conn, channelID, p.Epoch, p.Commit, addUserIDs, userID,
+		)
+	}
+
+	// Fan welcomes to recipients. PR 4: also buffer in
+	// mls_pending_welcomes regardless of online status.
 	delivered := 0
 	for i, wf := range p.WelcomeFor {
 		if wf.UserID == "" || wf.Welcome == "" {
@@ -175,17 +162,9 @@ func (h *WSHandler) handleMlsCommitBundle(
 			h.logger.Printf("mls_commit_bundle: marshal welcome frame: %v", mErr)
 			continue
 		}
-		// Live fanout: writes to every connected device of the user
-		// EXCEPT the conn we pass (so the sender doesn't get their
-		// own welcome echoed back). conn.ID is the sender's conn;
-		// recipients are different users so they won't match anyway.
 		h.hub.FanOutToUser(wf.UserID, conn.ID, data)
 
-		// Phase 11c-1 PR 4: buffer regardless of live-delivery state.
-		// The client dedups; if the live fanout reached the right
-		// device, that device acks and DeletePendingWelcome fires.
-		// If not (offline, wrong KP), the buffered row is delivered
-		// on the recipient's next hello.
+		// PR 4: buffer regardless of live-delivery state.
 		recipientUUID, perr := uuid.Parse(wf.UserID)
 		if perr != nil {
 			h.logger.Printf("mls_commit_bundle: welcome_for[%d]: target %q not a UUID; not buffering",
@@ -195,16 +174,11 @@ func (h *WSHandler) handleMlsCommitBundle(
 				ctx, recipientUUID, channelID, groupID, welcomeBytes, userID,
 			)
 			if berr != nil {
-				// Buffering failure is non-fatal: the live fanout may
-				// still succeed. Log and continue.
 				h.logger.Printf("mls_commit_bundle: buffer welcome for %s: %v",
 					wf.UserID, berr)
 			}
 		}
 
-		// "delivered" still reflects live-fanout reach; useful for
-		// the client to know whether to wait for an ack from a fresh
-		// connection or whether the recipient was already online.
 		if len(h.hub.ConnsForUser(wf.UserID)) > 0 {
 			delivered++
 		}
@@ -220,31 +194,178 @@ func (h *WSHandler) handleMlsCommitBundle(
 	}
 }
 
+// fanOutMlsCommitEvent broadcasts an mls_commit_event push frame to
+// every current member of the channel EXCEPT the sender and the
+// newly-added members. The newly-added members get their initial
+// group state via the Welcome path; they don't need (and CoreCrypto
+// can't process) this commit yet.
+//
+// Errors are logged but non-fatal: a failed fanout doesn't abort
+// the commit. Offline members will pick up the commit via
+// handleFetchMlsCommits on their next reconnect.
+func (h *WSHandler) fanOutMlsCommitEvent(
+	ctx context.Context,
+	sender *Conn,
+	channelID uuid.UUID,
+	epoch int64,
+	commitB64 string,
+	newlyAdded []uuid.UUID,
+	senderID uuid.UUID,
+) {
+	members, err := h.store.ListMembersForChannel(ctx, channelID)
+	if err != nil {
+		h.logger.Printf("fanOutMlsCommitEvent: ListMembersForChannel: %v", err)
+		return
+	}
+
+	// Build exclusion set: sender + newly-added members.
+	excluded := make(map[uuid.UUID]struct{}, len(newlyAdded)+1)
+	excluded[senderID] = struct{}{}
+	for _, u := range newlyAdded {
+		excluded[u] = struct{}{}
+	}
+
+	// Build the push frame once; marshal once; fan out per recipient.
+	push, ferr := proto.NewFrame(proto.TypeMlsCommitEvent, "",
+		proto.MlsCommitEventPayload{
+			ChannelID:         channelID.String(),
+			Epoch:             epoch,
+			Commit:            commitB64,
+			CommittedByUserID: senderID.String(),
+			CommittedAt:       time.Now().UTC().Format(time.RFC3339),
+		})
+	if ferr != nil {
+		h.logger.Printf("fanOutMlsCommitEvent: build frame: %v", ferr)
+		return
+	}
+	data, mErr := json.Marshal(push)
+	if mErr != nil {
+		h.logger.Printf("fanOutMlsCommitEvent: marshal frame: %v", mErr)
+		return
+	}
+
+	count := 0
+	for _, memberID := range members {
+		if _, skip := excluded[memberID]; skip {
+			continue
+		}
+		// FanOutToUser handles "user not connected" silently. Offline
+		// members will catch up via handleFetchMlsCommits later.
+		h.hub.FanOutToUser(memberID.String(), sender.ID, data)
+		count++
+	}
+	if count > 0 {
+		h.logger.Printf("fanOutMlsCommitEvent: channel=%s epoch=%d recipients=%d",
+			channelID, epoch, count)
+	}
+}
+
+// handleFetchMlsCommits streams every stored commit for a channel
+// with epoch > AfterEpoch to the calling client, in epoch order,
+// as a sequence of mls_commit_event push frames. Ends with a
+// fetch_mls_commits_ack frame carrying the total count.
+//
+// The client uses this to catch up its local CoreCrypto state when
+// it knows its known_epoch lags the server's stored history (e.g.
+// after a reconnect, or after receiving an mls_stale_commit error
+// from a racing mls_commit_bundle).
+func (h *WSHandler) handleFetchMlsCommits(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	var p proto.FetchMlsCommitsPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	if conn.UserID == "" {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotHelloed, "not authenticated")
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id must be a UUID")
+		return
+	}
+	callerID, err := uuid.Parse(conn.UserID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "conn.UserID not a UUID")
+		return
+	}
+
+	// Caller must be a current member of the channel (to prevent
+	// using catchup as an information-disclosure side channel).
+	isMember, err := h.store.IsMember(ctx, channelID, callerID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership: "+err.Error())
+		return
+	}
+	if !isMember {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeMlsNotMember, "not a member of channel")
+		return
+	}
+
+	commits, err := h.store.ListMlsCommitsSince(ctx, channelID, p.AfterEpoch)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal,
+			"list commits: "+err.Error())
+		return
+	}
+
+	// Stream each commit as an mls_commit_event push frame.
+	pushed := 0
+	for _, mc := range commits {
+		push, ferr := proto.NewFrame(proto.TypeMlsCommitEvent, "",
+			proto.MlsCommitEventPayload{
+				ChannelID:         mc.ChannelID.String(),
+				Epoch:             mc.Epoch,
+				Commit:            base64.StdEncoding.EncodeToString(mc.CommitBytes),
+				CommittedByUserID: mc.CommittedByUserID.String(),
+				CommittedAt:       mc.CommittedAt.UTC().Format(time.RFC3339),
+			})
+		if ferr != nil {
+			h.logger.Printf("handleFetchMlsCommits: build frame epoch=%d: %v",
+				mc.Epoch, ferr)
+			continue
+		}
+		if err := writeFrame(ctx, c, push, h.cfg.WriteTimeout); err != nil {
+			h.logger.Printf("handleFetchMlsCommits: write event epoch=%d: %v",
+				mc.Epoch, err)
+			// Connection likely broken; abort the stream. The client
+			// can retry on next connect.
+			return
+		}
+		pushed++
+	}
+
+	// Final ack with the count.
+	ack, _ := proto.NewFrame(proto.TypeFetchMlsCommitsAck, f.Ref,
+		proto.FetchMlsCommitsAckPayload{
+			ChannelID: p.ChannelID,
+			Count:     pushed,
+		})
+	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("fetch_mls_commits_ack write: %v", err)
+	}
+}
+
 // validateProposedMembership parses and validates the
 // ProposedAdds / ProposedRemoves fields of an mls_commit_bundle.
-// Each entry must have a matching authorization in the in-memory
-// auth cache (issued by add_to_channel / remove_from_channel).
-// Returns parsed UUID slices on success, or (nil, nil, errCode,
-// errMsg) on failure.
-//
-// Single-use semantics: authorizations are consumed on success.
-// If validation fails partway through a multi-entry list, any
-// previously-consumed authorizations from this call are NOT
-// re-issued; the caller would need to re-authorize each before
-// retrying. (This is a deliberate choice -- complicating the
-// rollback path for a rare error case isn't worth it. A failing
-// bundle that's racing should just re-authorize cleanly.)
+// (See PR 3 design notes.)
 func (h *WSHandler) validateProposedMembership(
 	p proto.MlsCommitBundlePayload,
 ) (addIDs, removeIDs []uuid.UUID, errCode, errMsg string) {
-	// No proposed changes -> no validation needed. This is the
-	// common case (key-rotation Updates, Welcome-only bundles).
 	if len(p.ProposedAdds) == 0 && len(p.ProposedRemoves) == 0 {
 		return nil, nil, "", ""
 	}
 
 	if h.authStore == nil {
-		// Defensive: should never happen if NewWSHandler ran.
 		return nil, nil, proto.ErrCodeInternal, "authStore not configured"
 	}
 
@@ -293,9 +414,7 @@ func (h *WSHandler) handleMlsWelcomeAck(
 	h.logger.Printf("mls_welcome_ack: user=%s channel=%s ok=%v",
 		conn.UserID, p.ChannelID, p.OK)
 
-	// Phase 11c-1 PR 4: delete the buffered welcome row (if any) on
-	// successful client-side processing. Failure to ack OK leaves
-	// the buffer in place so the next connection will retry.
+	// PR 4: delete the buffered welcome row on OK=true.
 	if p.OK && h.store != nil && conn.UserID != "" && p.ChannelID != "" {
 		userUUID, uerr := uuid.Parse(conn.UserID)
 		channelUUID, cerr := uuid.Parse(p.ChannelID)
@@ -308,23 +427,10 @@ func (h *WSHandler) handleMlsWelcomeAck(
 			h.logger.Printf("mls_welcome_ack: DeletePendingWelcome: %v", err)
 		}
 	}
-	// No response needed; clients fire-and-forget.
 }
 
-// drainPendingMlsWelcomes pushes any buffered Welcomes for the
-// connected user onto this connection. Called from ws.go right after
-// the hello-time Welcome frame is sent, so the client has its
-// session context before any MLS-welcome pushes arrive.
-//
-// Rows are NOT deleted here; the client's mls_welcome_ack triggers
-// DeletePendingWelcome. This means: if the client disconnects
-// between drain and processing, the row stays buffered for the
-// next connection. Multiple devices of the same user each get a
-// copy when they connect (the wrong-KP devices ignore them; the
-// right-KP device acks and clears the row).
-//
-// Errors here are non-fatal: a buffered welcome that fails to push
-// will be retried on the next connect. We log and continue.
+// drainPendingMlsWelcomes pushes buffered welcomes to a freshly
+// connected user. See PR 4.
 func (h *WSHandler) drainPendingMlsWelcomes(
 	ctx context.Context,
 	c *websocket.Conn,
@@ -363,7 +469,7 @@ func (h *WSHandler) drainPendingMlsWelcomes(
 		if err := writeFrame(ctx, c, push, h.cfg.WriteTimeout); err != nil {
 			h.logger.Printf("drainPendingMlsWelcomes: write for channel %s: %v",
 				w.ChannelID, err)
-			return // conn is likely gone; bail
+			return
 		}
 	}
 }

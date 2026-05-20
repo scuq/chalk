@@ -137,3 +137,72 @@ const (
 	// should re-authorize and re-commit.
 	ErrCodeMlsCommitUnauthorized = "mls_commit_unauthorized"
 )
+
+// Phase 11c-1 PR 5: live broadcast of MLS Commits to existing
+// channel members + catchup-on-request for late-joining devices.
+//
+// The mls_commit_event push frame is the live-broadcast and catchup
+// vehicle. fetch_mls_commits is the client-initiated catchup
+// request. A reconnecting client typically:
+//
+//   1. Sends hello, receives initial Welcome frame
+//   2. drainPendingMlsWelcomes pushes any buffered welcomes (PR 4)
+//   3. Client realizes its CoreCrypto epoch for channel X lags
+//      what handleMlsCommitBundle ack told it last time
+//   4. Client sends fetch_mls_commits(channel_id, after_epoch=last_known)
+//   5. Server streams one mls_commit_event per stored commit at
+//      epoch > after_epoch, in epoch order
+//   6. Server sends fetch_mls_commits_ack with the count
+
+const (
+	// S->C push: a new (or historical) MLS Commit for a channel.
+	// During live broadcast, sent by handleMlsCommitBundle to all
+	// current channel members except the sender and the newly-added
+	// members from proposed_adds (those get their initial state via
+	// the Welcome path).
+	//
+	// During catchup, sent by handleFetchMlsCommits in epoch order.
+	TypeMlsCommitEvent = "mls_commit_event"
+
+	// C->S request: "send me every commit for this channel with
+	// epoch > after_epoch". Server responds with one mls_commit_event
+	// per matching commit (in epoch order), then a
+	// fetch_mls_commits_ack.
+	TypeFetchMlsCommits    = "fetch_mls_commits"
+	TypeFetchMlsCommitsAck = "fetch_mls_commits_ack"
+)
+
+// MlsCommitEventPayload (S->C). Either a live commit notification
+// or a historical catchup commit; the client can't tell them apart
+// (and doesn't need to -- both are processed via CoreCrypto's
+// decryptMessage path against the local group state).
+type MlsCommitEventPayload struct {
+	ChannelID         string `json:"channel_id"`
+	Epoch             int64  `json:"epoch"`
+	// Commit is base64-encoded TLS-serialized Commit bytes,
+	// identical in shape to mls_commit_bundle.commit.
+	Commit            string `json:"commit"`
+	CommittedByUserID string `json:"committed_by_user_id"`
+	// CommittedAt is RFC3339 UTC; used by the client for ordering
+	// hints and for "this commit happened N minutes ago" UI.
+	CommittedAt       string `json:"committed_at"`
+}
+
+// FetchMlsCommitsPayload (C->S). Catchup request. Client supplies
+// its known epoch for the channel; server streams everything after.
+// AfterEpoch may be 0, meaning "give me everything from the
+// beginning of stored history."
+type FetchMlsCommitsPayload struct {
+	ChannelID  string `json:"channel_id"`
+	AfterEpoch int64  `json:"after_epoch"`
+}
+
+// FetchMlsCommitsAckPayload (S->C). Sent after all matching
+// mls_commit_event frames have been pushed. Count tells the client
+// how many events to expect (it can compare against what it
+// received and detect framing loss; in practice the WS guarantees
+// in-order delivery so this is a sanity check).
+type FetchMlsCommitsAckPayload struct {
+	ChannelID string `json:"channel_id"`
+	Count     int    `json:"count"`
+}

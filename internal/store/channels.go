@@ -454,3 +454,36 @@ func (s *Store) ListMessagesByThread(
 	}
 	return out, rows.Err()
 }
+
+// ListMembersForChannel returns every user_id in channel_members
+// for the given channel. Used by phase 11c-1 PR 5 to determine the
+// fan-out set for live mls_commit_event broadcast (each commit must
+// reach every current member's connected devices).
+//
+// Returns an empty slice (not nil) if the channel has no members
+// or doesn't exist.
+func (s *Store) ListMembersForChannel(
+	ctx context.Context,
+	channelID uuid.UUID,
+) ([]uuid.UUID, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT user_id FROM channel_members WHERE channel_id = $1`,
+		channelID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query channel_members: %w", err)
+	}
+	defer rows.Close()
+	out := make([]uuid.UUID, 0)
+	for rows.Next() {
+		var uid uuid.UUID
+		if err := rows.Scan(&uid); err != nil {
+			return nil, fmt.Errorf("scan channel_member: %w", err)
+		}
+		out = append(out, uid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows.Err channel_members: %w", err)
+	}
+	return out, nil
+}

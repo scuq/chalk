@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -29,11 +30,15 @@ import (
 
 // MlsCommit is one row from mls_commits.
 type MlsCommit struct {
-	ChannelID         uuid.UUID
-	Epoch             int64
-	CommitBytes       []byte
+	ChannelID           uuid.UUID
+	Epoch               int64
+	CommitBytes         []byte
 	CommittedByUserID   uuid.UUID
 	CommittedByDeviceID uuid.UUID
+	// Phase 11c-1 PR 5: timestamp from mls_commits.committed_at,
+	// used by mls_commit_event push frames for "happened N minutes
+	// ago" UI hints on the client.
+	CommittedAt         time.Time
 }
 
 // ErrMlsCommitEpochExists is returned by InsertMlsCommit when a
@@ -157,7 +162,8 @@ func (s *Store) ListMlsCommitsSince(
 ) ([]MlsCommit, error) {
 	rows, err := s.Pool.Query(ctx,
 		`SELECT channel_id, epoch, commit_bytes,
-		        committed_by_user_id, committed_by_device_id
+		        committed_by_user_id, committed_by_device_id,
+		        committed_at
 		   FROM mls_commits
 		  WHERE channel_id = $1 AND epoch > $2
 		  ORDER BY epoch ASC`,
@@ -174,6 +180,7 @@ func (s *Store) ListMlsCommitsSince(
 		if err := rows.Scan(
 			&c.ChannelID, &c.Epoch, &c.CommitBytes,
 			&c.CommittedByUserID, &c.CommittedByDeviceID,
+			&c.CommittedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan mls_commit: %w", err)
 		}
@@ -197,13 +204,15 @@ func (s *Store) GetMlsCommitAt(
 	var c MlsCommit
 	err := s.Pool.QueryRow(ctx,
 		`SELECT channel_id, epoch, commit_bytes,
-		        committed_by_user_id, committed_by_device_id
+		        committed_by_user_id, committed_by_device_id,
+		        committed_at
 		   FROM mls_commits
 		  WHERE channel_id = $1 AND epoch = $2`,
 		channelID, epoch,
 	).Scan(
 		&c.ChannelID, &c.Epoch, &c.CommitBytes,
 		&c.CommittedByUserID, &c.CommittedByDeviceID,
+		&c.CommittedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil

@@ -500,6 +500,8 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleAddToChannel(ctx, c, conn, f)
 		case proto.TypeRemoveFromChannel:
 			h.handleRemoveFromChannel(ctx, c, conn, f)
+		case proto.TypeFetchMlsCommits:
+			h.handleFetchMlsCommits(ctx, c, conn, f)
 
 		// Phase 11a: MLS key package publish/fetch
 		case proto.TypePublishKeyPackages:
