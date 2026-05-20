@@ -1,60 +1,46 @@
 # Phase 11d Design Doc #2 — Wire Protocol Spec
 
-**Status:** Revision 2 (status + ack family added)
+**Status:** Revision 3 (history-client architecture, sandbox-validated)
 **Author:** Claude, per scuq's design choices
 **Date:** 2026-05-27 (Vienna)
-**Scope:** chalk phase 11d — wire format for backup, restore, and pairing
-**Depends on:** doc #1 (threat model & crypto primitives), D1-D9 + Q1=c + Q3 + Q4=a
-
-This document defines every new WS frame type and HTTP endpoint introduced
-by phase 11d. It is field-by-field exhaustive so doc #4 (server schema) and
-doc #5 (client state machines) can be written against a frozen protocol.
-
-The conventions in this doc match chalk's existing patterns
-(`internal/proto/`): `Type<Name>` constants with `snake_case` wire names,
-ack types as `Type<Name>Ack`, bytes encoded as base64 strings, IDs as UUID
-strings. Phase 11d's frame definitions will live in
-`internal/proto/frames_phase11d.go` (per the existing per-phase convention).
-
-**Revision 2 changes from initial draft:**
-- Added the **status family** (§5) covering `backup_status_get`,
-  `backup_status_get_ack`, and progress push events for in-progress
-  operations. Implements D7 (Level 1 + Level 2 transparency).
-- Added the **critical event family** (§6) covering `critical_event`
-  push and `critical_event_ack`. Implements D8/D9 (server-tracked
-  cross-device acknowledgment of high-importance notifications).
-- Updated §1 overview tables and §9 frame count.
+**Scope:** chalk phase 11d — wire format for envelope, history secrets,
+pairing, multi-device, status, and critical events
+**Depends on:** doc #1 rev 3 (threat model & architecture)
+**Previous revisions:** rev 1 (initial 30 frames), rev 2 (added status
+& critical-event families, 39 frames). **This revision** replaces the
+backup family with a simpler history-secrets family. Net frame count
+drops from 39 to 32.
 
 ---
 
-## 1. Overview of new frames
+## 1. Overview of frame families
 
-Phase 11d introduces three families of frames:
+Phase 11d adds **32 new wire types** to chalk in five families:
 
-**A. Backup family** — for uploading and downloading encrypted backup
-blobs.
+**A. Envelope family** — for uploading and downloading the wrapped
+`backup_master_key`.
 
 | Type | Direction | Purpose |
 |------|-----------|---------|
-| `backup_envelope_get`     | C→S | Fetch the user's envelope (the wrapped master_key) |
+| `backup_envelope_get`     | C→S | Fetch the user's envelope |
 | `backup_envelope_get_ack` | S→C | Returns the envelope JSON |
-| `backup_envelope_put`     | C→S | Replace the user's envelope (e.g. after rotation) |
+| `backup_envelope_put`     | C→S | Replace the user's envelope |
 | `backup_envelope_put_ack` | S→C | Confirmation |
-| `backup_tier1_put`        | C→S | Upload tier-1 (identity) backup blob |
-| `backup_tier1_put_ack`    | S→C | Confirmation + assigned backup_id |
-| `backup_tier1_get`        | C→S | Download tier-1 backup |
-| `backup_tier1_get_ack`    | S→C | Returns the tier-1 blob |
-| `backup_tier2_put_init`   | C→S | Start a chunked tier-2 upload |
-| `backup_tier2_put_chunk`  | C→S | Upload a chunk (multiple frames) |
-| `backup_tier2_put_finish` | C→S | Finalize the upload |
-| `backup_tier2_put_ack`    | S→C | Confirmation + assigned backup_id |
-| `backup_tier2_get_init`   | C→S | Start a chunked tier-2 download |
-| `backup_tier2_get_chunk`  | S→C | Push a chunk |
-| `backup_tier2_get_finish` | S→C | Final chunk marker |
-| `backup_list`             | C→S | List the user's backups (manifest only, no blobs) |
-| `backup_list_ack`         | S→C | Returns list of backup descriptors |
 
-**B. Pairing family** — for online device-to-device pairing.
+**B. History-secrets family** — for storing and retrieving per-era
+HistorySecrets.
+
+| Type | Direction | Purpose |
+|------|-----------|---------|
+| `history_secret_put`     | C→S | Upload one encrypted HistorySecret |
+| `history_secret_put_ack` | S→C | Confirmation |
+| `history_secret_list`    | C→S | List the user's stored secrets (metadata only) |
+| `history_secret_list_ack`| S→C | Returns list of descriptors |
+| `history_secret_get`     | C→S | Download a specific secret |
+| `history_secret_get_ack` | S→C | Returns the encrypted secret |
+
+**C. Pairing family** — for online device-to-device pairing
+(unchanged from rev 2).
 
 | Type | Direction | Purpose |
 |------|-----------|---------|
@@ -67,1485 +53,520 @@ blobs.
 | `pairing_event`          | S→C | Push to old device: "new device just claimed" |
 | `pairing_cancel`         | C→S | Either party cancels the pairing flow |
 
-**C. Multi-device family** — for the "I'm a new device of an existing
-user" announcement and the resulting self-add flow.
+**D. Multi-device family** — device announce + remove (unchanged from
+rev 2).
 
 | Type | Direction | Purpose |
 |------|-----------|---------|
-| `device_announce`        | C→S | New device announces itself; server fans out |
+| `device_announce`        | C→S | New device announces itself |
 | `device_announce_ack`    | S→C | Confirmation |
-| `device_announce_event`  | S→C | Push to OTHER devices: "your user has a new device" |
-| `device_list`            | C→S | List the user's currently-known devices |
+| `device_announce_event`  | S→C | Push to OTHER devices |
+| `device_list`            | C→S | List the user's devices |
 | `device_list_ack`        | S→C | Returns device descriptors |
-| `device_remove`          | C→S | Mark a device as removed (for cleanup post-rotation) |
+| `device_remove`          | C→S | Mark a device as removed |
 | `device_remove_ack`      | S→C | Confirmation |
 
-**D. Status family** — for transparent UX (D7). Lets the SPA query
-backup health and receive progress pushes during in-flight operations.
+**E. Status family** — for transparency UX (D7, unchanged from rev 2).
 
 | Type | Direction | Purpose |
 |------|-----------|---------|
-| `backup_status_get`        | C→S | Query current backup health for the user |
-| `backup_status_get_ack`    | S→C | Returns snapshot of backup health |
-| `backup_progress_event`    | S→C | Push progress during long-running ops (chunked up/down) |
+| `backup_status_get`        | C→S | Query backup health |
+| `backup_status_get_ack`    | S→C | Returns backup health |
+| `backup_progress_event`    | S→C | Push progress during long ops |
 
-**E. Critical event family** — for high-importance, user-facing
-notifications that require explicit acknowledgment (D8, D9). Cross-device
-synchronized: an event acknowledged on any one of the user's devices
-is dismissed on all others.
+**F. Critical event family** — high-importance notifications with
+cross-device sync (D8/D9, unchanged from rev 2).
 
 | Type | Direction | Purpose |
 |------|-----------|---------|
-| `critical_event`         | S→C | Push: high-importance event requiring user attention |
-| `critical_event_list`    | C→S | Fetch pending (unacknowledged) critical events |
-| `critical_event_list_ack`| S→C | Returns list of unacknowledged events |
-| `critical_event_ack`     | C→S | User acknowledged a critical event |
-| `critical_event_ack_ack` | S→C | Confirmation; server-side state now reflects ack |
-| `critical_event_dismissed_event` | S→C | Push to OTHER devices: "this event was acked elsewhere" |
+| `critical_event`         | S→C | Push: high-importance event |
+| `critical_event_list`    | C→S | Fetch unacked critical events |
+| `critical_event_list_ack`| S→C | Returns list |
+| `critical_event_ack`     | C→S | User acknowledged |
+| `critical_event_ack_ack` | S→C | Confirmation |
+| `critical_event_dismissed_event` | S→C | Push to OTHER devices |
 
-Each frame's payload is specified in §2–§6 below.
+Frame conventions match chalk's existing `internal/proto/` layer:
+`Type<Name>` constants with `snake_case` wire names, `<Name>Ack` /
+`<Name>AckPayload` for ack types, base64 strings for bytes, UUID
+strings for IDs. Phase 11d frames live in
+`internal/proto/frames_phase11d.go`.
 
 ---
 
-## 2. Backup family — field-by-field
+## 2. Envelope family
 
-### 2.1 Envelope structure (in-payload shape, referenced by §2.2 and §2.3)
+The envelope structure and put/get semantics are inherited unchanged
+from rev 2 §2.1-§2.3. Reproduced here in condensed form for
+self-containment.
 
-The envelope is a JSON object that holds the wrapped `backup_master_key`
-once per credential. It's what the user must obtain (and decrypt at least
-one wrap of) to access any backup blob.
+### 2.1 Envelope structure
 
 ```go
-// internal/proto/frames_phase11d.go
 type BackupEnvelope struct {
     Version int                  `json:"envelope_version"` // 1
     Wraps   []BackupEnvelopeWrap `json:"wraps"`
 }
 
 type BackupEnvelopeWrap struct {
-    // Kind identifies which credential decrypts this wrap.
-    // Phase 11d v1: only "recovery_phrase" is used.
-    // Phase 11d v2 will add "passkey_prf".
-    // Future: "paired_device", "emergency_contact", etc.
-    Kind string `json:"kind"`
-
-    // WrapID is a stable identifier for this entry. Used by clients
-    // to tell "I rotated; this is the new wrap" from "I added a
-    // second credential."
-    WrapID string `json:"wrap_id"` // UUID
-
-    // ExpiresAt is set when a wrap has been superseded by rotation
-    // (per D3). null means "current, no expiration."
-    // Server may prune entries past ExpiresAt; clients ignore
-    // expired entries on read (return as last resort if no
-    // non-expired wraps exist for the user's credential).
-    ExpiresAt *int64 `json:"expires_at,omitempty"` // unix ms
-
-    // Ciphertext is AEAD(kw_key, nonce, aad, backup_master_key).
-    // Always exactly 48 bytes plaintext (32 key + 16 tag), encrypted.
-    Ciphertext string `json:"ciphertext"` // base64
-
-    // Nonce is the AEAD nonce. 24 bytes (XChaCha20-Poly1305).
-    Nonce string `json:"nonce"` // base64
-
-    // KdfSalt is the Argon2id salt used for this wrap's credential.
-    // For "recovery_phrase" wraps, this matches the salt in
-    // recovery_codes.hash (the existing chalk auth table; see §5 of
-    // doc #1). For "passkey_prf" wraps in v2, this is the PRF
-    // evaluation input.
-    KdfSalt string `json:"kdf_salt"` // base64, 16 bytes
-
-    // KdfParams describes the KDF parameters used. Allows future
-    // parameter upgrades without breaking old wraps.
-    KdfParams *BackupKdfParams `json:"kdf_params,omitempty"`
+    Kind       string `json:"kind"`         // "recovery_phrase" in v1
+    WrapID     string `json:"wrap_id"`      // UUID
+    ExpiresAt  *int64 `json:"expires_at,omitempty"` // unix ms; null = current
+    Ciphertext string `json:"ciphertext"`   // base64 AEAD output
+    Nonce      string `json:"nonce"`        // base64, 24 bytes
+    KdfSalt    string `json:"kdf_salt"`     // base64, 16 bytes
+    KdfParams  *BackupKdfParams `json:"kdf_params,omitempty"`
 }
 
 type BackupKdfParams struct {
-    // Algorithm is "argon2id" in v1.
-    Algorithm string `json:"algorithm"`
-    // Memory in KiB.
-    Memory uint32 `json:"memory"`
-    // Iterations.
-    Time uint32 `json:"time"`
-    // Parallelism.
-    Threads uint32 `json:"threads"`
-    // Output key length in bytes.
-    KeyLen uint32 `json:"key_len"`
+    Algorithm  string `json:"algorithm"`   // "argon2id"
+    Memory     uint32 `json:"memory"`      // KiB
+    Time       uint32 `json:"time"`
+    Threads    uint32 `json:"threads"`
+    KeyLen     uint32 `json:"key_len"`
 }
 ```
-
-The envelope is the user's "key escrow" record. There is exactly one
-envelope per user. It is small: a single wrap is ~200 bytes; ten wraps is
-~2 KB.
 
 ### 2.2 `backup_envelope_get`
 
-Fetch the envelope. Required before any other backup operation (to know
-how to derive the wrap key for decryption).
-
 ```go
-type BackupEnvelopeGetPayload struct {
-    // No fields. The user_id is implicit (the WS connection's user).
-}
+type BackupEnvelopeGetPayload struct {} // user implicit
 
 type BackupEnvelopeGetAckPayload struct {
-    // Envelope is null if the user has no envelope yet (no backup
-    // has ever been uploaded).
-    Envelope *BackupEnvelope `json:"envelope"`
+    Envelope *BackupEnvelope `json:"envelope"` // null if none exists
 }
 ```
 
-Idempotent. Cheap. May be called multiple times per session.
-
 ### 2.3 `backup_envelope_put`
-
-Replace the envelope. Used in three cases:
-
-1. **First-ever backup**: client generates `backup_master_key`, wraps it
-   under the recovery-phrase-derived key, uploads the envelope.
-2. **Rotation**: client adds a new wrap and marks the old wrap with
-   `expires_at`.
-3. **Adding a credential** (v2 with PRF, or future): client adds a new
-   wrap entry; doesn't touch existing wraps.
-
-The server treats this as wholesale replacement to keep the protocol
-simple. Client must always upload the full envelope, even when only one
-wrap changed.
 
 ```go
 type BackupEnvelopePutPayload struct {
-    Envelope BackupEnvelope `json:"envelope"`
-
-    // ExpectedVersion is the envelope_version the client read when
-    // it fetched the envelope. If the server has a newer version
-    // (race with another device), it rejects with conflict.
-    // Set to 0 for first-ever envelope.
-    ExpectedVersion int `json:"expected_version"`
+    Envelope        BackupEnvelope `json:"envelope"`
+    ExpectedVersion int            `json:"expected_version"`
 }
 
 type BackupEnvelopePutAckPayload struct {
-    // NewVersion is the version that was just written.
     NewVersion int `json:"new_version"`
 }
 ```
 
-**Server validates:**
-- `envelope_version` is reasonable (≤ 1024 wraps)
-- Each wrap's `kind` is in an allowlist (`"recovery_phrase"` for v1;
-  later `"passkey_prf"`, etc.)
-- Each wrap's `ciphertext` is exactly 72 bytes (48 plaintext + 16 tag +
-  8 length prefix in MLS-style varint encoding; will be 60 bytes if we
-  use bare ChaCha20-Poly1305 AEAD without the length prefix — to be
-  finalized in doc #3)
-- Each wrap's `nonce` is exactly 24 bytes
-- Each wrap's `kdf_salt` is exactly 16 bytes
-- Total envelope size after JSON encoding ≤ 64 KB
+**Server validation** (unchanged from rev 2):
+- Total envelope size ≤ 64 KB
+- ≤ 1024 wraps
+- `wrap.kind` in allowlist (`"recovery_phrase"` for v1)
+- `ciphertext` length matches AEAD output expectations
+- `nonce` exactly 24 bytes
+- `kdf_salt` exactly 16 bytes
 
-**Server does NOT validate:**
-- Whether the user knows the recovery phrase (it has no way to know)
-- Whether the new wrap matches the wrap of a previous backup (it
-  shouldn't — that's a privacy concern)
+**Errors**: `envelope_too_large`, `envelope_conflict`, `envelope_invalid`.
 
-Errors returned:
+---
 
-- `envelope_too_large` — > 64 KB
-- `envelope_conflict` — `expected_version` doesn't match server state
-- `envelope_invalid` — schema violation
+## 3. History-secrets family
 
-### 2.4 `backup_tier1_put` and `backup_tier1_put_ack`
+This is the new family that replaces the previous "backup family"
+(tier-1/tier-2 blobs, chunked uploads). Each secret is small enough to
+fit in a single WS frame.
 
-Upload a tier-1 (identity) backup blob. Tier 1 is small (≤ 64 KB per Q3)
-and ships in a single frame.
+### 3.1 Encrypted secret structure
+
+Each HistorySecret captured by the HistoryObserver is:
+
+1. CBOR-encoded as `{client_id: <bytes>, data: <bytes>}` to produce a
+   plaintext of ~800 bytes.
+2. AEAD-encrypted under `backup_master_key` with a random 24-byte nonce.
+3. AAD = `"chalk.history.v1" || user_id || conversation_id || u64_be(era_epoch)`.
+
+Ciphertext is base64-encoded for JSON transport. Final wire size is
+~1.1 KB per secret.
+
+### 3.2 `history_secret_put`
 
 ```go
-type BackupTier1PutPayload struct {
-    // SourceDeviceID is the device that produced this backup.
-    // Server stores it; new devices use it for smart-restore.
-    SourceDeviceID string `json:"source_device_id"` // UUID
+type HistorySecretPutPayload struct {
+    ConversationID string `json:"conversation_id"`  // UUID, same as chalk channel
+    EraEpoch       uint64 `json:"era_epoch"`        // MLS epoch at history-client add
+    EnvelopeVersion int   `json:"envelope_version"` // for forward-compat verification
 
-    // CreatedAt is the unix-ms timestamp the backup was assembled.
-    // Server may correct it within 5 minutes of its own clock; if
-    // skew is larger, server rejects (clock issue on client).
+    Ciphertext  string `json:"ciphertext"`  // base64
+    Nonce       string `json:"nonce"`       // base64, 24 bytes
+
+    // CreatedAt is the unix-ms timestamp the secret was captured.
+    // Server may reject if >5min from server clock.
     CreatedAt int64 `json:"created_at"`
 
-    // EnvelopeVersion is the version of the envelope this backup
-    // was encrypted with. If the server has a newer envelope version
-    // (e.g. user just rotated), it still accepts but logs a warning;
-    // the backup will be decryptable using grace-period wraps.
-    EnvelopeVersion int `json:"envelope_version"`
-
-    // Schema is the on-disk format version inside the encrypted
-    // blob. Allows future format upgrades without changing this
-    // wire frame. v1 in phase 11d.
-    Schema int `json:"schema"`
-
-    // Ciphertext is AEAD(backup_master_key, nonce, aad, tier1_blob).
-    Ciphertext string `json:"ciphertext"` // base64
-
-    // Nonce is the AEAD nonce. 24 bytes.
-    Nonce string `json:"nonce"` // base64
-}
-
-type BackupTier1PutAckPayload struct {
-    // BackupID is the server-assigned ID for this backup row.
-    BackupID string `json:"backup_id"` // UUID
-}
-```
-
-**Server validates:**
-- `ciphertext` length ≤ 64 KB
-- `nonce` is exactly 24 bytes
-- `source_device_id` is a known device for the calling user
-- `created_at` within ±5 minutes of server clock
-- Total user backup count (across all tiers) ≤ N (=5 per D6); if at
-  limit, drop the oldest
-
-Errors:
-
-- `backup_too_large` — > 64 KB
-- `backup_invalid_device` — `source_device_id` unknown for user
-- `backup_clock_skew` — `created_at` too far from server time
-
-### 2.5 `backup_tier1_get` and `backup_tier1_get_ack`
-
-Download tier-1.
-
-```go
-type BackupTier1GetPayload struct {
-    // BackupID may be empty to request "latest tier 1 for this user."
-    BackupID string `json:"backup_id,omitempty"`
-}
-
-type BackupTier1GetAckPayload struct {
-    BackupID        string `json:"backup_id"`
-    SourceDeviceID  string `json:"source_device_id"`
-    CreatedAt       int64  `json:"created_at"`
-    EnvelopeVersion int    `json:"envelope_version"`
-    Schema          int    `json:"schema"`
-    Ciphertext      string `json:"ciphertext"`
-    Nonce           string `json:"nonce"`
-}
-```
-
-Errors:
-
-- `backup_not_found` — BackupID doesn't exist or doesn't belong to user
-
-### 2.6 Tier-2 chunked upload: `backup_tier2_put_init/chunk/finish`
-
-Tier 2 is up to 16 MB (per Q3). We chunk it. Chunk size is fixed at 256 KB
-to stay well under the WS frame size limits (chalk's `make dev` config
-doesn't impose tight limits, but production deployments often cap WS
-frames at 1 MB).
-
-```go
-type BackupTier2PutInitPayload struct {
-    SourceDeviceID  string `json:"source_device_id"`
-    CreatedAt       int64  `json:"created_at"`
-    EnvelopeVersion int    `json:"envelope_version"`
-    Schema          int    `json:"schema"`
-
-    // TotalBytes is the ciphertext length (NOT plaintext). Used by
-    // the server to pre-allocate, sanity-check chunk arrival, and
-    // reject upfront if too large.
-    TotalBytes int `json:"total_bytes"`
-
-    // ChunkSize is the agreed-on chunk size, ≤ 256 KB.
-    ChunkSize int `json:"chunk_size"`
-
-    // Nonce for the AEAD covering the FULL ciphertext (not per-chunk).
-    // The blob is encrypted as one logical unit; chunking is just
-    // transport.
-    Nonce string `json:"nonce"`
-}
-
-type BackupTier2PutInitAckPayload struct {
-    // UploadID is opaque; the client passes it back in each chunk.
-    UploadID string `json:"upload_id"`
-
-    // ChunkCount is the expected number of chunks (TotalBytes /
-    // ChunkSize, rounded up).
-    ChunkCount int `json:"chunk_count"`
-}
-
-type BackupTier2PutChunkPayload struct {
-    UploadID string `json:"upload_id"`
-
-    // Index is 0-based. Server validates monotonic-ascending.
-    Index int `json:"index"`
-
-    // Data is base64'd raw ciphertext bytes. Last chunk may be
-    // shorter than ChunkSize.
-    Data string `json:"data"`
-}
-
-// No ack for individual chunks (would 2x the round trips). Server
-// either accepts the chunk silently or sends a backup_tier2_put_abort
-// push if anything's wrong.
-
-type BackupTier2PutFinishPayload struct {
-    UploadID string `json:"upload_id"`
-
-    // Sha256 is the SHA-256 of the FULL ciphertext, base64'd.
-    // Server verifies; if mismatch, rejects.
-    Sha256 string `json:"sha256"`
-}
-
-type BackupTier2PutAckPayload struct {
-    // BackupID is the server-assigned ID for the completed backup.
-    BackupID string `json:"backup_id"`
-}
-
-// Sent by server only on failure; otherwise client gets a normal
-// backup_tier2_put_ack at the end.
-type BackupTier2PutAbortPayload struct {
-    UploadID string `json:"upload_id"`
-    Reason   string `json:"reason"`   // human-readable
-    Code     string `json:"code"`     // machine-readable
-}
-```
-
-**Upload state machine:**
-
-```
-client                                      server
-  │                                            │
-  ├──── backup_tier2_put_init ────────────────►│
-  │                                            │ (allocate upload slot)
-  │◄─── backup_tier2_put_init_ack ─────────────┤
-  │                                            │
-  ├──── backup_tier2_put_chunk (0) ───────────►│
-  ├──── backup_tier2_put_chunk (1) ───────────►│
-  ├──── backup_tier2_put_chunk (2) ───────────►│
-  │     ...                                    │
-  ├──── backup_tier2_put_chunk (N-1) ─────────►│
-  │                                            │
-  ├──── backup_tier2_put_finish ──────────────►│
-  │                                            │ (verify sha256, commit)
-  │◄─── backup_tier2_put_ack ──────────────────┤
-  │                                            │
-```
-
-If client disconnects mid-upload, server reaps the upload slot after a
-30-second timeout. Client can re-init and re-upload (no resume semantics
-in v1 — re-uploading 16 MB is cheap enough).
-
-**Server validates:**
-
-- `total_bytes` ≤ 16 MB
-- `chunk_size` ≤ 256 KB
-- Each `index` is exactly `previous + 1`, starting at 0
-- Each chunk's `data` length matches `chunk_size` (except last chunk
-  which is ≤ chunk_size)
-- Final `sha256` matches the concatenation of all chunks
-- `source_device_id` belongs to the calling user
-
-Errors (via `backup_tier2_put_abort`):
-
-- `upload_too_large` — total_bytes > 16 MB
-- `upload_chunk_size_too_large` — chunk_size > 256 KB
-- `upload_chunk_out_of_order` — non-monotonic index
-- `upload_chunk_wrong_size` — chunk data length mismatch
-- `upload_sha256_mismatch` — final hash doesn't match
-- `upload_timeout` — > 30 seconds between chunks
-
-### 2.7 Tier-2 chunked download: `backup_tier2_get_init/chunk/finish`
-
-Symmetric to upload. Direction reversed.
-
-```go
-type BackupTier2GetInitPayload struct {
-    BackupID string `json:"backup_id,omitempty"` // empty = "latest tier 2"
-}
-
-type BackupTier2GetInitAckPayload struct {
-    BackupID       string `json:"backup_id"`
+    // SourceDeviceID is the device that captured this secret (i.e.
+    // the device whose HistoryObserver fired). Informational.
     SourceDeviceID string `json:"source_device_id"`
-    CreatedAt      int64  `json:"created_at"`
-    EnvelopeVersion int   `json:"envelope_version"`
-    Schema         int    `json:"schema"`
-    TotalBytes     int    `json:"total_bytes"`
-    ChunkSize      int    `json:"chunk_size"`
-    ChunkCount     int    `json:"chunk_count"`
-    Nonce          string `json:"nonce"`
-
-    // DownloadID is opaque; server uses it to track in-flight
-    // downloads (and to allow client to cancel via
-    // backup_tier2_get_cancel if needed).
-    DownloadID string `json:"download_id"`
 }
 
-// Server pushes these in order, monotonic indices.
-type BackupTier2GetChunkPayload struct {
-    DownloadID string `json:"download_id"`
-    Index      int    `json:"index"`
-    Data       string `json:"data"`
-}
-
-// Server pushes after the last chunk.
-type BackupTier2GetFinishPayload struct {
-    DownloadID string `json:"download_id"`
-    Sha256     string `json:"sha256"`
+type HistorySecretPutAckPayload struct {
+    SecretID string `json:"secret_id"` // server-assigned UUID
 }
 ```
 
-### 2.8 `backup_list` and `backup_list_ack`
+**Server validation**:
+- `ciphertext` length ≤ 8 KB (typical: ~1.1 KB; ceiling is generous)
+- `nonce` exactly 24 bytes
+- `conversation_id` is a known conversation the user is a member of
+- `era_epoch` ≥ 0
+- `created_at` within ±5 min of server clock
 
-List all of the user's backups (metadata only — to let the smart-restore
-flow pick the freshest per group).
+If a secret already exists for the same
+`(user_id, conversation_id, era_epoch)` triplet, **UPSERT semantics
+apply** (per Q17 in doc #1): the new value overwrites the old. This
+handles bug-induced re-uploads gracefully.
+
+**Errors**: `secret_too_large`, `secret_invalid`, `secret_clock_skew`,
+`secret_invalid_conversation`.
+
+### 3.3 `history_secret_list`
+
+Used by a restoring device to enumerate all available secrets without
+downloading their ciphertexts.
 
 ```go
-type BackupListPayload struct {
-    // No fields. User implicit.
+type HistorySecretListPayload struct {
+    // Optional: filter to a specific conversation. If empty, list all.
+    ConversationID string `json:"conversation_id,omitempty"`
 }
 
-type BackupListAckPayload struct {
-    Backups []BackupDescriptor `json:"backups"`
+type HistorySecretListAckPayload struct {
+    Secrets []HistorySecretDescriptor `json:"secrets"`
 }
 
-type BackupDescriptor struct {
-    BackupID        string `json:"backup_id"`
-    Tier            int    `json:"tier"`              // 1 or 2
+type HistorySecretDescriptor struct {
+    SecretID       string `json:"secret_id"`
+    ConversationID string `json:"conversation_id"`
+    EraEpoch       uint64 `json:"era_epoch"`
+    EnvelopeVersion int   `json:"envelope_version"`
     SourceDeviceID  string `json:"source_device_id"`
     CreatedAt       int64  `json:"created_at"`
-    EnvelopeVersion int    `json:"envelope_version"`
-    Schema          int    `json:"schema"`
     SizeBytes       int    `json:"size_bytes"`
-
-    // Manifest is a small JSON object the source device wrote
-    // alongside the backup; it summarizes WHICH groups are
-    // covered by this backup and at what epoch. Used by smart-
-    // restore to pick the freshest backup per group WITHOUT
-    // downloading the full ciphertext.
-    //
-    // CRITICAL: manifest is NOT encrypted; it's metadata only.
-    // It contains group_ids (random 16-byte values) and epochs,
-    // which the server already knows from the mls_groups table.
-    // So no new information leaks.
-    Manifest BackupManifest `json:"manifest"`
-}
-
-type BackupManifest struct {
-    Groups []BackupManifestGroup `json:"groups"`
-}
-
-type BackupManifestGroup struct {
-    GroupID string `json:"group_id"`   // base64, 16 bytes
-    Epoch   uint64 `json:"epoch"`
 }
 ```
 
-The manifest is the key to smart-restore (D6). When a new device wants to
-restore, it calls `backup_list`, examines the manifests across all of the
-user's backups (up to N=5), picks for each group the backup with the
-highest `epoch`, downloads only those, and assembles a synthesized
-restore. This is "per-device backup, smart-restore" in concrete protocol
-terms.
+Descriptors are sorted by `(conversation_id, era_epoch)` ascending so
+clients can apply secrets in deterministic order during restore.
+
+### 3.4 `history_secret_get`
+
+```go
+type HistorySecretGetPayload struct {
+    SecretID string `json:"secret_id"`
+}
+
+type HistorySecretGetAckPayload struct {
+    SecretID        string `json:"secret_id"`
+    ConversationID  string `json:"conversation_id"`
+    EraEpoch        uint64 `json:"era_epoch"`
+    EnvelopeVersion int    `json:"envelope_version"`
+    SourceDeviceID  string `json:"source_device_id"`
+    CreatedAt       int64  `json:"created_at"`
+
+    Ciphertext string `json:"ciphertext"`
+    Nonce      string `json:"nonce"`
+}
+```
+
+**Errors**: `secret_not_found`.
+
+### 3.5 Why no chunked transport
+
+Each HistorySecret is ~1.1 KB on the wire. WS frame size limits in
+production deployments are typically ≥ 1 MB. We are three orders of
+magnitude below that. Single-frame transport is sufficient.
+
+The previous design's chunked tier-2 upload (256 KB chunks of up to
+16 MB total) is obsolete. The simplification removes:
+- `backup_tier2_put_init/chunk/finish` and download counterparts
+- Upload-state tracking on the server
+- The `backup_progress_event` need for upload progress (still useful
+  for restore progress; see §6)
+- Upload timeout / chunk validation logic
+
+Net: roughly 10 frames eliminated.
+
+### 3.6 Era selection on restore
+
+When a device restores history, it calls `history_secret_list`,
+receives all descriptors, then downloads them all via
+`history_secret_get`. Each is decrypted and fed to
+`CoreCrypto.historyClient(secret)`, producing one history-client
+instance per era.
+
+Storage and bandwidth: a user in 50 conversations averaging 20 eras
+each has 1000 secrets × 1.1 KB ≈ 1.1 MB total restore download.
+That fits in a single round of `history_secret_list` plus 1000 frame
+exchanges. The exchanges can be parallelized (no ordering constraint
+in download); a ~10 connection batch completes in seconds.
+
+The exchanges CAN be ordered chronologically per-conversation if the
+client wants to surface history progressively — show oldest messages
+first as their era's client comes online. That's a client choice, not
+a protocol constraint.
 
 ---
 
-## 3. Pairing family — field-by-field
+## 4. Pairing family
 
-The pairing flow runs between two devices of the SAME user, mediated by
-the server which can only see the encrypted blobs.
+**Unchanged from rev 2 §3.** Reproduced descriptions only; for full
+field-by-field specs see prior revision.
 
-**Overall flow:**
+The pairing flow runs between two devices of the same user, mediated
+by chalkd which sees only encrypted blobs.
 
-```
-   OLD DEVICE (has full state)        SERVER          NEW DEVICE (blank)
-        │                                │                   │
-        │ (user taps "pair new device")  │                   │
-        │                                │                   │
-        ├──── pairing_offer ────────────►│                   │
-        │                                │                   │
-        │◄─── pairing_offer_ack ─────────┤                   │
-        │     (returns pairing_id and    │                   │
-        │      code material)            │                   │
-        │                                │                   │
-        │ (user reads code OR scans QR)  │                   │
-        │ (code goes via out-of-band)    │                   │
-        │                                │                   │
-        │                                │◄── pairing_claim ─┤
-        │                                │   (new device     │
-        │                                │    submits code)  │
-        │◄── pairing_event ──────────────┤                   │
-        │   ("someone claimed your       │                   │
-        │    offer with the code")       │                   │
-        │                                │                   │
-        │ (compute shared key from       ├── pairing_claim ─►│
-        │  PAKE; encrypt master_key)     │   _ack            │
-        │                                │                   │
-        ├──── pairing_complete ─────────►│                   │
-        │     (encrypted master_key)     │                   │
-        │                                ├── (relay) ───────►│
-        │                                │                   │
-        │◄─── pairing_complete_ack ──────┤                   │
-        │                                │                   │
-```
+Key points:
+- 5-frame round trip: `pairing_offer` → `pairing_offer_ack` →
+  `pairing_claim` → `pairing_claim_ack` + `pairing_event` →
+  `pairing_complete` → `pairing_complete_ack`
+- Out-of-band secret transmitted via QR code (128-bit) or 6-digit PIN
+  (PAKE v2)
+- ECDH(X25519) + HKDF derive the session key
+- `pairing_session_key` encrypts the `backup_master_key` for transit
+- Server in-memory state only; 5-minute TTL
 
-### 3.1 `pairing_offer` and `pairing_offer_ack`
-
-Old device offers to pair.
-
-```go
-type PairingOfferPayload struct {
-    // OfferKind: "qr" or "pin"
-    Kind string `json:"kind"`
-
-    // EphemeralPublicKey is the X25519 public key the OLD device
-    // is using for this pairing session. NEW device will combine
-    // with its own ephemeral key (sent in pairing_claim) to derive
-    // a shared secret via ECDH + HKDF.
-    EphemeralPublicKey string `json:"ephemeral_public_key"` // base64, 32 bytes
-
-    // For Kind="qr": OldDevice generates the 128-bit secret here,
-    // includes it in the QR code. Field is empty in the WS payload
-    // (the secret never travels over the WS).
-    //
-    // For Kind="pin": OldDevice generates a 6-digit code; field is
-    // empty (server doesn't know the code).
-    //
-    // We deliberately do NOT transmit the secret/code via the WS
-    // channel. It travels out-of-band (QR scan or user typing).
-}
-
-type PairingOfferAckPayload struct {
-    // PairingID is the server-assigned identifier for this pairing
-    // session. Old device shows it (or embeds it in the QR) so
-    // the new device can find this specific offer.
-    PairingID string `json:"pairing_id"`
-
-    // ExpiresAt is unix-ms. After this time, the offer is reaped
-    // server-side. Recommended: 5 minutes.
-    ExpiresAt int64 `json:"expires_at"`
-}
-```
-
-**QR encoding (informational, full spec in doc #6):**
-
-The QR code, scanned by the new device, contains a URL like:
-```
-chalk://pair?id=<pairing_id>&epk=<old_eph_pubkey>&sec=<128-bit-random>&v=1
-```
-
-The `sec` is the 128-bit shared secret — generated by the old device,
-embedded only in the QR (which never touches the network). The new device
-reads it, never transmits it raw, but uses it as input to HKDF along with
-the ECDH output.
-
-**PIN encoding:**
-
-For Kind="pin", the QR field is not used; instead the user reads a
-6-digit code off the old device's screen and types it on the new device.
-The 6-digit code is the PIN material in a SPAKE2+ exchange (or fallback
-HKDF for a weaker construction; doc #6 will decide).
-
-### 3.2 `pairing_claim` and `pairing_claim_ack`
-
-New device claims an existing offer.
-
-```go
-type PairingClaimPayload struct {
-    PairingID string `json:"pairing_id"`
-
-    // EphemeralPublicKey from the NEW device.
-    EphemeralPublicKey string `json:"ephemeral_public_key"` // base64, 32 bytes
-
-    // ProofOfSecret is, for QR pairing, an HKDF-derived value that
-    // proves the new device has the QR's 128-bit secret. Format:
-    //   ProofOfSecret = HKDF-SHA256(
-    //     ikm  = ECDH(new_eph_priv, old_eph_pub) || sec,
-    //     info = "chalk.pair.v1.proof",
-    //     len  = 32,
-    //   )
-    // The OLD device, knowing both ephemeral keys and the original
-    // sec, recomputes this and compares.
-    //
-    // For PIN pairing, this field is a SPAKE2+ message instead;
-    // exact shape in doc #6.
-    ProofOfSecret string `json:"proof_of_secret"` // base64, 32 bytes
-}
-
-type PairingClaimAckPayload struct {
-    // OldDeviceEphemeralPublicKey is relayed by the server from
-    // the pairing_offer. NEW device needs it to compute ECDH on
-    // its side too (it already has the QR-embedded one, but
-    // server returns it again for sanity).
-    OldDeviceEphemeralPublicKey string `json:"old_device_ephemeral_public_key"`
-}
-```
-
-**Server validates:**
-- `pairing_id` exists and hasn't expired
-- Calling user matches the user who opened the offer
-- This is the first claim on this pairing_id (concurrent claims are
-  rejected; the offer accepts exactly one)
-
-### 3.3 `pairing_event` (server push to OLD device)
-
-When a new device claims an offer, the server pushes this to the OLD
-device so it can verify the proof and proceed.
-
-```go
-type PairingEventPayload struct {
-    PairingID string `json:"pairing_id"`
-
-    // NewDeviceEphemeralPublicKey from the new device's
-    // pairing_claim. Old device needs this to compute ECDH.
-    NewDeviceEphemeralPublicKey string `json:"new_device_ephemeral_public_key"`
-
-    // ProofOfSecret from the new device. Old device verifies.
-    // If mismatch, old device sends pairing_cancel with reason
-    // "proof_invalid" (could be wrong PIN, or attacker).
-    ProofOfSecret string `json:"proof_of_secret"`
-
-    // ClaimedAt is the server's timestamp of when the claim arrived.
-    ClaimedAt int64 `json:"claimed_at"`
-}
-```
-
-Old device, on receiving this:
-
-1. Recompute `expected_proof` using its own ephemeral private + new
-   device's ephemeral public + the QR/PIN secret.
-2. Constant-time compare with `proof_of_secret`. If mismatch → send
-   `pairing_cancel` with reason `proof_invalid`. (UI: show "pairing
-   failed; try again.")
-3. If match, derive a session key:
-   ```
-   pair_session_key = HKDF-SHA256(
-     ikm  = ECDH(old_eph_priv, new_eph_pub) || sec,
-     info = "chalk.pair.v1.session",
-     len  = 32,
-   )
-   ```
-4. Encrypt the `backup_master_key` (from local cache, per D2) under
-   `pair_session_key` using XChaCha20-Poly1305.
-5. Send `pairing_complete`.
-
-### 3.4 `pairing_complete` and `pairing_complete_ack`
-
-Old device sends the encrypted master_key to the new device via the
-server.
-
-```go
-type PairingCompletePayload struct {
-    PairingID string `json:"pairing_id"`
-
-    // EncryptedMasterKey is AEAD(pair_session_key, nonce, aad,
-    // backup_master_key). 32 bytes plaintext.
-    EncryptedMasterKey string `json:"encrypted_master_key"` // base64
-    Nonce              string `json:"nonce"`                // base64, 24 bytes
-
-    // PairingMessage is a small JSON payload the old device
-    // includes alongside the master key. Contains:
-    //   - latest envelope_version
-    //   - hint for where to find the latest backups
-    //   - timestamp of pairing
-    // Also encrypted under pair_session_key.
-    PairingMessage string `json:"pairing_message"` // base64, encrypted
-}
-
-type PairingCompleteAckPayload struct {
-    // Empty. Server has relayed to new device.
-}
-```
-
-**Server immediately relays as a push to the new device** (which is
-waiting on its `pairing_claim_ack`). New device decrypts with its own
-`pair_session_key`, obtains the `backup_master_key`, then proceeds to
-download backups via `backup_list` + `backup_tier1_get` +
-`backup_tier2_get_init`.
-
-After the relay, the server reaps the pairing_id from its in-memory
-table. No persistence of pairing state.
-
-### 3.5 `pairing_cancel`
-
-Either party can cancel.
-
-```go
-type PairingCancelPayload struct {
-    PairingID string `json:"pairing_id"`
-    Reason    string `json:"reason"`         // machine-readable
-    Detail    string `json:"detail,omitempty"` // human-readable
-}
-```
-
-Reasons:
-
-- `user_cancelled` — user tapped cancel
-- `proof_invalid` — wrong PIN/secret
-- `timeout` — too slow
-- `protocol_error` — unexpected frame, version mismatch
-
-Server forwards the cancel to the other party (if connected), reaps the
-pairing_id.
+PAKE detail belongs in doc #6.
 
 ---
 
-## 4. Multi-device family — field-by-field
+## 5. Multi-device family
 
-These frames handle the post-pairing "new device announces itself to the
-user's other devices, which then add it to all groups via MLS commits"
-flow.
+**Unchanged from rev 2 §4.** Key points:
 
-### 4.1 `device_announce` and `device_announce_ack`
-
-After successful pairing-and-restore (OR successful recovery-words
-restore), the new device announces itself.
-
-```go
-type DeviceAnnouncePayload struct {
-    // NewDeviceID is the calling device's ID (new device).
-    NewDeviceID string `json:"new_device_id"`
-
-    // ClientID is the MLS client ID this device will use. By chalk
-    // convention this is `${user_id}:${device_id}`.
-    ClientID string `json:"client_id"`
-
-    // OriginKind: "paired" (came via pairing flow) or "recovery"
-    // (came via 24-word recovery flow). Lets other devices decide
-    // how cautious to be (a recovery-based add deserves a UI
-    // notification; a paired add might be silent since the user
-    // just orchestrated it).
-    OriginKind string `json:"origin_kind"`
-
-    // Fingerprint is a SHA-256 of the new device's MLS signature
-    // PUBLIC key, base64'd. Used by other devices to display
-    // "the new device's fingerprint is X" in a notification UI,
-    // so the user can verify they actually pair'd the device they
-    // think they pair'd.
-    Fingerprint string `json:"fingerprint"`
-}
-
-type DeviceAnnounceAckPayload struct {
-    // FanoutCount is how many other devices received the event.
-    FanoutCount int `json:"fanout_count"`
-}
-```
-
-**Server stores** the new device row (devices table; new in phase 11d if
-not already present) and pushes `device_announce_event` to all other
-sessions for the same user.
-
-### 4.2 `device_announce_event` (server push to OTHER devices)
-
-```go
-type DeviceAnnounceEventPayload struct {
-    NewDeviceID string `json:"new_device_id"`
-    ClientID    string `json:"client_id"`
-    OriginKind  string `json:"origin_kind"`
-    Fingerprint string `json:"fingerprint"`
-    AnnouncedAt int64  `json:"announced_at"`
-}
-```
-
-Receiving devices SHOULD:
-
-1. Show a UI notification (toast or banner) "your account has a new
-   device: <fingerprint>"
-2. Begin the self-add flow: for each group this device is a member of,
-   run `addClientsToConversation(group_id, [new_device_kp])` to bring
-   the new device into the group at the current epoch.
-3. The new device's KeyPackages must already be published (it does this
-   immediately after restoring its keystore). Receiving devices fetch
-   them via existing `fetch_key_packages`.
-
-**Self-add is best-effort**: if a group isn't currently in the receiving
-device's keystore (e.g. the receiving device itself is stale), it just
-skips. The next device to come online and have the group covers it.
-
-### 4.3 `device_list` and `device_list_ack`
-
-List the user's known devices. For the "devices" settings panel.
-
-```go
-type DeviceListPayload struct {
-    // No fields.
-}
-
-type DeviceListAckPayload struct {
-    Devices []DeviceDescriptor `json:"devices"`
-}
-
-type DeviceDescriptor struct {
-    DeviceID    string `json:"device_id"`
-    ClientID    string `json:"client_id"`
-    Fingerprint string `json:"fingerprint"`
-    AddedAt     int64  `json:"added_at"`
-    LastSeenAt  int64  `json:"last_seen_at"`
-    IsSelf      bool   `json:"is_self"` // true for the calling device
-    Label       string `json:"label,omitempty"` // user-set, see device_label
-}
-```
-
-### 4.4 `device_remove` and `device_remove_ack`
-
-Remove a device from the user's account (e.g. lost phone, after the user
-gets a new one).
-
-```go
-type DeviceRemovePayload struct {
-    DeviceID string `json:"device_id"`
-}
-
-type DeviceRemoveAckPayload struct {
-    // RemovedFromGroups is the number of groups this device was
-    // removed from via MLS commits. Best-effort.
-    RemovedFromGroups int `json:"removed_from_groups"`
-}
-```
-
-**Server actions:**
-1. Mark the device row as removed in the `devices` table.
-2. Mark any pending KeyPackages for the device as unusable.
-3. Push `device_removed_event` to OTHER devices of the user (not
-   speccing this push frame in detail here; doc #5 will).
-4. Other devices, on receiving the event, run
-   `removeClientsFromConversation` to actually evict the device from
-   each group cryptographically.
-
-**Caveat**: removing a device from MLS groups only takes effect for
-future epochs. Messages encrypted under the epoch BEFORE removal remain
-decryptable by the removed device if its keystore wasn't wiped. This is
-inherent to MLS post-compromise security.
+- After successful restore (via pairing OR recovery), the new device
+  fires `device_announce` with origin_kind = `"paired"` or
+  `"recovery"`.
+- Server stores the device row and pushes `device_announce_event` to
+  other connected devices of the same user.
+- Other devices initiate self-add: for each MLS group they're a
+  member of, add the new device via `addClientsToConversation`.
+- Self-add races resolved by random 0-30s delay (per Q9 in rev 2).
+- `device_remove` evicts a device via MLS commits.
 
 ---
 
-## 5. Status family — field-by-field
+## 6. Status family
 
-The status family implements **D7 transparency** for backup/restore UX:
-Level 1 (status awareness) via `backup_status_get` and Level 2
-(operation visibility) via `backup_progress_event` pushes.
+**Unchanged from rev 2 §5.** Implements D7 transparency.
 
-### 5.1 `backup_status_get` and `backup_status_get_ack`
+### 6.1 `backup_status_get`
 
-The SPA polls (or fetches on tab focus) the current backup health.
-Cheap, idempotent.
+Returns a snapshot:
 
 ```go
-type BackupStatusGetPayload struct {
-    // No fields. User implicit.
-}
-
 type BackupStatusGetAckPayload struct {
-    // EnvelopePresent: does the user have an envelope at all? If
-    // false, no backup has ever been uploaded (or it was deleted).
-    // SPA UI: prompt to set up backup.
-    EnvelopePresent bool `json:"envelope_present"`
-
-    // EnvelopeVersion of the current envelope; 0 if absent.
-    EnvelopeVersion int `json:"envelope_version"`
-
-    // LastTier1 is the most recent tier-1 backup descriptor.
-    // null if no tier-1 backup exists.
-    LastTier1 *BackupDescriptor `json:"last_tier1"`
-
-    // LastTier2 is the most recent tier-2 backup descriptor.
-    // null if no tier-2 backup exists.
-    LastTier2 *BackupDescriptor `json:"last_tier2"`
-
-    // BackupCount across all tiers, all devices.
-    BackupCount int `json:"backup_count"`
-
-    // LastSuccessfulPut is the timestamp of the most recent
-    // successful backup PUT from any device of this user.
-    // null if no successful puts ever.
-    LastSuccessfulPut *int64 `json:"last_successful_put"`
-
-    // LastFailedPut is set if there was a backup PUT attempt
-    // from any device that failed and hasn't been superseded
-    // by a success. Includes reason. Cleared once the next
-    // successful put arrives.
-    LastFailedPut *BackupFailedAttempt `json:"last_failed_put"`
-
-    // ActiveUploads is the count of in-progress tier-2 uploads
-    // (chunked) right now for this user. Usually 0 or 1.
-    ActiveUploads int `json:"active_uploads"`
-
-    // ActiveDownloads is the count of in-progress tier-2 downloads
-    // (a restore from a new device shows up here).
-    ActiveDownloads int `json:"active_downloads"`
-
-    // PendingCriticalEvents is the count of unacknowledged
-    // critical events. Surfaced here so the SPA can show a badge
-    // without a separate roundtrip. Detail via §6.
-    PendingCriticalEvents int `json:"pending_critical_events"`
-}
-
-type BackupFailedAttempt struct {
-    AttemptedAt int64  `json:"attempted_at"` // unix ms
-    DeviceID    string `json:"device_id"`    // which device tried
-    Tier        int    `json:"tier"`         // 1 or 2
-    Reason      string `json:"reason"`       // machine-readable code
-    Detail      string `json:"detail"`       // human-readable
+    EnvelopePresent      bool   `json:"envelope_present"`
+    EnvelopeVersion      int    `json:"envelope_version"`
+    HistorySecretsCount  int    `json:"history_secrets_count"`  // NEW vs rev 2
+    LastSecretUploadAt   *int64 `json:"last_secret_upload_at"`  // NEW vs rev 2
+    LastFailedUpload     *BackupFailedAttempt `json:"last_failed_upload"`
+    ActiveRestoresCount  int    `json:"active_restores_count"`
+    PendingCriticalEvents int   `json:"pending_critical_events"`
 }
 ```
 
-**Server caching note**: this query is run frequently (every tab focus,
-plus on demand). Server should cache the per-user status briefly
-(say 30 s) and invalidate on backup put/delete events. Without caching,
-this becomes a hot path. Doc #4 (server schema) will spec the cache.
+Note the field changes from rev 2: instead of separate tier-1 and
+tier-2 last-upload tracking, we now have a single
+`HistorySecretsCount` and `LastSecretUploadAt`.
 
-### 5.2 `backup_progress_event` (server push)
+### 6.2 `backup_progress_event`
 
-For long-running operations (chunked tier-2 uploads/downloads, restore
-flows), the server emits progress events to the device that initiated
-the operation. NOT broadcast to other devices.
+Used during restore to give the user feedback on long-running
+operations:
 
 ```go
 type BackupProgressEventPayload struct {
-    // OperationID is the upload_id, download_id, or a synthesized
-    // ID for compound operations like restore.
     OperationID string `json:"operation_id"`
-
-    // Kind: one of
-    //   "tier2_upload"     — tier-2 chunked upload in progress
-    //   "tier2_download"   — tier-2 chunked download in progress
-    //   "restore"          — multi-step restore flow in progress
-    //   "envelope_put"     — usually too fast for progress, but
-    //                        included for completeness
-    Kind string `json:"kind"`
-
-    // Stage is a human-readable label for what's happening right
-    // now. SPA shows this verbatim (UI may localize). Examples:
-    //   "uploading chunk 3/8"
-    //   "downloading tier-2"
-    //   "decrypting envelope"
-    //   "importing keystore"
-    //   "joining group 5/12"
-    Stage string `json:"stage"`
-
-    // Percent is 0–100. -1 means "indeterminate" (used for stages
-    // where we can't easily compute a percentage).
-    Percent int `json:"percent"`
-
-    // BytesTransferred / BytesTotal for upload/download stages.
-    // Both 0 for non-transfer stages.
-    BytesTransferred int64 `json:"bytes_transferred"`
-    BytesTotal       int64 `json:"bytes_total"`
-
-    // Terminal indicates this is the last progress event for this
-    // operation. Set when the operation completes (successfully or
-    // not). After Terminal=true, the SPA can dismiss the progress UI.
-    Terminal bool `json:"terminal"`
-
-    // Failed is true only when Terminal=true AND the operation
-    // failed. Field is mutually-exclusive with the normal _ack
-    // path: a successful operation finishes via its _ack frame,
-    // not a Terminal+Failed progress event. So Failed=true only
-    // appears on the failure path.
-    Failed bool `json:"failed,omitempty"`
-
-    // FailureReason if Failed=true.
+    Kind        string `json:"kind"`
+    Stage       string `json:"stage"`        // "downloading secrets", "decrypting", "instantiating history clients", "joining groups"
+    Percent     int    `json:"percent"`      // 0-100, -1 = indeterminate
+    Items       int    `json:"items"`        // current item index
+    TotalItems  int    `json:"total_items"`  // total items
+    Terminal    bool   `json:"terminal"`
+    Failed      bool   `json:"failed,omitempty"`
     FailureReason string `json:"failure_reason,omitempty"`
 }
 ```
 
-**Restore flow progress example.** When a new device restores from
-backup, the SPA initiates a `restore` operation (a client-side
-construct, not a server frame). The server, while servicing the various
-downloads and metadata fetches that the restore triggers, emits progress
-events tagged with the same restore `operation_id`. The SPA's restore
-UI consumes them:
-
-```
-"Fetching envelope..."          (5%, indeterminate stage)
-"Decrypting envelope..."        (10%, client-side)
-"Listing backups..."            (15%)
-"Downloading tier-1 backup..."  (25%, 4 KB / 4 KB)
-"Decrypting tier-1..."          (30%)
-"Downloading tier-2 (chunk 1/8)..." (35%, 256KB / 2.1MB)
-"Downloading tier-2 (chunk 2/8)..." (43%, 512KB / 2.1MB)
-...
-"Importing keystore..."         (85%)
-"Joining group 3/12: dm-bob2..."  (90%)
-"Restoration complete."         (100%, Terminal=true)
-```
-
-The client side of restore is the actual orchestrator — it tracks the
-restore's logical stages and reports them. The server emits its own
-stage updates (e.g. "downloading tier-2 chunk 3/8") which the client
-merges into the user-visible progress view.
-
-**Backpressure**: progress events should be rate-limited (no more than
-~4/sec per operation) to avoid flooding the WS. SPA UI doesn't need
-60fps progress.
-
-### 5.3 Status family is read-only
-
-None of the status family frames cause side effects on the server's
-data model. They're observability frames. This matters for
-implementation: they can hit cached/replicated state in larger
-deployments without consistency concerns.
+Kind values are: `"restore"`. The original rev 2 also defined
+`"tier2_upload"` and `"tier2_download"`, both obsolete now. Restore
+progress is the primary use case.
 
 ---
 
-## 6. Critical event family — field-by-field
+## 7. Critical event family
 
-Critical events are **high-importance, user-facing notifications that
-require explicit acknowledgment** (D8, D9). They have three defining
-properties:
+**Unchanged from rev 2 §6.** Implements D8/D9.
 
-1. **Cross-device sync.** The same event reaches all of the user's
-   devices. Acknowledging on any one device dismisses it on all
-   others.
-2. **Persistent.** Unlike progress events, the server keeps the event
-   until acknowledged. A device that comes online late still sees
-   the event.
-3. **Non-dismissable without action.** The SPA must show the event
-   with a primary action (e.g. "OK, I did this" or "Investigate") and
-   not allow silent dismissal.
+Six event kinds:
 
-### 6.1 Event kinds in phase 11d
+| Kind | When emitted | User action |
+|------|--------------|-------------|
+| `device_added_paired`         | New device via pairing | "OK" / "Wasn't me" |
+| `device_added_recovery`       | New device via recovery phrase | "OK" / "Wasn't me — rotate" |
+| `device_removed`              | Device removed | "OK" |
+| `recovery_phrase_rotated`     | Recovery rotation completed | "OK" |
+| `history_uploads_persistently_failing` | Secret uploads failing >1hr (was: `backup_persistently_failing` in rev 2) | "Investigate" |
+| `restore_completed`           | Restore finished | "Welcome back" |
 
-Phase 11d defines six critical event kinds:
+Cross-device sync mechanism: an ack on any device dismisses on all
+others via `critical_event_dismissed_event`.
 
-| Kind | When emitted | Required user action |
-|------|--------------|----------------------|
-| `device_added_paired`     | New device successfully paired | "OK, this was me" or "Wasn't me, revoke" |
-| `device_added_recovery`   | New device used recovery phrase to add itself | "OK" or "Wasn't me, change phrase" |
-| `device_removed`          | Device removed from account | "OK" |
-| `recovery_phrase_rotated` | Recovery phrase rotation completed | "OK" |
-| `backup_persistently_failing` | Backups failing for > 1 hour | "Investigate" |
-| `restore_completed`       | Restore-from-backup finished | "Welcome back" |
-
-`device_added_recovery` is the highest-stakes one: an attacker who got
-the user's recovery phrase but no devices could use it to silently add
-themselves. Surfacing this loud-and-clear to all the user's existing
-devices is the main protection. (See §4.3 of doc #1 for the threat
-model context.)
-
-### 6.2 `critical_event` (server push)
-
-Pushed to all of the user's connected devices when the event is
-generated. Devices that aren't connected at that moment receive it via
-`critical_event_list` on next connect.
-
-```go
-type CriticalEventPayload struct {
-    // EventID is server-assigned, unique per user.
-    EventID string `json:"event_id"`
-
-    // Kind from the table in §6.1.
-    Kind string `json:"kind"`
-
-    // CreatedAt is the server's timestamp of when the underlying
-    // event occurred.
-    CreatedAt int64 `json:"created_at"` // unix ms
-
-    // Severity is one of:
-    //   "info"      — restore completed, recovery rotated
-    //   "warning"   — backup persistently failing
-    //   "alert"     — device added via paired flow
-    //   "critical"  — device added via recovery flow,
-    //                 device removed (could mean compromise)
-    Severity string `json:"severity"`
-
-    // Title is a short human-readable title. SPA uses verbatim
-    // (may localize from a key, decided in doc #5).
-    Title string `json:"title"`
-
-    // Body is a longer human-readable description.
-    Body string `json:"body"`
-
-    // Context contains kind-specific fields. The SPA reads these
-    // for rendering rich event UIs. Examples below.
-    Context CriticalEventContext `json:"context"`
-
-    // Actions enumerates the user-actionable options. SPA renders
-    // one button per action.
-    Actions []CriticalEventAction `json:"actions"`
-}
-
-// Context is a discriminated union by Kind. Only the field matching
-// the event's Kind is populated; the others are null. Go-side will
-// be a struct with all optional sub-types; SPA uses
-// kind to pick which field to read.
-type CriticalEventContext struct {
-    DeviceAdded       *DeviceAddedContext       `json:"device_added,omitempty"`
-    DeviceRemoved     *DeviceRemovedContext     `json:"device_removed,omitempty"`
-    RecoveryRotated   *RecoveryRotatedContext   `json:"recovery_rotated,omitempty"`
-    BackupFailing     *BackupFailingContext     `json:"backup_failing,omitempty"`
-    RestoreCompleted  *RestoreCompletedContext  `json:"restore_completed,omitempty"`
-}
-
-type DeviceAddedContext struct {
-    NewDeviceID   string `json:"new_device_id"`
-    Fingerprint   string `json:"fingerprint"`         // hex/base64
-    ClientID      string `json:"client_id"`
-    OriginKind    string `json:"origin_kind"`         // "paired" or "recovery"
-    // Server-observed approximate origin info; may be null on
-    // privacy-respecting deployments.
-    ApproxLocation *string `json:"approx_location,omitempty"`
-    UserAgent      *string `json:"user_agent,omitempty"`
-}
-
-type DeviceRemovedContext struct {
-    RemovedDeviceID  string `json:"removed_device_id"`
-    Fingerprint      string `json:"fingerprint"`
-    RemovedByDeviceID string `json:"removed_by_device_id"`
-}
-
-type RecoveryRotatedContext struct {
-    RotatedByDeviceID string `json:"rotated_by_device_id"`
-    OldHashFingerprint string `json:"old_hash_fingerprint"`
-    NewHashFingerprint string `json:"new_hash_fingerprint"`
-}
-
-type BackupFailingContext struct {
-    FailingSince   int64  `json:"failing_since"`   // unix ms
-    AttemptCount   int    `json:"attempt_count"`
-    LastReason     string `json:"last_reason"`
-    LastDetail     string `json:"last_detail"`
-}
-
-type RestoreCompletedContext struct {
-    RestoredDeviceID  string `json:"restored_device_id"`
-    SourceBackupID    string `json:"source_backup_id"`
-    GroupsRestored    int    `json:"groups_restored"`
-    OriginKind        string `json:"origin_kind"`     // "paired" or "recovery"
-}
-
-type CriticalEventAction struct {
-    // ActionID is opaque; client passes it back in critical_event_ack.
-    ActionID string `json:"action_id"`
-
-    // Label is the button text.
-    Label string `json:"label"`
-
-    // Kind: "primary" or "secondary" or "destructive"
-    // SPA renders accordingly.
-    Kind string `json:"kind"`
-
-    // Followup is an optional indication of what the SPA should do
-    // after ack. Examples:
-    //   "open_device_list"   — navigate to devices settings
-    //   "open_recovery_rotation" — open the rotate-recovery flow
-    //   "none"
-    Followup string `json:"followup"`
-}
-```
-
-**Action example for `device_added_recovery`:**
-
-```json
-{
-  "event_id": "evt_abc123",
-  "kind": "device_added_recovery",
-  "severity": "critical",
-  "title": "A new device was added using your recovery phrase",
-  "body": "Someone used your 24-word recovery phrase to add a new device. If this wasn't you, your recovery phrase may have been compromised.",
-  "context": {
-    "device_added": {
-      "new_device_id": "dev_xyz",
-      "fingerprint": "AB:CD:EF:...",
-      "client_id": "alice2:dev_xyz",
-      "origin_kind": "recovery",
-      "approx_location": "Vienna, AT",
-      "user_agent": "Chrome 128 on macOS"
-    }
-  },
-  "actions": [
-    {"action_id": "ack_was_me",      "label": "Yes, that was me",       "kind": "primary",     "followup": "none"},
-    {"action_id": "ack_not_me",      "label": "No — revoke and rotate", "kind": "destructive", "followup": "open_recovery_rotation"}
-  ]
-}
-```
-
-### 6.3 `critical_event_list` and `critical_event_list_ack`
-
-A device fetches all pending (unacknowledged) critical events. Called on
-WS connect, on tab focus after a long idle period, and on demand.
-
-```go
-type CriticalEventListPayload struct {
-    // No fields.
-}
-
-type CriticalEventListAckPayload struct {
-    Events []CriticalEventPayload `json:"events"`
-}
-```
-
-Returns events in order of `created_at` ascending so the SPA can show
-them in chronological order. The list excludes events that have already
-been acknowledged on any other device (via §6.5 fanout).
-
-### 6.4 `critical_event_ack` and `critical_event_ack_ack`
-
-User acknowledged a critical event. SPA submits the chosen action.
-
-```go
-type CriticalEventAckPayload struct {
-    EventID  string `json:"event_id"`
-    ActionID string `json:"action_id"`
-}
-
-type CriticalEventAckAckPayload struct {
-    // EventID echoed for client-side confirmation.
-    EventID string `json:"event_id"`
-
-    // AckedAt is the server's timestamp of acknowledgment.
-    AckedAt int64 `json:"acked_at"`
-}
-```
-
-**Server actions on ack:**
-1. Validate the event exists, belongs to the calling user, is not yet
-   acked.
-2. Mark it acked in the `critical_events` table (doc #4 schema).
-3. Fanout `critical_event_dismissed_event` to ALL other connected
-   devices of the user.
-4. Respond with `critical_event_ack_ack`.
-
-If two devices race to ack the same event, the first wins; the second
-gets `critical_event_already_acked` error.
-
-### 6.5 `critical_event_dismissed_event` (server push)
-
-Pushed to OTHER devices of the user when an event has been acked
-somewhere. Lets those devices remove the notification from their UI
-without waiting for the user to refresh.
-
-```go
-type CriticalEventDismissedEventPayload struct {
-    EventID         string `json:"event_id"`
-    AckedAt         int64  `json:"acked_at"`
-    AckedByDeviceID string `json:"acked_by_device_id"`
-    ActionID        string `json:"action_id"`
-}
-```
-
-The SPA, on receiving this, removes the event from its visible-events
-list and updates the badge count.
-
-### 6.6 Lifecycle and retention
-
-Critical events have a server-side lifecycle:
-
-```
-   ┌──────────┐  emit   ┌─────────┐  ack   ┌────────┐
-   │   (none) │ ──────► │ pending │ ─────► │ acked  │
-   └──────────┘         └────┬────┘        └───┬────┘
-                             │ (90d TTL)       │ (180d TTL)
-                             ▼                 ▼
-                          (purged)           (purged)
-```
-
-- **Pending** events with no ack after 90 days are auto-purged with a
-  log entry. Such old events have lost their relevance.
-- **Acked** events are retained for 180 days for audit purposes (the
-  user can review "what happened to my account in the last few
-  months"), then purged.
-
-(Retention windows tweakable as chalkd config flags.)
-
-### 6.7 Server source of critical events
-
-Critical events are generated by the chalkd server, not by clients.
-This matters because:
-- Clients can't fake critical events on themselves to dismiss real ones
-- The server is the authoritative source of "did a device add happen"
-
-Specifically, server emits events at these moments:
-- After successful `device_announce` handling → `device_added_paired`
-  (if origin=paired) or `device_added_recovery` (if origin=recovery)
-- After successful `device_remove` handling → `device_removed`
-- After successful recovery rotation (existing flow) → `recovery_phrase_rotated`
-- When backup put failures cross a threshold (e.g. 5 failures over 1
-  hour) → `backup_persistently_failing`
-- After successful tier-1+tier-2 restore on the new device → `restore_completed`
-
-Client code never sends `critical_event` (only the server does).
-Clients only RECEIVE it (and ack via §6.4).
+Retention: pending 90 days TTL, acked 180 days for audit.
 
 ---
 
-## 7. Error codes (new in phase 11d)
+## 8. Error codes
 
-All errors follow chalk's existing convention: `frame_type=error`,
-payload `{code: string, message: string, ref: string}`.
-
-New codes:
+Updated for the new history-secrets family. Codes carried over from
+rev 2 unless marked.
 
 | Code | Frame context | Meaning |
 |------|---------------|---------|
 | `envelope_too_large` | backup_envelope_put | > 64 KB |
 | `envelope_conflict` | backup_envelope_put | expected_version mismatch |
 | `envelope_invalid` | backup_envelope_put | schema violation |
-| `backup_too_large` | backup_tier1_put, tier2_put_init | exceeds tier ceiling |
-| `backup_invalid_device` | backup_*_put | source_device_id unknown |
-| `backup_clock_skew` | backup_*_put | created_at outside ±5 min |
-| `backup_not_found` | backup_*_get | backup_id unknown |
-| `upload_too_large` | backup_tier2_put_init | total_bytes > 16 MB |
-| `upload_chunk_out_of_order` | backup_tier2_put_chunk | non-monotonic |
-| `upload_chunk_wrong_size` | backup_tier2_put_chunk | size mismatch |
-| `upload_sha256_mismatch` | backup_tier2_put_finish | hash mismatch |
-| `upload_timeout` | (push only) | > 30 s between chunks |
-| `pairing_not_found` | pairing_claim, _complete | pairing_id unknown/expired |
-| `pairing_already_claimed` | pairing_claim | another device claimed first |
-| `pairing_proof_invalid` | (push only) | proof mismatch, from old device |
-| `pairing_expired` | (any pairing) | offer past expires_at |
+| `secret_too_large` | history_secret_put | > 8 KB |
+| `secret_invalid` | history_secret_put | schema violation |
+| `secret_clock_skew` | history_secret_put | created_at outside ±5 min |
+| `secret_invalid_conversation` | history_secret_put | conversation unknown |
+| `secret_not_found` | history_secret_get | secret_id unknown |
+| `pairing_not_found` | pairing_* | pairing_id unknown/expired |
+| `pairing_already_claimed` | pairing_claim | another claim won the race |
+| `pairing_proof_invalid` | (push only) | proof mismatch |
+| `pairing_expired` | pairing_* | past expires_at |
 | `device_not_found` | device_remove | device_id unknown |
 | `device_remove_self` | device_remove | can't remove the calling device |
 | `critical_event_not_found` | critical_event_ack | event_id unknown |
-| `critical_event_already_acked` | critical_event_ack | already acked elsewhere (race) |
-| `critical_event_action_invalid` | critical_event_ack | action_id not in event's allowed actions |
+| `critical_event_already_acked` | critical_event_ack | race lost |
+| `critical_event_action_invalid` | critical_event_ack | action_id not allowed |
+
+Removed compared to rev 2: `backup_too_large`, `backup_invalid_device`,
+`backup_clock_skew`, `backup_not_found`, `upload_too_large`,
+`upload_chunk_out_of_order`, `upload_chunk_wrong_size`,
+`upload_sha256_mismatch`, `upload_timeout`. All were for the chunked
+tier-2 flow that no longer exists.
 
 ---
 
-## 8. Server-side resource limits
+## 9. Server-side resource limits
 
-These are sanity limits to prevent abuse. Recommended starting values:
+| Limit | Value |
+|-------|-------|
+| Envelope size | ≤ 64 KB |
+| Envelope wraps count | ≤ 1024 |
+| HistorySecret ciphertext size | ≤ 8 KB |
+| HistorySecrets per user | unlimited (storage cost accepted per doc #1 §4.3) |
+| Pairing offers per user (concurrent) | ≤ 3 |
+| Pairing offer TTL | 5 min |
+| Pairing in-memory state lifetime | 5 min |
+| Devices per user | ≤ 32 |
+| KeyPackages per device per ciphersuite | ≤ 100 (already enforced phase 11a) |
+| `backup_status_get` response cache | 30 s per user |
+| `backup_progress_event` rate limit | ≤ 4 events/sec per operation |
+| Pending critical events per user | ≤ 100 |
+| Critical event pending TTL | 90 days |
+| Critical event acked retention | 180 days |
 
-- Envelope size ≤ 64 KB.
-- Envelope wraps count ≤ 1024.
-- Tier 1 ciphertext ≤ 64 KB.
-- Tier 2 ciphertext ≤ 16 MB.
-- Tier 2 chunk size ≤ 256 KB.
-- Tier 2 upload timeout: 30 s between chunks.
-- Backups per user (all tiers): N=5 (D6). When at limit, server drops
-  oldest at next put.
-- Pairing offers per user: ≤ 3 concurrent. Server rejects new offers
-  beyond this.
-- Pairing offer TTL: 5 minutes.
-- Pairing session in-memory state lifetime: 5 minutes.
-- Devices per user: ≤ 32. Hitting this requires removing a device.
-- KeyPackages per device per ciphersuite: ≤ 100. (Already enforced in
-  phase 11a; mentioned for completeness.)
-- `backup_status_get` response cached server-side for ≤ 30 s per user.
-- `backup_progress_event` rate-limited to ≤ 4 events/sec per operation.
-- Pending critical events per user: ≤ 100. Beyond that, oldest pending
-  events are auto-purged with a log entry (defensive against event-flood
-  bugs).
-- Critical event pending TTL: 90 days.
-- Critical event acked retention: 180 days.
-
-These limits are tweakable; expose them as chalkd config flags.
+Removed compared to rev 2: tier-1/tier-2 ceilings, chunk size limit,
+upload timeout. The new per-secret ceiling (8 KB) is more permissive
+than necessary (typical is 1.1 KB).
 
 ---
 
-## 9. No HTTP endpoints in phase 11d
+## 10. No HTTP endpoints
 
-Per Q4=a, pairing and backup both use WS frames. No new HTTP endpoints
-are introduced.
-
-**Rationale**: chalk's existing HTTP endpoints are only for auth flows
-(passkey ceremony, recovery login) and prefs. Adding HTTP endpoints for
-backup/pairing would split the protocol surface unnecessarily. WS gives
-us push for pairing_event and device_announce_event for free; HTTP would
-require polling or a separate notification channel.
-
-**Future consideration**: very large backups (rare in v1, possible in
-later phases) might benefit from HTTP for resumable uploads. Punt to a
-later phase if/when this becomes necessary.
+Per Q4=a (locked in rev 1), all phase-11d traffic flows over the
+existing WS connection. No new HTTP endpoints introduced.
 
 ---
 
-## 10. Frame count summary
+## 11. Frame count summary
 
-Phase 11d adds **39 new wire types** to chalk:
+Phase 11d adds **32 new wire types** to chalk:
 
-- 16 backup family
+- 4 envelope family
+- 6 history-secrets family (was: 16 backup family in rev 2)
 - 8 pairing family
-- 6 multi-device family
-- 3 status family (`backup_status_get`, `_ack`, `backup_progress_event`)
-- 6 critical event family (`critical_event`, `critical_event_list`, `_ack`,
-  `critical_event_ack`, `_ack`, `critical_event_dismissed_event`)
+- 7 multi-device family (counting `device_announce_event` push)
+- 3 status family
+- 6 critical event family (counting `_dismissed_event` push)
 
-(Plus the `*_abort`, `*_event`, error variants.)
+For comparison: rev 1 had 30 frames, rev 2 had 39. Rev 3 has 32 —
+back near rev 1's count but with the rev 2 transparency additions
+intact.
 
-For comparison, phase 11b-1 added 5 frames (key package family) and 4
-(MLS DM family). Phase 11d is roughly 4× the protocol surface of 11b.
+---
 
-The frames are largely independent — backup family doesn't reference
-pairing family, etc. — so they can be implemented in independent landings:
+## 12. Suggested landing order
 
-- **Land 1**: envelope + tier-1 backup put/get + `backup_status_get` (smallest
-  useful slice; enables the silent background snapshot AND the status badge)
-- **Land 2**: tier-2 chunked upload/download + `backup_progress_event`
-- **Land 3**: backup_list with manifest
-- **Land 4**: critical event family (depends on Land 1 for plumbing; standalone
-  thereafter)
-- **Land 5**: pairing family (depends on Lands 1-3 to have something to pair)
-- **Land 6**: device_announce + device_announce_event + self-add flow; emits
+The frames are largely independent. Suggested order for landing in
+chalk:
+
+- **Land 1**: envelope put/get + `backup_status_get` (silent foundation;
+  enables the status badge from day one)
+- **Land 2**: `history_secret_put` + emit-on-observer-fire (start
+  uploading secrets; no consumer yet)
+- **Land 3**: `history_secret_list` + `history_secret_get` +
+  `backup_progress_event` (enables the restore flow)
+- **Land 4**: critical event family (standalone; depends on Land 1)
+- **Land 5**: pairing family (depends on Land 1-3 to have something
+  to pair)
+- **Land 6**: `device_announce` + self-add flow + emits
   `device_added_paired` / `device_added_recovery` critical events
-- **Land 7**: device_list + device_remove; emits `device_removed` critical
-  event
+- **Land 7**: `device_list` + `device_remove` + emits `device_removed`
+  critical event
 
-This ordering is suggested for doc #8 (migration & test plan).
-
----
-
-## 11. Open questions for resolution before doc #3
-
-**Q6.** Exact ciphertext framing for AEAD outputs.
-
-XChaCha20-Poly1305 outputs ciphertext + 16-byte authentication tag.
-Should we concatenate `(ciphertext || tag)` and base64 the result, or
-keep them separate fields? Existing chalk MLS code concatenates. Lean
-toward consistency.
-
-**Q7.** Manifest tampering risk.
-
-The `BackupDescriptor.Manifest` is NOT encrypted (so the server can
-prune backups, smart-restore can read it without decrypting). The
-server could lie about a manifest — claim "this old backup covers
-recent epochs" when it doesn't.
-
-Mitigation: include the manifest as AAD in the backup blob's AEAD. The
-client, after downloading and decrypting, verifies the manifest matches
-what the server reported. If mismatch → server is lying → don't trust.
-
-Decision: yes, do this. Affects doc #3 (serialization format).
-
-**Q8.** Should `device_announce_event` include the new device's MLS
-KeyPackage directly, or just trigger a `fetch_key_packages` from
-receiving devices?
-
-Including it inline saves a round trip. Fetching separately is more
-uniform with the existing flow. Doc #5 (client state machines) will
-decide.
-
-**Q9.** Self-add commit fanout: do all receiving devices race to
-self-add the new device, or do they coordinate?
-
-In a 1-user-3-device household, when device-4 joins, devices 1, 2, 3
-all receive `device_announce_event`. If all three try to
-`addClientsToConversation(group_id, [device_4_kp])` simultaneously, MLS
-will reject all but one (only one wins the epoch race). The losers'
-operations roll back gracefully, but it's wasted work and bandwidth.
-
-Two approaches:
-- Random staggered delay (each device waits a random 0-30s before
-  attempting)
-- Server-coordinated: server picks one designated "self-adder" per
-  group, others wait
-
-Lean toward random delay for simplicity; coordinated approach can be a
-later optimization.
-
-**Q10.** Old-pairing-offer cleanup.
-
-If old device opens a pairing offer, then crashes (closes WS) before
-the new device claims, the offer sits in server memory for 5 minutes.
-Acceptable. But: when old device reconnects, should we surface "you
-have an unclaimed pairing offer" so the user knows to cancel or
-complete it? Tiny UX consideration. Punt to doc #5.
+This ordering also gives a sensible v0.1 demo at the end of Land 3
+(silent backup + restore working end-to-end), with multi-device
+features layered on top.
 
 ---
 
-## 12. Summary
+## 13. Open questions
 
-Doc #2 is concrete: 30 frame types, exact JSON shapes, exact resource
-limits, exact error codes. Once approved, doc #3 (keystore serialization)
-defines what goes INSIDE the encrypted blobs that this wire protocol
-ferries.
+**Q15 (from doc #1)**: era_epoch = MLS epoch number at history-client
+add. Resolved. The HistorySecretPutPayload field `era_epoch` carries
+this directly.
 
-Open questions Q6-Q10 are smaller than Q1-Q5 from doc #1 were. Most can
-be resolved with one-liner decisions. Q7 in particular is important
-(manifest tampering) and worth confirming the proposed mitigation.
+**Q16 (from doc #1)**: observer fires are in order. Resolved by
+inspection of CoreCrypto source. Protocol assumes ordering; chalk's
+client code uploads in observer-callback order.
 
-End of doc #2. Vienna 2026-05-27.
+**Q17 (from doc #1)**: server upserts on
+`(user_id, conversation_id, era_epoch)`. Resolved. See §3.2.
+
+**Q18 (new)**: Should `history_secret_list_ack` include a pagination
+cursor for users with very many secrets (say, > 10,000)?
+
+Initial recommendation: no pagination in v1. 10,000 descriptors at
+~200 bytes each = 2 MB ack payload, which fits in WS comfortably.
+If pagination becomes necessary, add a `cursor` field in v2 without
+breaking v1 clients.
+
+**Q19 (new)**: Should the encrypted HistorySecret's CBOR include a
+schema version byte so we can evolve the inner format?
+
+Recommendation: yes. The CBOR plaintext is
+`{schema_version: 1, client_id: <bytes>, data: <bytes>}` rather than
+just the two fields. This is a tiny overhead (~5 bytes) and saves us
+from format-evolution pain later. See doc #3 §3 for full layout.
+
+---
+
+## 14. Summary
+
+Doc #2 rev 3 defines **32 wire frames** across six families. The shape
+is much simpler than rev 2:
+
+- Envelope unchanged.
+- Backup blobs replaced with a single per-secret put/list/get family.
+  No chunking, no tier-1/tier-2 split, no chunked-state machine.
+- Pairing, multi-device, status, critical events all unchanged.
+
+Open questions Q18-Q19 are smaller than prior revisions'. Doc #3
+(rev 3) defines what goes INSIDE the encrypted HistorySecret payload
+that this protocol ferries.
+
+End of doc #2 revision 3. Vienna 2026-05-27.

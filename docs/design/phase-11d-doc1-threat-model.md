@@ -1,672 +1,498 @@
 # Phase 11d Design Doc #1 — Threat Model & Crypto Primitives
 
-**Status:** Approved for repo (revision 2)
+**Status:** Revision 3 (history-client architecture, sandbox-validated)
 **Author:** Claude, per scuq's design choices
-**Date:** 2026-05-26 (Vienna)
-**Scope:** chalk phase 11d — multi-device support with full history transfer
-
-This is the first of eight design documents for phase 11d. It establishes
-what we are defending against and what cryptographic building blocks the
-rest of the design will use. Subsequent docs (wire protocol, serialization,
-server schema, etc.) all reference decisions made here.
-
-**Revision 2 changes from initial draft:** the passphrase model was replaced
-with chalk's existing 24-word BIP-39 recovery phrase. zxcvbn-style entropy
-checks were dropped (BIP-39 already provides 256 bits). Backup encryption
-moved to envelope encryption (single backup_master_key, wrapped under
-per-credential keys). Passkey-PRF integration deferred to v2 of this phase.
-See §3.7 for the resulting decision log (D1–D6).
+**Date:** 2026-05-27 (Vienna)
+**Scope:** chalk phase 11d — multi-device support + full history transfer
+for MLS-encrypted DMs and groups
+**Previous revisions:** rev 1 (initial), rev 2 (added D7-D9 transparency).
+**This revision** drops the custom IndexedDB-export architecture in favor
+of CoreCrypto's built-in history-client mechanism. The shift is informed
+by source-code reading of `@wireapp/core-crypto` main branch and
+sandbox testing against `@wireapp/core-crypto@9.3.4` in Node +
+fake-indexeddb. See §11 for the change log.
 
 ---
 
 ## 1. The problem in one paragraph
 
-A chalk user has multiple devices (phone + laptop is the common case). Each
-device runs its own MLS session with its own keystore. When the user logs
-in on a brand-new device, that device must be able to read all historical
-messages and join all groups the user is already in, without the server
-ever seeing the message contents. This document defines exactly what
-"without the server ever seeing" means under what attacker assumptions, and
-which cryptographic primitives we will use to achieve it.
+A chalk user with multiple devices, or a user who lost all their
+devices but retained their 24-word recovery phrase, must be able to
+read their existing MLS-encrypted conversations. The chalkd server
+holds only opaque MLS ciphertexts and must not be trusted with
+plaintext message content. The user's local CoreCrypto keystore holds
+the cryptographic material that allows decryption, but that material
+lives on the device — so a fresh device starts with nothing.
+
+We need a server-side, end-to-end encrypted backup of the small amount
+of material a new device needs to read history, plus a transport for
+device-to-device handoff when the user has another live device
+available.
 
 ---
 
 ## 2. Threat model
 
-### 2.1 Actors
+### 2.1 Trust boundary
 
-The system has these parties:
+chalkd is **honest-but-curious**. We assume the server operator may
+log everything they observe but does not actively manipulate
+ciphertexts or tamper with returned data. Active tampering is detected
+by AEAD authentication checks (see §6.2 of doc #3); honest-but-curious
+captures the realistic deployment risk.
 
-- **User**: a human with login credentials (passkey + 24-word recovery
-  phrase) and zero or more active devices.
-- **Device**: a browser instance (or future native app) holding an MLS
-  client identity, a keystore in IndexedDB, and a session with the
-  server.
-- **Chalk server (chalkd)**: the Go process holding the Postgres database,
-  routing WS frames, storing ciphertext-at-rest, KeyPackages, MLS group
-  metadata, and (per phase 11d) encrypted device backup blobs.
-- **Other users**: chalk users who are members of channels with our user,
-  or any other chalk user not in those channels.
-- **Network**: the public internet between devices and the server.
+The user's device (browser + IndexedDB + localStorage) is trusted to
+hold the device-local material at rest, encrypted by the OS / browser
+sandbox. The recovery phrase, when typed by the user, is briefly
+trusted in memory for derivation.
 
-### 2.2 Attackers we defend against
+### 2.2 Attacker categories
 
-We classify attackers by what they can do, then say which guarantees hold
-against each.
+We protect against the following attacker classes, ordered by capability:
 
-**A1. Passive network attacker.**
-Can observe TLS traffic between devices and the server but not decrypt it.
-This is a baseline assumption; chalk only serves over HTTPS/WSS. Defended
-against by TLS — out of scope for phase 11d design beyond "WS traffic is
-TLS."
+| ID | Attacker | Threat |
+|----|----------|--------|
+| **A1** | Passive network observer | Sees ciphertexts in transit; learns no plaintext |
+| **A2** | Compromised chalkd operator | Reads all server-stored data; sees ciphertexts, metadata, manifests, but no plaintext |
+| **A3** | Honest chalkd, hostile chalkd peer | Server returns wrong-user backup or tampered manifest; detection required |
+| **A4** | User's device stolen, no recovery phrase known | Attacker has the device but not the words; recovery phrase rotation must lock them out |
+| **A5** | User's recovery phrase stolen, no device | Attacker types words into a new device; existing-device notification + revocation must catch this |
+| **A6** | User's device stolen + recovery phrase known | Total compromise; out of scope (user must be aware and act) |
 
-**A2. Active network attacker.**
-Can man-in-the-middle TLS connections via compromised CA, BGP hijack, or
-similar. Sees and modifies traffic. Cannot bypass certificate pinning if
-we add it (we currently don't). For phase 11d, we assume TLS holds; if TLS
-is broken, MLS still protects message content via its own key agreement
-(which is what MLS is designed for).
+### 2.3 Security guarantees
 
-**A3. Compromised server (read-only).**
-Adversary gains read access to the chalkd Postgres database and any
-in-memory state of the server process. Can read every row of every table.
-Can read any traffic the server sees in plaintext (e.g. the contents of
-incoming WS frames before they're routed).
-**This is the central attacker we defend against in phase 11d.**
+For attackers A1-A3:
+- **G1**: No plaintext message content is ever readable by chalkd.
+- **G2**: No backup material is decryptable without the user's recovery
+  phrase (or, eventually, their passkey PRF).
+- **G3**: Server tampering of backup material is detectable on
+  decryption (AEAD authentication).
 
-**A4. Compromised server (active).**
-A3 plus the ability to inject or modify messages, drop messages, serve
-different responses to different clients (split-brain), mint malicious
-KeyPackages on behalf of users, mint malicious device backups.
+For A4-A5:
+- **G4**: Adding a new device — whether via pairing or via recovery
+  phrase — surfaces a critical event to all the user's other devices
+  with explicit acknowledgment required (D9). The user has a window
+  in which to detect and revoke.
 
-**A5. Compromised device (one of N).**
-One of the user's devices has its keystore stolen — e.g., a stolen laptop
-with an unlocked browser session. Attacker has full read access to the
-IndexedDB on that device and can use the device normally.
+### 2.4 Non-goals
 
-**A6. Compromised device + compromised recovery phrase.**
-A5 plus the attacker has the user's recovery words via phishing, shoulder-
-surfing, or theft of the user's notebook.
-
-### 2.3 Guarantees we provide
-
-We make these guarantees, mapped to attackers above:
-
-**G1. Confidentiality of message content.**
-- Against A1–A3: full. Server never sees plaintext message bodies for
-  MLS-flagged channels. Backup blobs are encrypted; server cannot read
-  their contents. *This is the central E2E property.*
-- Against A4: confidentiality of past messages holds (forward secrecy via
-  MLS ratchet). Confidentiality of future messages depends on whether the
-  active attacker can substitute KeyPackages for new devices — see Trust-
-  on-First-Use discussion in §4.
-- Against A5: messages encrypted under the COMPROMISED device's current
-  epoch are exposed. Future messages remain confidential IF the compromised
-  device is removed from groups via commit (post-compromise security, an
-  MLS property we inherit).
-- Against A6: full exposure of that user's history. Acceptable — losing
-  both device and recovery phrase is "the user fully lost the battle" and
-  we make no claim against this.
-
-**G2. Authenticity of message sender.**
-- Against A1–A4: full. MLS signatures bind messages to a specific client
-  identity. Server cannot forge messages because it does not have client
-  signature keys.
-- Against A5: messages can be forged FROM the compromised device's identity
-  until the device is removed from groups. Other devices' identities remain
-  authentic.
-
-**G3. Recovery for the user.**
-- Against A5 with one compromised device but other devices still good: user
-  can pair the new replacement device from an existing good device. History
-  is intact via pairing flow.
-- Against "user lost all devices, has recovery phrase": history recoverable
-  via recovery-phrase flow.
-- Against "user lost all devices AND lost recovery phrase": **explicit
-  non-guarantee.** History is unrecoverable. This is the inherent floor of
-  strict E2E and is documented for users.
-
-**G4. Multi-device usability.**
-- Adding a device must work in two flows: pairing with an existing device
-  (preferred, online), or recovery via 24-word phrase (no other device
-  available).
-- The pairing flow must be resistant to remote attackers (a stranger cannot
-  trigger pairing without physical access to one of the user's devices).
-- The recovery-phrase flow must not enable server-side brute-force of weak
-  phrases. Since chalk-generated phrases have 256 bits of entropy, brute
-  force is mathematically infeasible regardless of the KDF, but we still
-  use Argon2id for defense-in-depth — see §3.2.
-
-### 2.4 Explicit non-goals
-
-We do NOT promise:
-
-- **Deniability.** MLS messages are signed; we don't try to provide
-  cryptographic deniability of message authorship. Wire-level metadata
-  (who messaged whom when) is fully visible to the server. This is
-  consistent with current chalk.
-- **Metadata privacy.** The server knows the social graph (who is in which
-  channel, who is friends with whom), message timing, message sizes
-  (within MLS padding), and KeyPackage publication times. Phase 11d does
-  not address this.
-- **Defense against malicious clients within a group.** If alice2's device
-  is compromised AND alice2 is in a group with bob2, the attacker on
-  alice2's device can leak group messages out-of-band. No protocol prevents
-  this; we accept it.
-- **Recovery from forgotten phrase + lost devices.** Stated above as G3;
-  explicitly not provided.
-- **Backwards-readability for users added to a group.** When carol3 is
-  added to a channel that alice2 and bob2 have been chatting in, carol3
-  sees only future messages. This is an MLS forward-secrecy property we
-  inherit. Phase 11d does not change it.
-
-### 2.5 Defense-in-depth assumptions
-
-A few things we assume hold but treat as belt-and-suspenders rather than
-primary defenses:
-
-- Browser sandbox prevents JS on one origin from reading IndexedDB from
-  another origin.
-- CoreCrypto's encryption of the IndexedDB keystore (via the per-device
-  32-byte key) survives offline attacks against a stolen laptop whose disk
-  is encrypted by the OS, but does NOT survive an attacker with browser-
-  runtime access to that device's localStorage (where the device DB key
-  is stored — same protection level as passkey credentials).
-- Postgres backups, if they exist, must be treated as "compromised server
-  data" for threat modeling. Our E2E claims apply to backups too because
-  we only ever store encrypted blobs server-side.
+- **Deniability**: chalk does not aim to make MLS conversations
+  deniable. MLS signatures bind authors to messages.
+- **Metadata privacy from chalkd**: chalkd inherently sees who talks
+  to whom, when, and group membership lists. This is a chalk-wide
+  property unchanged by phase 11d.
+- **Recovery from total loss**: a user who loses all devices AND
+  forgets their recovery phrase has no path to recovery. This is a
+  design constraint, not a limitation.
+- **Forward secrecy of history**: by design, history-sharing erodes
+  some forward secrecy. A user who can read past messages today (via
+  the history-client mechanism) implicitly held that capability at
+  the moment history sharing was enabled. See §4 for nuance.
 
 ---
 
-## 3. Cryptographic primitives
+## 3. Architecture overview (revised)
 
-This section names the specific algorithms and parameters we will use. Each
-is justified against attackers from §2.
+This is the section that changes most relative to prior revisions.
+Phase 11d's architecture now centers on **CoreCrypto's built-in
+history-client mechanism** rather than a custom keystore-export
+pipeline.
 
-### 3.1 Symmetric encryption: XChaCha20-Poly1305
+### 3.1 What CoreCrypto provides
 
-For encrypting device backup blobs at rest on the server, for wrapping the
-backup_master_key under credential-derived keys (envelope encryption — see
-§3.7), and for encrypting pairing-transit blobs.
+CoreCrypto exposes a per-conversation feature called "history
+sharing." When enabled on a conversation:
 
-- **AEAD construction**: XChaCha20-Poly1305 (RFC 8439 + 192-bit nonce
-  variant).
-- **Key size**: 256 bits.
-- **Nonce size**: 192 bits (24 bytes). Generated via `crypto.getRandomValues`.
-  Nonce-misuse safe at this width — we can generate billions of backups
-  without collision risk.
-- **Additional data**: bind to context.
-  - For backup blob: AAD = `"chalk.backup.v1" || user_id || device_id || version || created_at`.
-  - For key-wrap envelope entries: AAD = `"chalk.kw.v1" || envelope_id || credential_kind`.
-  - For pairing transit: AAD = `"chalk.pair.v1" || pairing_id`.
+1. A **synthetic, passive group member** (the "history client") is
+   added to the MLS group via a commit. Its ClientId is prefixed
+   `"history-client-<uuid>"`.
+2. The synthetic member's private material is bundled into a
+   **HistorySecret** — a struct containing
+   `{clientId: ClientId, data: Uint8Array}` where `data` is
+   approximately 750 bytes of MessagePack-serialized state.
+3. The HistorySecret is delivered by two paths simultaneously:
+   - **In-band**: the secret is sent as an encrypted MLS application
+     message bundled into the commit that added the history client.
+     All existing group members receive and can decrypt this.
+   - **Observer callback**: the local CoreCrypto fires
+     `historyClientCreated(conversationId, historySecret)` on the
+     application's registered HistoryObserver. The application's job
+     is to persist this secret somewhere a future device can retrieve.
 
-**Why XChaCha20-Poly1305 over AES-GCM:**
+When a new device is added to the conversation and obtains a stored
+HistorySecret (via the application's persistence layer), it calls
+`CoreCrypto.historyClient(historySecret)` to instantiate a separate,
+read-only CoreCrypto instance that can decrypt past messages from the
+era the secret covers.
 
-- WebCrypto only exposes AES-GCM with a 96-bit nonce, which has collision
-  risk at high volumes and requires careful nonce management. XChaCha20's
-  192-bit nonce is fully safe with random generation.
-- XChaCha20 has constant-time software implementations available via
-  libsodium-wasm (and is in `@noble/ciphers`, a small audited TS lib).
-- Subtly: WebCrypto's AES-GCM is hardware-accelerated on most CPUs;
-  XChaCha20 is software-only. For our backup-blob workload (a few KB
-  every 30 seconds at most), performance is irrelevant; safety wins.
+### 3.2 The era concept
 
-**Library choice**: `@noble/ciphers` for the JS side. It's a 30 KB
-zero-dependency library by the same author as `@noble/curves`, audited,
-no runtime allocation surprises, works in WASM-restricted environments.
-Go side: `golang.org/x/crypto/chacha20poly1305`, standard-library-adjacent.
+A **history-sharing era** is the span of MLS epochs during which a
+single history client is the group's history member. A new era begins
+when:
 
-### 3.2 Key derivation: Argon2id
+- The conversation creator enables history sharing for the first time
+  (era 1 begins at that epoch).
+- Approximately once daily, CoreCrypto rotates the history client
+  (PCS housekeeping; a new era begins).
+- A non-history member is removed from the group. Removing a member
+  requires removing the existing history client too (because the
+  removed member still knows the history client's keys); a new history
+  client and new era are added in the same commit.
 
-Used in two places: deriving an authentication key for the existing
-recovery-words login flow (already implemented in `internal/auth/recovery.go`),
-and deriving a backup-encryption key for phase 11d. Both derive from the
-same recovery phrase, but produce cryptographically independent outputs
-via HKDF separation (§3.7).
+Each era has its own HistorySecret. A new device that wants full
+history needs **the secret for every era** that has occurred since
+history sharing was first enabled.
 
-- **Algorithm**: Argon2id (the recommended hybrid variant; resists both
-  GPU and side-channel attacks).
-- **Salt**: 16 bytes, per-user, random. The existing recovery-words flow
-  uses a salt stored alongside the hash in the `recovery_codes` table. The
-  backup flow will use the SAME salt (no need to store a second value).
-  Different users have different salts so a server-wide rainbow table is
-  infeasible.
-- **Output**: 32 bytes (256 bits) per derivation.
-- **Parameters**:
-  - `memoryCost`: 256 MB (262144 KB)
-  - `timeCost`: 4 iterations
-  - `parallelism`: 1
-  - Expected derivation time on a modern laptop: 1.5–3 seconds.
-  - Expected derivation time on a phone: 4–8 seconds.
+### 3.3 chalk's job
 
-These parameters land in OWASP's "high security" recommendation tier.
+Chalk's responsibility, given CoreCrypto handles the cryptographic
+material, is reduced to:
 
-**Note on overlap with existing chalk recovery flow:** the current
-`internal/auth/recovery.go` uses its own Argon2id parameters (`argonTime`,
-`argonMemory`, `argonThreads`, `argonKeyLen`). Phase 11d must either:
+1. **Enable history sharing on every new conversation by default**
+   (per D7 from rev 2, restated below).
+2. **Run a HistoryObserver** that catches every `historyClientCreated`
+   event.
+3. **Persist each captured HistorySecret server-side**, encrypted
+   under the user's `backup_master_key`, keyed by
+   `(user_id, conversation_id, era_epoch)`.
+4. **On new-device restore**, download all of the user's stored
+   HistorySecrets, decrypt them under `backup_master_key`, and call
+   `CoreCrypto.historyClient(secret)` for each.
+5. **Pair / self-add for ongoing participation** — orthogonal to
+   history. A new device joins the group as a regular member via
+   either the pairing flow (online handoff from existing device) or
+   self-add from another existing device after `device_announce`.
 
-1. Use whatever the existing code uses (consistency, no new code on server)
-2. Bump the existing parameters to match the paranoid values above (a
-   one-time migration: re-derive on next login and update stored hash)
+The cryptographic concerns chalk owned in earlier revisions —
+keystore serialization, signature keypair extraction, IndexedDB row
+filtering, last-write-wins replay — are all obsolete.
 
-Decision deferred to doc #4 (server schema). The existing code's parameters
-should be inspected first; if they're already at or above the values above,
-no change needed.
+### 3.4 Decisions inherited from rev 1 and rev 2
 
-**Caveat about phone derivation time:** 4–8 seconds on a phone is real
-friction at "type your words to restore on new device" time. We will show
-a progress indicator. If the friction proves unacceptable in practice, we
-can dial `memoryCost` down to 128 MB at the cost of some attack resistance.
-Worth measuring on real devices before finalizing.
+The following decisions from earlier revisions remain in force:
 
-**Library choice**: `@noble/hashes/argon2` for JS. Pure JS, audited, no
-native dependencies. Go side: `golang.org/x/crypto/argon2`.
+| ID | Decision | Status |
+|----|----------|--------|
+| D1 | Envelope encryption: `backup_master_key` wraps the secrets, itself wrapped under per-credential keys (recovery_phrase v1, passkey_prf v2) | unchanged |
+| D2 | Cache derived `backup_master_key` in localStorage encrypted under device DB key | unchanged |
+| D3 | Recovery-phrase rotation: re-wrap, keep old wrap with `expires_at = now + 30d` | unchanged |
+| D4 | History sharing default-on (was: tier-2 default-on) | restated |
+| D5 | Event-driven snapshot triggers with debounce | restated as "upload secret immediately on observer fire" |
+| D6 | Server keeps N=5 latest backups per user | restated as "per-secret retention; see §5" |
+| D7 | Transparency: status + critical-event notifications | unchanged |
+| D8 | `backup_status_get` family in wire protocol | unchanged |
+| D9 | Critical events require explicit user acknowledgment | unchanged |
 
-### 3.3 Recovery phrase entropy: BIP-39 (already in chalk)
-
-Chalk users already have a 24-word BIP-39 recovery phrase generated at
-registration (see `internal/auth/recovery.go`). Phase 11d uses this same
-phrase as the user's universal credential. No separate "backup passphrase"
-exists.
-
-- **Entropy**: 256 bits (24 words × 11 bits, minus 8 bits of checksum).
-- **Wordlist**: BIP-39 English (2048 words).
-- **Storage**: server stores an Argon2id hash for auth verification; never
-  stores the phrase itself. Client receives the phrase once at signup
-  (shown on `RecoveryScreen`) and at rotation. Client must NEVER persist
-  the raw phrase.
-
-**Strength check**: not needed. BIP-39 with 24 words is at the maximum
-entropy tier (256 bits). zxcvbn or similar checks are irrelevant because
-the user did not choose the phrase — chalk generated it from
-`crypto/rand`. No weak-phrase failure mode exists.
-
-**Rotation**: existing chalk UI allows the user to rotate their recovery
-phrase (see `ProfilePanel`). Phase 11d must handle rotation by re-wrapping
-the `backup_master_key` under the new derived key while keeping the old
-wrap valid for a grace period — see §3.7 and decision D3.
-
-### 3.4 Asymmetric primitives: Curve25519
-
-We already use Ed25519 for MLS signatures (via the chosen ciphersuite
-`MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519`). We will use X25519 for
-the pairing flow's ephemeral key exchange.
-
-This means we keep dependencies on the same family:
-
-- Ed25519 signatures: already in via CoreCrypto.
-- X25519 ECDH for pairing: from `@noble/curves/ed25519` (which exposes
-  x25519).
-- HKDF-SHA256 for deriving secrets from ECDH outputs: from
-  `@noble/hashes/hkdf`.
-
-No new primitive families introduced.
-
-### 3.5 PAKE for pairing: SPAKE2+ (with fallback)
-
-The pairing flow uses a short numeric code (6 digits — see doc #6 on UX)
-to authenticate two devices to each other. A short code over an untrusted
-network needs a PAKE; a plain HKDF on a 6-digit code can be brute-forced
-(10⁶ guesses is trivial for an attacker with network access).
-
-- **Algorithm**: SPAKE2+ (the augmented PAKE that resists offline attacks
-  on the server-stored verifier).
-- **Group**: Curve25519 (Ristretto255 encoding for cleaner math).
-- **Verifier storage**: NONE on the server. The server only relays one
-  round of messages between the two devices; the protocol is symmetric and
-  runs end-to-end between the devices through the server. Server cannot
-  brute-force the PIN even with captured transit data.
-
-**Library availability concern**: audited SPAKE2+ implementations for
-TypeScript are uncommon as of 2026. Two paths:
-
-1. Use a J-PAKE or Magic-Wormhole-style PAKE via `@noble/curves` +
-   `@noble/hashes`. Building crypto, with care.
-2. Skip the short-PIN PAKE entirely; use QR codes carrying 128+ bits of
-   entropy that the new device scans. Brute force becomes infeasible
-   without needing PAKE math. The trade-off is UX: typing a 6-digit code
-   is friendlier than scanning a QR, especially on devices without a
-   camera.
-
-**Decision**: support BOTH a QR code (default) AND a 6-digit code
-(fallback with PAKE). QR works on devices with cameras. The PIN+PAKE
-path is the second-priority work item and can ship after QR. Doc #6
-(pairing flow) will spec this in detail and identify a specific library.
-
-### 3.6 Hash and HMAC: SHA-256
-
-- Wherever we need a hash (Merkle root for chunked backups, HKDF input,
-  key fingerprinting), use SHA-256.
-- HKDF-SHA256 for key derivation from ECDH outputs and Argon2id outputs
-  that need to be split into multiple sub-keys.
-
-No SHA-3 or BLAKE2 — keeping dependency surface minimal.
-
-### 3.7 Envelope encryption design (the central pattern)
-
-The system uses **envelope encryption** to support multiple credentials
-for decrypting the same backup. A single random `backup_master_key`
-encrypts the actual blob; that key is then separately wrapped under each
-credential-derived key the user has configured.
-
-**Master key:**
-```
-backup_master_key = random 32 bytes
-                  (generated once, on first backup ever for this user)
-```
-
-**Backup blob:**
-```
-encrypted_backup = AEAD(
-  key   = backup_master_key,
-  nonce = random 24 bytes,
-  aad   = "chalk.backup.v1" || user_id || device_id || version || created_at,
-  body  = plaintext_blob
-)
-```
-
-**Key derivation from recovery phrase:**
-```
-master_secret  = Argon2id(recovery_phrase, salt, paranoid_params)  // 32 bytes
-auth_key       = HKDF-SHA256(master_secret, info="chalk.auth.recovery.v1")
-backup_kw_key  = HKDF-SHA256(master_secret, info="chalk.backup.v1.kw")
-```
-
-- `auth_key` is what the existing recovery-login flow already uses
-  (modulo any minor adjustment for unified parameters per §3.2).
-- `backup_kw_key` is new in phase 11d; it wraps the master key.
-- Both keys derive from the same Argon2id output, so a user-side
-  recovery-words flow does ONE expensive derivation and gets both keys.
-- Knowing either key tells you nothing about the other (HKDF info
-  separation).
-
-**Envelope structure stored server-side:**
-```json
-{
-  "envelope_version": 1,
-  "wraps": [
-    {
-      "kind": "recovery_phrase",
-      "wrap_id": "<random 16 bytes>",
-      "expires_at": null,
-      "ciphertext": "<AEAD(backup_kw_key, ..., backup_master_key)>",
-      "nonce": "<24 bytes>"
-    }
-    // Future entries:
-    // { "kind": "passkey_prf", ... }   ← v2 of this phase
-    // { "kind": "paired_device", ... } ← optional, post-pairing cache
-  ]
-}
-```
-
-When the user rotates their recovery phrase:
-
-1. Client derives new `backup_kw_key` from new phrase.
-2. Client decrypts existing recovery-phrase wrap with old key (or has it
-   cached in memory if rotation happens during a logged-in session).
-3. Client adds a new wrap entry under the new key.
-4. Client marks the OLD wrap entry with `expires_at = now + 30 days`
-   (per D3).
-5. Server, on each backup operation, may prune wrap entries past their
-   `expires_at`.
-
-This means a backup downloaded 25 days ago, using the now-rotated old
-words, is still decryptable for another 5 days. After day 30, only the
-new-words wrap exists; old backups become unreadable.
-
-**Why this matters:** multi-credential decryption WITHOUT re-encrypting
-the whole backup blob on every credential change. The 30-day grace handles
-the case where a user rotates their phrase, then immediately afterward
-gets a new device and tries to restore from a backup that's a day or two
-old.
-
-### 3.8 Decisions log
-
-The following decisions are locked for phase 11d as of this document.
-Each downstream doc will reference them by ID.
+### 3.5 New decisions for this revision
 
 | ID | Decision |
 |----|----------|
-| **D1** | Backup key derivation: envelope encryption (option δ in design discussion). v1 ships with only the `recovery_phrase` wrap. v2 (separate later phase) adds `passkey_prf` as a second wrap. No new user-remembered passphrase. |
-| **D2** | After user types recovery words once during a session, derive `backup_master_key`, encrypt it under a key derived from the device's localStorage MLS-DB-key + a per-session salt, and persist the encrypted master_key in localStorage. Subsequent sessions on the same device retrieve it silently. Threat surface: same as existing IndexedDB (JS attacker on the device can already read IndexedDB; this is no worse). |
-| **D3** | Recovery-phrase rotation: re-wrap `backup_master_key` under the new derived key, keep old wrap with `expires_at = now + 30 days`. Server may prune expired wraps. |
-| **D4** | Tier 2 (full history cache) default-on for all users. No explicit user opt-in. A settings toggle exists to disable, but default is on. |
-| **D5** | Backup snapshot frequency: event-driven (group joined, group changed, message sent) with debounce of approximately 30 seconds. |
-| **D6** | Per-device backup with smart-restore. Server keeps up to N=5 latest backups per user. New device on restore picks the freshest backup per-group from across the user's backups. |
+| **D7-new** | History sharing enabled by default on every MLS DM/group at creation time |
+| **D8-new** | Each captured HistorySecret encrypted under `backup_master_key` and uploaded immediately to chalkd, keyed by `(user_id, conversation_id, era_epoch)` |
+| **D9-new** | Restore = download all secrets for user → decrypt → instantiate one history-client CoreCrypto per era |
+| **D10-new** | After history-only restore, the new device pairs (PAKE/QR) or self-adds via `device_announce` to become a regular member for ongoing participation; the two flows are independent |
 
 ---
 
-## 4. Trust-on-First-Use considerations
+## 4. Important limitations imposed by the protocol
 
-This is the design hole where strict-E2E with multi-device gets hard, and
-it deserves explicit attention.
+These come from CoreCrypto's design, not chalk's. We must be honest
+with users about them.
 
-### 4.1 The KeyPackage substitution problem
+### 4.1 History before enable is unrecoverable
 
-When alice2 starts a DM with bob2, her device fetches bob2's KeyPackages
-from the server. The server hands her a KP. Alice2's device trusts that KP
-belongs to bob2's device. **The server could lie** — against an A4 (active
-server attacker), the server could substitute a KP whose private key the
-server knows. Alice2's welcome would encrypt to that malicious KP, and the
-server could decrypt it.
+If a conversation has been chatting for any time before history
+sharing was enabled, the messages from that time are **not**
+decryptable by future history clients. The history client starts
+accumulating epoch secrets from its creation epoch forward, not
+backward.
 
-Standard MLS deployments solve this via the "Authentication Service" (AS)
-abstraction: an identity-provider component that signs each device's
-KeyPackages with the user's identity key, so peers can verify "this KP
-really belongs to bob2-on-his-laptop." MLS doesn't define how the AS
-works; deployments build their own.
+**Mitigation**: per D7-new, we enable history sharing at conversation
+creation. New chalk DMs and groups thus get history-from-day-one. For
+conversations created BEFORE phase 11d ships, history before the
+phase-11d upgrade is permanently lost to new devices.
 
-**Chalk's current state**: we don't have an AS. KPs are bare; trust is on
-the server. Against an A3 (passive) attacker this is fine. Against an A4
-(active) attacker, server-substituted KPs would compromise new
-conversations. This was true in phase 11b-2 too; we didn't talk about it
-then because alice2/bob2 was the only test scenario.
+### 4.2 History sharing requires an active group member to mint secrets
 
-**Phase 11d implications**: with multi-device, KeyPackages multiply (each
-device publishes its own). An A4 attacker has more KPs to attempt
-substitution attacks on.
+The HistorySecret can only be created by an existing group member —
+not by a passive observer, not by chalkd. In the recovery-only case
+("user lost all devices, has only recovery phrase"):
 
-**Options**:
+- If at least one HistorySecret per conversation had been uploaded to
+  chalkd before the loss → the user can restore history.
+- If no secret was ever uploaded for a conversation → no history for
+  that conversation, even with the recovery phrase. The new device
+  joins as a fresh member, sees messages from re-join onward.
 
-1. **Punt**: accept A4 as out-of-scope (only A3 is in scope). Note this
-   clearly in user-facing security docs. This is what most small chat apps
-   actually do.
-2. **Add a minimal AS**: each user generates a long-lived identity keypair
-   at signup, the public key is stored server-side, and the user signs
-   their own device KPs with it. Other users fetch the identity key once
-   (TOFU) and verify all subsequent KPs. Pinning + cross-signature; gives
-   real A4 protection for users whose identity key they've seen.
+D7-new (default-on history sharing) plus prompt server upload (D8-new)
+minimize but cannot eliminate this risk.
 
-**Recommendation**: defer this decision to phase 11g or later — it's
-orthogonal to history transfer. Phase 11d should preserve the option to
-add an AS later without breaking the on-disk format. Specifically: include
-space in the backup blob and the wire protocol for a future "user identity
-key" field, even if it's null/unused in v1.
+### 4.3 History clients accumulate over conversation lifetime
 
-### 4.2 New-device identity verification
+For each conversation, the server stores one secret per era. Eras
+rotate on member removal and ~daily. A long-running group with active
+membership changes may accumulate dozens of secrets.
 
-When the new device pairs with alice2-phone, how does alice2-phone know
-that the device asking to pair is actually alice2's new device and not an
-attacker?
+**Concrete estimate**: a 10-member group active for a year, with
+weekly membership changes and daily rotation, would have ~52 + ~365 =
+~400 eras. Each secret is ~1.1 KB on the wire. Total ~450 KB per
+group on the server side. Acceptable.
 
-The PAKE pin gives some assurance — only a device that has the pin shared
-via an out-of-band channel (in-person screen viewing or a trusted side
-channel) can complete the protocol. So physical control of one of alice2's
-devices for the duration of the pin is required.
+**Retention policy**: server retains all secrets indefinitely. Pruning
+older secrets would silently break old-history restoration for new
+devices. We accept the storage cost. Per-user storage quota can be
+imposed if it ever becomes a problem.
 
-What stops alice2's attacker, who has phished her chalk login but not her
-phone, from initiating pairing? The pin display happens on alice2-phone;
-the attacker must obtain it. Phishing the login doesn't get them the pin.
-Acceptable.
+### 4.4 History client material is full decryption power for its era
 
-What stops an attacker who has compromised alice2-phone (A5) from silently
-pairing additional attacker-controlled devices to the user's account?
-Nothing — by definition. Once a device is compromised, the attacker can
-pair as many devices as they want. Mitigation in higher layers: phase 11h
-or later could add an audit log of "devices added to your account" visible
-to all the user's devices, with an "expel device" UI. Out of scope for
-11d.
+A HistorySecret, in plaintext, allows decryption of every message in
+its era. We must protect it as carefully as the user's own keys. The
+envelope encryption design (D1) does this — the secret never sits
+unencrypted on the server.
 
-### 4.3 Group-member identity
+### 4.5 Untested-in-JS path
 
-This is the same problem at a different layer. When alice2 in a group
-sends a message, all member devices see "from alice2-phone" on the message.
-They trust the signature on the MLS frame, which is anchored to
-alice2-phone's signature keypair. They have no protocol-level way to
-verify that this signature key was generated by alice2 and not by an
-attacker who claimed to be alice2.
+Wire's own JavaScript test suite covers `enableHistorySharing` (the
+sender side) but **does not exercise `CoreCrypto.historyClient()`**
+(the receiver side). That code path is only covered by Wire's Rust
+integration tests. The chalk implementation will thus be among the
+first JS consumers of the full end-to-end flow.
 
-Same mitigation path: an AS in phase 11g+. Out of scope for 11d.
+Sandbox testing (Vienna 2026-05-27) validated:
+- `enableHistorySharing` works in our pinned 9.3.4 + Node +
+  fake-indexeddb.
+- `CoreCrypto.historyClient(secret)` returns a working CoreCrypto
+  instance from a captured secret.
+- HistorySecret round-trips correctly through base64 wire format
+  using the plain-object `{clientId, data}` shape.
+
+What was **not** tested: end-to-end decryption of past messages via a
+history client. That requires full Alice ↔ Bob delivery service
+routing in the harness. Wire's Rust tests cover it; chalk's
+implementation should add an integration test for this path early.
 
 ---
 
-## 5. What goes in the backup blob
+## 5. Cryptographic primitives
 
-We need to know, at the primitive level, what data the backup encryption
-protects. The full format is doc #3; here we enumerate at a high level so
-the threat model is concrete. Backups are split into two tiers per D4.
+### 5.1 Envelope and master key
 
-### 5.1 Tier 1 — Identity backup (always uploaded)
+Each user has one **envelope** stored at chalkd. The envelope is a
+JSON object holding the `backup_master_key` wrapped under one or more
+per-credential keys.
 
-Small, ~500–2000 bytes. Sufficient for the new device to establish
-identity continuity and join groups via fresh welcomes, but does NOT
-restore history.
+```
+envelope = {
+  envelope_version: 1,
+  wraps: [
+    {
+      kind: "recovery_phrase",
+      wrap_id: <uuid>,
+      ciphertext: AEAD(kw_key, nonce, aad, backup_master_key),
+      nonce: <24 bytes>,
+      kdf_salt: <16 bytes>,
+      kdf_params: { algorithm: "argon2id", memory, time, threads, key_len },
+      expires_at: null | <unix-ms>,
+    },
+    ...
+  ],
+}
+```
 
-- **Schema version** (uint32)
-- **User ID** (16 bytes) — sanity-check binding
-- **Source device ID** (16 bytes) — for smart-restore freshness ordering
-- **Backup timestamp** (uint64 unix-ms)
-- **MLS client identity**: signature keypair (Ed25519 priv+pub), client_id
-  bytes
-- **Group manifest**: list of `{group_id, channel_id, last_known_epoch}`
-  for every group the user is in. No ratchet state, just membership.
-- **Reserved space** for future `user_identity_key` field (§4.1; null in
-  v1)
+- **`backup_master_key`**: 32 random bytes, generated locally on first
+  enablement of phase-11d backups.
+- **`kw_key`** (the wrap key): derived from the recovery phrase via
+  Argon2id with per-wrap salt. The wrap key is ephemeral; only the
+  resulting ciphertext is stored.
+- **AEAD**: XChaCha20-Poly1305. 24-byte nonces avoid nonce-reuse risk
+  even with random generation.
+- **Argon2id parameters** (v1): memory = 256 MB, time = 4 iterations,
+  threads = 1, key_len = 32. Tuned for ~1s on a modern laptop.
 
-Restore behavior with tier 1 alone: new device adopts the signature key,
-publishes fresh KeyPackages signed under it, announces itself to the
-server. Other devices then add it to all groups via commits. New device
-joins groups at their current epoch. Past messages remain unreadable.
+### 5.2 HistorySecret encryption
 
-### 5.2 Tier 2 — History cache (default-on per D4, opportunistic upload)
+Each captured HistorySecret is encrypted before upload:
 
-Larger, potentially MBs. Contains the per-group MLS state needed to
-decrypt historical messages.
+```
+secret_plaintext = CBOR({
+  client_id: <bytes ~51>,
+  data: <bytes ~750>,
+})
+secret_ciphertext = AEAD(backup_master_key, nonce, aad, secret_plaintext)
+where aad = "chalk.history.v1" || user_id || conversation_id || u64_be(era_epoch)
+```
 
-- All fields from Tier 1
-- **Per-group state**, one entry per group:
-  - Group ID
-  - Current epoch
-  - Ratchet tree state
-  - Past epoch secrets (for historical decryption)
-  - Member list snapshot
-  - Pending proposals (if any)
-- **All KeyPackage private materials** (HPKE private keys corresponding to
-  KPs published but not yet claimed)
+The AAD binding ensures a hostile chalkd cannot return one user's
+secret to another user, or swap eras within a user. Decryption fails
+loudly if AAD mismatches.
 
-Restore behavior with tier 2: new device imports per-group state, can
-immediately decrypt historical messages from the server's ciphertext
-storage.
+### 5.3 Recovery phrase
 
-**Tier 2 size note:** for a user in 50 groups, tier 2 might run to 1–5 MB
-depending on how many past epochs are retained. Tier 1 stays small.
+Already present in chalk (`internal/auth/recovery.go`): 24-word
+BIP-39 phrases, 256 bits of entropy. The same phrase is used for both
+authentication (existing, Argon2id-hashed for login) and backup
+encryption (new in phase 11d, separate KDF context).
 
-### 5.3 Encryption
+KDF separation: `backup_kw_key = Argon2id(phrase || "chalk.backup.v1", salt, ...)`.
+The `"chalk.backup.v1"` infix ensures the backup wrap key is
+cryptographically unrelated to the auth hash, even though both derive
+from the same phrase.
 
-Both tiers encrypted under the same `backup_master_key` (envelope per
-§3.7), but uploaded as separate server-side blobs so a successful tier 1
-write isn't blocked by a tier 2 failure (per D5 event-driven debouncing,
-tier 1 ships first when state changes).
+### 5.4 Curve25519, SHA-256
 
-Server schema (doc #4) will have separate columns or rows for each tier.
+Used in:
+- **Curve25519**: PAKE pairing (see doc #6 when written).
+- **SHA-256**: AEAD AAD components, fingerprints in critical events.
 
-### 5.4 Re-encryption note
+### 5.5 SPAKE2+ / PAKE
 
-The keystore on disk is already encrypted under the per-device DB key (32
-bytes in localStorage). We **decrypt** these stores when building the
-backup blob, then **re-encrypt** under the backup_master_key.
+The online device-to-device pairing flow uses a 128-bit out-of-band
+secret (delivered via QR code) combined with X25519 ECDH and HKDF.
+The 6-digit PIN variant would require a real PAKE (SPAKE2+ candidate)
+and is deferred to v2.
 
-We do NOT just copy the encrypted IndexedDB bytes wholesale. Reasons:
-
-- Old device's DB key is device-local and we don't want to ship it with
-  the backup (that would leak the per-device encryption key to the
-  server-side blob, which the recovery-phrase-holder can decrypt;
-  acceptable but messy)
-- New device will use its OWN fresh DB key, so the on-disk format has to
-  be re-keyed anyway
-- Versioning is cleaner — we own the format
-
-Trade-off: the moment of backup-blob construction has plaintext keystore
-material in JS memory. This is unavoidable; the alternative would be a
-different on-disk encryption scheme entirely.
-
----
-
-## 6. Open questions for resolution before doc #2
-
-These remain open. Each affects later docs.
-
-**Q1.** Tier 2 plaintext caching depth.
-Tier 2 contains MLS state sufficient to decrypt historical ciphertext from
-the server. Should we ALSO cache a snapshot of recently-decrypted
-plaintexts for fast UI on restore (e.g. last 30 days), at the cost of
-bytes? Or always lazy-decrypt from server ciphertext on restore?
-
-- Option (a) Cache last 30 days of plaintexts in tier 2.
-- Option (b) Cache only metadata (sender, timestamp, content_type), not
-  body.
-- Option (c) No plaintext caching; rely on ciphertext + restored MLS state
-  on the new device.
-
-**Q2.** Server-side backup retention exact count.
-D6 sets N=5. Worth confirming: 5 backups per user × ~2 MB average × 1000
-users = ~10 GB. Acceptable on chalk's current Postgres? If not, lower N.
-
-**Q3.** Backup blob size ceiling.
-At what size does a single backup blob become operationally problematic?
-WS frame limits (if delivered via WS) likely cap around 16 MB. HTTP
-endpoints (if used) have no such limit but should still have a sanity cap.
-
-- Tier 1: ~5 KB ceiling per blob — easy.
-- Tier 2: ~10 MB ceiling? 50 MB? Affects chunking logic in doc #3.
-
-**Q4.** Pairing-flow channel: WS or HTTP?
-Pairing-transit blobs are small (a few KB), short-lived (~5 minutes), and
-need server-side ephemeral storage.
-
-- Option (a) Reuse the WS frame infrastructure (TypePairingOffer,
-  TypePairingResponse).
-- Option (b) New HTTP endpoints (POST /api/pair/offer, POST /api/pair/respond).
-
-WS is more natural for chalk's existing patterns. Lean toward (a).
-
-**Q5.** Identity Service deferral.
-Confirm phase 11d does NOT add an AS, but the on-disk format and wire
-protocol reserve space for a future "user identity key" field. Defer A4
-protection to phase 11g.
+Detailed in doc #6 (PAKE pairing flow) when that doc is written.
 
 ---
 
-## 7. Summary for tomorrow's read-through
+## 6. Trust-on-first-use considerations
 
-When scuq reads this fresh, the key points to push back on are:
+When a new device joins via pairing, the existing device verifies the
+new device's identity via the PAKE shared-secret proof. When a new
+device joins via recovery phrase, there is no existing device
+verifying it — the device demonstrates knowledge of the phrase and
+that's the trust anchor.
 
-1. **Is the attacker A3-only stance correct?** (i.e., we're protecting
-   against passive server reads, deferring active server malice.) Most
-   chat apps make this stance explicit. Worth a moment.
-2. **Argon2id parameters at 256 MB / 4 iters might be too aggressive** for
-   low-end mobile. Worth checking against expected device profile. If
-   chalk targets desktop browsers primarily, this is fine. If we expect
-   old mobile devices, may want to dial down. Recommend measuring before
-   finalizing.
-3. **PAKE library availability is uncertain.** Best plan today is "QR
-   with 128-bit secret as default, 6-digit PIN with PAKE as second-priority
-   work."
-4. **The five open questions in §6 need answers before doc #2.** (Note: Q5
-   probably already implicitly approved — phase 11d was scoped without an
-   AS. Worth a one-liner confirmation.)
+To compensate for A5 (recovery phrase stolen), the new device's
+arrival triggers a **critical event** (per D9) to all of the user's
+other devices, with explicit acknowledgment required. The event
+carries:
 
-Once these are signed off, doc #2 is **Wire Protocol Spec** — every new
-WS frame type, every new HTTP endpoint, with field-by-field definitions.
+- The new device's fingerprint (SHA-256 of its MLS signature public
+  key)
+- Origin kind: `"recovery"` vs `"paired"`
+- Approximate location and user-agent (server-observed)
+- A "wasn't me" action that initiates recovery phrase rotation
 
-End of doc #1, revision 2. Vienna 2026-05-26.
+This is the user's signal that a stolen phrase has been used. A
+silent recovery is not possible.
+
+---
+
+## 7. What's stored where
+
+| Item | Where | Encryption at rest |
+|------|-------|---------------------|
+| `backup_master_key` (cached) | localStorage | Encrypted under device DB key |
+| Recovery phrase | Never persisted | User memory only |
+| Argon2id `kw_key` | Memory only | Discarded after one use |
+| Envelope (wraps) | chalkd, `backup_envelopes` table | Ciphertexts already pre-encrypted |
+| HistorySecrets | chalkd, `history_secrets` table | AEAD-encrypted under master_key |
+| MLS keystore | Browser IndexedDB (via CoreCrypto) | CoreCrypto's own AES-GCM under device DB key |
+| Device DB key | localStorage | Plain-text per current chalk design (browser sandbox) |
+| Device pairing state | Server in-memory (no DB) | 5-min TTL |
+
+Note: nothing in this design requires CoreCrypto's IndexedDB to be
+exported, walked, or copied. CoreCrypto's keystore is per-device,
+local-only, and stays that way. Phase 11d operates entirely above the
+CoreCrypto API surface.
+
+---
+
+## 8. Forward-compatibility hooks
+
+Reserved-now-implementable-later fields in v1:
+
+- **Envelope wrap kinds**: v1 supports only `"recovery_phrase"`. v2
+  adds `"passkey_prf"`. Later: hardware key, social recovery.
+- **`user_identity_key`**: reserved-null field in the envelope; will
+  carry the user's chalk-wide identity public key when the
+  Authentication Service (AS, planned for phase 11g) lands.
+- **Schema versioning**: every persisted artifact carries a
+  `version: 1`. Server rejects unknown future versions with a clear
+  error to make migration paths explicit.
+
+---
+
+## 9. Open questions and resolved items
+
+### Resolved in rev 2
+
+- **Q1 = c**: No plaintext message caching. ✅ (Carries over.
+  Plaintext messages are only ever ephemeral in client memory.)
+- **Q2**: Backup retention N=5. ↻ Reinterpreted in this rev: applies
+  to envelope versions, not history secrets (which are retained
+  indefinitely per §4.3).
+- **Q3**: Tier-1/tier-2 size ceilings. ✗ Obsolete with this rev. New
+  ceilings: individual secret ≤ 8 KB, envelope ≤ 64 KB.
+- **Q4 = a**: Pairing via WS frames, no new HTTP endpoints. ✅
+- **Q5**: AS deferred. ✅
+
+### Newly open in this rev
+
+**Q15.** Should the `era_epoch` in the AAD be the MLS epoch at which
+the new history client was added (precise but requires per-conversation
+epoch tracking), or simply a monotonic counter per
+`(user_id, conversation_id)` issued by chalkd?
+
+Recommendation: MLS epoch number. It's already available from
+CoreCrypto's epoch observer (orthogonal to history observer) and
+gives semantic meaning to ordering. Locking in: era_epoch = MLS
+epoch number at history-client-add time.
+
+**Q16.** What happens when the same conversation has TWO new history
+clients added in close succession (race during enable + immediate
+member removal)? Each fires the observer once, so we upload two
+secrets. Is the observer fired in deterministic order?
+
+The Rust source (`crypto/src/mls/conversation/conversation_guard/history_sharing.rs`,
+`update_history_client`) shows the observer is fired after the commit
+is sent but before the next operation. So two enables in series → two
+observer fires, in order. We can assume monotonic in our design.
+
+**Q17.** Should we deduplicate secrets server-side? In theory each
+era's secret is unique, but bug-induced re-uploads could happen.
+
+Recommendation: chalkd treats `(user_id, conversation_id, era_epoch)`
+as a primary key with UPSERT semantics. Last-uploaded-wins.
+
+---
+
+## 10. Summary
+
+Phase 11d's architecture, post-revision-3:
+
+- **Identity bootstrap**: envelope (under recovery phrase) holds
+  `backup_master_key`. Same as rev 1.
+- **History transfer**: per-conversation, per-era HistorySecrets
+  encrypted under `backup_master_key` and stored at chalkd. NEW.
+- **Restore**: download all secrets → decrypt → instantiate
+  CoreCrypto.historyClient per era. NEW.
+- **Multi-device participation**: independent of history. New devices
+  join groups as regular members via PAKE pairing or self-add. Same
+  as rev 1.
+- **Transparency**: Level 1 + Level 2 + critical events. Same as
+  rev 2.
+
+The whole IndexedDB-export design from rev 1 is gone. Tier-1 and
+tier-2 distinctions are gone. The Postcard-parsing limitation is
+gone. Net design size: smaller, cleaner, sandbox-validated.
+
+---
+
+## 11. Change log
+
+- **rev 1** (2026-05-26): Initial draft. Custom IndexedDB-export with
+  tier-1 (identity) and tier-2 (full keystore dump) blobs. Defined
+  threat model, primitives, D1-D6.
+- **rev 2** (2026-05-27 early): Added D7-D9 for transparency UX
+  (status awareness, operation visibility, critical-event
+  notifications with cross-device sync).
+- **rev 3** (2026-05-27 late, this revision): Replaced custom keystore
+  export with CoreCrypto's built-in history-client mechanism after
+  discovery via web search + source-code reading + sandbox testing.
+  Threat model intact; architecture drastically simplified. Added
+  D7-new through D10-new. Q3 obsoleted. New Q15-Q17.
+
+End of doc #1 revision 3. Vienna 2026-05-27.
