@@ -445,6 +445,9 @@ export type Action =
   | { kind: "welcome"; userID: string; deviceID: string; handle: string; channels: string[] }
   | { kind: "channels_loaded"; channels: ChannelSummary[] }
   | { kind: "channel_added"; channel: ChannelSummary }
+  // Phase 11c-2 PR 4: optimistic local updates on add/remove member.
+  | { kind: "channel_member_added"; channelID: string; userID: string; handle: string }
+  | { kind: "channel_member_removed"; channelID: string; userID: string }
   | { kind: "set_active_channel"; channelID: string | null }
   | { kind: "message"; message: Message }
   | { kind: "history_loaded"; channelID: string; messages: Message[] }

@@ -88,6 +88,8 @@ import { StatusBar } from "./StatusBar";
 import { Sidebar } from "./Sidebar";
 import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
+// Phase 11c-2 PR 4: member-management modal.
+import { ChannelMembersPanel } from "./ChannelMembersPanel";
 import { ThreadPanel } from "./ThreadPanel";
 // Phase 9.6d: heavy panels are lazy-loaded so the initial bundle
 // can stay small. Each becomes a separate chunk file that fetches
@@ -705,6 +707,9 @@ export function App() {
   // lives in a ref+state pair so the effect can read the latest
   // value without re-running on every change (we just want to
   // re-trigger when the MODE changes or the WS opens/closes).
+  // Phase 11c-2 PR 4: open/closed flag for the channel-members modal.
+  const [membersPanelOpen, setMembersPanelOpen] = useState<boolean>(false);
+
   const [tabVisible, setTabVisible] = useState<boolean>(
     typeof document === "undefined" ? true : !document.hidden
   );
@@ -1522,6 +1527,19 @@ export function App() {
                 {displayName(activeChannel, state.user?.id ?? null)}
               </span>
               {activeChannel.isDM && <span class="chalk-channel-header-tag">dm</span>}
+              {/* Phase 11c-2 PR 4: open the members panel.
+                  Hidden for DMs (the 2-member set is fixed). */}
+              {!activeChannel.isDM && (
+                <button
+                  type="button"
+                  class="chalk-channel-header-action"
+                  onClick={() => setMembersPanelOpen(true)}
+                  data-testid="channel-members-open"
+                  title="manage channel members"
+                >
+                  members ({activeChannel.memberIDs.length})
+                </button>
+              )}
             </div>
             <MessageList
               messages={activeMessages}
@@ -1600,6 +1618,67 @@ export function App() {
           onSend={onSend}
         />
       </footer>
+
+      {membersPanelOpen && activeChannel && state.user && !activeChannel.isDM && (
+        <ChannelMembersPanel
+          channel={activeChannel}
+          ownUserID={state.user.id}
+          friends={state.friends}
+          onClose={() => setMembersPanelOpen(false)}
+          onAdd={async (targetUserID: string) => {
+            // Phase 11c-2 PR 4: invoke the PR-2 primitive, then
+            // dispatch the optimistic local update on success.
+            // Errors propagate to the panel's catch block which
+            // surfaces them inline.
+            const u = state.user;
+            const c = clientRef.current;
+            if (!u || !c || !state.activeChannelID) {
+              throw new Error("not ready");
+            }
+            const { addMemberToGroup } = await import("../mls/groups");
+            await addMemberToGroup(
+              state.activeChannelID,
+              targetUserID,
+              {
+                userID: u.id,
+                deviceID: u.device,
+                databaseKey: getDeviceMlsKey(u.id, u.device),
+              },
+              { request: (t, p) => c.request(t, p) },
+            );
+            const friend = state.friends.find((f) => f.userID === targetUserID);
+            dispatch({
+              kind: "channel_member_added",
+              channelID: state.activeChannelID,
+              userID: targetUserID,
+              handle: friend?.handle ?? "",
+            });
+          }}
+          onRemove={async (targetUserID: string) => {
+            const u = state.user;
+            const c = clientRef.current;
+            if (!u || !c || !state.activeChannelID) {
+              throw new Error("not ready");
+            }
+            const { removeMemberFromGroup } = await import("../mls/groups");
+            await removeMemberFromGroup(
+              state.activeChannelID,
+              targetUserID,
+              {
+                userID: u.id,
+                deviceID: u.device,
+                databaseKey: getDeviceMlsKey(u.id, u.device),
+              },
+              { request: (t, p) => c.request(t, p) },
+            );
+            dispatch({
+              kind: "channel_member_removed",
+              channelID: state.activeChannelID,
+              userID: targetUserID,
+            });
+          }}
+        />
+      )}
 
       {state.createModalOpen && (
         <CreateChannelModal

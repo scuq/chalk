@@ -88,6 +88,56 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     }
 
+    case "channel_member_added": {
+      // Phase 11c-2 PR 4: optimistic update after MLS add_to_channel
+      // succeeds. Idempotent: re-adding an existing member is a no-op.
+      const ch = state.channels[action.channelID];
+      if (!ch) return state;
+      if (ch.memberIDs.includes(action.userID)) return state;
+      const nextCh = {
+        ...ch,
+        memberIDs: [...ch.memberIDs, action.userID],
+        members: [...ch.members, { userID: action.userID, handle: action.handle }],
+      };
+      return {
+        ...state,
+        channels: { ...state.channels, [action.channelID]: nextCh },
+      };
+    }
+
+    case "channel_member_removed": {
+      // Phase 11c-2 PR 4: optimistic update after MLS remove_from_channel
+      // succeeds. Idempotent: removing a non-member is a no-op. If the
+      // caller removed themselves, also drops the channel from the
+      // local view -- the user is no longer a member.
+      const ch = state.channels[action.channelID];
+      if (!ch) return state;
+      if (!ch.memberIDs.includes(action.userID)) return state;
+      // Self-removal: drop the channel from local state entirely.
+      // (Server's channel_members table no longer includes us; the
+      // next reconnect would have done this anyway.)
+      if (action.userID === state.user?.id) {
+        const { [action.channelID]: _dropped, ...remaining } = state.channels;
+        return {
+          ...state,
+          channels: remaining,
+          channelOrder: state.channelOrder.filter((id) => id !== action.channelID),
+          activeChannelID:
+            state.activeChannelID === action.channelID ? null : state.activeChannelID,
+        };
+      }
+      // Removing someone else: just update the channel's members.
+      const nextCh = {
+        ...ch,
+        memberIDs: ch.memberIDs.filter((id) => id !== action.userID),
+        members: ch.members.filter((m) => m.userID !== action.userID),
+      };
+      return {
+        ...state,
+        channels: { ...state.channels, [action.channelID]: nextCh },
+      };
+    }
+
     case "set_active_channel":
       // No-op if same. Switching to a channel triggers fetch_history
       // via a useEffect in App.tsx; reducer stays pure.

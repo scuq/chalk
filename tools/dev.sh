@@ -7,8 +7,7 @@
 #   3. Build the SPA bundle via npm.
 #   4. Build chalkd.
 #   5. Apply migrations.
-#   6. Seed alice/bob/carol if missing.
-#   7. Exec chalkd in the foreground (Ctrl-C to stop).
+#   6. Exec chalkd in the foreground (Ctrl-C to stop).
 #
 # Idempotent. Re-running reuses everything that exists.
 #
@@ -120,48 +119,14 @@ fi
 log "applying migrations"
 ./bin/chalkd --migrate-only --tls-mode=off
 
-# ---- 5. Seed users -------------------------------------------------------
-
-# Only seed if the users table is empty. The fixture's ON CONFLICT DO
-# UPDATE handles re-running safely, but we skip when populated to keep
-# the output quiet on the common re-run case.
-user_count=$(docker exec "$PG_NAME" psql -U chalk -d chalk -tA -c \
-  "SELECT count(*) FROM users;" 2>/dev/null || echo "0")
-if [ "$user_count" = "0" ]; then
-  log "seeding alice/bob/carol"
-  docker exec -i "$PG_NAME" psql -U chalk -d chalk -v ON_ERROR_STOP=1 \
-    < bootstrap/fixtures/users.sql >/dev/null
-  ok "users seeded"
-else
-  ok "users already present ($user_count rows; skipping seed)"
-fi
-
-# ---- 5b. Seed alice<->bob friendship (dev convenience) -----------------
+# ---- 5. (Removed) legacy alice/bob/carol seed + friendship seed --------
 #
-# Without an accepted friendship, the SPA's new-channel modal shows
-# "no friends yet" and creation is blocked. We seed alice<->bob
-# unconditionally; ON CONFLICT DO UPDATE makes this a no-op on
-# repeat runs.
-#
-# Phase 09 will add real friend-management UI, at which point this
-# dev seed becomes optional.
-log "ensuring alice<->bob friendship"
-docker exec -i "$PG_NAME" psql -U chalk -d chalk -v ON_ERROR_STOP=1 -q >/dev/null <<'SQL'
-INSERT INTO friendships (user_a, user_b, status, requested_at, accepted_at)
-VALUES (
-  LEAST(
-    '00000000-0000-0000-0000-00000000a11c'::uuid,
-    '00000000-0000-0000-0000-000000000b0b'::uuid
-  ),
-  GREATEST(
-    '00000000-0000-0000-0000-00000000a11c'::uuid,
-    '00000000-0000-0000-0000-000000000b0b'::uuid
-  ),
-  'accepted', now(), now()
-) ON CONFLICT (user_a, user_b) DO UPDATE
-  SET status = 'accepted', accepted_at = now();
-SQL
-ok "alice<->bob friendship seeded"
+# Phase 09b's session auth requires WebAuthn-registered users, so the
+# pre-seeded fixture UUIDs aren't loggable into anyway. Users register
+# via the SPA's signup flow; friendships are made via the in-SPA
+# friend-request UI. The historical fixtures live in
+# bootstrap/fixtures/users.sql if you ever want to revive them, but
+# they're not part of the make-dev path anymore.
 
 # ---- 6. Run chalkd in foreground ----------------------------------------
 
@@ -178,12 +143,14 @@ chalk dev server starting
   Stop:      Ctrl-C
   Cleanup:   make dev-down  (stops + removes the PG container)
 
-  alice:     UUID 00000000-0000-0000-0000-00000000a11c
-  bob:       UUID 00000000-0000-0000-0000-000000000b0b
-  carol:     UUID 00000000-0000-0000-0000-0000000ca201
-
-  Note: every browser becomes alice by default (phase-05 shim).
-  See "Talking as bob" in apply-phase07 notes for switching users.
+  First-time setup:
+    1. Open the URL above
+    2. Register an account via the signup flow (WebAuthn passkey)
+    3. The admin user (CHALK_ADMIN_USERNAME) bootstraps automatically;
+       additional users register through the SPA.
+    4. To test multi-user flows, register a second account in another
+       browser profile (or a private window) and add them as a friend
+       from the first.
 
 EOF
 

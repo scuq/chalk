@@ -2757,3 +2757,118 @@ html, body {
 .chalk-messages--compact .chalk-message-thread-preview {
   margin-bottom: 0;
 }
+
+/* ===================================================================
+   Phase 11c-2 PR 4: ChannelMembersPanel styles.
+   =================================================================== */
+
+/* Modal sizing tweak: the members panel should be wider than the
+   default Confirm modal so the friend picker doesn't feel cramped. */
+.chalk-channel-members-panel {
+  min-width: min(480px, 90vw);
+  max-width: min(640px, 95vw);
+}
+
+.chalk-channel-members-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s1);
+}
+
+.chalk-channel-members-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--chalk-s2);
+  border: 1px solid var(--chalk-border);
+  background: var(--chalk-bg-elev);
+  gap: var(--chalk-s2);
+}
+
+.chalk-channel-members-handle {
+  color: var(--chalk-fg);
+  font-family: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chalk-channel-members-self-tag,
+.chalk-channel-members-creator-tag {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-channel-members-remove {
+  background: transparent;
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-dim);
+  font-family: inherit;
+  font-size: var(--chalk-size-body);
+  padding: 0 var(--chalk-s2);
+  cursor: pointer;
+  text-transform: lowercase;
+  flex-shrink: 0;
+}
+.chalk-channel-members-remove:hover {
+  border-color: var(--chalk-warn);
+  color: var(--chalk-warn);
+}
+.chalk-channel-members-remove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.chalk-channel-members-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s1);
+  flex-shrink: 0;
+}
+
+.chalk-channel-members-confirm-text {
+  color: var(--chalk-warn);
+  font-size: var(--chalk-size-small);
+  margin-right: var(--chalk-s1);
+}
+
+.chalk-channel-members-error {
+  margin-top: var(--chalk-s2);
+  padding: var(--chalk-s2);
+  border: 1px solid var(--chalk-warn);
+  color: var(--chalk-warn);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-channel-members-empty,
+.chalk-channel-members-hint {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  margin: 0 0 var(--chalk-s2) 0;
+}
+
+/* Compact button variant for inline confirm rows. */
+.chalk-button--small {
+  padding: 0 var(--chalk-s2);
+  font-size: var(--chalk-size-small);
+}
+
+/* "members" button in the channel header. */
+.chalk-channel-header-action {
+  background: transparent;
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-dim);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0 var(--chalk-s2);
+  cursor: pointer;
+  text-transform: lowercase;
+  margin-left: auto;
+}
+.chalk-channel-header-action:hover {
+  border-color: var(--chalk-fg-bright);
+  color: var(--chalk-fg-bright);
+}
