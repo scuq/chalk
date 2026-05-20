@@ -1,10 +1,10 @@
 # Phase 11d Design Doc #2 — Wire Protocol Spec
 
-**Status:** Draft for review
+**Status:** Revision 2 (status + ack family added)
 **Author:** Claude, per scuq's design choices
 **Date:** 2026-05-27 (Vienna)
 **Scope:** chalk phase 11d — wire format for backup, restore, and pairing
-**Depends on:** doc #1 (threat model & crypto primitives), D1-D6 + Q1=c + Q3 + Q4=a
+**Depends on:** doc #1 (threat model & crypto primitives), D1-D9 + Q1=c + Q3 + Q4=a
 
 This document defines every new WS frame type and HTTP endpoint introduced
 by phase 11d. It is field-by-field exhaustive so doc #4 (server schema) and
@@ -15,6 +15,15 @@ The conventions in this doc match chalk's existing patterns
 ack types as `Type<Name>Ack`, bytes encoded as base64 strings, IDs as UUID
 strings. Phase 11d's frame definitions will live in
 `internal/proto/frames_phase11d.go` (per the existing per-phase convention).
+
+**Revision 2 changes from initial draft:**
+- Added the **status family** (§5) covering `backup_status_get`,
+  `backup_status_get_ack`, and progress push events for in-progress
+  operations. Implements D7 (Level 1 + Level 2 transparency).
+- Added the **critical event family** (§6) covering `critical_event`
+  push and `critical_event_ack`. Implements D8/D9 (server-tracked
+  cross-device acknowledgment of high-importance notifications).
+- Updated §1 overview tables and §9 frame count.
 
 ---
 
@@ -71,7 +80,30 @@ user" announcement and the resulting self-add flow.
 | `device_remove`          | C→S | Mark a device as removed (for cleanup post-rotation) |
 | `device_remove_ack`      | S→C | Confirmation |
 
-Each frame's payload is specified in §2–§4 below.
+**D. Status family** — for transparent UX (D7). Lets the SPA query
+backup health and receive progress pushes during in-flight operations.
+
+| Type | Direction | Purpose |
+|------|-----------|---------|
+| `backup_status_get`        | C→S | Query current backup health for the user |
+| `backup_status_get_ack`    | S→C | Returns snapshot of backup health |
+| `backup_progress_event`    | S→C | Push progress during long-running ops (chunked up/down) |
+
+**E. Critical event family** — for high-importance, user-facing
+notifications that require explicit acknowledgment (D8, D9). Cross-device
+synchronized: an event acknowledged on any one of the user's devices
+is dismissed on all others.
+
+| Type | Direction | Purpose |
+|------|-----------|---------|
+| `critical_event`         | S→C | Push: high-importance event requiring user attention |
+| `critical_event_list`    | C→S | Fetch pending (unacknowledged) critical events |
+| `critical_event_list_ack`| S→C | Returns list of unacknowledged events |
+| `critical_event_ack`     | C→S | User acknowledged a critical event |
+| `critical_event_ack_ack` | S→C | Confirmation; server-side state now reflects ack |
+| `critical_event_dismissed_event` | S→C | Push to OTHER devices: "this event was acked elsewhere" |
+
+Each frame's payload is specified in §2–§6 below.
 
 ---
 
@@ -881,7 +913,457 @@ inherent to MLS post-compromise security.
 
 ---
 
-## 5. Error codes (new in phase 11d)
+## 5. Status family — field-by-field
+
+The status family implements **D7 transparency** for backup/restore UX:
+Level 1 (status awareness) via `backup_status_get` and Level 2
+(operation visibility) via `backup_progress_event` pushes.
+
+### 5.1 `backup_status_get` and `backup_status_get_ack`
+
+The SPA polls (or fetches on tab focus) the current backup health.
+Cheap, idempotent.
+
+```go
+type BackupStatusGetPayload struct {
+    // No fields. User implicit.
+}
+
+type BackupStatusGetAckPayload struct {
+    // EnvelopePresent: does the user have an envelope at all? If
+    // false, no backup has ever been uploaded (or it was deleted).
+    // SPA UI: prompt to set up backup.
+    EnvelopePresent bool `json:"envelope_present"`
+
+    // EnvelopeVersion of the current envelope; 0 if absent.
+    EnvelopeVersion int `json:"envelope_version"`
+
+    // LastTier1 is the most recent tier-1 backup descriptor.
+    // null if no tier-1 backup exists.
+    LastTier1 *BackupDescriptor `json:"last_tier1"`
+
+    // LastTier2 is the most recent tier-2 backup descriptor.
+    // null if no tier-2 backup exists.
+    LastTier2 *BackupDescriptor `json:"last_tier2"`
+
+    // BackupCount across all tiers, all devices.
+    BackupCount int `json:"backup_count"`
+
+    // LastSuccessfulPut is the timestamp of the most recent
+    // successful backup PUT from any device of this user.
+    // null if no successful puts ever.
+    LastSuccessfulPut *int64 `json:"last_successful_put"`
+
+    // LastFailedPut is set if there was a backup PUT attempt
+    // from any device that failed and hasn't been superseded
+    // by a success. Includes reason. Cleared once the next
+    // successful put arrives.
+    LastFailedPut *BackupFailedAttempt `json:"last_failed_put"`
+
+    // ActiveUploads is the count of in-progress tier-2 uploads
+    // (chunked) right now for this user. Usually 0 or 1.
+    ActiveUploads int `json:"active_uploads"`
+
+    // ActiveDownloads is the count of in-progress tier-2 downloads
+    // (a restore from a new device shows up here).
+    ActiveDownloads int `json:"active_downloads"`
+
+    // PendingCriticalEvents is the count of unacknowledged
+    // critical events. Surfaced here so the SPA can show a badge
+    // without a separate roundtrip. Detail via §6.
+    PendingCriticalEvents int `json:"pending_critical_events"`
+}
+
+type BackupFailedAttempt struct {
+    AttemptedAt int64  `json:"attempted_at"` // unix ms
+    DeviceID    string `json:"device_id"`    // which device tried
+    Tier        int    `json:"tier"`         // 1 or 2
+    Reason      string `json:"reason"`       // machine-readable code
+    Detail      string `json:"detail"`       // human-readable
+}
+```
+
+**Server caching note**: this query is run frequently (every tab focus,
+plus on demand). Server should cache the per-user status briefly
+(say 30 s) and invalidate on backup put/delete events. Without caching,
+this becomes a hot path. Doc #4 (server schema) will spec the cache.
+
+### 5.2 `backup_progress_event` (server push)
+
+For long-running operations (chunked tier-2 uploads/downloads, restore
+flows), the server emits progress events to the device that initiated
+the operation. NOT broadcast to other devices.
+
+```go
+type BackupProgressEventPayload struct {
+    // OperationID is the upload_id, download_id, or a synthesized
+    // ID for compound operations like restore.
+    OperationID string `json:"operation_id"`
+
+    // Kind: one of
+    //   "tier2_upload"     — tier-2 chunked upload in progress
+    //   "tier2_download"   — tier-2 chunked download in progress
+    //   "restore"          — multi-step restore flow in progress
+    //   "envelope_put"     — usually too fast for progress, but
+    //                        included for completeness
+    Kind string `json:"kind"`
+
+    // Stage is a human-readable label for what's happening right
+    // now. SPA shows this verbatim (UI may localize). Examples:
+    //   "uploading chunk 3/8"
+    //   "downloading tier-2"
+    //   "decrypting envelope"
+    //   "importing keystore"
+    //   "joining group 5/12"
+    Stage string `json:"stage"`
+
+    // Percent is 0–100. -1 means "indeterminate" (used for stages
+    // where we can't easily compute a percentage).
+    Percent int `json:"percent"`
+
+    // BytesTransferred / BytesTotal for upload/download stages.
+    // Both 0 for non-transfer stages.
+    BytesTransferred int64 `json:"bytes_transferred"`
+    BytesTotal       int64 `json:"bytes_total"`
+
+    // Terminal indicates this is the last progress event for this
+    // operation. Set when the operation completes (successfully or
+    // not). After Terminal=true, the SPA can dismiss the progress UI.
+    Terminal bool `json:"terminal"`
+
+    // Failed is true only when Terminal=true AND the operation
+    // failed. Field is mutually-exclusive with the normal _ack
+    // path: a successful operation finishes via its _ack frame,
+    // not a Terminal+Failed progress event. So Failed=true only
+    // appears on the failure path.
+    Failed bool `json:"failed,omitempty"`
+
+    // FailureReason if Failed=true.
+    FailureReason string `json:"failure_reason,omitempty"`
+}
+```
+
+**Restore flow progress example.** When a new device restores from
+backup, the SPA initiates a `restore` operation (a client-side
+construct, not a server frame). The server, while servicing the various
+downloads and metadata fetches that the restore triggers, emits progress
+events tagged with the same restore `operation_id`. The SPA's restore
+UI consumes them:
+
+```
+"Fetching envelope..."          (5%, indeterminate stage)
+"Decrypting envelope..."        (10%, client-side)
+"Listing backups..."            (15%)
+"Downloading tier-1 backup..."  (25%, 4 KB / 4 KB)
+"Decrypting tier-1..."          (30%)
+"Downloading tier-2 (chunk 1/8)..." (35%, 256KB / 2.1MB)
+"Downloading tier-2 (chunk 2/8)..." (43%, 512KB / 2.1MB)
+...
+"Importing keystore..."         (85%)
+"Joining group 3/12: dm-bob2..."  (90%)
+"Restoration complete."         (100%, Terminal=true)
+```
+
+The client side of restore is the actual orchestrator — it tracks the
+restore's logical stages and reports them. The server emits its own
+stage updates (e.g. "downloading tier-2 chunk 3/8") which the client
+merges into the user-visible progress view.
+
+**Backpressure**: progress events should be rate-limited (no more than
+~4/sec per operation) to avoid flooding the WS. SPA UI doesn't need
+60fps progress.
+
+### 5.3 Status family is read-only
+
+None of the status family frames cause side effects on the server's
+data model. They're observability frames. This matters for
+implementation: they can hit cached/replicated state in larger
+deployments without consistency concerns.
+
+---
+
+## 6. Critical event family — field-by-field
+
+Critical events are **high-importance, user-facing notifications that
+require explicit acknowledgment** (D8, D9). They have three defining
+properties:
+
+1. **Cross-device sync.** The same event reaches all of the user's
+   devices. Acknowledging on any one device dismisses it on all
+   others.
+2. **Persistent.** Unlike progress events, the server keeps the event
+   until acknowledged. A device that comes online late still sees
+   the event.
+3. **Non-dismissable without action.** The SPA must show the event
+   with a primary action (e.g. "OK, I did this" or "Investigate") and
+   not allow silent dismissal.
+
+### 6.1 Event kinds in phase 11d
+
+Phase 11d defines six critical event kinds:
+
+| Kind | When emitted | Required user action |
+|------|--------------|----------------------|
+| `device_added_paired`     | New device successfully paired | "OK, this was me" or "Wasn't me, revoke" |
+| `device_added_recovery`   | New device used recovery phrase to add itself | "OK" or "Wasn't me, change phrase" |
+| `device_removed`          | Device removed from account | "OK" |
+| `recovery_phrase_rotated` | Recovery phrase rotation completed | "OK" |
+| `backup_persistently_failing` | Backups failing for > 1 hour | "Investigate" |
+| `restore_completed`       | Restore-from-backup finished | "Welcome back" |
+
+`device_added_recovery` is the highest-stakes one: an attacker who got
+the user's recovery phrase but no devices could use it to silently add
+themselves. Surfacing this loud-and-clear to all the user's existing
+devices is the main protection. (See §4.3 of doc #1 for the threat
+model context.)
+
+### 6.2 `critical_event` (server push)
+
+Pushed to all of the user's connected devices when the event is
+generated. Devices that aren't connected at that moment receive it via
+`critical_event_list` on next connect.
+
+```go
+type CriticalEventPayload struct {
+    // EventID is server-assigned, unique per user.
+    EventID string `json:"event_id"`
+
+    // Kind from the table in §6.1.
+    Kind string `json:"kind"`
+
+    // CreatedAt is the server's timestamp of when the underlying
+    // event occurred.
+    CreatedAt int64 `json:"created_at"` // unix ms
+
+    // Severity is one of:
+    //   "info"      — restore completed, recovery rotated
+    //   "warning"   — backup persistently failing
+    //   "alert"     — device added via paired flow
+    //   "critical"  — device added via recovery flow,
+    //                 device removed (could mean compromise)
+    Severity string `json:"severity"`
+
+    // Title is a short human-readable title. SPA uses verbatim
+    // (may localize from a key, decided in doc #5).
+    Title string `json:"title"`
+
+    // Body is a longer human-readable description.
+    Body string `json:"body"`
+
+    // Context contains kind-specific fields. The SPA reads these
+    // for rendering rich event UIs. Examples below.
+    Context CriticalEventContext `json:"context"`
+
+    // Actions enumerates the user-actionable options. SPA renders
+    // one button per action.
+    Actions []CriticalEventAction `json:"actions"`
+}
+
+// Context is a discriminated union by Kind. Only the field matching
+// the event's Kind is populated; the others are null. Go-side will
+// be a struct with all optional sub-types; SPA uses
+// kind to pick which field to read.
+type CriticalEventContext struct {
+    DeviceAdded       *DeviceAddedContext       `json:"device_added,omitempty"`
+    DeviceRemoved     *DeviceRemovedContext     `json:"device_removed,omitempty"`
+    RecoveryRotated   *RecoveryRotatedContext   `json:"recovery_rotated,omitempty"`
+    BackupFailing     *BackupFailingContext     `json:"backup_failing,omitempty"`
+    RestoreCompleted  *RestoreCompletedContext  `json:"restore_completed,omitempty"`
+}
+
+type DeviceAddedContext struct {
+    NewDeviceID   string `json:"new_device_id"`
+    Fingerprint   string `json:"fingerprint"`         // hex/base64
+    ClientID      string `json:"client_id"`
+    OriginKind    string `json:"origin_kind"`         // "paired" or "recovery"
+    // Server-observed approximate origin info; may be null on
+    // privacy-respecting deployments.
+    ApproxLocation *string `json:"approx_location,omitempty"`
+    UserAgent      *string `json:"user_agent,omitempty"`
+}
+
+type DeviceRemovedContext struct {
+    RemovedDeviceID  string `json:"removed_device_id"`
+    Fingerprint      string `json:"fingerprint"`
+    RemovedByDeviceID string `json:"removed_by_device_id"`
+}
+
+type RecoveryRotatedContext struct {
+    RotatedByDeviceID string `json:"rotated_by_device_id"`
+    OldHashFingerprint string `json:"old_hash_fingerprint"`
+    NewHashFingerprint string `json:"new_hash_fingerprint"`
+}
+
+type BackupFailingContext struct {
+    FailingSince   int64  `json:"failing_since"`   // unix ms
+    AttemptCount   int    `json:"attempt_count"`
+    LastReason     string `json:"last_reason"`
+    LastDetail     string `json:"last_detail"`
+}
+
+type RestoreCompletedContext struct {
+    RestoredDeviceID  string `json:"restored_device_id"`
+    SourceBackupID    string `json:"source_backup_id"`
+    GroupsRestored    int    `json:"groups_restored"`
+    OriginKind        string `json:"origin_kind"`     // "paired" or "recovery"
+}
+
+type CriticalEventAction struct {
+    // ActionID is opaque; client passes it back in critical_event_ack.
+    ActionID string `json:"action_id"`
+
+    // Label is the button text.
+    Label string `json:"label"`
+
+    // Kind: "primary" or "secondary" or "destructive"
+    // SPA renders accordingly.
+    Kind string `json:"kind"`
+
+    // Followup is an optional indication of what the SPA should do
+    // after ack. Examples:
+    //   "open_device_list"   — navigate to devices settings
+    //   "open_recovery_rotation" — open the rotate-recovery flow
+    //   "none"
+    Followup string `json:"followup"`
+}
+```
+
+**Action example for `device_added_recovery`:**
+
+```json
+{
+  "event_id": "evt_abc123",
+  "kind": "device_added_recovery",
+  "severity": "critical",
+  "title": "A new device was added using your recovery phrase",
+  "body": "Someone used your 24-word recovery phrase to add a new device. If this wasn't you, your recovery phrase may have been compromised.",
+  "context": {
+    "device_added": {
+      "new_device_id": "dev_xyz",
+      "fingerprint": "AB:CD:EF:...",
+      "client_id": "alice2:dev_xyz",
+      "origin_kind": "recovery",
+      "approx_location": "Vienna, AT",
+      "user_agent": "Chrome 128 on macOS"
+    }
+  },
+  "actions": [
+    {"action_id": "ack_was_me",      "label": "Yes, that was me",       "kind": "primary",     "followup": "none"},
+    {"action_id": "ack_not_me",      "label": "No — revoke and rotate", "kind": "destructive", "followup": "open_recovery_rotation"}
+  ]
+}
+```
+
+### 6.3 `critical_event_list` and `critical_event_list_ack`
+
+A device fetches all pending (unacknowledged) critical events. Called on
+WS connect, on tab focus after a long idle period, and on demand.
+
+```go
+type CriticalEventListPayload struct {
+    // No fields.
+}
+
+type CriticalEventListAckPayload struct {
+    Events []CriticalEventPayload `json:"events"`
+}
+```
+
+Returns events in order of `created_at` ascending so the SPA can show
+them in chronological order. The list excludes events that have already
+been acknowledged on any other device (via §6.5 fanout).
+
+### 6.4 `critical_event_ack` and `critical_event_ack_ack`
+
+User acknowledged a critical event. SPA submits the chosen action.
+
+```go
+type CriticalEventAckPayload struct {
+    EventID  string `json:"event_id"`
+    ActionID string `json:"action_id"`
+}
+
+type CriticalEventAckAckPayload struct {
+    // EventID echoed for client-side confirmation.
+    EventID string `json:"event_id"`
+
+    // AckedAt is the server's timestamp of acknowledgment.
+    AckedAt int64 `json:"acked_at"`
+}
+```
+
+**Server actions on ack:**
+1. Validate the event exists, belongs to the calling user, is not yet
+   acked.
+2. Mark it acked in the `critical_events` table (doc #4 schema).
+3. Fanout `critical_event_dismissed_event` to ALL other connected
+   devices of the user.
+4. Respond with `critical_event_ack_ack`.
+
+If two devices race to ack the same event, the first wins; the second
+gets `critical_event_already_acked` error.
+
+### 6.5 `critical_event_dismissed_event` (server push)
+
+Pushed to OTHER devices of the user when an event has been acked
+somewhere. Lets those devices remove the notification from their UI
+without waiting for the user to refresh.
+
+```go
+type CriticalEventDismissedEventPayload struct {
+    EventID         string `json:"event_id"`
+    AckedAt         int64  `json:"acked_at"`
+    AckedByDeviceID string `json:"acked_by_device_id"`
+    ActionID        string `json:"action_id"`
+}
+```
+
+The SPA, on receiving this, removes the event from its visible-events
+list and updates the badge count.
+
+### 6.6 Lifecycle and retention
+
+Critical events have a server-side lifecycle:
+
+```
+   ┌──────────┐  emit   ┌─────────┐  ack   ┌────────┐
+   │   (none) │ ──────► │ pending │ ─────► │ acked  │
+   └──────────┘         └────┬────┘        └───┬────┘
+                             │ (90d TTL)       │ (180d TTL)
+                             ▼                 ▼
+                          (purged)           (purged)
+```
+
+- **Pending** events with no ack after 90 days are auto-purged with a
+  log entry. Such old events have lost their relevance.
+- **Acked** events are retained for 180 days for audit purposes (the
+  user can review "what happened to my account in the last few
+  months"), then purged.
+
+(Retention windows tweakable as chalkd config flags.)
+
+### 6.7 Server source of critical events
+
+Critical events are generated by the chalkd server, not by clients.
+This matters because:
+- Clients can't fake critical events on themselves to dismiss real ones
+- The server is the authoritative source of "did a device add happen"
+
+Specifically, server emits events at these moments:
+- After successful `device_announce` handling → `device_added_paired`
+  (if origin=paired) or `device_added_recovery` (if origin=recovery)
+- After successful `device_remove` handling → `device_removed`
+- After successful recovery rotation (existing flow) → `recovery_phrase_rotated`
+- When backup put failures cross a threshold (e.g. 5 failures over 1
+  hour) → `backup_persistently_failing`
+- After successful tier-1+tier-2 restore on the new device → `restore_completed`
+
+Client code never sends `critical_event` (only the server does).
+Clients only RECEIVE it (and ack via §6.4).
+
+---
+
+## 7. Error codes (new in phase 11d)
 
 All errors follow chalk's existing convention: `frame_type=error`,
 payload `{code: string, message: string, ref: string}`.
@@ -908,10 +1390,13 @@ New codes:
 | `pairing_expired` | (any pairing) | offer past expires_at |
 | `device_not_found` | device_remove | device_id unknown |
 | `device_remove_self` | device_remove | can't remove the calling device |
+| `critical_event_not_found` | critical_event_ack | event_id unknown |
+| `critical_event_already_acked` | critical_event_ack | already acked elsewhere (race) |
+| `critical_event_action_invalid` | critical_event_ack | action_id not in event's allowed actions |
 
 ---
 
-## 6. Server-side resource limits
+## 8. Server-side resource limits
 
 These are sanity limits to prevent abuse. Recommended starting values:
 
@@ -930,12 +1415,19 @@ These are sanity limits to prevent abuse. Recommended starting values:
 - Devices per user: ≤ 32. Hitting this requires removing a device.
 - KeyPackages per device per ciphersuite: ≤ 100. (Already enforced in
   phase 11a; mentioned for completeness.)
+- `backup_status_get` response cached server-side for ≤ 30 s per user.
+- `backup_progress_event` rate-limited to ≤ 4 events/sec per operation.
+- Pending critical events per user: ≤ 100. Beyond that, oldest pending
+  events are auto-purged with a log entry (defensive against event-flood
+  bugs).
+- Critical event pending TTL: 90 days.
+- Critical event acked retention: 180 days.
 
 These limits are tweakable; expose them as chalkd config flags.
 
 ---
 
-## 7. No HTTP endpoints in phase 11d
+## 9. No HTTP endpoints in phase 11d
 
 Per Q4=a, pairing and backup both use WS frames. No new HTTP endpoints
 are introduced.
@@ -952,36 +1444,42 @@ later phase if/when this becomes necessary.
 
 ---
 
-## 8. Frame count summary
+## 10. Frame count summary
 
-Phase 11d adds **30 new wire types** to chalk:
+Phase 11d adds **39 new wire types** to chalk:
 
 - 16 backup family
 - 8 pairing family
 - 6 multi-device family
+- 3 status family (`backup_status_get`, `_ack`, `backup_progress_event`)
+- 6 critical event family (`critical_event`, `critical_event_list`, `_ack`,
+  `critical_event_ack`, `_ack`, `critical_event_dismissed_event`)
 
 (Plus the `*_abort`, `*_event`, error variants.)
 
 For comparison, phase 11b-1 added 5 frames (key package family) and 4
-(MLS DM family). Phase 11d is roughly 3× the protocol surface of 11b.
+(MLS DM family). Phase 11d is roughly 4× the protocol surface of 11b.
 
 The frames are largely independent — backup family doesn't reference
 pairing family, etc. — so they can be implemented in independent landings:
 
-- **Land 1**: envelope + tier-1 backup put/get (smallest useful slice;
-  enables the silent background snapshot without any restore path)
-- **Land 2**: tier-2 chunked upload/download
+- **Land 1**: envelope + tier-1 backup put/get + `backup_status_get` (smallest
+  useful slice; enables the silent background snapshot AND the status badge)
+- **Land 2**: tier-2 chunked upload/download + `backup_progress_event`
 - **Land 3**: backup_list with manifest
-- **Land 4**: pairing family (depends on Lands 1-3 to have something to
-  pair)
-- **Land 5**: device_announce + device_announce_event + self-add flow
-- **Land 6**: device_list + device_remove
+- **Land 4**: critical event family (depends on Land 1 for plumbing; standalone
+  thereafter)
+- **Land 5**: pairing family (depends on Lands 1-3 to have something to pair)
+- **Land 6**: device_announce + device_announce_event + self-add flow; emits
+  `device_added_paired` / `device_added_recovery` critical events
+- **Land 7**: device_list + device_remove; emits `device_removed` critical
+  event
 
 This ordering is suggested for doc #8 (migration & test plan).
 
 ---
 
-## 9. Open questions for resolution before doc #3
+## 11. Open questions for resolution before doc #3
 
 **Q6.** Exact ciphertext framing for AEAD outputs.
 
@@ -1039,7 +1537,7 @@ complete it? Tiny UX consideration. Punt to doc #5.
 
 ---
 
-## 10. Summary
+## 12. Summary
 
 Doc #2 is concrete: 30 frame types, exact JSON shapes, exact resource
 limits, exact error codes. Once approved, doc #3 (keystore serialization)
