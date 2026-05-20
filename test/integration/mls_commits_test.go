@@ -54,6 +54,26 @@ func setupPhase11c1(t *testing.T) (*store.Store, uuid.UUID, uuid.UUID, uuid.UUID
 	aliceID := uuid.MustParse(phase11c1AliceID)
 	bobID := uuid.MustParse(phase11c1BobID)
 
+	// Phase 11c-3 PR 1 fixup: ensure the fixture users exist. Prior
+	// to today these UUIDs were seeded by bootstrap/fixtures/users.sql,
+	// but the seed was removed in the dev-tooling cleanup. UpsertUser
+	// is idempotent (ON CONFLICT (handle) DO UPDATE SET id), so this
+	// is safe on every test invocation. The handle has to satisfy the
+	// username CHECK regex ^[a-z0-9_]{3,32}$ added in migration 0011.
+	if _, err := st.UpsertUser(c, aliceID, "phase11c1_alice"); err != nil {
+		t.Fatalf("upsert fixture alice: %v", err)
+	}
+	if _, err := st.UpsertUser(c, bobID, "phase11c1_bob"); err != nil {
+		t.Fatalf("upsert fixture bob: %v", err)
+	}
+	// Carol's UUID is declared in mls_commit_membership_test.go (same
+	// package, so the const is visible here). She's the third member
+	// added by the AddOneMember / AddAndRemoveInOneCommit tests.
+	carolID := uuid.MustParse(phase11c1CarolID)
+	if _, err := st.UpsertUser(c, carolID, "phase11c1_carol"); err != nil {
+		t.Fatalf("upsert fixture carol: %v", err)
+	}
+
 	// Wipe state from any prior phase-11c1 run.
 	if _, err := st.Pool.Exec(c,
 		`DELETE FROM mls_commits
