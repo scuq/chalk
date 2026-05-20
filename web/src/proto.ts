@@ -372,6 +372,13 @@ export interface MlsCommitBundlePayload {
   commit?: string;
   welcome_for?: WelcomeFor[];
   epoch: number;
+  /** Phase 11c-1 PR 3: declared adds accompanying this commit.
+   *  Each entry must match a recent authorization from
+   *  add_to_channel (60s TTL, single-use) or the server returns
+   *  ErrCodeMlsCommitUnauthorized. */
+  proposed_adds?: string[];
+  /** Phase 11c-1 PR 3: declared removes (symmetric to proposed_adds). */
+  proposed_removes?: string[];
 }
 
 export interface MlsCommitBundleAckPayload {
@@ -390,3 +397,125 @@ export interface MlsWelcomeAckPayload {
   channel_id: string;
   ok: boolean;
 }
+
+// ===================================================================
+// Phase 11c-2 PR 2: MLS multi-member channel wire protocol.
+// ===================================================================
+//
+// Mirrors the server-side additions from phases 11c-1 PRs 2, 3, and 5:
+//
+//   * add_to_channel / remove_from_channel   (C->S, ack S->C)  -- PR 2
+//   * mls_stale_commit / mls_commit_unauthorized error codes  -- PR 3
+//   * MlsCommitBundlePayload.proposed_adds / proposed_removes -- PR 3
+//   * mls_commit_event push                                   -- PR 5
+//   * fetch_mls_commits + ack                                 -- PR 5
+
+// ---- add / remove channel membership -------------------------------
+
+export const TypeAddToChannel         = "add_to_channel";
+export const TypeAddToChannelAck      = "add_to_channel_ack";
+export const TypeRemoveFromChannel    = "remove_from_channel";
+export const TypeRemoveFromChannelAck = "remove_from_channel_ack";
+
+/** AddToChannelPayload (C->S). Caller (must be a current channel
+ *  member) asks chalkd to claim one of target_user_id's KeyPackages
+ *  so the caller can build an MLS Add commit locally. */
+export interface AddToChannelPayload {
+  channel_id: string;
+  target_user_id: string;
+  /** Optional; defaults to 1 (MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519). */
+  ciphersuite?: number;
+}
+
+/** AddToChannelAckPayload (S->C). Returns the claimed KeyPackage. */
+export interface AddToChannelAckPayload {
+  channel_id: string;
+  target_user_id: string;
+  key_package: FetchedKeyPackage;
+}
+
+/** RemoveFromChannelPayload (C->S). Caller asks chalkd to authorize
+ *  removing target_user_id. Pure permission gate; the actual MLS
+ *  Remove commit follows in a subsequent mls_commit_bundle with
+ *  proposed_removes=[targetUserID]. */
+export interface RemoveFromChannelPayload {
+  channel_id: string;
+  target_user_id: string;
+}
+
+/** RemoveFromChannelAckPayload (S->C). Echoes ids; auth confirmed. */
+export interface RemoveFromChannelAckPayload {
+  channel_id: string;
+  target_user_id: string;
+}
+
+// ---- mls_commit_event push (live broadcast + catchup) --------------
+
+export const TypeMlsCommitEvent        = "mls_commit_event";
+export const TypeFetchMlsCommits       = "fetch_mls_commits";
+export const TypeFetchMlsCommitsAck    = "fetch_mls_commits_ack";
+
+/** MlsCommitEventPayload (S->C push). Either a live commit
+ *  notification (sent by handleMlsCommitBundle to existing channel
+ *  members after a commit is stored) or a historical catchup commit
+ *  (sent by handleFetchMlsCommits in epoch order). The client can't
+ *  tell them apart and doesn't need to -- both are processed via
+ *  CoreCrypto's decryptMessage against the local group state. */
+export interface MlsCommitEventPayload {
+  channel_id: string;
+  epoch: number;
+  /** base64-encoded TLS-serialized Commit bytes. */
+  commit: string;
+  committed_by_user_id: string;
+  /** RFC3339 timestamp. */
+  committed_at: string;
+}
+
+/** FetchMlsCommitsPayload (C->S). Client supplies its known epoch
+ *  for the channel; server streams every commit with epoch > after.
+ *  after_epoch = 0 means "give me everything from the beginning of
+ *  stored history." */
+export interface FetchMlsCommitsPayload {
+  channel_id: string;
+  after_epoch: number;
+}
+
+/** FetchMlsCommitsAckPayload (S->C). Sent after all matching
+ *  mls_commit_event frames have been pushed. Count is the total
+ *  number streamed (sanity check; WS guarantees ordered delivery). */
+export interface FetchMlsCommitsAckPayload {
+  channel_id: string;
+  count: number;
+}
+
+// ---- error codes added by phase 11c-1 ------------------------------
+
+/** Channel doesn't have is_mls=true; the requested op only makes
+ *  sense for MLS-encrypted channels. */
+export const ErrCodeMlsChannelNotEncrypted = "mls_channel_not_encrypted";
+
+/** add_to_channel: target is already in the channel. */
+export const ErrCodeMlsAlreadyMember = "mls_already_member";
+
+/** remove_from_channel: target is not in the channel. */
+export const ErrCodeMlsTargetNotMember = "mls_target_not_member";
+
+/** remove_from_channel: caller tried to remove someone other than
+ *  themselves but is not the channel creator. */
+export const ErrCodeMlsNotAuthorized = "mls_not_authorized";
+
+/** add_to_channel: target has zero unused KeyPackages. Surface as
+ *  "<target> hasn't logged in recently; they need to come online
+ *  once before they can be added to encrypted channels." */
+export const ErrCodeMlsPeerNoKeyPackages = "mls_peer_no_keypackages";
+
+/** mls_commit_bundle race-lost: another commit landed first at this
+ *  epoch. Client must catchup to the winning commit (via
+ *  fetch_mls_commits) and retry at the new epoch. */
+export const ErrCodeMlsStaleCommit = "mls_stale_commit";
+
+/** mls_commit_bundle: a proposed_adds or proposed_removes entry was
+ *  not previously authorized by add_to_channel / remove_from_channel
+ *  within the 60s validity window. Re-authorize and re-commit. */
+export const ErrCodeMlsCommitUnauthorized = "mls_commit_unauthorized";
+

@@ -31,6 +31,15 @@ import {
   type FetchKeyPackagesAckPayload,
   type MlsCommitBundlePayload,
   type MlsCommitBundleAckPayload,
+  // Phase 11c-2 PR 2: multi-member operations.
+  TypeAddToChannel,
+  TypeRemoveFromChannel,
+  TypeFetchMlsCommits,
+  type AddToChannelPayload,
+  type AddToChannelAckPayload,
+  type RemoveFromChannelPayload,
+  type FetchMlsCommitsPayload,
+  type FetchMlsCommitsAckPayload,
 } from "../proto";
 
 export interface SendFn {
@@ -80,6 +89,13 @@ interface ActiveOp {
   // bundle's epoch is what CoreCrypto produced; we just trust it.
   // For first-add, CoreCrypto's internal epoch goes from 0 to 1.
   epoch: number;
+  // Phase 11c-2 PR 2: declared membership changes for this op.
+  // Server validates these against its in-memory auth cache
+  // (populated by add_to_channel / remove_from_channel handlers).
+  // Empty arrays / undefined means "no membership change in this
+  // commit" (e.g. a key-rotation Update or DM-creation bundle).
+  proposedAdds?: string[];     // UUIDs being added
+  proposedRemoves?: string[];  // UUIDs being removed
 }
 
 let activeOp: ActiveOp | null = null;
@@ -135,6 +151,14 @@ async function ensureTransport(session: any): Promise<void> {
             user_id: op.welcomeRecipientUserID,
             welcome: bytesToBase64(welcomeBytes),
           }];
+        }
+        // Phase 11c-2 PR 2: thread proposed_adds / proposed_removes
+        // into the payload. Server validates against its auth cache.
+        if (op.proposedAdds && op.proposedAdds.length > 0) {
+          payload.proposed_adds = op.proposedAdds;
+        }
+        if (op.proposedRemoves && op.proposedRemoves.length > 0) {
+          payload.proposed_removes = op.proposedRemoves;
         }
 
         const ack = (await op.send.request(
@@ -436,3 +460,393 @@ export function channelToGroupID(channelID: string): Uint8Array {
 }
 
 export { initWasmModule };
+
+// ===================================================================
+// Phase 11c-2 PR 2: multi-member MLS channel operations.
+// ===================================================================
+//
+// PR 2 adds the client-side primitives for multi-member MLS:
+//   * addMemberToGroup     -- alice adds target to an existing group
+//   * removeMemberFromGroup -- alice removes target (or self) from group
+//   * processCommitEvent   -- inbound mls_commit_event push (live or catchup)
+//   * fetchCommitsCatchup  -- client-initiated catchup on reconnect
+//
+// Wire integration with the existing ensureGroupForDM transport hook
+// is via two extensions to ActiveOp: proposedAdds and proposedRemoves
+// are now plumbed into the mls_commit_bundle payload so the server
+// can validate the declared changes against its in-memory auth cache
+// (chalkd's MlsAuthorizationStore, populated by add_to_channel /
+// remove_from_channel handlers).
+
+// addMemberToGroup is the multi-member analog of "alice adds bob to
+// a DM". It is a 3-step round-trip:
+//
+//   1. C->S add_to_channel(channel, target)  -> ack returns target's KP
+//   2. Local: addClientsToConversation(KP) -> CoreCrypto produces
+//      Commit + Welcome via the transport callback
+//   3. The transport callback posts mls_commit_bundle with
+//      proposed_adds=[target] -- server validates the auth (from
+//      step 1's recorded entry), atomically writes the commit and
+//      adds the member to channel_members, fans the Welcome.
+//
+// Caller must be a current member of the channel (server enforces
+// this in handleAddToChannel). The channel must already exist and
+// be MLS-encrypted.
+export async function addMemberToGroup(
+  channelID: string,
+  targetUserID: string,
+  input: MlsInitInput,
+  send: SendFn,
+): Promise<void> {
+  // Step 1: server claims a KeyPackage for the target and records
+  // an authorization in the auth cache (60s TTL, single-use).
+  const ack = (await send.request(TypeAddToChannel, {
+    channel_id: channelID,
+    target_user_id: targetUserID,
+    ciphersuite: CIPHERSUITE,
+  } as AddToChannelPayload)) as AddToChannelAckPayload;
+
+  if (!ack || !ack.key_package || !ack.key_package.key_package_data) {
+    throw new Error(
+      `add_to_channel returned no KeyPackage for ${targetUserID}`,
+    );
+  }
+  const peerKP = base64ToBytes(ack.key_package.key_package_data);
+
+  // Step 2: local CoreCrypto adds the client. Transport callback
+  // (sendCommitBundle, in ensureTransport) fires DURING the call
+  // and posts mls_commit_bundle to the server with proposed_adds.
+  const session = await getMlsSession(input);
+  const sAny = session as any;
+  await ensureTransport(sAny);
+  const release = await acquireOpMutex();
+  try {
+    const groupID = uuidToBytes(channelID);
+    const currentEpoch = await readCurrentEpoch(sAny, groupID);
+    const nextEpoch = currentEpoch + 1;
+
+    await sAny.transaction(async (ctx: any) => {
+      activeOp = {
+        channelID,
+        welcomeRecipientUserID: targetUserID,
+        send,
+        epoch: nextEpoch,
+        proposedAdds: [targetUserID],
+      };
+      try {
+        if (typeof ctx.addClientsToConversation === "function") {
+          await ctx.addClientsToConversation(cid(groupID), [peerKP]);
+        } else if (typeof ctx.addClients === "function") {
+          await ctx.addClients(cid(groupID), [peerKP]);
+        } else if (typeof ctx.add_clients_to_conversation === "function") {
+          await ctx.add_clients_to_conversation(cid(groupID), [peerKP]);
+        } else {
+          throw new Error("core-crypto: no addClientsToConversation method found");
+        }
+      } finally {
+        const op = activeOp;
+        activeOp = null;
+        if (op?.serverError) {
+          throw op.serverError;
+        }
+      }
+    });
+  } finally {
+    release();
+  }
+}
+
+// removeMemberFromGroup is the multi-member analog of "alice removes
+// bob from a channel". The flow:
+//
+//   1. C->S remove_from_channel(channel, target)  -> ack (auth recorded)
+//   2. Local: find target's client_id(s) in the conversation
+//   3. Local: removeClientsFromConversation(clientIds) -> CoreCrypto
+//      produces a Remove Commit via the transport callback
+//   4. Transport callback posts mls_commit_bundle with
+//      proposed_removes=[target] -- server validates, atomically
+//      writes the commit and deletes the member from channel_members,
+//      fans mls_commit_event to remaining members.
+//
+// "target == caller" is the self-leave case; server always allows
+// it. "target != caller" requires caller to be the channel creator
+// (server enforces).
+//
+// In chalk 11b/11c, each user has at most one MLS client in a given
+// conversation (single-device per user; multi-device is phase 11d).
+// We remove that single client. If multi-device is added later, this
+// function will need to remove ALL of target's clients.
+export async function removeMemberFromGroup(
+  channelID: string,
+  targetUserID: string,
+  input: MlsInitInput,
+  send: SendFn,
+): Promise<void> {
+  // Step 1: server-side authorization. The handler validates
+  // permission (self-leave or channel-creator) and records an
+  // entry in the auth cache.
+  await send.request(TypeRemoveFromChannel, {
+    channel_id: channelID,
+    target_user_id: targetUserID,
+  } as RemoveFromChannelPayload);
+  // The ack carries no extra info; the server will surface any
+  // permission failures as an error response (sendError) which
+  // send.request rejects on.
+
+  // Step 2: find target's client ID(s) in the local conversation.
+  const session = await getMlsSession(input);
+  const sAny = session as any;
+  await ensureTransport(sAny);
+  const release = await acquireOpMutex();
+  try {
+    const groupID = uuidToBytes(channelID);
+    const currentEpoch = await readCurrentEpoch(sAny, groupID);
+    const nextEpoch = currentEpoch + 1;
+
+    const targetClientIDs = await listClientIdsForUser(
+      sAny, groupID, targetUserID,
+    );
+    if (targetClientIDs.length === 0) {
+      throw new Error(
+        `target ${targetUserID} has no clients in the local MLS group; ` +
+        `local state may be stale -- try fetch_mls_commits to catch up`,
+      );
+    }
+
+    // Step 3: produce the Remove Commit. Transport callback posts it.
+    await sAny.transaction(async (ctx: any) => {
+      activeOp = {
+        channelID,
+        send,
+        epoch: nextEpoch,
+        proposedRemoves: [targetUserID],
+        // No welcome recipient on remove.
+      };
+      try {
+        if (typeof ctx.removeClientsFromConversation === "function") {
+          await ctx.removeClientsFromConversation(cid(groupID), targetClientIDs);
+        } else if (typeof ctx.removeClients === "function") {
+          await ctx.removeClients(cid(groupID), targetClientIDs);
+        } else if (typeof ctx.remove_clients_from_conversation === "function") {
+          await ctx.remove_clients_from_conversation(cid(groupID), targetClientIDs);
+        } else {
+          throw new Error("core-crypto: no removeClientsFromConversation method found");
+        }
+      } finally {
+        const op = activeOp;
+        activeOp = null;
+        if (op?.serverError) {
+          throw op.serverError;
+        }
+      }
+    });
+  } finally {
+    release();
+  }
+}
+
+// processCommitEvent is called when an mls_commit_event push frame
+// arrives (live broadcast from another member's commit, OR a catchup
+// commit streamed by handleFetchMlsCommits). Either way we feed the
+// commit bytes to CoreCrypto's decryptMessage, which advances the
+// local group state.
+//
+// Returns the new epoch after processing. The caller can use this to
+// update any local per-channel epoch tracking (e.g. for deciding
+// whether to fetch more catchup commits).
+//
+// Acquires the op-mutex to serialize against any in-flight
+// addMemberToGroup / removeMemberFromGroup: processing an inbound
+// commit while we're mid-build of an outbound one would corrupt the
+// epoch the outbound commit gets sent at.
+//
+// Errors:
+//   - If the local group doesn't exist (we were never a member, or
+//     CoreCrypto state was wiped), throws. Caller should ignore
+//     events for unknown channels.
+//   - If the commit is malformed or for the wrong epoch, CoreCrypto
+//     throws. Caller may want to trigger a full catchup.
+export async function processCommitEvent(
+  channelID: string,
+  commitBytes: Uint8Array,
+  input: MlsInitInput,
+): Promise<number> {
+  const session = await getMlsSession(input);
+  const sAny = session as any;
+  await ensureTransport(sAny);
+
+  const groupID = uuidToBytes(channelID);
+
+  // If we're not in this conversation locally, we can't process
+  // commits for it. The caller should buffer or discard.
+  const exists = await probeConversationExists(sAny, groupID);
+  if (!exists) {
+    throw new Error(
+      `processCommitEvent: local CoreCrypto has no conversation for channel ${channelID}; ` +
+      `was the Welcome processed?`,
+    );
+  }
+
+  const release = await acquireOpMutex();
+  try {
+    await sAny.transaction(async (ctx: any) => {
+      // decryptMessage handles both application messages AND Commits.
+      // For a Commit, the returned result has no plaintext (we
+      // don't read it); the side effect is the group epoch advance.
+      if (typeof ctx.decryptMessage === "function") {
+        await ctx.decryptMessage(cid(groupID), commitBytes);
+      } else if (typeof ctx.decrypt === "function") {
+        await ctx.decrypt(cid(groupID), commitBytes);
+      } else if (typeof ctx.decrypt_message === "function") {
+        await ctx.decrypt_message(cid(groupID), commitBytes);
+      } else {
+        throw new Error("core-crypto: no decryptMessage method found");
+      }
+    });
+  } finally {
+    release();
+  }
+
+  return readCurrentEpoch(sAny, groupID);
+}
+
+// fetchCommitsCatchup queries the server for any stored commits past
+// the local known epoch and processes them in order. Used:
+//   * On reconnect, for every MLS channel we're a member of
+//   * After receiving mls_stale_commit on our own commit_bundle (to
+//     catch up before retrying)
+//   * On startup if we receive an mls_commit_event for a much-later
+//     epoch than we expect (probably indicating we missed events)
+//
+// The server streams each commit as an mls_commit_event push frame,
+// then sends fetch_mls_commits_ack with the total count. The push
+// frames are processed by the App.tsx dispatcher via
+// processCommitEvent -- this function only sends the request and
+// awaits the ack.
+//
+// Returns the number of commits the server reported streaming. The
+// caller can compare against how many push frames it actually saw
+// dispatched (the WS guarantees in-order delivery, but the ack
+// arrives last so caller can correlate).
+export async function fetchCommitsCatchup(
+  channelID: string,
+  input: MlsInitInput,
+  send: SendFn,
+): Promise<number> {
+  const session = await getMlsSession(input);
+  const sAny = session as any;
+  const groupID = uuidToBytes(channelID);
+
+  // If we don't have a local conversation for this channel, there's
+  // nothing to catch up TO -- we'd have nowhere to apply the commits.
+  const exists = await probeConversationExists(sAny, groupID);
+  if (!exists) {
+    return 0;
+  }
+
+  const localEpoch = await readCurrentEpoch(sAny, groupID);
+
+  const ack = (await send.request(TypeFetchMlsCommits, {
+    channel_id: channelID,
+    after_epoch: localEpoch,
+  } as FetchMlsCommitsPayload)) as FetchMlsCommitsAckPayload;
+
+  return ack?.count ?? 0;
+}
+
+// ---- internal: per-channel CoreCrypto helpers ----------------------
+
+// readCurrentEpoch reads CoreCrypto's stored epoch for a conversation
+// and returns it as a JS number. CoreCrypto returns BigInt; we narrow
+// here because realistic group lifetimes don't approach Number.MAX_SAFE_INTEGER.
+async function readCurrentEpoch(
+  sAny: any,
+  groupID: Uint8Array,
+): Promise<number> {
+  if (typeof sAny.conversationEpoch !== "function") {
+    throw new Error("core-crypto: no conversationEpoch method found");
+  }
+  const epoch = await sAny.conversationEpoch(cid(groupID));
+  // BigInt | number tolerated.
+  return typeof epoch === "bigint" ? Number(epoch) : Number(epoch);
+}
+
+// listClientIdsForUser returns every MLS ClientId in the conversation
+// whose textual form starts with `<userID>:`. In 11b/11c that's at
+// most one per user (single-device); 11d's multi-device support will
+// produce multiples, all of which we remove together.
+async function listClientIdsForUser(
+  sAny: any,
+  groupID: Uint8Array,
+  userID: string,
+): Promise<any[]> {
+  let raw: any;
+  if (typeof sAny.getClientIds === "function") {
+    raw = await sAny.getClientIds(cid(groupID));
+  } else if (typeof sAny.clientIds === "function") {
+    raw = await sAny.clientIds(cid(groupID));
+  } else if (typeof sAny.get_client_ids === "function") {
+    raw = await sAny.get_client_ids(cid(groupID));
+  } else if (typeof sAny.conversationMembers === "function") {
+    raw = await sAny.conversationMembers(cid(groupID));
+  } else {
+    throw new Error("core-crypto: no getClientIds method found");
+  }
+
+  // raw is an array of ClientId-like wrappers or raw byte arrays.
+  // Each one's textual form should be "<userID>:<deviceID>". Filter
+  // to those that match the target user.
+  const prefix = `${userID}:`;
+  const out: any[] = [];
+  for (const c of raw) {
+    const text = decodeClientId(c);
+    if (text.startsWith(prefix)) {
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+// decodeClientId turns a CoreCrypto ClientId-like value into its
+// textual "<userID>:<deviceID>" form, defending against several
+// possible representations.
+function decodeClientId(c: any): string {
+  if (c == null) return "";
+  if (typeof c === "string") return c;
+  // Wrapper with a toString or text accessor?
+  if (typeof c.toString === "function") {
+    const s = c.toString();
+    // Default Object.toString returns "[object Object]"; reject.
+    if (s && !s.startsWith("[object ")) return s;
+  }
+  // Byte access?
+  const bytes = extractBytes(c) ?? extractBytes(c?.bytes) ?? extractBytes(c?.value);
+  if (bytes) return new TextDecoder().decode(bytes);
+  return "";
+}
+
+// ---- per-operation mutex --------------------------------------------
+//
+// The transport hook stores per-call context in the module-level
+// `activeOp`. Two concurrent commit operations would clobber each
+// other. We serialize them with a Promise-based mutex.
+//
+// This is per-MODULE not per-channel: even concurrent ops on
+// DIFFERENT channels serialize. Could be relaxed to per-channel if
+// throughput ever matters, but channel ops are user-driven (clicking
+// "add member") so contention is essentially zero in practice.
+//
+// Idiomatic usage:
+//   const release = await acquireOpMutex();
+//   try { ... } finally { release(); }
+
+let opMutexChain: Promise<void> = Promise.resolve();
+
+async function acquireOpMutex(): Promise<() => void> {
+  const prev = opMutexChain;
+  let release!: () => void;
+  opMutexChain = new Promise<void>((r) => { release = r; });
+  await prev;
+  return release;
+}
+
