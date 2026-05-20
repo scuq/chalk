@@ -1021,22 +1021,23 @@ export function App() {
           const u = userRef.current;
           if (!u) throw new Error("no user (stale closure?)");
           const {
-            ensureGroupForDM, encryptForGroup, bytesToBase64,
+            ensureGroupForChannel, encryptForGroup, bytesToBase64,
           } = await import("../mls/groups");
           const input = {
             userID: u.id,
             deviceID: u.device,
             databaseKey: getDeviceMlsKey(u.id, u.device),
           };
-          // Find the peer (only "other" member of the DM).
-          const peerID = (channel.members ?? []).find(
-            (m: { userID: string }) => m.userID !== u.id,
-          )?.userID;
-          if (!peerID) {
-            throw new Error("DM has no peer (only one member?)");
-          }
-          const groupID = await ensureGroupForDM(
-            cid, peerID, input, {
+          // Phase 11c-2 PR 5: ensureGroupForChannel handles BOTH
+          // single-peer DMs (1-entry array) AND multi-member channels.
+          // The function is idempotent: if the local group already
+          // exists, it's a no-op return. Otherwise it bootstraps the
+          // group from the current channel_members on first send.
+          const otherMembers = (channel.memberIDs ?? []).filter(
+            (id: string) => id !== u.id,
+          );
+          const groupID = await ensureGroupForChannel(
+            cid, otherMembers, input, {
               request: (t, p) => clientRef.current!.request(t, p),
             },
           );
@@ -1527,6 +1528,14 @@ export function App() {
                 {displayName(activeChannel, state.user?.id ?? null)}
               </span>
               {activeChannel.isDM && <span class="chalk-channel-header-tag">dm</span>}
+              {/* Phase 11c-2 PR 5: e2ee tag for MLS channels. */}
+              {activeChannel.isMls && (
+                <span
+                  class="chalk-channel-header-tag"
+                  title="end-to-end encrypted via MLS"
+                  data-testid="channel-header-e2ee-tag"
+                >e2ee</span>
+              )}
               {/* Phase 11c-2 PR 4: open the members panel.
                   Hidden for DMs (the 2-member set is fixed). */}
               {!activeChannel.isDM && (
@@ -1628,23 +1637,32 @@ export function App() {
           onAdd={async (targetUserID: string) => {
             // Phase 11c-2 PR 4: invoke the PR-2 primitive, then
             // dispatch the optimistic local update on success.
-            // Errors propagate to the panel's catch block which
-            // surfaces them inline.
+            // Phase 11c-2 PR 5: bootstrap the local MLS group first
+            // (idempotent no-op if it already exists). This is
+            // necessary because multi-member channels created via
+            // the create-channel modal don't have a local MLS group
+            // until first action.
             const u = state.user;
             const c = clientRef.current;
-            if (!u || !c || !state.activeChannelID) {
+            if (!u || !c || !state.activeChannelID || !activeChannel) {
               throw new Error("not ready");
             }
-            const { addMemberToGroup } = await import("../mls/groups");
+            const input = {
+              userID: u.id,
+              deviceID: u.device,
+              databaseKey: getDeviceMlsKey(u.id, u.device),
+            };
+            const sendFn = { request: (t: string, p: unknown) => c.request(t, p) };
+            const { ensureGroupForChannel, addMemberToGroup } = await import("../mls/groups");
+            const otherMembers = activeChannel.memberIDs.filter(
+              (id: string) => id !== u.id,
+            );
+            await ensureGroupForChannel(state.activeChannelID, otherMembers, input, sendFn);
             await addMemberToGroup(
               state.activeChannelID,
               targetUserID,
-              {
-                userID: u.id,
-                deviceID: u.device,
-                databaseKey: getDeviceMlsKey(u.id, u.device),
-              },
-              { request: (t, p) => c.request(t, p) },
+              input,
+              sendFn,
             );
             const friend = state.friends.find((f) => f.userID === targetUserID);
             dispatch({
@@ -1655,21 +1673,34 @@ export function App() {
             });
           }}
           onRemove={async (targetUserID: string) => {
+            // Phase 11c-2 PR 5: bootstrap the local MLS group first
+            // (idempotent). The pre-PR-5 code failed here with "no
+            // conversation" for channels created via the modal but
+            // never sent to.
             const u = state.user;
             const c = clientRef.current;
-            if (!u || !c || !state.activeChannelID) {
+            if (!u || !c || !state.activeChannelID || !activeChannel) {
               throw new Error("not ready");
             }
-            const { removeMemberFromGroup } = await import("../mls/groups");
+            const input = {
+              userID: u.id,
+              deviceID: u.device,
+              databaseKey: getDeviceMlsKey(u.id, u.device),
+            };
+            const sendFn = { request: (t: string, p: unknown) => c.request(t, p) };
+            const { ensureGroupForChannel, removeMemberFromGroup } = await import("../mls/groups");
+            // Bootstrap with the CURRENT members (including the
+            // target -- they need to be in the MLS group before
+            // they can be removed from it).
+            const otherMembers = activeChannel.memberIDs.filter(
+              (id: string) => id !== u.id,
+            );
+            await ensureGroupForChannel(state.activeChannelID, otherMembers, input, sendFn);
             await removeMemberFromGroup(
               state.activeChannelID,
               targetUserID,
-              {
-                userID: u.id,
-                deviceID: u.device,
-                databaseKey: getDeviceMlsKey(u.id, u.device),
-              },
-              { request: (t, p) => c.request(t, p) },
+              input,
+              sendFn,
             );
             dispatch({
               kind: "channel_member_removed",

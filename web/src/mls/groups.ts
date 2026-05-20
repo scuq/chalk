@@ -76,11 +76,13 @@ function cid(bytes: Uint8Array): any {
 // callback; cleared after.
 interface ActiveOp {
   channelID: string;
-  // For "add a peer to a brand-new DM", we have one welcome
-  // recipient. For multi-member or removeClients ops, this would
-  // be a list of user_ids to fan welcomes to (always empty for
-  // remove). 11b-2 only does the single-peer DM bring-up.
-  welcomeRecipientUserID?: string;
+  // Phase 11c-2 PR 5: plural form. Transport callback fans the
+  // same welcome bytes to each recipient (each finds their own
+  // entry in the CoreCrypto Welcome bundle; the others are
+  // inert). Single-add ops pass a 1-entry array; multi-member
+  // bootstrap passes the full peer list. Empty / undefined =
+  // no welcomes (e.g. remove ops, key-rotation updates).
+  welcomeRecipientUserIDs?: string[];
   send: SendFn;
   // Captured during the callback so the caller can read it post-resolve.
   serverAck?: MlsCommitBundleAckPayload;
@@ -146,11 +148,16 @@ async function ensureTransport(session: any): Promise<void> {
           welcome_for: [],
           epoch: op.epoch,
         };
-        if (welcomeBytes && op.welcomeRecipientUserID) {
-          payload.welcome_for = [{
-            user_id: op.welcomeRecipientUserID,
-            welcome: bytesToBase64(welcomeBytes),
-          }];
+        if (
+          welcomeBytes &&
+          op.welcomeRecipientUserIDs &&
+          op.welcomeRecipientUserIDs.length > 0
+        ) {
+          const welcomeB64 = bytesToBase64(welcomeBytes);
+          payload.welcome_for = op.welcomeRecipientUserIDs.map((uid) => ({
+            user_id: uid,
+            welcome: welcomeB64,
+          }));
         }
         // Phase 11c-2 PR 2: thread proposed_adds / proposed_removes
         // into the payload. Server validates against its auth cache.
@@ -236,6 +243,11 @@ export async function ensureGroupForDM(
   }
   const peerKP = base64ToBytes(kpAck.key_packages[0].key_package_data);
 
+  // Phase 11c-2 PR 5: take the op-mutex (latent PR-2 bug fix --
+  // without this, a concurrent addMemberToGroup could clobber
+  // activeOp mid-bootstrap).
+  const dmRelease = await acquireOpMutex();
+  try {
   await sAny.transaction(async (ctx: any) => {
     // 1. Create the conversation.
     if (typeof ctx.createConversation === "function") {
@@ -263,7 +275,7 @@ export async function ensureGroupForDM(
     //    handle the wire post. Epoch goes 0 -> 1 on the first add.
     activeOp = {
       channelID,
-      welcomeRecipientUserID: peerUserID,
+      welcomeRecipientUserIDs: [peerUserID],
       send,
       epoch: 1,
     };
@@ -292,6 +304,9 @@ export async function ensureGroupForDM(
       }
     }
   });
+  } finally {
+    dmRelease();
+  }
 
   return groupID;
 }
@@ -528,7 +543,7 @@ export async function addMemberToGroup(
     await sAny.transaction(async (ctx: any) => {
       activeOp = {
         channelID,
-        welcomeRecipientUserID: targetUserID,
+        welcomeRecipientUserIDs: [targetUserID],
         send,
         epoch: nextEpoch,
         proposedAdds: [targetUserID],
@@ -848,5 +863,156 @@ async function acquireOpMutex(): Promise<() => void> {
   opMutexChain = new Promise<void>((r) => { release = r; });
   await prev;
   return release;
+}
+
+// ensureGroupForChannel is the multi-member analog of ensureGroupForDM.
+// Idempotent: returns the local groupID if a conversation already
+// exists for channelID. Otherwise creates one and adds every peer
+// in `otherMemberUserIDs` as MLS members in a single Commit + Welcome
+// bundle.
+//
+// otherMemberUserIDs MUST NOT include the caller's own user_id; the
+// caller is implicitly the first member of the group (CoreCrypto's
+// createConversation sets that up). Pass the full channel_members
+// list minus your own id from the caller.
+//
+// Empty otherMemberUserIDs is allowed: creates a single-member
+// (self-only) group. Useful for receiving someone else's add later
+// without needing to bootstrap from scratch on first encrypt.
+//
+// Throws if any peer has no available KeyPackage (with the peer's
+// user_id in the error message so the caller can surface a useful
+// banner).
+//
+// Phase 11c-2 PR 5.
+export async function ensureGroupForChannel(
+  channelID: string,
+  otherMemberUserIDs: string[],
+  input: MlsInitInput,
+  send: SendFn,
+): Promise<Uint8Array> {
+  const session = await getMlsSession(input);
+  const sAny = session as any;
+  await ensureTransport(sAny);
+
+  const groupID = uuidToBytes(channelID);
+
+  if (await probeConversationExists(sAny, groupID)) {
+    return groupID;
+  }
+
+  // Empty case: create a self-only group, no commit needed since
+  // there are no peers to receive a Welcome. The local epoch starts
+  // at 0 and stays there until the first add.
+  if (otherMemberUserIDs.length === 0) {
+    const release = await acquireOpMutex();
+    try {
+      await sAny.transaction(async (ctx: any) => {
+        await createConversationDefensively(ctx, groupID);
+      });
+    } finally {
+      release();
+    }
+    return groupID;
+  }
+
+  // Fetch KPs for ALL peers in one server round-trip. The server
+  // returns one KP per requested user_id; missing peers are absent
+  // from the response array (not an error).
+  const kpAck = (await send.request(TypeFetchKeyPackages, {
+    user_ids: otherMemberUserIDs,
+    ciphersuite: CIPHERSUITE,
+  } as FetchKeyPackagesPayload)) as FetchKeyPackagesAckPayload;
+
+  // Build the list of KP bytes in the SAME order as
+  // otherMemberUserIDs so the welcome_for fan-out below matches up.
+  // Throw on any missing peer with their UID for the error banner.
+  const peerKPs: Uint8Array[] = [];
+  for (const uid of otherMemberUserIDs) {
+    const entry = (kpAck.key_packages ?? []).find(
+      (k) => k.user_id === uid,
+    );
+    if (!entry) {
+      throw new Error(
+        `member ${uid} has no KeyPackages; they need to log in at least once before they can join encrypted channels`,
+      );
+    }
+    peerKPs.push(base64ToBytes(entry.key_package_data));
+  }
+
+  const release = await acquireOpMutex();
+  try {
+    await sAny.transaction(async (ctx: any) => {
+      // 1. Create the conversation.
+      await createConversationDefensively(ctx, groupID);
+
+      // 2. Add all peers in one call. CoreCrypto produces ONE
+      //    Commit + ONE Welcome bundle that contains entries for
+      //    every new member. The transport callback fans the same
+      //    welcome bytes to each recipient (each finds their own
+      //    entry in the bundle; the others are inert to them).
+      activeOp = {
+        channelID,
+        welcomeRecipientUserIDs: otherMemberUserIDs,
+        send,
+        epoch: 1,
+      };
+      try {
+        if (typeof ctx.addClientsToConversation === "function") {
+          await ctx.addClientsToConversation(cid(groupID), peerKPs);
+        } else if (typeof ctx.addClients === "function") {
+          await ctx.addClients(cid(groupID), peerKPs);
+        } else if (typeof ctx.add_clients_to_conversation === "function") {
+          await ctx.add_clients_to_conversation(cid(groupID), peerKPs);
+        } else {
+          throw new Error("core-crypto: no addClientsToConversation method found");
+        }
+      } finally {
+        const op = activeOp;
+        activeOp = null;
+        if (op?.serverError) {
+          throw op.serverError;
+        }
+        if (op?.serverAck) {
+          console.log("[chalk] MLS group bootstrap delivered:", op.serverAck);
+        }
+      }
+    });
+  } finally {
+    release();
+  }
+
+  return groupID;
+}
+
+// createConversationDefensively wraps CoreCrypto's createConversation
+// with the same method-name probing the existing ensureGroupForDM
+// uses (9.3.4 ships two-arg and three-arg signatures; we try both).
+async function createConversationDefensively(
+  ctx: any,
+  groupID: Uint8Array,
+): Promise<void> {
+  if (typeof ctx.createConversation === "function") {
+    try {
+      await ctx.createConversation(cid(groupID), CREDENTIAL_TYPE, {
+        ciphersuite: CIPHERSUITE,
+      });
+      return;
+    } catch (e) {
+      await ctx.createConversation(cid(groupID), {
+        ciphersuite: CIPHERSUITE,
+        credentialType: CREDENTIAL_TYPE,
+      });
+      return;
+    }
+  }
+  if (typeof ctx.newConversation === "function") {
+    await ctx.newConversation(cid(groupID), {
+      ciphersuite: CIPHERSUITE,
+      credentialType: CREDENTIAL_TYPE,
+    });
+    return;
+  }
+  throw new Error("core-crypto: no createConversation method found");
 }
 
