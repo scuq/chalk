@@ -80,6 +80,12 @@ type WSHandler struct {
 	// handleSubscribeChannel; drained by releaseConnSubs at disconnect.
 	// See ws_phase08b.go for the helpers.
 	connSubs sync.Map
+
+	// Phase 11c-1 PR 3: in-memory cache of add_to_channel /
+	// remove_from_channel authorizations, consumed by
+	// mls_commit_bundle when matching ProposedAdds / ProposedRemoves
+	// arrive. Initialized in NewWSHandler; see mls_authorizations.go.
+	authStore *MlsAuthorizationStore
 }
 
 // NewWSHandler constructs a handler. Phase 06 adds the presence/friends
@@ -113,6 +119,7 @@ func NewWSHandler(
 		publishFriend:         pubFriend,
 		publishPrefsChange:    pubPrefs,
 		listener:              listener,
+		authStore:             NewMlsAuthorizationStore(),
 	}
 }
 

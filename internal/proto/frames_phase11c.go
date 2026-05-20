@@ -122,4 +122,18 @@ const (
 	// recently; they need to come online once before they can be
 	// added to encrypted channels." (see design doc 11c §3.1).
 	ErrCodeMlsPeerNoKeyPackages = "mls_peer_no_keypackages"
+
+	// Phase 11c-1 PR 3: returned by mls_commit_bundle when the
+	// (channel_id, epoch) is already occupied by a different commit
+	// (typically because another member committed first). The client
+	// must process the winning commit (via the catchup path -- arrives
+	// in PR 4) and retry at the new epoch.
+	ErrCodeMlsStaleCommit = "mls_stale_commit"
+
+	// Phase 11c-1 PR 3: returned by mls_commit_bundle when the
+	// proposed_adds or proposed_removes list contains an entry that
+	// was not previously authorized by add_to_channel /
+	// remove_from_channel within the 60s validity window. The client
+	// should re-authorize and re-commit.
+	ErrCodeMlsCommitUnauthorized = "mls_commit_unauthorized"
 )

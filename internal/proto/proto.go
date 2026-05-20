@@ -369,6 +369,14 @@ type MlsCommitBundlePayload struct {
 	Commit     string       `json:"commit,omitempty"`
 	WelcomeFor []WelcomeFor `json:"welcome_for,omitempty"`
 	Epoch      int64        `json:"epoch"`
+
+	// Phase 11c-1 PR 3: declared membership changes accompanying this
+	// commit. Each entry must match an authorization issued by
+	// add_to_channel / remove_from_channel within the last 60s. An
+	// empty list means "no membership change in this commit" (e.g.
+	// key-rotation Updates, Welcome-only bundles).
+	ProposedAdds    []string     `json:"proposed_adds,omitempty"`
+	ProposedRemoves []string     `json:"proposed_removes,omitempty"`
 }
 
 type MlsCommitBundleAckPayload struct {

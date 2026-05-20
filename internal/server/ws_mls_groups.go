@@ -148,6 +148,11 @@ func (h *WSHandler) handleAddToChannel(
 	}
 	kp := claimed[0]
 
+	// Phase 11c-1 PR 3: record the authorization. The matching
+	// mls_commit_bundle (declaring proposed_adds=[targetID]) must
+	// arrive within 60s to consume it.
+	h.authStore.Record(p.ChannelID, p.TargetUserID, AuthKindAdd)
+
 	ack, _ := proto.NewFrame(proto.TypeAddToChannelAck, f.Ref,
 		proto.AddToChannelAckPayload{
 			ChannelID:    p.ChannelID,
@@ -266,6 +271,11 @@ func (h *WSHandler) handleRemoveFromChannel(
 			return
 		}
 	}
+
+	// Phase 11c-1 PR 3: record the authorization. The matching
+	// mls_commit_bundle (declaring proposed_removes=[targetID]) must
+	// arrive within 60s to consume it.
+	h.authStore.Record(p.ChannelID, p.TargetUserID, AuthKindRemove)
 
 	ack, _ := proto.NewFrame(proto.TypeRemoveFromChannelAck, f.Ref,
 		proto.RemoveFromChannelAckPayload{
