@@ -483,6 +483,12 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 		case proto.TypeMlsWelcomeAck:
 			h.handleMlsWelcomeAck(ctx, c, conn, f)
 
+		// Phase 11c-1: MLS channel membership (add/remove)
+		case proto.TypeAddToChannel:
+			h.handleAddToChannel(ctx, c, conn, f)
+		case proto.TypeRemoveFromChannel:
+			h.handleRemoveFromChannel(ctx, c, conn, f)
+
 		// Phase 11a: MLS key package publish/fetch
 		case proto.TypePublishKeyPackages:
 			h.handlePublishKeyPackages(ctx, c, conn, f)
