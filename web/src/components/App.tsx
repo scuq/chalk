@@ -21,6 +21,9 @@ import {
   TypeMlsWelcomeAck,
   ContentTypeMlsCiphertext,
   type MlsWelcomePayload,
+  // Phase 11c-2 PR 3: MLS commit broadcast + catchup
+  TypeMlsCommitEvent,
+  type MlsCommitEventPayload,
   TypeSend,
   TypeFetchThread,
   TypeFetchThreadAck,
@@ -242,6 +245,45 @@ export function App() {
       get client() { return clientRef.current; },
       get userID() { return state.user?.id; },
       get deviceID() { return state.user?.device; },
+      // Phase 11c-2 PR 3: convenience wrappers for the PR-2 MLS
+      // primitives. Each method auto-supplies the MLS input and
+      // SendFn from live refs so DevTools callers only need to
+      // pass channel + target. Usage:
+      //   await window.__chalk.mlsGroups.addMember("<chid>", "<uid>");
+      //   await window.__chalk.mlsGroups.removeMember("<chid>", "<uid>");
+      //   await window.__chalk.mlsGroups.catchup("<chid>");
+      mlsGroups: {
+        async addMember(channelID: string, targetUserID: string) {
+          const u = userRef.current;
+          const c = clientRef.current;
+          if (!u || !c) throw new Error("not connected");
+          const { addMemberToGroup } = await import("../mls/groups");
+          return addMemberToGroup(channelID, targetUserID, {
+            userID: u.id, deviceID: u.device,
+            databaseKey: getDeviceMlsKey(u.id, u.device),
+          }, { request: (t, p) => c.request(t, p) });
+        },
+        async removeMember(channelID: string, targetUserID: string) {
+          const u = userRef.current;
+          const c = clientRef.current;
+          if (!u || !c) throw new Error("not connected");
+          const { removeMemberFromGroup } = await import("../mls/groups");
+          return removeMemberFromGroup(channelID, targetUserID, {
+            userID: u.id, deviceID: u.device,
+            databaseKey: getDeviceMlsKey(u.id, u.device),
+          }, { request: (t, p) => c.request(t, p) });
+        },
+        async catchup(channelID: string) {
+          const u = userRef.current;
+          const c = clientRef.current;
+          if (!u || !c) throw new Error("not connected");
+          const { fetchCommitsCatchup } = await import("../mls/groups");
+          return fetchCommitsCatchup(channelID, {
+            userID: u.id, deviceID: u.device,
+            databaseKey: getDeviceMlsKey(u.id, u.device),
+          }, { request: (t, p) => c.request(t, p) });
+        },
+      },
     };
     client.start();
     return () => client.stop();
@@ -379,6 +421,51 @@ export function App() {
         })();
         break;
       }
+      case TypeMlsCommitEvent: {
+        // Phase 11c-2 PR 3: an MLS Commit was broadcast to this
+        // channel (either live from another member's commit_bundle,
+        // or as part of a catchup stream from handleFetchMlsCommits).
+        // Feed the bytes to CoreCrypto to advance the local group
+        // state. Fire-and-forget; failures are logged.
+        const p = f.payload as MlsCommitEventPayload;
+        (async () => {
+          try {
+            const u = userRef.current;
+            if (!u) throw new Error("no user (stale closure?)");
+            const { processCommitEvent, base64ToBytes } = await import("../mls/groups");
+            const commitBytes = base64ToBytes(p.commit);
+            const newEpoch = await processCommitEvent(p.channel_id, commitBytes, {
+              userID: u.id,
+              deviceID: u.device,
+              databaseKey: getDeviceMlsKey(u.id, u.device),
+            });
+            console.log(
+              "[chalk] processed MLS commit for channel", p.channel_id,
+              "epoch:", p.epoch, "(local now:", newEpoch + ")",
+            );
+          } catch (err) {
+            console.warn("[chalk] MLS commit processing failed:", err);
+            // Recovery: a failed commit often means we missed
+            // earlier events. Catchup catches us up; if local was
+            // already ahead, the fetch returns 0 commits.
+            try {
+              const u = userRef.current;
+              const c = clientRef.current;
+              if (u && c) {
+                const { fetchCommitsCatchup } = await import("../mls/groups");
+                await fetchCommitsCatchup(p.channel_id, {
+                  userID: u.id,
+                  deviceID: u.device,
+                  databaseKey: getDeviceMlsKey(u.id, u.device),
+                }, { request: (t, payload) => c.request(t, payload) });
+              }
+            } catch (catchupErr) {
+              console.warn("[chalk] MLS catchup recovery failed:", catchupErr);
+            }
+          }
+        })();
+        break;
+      }
       // Phase 9.7a: preferences round-trip.
       case TypePrefsGetAck: {
         const ack = f.payload as PrefsAckPayload;
@@ -405,10 +492,48 @@ export function App() {
       }
       case TypeListChannelsAck: {
         const p = f.payload as ListChannelsAckPayload;
+        const channels = (p.channels ?? []).map(wireToChannel);
         dispatch({
           kind: "channels_loaded",
-          channels: (p.channels ?? []).map(wireToChannel),
+          channels,
         });
+        // Phase 11c-2 PR 3: catchup-on-reconnect for MLS channels.
+        // The server may have stored commits we missed while
+        // disconnected (other members added/removed people, rotated
+        // keys, etc). Iterate MLS channels and fire fetch_mls_commits
+        // per channel with a 100ms stagger -- the server handles
+        // them serially anyway (single-threaded WS reader) but
+        // staggering keeps logs tidy. Failures per channel are
+        // logged and don't abort the whole catchup pass.
+        const u = userRef.current;
+        const c = clientRef.current;
+        if (u && c) {
+          const mlsChannels = channels.filter((ch) => ch.isMls);
+          mlsChannels.forEach((ch, i) => {
+            setTimeout(() => {
+              (async () => {
+                try {
+                  const { fetchCommitsCatchup } = await import("../mls/groups");
+                  const count = await fetchCommitsCatchup(ch.id, {
+                    userID: u.id,
+                    deviceID: u.device,
+                    databaseKey: getDeviceMlsKey(u.id, u.device),
+                  }, { request: (t, payload) => c.request(t, payload) });
+                  if (count > 0) {
+                    console.log(
+                      "[chalk] catchup fetched", count,
+                      "commit(s) for channel", ch.id,
+                    );
+                  }
+                } catch (err) {
+                  console.warn(
+                    "[chalk] catchup failed for channel", ch.id, err,
+                  );
+                }
+              })();
+            }, i * 100);
+          });
+        }
         break;
       }
       case TypeFetchHistoryAck: {
