@@ -682,6 +682,21 @@ export function App() {
           dispatch({ kind: "channel_removed", channelID: cid });
           // Allow a future re-add to re-subscribe.
           subscribeSentRef.current.delete(cid);
+          // Phase 11c-9: wipe our local CoreCrypto group for this
+          // channel so a future re-add Welcome lands on a clean slate
+          // instead of OrphanWelcoming against the now-stale group.
+          // Best-effort; never blocks or throws. Scrollback is unaffected
+          // (the plaintext cache is keyed by ciphertext, not the group).
+          void (async () => {
+            const u = userRef.current;
+            if (!u) return;
+            const { wipeLocalConversation } = await import("../mls/groups");
+            await wipeLocalConversation(cid, {
+              userID: u.id,
+              deviceID: u.device,
+              databaseKey: getDeviceMlsKey(u.id, u.device),
+            });
+          })();
         }
         break;
       }

@@ -456,6 +456,59 @@ async function probeConversationExists(
   return false;
 }
 
+// wipeLocalConversation deletes this device's LOCAL CoreCrypto group
+// state for a channel. Called when we're removed from the channel
+// (phase 11c-9), so that a later re-add Welcome processes cleanly into
+// a fresh group instead of OrphanWelcoming against stale local state.
+//
+// Best-effort and method-probed (CoreCrypto 9.3.4's method name is
+// unreliable in the TS types, same as every other call here). If no
+// wipe method matches, or the conversation doesn't exist, it's a no-op
+// and never throws -- the caller treats removal-cleanup as advisory.
+//
+// Does NOT affect readable scrollback: the phase 11c-4 plaintext cache
+// is keyed by ciphertext hash, independent of the live group, so wiping
+// here leaves cached history intact.
+export async function wipeLocalConversation(
+  channelID: string,
+  input: MlsInitInput,
+): Promise<void> {
+  try {
+    const session = await getMlsSession(input);
+    const sAny = session as any;
+    const groupID = uuidToBytes(channelID);
+
+    // Nothing to wipe if we have no local group.
+    if (!(await probeConversationExists(sAny, groupID))) {
+      return;
+    }
+
+    // Probe the deletion method (names vary across CoreCrypto versions).
+    const c = cid(groupID);
+    if (typeof sAny.wipeConversation === "function") {
+      await sAny.wipeConversation(c);
+      return;
+    }
+    if (typeof sAny.wipe_conversation === "function") {
+      await sAny.wipe_conversation(c);
+      return;
+    }
+    if (typeof sAny.deleteConversation === "function") {
+      await sAny.deleteConversation(c);
+      return;
+    }
+    // No known method: leave it. A re-add may still OrphanWelcome, but
+    // we've not made anything worse. Log so this is visible.
+    console.warn(
+      "[chalk] wipeLocalConversation: no CoreCrypto wipe method found; " +
+        "stale local group left in place for channel " + channelID,
+    );
+  } catch (err) {
+    // Best-effort: removal-cleanup must never throw into the caller.
+    console.warn("[chalk] wipeLocalConversation failed (non-fatal):", err);
+  }
+}
+
 function uuidToBytes(uuid: string): Uint8Array {
   const hex = uuid.replace(/-/g, "");
   if (hex.length !== 32) {
