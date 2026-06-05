@@ -681,6 +681,16 @@ export async function removeMemberFromGroup(
 //     events for unknown channels.
 //   - If the commit is malformed or for the wrong epoch, CoreCrypto
 //     throws. Caller may want to trigger a full catchup.
+// Phase 11c-3 PR 4: sentinel returned by processCommitEvent when the
+// local CoreCrypto has no conversation for the channel yet. This is
+// the benign commit_event-before-Welcome race: the Welcome that
+// follows will install the full group state, so the un-processable
+// commit is already reflected and needs no recovery. Distinguishable
+// from a real failure (which still throws) so the caller can skip the
+// pointless catchup. Mirrors fetchCommitsCatchup, which likewise
+// treats "no local conversation" as a no-op (returns 0).
+export const COMMIT_EVENT_NO_CONVERSATION = -1;
+
 export async function processCommitEvent(
   channelID: string,
   commitBytes: Uint8Array,
@@ -696,10 +706,12 @@ export async function processCommitEvent(
   // commits for it. The caller should buffer or discard.
   const exists = await probeConversationExists(sAny, groupID);
   if (!exists) {
-    throw new Error(
-      `processCommitEvent: local CoreCrypto has no conversation for channel ${channelID}; ` +
-      `was the Welcome processed?`,
-    );
+    // Phase 11c-3 PR 4: benign commit_event-before-Welcome race. Do
+    // not throw -- the Welcome that follows installs the group state,
+    // so this commit is already accounted for. Signal the caller to
+    // skip recovery rather than logging a scary error + running a
+    // catchup that can do nothing (no local conversation to apply to).
+    return COMMIT_EVENT_NO_CONVERSATION;
   }
 
   const release = await acquireOpMutex();
