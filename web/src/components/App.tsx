@@ -333,24 +333,33 @@ export function App() {
     );
   }
 
-  // Phase 11a: device-local MLS DB key (32 random bytes) per
-  // (userID, deviceID). Stored in localStorage; generated on first
-  // use. Same accessor session.ts uses for KP publishing.
+  // Phase 11c-3 PR 2: unified hex-encoded dbkey helper.
+  //
+  // Two code paths previously raced on the SAME localStorage key
+  // with DIFFERENT encodings -- the inline useEffect setup wrote
+  // hex, while this helper read/wrote base64. atob() of a hex
+  // string does NOT throw (hex chars are valid base64 chars), so
+  // the helper silently returned 32 bytes of garbage. CoreCrypto
+  // opened with the garbage bytes, couldn't read the IndexedDB
+  // rows the publish path had written under the hex bytes, and
+  // every Welcome OrphanWelcomed. Single shared helper now;
+  // hex throughout.
   function getDeviceMlsKey(userID: string, deviceID: string): Uint8Array {
     const k = `chalk.mls.dbkey.${userID}.${deviceID}`;
-    const existing = localStorage.getItem(k);
-    if (existing) {
-      const bytes = new Uint8Array(32);
-      const s = atob(existing);
-      for (let i = 0; i < 32; i++) bytes[i] = s.charCodeAt(i);
-      return bytes;
+    let hex = localStorage.getItem(k);
+    if (!hex) {
+      const fresh = new Uint8Array(32);
+      crypto.getRandomValues(fresh);
+      hex = Array.from(fresh)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      localStorage.setItem(k, hex);
     }
-    const bytes = new Uint8Array(32);
-    crypto.getRandomValues(bytes);
-    let str = "";
-    for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
-    localStorage.setItem(k, btoa(str));
-    return bytes;
+    const out = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) {
+      out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    }
+    return out;
   }
 
   function handleFrame(f: Frame) {
@@ -1433,21 +1442,11 @@ export function App() {
     const userID = state.user.id;
     const deviceID = state.user.device;
 
-    // Derive a 32-byte database key from a per-device localStorage
-    // entry. If absent, generate one. The key never leaves the
-    // browser (11a). Future phase 11b will encrypt this under a
-    // passkey-derived secret instead.
-    const dbKeyStorageKey = `chalk.mls.dbkey.${userID}.${deviceID}`;
-    let dbKeyHex = window.localStorage.getItem(dbKeyStorageKey);
-    if (!dbKeyHex) {
-      const bytes = new Uint8Array(32);
-      crypto.getRandomValues(bytes);
-      dbKeyHex = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-      window.localStorage.setItem(dbKeyStorageKey, dbKeyHex);
-    }
-    const dbKey = new Uint8Array(
-      dbKeyHex.match(/.{1,2}/g)!.map((h) => parseInt(h, 16)),
-    );
+    // Phase 11c-3 PR 2: derive the dbKey via the shared helper so
+    // the publish path and the welcome/encrypt/decrypt paths agree
+    // on encoding. (Previously this useEffect inlined hex while
+    // getDeviceMlsKey used base64; the two diverged silently.)
+    const dbKey = getDeviceMlsKey(userID, deviceID);
 
     // Schedule on a microtask so the initial render isn't blocked.
     Promise.resolve().then(async () => {
