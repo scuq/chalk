@@ -1,9 +1,13 @@
 package integration
 
-// Phase 11c-5: the low-stock detection threshold logic. We test the
+// Phase 11c-5: the low-stock detection threshold logic. We assert the
 // store-level invariant the push relies on -- that CountUnusedKeyPackages
 // reflects claims down past the low-water mark -- without standing up a
 // full WS server (push delivery is covered by the hub tests).
+//
+// Uses a dedicated throwaway user (fresh UUID + unique handle) so it
+// never collides with the shared phase11c1 fixtures that setupPhase11c1
+// seeds.
 
 import (
 	"testing"
@@ -17,22 +21,22 @@ func TestPhase11c5_KpLow_CountReflectsClaims(t *testing.T) {
 	st, _, _, _ := setupPhase11c1(t)
 	c := ctx(t)
 
-	carolID := uuid.MustParse(phase11c1CarolID)
-	if _, err := st.UpsertUser(c, carolID, "phase11c5_carol"); err != nil {
-		t.Fatalf("upsert carol: %v", err)
+	// Dedicated user for this test; fresh id avoids any fixture clash.
+	userID := uuid.New()
+	if _, err := st.UpsertUser(c, userID, "phase11c5_kpuser"); err != nil {
+		t.Fatalf("upsert test user: %v", err)
 	}
-	// Device row (same idiom as mls_commits_test.go).
 	devID := uuid.New()
 	if _, err := st.Pool.Exec(c,
 		`INSERT INTO devices (id, user_id, device_label)
 		 VALUES ($1, $2, $3)`,
-		devID, carolID, "phase-11c5-test-device",
+		devID, userID, "phase-11c5-test-device",
 	); err != nil {
 		t.Fatalf("insert device: %v", err)
 	}
 
 	const suite = 1
-	clientID := carolID.String() + ":" + devID.String()
+	clientID := userID.String() + ":" + devID.String()
 	rows := make([]store.KeyPackageRow, 0, 10)
 	for i := 0; i < 10; i++ {
 		rows = append(rows, store.KeyPackageRow{
@@ -54,9 +58,9 @@ func TestPhase11c5_KpLow_CountReflectsClaims(t *testing.T) {
 		t.Fatalf("expected 10 unused, got %d", n)
 	}
 
-	// Claim 6 (one per call), so remaining = 4 (<= the low-water mark 5).
+	// Claim 6 (one per call) for this user, so remaining = 4 (<= 5).
 	for i := 0; i < 6; i++ {
-		claimed, err := st.ClaimKeyPackagesForUsers(c, []uuid.UUID{carolID}, suite)
+		claimed, err := st.ClaimKeyPackagesForUsers(c, []uuid.UUID{userID}, suite)
 		if err != nil {
 			t.Fatalf("claim %d: %v", i, err)
 		}
