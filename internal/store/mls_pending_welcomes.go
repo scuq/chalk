@@ -15,6 +15,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -151,4 +152,70 @@ func (s *Store) CountPendingWelcomesForUser(
 		return 0, fmt.Errorf("count pending_welcomes: %w", err)
 	}
 	return n, nil
+}
+
+// DefaultPendingWelcomeTTL is how long a buffered Welcome may sit
+// unacked before the sweep evicts it. A Welcome older than this is
+// almost certainly for a recipient who isn't returning, and would
+// reference a stale epoch the group has advanced past anyway -- so
+// delivering it would likely OrphanWelcome rather than work. An evicted
+// recipient who later uses the channel is handled by the phase 11c-6
+// split-brain guard (re-add with a fresh Welcome). Phase 11c-8.
+const DefaultPendingWelcomeTTL = 14 * 24 * time.Hour
+
+// DeleteStalePendingWelcomes removes buffered welcomes older than
+// olderThan. Returns the number of rows deleted. Phase 11c-8.
+func (s *Store) DeleteStalePendingWelcomes(
+	ctx context.Context,
+	olderThan time.Duration,
+) (int64, error) {
+	// Pass the cutoff as numeric seconds and build the interval with
+	// make_interval. Go's Duration.String() (e.g. "336h0m0s") is NOT
+	// valid Postgres interval syntax, so we avoid a text cast entirely.
+	secs := olderThan.Seconds()
+	tag, err := s.Pool.Exec(ctx,
+		`DELETE FROM mls_pending_welcomes
+		  WHERE buffered_at < NOW() - make_interval(secs => $1)`,
+		secs,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete stale pending_welcomes: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
+// PendingWelcomeSweepLoop periodically evicts stale buffered welcomes.
+// Mirrors PartitionMaintenanceLoop: runs once immediately, then on the
+// given interval, until ctx is cancelled. ttl is the eviction age.
+// logf may be nil. Phase 11c-8.
+func (s *Store) PendingWelcomeSweepLoop(
+	ctx context.Context,
+	interval time.Duration,
+	ttl time.Duration,
+	logf func(string, ...any),
+) {
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	sweep := func() {
+		n, err := s.DeleteStalePendingWelcomes(ctx, ttl)
+		if err != nil {
+			logf("pending_welcome sweep: %v", err)
+			return
+		}
+		if n > 0 {
+			logf("pending_welcome sweep: evicted %d stale welcome(s) older than %s", n, ttl)
+		}
+	}
+	sweep() // once on startup
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			sweep()
+		}
+	}
 }

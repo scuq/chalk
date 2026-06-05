@@ -230,6 +230,16 @@ func (s *Server) Serve(ctx context.Context) error {
 			defer wg.Done()
 			s.store.PartitionMaintenanceLoop(bgCtx, 24*time.Hour, s.logger.Printf)
 		}()
+		// Phase 11c-8: evict stale buffered MLS Welcomes (default TTL
+		// 14 days) so mls_pending_welcomes doesn't grow unbounded and
+		// stale welcomes referencing long-past epochs don't linger.
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.store.PendingWelcomeSweepLoop(
+				bgCtx, 6*time.Hour, store.DefaultPendingWelcomeTTL, s.logger.Printf,
+			)
+		}()
 	}
 
 	// Phase 06 background loops.
