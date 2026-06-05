@@ -36,19 +36,28 @@ const CREDENTIAL_TYPE = 1; // Basic
 export async function ensureKeyPackageStock(
   input: MlsInitInput,
   send: SendFn,
-  opts: { threshold?: number; target?: number } = {},
+  opts: { threshold?: number; target?: number; forceRepublish?: boolean } = {},
 ): Promise<{ before: number; after: number; published: number }> {
   const threshold = opts.threshold ?? 3;
   const target = opts.target ?? 10;
+  // Phase 11c-3 PR 3: when the device's local store was just wiped
+  // (fresh dbKey), the caller sets forceRepublish so we top up to
+  // target even if the server still reports a healthy count. The old
+  // server KPs are orphaned (their private half is gone); we supersede
+  // them with fresh KPs. The server claims newest-first, so the fresh
+  // ones are always handed out ahead of the orphans.
+  const forceRepublish = opts.forceRepublish ?? false;
 
   // Ask the server how many we have.
   const countAck = (await send.request(TypeKeyPackageCount, {})) as KeyPackageCountAckPayload;
   const before = countAck.count;
-  if (before >= threshold) {
+  if (before >= threshold && !forceRepublish) {
     return { before, after: before, published: 0 };
   }
 
-  const need = target - before;
+  // On a forced republish, top up to the full target regardless of the
+  // (untrustworthy) server count. Otherwise fill the gap to target.
+  const need = forceRepublish ? target : target - before;
   const session = await getMlsSession(input);
 
   // Generate `need` fresh KPs via a transaction.

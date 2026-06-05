@@ -306,12 +306,25 @@ export function App() {
     // Phase 11b-2 fix5: read user via ref so stale closures don't see null.
     const u = userRef.current;
     if (!u) throw new Error("no user (stale closure?)");
+    const dbKey = getDeviceMlsKey(u.id, u.device);
     const plaintext = await decryptForGroup(groupID, ciphertext, {
       userID: u.id,
       deviceID: u.device,
-      databaseKey: getDeviceMlsKey(u.id, u.device),
+      databaseKey: dbKey,
     });
-    return new TextDecoder().decode(plaintext);
+    const text = new TextDecoder().decode(plaintext);
+    // Phase 11c-4: persist the plaintext encrypted-at-rest so a reload
+    // can restore it (MLS won't let us decrypt this ciphertext twice).
+    // Fire-and-forget; putCachedPlaintext is best-effort and never throws.
+    void (async () => {
+      const { putCachedPlaintext, cacheKeyForCiphertext } =
+        await import("../mls/plaintext-cache");
+      // Phase 11c-4 PR 2: key by ciphertext hash so the entry matches
+      // what history will look up (history returns the same ciphertext).
+      const key = await cacheKeyForCiphertext(wire.body);
+      await putCachedPlaintext(u.id, dbKey, key, text);
+    })();
+    return text;
   }
 
   // Phase 11b-2 fix6: decrypt a batch of MLS messages from a
@@ -319,9 +332,26 @@ export function App() {
   // in place; non-MLS messages pass through unchanged. Decryption
   // failures yield a "[unable to decrypt]" placeholder.
   async function decryptBatch(wires: MessagePayload[]): Promise<MessagePayload[]> {
+    const { getCachedPlaintext, cacheKeyForCiphertext } =
+      await import("../mls/plaintext-cache");
+    const u0 = userRef.current;
     return Promise.all(
       wires.map(async (w) => {
         if (w.content_type !== ContentTypeMlsCiphertext) return w;
+        // Phase 11c-4: cache-first. On a hit we avoid CoreCrypto entirely
+        // -- this is the reload-survival path, since MLS cannot re-decrypt
+        // ciphertext whose ratchet key was already consumed.
+        if (u0) {
+          // Phase 11c-4 PR 2: look up by ciphertext hash (covers BOTH
+          // received messages and the user's own sent messages, which
+          // were cached at send time under the same key).
+          const key = await cacheKeyForCiphertext(w.body);
+          const cached = await getCachedPlaintext(
+            u0.id, getDeviceMlsKey(u0.id, u0.device), key,
+          );
+          if (cached !== null) return { ...w, body: cached };
+        }
+        // Miss -> live decrypt (which self-caches on success).
         try {
           const decrypted = await decryptIncomingMls(w);
           return { ...w, body: decrypted };
@@ -344,6 +374,20 @@ export function App() {
   // rows the publish path had written under the hex bytes, and
   // every Welcome OrphanWelcomed. Single shared helper now;
   // hex throughout.
+
+  // Phase 11c-3 PR 3: report whether the device's dbKey localStorage
+  // entry is ABSENT, i.e. the next getDeviceMlsKey call will generate
+  // a brand-new key. A missing dbKey means localStorage was cleared,
+  // which means CoreCrypto's IndexedDB (which lives and dies with it)
+  // is empty too -- so any KeyPackages the server still holds for this
+  // device are orphaned and must be superseded by a fresh republish.
+  //
+  // MUST be called BEFORE getDeviceMlsKey, which creates the entry on
+  // a miss (after which this would wrongly report not-fresh).
+  function isDeviceMlsKeyFresh(userID: string, deviceID: string): boolean {
+    return localStorage.getItem(`chalk.mls.dbkey.${userID}.${deviceID}`) === null;
+  }
+
   function getDeviceMlsKey(userID: string, deviceID: string): Uint8Array {
     const k = `chalk.mls.dbkey.${userID}.${deviceID}`;
     let hex = localStorage.getItem(k);
@@ -443,13 +487,22 @@ export function App() {
           try {
             const u = userRef.current;
             if (!u) throw new Error("no user (stale closure?)");
-            const { processCommitEvent, base64ToBytes } = await import("../mls/groups");
+            const { processCommitEvent, COMMIT_EVENT_NO_CONVERSATION, base64ToBytes } = await import("../mls/groups");
             const commitBytes = base64ToBytes(p.commit);
             const newEpoch = await processCommitEvent(p.channel_id, commitBytes, {
               userID: u.id,
               deviceID: u.device,
               databaseKey: getDeviceMlsKey(u.id, u.device),
             });
+            if (newEpoch === COMMIT_EVENT_NO_CONVERSATION) {
+              // Benign commit_event-before-Welcome race: the Welcome
+              // will deliver the group state. Nothing to recover.
+              console.debug(
+                "[chalk] commit_event arrived before Welcome for channel",
+                p.channel_id, "-- deferring to Welcome (no action needed)",
+              );
+              return;
+            }
             console.log(
               "[chalk] processed MLS commit for channel", p.channel_id,
               "epoch:", p.epoch, "(local now:", newEpoch + ")",
@@ -1052,9 +1105,22 @@ export function App() {
           );
           const plaintext = new TextEncoder().encode(body);
           const ciphertext = await encryptForGroup(groupID, plaintext, input);
+          const b64ct = bytesToBase64(ciphertext);
+          // Phase 11c-4 PR 2: cache our OWN plaintext under the ciphertext
+          // hash before sending. We never receive an echo of our own
+          // message and can't decrypt our own ciphertext, so this is the
+          // only point we can populate the cache for sent messages. On
+          // reload, history returns this same ciphertext -> same key ->
+          // cache hit. Best-effort; never blocks or fails the send.
+          void (async () => {
+            const { putCachedPlaintext, cacheKeyForCiphertext } =
+              await import("../mls/plaintext-cache");
+            const key = await cacheKeyForCiphertext(b64ct);
+            await putCachedPlaintext(u.id, input.databaseKey, key, body);
+          })();
           const payload: SendPayload = {
             channel_id: cid,
-            body: bytesToBase64(ciphertext),
+            body: b64ct,
             content_type: "mls_ciphertext",
           };
           if (parentID) payload.parent_id = parentID;
@@ -1446,6 +1512,13 @@ export function App() {
     // the publish path and the welcome/encrypt/decrypt paths agree
     // on encoding. (Previously this useEffect inlined hex while
     // getDeviceMlsKey used base64; the two diverged silently.)
+    //
+    // Phase 11c-3 PR 3: check freshness BEFORE deriving the key
+    // (getDeviceMlsKey creates the entry on a miss). A fresh key means
+    // the local KP store was wiped, so we must republish even if the
+    // server reports a healthy count -- otherwise incoming Welcomes
+    // reference KPs whose private half is gone -> OrphanWelcome.
+    const dbKeyFresh = isDeviceMlsKeyFresh(userID, deviceID);
     const dbKey = getDeviceMlsKey(userID, deviceID);
 
     // Schedule on a microtask so the initial render isn't blocked.
@@ -1462,6 +1535,7 @@ export function App() {
         const result = await ensureKeyPackageStock(
           { userID, deviceID, databaseKey: dbKey },
           { request: sendRequest },
+          { forceRepublish: dbKeyFresh },
         );
         if (!cancelled) {
           console.log("[chalk] MLS KP stock:", result);
