@@ -264,6 +264,12 @@ const (
 	// to publish more.
 	TypeKeyPackageCount    = "key_package_count"
 	TypeKeyPackageCountAck = "key_package_count_ack"
+
+	// key_package_low: server -> client push. Sent to a user's devices
+	// when a claim drops that device's unused-KP count below the
+	// low-water mark. The client responds by republishing its stock.
+	// Phase 11c-5.
+	TypeKeyPackageLow      = "key_package_low"
 )
 
 // PublishKeyPackagesPayload uploads one or more KeyPackages for the
@@ -284,6 +290,16 @@ type KeyPackageEntry struct {
 
 type PublishKeyPackagesAckPayload struct {
 	Accepted int `json:"accepted"` // how many were valid + stored
+}
+
+// KeyPackageLowPayload notifies a device that its server-side unused
+// KeyPackage stock is running low and it should republish. Ciphersuite
+// tells the client which suite drained (chalk uses 1 today). The client
+// re-counts and republishes for its own device; no per-message id is
+// needed. Phase 11c-5.
+type KeyPackageLowPayload struct {
+	Ciphersuite int `json:"ciphersuite,omitempty"`
+	Remaining   int `json:"remaining"` // informational: unused count after the claim
 }
 
 // FetchKeyPackagesPayload requests KPs for these users. The server

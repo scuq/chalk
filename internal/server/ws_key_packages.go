@@ -136,8 +136,16 @@ func (h *WSHandler) handleFetchKeyPackages(
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "claim KPs: "+err.Error())
 		return
 	}
+	// Phase 11c-5: collect claims for the low-stock check (best-effort,
+	// after we've built the response).
+	lowClaims := make([]kpLowClaim, 0, len(claimed))
 	out := make([]proto.FetchedKeyPackage, 0, len(claimed))
 	for _, ck := range claimed {
+		lowClaims = append(lowClaims, kpLowClaim{
+			UserID:      ck.UserID,
+			DeviceID:    ck.DeviceID,
+			Ciphersuite: ck.Ciphersuite,
+		})
 		out = append(out, proto.FetchedKeyPackage{
 			UserID:         ck.UserID.String(),
 			DeviceID:       ck.DeviceID.String(),
@@ -152,6 +160,9 @@ func (h *WSHandler) handleFetchKeyPackages(
 	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
 		h.logger.Printf("fetch_key_packages_ack write: %v", err)
 	}
+	// Phase 11c-5: replenish-on-drain. After serving the claim, nudge
+	// any depleted device's owner to republish.
+	h.maybeNotifyKeyPackageLow(ctx, lowClaims)
 }
 
 // handleKeyPackageCount tells the connecting device how many unused

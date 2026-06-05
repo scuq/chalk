@@ -80,6 +80,7 @@ import {
   type PresencePayload,
   type PresenceSubscribePayload,
   type PresenceUnsubscribePayload,
+  TypeKeyPackageLow,
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId, getThreadSeen, setThreadSeen } from "../ws-client";
 import { reducer } from "../state/reducer";
@@ -442,6 +443,34 @@ export function App() {
           const m = wireToMessage(wire);
           dispatch({ kind: "message", message: m });
         }
+        break;
+      }
+      case TypeKeyPackageLow: {
+        // Phase 11c-5: the server says our server-side KP stock is low
+        // (someone added us to a group and drained it). Republish.
+        // forceRepublish:true because the server's low-water mark (5)
+        // is above the client's normal republish threshold (3) -- a
+        // push at "4 remaining" would otherwise be ignored.
+        (async () => {
+          try {
+            const u = userRef.current;
+            if (!u) return;
+            const { ensureKeyPackageStock } = await import("../mls/session");
+            const sendRequest = (t: string, pl: unknown): Promise<unknown> => {
+              const c = clientRef.current;
+              if (!c || !c.isOpen()) return Promise.reject(new Error("ws closed"));
+              return c.request(t, pl);
+            };
+            const result = await ensureKeyPackageStock(
+              { userID: u.id, deviceID: u.device, databaseKey: getDeviceMlsKey(u.id, u.device) },
+              { request: sendRequest },
+              { forceRepublish: true },
+            );
+            console.log("[chalk] KP low-stock republish:", result);
+          } catch (err) {
+            console.warn("[chalk] KP low-stock republish failed:", err);
+          }
+        })();
         break;
       }
       case TypeMlsWelcome: {

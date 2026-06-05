@@ -306,6 +306,8 @@ export const TypeFetchKeyPackages      = "fetch_key_packages";
 export const TypeFetchKeyPackagesAck   = "fetch_key_packages_ack";
 export const TypeKeyPackageCount       = "key_package_count";
 export const TypeKeyPackageCountAck    = "key_package_count_ack";
+// Phase 11c-5: server -> client low-stock replenish push.
+export const TypeKeyPackageLow         = "key_package_low";
 
 export interface KeyPackageEntry {
   ciphersuite: number;

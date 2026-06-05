@@ -148,6 +148,15 @@ func (h *WSHandler) handleAddToChannel(
 	}
 	kp := claimed[0]
 
+	// Phase 11c-5: nudge the target to republish if this claim drained
+	// them below the low-water mark. Best-effort; deferred so it runs
+	// after we've finished building the response below.
+	defer h.maybeNotifyKeyPackageLow(ctx, []kpLowClaim{{
+		UserID:      kp.UserID,
+		DeviceID:    kp.DeviceID,
+		Ciphersuite: kp.Ciphersuite,
+	}})
+
 	// Phase 11c-1 PR 3: record the authorization. The matching
 	// mls_commit_bundle (declaring proposed_adds=[targetID]) must
 	// arrive within 60s to consume it.

@@ -46,7 +46,9 @@ const Channel = "chalk_global"
 // carry the full ChannelSummary so receivers don't have to query to
 // render the sidebar entry.
 type Event struct {
-	// Kind discriminates: "message", "presence", "friend", "channel".
+	// Kind discriminates: "message", "presence", "friend", "channel",
+	// "prefs", "kp_low" (phase 11c-5: KeyPackage low-stock push; UserID
+	// is the device owner to notify).
 	Kind string `json:"k"`
 
 	// Message fields (Kind="message"). MessageID and TS together
