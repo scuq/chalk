@@ -240,6 +240,19 @@ func (s *Server) Serve(ctx context.Context) error {
 				bgCtx, 6*time.Hour, store.DefaultPendingWelcomeTTL, s.logger.Printf,
 			)
 		}()
+		// Phase 11c-10: reclaim orphaned/stale KeyPackage rows.
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.store.KeyPackageSweepLoop(
+				bgCtx,
+				store.DefaultKPSweepInterval,
+				store.DefaultKPSweepKeepN,
+				store.DefaultKPSweepMinAge,
+				store.DefaultKPUsedRetention,
+				s.logger.Printf,
+			)
+		}()
 	}
 
 	// Phase 06 background loops.

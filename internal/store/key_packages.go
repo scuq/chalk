@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -173,4 +174,130 @@ func (s *Store) ClaimKeyPackagesForUsers(
 		return nil, err
 	}
 	return out, nil
+}
+
+// KeyPackage sweep defaults (phase 11c-10). See
+// chalk-keypackage-cleanup-concept.md.
+const (
+	// DefaultKPSweepKeepN is how many newest unused KPs per device the
+	// superseded-sweep always preserves (2x the client republish target
+	// of 10, for generous headroom).
+	DefaultKPSweepKeepN = 20
+	// DefaultKPSweepMinAge is the grace period before an unused KP is
+	// eligible for the superseded-sweep, so a just-published batch the
+	// claim-count hasn't observed yet is never deleted.
+	DefaultKPSweepMinAge = 24 * time.Hour
+	// DefaultKPUsedRetention is how long consumed (used_at) KPs are kept
+	// for audit/debug before reclamation. Used KPs can never be claimed
+	// again, so this is pure space management.
+	DefaultKPUsedRetention = 7 * 24 * time.Hour
+	// DefaultKPSweepInterval is the background sweep cadence.
+	DefaultKPSweepInterval = time.Hour
+)
+
+// SweepOrphanedKeyPackages reclaims orphaned/stale KP rows under two
+// conservative criteria, in a single transaction:
+//
+//	A (superseded unused): per device, keep the newest keepN unused KPs;
+//	   delete older unused ones older than minAge.
+//	B (consumed past retention): delete used KPs older than usedRetention.
+//
+// Returns (supersededDeleted, usedDeleted, err). Never touches a
+// device's current newest-N unused KPs, so a live device is never
+// starved. Phase 11c-10.
+func (s *Store) SweepOrphanedKeyPackages(
+	ctx context.Context,
+	keepN int,
+	minAge time.Duration,
+	usedRetention time.Duration,
+) (supersededDeleted int64, usedDeleted int64, err error) {
+	if keepN < 0 {
+		keepN = 0
+	}
+	minAgeSecs := minAge.Seconds()
+	usedRetSecs := usedRetention.Seconds()
+
+	err = s.withTx(ctx, func(tx pgx.Tx) error {
+		// Criterion A: superseded unused KPs. Rank each device's unused
+		// KPs newest-first; delete those ranked beyond keepN that are
+		// also older than minAge. The window-function form is provably
+		// per-device and avoids a correlated NOT IN subquery.
+		tagA, aErr := tx.Exec(ctx,
+			`WITH ranked AS (
+			     SELECT id,
+			            row_number() OVER (
+			              PARTITION BY device_id
+			              ORDER BY id DESC
+			            ) AS rn,
+			            created_at
+			       FROM key_packages
+			      WHERE used_at IS NULL
+			 )
+			 DELETE FROM key_packages kp
+			  USING ranked r
+			  WHERE kp.id = r.id
+			    AND r.rn > $1
+			    AND r.created_at < NOW() - make_interval(secs => $2)`,
+			keepN, minAgeSecs,
+		)
+		if aErr != nil {
+			return fmt.Errorf("sweep superseded unused KPs: %w", aErr)
+		}
+		supersededDeleted = tagA.RowsAffected()
+
+		// Criterion B: consumed KPs past retention.
+		tagB, bErr := tx.Exec(ctx,
+			`DELETE FROM key_packages
+			  WHERE used_at IS NOT NULL
+			    AND used_at < NOW() - make_interval(secs => $1)`,
+			usedRetSecs,
+		)
+		if bErr != nil {
+			return fmt.Errorf("sweep consumed KPs: %w", bErr)
+		}
+		usedDeleted = tagB.RowsAffected()
+		return nil
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	return supersededDeleted, usedDeleted, nil
+}
+
+// KeyPackageSweepLoop periodically runs SweepOrphanedKeyPackages.
+// Mirrors PendingWelcomeSweepLoop (phase 11c-8): runs once immediately,
+// then on interval, until ctx is cancelled. logf may be nil. Phase
+// 11c-10.
+func (s *Store) KeyPackageSweepLoop(
+	ctx context.Context,
+	interval time.Duration,
+	keepN int,
+	minAge time.Duration,
+	usedRetention time.Duration,
+	logf func(string, ...any),
+) {
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	sweep := func() {
+		sup, used, err := s.SweepOrphanedKeyPackages(ctx, keepN, minAge, usedRetention)
+		if err != nil {
+			logf("kp sweep: %v", err)
+			return
+		}
+		if sup > 0 || used > 0 {
+			logf("kp sweep: reclaimed %d superseded-unused, %d consumed", sup, used)
+		}
+	}
+	sweep() // once on startup
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			sweep()
+		}
+	}
 }
