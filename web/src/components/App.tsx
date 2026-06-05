@@ -1155,6 +1155,31 @@ export function App() {
           if (parentID) payload.parent_id = parentID;
           c.send(TypeSend, payload);
         } catch (err) {
+          if (err && (err as { name?: string }).name === "MlsLocalStateLostError") {
+            // Phase 11c-6: this device lost its local MLS state for a
+            // channel that still exists server-side. We did NOT create
+            // a divergent group. Tell the user how to recover: a current
+            // member must remove and re-add them (which sends a fresh
+            // Welcome rebuilding their state at the current epoch).
+            console.warn(
+              "[chalk] MLS local state lost for this channel; ask a member " +
+                "to remove and re-add you to rejoin:",
+              err,
+            );
+            // Surface to the user. A dedicated banner is a polish pass;
+            // for now an alert keeps the failure visible rather than
+            // silent (the message simply won't send).
+            try {
+              alert(
+                "Your encryption state for this channel was reset on this " +
+                  "device. Ask another member to remove and re-add you to " +
+                  "rejoin the encrypted channel.",
+              );
+            } catch {
+              /* non-browser / test context */
+            }
+            return;
+          }
           console.warn("[chalk] MLS encrypted send failed:", err);
           // Surface to the user via console for now; a banner is
           // a polish pass.

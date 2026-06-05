@@ -897,6 +897,44 @@ async function acquireOpMutex(): Promise<() => void> {
 // banner).
 //
 // Phase 11c-2 PR 5.
+// Phase 11c-6: thrown by ensureGroupForChannel when this client has no
+// local MLS group for a channel that ALREADY has a group lineage on the
+// server (other members, prior commits). The client cannot self-recover
+// -- MLS private state only arrives via a Welcome -- so rather than
+// bootstrap a divergent group, we refuse and surface this. The UI can
+// match on `name === "MlsLocalStateLostError"` to show a re-add prompt.
+export class MlsLocalStateLostError extends Error {
+  readonly channelID: string;
+  constructor(channelID: string) {
+    super(
+      `local MLS state for channel ${channelID} is missing, but the ` +
+        `channel already has a group on the server; this device must be ` +
+        `removed and re-added to rejoin (cannot self-recover from commits)`,
+    );
+    this.name = "MlsLocalStateLostError";
+    this.channelID = channelID;
+  }
+}
+
+// channelHasServerCommits asks the server whether a channel already has
+// any stored MLS commits (i.e. an established group lineage). Uses the
+// existing fetch_mls_commits catchup request with after_epoch=0; the
+// ack's count reflects the full stored history. Unlike fetchCommitsCatchup
+// this does NOT require (or touch) a local conversation -- it's a pure
+// existence probe. Any commits the server streams in response are
+// harmlessly no-op'd by processCommitEvent when there's no local group
+// (COMMIT_EVENT_NO_CONVERSATION).
+export async function channelHasServerCommits(
+  channelID: string,
+  send: SendFn,
+): Promise<boolean> {
+  const ack = (await send.request(TypeFetchMlsCommits, {
+    channel_id: channelID,
+    after_epoch: 0,
+  } as FetchMlsCommitsPayload)) as FetchMlsCommitsAckPayload;
+  return (ack?.count ?? 0) > 0;
+}
+
 export async function ensureGroupForChannel(
   channelID: string,
   otherMemberUserIDs: string[],
@@ -926,6 +964,18 @@ export async function ensureGroupForChannel(
       release();
     }
     return groupID;
+  }
+
+  // Phase 11c-6: split-brain guard. We have no local group for this
+  // channel but it HAS peers. Before bootstrapping a fresh group,
+  // check whether the channel already has a group lineage on the
+  // server. If it does, bootstrapping here would create a divergent
+  // second group under the same channel id -- the bug that made
+  // channels permanently unrecoverable after a local-state reset.
+  // We can't self-recover (MLS private state comes only via a Welcome),
+  // so refuse and surface a re-add condition instead.
+  if (await channelHasServerCommits(channelID, send)) {
+    throw new MlsLocalStateLostError(channelID);
   }
 
   // Fetch KPs for ALL peers in one server round-trip. The server
