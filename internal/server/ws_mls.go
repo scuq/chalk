@@ -128,6 +128,13 @@ func (h *WSHandler) handleMlsCommitBundle(
 	if len(addUserIDs) > 0 {
 		h.publishMlsAddChannelEvents(ctx, channelID, addUserIDs)
 	}
+	// Phase 11c-7: for each removed user, publish
+	// channel_event{kind="removed"} so their connected devices drop the
+	// channel from the sidebar live instead of only on next reconnect.
+	// Mirrors the "added" case above.
+	if len(removeUserIDs) > 0 {
+		h.publishMlsRemoveChannelEvents(ctx, channelID, removeUserIDs)
+	}
 
 	// PR 5: live-broadcast the commit to existing channel members.
 	// Recipient set = (current channel members) - (sender) - (newly
@@ -545,6 +552,50 @@ func (h *WSHandler) publishMlsAddChannelEvents(
 	for _, uid := range addUserIDs {
 		if err := h.publishChannelEvent(ctx, uid, channelID, "added", summary); err != nil {
 			h.logger.Printf("publishMlsAddChannelEvents: publish to %s: %v",
+				uid, err)
+		}
+	}
+}
+
+// publishMlsRemoveChannelEvents publishes a channel_event{kind="removed"}
+// to each removed user_id. The channel still exists; the removed user is
+// simply no longer in it. We build the post-removal ChannelSummary (the
+// removed client only needs channel.id to drop it from the sidebar) and
+// reuse the same publishChannelEvent path as the "added" case.
+//
+// Errors are non-fatal and logged: the commit succeeded; this is
+// auxiliary UX delivery. A removed user who misses the push will still
+// see the channel disappear on next reconnect (list_channels omits it).
+//
+// Phase 11c-7.
+func (h *WSHandler) publishMlsRemoveChannelEvents(
+	ctx context.Context,
+	channelID uuid.UUID,
+	removeUserIDs []uuid.UUID,
+) {
+	if h.store == nil || len(removeUserIDs) == 0 {
+		return
+	}
+	ch, err := h.store.GetChannel(ctx, channelID)
+	if err != nil {
+		h.logger.Printf("publishMlsRemoveChannelEvents: GetChannel: %v", err)
+		return
+	}
+	memberIDs, err := h.store.ListMembersForChannel(ctx, channelID)
+	if err != nil {
+		h.logger.Printf("publishMlsRemoveChannelEvents: ListMembersForChannel: %v", err)
+		return
+	}
+	handles, hErr := h.store.HandlesByID(ctx, memberIDs)
+	if hErr != nil {
+		h.logger.Printf("publishMlsRemoveChannelEvents: HandlesByID: %v", hErr)
+		handles = nil // tolerated by channelSummaryFromStore
+	}
+	cwm := store.ChannelWithMembers{Channel: ch, MemberIDs: memberIDs}
+	summary := channelSummaryFromStore(cwm, handles)
+	for _, uid := range removeUserIDs {
+		if err := h.publishChannelEvent(ctx, uid, channelID, "removed", summary); err != nil {
+			h.logger.Printf("publishMlsRemoveChannelEvents: publish to %s: %v",
 				uid, err)
 		}
 	}

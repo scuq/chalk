@@ -57,6 +57,30 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     }
 
+    case "channel_removed": {
+      const cid = action.channelID;
+      if (!state.channels[cid]) {
+        return state; // not known; idempotent
+      }
+      // Phase 11c-7: drop the channel from sidebar + state. If it was
+      // the active channel, fall back to the next one in order (or null).
+      const nextChannels = { ...state.channels };
+      delete nextChannels[cid];
+      const nextOrder = state.channelOrder.filter((id) => id !== cid);
+      const nextMessages = { ...state.messages };
+      delete nextMessages[cid];
+      const nextActive =
+        state.activeChannelID === cid
+          ? (nextOrder.length > 0 ? nextOrder[0] : null)
+          : state.activeChannelID;
+      return {
+        ...state,
+        channels: nextChannels,
+        channelOrder: nextOrder,
+        messages: nextMessages,
+        activeChannelID: nextActive,
+      };
+    }
     case "channel_added": {
       const ch = action.channel;
       if (state.channels[ch.id]) {

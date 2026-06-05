@@ -675,7 +675,14 @@ export function App() {
             });
           }
         }
-        // "removed" not emitted in phase 08; future work.
+        // Phase 11c-7: a member (possibly us) was removed from a
+        // channel. If it's us, drop the channel from the sidebar live.
+        if (p.kind === "removed" && p.channel) {
+          const cid = p.channel.id;
+          dispatch({ kind: "channel_removed", channelID: cid });
+          // Allow a future re-add to re-subscribe.
+          subscribeSentRef.current.delete(cid);
+        }
         break;
       }
       case TypeFriendListAck: {
