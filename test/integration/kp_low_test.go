@@ -10,6 +10,7 @@ package integration
 // seeds.
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -23,7 +24,13 @@ func TestPhase11c5_KpLow_CountReflectsClaims(t *testing.T) {
 
 	// Dedicated user for this test; fresh id avoids any fixture clash.
 	userID := uuid.New()
-	if _, err := st.UpsertUser(c, userID, "phase11c5_kpuser"); err != nil {
+	// Unique per-run handle (hyphens stripped; regex ^[a-z0-9_]{3,32}$),
+	// so re-runs never collide on handle -- UpsertUser's
+	// ON CONFLICT (handle) DO UPDATE SET id would otherwise re-point an
+	// existing handle to a new id while a device still references the old
+	// one (devices_user_id_fkey, 23503).
+	handle := "p11c5_" + strings.ReplaceAll(userID.String(), "-", "")[:12]
+	if _, err := st.UpsertUser(c, userID, handle); err != nil {
 		t.Fatalf("upsert test user: %v", err)
 	}
 	devID := uuid.New()
