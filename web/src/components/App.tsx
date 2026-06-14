@@ -17,13 +17,8 @@ import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
   // Phase 11b-2: MLS welcome + commit_bundle
-  TypeMlsWelcome,
-  TypeMlsWelcomeAck,
   ContentTypeMlsCiphertext,
-  type MlsWelcomePayload,
   // Phase 11c-2 PR 3: MLS commit broadcast + catchup
-  TypeMlsCommitEvent,
-  type MlsCommitEventPayload,
   TypeSend,
   TypeFetchThread,
   TypeFetchThreadAck,
@@ -80,7 +75,6 @@ import {
   type PresencePayload,
   type PresenceSubscribePayload,
   type PresenceUnsubscribePayload,
-  TypeKeyPackageLow,
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId, getThreadSeen, setThreadSeen } from "../ws-client";
 import { reducer } from "../state/reducer";
@@ -248,45 +242,6 @@ export function App() {
       get client() { return clientRef.current; },
       get userID() { return state.user?.id; },
       get deviceID() { return state.user?.device; },
-      // Phase 11c-2 PR 3: convenience wrappers for the PR-2 MLS
-      // primitives. Each method auto-supplies the MLS input and
-      // SendFn from live refs so DevTools callers only need to
-      // pass channel + target. Usage:
-      //   await window.__chalk.mlsGroups.addMember("<chid>", "<uid>");
-      //   await window.__chalk.mlsGroups.removeMember("<chid>", "<uid>");
-      //   await window.__chalk.mlsGroups.catchup("<chid>");
-      mlsGroups: {
-        async addMember(channelID: string, targetUserID: string) {
-          const u = userRef.current;
-          const c = clientRef.current;
-          if (!u || !c) throw new Error("not connected");
-          const { addMemberToGroup } = await import("../mls/groups");
-          return addMemberToGroup(channelID, targetUserID, {
-            userID: u.id, deviceID: u.device,
-            databaseKey: getDeviceMlsKey(u.id, u.device),
-          }, { request: (t, p) => c.request(t, p) });
-        },
-        async removeMember(channelID: string, targetUserID: string) {
-          const u = userRef.current;
-          const c = clientRef.current;
-          if (!u || !c) throw new Error("not connected");
-          const { removeMemberFromGroup } = await import("../mls/groups");
-          return removeMemberFromGroup(channelID, targetUserID, {
-            userID: u.id, deviceID: u.device,
-            databaseKey: getDeviceMlsKey(u.id, u.device),
-          }, { request: (t, p) => c.request(t, p) });
-        },
-        async catchup(channelID: string) {
-          const u = userRef.current;
-          const c = clientRef.current;
-          if (!u || !c) throw new Error("not connected");
-          const { fetchCommitsCatchup } = await import("../mls/groups");
-          return fetchCommitsCatchup(channelID, {
-            userID: u.id, deviceID: u.device,
-            databaseKey: getDeviceMlsKey(u.id, u.device),
-          }, { request: (t, p) => c.request(t, p) });
-        },
-      },
     };
     client.start();
     return () => client.stop();
@@ -296,36 +251,13 @@ export function App() {
   // Phase 11b-2: decrypt helper for incoming MLS messages.
   // Lives here so it closes over `state.user` for the input shape.
   async function decryptIncomingMls(wire: MessagePayload): Promise<string> {
-    const { decryptForGroup, base64ToBytes } = await import("../mls/groups");
-    const ciphertext = base64ToBytes(wire.body);
-    // Group ID is derived from the channel UUID.
-    const groupIDHex = wire.channel_id.replace(/-/g, "");
-    const groupID = new Uint8Array(16);
-    for (let i = 0; i < 16; i++) {
-      groupID[i] = parseInt(groupIDHex.slice(i * 2, i * 2 + 2), 16);
-    }
-    // Phase 11b-2 fix5: read user via ref so stale closures don't see null.
-    const u = userRef.current;
-    if (!u) throw new Error("no user (stale closure?)");
-    const dbKey = getDeviceMlsKey(u.id, u.device);
-    const plaintext = await decryptForGroup(groupID, ciphertext, {
-      userID: u.id,
-      deviceID: u.device,
-      databaseKey: dbKey,
-    });
-    const text = new TextDecoder().decode(plaintext);
-    // Phase 11c-4: persist the plaintext encrypted-at-rest so a reload
-    // can restore it (MLS won't let us decrypt this ciphertext twice).
-    // Fire-and-forget; putCachedPlaintext is best-effort and never throws.
-    void (async () => {
-      const { putCachedPlaintext, cacheKeyForCiphertext } =
-        await import("../mls/plaintext-cache");
-      // Phase 11c-4 PR 2: key by ciphertext hash so the entry matches
-      // what history will look up (history returns the same ciphertext).
-      const key = await cacheKeyForCiphertext(wire.body);
-      await putCachedPlaintext(u.id, dbKey, key, text);
-    })();
-    return text;
+    // Phase 21-1: route through the stub seam. The stub is a passthrough
+    // (NO encryption) and is symmetric/re-decryptable, so unlike the old
+    // MLS path there is no single-use ratchet and no need for the 11c-4
+    // plaintext cache. Phase 23 swaps the stub for real AES-256-GCM under
+    // a wrapped space key; this call site stays the same.
+    const { decryptForChannel } = await import("../crypto/stub");
+    return decryptForChannel(wire.channel_id, wire.body);
   }
 
   // Phase 11b-2 fix6: decrypt a batch of MLS messages from a
@@ -333,79 +265,25 @@ export function App() {
   // in place; non-MLS messages pass through unchanged. Decryption
   // failures yield a "[unable to decrypt]" placeholder.
   async function decryptBatch(wires: MessagePayload[]): Promise<MessagePayload[]> {
-    const { getCachedPlaintext, cacheKeyForCiphertext } =
-      await import("../mls/plaintext-cache");
-    const u0 = userRef.current;
+    // Phase 21-1: route mls_ciphertext rows through the stub via
+    // decryptIncomingMls. No plaintext cache (the stub is re-decryptable).
+    // content_type is still "mls_ciphertext" (the routing tag); phase 23
+    // renames it. Non-matching rows pass through unchanged. Failures yield
+    // a "[unable to decrypt]" placeholder.
     return Promise.all(
       wires.map(async (w) => {
         if (w.content_type !== ContentTypeMlsCiphertext) return w;
-        // Phase 11c-4: cache-first. On a hit we avoid CoreCrypto entirely
-        // -- this is the reload-survival path, since MLS cannot re-decrypt
-        // ciphertext whose ratchet key was already consumed.
-        if (u0) {
-          // Phase 11c-4 PR 2: look up by ciphertext hash (covers BOTH
-          // received messages and the user's own sent messages, which
-          // were cached at send time under the same key).
-          const key = await cacheKeyForCiphertext(w.body);
-          const cached = await getCachedPlaintext(
-            u0.id, getDeviceMlsKey(u0.id, u0.device), key,
-          );
-          if (cached !== null) return { ...w, body: cached };
-        }
-        // Miss -> live decrypt (which self-caches on success).
         try {
           const decrypted = await decryptIncomingMls(w);
           return { ...w, body: decrypted };
         } catch (err) {
-          console.warn("[chalk] history decrypt failed:", err);
+          console.warn("[chalk] decrypt failed:", err);
           return { ...w, body: "[unable to decrypt]" };
         }
       }),
     );
   }
 
-  // Phase 11c-3 PR 2: unified hex-encoded dbkey helper.
-  //
-  // Two code paths previously raced on the SAME localStorage key
-  // with DIFFERENT encodings -- the inline useEffect setup wrote
-  // hex, while this helper read/wrote base64. atob() of a hex
-  // string does NOT throw (hex chars are valid base64 chars), so
-  // the helper silently returned 32 bytes of garbage. CoreCrypto
-  // opened with the garbage bytes, couldn't read the IndexedDB
-  // rows the publish path had written under the hex bytes, and
-  // every Welcome OrphanWelcomed. Single shared helper now;
-  // hex throughout.
-
-  // Phase 11c-3 PR 3: report whether the device's dbKey localStorage
-  // entry is ABSENT, i.e. the next getDeviceMlsKey call will generate
-  // a brand-new key. A missing dbKey means localStorage was cleared,
-  // which means CoreCrypto's IndexedDB (which lives and dies with it)
-  // is empty too -- so any KeyPackages the server still holds for this
-  // device are orphaned and must be superseded by a fresh republish.
-  //
-  // MUST be called BEFORE getDeviceMlsKey, which creates the entry on
-  // a miss (after which this would wrongly report not-fresh).
-  function isDeviceMlsKeyFresh(userID: string, deviceID: string): boolean {
-    return localStorage.getItem(`chalk.mls.dbkey.${userID}.${deviceID}`) === null;
-  }
-
-  function getDeviceMlsKey(userID: string, deviceID: string): Uint8Array {
-    const k = `chalk.mls.dbkey.${userID}.${deviceID}`;
-    let hex = localStorage.getItem(k);
-    if (!hex) {
-      const fresh = new Uint8Array(32);
-      crypto.getRandomValues(fresh);
-      hex = Array.from(fresh)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-      localStorage.setItem(k, hex);
-    }
-    const out = new Uint8Array(32);
-    for (let i = 0; i < 32; i++) {
-      out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-    }
-    return out;
-  }
 
   function handleFrame(f: Frame) {
     switch (f.type) {
@@ -445,120 +323,9 @@ export function App() {
         }
         break;
       }
-      case TypeKeyPackageLow: {
-        // Phase 11c-5: the server says our server-side KP stock is low
-        // (someone added us to a group and drained it). Republish.
-        // forceRepublish:true because the server's low-water mark (5)
-        // is above the client's normal republish threshold (3) -- a
-        // push at "4 remaining" would otherwise be ignored.
-        (async () => {
-          try {
-            const u = userRef.current;
-            if (!u) return;
-            const { ensureKeyPackageStock } = await import("../mls/session");
-            const sendRequest = (t: string, pl: unknown): Promise<unknown> => {
-              const c = clientRef.current;
-              if (!c || !c.isOpen()) return Promise.reject(new Error("ws closed"));
-              return c.request(t, pl);
-            };
-            const result = await ensureKeyPackageStock(
-              { userID: u.id, deviceID: u.device, databaseKey: getDeviceMlsKey(u.id, u.device) },
-              { request: sendRequest },
-              { forceRepublish: true },
-            );
-            console.log("[chalk] KP low-stock republish:", result);
-          } catch (err) {
-            console.warn("[chalk] KP low-stock republish failed:", err);
-          }
-        })();
-        break;
-      }
-      case TypeMlsWelcome: {
-        // Phase 11b-2 (fix3): peer added us to an MLS group. Process
-        // the welcome locally, then ack the server. The group ID is
-        // derived from channel_id (deterministic), not from the
-        // welcome return value (broken getter in 9.3.4).
-        const p = f.payload as MlsWelcomePayload;
-        (async () => {
-          try {
-            // Phase 11b-2 fix5: read user via ref so we see the live
-            // value, not the closure-captured null.
-            const u = userRef.current;
-            if (!u) throw new Error("no user (stale closure?)");
-            const { processWelcome, base64ToBytes } = await import("../mls/groups");
-            const welcomeBytes = base64ToBytes(p.welcome);
-            await processWelcome(welcomeBytes, {
-              userID: u.id,
-              deviceID: u.device,
-              databaseKey: getDeviceMlsKey(u.id, u.device),
-            });
-            console.log("[chalk] MLS welcome processed for channel:", p.channel_id);
-            clientRef.current?.send(TypeMlsWelcomeAck, {
-              channel_id: p.channel_id, ok: true,
-            });
-          } catch (err) {
-            console.warn("[chalk] MLS welcome processing failed:", err);
-            clientRef.current?.send(TypeMlsWelcomeAck, {
-              channel_id: p.channel_id, ok: false,
-            });
-          }
-        })();
-        break;
-      }
-      case TypeMlsCommitEvent: {
-        // Phase 11c-2 PR 3: an MLS Commit was broadcast to this
-        // channel (either live from another member's commit_bundle,
-        // or as part of a catchup stream from handleFetchMlsCommits).
-        // Feed the bytes to CoreCrypto to advance the local group
-        // state. Fire-and-forget; failures are logged.
-        const p = f.payload as MlsCommitEventPayload;
-        (async () => {
-          try {
-            const u = userRef.current;
-            if (!u) throw new Error("no user (stale closure?)");
-            const { processCommitEvent, COMMIT_EVENT_NO_CONVERSATION, base64ToBytes } = await import("../mls/groups");
-            const commitBytes = base64ToBytes(p.commit);
-            const newEpoch = await processCommitEvent(p.channel_id, commitBytes, {
-              userID: u.id,
-              deviceID: u.device,
-              databaseKey: getDeviceMlsKey(u.id, u.device),
-            });
-            if (newEpoch === COMMIT_EVENT_NO_CONVERSATION) {
-              // Benign commit_event-before-Welcome race: the Welcome
-              // will deliver the group state. Nothing to recover.
-              console.debug(
-                "[chalk] commit_event arrived before Welcome for channel",
-                p.channel_id, "-- deferring to Welcome (no action needed)",
-              );
-              return;
-            }
-            console.log(
-              "[chalk] processed MLS commit for channel", p.channel_id,
-              "epoch:", p.epoch, "(local now:", newEpoch + ")",
-            );
-          } catch (err) {
-            console.warn("[chalk] MLS commit processing failed:", err);
-            // Recovery: a failed commit often means we missed
-            // earlier events. Catchup catches us up; if local was
-            // already ahead, the fetch returns 0 commits.
-            try {
-              const u = userRef.current;
-              const c = clientRef.current;
-              if (u && c) {
-                const { fetchCommitsCatchup } = await import("../mls/groups");
-                await fetchCommitsCatchup(p.channel_id, {
-                  userID: u.id,
-                  deviceID: u.device,
-                  databaseKey: getDeviceMlsKey(u.id, u.device),
-                }, { request: (t, payload) => c.request(t, payload) });
-              }
-            } catch (catchupErr) {
-              console.warn("[chalk] MLS catchup recovery failed:", catchupErr);
-            }
-          }
-        })();
-        break;
-      }
+
+
+
       // Phase 9.7a: preferences round-trip.
       case TypePrefsGetAck: {
         const ack = f.payload as PrefsAckPayload;
@@ -590,43 +357,6 @@ export function App() {
           kind: "channels_loaded",
           channels,
         });
-        // Phase 11c-2 PR 3: catchup-on-reconnect for MLS channels.
-        // The server may have stored commits we missed while
-        // disconnected (other members added/removed people, rotated
-        // keys, etc). Iterate MLS channels and fire fetch_mls_commits
-        // per channel with a 100ms stagger -- the server handles
-        // them serially anyway (single-threaded WS reader) but
-        // staggering keeps logs tidy. Failures per channel are
-        // logged and don't abort the whole catchup pass.
-        const u = userRef.current;
-        const c = clientRef.current;
-        if (u && c) {
-          const mlsChannels = channels.filter((ch) => ch.isMls);
-          mlsChannels.forEach((ch, i) => {
-            setTimeout(() => {
-              (async () => {
-                try {
-                  const { fetchCommitsCatchup } = await import("../mls/groups");
-                  const count = await fetchCommitsCatchup(ch.id, {
-                    userID: u.id,
-                    deviceID: u.device,
-                    databaseKey: getDeviceMlsKey(u.id, u.device),
-                  }, { request: (t, payload) => c.request(t, payload) });
-                  if (count > 0) {
-                    console.log(
-                      "[chalk] catchup fetched", count,
-                      "commit(s) for channel", ch.id,
-                    );
-                  }
-                } catch (err) {
-                  console.warn(
-                    "[chalk] catchup failed for channel", ch.id, err,
-                  );
-                }
-              })();
-            }, i * 100);
-          });
-        }
         break;
       }
       case TypeFetchHistoryAck: {
@@ -682,21 +412,6 @@ export function App() {
           dispatch({ kind: "channel_removed", channelID: cid });
           // Allow a future re-add to re-subscribe.
           subscribeSentRef.current.delete(cid);
-          // Phase 11c-9: wipe our local CoreCrypto group for this
-          // channel so a future re-add Welcome lands on a clean slate
-          // instead of OrphanWelcoming against the now-stale group.
-          // Best-effort; never blocks or throws. Scrollback is unaffected
-          // (the plaintext cache is keyed by ciphertext, not the group).
-          void (async () => {
-            const u = userRef.current;
-            if (!u) return;
-            const { wipeLocalConversation } = await import("../mls/groups");
-            await wipeLocalConversation(cid, {
-              userID: u.id,
-              deviceID: u.device,
-              databaseKey: getDeviceMlsKey(u.id, u.device),
-            });
-          })();
         }
         break;
       }
@@ -1133,42 +848,13 @@ export function App() {
         try {
           const u = userRef.current;
           if (!u) throw new Error("no user (stale closure?)");
-          const {
-            ensureGroupForChannel, encryptForGroup, bytesToBase64,
-          } = await import("../mls/groups");
-          const input = {
-            userID: u.id,
-            deviceID: u.device,
-            databaseKey: getDeviceMlsKey(u.id, u.device),
-          };
-          // Phase 11c-2 PR 5: ensureGroupForChannel handles BOTH
-          // single-peer DMs (1-entry array) AND multi-member channels.
-          // The function is idempotent: if the local group already
-          // exists, it's a no-op return. Otherwise it bootstraps the
-          // group from the current channel_members on first send.
-          const otherMembers = (channel.memberIDs ?? []).filter(
-            (id: string) => id !== u.id,
-          );
-          const groupID = await ensureGroupForChannel(
-            cid, otherMembers, input, {
-              request: (t, p) => clientRef.current!.request(t, p),
-            },
-          );
-          const plaintext = new TextEncoder().encode(body);
-          const ciphertext = await encryptForGroup(groupID, plaintext, input);
-          const b64ct = bytesToBase64(ciphertext);
-          // Phase 11c-4 PR 2: cache our OWN plaintext under the ciphertext
-          // hash before sending. We never receive an echo of our own
-          // message and can't decrypt our own ciphertext, so this is the
-          // only point we can populate the cache for sent messages. On
-          // reload, history returns this same ciphertext -> same key ->
-          // cache hit. Best-effort; never blocks or fails the send.
-          void (async () => {
-            const { putCachedPlaintext, cacheKeyForCiphertext } =
-              await import("../mls/plaintext-cache");
-            const key = await cacheKeyForCiphertext(b64ct);
-            await putCachedPlaintext(u.id, input.databaseKey, key, body);
-          })();
+          // Phase 21-1: encrypt via the stub seam (passthrough, NO
+          // encryption). Drops ensureGroupForChannel, the MlsInitInput,
+          // and the 11c-4 send-side cache write -- none are needed for a
+          // symmetric, re-decryptable body. Phase 23 swaps the stub for
+          // real wrapped-space-key AES-256-GCM; this call site is stable.
+          const { encryptForChannel } = await import("../crypto/stub");
+          const b64ct = await encryptForChannel(cid, body);
           const payload: SendPayload = {
             channel_id: cid,
             body: b64ct,
@@ -1565,68 +1251,7 @@ export function App() {
     }
   }, [state.openThread?.threadID, state.threadMessages, state.threadSeen]);
 
-  // Phase 11a: background MLS KeyPackage stock check.
-  //
-  // On first authenticated WS open per session, lazily load
-  // CoreCrypto, derive/load a device DB passphrase, and ensure we
-  // have ≥10 unused KeyPackages on file with the server. This is a
-  // best-effort background task -- if it fails, the chat still works
-  // (just no MLS until next attempt).
-  //
-  // We do NOT lazy-load the MLS module on the critical path. The
-  // import is fired only after the user has been authenticated AND
-  // the WS connection is open.
-  useEffect(() => {
-    if (!state.user?.id || !state.user?.device) return;
-    if (state.wsState !== "open") return;
 
-    let cancelled = false;
-    const userID = state.user.id;
-    const deviceID = state.user.device;
-
-    // Phase 11c-3 PR 2: derive the dbKey via the shared helper so
-    // the publish path and the welcome/encrypt/decrypt paths agree
-    // on encoding. (Previously this useEffect inlined hex while
-    // getDeviceMlsKey used base64; the two diverged silently.)
-    //
-    // Phase 11c-3 PR 3: check freshness BEFORE deriving the key
-    // (getDeviceMlsKey creates the entry on a miss). A fresh key means
-    // the local KP store was wiped, so we must republish even if the
-    // server reports a healthy count -- otherwise incoming Welcomes
-    // reference KPs whose private half is gone -> OrphanWelcome.
-    const dbKeyFresh = isDeviceMlsKeyFresh(userID, deviceID);
-    const dbKey = getDeviceMlsKey(userID, deviceID);
-
-    // Schedule on a microtask so the initial render isn't blocked.
-    Promise.resolve().then(async () => {
-      try {
-        const { ensureKeyPackageStock } = await import("../mls/session");
-        if (cancelled) return;
-        const sendRequest = (type: string, payload: unknown): Promise<unknown> => {
-          // Use the existing WS client's request/response correlation.
-          const c = clientRef.current;
-          if (!c || !c.isOpen()) return Promise.reject(new Error("ws closed"));
-          return c.request(type, payload);
-        };
-        const result = await ensureKeyPackageStock(
-          { userID, deviceID, databaseKey: dbKey },
-          { request: sendRequest },
-          { forceRepublish: dbKeyFresh },
-        );
-        if (!cancelled) {
-          console.log("[chalk] MLS KP stock:", result);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          console.warn("[chalk] MLS KP stock check failed:", err);
-        }
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [state.user?.id, state.user?.device, state.wsState]);
 
   return (
     <div class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""}`}>
@@ -1796,23 +1421,7 @@ export function App() {
             if (!u || !c || !state.activeChannelID || !activeChannel) {
               throw new Error("not ready");
             }
-            const input = {
-              userID: u.id,
-              deviceID: u.device,
-              databaseKey: getDeviceMlsKey(u.id, u.device),
-            };
-            const sendFn = { request: (t: string, p: unknown) => c.request(t, p) };
-            const { ensureGroupForChannel, addMemberToGroup } = await import("../mls/groups");
-            const otherMembers = activeChannel.memberIDs.filter(
-              (id: string) => id !== u.id,
-            );
-            await ensureGroupForChannel(state.activeChannelID, otherMembers, input, sendFn);
-            await addMemberToGroup(
-              state.activeChannelID,
-              targetUserID,
-              input,
-              sendFn,
-            );
+
             const friend = state.friends.find((f) => f.userID === targetUserID);
             dispatch({
               kind: "channel_member_added",
@@ -1831,26 +1440,7 @@ export function App() {
             if (!u || !c || !state.activeChannelID || !activeChannel) {
               throw new Error("not ready");
             }
-            const input = {
-              userID: u.id,
-              deviceID: u.device,
-              databaseKey: getDeviceMlsKey(u.id, u.device),
-            };
-            const sendFn = { request: (t: string, p: unknown) => c.request(t, p) };
-            const { ensureGroupForChannel, removeMemberFromGroup } = await import("../mls/groups");
-            // Bootstrap with the CURRENT members (including the
-            // target -- they need to be in the MLS group before
-            // they can be removed from it).
-            const otherMembers = activeChannel.memberIDs.filter(
-              (id: string) => id !== u.id,
-            );
-            await ensureGroupForChannel(state.activeChannelID, otherMembers, input, sendFn);
-            await removeMemberFromGroup(
-              state.activeChannelID,
-              targetUserID,
-              input,
-              sendFn,
-            );
+
             dispatch({
               kind: "channel_member_removed",
               channelID: state.activeChannelID,
