@@ -119,10 +119,10 @@ type HelloPayload struct {
 // either handle or username depending on which sub-phase its build
 // targeted. New SPA code should prefer username.
 type WelcomePayload struct {
-	UserID           string    `json:"user_id"`
-	DeviceID         string    `json:"device_id"`
-	Handle           string    `json:"handle"`   // phase 08c (preserved for transition)
-	Channels         []string  `json:"channels"`
+	UserID   string   `json:"user_id"`
+	DeviceID string   `json:"device_id"`
+	Handle   string   `json:"handle"` // phase 08c (preserved for transition)
+	Channels []string `json:"channels"`
 	// Phase 09b sub-step 5 additions:
 	Username         string    `json:"username,omitempty"`
 	DisplayName      string    `json:"display_name,omitempty"`
@@ -182,13 +182,13 @@ type MessagePayload struct {
 	// messages. ReplyCount is the number of replies WHERE thread_id =
 	// this.id (only meaningful for messages that are thread heads);
 	// 0 otherwise.
-	ParentID     string `json:"parent_id,omitempty"`
-	ThreadID     string `json:"thread_id,omitempty"`
-	ReplyCount   int64  `json:"reply_count,omitempty"`
+	ParentID   string `json:"parent_id,omitempty"`
+	ThreadID   string `json:"thread_id,omitempty"`
+	ReplyCount int64  `json:"reply_count,omitempty"`
 	// Phase 10d: highest seq among replies in this thread. Used by
 	// clients to compute "unread" badges when compared against a
 	// locally-stored "last seen" seq per thread.
-	LastReplySeq int64  `json:"last_reply_seq,omitempty"`
+	LastReplySeq int64 `json:"last_reply_seq,omitempty"`
 	// Phase 10e: preview of the most recent reply, used to render
 	// a one-line snippet beneath the indicator. Both empty when the
 	// message isn't a thread head (or its last reply's sender has
@@ -198,7 +198,6 @@ type MessagePayload struct {
 	// Phase 11b-1: content_type so the client can detect encrypted rows.
 	// "application" (or empty) = plaintext; "mls_ciphertext" = MLS bytes.
 	ContentType string `json:"content_type,omitempty"`
-
 }
 
 // ErrorPayload is sent when the server can't process a request. Code is a
@@ -241,182 +240,9 @@ type FetchThreadAckPayload struct {
 	Messages  []MessagePayload `json:"messages"`
 }
 
-// ---- Phase 11a: MLS KeyPackage publish/fetch ------------------------
-
-const (
-	// publish_key_packages: client uploads a batch of KeyPackages
-	// for its current device. Server validates that each KP's
-	// client_id field is "<userID>:<deviceID>" matching the WS
-	// connection.
-	TypePublishKeyPackages    = "publish_key_packages"
-	TypePublishKeyPackagesAck = "publish_key_packages_ack"
-
-	// fetch_key_packages: client requests one fresh KP per listed
-	// user. Server claims (marks used_at) one unused KP per user
-	// and returns the byte blobs. If a user has zero unused KPs,
-	// they are omitted from the response (caller learns who is
-	// "not ready" for MLS).
-	TypeFetchKeyPackages    = "fetch_key_packages"
-	TypeFetchKeyPackagesAck = "fetch_key_packages_ack"
-
-	// key_package_count: client asks "how many unused KPs do I have
-	// on the server for my own device?" -- used to decide whether
-	// to publish more.
-	TypeKeyPackageCount    = "key_package_count"
-	TypeKeyPackageCountAck = "key_package_count_ack"
-
-	// key_package_low: server -> client push. Sent to a user's devices
-	// when a claim drops that device's unused-KP count below the
-	// low-water mark. The client responds by republishing its stock.
-	// Phase 11c-5.
-	TypeKeyPackageLow      = "key_package_low"
-)
-
-// PublishKeyPackagesPayload uploads one or more KeyPackages for the
-// publishing device. Ciphersuite + credential_type are repeated per
-// KP because nothing prevents a device from publishing KPs for
-// multiple suites in one frame, though chalk currently only uses one.
-type PublishKeyPackagesPayload struct {
-	KeyPackages []KeyPackageEntry `json:"key_packages"`
-}
-
-type KeyPackageEntry struct {
-	Ciphersuite     int    `json:"ciphersuite"`     // MLS ciphersuite id
-	CredentialType  int    `json:"credential_type"` // 1 = Basic
-	ClientIDClaimed string `json:"client_id_claimed"`
-	// KeyPackageData is base64-encoded TLS-serialized bytes.
-	KeyPackageData  string `json:"key_package_data"`
-}
-
-type PublishKeyPackagesAckPayload struct {
-	Accepted int `json:"accepted"` // how many were valid + stored
-}
-
-// KeyPackageLowPayload notifies a device that its server-side unused
-// KeyPackage stock is running low and it should republish. Ciphersuite
-// tells the client which suite drained (chalk uses 1 today). The client
-// re-counts and republishes for its own device; no per-message id is
-// needed. Phase 11c-5.
-type KeyPackageLowPayload struct {
-	Ciphersuite int `json:"ciphersuite,omitempty"`
-	Remaining   int `json:"remaining"` // informational: unused count after the claim
-}
-
-// FetchKeyPackagesPayload requests KPs for these users. The server
-// claims one unused KP per user (marks used_at) and returns the
-// blobs. Missing users get omitted, NOT errored -- caller decides
-// what to do (typical: ask the user to come online so they can
-// publish KPs).
-type FetchKeyPackagesPayload struct {
-	UserIDs     []string `json:"user_ids"`
-	Ciphersuite int      `json:"ciphersuite,omitempty"` // default: 1
-}
-
-type FetchKeyPackagesAckPayload struct {
-	KeyPackages []FetchedKeyPackage `json:"key_packages"`
-}
-
-type FetchedKeyPackage struct {
-	UserID         string `json:"user_id"`
-	DeviceID       string `json:"device_id"`
-	ClientID       string `json:"client_id"` // <user_id>:<device_id>
-	Ciphersuite    int    `json:"ciphersuite"`
-	CredentialType int    `json:"credential_type"`
-	KeyPackageData string `json:"key_package_data"` // base64
-}
-
-// KeyPackageCountPayload is empty -- the WS connection identifies
-// the device; no parameters needed.
-type KeyPackageCountPayload struct{}
-
-type KeyPackageCountAckPayload struct {
-	Count int `json:"count"`
-}
-
-// Phase 11a errors.
-const (
-	ErrCodeKPClientIDMismatch = "kp_client_id_mismatch"
-	ErrCodeKPMalformed        = "kp_malformed"
-)
-
-// ---- Phase 11b-1: MLS commit/welcome wire ---------------------------
-
-const (
-	// mls_commit_bundle: client uploads a Commit + Welcome bundle
-	// after creating or modifying an MLS group. Server upserts the
-	// mls_groups row and fans each Welcome to its addressee's
-	// connected devices. For 11b-1, offline addressees lose the
-	// welcome silently; later phases can buffer.
-	TypeMlsCommitBundle    = "mls_commit_bundle"
-	TypeMlsCommitBundleAck = "mls_commit_bundle_ack"
-
-	// mls_welcome: server -> client push delivering a welcome to a
-	// newly-added member. Includes the channel_id so the client can
-	// associate the group with a channel, and the sender so the
-	// recipient knows who added them.
-	TypeMlsWelcome    = "mls_welcome"
-	TypeMlsWelcomeAck = "mls_welcome_ack"
-)
-
 // Content-type vocabulary the server understands. Stored in
 // messages.content_type and surfaced to clients via MessagePayload.
 const (
-	ContentTypeApplication   = "application"     // plaintext (legacy default)
-	ContentTypeMlsCiphertext = "mls_ciphertext"  // MLS-encrypted bytes
-)
-
-// WelcomeFor is one (recipient, welcome bytes) pair in an
-// mls_commit_bundle. The recipient is identified by user_id; the
-// server pushes to all of that user's connected devices.
-type WelcomeFor struct {
-	UserID  string `json:"user_id"`
-	// Welcome is base64-encoded TLS-serialized Welcome bytes.
-	Welcome string `json:"welcome"`
-}
-
-type MlsCommitBundlePayload struct {
-	ChannelID  string       `json:"channel_id"`
-	// MlsGroupID is base64-encoded opaque bytes from CoreCrypto.
-	MlsGroupID string       `json:"mls_group_id"`
-	// Commit is base64-encoded TLS-serialized Commit bytes. Optional
-	// for now (a group-creation bundle has no commit_to_others, just
-	// Welcomes for the initial members); future epoch bumps will set
-	// it.
-	Commit     string       `json:"commit,omitempty"`
-	WelcomeFor []WelcomeFor `json:"welcome_for,omitempty"`
-	Epoch      int64        `json:"epoch"`
-
-	// Phase 11c-1 PR 3: declared membership changes accompanying this
-	// commit. Each entry must match an authorization issued by
-	// add_to_channel / remove_from_channel within the last 60s. An
-	// empty list means "no membership change in this commit" (e.g.
-	// key-rotation Updates, Welcome-only bundles).
-	ProposedAdds    []string     `json:"proposed_adds,omitempty"`
-	ProposedRemoves []string     `json:"proposed_removes,omitempty"`
-}
-
-type MlsCommitBundleAckPayload struct {
-	ChannelID string `json:"channel_id"`
-	// Delivered is how many welcomes were fan'd to at least one
-	// connected device of the recipient. Welcomes for offline users
-	// count as 0.
-	Delivered int    `json:"delivered"`
-}
-
-type MlsWelcomePayload struct {
-	ChannelID     string `json:"channel_id"`
-	MlsGroupID    string `json:"mls_group_id"`
-	Welcome       string `json:"welcome"`
-	SenderUserID  string `json:"sender_user_id"`
-}
-
-type MlsWelcomeAckPayload struct {
-	ChannelID string `json:"channel_id"`
-	OK        bool   `json:"ok"`
-}
-
-// Phase 11b-1 errors.
-const (
-	ErrCodeMlsBadBundle   = "mls_bad_bundle"
-	ErrCodeMlsNotMember   = "mls_not_member"
+	ContentTypeApplication   = "application"    // plaintext (legacy default)
+	ContentTypeMlsCiphertext = "mls_ciphertext" // MLS-encrypted bytes
 )
