@@ -338,8 +338,6 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 		s.handleFriendEvent(ev)
 	case "channel":
 		s.handleChannelEvent(ev)
-	case "kp_low":
-		s.handleKeyPackageLowEvent(ev)
 	case "prefs":
 		// Phase 9.7a:
 		s.handlePrefsEvent(ev)
@@ -705,27 +703,4 @@ func (s *Server) handlePrefsEvent(ev pubsub.Event) {
 	// FanOutToUser with skip-conn-ID so the device that triggered the
 	// change doesn't receive its own echo (it already got prefs_set_ack).
 	s.hub.FanOutToUser(ev.UserID.String(), ev.SenderConnID, wire)
-}
-
-// handleKeyPackageLowEvent: push a key_package_low frame to every
-// locally-connected device of the depleted user. Cross-instance
-// delivery works because the event arrives via LISTEN/NOTIFY on each
-// instance; each instance fans out to whichever of the user's devices
-// it holds. Phase 11c-5.
-func (s *Server) handleKeyPackageLowEvent(ev pubsub.Event) {
-	var payload proto.KeyPackageLowPayload
-	if len(ev.ChannelEventPayload) > 0 {
-		_ = json.Unmarshal(ev.ChannelEventPayload, &payload)
-	}
-	frame, err := proto.NewFrame(proto.TypeKeyPackageLow, "", payload)
-	if err != nil {
-		s.logger.Printf("kp_low frame: %v", err)
-		return
-	}
-	wire, err := json.Marshal(frame)
-	if err != nil {
-		s.logger.Printf("kp_low marshal: %v", err)
-		return
-	}
-	s.hub.FanOutToUser(ev.UserID.String(), "", wire)
 }
