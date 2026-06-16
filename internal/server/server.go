@@ -139,7 +139,7 @@ func NewServer(opts Options) (*Server, error) {
 		opts.Presence, opts.Friends,
 		pubPresence, pubFriend,
 		s.publishPrefsChangeFn, // Phase 9.7a
-		s.pubsub, // phase 08: listener for per-channel subscribe
+		s.pubsub,               // phase 08: listener for per-channel subscribe
 	))
 
 	// Phase 09b sub-step 3: registration endpoints. Mounted before
@@ -229,29 +229,6 @@ func (s *Server) Serve(ctx context.Context) error {
 		go func() {
 			defer wg.Done()
 			s.store.PartitionMaintenanceLoop(bgCtx, 24*time.Hour, s.logger.Printf)
-		}()
-		// Phase 11c-8: evict stale buffered MLS Welcomes (default TTL
-		// 14 days) so mls_pending_welcomes doesn't grow unbounded and
-		// stale welcomes referencing long-past epochs don't linger.
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			s.store.PendingWelcomeSweepLoop(
-				bgCtx, 6*time.Hour, store.DefaultPendingWelcomeTTL, s.logger.Printf,
-			)
-		}()
-		// Phase 11c-10: reclaim orphaned/stale KeyPackage rows.
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			s.store.KeyPackageSweepLoop(
-				bgCtx,
-				store.DefaultKPSweepInterval,
-				store.DefaultKPSweepKeepN,
-				store.DefaultKPSweepMinAge,
-				store.DefaultKPUsedRetention,
-				s.logger.Printf,
-			)
 		}()
 	}
 

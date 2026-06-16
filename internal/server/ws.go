@@ -66,7 +66,7 @@ type WSHandler struct {
 	publishFriend         FriendPublisher
 	// Phase 9.7a: fanout for prefs_changed pushes to a user's other
 	// devices/tabs. Optional; nil disables the push.
-	publishPrefsChange    PrefsChangePublisher
+	publishPrefsChange PrefsChangePublisher
 
 	// Phase 08: listener is used for dynamic per-channel subscribe/
 	// unsubscribe at WS connect/disconnect time. nil disables phase 08
@@ -80,12 +80,6 @@ type WSHandler struct {
 	// handleSubscribeChannel; drained by releaseConnSubs at disconnect.
 	// See ws_phase08b.go for the helpers.
 	connSubs sync.Map
-
-	// Phase 11c-1 PR 3: in-memory cache of add_to_channel /
-	// remove_from_channel authorizations, consumed by
-	// mls_commit_bundle when matching ProposedAdds / ProposedRemoves
-	// arrive. Initialized in NewWSHandler; see mls_authorizations.go.
-	authStore *MlsAuthorizationStore
 }
 
 // NewWSHandler constructs a handler. Phase 06 adds the presence/friends
@@ -119,7 +113,6 @@ func NewWSHandler(
 		publishFriend:         pubFriend,
 		publishPrefsChange:    pubPrefs,
 		listener:              listener,
-		authStore:             NewMlsAuthorizationStore(),
 	}
 }
 
@@ -338,11 +331,6 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Phase 11c-1 PR 4: push any buffered MLS welcomes for this user
-	// AFTER the session-context Welcome frame has landed. Errors are
-	// logged and non-fatal; the row stays buffered until ack.
-	h.drainPendingMlsWelcomes(ctx, c, conn)
-
 	// Presence: register the device, start the heartbeat, ensure the
 	// transition publishes if state changed.
 	deviceType := classifyDeviceType(hello.DeviceType)
@@ -489,28 +477,6 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 		case proto.TypeFetchThread:
 			h.handleFetchThread(ctx, c, conn, f)
 
-		// Phase 11b-1: MLS commit_bundle + welcome ack
-		case proto.TypeMlsCommitBundle:
-			h.handleMlsCommitBundle(ctx, c, conn, f)
-		case proto.TypeMlsWelcomeAck:
-			h.handleMlsWelcomeAck(ctx, c, conn, f)
-
-		// Phase 11c-1: MLS channel membership (add/remove)
-		case proto.TypeAddToChannel:
-			h.handleAddToChannel(ctx, c, conn, f)
-		case proto.TypeRemoveFromChannel:
-			h.handleRemoveFromChannel(ctx, c, conn, f)
-		case proto.TypeFetchMlsCommits:
-			h.handleFetchMlsCommits(ctx, c, conn, f)
-
-		// Phase 11a: MLS key package publish/fetch
-		case proto.TypePublishKeyPackages:
-			h.handlePublishKeyPackages(ctx, c, conn, f)
-		case proto.TypeFetchKeyPackages:
-			h.handleFetchKeyPackages(ctx, c, conn, f)
-		case proto.TypeKeyPackageCount:
-			h.handleKeyPackageCount(ctx, c, conn, f)
-
 		// Phase 9.7a: user preferences
 		case proto.TypePrefsGet:
 			h.handlePrefsGet(ctx, c, conn, f)
@@ -527,11 +493,11 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 // handleSend persists the message and emits a NOTIFY.
 //
 // Phase 08 routing: payload.ChannelID names the destination channel.
-//   * Empty/omitted falls back to store.DefaultChannelID (transitional
+//   - Empty/omitted falls back to store.DefaultChannelID (transitional
 //     compatibility with phase 07 SPAs that don't yet send channel_id).
-//   * Non-empty is verified against channel_members; non-members get
+//   - Non-empty is verified against channel_members; non-members get
 //     errCodeNotAMember.
-//   * The NOTIFY goes out on the per-channel topic so only chalkds with
+//   - The NOTIFY goes out on the per-channel topic so only chalkds with
 //     subscribers for this channel receive it.
 func (h *WSHandler) handleSend(
 	ctx context.Context,
