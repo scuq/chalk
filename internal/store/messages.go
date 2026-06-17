@@ -57,9 +57,6 @@ type Message struct {
 // the channel_seq row. That's acceptable: chat messages within a single
 // channel are not high-throughput. If we ever needed >1k msg/s per channel
 // (we won't), we'd switch to a Postgres SEQUENCE and accept gaps.
-//
-// content_type is "application" for normal messages and reserves "commit"
-// and "proposal" for MLS control frames in phase 10.
 func (s *Store) InsertMessage(ctx context.Context, m Message) (Message, error) {
 	if m.ID == uuid.Nil {
 		m.ID = uuid.New()
@@ -90,8 +87,8 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (Message, error) {
 		row := tx.QueryRow(ctx,
 			`INSERT INTO messages
 			   (id, channel_id, thread_id, parent_id, sender_device_id,
-			    seq, content_type, body, meta)
-			 VALUES ($1, $2, $3, $4, $5, $6, 'application', $7, '{}'::jsonb)
+			    seq, body, meta)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, '{}'::jsonb)
 			 RETURNING ts`,
 			m.ID, m.ChannelID, m.ThreadID, m.ParentID, m.SenderDeviceID,
 			m.Seq, m.Body,
