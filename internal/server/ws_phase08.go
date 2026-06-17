@@ -344,7 +344,7 @@ func (h *WSHandler) handleFetchHistory(
 		if m.LastReplySenderUserID != nil {
 			lastReplySender = m.LastReplySenderUserID.String()
 		}
-		bodyStr := string(m.Ciphertext)
+		bodyStr := string(m.Body)
 		out = append(out, proto.MessagePayload{
 			ID:                    m.ID.String(),
 			ChannelID:             m.ChannelID.String(),
@@ -503,7 +503,7 @@ func (h *WSHandler) handleFetchThread(
 		if m.ThreadID != nil {
 			threadStr = m.ThreadID.String()
 		}
-		tBody := string(m.Ciphertext)
+		tBody := string(m.Body)
 		out = append(out, proto.MessagePayload{
 			ID:           m.ID.String(),
 			ChannelID:    m.ChannelID.String(),

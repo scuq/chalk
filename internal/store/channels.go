@@ -303,12 +303,12 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 	// NULL); thread heads themselves do not count themselves.
 	rows, err := s.Pool.Query(ctx,
 		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
-		        m.ts, m.seq, m.ciphertext,
+		        m.ts, m.seq, m.body,
 		        m.parent_id, m.thread_id,
 		        COALESCE(r.cnt, 0) AS reply_count,
 		        COALESCE(r.last_seq, 0) AS last_reply_seq,
 		        lr_dev.user_id   AS last_reply_sender_user_id,
-		        lr.ciphertext    AS last_reply_body
+		        lr.body          AS last_reply_body
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
 		   LEFT JOIN (
@@ -320,7 +320,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		      GROUP BY thread_id
 		   ) r ON r.thread_id = m.id
 		   LEFT JOIN LATERAL (
-		     SELECT sender_device_id, ciphertext
+		     SELECT sender_device_id, body
 		       FROM messages
 		      WHERE thread_id = m.id AND parent_id IS NOT NULL
 		      ORDER BY seq DESC
@@ -350,7 +350,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		var lastReplyBody []byte
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &senderDev, &senderUser,
-			&m.TS, &m.Seq, &m.Ciphertext,
+			&m.TS, &m.Seq, &m.Body,
 			&parentID, &threadID, &replyCount, &lastReplySeq,
 			&lastReplySender, &lastReplyBody,
 		); err != nil {
@@ -404,7 +404,7 @@ func (s *Store) ListMessagesByThread(
 	}
 	rows, err := s.Pool.Query(ctx,
 		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
-		        m.ts, m.seq, m.ciphertext,
+		        m.ts, m.seq, m.body,
 		        m.parent_id, m.thread_id
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
@@ -427,7 +427,7 @@ func (s *Store) ListMessagesByThread(
 		var tID *uuid.UUID
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &senderDev, &senderUser,
-			&m.TS, &m.Seq, &m.Ciphertext,
+			&m.TS, &m.Seq, &m.Body,
 			&parentID, &tID,
 		); err != nil {
 			return nil, err

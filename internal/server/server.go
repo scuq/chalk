@@ -390,7 +390,7 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 	if msg.ThreadID != nil {
 		threadStr = msg.ThreadID.String()
 	}
-	pushBody := string(msg.Ciphertext)
+	pushBody := string(msg.Body)
 	frame, err := proto.NewFrame(proto.TypeMessage, "", proto.MessagePayload{
 		ID:           msg.ID.String(),
 		ChannelID:    msg.ChannelID.String(),

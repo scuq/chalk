@@ -132,7 +132,7 @@ type WelcomePayload struct {
 }
 
 // SendPayload is a plaintext message in phase 04. From phase 10 onwards the
-// Body is replaced by an MLS-encrypted ciphertext, but the envelope shape
+// Body carries the message text. (Pre-21-7 this was an MLS ciphertext.)
 // stays the same.
 //
 // Phase 08: ChannelID names the destination channel. Omitted/empty values
@@ -141,7 +141,7 @@ type WelcomePayload struct {
 // SPA always sets ChannelID explicitly.
 type SendPayload struct {
 	ChannelID string `json:"channel_id,omitempty"`
-	// Body is the message text in phase 04. Replaced by Ciphertext in phase 10.
+	// Body is the message text.
 	Body string `json:"body"`
 	// Phase 10a: optional parent message ID. When set, this send is a
 	// thread reply. The server resolves thread_id from the parent

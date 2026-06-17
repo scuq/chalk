@@ -621,7 +621,7 @@ func (h *WSHandler) handleSend(
 		bodyBytes := []byte(p.Body)
 		if err := tx.QueryRow(ctx,
 			`INSERT INTO messages
-			   (id, channel_id, parent_id, thread_id, sender_device_id, seq, content_type, ciphertext)
+			   (id, channel_id, parent_id, thread_id, sender_device_id, seq, content_type, body)
 			 VALUES ($1, $2, $3, $4, $5, $6, 'application', $7)
 			 RETURNING ts`,
 			msgID, channelID, parentUUID, threadUUID, deviceID, seq, bodyBytes,

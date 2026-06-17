@@ -30,7 +30,7 @@ type Message struct {
 	Seq          int64
 	TS           time.Time
 	DeliveredAt  *time.Time
-	Ciphertext   []byte
+	Body         []byte
 	// Phase 10a: only populated by ListMessagesByChannel (which
 	// JOINs the reply-count subquery). GetMessage and other lookups
 	// leave this as 0. Callers should treat 0 as "unknown" unless
@@ -90,11 +90,11 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (Message, error) {
 		row := tx.QueryRow(ctx,
 			`INSERT INTO messages
 			   (id, channel_id, thread_id, parent_id, sender_device_id,
-			    seq, content_type, ciphertext, meta)
+			    seq, content_type, body, meta)
 			 VALUES ($1, $2, $3, $4, $5, $6, 'application', $7, '{}'::jsonb)
 			 RETURNING ts`,
 			m.ID, m.ChannelID, m.ThreadID, m.ParentID, m.SenderDeviceID,
-			m.Seq, m.Ciphertext,
+			m.Seq, m.Body,
 		)
 		return row.Scan(&m.TS)
 	})
@@ -116,7 +116,7 @@ func (s *Store) GetMessage(ctx context.Context, ts time.Time, id uuid.UUID) (Mes
 	err := s.Pool.QueryRow(ctx,
 		`SELECT m.id, m.channel_id, m.thread_id, m.parent_id,
 		        m.sender_device_id, d.user_id,
-		        m.seq, m.ts, m.delivered_at, m.ciphertext
+		        m.seq, m.ts, m.delivered_at, m.body
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
 		  WHERE m.ts = $1 AND m.id = $2`,
@@ -124,7 +124,7 @@ func (s *Store) GetMessage(ctx context.Context, ts time.Time, id uuid.UUID) (Mes
 	).Scan(
 		&m.ID, &m.ChannelID, &m.ThreadID, &m.ParentID,
 		&m.SenderDeviceID, &senderUser,
-		&m.Seq, &m.TS, &m.DeliveredAt, &m.Ciphertext,
+		&m.Seq, &m.TS, &m.DeliveredAt, &m.Body,
 	)
 	if senderUser != nil {
 		m.SenderUserID = *senderUser
