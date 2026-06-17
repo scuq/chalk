@@ -15,13 +15,9 @@ import (
 // the bare metadata. Member IDs live in channel_members and are loaded
 // on demand via ListMembers.
 type Channel struct {
-	ID   uuid.UUID
-	Name string
-	IsDM bool
-	// Phase 11b-2: true iff this channel uses MLS encryption.
-	// Set at creation; never changes. Always false for non-DM
-	// channels and pre-11b DMs (strict cutover policy).
-	IsMLS     bool
+	ID        uuid.UUID
+	Name      string
+	IsDM      bool
 	CreatedBy *uuid.UUID // nil for system channels
 	CreatedAt time.Time
 }
@@ -63,12 +59,8 @@ var ErrDMCardinality = errors.New("DM must have exactly 2 members")
 // automatically. Duplicates are de-duplicated. The caller may appear
 // in MemberIDs; their role stays 'owner'.
 type CreateChannelInput struct {
-	Name string
-	IsDM bool
-	// Phase 11b-2: set true to mark the new channel as MLS-encrypted.
-	// Server policy (handleCreateChannel) currently sets this to
-	// IsDM, i.e. all new DMs are MLS, all non-DMs are plaintext.
-	IsMLS     bool
+	Name      string
+	IsDM      bool
 	CreatedBy uuid.UUID
 	MemberIDs []uuid.UUID
 }
@@ -116,11 +108,11 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 		// 1. Insert channel.
 		var ch Channel
 		err := tx.QueryRow(ctx,
-			`INSERT INTO channels (name, is_dm, is_mls, created_by)
-			 VALUES ($1, $2, $3, $4)
-			 RETURNING id, name, is_dm, is_mls, created_by, created_at`,
-			strings.TrimSpace(in.Name), in.IsDM, in.IsMLS, in.CreatedBy,
-		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.IsMLS, &ch.CreatedBy, &ch.CreatedAt)
+			`INSERT INTO channels (name, is_dm, created_by)
+			 VALUES ($1, $2, $3)
+			 RETURNING id, name, is_dm, created_by, created_at`,
+			strings.TrimSpace(in.Name), in.IsDM, in.CreatedBy,
+		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt)
 		if err != nil {
 			return fmt.Errorf("insert channel: %w", err)
 		}
@@ -170,10 +162,10 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 func (s *Store) GetChannel(ctx context.Context, channelID uuid.UUID) (Channel, error) {
 	var ch Channel
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, name, is_dm, is_mls, created_by, created_at
+		`SELECT id, name, is_dm, created_by, created_at
 		   FROM channels WHERE id = $1`,
 		channelID,
-	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.IsMLS, &ch.CreatedBy, &ch.CreatedAt)
+	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Channel{}, ErrChannelNotFound
 	}
@@ -213,7 +205,7 @@ func (s *Store) IsMember(ctx context.Context, channelID, userID uuid.UUID) (bool
 // and the member-count cardinality is small (a few users per channel).
 func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]ChannelWithMembers, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT c.id, c.name, c.is_dm, c.is_mls, c.created_by, c.created_at
+		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at
 		   FROM channels c
 		   JOIN channel_members cm ON cm.channel_id = c.id
 		  WHERE cm.user_id = $1
@@ -229,7 +221,7 @@ func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]Ch
 	channelIDs := make([]uuid.UUID, 0, 16)
 	for rows.Next() {
 		var c Channel
-		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.IsMLS, &c.CreatedBy, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		channels = append(channels, ChannelWithMembers{Channel: c})

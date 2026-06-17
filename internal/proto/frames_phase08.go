@@ -36,15 +36,12 @@ const (
 // doesn't have a list_members frame; if you need to know who's in a
 // channel beyond a DM's two participants, that's a phase 11+ concern.
 type ChannelSummary struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	IsDM       bool     `json:"is_dm"`
-	// Phase 11b-2: true iff this channel is MLS-encrypted. SPA uses
-	// this to decide whether to encrypt sends and decrypt receives.
-	IsMLS      bool     `json:"is_mls,omitempty"`
-	CreatedBy  string   `json:"created_by"` // user_id; empty for system channels
-	CreatedAt  int64    `json:"created_at"` // unix-millis
-	MemberIDs  []string `json:"member_ids"` // small; included in summary for DM-name rendering
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	IsDM      bool            `json:"is_dm"`
+	CreatedBy string          `json:"created_by"` // user_id; empty for system channels
+	CreatedAt int64           `json:"created_at"` // unix-millis
+	MemberIDs []string        `json:"member_ids"` // small; included in summary for DM-name rendering
 	Members   []ChannelMember `json:"members"`    // phase 08c; pairs user_id with handle
 }
 
@@ -64,11 +61,11 @@ type ChannelMember struct {
 // in MemberIDs.
 //
 // Server rules:
-//   * Name required, non-empty after trim, ≤80 chars.
-//   * IsDM=true requires exactly one OTHER user (so the channel has
+//   - Name required, non-empty after trim, ≤80 chars.
+//   - IsDM=true requires exactly one OTHER user (so the channel has
 //     exactly 2 members total including the caller).
-//   * All MemberIDs must be friends of the caller (per phase 06 friends).
-//   * Non-friend / non-existent IDs cause the entire create to fail.
+//   - All MemberIDs must be friends of the caller (per phase 06 friends).
+//   - Non-friend / non-existent IDs cause the entire create to fail.
 type CreateChannelPayload struct {
 	Name      string   `json:"name"`
 	IsDM      bool     `json:"is_dm,omitempty"`
@@ -99,9 +96,9 @@ type ListChannelsAckPayload struct {
 
 // FetchHistoryPayload requests historical messages for a channel.
 //
-//   * BeforeSeq: return messages with seq < BeforeSeq, in descending seq
+//   - BeforeSeq: return messages with seq < BeforeSeq, in descending seq
 //     order. Omit (zero value) to fetch from the newest message.
-//   * Limit: cap on rows returned. Server enforces a hard ceiling of 200
+//   - Limit: cap on rows returned. Server enforces a hard ceiling of 200
 //     regardless. Default applied server-side if zero is sent: 50.
 //
 // Pagination pattern: keep calling fetch_history with BeforeSeq = the
@@ -126,11 +123,11 @@ type FetchHistoryAckPayload struct {
 // ChannelEventPayload is pushed server→client when something happened to
 // a channel the caller cares about. Kinds:
 //
-//   * "added":   the caller was added to a channel (created by someone
-//                else). Channel summary attached.
-//   * "removed": the caller was removed from a channel. Channel summary
-//                may be partial (just the ID) since the caller no longer
-//                has read access.
+//   - "added":   the caller was added to a channel (created by someone
+//     else). Channel summary attached.
+//   - "removed": the caller was removed from a channel. Channel summary
+//     may be partial (just the ID) since the caller no longer
+//     has read access.
 //
 // Phase 08 only emits "added" (on create_channel). "removed" lands when
 // we add remove_member, which is phase 11+.

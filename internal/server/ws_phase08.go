@@ -40,11 +40,9 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 		})
 	}
 	return proto.ChannelSummary{
-		ID:   c.ID.String(),
-		Name: c.Name,
-		IsDM: c.IsDM,
-		// Phase 11b-2: surface IsMLS so the SPA knows to encrypt/decrypt.
-		IsMLS:     c.IsMLS,
+		ID:        c.ID.String(),
+		Name:      c.Name,
+		IsDM:      c.IsDM,
 		CreatedBy: createdBy,
 		CreatedAt: c.CreatedAt.UnixMilli(),
 		MemberIDs: memberIDs,
@@ -142,18 +140,8 @@ func (h *WSHandler) handleCreateChannel(
 		others = append(others, m)
 	}
 	created, err := h.store.CreateChannel(ctx, store.CreateChannelInput{
-		Name: strings.TrimSpace(p.Name),
-		IsDM: p.IsDM,
-		// Phase 11c-2 PR 1 cutover policy: ALL new channels are MLS.
-		// This supersedes 11b-2's "DM-only" policy. Per design doc
-		// D-11c-1, all new multi-member channels created from 11c
-		// onward use MLS encryption; combined with the existing
-		// always-MLS-for-DMs rule, the rule is now simply "every new
-		// channel is MLS." Pre-11c plaintext channels keep their
-		// stored is_mls value (immutable; the column is set at
-		// creation time only). Client doesn't get to choose -- the
-		// server alone decides which channels are encrypted.
-		IsMLS:     true,
+		Name:      strings.TrimSpace(p.Name),
+		IsDM:      p.IsDM,
 		CreatedBy: callerID,
 		MemberIDs: others,
 	})
