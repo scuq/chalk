@@ -19,6 +19,7 @@ import (
 	"github.com/scuq/chalk/internal/proto"
 	"github.com/scuq/chalk/internal/pubsub"
 	"github.com/scuq/chalk/internal/store"
+	"strings"
 )
 
 // WSConfig tunes WebSocket behavior.
@@ -767,3 +768,1452 @@ func ensureDeviceForUser(ctx context.Context, st *store.Store, deviceID, userID 
 	}
 	return err
 }
+
+// ===== merged from ws_phase06.go =====
+
+// This file holds the phase-06 frame handlers: presence and friend
+// operations. The main ws.go file (from phase 05, refreshed in this
+// phase) routes incoming frame types to these handlers. Kept separate
+// from ws.go so the diff against phase 05 is visible and reviewable.
+
+// presenceHeartbeatTicker is set up per-connection. The cadence depends
+// on the device_type declared in the hello. Each tick bumps last_seen
+// in device_presence so the demotion sweep doesn't downgrade us.
+//
+// We don't republish state on every heartbeat; only when state changes.
+// That keeps NOTIFY traffic proportional to actual user activity.
+func (h *WSHandler) startPresenceHeartbeat(
+	ctx context.Context,
+	deviceID uuid.UUID,
+	dt presence.DeviceType,
+) {
+	if h.presence == nil {
+		return
+	}
+	interval := dt.HeartbeatInterval()
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			bumpCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			err := h.presence.BumpLastSeen(bumpCtx, deviceID)
+			cancel()
+			if err != nil && !errors.Is(err, presence.ErrDeviceNotPresent) {
+				h.logger.Printf("presence heartbeat: %v", err)
+			}
+			// If the row was missing (janitor reaped us or a state
+			// change cleared it), re-establish online. The client
+			// expects to still be "present" because the WebSocket
+			// itself is still open.
+			if errors.Is(err, presence.ErrDeviceNotPresent) {
+				reCtx, reCancel := context.WithTimeout(ctx, 2*time.Second)
+				_ = h.presence.SetDevicePresence(reCtx, presence.DevicePresence{
+					DeviceID:   deviceID,
+					UserID:     h.lookupUserForDevice(reCtx, deviceID),
+					InstanceID: h.instanceID,
+					DeviceType: dt,
+					State:      presence.StateOnline,
+				})
+				reCancel()
+			}
+		}
+	}
+}
+
+// lookupUserForDevice returns the user_id for a device. Best-effort;
+// returns uuid.Nil if the device isn't in the devices table (which
+// shouldn't happen since ensureDeviceForTesting creates one in phase 05).
+func (h *WSHandler) lookupUserForDevice(ctx context.Context, deviceID uuid.UUID) uuid.UUID {
+	if h.store == nil {
+		return uuid.Nil
+	}
+	var u uuid.UUID
+	err := h.store.Pool.QueryRow(ctx,
+		`SELECT user_id FROM devices WHERE id = $1`, deviceID,
+	).Scan(&u)
+	if err != nil {
+		return uuid.Nil
+	}
+	return u
+}
+
+// handlePresenceSubscribe records subscriptions for the calling device
+// and sends back the per-user accepted/rejected breakdown.
+func (h *WSHandler) handlePresenceSubscribe(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if !h.requirePresenceAndFriends(ctx, c, f.Ref) {
+		return
+	}
+	var p proto.PresenceSubscribePayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+
+	myDevice, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	myUser := h.lookupUserForDevice(ctx, myDevice)
+	if myUser == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+
+	subscribed := []string{}
+	rejected := []proto.PresenceRejection{}
+	for _, idStr := range p.UserIDs {
+		target, err := uuid.Parse(idStr)
+		if err != nil {
+			rejected = append(rejected, proto.PresenceRejection{
+				UserID: idStr, Reason: proto.ErrCodeBadPayload,
+			})
+			continue
+		}
+		if target == myUser {
+			rejected = append(rejected, proto.PresenceRejection{
+				UserID: idStr, Reason: "self",
+			})
+			continue
+		}
+		if err := h.friends.AssertActive(ctx, target); err != nil {
+			rejected = append(rejected, proto.PresenceRejection{
+				UserID: idStr, Reason: proto.ErrCodeUserNotFound,
+			})
+			continue
+		}
+		ok, err := h.friends.AreAcceptedFriends(ctx, myUser, target)
+		if err != nil {
+			rejected = append(rejected, proto.PresenceRejection{
+				UserID: idStr, Reason: proto.ErrCodeInternal,
+			})
+			continue
+		}
+		if !ok {
+			rejected = append(rejected, proto.PresenceRejection{
+				UserID: idStr, Reason: proto.ErrCodeNotFriends,
+			})
+			continue
+		}
+		if err := h.presence.AddSubscription(ctx, myDevice, target); err != nil {
+			rejected = append(rejected, proto.PresenceRejection{
+				UserID: idStr, Reason: proto.ErrCodeInternal,
+			})
+			continue
+		}
+		subscribed = append(subscribed, idStr)
+	}
+
+	ack, _ := proto.NewFrame(proto.TypePresenceSubscribeAck, f.Ref,
+		proto.PresenceSubscribeAckPayload{
+			Subscribed: subscribed,
+			Rejected:   rejected,
+		})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+
+	// For each successful subscription, immediately push the target's
+	// current aggregated state so the client doesn't have to wait for
+	// the next transition.
+	for _, idStr := range subscribed {
+		target, _ := uuid.Parse(idStr)
+		state, at, err := h.presence.AggregateUserState(ctx, target)
+		if err != nil {
+			continue
+		}
+		push, _ := proto.NewFrame(proto.TypePresence, "",
+			proto.PresencePayload{
+				UserID: idStr,
+				State:  string(state),
+				At:     at.UnixMilli(),
+			})
+		pd, _ := json.Marshal(push)
+		_ = writeOne(ctx, c, pd, h.cfg.WriteTimeout)
+	}
+}
+
+// handlePresenceUnsubscribe removes subscriptions.
+func (h *WSHandler) handlePresenceUnsubscribe(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if !h.requirePresenceAndFriends(ctx, c, f.Ref) {
+		return
+	}
+	var p proto.PresenceUnsubscribePayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	myDevice, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+
+	unsubscribed := []string{}
+	for _, idStr := range p.UserIDs {
+		target, err := uuid.Parse(idStr)
+		if err != nil {
+			continue
+		}
+		_ = h.presence.RemoveSubscription(ctx, myDevice, target)
+		unsubscribed = append(unsubscribed, idStr)
+	}
+
+	ack, _ := proto.NewFrame(proto.TypePresenceUnsubscribeAck, f.Ref,
+		proto.PresenceUnsubscribeAckPayload{Unsubscribed: unsubscribed})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+}
+
+// handlePresenceUpdate records the client's claimed state. The server
+// applies the change to the device's row and may republish if it
+// represents a transition; otherwise it's a heartbeat-with-intent.
+func (h *WSHandler) handlePresenceUpdate(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if !h.requirePresenceAndFriends(ctx, c, f.Ref) {
+		return
+	}
+	var p proto.PresenceUpdatePayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	// Clients can only claim online or away. offline is server-enforced
+	// on disconnect or by the demotion sweep.
+	if p.State != string(presence.StateOnline) && p.State != string(presence.StateAway) {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidState,
+			"clients may only claim online or away")
+		return
+	}
+	myDevice, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+
+	prev, err := h.presence.SetDeviceState(ctx, myDevice, presence.State(p.State))
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, err.Error())
+		return
+	}
+
+	ack, _ := proto.NewFrame(proto.TypePresenceUpdateAck, f.Ref,
+		proto.PresenceUpdateAckPayload{State: p.State})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+
+	// Publish NOTIFY only on actual transitions.
+	if string(prev) != p.State {
+		userID := h.lookupUserForDevice(ctx, myDevice)
+		if userID != uuid.Nil && h.publishPresenceChange != nil {
+			pubCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			defer cancel()
+			if err := h.publishPresenceChange(pubCtx, userID); err != nil {
+				h.logger.Printf("publish presence change: %v", err)
+			}
+		}
+	}
+}
+
+// --- friend handlers ---------------------------------------------------
+
+func (h *WSHandler) handleFriendRequest(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if !h.requirePresenceAndFriends(ctx, c, f.Ref) {
+		return
+	}
+	var p proto.FriendRequestPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	from, to, ok := h.parseUserPair(ctx, c, f.Ref, conn.DeviceID, p.ToUserID)
+	if !ok {
+		return
+	}
+
+	outcome, err := h.friends.Request(ctx, from, to)
+	if err != nil {
+		h.sendFriendError(ctx, c, f.Ref, err)
+		return
+	}
+
+	ack, _ := proto.NewFrame(proto.TypeFriendRequestAck, f.Ref,
+		proto.FriendRequestAckPayload{
+			ToUserID: p.ToUserID,
+			Status:   outcome,
+		})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+
+	// Notify the other party so their connected devices learn about
+	// the event in real time.
+	kind := "request_received"
+	if outcome == "auto_accepted" {
+		kind = "accepted"
+	}
+	h.publishFriendEvent(ctx, to, from, kind)
+
+	// If auto-accepted, also notify the requester (us). The wire push
+	// is useful for multi-device users: another device of mine should
+	// learn this friendship became accepted.
+	if outcome == "auto_accepted" {
+		h.publishFriendEvent(ctx, from, to, "accepted")
+	}
+}
+
+func (h *WSHandler) handleFriendAccept(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if !h.requirePresenceAndFriends(ctx, c, f.Ref) {
+		return
+	}
+	var p proto.FriendAcceptPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	us, from, ok := h.parseUserPair(ctx, c, f.Ref, conn.DeviceID, p.FromUserID)
+	if !ok {
+		return
+	}
+	if err := h.friends.Accept(ctx, us, from); err != nil {
+		h.sendFriendError(ctx, c, f.Ref, err)
+		return
+	}
+	ack, _ := proto.NewFrame(proto.TypeFriendAcceptAck, f.Ref,
+		proto.FriendAcceptAckPayload{FromUserID: p.FromUserID})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+
+	// Push to the requester so their UI updates immediately.
+	h.publishFriendEvent(ctx, from, us, "accepted")
+}
+
+func (h *WSHandler) handleFriendDecline(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if !h.requirePresenceAndFriends(ctx, c, f.Ref) {
+		return
+	}
+	var p proto.FriendDeclinePayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	us, from, ok := h.parseUserPair(ctx, c, f.Ref, conn.DeviceID, p.FromUserID)
+	if !ok {
+		return
+	}
+	if err := h.friends.Decline(ctx, us, from); err != nil {
+		h.sendFriendError(ctx, c, f.Ref, err)
+		return
+	}
+	ack, _ := proto.NewFrame(proto.TypeFriendDeclineAck, f.Ref,
+		proto.FriendDeclineAckPayload{FromUserID: p.FromUserID})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+	h.publishFriendEvent(ctx, from, us, "declined")
+}
+
+func (h *WSHandler) handleFriendRemove(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if !h.requirePresenceAndFriends(ctx, c, f.Ref) {
+		return
+	}
+	var p proto.FriendRemovePayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	us, them, ok := h.parseUserPair(ctx, c, f.Ref, conn.DeviceID, p.UserID)
+	if !ok {
+		return
+	}
+	if err := h.friends.Remove(ctx, us, them); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, err.Error())
+		return
+	}
+	ack, _ := proto.NewFrame(proto.TypeFriendRemoveAck, f.Ref,
+		proto.FriendRemoveAckPayload{UserID: p.UserID})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+	h.publishFriendEvent(ctx, them, us, "removed")
+}
+
+func (h *WSHandler) handleFriendBlock(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if !h.requirePresenceAndFriends(ctx, c, f.Ref) {
+		return
+	}
+	var p proto.FriendBlockPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	us, them, ok := h.parseUserPair(ctx, c, f.Ref, conn.DeviceID, p.UserID)
+	if !ok {
+		return
+	}
+	if err := h.friends.Block(ctx, us, them); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, err.Error())
+		return
+	}
+	ack, _ := proto.NewFrame(proto.TypeFriendBlockAck, f.Ref,
+		proto.FriendBlockAckPayload{UserID: p.UserID})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+	// Per design: blocked party is NOT notified.
+}
+
+func (h *WSHandler) handleFriendUnblock(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if !h.requirePresenceAndFriends(ctx, c, f.Ref) {
+		return
+	}
+	var p proto.FriendUnblockPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	us, them, ok := h.parseUserPair(ctx, c, f.Ref, conn.DeviceID, p.UserID)
+	if !ok {
+		return
+	}
+	if err := h.friends.Unblock(ctx, us, them); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, err.Error())
+		return
+	}
+	ack, _ := proto.NewFrame(proto.TypeFriendUnblockAck, f.Ref,
+		proto.FriendUnblockAckPayload{UserID: p.UserID})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+}
+
+func (h *WSHandler) handleFriendList(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if !h.requirePresenceAndFriends(ctx, c, f.Ref) {
+		return
+	}
+	myDevice, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	myUser := h.lookupUserForDevice(ctx, myDevice)
+	if myUser == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+
+	entries, err := h.friends.List(ctx, myUser)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, err.Error())
+		return
+	}
+
+	// Hydrate handles + account statuses in one query.
+	summaries, err := h.hydrateSummaries(ctx, entries)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, err.Error())
+		return
+	}
+
+	out := proto.FriendListAckPayload{}
+	for _, e := range entries {
+		s := summaries[e.OtherUserID]
+		switch {
+		case e.Status == friends.StatusPending && e.Direction == "outgoing":
+			out.PendingOutgoing = append(out.PendingOutgoing, s)
+		case e.Status == friends.StatusPending && e.Direction == "incoming":
+			out.PendingIncoming = append(out.PendingIncoming, s)
+		case e.Status == friends.StatusAccepted:
+			out.Accepted = append(out.Accepted, s)
+		case e.Status == friends.StatusBlocked:
+			out.Blocked = append(out.Blocked, s)
+		}
+	}
+
+	ack, _ := proto.NewFrame(proto.TypeFriendListAck, f.Ref, out)
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+}
+
+// hydrateSummaries fetches handle + status for the OtherUserID of every
+// entry in one query, then returns a map. Phase 06 sees small friend
+// lists (typical user has tens, not thousands), so the IN-list approach
+// is fine.
+func (h *WSHandler) hydrateSummaries(
+	ctx context.Context,
+	entries []friends.FriendListEntry,
+) (map[uuid.UUID]proto.FriendSummary, error) {
+	if len(entries) == 0 {
+		return map[uuid.UUID]proto.FriendSummary{}, nil
+	}
+	ids := make([]uuid.UUID, 0, len(entries))
+	seen := make(map[uuid.UUID]struct{}, len(entries))
+	for _, e := range entries {
+		if _, ok := seen[e.OtherUserID]; ok {
+			continue
+		}
+		seen[e.OtherUserID] = struct{}{}
+		ids = append(ids, e.OtherUserID)
+	}
+
+	rows, err := h.store.Pool.Query(ctx,
+		`SELECT id, handle, status FROM users WHERE id = ANY($1)`,
+		ids,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[uuid.UUID]proto.FriendSummary, len(ids))
+	for rows.Next() {
+		var id uuid.UUID
+		var handle, status string
+		if err := rows.Scan(&id, &handle, &status); err != nil {
+			return nil, err
+		}
+		out[id] = proto.FriendSummary{
+			UserID:        id.String(),
+			Handle:        handle,
+			AccountStatus: status,
+		}
+	}
+	return out, rows.Err()
+}
+
+// --- helpers ----------------------------------------------------------
+
+// parseUserPair resolves both the caller's user_id (from their device_id)
+// and a target user_id from the request. Sends an appropriate error frame
+// and returns ok=false on failure.
+func (h *WSHandler) parseUserPair(
+	ctx context.Context,
+	c *websocket.Conn,
+	ref, deviceIDStr, targetUserIDStr string,
+) (us, target uuid.UUID, ok bool) {
+	deviceID, err := uuid.Parse(deviceIDStr)
+	if err != nil {
+		h.sendError(ctx, c, ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return uuid.Nil, uuid.Nil, false
+	}
+	us = h.lookupUserForDevice(ctx, deviceID)
+	if us == uuid.Nil {
+		h.sendError(ctx, c, ref, proto.ErrCodeInternal, "unknown user")
+		return uuid.Nil, uuid.Nil, false
+	}
+	target, err = uuid.Parse(targetUserIDStr)
+	if err != nil {
+		h.sendError(ctx, c, ref, proto.ErrCodeBadPayload, "user_id not a UUID")
+		return uuid.Nil, uuid.Nil, false
+	}
+	if target == us {
+		h.sendError(ctx, c, ref, proto.ErrCodeCannotSelfFriend,
+			"cannot operate on self")
+		return uuid.Nil, uuid.Nil, false
+	}
+	return us, target, true
+}
+
+// sendFriendError maps friends-package errors to wire error codes.
+func (h *WSHandler) sendFriendError(
+	ctx context.Context,
+	c *websocket.Conn,
+	ref string,
+	err error,
+) {
+	code := proto.ErrCodeInternal
+	switch {
+	case errors.Is(err, friends.ErrSelfFriend):
+		code = proto.ErrCodeCannotSelfFriend
+	case errors.Is(err, friends.ErrUserNotFound),
+		errors.Is(err, friends.ErrUserUnavailable):
+		code = proto.ErrCodeUserNotFound
+	case errors.Is(err, friends.ErrAlreadyFriends):
+		code = proto.ErrCodeAlreadyFriends
+	case errors.Is(err, friends.ErrBlocked):
+		code = proto.ErrCodeFriendshipBlocked
+	case errors.Is(err, friends.ErrNoPendingRequest):
+		code = proto.ErrCodeNoPendingRequest
+	}
+	h.sendError(ctx, c, ref, code, err.Error())
+}
+
+// publishFriendEvent NOTIFYs interested parties about an asynchronous
+// friendship state change. recipient is the user_id whose devices
+// should receive the push; fromUser is the other party.
+func (h *WSHandler) publishFriendEvent(
+	ctx context.Context,
+	recipient, fromUser uuid.UUID,
+	kind string,
+) {
+	if h.publishFriend == nil {
+		return
+	}
+	pubCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := h.publishFriend(pubCtx, recipient, fromUser, kind); err != nil {
+		h.logger.Printf("publish friend event: %v", err)
+	}
+}
+
+// requirePresenceAndFriends returns false (and emits an error frame) if
+// the handler was constructed without the presence/friends dependencies.
+// Defensive: prevents nil dereferences in tests that wire only part of
+// the stack.
+func (h *WSHandler) requirePresenceAndFriends(
+	ctx context.Context,
+	c *websocket.Conn,
+	ref string,
+) bool {
+	if h.presence == nil || h.friends == nil {
+		h.sendError(ctx, c, ref, proto.ErrCodeInternal,
+			"presence/friends not configured on this server")
+		return false
+	}
+	return true
+}
+
+// classifyDeviceType maps the client-claimed device_type string to a
+// validated presence.DeviceType, defaulting to browser-unknown for any
+// unrecognized value (including empty).
+func classifyDeviceType(s string) presence.DeviceType {
+	switch s {
+	case string(presence.DevicePhone):
+		return presence.DevicePhone
+	case string(presence.DeviceTablet):
+		return presence.DeviceTablet
+	case string(presence.DeviceDesktop):
+		return presence.DeviceDesktop
+	}
+	return presence.DeviceBrowserUnknown
+}
+
+// ===== merged from ws_phase08.go =====
+
+// channelSummaryFromStore builds a proto.ChannelSummary from a
+// store.ChannelWithMembers. Centralized so the two call sites
+// (create_channel ack and list_channels ack) format identically.
+//
+// Phase 08c: handles is a map of user_id -> handle. When non-nil and a
+// member's handle is found, we include it in the Members slice for the
+// SPA to render @<handle> instead of a UUID prefix. We still populate
+// the deprecated MemberIDs []string for backward compatibility with
+// older clients and the phase 08a integration tests.
+func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]string) proto.ChannelSummary {
+	createdBy := ""
+	if c.CreatedBy != nil {
+		createdBy = c.CreatedBy.String()
+	}
+	memberIDs := make([]string, 0, len(c.MemberIDs))
+	members := make([]proto.ChannelMember, 0, len(c.MemberIDs))
+	for _, m := range c.MemberIDs {
+		memberIDs = append(memberIDs, m.String())
+		members = append(members, proto.ChannelMember{
+			UserID: m.String(),
+			Handle: handles[m], // empty string if unknown, fine
+		})
+	}
+	return proto.ChannelSummary{
+		ID:        c.ID.String(),
+		Name:      c.Name,
+		IsDM:      c.IsDM,
+		CreatedBy: createdBy,
+		CreatedAt: c.CreatedAt.UnixMilli(),
+		MemberIDs: memberIDs,
+		Members:   members,
+	}
+}
+
+// handleCreateChannel inserts a channel + members and acks with the
+// full summary. The caller becomes 'owner'; all other members must be
+// accepted friends of the caller (phase 06 friends table).
+//
+// On success, also pushes a channel_event{kind="added"} to each new
+// member's locally-connected devices via a Kind="channel" pubsub event.
+// Cross-instance push happens automatically through the listener.
+func (h *WSHandler) handleCreateChannel(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	var p proto.CreateChannelPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	if strings.TrimSpace(p.Name) == "" || len(p.Name) > 80 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel,
+			"name must be 1-80 chars after trim")
+		return
+	}
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id invalid")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember,
+			"anonymous senders cannot create channels")
+		return
+	}
+
+	// Parse + de-dup member IDs.
+	memberSet := make(map[uuid.UUID]struct{}, len(p.MemberIDs)+1)
+	for _, m := range p.MemberIDs {
+		mu, perr := uuid.Parse(m)
+		if perr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload,
+				"member_id not a uuid: "+m)
+			return
+		}
+		if mu == callerID {
+			continue // caller added automatically
+		}
+		memberSet[mu] = struct{}{}
+	}
+
+	// Friends check: every other member must be an accepted friend
+	// of the caller.
+	if h.friends == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "friends store unavailable")
+		return
+	}
+	for m := range memberSet {
+		ok, err := h.friends.AreAcceptedFriends(ctx, callerID, m)
+		if err != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal,
+				"friend check: "+err.Error())
+			return
+		}
+		if !ok {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotFriends,
+				"must be friends with "+m.String())
+			return
+		}
+	}
+
+	// DM constraint preflight: exactly 1 other member (so 2 total
+	// with caller). Server returns a friendly error rather than letting
+	// the trigger fire with a generic message.
+	if p.IsDM && len(memberSet) != 1 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeDMCardinality,
+			"DM channels need exactly 1 other member")
+		return
+	}
+
+	// Build the member list and create.
+	others := make([]uuid.UUID, 0, len(memberSet))
+	for m := range memberSet {
+		others = append(others, m)
+	}
+	created, err := h.store.CreateChannel(ctx, store.CreateChannelInput{
+		Name:      strings.TrimSpace(p.Name),
+		IsDM:      p.IsDM,
+		CreatedBy: callerID,
+		MemberIDs: others,
+	})
+	if err != nil {
+		if errors.Is(err, store.ErrDMCardinality) {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeDMCardinality, err.Error())
+			return
+		}
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "create channel: "+err.Error())
+		return
+	}
+
+	// Phase 08c: fetch handles for all members before building the
+	// summary. Failure here is non-fatal -- we'd just send a summary
+	// with empty handles, and the SPA falls back to UUID prefixes.
+	handles, hErr := h.store.HandlesByID(ctx, created.MemberIDs)
+	if hErr != nil {
+		h.logger.Printf("handles lookup (create_channel): %v", hErr)
+		handles = nil // channelSummaryFromStore tolerates nil
+	}
+
+	summary := channelSummaryFromStore(created, handles)
+
+	// Ack the caller.
+	ack, _ := proto.NewFrame(proto.TypeCreateChannelAck, f.Ref,
+		proto.CreateChannelAckPayload{Channel: summary})
+	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("create_channel_ack write: %v", err)
+		// Don't return -- the channel exists; we still need to push events
+		// to other members so they can see it on their side.
+	}
+
+	// Push channel_event{kind="added"} to every member's devices,
+	// including the caller's other devices. We publish per-member via
+	// chalk_global with a new Kind="channel" event; server.go's
+	// handlePubsubEvent dispatches by Kind and pushes channel_event.
+	//
+	// Why chalk_global and not the per-channel topic: members haven't
+	// subscribed to this channel's topic yet (we just created it).
+	// chalk_global is always subscribed, so it's the safe path.
+	for _, m := range created.MemberIDs {
+		if err := h.publishChannelEvent(ctx, m, created.ID, "added", summary); err != nil {
+			h.logger.Printf("publish channel_event added to %s: %v", m, err)
+		}
+	}
+}
+
+// handleListChannels returns every channel the caller is a member of.
+func (h *WSHandler) handleListChannels(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id invalid")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		// Anonymous callers get an empty list -- not an error.
+		ack, _ := proto.NewFrame(proto.TypeListChannelsAck, f.Ref,
+			proto.ListChannelsAckPayload{Channels: []proto.ChannelSummary{}})
+		_ = writeFrame(ctx, c, ack, h.cfg.WriteTimeout)
+		return
+	}
+	channels, err := h.store.ListChannelsForUser(ctx, callerID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "list: "+err.Error())
+		return
+	}
+	summaries := make([]proto.ChannelSummary, 0, len(channels))
+
+	// Phase 08c: union all member UUIDs across the channel list and
+	// fetch their handles in one query. Cheaper than one query per
+	// channel, and the union is bounded by (channels * members_per_dm)
+	// which stays small.
+	idSet := make(map[uuid.UUID]struct{})
+	for _, ch := range channels {
+		for _, m := range ch.MemberIDs {
+			idSet[m] = struct{}{}
+		}
+	}
+	uniqIDs := make([]uuid.UUID, 0, len(idSet))
+	for id := range idSet {
+		uniqIDs = append(uniqIDs, id)
+	}
+	handles, hErr := h.store.HandlesByID(ctx, uniqIDs)
+	if hErr != nil {
+		h.logger.Printf("handles lookup (list_channels): %v", hErr)
+		handles = nil
+	}
+
+	for _, ch := range channels {
+		summaries = append(summaries, channelSummaryFromStore(ch, handles))
+	}
+	ack, _ := proto.NewFrame(proto.TypeListChannelsAck, f.Ref,
+		proto.ListChannelsAckPayload{Channels: summaries})
+	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("list_channels_ack write: %v", err)
+	}
+}
+
+// handleFetchHistory returns up to limit messages with seq < before_seq
+// in descending seq order. Membership is enforced.
+func (h *WSHandler) handleFetchHistory(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	var p proto.FetchHistoryPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id must be a UUID")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id invalid")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember,
+			"anonymous senders cannot fetch history")
+		return
+	}
+
+	// The default channel is special-cased: it's not in
+	// channel_members but is "always open" for the phase 07 transition.
+	// Every other channel requires membership.
+	if channelID != store.DefaultChannelID {
+		isMember, mErr := h.store.IsMember(ctx, channelID, callerID)
+		if mErr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership: "+mErr.Error())
+			return
+		}
+		if !isMember {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member")
+			return
+		}
+	}
+
+	msgs, err := h.store.ListMessagesByChannel(ctx, channelID, p.BeforeSeq, p.Limit)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "fetch: "+err.Error())
+		return
+	}
+
+	out := make([]proto.MessagePayload, 0, len(msgs))
+	for _, m := range msgs {
+		senderStr := ""
+		if m.SenderDeviceID != uuid.Nil {
+			senderStr = m.SenderDeviceID.String()
+		}
+		// Phase 9.6i:
+		senderUserStr := ""
+		if m.SenderUserID != uuid.Nil {
+			senderUserStr = m.SenderUserID.String()
+		}
+		// Phase 10a:
+		parentStr := ""
+		if m.ParentID != nil {
+			parentStr = m.ParentID.String()
+		}
+		threadStr := ""
+		if m.ThreadID != nil {
+			threadStr = m.ThreadID.String()
+		}
+		// Phase 10e: resolve the preview sender (may be nil if the
+		// thread has no replies; LastReplyBody is the empty string in
+		// that case, which the client treats as "no preview").
+		lastReplySender := ""
+		if m.LastReplySenderUserID != nil {
+			lastReplySender = m.LastReplySenderUserID.String()
+		}
+		bodyStr := string(m.Body)
+		out = append(out, proto.MessagePayload{
+			ID:                    m.ID.String(),
+			ChannelID:             m.ChannelID.String(),
+			Seq:                   m.Seq,
+			Sender:                senderStr,
+			SenderUserID:          senderUserStr,
+			TS:                    m.TS.UnixMilli(),
+			Body:                  bodyStr,
+			ParentID:              parentStr,
+			ThreadID:              threadStr,
+			ReplyCount:            m.ReplyCount,
+			LastReplySeq:          m.LastReplySeq,
+			LastReplySenderUserID: lastReplySender,
+			LastReplyBody:         string(m.LastReplyBody),
+		})
+	}
+
+	ack, _ := proto.NewFrame(proto.TypeFetchHistoryAck, f.Ref,
+		proto.FetchHistoryAckPayload{
+			ChannelID: p.ChannelID,
+			BeforeSeq: p.BeforeSeq,
+			Messages:  out,
+		})
+	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("fetch_history_ack write: %v", err)
+	}
+}
+
+// publishChannelEvent emits a Kind="channel" event on chalk_global so
+// every chalkd's listener can route it to locally-connected devices of
+// the named member. Implementation in server.go calls back here.
+//
+// Defined as a method-shaped hook so tests can stub via WSHandler
+// composition; production wiring is set up in server.go.
+func (h *WSHandler) publishChannelEvent(
+	ctx context.Context,
+	recipient uuid.UUID,
+	channelID uuid.UUID,
+	kind string,
+	summary proto.ChannelSummary,
+) error {
+	if h.store == nil {
+		return errors.New("no store")
+	}
+	// Encode the summary into the Event's Payload-equivalent. The
+	// Event envelope is minimal; we need to carry the full summary so
+	// receivers don't have to query. Encode as JSON into a sub-field.
+	// pubsub.Event today has no generic payload; we shoehorn via a
+	// new field added in channel_event.go below.
+	return pgxBegin(ctx, h.store, func(tx pgx.Tx) error {
+		ev := pubsub.Event{
+			Kind:       "channel",
+			UserID:     recipient,
+			ChannelID:  channelID,
+			InstanceID: h.instanceID,
+			FriendKind: kind, // overload: reuse string field for kind discriminator
+		}
+		// We also need to ship the summary itself. Stuff it in a JSON
+		// blob carried via the "fk" field is wrong shape; we use a
+		// new field on Event added by channel_event_payload.go.
+		// (See server.go::handleChannelEvent for how this is unwrapped.)
+		buf, err := json.Marshal(summary)
+		if err != nil {
+			return err
+		}
+		ev.ChannelEventPayload = buf
+		return pubsub.PublishWithTx(ctx, tx, ev)
+	})
+}
+
+// writeFrame is a convenience wrapper around writeOne for the JSON-
+// marshal case. Used by the phase 08 handlers; phase 06 handlers
+// inline this pattern.
+func writeFrame(ctx context.Context, c *websocket.Conn, f proto.Frame, timeout time.Duration) error {
+	b, err := json.Marshal(f)
+	if err != nil {
+		return err
+	}
+	return writeOne(ctx, c, b, timeout)
+}
+
+// Phase 10a: handleFetchThread returns up to `limit` messages of a
+// given thread, ordered newest-first by seq. Membership is checked
+// the same way as fetch_history (via channel membership). The
+// thread head itself isn't returned by this query (its row has
+// thread_id=NULL); callers wanting head+replies should also have
+// the head in their channel-feed cache, or fetch it via the channel
+// history pagination.
+func (h *WSHandler) handleFetchThread(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	var p proto.FetchThreadPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id must be a UUID")
+		return
+	}
+	threadID, err := uuid.Parse(p.ThreadID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "thread_id must be a UUID")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id invalid")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember,
+			"anonymous senders cannot fetch threads")
+		return
+	}
+	if channelID != store.DefaultChannelID {
+		isMember, mErr := h.store.IsMember(ctx, channelID, callerID)
+		if mErr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership: "+mErr.Error())
+			return
+		}
+		if !isMember {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member")
+			return
+		}
+	}
+	msgs, err := h.store.ListMessagesByThread(ctx, channelID, threadID, p.BeforeSeq, p.Limit)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "fetch thread: "+err.Error())
+		return
+	}
+	out := make([]proto.MessagePayload, 0, len(msgs))
+	for _, m := range msgs {
+		senderStr := ""
+		if m.SenderDeviceID != uuid.Nil {
+			senderStr = m.SenderDeviceID.String()
+		}
+		senderUserStr := ""
+		if m.SenderUserID != uuid.Nil {
+			senderUserStr = m.SenderUserID.String()
+		}
+		parentStr := ""
+		if m.ParentID != nil {
+			parentStr = m.ParentID.String()
+		}
+		threadStr := ""
+		if m.ThreadID != nil {
+			threadStr = m.ThreadID.String()
+		}
+		tBody := string(m.Body)
+		out = append(out, proto.MessagePayload{
+			ID:           m.ID.String(),
+			ChannelID:    m.ChannelID.String(),
+			Seq:          m.Seq,
+			Sender:       senderStr,
+			SenderUserID: senderUserStr,
+			TS:           m.TS.UnixMilli(),
+			Body:         tBody,
+			ParentID:     parentStr,
+			ThreadID:     threadStr,
+		})
+	}
+	ack, _ := proto.NewFrame(proto.TypeFetchThreadAck, f.Ref, proto.FetchThreadAckPayload{
+		ChannelID: p.ChannelID,
+		ThreadID:  p.ThreadID,
+		Messages:  out,
+	})
+	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("fetch_thread write: %v", err)
+	}
+}
+
+// ===== merged from ws_phase08b.go =====
+
+// Phase 08b: subscribe_channel handler.
+//
+// Per-connection topic tracking lives in a sidecar map on WSHandler
+// rather than on the Conn struct (no need to touch hub.go). Keyed by
+// the *Conn pointer, value is a per-conn slice protected by its own
+// mutex. The hello-time loop in ws.go bootstraps this entry; this
+// handler appends to it; the disconnect defer in ws.go drains it.
+//
+// We use the *Conn pointer as the key because (a) it's unique per
+// connection (DeviceID can be reused across reconnects), (b) it
+// doesn't escape the WSHandler so there's no reference cycle, and
+// (c) cleanup on disconnect is one Delete call.
+
+// connSubs is the per-WSHandler tracking map. Keyed by *Conn, value
+// is a *connSubEntry holding the lock + slice. Read in ws.go's hello
+// path and disconnect defer; written here.
+//
+// We use sync.Map because the access pattern is "one writer per key
+// (the read goroutine of that conn), many keys, no overlap." The
+// stdlib map + mutex pattern works too but sync.Map fits the shape.
+type connSubEntry struct {
+	mu     sync.Mutex
+	topics []string
+}
+
+// withSubs returns (or lazily creates) the connSubEntry for conn.
+// Called from both ws.go's hello path and this file's handler.
+func (h *WSHandler) withSubs(conn *Conn) *connSubEntry {
+	if v, ok := h.connSubs.Load(conn); ok {
+		return v.(*connSubEntry)
+	}
+	entry := &connSubEntry{}
+	actual, _ := h.connSubs.LoadOrStore(conn, entry)
+	return actual.(*connSubEntry)
+}
+
+// releaseConnSubs is called on disconnect by ws.go. It unsubscribes
+// every topic the conn had registered and removes the entry from the
+// tracking map. Safe to call multiple times (the slice is drained).
+func (h *WSHandler) releaseConnSubs(conn *Conn) {
+	v, ok := h.connSubs.LoadAndDelete(conn)
+	if !ok {
+		return
+	}
+	entry := v.(*connSubEntry)
+	entry.mu.Lock()
+	topics := entry.topics
+	entry.topics = nil
+	entry.mu.Unlock()
+	if h.listener == nil {
+		return
+	}
+	for _, t := range topics {
+		h.listener.Unsubscribe(t)
+	}
+}
+
+// handleSubscribeChannel verifies the caller's membership in
+// payload.ChannelID, asks the listener to LISTEN on the per-channel
+// topic if not already, and acks.
+//
+// The Subscribe call is refcounted inside the listener, so multiple
+// devices for the same user (and across reconnects of the same device)
+// share a single LISTEN. The unique work per-conn is the bookkeeping
+// in connSubs so that disconnect releases the refcount it added.
+func (h *WSHandler) handleSubscribeChannel(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	var p proto.SubscribeChannelPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id must be a UUID")
+		return
+	}
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	if h.listener == nil {
+		// Without a listener we can't subscribe. Tell the client; it
+		// should fall back to reconnect-after-channel-event.
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no listener configured")
+		return
+	}
+
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id invalid")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember,
+			"anonymous senders cannot subscribe")
+		return
+	}
+	isMember, mErr := h.store.IsMember(ctx, channelID, callerID)
+	if mErr != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership: "+mErr.Error())
+		return
+	}
+	if !isMember {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member")
+		return
+	}
+
+	topic := pubsub.ChannelTopic(channelID)
+
+	// Subscribe. The listener refcount makes repeat calls cheap; if
+	// this conn already subscribed earlier (e.g. via hello-time loop
+	// or a previous subscribe_channel call) it's still cheap. The
+	// guard below makes sure we don't double-track in connSubs.
+	subCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := h.listener.Subscribe(subCtx, topic); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "subscribe: "+err.Error())
+		return
+	}
+
+	// Record on the conn's slice so disconnect releases the refcount.
+	// Guard against duplicates: a defensive client may resubscribe;
+	// the listener handles it but we shouldn't unsubscribe twice
+	// at disconnect (which would push refcount negative -- caught by
+	// the listener, but cleaner to avoid).
+	entry := h.withSubs(conn)
+	entry.mu.Lock()
+	already := false
+	for _, t := range entry.topics {
+		if t == topic {
+			already = true
+			break
+		}
+	}
+	if !already {
+		entry.topics = append(entry.topics, topic)
+	}
+	entry.mu.Unlock()
+	if already {
+		// We Subscribed redundantly above (the listener refcount went
+		// up by 1 too many). Compensate.
+		h.listener.Unsubscribe(topic)
+	}
+
+	ack, _ := proto.NewFrame(proto.TypeSubscribeChannelAck, f.Ref,
+		proto.SubscribeChannelAckPayload{ChannelID: p.ChannelID})
+	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("subscribe_channel_ack write: %v", err)
+	}
+}
+
+// ===== merged from ws_phase09g.go =====
+
+// Phase 9.7 -- user preferences WS handlers.
+//
+// Frames:
+//   prefs_get      -> prefs_get_ack { prefs }
+//   prefs_set      -> prefs_set_ack { prefs }  (and prefs_changed push to other devices)
+//
+// Push:
+//   prefs_changed  { prefs }   to all of the same user's other conns
+//
+// Validation:
+//   The server keeps prefs as opaque JSONB but caps payload size to
+//   8 KiB after marshal. Individual key validation lives in the SPA
+//   (which knows the typed shape); the server only enforces "valid
+//   JSON object" and "not too big".
+
+const prefsMaxBytes = 8 * 1024
+
+func (h *WSHandler) handlePrefsGet(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	userID := h.lookupUserForDevice(ctx, deviceID)
+	if userID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+	prefs, err := h.store.GetPreferences(ctx, userID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "fetch prefs: "+err.Error())
+		return
+	}
+	ack, _ := proto.NewFrame(proto.TypePrefsGetAck, f.Ref, proto.PrefsAckPayload{
+		Prefs: prefs,
+	})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+}
+
+func (h *WSHandler) handlePrefsSet(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.PrefsSetPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	if p.Patch == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "patch must be an object")
+		return
+	}
+	// Size guard. Marshal first; if it's too big, reject before
+	// touching the DB.
+	patchJSON, err := json.Marshal(p.Patch)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "patch must be JSON object")
+		return
+	}
+	if len(patchJSON) > prefsMaxBytes {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "patch too large")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	userID := h.lookupUserForDevice(ctx, deviceID)
+	if userID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+	merged, err := h.store.UpsertPreferences(ctx, userID, p.Patch)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "save prefs: "+err.Error())
+		return
+	}
+	// Ack to the caller with the merged result.
+	ack, _ := proto.NewFrame(proto.TypePrefsSetAck, f.Ref, proto.PrefsAckPayload{
+		Prefs: merged,
+	})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+
+	// Fan out to this user's OTHER conns (other tabs / devices) so
+	// they update their local cache. The publisher hook is the same
+	// shape as the friend/presence ones.
+	if h.publishPrefsChange != nil {
+		if perr := h.publishPrefsChange(ctx, userID, conn.ID); perr != nil {
+			h.logger.Printf("publish prefs change: %v", perr)
+		}
+	}
+}
+
+// PrefsChangePublisher is the hook called from handlePrefsSet to
+// emit a per-user pubsub event. The Server wires this up in main.
+type PrefsChangePublisher func(ctx context.Context, userID uuid.UUID, originConnID string) error
+
+// handlePrefsEvent (on the Server side) re-fetches the prefs and
+// fans out a prefs_changed frame to the user's local conns,
+// skipping the originating conn so it doesn't get its own echo.
+//
+// Lives on the Server side because it needs s.hub access; the
+// dispatcher is in server.go's handlePubsubEvent. This file just
+// notes the contract.
