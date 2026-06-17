@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -391,12 +390,7 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 	if msg.ThreadID != nil {
 		threadStr = msg.ThreadID.String()
 	}
-	// Phase 11b-1: MLS rows ship ciphertext as base64. Plaintext
-	// rows keep the existing string(bytes) path.
 	pushBody := string(msg.Ciphertext)
-	if msg.ContentType == proto.ContentTypeMlsCiphertext {
-		pushBody = base64.StdEncoding.EncodeToString(msg.Ciphertext)
-	}
 	frame, err := proto.NewFrame(proto.TypeMessage, "", proto.MessagePayload{
 		ID:           msg.ID.String(),
 		ChannelID:    msg.ChannelID.String(),
@@ -407,9 +401,6 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 		Body:         pushBody,
 		ParentID:     parentStr,
 		ThreadID:     threadStr,
-		// Phase 11b-1: surface row's content_type so the SPA can
-		// branch on plaintext vs MLS.
-		ContentType: msg.ContentType,
 	})
 	if err != nil {
 		s.logger.Printf("pubsub frame: %v", err)

@@ -148,13 +148,6 @@ type SendPayload struct {
 	// (parent.thread_id if non-nil, else parent.id) and validates that
 	// the parent exists in the same channel.
 	ParentID string `json:"parent_id,omitempty"`
-	// Phase 11b-1: content_type tells the server how to interpret Body.
-	// Omitted/empty -> "application" (legacy plaintext).
-	//                  Body is treated as UTF-8 text, stored as bytes.
-	// "mls_ciphertext" -> Body is base64-encoded ciphertext bytes.
-	//                     Server decodes b64, stores raw bytes, never
-	//                     attempts to interpret them.
-	ContentType string `json:"content_type,omitempty"`
 }
 
 // MessagePayload is what the server pushes to peers. id and ts are
@@ -195,9 +188,6 @@ type MessagePayload struct {
 	// been purged).
 	LastReplySenderUserID string `json:"last_reply_sender_user_id,omitempty"`
 	LastReplyBody         string `json:"last_reply_body,omitempty"`
-	// Phase 11b-1: content_type so the client can detect encrypted rows.
-	// "application" (or empty) = plaintext; "mls_ciphertext" = MLS bytes.
-	ContentType string `json:"content_type,omitempty"`
 }
 
 // ErrorPayload is sent when the server can't process a request. Code is a
@@ -239,10 +229,3 @@ type FetchThreadAckPayload struct {
 	ThreadID  string           `json:"thread_id"`
 	Messages  []MessagePayload `json:"messages"`
 }
-
-// Content-type vocabulary the server understands. Stored in
-// messages.content_type and surfaced to clients via MessagePayload.
-const (
-	ContentTypeApplication   = "application"    // plaintext (legacy default)
-	ContentTypeMlsCiphertext = "mls_ciphertext" // MLS-encrypted bytes
-)

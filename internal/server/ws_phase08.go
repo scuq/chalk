@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -41,9 +40,9 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 		})
 	}
 	return proto.ChannelSummary{
-		ID:        c.ID.String(),
-		Name:      c.Name,
-		IsDM:      c.IsDM,
+		ID:   c.ID.String(),
+		Name: c.Name,
+		IsDM: c.IsDM,
 		// Phase 11b-2: surface IsMLS so the SPA knows to encrypt/decrypt.
 		IsMLS:     c.IsMLS,
 		CreatedBy: createdBy,
@@ -143,8 +142,8 @@ func (h *WSHandler) handleCreateChannel(
 		others = append(others, m)
 	}
 	created, err := h.store.CreateChannel(ctx, store.CreateChannelInput{
-		Name:      strings.TrimSpace(p.Name),
-		IsDM:      p.IsDM,
+		Name: strings.TrimSpace(p.Name),
+		IsDM: p.IsDM,
 		// Phase 11c-2 PR 1 cutover policy: ALL new channels are MLS.
 		// This supersedes 11b-2's "DM-only" policy. Per design doc
 		// D-11c-1, all new multi-member channels created from 11c
@@ -345,13 +344,7 @@ func (h *WSHandler) handleFetchHistory(
 		if m.LastReplySenderUserID != nil {
 			lastReplySender = m.LastReplySenderUserID.String()
 		}
-		// Phase 11b-1: MLS rows ship ciphertext as base64 over the
-		// wire so the SPA can decode and feed to CoreCrypto. Plaintext
-		// rows keep the existing string(bytes) path.
 		bodyStr := string(m.Ciphertext)
-		if m.ContentType == proto.ContentTypeMlsCiphertext {
-			bodyStr = base64.StdEncoding.EncodeToString(m.Ciphertext)
-		}
 		out = append(out, proto.MessagePayload{
 			ID:                    m.ID.String(),
 			ChannelID:             m.ChannelID.String(),
@@ -366,9 +359,6 @@ func (h *WSHandler) handleFetchHistory(
 			LastReplySeq:          m.LastReplySeq,
 			LastReplySenderUserID: lastReplySender,
 			LastReplyBody:         string(m.LastReplyBody),
-			// Phase 11b-1: surface row's content_type so the SPA can
-			// label encrypted rows.
-			ContentType: m.ContentType,
 		})
 	}
 
@@ -513,11 +503,7 @@ func (h *WSHandler) handleFetchThread(
 		if m.ThreadID != nil {
 			threadStr = m.ThreadID.String()
 		}
-		// Phase 11b-1: same MLS body-encoding rule as the history path.
 		tBody := string(m.Ciphertext)
-		if m.ContentType == proto.ContentTypeMlsCiphertext {
-			tBody = base64.StdEncoding.EncodeToString(m.Ciphertext)
-		}
 		out = append(out, proto.MessagePayload{
 			ID:           m.ID.String(),
 			ChannelID:    m.ChannelID.String(),
@@ -528,7 +514,6 @@ func (h *WSHandler) handleFetchThread(
 			Body:         tBody,
 			ParentID:     parentStr,
 			ThreadID:     threadStr,
-			ContentType:  m.ContentType,
 		})
 	}
 	ack, _ := proto.NewFrame(proto.TypeFetchThreadAck, f.Ref, proto.FetchThreadAckPayload{

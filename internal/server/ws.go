@@ -2,10 +2,8 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -620,32 +618,13 @@ func (h *WSHandler) handleSend(
 		}
 		msgID := uuid.New()
 		var ts time.Time
-		// Phase 11b-1: respect p.ContentType. Default (empty) -> plaintext.
-		// "mls_ciphertext" -> p.Body is base64-encoded ciphertext bytes.
-		contentType := proto.ContentTypeApplication
-		var bodyBytes []byte
-		switch p.ContentType {
-		case "", proto.ContentTypeApplication:
-			bodyBytes = []byte(p.Body)
-		case proto.ContentTypeMlsCiphertext:
-			contentType = proto.ContentTypeMlsCiphertext
-			decoded, derr := base64.StdEncoding.DecodeString(p.Body)
-			if derr != nil {
-				return fmt.Errorf("mls body base64: %w", derr)
-			}
-			if len(decoded) == 0 || len(decoded) > 1<<20 {
-				return fmt.Errorf("mls body size %d out of [1, 1MiB]", len(decoded))
-			}
-			bodyBytes = decoded
-		default:
-			return fmt.Errorf("unsupported content_type %q", p.ContentType)
-		}
+		bodyBytes := []byte(p.Body)
 		if err := tx.QueryRow(ctx,
 			`INSERT INTO messages
 			   (id, channel_id, parent_id, thread_id, sender_device_id, seq, content_type, ciphertext)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			 VALUES ($1, $2, $3, $4, $5, $6, 'application', $7)
 			 RETURNING ts`,
-			msgID, channelID, parentUUID, threadUUID, deviceID, seq, contentType, bodyBytes,
+			msgID, channelID, parentUUID, threadUUID, deviceID, seq, bodyBytes,
 		).Scan(&ts); err != nil {
 			return err
 		}

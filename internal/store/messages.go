@@ -17,31 +17,29 @@ var DefaultChannelID = uuid.MustParse("00000000-0000-0000-0000-000000000c01")
 
 // Message is one row of the messages table.
 type Message struct {
-	ID              uuid.UUID
-	ChannelID       uuid.UUID
-	ThreadID        *uuid.UUID
-	ParentID        *uuid.UUID
-	SenderDeviceID  uuid.UUID
+	ID             uuid.UUID
+	ChannelID      uuid.UUID
+	ThreadID       *uuid.UUID
+	ParentID       *uuid.UUID
+	SenderDeviceID uuid.UUID
 	// Phase 9.6i: the user_id that owns SenderDeviceID at
 	// fetch time. uuid.Nil when the device or its owning user
 	// has been purged (CASCADE wipes both). Used by the WS
 	// handler to populate MessagePayload.SenderUserID.
-	SenderUserID    uuid.UUID
-	Seq             int64
-	TS              time.Time
-	DeliveredAt     *time.Time
-	MLSEpoch        int64
-	ContentType     string
-	Ciphertext      []byte
+	SenderUserID uuid.UUID
+	Seq          int64
+	TS           time.Time
+	DeliveredAt  *time.Time
+	Ciphertext   []byte
 	// Phase 10a: only populated by ListMessagesByChannel (which
 	// JOINs the reply-count subquery). GetMessage and other lookups
 	// leave this as 0. Callers should treat 0 as "unknown" unless
 	// they got the row from the main-feed query.
-	ReplyCount      int64
+	ReplyCount int64
 	// Phase 10d: highest seq among the thread's replies. Same population
 	// rules as ReplyCount. Used client-side to compute "unread" badges
 	// (a reply is unread when last_reply_seq > thread_seen[tid]).
-	LastReplySeq    int64
+	LastReplySeq int64
 	// Phase 10e: preview of the most recent reply. Same population
 	// rules. *uuid.UUID because the device's user might have been
 	// purged; in that case sender_user_id is nil but the body still
@@ -65,9 +63,6 @@ type Message struct {
 func (s *Store) InsertMessage(ctx context.Context, m Message) (Message, error) {
 	if m.ID == uuid.Nil {
 		m.ID = uuid.New()
-	}
-	if m.ContentType == "" {
-		m.ContentType = "application"
 	}
 	if m.ChannelID == uuid.Nil {
 		return Message{}, fmt.Errorf("InsertMessage: channel_id required")
@@ -95,11 +90,11 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (Message, error) {
 		row := tx.QueryRow(ctx,
 			`INSERT INTO messages
 			   (id, channel_id, thread_id, parent_id, sender_device_id,
-			    seq, mls_epoch, content_type, ciphertext, meta)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, '{}'::jsonb)
+			    seq, content_type, ciphertext, meta)
+			 VALUES ($1, $2, $3, $4, $5, $6, 'application', $7, '{}'::jsonb)
 			 RETURNING ts`,
 			m.ID, m.ChannelID, m.ThreadID, m.ParentID, m.SenderDeviceID,
-			m.Seq, m.MLSEpoch, m.ContentType, m.Ciphertext,
+			m.Seq, m.Ciphertext,
 		)
 		return row.Scan(&m.TS)
 	})
@@ -121,8 +116,7 @@ func (s *Store) GetMessage(ctx context.Context, ts time.Time, id uuid.UUID) (Mes
 	err := s.Pool.QueryRow(ctx,
 		`SELECT m.id, m.channel_id, m.thread_id, m.parent_id,
 		        m.sender_device_id, d.user_id,
-		        m.seq, m.ts, m.delivered_at, m.mls_epoch,
-		        m.content_type, m.ciphertext
+		        m.seq, m.ts, m.delivered_at, m.ciphertext
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
 		  WHERE m.ts = $1 AND m.id = $2`,
@@ -130,8 +124,7 @@ func (s *Store) GetMessage(ctx context.Context, ts time.Time, id uuid.UUID) (Mes
 	).Scan(
 		&m.ID, &m.ChannelID, &m.ThreadID, &m.ParentID,
 		&m.SenderDeviceID, &senderUser,
-		&m.Seq, &m.TS, &m.DeliveredAt, &m.MLSEpoch,
-		&m.ContentType, &m.Ciphertext,
+		&m.Seq, &m.TS, &m.DeliveredAt, &m.Ciphertext,
 	)
 	if senderUser != nil {
 		m.SenderUserID = *senderUser

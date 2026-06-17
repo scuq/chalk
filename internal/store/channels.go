@@ -15,9 +15,9 @@ import (
 // the bare metadata. Member IDs live in channel_members and are loaded
 // on demand via ListMembers.
 type Channel struct {
-	ID        uuid.UUID
-	Name      string
-	IsDM      bool
+	ID   uuid.UUID
+	Name string
+	IsDM bool
 	// Phase 11b-2: true iff this channel uses MLS encryption.
 	// Set at creation; never changes. Always false for non-DM
 	// channels and pre-11b DMs (strict cutover policy).
@@ -63,8 +63,8 @@ var ErrDMCardinality = errors.New("DM must have exactly 2 members")
 // automatically. Duplicates are de-duplicated. The caller may appear
 // in MemberIDs; their role stays 'owner'.
 type CreateChannelInput struct {
-	Name      string
-	IsDM      bool
+	Name string
+	IsDM bool
 	// Phase 11b-2: set true to mark the new channel as MLS-encrypted.
 	// Server policy (handleCreateChannel) currently sets this to
 	// IsDM, i.e. all new DMs are MLS, all non-DMs are plaintext.
@@ -206,8 +206,9 @@ func (s *Store) IsMember(ctx context.Context, channelID, userID uuid.UUID) (bool
 // (welcome.Channels) and on explicit list_channels frames.
 //
 // We do this in two queries rather than one CTE-with-aggregation:
-//   1) list channel rows
-//   2) bulk-fetch all members for those channel IDs in a single IN()
+//  1. list channel rows
+//  2. bulk-fetch all members for those channel IDs in a single IN()
+//
 // Keeping the queries plain reads better than a single clever join,
 // and the member-count cardinality is small (a few users per channel).
 func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]ChannelWithMembers, error) {
@@ -302,13 +303,12 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 	// NULL); thread heads themselves do not count themselves.
 	rows, err := s.Pool.Query(ctx,
 		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
-		        m.ts, m.seq, m.content_type, m.ciphertext,
+		        m.ts, m.seq, m.ciphertext,
 		        m.parent_id, m.thread_id,
 		        COALESCE(r.cnt, 0) AS reply_count,
 		        COALESCE(r.last_seq, 0) AS last_reply_seq,
 		        lr_dev.user_id   AS last_reply_sender_user_id,
-		        lr.ciphertext    AS last_reply_body,
-		        lr.content_type  AS last_reply_content_type
+		        lr.ciphertext    AS last_reply_body
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
 		   LEFT JOIN (
@@ -320,7 +320,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		      GROUP BY thread_id
 		   ) r ON r.thread_id = m.id
 		   LEFT JOIN LATERAL (
-		     SELECT sender_device_id, ciphertext, content_type
+		     SELECT sender_device_id, ciphertext
 		       FROM messages
 		      WHERE thread_id = m.id AND parent_id IS NOT NULL
 		      ORDER BY seq DESC
@@ -348,23 +348,13 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		var lastReplySeq int64
 		var lastReplySender *uuid.UUID
 		var lastReplyBody []byte
-		// Phase 11b-1: capture the latest reply's content_type so we
-		// can blank the preview body for MLS rows (server can't decrypt
-		// and the bytes would render as garbage).
-		var lastReplyContentType *string
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &senderDev, &senderUser,
-			&m.TS, &m.Seq, &m.ContentType, &m.Ciphertext,
+			&m.TS, &m.Seq, &m.Ciphertext,
 			&parentID, &threadID, &replyCount, &lastReplySeq,
-			&lastReplySender, &lastReplyBody, &lastReplyContentType,
+			&lastReplySender, &lastReplyBody,
 		); err != nil {
 			return nil, err
-		}
-		// Phase 11b-1: blank the body when the preview row is MLS.
-		// The SPA will render "sender: ···" instead of leaking the
-		// ciphertext bytes into the preview line.
-		if lastReplyContentType != nil && *lastReplyContentType == "mls_ciphertext" {
-			lastReplyBody = nil
 		}
 		if senderDev != nil {
 			m.SenderDeviceID = *senderDev
@@ -414,7 +404,7 @@ func (s *Store) ListMessagesByThread(
 	}
 	rows, err := s.Pool.Query(ctx,
 		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
-		        m.ts, m.seq, m.content_type, m.ciphertext,
+		        m.ts, m.seq, m.ciphertext,
 		        m.parent_id, m.thread_id
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
@@ -437,7 +427,7 @@ func (s *Store) ListMessagesByThread(
 		var tID *uuid.UUID
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &senderDev, &senderUser,
-			&m.TS, &m.Seq, &m.ContentType, &m.Ciphertext,
+			&m.TS, &m.Seq, &m.Ciphertext,
 			&parentID, &tID,
 		); err != nil {
 			return nil, err
