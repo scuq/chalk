@@ -17,7 +17,6 @@ import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
   // Phase 11b-2: MLS welcome + commit_bundle
-  ContentTypeMlsCiphertext,
   // Phase 11c-2 PR 3: MLS commit broadcast + catchup
   TypeSend,
   TypeFetchThread,
@@ -84,7 +83,6 @@ import { Sidebar } from "./Sidebar";
 import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
 // Phase 11c-2 PR 4: member-management modal.
-import { ChannelMembersPanel } from "./ChannelMembersPanel";
 import { ThreadPanel } from "./ThreadPanel";
 // Phase 9.6d: heavy panels are lazy-loaded so the initial bundle
 // can stay small. Each becomes a separate chunk file that fetches
@@ -134,7 +132,6 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
     isDM: w.is_dm,
     // Phase 11b-2: surface MLS flag. SPA branches on this for
     // encrypted-send / decrypted-receive routing.
-    isMls: w.is_mls ?? false,
     createdBy: w.created_by,
     createdAt: new Date(w.created_at),
     memberIDs: w.member_ids ?? [],
@@ -248,79 +245,26 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.authStage]);
 
-  // Phase 11b-2: decrypt helper for incoming MLS messages.
-  // Lives here so it closes over `state.user` for the input shape.
-  async function decryptIncomingMls(wire: MessagePayload): Promise<string> {
-    // Phase 21-1: route through the stub seam. The stub is a passthrough
-    // (NO encryption) and is symmetric/re-decryptable, so unlike the old
-    // MLS path there is no single-use ratchet and no need for the 11c-4
-    // plaintext cache. Phase 23 swaps the stub for real AES-256-GCM under
-    // a wrapped space key; this call site stays the same.
-    const { decryptForChannel } = await import("../crypto/stub");
-    return decryptForChannel(wire.channel_id, wire.body);
-  }
-
-  // Phase 11b-2 fix6: decrypt a batch of MLS messages from a
-  // history/thread fetch. Returns the messages with bodies decrypted
-  // in place; non-MLS messages pass through unchanged. Decryption
-  // failures yield a "[unable to decrypt]" placeholder.
-  async function decryptBatch(wires: MessagePayload[]): Promise<MessagePayload[]> {
-    // Phase 21-1: route mls_ciphertext rows through the stub via
-    // decryptIncomingMls. No plaintext cache (the stub is re-decryptable).
-    // content_type is still "mls_ciphertext" (the routing tag); phase 23
-    // renames it. Non-matching rows pass through unchanged. Failures yield
-    // a "[unable to decrypt]" placeholder.
-    return Promise.all(
-      wires.map(async (w) => {
-        if (w.content_type !== ContentTypeMlsCiphertext) return w;
-        try {
-          const decrypted = await decryptIncomingMls(w);
-          return { ...w, body: decrypted };
-        } catch (err) {
-          console.warn("[chalk] decrypt failed:", err);
-          return { ...w, body: "[unable to decrypt]" };
-        }
-      }),
-    );
-  }
 
 
   function handleFrame(f: Frame) {
     switch (f.type) {
       case TypeFetchThreadAck: {
         // Phase 10c: server returned the replies for a thread.
-        // Phase 11b-2 fix6: decrypt MLS rows before assembling.
         const p = f.payload as FetchThreadAckPayload;
-        decryptBatch(p.messages ?? []).then((wires) => {
-          const msgs = wires.map(wireToMessage);
-          msgs.sort((a, b) => a.seq - b.seq);
-          dispatch({
-            kind: "thread_loaded",
-            threadID: p.thread_id,
-            messages: msgs,
-          });
+        const msgs = (p.messages ?? []).map(wireToMessage);
+        msgs.sort((a, b) => a.seq - b.seq);
+        dispatch({
+          kind: "thread_loaded",
+          threadID: p.thread_id,
+          messages: msgs,
         });
         break;
       }
       case TypeMessage: {
         const wire = f.payload as MessagePayload;
-        // Phase 11b-2: MLS rows arrive with body=base64(ciphertext)
-        // and content_type="mls_ciphertext". Decrypt before the
-        // reducer ever sees the row. The reducer + UI always see
-        // plaintext bodies (or a "[unable to decrypt]" placeholder).
-        if (wire.content_type === ContentTypeMlsCiphertext) {
-          decryptIncomingMls(wire).then((decrypted) => {
-            const m = wireToMessage({ ...wire, body: decrypted });
-            dispatch({ kind: "message", message: m });
-          }).catch((err) => {
-            console.warn("[chalk] decrypt failed:", err);
-            const m = wireToMessage({ ...wire, body: "[unable to decrypt]" });
-            dispatch({ kind: "message", message: m });
-          });
-        } else {
-          const m = wireToMessage(wire);
-          dispatch({ kind: "message", message: m });
-        }
+        const m = wireToMessage(wire);
+        dispatch({ kind: "message", message: m });
         break;
       }
 
@@ -361,16 +305,10 @@ export function App() {
       }
       case TypeFetchHistoryAck: {
         const p = f.payload as FetchHistoryAckPayload;
-        // Phase 11b-2 fix6: decrypt MLS rows before mapping to domain
-        // shape. The async path means a brief flicker is possible
-        // (history arrives, decrypts, then renders) -- acceptable
-        // for now; cleaner UX is a 11c polish.
-        decryptBatch(p.messages ?? []).then((wires) => {
-          dispatch({
-            kind: "history_loaded",
-            channelID: p.channel_id,
-            messages: wires.map(wireToMessage),
-          });
+        dispatch({
+          kind: "history_loaded",
+          channelID: p.channel_id,
+          messages: (p.messages ?? []).map(wireToMessage),
         });
         break;
       }
@@ -536,7 +474,6 @@ export function App() {
   // value without re-running on every change (we just want to
   // re-trigger when the MODE changes or the WS opens/closes).
   // Phase 11c-2 PR 4: open/closed flag for the channel-members modal.
-  const [membersPanelOpen, setMembersPanelOpen] = useState<boolean>(false);
 
   const [tabVisible, setTabVisible] = useState<boolean>(
     typeof document === "undefined" ? true : !document.hidden
@@ -837,64 +774,6 @@ export function App() {
       },
     });
 
-    // Phase 11b-2: encrypt for MLS DMs. Plaintext channels: send
-    // body as-is (legacy path). MLS channels: ensure the group
-    // exists (bringing it up if first send), encrypt the body, send
-    // base64 ciphertext with content_type="mls_ciphertext".
-    // Phase 11b-2 fix5: route channel + user lookups through refs.
-    const channel = channelsRef.current[cid];
-    if (channel?.isMls) {
-      (async () => {
-        try {
-          const u = userRef.current;
-          if (!u) throw new Error("no user (stale closure?)");
-          // Phase 21-1: encrypt via the stub seam (passthrough, NO
-          // encryption). Drops ensureGroupForChannel, the MlsInitInput,
-          // and the 11c-4 send-side cache write -- none are needed for a
-          // symmetric, re-decryptable body. Phase 23 swaps the stub for
-          // real wrapped-space-key AES-256-GCM; this call site is stable.
-          const { encryptForChannel } = await import("../crypto/stub");
-          const b64ct = await encryptForChannel(cid, body);
-          const payload: SendPayload = {
-            channel_id: cid,
-            body: b64ct,
-            content_type: "mls_ciphertext",
-          };
-          if (parentID) payload.parent_id = parentID;
-          c.send(TypeSend, payload);
-        } catch (err) {
-          if (err && (err as { name?: string }).name === "MlsLocalStateLostError") {
-            // Phase 11c-6: this device lost its local MLS state for a
-            // channel that still exists server-side. We did NOT create
-            // a divergent group. Tell the user how to recover: a current
-            // member must remove and re-add them (which sends a fresh
-            // Welcome rebuilding their state at the current epoch).
-            console.warn(
-              "[chalk] MLS local state lost for this channel; ask a member " +
-                "to remove and re-add you to rejoin:",
-              err,
-            );
-            // Surface to the user. A dedicated banner is a polish pass;
-            // for now an alert keeps the failure visible rather than
-            // silent (the message simply won't send).
-            try {
-              alert(
-                "Your encryption state for this channel was reset on this " +
-                  "device. Ask another member to remove and re-add you to " +
-                  "rejoin the encrypted channel.",
-              );
-            } catch {
-              /* non-browser / test context */
-            }
-            return;
-          }
-          console.warn("[chalk] MLS encrypted send failed:", err);
-          // Surface to the user via console for now; a banner is
-          // a polish pass.
-        }
-      })();
-      return;
-    }
     const payload: SendPayload = { channel_id: cid, body };
     if (parentID) payload.parent_id = parentID;
     c.send(TypeSend, payload);
@@ -1302,27 +1181,6 @@ export function App() {
                 {displayName(activeChannel, state.user?.id ?? null)}
               </span>
               {activeChannel.isDM && <span class="chalk-channel-header-tag">dm</span>}
-              {/* Phase 11c-2 PR 5: e2ee tag for MLS channels. */}
-              {activeChannel.isMls && (
-                <span
-                  class="chalk-channel-header-tag"
-                  title="end-to-end encrypted via MLS"
-                  data-testid="channel-header-e2ee-tag"
-                >e2ee</span>
-              )}
-              {/* Phase 11c-2 PR 4: open the members panel.
-                  Hidden for DMs (the 2-member set is fixed). */}
-              {!activeChannel.isDM && (
-                <button
-                  type="button"
-                  class="chalk-channel-header-action"
-                  onClick={() => setMembersPanelOpen(true)}
-                  data-testid="channel-members-open"
-                  title="manage channel members"
-                >
-                  members ({activeChannel.memberIDs.length})
-                </button>
-              )}
             </div>
             <MessageList
               messages={activeMessages}
@@ -1402,53 +1260,6 @@ export function App() {
         />
       </footer>
 
-      {membersPanelOpen && activeChannel && state.user && !activeChannel.isDM && (
-        <ChannelMembersPanel
-          channel={activeChannel}
-          ownUserID={state.user.id}
-          friends={state.friends}
-          onClose={() => setMembersPanelOpen(false)}
-          onAdd={async (targetUserID: string) => {
-            // Phase 11c-2 PR 4: invoke the PR-2 primitive, then
-            // dispatch the optimistic local update on success.
-            // Phase 11c-2 PR 5: bootstrap the local MLS group first
-            // (idempotent no-op if it already exists). This is
-            // necessary because multi-member channels created via
-            // the create-channel modal don't have a local MLS group
-            // until first action.
-            const u = state.user;
-            const c = clientRef.current;
-            if (!u || !c || !state.activeChannelID || !activeChannel) {
-              throw new Error("not ready");
-            }
-
-            const friend = state.friends.find((f) => f.userID === targetUserID);
-            dispatch({
-              kind: "channel_member_added",
-              channelID: state.activeChannelID,
-              userID: targetUserID,
-              handle: friend?.handle ?? "",
-            });
-          }}
-          onRemove={async (targetUserID: string) => {
-            // Phase 11c-2 PR 5: bootstrap the local MLS group first
-            // (idempotent). The pre-PR-5 code failed here with "no
-            // conversation" for channels created via the modal but
-            // never sent to.
-            const u = state.user;
-            const c = clientRef.current;
-            if (!u || !c || !state.activeChannelID || !activeChannel) {
-              throw new Error("not ready");
-            }
-
-            dispatch({
-              kind: "channel_member_removed",
-              channelID: state.activeChannelID,
-              userID: targetUserID,
-            });
-          }}
-        />
-      )}
 
       {state.createModalOpen && (
         <CreateChannelModal

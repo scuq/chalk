@@ -70,7 +70,6 @@ export interface ChannelSummary {
   memberIDs: string[];
   members: ChannelMember[]; // phase 08c; empty when server didn't send any
   /** Phase 11b-2: true iff this channel uses MLS. */
-  isMls: boolean;
 }
 
 export interface Friend {

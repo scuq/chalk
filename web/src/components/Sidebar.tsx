@@ -203,14 +203,6 @@ export function Sidebar({
               }}
             >
               <span class="chalk-sidebar-item-name">#{ch.name}</span>
-              {/* Phase 11c-2 PR 5: e2ee marker for MLS channels. */}
-              {ch.isMls && (
-                <span
-                  class="chalk-sidebar-item-tag"
-                  title="end-to-end encrypted via MLS"
-                  data-testid="sidebar-item-e2ee-tag"
-                >e</span>
-              )}
             </li>
           ))}
         </ul>

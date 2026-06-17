@@ -42,8 +42,6 @@ export interface SendPayload {
   // Phase 10a: optional parent message ID for thread replies. When
   // set, server validates the parent and computes thread_id.
   parent_id?: string;
-  /** Phase 11b-2: "mls_ciphertext" for encrypted sends; omit for plaintext. */
-  content_type?: string;
 }
 
 export interface MessagePayload {
@@ -66,8 +64,6 @@ export interface MessagePayload {
   // snippet. Both undefined when there's no thread or no replies.
   last_reply_sender_user_id?: string;
   last_reply_body?: string;
-  /** Phase 11b-2: "application" or "mls_ciphertext". Empty = "application". */
-  content_type?: string;
 }
 
 export interface ErrorPayload {
@@ -183,7 +179,6 @@ export interface ChannelSummaryWire {
   name: string;
   is_dm: boolean;
   /** Phase 11b-2: true iff channel uses MLS encryption. */
-  is_mls?: boolean;
   created_by: string;
   created_at: number; // unix-millis
   member_ids: string[];
@@ -298,5 +293,3 @@ export interface FetchThreadAckPayload {
   messages: MessagePayload[];
 }
 
-export const ContentTypeApplication   = "application";
-export const ContentTypeMlsCiphertext = "mls_ciphertext";
