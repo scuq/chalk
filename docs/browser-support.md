@@ -8,15 +8,33 @@ chalk targets modern browsers across desktop and mobile:
 | Gecko | Firefox (desktop + Android) |
 | WebKit | Safari (macOS, iOS, iPadOS) |
 
+## Minimum versions (support floor)
+
+chalk's identity keys use the native WebCrypto Curve25519 algorithms.
+**X25519** has been available across all three engines for some time, but
+**Ed25519** shipped later — and it is the binding constraint:
+
+| Engine | Minimum version | Ed25519 shipped |
+|---|---|---|
+| Chromium (Chrome/Edge/Brave/Opera) | **137** | May 2025 |
+| Gecko (Firefox) | **129** | Aug 2024 |
+| WebKit (Safari) | **17.0** | 2023 |
+
+Below these, `crypto.subtle` lacks native Ed25519 and chalk shows the
+"your browser is too old" page rather than degrading. This deliberately
+narrows the usual "~2 years" window for Chromium (137 is ~13 months old as
+of mid-2026) in exchange for zero bundled crypto — no JS/WASM crypto ships
+in chalk; every primitive is native WebCrypto. The window widens naturally
+as Chrome 137+ proliferates (expected to be broadly safe to assume ~2027).
+
 ## Required APIs
 
 - WebSocket (RFC 6455) — universal
-- WebCrypto (`crypto.subtle`) — universal in modern browsers
+- WebCrypto (`crypto.subtle`) — including the Curve25519 algorithms **X25519** (key agreement) and **Ed25519** (signatures); see the support floor below
 - WebAuthn / passkeys — universal in current versions
 - Web Workers — universal
-- IndexedDB — universal (used for MLS state and message cache)
+- IndexedDB — universal (used for the message cache and, from phase 22, the local identity private key)
 - Page Visibility API — universal
-- WebAssembly — universal (CoreCrypto runs as WASM)
 - CSS custom properties — universal
 - ES2022 modules — universal
 
@@ -53,4 +71,4 @@ Phase 13 generates a manual test checklist for these. Run through it on at least
 
 - IE 11 (long dead)
 - Pre-Chromium Edge
-- Anything older than ~2 years
+- Anything older than the minimum versions above (the Ed25519 floor, not a flat ~2 years)

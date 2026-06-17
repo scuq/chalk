@@ -400,6 +400,37 @@ documents in `docs/design/`:
 - Full e2e suite passes on all engine × viewport combinations
 - HTML report uploaded as artifact
 
+## 21 — crypto rip-out + rebuild (in progress) ✅/🔧
+
+The MLS encryption stack (11a–11d) was removed wholesale and the codebase
+returned to a clean plaintext baseline, ahead of a fresh encryption design.
+History above (11a–11d) is left intact — it was accurate when written.
+
+**Delivered (21-1 .. 21-7)**
+- 21-1..21-6: removed all MLS — client `web/src/mls/`, `@wireapp/core-crypto`
+  + WASM, server ws/store MLS files, the MLS wire frames, and the MLS tables
+  (migrations dropped `key_packages`, `mls_groups`, `mls_commits`,
+  `mls_pending_welcomes`).
+- 21-7: removed the dormant encryption *concept* — the stub seam, e2ee
+  badges, the channel-members panel, and the schema scaffolding. Migrations
+  0027–0030 dropped `messages.content_type`, `messages.mls_epoch`, and
+  `channels.is_mls`, and renamed `messages.ciphertext → messages.body`.
+- Result: chalk is a plaintext group chat; the server sees message content.
+  Verified end-to-end (two-user send/receive) on the live dev stack.
+- Housekeeping: pruned stale 11c/11d/09/11b design docs; de-phased Go
+  filenames (`*_phaseNN.go` merged into `frames.go` / `ws.go` / `hub.go`).
+
+**Planned (22 .. 25) 🔮**
+- 22: identity keys (X25519 + Ed25519 from a 24-word BIP-39 phrase, native
+  WebCrypto, `identity_keys` table with a `generation` column).
+- 23: space keys + real AES-256-GCM message encryption; server back to
+  blind relay; rebuild the group-members UI.
+- 24: picture-word verification (anti key-substitution).
+- 25: weekly space-key rotation + identity-rotation governance.
+
+See `docs/design/chalk-phase-21plus-crypto-rebuild-plan-AMENDMENT.md` for
+the recovery/rotation model and the speculative phase-26+ aging layer.
+
 ---
 
 ## Phase numbering note

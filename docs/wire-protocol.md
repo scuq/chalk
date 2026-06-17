@@ -2,6 +2,13 @@
 
 JSON over WebSocket. Subprotocol: `chalk.v1`. Path: `/ws`.
 
+>
+> **Crypto status (phase 21):** chalk is currently a **plaintext** group
+> chat — MLS was removed in the 21-series rip-out. The encrypted-channel
+> frames (key distribution, group commits) will be reintroduced under the
+> identity-wrapped-space-key design in phase 22+. This document describes
+> the live `chalk.v1` protocol as it stands today.
+
 Every frame has a `type` (string) and an optional `ref` (correlation ID for request/response). Server-initiated frames omit `ref`.
 
 ## Lifecycle
@@ -17,11 +24,8 @@ Every frame has a `type` (string) and an optional `ref` (correlation ID for requ
 | Type | Payload | Notes |
 |---|---|---|
 | `hello` | `{ device_id }` | First frame after connect |
-| `publish_keypkgs` | `{ keypackages: [b64...] }` | Refill MLS KeyPackage pool |
 | `create_channel` | `{ name, initial_members: [user_id...] }` | |
-| `join_request` | `{ channel_id }` | Server forwards to existing member |
-| `fetch_keypkg` | `{ user_id, device_id }` | For MLS Add operation |
-| `send` | `{ channel_id, thread_id?, parent_id?, ciphertext, mls_epoch, content_type }` | Application messages |
+| `send` | `{ channel_id, thread_id?, parent_id?, body }` | Application messages (plaintext body) |
 | `fetch_history` | `{ channel_id, after_seq?, before_seq?, limit }` | Catch-up via per-channel `seq` |
 | `fetch_thread` | `{ channel_id, thread_id }` | All messages in one thread |
 | `upload_blob_init` | `{ size, mime_hint }` | Returns upload URL + token |
@@ -36,20 +40,17 @@ Every frame has a `type` (string) and an optional `ref` (correlation ID for requ
 | Type | Payload | Notes |
 |---|---|---|
 | `welcome` | `{ user_id, device_id, channels, friends }` | After `hello` |
-| `message` | `{ id, channel_id, thread_id?, parent_id?, sender, ts, seq, ciphertext, mls_epoch, content_type }` | |
-| `mls_commit` | `{ channel_id, ciphertext, epoch }` | Group state changes |
-| `mls_welcome` | `{ channel_id, ciphertext }` | You've been added to a group |
+| `message` | `{ id, channel_id, thread_id?, parent_id?, sender, ts, seq, body }` | |
 | `member_change` | `{ channel_id, added: [...], removed: [...] }` | |
 | `presence_update` | `{ user_id, online, encrypted_state? }` | Friend presence change |
 | `typing_update` | `{ channel_id, thread_id?, user_id }` | |
-| `keypkg_low` | `{ remaining: N }` | Refill request |
 | `friend_request_in` | `{ request_id, from_handle, encrypted_intro? }` | |
 | `friend_added` | `{ user_id, handle, devices: [...] }` | |
 | `error` | `{ ref?, code, message }` | |
 
 ## Encoding
 
-JSON for v1. CBOR may be added behind a subprotocol negotiation in v2 if profiling shows JSON overhead is meaningful. Binary blobs (MLS ciphertext, keypackages) are base64-encoded inside JSON frames.
+JSON for v1. CBOR may be added behind a subprotocol negotiation in v2 if profiling shows JSON overhead is meaningful. Binary blobs (e.g. attachment chunks) are base64-encoded inside JSON frames where needed.
 
 ## Frame size limits
 
