@@ -2,7 +2,7 @@
   "name": "chalk-web",
   "version": "0.0.0-phase07",
   "private": true,
-  "license": "GPL-3.0-or-later",
+  "license": "BSD-3-Clause",
   "description": "chalk single-page client",
   "type": "module",
   "scripts": {

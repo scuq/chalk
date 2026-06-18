@@ -56,7 +56,11 @@ phase status — see those instead.)
 
 ## License
 
-GPL-3.0-or-later — see [LICENSE](LICENSE). Earlier 9.x-series releases were
-distributed under the MIT License; the project was relicensed to
-GPL-3.0-or-later by its sole copyright holder. Pre-relicense commits remain
-available under their original MIT terms.
+BSD-3-Clause — see [LICENSE](LICENSE).
+
+chalk's licensing has changed over its life: MIT through the 9.x series,
+then GPL-3.0-or-later in phase 11a to align with the (now-removed)
+@wireapp/core-crypto dependency, and — with that dependency gone after the
+21-series rip-out — back to the permissive BSD-3-Clause. Relicensing was
+done by the sole copyright holder; commits remain available under whichever
+license was in effect when they were made.

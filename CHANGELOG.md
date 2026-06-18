@@ -4,6 +4,14 @@ All notable changes to chalk are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **License: GPL-3.0-or-later → BSD-3-Clause.** chalk moved to GPL in
+  phase 11a only to align with the GPL `@wireapp/core-crypto` dependency.
+  That dependency (and all MLS/WASM code) was removed in the 21-series
+  rip-out, so the project returns to a permissive license. Done by the sole
+  copyright holder; pre-relicense commits remain under their original terms
+  (MIT through 9.x, GPL-3.0 during 11a–21).
+
 ### Planned
 - Phase 11d (multi-device + history transfer for MLS-encrypted DMs):
   envelope-wrapped `backup_master_key`, per-conversation per-era
