@@ -38,6 +38,43 @@ multi-instance Go server using Postgres as both storage and pub/sub bus
 protocol ([docs/wire-protocol.md](docs/wire-protocol.md)). Each instance
 holds only in-memory socket state; Postgres is the source of truth.
 
+## Cryptography in a nutshell
+
+In one breath: you log in with a passkey (no password), you get a 24-word
+phrase that is the seed of your cryptographic identity, and that identity
+is what will eventually lock your messages so only the people in a space
+can read them. **Today only the login and transport pieces are live — the
+message-locking parts are still being built, so the server can currently
+read message content.** Here is every piece in plain language.
+
+Status key: **live** = working now · **building** = code landing, not yet
+protecting messages · **planned** = designed, not yet built.
+
+| Piece | What it does, plainly | Status |
+|---|---|---|
+| Passkeys (WebAuthn) | Log in with your device's fingerprint/PIN instead of a password. Your device keeps the secret key; the server only ever sees a public key. Can't be phished. | live |
+| Argon2id | The 24-word recovery phrase is never stored — only a slow, salted hash of it is, so a stolen database can't reveal it. | live |
+| TLS 1.3 | Encrypts the connection between your browser and the server, like every HTTPS site. | live |
+| 24-word phrase (BIP-39) | 256 bits of randomness written as 24 ordinary words, with a built-in checksum so a typo is caught. This is the root of your identity and your way back in on a new device. | building |
+| PBKDF2-HMAC-SHA512 | Stretches those 24 words into a 64-byte seed (the standard BIP-39 step). | building |
+| HKDF-SHA256 | Splits that one seed into two separate keys so the signing key and the encryption key are independent. | building |
+| X25519 | Your encryption keypair. Two people's X25519 keys can agree on a shared secret without ever sending it — that secret will wrap the keys that lock a space's messages. | building |
+| Ed25519 | Your signing keypair. Proves "this identity really is mine," and signs the X25519 key so the server can't quietly swap it (the self-signature). | building |
+| Self-signature | Your Ed25519 key signs your X25519 key. When someone fetches your identity, they check this signature, so a malicious server can't substitute a fake encryption key undetected. | building |
+| Space keys + AES-256-GCM | Each space (group) has one shared symmetric key that actually encrypts the messages. It's handed to each member by wrapping it under their X25519 public key. | planned (phase 23) |
+| Picture-word verification | An out-of-band check (you compare the same picture/words with someone) to be sure no one is sitting in the middle swapping keys. | planned (phase 24) |
+| Phrase rotation + recovery | You can roll your phrase to a fresh one; old keys are re-wrapped so you keep your history, with an opt-out for when you're rotating because the old phrase leaked. | planned (phase 25) |
+
+A few deliberate choices worth knowing: every primitive above is **native
+WebCrypto** — chalk bundles no cryptography library and ships no WASM. The
+24-word phrase is the one and only decryption secret (no extra passphrase),
+so guard it like a wallet seed: lose it and lose those messages, leak it and
+leak them. And two things are explicit **non-goals**, not oversights:
+forward secrecy (old messages staying safe if a key later leaks) and
+post-quantum resistance. The full reasoning, threat model, and recovery
+design live in [docs/threat-model.md](docs/threat-model.md) and
+[docs/design/](docs/design/).
+
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md) — system overview
