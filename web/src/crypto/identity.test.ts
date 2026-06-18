@@ -48,9 +48,12 @@ test("derived public keys and self-sig have correct lengths", async () => {
   assert.equal(a.generation, 1);
 });
 
-test("private keys are non-extractable", async () => {
+test("X25519 is extractable (for JWK persistence); Ed25519 is non-extractable", async () => {
   const a = await deriveIdentity(SEED_A);
-  assert.equal(a.x25519Private.extractable, false);
+  // X25519 is extractable so idb.ts can export it to JWK (Safari cannot
+  // structured-clone an X25519 CryptoKey into IndexedDB). Ed25519 clones
+  // fine everywhere, so the signing key stays non-extractable.
+  assert.equal(a.x25519Private.extractable, true);
   assert.equal(a.ed25519Private.extractable, false);
 });
 

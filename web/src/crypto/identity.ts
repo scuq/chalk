@@ -11,7 +11,7 @@
 // Derivation chain (validated against independent implementations):
 //   seed(64B) --HKDF-SHA256--> x25519 scalar (32B)  [info "...-x25519-v1"]
 //                          \--> ed25519 seed   (32B)  [info "...-ed25519-v1"]
-//   x25519: PKCS#8 import (non-extractable) -> public via basepoint ECDH
+//   x25519: PKCS#8 import (extractable, for JWK persistence) -> public via basepoint ECDH
 //   ed25519: PKCS#8 import -> public via JWK export -> sign self-sig
 //   self-sig = Ed25519(ed25519Private) over the 32-byte x25519 public
 //
@@ -51,7 +51,7 @@ const X25519_BASEPOINT = (() => {
  */
 export interface DerivedIdentity {
   generation: number;
-  /** X25519 private, non-extractable, usage ["deriveBits"]. */
+  /** X25519 private, EXTRACTABLE (so idb.ts can persist it as JWK), usage ["deriveBits"]. */
   x25519Private: CryptoKey;
   /** Ed25519 private, non-extractable, usage ["sign"]. */
   ed25519Private: CryptoKey;
@@ -85,12 +85,18 @@ export async function deriveIdentity(
   const ed25519Seed = await hkdf32(seed, HKDF_INFO_ED25519);
 
   try {
-    // X25519 private (non-extractable) + public via basepoint ECDH.
+    // X25519 private + public via basepoint ECDH. Imported EXTRACTABLE so
+    // crypto/idb.ts can export it to JWK for persistence: Safari/WebKit
+    // cannot structured-clone an X25519 CryptoKey into IndexedDB, so it is
+    // stored as JWK rather than as a key object. The X25519 private key is
+    // therefore recoverable bytes at rest; the 24-word phrase is the
+    // wallet-seed-grade root either way. Ed25519 below stays non-extractable
+    // (it clones fine on all target engines).
     const x25519Private = await crypto.subtle.importKey(
       "pkcs8",
       concat(PKCS8_X25519_PREFIX, x25519Scalar),
       { name: "X25519" },
-      false,
+      true,
       ["deriveBits"],
     );
     const x25519Public = await x25519PublicFromPrivate(x25519Private);
