@@ -178,7 +178,6 @@ export interface ChannelSummaryWire {
   id: string;
   name: string;
   is_dm: boolean;
-  /** Phase 11b-2: true iff channel uses MLS encryption. */
   created_by: string;
   created_at: number; // unix-millis
   member_ids: string[];

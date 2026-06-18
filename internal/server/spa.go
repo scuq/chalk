@@ -15,19 +15,19 @@ import (
 // at the URL root.
 //
 // Behavior:
-//   * GET /                       -> dist/index.html
-//   * GET /<path> (no extension)  -> dist/index.html  (SPA fallback so
-//                                    the client router owns deep links).
-//                                    This applies whether or not the
-//                                    path resolves to anything in the
-//                                    embedded FS -- the SPA owns the
-//                                    URL namespace for extensionless
-//                                    routes.
-//   * GET /<path>.<ext>           -> dist/<path>.<ext> if it exists,
-//                                    404 otherwise (real not-found so
-//                                    missing assets are visible to
-//                                    devs and to the browser's network
-//                                    panel)
+//   - GET /                       -> dist/index.html
+//   - GET /<path> (no extension)  -> dist/index.html  (SPA fallback so
+//     the client router owns deep links).
+//     This applies whether or not the
+//     path resolves to anything in the
+//     embedded FS -- the SPA owns the
+//     URL namespace for extensionless
+//     routes.
+//   - GET /<path>.<ext>           -> dist/<path>.<ext> if it exists,
+//     404 otherwise (real not-found so
+//     missing assets are visible to
+//     devs and to the browser's network
+//     panel)
 //
 // Caching: index.html is no-cache (always revalidate so users see new
 // bundles on next load). Other assets get a short max-age (5 min)

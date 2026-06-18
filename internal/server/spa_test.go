@@ -111,9 +111,9 @@ func TestSPA_MissingAssetIs404(t *testing.T) {
 
 func TestSPA_DotfileRefused(t *testing.T) {
 	srv := newSPATestServer(t, map[string]string{
-		"dist/index.html":   "<html></html>",
-		"dist/.gitkeep":     "",
-		"dist/.env":         "SECRET=hunter2",
+		"dist/index.html": "<html></html>",
+		"dist/.gitkeep":   "",
+		"dist/.env":       "SECRET=hunter2",
 	})
 	defer srv.Close()
 
@@ -153,7 +153,7 @@ func TestSPA_TraversalRefused(t *testing.T) {
 
 func TestSPA_DirectoryListingRefused(t *testing.T) {
 	srv := newSPATestServer(t, map[string]string{
-		"dist/index.html":      "<html></html>",
+		"dist/index.html":        "<html></html>",
 		"dist/icons/favicon.svg": "<svg/>",
 	})
 	defer srv.Close()

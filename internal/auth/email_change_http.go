@@ -172,8 +172,8 @@ func (d *HTTPDeps) handleEmailChangeRequest(w http.ResponseWriter, r *http.Reque
 
 // verifyEmailChangeResponse is the response on successful finalize.
 type verifyEmailChangeResponse struct {
-	UserID   string `json:"user_id"`
-	Email    string `json:"email"`
+	UserID string `json:"user_id"`
+	Email  string `json:"email"`
 }
 
 // handleVerifyEmailChange finalizes a pending email change. The

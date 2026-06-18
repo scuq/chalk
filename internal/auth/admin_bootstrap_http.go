@@ -226,6 +226,7 @@ func (d *HTTPDeps) handleAdminBootstrapBegin(w http.ResponseWriter, r *http.Requ
 //   - If both above succeeded but ConsumeAdminBootstrapToken fails,
 //     the token remains active but the "admin already enrolled"
 //     guard in /begin fires on any further attempt.
+//
 // Neither state is dangerous.
 func (d *HTTPDeps) handleAdminBootstrapFinish(w http.ResponseWriter, r *http.Request) {
 	var req adminBootstrapFinishRequest
@@ -392,7 +393,9 @@ func decodeBootstrapToken(s string) ([]byte, error) {
 // "https://chalk.example.com"); empty publicURL falls back to
 // "<HOST>" as a placeholder.
 func PrintBootstrapURL(
-	w interface{ Write(p []byte) (n int, err error) },
+	w interface {
+		Write(p []byte) (n int, err error)
+	},
 	publicURL string,
 	token []byte,
 	expiresAt time.Time,

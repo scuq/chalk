@@ -21,7 +21,7 @@ import (
 
 // BlacklistEntry mirrors the email_blacklist table row.
 type BlacklistEntry struct {
-	Email          string    // CITEXT on PG side
+	Email          string // CITEXT on PG side
 	Reason         string
 	AddedAt        time.Time
 	AddedBy        uuid.UUID // uuid.Nil if not associated with a user

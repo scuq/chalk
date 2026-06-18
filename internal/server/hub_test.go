@@ -344,7 +344,7 @@ func TestHubConcurrencyRace(t *testing.T) {
 	// Register N conns
 	conns := make([]*Conn, N)
 	for i := 0; i < N; i++ {
-		c, _ := fakeConn(string(rune('a' + (i % 26))) + string(rune('a' + (i / 26))))
+		c, _ := fakeConn(string(rune('a'+(i%26))) + string(rune('a'+(i/26))))
 		conns[i] = c
 		// Drain Send so Enqueue keeps space
 		go func(c *Conn) {

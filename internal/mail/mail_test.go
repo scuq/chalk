@@ -183,12 +183,12 @@ func TestFormatHeaders_OmitsFromNameWhenEmpty(t *testing.T) {
 
 func TestHostFromAddr(t *testing.T) {
 	cases := map[string]string{
-		"alice@example.com":      "example.com",
-		"u@h":                    "h",
-		"":                       "",
-		"no-at-sign":             "",
-		"trailing-at@":           "",
-		"multi@at@hostname.com":  "hostname.com",
+		"alice@example.com":     "example.com",
+		"u@h":                   "h",
+		"":                      "",
+		"no-at-sign":            "",
+		"trailing-at@":          "",
+		"multi@at@hostname.com": "hostname.com",
 	}
 	for in, want := range cases {
 		if got := hostFromAddr(in); got != want {

@@ -453,6 +453,52 @@ const (
 	TypePrefsChanged = "prefs_changed" // push
 )
 
+// ---- phase 22: identity keys -------------------------------------------
+//
+// A client publishes its per-user public identity (X25519 + Ed25519 +
+// a self-signature) once it has derived the keypair from the 24-word
+// phrase, and fetches other users' identities to wrap space keys / verify
+// signatures. The server relays; clients verify the self-signature.
+const (
+	TypePublishIdentity    = "publish_identity"
+	TypePublishIdentityAck = "publish_identity_ack"
+
+	TypeFetchIdentity    = "fetch_identity"
+	TypeFetchIdentityAck = "fetch_identity_ack"
+)
+
+// PublishIdentityPayload uploads the caller's own identity public keys.
+// All three byte fields are base64 (std) encoded over the wire. The
+// server enforces lengths (32/32/64) and stores under the caller's user.
+type PublishIdentityPayload struct {
+	Generation int    `json:"generation,omitempty"` // default 1
+	X25519Pub  string `json:"x25519_pub"`           // b64, 32 bytes
+	Ed25519Pub string `json:"ed25519_pub"`          // b64, 32 bytes
+	SelfSig    string `json:"self_sig"`             // b64, 64 bytes (Ed25519 over x25519_pub)
+}
+
+// PublishIdentityAckPayload confirms the stored generation.
+type PublishIdentityAckPayload struct {
+	Generation int `json:"generation"`
+}
+
+// FetchIdentityPayload requests another user's current active identity.
+type FetchIdentityPayload struct {
+	UserID string `json:"user_id"`
+}
+
+// FetchIdentityAckPayload returns the active identity. Found is false
+// when the target user has not published one yet (keys empty). The
+// client MUST verify SelfSig before trusting X25519Pub.
+type FetchIdentityAckPayload struct {
+	Found      bool   `json:"found"`
+	UserID     string `json:"user_id"`
+	Generation int    `json:"generation,omitempty"`
+	X25519Pub  string `json:"x25519_pub,omitempty"`
+	Ed25519Pub string `json:"ed25519_pub,omitempty"`
+	SelfSig    string `json:"self_sig,omitempty"`
+}
+
 // PrefsGetPayload is empty -- the calling user is identified by the
 // connection's authenticated user_id.
 type PrefsGetPayload struct{}

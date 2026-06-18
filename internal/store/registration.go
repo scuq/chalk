@@ -38,11 +38,11 @@ type RegistrationParams struct {
 
 	// Passkey. The auth layer produced these from a successful
 	// CreateCredential ceremony.
-	CredentialID   []byte
-	PublicKey      []byte
-	SignCount      uint64
-	Transports     []string
-	PasskeyName    string // human label; may be empty
+	CredentialID []byte
+	PublicKey    []byte
+	SignCount    uint64
+	Transports   []string
+	PasskeyName  string // human label; may be empty
 
 	// Recovery. Hash is the salt||argon2id-hash bundle returned by
 	// auth.HashRecoveryWords (48 bytes: 16 salt + 32 hash). The

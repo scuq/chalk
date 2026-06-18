@@ -4,20 +4,20 @@
 //
 // Design summary:
 //
-//   * Each WebSocket-connected device has a row in device_presence
+//   - Each WebSocket-connected device has a row in device_presence
 //     tied to the chalkd instance that holds the connection.
-//   * The chalkd instance heartbeats its own row in `instances` every
+//   - The chalkd instance heartbeats its own row in `instances` every
 //     5 seconds.
-//   * A janitor sweep runs every 10 seconds, looking for instances
+//   - A janitor sweep runs every 10 seconds, looking for instances
 //     whose last_heartbeat is older than 15 seconds. Those instances
 //     are deleted, which cascades to their device_presence rows. The
 //     janitor publishes a NOTIFY for each affected user so other
 //     instances can push the presence transition to subscribers.
-//   * A demotion sweep runs every 5 seconds, looking for online rows
+//   - A demotion sweep runs every 5 seconds, looking for online rows
 //     whose last_seen is past the device-type-specific TTL. They get
 //     demoted to away; rows past 2x TTL get demoted to offline.
 //     NOTIFYs are published for transitions.
-//   * Aggregation across a user's devices uses precedence
+//   - Aggregation across a user's devices uses precedence
 //     online > away > offline.
 package presence
 
@@ -78,12 +78,12 @@ func (d DeviceType) HeartbeatInterval() time.Duration {
 
 // DevicePresence is one row of device_presence.
 type DevicePresence struct {
-	DeviceID    uuid.UUID
-	UserID      uuid.UUID
-	InstanceID  string
-	DeviceType  DeviceType
-	State       State
-	LastSeen    time.Time
+	DeviceID   uuid.UUID
+	UserID     uuid.UUID
+	InstanceID string
+	DeviceType DeviceType
+	State      State
+	LastSeen   time.Time
 }
 
 // Store wraps the presence-related queries.
@@ -342,17 +342,17 @@ func statePrecedence(s State) int {
 // DemotionResult describes a state transition observed by the demotion
 // sweep. Caller publishes NOTIFYs for each affected user_id.
 type DemotionResult struct {
-	UserID  uuid.UUID
+	UserID   uuid.UUID
 	OldState State
 	NewState State
 }
 
 // Demote runs one pass of the staleness sweep. Behavior:
 //
-//   * Online devices whose last_seen is older than TTL(device_type) get
+//   - Online devices whose last_seen is older than TTL(device_type) get
 //     demoted to away. (Client may then update them back to online via
 //     a presence_update + heartbeat, which is fine.)
-//   * Away devices whose last_seen is older than 2 * TTL(device_type)
+//   - Away devices whose last_seen is older than 2 * TTL(device_type)
 //     get demoted to offline.
 //
 // Returns one DemotionResult per device transition. The caller is

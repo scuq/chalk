@@ -9,19 +9,19 @@
 // the ChannelEventPayload field to carry the proto.ChannelSummary.
 //
 // Event Kind discriminator:
-//   * "message"   -- message inserted into a channel; carries MessageID, TS,
-//                    ChannelID. Published per-channel via PublishMessageWithTx;
-//                    receivers fetch the row.
-//   * "presence"  -- aggregated state change; carries UserID. Published on
-//                    chalk_global.
-//   * "friend"    -- friend op; carries UserID (recipient), FromUserID, and
-//                    FriendKind (request_received/accepted/declined/removed).
-//                    Published on chalk_global.
-//   * "channel"   -- channel membership change (phase 08); carries UserID
-//                    (recipient), ChannelID, FriendKind (overloaded as
-//                    channel-event-kind: added/removed), and
-//                    ChannelEventPayload (JSON-encoded proto.ChannelSummary).
-//                    Published on chalk_global so non-members receive it.
+//   - "message"   -- message inserted into a channel; carries MessageID, TS,
+//     ChannelID. Published per-channel via PublishMessageWithTx;
+//     receivers fetch the row.
+//   - "presence"  -- aggregated state change; carries UserID. Published on
+//     chalk_global.
+//   - "friend"    -- friend op; carries UserID (recipient), FromUserID, and
+//     FriendKind (request_received/accepted/declined/removed).
+//     Published on chalk_global.
+//   - "channel"   -- channel membership change (phase 08); carries UserID
+//     (recipient), ChannelID, FriendKind (overloaded as
+//     channel-event-kind: added/removed), and
+//     ChannelEventPayload (JSON-encoded proto.ChannelSummary).
+//     Published on chalk_global so non-members receive it.
 package pubsub
 
 import (

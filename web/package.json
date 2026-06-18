@@ -1,6 +1,6 @@
 {
   "name": "chalk-web",
-  "version": "0.0.0-phase07",
+  "version": "0.0.0-dev",
   "private": true,
   "license": "BSD-3-Clause",
   "description": "chalk single-page client",

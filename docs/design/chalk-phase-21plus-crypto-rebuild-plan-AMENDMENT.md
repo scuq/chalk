@@ -51,6 +51,12 @@ data — unless something holding the old secret re-encrypts the data to the
 new secret at rotation time.** This is the same constraint behind wallet
 seeds and Signal PIN resets; it is physics, not a chalk bug.
 
+> **REVISED — see §1.7.** The strict Design-B framing below (old key
+> recoverable ONLY from a device or the user's external backup) was
+> superseded by a decision to store retired identity keys server-side,
+> re-wrapped under the current identity, with a per-rotation opt-out. The
+> text in §1.2–1.4 is kept as the reasoning trail; §1.7 is authoritative.
+
 ### 1.2 Decision: two independent secrets, with Design-B rotation + an
 external-backup escape hatch
 
@@ -119,6 +125,52 @@ as it can go; it cannot eliminate this floor. Record this in a sibling doc
   phase-25 weekly rotation and the old 11c-6 split-brain guard.
 - **Manual phrase entry is a first-class recovery UI**, not an afterthought
   — lands near the phase-24 verification UI work.
+
+### 1.7 REVISION — server-stored old keys (Model A) with per-rotation opt-in
+
+Decision (supersedes the strict Design-B parts of §1.2–1.4): chalk stores
+each retired identity generation's PRIVATE key on the server, encrypted to
+the user's CURRENT identity public key. A user on a fresh browser with only
+their current 24-word phrase can therefore recover ALL history — no device
+and no manual old-phrase entry required in the common case.
+
+**Mechanism.** At rotation (old generation g → new generation g+1), the
+client — which at that moment holds the old private key — wraps the old
+identity private key to the new identity public key (ECDH → HKDF → AES-GCM,
+same primitive as space-key wraps) and uploads it. On recovery, the current
+phrase derives the current identity, fetches the wrapped old-key blobs,
+unwraps them, and walks back the generation chain to decrypt old space-key
+wraps and thus old messages.
+
+**Per-rotation opt-in (the safety valve).** Rotation offers a choice:
+  * **Keep history recoverable (default).** Re-wrap + upload the old key.
+    Convenient: current phrase alone recovers everything, forever.
+  * **Drop the old key.** Do NOT upload. Used when rotating BECAUSE the old
+    phrase leaked — the leaked phrase then unlocks nothing going forward,
+    and pre-rotation history becomes recoverable only via a device or the
+    user's own external backup of the old phrase (the §1.4 floor still
+    applies to that history).
+
+**The security tradeoff, stated honestly.** With the default (keep), a leak
+of the CURRENT phrase exposes all history across all generations, and
+rotation stops being a boundary that re-secures the past. This is
+consistent with chalk's already-stated posture — the phrase is a
+wallet-seed-grade secret, and forward secrecy is an explicit non-goal — so
+Model A does not introduce a new class of risk; it makes rotation a
+key-management convenience rather than a security reset. The opt-out exists
+precisely for the one case (leaked phrase) where that distinction matters.
+
+**Schema (phase 23-ish, NOT phase 22).** A new table, roughly:
+  `identity_key_archive(user_id, generation, wrapped_private BYTEA,
+   wrapped_under_generation INT, created_at)` — the retired generation's
+private key, encrypted to `wrapped_under_generation`'s public key. Fetch
+returns the chain a current identity can unwrap. Phase 22 does NOT build
+this; it only must not preclude it, which it doesn't (`identity_keys`
+already carries `generation`).
+
+**Net:** phase 22 (identity derivation) is UNCHANGED by this decision — the
+keypair derivation is identical. This affects phase 23+ (the archive table
++ the re-wrap-on-rotation flow + the rotation opt-in UI).
 
 ### 1.6 Net effect on the phase plan
 

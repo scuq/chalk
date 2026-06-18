@@ -16,10 +16,10 @@ import (
 // The format is intentionally noisy and human-readable, with clear
 // delimiters so URLs are easy to spot:
 //
-//   ─── chalk:mail ─── to=user@example  subject="..."  ──────────
-//   From: chalk <chalk@localhost>
-//   ... full body ...
-//   ──────────── end mail ────────────────────────────────────────
+//	─── chalk:mail ─── to=user@example  subject="..."  ──────────
+//	From: chalk <chalk@localhost>
+//	... full body ...
+//	──────────── end mail ────────────────────────────────────────
 type StderrMailer struct {
 	logger   *log.Logger
 	from     string

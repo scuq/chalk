@@ -43,15 +43,15 @@ var ErrInviteNotUsable = errors.New("invite is not usable (used / revoked / expi
 // Invite mirrors the invites table. Token is the raw 32-byte
 // PRIMARY KEY (base64url-encoded on the HTTP wire).
 type Invite struct {
-	Token      []byte
-	Email      string // CITEXT on the DB side; passed as-is in Go
-	InviterID  uuid.UUID
-	Note       string // may be empty
-	CreatedAt  time.Time
-	ExpiresAt  time.Time
-	UsedAt     time.Time // zero if unused
-	UsedBy     uuid.UUID // uuid.Nil if unused
-	RevokedAt  time.Time // zero if not revoked
+	Token     []byte
+	Email     string // CITEXT on the DB side; passed as-is in Go
+	InviterID uuid.UUID
+	Note      string // may be empty
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	UsedAt    time.Time // zero if unused
+	UsedBy    uuid.UUID // uuid.Nil if unused
+	RevokedAt time.Time // zero if not revoked
 }
 
 // IsUsed returns true if the invite has been consumed by a registration.

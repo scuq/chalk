@@ -13,11 +13,11 @@ import (
 // channel ID. Format: "chalk_chan_<uuid-no-dashes>".
 //
 // Why this shape:
-//   * Prefix "chalk_chan_" lets ops grep for "chalk_*" to see all our
+//   - Prefix "chalk_chan_" lets ops grep for "chalk_*" to see all our
 //     topics; distinguishes channel topics from chalk_global.
-//   * UUID with dashes removed is 32 hex chars; prefix is 11; total 43.
+//   - UUID with dashes removed is 32 hex chars; prefix is 11; total 43.
 //     Well under Postgres' 63-char identifier limit.
-//   * Lowercase letters + digits + underscore only -- safe to use
+//   - Lowercase letters + digits + underscore only -- safe to use
 //     without quoting in LISTEN/UNLISTEN/NOTIFY (the listener still
 //     quotes defensively).
 //

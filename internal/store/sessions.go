@@ -26,13 +26,13 @@ import (
 // practice, last_used_at updates from a single WS hello are well-
 // serialized through the conn lifecycle).
 type Session struct {
-	Token       []byte // 32 random bytes
-	UserID      uuid.UUID
-	CreatedAt   time.Time
-	LastUsedAt  time.Time
-	ExpiresAt   time.Time
-	UserAgent   string
-	IPAddress   net.IP // may be nil
+	Token      []byte // 32 random bytes
+	UserID     uuid.UUID
+	CreatedAt  time.Time
+	LastUsedAt time.Time
+	ExpiresAt  time.Time
+	UserAgent  string
+	IPAddress  net.IP // may be nil
 }
 
 // SessionTTL is the sliding TTL applied at creation and at every

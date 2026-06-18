@@ -35,17 +35,17 @@ type createInviteRequest struct {
 // the token in encoded form (base64url, no padding) so the SPA can
 // drop it directly into ?invite= URLs.
 type inviteDTO struct {
-	Token           string    `json:"token"`
-	Email           string    `json:"email"`
-	InviterID       string    `json:"inviter_id"`
-	InviterUsername string    `json:"inviter_username,omitempty"`
-	Note            string    `json:"note,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
-	ExpiresAt       time.Time `json:"expires_at"`
+	Token           string     `json:"token"`
+	Email           string     `json:"email"`
+	InviterID       string     `json:"inviter_id"`
+	InviterUsername string     `json:"inviter_username,omitempty"`
+	Note            string     `json:"note,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	ExpiresAt       time.Time  `json:"expires_at"`
 	UsedAt          *time.Time `json:"used_at,omitempty"`
 	RevokedAt       *time.Time `json:"revoked_at,omitempty"`
-	Status          string    `json:"status"` // "active"|"used"|"revoked"|"expired"
-	URL             string    `json:"url,omitempty"` // BuildInviteURL output; nice-to-have
+	Status          string     `json:"status"`        // "active"|"used"|"revoked"|"expired"
+	URL             string     `json:"url,omitempty"` // BuildInviteURL output; nice-to-have
 }
 
 // inviteToDTO converts a store.Invite (+ optional inviter username +

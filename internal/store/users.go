@@ -406,10 +406,10 @@ func (s *Store) ClearPendingEmail(ctx context.Context, userID uuid.UUID) error {
 }
 
 // FinalizeEmailChange atomically:
-//   1. Verifies that the user has a pending email-change matching token
-//      that hasn't expired.
-//   2. Copies pending_email → email, sets email_verified_at = now().
-//   3. Clears all pending_email_* fields.
+//  1. Verifies that the user has a pending email-change matching token
+//     that hasn't expired.
+//  2. Copies pending_email → email, sets email_verified_at = now().
+//  3. Clears all pending_email_* fields.
 //
 // Returns:
 //   - the user's ID + the new email on success

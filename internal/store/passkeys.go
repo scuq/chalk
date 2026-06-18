@@ -131,10 +131,10 @@ func (s *Store) GetPasskeyByCredentialID(ctx context.Context, credentialID []byt
 
 // GetPasskeysForUser returns every credential registered for a user,
 // ordered by created_at ascending. Used for two purposes:
-//   1. Building the allowCredentials list for an authentication
-//      ceremony (server has to tell the browser which credential IDs
-//      it knows about for this user).
-//   2. The settings panel that lists passkeys for revocation.
+//  1. Building the allowCredentials list for an authentication
+//     ceremony (server has to tell the browser which credential IDs
+//     it knows about for this user).
+//  2. The settings panel that lists passkeys for revocation.
 func (s *Store) GetPasskeysForUser(ctx context.Context, userID uuid.UUID) ([]Passkey, error) {
 	rows, err := s.Pool.Query(ctx,
 		`SELECT credential_id, user_id, public_key, sign_count, transports, name, created_at, last_used_at

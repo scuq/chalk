@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log"
@@ -481,6 +482,10 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handlePrefsGet(ctx, c, conn, f)
 		case proto.TypePrefsSet:
 			h.handlePrefsSet(ctx, c, conn, f)
+		case proto.TypePublishIdentity:
+			h.handlePublishIdentity(ctx, c, conn, f)
+		case proto.TypeFetchIdentity:
+			h.handleFetchIdentity(ctx, c, conn, f)
 
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,
@@ -2217,3 +2222,118 @@ type PrefsChangePublisher func(ctx context.Context, userID uuid.UUID, originConn
 // Lives on the Server side because it needs s.hub access; the
 // dispatcher is in server.go's handlePubsubEvent. This file just
 // notes the contract.
+
+// ---- phase 22: identity-key handlers -----------------------------------
+
+// handlePublishIdentity stores the caller's own identity public keys.
+// The server validates lengths but does NOT verify the self-signature;
+// trust is established client-side on fetch.
+func (h *WSHandler) handlePublishIdentity(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.PublishIdentityPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	x, err := base64.StdEncoding.DecodeString(p.X25519Pub)
+	if err != nil || len(x) != 32 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "x25519_pub must be base64 of 32 bytes")
+		return
+	}
+	ed, err := base64.StdEncoding.DecodeString(p.Ed25519Pub)
+	if err != nil || len(ed) != 32 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "ed25519_pub must be base64 of 32 bytes")
+		return
+	}
+	sig, err := base64.StdEncoding.DecodeString(p.SelfSig)
+	if err != nil || len(sig) != 64 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "self_sig must be base64 of 64 bytes")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	userID := h.lookupUserForDevice(ctx, deviceID)
+	if userID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+	gen := p.Generation
+	if gen < 1 {
+		gen = 1
+	}
+	if err := h.store.PutIdentityKey(ctx, store.IdentityKey{
+		UserID:     userID,
+		Generation: gen,
+		X25519Pub:  x,
+		Ed25519Pub: ed,
+		SelfSig:    sig,
+	}); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "store identity: "+err.Error())
+		return
+	}
+	ack, _ := proto.NewFrame(proto.TypePublishIdentityAck, f.Ref, proto.PublishIdentityAckPayload{
+		Generation: gen,
+	})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+}
+
+// handleFetchIdentity returns a user's current active identity. Found is
+// false (with empty keys) when none is published. The requesting client
+// verifies the self-signature before trusting the X25519 key.
+func (h *WSHandler) handleFetchIdentity(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.FetchIdentityPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	targetID, err := uuid.Parse(p.UserID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "user_id not a UUID")
+		return
+	}
+	k, err := h.store.GetActiveIdentityKey(ctx, targetID)
+	if errors.Is(err, store.ErrNotFound) {
+		ack, _ := proto.NewFrame(proto.TypeFetchIdentityAck, f.Ref, proto.FetchIdentityAckPayload{
+			Found:  false,
+			UserID: p.UserID,
+		})
+		data, _ := json.Marshal(ack)
+		_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+		return
+	}
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "fetch identity: "+err.Error())
+		return
+	}
+	ack, _ := proto.NewFrame(proto.TypeFetchIdentityAck, f.Ref, proto.FetchIdentityAckPayload{
+		Found:      true,
+		UserID:     p.UserID,
+		Generation: k.Generation,
+		X25519Pub:  base64.StdEncoding.EncodeToString(k.X25519Pub),
+		Ed25519Pub: base64.StdEncoding.EncodeToString(k.Ed25519Pub),
+		SelfSig:    base64.StdEncoding.EncodeToString(k.SelfSig),
+	})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+}

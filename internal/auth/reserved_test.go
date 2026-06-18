@@ -24,15 +24,15 @@ func TestIsValidUsernameAccepts(t *testing.T) {
 
 func TestIsValidUsernameRejects(t *testing.T) {
 	bad := []string{
-		"",            // empty
-		"ab",          // too short
-		"Alice",       // uppercase
-		"al-ice",      // hyphen
-		"al ice",      // space
-		"al.ice",      // dot
-		"alíce",       // unicode
-		"alice!",      // punctuation
-		"thr-other_x", // hyphen mixed with allowed chars
+		"",                                  // empty
+		"ab",                                // too short
+		"Alice",                             // uppercase
+		"al-ice",                            // hyphen
+		"al ice",                            // space
+		"al.ice",                            // dot
+		"alíce",                             // unicode
+		"alice!",                            // punctuation
+		"thr-other_x",                       // hyphen mixed with allowed chars
 		"abcdefghij0123456789klmnopqrstuvw", // 33 chars
 		strings.Repeat("a", 33),             // 33 chars all-letters
 	}

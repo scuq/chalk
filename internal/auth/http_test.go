@@ -1496,7 +1496,9 @@ func TestInviteEmailMismatch(t *testing.T) {
 		eb, _ := decodeError(createResp.Body)
 		t.Fatalf("invite create: %d %s", createResp.StatusCode, eb.Error.Message)
 	}
-	var inv struct{ Token string `json:"token"` }
+	var inv struct {
+		Token string `json:"token"`
+	}
 	_ = json.NewDecoder(createResp.Body).Decode(&inv)
 
 	// Now try to register with the invite but a DIFFERENT email.

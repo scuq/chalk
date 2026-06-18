@@ -159,14 +159,3 @@ psql: ## Connect to local dev database
 reset-db: ## Drop and recreate the dev database
 	tools/reset-db.sh
 
-# Phase 11a: report local vs latest @wireapp/core-crypto.
-.PHONY: crypto-check-version
-crypto-check-version:
-	@local=$$(node -p "require('./web/package.json').dependencies['@wireapp/core-crypto']" 2>/dev/null || echo "(not installed)"); \
-	latest=$$(curl -fsSL https://registry.npmjs.org/@wireapp/core-crypto/latest 2>/dev/null \
-	  | python3 -c "import json,sys; print(json.load(sys.stdin).get('version','?'))" 2>/dev/null || echo "(offline)"); \
-	echo "local : $$local"; \
-	echo "latest: $$latest"; \
-	if [ "$$local" != "$$latest" ] && [ "$$latest" != "(offline)" ]; then \
-	  echo "→ run \`make crypto-update\` or see docs/updating-core-crypto.md"; \
-	fi

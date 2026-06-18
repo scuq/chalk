@@ -45,10 +45,10 @@ func passkeyToWebauthnCredential(pk store.Passkey) webauthn.Credential {
 // HTTPDeps bundles the dependencies the HTTP handlers need. Held by
 // the server's lifecycle and passed in once at construction time.
 type HTTPDeps struct {
-	Service *Service        // WebAuthn ceremony primitives
-	Cache   *CeremonyCache  // in-flight ceremony state
-	Store   *store.Store    // user/passkey/recovery persistence
-	Logger  *log.Logger     // optional; nil → log.Default()
+	Service *Service       // WebAuthn ceremony primitives
+	Cache   *CeremonyCache // in-flight ceremony state
+	Store   *store.Store   // user/passkey/recovery persistence
+	Logger  *log.Logger    // optional; nil → log.Default()
 
 	// AdminUsername, if set, is the one username that may be claimed
 	// even when it's on the reserved list. Sourced from the
@@ -175,11 +175,11 @@ type registerFinishRequest struct {
 // expiry information (and not for any auth purpose — the cookie is
 // the auth credential, the body field is just metadata).
 type registerFinishResponse struct {
-	UserID            string    `json:"user_id"`
-	Username          string    `json:"username"`
-	DisplayName       string    `json:"display_name"`
-	RecoveryWords     []string  `json:"recovery_words"`
-	SessionExpiresAt  time.Time `json:"session_expires_at"`
+	UserID           string    `json:"user_id"`
+	Username         string    `json:"username"`
+	DisplayName      string    `json:"display_name"`
+	RecoveryWords    []string  `json:"recovery_words"`
+	SessionExpiresAt time.Time `json:"session_expires_at"`
 }
 
 // configResponse is what GET /api/auth/config returns. The SPA needs
@@ -187,11 +187,11 @@ type registerFinishResponse struct {
 // and the registration-mode flag to decide whether to show the
 // invite-token field.
 type configResponse struct {
-	RPID                string `json:"rp_id"`
-	RPName              string `json:"rp_name"`
-	OpenRegistration    bool   `json:"open_registration"`
-	DevMode             bool   `json:"dev_mode"`
-	RecoveryWordCount   int    `json:"recovery_word_count"`
+	RPID              string `json:"rp_id"`
+	RPName            string `json:"rp_name"`
+	OpenRegistration  bool   `json:"open_registration"`
+	DevMode           bool   `json:"dev_mode"`
+	RecoveryWordCount int    `json:"recovery_word_count"`
 }
 
 // ---- handlers ----------------------------------------------------------
@@ -795,13 +795,13 @@ func (d *HTTPDeps) handleLogout(w http.ResponseWriter, r *http.Request) {
 // shape. session_expires_at is the cookie's TTL boundary, useful for
 // the SPA to know when it'll have to re-login.
 type meResponse struct {
-	UserID            string    `json:"user_id"`
-	Username          string    `json:"username"`
-	DisplayName       string    `json:"display_name"`
-	Role              string    `json:"role"`
-	Email             string    `json:"email"`
-	EmailVerifiedAt   time.Time `json:"email_verified_at"`
-	SessionExpiresAt  time.Time `json:"session_expires_at"`
+	UserID           string    `json:"user_id"`
+	Username         string    `json:"username"`
+	DisplayName      string    `json:"display_name"`
+	Role             string    `json:"role"`
+	Email            string    `json:"email"`
+	EmailVerifiedAt  time.Time `json:"email_verified_at"`
+	SessionExpiresAt time.Time `json:"session_expires_at"`
 }
 
 // handleMe returns the current user's identity if logged in, or 401
@@ -1002,12 +1002,12 @@ type recoveryRequest struct {
 // Set-Cookie; the body carries identity + the regenerate_required
 // flag which the SPA uses to force a regenerate step before chat.
 type recoveryResponse struct {
-	UserID              string    `json:"user_id"`
-	Username            string    `json:"username"`
-	DisplayName         string    `json:"display_name"`
-	Role                string    `json:"role"`
-	SessionExpiresAt    time.Time `json:"session_expires_at"`
-	RegenerateRequired  bool      `json:"regenerate_required"`
+	UserID             string    `json:"user_id"`
+	Username           string    `json:"username"`
+	DisplayName        string    `json:"display_name"`
+	Role               string    `json:"role"`
+	SessionExpiresAt   time.Time `json:"session_expires_at"`
+	RegenerateRequired bool      `json:"regenerate_required"`
 }
 
 // handleRecovery validates a 24-word recovery phrase against the
@@ -1021,14 +1021,14 @@ type recoveryResponse struct {
 //   - bad_request        → malformed JSON or missing username/words
 //   - bad_username       → username shape invalid
 //   - unknown_user       → no such user (NOTE: timing-equivalent to
-//                          wrong words; we don't disclose existence
-//                          via differential timing)
+//     wrong words; we don't disclose existence
+//     via differential timing)
 //   - no_recovery        → user has no recovery code on file (e.g.
-//                          old account from before 09b)
+//     old account from before 09b)
 //   - code_used          → the user's stored code was already
-//                          consumed; they need to regenerate
+//     consumed; they need to regenerate
 //   - invalid_words      → 24 words submitted but they don't match
-//                          the hash
+//     the hash
 //   - mark_used_failed   → bookkeeping error after successful verify
 //   - session_mint_failed → cookie/session row create failed
 func (d *HTTPDeps) handleRecovery(w http.ResponseWriter, r *http.Request) {

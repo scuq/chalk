@@ -41,18 +41,18 @@ import (
 
 // adminTestEnv bundles everything a moderation HTTP test needs.
 type adminTestEnv struct {
-	t        *testing.T
-	pool     *pgxpool.Pool
-	st       *store.Store
-	server   *httptest.Server
-	mux      *http.ServeMux
-	admin    *http.Client // jar with admin session
-	user     *http.Client // jar with regular-user session
-	adminID  uuid.UUID
-	userID   uuid.UUID
+	t         *testing.T
+	pool      *pgxpool.Pool
+	st        *store.Store
+	server    *httptest.Server
+	mux       *http.ServeMux
+	admin     *http.Client // jar with admin session
+	user      *http.Client // jar with regular-user session
+	adminID   uuid.UUID
+	userID    uuid.UUID
 	adminName string
 	userName  string
-	mockKick *mockKicker
+	mockKick  *mockKicker
 }
 
 // mockKicker captures the userIDs the admin endpoints try to kick so

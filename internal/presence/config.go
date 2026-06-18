@@ -13,10 +13,11 @@ import (
 // janitor test runs in under 10 seconds instead of 25+.
 //
 // Recognized variables (durations parseable by time.ParseDuration):
-//   CHALK_PRESENCE_HEARTBEAT_INTERVAL  -- default 5s
-//   CHALK_PRESENCE_JANITOR_INTERVAL    -- default 10s
-//   CHALK_PRESENCE_INSTANCE_STALENESS  -- default 15s
-//   CHALK_PRESENCE_DEMOTION_INTERVAL   -- default 5s
+//
+//	CHALK_PRESENCE_HEARTBEAT_INTERVAL  -- default 5s
+//	CHALK_PRESENCE_JANITOR_INTERVAL    -- default 10s
+//	CHALK_PRESENCE_INSTANCE_STALENESS  -- default 15s
+//	CHALK_PRESENCE_DEMOTION_INTERVAL   -- default 5s
 //
 // Production deployments should NOT set these; the defaults are chosen
 // for stability. Setting InstanceStaleness too low risks reaping

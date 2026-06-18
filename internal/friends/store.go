@@ -2,9 +2,9 @@
 // friendships table.
 //
 // Storage convention from migration 0007:
-//   * accepted rows are stored with user_a < user_b lexicographically
-//   * pending rows preserve direction: user_a is the requester
-//   * blocked rows preserve direction: user_a is the blocker
+//   - accepted rows are stored with user_a < user_b lexicographically
+//   - pending rows preserve direction: user_a is the requester
+//   - blocked rows preserve direction: user_a is the blocker
 //
 // All operations in this package handle that convention internally;
 // callers pass two user_ids in whatever order, and the package re-orders
@@ -96,15 +96,15 @@ func (s *Store) AssertActive(ctx context.Context, id uuid.UUID) error {
 }
 
 // Request submits a friend request from -> to. Outcomes:
-//   * If no prior friendship exists: creates a pending row, returns
+//   - If no prior friendship exists: creates a pending row, returns
 //     ("requested", nil).
-//   * If a pending row already exists from -> to: idempotent, returns
+//   - If a pending row already exists from -> to: idempotent, returns
 //     ("requested", nil).
-//   * If a pending row exists from to -> from (i.e., they requested us
+//   - If a pending row exists from to -> from (i.e., they requested us
 //     and we're accepting by sending a request back): promotes to
 //     accepted, returns ("auto_accepted", nil).
-//   * If already accepted: returns ErrAlreadyFriends.
-//   * If blocked (either direction): returns ErrBlocked.
+//   - If already accepted: returns ErrAlreadyFriends.
+//   - If blocked (either direction): returns ErrBlocked.
 //
 // Self-requests return ErrSelfFriend.
 func (s *Store) Request(ctx context.Context, from, to uuid.UUID) (string, error) {
@@ -235,10 +235,11 @@ func (s *Store) Remove(ctx context.Context, us, them uuid.UUID) error {
 }
 
 // Block records that us has blocked them. Side effects:
-//   * Any existing accepted friendship between the pair is removed.
-//   * Any existing pending request between the pair (either direction) is
+//   - Any existing accepted friendship between the pair is removed.
+//   - Any existing pending request between the pair (either direction) is
 //     removed.
-//   * A blocked row is inserted with user_a=us, user_b=them.
+//   - A blocked row is inserted with user_a=us, user_b=them.
+//
 // Idempotent: re-blocking is a no-op.
 func (s *Store) Block(ctx context.Context, us, them uuid.UUID) error {
 	if us == them {

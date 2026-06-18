@@ -173,12 +173,12 @@ type listUsersResponse struct {
 
 // blacklistEntryDTO is the per-row admin blacklist payload.
 type blacklistEntryDTO struct {
-	Email           string    `json:"email"`
-	Reason          string    `json:"reason"`
-	AddedAt         time.Time `json:"added_at"`
-	AddedBy         string    `json:"added_by,omitempty"`
-	FormerUserID    string    `json:"former_user_id,omitempty"`
-	FormerUsername  string    `json:"former_username,omitempty"`
+	Email          string    `json:"email"`
+	Reason         string    `json:"reason"`
+	AddedAt        time.Time `json:"added_at"`
+	AddedBy        string    `json:"added_by,omitempty"`
+	FormerUserID   string    `json:"former_user_id,omitempty"`
+	FormerUsername string    `json:"former_username,omitempty"`
 }
 
 func blacklistToDTO(e store.BlacklistEntry) blacklistEntryDTO {
@@ -216,9 +216,10 @@ type addBlacklistRequest struct {
 // handleAdminListUsers returns a paginated user list.
 //
 // Query params:
-//   q       — optional search string (substring match, case-insensitive)
-//   limit   — page size (default 50, max 200)
-//   offset  — starting row (default 0)
+//
+//	q       — optional search string (substring match, case-insensitive)
+//	limit   — page size (default 50, max 200)
+//	offset  — starting row (default 0)
 func (d *HTTPDeps) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	RequireAdmin(d.Store, func(w http.ResponseWriter, r *http.Request, su *SessionUser) {
 		q := r.URL.Query()
