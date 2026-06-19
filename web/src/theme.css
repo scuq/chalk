@@ -863,6 +863,16 @@ html, body {
   user-select: all;
 }
 
+/* phase 22c-3c: the "re-enter 3 words" challenge under the decryption
+   phrase. Each field is a normal .chalk-field (label over input); this
+   just spaces the group. */
+.chalk-identity-challenge {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s3);
+  margin-top: var(--chalk-s4);
+}
+
 /* phase 09b sub-step 5b: cross-link between LoginScreen and
    RegisterScreen ("no account? register" / "have an account? log in"). */
 .chalk-auth-alt {

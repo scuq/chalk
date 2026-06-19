@@ -104,6 +104,8 @@ const FriendsPanel = lazyComponent(() =>
 );
 import { CreateChannelModal } from "./CreateChannelModal";
 import { AuthGate } from "../auth/AuthGate";
+import { IdentitySetupScreen } from "../auth/IdentitySetupScreen";
+import { loadIdentity } from "../crypto/idb";
 import {
   logout as logoutAPI,
   fetchMe,
@@ -175,6 +177,38 @@ export function App() {
     initialState
   );
   const clientRef = useRef<WSClient | null>(null);
+
+  // Phase 22c-3c: identity gate. After the WS welcomes us we know the
+  // userID; check whether this device already has the user's encryption
+  // identity stored. If not, IdentitySetupScreen runs (generate or enter
+  // the decryption phrase) before the chat renders. "ready" = identity
+  // present locally; "needs-setup" = render the screen; null = still
+  // checking. The check re-runs if the userID changes (e.g. re-login as a
+  // different user on this browser).
+  const [identityGate, setIdentityGate] =
+    useState<"checking" | "ready" | "needs-setup" | null>(null);
+  const identityCheckedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    const uid = state.user?.id;
+    if (state.wsState !== "open" || !uid) return;
+    if (identityCheckedForRef.current === uid) return;
+    identityCheckedForRef.current = uid;
+    setIdentityGate("checking");
+    let cancelled = false;
+    (async () => {
+      try {
+        const existing = await loadIdentity(uid);
+        if (cancelled) return;
+        setIdentityGate(existing ? "ready" : "needs-setup");
+      } catch (err) {
+        console.error("identity gate: loadIdentity failed:", err);
+        if (!cancelled) setIdentityGate("needs-setup");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [state.wsState, state.user?.id]);
 
   // Phase 11b-2 fix5: WS callbacks (onFrame, etc.) capture the
   // handleFrame closure ONCE at WSClient construction, before
@@ -1032,6 +1066,26 @@ export function App() {
         verifyEmailChange={state.verifyEmailChange}
         adminBootstrap={state.adminBootstrap}
         dispatch={dispatch}
+      />
+    );
+  }
+
+  // Phase 22c-3c: once authed and the WS is open, ensure this device has
+  // the user's encryption identity before showing the chat. While checking,
+  // fall through to the chat (which itself waits on wsState); only when we
+  // positively need setup do we render the screen.
+  if (
+    state.authStage === "authed" &&
+    state.wsState === "open" &&
+    state.user &&
+    identityGate === "needs-setup" &&
+    clientRef.current
+  ) {
+    return (
+      <IdentitySetupScreen
+        userID={state.user.id}
+        transport={clientRef.current}
+        onReady={() => setIdentityGate("ready")}
       />
     );
   }
