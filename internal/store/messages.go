@@ -31,6 +31,9 @@ type Message struct {
 	TS           time.Time
 	DeliveredAt  *time.Time
 	Body         []byte
+	// Phase 23d: message-suite key version. nil = legacy plaintext;
+	// >=1 = encrypted body. Carried through to MessagePayload.
+	KeyVersion *int
 	// Phase 10a: only populated by ListMessagesByChannel (which
 	// JOINs the reply-count subquery). GetMessage and other lookups
 	// leave this as 0. Callers should treat 0 as "unknown" unless
@@ -113,7 +116,7 @@ func (s *Store) GetMessage(ctx context.Context, ts time.Time, id uuid.UUID) (Mes
 	err := s.Pool.QueryRow(ctx,
 		`SELECT m.id, m.channel_id, m.thread_id, m.parent_id,
 		        m.sender_device_id, d.user_id,
-		        m.seq, m.ts, m.delivered_at, m.body
+		        m.seq, m.ts, m.delivered_at, m.body, m.key_version
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
 		  WHERE m.ts = $1 AND m.id = $2`,
@@ -121,7 +124,7 @@ func (s *Store) GetMessage(ctx context.Context, ts time.Time, id uuid.UUID) (Mes
 	).Scan(
 		&m.ID, &m.ChannelID, &m.ThreadID, &m.ParentID,
 		&m.SenderDeviceID, &senderUser,
-		&m.Seq, &m.TS, &m.DeliveredAt, &m.Body,
+		&m.Seq, &m.TS, &m.DeliveredAt, &m.Body, &m.KeyVersion,
 	)
 	if senderUser != nil {
 		m.SenderUserID = *senderUser

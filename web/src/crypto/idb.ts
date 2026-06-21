@@ -32,8 +32,10 @@
 import type { DerivedIdentity } from "./identity";
 
 const DB_NAME = "chalk";
-const DB_VERSION = 1;
+// v2 (phase 23d): adds the space_keys store for cached channel keys.
+const DB_VERSION = 2;
 const STORE = "identity";
+const SPACE_KEY_STORE = "space_keys";
 
 /** A loaded identity record, with both private keys as usable CryptoKeys. */
 export interface StoredIdentity {
@@ -65,6 +67,9 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE)) {
         db.createObjectStore(STORE, { keyPath: "userID" });
       }
+      if (!db.objectStoreNames.contains(SPACE_KEY_STORE)) {
+        db.createObjectStore(SPACE_KEY_STORE, { keyPath: "cacheKey" });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error ?? new Error("indexedDB.open failed"));
@@ -76,10 +81,11 @@ function tx<T>(
   db: IDBDatabase,
   mode: IDBTransactionMode,
   fn: (store: IDBObjectStore) => IDBRequest<T>,
+  storeName: string = STORE,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
-    const t = db.transaction(STORE, mode);
-    const req = fn(t.objectStore(STORE));
+    const t = db.transaction(storeName, mode);
+    const req = fn(t.objectStore(storeName));
     let result: T;
     req.onsuccess = () => {
       result = req.result;
@@ -170,6 +176,75 @@ export async function clearIdentity(userID: string): Promise<void> {
   const db = await openDB();
   try {
     await tx(db, "readwrite", (s) => s.delete(userID));
+  } finally {
+    db.close();
+  }
+}
+
+// ---- space-key cache (phase 23d) -------------------------------------
+//
+// Caches the UNWRAPPED channel space key (raw 32 bytes) per
+// (channelID, keyVersion) so a channel doesn't re-fetch + re-unwrap its key
+// on every open. Unlike the identity X25519 key, a space key is plain bytes
+// (Uint8Array), which structured-clones into IndexedDB on every engine -- no
+// JWK workaround needed. Keyed by "channelID:keyVersion".
+//
+// Security note: this widens the space key's at-rest exposure to the same
+// level as the X25519 private key (already recoverable bytes at rest, by the
+// Safari-forced JWK decision). A script with IndexedDB read access could read
+// cached space keys; the 24-word phrase remains the root that gates deriving
+// the identity needed to unwrap them in the first place.
+
+interface SpaceKeyRecord {
+  cacheKey: string; // "channelID:keyVersion"
+  channelID: string;
+  keyVersion: number;
+  key: Uint8Array; // raw 32-byte space key
+}
+
+function spaceCacheKey(channelID: string, keyVersion: number): string {
+  return `${channelID}:${keyVersion}`;
+}
+
+/** saveSpaceKey caches the unwrapped space key for a channel + version. */
+export async function saveSpaceKey(channelID: string, keyVersion: number, key: Uint8Array): Promise<void> {
+  const record: SpaceKeyRecord = {
+    cacheKey: spaceCacheKey(channelID, keyVersion),
+    channelID,
+    keyVersion,
+    key,
+  };
+  const db = await openDB();
+  try {
+    await tx(db, "readwrite", (s) => s.put(record), SPACE_KEY_STORE);
+  } finally {
+    db.close();
+  }
+}
+
+/** loadSpaceKey returns the cached space key, or null if not cached. */
+export async function loadSpaceKey(channelID: string, keyVersion: number): Promise<Uint8Array | null> {
+  const db = await openDB();
+  let rec: SpaceKeyRecord | undefined;
+  try {
+    rec = await tx<SpaceKeyRecord | undefined>(
+      db,
+      "readonly",
+      (s) => s.get(spaceCacheKey(channelID, keyVersion)),
+      SPACE_KEY_STORE,
+    );
+  } finally {
+    db.close();
+  }
+  if (!rec || !(rec.key instanceof Uint8Array) || rec.key.length !== 32) return null;
+  return rec.key;
+}
+
+/** clearSpaceKeys removes every cached space key (e.g. on logout-and-forget). */
+export async function clearSpaceKeys(): Promise<void> {
+  const db = await openDB();
+  try {
+    await tx(db, "readwrite", (s) => s.clear(), SPACE_KEY_STORE);
   } finally {
     db.close();
   }

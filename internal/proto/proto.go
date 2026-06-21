@@ -148,6 +148,11 @@ type SendPayload struct {
 	// (parent.thread_id if non-nil, else parent.id) and validates that
 	// the parent exists in the same channel.
 	ParentID string `json:"parent_id,omitempty"`
+	// Phase 23d: message-suite key version. nil/0 = legacy plaintext
+	// body; >=1 = the body is suite-tagged ciphertext under the
+	// channel space key of that version. The server stores + echoes
+	// it but never inspects the (opaque) body.
+	KeyVersion *int `json:"key_version,omitempty"`
 }
 
 // MessagePayload is what the server pushes to peers. id and ts are
@@ -178,6 +183,8 @@ type MessagePayload struct {
 	ParentID   string `json:"parent_id,omitempty"`
 	ThreadID   string `json:"thread_id,omitempty"`
 	ReplyCount int64  `json:"reply_count,omitempty"`
+	// Phase 23d: see SendPayload.KeyVersion. nil = legacy plaintext.
+	KeyVersion *int `json:"key_version,omitempty"`
 	// Phase 10d: highest seq among replies in this thread. Used by
 	// clients to compute "unread" badges when compared against a
 	// locally-stored "last seen" seq per thread.

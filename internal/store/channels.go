@@ -295,7 +295,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 	// NULL); thread heads themselves do not count themselves.
 	rows, err := s.Pool.Query(ctx,
 		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
-		        m.ts, m.seq, m.body,
+		        m.ts, m.seq, m.body, m.key_version,
 		        m.parent_id, m.thread_id,
 		        COALESCE(r.cnt, 0) AS reply_count,
 		        COALESCE(r.last_seq, 0) AS last_reply_seq,
@@ -342,7 +342,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		var lastReplyBody []byte
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &senderDev, &senderUser,
-			&m.TS, &m.Seq, &m.Body,
+			&m.TS, &m.Seq, &m.Body, &m.KeyVersion,
 			&parentID, &threadID, &replyCount, &lastReplySeq,
 			&lastReplySender, &lastReplyBody,
 		); err != nil {
@@ -396,7 +396,7 @@ func (s *Store) ListMessagesByThread(
 	}
 	rows, err := s.Pool.Query(ctx,
 		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
-		        m.ts, m.seq, m.body,
+		        m.ts, m.seq, m.body, m.key_version,
 		        m.parent_id, m.thread_id
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
@@ -419,7 +419,7 @@ func (s *Store) ListMessagesByThread(
 		var tID *uuid.UUID
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &senderDev, &senderUser,
-			&m.TS, &m.Seq, &m.Body,
+			&m.TS, &m.Seq, &m.Body, &m.KeyVersion,
 			&parentID, &tID,
 		); err != nil {
 			return nil, err

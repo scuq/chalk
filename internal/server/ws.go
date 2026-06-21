@@ -486,6 +486,12 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handlePublishIdentity(ctx, c, conn, f)
 		case proto.TypeFetchIdentity:
 			h.handleFetchIdentity(ctx, c, conn, f)
+		case proto.TypePublishChannelKey:
+			h.handlePublishChannelKey(ctx, c, conn, f)
+		case proto.TypeFetchChannelKey:
+			h.handleFetchChannelKey(ctx, c, conn, f)
+		case proto.TypeFetchChannelKeyRecipients:
+			h.handleFetchChannelKeyRecipients(ctx, c, conn, f)
 
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,
@@ -627,10 +633,10 @@ func (h *WSHandler) handleSend(
 		bodyBytes := []byte(p.Body)
 		if err := tx.QueryRow(ctx,
 			`INSERT INTO messages
-			   (id, channel_id, parent_id, thread_id, sender_device_id, seq, body)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7)
+			   (id, channel_id, parent_id, thread_id, sender_device_id, seq, body, key_version)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			 RETURNING ts`,
-			msgID, channelID, parentUUID, threadUUID, deviceID, seq, bodyBytes,
+			msgID, channelID, parentUUID, threadUUID, deviceID, seq, bodyBytes, p.KeyVersion,
 		).Scan(&ts); err != nil {
 			return err
 		}
@@ -1772,6 +1778,7 @@ func (h *WSHandler) handleFetchHistory(
 			LastReplySeq:          m.LastReplySeq,
 			LastReplySenderUserID: lastReplySender,
 			LastReplyBody:         string(m.LastReplyBody),
+			KeyVersion:            m.KeyVersion,
 		})
 	}
 
@@ -1925,6 +1932,7 @@ func (h *WSHandler) handleFetchThread(
 			SenderUserID: senderUserStr,
 			TS:           m.TS.UnixMilli(),
 			Body:         tBody,
+			KeyVersion:   m.KeyVersion,
 			ParentID:     parentStr,
 			ThreadID:     threadStr,
 		})
@@ -2333,6 +2341,234 @@ func (h *WSHandler) handleFetchIdentity(
 		X25519Pub:  base64.StdEncoding.EncodeToString(k.X25519Pub),
 		Ed25519Pub: base64.StdEncoding.EncodeToString(k.Ed25519Pub),
 		SelfSig:    base64.StdEncoding.EncodeToString(k.SelfSig),
+	})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+}
+
+// handlePublishChannelKey stores one member's wrapped space key for a
+// channel + key_version. Authz: the caller must be a member of the channel,
+// and so must the recipient. The server never sees the plaintext key -- it
+// stores the opaque suite-tagged wrap blob (online-member auto-rewrap).
+func (h *WSHandler) handlePublishChannelKey(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.PublishChannelKeyPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
+		return
+	}
+	recipientID, err := uuid.Parse(p.RecipientID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "recipient_id not a UUID")
+		return
+	}
+	if p.WrapSuite < 1 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "wrap_suite must be >= 1")
+		return
+	}
+	blob, err := base64.StdEncoding.DecodeString(p.Blob)
+	if err != nil || len(blob) == 0 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "blob must be non-empty base64")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+	// The caller must be a member of the channel to deposit keys into it.
+	callerIsMember, err := h.store.IsMember(ctx, channelID, callerID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership check: "+err.Error())
+		return
+	}
+	if !callerIsMember {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of this channel")
+		return
+	}
+	// Only wrap keys to actual members of the channel.
+	recipientIsMember, err := h.store.IsMember(ctx, channelID, recipientID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "recipient membership check: "+err.Error())
+		return
+	}
+	if !recipientIsMember {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "recipient is not a member of this channel")
+		return
+	}
+	ver := p.KeyVersion
+	if ver < 1 {
+		ver = 1
+	}
+	if err := h.store.PutChannelKey(ctx, store.ChannelKey{
+		ChannelID:   channelID,
+		KeyVersion:  ver,
+		RecipientID: recipientID,
+		WrapSuite:   p.WrapSuite,
+		Blob:        blob,
+	}); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "store channel key: "+err.Error())
+		return
+	}
+	ack, _ := proto.NewFrame(proto.TypePublishChannelKeyAck, f.Ref, proto.PublishChannelKeyAckPayload{
+		ChannelID:   p.ChannelID,
+		KeyVersion:  ver,
+		RecipientID: p.RecipientID,
+	})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+}
+
+// handleFetchChannelKey returns the CALLER's own wrapped space key for a
+// channel + key_version. The recipient is always the authenticated caller --
+// there is no way to fetch another member's wrap. Found is false when no
+// wrap exists yet (the caller waits for an online member to wrap it).
+func (h *WSHandler) handleFetchChannelKey(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.FetchChannelKeyPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+	isMember, err := h.store.IsMember(ctx, channelID, callerID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership check: "+err.Error())
+		return
+	}
+	if !isMember {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of this channel")
+		return
+	}
+	ver := p.KeyVersion
+	if ver < 1 {
+		ver = 1
+	}
+	k, err := h.store.GetChannelKey(ctx, channelID, ver, callerID)
+	if errors.Is(err, store.ErrNotFound) {
+		ack, _ := proto.NewFrame(proto.TypeFetchChannelKeyAck, f.Ref, proto.FetchChannelKeyAckPayload{
+			Found:     false,
+			ChannelID: p.ChannelID,
+		})
+		data, _ := json.Marshal(ack)
+		_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+		return
+	}
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "fetch channel key: "+err.Error())
+		return
+	}
+	ack, _ := proto.NewFrame(proto.TypeFetchChannelKeyAck, f.Ref, proto.FetchChannelKeyAckPayload{
+		Found:      true,
+		ChannelID:  p.ChannelID,
+		KeyVersion: k.KeyVersion,
+		WrapSuite:  k.WrapSuite,
+		Blob:       base64.StdEncoding.EncodeToString(k.Blob),
+	})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+}
+
+// handleFetchChannelKeyRecipients lists which members already hold a wrapped
+// key for (channel, key_version). The caller must be a member. The client
+// diffs this against the channel member list to find who still needs the key
+// and wraps it for them. The server reports only WHO has a key, never keys.
+func (h *WSHandler) handleFetchChannelKeyRecipients(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.FetchChannelKeyRecipientsPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+	isMember, err := h.store.IsMember(ctx, channelID, callerID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership check: "+err.Error())
+		return
+	}
+	if !isMember {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of this channel")
+		return
+	}
+	ver := p.KeyVersion
+	if ver < 1 {
+		ver = 1
+	}
+	ids, err := h.store.ListChannelKeyRecipients(ctx, channelID, ver)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "list recipients: "+err.Error())
+		return
+	}
+	recips := make([]string, 0, len(ids))
+	for _, id := range ids {
+		recips = append(recips, id.String())
+	}
+	ack, _ := proto.NewFrame(proto.TypeFetchChannelKeyRecipientsAck, f.Ref, proto.FetchChannelKeyRecipientsAckPayload{
+		ChannelID:  p.ChannelID,
+		KeyVersion: ver,
+		Recipients: recips,
 	})
 	data, _ := json.Marshal(ack)
 	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)

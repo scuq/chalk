@@ -401,6 +401,7 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 		Body:         pushBody,
 		ParentID:     parentStr,
 		ThreadID:     threadStr,
+		KeyVersion:   msg.KeyVersion,
 	})
 	if err != nil {
 		s.logger.Printf("pubsub frame: %v", err)

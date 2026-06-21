@@ -465,7 +465,72 @@ const (
 
 	TypeFetchIdentity    = "fetch_identity"
 	TypeFetchIdentityAck = "fetch_identity_ack"
+
+	TypePublishChannelKey    = "publish_channel_key"
+	TypePublishChannelKeyAck = "publish_channel_key_ack"
+
+	TypeFetchChannelKey    = "fetch_channel_key"
+	TypeFetchChannelKeyAck = "fetch_channel_key_ack"
+
+	TypeFetchChannelKeyRecipients    = "fetch_channel_key_recipients"
+	TypeFetchChannelKeyRecipientsAck = "fetch_channel_key_recipients_ack"
 )
+
+// PublishChannelKeyPayload uploads ONE member's wrapped space key for a
+// channel + key_version. The caller must be a member of the channel, and so
+// must RecipientID. Blob is base64 (std) of the suite-defined wrap; the
+// server stores it opaquely and never sees the plaintext space key. WrapSuite
+// identifies the construction (see docs/design/crypto-agility.md).
+type PublishChannelKeyPayload struct {
+	ChannelID   string `json:"channel_id"`
+	KeyVersion  int    `json:"key_version,omitempty"` // default 1
+	RecipientID string `json:"recipient_id"`
+	WrapSuite   int    `json:"wrap_suite"`
+	Blob        string `json:"blob"` // base64 std, suite-defined wrap
+}
+
+// PublishChannelKeyAckPayload confirms the stored slot.
+type PublishChannelKeyAckPayload struct {
+	ChannelID   string `json:"channel_id"`
+	KeyVersion  int    `json:"key_version"`
+	RecipientID string `json:"recipient_id"`
+}
+
+// FetchChannelKeyPayload requests the CALLER's own wrapped key for a channel
+// + key_version. The recipient is always the authenticated caller; there is
+// no way to fetch another member's wrapped key.
+type FetchChannelKeyPayload struct {
+	ChannelID  string `json:"channel_id"`
+	KeyVersion int    `json:"key_version,omitempty"` // default 1
+}
+
+// FetchChannelKeyAckPayload returns the caller's wrapped key. Found is false
+// when no wrap exists yet (the caller must wait for an online member to wrap
+// it). The client unwraps Blob with their X25519 private key.
+type FetchChannelKeyAckPayload struct {
+	Found      bool   `json:"found"`
+	ChannelID  string `json:"channel_id"`
+	KeyVersion int    `json:"key_version,omitempty"`
+	WrapSuite  int    `json:"wrap_suite,omitempty"`
+	Blob       string `json:"blob,omitempty"` // base64 std
+}
+
+// FetchChannelKeyRecipientsPayload asks which members already have a wrapped
+// key for (channel, key_version). The caller must be a member. The client
+// diffs Recipients against the channel member list to find who still needs
+// the key, then wraps it for them ("online-member auto-rewrap").
+type FetchChannelKeyRecipientsPayload struct {
+	ChannelID  string `json:"channel_id"`
+	KeyVersion int    `json:"key_version,omitempty"` // default 1
+}
+
+// FetchChannelKeyRecipientsAckPayload lists the user_ids that already hold a
+// wrap. The server reports only WHO has a key, never the keys themselves.
+type FetchChannelKeyRecipientsAckPayload struct {
+	ChannelID  string   `json:"channel_id"`
+	KeyVersion int      `json:"key_version"`
+	Recipients []string `json:"recipients"`
+}
 
 // PublishIdentityPayload uploads the caller's own identity public keys.
 // All three byte fields are base64 (std) encoded over the wire. The

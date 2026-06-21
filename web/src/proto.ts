@@ -42,6 +42,10 @@ export interface SendPayload {
   // Phase 10a: optional parent message ID for thread replies. When
   // set, server validates the parent and computes thread_id.
   parent_id?: string;
+  // Phase 23d: message-suite key version. Omitted/0 = plaintext body;
+  // >=1 = body is base64(suite||nonce||ct||tag) under the channel
+  // space key of that version.
+  key_version?: number;
 }
 
 export interface MessagePayload {
@@ -64,6 +68,9 @@ export interface MessagePayload {
   // snippet. Both undefined when there's no thread or no replies.
   last_reply_sender_user_id?: string;
   last_reply_body?: string;
+  // Phase 23d: message-suite key version. Undefined/0 = legacy
+  // plaintext; >=1 = encrypted (see SendPayload.key_version).
+  key_version?: number;
 }
 
 export interface ErrorPayload {
