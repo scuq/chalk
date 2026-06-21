@@ -40,6 +40,10 @@ export interface Message {
   senderUserID: string;
   ts: Date;
   body: string;
+  // Phase 23d: message-suite key version. Undefined/0 = legacy plaintext
+  // body; >=1 = the body was decrypted from ciphertext under the channel
+  // key of that version (after decryptForChannel the body holds plaintext).
+  keyVersion?: number;
   // Phase 10a: threading metadata. parentID set on thread replies;
   // threadID set on every message that's part of a thread (head
   // included, once 10d denormalizes -- for now, head's threadID is

@@ -107,6 +107,10 @@ import { AuthGate } from "../auth/AuthGate";
 import { IdentitySetupScreen } from "../auth/IdentitySetupScreen";
 import { loadIdentity } from "../crypto/idb";
 import {
+  ChannelCrypto,
+  type ChannelKeyStatus,
+} from "../crypto/channel-crypto";
+import {
   logout as logoutAPI,
   fetchMe,
   listMyInvites,
@@ -153,6 +157,9 @@ function wireToMessage(w: MessagePayload): Message {
     sender: w.sender,
     // Phase 9.6i: server populates sender_user_id when possible.
     senderUserID: w.sender_user_id ?? "",
+    // Phase 23d: carry the message-suite version so the receive path knows
+    // whether to decrypt. Undefined for legacy plaintext rows.
+    keyVersion: w.key_version,
     ts: new Date(w.ts),
     body: w.body,
     // Phase 10a: threading metadata. Undefined when omitted by older
@@ -177,6 +184,12 @@ export function App() {
     initialState
   );
   const clientRef = useRef<WSClient | null>(null);
+  // Phase 23d: per-channel encryption orchestration. Built once the identity
+  // is ready; reads clientRef.current dynamically so it survives reconnects.
+  const ccRef = useRef<ChannelCrypto | null>(null);
+  const [ccReady, setCcReady] = useState(false);
+  // Per-channel key status ("ready" | "waiting" | "plaintext") gating the composer.
+  const [keyStatus, setKeyStatus] = useState<Record<string, ChannelKeyStatus>>({});
 
   // Phase 22c-3c: identity gate. After the WS welcomes us we know the
   // userID; check whether this device already has the user's encryption
@@ -209,6 +222,55 @@ export function App() {
       cancelled = true;
     };
   }, [state.wsState, state.user?.id]);
+
+  // Phase 23d: construct the ChannelCrypto instance once the identity is
+  // ready. Separate from the gate check so it also runs after first-time
+  // setup (IdentitySetupScreen.onReady flips identityGate to "ready").
+  useEffect(() => {
+    if (identityGate !== "ready") return;
+    const uid = state.user?.id;
+    if (!uid || ccRef.current) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const id = await loadIdentity(uid);
+        if (cancelled || !id) return;
+        ccRef.current = new ChannelCrypto(
+          { request: (t, p) => clientRef.current!.request(t, p) },
+          { userID: uid, x25519Private: id.x25519Private, x25519Public: id.x25519Public },
+        );
+        setCcReady(true);
+      } catch (err) {
+        console.error("channel-crypto: build failed:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [identityGate, state.user?.id]);
+
+  // Phase 23d: when a channel becomes active (and on membership changes),
+  // ensure we hold its key -- fetch+unwrap, or creator-bootstrap a keyless
+  // channel, then auto-rewrap for members who lack it. Records the status
+  // that gates the composer.
+  useEffect(() => {
+    const cid = state.activeChannelID;
+    if (!cid || state.wsState !== "open" || !ccReady || !ccRef.current) return;
+    const ch = state.channels[cid];
+    if (!ch) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await ccRef.current!.ensureChannelKey(cid, ch.memberIDs, ch.createdBy);
+        if (!cancelled) setKeyStatus((s) => ({ ...s, [cid]: status }));
+      } catch (err) {
+        console.error("ensureChannelKey failed:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [state.activeChannelID, state.wsState, state.channels, ccReady]);
 
   // Phase 11b-2 fix5: WS callbacks (onFrame, etc.) capture the
   // handleFrame closure ONCE at WSClient construction, before
@@ -281,24 +343,45 @@ export function App() {
 
 
 
+  // Phase 23d: decrypt a batch of messages (history / thread) before they
+  // reach the reducer. Plaintext (no keyVersion) passes through untouched.
+  async function decryptAll(msgs: Message[]): Promise<Message[]> {
+    const cc = ccRef.current;
+    if (!cc) return msgs;
+    return Promise.all(
+      msgs.map(async (m) => {
+        if (m.keyVersion && m.keyVersion >= 1) {
+          const body = await cc.decryptForChannel(m.channelID, m.keyVersion, m.body);
+          return { ...m, body };
+        }
+        return m;
+      }),
+    );
+  }
+
   function handleFrame(f: Frame) {
     switch (f.type) {
       case TypeFetchThreadAck: {
         // Phase 10c: server returned the replies for a thread.
         const p = f.payload as FetchThreadAckPayload;
-        const msgs = (p.messages ?? []).map(wireToMessage);
-        msgs.sort((a, b) => a.seq - b.seq);
-        dispatch({
-          kind: "thread_loaded",
-          threadID: p.thread_id,
-          messages: msgs,
+        void decryptAll((p.messages ?? []).map(wireToMessage)).then((msgs) => {
+          msgs.sort((a, b) => a.seq - b.seq);
+          dispatch({ kind: "thread_loaded", threadID: p.thread_id, messages: msgs });
         });
         break;
       }
       case TypeMessage: {
         const wire = f.payload as MessagePayload;
         const m = wireToMessage(wire);
-        dispatch({ kind: "message", message: m });
+        // Phase 23d: decrypt before dispatch when encrypted; plaintext is
+        // dispatched immediately.
+        if (ccRef.current && m.keyVersion && m.keyVersion >= 1) {
+          void ccRef.current
+            .decryptForChannel(m.channelID, m.keyVersion, m.body)
+            .then((body) => dispatch({ kind: "message", message: { ...m, body } }));
+        } else {
+          dispatch({ kind: "message", message: m });
+        }
         break;
       }
 
@@ -339,11 +422,9 @@ export function App() {
       }
       case TypeFetchHistoryAck: {
         const p = f.payload as FetchHistoryAckPayload;
-        dispatch({
-          kind: "history_loaded",
-          channelID: p.channel_id,
-          messages: (p.messages ?? []).map(wireToMessage),
-        });
+        void decryptAll((p.messages ?? []).map(wireToMessage)).then((messages) =>
+          dispatch({ kind: "history_loaded", channelID: p.channel_id, messages }),
+        );
         break;
       }
       case TypeCreateChannelAck: {
@@ -761,6 +842,21 @@ export function App() {
     if (!cid) return;
     if (!state.user) return;
 
+    // Phase 23d: encrypt for this channel if it holds a key. "waiting" means
+    // the channel is encrypted but our key hasn't arrived -- block the send
+    // (the composer is also disabled in that state) BEFORE the optimistic
+    // append, so nothing is shown that won't actually be sent.
+    let sendBody = body;
+    let sendKeyVersion: number | undefined;
+    if (ccRef.current) {
+      const enc = await ccRef.current.encryptForChannel(cid, body);
+      if (enc.kind === "waiting") return;
+      if (enc.kind === "encrypted") {
+        sendBody = enc.body;
+        sendKeyVersion = enc.keyVersion;
+      }
+    }
+
     // Phase 08b polish: optimistic-append. chalkd intentionally
     // echo-suppresses the sender device so a smarter SPA can
     // render its own send immediately without double-rendering.
@@ -808,7 +904,8 @@ export function App() {
       },
     });
 
-    const payload: SendPayload = { channel_id: cid, body };
+    const payload: SendPayload = { channel_id: cid, body: sendBody };
+    if (sendKeyVersion !== undefined) payload.key_version = sendKeyVersion;
     if (parentID) payload.parent_id = parentID;
     c.send(TypeSend, payload);
   };
@@ -1308,6 +1405,8 @@ export function App() {
               ? "offline"
               : !state.activeChannelID
               ? "no_channel"
+              : state.activeChannelID && keyStatus[state.activeChannelID] === "waiting"
+              ? "waiting_for_key"
               : null
           }
           onSend={onSend}

@@ -9,7 +9,7 @@ import type { JSX } from "preact";
 // We keep the existing `disabled` prop as an alternative for
 // callers that don't care about the reason; the component renders
 // from whichever is more specific.
-type DisabledReason = "offline" | "no_channel" | null;
+type DisabledReason = "offline" | "no_channel" | "waiting_for_key" | null;
 
 interface Props {
   // Legacy boolean. When provided AND disabledReason is null, we
@@ -43,6 +43,8 @@ export function Composer({ disabled, disabledReason, onSend, placeholder }: Prop
       ? "offline -- waiting to reconnect"
       : disabledReason === "no_channel"
       ? "select a channel to start chatting"
+      : disabledReason === "waiting_for_key"
+      ? "waiting for encryption access -- a member needs to grant you the channel key"
       : effectiveDisabled
       ? "offline -- waiting to reconnect"
       : "say something...";
