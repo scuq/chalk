@@ -108,7 +108,14 @@ const MembersPanel = lazyComponent(() =>
 import { CreateChannelModal } from "./CreateChannelModal";
 import { AuthGate } from "../auth/AuthGate";
 import { IdentitySetupScreen } from "../auth/IdentitySetupScreen";
-import { loadIdentity } from "../crypto/idb";
+import { loadIdentity, loadVerification, saveVerification } from "../crypto/idb";
+import { fetchIdentity, type IdentityTransport } from "../crypto/identity-sync";
+import {
+  computeSafetyNumber,
+  verificationState,
+  digestToHex,
+} from "../crypto/safety-number";
+import type { MemberVerifyInfo } from "./MembersPanel";
 import {
   ChannelCrypto,
   type ChannelKeyStatus,
@@ -198,6 +205,13 @@ export function App() {
   // ChannelCrypto when the panel opens; not reducer-owned.
   const [memberRecipients, setMemberRecipients] = useState<Set<string>>(new Set());
   const [membersLoading, setMembersLoading] = useState(false);
+  // Phase 24b: per-member verification info for the members panel. App stores
+  // digestHex + generation (needed to persist a verification) alongside the
+  // panel-facing { state, words, numeric }.
+  const [memberVerify, setMemberVerify] = useState<
+    Record<string, MemberVerifyInfo & { digestHex?: string; generation?: number }>
+  >({});
+  const [verifyLoading, setVerifyLoading] = useState(false);
   const [resharing, setResharing] = useState(false);
 
   // Phase 22c-3c: identity gate. After the WS welcomes us we know the
@@ -324,6 +338,80 @@ export function App() {
     if (state.openPanel !== "members") return;
     void refreshMemberKeyStatus();
   }, [state.openPanel, refreshMemberKeyStatus]);
+
+  // Phase 24b: when the members panel opens, compute each member's safety
+  // number + verification state. Needs my own Ed25519 key (loadIdentity) and
+  // each peer's verified Ed25519 key (fetchIdentity over the WS).
+  const refreshVerification = useCallback(async () => {
+    const cid = state.activeChannelID;
+    const ch = cid ? state.channels[cid] : undefined;
+    const myID = state.user?.id ?? null;
+    if (!cid || !ch || !myID) return;
+    setVerifyLoading(true);
+    try {
+      const me = await loadIdentity(myID);
+      if (!me) {
+        setVerifyLoading(false);
+        return;
+      }
+      const transport: IdentityTransport = {
+        request: (t, p) => clientRef.current!.request(t, p),
+      };
+      const out: Record<
+        string,
+        MemberVerifyInfo & { digestHex?: string; generation?: number }
+      > = {};
+      for (const m of ch.members ?? []) {
+        if (m.userID === myID) continue;
+        const peer = await fetchIdentity(transport, m.userID);
+        if (!peer) {
+          out[m.userID] = { state: "no_identity" };
+          continue;
+        }
+        const sn = await computeSafetyNumber(me.ed25519Public, peer.ed25519Public);
+        const stored = await loadVerification(m.userID);
+        out[m.userID] = {
+          state: verificationState(sn.digest, stored),
+          words: sn.words,
+          numeric: sn.numeric,
+          digestHex: digestToHex(sn.digest),
+          generation: peer.generation,
+        };
+      }
+      setMemberVerify(out);
+    } catch (err) {
+      console.error("verification refresh failed:", err);
+    } finally {
+      setVerifyLoading(false);
+    }
+  }, [state.activeChannelID, state.channels, state.user]);
+
+  useEffect(() => {
+    if (state.openPanel !== "members") return;
+    void refreshVerification();
+  }, [state.openPanel, refreshVerification]);
+
+  const onMarkVerified = useCallback(
+    async (userID: string) => {
+      const v = memberVerify[userID];
+      if (!v || !v.digestHex || v.generation == null) return;
+      try {
+        await saveVerification({
+          peerUserID: userID,
+          digestHex: v.digestHex,
+          generation: v.generation,
+          verifiedAt: Date.now(),
+        });
+        setMemberVerify((prev) => ({
+          ...prev,
+          [userID]: { ...prev[userID], state: "verified" },
+        }));
+      } catch (err) {
+        console.error("saveVerification failed:", err);
+      }
+    },
+    [memberVerify],
+  );
 
   const onReshareKey = useCallback(async () => {
     const cid = state.activeChannelID;
@@ -1543,8 +1631,14 @@ export function App() {
           }
           loading={membersLoading}
           resharing={resharing}
+          verification={memberVerify}
+          verificationLoading={verifyLoading}
+          onMarkVerified={onMarkVerified}
           onReshare={onReshareKey}
-          onRefresh={refreshMemberKeyStatus}
+          onRefresh={() => {
+            void refreshMemberKeyStatus();
+            void refreshVerification();
+          }}
           onClose={() => dispatch({ kind: "close_panel" })}
         />
       )}
