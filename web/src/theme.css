@@ -430,6 +430,102 @@ html, body {
   font-weight: 400;
 }
 
+/* -- Encryption indicator + hover popover (phase 23g/23h) ---------- */
+
+.chalk-enc-indicator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--chalk-s2);
+  align-self: center;
+  line-height: 0;
+  cursor: default;
+  outline: none;
+}
+
+/* ready: key present -> accent (secure) */
+.chalk-enc-indicator.chalk-enc-ready {
+  color: var(--chalk-accent);
+}
+
+/* waiting/initializing: encrypted but key not here yet -> muted + soft pulse */
+.chalk-enc-indicator.chalk-enc-pending {
+  color: var(--chalk-fg-muted);
+  animation: chalk-enc-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes chalk-enc-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.9; }
+}
+
+/* the popover: hidden until hover/focus of the indicator */
+.chalk-enc-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+  padding: var(--chalk-s2) var(--chalk-s3);
+  background: var(--chalk-bg, #0a0f0a);
+  border: 1px solid var(--chalk-accent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  color: var(--chalk-fg);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.chalk-enc-indicator:hover .chalk-enc-popover,
+.chalk-enc-indicator:focus .chalk-enc-popover,
+.chalk-enc-indicator:focus-within .chalk-enc-popover {
+  display: flex;
+}
+
+/* pending popover uses a muted border so it matches the icon state */
+.chalk-enc-indicator.chalk-enc-pending .chalk-enc-popover {
+  border-color: var(--chalk-fg-muted);
+}
+
+.chalk-enc-pop-head {
+  color: var(--chalk-fg-bright);
+  font-weight: 400;
+  margin-bottom: 2px;
+  letter-spacing: 0.02em;
+}
+
+.chalk-enc-pop-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--chalk-s3);
+}
+
+.chalk-enc-pop-k {
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-enc-pop-v {
+  color: var(--chalk-accent);
+}
+
+/* pending: values are muted, not accent, so it doesn't read as "secured yet" */
+.chalk-enc-indicator.chalk-enc-pending .chalk-enc-pop-v {
+  color: var(--chalk-fg);
+}
+
+.chalk-enc-pop-note {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-muted);
+  white-space: normal;
+}
+
 /* -- Main-pane empty state when no channel selected ---------------- */
 
 .chalk-main-empty {

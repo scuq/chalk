@@ -93,14 +93,12 @@ func run(args []string) error {
 	}
 	log.Printf("partitions ensured for current and next month")
 
-	// Ensure the placeholder "default" channel exists. This is a runtime
-	// concern, not a migration concern: a fresh DB has no users yet, so a
-	// migration cannot reference one. The default channel is system-owned
-	// (created_by IS NULL).
-	if err := st.EnsureDefaultChannel(connectCtx); err != nil {
-		return fmt.Errorf("ensure default channel: %w", err)
-	}
-	log.Printf("default channel ensured")
+	// Phase 23f (fail-closed): the default channel is RETIRED. It had
+	// created_by IS NULL and no members, so under mandatory encryption it could
+	// never be bootstrapped with a key -- it cannot be used. All conversation
+	// now happens in real, encrypted channels. We no longer create it.
+	// (EnsureDefaultChannel remains in the store for now but is uncalled.)
+	_ = store.DefaultChannelID // retained for the legacy fallback constants
 
 	// Phase 09d-1: first-run admin bootstrap. If no admin row
 	// exists yet AND the operator set CHALK_ADMIN_USERNAME and

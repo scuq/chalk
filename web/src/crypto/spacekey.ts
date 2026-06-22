@@ -45,6 +45,44 @@ export const MSG_SUITE_AESGCM = 1;
 export const CURRENT_WRAP_SUITE = WRAP_SUITE_X25519_AESGCM;
 export const CURRENT_MSG_SUITE = MSG_SUITE_AESGCM;
 
+/**
+ * SuiteDescription -- human-readable, TRUTHFUL summary of a wrap+message suite
+ * pair, for display (e.g. the encryption-info tooltip). Sourced from the suite
+ * constants so it stays in sync: change the suite, change what's shown.
+ */
+export interface SuiteDescription {
+  cipher: string; // message cipher
+  keyExchange: string; // how the space key is wrapped to a member
+  keyBits: number; // symmetric space-key length
+  wrapSuite: number;
+  msgSuite: number;
+}
+
+/** describeSuites returns the display summary for the current suite pair. */
+export function describeSuites(): SuiteDescription {
+  // The switch mirrors the wrap/encrypt dispatch so descriptions can never
+  // drift from what is actually produced.
+  let cipher = "unknown";
+  switch (CURRENT_MSG_SUITE) {
+    case MSG_SUITE_AESGCM:
+      cipher = "AES-256-GCM";
+      break;
+  }
+  let keyExchange = "unknown";
+  switch (CURRENT_WRAP_SUITE) {
+    case WRAP_SUITE_X25519_AESGCM:
+      keyExchange = "X25519 ECDH + HKDF-SHA256";
+      break;
+  }
+  return {
+    cipher,
+    keyExchange,
+    keyBits: SPACE_KEY_BYTES * 8, // 256
+    wrapSuite: CURRENT_WRAP_SUITE,
+    msgSuite: CURRENT_MSG_SUITE,
+  };
+}
+
 const HKDF_SALT = utf8("chalk-spacekey-hkdf-salt-v1");
 const HKDF_INFO = utf8("chalk-spacekey-wrap-v1");
 

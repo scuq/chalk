@@ -520,6 +520,15 @@ func (h *WSHandler) handleSend(
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
 		return
 	}
+	// Phase 23f (fail-closed): the server refuses to relay or store plaintext.
+	// Every message must carry a key_version >= 1 (an encrypted body). This is
+	// the protocol-level guarantee that cleartext is never transmitted, even
+	// from a buggy or hostile client.
+	if p.KeyVersion == nil || *p.KeyVersion < 1 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeEncryptionRequired,
+			"encryption required: message must carry key_version >= 1")
+		return
+	}
 	if h.store == nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
 		return

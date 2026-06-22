@@ -59,16 +59,19 @@ export interface CryptoTransport {
  *   plaintext -- no key exists for this channel yet; sends go in the clear
  *                (legacy channels, until their creator bootstraps).
  */
-export type ChannelKeyStatus = "ready" | "waiting" | "plaintext";
+// Phase 23f (fail-closed): a channel is either encrypted-and-usable ("ready")
+// or you are blocked ("waiting") until your wrapped key arrives. There is no
+// plaintext path -- the system never sends or shows cleartext.
+export type ChannelKeyStatus = "ready" | "waiting";
 
 /** What encryptForChannel hands back to the send path. */
 export type EncryptResult =
   | { kind: "encrypted"; body: string; keyVersion: number } // body is base64
-  | { kind: "plaintext" }
   | { kind: "waiting" };
 
 const PLACEHOLDER_NO_KEY = "[encrypted message \u2014 key not available yet]";
 const PLACEHOLDER_FAILED = "[could not decrypt this message]";
+const PLACEHOLDER_PLAINTEXT_BLOCKED = "[blocked: unencrypted message]";
 
 export class ChannelCrypto {
   private readonly transport: CryptoTransport;
@@ -77,10 +80,53 @@ export class ChannelCrypto {
   private readonly keys = new Map<string, Uint8Array>();
   // channels known to have a key (so a missing in-memory key => "waiting")
   private readonly encrypted = new Set<string>();
+  // Phase 23g (deferred decrypt): channels whose ensureChannelKey has completed
+  // at least once -- i.e. the key state is "settled" (we either hold it or we
+  // genuinely don't yet). Used so a decrypt arriving DURING the channel-open
+  // key fetch waits for it, while a decrypt on a settled keyless channel
+  // returns the placeholder immediately (no artificial delay).
+  private readonly settled = new Set<string>();
+  // pending decrypts waiting for a channel's key to settle
+  private readonly keyWaiters = new Map<string, Array<() => void>>();
+  // safety-net cap on how long a decrypt waits for the key to settle. Normal
+  // resolution is event-driven (ensureChannelKey settling), not this timeout.
+  private readonly keyWaitMs: number;
 
-  constructor(transport: CryptoTransport, identity: ChannelCryptoIdentity) {
+  constructor(
+    transport: CryptoTransport,
+    identity: ChannelCryptoIdentity,
+    opts: { keyWaitMs?: number } = {},
+  ) {
     this.transport = transport;
     this.identity = identity;
+    this.keyWaitMs = opts.keyWaitMs ?? 8000;
+  }
+
+  // wake every decrypt waiting on this channel (key state just settled).
+  private wakeKeyWaiters(channelID: string): void {
+    const ws = this.keyWaiters.get(channelID);
+    if (ws) {
+      this.keyWaiters.delete(channelID);
+      for (const w of ws) w();
+    }
+  }
+
+  // resolve once the channel's key settles (ensureChannelKey completes or a key
+  // is remembered), or after keyWaitMs as a safety net.
+  private waitForKeySettled(channelID: string): Promise<void> {
+    return new Promise((resolve) => {
+      let done = false;
+      const fire = () => {
+        if (!done) {
+          done = true;
+          resolve();
+        }
+      };
+      const arr = this.keyWaiters.get(channelID) ?? [];
+      arr.push(fire);
+      this.keyWaiters.set(channelID, arr);
+      setTimeout(fire, this.keyWaitMs);
+    });
   }
 
   private memKey(channelID: string, v: number): string {
@@ -100,6 +146,7 @@ export class ChannelCrypto {
   private remember(channelID: string, v: number, key: Uint8Array): void {
     this.keys.set(this.memKey(channelID, v), key);
     this.encrypted.add(channelID);
+    this.wakeKeyWaiters(channelID); // a deferred decrypt can now proceed
   }
 
   // get the key from memory, then the idb cache (populating memory).
@@ -121,6 +168,21 @@ export class ChannelCrypto {
    * it. Returns the status that gates the composer.
    */
   async ensureChannelKey(
+    channelID: string,
+    members: string[],
+    createdBy: string,
+  ): Promise<ChannelKeyStatus> {
+    try {
+      return await this.ensureChannelKeyInner(channelID, members, createdBy);
+    } finally {
+      // The key state is now settled (we hold it, or we genuinely don't yet).
+      // Mark it and release any decrypts that were deferred waiting for it.
+      this.settled.add(channelID);
+      this.wakeKeyWaiters(channelID);
+    }
+  }
+
+  private async ensureChannelKeyInner(
     channelID: string,
     members: string[],
     createdBy: string,
@@ -179,9 +241,10 @@ export class ChannelCrypto {
       return "ready";
     }
 
-    // not the creator and no key yet: plaintext channel until the creator
-    // bootstraps it.
-    return "plaintext";
+    // Fail-closed: not the creator and no key yet. The channel is not usable
+    // until its creator bootstraps and a holder wraps the key for us. Block
+    // (never fall back to plaintext).
+    return "waiting";
   }
 
   /**
@@ -212,9 +275,8 @@ export class ChannelCrypto {
 
   /**
    * encryptForChannel prepares a message for sending. Returns an encrypted
-   * base64 body (+ keyVersion) when we hold the key, "waiting" when the channel
-   * is encrypted but our key hasn't arrived (App blocks the send), or
-   * "plaintext" for a not-yet-encrypted channel.
+   * base64 body (+ keyVersion) when we hold the key, or "waiting" when we don't
+   * (App blocks the send). Fail-closed: there is no plaintext result.
    */
   async encryptForChannel(channelID: string, text: string): Promise<EncryptResult> {
     const v = CURRENT_KEY_VERSION;
@@ -223,8 +285,9 @@ export class ChannelCrypto {
       const ct = await encryptMessage(sk, channelID, v, new TextEncoder().encode(text));
       return { kind: "encrypted", body: bytesToBase64(ct), keyVersion: v };
     }
-    if (this.encrypted.has(channelID)) return { kind: "waiting" };
-    return { kind: "plaintext" };
+    // Fail-closed: without a usable key we never send. Block as "waiting"
+    // whether or not a key is known to exist server-side.
+    return { kind: "waiting" };
   }
 
   /**
@@ -234,8 +297,20 @@ export class ChannelCrypto {
    * the ciphertext won't open.
    */
   async decryptForChannel(channelID: string, keyVersion: number | undefined, body: string): Promise<string> {
-    if (!keyVersion || keyVersion < 1) return body; // legacy plaintext
-    const sk = await this.getKey(channelID, keyVersion);
+    // Fail-closed: a message without a key version is unencrypted and must
+    // never be displayed as cleartext. (With a fresh DB this should not occur;
+    // the server also rejects such sends.)
+    if (!keyVersion || keyVersion < 1) return PLACEHOLDER_PLAINTEXT_BLOCKED;
+    let sk = await this.getKey(channelID, keyVersion);
+    if (!sk && !this.settled.has(channelID)) {
+      // Phase 23g: the key may be in-flight (ensureChannelKey running on
+      // channel open). Defer briefly until it settles, then retry once --
+      // this avoids a placeholder flash for messages that arrive just before
+      // the key. A settled keyless channel skips the wait (immediate
+      // placeholder); the re-fetch backstop handles keys that arrive later.
+      await this.waitForKeySettled(channelID);
+      sk = await this.getKey(channelID, keyVersion);
+    }
     if (!sk) return PLACEHOLDER_NO_KEY;
     let bytes: Uint8Array;
     try {

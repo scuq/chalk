@@ -206,14 +206,15 @@ type ErrorPayload struct {
 
 // Common error codes. Keep stable across versions.
 const (
-	ErrCodeBadFrame      = "bad_frame"
-	ErrCodeInvalidParent = "invalid_parent" // Phase 10a
-	ErrCodeBadPayload    = "bad_payload"
-	ErrCodeUnknownType   = "unknown_type"
-	ErrCodeNotHelloed    = "not_helloed"
-	ErrCodeInternal      = "internal"
-	ErrCodeRateLimited   = "rate_limited"
-	ErrCodeFrameTooLarge = "frame_too_large"
+	ErrCodeBadFrame           = "bad_frame"
+	ErrCodeInvalidParent      = "invalid_parent" // Phase 10a
+	ErrCodeBadPayload         = "bad_payload"
+	ErrCodeEncryptionRequired = "encryption_required" // Phase 23f (fail-closed)
+	ErrCodeUnknownType        = "unknown_type"
+	ErrCodeNotHelloed         = "not_helloed"
+	ErrCodeInternal           = "internal"
+	ErrCodeRateLimited        = "rate_limited"
+	ErrCodeFrameTooLarge      = "frame_too_large"
 )
 
 // Phase 10a: fetch a thread's messages by thread_id. Like

@@ -81,7 +81,8 @@ async function makeUser(server: ReturnType<typeof makeServer>, userID: string) {
     x25519Private: id.x25519Private,
     x25519Public: id.x25519Public,
   };
-  return new ChannelCrypto(transport, identity);
+  // short key-wait so deferred-decrypt tests are fast + deterministic
+  return new ChannelCrypto(transport, identity, { keyWaitMs: 50 });
 }
 
 function bytesToBase64(b: Uint8Array): string {
@@ -103,15 +104,16 @@ test("creator bootstraps a keyless channel -> ready, and can encrypt", async () 
   assert.equal(enc.kind, "encrypted");
 });
 
-test("non-creator on a keyless channel is plaintext (creator must bootstrap)", async () => {
+test("non-creator on a keyless channel is blocked (waiting), never plaintext", async () => {
   await clearSpaceKeys();
   const server = makeServer();
   const bob = await makeUser(server, "bob");
-  // channel created by alice; bob opens first, no key exists yet
+  // channel created by alice; bob opens first, no key exists yet. Fail-closed:
+  // bob waits for the creator to bootstrap -- he can NOT send plaintext.
   const status = await bob.ensureChannelKey(CH, ["alice", "bob"], "alice");
-  assert.equal(status, "plaintext");
+  assert.equal(status, "waiting");
   const enc = await bob.encryptForChannel(CH, "hi");
-  assert.equal(enc.kind, "plaintext");
+  assert.equal(enc.kind, "waiting");
 });
 
 test("end-to-end: Alice (creator) bootstraps + rewraps for Bob; Bob unwraps + decrypts", async () => {
@@ -166,11 +168,51 @@ test("waiting: encrypted channel, member opens before being wrapped for -> waiti
   assert.equal(enc.kind, "waiting");
 });
 
-test("decryptForChannel returns legacy plaintext as-is when keyVersion is null/0", async () => {
+test("deferred decrypt: a message arriving before the key resolves once the key lands", async () => {
+  await clearSpaceKeys();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
-  assert.equal(await alice.decryptForChannel(CH, undefined, "plain text body"), "plain text body");
-  assert.equal(await alice.decryptForChannel(CH, 0, "still plain"), "still plain");
+  const bob = await makeUser(server, "bob");
+  const members = ["alice", "bob"];
+
+  // Alice bootstraps + rewraps for Bob, then encrypts a message.
+  await alice.ensureChannelKey(CH, members, "alice");
+  const enc = await alice.encryptForChannel(CH, "hello bob");
+  assert.equal(enc.kind, "encrypted");
+  const body = enc.kind === "encrypted" ? enc.body : "";
+  const kv = enc.kind === "encrypted" ? enc.keyVersion : 0;
+
+  await clearSpaceKeys(); // Bob is a different browser
+
+  // Bob starts decrypting BEFORE he has the key (channel not settled yet);
+  // the decrypt should defer, not immediately placeholder.
+  const decryptP = bob.decryptForChannel(CH, kv, body);
+  // Now Bob's ensureChannelKey runs (fetches + unwraps his wrap), settling the
+  // key and waking the deferred decrypt.
+  await bob.ensureChannelKey(CH, members, "alice");
+  const text = await decryptP;
+  assert.equal(text, "hello bob"); // resolved, not a placeholder
+});
+
+test("settled keyless channel returns the placeholder promptly (no long wait)", async () => {
+  await clearSpaceKeys();
+  const server = makeServer();
+  const bob = await makeUser(server, "bob");
+  // Bob opens a keyless channel he didn't create -> settles as "waiting".
+  await bob.ensureChannelKey(CH, ["alice", "bob"], "alice");
+  const t0 = Date.now();
+  const text = await bob.decryptForChannel(CH, 1, bytesToBase64(new Uint8Array([1, 2, 3, 4])));
+  // settled + no key => immediate placeholder, well under the 50ms safety wait.
+  assert.ok(Date.now() - t0 < 40, "should not wait for the key on a settled channel");
+  assert.match(text, /key not available/);
+});
+
+test("decryptForChannel blocks a null/0 keyVersion body (never shows plaintext)", async () => {
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  // Fail-closed: an unencrypted body is replaced by a placeholder, not shown.
+  assert.match(await alice.decryptForChannel(CH, undefined, "plain text body"), /blocked: unencrypted/);
+  assert.match(await alice.decryptForChannel(CH, 0, "still plain"), /blocked: unencrypted/);
 });
 
 test("decryptForChannel returns a placeholder when the key isn't available", async () => {

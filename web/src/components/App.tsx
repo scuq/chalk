@@ -110,6 +110,7 @@ import {
   ChannelCrypto,
   type ChannelKeyStatus,
 } from "../crypto/channel-crypto";
+import { EncryptionIndicator } from "./EncryptionIndicator";
 import {
   logout as logoutAPI,
   fetchMe,
@@ -234,7 +235,18 @@ export function App() {
     (async () => {
       try {
         const id = await loadIdentity(uid);
-        if (cancelled || !id) return;
+        if (cancelled) return;
+        if (!id) {
+          // Fail-closed: without an identity in THIS browser we cannot build
+          // the crypto, so nothing can be sent or read. Surface it loudly
+          // rather than silently degrading -- complete identity setup here.
+          console.error(
+            "channel-crypto: no identity for",
+            uid,
+            "in this browser -- encryption unavailable; complete identity setup.",
+          );
+          return;
+        }
         ccRef.current = new ChannelCrypto(
           { request: (t, p) => clientRef.current!.request(t, p) },
           { userID: uid, x25519Private: id.x25519Private, x25519Public: id.x25519Public },
@@ -262,7 +274,19 @@ export function App() {
     (async () => {
       try {
         const status = await ccRef.current!.ensureChannelKey(cid, ch.memberIDs, ch.createdBy);
-        if (!cancelled) setKeyStatus((s) => ({ ...s, [cid]: status }));
+        if (cancelled) return;
+        setKeyStatus((s) => ({ ...s, [cid]: status }));
+        // Phase 23g backstop: if the key just became ready and we already have
+        // history for this channel, some messages may have rendered as the
+        // "key not available" placeholder before the key arrived. Re-fetch the
+        // history once so those bodies re-decrypt in place (no reload).
+        if (status === "ready" && state.historyLoaded[cid]) {
+          historyRequestedRef.current.delete(cid);
+          const c = clientRef.current;
+          if (c && c.isOpen()) {
+            c.send<FetchHistoryPayload>(TypeFetchHistory, { channel_id: cid, limit: 50 });
+          }
+        }
       } catch (err) {
         console.error("ensureChannelKey failed:", err);
       }
@@ -343,18 +367,18 @@ export function App() {
 
 
 
-  // Phase 23d: decrypt a batch of messages (history / thread) before they
-  // reach the reducer. Plaintext (no keyVersion) passes through untouched.
+  // Phase 23f (fail-closed): run EVERY message through decryptForChannel
+  // before it reaches the reducer. It returns plaintext only for properly
+  // decrypted ciphertext; a null/0 key_version body is replaced by a blocked
+  // placeholder, so cleartext can never be displayed. When the crypto isn't
+  // built yet, bodies are replaced with a placeholder too (we can't read).
   async function decryptAll(msgs: Message[]): Promise<Message[]> {
     const cc = ccRef.current;
-    if (!cc) return msgs;
     return Promise.all(
       msgs.map(async (m) => {
-        if (m.keyVersion && m.keyVersion >= 1) {
-          const body = await cc.decryptForChannel(m.channelID, m.keyVersion, m.body);
-          return { ...m, body };
-        }
-        return m;
+        if (!cc) return { ...m, body: "[encrypted message -- key not available yet]" };
+        const body = await cc.decryptForChannel(m.channelID, m.keyVersion, m.body);
+        return { ...m, body };
       }),
     );
   }
@@ -373,14 +397,17 @@ export function App() {
       case TypeMessage: {
         const wire = f.payload as MessagePayload;
         const m = wireToMessage(wire);
-        // Phase 23d: decrypt before dispatch when encrypted; plaintext is
-        // dispatched immediately.
-        if (ccRef.current && m.keyVersion && m.keyVersion >= 1) {
+        // Phase 23f (fail-closed): always decrypt before dispatch; a null-
+        // version or undecryptable body becomes a placeholder, never cleartext.
+        if (ccRef.current) {
           void ccRef.current
             .decryptForChannel(m.channelID, m.keyVersion, m.body)
             .then((body) => dispatch({ kind: "message", message: { ...m, body } }));
         } else {
-          dispatch({ kind: "message", message: m });
+          dispatch({
+            kind: "message",
+            message: { ...m, body: "[encrypted message -- key not available yet]" },
+          });
         }
         break;
       }
@@ -846,16 +873,14 @@ export function App() {
     // the channel is encrypted but our key hasn't arrived -- block the send
     // (the composer is also disabled in that state) BEFORE the optimistic
     // append, so nothing is shown that won't actually be sent.
-    let sendBody = body;
-    let sendKeyVersion: number | undefined;
-    if (ccRef.current) {
-      const enc = await ccRef.current.encryptForChannel(cid, body);
-      if (enc.kind === "waiting") return;
-      if (enc.kind === "encrypted") {
-        sendBody = enc.body;
-        sendKeyVersion = enc.keyVersion;
-      }
-    }
+    // Phase 23f (fail-closed): a message is sent ONLY if it can be encrypted.
+    // No crypto instance, or no usable channel key, means the send is blocked
+    // entirely -- plaintext is never transmitted.
+    if (!ccRef.current) return;
+    const enc = await ccRef.current.encryptForChannel(cid, body);
+    if (enc.kind !== "encrypted") return; // "waiting": blocked until key arrives
+    const sendBody = enc.body;
+    const sendKeyVersion: number = enc.keyVersion;
 
     // Phase 08b polish: optimistic-append. chalkd intentionally
     // echo-suppresses the sender device so a smarter SPA can
@@ -904,8 +929,7 @@ export function App() {
       },
     });
 
-    const payload: SendPayload = { channel_id: cid, body: sendBody };
-    if (sendKeyVersion !== undefined) payload.key_version = sendKeyVersion;
+    const payload: SendPayload = { channel_id: cid, body: sendBody, key_version: sendKeyVersion };
     if (parentID) payload.parent_id = parentID;
     c.send(TypeSend, payload);
   };
@@ -1332,6 +1356,11 @@ export function App() {
                 {displayName(activeChannel, state.user?.id ?? null)}
               </span>
               {activeChannel.isDM && <span class="chalk-channel-header-tag">dm</span>}
+              <EncryptionIndicator
+                status={
+                  state.activeChannelID ? keyStatus[state.activeChannelID] : undefined
+                }
+              />
             </div>
             <MessageList
               messages={activeMessages}
@@ -1405,9 +1434,11 @@ export function App() {
               ? "offline"
               : !state.activeChannelID
               ? "no_channel"
-              : state.activeChannelID && keyStatus[state.activeChannelID] === "waiting"
+              : keyStatus[state.activeChannelID] === "ready"
+              ? null
+              : keyStatus[state.activeChannelID] === "waiting"
               ? "waiting_for_key"
-              : null
+              : "encryption_initializing"
           }
           onSend={onSend}
         />
