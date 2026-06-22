@@ -33,9 +33,12 @@ import type { DerivedIdentity } from "./identity";
 
 const DB_NAME = "chalk";
 // v2 (phase 23d): adds the space_keys store for cached channel keys.
-const DB_VERSION = 2;
+// v3 (phase 24): adds the verifications store for local-only safety-number
+// verification records.
+const DB_VERSION = 3;
 const STORE = "identity";
 const SPACE_KEY_STORE = "space_keys";
+const VERIFICATION_STORE = "verifications";
 
 /** A loaded identity record, with both private keys as usable CryptoKeys. */
 export interface StoredIdentity {
@@ -69,6 +72,9 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(SPACE_KEY_STORE)) {
         db.createObjectStore(SPACE_KEY_STORE, { keyPath: "cacheKey" });
+      }
+      if (!db.objectStoreNames.contains(VERIFICATION_STORE)) {
+        db.createObjectStore(VERIFICATION_STORE, { keyPath: "peerUserID" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -245,6 +251,53 @@ export async function clearSpaceKeys(): Promise<void> {
   const db = await openDB();
   try {
     await tx(db, "readwrite", (s) => s.clear(), SPACE_KEY_STORE);
+  } finally {
+    db.close();
+  }
+}
+
+// ---- safety-number verification records (phase 24, local-only) -------
+//
+// A user's decision that they compared a peer's safety number out of band and
+// it matched. Stored LOCAL-ONLY: the server can neither read nor forge it,
+// which is the whole point of out-of-band verification. Keyed by peer userID;
+// pins the verified digest + the peer's generation so any later key change is
+// detected (the digest will differ -> status "changed").
+
+import type { VerificationRecord } from "./safety-number";
+
+/** saveVerification records that the peer's current safety number was verified. */
+export async function saveVerification(record: VerificationRecord): Promise<void> {
+  const db = await openDB();
+  try {
+    await tx(db, "readwrite", (s) => s.put(record), VERIFICATION_STORE);
+  } finally {
+    db.close();
+  }
+}
+
+/** loadVerification returns the stored record for a peer, or null. */
+export async function loadVerification(peerUserID: string): Promise<VerificationRecord | null> {
+  const db = await openDB();
+  let rec: VerificationRecord | undefined;
+  try {
+    rec = await tx<VerificationRecord | undefined>(
+      db,
+      "readonly",
+      (s) => s.get(peerUserID),
+      VERIFICATION_STORE,
+    );
+  } finally {
+    db.close();
+  }
+  return rec ?? null;
+}
+
+/** clearVerification removes a peer's verification record (e.g. on key change). */
+export async function clearVerification(peerUserID: string): Promise<void> {
+  const db = await openDB();
+  try {
+    await tx(db, "readwrite", (s) => s.delete(peerUserID), VERIFICATION_STORE);
   } finally {
     db.close();
   }
