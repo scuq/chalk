@@ -20,6 +20,10 @@ type Channel struct {
 	IsDM      bool
 	CreatedBy *uuid.UUID // nil for system channels
 	CreatedAt time.Time
+	// CurrentKeyVersion is the channel's current space-key version (phase 25).
+	// Defaults to 1; advanced by a creator-only rotation. Clients encrypt new
+	// messages under this version.
+	CurrentKeyVersion int
 }
 
 // ChannelWithMembers couples a Channel with its full member set.
@@ -110,9 +114,9 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 		err := tx.QueryRow(ctx,
 			`INSERT INTO channels (name, is_dm, created_by)
 			 VALUES ($1, $2, $3)
-			 RETURNING id, name, is_dm, created_by, created_at`,
+			 RETURNING id, name, is_dm, created_by, created_at, current_key_version`,
 			strings.TrimSpace(in.Name), in.IsDM, in.CreatedBy,
-		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt)
+		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion)
 		if err != nil {
 			return fmt.Errorf("insert channel: %w", err)
 		}
@@ -162,10 +166,10 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 func (s *Store) GetChannel(ctx context.Context, channelID uuid.UUID) (Channel, error) {
 	var ch Channel
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, name, is_dm, created_by, created_at
+		`SELECT id, name, is_dm, created_by, created_at, current_key_version
 		   FROM channels WHERE id = $1`,
 		channelID,
-	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt)
+	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Channel{}, ErrChannelNotFound
 	}
@@ -205,7 +209,7 @@ func (s *Store) IsMember(ctx context.Context, channelID, userID uuid.UUID) (bool
 // and the member-count cardinality is small (a few users per channel).
 func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]ChannelWithMembers, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at
+		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version
 		   FROM channels c
 		   JOIN channel_members cm ON cm.channel_id = c.id
 		  WHERE cm.user_id = $1
@@ -221,7 +225,7 @@ func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]Ch
 	channelIDs := make([]uuid.UUID, 0, 16)
 	for rows.Next() {
 		var c Channel
-		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion); err != nil {
 			return nil, err
 		}
 		channels = append(channels, ChannelWithMembers{Channel: c})

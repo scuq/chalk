@@ -1480,13 +1480,14 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 		})
 	}
 	return proto.ChannelSummary{
-		ID:        c.ID.String(),
-		Name:      c.Name,
-		IsDM:      c.IsDM,
-		CreatedBy: createdBy,
-		CreatedAt: c.CreatedAt.UnixMilli(),
-		MemberIDs: memberIDs,
-		Members:   members,
+		ID:                c.ID.String(),
+		Name:              c.Name,
+		IsDM:              c.IsDM,
+		CreatedBy:         createdBy,
+		CreatedAt:         c.CreatedAt.UnixMilli(),
+		MemberIDs:         memberIDs,
+		Members:           members,
+		CurrentKeyVersion: c.CurrentKeyVersion,
 	}
 }
 

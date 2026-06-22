@@ -278,6 +278,9 @@ type ChannelSummary struct {
 	CreatedAt int64           `json:"created_at"` // unix-millis
 	MemberIDs []string        `json:"member_ids"` // small; included in summary for DM-name rendering
 	Members   []ChannelMember `json:"members"`    // phase 08c; pairs user_id with handle
+	// CurrentKeyVersion is the channel's current space-key version (phase 25).
+	// The client encrypts new messages under this version.
+	CurrentKeyVersion int `json:"current_key_version"`
 }
 
 // ChannelMember pairs a user_id with their handle. Server
