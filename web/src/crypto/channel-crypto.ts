@@ -91,6 +91,11 @@ export class ChannelCrypto {
   // safety-net cap on how long a decrypt waits for the key to settle. Normal
   // resolution is event-driven (ensureChannelKey settling), not this timeout.
   private readonly keyWaitMs: number;
+  // Phase 25: the current key version per channel, as told to us by the server
+  // (channels.current_key_version). New encryption uses this version; absence
+  // defaults to CURRENT_KEY_VERSION (1). OLD messages still decrypt under the
+  // version stamped on them (decryptForChannel), independent of this map.
+  private readonly currentVersions = new Map<string, number>();
 
   constructor(
     transport: CryptoTransport,
@@ -133,6 +138,23 @@ export class ChannelCrypto {
     return `${channelID}:${v}`;
   }
 
+  /**
+   * setCurrentKeyVersion records the channel's current key version (from the
+   * server). Monotonic: never moves backwards (a stale channel snapshot can't
+   * lower it). New sends encrypt under this version.
+   */
+  setCurrentKeyVersion(channelID: string, v: number): void {
+    if (v < 1) return;
+    const prev = this.currentVersions.get(channelID) ?? CURRENT_KEY_VERSION;
+    if (v > prev) this.currentVersions.set(channelID, v);
+    else if (!this.currentVersions.has(channelID)) this.currentVersions.set(channelID, prev);
+  }
+
+  /** currentVersion is the channel's current key version (defaults to 1). */
+  currentVersion(channelID: string): number {
+    return this.currentVersions.get(channelID) ?? CURRENT_KEY_VERSION;
+  }
+
   /** hasKey reports whether we currently hold the channel's key in memory. */
   hasKey(channelID: string, v: number = CURRENT_KEY_VERSION): boolean {
     return this.keys.has(this.memKey(channelID, v));
@@ -153,7 +175,7 @@ export class ChannelCrypto {
   async keyRecipients(channelID: string): Promise<Set<string>> {
     try {
       return new Set(
-        await fetchChannelKeyRecipients(this.transport, channelID, CURRENT_KEY_VERSION),
+        await fetchChannelKeyRecipients(this.transport, channelID, this.currentVersion(channelID)),
       );
     } catch {
       return new Set();
@@ -167,9 +189,59 @@ export class ChannelCrypto {
    * repeatedly: members who already have a wrap are skipped.
    */
   async reshareKey(channelID: string, members: string[]): Promise<boolean> {
-    const sk = await this.getKey(channelID, CURRENT_KEY_VERSION);
+    const v = this.currentVersion(channelID);
+    const sk = await this.getKey(channelID, v);
     if (!sk) return false;
-    await this.rewrapForMissing(channelID, members, sk);
+    await this.rewrapForMissing(channelID, members, sk, v);
+    return true;
+  }
+
+  /**
+   * rotateChannelKey mints a NEW space key at newVersion and wraps it for every
+   * current member (including ourselves), then caches it locally. This is the
+   * client side of a manual, creator-only rotation (phase 25): after a member
+   * is removed, rotating ensures the removed member -- who has no wrap at the
+   * new version and is not in `members` -- cannot read anything sent under it.
+   *
+   * Caller contract:
+   *   - newVersion MUST be exactly currentVersion(channelID) + 1 (monotonic);
+   *     the server enforces this too.
+   *   - `members` is the CURRENT membership (the removed member already gone).
+   *   - only the channel creator should call this (race-free single minter),
+   *     mirroring bootstrap; the server also restricts it to the creator.
+   *
+   * After this resolves, callers should advance the server's current_key_version
+   * (so new sends use newVersion) and call setCurrentKeyVersion(newVersion).
+   * Returns false if newVersion isn't a forward step.
+   */
+  async rotateChannelKey(
+    channelID: string,
+    members: string[],
+    newVersion: number,
+  ): Promise<boolean> {
+    if (newVersion <= this.currentVersion(channelID)) return false;
+
+    // fresh key material for the new version
+    const sk = generateSpaceKey();
+
+    // wrap for ourselves first so we hold the new version immediately
+    const selfWrap = await wrapSpaceKey(
+      sk,
+      this.identity.x25519Public,
+      channelID,
+      newVersion,
+      this.identity.userID,
+    );
+    await publishChannelKey(this.transport, channelID, newVersion, this.identity.userID, selfWrap);
+    await saveSpaceKey(channelID, newVersion, sk);
+    this.keys.set(this.memKey(channelID, newVersion), sk);
+    this.encrypted.add(channelID);
+
+    // wrap the new key for every other current member
+    await this.rewrapForMissing(channelID, members, sk, newVersion);
+
+    // adopt the new version locally (monotonic)
+    this.setCurrentKeyVersion(channelID, newVersion);
     return true;
   }
 
@@ -217,7 +289,7 @@ export class ChannelCrypto {
     members: string[],
     createdBy: string,
   ): Promise<ChannelKeyStatus> {
-    const v = CURRENT_KEY_VERSION;
+    const v = this.currentVersion(channelID);
 
     // already hold it (memory or idb)?
     const have = await this.getKey(channelID, v);
@@ -282,8 +354,13 @@ export class ChannelCrypto {
    * doesn't yet have a wrap. Safe for any holder to run: all holders share the
    * same key, so concurrent rewraps converge on identical material.
    */
-  private async rewrapForMissing(channelID: string, members: string[], sk: Uint8Array): Promise<void> {
-    const v = CURRENT_KEY_VERSION;
+  private async rewrapForMissing(
+    channelID: string,
+    members: string[],
+    sk: Uint8Array,
+    version?: number,
+  ): Promise<void> {
+    const v = version ?? this.currentVersion(channelID);
     let have: Set<string>;
     try {
       have = new Set(await fetchChannelKeyRecipients(this.transport, channelID, v));
@@ -309,7 +386,7 @@ export class ChannelCrypto {
    * (App blocks the send). Fail-closed: there is no plaintext result.
    */
   async encryptForChannel(channelID: string, text: string): Promise<EncryptResult> {
-    const v = CURRENT_KEY_VERSION;
+    const v = this.currentVersion(channelID);
     const sk = await this.getKey(channelID, v);
     if (sk) {
       const ct = await encryptMessage(sk, channelID, v, new TextEncoder().encode(text));

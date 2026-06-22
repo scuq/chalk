@@ -9,7 +9,7 @@ import "fake-indexeddb/auto";
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 
-import { ChannelCrypto, type CryptoTransport, type ChannelCryptoIdentity } from "./channel-crypto";
+import { ChannelCrypto, type CryptoTransport, type ChannelCryptoIdentity, CURRENT_KEY_VERSION } from "./channel-crypto";
 import { deriveIdentityFromMnemonic } from "./identity";
 import { generateMnemonic } from "./bip39";
 import { clearSpaceKeys } from "./idb";
@@ -271,4 +271,93 @@ test("reshareKey returns false when we don't hold the key", async () => {
   // Bob never bootstrapped/received the key -> cannot re-share.
   const ok = await bob.reshareKey(CH, ["alice", "bob"]);
   assert.equal(ok, false);
+});
+
+// ---- phase 25: key rotation ----
+
+test("rotation: creator mints v2, both members encrypt/decrypt under it", async () => {
+  await clearSpaceKeys();
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  const bob = await makeUser(server, "bob");
+  const members = ["alice", "bob"];
+
+  await alice.ensureChannelKey(CH, members, "alice");
+  await bob.ensureChannelKey(CH, members, "alice");
+  assert.equal(alice.currentVersion(CH), 1);
+
+  const ok = await alice.rotateChannelKey(CH, members, 2);
+  assert.equal(ok, true);
+  assert.equal(alice.currentVersion(CH), 2);
+
+  const enc = await alice.encryptForChannel(CH, "after rotation");
+  assert.equal(enc.kind, "encrypted");
+  if (enc.kind !== "encrypted") return;
+  assert.equal(enc.keyVersion, 2);
+
+  bob.setCurrentKeyVersion(CH, 2);
+  await bob.ensureChannelKey(CH, members, "alice");
+  const dec = await bob.decryptForChannel(CH, enc.keyVersion, enc.body);
+  assert.equal(dec, "after rotation");
+});
+
+test("rotation: messages under the OLD version still decrypt after rotating", async () => {
+  await clearSpaceKeys();
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  const bob = await makeUser(server, "bob");
+  const members = ["alice", "bob"];
+
+  await alice.ensureChannelKey(CH, members, "alice");
+  await bob.ensureChannelKey(CH, members, "alice");
+
+  const v1msg = await alice.encryptForChannel(CH, "before rotation");
+  assert.equal(v1msg.kind, "encrypted");
+  if (v1msg.kind !== "encrypted") return;
+  assert.equal(v1msg.keyVersion, 1);
+
+  await alice.rotateChannelKey(CH, members, 2);
+
+  const dec = await alice.decryptForChannel(CH, v1msg.keyVersion, v1msg.body);
+  assert.equal(dec, "before rotation");
+});
+
+test("rotation: a removed member has no wrap at the new version", async () => {
+  await clearSpaceKeys();
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  await makeUser(server, "bob");
+  const before = ["alice", "bob"];
+
+  await alice.ensureChannelKey(CH, before, "alice");
+  await alice.ensureChannelKey(CH, before, "alice");
+
+  const after = ["alice"];
+  await alice.rotateChannelKey(CH, after, 2);
+
+  alice.setCurrentKeyVersion(CH, 2);
+  const recips = new Set(await alice.keyRecipients(CH));
+  assert.equal(recips.has("alice"), true);
+  assert.equal(recips.has("bob"), false);
+});
+
+test("rotation: rejects a non-forward version", async () => {
+  await clearSpaceKeys();
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  await alice.ensureChannelKey(CH, ["alice"], "alice");
+  assert.equal(await alice.rotateChannelKey(CH, ["alice"], 1), false);
+  assert.equal(await alice.rotateChannelKey(CH, ["alice"], 0), false);
+  assert.equal(alice.currentVersion(CH), 1);
+});
+
+test("setCurrentKeyVersion is monotonic (never moves backwards)", async () => {
+  await clearSpaceKeys();
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  assert.equal(alice.currentVersion(CH), CURRENT_KEY_VERSION);
+  alice.setCurrentKeyVersion(CH, 3);
+  assert.equal(alice.currentVersion(CH), 3);
+  alice.setCurrentKeyVersion(CH, 2);
+  assert.equal(alice.currentVersion(CH), 3);
 });
