@@ -379,8 +379,11 @@ type ChannelEventPayload struct {
 const (
 	ErrCodeChannelNotFound = "channel_not_found"
 	ErrCodeNotAMember      = "not_a_member"
-	ErrCodeInvalidChannel  = "invalid_channel"
-	ErrCodeDMCardinality   = "dm_cardinality"
+	// Phase 25 (rotation):
+	ErrCodeNotChannelCreator = "not_channel_creator"
+	ErrCodeStaleKeyVersion   = "stale_key_version"
+	ErrCodeInvalidChannel    = "invalid_channel"
+	ErrCodeDMCardinality     = "dm_cardinality"
 )
 
 // ===== merged from frames_phase08b.go =====
@@ -475,6 +478,9 @@ const (
 	TypeFetchChannelKey    = "fetch_channel_key"
 	TypeFetchChannelKeyAck = "fetch_channel_key_ack"
 
+	TypeRotateChannelKey    = "rotate_channel_key"
+	TypeRotateChannelKeyAck = "rotate_channel_key_ack"
+
 	TypeFetchChannelKeyRecipients    = "fetch_channel_key_recipients"
 	TypeFetchChannelKeyRecipientsAck = "fetch_channel_key_recipients_ack"
 )
@@ -497,6 +503,22 @@ type PublishChannelKeyAckPayload struct {
 	ChannelID   string `json:"channel_id"`
 	KeyVersion  int    `json:"key_version"`
 	RecipientID string `json:"recipient_id"`
+}
+
+// RotateChannelKeyPayload asks the server to advance a channel's current key
+// version to NewVersion (phase 25). The caller must be the channel creator and
+// NewVersion must be exactly current+1. The new-version wraps must already be
+// uploaded via publish_channel_key before this is sent.
+type RotateChannelKeyPayload struct {
+	ChannelID  string `json:"channel_id"`
+	NewVersion int    `json:"new_version"`
+}
+
+// RotateChannelKeyAckPayload reports the channel's current key version after a
+// successful rotation (== NewVersion).
+type RotateChannelKeyAckPayload struct {
+	ChannelID         string `json:"channel_id"`
+	CurrentKeyVersion int    `json:"current_key_version"`
 }
 
 // FetchChannelKeyPayload requests the CALLER's own wrapped key for a channel

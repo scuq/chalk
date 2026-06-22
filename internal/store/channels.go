@@ -473,3 +473,49 @@ func (s *Store) ListMembersForChannel(
 	}
 	return out, nil
 }
+
+// CurrentKeyVersion returns a channel's current space-key version (phase 25).
+// Cheap lookup used by the send gate to reject a key_version above current.
+func (s *Store) CurrentKeyVersion(ctx context.Context, channelID uuid.UUID) (int, error) {
+	var v int
+	err := s.Pool.QueryRow(ctx,
+		`SELECT current_key_version FROM channels WHERE id = $1`,
+		channelID,
+	).Scan(&v)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrChannelNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	return v, nil
+}
+
+// AdvanceChannelKeyVersion advances a channel's current_key_version to
+// newVersion, but ONLY when the caller is the channel creator AND newVersion is
+// exactly current+1 (monotonic, no skips). All three conditions are enforced in
+// a single atomic UPDATE, so concurrent rotations can't race past each other:
+// at most one advance to a given version succeeds. Returns true iff the row was
+// advanced. A false return means: not the creator, a stale expected version, or
+// the channel is gone -- the caller can disambiguate by loading the channel.
+//
+// This is the authoritative version bump, applied AFTER the creator has
+// uploaded the new-version wraps via publish_channel_key (phase 25).
+func (s *Store) AdvanceChannelKeyVersion(
+	ctx context.Context,
+	channelID, callerID uuid.UUID,
+	newVersion int,
+) (bool, error) {
+	tag, err := s.Pool.Exec(ctx,
+		`UPDATE channels
+		    SET current_key_version = $3
+		  WHERE id = $1
+		    AND created_by = $2
+		    AND current_key_version = $3 - 1`,
+		channelID, callerID, newVersion,
+	)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}

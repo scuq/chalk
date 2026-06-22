@@ -492,6 +492,8 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleFetchChannelKey(ctx, c, conn, f)
 		case proto.TypeFetchChannelKeyRecipients:
 			h.handleFetchChannelKeyRecipients(ctx, c, conn, f)
+		case proto.TypeRotateChannelKey:
+			h.handleRotateChannelKey(ctx, c, conn, f)
 
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,
@@ -583,6 +585,22 @@ func (h *WSHandler) handleSend(
 		}
 		if !isMember {
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of channel")
+			return
+		}
+
+		// Phase 25: reject a key_version ABOVE the channel's current version (a
+		// client can't send under a version that doesn't exist yet). Current and
+		// older versions are accepted: older covers in-flight messages sent just
+		// before a rotation was learned, and they remain decryptable under their
+		// retained keys.
+		curVer, cvErr := h.store.CurrentKeyVersion(ctx, channelID)
+		if cvErr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "key version check: "+cvErr.Error())
+			return
+		}
+		if p.KeyVersion != nil && *p.KeyVersion > curVer {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeStaleKeyVersion,
+				"key_version is ahead of the channel's current version")
 			return
 		}
 	}
@@ -2579,6 +2597,81 @@ func (h *WSHandler) handleFetchChannelKeyRecipients(
 		ChannelID:  p.ChannelID,
 		KeyVersion: ver,
 		Recipients: recips,
+	})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+}
+
+// handleRotateChannelKey advances a channel's current_key_version by exactly +1
+// (phase 25, manual creator-only rotation). The caller must be the channel
+// creator; the new-version wraps must ALREADY be uploaded via
+// publish_channel_key (the client does this before sending this frame). The
+// version bump is atomic + monotonic in the store (single UPDATE), so
+// concurrent rotations can't skip or race. On success, new sends should carry
+// the new version; older versions remain accepted (the send gate only rejects
+// versions ABOVE current) so in-flight messages and history still work.
+func (h *WSHandler) handleRotateChannelKey(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.RotateChannelKeyPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
+		return
+	}
+	if p.NewVersion < 2 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "new_version must be >= 2")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+
+	// Atomic + monotonic + creator-only: a single UPDATE that only advances
+	// from NewVersion-1 to NewVersion when created_by == caller.
+	ok, err := h.store.AdvanceChannelKeyVersion(ctx, channelID, callerID, p.NewVersion)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "rotate: "+err.Error())
+		return
+	}
+	if !ok {
+		// Disambiguate the failure for a useful error.
+		ch, gerr := h.store.GetChannel(ctx, channelID)
+		if gerr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeChannelNotFound, "channel not found")
+			return
+		}
+		if ch.CreatedBy == nil || *ch.CreatedBy != callerID {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotChannelCreator,
+				"only the channel creator can rotate the key")
+			return
+		}
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeStaleKeyVersion,
+			"new_version must be exactly current+1 (current advanced under you; refetch and retry)")
+		return
+	}
+
+	ack, _ := proto.NewFrame(proto.TypeRotateChannelKeyAck, f.Ref, proto.RotateChannelKeyAckPayload{
+		ChannelID:         p.ChannelID,
+		CurrentKeyVersion: p.NewVersion,
 	})
 	data, _ := json.Marshal(ack)
 	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
