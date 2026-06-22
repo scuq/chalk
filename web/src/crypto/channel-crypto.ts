@@ -143,6 +143,36 @@ export class ChannelCrypto {
     return this.encrypted.has(channelID);
   }
 
+  /**
+   * keyRecipients returns the set of member ids that currently HAVE a wrapped
+   * key for the channel (i.e. a wrap exists for them server-side). This is the
+   * source of the per-member "has key" vs "waiting" status in the members
+   * panel. Note: a wrap existing means the member CAN unwrap it -- it does not
+   * prove they have actually unwrapped/read it, which is unknowable here.
+   */
+  async keyRecipients(channelID: string): Promise<Set<string>> {
+    try {
+      return new Set(
+        await fetchChannelKeyRecipients(this.transport, channelID, CURRENT_KEY_VERSION),
+      );
+    } catch {
+      return new Set();
+    }
+  }
+
+  /**
+   * reshareKey wraps the channel key for every member who doesn't yet have a
+   * wrap (the manual "re-share to all waiting members" action). Returns false
+   * if we don't hold the key ourselves (nothing to share). Safe to call
+   * repeatedly: members who already have a wrap are skipped.
+   */
+  async reshareKey(channelID: string, members: string[]): Promise<boolean> {
+    const sk = await this.getKey(channelID, CURRENT_KEY_VERSION);
+    if (!sk) return false;
+    await this.rewrapForMissing(channelID, members, sk);
+    return true;
+  }
+
   private remember(channelID: string, v: number, key: Uint8Array): void {
     this.keys.set(this.memKey(channelID, v), key);
     this.encrypted.add(channelID);

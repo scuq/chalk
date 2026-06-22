@@ -234,3 +234,41 @@ test("idempotent open: ensureChannelKey twice stays ready and doesn't double-min
   assert.equal(again, "ready");
   assert.equal(server.channelKeys.size, before); // no new wrap minted
 });
+
+test("keyRecipients reflects who has a wrap; reshareKey wraps the missing", async () => {
+  await clearSpaceKeys();
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  const carol = await makeUser(server, "carol");
+
+  // Alice bootstraps with only herself as a member -> only she has a wrap.
+  await alice.ensureChannelKey(CH, ["alice"], "alice");
+  let recips = await alice.keyRecipients(CH);
+  assert.deepEqual([...recips], ["alice"]);
+
+  // Carol is added; before re-share she is "waiting" (no wrap).
+  const members = ["alice", "carol"];
+  recips = await alice.keyRecipients(CH);
+  assert.equal(recips.has("carol"), false);
+
+  // Alice re-shares to all waiting members -> Carol now has a wrap.
+  const ok = await alice.reshareKey(CH, members);
+  assert.equal(ok, true);
+  recips = await alice.keyRecipients(CH);
+  assert.equal(recips.has("alice"), true);
+  assert.equal(recips.has("carol"), true);
+
+  // And Carol can now actually unwrap + the key works end to end.
+  await clearSpaceKeys();
+  const cStatus = await carol.ensureChannelKey(CH, members, "alice");
+  assert.equal(cStatus, "ready");
+});
+
+test("reshareKey returns false when we don't hold the key", async () => {
+  await clearSpaceKeys();
+  const server = makeServer();
+  const bob = await makeUser(server, "bob");
+  // Bob never bootstrapped/received the key -> cannot re-share.
+  const ok = await bob.reshareKey(CH, ["alice", "bob"]);
+  assert.equal(ok, false);
+});

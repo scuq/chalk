@@ -13,7 +13,7 @@
 //     send subscribe_channel to start receiving messages in the new channel.
 //   - On open_create_modal, if friends not yet loaded, fire friend_list.
 
-import { useEffect, useReducer, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
   // Phase 11b-2: MLS welcome + commit_bundle
@@ -101,6 +101,9 @@ const AdminPanel = lazyComponent(() =>
 );
 const FriendsPanel = lazyComponent(() =>
   import("./FriendsPanel").then((m) => m.FriendsPanel)
+);
+const MembersPanel = lazyComponent(() =>
+  import("./MembersPanel").then((m) => m.MembersPanel)
 );
 import { CreateChannelModal } from "./CreateChannelModal";
 import { AuthGate } from "../auth/AuthGate";
@@ -191,6 +194,11 @@ export function App() {
   const [ccReady, setCcReady] = useState(false);
   // Per-channel key status ("ready" | "waiting" | "plaintext") gating the composer.
   const [keyStatus, setKeyStatus] = useState<Record<string, ChannelKeyStatus>>({});
+  // Phase 23e: members-panel key-status (who has a wrapped key). Fetched via
+  // ChannelCrypto when the panel opens; not reducer-owned.
+  const [memberRecipients, setMemberRecipients] = useState<Set<string>>(new Set());
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [resharing, setResharing] = useState(false);
 
   // Phase 22c-3c: identity gate. After the WS welcomes us we know the
   // userID; check whether this device already has the user's encryption
@@ -295,6 +303,42 @@ export function App() {
       cancelled = true;
     };
   }, [state.activeChannelID, state.wsState, state.channels, ccReady]);
+
+  // Phase 23e: when the members panel opens, fetch which members currently
+  // have a wrapped key (the per-member "has key" vs "waiting" status).
+  const refreshMemberKeyStatus = useCallback(async () => {
+    const cid = state.activeChannelID;
+    if (!cid || !ccRef.current) return;
+    setMembersLoading(true);
+    try {
+      const recips = await ccRef.current.keyRecipients(cid);
+      setMemberRecipients(recips);
+    } catch (err) {
+      console.error("keyRecipients failed:", err);
+    } finally {
+      setMembersLoading(false);
+    }
+  }, [state.activeChannelID]);
+
+  useEffect(() => {
+    if (state.openPanel !== "members") return;
+    void refreshMemberKeyStatus();
+  }, [state.openPanel, refreshMemberKeyStatus]);
+
+  const onReshareKey = useCallback(async () => {
+    const cid = state.activeChannelID;
+    const ch = cid ? state.channels[cid] : undefined;
+    if (!cid || !ch || !ccRef.current) return;
+    setResharing(true);
+    try {
+      await ccRef.current.reshareKey(cid, ch.memberIDs);
+      await refreshMemberKeyStatus();
+    } catch (err) {
+      console.error("reshareKey failed:", err);
+    } finally {
+      setResharing(false);
+    }
+  }, [state.activeChannelID, state.channels, refreshMemberKeyStatus]);
 
   // Phase 11b-2 fix5: WS callbacks (onFrame, etc.) capture the
   // handleFrame closure ONCE at WSClient construction, before
@@ -1360,6 +1404,7 @@ export function App() {
                 status={
                   state.activeChannelID ? keyStatus[state.activeChannelID] : undefined
                 }
+                onClick={() => dispatch({ kind: "open_panel", panel: "members" })}
               />
             </div>
             <MessageList
@@ -1485,6 +1530,24 @@ export function App() {
         />
       )}
 
+      {state.openPanel === "members" && activeChannel && (
+        <MembersPanel
+          channelName={displayName(activeChannel, state.user?.id ?? null)}
+          members={activeChannel.members ?? []}
+          recipients={memberRecipients}
+          ownUserID={state.user?.id ?? null}
+          weHoldKey={
+            state.activeChannelID
+              ? keyStatus[state.activeChannelID] === "ready"
+              : false
+          }
+          loading={membersLoading}
+          resharing={resharing}
+          onReshare={onReshareKey}
+          onRefresh={refreshMemberKeyStatus}
+          onClose={() => dispatch({ kind: "close_panel" })}
+        />
+      )}
       {state.openPanel === "profile" && state.me && (
         <ProfilePanel
           me={state.me}

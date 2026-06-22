@@ -14,7 +14,13 @@ import { describeSuites } from "../crypto/spacekey";
  *
  * Always fail-closed: this never indicates "plaintext".
  */
-export function EncryptionIndicator({ status }: { status?: ChannelKeyStatus }) {
+export function EncryptionIndicator({
+  status,
+  onClick,
+}: {
+  status?: ChannelKeyStatus;
+  onClick?: () => void;
+}) {
   const ready = status === "ready";
   const suites = describeSuites();
   const headline = ready ? "Encrypted -- key ready" : "Securing -- key not here yet";
@@ -23,10 +29,18 @@ export function EncryptionIndicator({ status }: { status?: ChannelKeyStatus }) {
   return (
     <span
       class={"chalk-enc-indicator" + (ready ? " chalk-enc-ready" : " chalk-enc-pending")}
-      role="img"
-      aria-label={ariaLabel}
+      role={onClick ? "button" : "img"}
+      aria-label={onClick ? ariaLabel + " -- view members" : ariaLabel}
       data-testid="encryption-indicator"
       tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (onClick && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      style={onClick ? "cursor: pointer" : undefined}
     >
       <svg
         width="13"

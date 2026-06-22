@@ -333,6 +333,11 @@ export function reducer(state: AppState, action: Action): AppState {
           },
         };
       }
+      if (action.panel === "members") {
+        // Phase 23e: channel-members + key-status panel. No reducer-owned
+        // form state; App fetches the recipient set via ChannelCrypto.
+        return { ...state, openPanel: "members" };
+      }
       // Default: profile. Same behavior as before the hotfix for the
       // profile case specifically.
       return { ...state, openPanel: "profile" };
