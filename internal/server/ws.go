@@ -494,6 +494,8 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleFetchChannelKeyRecipients(ctx, c, conn, f)
 		case proto.TypeRotateChannelKey:
 			h.handleRotateChannelKey(ctx, c, conn, f)
+		case proto.TypeRemoveMember:
+			h.handleRemoveMember(ctx, c, conn, f)
 
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,
@@ -1506,6 +1508,7 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 		MemberIDs:         memberIDs,
 		Members:           members,
 		CurrentKeyVersion: c.CurrentKeyVersion,
+		RotationPending:   c.RotationPending,
 	}
 }
 
@@ -2695,6 +2698,123 @@ func (h *WSHandler) handleRotateChannelKey(
 					h.logger.Printf("publish channel_event key_rotated to %s: %v", m, perr)
 				}
 			}
+		}
+	}
+}
+
+// handleRemoveMember removes a member from a channel and flags the channel for
+// rotation (member removal + rotate-on-removal).
+//
+// Authz:
+//   - the channel OWNER may remove any non-owner member;
+//   - a non-owner may remove ONLY themselves (leave);
+//   - DMs reject removal; the owner cannot be removed.
+//
+// On success: RemoveMember sets channels.rotation_pending. We then push
+// channel_event{kind="member_removed"} to the remaining members (the client
+// drops the user from the roster), and channel_event{kind="rotate_needed"} to
+// the OWNER so their client rotates the key (excluding the removed member). If
+// the owner is offline, rotation_pending stays set and the owner's client
+// rotates on next connect/open -- the pending state is durable + visible.
+func (h *WSHandler) handleRemoveMember(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.RemoveMemberPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
+		return
+	}
+	targetID, err := uuid.Parse(p.TargetID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "target_id not a UUID")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+
+	callerRole, rErr := h.store.GetMemberRole(ctx, channelID, callerID)
+	if rErr != nil {
+		if errors.Is(rErr, store.ErrNotAMember) {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of channel")
+			return
+		}
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "role check: "+rErr.Error())
+		return
+	}
+	if callerRole != "owner" && callerID != targetID {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeRemoveForbidden,
+			"only the owner can remove other members; you may remove only yourself")
+		return
+	}
+
+	if err := h.store.RemoveMember(ctx, channelID, targetID); err != nil {
+		switch {
+		case errors.Is(err, store.ErrDMNoRemoval):
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeDMNoRemoval, "cannot remove members from a DM")
+		case errors.Is(err, store.ErrCannotRemoveOwner):
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeCannotRemoveOwner, "the channel owner cannot be removed")
+		case errors.Is(err, store.ErrNotAMember):
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "target is not a member")
+		case errors.Is(err, store.ErrChannelNotFound):
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeChannelNotFound, "channel not found")
+		default:
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "remove member: "+err.Error())
+		}
+		return
+	}
+
+	ack, _ := proto.NewFrame(proto.TypeRemoveMemberAck, f.Ref, proto.RemoveMemberAckPayload{
+		ChannelID: p.ChannelID,
+		TargetID:  p.TargetID,
+	})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+
+	ch, gerr := h.store.GetChannel(ctx, channelID)
+	if gerr != nil {
+		return
+	}
+	remaining, merr := h.store.ListMembersForChannel(ctx, channelID)
+	if merr != nil {
+		return
+	}
+	summary := channelSummaryFromStore(
+		store.ChannelWithMembers{Channel: ch, MemberIDs: remaining},
+		nil,
+	)
+
+	if perr := h.publishChannelEvent(ctx, targetID, channelID, "member_removed", summary); perr != nil {
+		h.logger.Printf("publish member_removed to %s: %v", targetID, perr)
+	}
+	for _, m := range remaining {
+		if perr := h.publishChannelEvent(ctx, m, channelID, "member_removed", summary); perr != nil {
+			h.logger.Printf("publish member_removed to %s: %v", m, perr)
+		}
+	}
+
+	if ch.CreatedBy != nil {
+		if perr := h.publishChannelEvent(ctx, *ch.CreatedBy, channelID, "rotate_needed", summary); perr != nil {
+			h.logger.Printf("publish rotate_needed to owner %s: %v", *ch.CreatedBy, perr)
 		}
 	}
 }

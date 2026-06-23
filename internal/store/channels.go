@@ -24,6 +24,10 @@ type Channel struct {
 	// Defaults to 1; advanced by a creator-only rotation. Clients encrypt new
 	// messages under this version.
 	CurrentKeyVersion int
+	// RotationPending is true when a member was removed but the key hasn't been
+	// rotated yet (removal sets it; the next rotation clears it). Surfaced so the
+	// pending revocation is visible.
+	RotationPending bool
 }
 
 // ChannelWithMembers couples a Channel with its full member set.
@@ -114,9 +118,9 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 		err := tx.QueryRow(ctx,
 			`INSERT INTO channels (name, is_dm, created_by)
 			 VALUES ($1, $2, $3)
-			 RETURNING id, name, is_dm, created_by, created_at, current_key_version`,
+			 RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending`,
 			strings.TrimSpace(in.Name), in.IsDM, in.CreatedBy,
-		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion)
+		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending)
 		if err != nil {
 			return fmt.Errorf("insert channel: %w", err)
 		}
@@ -166,10 +170,10 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 func (s *Store) GetChannel(ctx context.Context, channelID uuid.UUID) (Channel, error) {
 	var ch Channel
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, name, is_dm, created_by, created_at, current_key_version
+		`SELECT id, name, is_dm, created_by, created_at, current_key_version, rotation_pending
 		   FROM channels WHERE id = $1`,
 		channelID,
-	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion)
+	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Channel{}, ErrChannelNotFound
 	}
@@ -209,7 +213,7 @@ func (s *Store) IsMember(ctx context.Context, channelID, userID uuid.UUID) (bool
 // and the member-count cardinality is small (a few users per channel).
 func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]ChannelWithMembers, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version
+		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending
 		   FROM channels c
 		   JOIN channel_members cm ON cm.channel_id = c.id
 		  WHERE cm.user_id = $1
@@ -225,7 +229,7 @@ func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]Ch
 	channelIDs := make([]uuid.UUID, 0, 16)
 	for rows.Next() {
 		var c Channel
-		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending); err != nil {
 			return nil, err
 		}
 		channels = append(channels, ChannelWithMembers{Channel: c})
@@ -508,7 +512,8 @@ func (s *Store) AdvanceChannelKeyVersion(
 ) (bool, error) {
 	tag, err := s.Pool.Exec(ctx,
 		`UPDATE channels
-		    SET current_key_version = $3
+		    SET current_key_version = $3,
+		        rotation_pending = FALSE
 		  WHERE id = $1
 		    AND created_by = $2
 		    AND current_key_version = $3 - 1`,
@@ -518,4 +523,80 @@ func (s *Store) AdvanceChannelKeyVersion(
 		return false, err
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+// ErrCannotRemoveOwner is returned when a removal targets the channel owner.
+var ErrCannotRemoveOwner = errors.New("cannot remove the channel owner")
+
+// ErrDMNoRemoval is returned when a removal targets a DM channel (the DM
+// cardinality trigger would reject the delete anyway; we check first for a
+// clean error).
+var ErrDMNoRemoval = errors.New("cannot remove members from a DM")
+
+// GetMemberRole returns a member's role in a channel ("owner" | "member"), or
+// ErrNotAMember if the user is not a member.
+func (s *Store) GetMemberRole(ctx context.Context, channelID, userID uuid.UUID) (string, error) {
+	var role string
+	err := s.Pool.QueryRow(ctx,
+		`SELECT role FROM channel_members WHERE channel_id = $1 AND user_id = $2`,
+		channelID, userID,
+	).Scan(&role)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotAMember
+	}
+	if err != nil {
+		return "", err
+	}
+	return role, nil
+}
+
+// RemoveMember deletes (channelID, targetID) from channel_members and, in the
+// same transaction, sets channels.rotation_pending = TRUE so the channel key
+// gets rotated (the removed member must lose read access to future messages).
+// Rejects removal from a DM up front (ErrDMNoRemoval) and removal of the owner
+// (ErrCannotRemoveOwner). Removing a non-member returns ErrNotAMember.
+func (s *Store) RemoveMember(ctx context.Context, channelID, targetID uuid.UUID) error {
+	return s.withTx(ctx, func(tx pgx.Tx) error {
+		var isDM bool
+		if err := tx.QueryRow(ctx,
+			`SELECT is_dm FROM channels WHERE id = $1`, channelID,
+		).Scan(&isDM); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrChannelNotFound
+			}
+			return err
+		}
+		if isDM {
+			return ErrDMNoRemoval
+		}
+		var role string
+		if err := tx.QueryRow(ctx,
+			`SELECT role FROM channel_members WHERE channel_id = $1 AND user_id = $2`,
+			channelID, targetID,
+		).Scan(&role); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrNotAMember
+			}
+			return err
+		}
+		if role == "owner" {
+			return ErrCannotRemoveOwner
+		}
+		tag, err := tx.Exec(ctx,
+			`DELETE FROM channel_members WHERE channel_id = $1 AND user_id = $2`,
+			channelID, targetID,
+		)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotAMember
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE channels SET rotation_pending = TRUE WHERE id = $1`, channelID,
+		); err != nil {
+			return err
+		}
+		return nil
+	})
 }

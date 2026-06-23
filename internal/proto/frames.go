@@ -281,6 +281,9 @@ type ChannelSummary struct {
 	// CurrentKeyVersion is the channel's current space-key version (phase 25).
 	// The client encrypts new messages under this version.
 	CurrentKeyVersion int `json:"current_key_version"`
+	// RotationPending is true when a removal hasn't been followed by a rotation
+	// yet (the removed member still holds the old key until then).
+	RotationPending bool `json:"rotation_pending"`
 }
 
 // ChannelMember pairs a user_id with their handle. Server
@@ -382,6 +385,10 @@ const (
 	// Phase 25 (rotation):
 	ErrCodeNotChannelCreator = "not_channel_creator"
 	ErrCodeStaleKeyVersion   = "stale_key_version"
+	// Member removal:
+	ErrCodeCannotRemoveOwner = "cannot_remove_owner"
+	ErrCodeDMNoRemoval       = "dm_no_removal"
+	ErrCodeRemoveForbidden   = "remove_forbidden"
 	ErrCodeInvalidChannel    = "invalid_channel"
 	ErrCodeDMCardinality     = "dm_cardinality"
 )
@@ -481,6 +488,9 @@ const (
 	TypeRotateChannelKey    = "rotate_channel_key"
 	TypeRotateChannelKeyAck = "rotate_channel_key_ack"
 
+	TypeRemoveMember    = "remove_member"
+	TypeRemoveMemberAck = "remove_member_ack"
+
 	TypeFetchChannelKeyRecipients    = "fetch_channel_key_recipients"
 	TypeFetchChannelKeyRecipientsAck = "fetch_channel_key_recipients_ack"
 )
@@ -519,6 +529,20 @@ type RotateChannelKeyPayload struct {
 type RotateChannelKeyAckPayload struct {
 	ChannelID         string `json:"channel_id"`
 	CurrentKeyVersion int    `json:"current_key_version"`
+}
+
+// RemoveMemberPayload removes target_id from a channel (member removal + rotate-
+// on-removal). Authz: the channel owner may remove any non-owner; a non-owner
+// may remove only themselves (leave). DMs reject removal.
+type RemoveMemberPayload struct {
+	ChannelID string `json:"channel_id"`
+	TargetID  string `json:"target_id"`
+}
+
+// RemoveMemberAckPayload confirms a removal.
+type RemoveMemberAckPayload struct {
+	ChannelID string `json:"channel_id"`
+	TargetID  string `json:"target_id"`
 }
 
 // FetchChannelKeyPayload requests the CALLER's own wrapped key for a channel
