@@ -442,17 +442,37 @@ export function App() {
   const rotateChannelKeyFor = useCallback(
     async (cid: string, members: string[], currentVersion: number): Promise<boolean> => {
       if (!ccRef.current || !clientRef.current) return false;
-      const newVersion = currentVersion + 1;
-      const ok = await ccRef.current.rotateChannelKey(cid, members, newVersion);
-      if (!ok) return false; // we don't hold the key / not a forward step
-      const confirmed = await commitRotation(
-        { request: (t, p) => clientRef.current!.request(t, p) },
-        cid,
-        newVersion,
-      );
-      dispatch({ kind: "channel_key_version_updated", channelID: cid, currentKeyVersion: confirmed });
-      ccRef.current.setCurrentKeyVersion(cid, confirmed);
-      return true;
+      // In-flight guard: if a rotation for this channel is already running,
+      // don't start a second one (it would race and be rejected as stale).
+      if (rotatingChannelsRef.current.has(cid)) return false;
+      rotatingChannelsRef.current.add(cid);
+      try {
+        const newVersion = currentVersion + 1;
+        const ok = await ccRef.current.rotateChannelKey(cid, members, newVersion);
+        if (!ok) return false; // we don't hold the key / not a forward step
+        let confirmed: number;
+        try {
+          confirmed = await commitRotation(
+            { request: (t, p) => clientRef.current!.request(t, p) },
+            cid,
+            newVersion,
+          );
+        } catch (err) {
+          // Backstop: if another rotation (e.g. a second owner device) advanced
+          // the version under us, the server rejects with stale_key_version.
+          // That's not a failure -- the rotation we wanted already happened; the
+          // key_rotated push will sync us to the new version. Swallow it.
+          if (err instanceof Error && err.message.includes("stale_key_version")) {
+            return true;
+          }
+          throw err;
+        }
+        dispatch({ kind: "channel_key_version_updated", channelID: cid, currentKeyVersion: confirmed });
+        ccRef.current.setCurrentKeyVersion(cid, confirmed);
+        return true;
+      } finally {
+        rotatingChannelsRef.current.delete(cid);
+      }
     },
     [],
   );
@@ -545,6 +565,11 @@ export function App() {
   // Track which channels we've subscribe_channeled. Avoids duplicate
   // sends on idempotent channel_event delivery.
   const subscribeSentRef = useRef<Set<string>>(new Set());
+  // Removal-3: channels with a rotation currently in flight. Guards against the
+  // two auto-rotate paths (rotate_needed push + rotation_pending catch-up)
+  // firing concurrently for the same channel and racing into a doomed second
+  // rotation (the server's monotonic guard rejects it with stale_key_version).
+  const rotatingChannelsRef = useRef<Set<string>>(new Set());
 
   // --- WS lifecycle ----------------------------------------------------
 
