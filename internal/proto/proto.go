@@ -195,6 +195,15 @@ type MessagePayload struct {
 	// been purged).
 	LastReplySenderUserID string `json:"last_reply_sender_user_id,omitempty"`
 	LastReplyBody         string `json:"last_reply_body,omitempty"`
+	// Phase 26 (governance prereq): soft-delete tombstone. When Deleted is
+	// true the message has been deleted; Body is empty and KeyVersion is nil,
+	// so clients render a "message deleted" placeholder and skip decryption.
+	// DeletedBy is the user_id that deleted it (audit / future "deleted by X"
+	// rendering); DeletedAt is server unix-millis of the deletion. All omitted
+	// for live messages so older clients simply ignore them.
+	Deleted   bool   `json:"deleted,omitempty"`
+	DeletedBy string `json:"deleted_by,omitempty"`
+	DeletedAt int64  `json:"deleted_at,omitempty"`
 }
 
 // ErrorPayload is sent when the server can't process a request. Code is a
@@ -215,6 +224,9 @@ const (
 	ErrCodeInternal           = "internal"
 	ErrCodeRateLimited        = "rate_limited"
 	ErrCodeFrameTooLarge      = "frame_too_large"
+	// Phase 26 (governance prereq: message deletion):
+	ErrCodeMessageNotFound = "message_not_found"
+	ErrCodeDeleteForbidden = "delete_forbidden"
 )
 
 // Phase 10a: fetch a thread's messages by thread_id. Like

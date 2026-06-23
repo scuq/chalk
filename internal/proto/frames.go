@@ -499,6 +499,13 @@ const (
 
 	TypeFetchChannelKeyRecipients    = "fetch_channel_key_recipients"
 	TypeFetchChannelKeyRecipientsAck = "fetch_channel_key_recipients_ack"
+
+	// Phase 26 (governance prereq): message deletion. delete_message is a
+	// client request (owner-only, dictator-style); message_deleted is the
+	// server's per-channel push telling members to tombstone the message.
+	TypeDeleteMessage    = "delete_message"
+	TypeDeleteMessageAck = "delete_message_ack"
+	TypeMessageDeleted   = "message_deleted"
 )
 
 // PublishChannelKeyPayload uploads ONE member's wrapped space key for a
@@ -563,6 +570,35 @@ type AddMemberPayload struct {
 type AddMemberAckPayload struct {
 	ChannelID string `json:"channel_id"`
 	TargetID  string `json:"target_id"`
+}
+
+// DeleteMessagePayload asks the server to delete a message (governance prereq).
+// Authz: dictator-style -- only the channel OWNER may delete (the democratic
+// delete_message proposal type wraps this later). TS is the message's
+// server-assigned timestamp in unix-millis (the wire carries ts on every
+// message); the server needs it to locate the row in the ts-partitioned table.
+type DeleteMessagePayload struct {
+	ChannelID string `json:"channel_id"`
+	MessageID string `json:"message_id"`
+	TS        int64  `json:"ts"` // unix-millis of the target message
+}
+
+// DeleteMessageAckPayload confirms a deletion (or an idempotent re-delete).
+type DeleteMessageAckPayload struct {
+	ChannelID string `json:"channel_id"`
+	MessageID string `json:"message_id"`
+}
+
+// MessageDeletedPayload is the per-channel push emitted after a successful
+// delete. Members tombstone the message locally (replace the body with a
+// "message deleted" placeholder). Seq lets clients locate the row without a
+// ts lookup; DeletedBy/DeletedAt mirror the stored tombstone for audit display.
+type MessageDeletedPayload struct {
+	ChannelID string `json:"channel_id"`
+	MessageID string `json:"message_id"`
+	Seq       int64  `json:"seq"`
+	DeletedBy string `json:"deleted_by,omitempty"`
+	DeletedAt int64  `json:"deleted_at,omitempty"` // server unix-millis
 }
 
 // FetchChannelKeyPayload requests the CALLER's own wrapped key for a channel

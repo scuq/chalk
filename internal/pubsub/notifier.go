@@ -48,7 +48,10 @@ const Channel = "chalk_global"
 type Event struct {
 	// Kind discriminates: "message", "presence", "friend", "channel",
 	// "prefs", "kp_low" (phase 11c-5: KeyPackage low-stock push; UserID
-	// is the device owner to notify).
+	// is the device owner to notify), "message_deleted" (phase 26: a
+	// message was soft-deleted; reuses the message fields MessageID, TS,
+	// ChannelID and is published per-channel via PublishMessageWithTx --
+	// receivers fetch the now-tombstoned row and push message_deleted).
 	Kind string `json:"k"`
 
 	// Message fields (Kind="message"). MessageID and TS together

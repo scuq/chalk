@@ -331,6 +331,8 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 	switch ev.Kind {
 	case "message":
 		s.handleMessageEvent(ev)
+	case "message_deleted":
+		s.handleMessageDeletedEvent(ev)
 	case "presence":
 		s.handlePresenceEvent(ev)
 	case "friend":
@@ -428,6 +430,61 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 		return
 	}
 	s.broadcastToChannelMembers(ctx, msg.ChannelID, ev.SenderConnID, wire, msg.TS)
+}
+
+// handleMessageDeletedEvent: a message was soft-deleted. Re-fetch the
+// (tombstoned) row to read its seq + deleted_by/deleted_at, build a
+// message_deleted frame, and fan it out to the channel's members so they
+// tombstone the row locally.
+//
+// IMPORTANT: the freshness gate uses time.Now(), NOT the message's ts. The
+// deleted message can be arbitrarily old; gating on its original ts would skip
+// every member who connected after it was sent (i.e. effectively everyone).
+// A deletion is a "happening now" event, so now() is the correct cutoff and
+// all currently-connected members receive it. No echo-suppression
+// (ev.SenderConnID is empty) so the deleter's own client converges too.
+func (s *Server) handleMessageDeletedEvent(ev pubsub.Event) {
+	if s.store == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	msg, err := s.store.GetMessage(ctx, ev.TS, ev.MessageID)
+	if err != nil {
+		s.logger.Printf("pubsub fetch deleted %s: %v", ev.MessageID, err)
+		return
+	}
+	deletedBy := ""
+	if msg.DeletedBy != nil {
+		deletedBy = msg.DeletedBy.String()
+	}
+	var deletedAt int64
+	if msg.DeletedAt != nil {
+		deletedAt = msg.DeletedAt.UnixMilli()
+	}
+	frame, err := proto.NewFrame(proto.TypeMessageDeleted, "", proto.MessageDeletedPayload{
+		ChannelID: msg.ChannelID.String(),
+		MessageID: msg.ID.String(),
+		Seq:       msg.Seq,
+		DeletedBy: deletedBy,
+		DeletedAt: deletedAt,
+	})
+	if err != nil {
+		s.logger.Printf("message_deleted frame: %v", err)
+		return
+	}
+	wire, err := json.Marshal(frame)
+	if err != nil {
+		s.logger.Printf("message_deleted marshal: %v", err)
+		return
+	}
+	now := time.Now()
+	if msg.ChannelID == store.DefaultChannelID {
+		s.hub.FanOutFresh(ev.SenderConnID, wire, now)
+		return
+	}
+	s.broadcastToChannelMembers(ctx, msg.ChannelID, ev.SenderConnID, wire, now)
 }
 
 // broadcastToChannelMembers sends wire to every locally-connected

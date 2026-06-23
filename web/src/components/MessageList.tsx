@@ -33,6 +33,12 @@ interface Props {
   // that don't care (e.g. the thread panel rendering its head)
   // can omit it.
   threadSeen?: Record<string, number>;
+  // Phase 26 (governance prereq): owner-only message deletion. When
+  // canDeleteMessages is true, a hover "delete" control renders on each
+  // non-deleted message; clicking calls onDeleteMessage(m). The caller
+  // (App) wires this to a confirm + the delete_message request.
+  canDeleteMessages?: boolean;
+  onDeleteMessage?: (m: Message) => void;
 }
 
 function fmtTime(d: Date): string {
@@ -69,7 +75,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-export function MessageList({ messages, ownDevice, ownUserID, members, empty, display, isDM, onOpenThread, threadSeen }: Props) {
+export function MessageList({ messages, ownDevice, ownUserID, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessages, onDeleteMessage }: Props) {
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -173,12 +179,18 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
               {senderLabel}
             </span>
             <span class="chalk-message-body" data-testid="message-body">
-              {m.body}
+              {m.deleted ? (
+                <span class="chalk-message-deleted" data-testid="message-deleted">
+                  message deleted
+                </span>
+              ) : (
+                m.body
+              )}
             </span>
             {/* Phase 10b: hover-revealed reply button (desktop;
                 shown via :hover in CSS). Hidden in compact mode to
-                avoid stealing space. */}
-            {onOpenThread && !display_.compactMode && (
+                avoid stealing space. Suppressed on deleted rows. */}
+            {onOpenThread && !display_.compactMode && !m.deleted && (
               <button
                 type="button"
                 class="chalk-message-reply"
@@ -189,6 +201,19 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
                 data-testid={`message-reply-${m.id}`}
               >
                 ↳ reply
+              </button>
+            )}
+            {/* Phase 26 (governance prereq): owner-only delete control.
+                Hidden on already-deleted rows. */}
+            {canDeleteMessages && onDeleteMessage && !m.deleted && (
+              <button
+                type="button"
+                class="chalk-message-delete"
+                title="delete message"
+                onClick={() => onDeleteMessage(m)}
+                data-testid={`message-delete-${m.id}`}
+              >
+                ✕ delete
               </button>
             )}
           </div>

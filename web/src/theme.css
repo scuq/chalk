@@ -2627,6 +2627,48 @@ html, body {
   outline-offset: -1px;
 }
 
+/* Phase 26 (governance prereq): owner-only delete control. Mirrors the
+   hover-reveal reply button but sits just to its left so the two don't
+   collide. Non-owners never render this, so the reply button's own
+   right-edge position is left untouched. */
+.chalk-message-delete {
+  position: absolute;
+  right: calc(var(--chalk-s2) + 5rem);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 2px 8px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 80ms ease;
+}
+.chalk-message:hover .chalk-message-delete,
+.chalk-message-delete:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.chalk-message-delete:hover {
+  color: var(--chalk-danger, #e5484d);
+  border-color: var(--chalk-danger, #e5484d);
+}
+.chalk-message-delete:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* Phase 26: tombstone rendering for a deleted message body. */
+.chalk-message-deleted {
+  font-style: italic;
+  color: var(--chalk-fg-dim);
+  opacity: 0.8;
+}
+
 /* Phase 10b-fix: thread indicator.
    - align-self: flex-start so the button shrinks to its content
      instead of stretching to the row width (it's inside a flex

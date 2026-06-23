@@ -57,6 +57,13 @@ export interface Message {
   // Phase 10e: preview of the most recent reply.
   lastReplySenderUserID?: string;
   lastReplyBody?: string;
+  // Phase 26 (governance prereq): soft-delete tombstone. deleted=true means
+  // the row was deleted; body is the "[message deleted]" placeholder. deletedBy
+  // is the deleter's user_id; deletedAt is the deletion time. Undefined for a
+  // live message.
+  deleted?: boolean;
+  deletedBy?: string;
+  deletedAt?: Date;
 }
 
 // phase 08c: ChannelMember pairs a user_id with their handle.
@@ -457,6 +464,8 @@ export type Action =
   | { kind: "channel_member_removed"; channelID: string; userID: string }
   | { kind: "set_active_channel"; channelID: string | null }
   | { kind: "message"; message: Message }
+  // Phase 26 (governance prereq): a message was deleted; tombstone it in place.
+  | { kind: "message_deleted"; channelID: string; messageID: string; deletedBy?: string; deletedAt?: Date }
   | { kind: "history_loaded"; channelID: string; messages: Message[] }
   | { kind: "friends_loaded"; friends: Friend[]; pendingIncoming?: Friend[]; pendingOutgoing?: Friend[] }
   | { kind: "open_create_modal" }

@@ -71,6 +71,13 @@ export interface MessagePayload {
   // Phase 23d: message-suite key version. Undefined/0 = legacy
   // plaintext; >=1 = encrypted (see SendPayload.key_version).
   key_version?: number;
+  // Phase 26 (governance prereq): soft-delete tombstone. deleted=true means
+  // the message was deleted; body is empty and key_version is undefined, so
+  // the client renders a "message deleted" placeholder and skips decryption.
+  // deleted_by is the deleter's user_id; deleted_at is server unix-millis.
+  deleted?: boolean;
+  deleted_by?: string;
+  deleted_at?: number;
 }
 
 export interface ErrorPayload {
@@ -254,6 +261,9 @@ export const ErrCodeNotAMember = "not_a_member";
 export const ErrCodeNotFriends = "not_friends";
 export const ErrCodeInvalidChannel = "invalid_channel";
 export const ErrCodeDMCardinality = "dm_cardinality";
+// Phase 26 (governance prereq: message deletion):
+export const ErrCodeMessageNotFound = "message_not_found";
+export const ErrCodeDeleteForbidden = "delete_forbidden";
 
 // --- Helpers --------------------------------------------------------
 
@@ -301,3 +311,31 @@ export interface FetchThreadAckPayload {
   messages: MessagePayload[];
 }
 
+
+// ---- Phase 26: message deletion (governance prereq) ----------------
+
+export const TypeDeleteMessage = "delete_message";
+export const TypeDeleteMessageAck = "delete_message_ack";
+export const TypeMessageDeleted = "message_deleted";
+
+// delete_message: owner-only (dictator-style) request to delete a message.
+// ts is the target message's server unix-millis (the client always has it).
+export interface DeleteMessagePayload {
+  channel_id: string;
+  message_id: string;
+  ts: number;
+}
+
+export interface DeleteMessageAckPayload {
+  channel_id: string;
+  message_id: string;
+}
+
+// message_deleted: per-channel push telling members to tombstone the message.
+export interface MessageDeletedPayload {
+  channel_id: string;
+  message_id: string;
+  seq: number;
+  deleted_by?: string;
+  deleted_at?: number;
+}

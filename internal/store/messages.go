@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -49,7 +50,25 @@ type Message struct {
 	// got stored.
 	LastReplySenderUserID *uuid.UUID
 	LastReplyBody         []byte
+	// Phase 26 (governance prereq): soft-delete tombstone. DeletedAt is
+	// non-nil once a message has been deleted (the scrub time); the body is
+	// then an empty bytea and KeyVersion is nil. DeletedBy is the user_id
+	// that performed the deletion (owner, in dictator mode). Both nil for a
+	// live message. Populated by GetMessage and the List* feed queries so
+	// clients can render a tombstone instead of decrypting an empty body.
+	DeletedAt *time.Time
+	DeletedBy *uuid.UUID
 }
+
+// ErrMessageNotFound is returned by DeleteMessage when no row matches
+// (ts, id, channel_id). Distinct from ErrAlreadyDeleted so the handler can
+// tell "you targeted a message that isn't here" from "already a tombstone".
+var ErrMessageNotFound = errors.New("message not found")
+
+// ErrAlreadyDeleted is returned by DeleteMessage when the target row exists
+// but is already a tombstone. The handler treats this as idempotent success
+// (ack, no second push) rather than an error to the user.
+var ErrAlreadyDeleted = errors.New("message already deleted")
 
 // InsertMessage persists a message and allocates a per-channel sequence
 // number atomically. Returns the persisted Message including its Seq, TS,
@@ -116,7 +135,8 @@ func (s *Store) GetMessage(ctx context.Context, ts time.Time, id uuid.UUID) (Mes
 	err := s.Pool.QueryRow(ctx,
 		`SELECT m.id, m.channel_id, m.thread_id, m.parent_id,
 		        m.sender_device_id, d.user_id,
-		        m.seq, m.ts, m.delivered_at, m.body, m.key_version
+		        m.seq, m.ts, m.delivered_at, m.body, m.key_version,
+		        m.deleted_at, m.deleted_by
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
 		  WHERE m.ts = $1 AND m.id = $2`,
@@ -125,6 +145,7 @@ func (s *Store) GetMessage(ctx context.Context, ts time.Time, id uuid.UUID) (Mes
 		&m.ID, &m.ChannelID, &m.ThreadID, &m.ParentID,
 		&m.SenderDeviceID, &senderUser,
 		&m.Seq, &m.TS, &m.DeliveredAt, &m.Body, &m.KeyVersion,
+		&m.DeletedAt, &m.DeletedBy,
 	)
 	if senderUser != nil {
 		m.SenderUserID = *senderUser
@@ -132,7 +153,88 @@ func (s *Store) GetMessage(ctx context.Context, ts time.Time, id uuid.UUID) (Mes
 	return m, translateErr(err)
 }
 
-// AckMessage records that a recipient device has acked a message. If this
+// DeleteMessage soft-deletes a message: it scrubs the body to an empty bytea,
+// nulls key_version, and stamps deleted_at = now() + deleted_by = deleterID,
+// all in one transaction. The row is KEPT (a tombstone) so the channel seq
+// ordering and any thread hanging off this message survive; clients render a
+// "message deleted" placeholder rather than decrypting an empty body.
+//
+// TS-MATCH PRECISION: the wire carries a message's ts in unix-millis, but the
+// stored messages.ts is microsecond-precision TIMESTAMPTZ, so `ts = $1` would
+// miss. We match the millis-floored ts as a half-open 1ms range
+// [ts, ts+1ms) -- which contains exactly the original row -- AND on id +
+// channel_id. The ts range also keeps partition pruning (the table is
+// range-partitioned on ts), so this isn't an all-partition scan. RETURNING
+// ts hands back the FULL-precision timestamp the listener needs to re-fetch
+// the tombstone via GetMessage for the push.
+//
+// channelID is matched too, so a caller can't scrub a message by guessing its
+// id alone -- the (id, channel_id) pair plus the ts window must line up.
+//
+// Returns the tombstoned row (ID, ChannelID, Seq, TS, DeletedAt, DeletedBy
+// populated) so the handler can build the message_deleted push without a
+// second query. Errors:
+//   - ErrAlreadyDeleted: the row exists but is already a tombstone (idempotent;
+//     the handler acks without re-publishing).
+//   - ErrMessageNotFound: no row for (ts-window, id, channel_id).
+//
+// SECURITY NOTE: this is a server-side scrub, not guaranteed erasure. Any
+// member who already decrypted the message holds the plaintext on their own
+// device; deletion removes it from the server and best-effort tombstones it on
+// connected clients, the same forward boundary as removal/revocation.
+func (s *Store) DeleteMessage(
+	ctx context.Context,
+	ts time.Time,
+	id, channelID, deleterID uuid.UUID,
+) (Message, error) {
+	var m Message
+	err := s.withTx(ctx, func(tx pgx.Tx) error {
+		// The WHERE includes deleted_at IS NULL so a re-delete affects zero
+		// rows (idempotency). RETURNING gives us what the push needs.
+		row := tx.QueryRow(ctx,
+			`UPDATE messages
+			    SET body = ''::bytea,
+			        key_version = NULL,
+			        deleted_at = now(),
+			        deleted_by = $4
+			  WHERE id = $2 AND channel_id = $3
+			    AND ts >= $1 AND ts < $1 + interval '1 millisecond'
+			    AND deleted_at IS NULL
+			 RETURNING channel_id, seq, ts, deleted_at, deleted_by`,
+			ts, id, channelID, deleterID,
+		)
+		if err := row.Scan(&m.ChannelID, &m.Seq, &m.TS, &m.DeletedAt, &m.DeletedBy); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// Zero rows updated: either the message doesn't exist in this
+				// (ts-window, id, channel_id), or it's already a tombstone.
+				// Distinguish so the handler can ack-idempotently vs. error.
+				var exists bool
+				if e2 := tx.QueryRow(ctx,
+					`SELECT EXISTS(
+					   SELECT 1 FROM messages
+					    WHERE id = $2 AND channel_id = $3
+					      AND ts >= $1 AND ts < $1 + interval '1 millisecond'
+					 )`,
+					ts, id, channelID,
+				).Scan(&exists); e2 != nil {
+					return e2
+				}
+				if exists {
+					return ErrAlreadyDeleted
+				}
+				return ErrMessageNotFound
+			}
+			return err
+		}
+		m.ID = id
+		return nil
+	})
+	if err != nil {
+		return Message{}, err
+	}
+	return m, nil
+}
+
 // is the first ack from a non-sender device, the message's delivered_at is
 // set to that ack's timestamp.
 //

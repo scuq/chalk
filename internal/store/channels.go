@@ -304,6 +304,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 	rows, err := s.Pool.Query(ctx,
 		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
 		        m.ts, m.seq, m.body, m.key_version,
+		        m.deleted_at, m.deleted_by,
 		        m.parent_id, m.thread_id,
 		        COALESCE(r.cnt, 0) AS reply_count,
 		        COALESCE(r.last_seq, 0) AS last_reply_seq,
@@ -348,9 +349,12 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		var lastReplySeq int64
 		var lastReplySender *uuid.UUID
 		var lastReplyBody []byte
+		var deletedAt *time.Time
+		var deletedBy *uuid.UUID
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &senderDev, &senderUser,
 			&m.TS, &m.Seq, &m.Body, &m.KeyVersion,
+			&deletedAt, &deletedBy,
 			&parentID, &threadID, &replyCount, &lastReplySeq,
 			&lastReplySender, &lastReplyBody,
 		); err != nil {
@@ -368,6 +372,8 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		m.LastReplySeq = lastReplySeq
 		m.LastReplySenderUserID = lastReplySender
 		m.LastReplyBody = lastReplyBody
+		m.DeletedAt = deletedAt
+		m.DeletedBy = deletedBy
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {
@@ -405,6 +411,7 @@ func (s *Store) ListMessagesByThread(
 	rows, err := s.Pool.Query(ctx,
 		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
 		        m.ts, m.seq, m.body, m.key_version,
+		        m.deleted_at, m.deleted_by,
 		        m.parent_id, m.thread_id
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
@@ -425,9 +432,12 @@ func (s *Store) ListMessagesByThread(
 		var senderUser *uuid.UUID
 		var parentID *uuid.UUID
 		var tID *uuid.UUID
+		var deletedAt *time.Time
+		var deletedBy *uuid.UUID
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &senderDev, &senderUser,
 			&m.TS, &m.Seq, &m.Body, &m.KeyVersion,
+			&deletedAt, &deletedBy,
 			&parentID, &tID,
 		); err != nil {
 			return nil, err
@@ -440,6 +450,8 @@ func (s *Store) ListMessagesByThread(
 		}
 		m.ParentID = parentID
 		m.ThreadID = tID
+		m.DeletedAt = deletedAt
+		m.DeletedBy = deletedBy
 		out = append(out, m)
 	}
 	return out, rows.Err()

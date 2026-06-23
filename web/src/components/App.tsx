@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
+  TypeMessageDeleted,
   // Phase 11b-2: MLS welcome + commit_bundle
   // Phase 11c-2 PR 3: MLS commit broadcast + catchup
   TypeSend,
@@ -57,6 +58,7 @@ import {
   // Phase 9.7a:
   type PrefsAckPayload,
   type MessagePayload,
+  type MessageDeletedPayload,
   type SendPayload,
   type ChannelSummaryWire,
   type ListChannelsPayload,
@@ -81,6 +83,7 @@ import { initialState, selectChatPrefs, type AppState, type Message, type Channe
 import { StatusBar } from "./StatusBar";
 import { Sidebar } from "./Sidebar";
 import { MessageList } from "./MessageList";
+import { ConfirmModal } from "./ConfirmModal";
 import { Composer } from "./Composer";
 // Phase 11c-2 PR 4: member-management modal.
 import { ThreadPanel } from "./ThreadPanel";
@@ -116,7 +119,7 @@ import {
   digestToHex,
 } from "../crypto/safety-number";
 import type { MemberVerifyInfo } from "./MembersPanel";
-import { commitRotation, removeMember, addMember } from "../crypto/spacekey-sync";
+import { commitRotation, removeMember, addMember, deleteMessage } from "../crypto/spacekey-sync";
 import {
   ChannelCrypto,
   type ChannelKeyStatus,
@@ -189,6 +192,10 @@ function wireToMessage(w: MessagePayload): Message {
     // branch fills the parent's preview from the reply's own body).
     lastReplySenderUserID: w.last_reply_sender_user_id || undefined,
     lastReplyBody: w.last_reply_body || undefined,
+    // Phase 26 (governance prereq): tombstone fields from history fetches.
+    deleted: w.deleted || undefined,
+    deletedBy: w.deleted_by || undefined,
+    deletedAt: w.deleted_at ? new Date(w.deleted_at) : undefined,
   };
 }
 
@@ -541,8 +548,43 @@ export function App() {
     [state.activeChannelID, state.channels, refreshMemberKeyStatus],
   );
 
-  // Member removal catch-up: if the active channel is flagged rotation_pending
-  // and WE are the owner (the only one who can mint), auto-rotate. Covers the
+  // Phase 26 (governance prereq): owner-only message deletion. The hover
+  // "delete" control in MessageList stages a message here; the ConfirmModal
+  // confirms, then we fire delete_message. The server scrubs the body and
+  // pushes message_deleted to every member (including us), and the reducer
+  // tombstones the row. We do NOT optimistically tombstone: the round-trip is
+  // fast and waiting for the authoritative push keeps all clients in lockstep.
+  const [pendingDelete, setPendingDelete] = useState<Message | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
+  const onDeleteMessage = useCallback((m: Message) => {
+    setPendingDelete(m);
+  }, []);
+
+  const confirmDeleteMessage = useCallback(async () => {
+    const m = pendingDelete;
+    const cid = state.activeChannelID;
+    if (!m || !cid || !clientRef.current) {
+      setPendingDelete(null);
+      return;
+    }
+    setDeleteBusy(true);
+    try {
+      await deleteMessage(
+        { request: (t, p) => clientRef.current!.request(t, p) },
+        cid,
+        m.id,
+        m.ts.getTime(),
+      );
+    } catch (err) {
+      console.error("deleteMessage failed:", err);
+    } finally {
+      setDeleteBusy(false);
+      setPendingDelete(null);
+    }
+  }, [pendingDelete, state.activeChannelID]);
+
+
   // case where we were offline when the removal happened and missed the
   // rotate_needed push -- the durable flag closes the window on next open.
   useEffect(() => {
@@ -659,6 +701,9 @@ export function App() {
     const cc = ccRef.current;
     return Promise.all(
       msgs.map(async (m) => {
+        // Phase 26: deleted messages carry no decryptable body; render the
+        // tombstone placeholder and skip decryption entirely.
+        if (m.deleted) return { ...m, body: "[message deleted]" };
         if (!cc) return { ...m, body: "[encrypted message -- key not available yet]" };
         const body = await cc.decryptForChannel(m.channelID, m.keyVersion, m.body);
         return { ...m, body };
@@ -696,6 +741,18 @@ export function App() {
       }
 
 
+
+      case TypeMessageDeleted: {
+        const p = f.payload as MessageDeletedPayload;
+        dispatch({
+          kind: "message_deleted",
+          channelID: p.channel_id,
+          messageID: p.message_id,
+          deletedBy: p.deleted_by || undefined,
+          deletedAt: p.deleted_at ? new Date(p.deleted_at) : undefined,
+        });
+        break;
+      }
 
       // Phase 9.7a: preferences round-trip.
       case TypePrefsGetAck: {
@@ -1746,6 +1803,10 @@ export function App() {
               isDM={activeChannel.isDM}
               display={selectChatPrefs(state.prefs)}
               threadSeen={state.threadSeen}
+              canDeleteMessages={
+                !!state.user?.id && activeChannel.createdBy === state.user.id
+              }
+              onDeleteMessage={onDeleteMessage}
               onOpenThread={(parentID, threadID) => {
                 // Phase 10b: store the open thread on AppState. 10c
                 // will render a panel keyed off this. For now, the
@@ -1829,6 +1890,20 @@ export function App() {
           onSubmit={onCreateChannel}
         />
       )}
+
+      {/* Phase 26 (governance prereq): owner-only delete confirmation. */}
+      <ConfirmModal
+        open={pendingDelete !== null}
+        title="Delete message?"
+        body={
+          "This removes the message from the server for everyone. Anyone who already read it may still have a local copy."
+        }
+        confirmLabel="Delete"
+        danger
+        busy={deleteBusy}
+        onConfirm={confirmDeleteMessage}
+        onCancel={() => setPendingDelete(null)}
+      />
 
       {state.openPanel === "friends" && (
         <FriendsPanel

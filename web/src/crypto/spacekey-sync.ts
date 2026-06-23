@@ -31,6 +31,7 @@ const TYPE_FETCH_CHANNEL_KEY_RECIPIENTS = "fetch_channel_key_recipients";
 const TYPE_ROTATE_CHANNEL_KEY = "rotate_channel_key";
 const TYPE_REMOVE_MEMBER = "remove_member";
 const TYPE_ADD_MEMBER = "add_member";
+const TYPE_DELETE_MESSAGE = "delete_message";
 
 interface PublishChannelKeyPayload {
   channel_id: string;
@@ -221,5 +222,36 @@ export async function addMember(
   await ws.request<AddMemberPayload, AddMemberAck>(TYPE_ADD_MEMBER, {
     channel_id: channelID,
     target_id: targetID,
+  });
+}
+
+interface DeleteMessagePayload {
+  channel_id: string;
+  message_id: string;
+  ts: number;
+}
+interface DeleteMessageAck {
+  channel_id: string;
+  message_id: string;
+}
+
+/**
+ * deleteMessage asks the server to delete a message (governance prereq).
+ * Authz is server-enforced and dictator-style: ONLY the channel owner may
+ * delete. ts is the target message's server unix-millis. Resolves on ack
+ * (including the idempotent re-delete case); rejects with the server's error
+ * (e.g. delete_forbidden, message_not_found). The server scrubs the body and
+ * pushes message_deleted to every member so clients tombstone the row.
+ */
+export async function deleteMessage(
+  ws: ChannelKeyTransport,
+  channelID: string,
+  messageID: string,
+  ts: number,
+): Promise<void> {
+  await ws.request<DeleteMessagePayload, DeleteMessageAck>(TYPE_DELETE_MESSAGE, {
+    channel_id: channelID,
+    message_id: messageID,
+    ts,
   });
 }

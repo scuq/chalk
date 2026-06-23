@@ -7,6 +7,11 @@ import type { Action, AppState, Message } from "./types";
 // (used by the route_to_chat handler to reset the panel cleanly).
 import { initialAdminPanelState } from "./types";
 
+// Phase 26 (governance prereq): placeholder body shown for a deleted message.
+// Renderers key off Message.deleted for styling; this covers any path that
+// reads the body directly.
+const TOMBSTONE_BODY = "[message deleted]";
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.kind) {
     case "ws_state":
@@ -294,6 +299,55 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         messages: liveBumpMessages,
+        threadMessages: nextThreadMessages,
+      };
+    }
+
+    case "message_deleted": {
+      // Tombstone the message in place: keep it in the feed (so seq order and
+      // any thread hanging off it survive) but mark it deleted and replace the
+      // body with a placeholder. Applies to both the channel feed and the
+      // thread cache (a deleted reply tombstones inside its thread too).
+      const tombstone = (m: Message): Message =>
+        m.id === action.messageID
+          ? {
+              ...m,
+              deleted: true,
+              deletedBy: action.deletedBy,
+              deletedAt: action.deletedAt,
+              body: TOMBSTONE_BODY,
+              keyVersion: undefined,
+            }
+          : m;
+
+      const chanList = state.messages[action.channelID];
+      const nextMessages = chanList
+        ? { ...state.messages, [action.channelID]: chanList.map(tombstone) }
+        : state.messages;
+
+      // Thread cache: the deleted message might be a reply living under some
+      // thread id. We don't know which without scanning, so map every thread
+      // list (cheap: these are small per-thread arrays). Only the matching id
+      // changes; others return the same reference.
+      let nextThreadMessages = state.threadMessages;
+      let threadChanged = false;
+      const rewritten: Record<string, Message[]> = {};
+      for (const [tid, list] of Object.entries(state.threadMessages)) {
+        if (list.some((m) => m.id === action.messageID)) {
+          rewritten[tid] = list.map(tombstone);
+          threadChanged = true;
+        }
+      }
+      if (threadChanged) {
+        nextThreadMessages = { ...state.threadMessages, ...rewritten };
+      }
+
+      if (nextMessages === state.messages && !threadChanged) {
+        return state;
+      }
+      return {
+        ...state,
+        messages: nextMessages,
         threadMessages: nextThreadMessages,
       };
     }

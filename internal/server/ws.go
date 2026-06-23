@@ -498,6 +498,8 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleRemoveMember(ctx, c, conn, f)
 		case proto.TypeAddMember:
 			h.handleAddMember(ctx, c, conn, f)
+		case proto.TypeDeleteMessage:
+			h.handleDeleteMessage(ctx, c, conn, f)
 
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,
@@ -2922,5 +2924,123 @@ func (h *WSHandler) handleAddMember(
 		if perr := h.publishChannelEvent(ctx, m, channelID, "member_added", summary); perr != nil {
 			h.logger.Printf("publish member_added to %s: %v", m, perr)
 		}
+	}
+}
+
+// handleDeleteMessage soft-deletes a message (governance prerequisite).
+//
+// Authz: dictator-style -- ONLY the channel owner may delete. This is the
+// faithful "owner acts unilaterally" semantic; the democratic delete_message
+// proposal type wraps this same store primitive later. A non-owner (even the
+// message's own author) gets delete_forbidden in v1.
+//
+// On success: store.DeleteMessage scrubs the body server-side and stamps the
+// tombstone (deleted_at, deleted_by), then we push message_deleted on the
+// per-channel topic so every connected member tombstones the row locally. The
+// push gates on the DELETION time (handled listener-side via now()), not the
+// message's original ts, so members who connected long after the message was
+// sent still receive the tombstone.
+//
+// Idempotent: re-deleting an already-tombstoned message acks without a second
+// push (store returns ErrAlreadyDeleted).
+func (h *WSHandler) handleDeleteMessage(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.DeleteMessagePayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
+		return
+	}
+	messageID, err := uuid.Parse(p.MessageID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "message_id not a UUID")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+
+	// Owner-only authz (dictator-style). GetMemberRole also enforces
+	// membership: a non-member is ErrNotAMember, not "forbidden".
+	role, rErr := h.store.GetMemberRole(ctx, channelID, callerID)
+	if rErr != nil {
+		if errors.Is(rErr, store.ErrNotAMember) {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of channel")
+			return
+		}
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "role check: "+rErr.Error())
+		return
+	}
+	if role != "owner" {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeDeleteForbidden,
+			"only the channel owner may delete messages")
+		return
+	}
+
+	tsTime := time.UnixMilli(p.TS)
+	del, dErr := h.store.DeleteMessage(ctx, tsTime, messageID, channelID, callerID)
+	if dErr != nil {
+		switch {
+		case errors.Is(dErr, store.ErrAlreadyDeleted):
+			// Idempotent: already a tombstone. Ack success, skip the push.
+			ack, _ := proto.NewFrame(proto.TypeDeleteMessageAck, f.Ref, proto.DeleteMessageAckPayload{
+				ChannelID: p.ChannelID,
+				MessageID: p.MessageID,
+			})
+			data, _ := json.Marshal(ack)
+			_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+			return
+		case errors.Is(dErr, store.ErrMessageNotFound):
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeMessageNotFound, "message not found")
+			return
+		default:
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "delete message: "+dErr.Error())
+			return
+		}
+	}
+
+	ack, _ := proto.NewFrame(proto.TypeDeleteMessageAck, f.Ref, proto.DeleteMessageAckPayload{
+		ChannelID: p.ChannelID,
+		MessageID: p.MessageID,
+	})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+
+	// Publish the per-channel message_deleted push. The scrub is already
+	// committed (DeleteMessage ran its own tx), so the listener's GetMessage
+	// will see the tombstone. del.TS carries the FULL-precision ts the
+	// listener needs to re-fetch the row. SenderConnID is empty: we do NOT
+	// suppress the echo, so the deleter's own client also tombstones and
+	// every member converges on the same state.
+	if perr := pgxBegin(ctx, h.store, func(tx pgx.Tx) error {
+		ev := pubsub.Event{
+			Kind:       "message_deleted",
+			MessageID:  messageID,
+			TS:         del.TS,
+			ChannelID:  channelID,
+			InstanceID: h.instanceID,
+		}
+		return pubsub.PublishMessageWithTx(ctx, tx, ev)
+	}); perr != nil {
+		h.logger.Printf("publish message_deleted %s: %v", messageID, perr)
 	}
 }
