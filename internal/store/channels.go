@@ -592,6 +592,19 @@ func (s *Store) RemoveMember(ctx context.Context, channelID, targetID uuid.UUID)
 		if tag.RowsAffected() == 0 {
 			return ErrNotAMember
 		}
+		// Scrub the removed member's key wraps at ALL versions (not just the
+		// current one). Without this, their old-version wraps survive in
+		// channel_keys, and re-adding them later would silently restore read
+		// access to history from before their removal -- breaking forward-only
+		// access. (Forward secrecy of messages they already received is
+		// unrecoverable regardless; this removes server-held access going
+		// forward and on any future re-add.)
+		if _, err := tx.Exec(ctx,
+			`DELETE FROM channel_keys WHERE channel_id = $1 AND recipient_id = $2`,
+			channelID, targetID,
+		); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx,
 			`UPDATE channels SET rotation_pending = TRUE WHERE id = $1`, channelID,
 		); err != nil {
