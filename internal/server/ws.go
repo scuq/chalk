@@ -496,6 +496,8 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleRotateChannelKey(ctx, c, conn, f)
 		case proto.TypeRemoveMember:
 			h.handleRemoveMember(ctx, c, conn, f)
+		case proto.TypeAddMember:
+			h.handleAddMember(ctx, c, conn, f)
 
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,
@@ -2815,6 +2817,110 @@ func (h *WSHandler) handleRemoveMember(
 	if ch.CreatedBy != nil {
 		if perr := h.publishChannelEvent(ctx, *ch.CreatedBy, channelID, "rotate_needed", summary); perr != nil {
 			h.logger.Printf("publish rotate_needed to owner %s: %v", *ch.CreatedBy, perr)
+		}
+	}
+}
+
+// handleAddMember adds a member to a channel (add-member). Any existing member
+// may add (invite); the target must be a real user. DMs reject adds. The new
+// member does NOT get a key version bump -- a key holder wraps the CURRENT key
+// for them (client reshareKey), so they read from join-time forward.
+//
+// On success: push channel_event{kind="member_added"} to every member,
+// INCLUDING the new one (so their client learns about the channel) and the
+// existing members (so their rosters update and a key holder reshares the key).
+func (h *WSHandler) handleAddMember(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.AddMemberPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
+		return
+	}
+	targetID, err := uuid.Parse(p.TargetID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "target_id not a UUID")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+
+	isMember, mErr := h.store.IsMember(ctx, channelID, callerID)
+	if mErr != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership check: "+mErr.Error())
+		return
+	}
+	if !isMember {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of channel")
+		return
+	}
+
+	if _, uErr := h.store.GetUserByID(ctx, targetID); uErr != nil {
+		if errors.Is(uErr, store.ErrNotFound) {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "target user not found")
+			return
+		}
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "user lookup: "+uErr.Error())
+		return
+	}
+
+	if err := h.store.AddMember(ctx, channelID, targetID); err != nil {
+		switch {
+		case errors.Is(err, store.ErrDMNoAdd):
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeDMNoAdd, "cannot add members to a DM")
+		case errors.Is(err, store.ErrAlreadyMember):
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeAlreadyMember, "user is already a member")
+		case errors.Is(err, store.ErrChannelNotFound):
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeChannelNotFound, "channel not found")
+		default:
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "add member: "+err.Error())
+		}
+		return
+	}
+
+	ack, _ := proto.NewFrame(proto.TypeAddMemberAck, f.Ref, proto.AddMemberAckPayload{
+		ChannelID: p.ChannelID,
+		TargetID:  p.TargetID,
+	})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+
+	ch, gerr := h.store.GetChannel(ctx, channelID)
+	if gerr != nil {
+		return
+	}
+	members, lErr := h.store.ListMembersForChannel(ctx, channelID)
+	if lErr != nil {
+		return
+	}
+	summary := channelSummaryFromStore(
+		store.ChannelWithMembers{Channel: ch, MemberIDs: members},
+		nil,
+	)
+
+	for _, m := range members {
+		if perr := h.publishChannelEvent(ctx, m, channelID, "member_added", summary); perr != nil {
+			h.logger.Printf("publish member_added to %s: %v", m, perr)
 		}
 	}
 }

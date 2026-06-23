@@ -600,3 +600,50 @@ func (s *Store) RemoveMember(ctx context.Context, channelID, targetID uuid.UUID)
 		return nil
 	})
 }
+
+// ErrAlreadyMember is returned when adding a user who is already a member.
+var ErrAlreadyMember = errors.New("already a channel member")
+
+// ErrDMNoAdd is returned when an add targets a DM channel (DMs are fixed at 2
+// members; the cardinality trigger would reject the insert anyway).
+var ErrDMNoAdd = errors.New("cannot add members to a DM")
+
+// AddMember inserts (channelID, userID) into channel_members with role
+// "member". Rejects DMs (ErrDMNoAdd) and an existing member (ErrAlreadyMember).
+// Unlike removal, adding does NOT touch the key version: the new member gets the
+// CURRENT space key wrapped for them by a key holder (client reshareKey), so
+// they read from join-time forward; pre-join history stays opaque.
+func (s *Store) AddMember(ctx context.Context, channelID, userID uuid.UUID) error {
+	return s.withTx(ctx, func(tx pgx.Tx) error {
+		var isDM bool
+		if err := tx.QueryRow(ctx,
+			`SELECT is_dm FROM channels WHERE id = $1`, channelID,
+		).Scan(&isDM); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrChannelNotFound
+			}
+			return err
+		}
+		if isDM {
+			return ErrDMNoAdd
+		}
+		var exists bool
+		if err := tx.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM channel_members WHERE channel_id = $1 AND user_id = $2)`,
+			channelID, userID,
+		).Scan(&exists); err != nil {
+			return err
+		}
+		if exists {
+			return ErrAlreadyMember
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO channel_members (channel_id, user_id, role)
+			 VALUES ($1, $2, 'member')`,
+			channelID, userID,
+		); err != nil {
+			return err
+		}
+		return nil
+	})
+}

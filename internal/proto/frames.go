@@ -389,8 +389,11 @@ const (
 	ErrCodeCannotRemoveOwner = "cannot_remove_owner"
 	ErrCodeDMNoRemoval       = "dm_no_removal"
 	ErrCodeRemoveForbidden   = "remove_forbidden"
-	ErrCodeInvalidChannel    = "invalid_channel"
-	ErrCodeDMCardinality     = "dm_cardinality"
+	// Member add:
+	ErrCodeAlreadyMember  = "already_member"
+	ErrCodeDMNoAdd        = "dm_no_add"
+	ErrCodeInvalidChannel = "invalid_channel"
+	ErrCodeDMCardinality  = "dm_cardinality"
 )
 
 // ===== merged from frames_phase08b.go =====
@@ -491,6 +494,9 @@ const (
 	TypeRemoveMember    = "remove_member"
 	TypeRemoveMemberAck = "remove_member_ack"
 
+	TypeAddMember    = "add_member"
+	TypeAddMemberAck = "add_member_ack"
+
 	TypeFetchChannelKeyRecipients    = "fetch_channel_key_recipients"
 	TypeFetchChannelKeyRecipientsAck = "fetch_channel_key_recipients_ack"
 )
@@ -541,6 +547,20 @@ type RemoveMemberPayload struct {
 
 // RemoveMemberAckPayload confirms a removal.
 type RemoveMemberAckPayload struct {
+	ChannelID string `json:"channel_id"`
+	TargetID  string `json:"target_id"`
+}
+
+// AddMemberPayload adds target_id to a channel. Any member may add (invite); the
+// target must be a real user. DMs reject adds. The new member gets the current
+// key (forward-only access) via a key holder's reshare.
+type AddMemberPayload struct {
+	ChannelID string `json:"channel_id"`
+	TargetID  string `json:"target_id"`
+}
+
+// AddMemberAckPayload confirms an add.
+type AddMemberAckPayload struct {
 	ChannelID string `json:"channel_id"`
 	TargetID  string `json:"target_id"`
 }
