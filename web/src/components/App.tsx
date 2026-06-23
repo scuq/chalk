@@ -116,7 +116,7 @@ import {
   digestToHex,
 } from "../crypto/safety-number";
 import type { MemberVerifyInfo } from "./MembersPanel";
-import { commitRotation, removeMember } from "../crypto/spacekey-sync";
+import { commitRotation, removeMember, addMember } from "../crypto/spacekey-sync";
 import {
   ChannelCrypto,
   type ChannelKeyStatus,
@@ -514,6 +514,33 @@ export function App() {
     [state.activeChannelID, refreshMemberKeyStatus],
   );
 
+  // Add-member: invite a member (any member may add). The server adds them and
+  // pushes member_added to everyone; a key holder reshares the current key so
+  // the newcomer can read from now forward (handled in the event branch below).
+  const onAddMember = useCallback(
+    async (targetID: string, handle: string) => {
+      const cid = state.activeChannelID;
+      if (!cid || !clientRef.current) return;
+      try {
+        await addMember(
+          { request: (t, p) => clientRef.current!.request(t, p) },
+          cid,
+          targetID,
+        );
+        dispatch({ kind: "channel_member_added", channelID: cid, userID: targetID, handle });
+        if (ccRef.current) {
+          const ch = state.channels[cid];
+          const members = ch ? [...ch.memberIDs, targetID] : [targetID];
+          await ccRef.current.reshareKey(cid, members);
+        }
+        await refreshMemberKeyStatus();
+      } catch (err) {
+        console.error("addMember failed:", err);
+      }
+    },
+    [state.activeChannelID, state.channels, refreshMemberKeyStatus],
+  );
+
   // Member removal catch-up: if the active channel is flagged rotation_pending
   // and WE are the owner (the only one who can mint), auto-rotate. Covers the
   // case where we were offline when the removal happened and missed the
@@ -731,6 +758,45 @@ export function App() {
       }
       case TypeChannelEvent: {
         const p = f.payload as ChannelEventPayload;
+        if (p.kind === "member_added" && p.channel) {
+          // Add-member: update the roster from the summary. If WE hold the
+          // channel key, reshare it so the newcomer gets the current key
+          // (idempotent: skips members who already have a wrap). Any key holder
+          // doing this is safe and fixes the offline-inviter case.
+          const cid = p.channel.id;
+          const before = state.channels[cid];
+          const handles = new Map(
+            (p.channel.members ?? []).map((m) => [m.user_id, m.handle ?? ""]),
+          );
+          if (before) {
+            const known = new Set(before.memberIDs);
+            for (const id of p.channel.member_ids ?? []) {
+              if (!known.has(id)) {
+                dispatch({
+                  kind: "channel_member_added",
+                  channelID: cid,
+                  userID: id,
+                  handle: handles.get(id) ?? "",
+                });
+              }
+            }
+            if (ccRef.current) {
+              void ccRef.current
+                .reshareKey(cid, p.channel.member_ids ?? [])
+                .then(() => refreshMemberKeyStatus())
+                .catch((err) => console.error("reshare on member_added failed:", err));
+            }
+          } else {
+            dispatch({ kind: "channel_added", channel: wireToChannel(p.channel) });
+            if (clientRef.current && !subscribeSentRef.current.has(cid)) {
+              subscribeSentRef.current.add(cid);
+              clientRef.current.send<SubscribeChannelPayload>(TypeSubscribeChannel, {
+                channel_id: cid,
+              });
+            }
+          }
+          break;
+        }
         if (p.kind === "member_removed" && p.channel) {
           // Member removal: update the roster. If WE were removed, the reducer
           // drops the channel entirely. rotation_pending is reflected from the
@@ -1817,6 +1883,10 @@ export function App() {
           rotating={rotating}
           isDM={activeChannel.isDM}
           onRemoveMember={onRemoveMember}
+          addableFriends={state.friends.filter(
+            (fr) => !activeChannel.memberIDs.includes(fr.userID),
+          )}
+          onAddMember={onAddMember}
           verification={memberVerify}
           verificationLoading={verifyLoading}
           onMarkVerified={onMarkVerified}

@@ -30,6 +30,7 @@ const TYPE_FETCH_CHANNEL_KEY = "fetch_channel_key";
 const TYPE_FETCH_CHANNEL_KEY_RECIPIENTS = "fetch_channel_key_recipients";
 const TYPE_ROTATE_CHANNEL_KEY = "rotate_channel_key";
 const TYPE_REMOVE_MEMBER = "remove_member";
+const TYPE_ADD_MEMBER = "add_member";
 
 interface PublishChannelKeyPayload {
   channel_id: string;
@@ -192,6 +193,32 @@ export async function removeMember(
   targetID: string,
 ): Promise<void> {
   await ws.request<RemoveMemberPayload, RemoveMemberAck>(TYPE_REMOVE_MEMBER, {
+    channel_id: channelID,
+    target_id: targetID,
+  });
+}
+
+interface AddMemberPayload {
+  channel_id: string;
+  target_id: string;
+}
+interface AddMemberAck {
+  channel_id: string;
+  target_id: string;
+}
+
+/**
+ * addMember asks the server to add targetID to a channel (add-member). Any
+ * member may add (invite); the target must be a real user. Resolves on ack;
+ * rejects with the server's error (e.g. already_member, dm_no_add). The new
+ * member gets the CURRENT key via a key holder's reshare (forward-only access).
+ */
+export async function addMember(
+  ws: ChannelKeyTransport,
+  channelID: string,
+  targetID: string,
+): Promise<void> {
+  await ws.request<AddMemberPayload, AddMemberAck>(TYPE_ADD_MEMBER, {
     channel_id: channelID,
     target_id: targetID,
   });

@@ -22,7 +22,7 @@
 // member's safety number / verification state, and passes them in.
 
 import { useEffect, useState } from "preact/hooks";
-import type { ChannelMember } from "../state/types";
+import type { ChannelMember, Friend } from "../state/types";
 import type { VerificationState } from "../crypto/safety-number";
 
 export type MemberVerifyState = VerificationState | "no_identity";
@@ -49,6 +49,9 @@ interface Props {
   rotationPending: boolean;
   isDM: boolean;
   onRemoveMember: (userID: string) => void;
+  // add-member: friends not already in the channel + the add handler
+  addableFriends: Friend[];
+  onAddMember: (userID: string, handle: string) => void;
   // per-member verification (keyed by userID); 24b
   verification: Record<string, MemberVerifyInfo>;
   verificationLoading: boolean;
@@ -82,6 +85,8 @@ export function MembersPanel({
   rotationPending,
   isDM,
   onRemoveMember,
+  addableFriends,
+  onAddMember,
   verification,
   verificationLoading,
   onMarkVerified,
@@ -92,6 +97,8 @@ export function MembersPanel({
 }: Props) {
   // which member's verify view is open (null = the list)
   const [selected, setSelected] = useState<string | null>(null);
+  // add-member: whether the friend-picker is expanded
+  const [adding, setAdding] = useState(false);
   // verify-view local UI: numeric toggle + the inline confirm step
   const [showNumeric, setShowNumeric] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -254,6 +261,41 @@ export function MembersPanel({
                     );
                   })}
                 </ul>
+              )}
+              {!isDM && (
+                <div class="chalk-members-add">
+                  <button
+                    type="button"
+                    class="chalk-members-add-toggle"
+                    onClick={() => setAdding((v) => !v)}
+                  >
+                    {adding ? "cancel" : "+ add member"}
+                  </button>
+                  {adding && (
+                    <ul class="chalk-members-add-list">
+                      {addableFriends.length === 0 ? (
+                        <li class="chalk-members-add-empty">
+                          no friends left to add
+                        </li>
+                      ) : (
+                        addableFriends.map((fr) => (
+                          <li key={fr.userID}>
+                            <button
+                              type="button"
+                              class="chalk-members-add-friend"
+                              onClick={() => {
+                                onAddMember(fr.userID, fr.handle);
+                                setAdding(false);
+                              }}
+                            >
+                              {fr.handle || fr.userID}
+                            </button>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  )}
+                </div>
               )}
             </div>
 

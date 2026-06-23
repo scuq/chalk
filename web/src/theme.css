@@ -3287,3 +3287,53 @@ html, body {
   border-left: 2px solid var(--chalk-warn, #ffcc66);
   padding-left: 0.5rem;
 }
+
+/* -- Add member (friend-picker) ----------------------------------- */
+
+.chalk-members-add {
+  margin-top: 0.5rem;
+}
+.chalk-members-add-toggle {
+  width: 100%;
+  background: transparent;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  border: 1px dashed var(--chalk-border, #1f2a1f);
+  font-family: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 0.35rem 0.6rem;
+}
+.chalk-members-add-toggle:hover {
+  color: var(--chalk-fg, #c8ffc8);
+  border-color: var(--chalk-fg-dim, #5a8a5a);
+}
+.chalk-members-add-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  max-height: 9rem;
+  overflow-y: auto;
+}
+.chalk-members-add-list li {
+  margin: 0;
+}
+.chalk-members-add-friend {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--chalk-fg, #c8ffc8);
+  border: none;
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.3rem 0.5rem;
+}
+.chalk-members-add-friend:hover {
+  background: var(--chalk-row-hover, #14201410);
+  color: var(--chalk-accent, #8effa0);
+}
+.chalk-members-add-empty {
+  font-size: 0.78rem;
+  color: var(--chalk-fg-muted, #6a7a6a);
+  padding: 0.3rem 0.5rem;
+}
