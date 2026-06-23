@@ -190,6 +190,7 @@ export interface ChannelSummaryWire {
   member_ids: string[];
   members?: ChannelMemberWire[]; // phase 08c; optional for backward compat
   current_key_version?: number; // phase 25; absent from older servers -> 1
+  rotation_pending?: boolean; // member removal; absent from older servers -> false
 }
 
 export interface CreateChannelPayload {

@@ -45,6 +45,10 @@ interface Props {
   isCreator: boolean;
   currentKeyVersion: number;
   rotating: boolean;
+  // member removal
+  rotationPending: boolean;
+  isDM: boolean;
+  onRemoveMember: (userID: string) => void;
   // per-member verification (keyed by userID); 24b
   verification: Record<string, MemberVerifyInfo>;
   verificationLoading: boolean;
@@ -75,6 +79,9 @@ export function MembersPanel({
   isCreator,
   currentKeyVersion,
   rotating,
+  rotationPending,
+  isDM,
+  onRemoveMember,
   verification,
   verificationLoading,
   onMarkVerified,
@@ -229,6 +236,19 @@ export function MembersPanel({
                           >
                             {hasKey ? "has key" : "waiting"}
                           </span>
+                          {/* Member removal: owner can remove non-owner members
+                              (not on DMs, not the owner row). */}
+                          {isCreator && !isDM && !isYou && (
+                            <button
+                              type="button"
+                              class="chalk-members-remove"
+                              onClick={() => onRemoveMember(m.userID)}
+                              title="remove this member from the channel"
+                              aria-label="remove member"
+                            >
+                              ✕
+                            </button>
+                          )}
                         </span>
                       </li>
                     );
@@ -275,6 +295,30 @@ export function MembersPanel({
                   </button>
                   <span class="chalk-members-keyver">key v{currentKeyVersion}</span>
                 </div>
+              )}
+              {rotationPending && (
+                <div class="chalk-members-pending" title="a member was removed; the channel key is being rotated so they lose access to new messages">
+                  {rotating
+                    ? "rotating key..."
+                    : isCreator
+                      ? "key rotation pending"
+                      : "key rotation pending (owner will rotate)"}
+                </div>
+              )}
+              {!isDM && (
+                <button
+                  type="button"
+                  class="chalk-members-leave"
+                  onClick={() => ownUserID && onRemoveMember(ownUserID)}
+                  disabled={isCreator}
+                  title={
+                    isCreator
+                      ? "the owner can't leave their own channel"
+                      : "leave this channel"
+                  }
+                >
+                  leave channel
+                </button>
               )}
             </div>
           </>

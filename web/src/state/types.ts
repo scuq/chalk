@@ -74,6 +74,7 @@ export interface ChannelSummary {
   memberIDs: string[];
   members: ChannelMember[]; // phase 08c; empty when server didn't send any
   currentKeyVersion: number; // phase 25; the version new messages encrypt under
+  rotationPending: boolean; // member removal: a removal happened, key not yet rotated
 }
 
 export interface Friend {
@@ -450,6 +451,7 @@ export type Action =
   | { kind: "channel_added"; channel: ChannelSummary }
   | { kind: "channel_removed"; channelID: string }
   | { kind: "channel_key_version_updated"; channelID: string; currentKeyVersion: number }
+  | { kind: "channel_rotation_pending_set"; channelID: string; pending: boolean }
   // Phase 11c-2 PR 4: optimistic local updates on add/remove member.
   | { kind: "channel_member_added"; channelID: string; userID: string; handle: string }
   | { kind: "channel_member_removed"; channelID: string; userID: string }

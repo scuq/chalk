@@ -3247,3 +3247,43 @@ html, body {
   color: var(--chalk-fg-muted, #6a7a6a);
   white-space: nowrap;
 }
+
+/* -- Member removal (remove 'x' + leave + rotation pending) -------- */
+
+.chalk-members-remove {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-muted, #6a7a6a);
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  margin-left: 0.25rem;
+}
+.chalk-members-remove:hover {
+  color: var(--chalk-danger, #e66);
+}
+.chalk-members-leave {
+  margin-top: 0.5rem;
+  width: 100%;
+  background: transparent;
+  color: var(--chalk-fg-muted, #6a7a6a);
+  border: 1px solid var(--chalk-border, #1f2a1f);
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.35rem 0.6rem;
+}
+.chalk-members-leave:hover:not(:disabled) {
+  color: var(--chalk-danger, #e66);
+  border-color: var(--chalk-danger, #e66);
+}
+.chalk-members-leave:disabled { opacity: 0.4; cursor: default; }
+.chalk-members-pending {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--chalk-warn, #ffcc66);
+  border-left: 2px solid var(--chalk-warn, #ffcc66);
+  padding-left: 0.5rem;
+}

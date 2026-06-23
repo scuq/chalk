@@ -116,7 +116,7 @@ import {
   digestToHex,
 } from "../crypto/safety-number";
 import type { MemberVerifyInfo } from "./MembersPanel";
-import { commitRotation } from "../crypto/spacekey-sync";
+import { commitRotation, removeMember } from "../crypto/spacekey-sync";
 import {
   ChannelCrypto,
   type ChannelKeyStatus,
@@ -159,6 +159,7 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
       handle: m.handle ?? "",
     })),
     currentKeyVersion: w.current_key_version ?? 1,
+    rotationPending: w.rotation_pending ?? false,
   };
 }
 
@@ -434,22 +435,16 @@ export function App() {
     }
   }, [state.activeChannelID, state.channels, refreshMemberKeyStatus]);
 
-  // Phase 25-2: rotate the active channel's key (creator-only). Mint+wrap the
-  // new version for current members (ChannelCrypto), then commit the version
-  // bump on the server. The server pushes key_rotated to members so they
-  // re-sync. New sends then encrypt under the new version.
-  const onRotateKey = useCallback(async () => {
-    const cid = state.activeChannelID;
-    const ch = cid ? state.channels[cid] : undefined;
-    if (!cid || !ch || !ccRef.current || !clientRef.current) return;
-    const newVersion = ch.currentKeyVersion + 1;
-    setRotating(true);
-    try {
-      const ok = await ccRef.current.rotateChannelKey(cid, ch.memberIDs, newVersion);
-      if (!ok) {
-        console.error("rotateChannelKey refused (not a forward step or no key held)");
-        return;
-      }
+  // Phase 25-2 / removal: rotate a channel's key. Mint+wrap the new version for
+  // the given members (ChannelCrypto), then commit the version bump on the
+  // server. Shared by the manual rotate button, the rotate_needed push, and the
+  // rotation_pending catch-up. Only the owner (key holder) can actually rotate.
+  const rotateChannelKeyFor = useCallback(
+    async (cid: string, members: string[], currentVersion: number): Promise<boolean> => {
+      if (!ccRef.current || !clientRef.current) return false;
+      const newVersion = currentVersion + 1;
+      const ok = await ccRef.current.rotateChannelKey(cid, members, newVersion);
+      if (!ok) return false; // we don't hold the key / not a forward step
       const confirmed = await commitRotation(
         { request: (t, p) => clientRef.current!.request(t, p) },
         cid,
@@ -457,13 +452,80 @@ export function App() {
       );
       dispatch({ kind: "channel_key_version_updated", channelID: cid, currentKeyVersion: confirmed });
       ccRef.current.setCurrentKeyVersion(cid, confirmed);
+      return true;
+    },
+    [],
+  );
+
+  const onRotateKey = useCallback(async () => {
+    const cid = state.activeChannelID;
+    const ch = cid ? state.channels[cid] : undefined;
+    if (!cid || !ch) return;
+    setRotating(true);
+    try {
+      await rotateChannelKeyFor(cid, ch.memberIDs, ch.currentKeyVersion);
       await refreshMemberKeyStatus();
     } catch (err) {
       console.error("rotateChannelKey failed:", err);
     } finally {
       setRotating(false);
     }
-  }, [state.activeChannelID, state.channels, refreshMemberKeyStatus]);
+  }, [state.activeChannelID, state.channels, rotateChannelKeyFor, refreshMemberKeyStatus]);
+
+  // Member removal: remove a member (owner removes others; anyone removes self
+  // = leave). The server flags rotation_pending + prompts the owner to rotate.
+  const onRemoveMember = useCallback(
+    async (targetID: string) => {
+      const cid = state.activeChannelID;
+      if (!cid || !clientRef.current) return;
+      try {
+        await removeMember(
+          { request: (t, p) => clientRef.current!.request(t, p) },
+          cid,
+          targetID,
+        );
+        dispatch({ kind: "channel_member_removed", channelID: cid, userID: targetID });
+        dispatch({ kind: "channel_rotation_pending_set", channelID: cid, pending: true });
+        await refreshMemberKeyStatus();
+      } catch (err) {
+        console.error("removeMember failed:", err);
+      }
+    },
+    [state.activeChannelID, refreshMemberKeyStatus],
+  );
+
+  // Member removal catch-up: if the active channel is flagged rotation_pending
+  // and WE are the owner (the only one who can mint), auto-rotate. Covers the
+  // case where we were offline when the removal happened and missed the
+  // rotate_needed push -- the durable flag closes the window on next open.
+  useEffect(() => {
+    const cid = state.activeChannelID;
+    const ch = cid ? state.channels[cid] : undefined;
+    const myID = state.user?.id ?? null;
+    if (!cid || !ch || !ccRef.current) return;
+    if (!ch.rotationPending) return;
+    if (ch.createdBy !== myID) return; // only the owner rotates
+    if (keyStatus[cid] !== "ready") return; // need our key first
+    let cancelled = false;
+    (async () => {
+      try {
+        const ok = await rotateChannelKeyFor(cid, ch.memberIDs, ch.currentKeyVersion);
+        if (!cancelled && ok) await refreshMemberKeyStatus();
+      } catch (err) {
+        console.error("rotation_pending catch-up failed:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    state.activeChannelID,
+    state.channels,
+    state.user,
+    keyStatus,
+    rotateChannelKeyFor,
+    refreshMemberKeyStatus,
+  ]);
 
   // Phase 11b-2 fix5: WS callbacks (onFrame, etc.) capture the
   // handleFrame closure ONCE at WSClient construction, before
@@ -644,6 +706,40 @@ export function App() {
       }
       case TypeChannelEvent: {
         const p = f.payload as ChannelEventPayload;
+        if (p.kind === "member_removed" && p.channel) {
+          // Member removal: update the roster. If WE were removed, the reducer
+          // drops the channel entirely. rotation_pending is reflected from the
+          // summary so the panel can show it.
+          const cid = p.channel.id;
+          const before = state.channels[cid];
+          const after = new Set(p.channel.member_ids ?? []);
+          if (before) {
+            for (const id of before.memberIDs) {
+              if (!after.has(id)) {
+                dispatch({ kind: "channel_member_removed", channelID: cid, userID: id });
+              }
+            }
+          }
+          dispatch({
+            kind: "channel_rotation_pending_set",
+            channelID: cid,
+            pending: p.channel.rotation_pending ?? false,
+          });
+          break;
+        }
+        if (p.kind === "rotate_needed" && p.channel) {
+          // Member removal: the server is asking the owner to rotate (the removed
+          // member must lose access to future messages). Auto-rotate silently.
+          const cid = p.channel.id;
+          dispatch({ kind: "channel_rotation_pending_set", channelID: cid, pending: true });
+          const ch = state.channels[cid];
+          const members = ch ? ch.memberIDs : (p.channel.member_ids ?? []);
+          const curVer = ch ? ch.currentKeyVersion : (p.channel.current_key_version ?? 1);
+          void rotateChannelKeyFor(cid, members, curVer).catch((err) =>
+            console.error("auto-rotate on rotate_needed failed:", err),
+          );
+          break;
+        }
         if (p.kind === "key_rotated" && p.channel) {
           // Phase 25-2: the channel's key was rotated. Adopt the new version
           // (the summary carries it), tell ChannelCrypto, and re-ensure the key
@@ -1692,7 +1788,10 @@ export function App() {
             activeChannel.createdBy === (state.user?.id ?? null)
           }
           currentKeyVersion={activeChannel.currentKeyVersion}
+          rotationPending={activeChannel.rotationPending}
           rotating={rotating}
+          isDM={activeChannel.isDM}
+          onRemoveMember={onRemoveMember}
           verification={memberVerify}
           verificationLoading={verifyLoading}
           onMarkVerified={onMarkVerified}

@@ -83,15 +83,33 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case "channel_key_version_updated": {
       // Phase 25: a rotation advanced the channel's current key version. Update
-      // it (monotonic; ignore a stale lower value). New sends will encrypt
-      // under the new version once ChannelCrypto is told (App effect).
+      // it (monotonic; ignore a stale lower value). A completed rotation also
+      // clears rotation_pending (the removal's revocation is now in force).
       const ch = state.channels[action.channelID];
       if (!ch || action.currentKeyVersion <= ch.currentKeyVersion) return state;
       return {
         ...state,
         channels: {
           ...state.channels,
-          [action.channelID]: { ...ch, currentKeyVersion: action.currentKeyVersion },
+          [action.channelID]: {
+            ...ch,
+            currentKeyVersion: action.currentKeyVersion,
+            rotationPending: false,
+          },
+        },
+      };
+    }
+
+    case "channel_rotation_pending_set": {
+      // Member removal: the server flagged (or cleared) that this channel needs
+      // a key rotation. Surfaced in the members panel; the owner's client acts.
+      const ch = state.channels[action.channelID];
+      if (!ch || ch.rotationPending === action.pending) return state;
+      return {
+        ...state,
+        channels: {
+          ...state.channels,
+          [action.channelID]: { ...ch, rotationPending: action.pending },
         },
       };
     }

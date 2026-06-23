@@ -29,6 +29,7 @@ const TYPE_PUBLISH_CHANNEL_KEY = "publish_channel_key";
 const TYPE_FETCH_CHANNEL_KEY = "fetch_channel_key";
 const TYPE_FETCH_CHANNEL_KEY_RECIPIENTS = "fetch_channel_key_recipients";
 const TYPE_ROTATE_CHANNEL_KEY = "rotate_channel_key";
+const TYPE_REMOVE_MEMBER = "remove_member";
 
 interface PublishChannelKeyPayload {
   channel_id: string;
@@ -167,4 +168,31 @@ export async function commitRotation(
     { channel_id: channelID, new_version: newVersion },
   );
   return ack.current_key_version;
+}
+
+interface RemoveMemberPayload {
+  channel_id: string;
+  target_id: string;
+}
+interface RemoveMemberAck {
+  channel_id: string;
+  target_id: string;
+}
+
+/**
+ * removeMember asks the server to remove targetID from a channel (member
+ * removal + rotate-on-removal). Authz is server-enforced: the owner may remove
+ * any non-owner; a non-owner may remove only themselves (leave). Resolves on
+ * ack; rejects with the server's error (e.g. remove_forbidden, dm_no_removal).
+ * The server flags the channel rotation_pending and prompts the owner to rotate.
+ */
+export async function removeMember(
+  ws: ChannelKeyTransport,
+  channelID: string,
+  targetID: string,
+): Promise<void> {
+  await ws.request<RemoveMemberPayload, RemoveMemberAck>(TYPE_REMOVE_MEMBER, {
+    channel_id: channelID,
+    target_id: targetID,
+  });
 }
