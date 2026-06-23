@@ -2675,4 +2675,26 @@ func (h *WSHandler) handleRotateChannelKey(
 	})
 	data, _ := json.Marshal(ack)
 	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+
+	// Phase 25-2: push channel_event{kind="key_rotated"} to every member so
+	// non-rotator clients learn the new current_key_version promptly (the
+	// summary carries it) and re-sync their key, instead of lagging until the
+	// next list_channels. Best-effort: a failed push only delays a client until
+	// its next refetch; it never breaks correctness (the gate accepts older
+	// versions). Reuses the create-channel push path.
+	ch, gerr := h.store.GetChannel(ctx, channelID)
+	if gerr == nil {
+		memberIDs, merr := h.store.ListMembersForChannel(ctx, channelID)
+		if merr == nil {
+			summary := channelSummaryFromStore(
+				store.ChannelWithMembers{Channel: ch, MemberIDs: memberIDs},
+				nil, // handles tolerated nil
+			)
+			for _, m := range memberIDs {
+				if perr := h.publishChannelEvent(ctx, m, channelID, "key_rotated", summary); perr != nil {
+					h.logger.Printf("publish channel_event key_rotated to %s: %v", m, perr)
+				}
+			}
+		}
+	}
 }
