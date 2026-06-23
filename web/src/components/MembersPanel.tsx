@@ -41,11 +41,16 @@ interface Props {
   weHoldKey: boolean;
   loading: boolean;
   resharing: boolean;
+  // Phase 25-2: rotation (creator-only).
+  isCreator: boolean;
+  currentKeyVersion: number;
+  rotating: boolean;
   // per-member verification (keyed by userID); 24b
   verification: Record<string, MemberVerifyInfo>;
   verificationLoading: boolean;
   onMarkVerified: (userID: string) => void;
   onReshare: () => void;
+  onRotate: () => void;
   onRefresh: () => void;
   onClose: () => void;
 }
@@ -67,10 +72,14 @@ export function MembersPanel({
   weHoldKey,
   loading,
   resharing,
+  isCreator,
+  currentKeyVersion,
+  rotating,
   verification,
   verificationLoading,
   onMarkVerified,
   onReshare,
+  onRotate,
   onRefresh,
   onClose,
 }: Props) {
@@ -248,6 +257,24 @@ export function MembersPanel({
                 <span class="chalk-members-nokey">
                   you don't hold this channel's key yet
                 </span>
+              )}
+              {isCreator && (
+                <div class="chalk-members-rotate-row">
+                  <button
+                    type="button"
+                    class="chalk-members-rotate"
+                    onClick={onRotate}
+                    disabled={rotating || !weHoldKey}
+                    title={
+                      weHoldKey
+                        ? "mint a new channel key for the current members"
+                        : "you need the current key before you can rotate"
+                    }
+                  >
+                    {rotating ? "rotating..." : "rotate channel key"}
+                  </button>
+                  <span class="chalk-members-keyver">key v{currentKeyVersion}</span>
+                </div>
               )}
             </div>
           </>

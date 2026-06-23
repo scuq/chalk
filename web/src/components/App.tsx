@@ -116,6 +116,7 @@ import {
   digestToHex,
 } from "../crypto/safety-number";
 import type { MemberVerifyInfo } from "./MembersPanel";
+import { commitRotation } from "../crypto/spacekey-sync";
 import {
   ChannelCrypto,
   type ChannelKeyStatus,
@@ -157,6 +158,7 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
       userID: m.user_id,
       handle: m.handle ?? "",
     })),
+    currentKeyVersion: w.current_key_version ?? 1,
   };
 }
 
@@ -213,6 +215,7 @@ export function App() {
   >({});
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [resharing, setResharing] = useState(false);
+  const [rotating, setRotating] = useState(false);
 
   // Phase 22c-3c: identity gate. After the WS welcomes us we know the
   // userID; check whether this device already has the user's encryption
@@ -295,6 +298,9 @@ export function App() {
     let cancelled = false;
     (async () => {
       try {
+        // Phase 25: tell ChannelCrypto the channel's current key version (from
+        // the server) before ensuring the key, so new sends encrypt under it.
+        ccRef.current!.setCurrentKeyVersion(cid, ch.currentKeyVersion);
         const status = await ccRef.current!.ensureChannelKey(cid, ch.memberIDs, ch.createdBy);
         if (cancelled) return;
         setKeyStatus((s) => ({ ...s, [cid]: status }));
@@ -425,6 +431,37 @@ export function App() {
       console.error("reshareKey failed:", err);
     } finally {
       setResharing(false);
+    }
+  }, [state.activeChannelID, state.channels, refreshMemberKeyStatus]);
+
+  // Phase 25-2: rotate the active channel's key (creator-only). Mint+wrap the
+  // new version for current members (ChannelCrypto), then commit the version
+  // bump on the server. The server pushes key_rotated to members so they
+  // re-sync. New sends then encrypt under the new version.
+  const onRotateKey = useCallback(async () => {
+    const cid = state.activeChannelID;
+    const ch = cid ? state.channels[cid] : undefined;
+    if (!cid || !ch || !ccRef.current || !clientRef.current) return;
+    const newVersion = ch.currentKeyVersion + 1;
+    setRotating(true);
+    try {
+      const ok = await ccRef.current.rotateChannelKey(cid, ch.memberIDs, newVersion);
+      if (!ok) {
+        console.error("rotateChannelKey refused (not a forward step or no key held)");
+        return;
+      }
+      const confirmed = await commitRotation(
+        { request: (t, p) => clientRef.current!.request(t, p) },
+        cid,
+        newVersion,
+      );
+      dispatch({ kind: "channel_key_version_updated", channelID: cid, currentKeyVersion: confirmed });
+      ccRef.current.setCurrentKeyVersion(cid, confirmed);
+      await refreshMemberKeyStatus();
+    } catch (err) {
+      console.error("rotateChannelKey failed:", err);
+    } finally {
+      setRotating(false);
     }
   }, [state.activeChannelID, state.channels, refreshMemberKeyStatus]);
 
@@ -607,6 +644,25 @@ export function App() {
       }
       case TypeChannelEvent: {
         const p = f.payload as ChannelEventPayload;
+        if (p.kind === "key_rotated" && p.channel) {
+          // Phase 25-2: the channel's key was rotated. Adopt the new version
+          // (the summary carries it), tell ChannelCrypto, and re-ensure the key
+          // so we fetch our new-version wrap and encrypt under it going forward.
+          const cid = p.channel.id;
+          const newVer = p.channel.current_key_version ?? 1;
+          dispatch({ kind: "channel_key_version_updated", channelID: cid, currentKeyVersion: newVer });
+          if (ccRef.current) {
+            ccRef.current.setCurrentKeyVersion(cid, newVer);
+            const ch = state.channels[cid];
+            const members = ch ? ch.memberIDs : (p.channel.member_ids ?? []);
+            const createdBy = ch ? ch.createdBy : p.channel.created_by;
+            void ccRef.current
+              .ensureChannelKey(cid, members, createdBy)
+              .then((status) => setKeyStatus((s) => ({ ...s, [cid]: status })))
+              .catch((err) => console.error("post-rotation ensureChannelKey failed:", err));
+          }
+          break;
+        }
         if (p.kind === "added" && p.channel) {
           dispatch({ kind: "channel_added", channel: wireToChannel(p.channel) });
           const cid = p.channel.id;
@@ -1631,10 +1687,17 @@ export function App() {
           }
           loading={membersLoading}
           resharing={resharing}
+          isCreator={
+            activeChannel.createdBy != null &&
+            activeChannel.createdBy === (state.user?.id ?? null)
+          }
+          currentKeyVersion={activeChannel.currentKeyVersion}
+          rotating={rotating}
           verification={memberVerify}
           verificationLoading={verifyLoading}
           onMarkVerified={onMarkVerified}
           onReshare={onReshareKey}
+          onRotate={onRotateKey}
           onRefresh={() => {
             void refreshMemberKeyStatus();
             void refreshVerification();

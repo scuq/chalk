@@ -3216,3 +3216,34 @@ html, body {
   text-align: center;
   padding: 1rem 0;
 }
+
+/* -- Rotate channel key (phase 25-2) ------------------------------- */
+
+.chalk-members-rotate-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--chalk-border, #1f2a1f);
+}
+.chalk-members-rotate {
+  flex: 1;
+  background: transparent;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  border: 1px solid var(--chalk-border, #1f2a1f);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+}
+.chalk-members-rotate:hover:not(:disabled) {
+  color: var(--chalk-fg, #c8ffc8);
+  border-color: var(--chalk-fg-dim, #5a8a5a);
+}
+.chalk-members-rotate:disabled { opacity: 0.5; cursor: default; }
+.chalk-members-keyver {
+  font-size: 0.75rem;
+  color: var(--chalk-fg-muted, #6a7a6a);
+  white-space: nowrap;
+}

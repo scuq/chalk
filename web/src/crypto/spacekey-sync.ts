@@ -28,6 +28,7 @@ export interface ChannelKeyTransport {
 const TYPE_PUBLISH_CHANNEL_KEY = "publish_channel_key";
 const TYPE_FETCH_CHANNEL_KEY = "fetch_channel_key";
 const TYPE_FETCH_CHANNEL_KEY_RECIPIENTS = "fetch_channel_key_recipients";
+const TYPE_ROTATE_CHANNEL_KEY = "rotate_channel_key";
 
 interface PublishChannelKeyPayload {
   channel_id: string;
@@ -138,4 +139,32 @@ function base64ToBytes(b64: string): Uint8Array {
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
+}
+
+interface RotateChannelKeyPayload {
+  channel_id: string;
+  new_version: number;
+}
+interface RotateChannelKeyAck {
+  channel_id: string;
+  current_key_version: number;
+}
+
+/**
+ * commitRotation asks the server to advance a channel's current key version to
+ * newVersion (phase 25). Call this AFTER the new-version wraps have been
+ * uploaded via publishChannelKey (ChannelCrypto.rotateChannelKey does that).
+ * Resolves with the server's confirmed current version; rejects if the caller
+ * isn't the creator or newVersion isn't current+1.
+ */
+export async function commitRotation(
+  ws: ChannelKeyTransport,
+  channelID: string,
+  newVersion: number,
+): Promise<number> {
+  const ack = await ws.request<RotateChannelKeyPayload, RotateChannelKeyAck>(
+    TYPE_ROTATE_CHANNEL_KEY,
+    { channel_id: channelID, new_version: newVersion },
+  );
+  return ack.current_key_version;
 }

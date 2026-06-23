@@ -189,6 +189,7 @@ export interface ChannelSummaryWire {
   created_at: number; // unix-millis
   member_ids: string[];
   members?: ChannelMemberWire[]; // phase 08c; optional for backward compat
+  current_key_version?: number; // phase 25; absent from older servers -> 1
 }
 
 export interface CreateChannelPayload {

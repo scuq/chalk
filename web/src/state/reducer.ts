@@ -81,6 +81,21 @@ export function reducer(state: AppState, action: Action): AppState {
         activeChannelID: nextActive,
       };
     }
+    case "channel_key_version_updated": {
+      // Phase 25: a rotation advanced the channel's current key version. Update
+      // it (monotonic; ignore a stale lower value). New sends will encrypt
+      // under the new version once ChannelCrypto is told (App effect).
+      const ch = state.channels[action.channelID];
+      if (!ch || action.currentKeyVersion <= ch.currentKeyVersion) return state;
+      return {
+        ...state,
+        channels: {
+          ...state.channels,
+          [action.channelID]: { ...ch, currentKeyVersion: action.currentKeyVersion },
+        },
+      };
+    }
+
     case "channel_added": {
       const ch = action.channel;
       if (state.channels[ch.id]) {
