@@ -340,3 +340,96 @@ export interface MessageDeletedPayload {
   deleted_by?: string;
   deleted_at?: number;
 }
+
+// ---- gov-2: governance (mode + proposal lifecycle) -----------------
+//
+// Wire types mirroring internal/proto/governance.go. gov-2-1 wires the client
+// to receive governance_event pushes and surface the channel's mode; the
+// proposals panel and the propose/vote/cancel send-paths land in gov-2-2.
+
+export const TypeGovSetMode = "gov_set_mode";
+export const TypeGovSetModeAck = "gov_set_mode_ack";
+export const TypeGovPropose = "gov_propose";
+export const TypeGovProposeAck = "gov_propose_ack";
+export const TypeGovVote = "gov_vote";
+export const TypeGovVoteAck = "gov_vote_ack";
+export const TypeGovCancel = "gov_cancel";
+export const TypeGovCancelAck = "gov_cancel_ack";
+export const TypeGovList = "gov_list_proposals";
+export const TypeGovListAck = "gov_list_proposals_ack";
+export const TypeGovernanceEvent = "governance_event";
+
+// governance_event sub-kinds (GovernanceEventPayload.kind).
+export const GovEventModeChanged = "mode_changed";
+export const GovEventProposalOpened = "proposal_opened";
+export const GovEventProposalUpdated = "proposal_updated";
+export const GovEventProposalResolved = "proposal_resolved";
+
+export type GovernanceMode = "dictator" | "democratic";
+
+// ProposalViewWire: counts-only tally (per-voter ballots are never shipped,
+// H7). your_vote is filled for the caller in a list ack; empty in broadcast
+// pushes (clients track their own vote from the vote ack).
+export interface ProposalViewWire {
+  id: string;
+  channel_id: string;
+  type: string;
+  target_id?: string;
+  payload?: unknown;
+  created_by: string;
+  created_at: string; // RFC3339
+  expires_at: string; // RFC3339
+  status: string;
+  eligible: number;
+  yes: number;
+  no: number;
+  voted: number;
+  your_vote?: string; // "yes" | "no" | ""
+}
+
+export interface GovSetModePayload {
+  channel_id: string;
+  mode: string;
+}
+export interface GovSetModeAckPayload {
+  channel_id: string;
+  mode: string;
+}
+export interface GovProposePayload {
+  channel_id: string;
+  type: string;
+  target_id?: string;
+  payload?: unknown;
+}
+export interface GovProposeAckPayload {
+  proposal: ProposalViewWire;
+}
+export interface GovVotePayload {
+  proposal_id: string;
+  vote: string;
+}
+export interface GovVoteAckPayload {
+  proposal_id: string;
+  vote: string;
+}
+export interface GovCancelPayload {
+  proposal_id: string;
+}
+export interface GovCancelAckPayload {
+  proposal_id: string;
+}
+export interface GovListPayload {
+  channel_id: string;
+  include_resolved?: boolean;
+}
+export interface GovListAckPayload {
+  channel_id: string;
+  proposals: ProposalViewWire[];
+}
+
+export interface GovernanceEventPayload {
+  kind: string;
+  channel_id: string;
+  mode?: string;
+  proposal?: ProposalViewWire;
+}

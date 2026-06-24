@@ -82,6 +82,27 @@ export interface ChannelSummary {
   members: ChannelMember[]; // phase 08c; empty when server didn't send any
   currentKeyVersion: number; // phase 25; the version new messages encrypt under
   rotationPending: boolean; // member removal: a removal happened, key not yet rotated
+  governanceMode: string; // gov-2; "dictator" | "democratic" (default "dictator")
+}
+
+// gov-2: a governance proposal as the client tracks it. Counts-only tally
+// (per-voter ballots are never shipped, H7); yourVote is the caller's own
+// ballot ("yes" | "no" | "").
+export interface ProposalView {
+  id: string;
+  channelID: string;
+  type: string;
+  targetID: string;
+  payload?: unknown;
+  createdBy: string;
+  createdAt: Date;
+  expiresAt: Date;
+  status: string;
+  eligible: number;
+  yes: number;
+  no: number;
+  voted: number;
+  yourVote: string;
 }
 
 export interface Friend {
@@ -192,6 +213,9 @@ export interface AppState {
   // Messages, per channel. Missing key means "history not yet fetched."
   messages: Record<string, Message[]>; // by channel id
   historyLoaded: Record<string, boolean>; // per-channel
+
+  // gov-2: governance proposals by channel id (open + recently resolved).
+  proposals: Record<string, ProposalView[]>;
 
   // Friends, fetched lazily when the create-channel modal opens.
   friends: Friend[];
@@ -395,6 +419,7 @@ export const initialState: AppState = {
   activeChannelID: null,
   messages: {},
   historyLoaded: {},
+  proposals: {},
   friends: [],
   friendsLoaded: false,
   // Phase 9.6a:
@@ -568,6 +593,12 @@ export type Action =
   // ---- Phase 10d: unread tracking ------------------------------------
   | { kind: "thread_seen_bump"; threadID: string; seq: number }
   | { kind: "thread_seen_init"; seen: Record<string, number> }
+  // ---- gov-2: governance ---------------------------------------------
+  | { kind: "governance_mode_changed"; channelID: string; mode: string }
+  | { kind: "proposals_loaded"; channelID: string; proposals: ProposalView[] }
+  | { kind: "proposal_opened"; channelID: string; proposal: ProposalView }
+  | { kind: "proposal_updated"; channelID: string; proposal: ProposalView }
+  | { kind: "proposal_resolved"; channelID: string; proposal: ProposalView }
   | AuthAction;
 
 // Phase 10b: resolve the thread head's id from any message in (or

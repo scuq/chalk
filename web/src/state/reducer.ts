@@ -200,6 +200,42 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     }
 
+    // ---- gov-2: governance ---------------------------------------------
+    case "governance_mode_changed": {
+      const ch = state.channels[action.channelID];
+      if (!ch) return state;
+      return {
+        ...state,
+        channels: {
+          ...state.channels,
+          [action.channelID]: { ...ch, governanceMode: action.mode },
+        },
+      };
+    }
+
+    case "proposals_loaded": {
+      return {
+        ...state,
+        proposals: { ...state.proposals, [action.channelID]: action.proposals },
+      };
+    }
+
+    // opened / updated / resolved all upsert the proposal's latest state by id;
+    // the panel filters open vs resolved by status.
+    case "proposal_opened":
+    case "proposal_updated":
+    case "proposal_resolved": {
+      const list = state.proposals[action.channelID] ?? [];
+      const exists = list.some((p) => p.id === action.proposal.id);
+      const next = exists
+        ? list.map((p) => (p.id === action.proposal.id ? action.proposal : p))
+        : [action.proposal, ...list];
+      return {
+        ...state,
+        proposals: { ...state.proposals, [action.channelID]: next },
+      };
+    }
+
     case "set_active_channel":
       // No-op if same. Switching to a channel triggers fetch_history
       // via a useEffect in App.tsx; reducer stays pure.

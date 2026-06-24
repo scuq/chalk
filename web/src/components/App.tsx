@@ -59,6 +59,14 @@ import {
   type PrefsAckPayload,
   type MessagePayload,
   type MessageDeletedPayload,
+  // gov-2:
+  TypeGovernanceEvent,
+  GovEventModeChanged,
+  GovEventProposalOpened,
+  GovEventProposalUpdated,
+  GovEventProposalResolved,
+  type GovernanceEventPayload,
+  type ProposalViewWire,
   type SendPayload,
   type ChannelSummaryWire,
   type ListChannelsPayload,
@@ -79,7 +87,7 @@ import {
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId, getThreadSeen, setThreadSeen } from "../ws-client";
 import { reducer } from "../state/reducer";
-import { initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary } from "../state/types";
+import { initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary, type ProposalView } from "../state/types";
 import { StatusBar } from "./StatusBar";
 import { Sidebar } from "./Sidebar";
 import { MessageList } from "./MessageList";
@@ -125,6 +133,7 @@ import {
   type ChannelKeyStatus,
 } from "../crypto/channel-crypto";
 import { EncryptionIndicator } from "./EncryptionIndicator";
+import { ModeBadge } from "./ModeBadge";
 import {
   logout as logoutAPI,
   fetchMe,
@@ -163,6 +172,27 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
     })),
     currentKeyVersion: w.current_key_version ?? 1,
     rotationPending: w.rotation_pending ?? false,
+    governanceMode: w.governance_mode ?? "dictator",
+  };
+}
+
+// gov-2: map a wire proposal view into the client shape (RFC3339 -> Date).
+function wireToProposal(w: ProposalViewWire): ProposalView {
+  return {
+    id: w.id,
+    channelID: w.channel_id,
+    type: w.type,
+    targetID: w.target_id ?? "",
+    payload: w.payload,
+    createdBy: w.created_by,
+    createdAt: new Date(w.created_at),
+    expiresAt: new Date(w.expires_at),
+    status: w.status,
+    eligible: w.eligible,
+    yes: w.yes,
+    no: w.no,
+    voted: w.voted,
+    yourVote: w.your_vote ?? "",
   };
 }
 
@@ -751,6 +781,33 @@ export function App() {
           deletedBy: p.deleted_by || undefined,
           deletedAt: p.deleted_at ? new Date(p.deleted_at) : undefined,
         });
+        break;
+      }
+
+      // gov-2: governance pushes -- mode change + proposal lifecycle.
+      case TypeGovernanceEvent: {
+        const p = f.payload as GovernanceEventPayload;
+        switch (p.kind) {
+          case GovEventModeChanged:
+            dispatch({
+              kind: "governance_mode_changed",
+              channelID: p.channel_id,
+              mode: p.mode ?? "dictator",
+            });
+            break;
+          case GovEventProposalOpened:
+            if (p.proposal)
+              dispatch({ kind: "proposal_opened", channelID: p.channel_id, proposal: wireToProposal(p.proposal) });
+            break;
+          case GovEventProposalUpdated:
+            if (p.proposal)
+              dispatch({ kind: "proposal_updated", channelID: p.channel_id, proposal: wireToProposal(p.proposal) });
+            break;
+          case GovEventProposalResolved:
+            if (p.proposal)
+              dispatch({ kind: "proposal_resolved", channelID: p.channel_id, proposal: wireToProposal(p.proposal) });
+            break;
+        }
         break;
       }
 
@@ -1788,6 +1845,7 @@ export function App() {
                 {displayName(activeChannel, state.user?.id ?? null)}
               </span>
               {activeChannel.isDM && <span class="chalk-channel-header-tag">dm</span>}
+              <ModeBadge mode={activeChannel.governanceMode} />
               <EncryptionIndicator
                 status={
                   state.activeChannelID ? keyStatus[state.activeChannelID] : undefined
