@@ -80,6 +80,11 @@ type WSHandler struct {
 	// handleSubscribeChannel; drained by releaseConnSubs at disconnect.
 	// See ws_phase08b.go for the helpers.
 	connSubs sync.Map
+
+	// gov-1b-2: per-instance in-flight set of proposals currently being
+	// resolved, to collapse concurrent dispatch of the same proposal. Keyed
+	// by uuid.UUID. Zero-value ready.
+	resolving sync.Map
 }
 
 // NewWSHandler constructs a handler. Phase 06 adds the presence/friends
@@ -2783,6 +2788,19 @@ func (h *WSHandler) handleRemoveMember(
 		return
 	}
 
+	// gov-1b-2: in democratic mode, removing ANOTHER member is a privileged
+	// action that must go through a proposal. Self-leave (caller == target) is
+	// always allowed. A failed governance read falls through to the existing
+	// dictator-style behavior.
+	if callerID != targetID {
+		if gov, gErr := h.store.GetChannelGovernance(ctx, channelID); gErr == nil &&
+			gov.Mode == store.GovernanceModeDemocratic {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnilateralForbidden,
+				"channel is in democratic mode; removing another member requires a proposal")
+			return
+		}
+	}
+
 	if err := h.store.RemoveMember(ctx, channelID, targetID); err != nil {
 		switch {
 		case errors.Is(err, store.ErrDMNoRemoval):
@@ -2886,6 +2904,14 @@ func (h *WSHandler) handleAddMember(
 	}
 	if !isMember {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of channel")
+		return
+	}
+
+	// gov-1b-2: in democratic mode, adding a member must go through a proposal.
+	if gov, gErr := h.store.GetChannelGovernance(ctx, channelID); gErr == nil &&
+		gov.Mode == store.GovernanceModeDemocratic {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeUnilateralForbidden,
+			"channel is in democratic mode; adding a member requires a proposal")
 		return
 	}
 
@@ -3005,6 +3031,15 @@ func (h *WSHandler) handleDeleteMessage(
 	if role != "owner" {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeDeleteForbidden,
 			"only the channel owner may delete messages")
+		return
+	}
+
+	// gov-1b-2: in democratic mode, deleting a message must go through a
+	// proposal.
+	if gov, gErr := h.store.GetChannelGovernance(ctx, channelID); gErr == nil &&
+		gov.Mode == store.GovernanceModeDemocratic {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeUnilateralForbidden,
+			"channel is in democratic mode; deleting a message requires a proposal")
 		return
 	}
 

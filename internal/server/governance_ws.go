@@ -179,7 +179,7 @@ func (h *WSHandler) handleGovSetMode(ctx context.Context, c *websocket.Conn, con
 	if gov.Mode != mode {
 		if gov.Mode == store.GovernanceModeDemocratic && mode == store.GovernanceModeDictator {
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeModeChangeForbidden,
-				"democratic->dictator requires a set_mode proposal (arrives in gov-1b-2)")
+				`democratic->dictator requires a gov_propose {type:"set_mode", payload:{"mode":"dictator"}} (supermajority)`)
 			return
 		}
 		// dictator -> democratic: unilateral.
@@ -300,6 +300,44 @@ func (h *WSHandler) handlePropose(ctx context.Context, c *websocket.Conn, conn *
 			return
 		}
 		targetPtr = &targetID
+	case store.ProposalTypeDeleteMessage:
+		msgID, perr := uuid.Parse(p.TargetID)
+		if perr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeProposalBadTarget, "delete_message requires a target_id (message id)")
+			return
+		}
+		var dm struct {
+			TS int64 `json:"ts"`
+		}
+		if jErr := json.Unmarshal(p.Payload, &dm); jErr != nil || dm.TS == 0 {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeProposalBadTarget, "delete_message requires payload.ts (unix-millis)")
+			return
+		}
+		targetPtr = &msgID
+	case store.ProposalTypeSetMode:
+		// Only the democratic->dictator ratchet is proposable. Requires the
+		// original creator to still be present (ownership reverts to them).
+		var sm struct {
+			Mode string `json:"mode"`
+		}
+		if jErr := json.Unmarshal(p.Payload, &sm); jErr != nil || sm.Mode != store.GovernanceModeDictator {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeProposalBadTarget, `set_mode proposals must carry payload {"mode":"dictator"}`)
+			return
+		}
+		ch, chErr := h.store.GetChannel(ctx, channelID)
+		if chErr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeChannelNotFound, "channel not found")
+			return
+		}
+		if ch.CreatedBy == nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeProposalBadTarget, "channel has no original creator to revert ownership to")
+			return
+		}
+		if ok, mErr := h.store.IsMember(ctx, channelID, *ch.CreatedBy); mErr != nil || !ok {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeProposalBadTarget, "the original creator is no longer a member")
+			return
+		}
+		targetPtr = nil
 	default:
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeProposalForbidden,
 			"unsupported proposal type in gov-1b-1 (remove_member, add_member only)")
@@ -417,28 +455,10 @@ func (h *WSHandler) handleVote(ctx context.Context, c *websocket.Conn, conn *Con
 		return
 	}
 
-	// Locked pass/fail -> resolve to status. gov-1b-1 does NOT execute the
-	// action; that dispatch (RemoveMember / AddMember / ...) is gov-1b-2.
-	status := store.ProposalStatusPassed
-	if res.Decision == store.DecisionFail {
-		status = store.ProposalStatusFailed
-	}
-	if mErr := h.store.MarkProposalResolved(ctx, proposalID, status); mErr != nil {
-		if !errors.Is(mErr, store.ErrProposalClosed) {
-			h.logger.Printf("gov: resolve %s: %v", proposalID, mErr)
-		}
-	}
-	h.logger.Printf("gov: proposal %s resolved %s (action execution arrives in gov-1b-2)", proposalID, status)
-	view, vErr := h.buildProposalView(ctx, proposalID, uuid.Nil)
-	if vErr != nil {
-		h.logger.Printf("gov: view %s: %v", proposalID, vErr)
-		return
-	}
-	h.pushGovToMembers(ctx, pr.ChannelID, proto.GovEventProposalResolved, proto.GovernanceEventPayload{
-		Kind:      proto.GovEventProposalResolved,
-		ChannelID: pr.ChannelID.String(),
-		Proposal:  &view,
-	})
+	// Locked pass/fail -> resolve and (on pass) execute the action. gov-1b-2
+	// wires the dispatch; resolveAndDispatch claims the resolution, runs the
+	// store primitive with an H3 re-check, and pushes proposal_resolved.
+	h.resolveAndDispatch(ctx, pr, res.Decision)
 }
 
 // ---- gov_cancel ------------------------------------------------------------

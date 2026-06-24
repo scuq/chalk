@@ -56,10 +56,11 @@ const (
 	ErrCodeNotEligible         = "not_eligible"          // voter not in the frozen snapshot
 	ErrCodeProposalClosed      = "proposal_closed"       // not open (already resolved)
 	ErrCodeProposalNotFound    = "proposal_not_found"
-	ErrCodeBadVote             = "bad_vote"            // vote not yes|no
-	ErrCodeCancelForbidden     = "cancel_forbidden"    // not the author or owner
-	ErrCodeProposalForbidden   = "proposal_forbidden"  // unsupported proposal type in this slice
-	ErrCodeProposalBadTarget   = "proposal_bad_target" // target missing/invalid for the type
+	ErrCodeBadVote             = "bad_vote"             // vote not yes|no
+	ErrCodeCancelForbidden     = "cancel_forbidden"     // not the author or owner
+	ErrCodeProposalForbidden   = "proposal_forbidden"   // unsupported proposal type in this slice
+	ErrCodeProposalBadTarget   = "proposal_bad_target"  // target missing/invalid for the type
+	ErrCodeUnilateralForbidden = "unilateral_forbidden" // democratic mode: action requires a proposal
 )
 
 // ProposalView is the wire shape of a proposal: its identity plus the aggregate

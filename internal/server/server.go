@@ -76,6 +76,10 @@ type Server struct {
 
 	pubsub *pubsub.Listener
 
+	// gov-1b-2: the WS handler singleton, retained so the governance expiry
+	// sweeper (a background loop) can reuse its dispatch + push helpers.
+	wsh *WSHandler
+
 	presence *presence.Store
 	friends  *friends.Store
 	loopCfg  presence.LoopConfig
@@ -133,13 +137,15 @@ func NewServer(opts Options) (*Server, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
-	mux.Handle("GET /ws", NewWSHandler(
+	wsh := NewWSHandler(
 		s.hub, s.store, opts.WSConfig, s.instanceID, s.logger,
 		opts.Presence, opts.Friends,
 		pubPresence, pubFriend,
 		s.publishPrefsChangeFn, // Phase 9.7a
 		s.pubsub,               // phase 08: listener for per-channel subscribe
-	))
+	)
+	s.wsh = wsh // gov-1b-2: retained for the governance sweeper
+	mux.Handle("GET /ws", wsh)
 
 	// Phase 09b sub-step 3: registration endpoints. Mounted before
 	// the SPA's "/" catch-all (http.ServeMux's longest-prefix-wins
@@ -228,6 +234,16 @@ func (s *Server) Serve(ctx context.Context) error {
 		go func() {
 			defer wg.Done()
 			s.store.PartitionMaintenanceLoop(bgCtx, 24*time.Hour, s.logger.Printf)
+		}()
+	}
+
+	// gov-1b-2: governance expiry sweeper. Resolves proposals whose voting
+	// window closed without an early lock.
+	if s.store != nil && s.wsh != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.wsh.runGovernanceSweeper(bgCtx, time.Hour)
 		}()
 	}
 
