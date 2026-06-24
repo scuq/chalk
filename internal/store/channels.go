@@ -324,7 +324,8 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		        COALESCE(r.cnt, 0) AS reply_count,
 		        COALESCE(r.last_seq, 0) AS last_reply_seq,
 		        lr_dev.user_id   AS last_reply_sender_user_id,
-		        lr.body          AS last_reply_body
+		        lr.body          AS last_reply_body,
+		        lr.key_version   AS last_reply_key_version
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
 		   LEFT JOIN (
@@ -364,6 +365,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		var lastReplySeq int64
 		var lastReplySender *uuid.UUID
 		var lastReplyBody []byte
+		var lastReplyKeyVersion *int
 		var deletedAt *time.Time
 		var deletedBy *uuid.UUID
 		if err := rows.Scan(
@@ -371,7 +373,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 			&m.TS, &m.Seq, &m.Body, &m.KeyVersion,
 			&deletedAt, &deletedBy,
 			&parentID, &threadID, &replyCount, &lastReplySeq,
-			&lastReplySender, &lastReplyBody,
+			&lastReplySender, &lastReplyBody, &lastReplyKeyVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -387,6 +389,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		m.LastReplySeq = lastReplySeq
 		m.LastReplySenderUserID = lastReplySender
 		m.LastReplyBody = lastReplyBody
+		m.LastReplyKeyVersion = lastReplyKeyVersion
 		m.DeletedAt = deletedAt
 		m.DeletedBy = deletedBy
 		out = append(out, m)

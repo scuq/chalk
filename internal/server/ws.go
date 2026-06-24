@@ -1831,6 +1831,7 @@ func (h *WSHandler) handleFetchHistory(
 			LastReplySeq:          m.LastReplySeq,
 			LastReplySenderUserID: lastReplySender,
 			LastReplyBody:         string(m.LastReplyBody),
+			LastReplyKeyVersion:   m.LastReplyKeyVersion,
 			KeyVersion:            m.KeyVersion,
 		})
 	}

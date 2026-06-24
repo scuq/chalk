@@ -195,6 +195,7 @@ type MessagePayload struct {
 	// been purged).
 	LastReplySenderUserID string `json:"last_reply_sender_user_id,omitempty"`
 	LastReplyBody         string `json:"last_reply_body,omitempty"`
+	LastReplyKeyVersion   *int   `json:"last_reply_key_version,omitempty"`
 	// Phase 26 (governance prereq): soft-delete tombstone. When Deleted is
 	// true the message has been deleted; Body is empty and KeyVersion is nil,
 	// so clients render a "message deleted" placeholder and skip decryption.

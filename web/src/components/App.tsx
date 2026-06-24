@@ -232,6 +232,7 @@ function wireToMessage(w: MessagePayload): Message {
     // branch fills the parent's preview from the reply's own body).
     lastReplySenderUserID: w.last_reply_sender_user_id || undefined,
     lastReplyBody: w.last_reply_body || undefined,
+    lastReplyKeyVersion: w.last_reply_key_version ?? undefined,
     // Phase 26 (governance prereq): tombstone fields from history fetches.
     deleted: w.deleted || undefined,
     deletedBy: w.deleted_by || undefined,
@@ -815,7 +816,17 @@ export function App() {
         if (m.deleted) return { ...m, body: "[message deleted]" };
         if (!cc) return { ...m, body: "[encrypted message -- key not available yet]" };
         const body = await cc.decryptForChannel(m.channelID, m.keyVersion, m.body);
-        return { ...m, body };
+        // Decrypt the thread last-reply preview too (it's separate ciphertext
+        // with its own key version), so the preview shows plaintext, not base64.
+        let lastReplyBody = m.lastReplyBody;
+        if (lastReplyBody) {
+          lastReplyBody = await cc.decryptForChannel(
+            m.channelID,
+            m.lastReplyKeyVersion,
+            lastReplyBody,
+          );
+        }
+        return { ...m, body, lastReplyBody };
       }),
     );
   }

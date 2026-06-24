@@ -50,6 +50,10 @@ type Message struct {
 	// got stored.
 	LastReplySenderUserID *uuid.UUID
 	LastReplyBody         []byte
+	// Phase 23d: the last reply's message-suite key version, so the client can
+	// decrypt the thread preview the same way it decrypts the main feed. nil =
+	// legacy/none.
+	LastReplyKeyVersion *int
 	// Phase 26 (governance prereq): soft-delete tombstone. DeletedAt is
 	// non-nil once a message has been deleted (the scrub time); the body is
 	// then an empty bytea and KeyVersion is nil. DeletedBy is the user_id

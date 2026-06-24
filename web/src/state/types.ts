@@ -57,6 +57,7 @@ export interface Message {
   // Phase 10e: preview of the most recent reply.
   lastReplySenderUserID?: string;
   lastReplyBody?: string;
+  lastReplyKeyVersion?: number;
   // Phase 26 (governance prereq): soft-delete tombstone. deleted=true means
   // the row was deleted; body is the "[message deleted]" placeholder. deletedBy
   // is the deleter's user_id; deletedAt is the deletion time. Undefined for a
