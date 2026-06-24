@@ -29,15 +29,20 @@ type WSConfig struct {
 	PingTimeout      time.Duration
 	WriteTimeout     time.Duration
 	HandshakeTimeout time.Duration
+	// att-1: max attachment refs one send frame may link
+	// (CHALK_ATTACH_MAX_PER_MESSAGE). 0 falls back to a safe default in the
+	// send handler.
+	AttachMaxPerMessage int
 }
 
 // DefaultWSConfig returns production defaults.
 func DefaultWSConfig() WSConfig {
 	return WSConfig{
-		PingInterval:     15 * time.Second,
-		PingTimeout:      30 * time.Second,
-		WriteTimeout:     10 * time.Second,
-		HandshakeTimeout: 5 * time.Second,
+		PingInterval:        15 * time.Second,
+		PingTimeout:         30 * time.Second,
+		WriteTimeout:        10 * time.Second,
+		HandshakeTimeout:    5 * time.Second,
+		AttachMaxPerMessage: 10,
 	}
 }
 
@@ -668,6 +673,36 @@ func (h *WSHandler) handleSend(
 		}
 	}
 
+	// att-1: resolve + dedup + cap the attachment ids this send links. The
+	// per-message cap guards the link UPDATE's ANY($1) array; integrity
+	// (complete, same channel, unlinked, owned) is enforced in the tx by
+	// LinkAttachmentsToMessage so a bad id rolls the whole send back.
+	maxPer := h.cfg.AttachMaxPerMessage
+	if maxPer <= 0 {
+		maxPer = 10
+	}
+	var attUUIDs []uuid.UUID
+	if len(p.AttachmentIDs) > 0 {
+		seen := make(map[uuid.UUID]struct{}, len(p.AttachmentIDs))
+		for _, raw := range p.AttachmentIDs {
+			aid, perr := uuid.Parse(raw)
+			if perr != nil {
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "attachment_id must be a UUID")
+				return
+			}
+			if _, dup := seen[aid]; dup {
+				continue
+			}
+			seen[aid] = struct{}{}
+			attUUIDs = append(attUUIDs, aid)
+		}
+		if len(attUUIDs) > maxPer {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload,
+				"too many attachments linked to one message")
+			return
+		}
+	}
+
 	err = pgxBegin(ctx, h.store, func(tx pgx.Tx) error {
 		var seq int64
 		if err := tx.QueryRow(ctx,
@@ -689,6 +724,13 @@ func (h *WSHandler) handleSend(
 			msgID, channelID, parentUUID, threadUUID, deviceID, seq, bodyBytes, p.KeyVersion,
 		).Scan(&ts); err != nil {
 			return err
+		}
+		// att-1: link attachments inside the same tx, so refs commit
+		// atomically with the message (or the whole send rolls back).
+		if len(attUUIDs) > 0 {
+			if err := h.store.LinkAttachmentsToMessage(ctx, tx, channelID, msgID, ts, sendUserUUID, attUUIDs); err != nil {
+				return err
+			}
 		}
 		ev := pubsub.Event{
 			Kind:           "message",

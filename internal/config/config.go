@@ -102,6 +102,10 @@ type Config struct {
 	// afterward. The per-channel columns remain the source of truth at tally
 	// time. See GovernanceDefaults for the individual CHALK_* knobs.
 	Governance GovernanceDefaults
+
+	// att-1: server-wide attachment limits (CHALK_ATTACH_*). See
+	// AttachmentConfig in attachments.go.
+	Attachments AttachmentConfig
 }
 
 // GovernanceDefaults are the server-wide default governance parameters,
@@ -170,6 +174,9 @@ func Default() Config {
 			SupermajorityPercent:   67,
 			ReproposeCooldownHours: 168,
 		},
+
+		// att-1: attachment limits.
+		Attachments: defaultAttachmentConfig(),
 	}
 }
 
@@ -292,6 +299,9 @@ func (c *Config) applyEnv() {
 			*b.dst = n
 		}
 	}
+
+	// att-1: attachment limits from CHALK_ATTACH_* env vars.
+	c.Attachments.applyEnv()
 }
 
 // envInt reads an integer env var. Returns (0, false) when unset or
@@ -400,6 +410,11 @@ func (c Config) Validate() error {
 		if pc.val < 1 || pc.val > 100 {
 			return fmt.Errorf("%s must be in 1..100 (got %d)", pc.name, pc.val)
 		}
+	}
+
+	// att-1: attachment limits.
+	if err := c.Attachments.Validate(); err != nil {
+		return err
 	}
 
 	return nil

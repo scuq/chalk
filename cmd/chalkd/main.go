@@ -109,6 +109,9 @@ func run(args []string) error {
 	if err := st.EnsureMessagePartitions(connectCtx, time.Now().UTC()); err != nil {
 		return fmt.Errorf("ensure partitions: %w", err)
 	}
+	if err := st.EnsureAttachmentPartitions(connectCtx, time.Now().UTC()); err != nil {
+		return fmt.Errorf("ensure attachment partitions: %w", err)
+	}
 	log.Printf("partitions ensured for current and next month")
 
 	// Phase 23f (fail-closed): the default channel is RETIRED. It had
@@ -181,6 +184,11 @@ func run(args []string) error {
 		AdminUsername: cfg.AdminUsername,
 		Mailer:        mailer,
 		PublicURL:     publicURL,
+
+		// att-1: attachment limits.
+		AttachMaxBytes:    cfg.Attachments.MaxBytes,
+		AttachChunkBytes:  cfg.Attachments.ChunkBytes,
+		AttachFetchWindow: cfg.Attachments.FetchWindow(),
 	}
 	log.Printf("auth: rp_id=%q rp_name=%q rp_origins=%v open_registration=%v dev=%v",
 		authCfg.RPID, authCfg.RPDisplayName, authCfg.RPOrigins,
@@ -191,11 +199,13 @@ func run(args []string) error {
 		log.Printf("auth: CHALK_PUBLIC_URL unset; mail URLs will be relative")
 	}
 
+	wsCfg := server.DefaultWSConfig()
+	wsCfg.AttachMaxPerMessage = cfg.Attachments.MaxPerMessage
 	srv, err := server.NewServer(server.Options{
 		Listen:             cfg.Listen,
 		Store:              st,
 		Hub:                server.NewHub(),
-		WSConfig:           server.DefaultWSConfig(),
+		WSConfig:           wsCfg,
 		InstanceID:         cfg.InstanceID,
 		Logger:             log.Default(),
 		Presence:           presenceStore,
@@ -208,6 +218,8 @@ func run(args []string) error {
 		WebDir: chalk.WebDir,
 		// Phase 09b sub-step 3: registration endpoints.
 		Auth: authDeps,
+		// att-1: orphan-upload janitor TTL.
+		AttachOrphanTTL: cfg.Attachments.OrphanTTL(),
 	})
 	if err != nil {
 		return fmt.Errorf("server: %w", err)

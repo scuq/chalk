@@ -153,6 +153,11 @@ type SendPayload struct {
 	// channel space key of that version. The server stores + echoes
 	// it but never inspects the (opaque) body.
 	KeyVersion *int `json:"key_version,omitempty"`
+	// att-1: ids of attachments to link to this message. The server
+	// validates each (complete, same channel, unlinked, owned by the
+	// sender) inside the send tx; a mismatch rolls the whole send back.
+	// De-duplicated and capped (CHALK_ATTACH_MAX_PER_MESSAGE) server-side.
+	AttachmentIDs []string `json:"attachment_ids,omitempty"`
 }
 
 // MessagePayload is what the server pushes to peers. id and ts are
@@ -205,6 +210,10 @@ type MessagePayload struct {
 	Deleted   bool   `json:"deleted,omitempty"`
 	DeletedBy string `json:"deleted_by,omitempty"`
 	DeletedAt int64  `json:"deleted_at,omitempty"`
+	// att-1: attachments linked to this message, populated on the live
+	// push. Empty for the common attachment-less message and for history
+	// fetches (those backfill via GET /api/attachments). See AttachmentRef.
+	Attachments []AttachmentRef `json:"attachments,omitempty"`
 }
 
 // ErrorPayload is sent when the server can't process a request. Code is a

@@ -62,6 +62,10 @@ type Options struct {
 	// still runs with its pre-09b ensureDeviceForTesting path. Sub-
 	// step 09b-5 cuts the WS over to session-based auth.
 	Auth *auth.HTTPDeps
+
+	// att-1: how long a still-'uploading' attachment row may linger before
+	// the orphan janitor prunes it. 0 falls back to 24h in NewServer.
+	AttachOrphanTTL time.Duration
 }
 
 // Server wraps the http.Server, hub, pubsub listener, presence/friends
@@ -86,6 +90,9 @@ type Server struct {
 
 	served    chan struct{}
 	serveOnce sync.Once
+
+	// att-1: orphan-upload janitor TTL (see Options.AttachOrphanTTL).
+	attachOrphanTTL time.Duration
 }
 
 // NewServer constructs and binds (but does not yet serve) a Server.
@@ -122,6 +129,11 @@ func NewServer(opts Options) (*Server, error) {
 		friends:    opts.Friends,
 		loopCfg:    loopCfg,
 		served:     make(chan struct{}),
+
+		attachOrphanTTL: opts.AttachOrphanTTL,
+	}
+	if s.attachOrphanTTL <= 0 {
+		s.attachOrphanTTL = 24 * time.Hour
 	}
 
 	if opts.Store != nil {
@@ -168,6 +180,10 @@ func NewServer(opts Options) (*Server, error) {
 		// Phase 9.6a: exact-username lookup for the friend-add UI.
 		if err := opts.Auth.MountUserLookup(mux); err != nil {
 			return nil, fmt.Errorf("mount user lookup: %w", err)
+		}
+		// att-1: attachment upload/download endpoints.
+		if err := opts.Auth.MountAttachments(mux); err != nil {
+			return nil, fmt.Errorf("mount attachments: %w", err)
 		}
 	}
 
@@ -234,6 +250,16 @@ func (s *Server) Serve(ctx context.Context) error {
 		go func() {
 			defer wg.Done()
 			s.store.PartitionMaintenanceLoop(bgCtx, 24*time.Hour, s.logger.Printf)
+		}()
+	}
+
+	// att-1: orphan-upload janitor. Prunes stale 'uploading' attachment rows
+	// (never finalized/sent) older than the configured TTL.
+	if s.store != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.store.OrphanAttachmentJanitorLoop(bgCtx, time.Hour, s.attachOrphanTTL, s.logger.Printf)
 		}()
 	}
 
@@ -412,6 +438,23 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 		threadStr = msg.ThreadID.String()
 	}
 	pushBody := string(msg.Body)
+	// att-1: attach any linked attachment refs to the live push. Cheap
+	// indexed probe; empty for the common attachment-less message.
+	var attachRefs []proto.AttachmentRef
+	if rows, aerr := s.store.ListAttachmentRefsForMessage(ctx, msg.ID); aerr != nil {
+		s.logger.Printf("pubsub attachment refs %s: %v", msg.ID, aerr)
+	} else {
+		for _, a := range rows {
+			attachRefs = append(attachRefs, proto.AttachmentRef{
+				ID:         a.ID.String(),
+				ByteLen:    a.ByteLen,
+				KeyVersion: a.KeyVersion,
+				EncMeta:    a.EncMeta,
+				EncPreview: a.EncPreview,
+				PreviewLen: a.PreviewLen,
+			})
+		}
+	}
 	frame, err := proto.NewFrame(proto.TypeMessage, "", proto.MessagePayload{
 		ID:           msg.ID.String(),
 		ChannelID:    msg.ChannelID.String(),
@@ -423,6 +466,7 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 		ParentID:     parentStr,
 		ThreadID:     threadStr,
 		KeyVersion:   msg.KeyVersion,
+		Attachments:  attachRefs,
 	})
 	if err != nil {
 		s.logger.Printf("pubsub frame: %v", err)

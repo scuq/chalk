@@ -76,6 +76,14 @@ type HTTPDeps struct {
 	// when nil, the moderation endpoints still kill sessions and the
 	// next WS frame will fail at the session check.
 	Kicker ConnKicker
+
+	// att-1: attachment limits, sourced from config.Attachments and plumbed
+	// in by cmd/chalkd. AttachMaxBytes caps a single upload; AttachChunkBytes
+	// is the chunk size advertised to clients and the chunk-PUT body bound;
+	// AttachFetchWindow bounds the eager backfetch list query.
+	AttachMaxBytes    int64
+	AttachChunkBytes  int
+	AttachFetchWindow time.Duration
 }
 
 // MountRegistration registers the auth HTTP endpoints on mux.

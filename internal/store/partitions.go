@@ -65,6 +65,36 @@ func (s *Store) EnsureMessagePartitions(ctx context.Context, now time.Time) erro
 	})
 }
 
+// EnsureAttachmentPartitions creates the attachments_YYYY_MM partition for the
+// current month and the next PartitionMonths-1 months ahead, exactly mirroring
+// EnsureMessagePartitions (same advisory lock, same monthly cadence) so the
+// attachments and messages tables stay partition-aligned. Idempotent and
+// concurrency-safe for the same reasons.
+func (s *Store) EnsureAttachmentPartitions(ctx context.Context, now time.Time) error {
+	return s.withTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, partitionAdvisoryLock); err != nil {
+			return fmt.Errorf("partition lock: %w", err)
+		}
+		base := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+		for i := 0; i < PartitionMonths; i++ {
+			from := base.AddDate(0, i, 0)
+			to := from.AddDate(0, 1, 0)
+			name := fmt.Sprintf("attachments_%04d_%02d", from.Year(), int(from.Month()))
+			ddl := fmt.Sprintf(
+				`CREATE TABLE IF NOT EXISTS %s PARTITION OF attachments
+				   FOR VALUES FROM (%s) TO (%s)`,
+				quoteIdent(name),
+				quoteTimestamp(from),
+				quoteTimestamp(to),
+			)
+			if _, err := tx.Exec(ctx, ddl); err != nil {
+				return fmt.Errorf("create partition %s: %w", name, err)
+			}
+		}
+		return nil
+	})
+}
+
 // PartitionMaintenanceLoop runs EnsureMessagePartitions once immediately and
 // then every interval until ctx is canceled. Errors are logged but do not
 // exit the loop; partition creation failures should not bring chalkd down.
@@ -78,6 +108,9 @@ func (s *Store) PartitionMaintenanceLoop(ctx context.Context, interval time.Dura
 	if err := s.EnsureMessagePartitions(ctx, time.Now().UTC()); err != nil {
 		logf("partition init: %v", err)
 	}
+	if err := s.EnsureAttachmentPartitions(ctx, time.Now().UTC()); err != nil {
+		logf("attachment partition init: %v", err)
+	}
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
@@ -87,6 +120,9 @@ func (s *Store) PartitionMaintenanceLoop(ctx context.Context, interval time.Dura
 		case now := <-t.C:
 			if err := s.EnsureMessagePartitions(ctx, now.UTC()); err != nil {
 				logf("partition maintenance: %v", err)
+			}
+			if err := s.EnsureAttachmentPartitions(ctx, now.UTC()); err != nil {
+				logf("attachment partition maintenance: %v", err)
 			}
 		}
 	}
