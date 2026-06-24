@@ -69,6 +69,16 @@ export type EncryptResult =
   | { kind: "encrypted"; body: string; keyVersion: number } // body is base64
   | { kind: "waiting" };
 
+/**
+ * What encryptBytesForChannel hands back to the attachment upload path. Unlike
+ * EncryptResult this carries raw ciphertext bytes (not base64): the attachment
+ * blob is uploaded as an octet-stream, and enc_meta/enc_preview are base64'd by
+ * the transport layer at the JSON boundary, not here.
+ */
+export type EncryptBytesResult =
+  | { kind: "encrypted"; ciphertext: Uint8Array; keyVersion: number }
+  | { kind: "waiting" };
+
 const PLACEHOLDER_NO_KEY = "[encrypted message \u2014 key not available yet]";
 const PLACEHOLDER_FAILED = "[could not decrypt this message]";
 const PLACEHOLDER_PLAINTEXT_BLOCKED = "[blocked: unencrypted message]";
@@ -427,6 +437,64 @@ export class ChannelCrypto {
     }
     const pt = await decryptMessage(sk, channelID, keyVersion, bytes);
     return pt ? new TextDecoder().decode(pt) : PLACEHOLDER_FAILED;
+  }
+
+  // ---- attachment bytes (att-2) ----------------------------------------
+
+  /**
+   * encryptBytesForChannel encrypts an arbitrary byte blob (an attachment's
+   * full bytes, its preview, or its enc_meta JSON) under the channel's current
+   * key version. Returns the raw ciphertext (self-describing suite||nonce||ct||
+   * tag, identical framing to a message body) or "waiting" when we hold no
+   * usable key -- the caller blocks the upload, never sending plaintext. The
+   * version is returned so every blob of one attachment is stamped under the
+   * SAME version even if a rotation lands mid-send.
+   */
+  async encryptBytesForChannel(channelID: string, bytes: Uint8Array): Promise<EncryptBytesResult> {
+    const v = this.currentVersion(channelID);
+    const sk = await this.getKey(channelID, v);
+    if (!sk) return { kind: "waiting" };
+    const ct = await encryptMessage(sk, channelID, v, bytes);
+    return { kind: "encrypted", ciphertext: ct, keyVersion: v };
+  }
+
+  /**
+   * encryptBytesAtVersion encrypts under a SPECIFIC version (the one a prior
+   * blob of the same attachment was stamped with), so the preview and enc_meta
+   * never diverge from the full blob's version. Returns null only when the key
+   * for that version isn't available (which, mid-send, should not happen).
+   */
+  async encryptBytesAtVersion(
+    channelID: string,
+    keyVersion: number,
+    bytes: Uint8Array,
+  ): Promise<Uint8Array | null> {
+    const sk = await this.getKey(channelID, keyVersion);
+    if (!sk) return null;
+    return encryptMessage(sk, channelID, keyVersion, bytes);
+  }
+
+  /**
+   * decryptBytesForChannel turns an attachment ciphertext (full blob, preview,
+   * or enc_meta) back into plaintext bytes under the stamped key version, or
+   * null if the key isn't available yet or the blob won't open. Fail-closed:
+   * the caller shows a locked placeholder, never raw bytes. Mirrors the
+   * deferred-key wait of decryptForChannel so a blob fetched during channel
+   * open doesn't spuriously fail before the key settles.
+   */
+  async decryptBytesForChannel(
+    channelID: string,
+    keyVersion: number,
+    ciphertext: Uint8Array,
+  ): Promise<Uint8Array | null> {
+    if (!keyVersion || keyVersion < 1) return null;
+    let sk = await this.getKey(channelID, keyVersion);
+    if (!sk && !this.settled.has(channelID)) {
+      await this.waitForKeySettled(channelID);
+      sk = await this.getKey(channelID, keyVersion);
+    }
+    if (!sk) return null;
+    return decryptMessage(sk, channelID, keyVersion, ciphertext);
   }
 }
 

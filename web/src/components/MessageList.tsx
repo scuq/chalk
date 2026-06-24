@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "preact/hooks";
 import type { Message } from "../state/types";
+import { AttachmentView } from "./AttachmentView";
+import type { AttachmentController } from "../attachments/pipeline";
 
 interface Props {
   messages: Message[];
@@ -39,6 +41,10 @@ interface Props {
   // (App) wires this to a confirm + the delete_message request.
   canDeleteMessages?: boolean;
   onDeleteMessage?: (m: Message) => void;
+  // att-2: receive-side attachment pipeline (decrypt meta/preview/full +
+  // download), bound to the channel crypto. When absent (or a message has no
+  // attachments) nothing extra renders.
+  attachmentController?: AttachmentController;
 }
 
 function fmtTime(d: Date): string {
@@ -75,7 +81,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-export function MessageList({ messages, ownDevice, ownUserID, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessages, onDeleteMessage }: Props) {
+export function MessageList({ messages, ownDevice, ownUserID, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessages, onDeleteMessage, attachmentController }: Props) {
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -187,6 +193,21 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
                 m.body
               )}
             </span>
+            {/* att-2: encrypted attachments. Each decrypts independently and
+                fails closed to a locked placeholder if the key is missing.
+                Suppressed on deleted rows. */}
+            {!m.deleted && attachmentController && m.attachments && m.attachments.length > 0 && (
+              <div class="chalk-message-attachments" data-testid="message-attachments">
+                {m.attachments.map((att) => (
+                  <AttachmentView
+                    key={att.id}
+                    channelID={m.channelID}
+                    att={att}
+                    controller={attachmentController}
+                  />
+                ))}
+              </div>
+            )}
             {/* Phase 10b: hover-revealed reply button (desktop;
                 shown via :hover in CSS). Hidden in compact mode to
                 avoid stealing space. Suppressed on deleted rows. */}

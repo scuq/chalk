@@ -35,10 +35,15 @@ const DB_NAME = "chalk";
 // v2 (phase 23d): adds the space_keys store for cached channel keys.
 // v3 (phase 24): adds the verifications store for local-only safety-number
 // verification records.
-const DB_VERSION = 3;
+// v4 (att-2): adds the attachment_cache store for cached attachment CIPHERTEXT
+// (full blobs + previews), so scroll-back doesn't re-fetch over the network.
+// Ciphertext, not plaintext: every byte at rest stays key-protected, the same
+// invariant as space keys and identity.
+const DB_VERSION = 4;
 const STORE = "identity";
 const SPACE_KEY_STORE = "space_keys";
 const VERIFICATION_STORE = "verifications";
+const ATTACHMENT_CACHE_STORE = "attachment_cache";
 
 /** A loaded identity record, with both private keys as usable CryptoKeys. */
 export interface StoredIdentity {
@@ -75,6 +80,9 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(VERIFICATION_STORE)) {
         db.createObjectStore(VERIFICATION_STORE, { keyPath: "peerUserID" });
+      }
+      if (!db.objectStoreNames.contains(ATTACHMENT_CACHE_STORE)) {
+        db.createObjectStore(ATTACHMENT_CACHE_STORE, { keyPath: "cacheKey" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -298,6 +306,170 @@ export async function clearVerification(peerUserID: string): Promise<void> {
   const db = await openDB();
   try {
     await tx(db, "readwrite", (s) => s.delete(peerUserID), VERIFICATION_STORE);
+  } finally {
+    db.close();
+  }
+}
+
+// ---- attachment ciphertext cache (att-2) -----------------------------
+//
+// Caches the SERVER'S CIPHERTEXT for an attachment (full blob or preview)
+// keyed by "attachmentID:keyVersion:variant". Storing ciphertext -- not the
+// decrypted image -- keeps the "only key-protected bytes touch disk" invariant:
+// a profile attacker still needs the space-key store to read anything, exactly
+// as for messages. On read we decrypt in memory, mint a transient object URL,
+// and revoke it on eviction/unmount (that lifecycle lives in attachments/cache).
+//
+// The store is bounded by an LRU policy in attachments/cache.ts; this module
+// only provides the raw persistence + a lightweight metadata listing (cacheKey,
+// byteLen, lastAccess) so the policy can pick victims without loading blobs.
+
+/** AttachmentCacheVariant distinguishes the full ciphertext from the preview. */
+export type AttachmentCacheVariant = "full" | "preview";
+
+interface AttachmentCacheRecord {
+  cacheKey: string; // "attachmentID:keyVersion:variant"
+  attachmentID: string;
+  keyVersion: number;
+  variant: AttachmentCacheVariant;
+  bytes: Uint8Array; // ciphertext (suite||nonce||ct||tag), as fetched
+  byteLen: number;
+  lastAccess: number; // unix millis; bumped on read for LRU
+}
+
+/** AttachmentCacheEntryMeta is the blob-free view used by the LRU policy. */
+export interface AttachmentCacheEntryMeta {
+  cacheKey: string;
+  byteLen: number;
+  lastAccess: number;
+}
+
+function attachmentCacheKey(
+  attachmentID: string,
+  keyVersion: number,
+  variant: AttachmentCacheVariant,
+): string {
+  return `${attachmentID}:${keyVersion}:${variant}`;
+}
+
+/** putAttachmentBlob stores (or overwrites) a ciphertext blob in the cache. */
+export async function putAttachmentBlob(
+  attachmentID: string,
+  keyVersion: number,
+  variant: AttachmentCacheVariant,
+  bytes: Uint8Array,
+): Promise<void> {
+  const record: AttachmentCacheRecord = {
+    cacheKey: attachmentCacheKey(attachmentID, keyVersion, variant),
+    attachmentID,
+    keyVersion,
+    variant,
+    bytes,
+    byteLen: bytes.byteLength,
+    lastAccess: Date.now(),
+  };
+  const db = await openDB();
+  try {
+    await tx(db, "readwrite", (s) => s.put(record), ATTACHMENT_CACHE_STORE);
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * getAttachmentBlob returns the cached ciphertext for an attachment variant, or
+ * null if not cached. On a hit it bumps lastAccess (best-effort; a failed touch
+ * never fails the read) so the LRU policy sees recency.
+ */
+export async function getAttachmentBlob(
+  attachmentID: string,
+  keyVersion: number,
+  variant: AttachmentCacheVariant,
+): Promise<Uint8Array | null> {
+  const key = attachmentCacheKey(attachmentID, keyVersion, variant);
+  const db = await openDB();
+  let rec: AttachmentCacheRecord | undefined;
+  try {
+    rec = await tx<AttachmentCacheRecord | undefined>(
+      db,
+      "readonly",
+      (s) => s.get(key),
+      ATTACHMENT_CACHE_STORE,
+    );
+  } finally {
+    db.close();
+  }
+  if (!rec || !(rec.bytes instanceof Uint8Array)) return null;
+  // Best-effort recency bump in a separate transaction; ignore failures.
+  void touchAttachmentBlob(key).catch(() => {});
+  return rec.bytes;
+}
+
+async function touchAttachmentBlob(cacheKey: string): Promise<void> {
+  const db = await openDB();
+  try {
+    // Single readwrite transaction: get + conditional put are atomic, so a
+    // concurrent clear() can't interleave between them and resurrect an entry.
+    await new Promise<void>((resolve, reject) => {
+      const t = db.transaction(ATTACHMENT_CACHE_STORE, "readwrite");
+      const store = t.objectStore(ATTACHMENT_CACHE_STORE);
+      const getReq = store.get(cacheKey);
+      getReq.onsuccess = () => {
+        const rec = getReq.result as AttachmentCacheRecord | undefined;
+        if (rec) {
+          rec.lastAccess = Date.now();
+          store.put(rec);
+        }
+      };
+      t.oncomplete = () => resolve();
+      t.onerror = () => reject(t.error);
+      t.onabort = () => reject(t.error ?? new Error("touch aborted"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/** deleteAttachmentBlob removes one cached variant by its cache key. */
+export async function deleteAttachmentBlob(cacheKey: string): Promise<void> {
+  const db = await openDB();
+  try {
+    await tx(db, "readwrite", (s) => s.delete(cacheKey), ATTACHMENT_CACHE_STORE);
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * listAttachmentCacheMeta returns the blob-free metadata for every cache entry,
+ * so the LRU policy can compute the total size and choose eviction victims
+ * without loading the ciphertext into memory.
+ */
+export async function listAttachmentCacheMeta(): Promise<AttachmentCacheEntryMeta[]> {
+  const db = await openDB();
+  let recs: AttachmentCacheRecord[];
+  try {
+    recs = await tx<AttachmentCacheRecord[]>(
+      db,
+      "readonly",
+      (s) => s.getAll(),
+      ATTACHMENT_CACHE_STORE,
+    );
+  } finally {
+    db.close();
+  }
+  return (recs ?? []).map((r) => ({
+    cacheKey: r.cacheKey,
+    byteLen: r.byteLen,
+    lastAccess: r.lastAccess,
+  }));
+}
+
+/** clearAttachmentCache removes every cached attachment blob (logout / settings). */
+export async function clearAttachmentCache(): Promise<void> {
+  const db = await openDB();
+  try {
+    await tx(db, "readwrite", (s) => s.clear(), ATTACHMENT_CACHE_STORE);
   } finally {
     db.close();
   }

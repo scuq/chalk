@@ -142,6 +142,18 @@ import {
   ChannelCrypto,
   type ChannelKeyStatus,
 } from "../crypto/channel-crypto";
+// att-2: attachment pipeline (send-side upload + receive-side controller),
+// the transport list query for history backfill, and the ciphertext cache
+// teardown (logout / settings "clear cached images").
+import {
+  uploadAttachment,
+  wireRefToRef,
+  makeAttachmentController,
+  type AttachmentController,
+} from "../attachments/pipeline";
+import { listAttachments } from "../attachments/transport";
+import { clearCache as clearAttachmentCache } from "../attachments/cache";
+import type { AttachmentRef, PendingAttachment } from "../attachments/types";
 import { EncryptionIndicator } from "./EncryptionIndicator";
 import { ModeBadge } from "./ModeBadge";
 import {
@@ -237,6 +249,12 @@ function wireToMessage(w: MessagePayload): Message {
     deleted: w.deleted || undefined,
     deletedBy: w.deleted_by || undefined,
     deletedAt: w.deleted_at ? new Date(w.deleted_at) : undefined,
+    // att-2: attachments carried on the live push (server populates them there;
+    // history fetches backfill via the window list query). Undefined when none.
+    attachments:
+      w.attachments && w.attachments.length > 0
+        ? w.attachments.map(wireRefToRef)
+        : undefined,
   };
 }
 
@@ -250,6 +268,9 @@ export function App() {
   // is ready; reads clientRef.current dynamically so it survives reconnects.
   const ccRef = useRef<ChannelCrypto | null>(null);
   const [ccReady, setCcReady] = useState(false);
+  // att-2: receive-side attachment pipeline (decrypt/fetch/cache), bound to the
+  // ChannelCrypto instance when it's built. Passed to MessageList for rendering.
+  const attControllerRef = useRef<AttachmentController | null>(null);
   // Per-channel key status ("ready" | "waiting" | "plaintext") gating the composer.
   const [keyStatus, setKeyStatus] = useState<Record<string, ChannelKeyStatus>>({});
   // Phase 23e: members-panel key-status (who has a wrapped key). Fetched via
@@ -325,6 +346,8 @@ export function App() {
           { request: (t, p) => clientRef.current!.request(t, p) },
           { userID: uid, x25519Private: id.x25519Private, x25519Public: id.x25519Public },
         );
+        // att-2: bind the receive-side attachment pipeline to this crypto.
+        attControllerRef.current = makeAttachmentController(ccRef.current);
         setCcReady(true);
       } catch (err) {
         console.error("channel-crypto: build failed:", err);
@@ -372,6 +395,36 @@ export function App() {
       cancelled = true;
     };
   }, [state.activeChannelID, state.wsState, state.channels, ccReady]);
+
+  // att-2: backfill attachment refs for the active channel. History fetches
+  // don't carry attachments (live pushes do), so once history is loaded we pull
+  // the recent attachments via the window list query and merge them onto the
+  // matching messages by id. Re-runs when history (re)loads. Bounded server-side
+  // by CHALK_ATTACH_FETCH_WINDOW_HOURS.
+  useEffect(() => {
+    const cid = state.activeChannelID;
+    if (!cid || !ccReady || !state.historyLoaded[cid]) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const wire = await listAttachments(cid);
+        if (cancelled || wire.length === 0) return;
+        const byMessageID: Record<string, AttachmentRef[]> = {};
+        for (const w of wire) {
+          if (!w.message_id) continue; // still 'uploading' / unlinked
+          (byMessageID[w.message_id] ??= []).push(wireRefToRef(w));
+        }
+        if (Object.keys(byMessageID).length > 0) {
+          dispatch({ kind: "attachments_merged", channelID: cid, byMessageID });
+        }
+      } catch (err) {
+        console.error("attachment backfill failed:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [state.activeChannelID, state.historyLoaded, ccReady]);
 
   // Phase 23e: when the members panel opens, fetch which members currently
   // have a wrapped key (the per-member "has key" vs "waiting" status).
@@ -1441,7 +1494,7 @@ export function App() {
 
   // --- Event handlers --------------------------------------------------
 
-  const onSend = async (body: string, parentID?: string) => {
+  const onSend = async (body: string, parentID?: string, pending?: PendingAttachment[]) => {
     const c = clientRef.current;
     if (!c || !c.isOpen()) return;
     const cid = state.activeChannelID;
@@ -1460,6 +1513,29 @@ export function App() {
     if (enc.kind !== "encrypted") return; // "waiting": blocked until key arrives
     const sendBody = enc.body;
     const sendKeyVersion: number = enc.keyVersion;
+
+    // att-2: upload any pending attachments BEFORE the optimistic append + send
+    // frame. Each is encrypted under the channel key, chunk-uploaded over HTTP,
+    // then finalized; we carry the ids on the send frame and the refs on the
+    // optimistic message (chalkd echo-suppresses our own device, so our own
+    // attachments render from these optimistic refs). If any upload blocks on
+    // the key or errors, abort the whole send -- nothing half-sent.
+    const attachmentIDs: string[] = [];
+    const attachmentRefs: AttachmentRef[] = [];
+    if (pending && pending.length > 0) {
+      const deviceID = getOrCreateDeviceId();
+      try {
+        for (const p of pending) {
+          const res = await uploadAttachment(ccRef.current, cid, deviceID, p.file);
+          if (res.kind !== "uploaded") return; // "waiting": key vanished mid-send
+          attachmentIDs.push(res.ref.id);
+          attachmentRefs.push(res.ref);
+        }
+      } catch (err) {
+        console.error("attachment upload failed; send aborted:", err);
+        return;
+      }
+    }
 
     // Phase 08b polish: optimistic-append. chalkd intentionally
     // echo-suppresses the sender device so a smarter SPA can
@@ -1505,11 +1581,14 @@ export function App() {
         parentID,
         threadID: parentID ? (state.openThread?.threadID ?? parentID) : undefined,
         replyCount: 0,
+        // att-2: render our own attachments optimistically (no server echo).
+        attachments: attachmentRefs.length > 0 ? attachmentRefs : undefined,
       },
     });
 
     const payload: SendPayload = { channel_id: cid, body: sendBody, key_version: sendKeyVersion };
     if (parentID) payload.parent_id = parentID;
+    if (attachmentIDs.length > 0) payload.attachment_ids = attachmentIDs;
     c.send(TypeSend, payload);
   };
 
@@ -1836,6 +1915,12 @@ export function App() {
     // a fresh device identity. Avoids inheriting the previous
     // user's devices row on the server.
     clearDeviceId();
+    // att-2: wipe the cached attachment ciphertext on logout (hygiene + frees
+    // disk; the cache is ciphertext, but clearing keeps logout a clean teardown
+    // alongside the device id, mirroring the space-key cache intent).
+    void clearAttachmentCache().catch((err) =>
+      console.error("clear attachment cache failed:", err),
+    );
     dispatch({ kind: "auth_logged_out" });
   };
 
@@ -1958,6 +2043,7 @@ export function App() {
                 !!state.user?.id && activeChannel.createdBy === state.user.id
               }
               onDeleteMessage={onDeleteMessage}
+              attachmentController={attControllerRef.current ?? undefined}
               onOpenThread={(parentID, threadID) => {
                 // Phase 10b: store the open thread on AppState. 10c
                 // will render a panel keyed off this. For now, the
@@ -2028,7 +2114,8 @@ export function App() {
               ? "waiting_for_key"
               : "encryption_initializing"
           }
-          onSend={onSend}
+          onSend={(body, pending) => onSend(body, undefined, pending)}
+          enableAttachments
         />
       </footer>
 
@@ -2197,6 +2284,7 @@ export function App() {
             const next = { ...current, userColors: rules };
             c.send(TypePrefsSet, { patch: { chat: next } });
           }}
+          onClearImageCache={() => clearAttachmentCache()}
         />
       )}
     </div>

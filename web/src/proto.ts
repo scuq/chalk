@@ -46,6 +46,10 @@ export interface SendPayload {
   // >=1 = body is base64(suite||nonce||ct||tag) under the channel
   // space key of that version.
   key_version?: number;
+  // att-2: ids of attachments (already uploaded + finalized over HTTP) to
+  // link to this message. The server validates ownership + membership and
+  // stamps each row's message_id. Capped per message server-side.
+  attachment_ids?: string[];
 }
 
 export interface MessagePayload {
@@ -79,6 +83,38 @@ export interface MessagePayload {
   deleted?: boolean;
   deleted_by?: string;
   deleted_at?: number;
+  // att-2: attachments linked to this message, populated on the live push.
+  // Empty for the common attachment-less message and for history fetches
+  // (those backfill via GET /api/attachments). Go marshals the []byte
+  // enc_meta/enc_preview as standard base64 strings.
+  attachments?: AttachmentRefWire[];
+}
+
+// att-2: AttachmentRefWireBase is the shared shape of an attachment descriptor
+// on the wire. The encrypted blobs arrive as standard-base64 strings (Go
+// marshals []byte that way); the client decodes them only at decrypt time.
+export interface AttachmentRefWireBase {
+  id: string;
+  byte_len: number;
+  key_version: number;
+  enc_meta: string; // base64
+  enc_preview?: string; // base64; image kinds only
+  preview_len?: number;
+}
+
+// AttachmentRefWire mirrors proto.AttachmentRef (Go) -- the descriptor carried
+// on a message's live push. The heavy full ciphertext is never inlined; it is
+// fetched via GET /api/attachments/{id}.
+export type AttachmentRefWire = AttachmentRefWireBase;
+
+// AttachmentListItemWire mirrors the richer attachRefJSON returned by the list
+// endpoint (GET /api/attachments?channel_id=&since_hours=). It adds the
+// channel + message linkage and a created_at so the client can backfill refs
+// onto already-loaded history messages by message_id.
+export interface AttachmentListItemWire extends AttachmentRefWireBase {
+  channel_id: string;
+  message_id?: string; // absent while still 'uploading' / unlinked
+  created_at: number; // unix millis
 }
 
 export interface ErrorPayload {

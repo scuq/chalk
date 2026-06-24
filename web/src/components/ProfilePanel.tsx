@@ -61,6 +61,9 @@ interface Props {
   // array on every change because JSONB || is a shallow merge so a
   // partial update would clobber the rest of chat prefs anyway.
   onSetUserColors?: (rules: { handle: string; color: string; scope: "all" | "dm" }[]) => void;
+  // att-2: clear the cached attachment ciphertext (the "clear cached images"
+  // guardrail). Optional -- only rendered when the parent wires it.
+  onClearImageCache?: () => void | Promise<void>;
 }
 
 export function ProfilePanel({
@@ -71,6 +74,7 @@ export function ProfilePanel({
   chatPrefs,
   onSetChatPref,
   onSetUserColors,
+  onClearImageCache,
   onClose,
   onEmailChangeDraft,
   onEmailChangeSubmit,
@@ -83,6 +87,8 @@ export function ProfilePanel({
   const [rotateView, setRotateView] = useState<"idle" | "loading" | "showing" | "error">("idle");
   const [rotatedWords, setRotatedWords] = useState<string[] | null>(null);
   const [rotateError, setRotateError] = useState<string>("");
+  // att-2: transient "cleared" confirmation for the image cache control.
+  const [imageCacheCleared, setImageCacheCleared] = useState(false);
 
   // Close on Escape (only when not in rotate-showing state; we
   // don't want a stray keypress to lose the new recovery words).
@@ -380,6 +386,33 @@ export function ProfilePanel({
                   </button>
                 </div>
               )}
+            </section>
+          )}
+
+          {/* att-2: storage -- clear the cached attachment ciphertext. */}
+          {onClearImageCache && (
+            <section class="chalk-profile-storage">
+              <h3>storage</h3>
+              <div class="chalk-profile-field">
+                <button
+                  type="button"
+                  class="chalk-profile-clear-cache"
+                  onClick={() => {
+                    void Promise.resolve(onClearImageCache()).then(() => {
+                      setImageCacheCleared(true);
+                      setTimeout(() => setImageCacheCleared(false), 3000);
+                    });
+                  }}
+                  data-testid="clear-image-cache"
+                >
+                  clear cached images
+                </button>
+                <p class="chalk-profile-hint" style={{ marginTop: "0.5rem" }}>
+                  {imageCacheCleared
+                    ? "cached images cleared."
+                    : "removes locally cached attachment data from this device. images re-download from the server on next view."}
+                </p>
+              </div>
             </section>
           )}
 

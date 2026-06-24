@@ -228,12 +228,21 @@ html, body {
 /* -- Composer ----------------------------------------------------- */
 
 .chalk-composer {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  flex-direction: column;
   gap: var(--chalk-s2);
 }
 
+/* att-2: the input row (paperclip | textarea | send). Flex so it works with
+   or without the paperclip (thread composer has no attach button). */
+.chalk-composer-row {
+  display: flex;
+  gap: var(--chalk-s2);
+  align-items: stretch;
+}
+
 .chalk-composer-input {
+  flex: 1 1 auto;
   background: var(--chalk-bg-elev);
   color: var(--chalk-fg);
   border: 1px solid var(--chalk-border);
@@ -285,6 +294,165 @@ html, body {
   cursor: not-allowed;
   border-color: var(--chalk-fg-muted);
   color: var(--chalk-fg-muted);
+}
+
+/* -- att-2: composer attach button + pending tray ----------------- */
+.chalk-composer-attach {
+  flex: 0 0 auto;
+  align-self: stretch;
+  padding: 0 var(--chalk-s3);
+  background: transparent;
+  color: var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-base);
+  cursor: pointer;
+}
+.chalk-composer-attach:hover:not(:disabled) {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg);
+}
+.chalk-composer-attach:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.chalk-composer-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--chalk-s2);
+}
+.chalk-composer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  max-width: 100%;
+  padding: var(--chalk-s1) var(--chalk-s2);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-size: var(--chalk-size-small);
+}
+.chalk-composer-chip-thumb {
+  width: 1.8em;
+  height: 1.8em;
+  object-fit: cover;
+  border-radius: var(--chalk-radius);
+  border: 1px solid var(--chalk-border);
+}
+.chalk-composer-chip-icon {
+  color: var(--chalk-fg-muted);
+}
+.chalk-composer-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 16em;
+}
+.chalk-composer-chip-size {
+  color: var(--chalk-fg-muted);
+}
+.chalk-composer-chip-remove {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0 0.2em;
+  line-height: 1;
+}
+.chalk-composer-chip-remove:hover {
+  color: var(--chalk-fg-bright);
+}
+
+/* -- att-2: attachments in the message feed ----------------------- */
+.chalk-message-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s1);
+}
+.chalk-attachment {
+  font-size: var(--chalk-size-small);
+}
+.chalk-attachment--loading,
+.chalk-attachment--locked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  color: var(--chalk-fg-muted);
+  border: 1px dashed var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-style: italic;
+}
+.chalk-attachment-img {
+  max-width: min(320px, 100%);
+  max-height: 240px;
+  display: block;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  cursor: zoom-in;
+}
+.chalk-attachment-img--preview {
+  filter: blur(1px);
+}
+.chalk-attachment-img--full {
+  filter: none;
+}
+.chalk-attachment-img--expanded {
+  max-width: 100%;
+  max-height: 80dvh;
+  cursor: zoom-out;
+}
+.chalk-attachment-img-placeholder {
+  width: 200px;
+  height: 120px;
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+}
+.chalk-attachment--file {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+}
+.chalk-attachment-file-icon {
+  color: var(--chalk-fg-muted);
+}
+.chalk-attachment-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 18em;
+}
+.chalk-attachment-file-size {
+  color: var(--chalk-fg-muted);
+}
+.chalk-attachment-download {
+  background: transparent;
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-fg);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  text-transform: lowercase;
+  padding: 0 var(--chalk-s2);
+  cursor: pointer;
+}
+.chalk-attachment-download:hover:not(:disabled) {
+  background: var(--chalk-fg);
+  color: var(--chalk-bg);
+}
+.chalk-attachment-download:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* -- Errors ------------------------------------------------------- */

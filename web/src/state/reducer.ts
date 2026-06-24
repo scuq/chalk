@@ -404,6 +404,29 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     }
 
+    case "attachments_merged": {
+      // att-2: attach refs (from the channel-open window list query) onto the
+      // matching already-loaded messages by id. Live pushes already carry their
+      // own attachments; this only fills history rows. No-op for channels with
+      // no loaded messages or no matching ids. We don't OVERWRITE an existing
+      // non-empty attachments array (a live push may have set it first).
+      const list = state.messages[action.channelID];
+      if (!list || list.length === 0) return state;
+      let changed = false;
+      const next = list.map((m) => {
+        const refs = action.byMessageID[m.id];
+        if (!refs || refs.length === 0) return m;
+        if (m.attachments && m.attachments.length > 0) return m;
+        changed = true;
+        return { ...m, attachments: refs };
+      });
+      if (!changed) return state;
+      return {
+        ...state,
+        messages: { ...state.messages, [action.channelID]: next },
+      };
+    }
+
     case "friends_loaded":
       return {
         ...state,

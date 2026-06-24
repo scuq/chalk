@@ -8,6 +8,7 @@
 // added (e.g. ChannelSummary's createdAt as Date, Message's ts as Date).
 
 import type { ConnectionState } from "../ws-client";
+import type { AttachmentRef } from "../attachments/types";
 import type {
   AdminBootstrapState,
   AuthAction,
@@ -65,6 +66,10 @@ export interface Message {
   deleted?: boolean;
   deletedBy?: string;
   deletedAt?: Date;
+  // att-2: encrypted attachments linked to this message. Populated from the
+  // live push (wireToMessage) and backfilled for history via the window list
+  // query (attachments_merged). Undefined/empty for the common text message.
+  attachments?: AttachmentRef[];
 }
 
 // phase 08c: ChannelMember pairs a user_id with their handle.
@@ -493,6 +498,10 @@ export type Action =
   // Phase 26 (governance prereq): a message was deleted; tombstone it in place.
   | { kind: "message_deleted"; channelID: string; messageID: string; deletedBy?: string; deletedAt?: Date }
   | { kind: "history_loaded"; channelID: string; messages: Message[] }
+  // att-2: backfill attachment refs onto already-loaded messages, keyed by
+  // message id. Used after the channel-open window list query (history fetches
+  // don't carry attachments; the live push does).
+  | { kind: "attachments_merged"; channelID: string; byMessageID: Record<string, AttachmentRef[]> }
   | { kind: "friends_loaded"; friends: Friend[]; pendingIncoming?: Friend[]; pendingOutgoing?: Friend[] }
   | { kind: "open_create_modal" }
   | { kind: "close_create_modal" }
