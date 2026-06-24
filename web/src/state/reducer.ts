@@ -461,6 +461,11 @@ export function reducer(state: AppState, action: Action): AppState {
         // form state; App fetches the recipient set via ChannelCrypto.
         return { ...state, openPanel: "members" };
       }
+      if (action.panel === "governance") {
+        // gov-2: governance panel. App loads the channel's proposals via
+        // gov_list_proposals on open; no reducer-owned form state.
+        return { ...state, openPanel: "governance" };
+      }
       // Default: profile. Same behavior as before the hotfix for the
       // profile case specifically.
       return { ...state, openPanel: "profile" };
