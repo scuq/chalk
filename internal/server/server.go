@@ -185,6 +185,11 @@ func NewServer(opts Options) (*Server, error) {
 		if err := opts.Auth.MountAttachments(mux); err != nil {
 			return nil, fmt.Errorf("mount attachments: %w", err)
 		}
+		// att-4: Giphy search proxy. Always mounted; answers 503 when no
+		// API key is configured (d.GiphyClient == nil).
+		if err := opts.Auth.MountGiphy(mux); err != nil {
+			return nil, fmt.Errorf("mount giphy: %w", err)
+		}
 	}
 
 	// Phase 07: mount the SPA at "/". A WebFS provided via Options is

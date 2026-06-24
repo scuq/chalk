@@ -106,6 +106,10 @@ type Config struct {
 	// att-1: server-wide attachment limits (CHALK_ATTACH_*). See
 	// AttachmentConfig in attachments.go.
 	Attachments AttachmentConfig
+
+	// att-4: Giphy search-proxy settings (CHALK_GIPHY_*). See GiphyConfig
+	// in giphy.go. Disabled unless CHALK_GIPHY_API_KEY is set.
+	Giphy GiphyConfig
 }
 
 // GovernanceDefaults are the server-wide default governance parameters,
@@ -177,6 +181,9 @@ func Default() Config {
 
 		// att-1: attachment limits.
 		Attachments: defaultAttachmentConfig(),
+
+		// att-4: Giphy search proxy.
+		Giphy: defaultGiphyConfig(),
 	}
 }
 
@@ -302,6 +309,9 @@ func (c *Config) applyEnv() {
 
 	// att-1: attachment limits from CHALK_ATTACH_* env vars.
 	c.Attachments.applyEnv()
+
+	// att-4: Giphy search proxy from CHALK_GIPHY_* env vars.
+	c.Giphy.applyEnv()
 }
 
 // envInt reads an integer env var. Returns (0, false) when unset or
@@ -414,6 +424,11 @@ func (c Config) Validate() error {
 
 	// att-1: attachment limits.
 	if err := c.Attachments.Validate(); err != nil {
+		return err
+	}
+
+	// att-4: Giphy search proxy.
+	if err := c.Giphy.Validate(); err != nil {
 		return err
 	}
 

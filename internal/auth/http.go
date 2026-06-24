@@ -15,6 +15,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 
+	"github.com/scuq/chalk/internal/giphy"
 	"github.com/scuq/chalk/internal/mail"
 	"github.com/scuq/chalk/internal/store"
 )
@@ -84,6 +85,13 @@ type HTTPDeps struct {
 	AttachMaxBytes    int64
 	AttachChunkBytes  int
 	AttachFetchWindow time.Duration
+
+	// att-4: Giphy search-proxy client, built from config.Giphy and plumbed
+	// in by cmd/chalkd. Nil when CHALK_GIPHY_API_KEY is unset; in that case
+	// the search endpoint answers 503 and /api/auth/config reports
+	// giphy_enabled=false so the SPA hides the picker. The key lives only
+	// here, never reaching the client.
+	GiphyClient *giphy.Client
 }
 
 // MountRegistration registers the auth HTTP endpoints on mux.
@@ -200,6 +208,10 @@ type configResponse struct {
 	OpenRegistration  bool   `json:"open_registration"`
 	DevMode           bool   `json:"dev_mode"`
 	RecoveryWordCount int    `json:"recovery_word_count"`
+	// att-4: whether the server has a Giphy API key configured. The SPA
+	// shows the composer Giphy button only when true. Independent of the
+	// per-user consent pref, which is a SPA-only concern.
+	GiphyEnabled bool `json:"giphy_enabled"`
 }
 
 // ---- handlers ----------------------------------------------------------
@@ -216,6 +228,7 @@ func (d *HTTPDeps) handleConfig(w http.ResponseWriter, r *http.Request) {
 		OpenRegistration:  IsOpenRegistration(),
 		DevMode:           IsDevMode(),
 		RecoveryWordCount: RecoveryWordCount,
+		GiphyEnabled:      d.GiphyClient != nil,
 	})
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/scuq/chalk/internal/auth"
 	"github.com/scuq/chalk/internal/config"
 	"github.com/scuq/chalk/internal/friends"
+	"github.com/scuq/chalk/internal/giphy"
 	"github.com/scuq/chalk/internal/mail"
 	"github.com/scuq/chalk/internal/migrate"
 	"github.com/scuq/chalk/internal/presence"
@@ -176,6 +177,24 @@ func run(args []string) error {
 			mailCfg.Host, mailCfg.Port, mailCfg.From)
 	}
 	publicURL := strings.TrimSpace(os.Getenv("CHALK_PUBLIC_URL"))
+	// att-4: build the Giphy search-proxy client iff an API key is set.
+	// When unset, giphyClient stays nil -> the search endpoint answers 503
+	// and /api/auth/config reports giphy_enabled=false. The key never
+	// leaves the server.
+	var giphyClient *giphy.Client
+	if cfg.Giphy.Enabled() {
+		giphyClient = giphy.New(
+			cfg.Giphy.APIKey,
+			cfg.Giphy.SearchLimit,
+			cfg.Giphy.Rating,
+			cfg.Giphy.Timeout(),
+		)
+		log.Printf("giphy: search proxy enabled (limit=%d rating=%s)",
+			cfg.Giphy.SearchLimit, cfg.Giphy.Rating)
+	} else {
+		log.Printf("giphy: disabled (CHALK_GIPHY_API_KEY unset)")
+	}
+
 	authDeps := &auth.HTTPDeps{
 		Service:       authSvc,
 		Cache:         ceremonyCache,
@@ -189,6 +208,9 @@ func run(args []string) error {
 		AttachMaxBytes:    cfg.Attachments.MaxBytes,
 		AttachChunkBytes:  cfg.Attachments.ChunkBytes,
 		AttachFetchWindow: cfg.Attachments.FetchWindow(),
+
+		// att-4: Giphy search proxy (nil when no API key configured).
+		GiphyClient: giphyClient,
 	}
 	log.Printf("auth: rp_id=%q rp_name=%q rp_origins=%v open_registration=%v dev=%v",
 		authCfg.RPID, authCfg.RPDisplayName, authCfg.RPOrigins,
