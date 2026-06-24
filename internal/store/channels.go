@@ -337,7 +337,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		      GROUP BY thread_id
 		   ) r ON r.thread_id = m.id
 		   LEFT JOIN LATERAL (
-		     SELECT sender_device_id, body
+		     SELECT sender_device_id, body, key_version
 		       FROM messages
 		      WHERE thread_id = m.id AND parent_id IS NOT NULL
 		      ORDER BY seq DESC
