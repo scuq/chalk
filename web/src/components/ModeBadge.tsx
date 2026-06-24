@@ -8,7 +8,7 @@
  * Glyphs are the spec-approved 16x16 paths (fill none, stroke currentColor).
  * Presentational only; the mode is sourced from the channel summary.
  */
-export function ModeBadge({ mode }: { mode: string }) {
+export function ModeBadge({ mode, onClick }: { mode: string; onClick?: () => void }) {
   const democratic = mode === "democratic";
   const label = democratic
     ? "Democratic -- privileged actions decided by a member vote"
@@ -17,11 +17,20 @@ export function ModeBadge({ mode }: { mode: string }) {
   return (
     <span
       class={"chalk-mode-badge" + (democratic ? " chalk-mode-democratic" : " chalk-mode-dictator")}
-      role="img"
-      aria-label={label}
+      role={onClick ? "button" : "img"}
+      aria-label={onClick ? label + " -- open governance" : label}
       title={label}
       data-mode={democratic ? "democratic" : "dictator"}
       data-testid="mode-badge"
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (onClick && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      style={onClick ? "cursor: pointer" : undefined}
     >
       <svg
         width="14"

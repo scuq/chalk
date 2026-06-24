@@ -67,6 +67,13 @@ import {
   GovEventProposalResolved,
   type GovernanceEventPayload,
   type ProposalViewWire,
+  TypeGovSetMode,
+  TypeGovPropose,
+  TypeGovVote,
+  TypeGovCancel,
+  TypeGovList,
+  type GovListPayload,
+  type GovListAckPayload,
   type SendPayload,
   type ChannelSummaryWire,
   type ListChannelsPayload,
@@ -115,6 +122,9 @@ const FriendsPanel = lazyComponent(() =>
 );
 const MembersPanel = lazyComponent(() =>
   import("./MembersPanel").then((m) => m.MembersPanel)
+);
+const GovernancePanel = lazyComponent(() =>
+  import("./GovernancePanel").then((m) => m.GovernancePanel)
 );
 import { CreateChannelModal } from "./CreateChannelModal";
 import { AuthGate } from "../auth/AuthGate";
@@ -577,6 +587,75 @@ export function App() {
     },
     [state.activeChannelID, state.channels, refreshMemberKeyStatus],
   );
+
+  // gov-2: governance send-paths. Acks are awaited so the panel can surface
+  // errors; the live state (mode, tallies, resolution) arrives via
+  // governance_event pushes that the reducer folds in.
+  const onGovListProposals = useCallback(async () => {
+    const cid = state.activeChannelID;
+    if (!cid || !clientRef.current) return;
+    try {
+      const ack = await clientRef.current.request<GovListPayload, GovListAckPayload>(
+        TypeGovList,
+        { channel_id: cid, include_resolved: false },
+      );
+      dispatch({
+        kind: "proposals_loaded",
+        channelID: cid,
+        proposals: (ack.proposals ?? []).map(wireToProposal),
+      });
+    } catch (err) {
+      console.error("gov list proposals failed:", err);
+    }
+  }, [state.activeChannelID]);
+
+  const onGovSetMode = useCallback(
+    async (mode: string) => {
+      const cid = state.activeChannelID;
+      if (!cid || !clientRef.current) return;
+      await clientRef.current.request(TypeGovSetMode, { channel_id: cid, mode });
+    },
+    [state.activeChannelID],
+  );
+
+  const onGovProposeDictator = useCallback(async () => {
+    const cid = state.activeChannelID;
+    if (!cid || !clientRef.current) return;
+    await clientRef.current.request(TypeGovPropose, {
+      channel_id: cid,
+      type: "set_mode",
+      payload: { mode: "dictator" },
+    });
+  }, [state.activeChannelID]);
+
+  const onGovPropose = useCallback(
+    async (type: string, targetID: string) => {
+      const cid = state.activeChannelID;
+      if (!cid || !clientRef.current) return;
+      await clientRef.current.request(TypeGovPropose, {
+        channel_id: cid,
+        type,
+        target_id: targetID,
+      });
+    },
+    [state.activeChannelID],
+  );
+
+  const onGovVote = useCallback(async (proposalID: string, vote: "yes" | "no") => {
+    if (!clientRef.current) return;
+    await clientRef.current.request(TypeGovVote, { proposal_id: proposalID, vote });
+  }, []);
+
+  const onGovCancel = useCallback(async (proposalID: string) => {
+    if (!clientRef.current) return;
+    await clientRef.current.request(TypeGovCancel, { proposal_id: proposalID });
+  }, []);
+
+  // gov-2: refresh the channel's proposals whenever the governance panel opens.
+  useEffect(() => {
+    if (state.openPanel !== "governance") return;
+    void onGovListProposals();
+  }, [state.openPanel, onGovListProposals]);
 
   // Phase 26 (governance prereq): owner-only message deletion. The hover
   // "delete" control in MessageList stages a message here; the ConfirmModal
@@ -1845,7 +1924,10 @@ export function App() {
                 {displayName(activeChannel, state.user?.id ?? null)}
               </span>
               {activeChannel.isDM && <span class="chalk-channel-header-tag">dm</span>}
-              <ModeBadge mode={activeChannel.governanceMode} />
+              <ModeBadge
+                mode={activeChannel.governanceMode}
+                onClick={() => dispatch({ kind: "open_panel", panel: "governance" })}
+              />
               <EncryptionIndicator
                 status={
                   state.activeChannelID ? keyStatus[state.activeChannelID] : undefined
@@ -2028,6 +2110,33 @@ export function App() {
           onRefresh={() => {
             void refreshMemberKeyStatus();
             void refreshVerification();
+          }}
+          onClose={() => dispatch({ kind: "close_panel" })}
+        />
+      )}
+      {state.openPanel === "governance" && activeChannel && (
+        <GovernancePanel
+          channelName={displayName(activeChannel, state.user?.id ?? null)}
+          mode={activeChannel.governanceMode}
+          isOwner={
+            activeChannel.createdBy != null &&
+            activeChannel.createdBy === (state.user?.id ?? null)
+          }
+          ownUserID={state.user?.id ?? null}
+          createdBy={activeChannel.createdBy}
+          members={activeChannel.members ?? []}
+          addableFriends={state.friends.filter(
+            (fr) => !activeChannel.memberIDs.includes(fr.userID),
+          )}
+          proposals={state.proposals[activeChannel.id] ?? []}
+          loading={false}
+          onSetMode={onGovSetMode}
+          onProposeDictator={onGovProposeDictator}
+          onPropose={onGovPropose}
+          onVote={onGovVote}
+          onCancel={onGovCancel}
+          onRefresh={() => {
+            void onGovListProposals();
           }}
           onClose={() => dispatch({ kind: "close_panel" })}
         />

@@ -299,7 +299,7 @@ export interface AppState {
   // null = no panel. "invites" → InvitesPanel modal.
   // "profile" → ProfilePanel modal. Mutually exclusive with
   // createModalOpen (only one modal-equivalent at a time).
-  openPanel: "invites" | "profile" | "friends" | "members" | null;
+  openPanel: "invites" | "profile" | "friends" | "members" | "governance" | null;
   // Phase 09c-2 refresh: spinner state for the ProfilePanel refresh
   // button. InvitesPanel's spinner uses myInvites.loading (which is
   // already there); for profile we need a dedicated flag because
@@ -496,7 +496,7 @@ export type Action =
   | { kind: "open_create_modal" }
   | { kind: "close_create_modal" }
   // Phase 09c-2: in-chat panel toggles.
-  | { kind: "open_panel"; panel: "invites" | "profile" | "friends" | "members" }
+  | { kind: "open_panel"; panel: "invites" | "profile" | "friends" | "members" | "governance" }
   | { kind: "close_panel" }
   // Phase 09c-2: profile-panel refresh (spinner only; the actual
   // identity update arrives via the existing auth_me_loaded action).
