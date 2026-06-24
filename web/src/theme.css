@@ -399,18 +399,14 @@ html, body {
 
 /* -- att-2: attachments in the message feed ----------------------- */
 .chalk-message-attachments {
-  /* The message row is a grid (time | sender | body). Place attachments in the
-     body column and let them run to the row's end, so images use the full
-     available chat width instead of auto-placing into the narrow time cell. */
-  grid-column: 3 / -1;
+  /* Option B: the image block breaks out to the row's left edge (under the
+     timestamp) and spans the full width, so media reads as a distinct block and
+     the reply indicators line up directly beneath it. */
+  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
   gap: var(--chalk-s2);
   margin-top: var(--chalk-s1);
-}
-.chalk-message--no-time .chalk-message-attachments {
-  /* No timestamp column -> body is column 2. */
-  grid-column: 2 / -1;
 }
 .chalk-attachment {
   font-size: var(--chalk-size-small);
@@ -2853,10 +2849,10 @@ html, body {
      inside a flex... but the row is a grid. Easiest: absolute
      position relative to .chalk-message, hide by default, show
      on hover. */
+  /* hover actions are top-anchored so they clear tall image rows */
   position: absolute;
   right: var(--chalk-s2);
-  top: 50%;
-  transform: translateY(-50%);
+  top: var(--chalk-s1);
   background: var(--chalk-bg-elev);
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);
@@ -2890,8 +2886,7 @@ html, body {
 .chalk-message-delete {
   position: absolute;
   right: calc(var(--chalk-s2) + 5rem);
-  top: 50%;
-  transform: translateY(-50%);
+  top: var(--chalk-s1);
   background: var(--chalk-bg-elev);
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);
@@ -2936,7 +2931,7 @@ html, body {
      intentional regardless of timestamp / compact / no-time mode. */
 .chalk-message-thread-indicator {
   align-self: flex-start;
-  margin-left: var(--chalk-s5);
+  margin-left: var(--chalk-s2);
   margin-top: 0;
   margin-bottom: var(--chalk-s1);
   background: transparent;
@@ -3117,7 +3112,7 @@ html, body {
      the preview body aligns roughly under the WORD "replies".
      Fixed-px offset to avoid coupling with the indicator's ch unit
      (which would shift when font sizes diverge). */
-  margin-left: calc(var(--chalk-s5) + 28px);
+  margin-left: calc(var(--chalk-s2) + 28px);
   margin-top: -2px;       /* tuck up against the indicator */
   margin-bottom: var(--chalk-s1);
   background: transparent;
