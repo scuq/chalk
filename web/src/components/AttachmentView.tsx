@@ -98,6 +98,27 @@ export function AttachmentView({ channelID, att, controller }: Props) {
         alive = false;
       };
     }
+
+    // If the row is ALREADY on-screen at mount (the common case for a message
+    // you just sent, which lands at the bottom of the feed), fetch the full
+    // image immediately rather than waiting on the observer's first callback --
+    // that callback isn't reliably delivered for an element that's visible
+    // before the observer attaches, which would otherwise strand it on the
+    // blurred preview.
+    const nearViewport = (): boolean => {
+      const r = el.getBoundingClientRect();
+      const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+      const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+      const m = 200; // mirror the observer's rootMargin
+      return r.bottom >= -m && r.top <= vh + m && r.right >= -m && r.left <= vw + m;
+    };
+    if (nearViewport()) {
+      fetchFull();
+      return () => {
+        alive = false;
+      };
+    }
+
     const obs = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
@@ -124,6 +145,32 @@ export function AttachmentView({ channelID, att, controller }: Props) {
       urlsRef.current = [];
     };
   }, []);
+
+  // Lightbox: Escape closes it.
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
+
+  // Lightbox: if the user opens an image whose full-res hasn't loaded yet
+  // (e.g. an off-screen history image clicked before scrolling to it), fetch it
+  // now so the modal shows the original rather than the soft preview.
+  useEffect(() => {
+    if (!expanded || fullURL || metaState !== "ready" || meta?.kind !== "image") return;
+    let alive = true;
+    void controller.loadFullBytes(channelID, att).then((bytes) => {
+      if (!alive || !bytes) return;
+      const url = trackURL(URL.createObjectURL(new Blob([bytes], { type: meta.mime })));
+      setFullURL(url);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [expanded, fullURL, metaState, meta, channelID, att, controller]);
 
   const onDownload = () => {
     if (downloading) return;
@@ -160,18 +207,37 @@ export function AttachmentView({ channelID, att, controller }: Props) {
       >
         {shownURL ? (
           <img
-            class={`chalk-attachment-img ${fullURL ? "chalk-attachment-img--full" : "chalk-attachment-img--preview"} ${expanded ? "chalk-attachment-img--expanded" : ""}`}
+            class={`chalk-attachment-img ${fullURL ? "chalk-attachment-img--full" : "chalk-attachment-img--preview"}`}
             src={shownURL}
             alt={meta.name}
-            title={`${meta.name} (${humanSize(meta.size)})`}
-            width={meta.width}
-            height={meta.height}
-            loading="lazy"
-            onClick={() => setExpanded((x) => !x)}
+            title={`${meta.name} (${humanSize(meta.size)}) — click to enlarge`}
+            // Never upscale past the image's real pixel width: cap at the
+            // smallest of natural width, 720px, and the column width (responsive).
+            style={meta.width ? { maxWidth: `min(${meta.width}px, 720px, 100%)` } : undefined}
+            onClick={() => setExpanded(true)}
             data-testid="attachment-img"
           />
         ) : (
           <div class="chalk-attachment-img-placeholder" data-testid="attachment-img-placeholder" />
+        )}
+        {expanded && shownURL && (
+          <div
+            class="chalk-attachment-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label={meta.name}
+            onClick={() => setExpanded(false)}
+            data-testid="attachment-lightbox"
+          >
+            <img
+              class="chalk-attachment-lightbox-img"
+              src={fullURL ?? shownURL}
+              alt={meta.name}
+            />
+            <div class="chalk-attachment-lightbox-caption">
+              {meta.name} ({humanSize(meta.size)}) — click anywhere or press Esc to close
+            </div>
+          </div>
         )}
       </div>
     );

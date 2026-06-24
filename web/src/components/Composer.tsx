@@ -1,15 +1,16 @@
 import { useRef, useState } from "preact/hooks";
 import type { JSX } from "preact";
 import { type PendingAttachment, classifyKind, humanSize } from "../attachments/types";
+import {
+  imageFilesFromClipboardItems,
+  filesFromList,
+  dragHasFiles,
+} from "../attachments/intake";
 
 // Phase 9.6g: disabledReason distinguishes the two reasons the
 // composer might be unusable. "offline" reflects a real connection
 // problem; "no_channel" is informational and means "you haven't
 // picked a chat yet." `null` means the composer is enabled.
-//
-// We keep the existing `disabled` prop as an alternative for
-// callers that don't care about the reason; the component renders
-// from whichever is more specific.
 type DisabledReason =
   | "offline"
   | "no_channel"
@@ -17,26 +18,25 @@ type DisabledReason =
   | "encryption_initializing"
   | null;
 
+// att-3: the send path can report per-attachment upload progress. onSend may be
+// async; it resolves false when the send was blocked (e.g. key vanished) so the
+// composer keeps the tray for a retry, and true/void on success (tray cleared).
+export interface SendOptions {
+  onProgress?: (localID: string, loaded: number, total: number) => void;
+}
+
 interface Props {
-  // Legacy boolean. When provided AND disabledReason is null, we
-  // fall back to a generic placeholder ("offline -- waiting to
-  // reconnect") to preserve old behavior for callers that haven't
-  // been updated to pass disabledReason.
   disabled?: boolean;
-  // Phase 9.6g: prefer this over `disabled` for accurate UX.
   disabledReason?: DisabledReason;
-  // att-2: the second arg carries any pending attachments. Optional so callers
-  // that don't deal in attachments (e.g. ThreadPanel) stay assignable with a
-  // 1-arg handler.
-  onSend: (body: string, attachments?: PendingAttachment[]) => void;
-  // Phase 10c: optional placeholder override (defaults to channel-aware
-  // text from disabledReason mapping). The thread composer passes
-  // "reply...". When disabled, the disabled-reason text still wins.
+  onSend: (
+    body: string,
+    attachments?: PendingAttachment[],
+    opts?: SendOptions,
+  ) => void | Promise<boolean | void>;
   placeholder?: string;
-  // att-2: opt in to the attachment affordance (paperclip + file picker +
-  // pending tray). Only the main composer sets this; threads stay text-only
-  // until att-3. This is the deliberately MINIMAL att-2 input -- att-3 enriches
-  // it with drag-drop, paste, per-item upload progress, and richer thumbnails.
+  // att-2/att-3: opt in to the attachment affordance (paperclip + picker +
+  // drag-drop + paste + pending tray with per-item progress). Only the main
+  // composer sets this; the thread composer stays text-only.
   enableAttachments?: boolean;
 }
 
@@ -44,13 +44,16 @@ const MAX_LEN = 4000;
 
 export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments }: Props) {
   const [draft, setDraft] = useState("");
-  // att-2: files selected but not yet sent. Cleared on send.
   const [pending, setPending] = useState<PendingAttachment[]>([]);
+  const [dragActive, setDragActive] = useState(false);
+  const [sending, setSending] = useState(false);
+  // att-3: per-item upload fraction (0..1) while sending.
+  const [progress, setProgress] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Drag enter/leave fire per child; a depth counter keeps the affordance
+  // stable until the pointer actually leaves the composer.
+  const dragDepth = useRef(0);
 
-  // Phase 9.6g: derive the effective disabled boolean + the
-  // placeholder text from disabledReason (preferred) or fall back
-  // to the legacy `disabled` prop.
   const effectiveDisabled =
     disabledReason !== null && disabledReason !== undefined
       ? true
@@ -73,10 +76,9 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
       ? crypto.randomUUID()
       : Date.now().toString(36) + Math.random().toString(36).slice(2);
 
-  const addFiles = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const additions: PendingAttachment[] = [];
-    for (const file of Array.from(files)) {
+  const addFileArray = (files: File[]) => {
+    if (files.length === 0) return;
+    const additions: PendingAttachment[] = files.map((file) => {
       const kind = classifyKind(file.type || "application/octet-stream");
       const item: PendingAttachment = { localID: makeLocalID(), file, kind };
       if (kind === "image") {
@@ -86,12 +88,13 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
           // no in-tray thumbnail; the chip still renders
         }
       }
-      additions.push(item);
-    }
+      return item;
+    });
     setPending((prev) => [...prev, ...additions]);
   };
 
   const removePending = (localID: string) => {
+    if (sending) return; // don't yank an item mid-upload
     setPending((prev) => {
       const hit = prev.find((p) => p.localID === localID);
       if (hit?.previewURL) URL.revokeObjectURL(hit.previewURL);
@@ -106,64 +109,155 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     });
   };
 
-  const submit = () => {
+  const submit = async () => {
+    if (sending) return;
     const body = draft.trim();
-    // att-2: send if there's text OR at least one attachment.
     if (!body && pending.length === 0) return;
     if (body.length > MAX_LEN) return;
-    onSend(body, pending.length > 0 ? pending : undefined);
-    setDraft("");
-    clearPending();
+
+    // Text-only: send immediately, no progress UI.
+    if (pending.length === 0) {
+      onSend(body);
+      setDraft("");
+      return;
+    }
+
+    // With attachments: keep the tray visible and render per-item progress
+    // until the upload completes, then clear.
+    const items = pending;
+    setSending(true);
+    setProgress({});
+    try {
+      const result = await onSend(body, items, {
+        onProgress: (localID, loaded, total) => {
+          setProgress((prev) => ({ ...prev, [localID]: total > 0 ? loaded / total : 0 }));
+        },
+      });
+      if (result === false) {
+        // Blocked (e.g. key vanished mid-send): keep the tray for a retry.
+        setSending(false);
+        return;
+      }
+      setDraft("");
+      clearPending();
+      setProgress({});
+      setSending(false);
+    } catch {
+      // Upload failed: keep the tray so the user can retry; surface nothing
+      // noisy here (App logs the error).
+      setSending(false);
+    }
   };
 
   const onInput = (e: JSX.TargetedEvent<HTMLTextAreaElement>) => {
     setDraft(e.currentTarget.value);
   };
 
-  // Enter to send, Shift+Enter for newline. The Composer is a textarea
-  // not a form because we don't want a browser submit + page reload.
   const onKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      submit();
+      void submit();
     }
   };
 
   const onFileChange = (e: JSX.TargetedEvent<HTMLInputElement>) => {
-    addFiles(e.currentTarget.files);
-    // Reset so selecting the same file again re-triggers change.
-    e.currentTarget.value = "";
+    addFileArray(filesFromList(e.currentTarget.files));
+    e.currentTarget.value = ""; // re-selecting the same file re-triggers change
   };
 
-  const canSend = !effectiveDisabled && (draft.trim().length > 0 || pending.length > 0);
+  // att-3: paste an image (screenshot) straight into the tray.
+  const onPaste = (e: JSX.TargetedClipboardEvent<HTMLTextAreaElement>) => {
+    if (!enableAttachments || effectiveDisabled || sending) return;
+    const imgs = imageFilesFromClipboardItems(e.clipboardData?.items);
+    if (imgs.length > 0) {
+      e.preventDefault(); // capture the image; don't also paste a path/garbage
+      addFileArray(imgs);
+    }
+    // No image -> let the normal text paste proceed.
+  };
+
+  // att-3: drag-drop files onto the composer.
+  const dropEnabled = enableAttachments && !effectiveDisabled && !sending;
+  const onDragEnter = (e: JSX.TargetedDragEvent<HTMLDivElement>) => {
+    if (!dropEnabled || !dragHasFiles(e.dataTransfer?.types)) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragActive(true);
+  };
+  const onDragOver = (e: JSX.TargetedDragEvent<HTMLDivElement>) => {
+    if (!dropEnabled || !dragHasFiles(e.dataTransfer?.types)) return;
+    e.preventDefault(); // required to allow a drop
+  };
+  const onDragLeave = (e: JSX.TargetedDragEvent<HTMLDivElement>) => {
+    if (!dropEnabled) return;
+    e.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragActive(false);
+  };
+  const onDrop = (e: JSX.TargetedDragEvent<HTMLDivElement>) => {
+    if (!dropEnabled) return;
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDragActive(false);
+    addFileArray(filesFromList(e.dataTransfer?.files));
+  };
+
+  const canSend = !effectiveDisabled && !sending && (draft.trim().length > 0 || pending.length > 0);
 
   return (
-    <div class="chalk-composer">
+    <div
+      class={`chalk-composer ${dragActive ? "chalk-composer--drag-active" : ""}`}
+      onDragEnter={enableAttachments ? onDragEnter : undefined}
+      onDragOver={enableAttachments ? onDragOver : undefined}
+      onDragLeave={enableAttachments ? onDragLeave : undefined}
+      onDrop={enableAttachments ? onDrop : undefined}
+    >
+      {enableAttachments && dragActive && (
+        <div class="chalk-composer-drop-hint" data-testid="composer-drop-hint">
+          drop files to attach
+        </div>
+      )}
       {enableAttachments && pending.length > 0 && (
         <div class="chalk-composer-tray" data-testid="composer-tray">
-          {pending.map((p) => (
-            <div class="chalk-composer-chip" key={p.localID} data-testid="composer-chip">
-              {p.kind === "image" && p.previewURL ? (
-                <img class="chalk-composer-chip-thumb" src={p.previewURL} alt={p.file.name} />
-              ) : (
-                <span class="chalk-composer-chip-icon" aria-hidden="true">📎</span>
-              )}
-              <span class="chalk-composer-chip-name" title={p.file.name}>
-                {p.file.name}
-              </span>
-              <span class="chalk-composer-chip-size">{humanSize(p.file.size)}</span>
-              <button
-                type="button"
-                class="chalk-composer-chip-remove"
-                onClick={() => removePending(p.localID)}
-                title="remove attachment"
-                aria-label={`remove ${p.file.name}`}
-                data-testid="composer-chip-remove"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+          {pending.map((p) => {
+            const frac = progress[p.localID];
+            return (
+              <div class="chalk-composer-chip" key={p.localID} data-testid="composer-chip">
+                {p.kind === "image" && p.previewURL ? (
+                  <img class="chalk-composer-chip-thumb" src={p.previewURL} alt={p.file.name} />
+                ) : (
+                  <span class="chalk-composer-chip-icon" aria-hidden="true">📎</span>
+                )}
+                <span class="chalk-composer-chip-name" title={p.file.name}>
+                  {p.file.name}
+                </span>
+                <span class="chalk-composer-chip-size">{humanSize(p.file.size)}</span>
+                {sending && frac !== undefined ? (
+                  <span
+                    class="chalk-composer-chip-progress"
+                    data-testid="composer-chip-progress"
+                    title={`${Math.round(frac * 100)}%`}
+                  >
+                    <span
+                      class="chalk-composer-chip-progress-fill"
+                      style={{ width: `${Math.round(frac * 100)}%` }}
+                    />
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    class="chalk-composer-chip-remove"
+                    onClick={() => removePending(p.localID)}
+                    title="remove attachment"
+                    aria-label={`remove ${p.file.name}`}
+                    data-testid="composer-chip-remove"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
       <div class="chalk-composer-row">
@@ -173,7 +267,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
               type="button"
               class="chalk-composer-attach"
               onClick={() => fileInputRef.current?.click()}
-              disabled={effectiveDisabled}
+              disabled={effectiveDisabled || sending}
               title="attach a file"
               aria-label="attach a file"
               data-testid="composer-attach"
@@ -197,7 +291,8 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
           value={draft}
           onInput={onInput}
           onKeyDown={onKeyDown}
-          disabled={effectiveDisabled}
+          onPaste={enableAttachments ? onPaste : undefined}
+          disabled={effectiveDisabled || sending}
           rows={2}
           maxLength={MAX_LEN}
           data-testid="composer-input"
@@ -206,11 +301,11 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
         <button
           type="button"
           class="chalk-composer-send"
-          onClick={submit}
+          onClick={() => void submit()}
           disabled={!canSend}
           data-testid="composer-send"
         >
-          send
+          {sending ? "sending…" : "send"}
         </button>
       </div>
     </div>

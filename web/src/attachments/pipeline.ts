@@ -39,6 +39,10 @@ export type UploadResult =
 export interface UploadOptions {
   /** preview longest-edge px; defaults to the preview module's default (320). */
   previewMaxEdge?: number;
+  /** att-3: per-attachment upload progress, called as ciphertext chunks land.
+   *  loaded/total are CIPHERTEXT bytes; total is known up front (we encrypt the
+   *  whole blob before chunking). Fires once at 0 and once at total. */
+  onProgress?: (loaded: number, total: number) => void;
 }
 
 /**
@@ -92,10 +96,13 @@ export async function uploadAttachment(
     previewLen,
   });
   const chunkBytes = init.chunkBytes > 0 ? init.chunkBytes : 512 * 1024;
+  const total = encFull.ciphertext.byteLength;
+  opts.onProgress?.(0, total);
   let seq = 0;
-  for (let off = 0; off < encFull.ciphertext.byteLength; off += chunkBytes) {
-    const end = Math.min(off + chunkBytes, encFull.ciphertext.byteLength);
+  for (let off = 0; off < total; off += chunkBytes) {
+    const end = Math.min(off + chunkBytes, total);
     await putChunk(init.attachmentID, seq, encFull.ciphertext.subarray(off, end));
+    opts.onProgress?.(end, total);
     seq++;
   }
   await finalizeUpload(init.attachmentID);

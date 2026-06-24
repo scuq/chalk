@@ -1494,12 +1494,17 @@ export function App() {
 
   // --- Event handlers --------------------------------------------------
 
-  const onSend = async (body: string, parentID?: string, pending?: PendingAttachment[]) => {
+  const onSend = async (
+    body: string,
+    parentID?: string,
+    pending?: PendingAttachment[],
+    opts?: { onProgress?: (localID: string, loaded: number, total: number) => void },
+  ): Promise<boolean> => {
     const c = clientRef.current;
-    if (!c || !c.isOpen()) return;
+    if (!c || !c.isOpen()) return false;
     const cid = state.activeChannelID;
-    if (!cid) return;
-    if (!state.user) return;
+    if (!cid) return false;
+    if (!state.user) return false;
 
     // Phase 23d: encrypt for this channel if it holds a key. "waiting" means
     // the channel is encrypted but our key hasn't arrived -- block the send
@@ -1508,9 +1513,9 @@ export function App() {
     // Phase 23f (fail-closed): a message is sent ONLY if it can be encrypted.
     // No crypto instance, or no usable channel key, means the send is blocked
     // entirely -- plaintext is never transmitted.
-    if (!ccRef.current) return;
+    if (!ccRef.current) return false;
     const enc = await ccRef.current.encryptForChannel(cid, body);
-    if (enc.kind !== "encrypted") return; // "waiting": blocked until key arrives
+    if (enc.kind !== "encrypted") return false; // "waiting": blocked until key arrives
     const sendBody = enc.body;
     const sendKeyVersion: number = enc.keyVersion;
 
@@ -1520,20 +1525,25 @@ export function App() {
     // optimistic message (chalkd echo-suppresses our own device, so our own
     // attachments render from these optimistic refs). If any upload blocks on
     // the key or errors, abort the whole send -- nothing half-sent.
+    // att-3: thread per-item upload progress back to the composer tray.
     const attachmentIDs: string[] = [];
     const attachmentRefs: AttachmentRef[] = [];
     if (pending && pending.length > 0) {
       const deviceID = getOrCreateDeviceId();
       try {
         for (const p of pending) {
-          const res = await uploadAttachment(ccRef.current, cid, deviceID, p.file);
-          if (res.kind !== "uploaded") return; // "waiting": key vanished mid-send
+          const res = await uploadAttachment(ccRef.current, cid, deviceID, p.file, {
+            onProgress: opts?.onProgress
+              ? (loaded, total) => opts.onProgress!(p.localID, loaded, total)
+              : undefined,
+          });
+          if (res.kind !== "uploaded") return false; // "waiting": key vanished mid-send
           attachmentIDs.push(res.ref.id);
           attachmentRefs.push(res.ref);
         }
       } catch (err) {
         console.error("attachment upload failed; send aborted:", err);
-        return;
+        return false;
       }
     }
 
@@ -1590,6 +1600,7 @@ export function App() {
     if (parentID) payload.parent_id = parentID;
     if (attachmentIDs.length > 0) payload.attachment_ids = attachmentIDs;
     c.send(TypeSend, payload);
+    return true;
   };
 
   const onCreateChannel = (name: string, isDM: boolean, memberIDs: string[]) => {
@@ -2114,7 +2125,7 @@ export function App() {
               ? "waiting_for_key"
               : "encryption_initializing"
           }
-          onSend={(body, pending) => onSend(body, undefined, pending)}
+          onSend={(body, pending, opts) => onSend(body, undefined, pending, opts)}
           enableAttachments
         />
       </footer>

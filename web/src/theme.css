@@ -367,12 +367,50 @@ html, body {
   color: var(--chalk-fg-bright);
 }
 
+/* -- att-3: drag-drop affordance + per-item upload progress -------- */
+.chalk-composer--drag-active {
+  outline: 1px dashed var(--chalk-fg);
+  outline-offset: 2px;
+  background: var(--chalk-bg-elev);
+}
+.chalk-composer-drop-hint {
+  padding: var(--chalk-s1) var(--chalk-s2);
+  color: var(--chalk-fg-bright);
+  font-size: var(--chalk-size-small);
+  text-align: center;
+  border: 1px dashed var(--chalk-fg);
+  border-radius: var(--chalk-radius);
+}
+.chalk-composer-chip-progress {
+  display: inline-block;
+  width: 6em;
+  height: 6px;
+  background: var(--chalk-bg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  overflow: hidden;
+}
+.chalk-composer-chip-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--chalk-fg);
+  transition: width 0.15s linear;
+}
+
 /* -- att-2: attachments in the message feed ----------------------- */
 .chalk-message-attachments {
+  /* The message row is a grid (time | sender | body). Place attachments in the
+     body column and let them run to the row's end, so images use the full
+     available chat width instead of auto-placing into the narrow time cell. */
+  grid-column: 3 / -1;
   display: flex;
   flex-direction: column;
   gap: var(--chalk-s2);
   margin-top: var(--chalk-s1);
+}
+.chalk-message--no-time .chalk-message-attachments {
+  /* No timestamp column -> body is column 2. */
+  grid-column: 2 / -1;
 }
 .chalk-attachment {
   font-size: var(--chalk-size-small);
@@ -389,9 +427,16 @@ html, body {
   font-style: italic;
 }
 .chalk-attachment-img {
-  max-width: min(320px, 100%);
-  max-height: 240px;
   display: block;
+  /* Natural size, never upscaled: width:auto means a small original renders at
+     its own size. max-width caps large originals at 720px OR the available
+     column width, whichever is smaller -- so it downscales to fit and tracks
+     window resizes (the 100% is the column). height:auto keeps the aspect. */
+  width: auto;
+  max-width: min(720px, 100%);
+  height: auto;
+  max-height: 70dvh;
+  object-fit: contain;
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);
   cursor: zoom-in;
@@ -406,6 +451,36 @@ html, body {
   max-width: 100%;
   max-height: 80dvh;
   cursor: zoom-out;
+}
+
+/* Lightbox: click an image to view it at original size on a dark backdrop. */
+.chalk-attachment-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--chalk-s4);
+  background: rgba(0, 0, 0, 0.92);
+  cursor: zoom-out;
+}
+.chalk-attachment-lightbox-img {
+  max-width: 95vw;
+  max-height: 95vh;
+  object-fit: contain;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+}
+.chalk-attachment-lightbox-caption {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--chalk-s3);
+  text-align: center;
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  pointer-events: none;
 }
 .chalk-attachment-img-placeholder {
   width: 200px;
