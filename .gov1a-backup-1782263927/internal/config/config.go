@@ -95,48 +95,6 @@ type Config struct {
 	// auth.IsOpenRegistration(); this Config field carries the flag
 	// resolution for diagnostic logging at startup.
 	OpenRegistration bool
-
-	// Governance holds the server-wide DEFAULTS for per-channel governance
-	// config (gov-1a). A channel snapshots these into its own columns at
-	// creation; changing an env var therefore only affects channels created
-	// afterward. The per-channel columns remain the source of truth at tally
-	// time. See GovernanceDefaults for the individual CHALK_* knobs.
-	Governance GovernanceDefaults
-}
-
-// GovernanceDefaults are the server-wide default governance parameters,
-// configurable via CHALK_* env vars and seeded into each new channel's
-// columns at creation time (gov-1a / spec H14).
-type GovernanceDefaults struct {
-	// DefaultMode is the governance_mode new channels start in.
-	// CHALK_GOVERNANCE_DEFAULT_MODE, "dictator" | "democratic", default "dictator".
-	DefaultMode string
-	// VoteWindowDays is the activity window for voter eligibility: a member is
-	// eligible only if active and seen within this many days.
-	// CHALK_VOTE_WINDOW_DAYS, default 30.
-	VoteWindowDays int
-	// VoteExpiryHours is how long a proposal stays open before it expires
-	// (unresolved -> failed). CHALK_VOTE_EXPIRY_HOURS, default 168 (7 days).
-	VoteExpiryHours int
-	// MinEligible is the absolute floor of snapshot voters required to even
-	// OPEN a proposal. CHALK_VOTE_MIN_ELIGIBLE, default 3.
-	MinEligible int
-	// QuorumPercent is the turnout (% of the frozen snapshot that must cast a
-	// ballot) required for a proposal to pass. CHALK_VOTE_QUORUM_PERCENT,
-	// default 50.
-	QuorumPercent int
-	// PassPercent is the share of *voters* that must vote yes for a normal
-	// pass (strictly greater than this percent => >50 is a strict majority).
-	// CHALK_VOTE_PASS_PERCENT, default 50.
-	PassPercent int
-	// SupermajorityPercent is the higher bar for a democratic->dictator
-	// set_mode proposal (dissolving democracy). CHALK_VOTE_SUPERMAJORITY_PERCENT,
-	// default 67.
-	SupermajorityPercent int
-	// ReproposeCooldownHours is how long after a proposal FAILS the same
-	// (channel, type, target) is barred from being re-proposed (anti-spam /
-	// anti-harassment). CHALK_VOTE_REPROPOSE_COOLDOWN_HOURS, default 168.
-	ReproposeCooldownHours int
 }
 
 func Default() Config {
@@ -157,19 +115,6 @@ func Default() Config {
 		// RPOrigins empty by default; the server fills it from Listen +
 		// TLSMode when not explicitly set. Empty here lets us tell
 		// "operator set this" from "use the default" cleanly.
-
-		// gov-1a: governance defaults (spec H14). Seeded into each new
-		// channel's columns at creation; per-channel columns then win.
-		Governance: GovernanceDefaults{
-			DefaultMode:            "dictator",
-			VoteWindowDays:         30,
-			VoteExpiryHours:        168,
-			MinEligible:            3,
-			QuorumPercent:          50,
-			PassPercent:            50,
-			SupermajorityPercent:   67,
-			ReproposeCooldownHours: 168,
-		},
 	}
 }
 
@@ -270,43 +215,6 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("CHALK_OPEN_REGISTRATION"); v != "" {
 		c.OpenRegistration = parseBool(v)
 	}
-
-	// gov-1a: governance defaults (spec H14). String mode + int knobs.
-	if v := os.Getenv("CHALK_GOVERNANCE_DEFAULT_MODE"); v != "" {
-		c.Governance.DefaultMode = strings.ToLower(strings.TrimSpace(v))
-	}
-	govInts := []struct {
-		dst *int
-		key string
-	}{
-		{&c.Governance.VoteWindowDays, "CHALK_VOTE_WINDOW_DAYS"},
-		{&c.Governance.VoteExpiryHours, "CHALK_VOTE_EXPIRY_HOURS"},
-		{&c.Governance.MinEligible, "CHALK_VOTE_MIN_ELIGIBLE"},
-		{&c.Governance.QuorumPercent, "CHALK_VOTE_QUORUM_PERCENT"},
-		{&c.Governance.PassPercent, "CHALK_VOTE_PASS_PERCENT"},
-		{&c.Governance.SupermajorityPercent, "CHALK_VOTE_SUPERMAJORITY_PERCENT"},
-		{&c.Governance.ReproposeCooldownHours, "CHALK_VOTE_REPROPOSE_COOLDOWN_HOURS"},
-	}
-	for _, b := range govInts {
-		if n, ok := envInt(b.key); ok {
-			*b.dst = n
-		}
-	}
-}
-
-// envInt reads an integer env var. Returns (0, false) when unset or
-// unparseable so callers keep their existing default rather than silently
-// zeroing it.
-func envInt(key string) (int, bool) {
-	v := os.Getenv(key)
-	if v == "" {
-		return 0, false
-	}
-	n, err := strconv.Atoi(strings.TrimSpace(v))
-	if err != nil {
-		return 0, false
-	}
-	return n, true
 }
 
 // parseBool accepts the same truthy strings as auth.IsOpenRegistration
@@ -370,37 +278,6 @@ func (c Config) Validate() error {
 	// RPOrigins is allowed to be empty (server derives it from
 	// listen/tls); we don't validate format here because the auth
 	// service will reject malformed values at construction time.
-
-	// gov-1a: governance defaults. Fail loudly on nonsense rather than
-	// silently running a channel with an un-passable or zero-window vote.
-	g := c.Governance
-	if g.DefaultMode != "dictator" && g.DefaultMode != "democratic" {
-		return fmt.Errorf("invalid CHALK_GOVERNANCE_DEFAULT_MODE: %q (want dictator|democratic)", g.DefaultMode)
-	}
-	if g.VoteWindowDays <= 0 {
-		return errors.New("CHALK_VOTE_WINDOW_DAYS must be > 0")
-	}
-	if g.VoteExpiryHours <= 0 {
-		return errors.New("CHALK_VOTE_EXPIRY_HOURS must be > 0")
-	}
-	if g.ReproposeCooldownHours <= 0 {
-		return errors.New("CHALK_VOTE_REPROPOSE_COOLDOWN_HOURS must be > 0")
-	}
-	if g.MinEligible < 1 {
-		return errors.New("CHALK_VOTE_MIN_ELIGIBLE must be >= 1")
-	}
-	for _, pc := range []struct {
-		name string
-		val  int
-	}{
-		{"CHALK_VOTE_QUORUM_PERCENT", g.QuorumPercent},
-		{"CHALK_VOTE_PASS_PERCENT", g.PassPercent},
-		{"CHALK_VOTE_SUPERMAJORITY_PERCENT", g.SupermajorityPercent},
-	} {
-		if pc.val < 1 || pc.val > 100 {
-			return fmt.Errorf("%s must be in 1..100 (got %d)", pc.name, pc.val)
-		}
-	}
 
 	return nil
 }

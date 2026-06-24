@@ -66,24 +66,6 @@ func run(args []string) error {
 	defer st.Close()
 	log.Printf("connected to database")
 
-	// gov-1a: hand the server-wide governance defaults to the store so new
-	// channels seed their per-channel governance columns from them. Log the
-	// effective config like the rest of startup.
-	st.GovDefaults = store.GovernanceConfig{
-		Mode:                   cfg.Governance.DefaultMode,
-		VoteWindowDays:         cfg.Governance.VoteWindowDays,
-		VoteExpiryHours:        cfg.Governance.VoteExpiryHours,
-		MinEligible:            cfg.Governance.MinEligible,
-		QuorumPercent:          cfg.Governance.QuorumPercent,
-		PassPercent:            cfg.Governance.PassPercent,
-		SupermajorityPercent:   cfg.Governance.SupermajorityPercent,
-		ReproposeCooldownHours: cfg.Governance.ReproposeCooldownHours,
-	}
-	log.Printf("governance: default_mode=%s window_days=%d expiry_hours=%d min_eligible=%d quorum=%d%% pass=%d%% supermajority=%d%% repropose_cooldown_hours=%d",
-		cfg.Governance.DefaultMode, cfg.Governance.VoteWindowDays, cfg.Governance.VoteExpiryHours,
-		cfg.Governance.MinEligible, cfg.Governance.QuorumPercent, cfg.Governance.PassPercent,
-		cfg.Governance.SupermajorityPercent, cfg.Governance.ReproposeCooldownHours)
-
 	migs, err := migrate.Load(chalk.Migrations, chalk.MigrationsDir)
 	if err != nil {
 		return fmt.Errorf("load migrations: %w", err)

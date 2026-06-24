@@ -112,25 +112,14 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 	}
 
 	var result ChannelWithMembers
-	// gov-1a: seed this channel's governance columns from the server-wide
-	// defaults captured at startup (withDefaults fills any zero field, so a
-	// directly-constructed Store still yields a valid channel). The migration
-	// column DEFAULTs match these; seeding explicitly is what makes a changed
-	// CHALK_VOTE_* env affect channels created AFTERWARD.
-	gd := s.GovDefaults.withDefaults()
 	err := s.withTx(ctx, func(tx pgx.Tx) error {
 		// 1. Insert channel.
 		var ch Channel
 		err := tx.QueryRow(ctx,
-			`INSERT INTO channels
-			   (name, is_dm, created_by,
-			    governance_mode, vote_window_days, vote_expiry_hours, min_eligible,
-			    quorum_percent, pass_percent, supermajority_percent, repropose_cooldown_hours)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			`INSERT INTO channels (name, is_dm, created_by)
+			 VALUES ($1, $2, $3)
 			 RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending`,
 			strings.TrimSpace(in.Name), in.IsDM, in.CreatedBy,
-			gd.Mode, gd.VoteWindowDays, gd.VoteExpiryHours, gd.MinEligible,
-			gd.QuorumPercent, gd.PassPercent, gd.SupermajorityPercent, gd.ReproposeCooldownHours,
 		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending)
 		if err != nil {
 			return fmt.Errorf("insert channel: %w", err)

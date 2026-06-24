@@ -26,12 +26,6 @@ var ErrNotFound = errors.New("not found")
 // Store is the chalk data layer. Hold one per process and share via DI.
 type Store struct {
 	Pool *pgxpool.Pool
-
-	// GovDefaults are the server-wide governance defaults seeded into each new
-	// channel's columns at creation (gov-1a). Set by the server from config
-	// after Open. Zero-value is filled with safe defaults at use, so a
-	// directly-constructed Store (e.g. in tests) still creates valid channels.
-	GovDefaults GovernanceConfig
 }
 
 // Open creates a Store from a Postgres URL. Caller must Close when done.
