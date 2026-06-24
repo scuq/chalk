@@ -1530,6 +1530,7 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 		Members:           members,
 		CurrentKeyVersion: c.CurrentKeyVersion,
 		RotationPending:   c.RotationPending,
+		GovernanceMode:    c.GovernanceMode,
 	}
 }
 

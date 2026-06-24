@@ -28,6 +28,10 @@ type Channel struct {
 	// rotated yet (removal sets it; the next rotation clears it). Surfaced so the
 	// pending revocation is visible.
 	RotationPending bool
+	// GovernanceMode is the channel's governance mode ("dictator"|"democratic",
+	// gov-1a). Surfaced in the summary so the client can render the mode and
+	// gate unilateral vs proposal-based actions (gov-2).
+	GovernanceMode string
 }
 
 // ChannelWithMembers couples a Channel with its full member set.
@@ -127,11 +131,11 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 			    governance_mode, vote_window_days, vote_expiry_hours, min_eligible,
 			    quorum_percent, pass_percent, supermajority_percent, repropose_cooldown_hours)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-			 RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending`,
+			 RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, governance_mode`,
 			strings.TrimSpace(in.Name), in.IsDM, in.CreatedBy,
 			gd.Mode, gd.VoteWindowDays, gd.VoteExpiryHours, gd.MinEligible,
 			gd.QuorumPercent, gd.PassPercent, gd.SupermajorityPercent, gd.ReproposeCooldownHours,
-		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending)
+		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.GovernanceMode)
 		if err != nil {
 			return fmt.Errorf("insert channel: %w", err)
 		}
@@ -181,10 +185,10 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 func (s *Store) GetChannel(ctx context.Context, channelID uuid.UUID) (Channel, error) {
 	var ch Channel
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, name, is_dm, created_by, created_at, current_key_version, rotation_pending
+		`SELECT id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, governance_mode
 		   FROM channels WHERE id = $1`,
 		channelID,
-	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending)
+	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.GovernanceMode)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Channel{}, ErrChannelNotFound
 	}
@@ -224,7 +228,7 @@ func (s *Store) IsMember(ctx context.Context, channelID, userID uuid.UUID) (bool
 // and the member-count cardinality is small (a few users per channel).
 func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]ChannelWithMembers, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending
+		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.governance_mode
 		   FROM channels c
 		   JOIN channel_members cm ON cm.channel_id = c.id
 		  WHERE cm.user_id = $1
@@ -240,7 +244,7 @@ func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]Ch
 	channelIDs := make([]uuid.UUID, 0, 16)
 	for rows.Next() {
 		var c Channel
-		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.GovernanceMode); err != nil {
 			return nil, err
 		}
 		channels = append(channels, ChannelWithMembers{Channel: c})

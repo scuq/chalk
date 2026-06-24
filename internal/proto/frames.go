@@ -284,6 +284,10 @@ type ChannelSummary struct {
 	// RotationPending is true when a removal hasn't been followed by a rotation
 	// yet (the removed member still holds the old key until then).
 	RotationPending bool `json:"rotation_pending"`
+	// GovernanceMode is the channel's governance mode ("dictator"|"democratic",
+	// gov-1a/gov-2). Lets the client render the mode and gate unilateral vs
+	// proposal-based actions. Absent from older servers -> treat as "dictator".
+	GovernanceMode string `json:"governance_mode,omitempty"`
 }
 
 // ChannelMember pairs a user_id with their handle. Server
