@@ -52,6 +52,9 @@ type Event struct {
 	// message was soft-deleted; reuses the message fields MessageID, TS,
 	// ChannelID and is published per-channel via PublishMessageWithTx --
 	// receivers fetch the now-tombstoned row and push message_deleted).
+	// "governance" (gov-1b-1: a proposal/mode change; UserID is the
+	// recipient member, FriendKind the sub-kind, and the
+	// GovernanceEventPayload JSON rides the ChannelEventPayload slot).
 	Kind string `json:"k"`
 
 	// Message fields (Kind="message"). MessageID and TS together

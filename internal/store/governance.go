@@ -571,6 +571,24 @@ func (s *Store) MarkProposalResolved(ctx context.Context, proposalID uuid.UUID, 
 	return nil
 }
 
+// GetUserVote returns a voter's current ballot on a proposal ("yes"/"no") and
+// whether they have voted at all. Used to personalize a proposal view for the
+// caller (their own vote is shown; others' ballots are not -- H7).
+func (s *Store) GetUserVote(ctx context.Context, proposalID, voterID uuid.UUID) (string, bool, error) {
+	var vote string
+	err := s.Pool.QueryRow(ctx,
+		`SELECT vote FROM proposal_votes WHERE proposal_id = $1 AND voter_id = $2`,
+		proposalID, voterID,
+	).Scan(&vote)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("get user vote: %w", err)
+	}
+	return vote, true, nil
+}
+
 // GetProposal returns a single proposal by id.
 func (s *Store) GetProposal(ctx context.Context, proposalID uuid.UUID) (Proposal, error) {
 	var p Proposal

@@ -339,6 +339,9 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 		s.handleFriendEvent(ev)
 	case "channel":
 		s.handleChannelEvent(ev)
+	case "governance":
+		// gov-1b-1: proposal lifecycle + mode-change pushes.
+		s.handleGovernanceEvent(ev)
 	case "prefs":
 		// Phase 9.7a:
 		s.handlePrefsEvent(ev)

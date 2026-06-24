@@ -501,6 +501,18 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 		case proto.TypeDeleteMessage:
 			h.handleDeleteMessage(ctx, c, conn, f)
 
+		// gov-1b-1: governance mode + proposal lifecycle.
+		case proto.TypeGovSetMode:
+			h.handleGovSetMode(ctx, c, conn, f)
+		case proto.TypeGovPropose:
+			h.handlePropose(ctx, c, conn, f)
+		case proto.TypeGovVote:
+			h.handleVote(ctx, c, conn, f)
+		case proto.TypeGovCancel:
+			h.handleCancelProposal(ctx, c, conn, f)
+		case proto.TypeGovList:
+			h.handleListProposals(ctx, c, conn, f)
+
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,
 				"unknown frame type: "+f.Type)
