@@ -53,3 +53,5 @@ Thumbs.db
 
 # esbuild transpile cache for the test runner
 web/.test-build/
+
+.gov*-backup*/
