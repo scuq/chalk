@@ -95,6 +95,7 @@ import {
 import { WSClient, getOrCreateDeviceId, clearDeviceId, getThreadSeen, setThreadSeen } from "../ws-client";
 import { reducer } from "../state/reducer";
 import { initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary, type ProposalView } from "../state/types";
+import { selectGiphyPref } from "../giphy/giphy";
 import { StatusBar } from "./StatusBar";
 import { Sidebar } from "./Sidebar";
 import { MessageList } from "./MessageList";
@@ -718,6 +719,18 @@ export function App() {
   // tombstones the row. We do NOT optimistically tombstone: the round-trip is
   // fast and waiting for the authoritative push keeps all clients in lockstep.
   const [pendingDelete, setPendingDelete] = useState<Message | null>(null);
+  // att-4b: Giphy consent modal. Opened from the settings toggle when the
+  // user moves to enable Giphy from unset/disabled; confirming sends the
+  // prefs_set. (att-4c reuses this same modal from the composer button and
+  // the first received Giphy message.)
+  const [giphyConsentOpen, setGiphyConsentOpen] = useState(false);
+  const sendGiphyPref = useCallback((v: "enabled" | "disabled") => {
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    // giphy is a flat top-level pref (like theme), so a single-key patch is
+    // safe under the server's shallow JSONB merge.
+    c.send(TypePrefsSet, { patch: { giphy: v } });
+  }, []);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   const onDeleteMessage = useCallback((m: Message) => {
@@ -2154,6 +2167,24 @@ export function App() {
         onCancel={() => setPendingDelete(null)}
       />
 
+      {/* att-4b: Giphy consent. Reuses ConfirmModal -- confirm enables Giphy
+          (the viewer accepts that rendering a GIF fetches it from Giphy's CDN,
+          revealing their IP to Giphy); cancel leaves the pref unchanged. The
+          explicit "disable" path is just unchecking the settings toggle. */}
+      <ConfirmModal
+        open={giphyConsentOpen}
+        title="Enable Giphy?"
+        body={
+          "Giphy GIFs are loaded directly from Giphy's servers. Turning this on means your browser will fetch GIFs from Giphy's CDN when a Giphy message is shown, which reveals your IP address and which GIF you're viewing to Giphy. Messages stay end-to-end encrypted; only the GIF render reaches out. This choice is per-device and only affects you -- other members are never made to fetch anything. You can turn it off anytime in settings."
+        }
+        confirmLabel="Enable Giphy"
+        onConfirm={() => {
+          sendGiphyPref("enabled");
+          setGiphyConsentOpen(false);
+        }}
+        onCancel={() => setGiphyConsentOpen(false)}
+      />
+
       {state.openPanel === "friends" && (
         <FriendsPanel
           state={state.friendsPanel}
@@ -2296,6 +2327,9 @@ export function App() {
             c.send(TypePrefsSet, { patch: { chat: next } });
           }}
           onClearImageCache={() => clearAttachmentCache()}
+          giphyPref={selectGiphyPref(state.prefs)}
+          onSetGiphyPref={sendGiphyPref}
+          onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
         />
       )}
     </div>

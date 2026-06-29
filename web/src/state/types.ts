@@ -179,6 +179,11 @@ export interface UserPrefs {
   theme?: string;
   // Phase 9.7d: chat-display sub-prefs.
   chat?: ChatPrefs;
+  // att-4: Giphy consent (tri-state). Absent = "unset" (default OFF): no
+  // Giphy fetching until the viewer opts in. "enabled" renders received
+  // Giphy URLs as <img> from Giphy's CDN; "disabled" keeps them inert text.
+  // See selectGiphyPref / decideGiphyRender in ../giphy/giphy.ts.
+  giphy?: "unset" | "enabled" | "disabled";
   // [extend with more keys in future phases]
 }
 

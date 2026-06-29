@@ -64,6 +64,13 @@ interface Props {
   // att-2: clear the cached attachment ciphertext (the "clear cached images"
   // guardrail). Optional -- only rendered when the parent wires it.
   onClearImageCache?: () => void | Promise<void>;
+  // att-4b: Giphy consent (tri-state). giphyPref is the current resolved
+  // value; onSetGiphyPref sets it directly (used for the "disable" path);
+  // onRequestEnableGiphy opens the app-level consent modal (the "enable"
+  // path, so the leak is explained before the pref flips to "enabled").
+  giphyPref?: "unset" | "enabled" | "disabled";
+  onSetGiphyPref?: (v: "enabled" | "disabled") => void;
+  onRequestEnableGiphy?: () => void;
 }
 
 export function ProfilePanel({
@@ -75,6 +82,9 @@ export function ProfilePanel({
   onSetChatPref,
   onSetUserColors,
   onClearImageCache,
+  giphyPref,
+  onSetGiphyPref,
+  onRequestEnableGiphy,
   onClose,
   onEmailChangeDraft,
   onEmailChangeSubmit,
@@ -411,6 +421,41 @@ export function ProfilePanel({
                   {imageCacheCleared
                     ? "cached images cleared."
                     : "removes locally cached attachment data from this device. images re-download from the server on next view."}
+                </p>
+              </div>
+            </section>
+          )}
+
+          {/* att-4b: Giphy consent. Enabling routes through the app-level
+              consent modal (onRequestEnableGiphy) so the privacy tradeoff is
+              explained first; disabling is direct. Per-device, default off. */}
+          {onSetGiphyPref && (
+            <section class="chalk-profile-storage" data-testid="giphy-settings">
+              <h3>giphy</h3>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={giphyPref === "enabled"}
+                    onChange={(e) => {
+                      const on = (e.target as HTMLInputElement).checked;
+                      if (on) {
+                        if (onRequestEnableGiphy) onRequestEnableGiphy();
+                        else onSetGiphyPref("enabled");
+                      } else {
+                        onSetGiphyPref("disabled");
+                      }
+                    }}
+                    data-testid="giphy-toggle"
+                  />
+                  enable Giphy GIFs
+                </label>
+                <p class="chalk-profile-hint" style={{ marginTop: "0.5rem" }}>
+                  {giphyPref === "enabled"
+                    ? "on: Giphy messages render as GIFs, fetched from Giphy's CDN. Your IP and the GIF you view are visible to Giphy. Per-device; affects only you."
+                    : giphyPref === "disabled"
+                      ? "off: Giphy messages show as plain links and are never fetched. Nothing reaches Giphy."
+                      : "not set: Giphy messages show as plain links until you opt in. Enabling lets your browser fetch GIFs from Giphy's CDN, revealing your IP to Giphy."}
                 </p>
               </div>
             </section>
