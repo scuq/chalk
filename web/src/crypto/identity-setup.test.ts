@@ -9,6 +9,7 @@ import {
   checkChallenge,
   verifyEnteredPhrase,
   classifyEnteredPhrase,
+  cleanEnteredPhrase,
 } from "./identity-setup";
 import { deriveIdentityFromMnemonic } from "./identity";
 
@@ -123,4 +124,50 @@ test("classifyEnteredPhrase reports invalid for the wrong word count", async () 
   const expected = await deriveIdentityFromMnemonic(MNEMONIC_24);
   const result = await classifyEnteredPhrase("abandon abandon abandon", expected.x25519Public);
   assert.equal(result.status, "invalid");
+});
+
+// md-5: paste-format tolerance for the decryption phrase. The numbered,
+// one-per-line form is exactly what the setup dialog's copy/print emits.
+function numbered(mnemonic: string): string {
+  return mnemonic
+    .split(" ")
+    .map((w, i) => `${(i + 1).toString().padStart(2, "0")}. ${w}`)
+    .join("\n");
+}
+
+test("cleanEnteredPhrase strips numbering, commas, and case", () => {
+  assert.equal(cleanEnteredPhrase("01. Feel\n02. Bullet\n03. Announce"), "feel bullet announce");
+  assert.equal(cleanEnteredPhrase("feel, bullet, announce"), "feel bullet announce");
+  assert.equal(cleanEnteredPhrase("  feel   bullet\tannounce  "), "feel bullet announce");
+  assert.equal(cleanEnteredPhrase("1) feel 2) bullet"), "feel bullet");
+});
+
+test("classifyEnteredPhrase accepts the numbered copy/print format", async () => {
+  const expected = await deriveIdentityFromMnemonic(MNEMONIC_24);
+  const result = await classifyEnteredPhrase(numbered(MNEMONIC_24), expected.x25519Public);
+  assert.equal(result.status, "ok");
+  assert.ok(result.status === "ok");
+  assert.deepEqual([...result.identity.x25519Public], [...expected.x25519Public]);
+});
+
+test("classifyEnteredPhrase accepts comma-separated and one-per-line plain words", async () => {
+  const expected = await deriveIdentityFromMnemonic(MNEMONIC_24);
+  const commas = MNEMONIC_24.split(" ").join(", ");
+  const lines = MNEMONIC_24.split(" ").join("\n");
+  assert.equal((await classifyEnteredPhrase(commas, expected.x25519Public)).status, "ok");
+  assert.equal((await classifyEnteredPhrase(lines, expected.x25519Public)).status, "ok");
+});
+
+test("classifyEnteredPhrase still rejects a numbered-but-wrong phrase as mismatch", async () => {
+  const expected = await deriveIdentityFromMnemonic(MNEMONIC_24);
+  const other =
+    "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote";
+  const result = await classifyEnteredPhrase(numbered(other), expected.x25519Public);
+  assert.equal(result.status, "mismatch");
+});
+
+test("verifyEnteredPhrase accepts the numbered format too (wrapper parity)", async () => {
+  const expected = await deriveIdentityFromMnemonic(MNEMONIC_24);
+  const got = await verifyEnteredPhrase(numbered(MNEMONIC_24), expected.x25519Public);
+  assert.notEqual(got, null);
 });
