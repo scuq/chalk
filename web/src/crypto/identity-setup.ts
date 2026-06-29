@@ -59,22 +59,63 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
- * verifyEnteredPhrase validates the mnemonic, derives the identity, and
- * confirms its X25519 public key matches `expectedX25519Public` (the key
- * the account already published). Returns the derived identity on a match,
- * or null if the phrase is invalid OR derives a different identity (wrong
- * phrase). Never throws.
+ * Outcome of checking a typed phrase against the account's published key,
+ * for the device-2 / fresh-device onboarding flow (md-1):
+ *   * "ok"       -> well-formed phrase whose derived X25519 key matches the
+ *                   published identity; `identity` is the derived keypair.
+ *   * "invalid"  -> not a well-formed BIP-39 phrase (bad word, wrong count,
+ *                   or failed checksum). Almost always a typo.
+ *   * "mismatch" -> a VALID phrase, but it derives a DIFFERENT identity than
+ *                   the one this account already published. The wrong phrase,
+ *                   not a typo. This is the load-bearing rejection: it stops a
+ *                   valid-but-wrong phrase from silently forking the identity
+ *                   on this device.
+ * Distinguishing "invalid" from "mismatch" lets the screen tell the user
+ * whether to look for a typo or to re-check which phrase they're holding.
+ */
+export type EnteredPhraseResult =
+  | { status: "ok"; identity: DerivedIdentity }
+  | { status: "invalid" }
+  | { status: "mismatch" };
+
+/**
+ * classifyEnteredPhrase validates the mnemonic checksum, derives the
+ * identity, and confirms its X25519 public key matches
+ * `expectedX25519Public` (the key the account already published), returning
+ * a discriminated result. Never throws.
+ *
+ * Order matters: the checksum gate runs first so a mistyped phrase is
+ * reported as "invalid" (a typo) before the comparatively expensive
+ * PBKDF2/HKDF derivation, and is never conflated with the wrong-phrase
+ * ("mismatch") case.
+ */
+export async function classifyEnteredPhrase(
+  mnemonic: string,
+  expectedX25519Public: Uint8Array,
+): Promise<EnteredPhraseResult> {
+  try {
+    if (!(await validateMnemonic(mnemonic))) return { status: "invalid" };
+    const identity = await deriveIdentityFromMnemonic(mnemonic);
+    if (!bytesEqual(identity.x25519Public, expectedX25519Public)) {
+      return { status: "mismatch" };
+    }
+    return { status: "ok", identity };
+  } catch {
+    return { status: "invalid" };
+  }
+}
+
+/**
+ * verifyEnteredPhrase is the boolean-style wrapper over
+ * classifyEnteredPhrase: returns the derived identity on an exact match, or
+ * null if the phrase is invalid OR derives a different identity. Never
+ * throws. Prefer classifyEnteredPhrase when the caller wants to surface WHY
+ * a phrase was rejected.
  */
 export async function verifyEnteredPhrase(
   mnemonic: string,
   expectedX25519Public: Uint8Array,
 ): Promise<DerivedIdentity | null> {
-  try {
-    if (!validateMnemonic(mnemonic)) return null;
-    const identity = await deriveIdentityFromMnemonic(mnemonic);
-    if (!bytesEqual(identity.x25519Public, expectedX25519Public)) return null;
-    return identity;
-  } catch {
-    return null;
-  }
+  const result = await classifyEnteredPhrase(mnemonic, expectedX25519Public);
+  return result.status === "ok" ? result.identity : null;
 }

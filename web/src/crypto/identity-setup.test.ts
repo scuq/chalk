@@ -8,6 +8,7 @@ import {
   pickChallengeIndices,
   checkChallenge,
   verifyEnteredPhrase,
+  classifyEnteredPhrase,
 } from "./identity-setup";
 import { deriveIdentityFromMnemonic } from "./identity";
 
@@ -83,4 +84,43 @@ test("verifyEnteredPhrase returns null for an invalid phrase (bad checksum)", as
   const bad = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon";
   const got = await verifyEnteredPhrase(bad, expected.x25519Public);
   assert.equal(got, null);
+});
+
+test("classifyEnteredPhrase reports ok with the identity on an exact match", async () => {
+  const expected = await deriveIdentityFromMnemonic(MNEMONIC_24);
+  const result = await classifyEnteredPhrase(MNEMONIC_24, expected.x25519Public);
+  assert.equal(result.status, "ok");
+  assert.ok(result.status === "ok");
+  assert.deepEqual([...result.identity.x25519Public], [...expected.x25519Public]);
+});
+
+test("classifyEnteredPhrase reports mismatch for a valid but different phrase", async () => {
+  const expected = await deriveIdentityFromMnemonic(MNEMONIC_24);
+  const other =
+    "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote";
+  const result = await classifyEnteredPhrase(other, expected.x25519Public);
+  assert.equal(result.status, "mismatch");
+});
+
+test("classifyEnteredPhrase reports invalid for a bad-checksum phrase, regardless of key match", async () => {
+  // The checksum gate must fire BEFORE the key comparison: a mistyped phrase
+  // is "invalid" (a typo), never "mismatch". This would regress to "mismatch"
+  // if validateMnemonic were not awaited (a Promise is always truthy).
+  const expected = await deriveIdentityFromMnemonic(MNEMONIC_24);
+  const bad = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon";
+  const result = await classifyEnteredPhrase(bad, expected.x25519Public);
+  assert.equal(result.status, "invalid");
+});
+
+test("classifyEnteredPhrase reports invalid for an unknown word", async () => {
+  const expected = await deriveIdentityFromMnemonic(MNEMONIC_24);
+  const bogus = Array(24).fill("notaword").join(" ");
+  const result = await classifyEnteredPhrase(bogus, expected.x25519Public);
+  assert.equal(result.status, "invalid");
+});
+
+test("classifyEnteredPhrase reports invalid for the wrong word count", async () => {
+  const expected = await deriveIdentityFromMnemonic(MNEMONIC_24);
+  const result = await classifyEnteredPhrase("abandon abandon abandon", expected.x25519Public);
+  assert.equal(result.status, "invalid");
 });

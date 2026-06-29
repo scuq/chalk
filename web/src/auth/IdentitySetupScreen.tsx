@@ -27,7 +27,7 @@ import { generateMnemonic } from "../crypto/bip39";
 import { deriveIdentityFromMnemonic } from "../crypto/identity";
 import { saveIdentity } from "../crypto/idb";
 import { publishIdentity, fetchIdentity, type IdentityTransport } from "../crypto/identity-sync";
-import { pickChallengeIndices, checkChallenge, verifyEnteredPhrase } from "../crypto/identity-setup";
+import { pickChallengeIndices, checkChallenge, classifyEnteredPhrase } from "../crypto/identity-setup";
 
 interface Props {
   userID: string;
@@ -157,7 +157,12 @@ export function IdentitySetupScreen({ userID, transport, onReady }: Props) {
     }
   };
 
-  // ---- enter: verify against the published key, then save ----
+  // ---- enter: classify the entered phrase against the published key ----
+  // This is the device-2 onboarding gate. classifyEnteredPhrase runs the
+  // checksum check, derives the identity, and compares its X25519 public key
+  // to the one already published for this account. The key match is the
+  // load-bearing security step: it prevents a valid-but-wrong phrase from
+  // silently forking a divergent identity onto this device.
   const onSubmitEntered = async () => {
     setEnterError("");
     if (!expectedX25519) {
@@ -166,15 +171,22 @@ export function IdentitySetupScreen({ userID, transport, onReady }: Props) {
     }
     setMode("working");
     try {
-      const identity = await verifyEnteredPhrase(entered, expectedX25519);
-      if (!identity) {
+      const result = await classifyEnteredPhrase(entered, expectedX25519);
+      if (result.status === "invalid") {
         setMode("enter");
         setEnterError(
-          "That phrase doesn't match this account's identity. Check for typos or wrong words.",
+          "That doesn't look like a valid 24-word phrase. Check for typos, missing words, or wrong word order.",
         );
         return;
       }
-      await saveIdentity(userID, identity);
+      if (result.status === "mismatch") {
+        setMode("enter");
+        setEnterError(
+          "That's a valid phrase, but it doesn't match this account's identity. Make sure you're entering the phrase for THIS account.",
+        );
+        return;
+      }
+      await saveIdentity(userID, result.identity);
       onReady();
     } catch (e) {
       setErrorMsg(describe(e));
@@ -210,13 +222,21 @@ export function IdentitySetupScreen({ userID, transport, onReady }: Props) {
       <div class="chalk-auth" data-testid="identity-setup-enter">
         <div class="chalk-auth-card">
           <header class="chalk-auth-header">
-            <h1>Enter your decryption phrase</h1>
+            <h1>Set up chalk on this device</h1>
             <p class="chalk-auth-subtitle">
-              This device doesn't have your encryption identity yet. Enter the 24-word
-              decryption phrase you saved when you first set up chalk. It is never sent to
-              the server.
+              This account already has an encryption identity, but this device doesn't
+              have it yet. Enter your 24-word decryption phrase to add this device. The
+              same phrase derives the same keys, so this device can read your encrypted
+              history. The phrase is never sent to the server.
             </p>
           </header>
+          <div class="chalk-auth-warning" data-testid="identity-enter-revocation-notice">
+            <strong>This device will have full access to your account.</strong> All
+            devices that hold your phrase are equal — there is no per-device sign-out.
+            If this device is ever lost or compromised, the only way to revoke it is to
+            rotate your identity (which re-keys your account and locks out every device
+            that doesn't re-enter the new phrase).
+          </div>
           {enterError && (
             <div class="chalk-auth-error" data-testid="identity-enter-error">{enterError}</div>
           )}
@@ -244,7 +264,7 @@ export function IdentitySetupScreen({ userID, transport, onReady }: Props) {
             disabled={entered.trim().length === 0}
             data-testid="identity-phrase-submit"
           >
-            Unlock
+            Add this device
           </button>
         </div>
       </div>
