@@ -73,6 +73,10 @@ export interface AuthConfig {
   open_registration: boolean;
   dev_mode: boolean;
   recovery_word_count: number;
+  // att-4: whether the server has a Giphy API key configured. The composer
+  // Giphy button is shown only when true. Per-user consent (prefs.giphy) is
+  // separate and gates whether the picker/search actually run.
+  giphy_enabled: boolean;
 }
 
 // RegistrationForm is the SPA-side draft state of the registration

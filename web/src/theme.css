@@ -3765,3 +3765,183 @@ html, body {
   display: flex;
   gap: var(--chalk-s2);
 }
+
+/* ===================================================================
+   att-4c: Giphy -- composer button, gated render, search picker.
+   =================================================================== */
+
+/* Composer "GIF" button -- mirrors the paperclip affordance. */
+.chalk-composer-giphy {
+  flex: 0 0 auto;
+  align-self: stretch;
+  padding: 0 var(--chalk-s2);
+  background: transparent;
+  color: var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+.chalk-composer-giphy:hover:not(:disabled) {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg);
+}
+.chalk-composer-giphy:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Rendered GIF in the feed (enabled + allowlisted). Capped like an inline
+   attachment image; the GIF keeps its aspect ratio. */
+.chalk-giphy {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--chalk-s1);
+}
+.chalk-giphy-img {
+  display: block;
+  max-width: min(320px, 100%);
+  height: auto;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  background: var(--chalk-bg-elev);
+}
+.chalk-giphy-tag {
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-muted);
+}
+
+/* Inert placeholder when a GIF is NOT rendered (unset / disabled / bad host
+   / load failure). Never triggers a fetch. */
+.chalk-giphy-blocked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s1);
+  padding: 2px var(--chalk-s2);
+  border: 1px dashed var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  max-width: 100%;
+}
+.chalk-giphy-blocked-icon {
+  color: var(--chalk-fg-dim);
+}
+.chalk-giphy-blocked-text {
+  overflow-wrap: anywhere;
+}
+.chalk-giphy-enable {
+  flex: 0 0 auto;
+  background: transparent;
+  color: var(--chalk-fg-bright);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0 var(--chalk-s2);
+  cursor: pointer;
+}
+.chalk-giphy-enable:hover {
+  border-color: var(--chalk-fg);
+  color: var(--chalk-fg);
+}
+
+/* Search picker overlay. */
+.chalk-giphy-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+}
+.chalk-giphy-picker {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 92vw);
+  max-height: 80vh;
+  background: var(--chalk-bg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  overflow: hidden;
+}
+.chalk-giphy-picker-search {
+  display: flex;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2);
+  border-bottom: 1px solid var(--chalk-border);
+}
+.chalk-giphy-picker-input {
+  flex: 1 1 auto;
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-base);
+  padding: var(--chalk-s1) var(--chalk-s2);
+}
+.chalk-giphy-picker-close {
+  flex: 0 0 auto;
+  background: transparent;
+  color: var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0 var(--chalk-s2);
+}
+.chalk-giphy-picker-close:hover {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg);
+}
+.chalk-giphy-picker-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--chalk-s2);
+}
+.chalk-giphy-picker-hint {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  margin: var(--chalk-s2) 0;
+}
+.chalk-giphy-picker-error {
+  color: var(--chalk-fg-bright);
+}
+.chalk-giphy-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--chalk-s2);
+}
+.chalk-giphy-picker-tile {
+  display: block;
+  padding: 0;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  background: var(--chalk-bg-elev);
+  cursor: pointer;
+  overflow: hidden;
+}
+.chalk-giphy-picker-tile:hover {
+  border-color: var(--chalk-fg);
+}
+.chalk-giphy-picker-tile img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.chalk-giphy-picker-attribution {
+  margin: 0;
+  padding: var(--chalk-s1) var(--chalk-s2);
+  border-top: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  text-align: right;
+  letter-spacing: 0.08em;
+}

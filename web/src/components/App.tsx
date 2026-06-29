@@ -160,6 +160,7 @@ import { ModeBadge } from "./ModeBadge";
 import {
   logout as logoutAPI,
   fetchMe,
+  fetchAuthConfig,
   listMyInvites,
   createInvite as createInviteAPI,
   revokeInvite as revokeInviteAPI,
@@ -298,6 +299,27 @@ export function App() {
   const [identityGate, setIdentityGate] =
     useState<"checking" | "ready" | "needs-setup" | null>(null);
   const identityCheckedForRef = useRef<string | null>(null);
+  // att-4c: ensure /api/auth/config is loaded once we're authenticated, so
+  // server feature flags (giphy_enabled) are available in the app. AuthGate
+  // only fetches config on the login/register screens, so a session resumed
+  // from a cookie would otherwise never have it and the GIF button would stay
+  // hidden. Non-fatal on failure -- the button simply stays hidden.
+  useEffect(() => {
+    if (state.authStage !== "authed") return undefined;
+    if (state.authConfig) return undefined;
+    let cancelled = false;
+    fetchAuthConfig()
+      .then((config) => {
+        if (!cancelled) dispatch({ kind: "auth_config_loaded", config });
+      })
+      .catch((err) => {
+        console.error("post-login auth config fetch failed:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [state.authStage, state.authConfig]);
+
   useEffect(() => {
     const uid = state.user?.id;
     if (state.wsState !== "open" || !uid) return;
@@ -2062,6 +2084,8 @@ export function App() {
               members={activeChannel.members ?? []}
               isDM={activeChannel.isDM}
               display={selectChatPrefs(state.prefs)}
+              giphyPref={selectGiphyPref(state.prefs)}
+              onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
               threadSeen={state.threadSeen}
               canDeleteMessages={
                 !!state.user?.id && activeChannel.createdBy === state.user.id
@@ -2140,6 +2164,9 @@ export function App() {
           }
           onSend={(body, pending, opts) => onSend(body, undefined, pending, opts)}
           enableAttachments
+          giphyEnabled={state.authConfig?.giphy_enabled ?? false}
+          giphyReady={selectGiphyPref(state.prefs) === "enabled"}
+          onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
         />
       </footer>
 

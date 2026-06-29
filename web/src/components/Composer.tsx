@@ -6,6 +6,8 @@ import {
   filesFromList,
   dragHasFiles,
 } from "../attachments/intake";
+import { GiphyPicker } from "./GiphyPicker";
+import { encodeGiphyBody } from "../giphy/giphy";
 
 // Phase 9.6g: disabledReason distinguishes the two reasons the
 // composer might be unusable. "offline" reflects a real connection
@@ -38,15 +40,24 @@ interface Props {
   // drag-drop + paste + pending tray with per-item progress). Only the main
   // composer sets this; the thread composer stays text-only.
   enableAttachments?: boolean;
+  // att-4c: Giphy composer button. giphyEnabled shows the button (server has
+  // an API key); giphyReady means the local viewer's consent pref is
+  // "enabled" so the picker can open. When the button is clicked but not
+  // ready, onRequestEnableGiphy opens the consent modal instead of the picker.
+  giphyEnabled?: boolean;
+  giphyReady?: boolean;
+  onRequestEnableGiphy?: () => void;
 }
 
 const MAX_LEN = 4000;
 
-export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments }: Props) {
+export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy }: Props) {
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [sending, setSending] = useState(false);
+  // att-4c: Giphy picker open state.
+  const [giphyOpen, setGiphyOpen] = useState(false);
   // att-3: per-item upload fraction (0..1) while sending.
   const [progress, setProgress] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -212,6 +223,16 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
       onDragLeave={enableAttachments ? onDragLeave : undefined}
       onDrop={enableAttachments ? onDrop : undefined}
     >
+      {/* att-4c: Giphy search picker. Opens only for an enabled viewer (the
+          GIF button gates on giphyReady). Picking sends the GIF immediately. */}
+      <GiphyPicker
+        open={giphyOpen}
+        onClose={() => setGiphyOpen(false)}
+        onPick={(fullURL) => {
+          setGiphyOpen(false);
+          void onSend(encodeGiphyBody(fullURL));
+        }}
+      />
       {enableAttachments && dragActive && (
         <div class="chalk-composer-drop-hint" data-testid="composer-drop-hint">
           drop files to attach
@@ -284,6 +305,28 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
               data-testid="composer-file-input"
             />
           </>
+        )}
+        {giphyEnabled && (
+          <button
+            type="button"
+            class="chalk-composer-giphy"
+            onClick={() => {
+              if (effectiveDisabled || sending) return;
+              // Not yet consented -> open the consent modal instead of the
+              // picker. The picker only ever opens for an enabled viewer.
+              if (!giphyReady) {
+                onRequestEnableGiphy?.();
+                return;
+              }
+              setGiphyOpen(true);
+            }}
+            disabled={effectiveDisabled || sending}
+            title="send a GIF"
+            aria-label="send a GIF"
+            data-testid="composer-giphy"
+          >
+            GIF
+          </button>
         )}
         <textarea
           class="chalk-composer-input"

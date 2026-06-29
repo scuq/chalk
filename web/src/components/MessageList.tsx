@@ -2,6 +2,8 @@ import { useEffect, useRef } from "preact/hooks";
 import type { Message } from "../state/types";
 import { AttachmentView } from "./AttachmentView";
 import type { AttachmentController } from "../attachments/pipeline";
+import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
+import { GiphyView } from "./GiphyView";
 
 interface Props {
   messages: Message[];
@@ -25,6 +27,12 @@ interface Props {
   };
   // Phase 9.7e: is the active channel a DM? Used to filter scoped color rules.
   isDM?: boolean;
+  // att-4c: the viewer's Giphy consent pref + a way to open the consent modal
+  // from a blocked-unset giphy message. Optional; absent => "unset" (giphy
+  // messages render inert), which is the safe default for any caller that
+  // doesn't wire these (e.g. the thread panel before att-4 lands there).
+  giphyPref?: GiphyPref;
+  onRequestEnableGiphy?: () => void;
   // Phase 10b: clicked an indicator or hover "reply" button. Dispatches
   // up to App.tsx, which routes to an open_thread action.
   // parentID is the message clicked; the parent itself doesn't have
@@ -81,7 +89,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-export function MessageList({ messages, ownDevice, ownUserID, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessages, onDeleteMessage, attachmentController }: Props) {
+export function MessageList({ messages, ownDevice, ownUserID, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessages, onDeleteMessage, attachmentController, giphyPref, onRequestEnableGiphy }: Props) {
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -190,7 +198,16 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
                   message deleted
                 </span>
               ) : (
-                m.body
+                // att-4c: a giphy-marked body renders as a gated GIF (or inert
+                // notice); everything else is plain text, exactly as before.
+                (() => {
+                  const gr = decideGiphyRender(m.body, giphyPref ?? "unset");
+                  return gr.mode === "text" ? (
+                    m.body
+                  ) : (
+                    <GiphyView render={gr} onRequestEnableGiphy={onRequestEnableGiphy} />
+                  );
+                })()
               )}
             </span>
             {/* att-2: encrypted attachments. Each decrypts independently and
