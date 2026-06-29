@@ -408,6 +408,11 @@ html, body {
   gap: var(--chalk-s2);
   margin-top: var(--chalk-s1);
 }
+/* giphy-layout: a giphy message breaks out to the row's left edge, same as an
+   attachment image block, instead of sitting in the narrow body column. */
+.chalk-message-giphy {
+  grid-column: 1 / -1;
+}
 .chalk-attachment {
   font-size: var(--chalk-size-small);
 }

@@ -192,24 +192,32 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
             >
               {senderLabel}
             </span>
-            <span class="chalk-message-body" data-testid="message-body">
-              {m.deleted ? (
-                <span class="chalk-message-deleted" data-testid="message-deleted">
-                  message deleted
-                </span>
-              ) : (
-                // att-4c: a giphy-marked body renders as a gated GIF (or inert
-                // notice); everything else is plain text, exactly as before.
-                (() => {
-                  const gr = decideGiphyRender(m.body, giphyPref ?? "unset");
-                  return gr.mode === "text" ? (
-                    m.body
-                  ) : (
-                    <GiphyView render={gr} onRequestEnableGiphy={onRequestEnableGiphy} />
-                  );
-                })()
-              )}
-            </span>
+            {(() => {
+              // giphy-layout: a giphy-marked body renders as a gated GIF that
+              // BREAKS OUT to the row's left edge (grid-column 1/-1), exactly
+              // like an attachment image -- not inline in the narrow body
+              // column. Non-giphy bodies render as plain text in the body span.
+              const gr = m.deleted ? null : decideGiphyRender(m.body, giphyPref ?? "unset");
+              const isGiphy = gr !== null && gr.mode !== "text";
+              return (
+                <>
+                  <span class="chalk-message-body" data-testid="message-body">
+                    {m.deleted ? (
+                      <span class="chalk-message-deleted" data-testid="message-deleted">
+                        message deleted
+                      </span>
+                    ) : isGiphy ? null : (
+                      m.body
+                    )}
+                  </span>
+                  {gr && gr.mode !== "text" && (
+                    <div class="chalk-message-giphy" data-testid="message-giphy">
+                      <GiphyView render={gr} onRequestEnableGiphy={onRequestEnableGiphy} />
+                    </div>
+                  )}
+                </>
+              );
+            })()}
             {/* att-2: encrypted attachments. Each decrypts independently and
                 fails closed to a locked placeholder if the key is missing.
                 Suppressed on deleted rows. */}
