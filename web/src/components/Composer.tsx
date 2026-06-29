@@ -6,7 +6,11 @@ import {
   filesFromList,
   dragHasFiles,
 } from "../attachments/intake";
-import { GiphyPicker } from "./GiphyPicker";
+import { lazyComponent } from "./LazyComponent";
+// Lazy: Giphy is opt-in, so the picker stays out of the initial bundle.
+const GiphyPicker = lazyComponent(() =>
+  import("./GiphyPicker").then((m) => m.GiphyPicker)
+);
 import { encodeGiphyBody } from "../giphy/giphy";
 
 // Phase 9.6g: disabledReason distinguishes the two reasons the

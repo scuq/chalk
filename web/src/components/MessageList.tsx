@@ -3,7 +3,11 @@ import type { Message } from "../state/types";
 import { AttachmentView } from "./AttachmentView";
 import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
-import { GiphyView } from "./GiphyView";
+import { lazyComponent } from "./LazyComponent";
+// Lazy: Giphy render path is opt-in; keep it out of the initial bundle.
+const GiphyView = lazyComponent(() =>
+  import("./GiphyView").then((m) => m.GiphyView)
+);
 
 interface Props {
   messages: Message[];
