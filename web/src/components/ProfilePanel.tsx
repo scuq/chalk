@@ -33,6 +33,7 @@ import {
   listPasskeys,
   addPasskeyBegin,
   addPasskeyFinish,
+  deletePasskey,
   type PasskeyInfo,
 } from "../auth/api";
 import { performRegistration, WebAuthnError } from "../webauthn";
@@ -116,6 +117,11 @@ export function ProfilePanel({
   const [addState, setAddState] = useState<"idle" | "running">("idle");
   const [addError, setAddError] = useState<string>("");
   const [newPasskeyName, setNewPasskeyName] = useState<string>("");
+  // md-7: per-passkey delete. confirmDeleteId is the id awaiting an
+  // inline confirm; deletingId is the id whose delete is in flight.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -164,6 +170,25 @@ export function ProfilePanel({
       }
     } finally {
       setAddState("idle");
+    }
+  };
+
+  const onDeletePasskey = async (id: string) => {
+    setDeleteError("");
+    setDeletingId(id);
+    try {
+      await deletePasskey(id);
+      setPasskeys((prev) => (prev ? prev.filter((p) => p.id !== id) : prev));
+      setConfirmDeleteId(null);
+    } catch (e) {
+      setDeleteError(
+        e instanceof ApiError
+          ? friendlyDeletePasskeyError(e.code, e.message)
+          : "couldn't remove the passkey; see browser console.",
+      );
+      if (!(e instanceof ApiError)) console.error("delete passkey failed:", e);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -651,15 +676,57 @@ export function ProfilePanel({
             ) : (
               <ul class="chalk-profile-passkey-list" data-testid="passkey-list" style={{ listStyle: "none", padding: 0, margin: "0 0 0.75rem 0" }}>
                 {passkeys.map((pk) => (
-                  <li key={pk.id} class="chalk-profile-passkey" style={{ padding: "0.35rem 0", borderBottom: "1px solid var(--chalk-border, rgba(255,255,255,0.08))" }}>
-                    <div>{pk.name || "unnamed passkey"}</div>
-                    <div class="chalk-profile-hint" style={{ marginTop: 0 }}>
-                      added {formatMillis(pk.createdAt)}
-                      {pk.lastUsedAt ? ` · last used ${formatMillis(pk.lastUsedAt)}` : " · never used"}
+                  <li key={pk.id} class="chalk-profile-passkey" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.5rem", padding: "0.35rem 0", borderBottom: "1px solid var(--chalk-border, rgba(255,255,255,0.08))" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div>{pk.name || "unnamed passkey"}</div>
+                      <div class="chalk-profile-hint" style={{ marginTop: 0 }}>
+                        added {formatMillis(pk.createdAt)}
+                        {pk.lastUsedAt ? ` · last used ${formatMillis(pk.lastUsedAt)}` : " · never used"}
+                      </div>
                     </div>
+                    {passkeys.length > 1 && (
+                      confirmDeleteId === pk.id ? (
+                        <div style={{ display: "flex", gap: "0.35rem", flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            class="chalk-button chalk-button--danger"
+                            onClick={() => onDeletePasskey(pk.id)}
+                            disabled={deletingId === pk.id}
+                            data-testid={`passkey-confirm-delete-${pk.id}`}
+                          >
+                            {deletingId === pk.id ? "removing…" : "confirm"}
+                          </button>
+                          <button
+                            type="button"
+                            class="chalk-button chalk-button--secondary"
+                            onClick={() => setConfirmDeleteId(null)}
+                            disabled={deletingId === pk.id}
+                            data-testid={`passkey-cancel-delete-${pk.id}`}
+                          >
+                            cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          class="chalk-button chalk-button--secondary"
+                          style={{ flexShrink: 0 }}
+                          onClick={() => {
+                            setDeleteError("");
+                            setConfirmDeleteId(pk.id);
+                          }}
+                          data-testid={`passkey-remove-${pk.id}`}
+                        >
+                          remove
+                        </button>
+                      )
+                    )}
                   </li>
                 ))}
               </ul>
+            )}
+            {deleteError && (
+              <div class="chalk-auth-error" data-testid="delete-passkey-error">{deleteError}</div>
             )}
             {addError && (
               <div class="chalk-auth-error" data-testid="add-passkey-error">{addError}</div>
@@ -693,6 +760,20 @@ export function ProfilePanel({
       </div>
     </div>
   );
+}
+
+function friendlyDeletePasskeyError(code: string, message: string): string {
+  switch (code) {
+    case "last_passkey":
+      return "this is your only passkey — add another before removing it.";
+    case "passkey_not_found":
+      return "that passkey is already gone.";
+    case "no_session":
+    case "invalid_session":
+      return "your session expired. please log in again.";
+    default:
+      return message || "couldn't remove the passkey.";
+  }
 }
 
 function friendlyAddPasskeyError(code: string, message: string): string {

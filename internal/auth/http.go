@@ -147,6 +147,7 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	mux.HandleFunc("POST /api/auth/passkeys/add/begin", RequireSession(d.Store, d.handleAddPasskeyBegin))
 	mux.HandleFunc("POST /api/auth/passkeys/add/finish", RequireSession(d.Store, d.handleAddPasskeyFinish))
 	mux.HandleFunc("GET /api/auth/passkeys", RequireSession(d.Store, d.handleListPasskeys))
+	mux.HandleFunc("DELETE /api/auth/passkeys/{id}", RequireSession(d.Store, d.handleDeletePasskey))
 	return nil
 }
 

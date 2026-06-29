@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -236,6 +237,59 @@ func (s *Store) DeletePasskey(ctx context.Context, credentialID []byte) error {
 		return fmt.Errorf("delete passkey: %w", err)
 	}
 	return nil
+}
+
+// ErrLastPasskey is returned by DeletePasskeyForUser when the target is
+// the user's only remaining passkey. Removing it would strand the
+// account on recovery-code-only (a one-time, contended secret), so it's
+// refused; the user must enroll another passkey first.
+var ErrLastPasskey = errors.New("cannot delete the last passkey")
+
+// DeletePasskeyForUser deletes the passkey with credentialID, but only
+// when it belongs to userID and is NOT the user's last passkey. The
+// count and delete run in one transaction with the user's passkey rows
+// locked FOR UPDATE, so two concurrent deletes can't race the account
+// down to zero passkeys.
+//
+// Returns store.ErrNotFound if no such credential belongs to the user,
+// and ErrLastPasskey if it is the user's only passkey.
+func (s *Store) DeletePasskeyForUser(ctx context.Context, credentialID []byte, userID uuid.UUID) error {
+	return s.withTx(ctx, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT credential_id FROM passkeys WHERE user_id = $1 FOR UPDATE`, userID)
+		if err != nil {
+			return fmt.Errorf("lock passkeys: %w", err)
+		}
+		total := 0
+		owned := false
+		for rows.Next() {
+			var cid []byte
+			if err := rows.Scan(&cid); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan passkey id: %w", err)
+			}
+			total++
+			if bytes.Equal(cid, credentialID) {
+				owned = true
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate passkeys: %w", err)
+		}
+		if !owned {
+			return ErrNotFound
+		}
+		if total <= 1 {
+			return ErrLastPasskey
+		}
+		if _, err := tx.Exec(ctx,
+			`DELETE FROM passkeys WHERE credential_id = $1 AND user_id = $2`,
+			credentialID, userID); err != nil {
+			return fmt.Errorf("delete passkey: %w", err)
+		}
+		return nil
+	})
 }
 
 // CountPasskeysForUser returns how many credentials the user has.

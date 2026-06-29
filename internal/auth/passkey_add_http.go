@@ -244,3 +244,36 @@ func (d *HTTPDeps) handleListPasskeys(w http.ResponseWriter, r *http.Request, su
 	}
 	writeJSON(w, http.StatusOK, listPasskeysResponse{Passkeys: dtos})
 }
+
+// handleDeletePasskey removes a passkey from the authenticated account.
+// The {id} path segment is the base64url credential id. The user's last
+// passkey is protected: deleting it would strand the account on
+// recovery-code-only, so it is refused (409 last_passkey) until another
+// passkey is enrolled.
+func (d *HTTPDeps) handleDeletePasskey(w http.ResponseWriter, r *http.Request, su *SessionUser) {
+	idParam := r.PathValue("id")
+	if idParam == "" {
+		writeError(w, http.StatusBadRequest, "bad_id", "passkey id required")
+		return
+	}
+	credID, err := base64.RawURLEncoding.DecodeString(idParam)
+	if err != nil || len(credID) == 0 {
+		writeError(w, http.StatusBadRequest, "bad_id", "malformed passkey id")
+		return
+	}
+
+	switch err := d.Store.DeletePasskeyForUser(r.Context(), credID, su.UserID); {
+	case err == nil:
+		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, store.ErrNotFound):
+		writeError(w, http.StatusNotFound, "passkey_not_found",
+			"no such passkey on this account")
+	case errors.Is(err, store.ErrLastPasskey):
+		writeError(w, http.StatusConflict, "last_passkey",
+			"can't remove your only passkey; add another first")
+	default:
+		d.Logger.Printf("passkeys/delete: %v", err)
+		writeError(w, http.StatusInternalServerError, "delete_failed",
+			"could not delete passkey")
+	}
+}

@@ -594,3 +594,32 @@ export async function addPasskeyFinish(
   const body = await parseResponse<FinishResponse>(resp);
   return passkeyFromDTO(body.passkey);
 }
+
+// deletePasskey removes a passkey by id (base64url credential id) from
+// the authenticated account. Requires a session. On success returns 204
+// No Content. The server refuses to delete the account's last passkey
+// (409 last_passkey).
+//
+// Error codes:
+//   - bad_id            (400)
+//   - passkey_not_found (404)
+//   - last_passkey      (409)
+//   - delete_failed     (500)
+export async function deletePasskey(id: string): Promise<void> {
+  const resp = await fetch(`/api/auth/passkeys/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (resp.status === 204) {
+    await resp.body?.cancel();
+    return;
+  }
+  let body: unknown = null;
+  try {
+    body = await resp.json();
+  } catch {
+    throw new ApiError(resp.status, "delete_failed", resp.statusText || "delete failed");
+  }
+  const e = (body as ServerError).error;
+  throw new ApiError(resp.status, e?.code ?? "delete_failed", e?.message ?? "delete failed");
+}
