@@ -137,6 +137,80 @@ func TestHubFanOutToUserMultiTab(t *testing.T) {
 	}
 }
 
+// md-2 (multi-device self-echo): a message a user sends from one device
+// must appear live on that user's OTHER devices. On the server a second
+// device is not a special case -- it is just another conn under the same
+// userID. broadcastToChannelMembers includes the sender's own user in the
+// channel member set and calls FanOutToUserFresh with exceptConnID = the
+// ORIGINATING conn (ws.go sets Event.SenderConnID = conn.ID), so the whole
+// self-echo guarantee reduces to: FanOutToUserFresh delivers to every conn
+// of the sender's user except the one that sent. This test locks that at
+// the layer the message path actually uses (the Fresh variant), where
+// TestHubFanOutToUserMultiTab only covers the non-Fresh FanOutToUser.
+func TestHubFanOutToUserFreshSelfEcho(t *testing.T) {
+	h := NewHub()
+	// Two devices for one user, both connected before the message was
+	// sent. dev1 is the sender; dev2 is the "other device" that must see
+	// the message live. Distinct deviceIDs (genuinely separate devices),
+	// distinct connIDs.
+	dev1, _ := fakeConnWithUser("conn-dev1", "device-1", "alice")
+	dev1.CreatedAt = time.Unix(1000, 0)
+	dev2, _ := fakeConnWithUser("conn-dev2", "device-2", "alice")
+	dev2.CreatedAt = time.Unix(1000, 0)
+	h.Register(dev1)
+	h.Register(dev2)
+
+	// alice sends from device 1; the message fans out to her user,
+	// excepting the originating conn (device 1 already showed it
+	// optimistically).
+	h.FanOutToUserFresh("alice", "conn-dev1", []byte("hi from dev1"), time.Unix(2000, 0))
+
+	select {
+	case <-dev1.Send:
+		t.Fatal("sending device received its own echo (should be suppressed via the conn exception)")
+	default:
+	}
+	select {
+	case got := <-dev2.Send:
+		if string(got) != "hi from dev1" {
+			t.Errorf("device 2 got %q, want %q", got, "hi from dev1")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("device 2 did not receive the sender's message (self-echo broken)")
+	}
+}
+
+// md-2: the freshness gate must not drop a live second device, and must
+// still skip a device that connected AFTER the message (it backfills its
+// own history). Both conns belong to the sender's user here, so this also
+// confirms the gate is applied per-conn within FanOutToUserFresh, not
+// per-user.
+func TestHubFanOutToUserFreshSkipsLaterDevice(t *testing.T) {
+	h := NewHub()
+	live, _ := fakeConnWithUser("conn-live", "device-live", "alice")
+	live.CreatedAt = time.Unix(1000, 0) // connected before the message
+	late, _ := fakeConnWithUser("conn-late", "device-late", "alice")
+	late.CreatedAt = time.Unix(3000, 0) // connected after the message
+	h.Register(live)
+	h.Register(late)
+
+	// No echo suppression (empty exceptConnID): we are asserting the
+	// freshness gate alone.
+	h.FanOutToUserFresh("alice", "", []byte("m"), time.Unix(2000, 0))
+
+	select {
+	case <-live.Send:
+		// expected: the already-connected device receives it live.
+	case <-time.After(time.Second):
+		t.Fatal("live device did not receive the message")
+	}
+	select {
+	case <-late.Send:
+		t.Fatal("device that connected after the message should be skipped (it backfills history)")
+	default:
+	}
+}
+
 func TestHubUnregisterAfterReregisterIsNoop(t *testing.T) {
 	// Phase 09a step 4: c1 and c2 share dev-1 and coexist. The
 	// conns map points at c2 (last writer). Unregister(c1) doesn't
