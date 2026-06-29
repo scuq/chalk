@@ -40,6 +40,7 @@ import { RegisterScreen } from "./RegisterScreen";
 import { RecoveryScreen } from "./RecoveryScreen";
 import { RecoveryLoginScreen } from "./RecoveryLoginScreen";
 import { RegenerateScreen } from "./RegenerateScreen";
+import { AddPasskeyAfterRecoveryScreen } from "./AddPasskeyAfterRecoveryScreen";
 import { RegisterFromInviteScreen } from "./RegisterFromInviteScreen";
 import { VerifyEmailChangeScreen } from "./VerifyEmailChangeScreen";
 import { AdminBootstrapScreen } from "./AdminBootstrapScreen";
@@ -328,6 +329,17 @@ export function AuthGate({
           dispatch({ kind: "auth_regenerate_words_loaded", words })
         }
         onConfirmed={() => dispatch({ kind: "auth_regenerate_confirmed" })}
+      />
+    );
+  }
+
+  if (authStage === "offer-passkey-after-recovery") {
+    // md-6: after a recovery login the user has a session but no passkey
+    // on this device. Offer to enroll one before entering the chat;
+    // skippable.
+    return (
+      <AddPasskeyAfterRecoveryScreen
+        onDone={() => dispatch({ kind: "auth_passkey_offer_done" })}
       />
     );
   }

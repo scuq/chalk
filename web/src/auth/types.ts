@@ -62,6 +62,7 @@ export type AuthStage =
   | "confirming-recovery"
   | "recovery-login"
   | "regenerate-after-recovery"
+  | "offer-passkey-after-recovery"
   | "admin-bootstrap"
   | "authed";
 
@@ -401,6 +402,7 @@ export type AuthAction =
   | { kind: "auth_recovered"; result: RecoveryLoginResult }
   | { kind: "auth_regenerate_words_loaded"; words: string[] }
   | { kind: "auth_regenerate_confirmed" }
+  | { kind: "auth_passkey_offer_done" }
   // ---- phase 09c-2: invites + email change -------------------------
   // URL-driven flows:
   | { kind: "auth_invite_detected"; token: string }

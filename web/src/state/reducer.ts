@@ -886,12 +886,22 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case "auth_regenerate_confirmed":
       // User acknowledged the new recovery words. Clear them from
-      // state and flip to authed. The cookie was set back on
-      // /recovery so the WS will connect successfully.
+      // state. md-6: instead of going straight to authed, offer to
+      // enroll a passkey on this device first (the user recovered
+      // because this device had none). The cookie was set back on
+      // /recovery so the add-passkey ceremony + the WS both work.
+      return {
+        ...state,
+        authStage: "offer-passkey-after-recovery",
+        pendingRegenerateWords: null,
+      };
+
+    case "auth_passkey_offer_done":
+      // md-6: the user either enrolled a passkey on this device or
+      // skipped the offer. Either way, proceed to the chat.
       return {
         ...state,
         authStage: "authed",
-        pendingRegenerateWords: null,
       };
 
     // ---- Phase 09c-2: URL-driven flows ------------------------------
