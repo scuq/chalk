@@ -66,13 +66,6 @@ type PendingUser struct {
 	// 32 bytes so the finish handler can call ConsumeAdminBootstrapToken.
 	IsAdminBootstrap bool
 	BootstrapToken   []byte
-
-	// md-4: add-passkey ceremony. When IsAddPasskey is true the
-	// finish handler attaches the freshly minted credential to the
-	// EXISTING user identified by ID (the authenticated session user)
-	// via store.AddPasskey, and mints no new user, recovery code, or
-	// session. ID is the session user's ID, not a fresh UUID.
-	IsAddPasskey bool
 }
 
 // DefaultCeremonyTTL is the lifetime of a pending ceremony before it's

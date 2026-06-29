@@ -141,12 +141,6 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	mux.HandleFunc("GET /api/auth/invite/{token}", d.handlePeekInvite)
 	mux.HandleFunc("POST /api/auth/email-change", d.handleEmailChangeRequest)
 	mux.HandleFunc("POST /api/auth/verify-email-change/{token}", d.handleVerifyEmailChange)
-	// md-4: manage passkeys for the authenticated account. add/begin +
-	// add/finish enroll an additional credential on THIS device (e.g.
-	// a second device whose passkey doesn't sync); GET lists them.
-	mux.HandleFunc("POST /api/auth/passkeys/add/begin", RequireSession(d.Store, d.handleAddPasskeyBegin))
-	mux.HandleFunc("POST /api/auth/passkeys/add/finish", RequireSession(d.Store, d.handleAddPasskeyFinish))
-	mux.HandleFunc("GET /api/auth/passkeys", RequireSession(d.Store, d.handleListPasskeys))
 	return nil
 }
 

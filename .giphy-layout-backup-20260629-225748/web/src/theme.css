@@ -1,0 +1,3947 @@
+/*
+ * chalk -- theme.css (matrix-green-on-black, Hack font)
+ *
+ * Design tokens live as CSS custom properties on :root so future
+ * themes (a "dim" or "high-contrast" variant) can override by setting
+ * data-theme="dim" on <html>. Phase 07 ships only the default theme.
+ *
+ * Hack font is bundled locally so the page renders the right glyphs
+ * even with no network -- fonts/ contains the woff2 (phase 07 ships
+ * a placeholder; drop in the real Hack font file there).
+ *
+ * No CSS framework -- the whole sheet is ~6 KB after minify.
+ */
+
+/* Phase 07 ships without a bundled font file. The font chain
+ * below names "Hack" first; OS monospace fallback covers the
+ * gap. To enable a real font later, add an @font-face block
+ * here with a RELATIVE url so esbuild can resolve it. */
+
+:root {
+  /* Palette -- matrix green tuned just a hair off pure #00FF41 so it
+     isn't retina-vibrating on OLED. */
+  --chalk-bg:           #000000;
+  --chalk-bg-elev:      #001a00;
+  --chalk-bg-elev-2:    #002a00;
+  --chalk-fg:           #00ff41;
+  --chalk-fg-dim:       #4ca96a;
+  --chalk-fg-bright:    #5cffb1;
+  --chalk-fg-muted:     #338050;
+  --chalk-border:       #003a00;
+  --chalk-accent:       #5cffb1;
+  --chalk-warn:         #ffcc00;
+  --chalk-error:        #ff4d4d;
+
+  /* Type */
+  --chalk-font: "Hack", ui-monospace, "Cascadia Code", "JetBrains Mono",
+                "SF Mono", Consolas, "Roboto Mono", monospace;
+  --chalk-size-base: 14px;
+  --chalk-size-small: 12px;
+  --chalk-size-title: 18px;
+
+  /* Spacing rhythm -- 4px grid */
+  --chalk-s1: 4px;
+  --chalk-s2: 8px;
+  --chalk-s3: 12px;
+  --chalk-s4: 16px;
+  --chalk-s5: 24px;
+  --chalk-s6: 32px;
+
+  /* Radii. Keep tiny -- the matrix-green aesthetic is sharp. */
+  --chalk-radius: 2px;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+  font-family: var(--chalk-font);
+  font-size: var(--chalk-size-base);
+  line-height: 1.4;
+  min-height: 100dvh;
+  /* Prevent iOS double-tap zoom on the composer button without
+     disabling pinch-zoom on text. */
+  touch-action: manipulation;
+}
+
+::selection {
+  background: var(--chalk-fg);
+  color: var(--chalk-bg);
+}
+
+/* -- App shell ---------------------------------------------------- */
+
+.chalk-app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100dvh;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 var(--chalk-s4);
+}
+
+/* Phase 08b: two-column layout with a fixed-width sidebar.
+   The header and footer span both columns. */
+.chalk-app--phase08b {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "header header"
+    "sidebar main"
+    "footer footer";
+  max-width: 1100px;
+  column-gap: var(--chalk-s3);
+}
+.chalk-app--phase08b .chalk-header  { grid-area: header; }
+.chalk-app--phase08b .chalk-sidebar { grid-area: sidebar; }
+.chalk-app--phase08b .chalk-main    { grid-area: main; }
+.chalk-app--phase08b .chalk-footer  { grid-area: footer; }
+
+.chalk-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--chalk-s4) 0 var(--chalk-s3) 0;
+  border-bottom: 1px solid var(--chalk-border);
+}
+
+.chalk-header h1 {
+  margin: 0;
+  font-size: var(--chalk-size-title);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-main {
+  overflow-y: auto;
+  padding: var(--chalk-s4) 0;
+}
+
+.chalk-footer {
+  border-top: 1px solid var(--chalk-border);
+  padding: var(--chalk-s3) 0 var(--chalk-s4) 0;
+}
+
+/* -- StatusBar ---------------------------------------------------- */
+
+.chalk-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--chalk-fg-muted);
+}
+
+.chalk-status-dot--open       { background: var(--chalk-fg); box-shadow: 0 0 6px var(--chalk-fg); }
+.chalk-status-dot--connecting { background: var(--chalk-warn); animation: chalk-pulse 1s infinite; }
+.chalk-status-dot--closed     { background: var(--chalk-fg-muted); }
+.chalk-status-dot--error      { background: var(--chalk-error); }
+
+@keyframes chalk-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+.chalk-status-detail {
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-status-user {
+  color: var(--chalk-fg-bright);
+  margin-left: var(--chalk-s2);
+}
+
+/* -- Messages ----------------------------------------------------- */
+
+.chalk-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+.chalk-messages--empty {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+  color: var(--chalk-fg-muted);
+  font-style: italic;
+}
+
+.chalk-empty-hint {
+  margin: 0;
+}
+
+.chalk-message {
+  display: grid;
+  grid-template-columns: 7ch 9ch 1fr;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  border-radius: var(--chalk-radius);
+  background: transparent;
+}
+
+.chalk-message:hover {
+  background: var(--chalk-bg-elev);
+}
+
+.chalk-message--own {
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-message-time {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  align-self: center;
+}
+
+.chalk-message-sender {
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+  align-self: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chalk-message-body {
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* -- Composer ----------------------------------------------------- */
+
+.chalk-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+/* att-2: the input row (paperclip | textarea | send). Flex so it works with
+   or without the paperclip (thread composer has no attach button). */
+.chalk-composer-row {
+  display: flex;
+  gap: var(--chalk-s2);
+  align-items: stretch;
+}
+
+.chalk-composer-input {
+  flex: 1 1 auto;
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  font-family: inherit;
+  font-size: var(--chalk-size-base);
+  resize: vertical;
+  min-height: 2.4em;
+  max-height: 30dvh;
+}
+
+.chalk-composer-input:focus {
+  outline: 1px solid var(--chalk-fg);
+  outline-offset: -1px;
+  background: var(--chalk-bg-elev-2);
+}
+
+.chalk-composer-input::placeholder {
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-composer-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chalk-composer-send {
+  align-self: stretch;
+  padding: 0 var(--chalk-s4);
+  background: transparent;
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-fg);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-base);
+  text-transform: lowercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.chalk-composer-send:hover:not(:disabled) {
+  background: var(--chalk-fg);
+  color: var(--chalk-bg);
+}
+
+.chalk-composer-send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: var(--chalk-fg-muted);
+  color: var(--chalk-fg-muted);
+}
+
+/* -- att-2: composer attach button + pending tray ----------------- */
+.chalk-composer-attach {
+  flex: 0 0 auto;
+  align-self: stretch;
+  padding: 0 var(--chalk-s3);
+  background: transparent;
+  color: var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-base);
+  cursor: pointer;
+}
+.chalk-composer-attach:hover:not(:disabled) {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg);
+}
+.chalk-composer-attach:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.chalk-composer-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--chalk-s2);
+}
+.chalk-composer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  max-width: 100%;
+  padding: var(--chalk-s1) var(--chalk-s2);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-size: var(--chalk-size-small);
+}
+.chalk-composer-chip-thumb {
+  width: 1.8em;
+  height: 1.8em;
+  object-fit: cover;
+  border-radius: var(--chalk-radius);
+  border: 1px solid var(--chalk-border);
+}
+.chalk-composer-chip-icon {
+  color: var(--chalk-fg-muted);
+}
+.chalk-composer-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 16em;
+}
+.chalk-composer-chip-size {
+  color: var(--chalk-fg-muted);
+}
+.chalk-composer-chip-remove {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0 0.2em;
+  line-height: 1;
+}
+.chalk-composer-chip-remove:hover {
+  color: var(--chalk-fg-bright);
+}
+
+/* -- att-3: drag-drop affordance + per-item upload progress -------- */
+.chalk-composer--drag-active {
+  outline: 1px dashed var(--chalk-fg);
+  outline-offset: 2px;
+  background: var(--chalk-bg-elev);
+}
+.chalk-composer-drop-hint {
+  padding: var(--chalk-s1) var(--chalk-s2);
+  color: var(--chalk-fg-bright);
+  font-size: var(--chalk-size-small);
+  text-align: center;
+  border: 1px dashed var(--chalk-fg);
+  border-radius: var(--chalk-radius);
+}
+.chalk-composer-chip-progress {
+  display: inline-block;
+  width: 6em;
+  height: 6px;
+  background: var(--chalk-bg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  overflow: hidden;
+}
+.chalk-composer-chip-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--chalk-fg);
+  transition: width 0.15s linear;
+}
+
+/* -- att-2: attachments in the message feed ----------------------- */
+.chalk-message-attachments {
+  /* Option B: the image block breaks out to the row's left edge (under the
+     timestamp) and spans the full width, so media reads as a distinct block and
+     the reply indicators line up directly beneath it. */
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s1);
+}
+.chalk-attachment {
+  font-size: var(--chalk-size-small);
+}
+.chalk-attachment--loading,
+.chalk-attachment--locked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  color: var(--chalk-fg-muted);
+  border: 1px dashed var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-style: italic;
+}
+.chalk-attachment-img {
+  display: block;
+  /* Natural size, never upscaled: width:auto means a small original renders at
+     its own size. max-width caps large originals at 720px OR the available
+     column width, whichever is smaller -- so it downscales to fit and tracks
+     window resizes (the 100% is the column). height:auto keeps the aspect. */
+  width: auto;
+  max-width: min(720px, 100%);
+  height: auto;
+  max-height: 70dvh;
+  object-fit: contain;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  cursor: zoom-in;
+}
+.chalk-attachment-img--preview {
+  filter: blur(1px);
+}
+.chalk-attachment-img--full {
+  filter: none;
+}
+.chalk-attachment-img--expanded {
+  max-width: 100%;
+  max-height: 80dvh;
+  cursor: zoom-out;
+}
+
+/* Lightbox: click an image to view it at original size on a dark backdrop. */
+.chalk-attachment-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--chalk-s4);
+  background: rgba(0, 0, 0, 0.92);
+  cursor: zoom-out;
+}
+.chalk-attachment-lightbox-img {
+  max-width: 95vw;
+  max-height: 95vh;
+  object-fit: contain;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+}
+.chalk-attachment-lightbox-caption {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--chalk-s3);
+  text-align: center;
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  pointer-events: none;
+}
+.chalk-attachment-img-placeholder {
+  width: 200px;
+  height: 120px;
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+}
+.chalk-attachment--file {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+}
+.chalk-attachment-file-icon {
+  color: var(--chalk-fg-muted);
+}
+.chalk-attachment-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 18em;
+}
+.chalk-attachment-file-size {
+  color: var(--chalk-fg-muted);
+}
+.chalk-attachment-download {
+  background: transparent;
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-fg);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  text-transform: lowercase;
+  padding: 0 var(--chalk-s2);
+  cursor: pointer;
+}
+.chalk-attachment-download:hover:not(:disabled) {
+  background: var(--chalk-fg);
+  color: var(--chalk-bg);
+}
+.chalk-attachment-download:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* -- Errors ------------------------------------------------------- */
+
+.chalk-errors {
+  margin-top: var(--chalk-s2);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  border-left: 2px solid var(--chalk-error);
+  background: var(--chalk-bg-elev);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-error-code {
+  color: var(--chalk-error);
+  font-weight: 700;
+  margin-right: var(--chalk-s2);
+}
+
+/* ----------------------------------------------------------------- */
+/* Phase 08b: sidebar, channel header, modal, friend picker, buttons */
+/* ----------------------------------------------------------------- */
+
+/* -- Sidebar ------------------------------------------------------- */
+
+.chalk-sidebar {
+  border-right: 1px solid var(--chalk-border);
+  padding: var(--chalk-s3) 0;
+  min-height: 0; /* allow inner overflow to scroll */
+  display: flex;
+  flex-direction: column;
+}
+
+.chalk-sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.chalk-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--chalk-s2) var(--chalk-s2) var(--chalk-s2);
+}
+
+.chalk-sidebar-title {
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+  text-transform: lowercase;
+  letter-spacing: 0.08em;
+}
+
+.chalk-sidebar-new {
+  background: transparent;
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-bright);
+  width: 24px;
+  height: 24px;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.chalk-sidebar-new:hover {
+  border-color: var(--chalk-fg-bright);
+  background: var(--chalk-bg-elev);
+}
+.chalk-sidebar-new:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 1px;
+}
+
+.chalk-sidebar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.chalk-sidebar-empty {
+  padding: var(--chalk-s2);
+  color: var(--chalk-fg-dim);
+  font-style: italic;
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-sidebar-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--chalk-s2);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  color: var(--chalk-fg);
+}
+.chalk-sidebar-item:hover {
+  background: var(--chalk-bg-elev);
+}
+.chalk-sidebar-item:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+.chalk-sidebar-item--active {
+  border-left-color: var(--chalk-fg-bright);
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-sidebar-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chalk-sidebar-item-tag,
+.chalk-channel-header-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-border);
+  padding: 1px 4px;
+  margin-left: var(--chalk-s2);
+}
+
+/* gov-2: governance mode badge (crown = dictator, ballot box = democratic). */
+.chalk-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  margin-left: var(--chalk-s2);
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-mode-badge.chalk-mode-democratic {
+  color: var(--chalk-accent);
+}
+
+/* -- Channel header (above messages) ------------------------------- */
+
+.chalk-channel-header {
+  display: flex;
+  align-items: baseline;
+  padding: 0 0 var(--chalk-s3) 0;
+  border-bottom: 1px solid var(--chalk-border);
+  margin-bottom: var(--chalk-s3);
+}
+
+.chalk-channel-header-name {
+  font-size: var(--chalk-size-body);
+  color: var(--chalk-fg-bright);
+  font-weight: 400;
+}
+
+/* -- Encryption indicator + hover popover (phase 23g/23h) ---------- */
+
+.chalk-enc-indicator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--chalk-s2);
+  align-self: center;
+  line-height: 0;
+  cursor: default;
+  outline: none;
+}
+
+/* ready: key present -> accent (secure) */
+.chalk-enc-indicator.chalk-enc-ready {
+  color: var(--chalk-accent);
+}
+
+/* waiting/initializing: encrypted but key not here yet -> muted + soft pulse */
+.chalk-enc-indicator.chalk-enc-pending {
+  color: var(--chalk-fg-muted);
+  animation: chalk-enc-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes chalk-enc-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.9; }
+}
+
+/* the popover: hidden until hover/focus of the indicator */
+.chalk-enc-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+  padding: var(--chalk-s2) var(--chalk-s3);
+  background: var(--chalk-bg, #0a0f0a);
+  border: 1px solid var(--chalk-accent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  color: var(--chalk-fg);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.chalk-enc-indicator:hover .chalk-enc-popover,
+.chalk-enc-indicator:focus .chalk-enc-popover,
+.chalk-enc-indicator:focus-within .chalk-enc-popover {
+  display: flex;
+}
+
+/* pending popover uses a muted border so it matches the icon state */
+.chalk-enc-indicator.chalk-enc-pending .chalk-enc-popover {
+  border-color: var(--chalk-fg-muted);
+}
+
+.chalk-enc-pop-head {
+  color: var(--chalk-fg-bright);
+  font-weight: 400;
+  margin-bottom: 2px;
+  letter-spacing: 0.02em;
+}
+
+.chalk-enc-pop-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--chalk-s3);
+}
+
+.chalk-enc-pop-k {
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-enc-pop-v {
+  color: var(--chalk-accent);
+}
+
+/* pending: values are muted, not accent, so it doesn't read as "secured yet" */
+.chalk-enc-indicator.chalk-enc-pending .chalk-enc-pop-v {
+  color: var(--chalk-fg);
+}
+
+.chalk-enc-pop-note {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-muted);
+  white-space: normal;
+}
+
+/* -- Main-pane empty state when no channel selected ---------------- */
+
+.chalk-main-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--chalk-fg-dim);
+  font-style: italic;
+}
+
+/* -- Modal --------------------------------------------------------- */
+
+.chalk-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.chalk-modal {
+  background: var(--chalk-bg);
+  border: 1px solid var(--chalk-fg-bright);
+  min-width: 360px;
+  max-width: 500px;
+  width: 90%;
+  /* Phase 9.7e: cap the modal to the viewport so growing content
+     (ProfilePanel accumulated many sections) doesn't spill past
+     the bottom. The body becomes the scroll surface. */
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.chalk-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--chalk-s3) var(--chalk-s4);
+  border-bottom: 1px solid var(--chalk-border);
+}
+
+.chalk-modal-header h2 {
+  margin: 0;
+  font-size: var(--chalk-size-body);
+  font-weight: 400;
+  color: var(--chalk-fg-bright);
+  text-transform: lowercase;
+  letter-spacing: 0.08em;
+}
+
+.chalk-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-dim);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+}
+.chalk-modal-close:hover {
+  color: var(--chalk-fg-bright);
+}
+
+/* Group of trailing buttons in a modal header (refresh + close, or
+   future actions). Right-aligns under flex/space-between header. */
+.chalk-modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+}
+
+/* Refresh button: same visual weight as the close ×; uses ↻ glyph.
+   Spins while refreshing is in flight. */
+.chalk-modal-refresh {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.chalk-modal-refresh:hover:not(:disabled) {
+  color: var(--chalk-fg-bright);
+}
+.chalk-modal-refresh:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+.chalk-modal-refresh--spinning {
+  animation: chalk-spin 0.8s linear infinite;
+}
+@keyframes chalk-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.chalk-modal-body {
+  padding: var(--chalk-s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s3);
+  /* Phase 9.7e: scroll if the section stack is taller than the
+     remaining modal space. The header stays pinned because it lives
+     outside this element. */
+  overflow-y: auto;
+  /* Allow flex to shrink the body below its content height so the
+     scroll takes effect. (Default min-height: auto would push the
+     body to its content height and bust the parent max-height.) */
+  min-height: 0;
+}
+
+.chalk-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s3) var(--chalk-s4);
+  border-top: 1px solid var(--chalk-border);
+}
+
+.chalk-modal-error {
+  color: #ff5555;
+  font-size: var(--chalk-size-small);
+}
+
+/* -- Form fields --------------------------------------------------- */
+
+.chalk-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s1);
+}
+
+.chalk-field--checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--chalk-s2);
+}
+
+.chalk-field-label {
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+  text-transform: lowercase;
+  letter-spacing: 0.08em;
+}
+
+.chalk-field-input {
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg);
+  font-family: inherit;
+  font-size: var(--chalk-size-body);
+  padding: var(--chalk-s2);
+}
+.chalk-field-input:focus {
+  outline: none;
+  border-color: var(--chalk-fg-bright);
+}
+
+.chalk-field-hint {
+  color: var(--chalk-fg-dim);
+  font-style: italic;
+  font-size: var(--chalk-size-small);
+  padding: var(--chalk-s2) 0;
+}
+
+/* -- Friend picker ------------------------------------------------- */
+
+.chalk-friend-picker {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--chalk-border);
+}
+
+.chalk-friend-picker-item {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2);
+  cursor: pointer;
+}
+.chalk-friend-picker-item:hover {
+  background: var(--chalk-bg-elev);
+}
+.chalk-friend-picker-item--selected {
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-friend-picker-id {
+  font-family: inherit;
+}
+
+/* -- Buttons ------------------------------------------------------- */
+
+.chalk-button {
+  background: transparent;
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg);
+  font-family: inherit;
+  font-size: var(--chalk-size-body);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  cursor: pointer;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+}
+.chalk-button:hover {
+  border-color: var(--chalk-fg-bright);
+  color: var(--chalk-fg-bright);
+}
+.chalk-button:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 1px;
+}
+.chalk-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chalk-button--primary {
+  border-color: var(--chalk-fg-bright);
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-button--secondary {
+  /* default appearance; explicit class for readability */
+}
+
+/* -- Phase 09b sub-step 4: auth flow screens --------------------- */
+
+.chalk-auth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: var(--chalk-s4);
+}
+
+.chalk-auth-card {
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-fg-bright);
+  padding: var(--chalk-s5);
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s4);
+}
+
+.chalk-auth-card--wide {
+  max-width: 640px;
+}
+
+.chalk-auth-header h2 {
+  margin: 0 0 var(--chalk-s2) 0;
+  font-size: var(--chalk-size-title);
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-auth-subtitle {
+  margin: 0;
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-auth-subtitle strong {
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s3);
+}
+
+.chalk-auth-error {
+  border: 1px solid var(--chalk-error);
+  background: rgba(255, 77, 77, 0.08);
+  color: var(--chalk-error);
+  padding: var(--chalk-s3);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-auth-warning {
+  border: 1px solid var(--chalk-warn);
+  background: rgba(255, 204, 0, 0.08);
+  color: var(--chalk-warn);
+  padding: var(--chalk-s3);
+  font-size: var(--chalk-size-small);
+  line-height: 1.5;
+}
+
+.chalk-auth-warning strong {
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-field-error {
+  color: var(--chalk-error);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-field-optional,
+.chalk-field-required {
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-muted);
+  font-weight: normal;
+}
+
+.chalk-field-required {
+  color: var(--chalk-warn);
+}
+
+.chalk-auth-link {
+  background: transparent;
+  border: none;
+  color: var(--chalk-accent);
+  text-decoration: underline;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0;
+  align-self: flex-start;
+}
+
+.chalk-auth-link:hover {
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-auth-actions-row {
+  display: flex;
+  gap: var(--chalk-s2);
+  flex-wrap: wrap;
+}
+
+.chalk-auth-gate {
+  border-top: 1px dashed var(--chalk-border);
+  padding-top: var(--chalk-s3);
+}
+
+.chalk-auth-meta {
+  display: flex;
+  gap: var(--chalk-s2);
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-muted);
+  border-top: 1px dashed var(--chalk-border);
+  padding-top: var(--chalk-s3);
+}
+
+.chalk-auth-meta-dev,
+.chalk-auth-meta-warn {
+  color: var(--chalk-warn);
+  border: 1px solid var(--chalk-warn);
+  padding: 0 var(--chalk-s1);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+.chalk-button--primary {
+  background: var(--chalk-fg);
+  color: var(--chalk-bg);
+  border-color: var(--chalk-fg);
+}
+
+.chalk-button--primary:hover:not(:disabled) {
+  background: var(--chalk-fg-bright);
+  border-color: var(--chalk-fg-bright);
+  color: var(--chalk-bg);
+  /* The base .chalk-button:hover rule sets color to fg-bright, which
+     collides with the brighter background on primary and makes the
+     label invisible. Re-state the dark text color here so it wins
+     by later-rule precedence. */
+  color: var(--chalk-bg);
+}
+
+.chalk-button--primary:disabled {
+  opacity: 1;
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg-muted);
+  border-color: var(--chalk-border);
+  cursor: not-allowed;
+}
+
+.chalk-recovery-words {
+  list-style: none;
+  margin: 0;
+  padding: var(--chalk-s3);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--chalk-s2);
+  background: var(--chalk-bg);
+  border: 1px solid var(--chalk-fg-bright);
+  font-family: var(--chalk-font);
+}
+
+@media (max-width: 600px) {
+  .chalk-recovery-words {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.chalk-recovery-word {
+  display: flex;
+  gap: var(--chalk-s1);
+  align-items: baseline;
+}
+
+.chalk-recovery-word-index {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  min-width: 1.8em;
+  text-align: right;
+}
+
+.chalk-recovery-word-text {
+  color: var(--chalk-fg-bright);
+  font-size: var(--chalk-size-base);
+  user-select: all;
+}
+
+/* phase 22c-3c: the "re-enter 3 words" challenge under the decryption
+   phrase. Each field is a normal .chalk-field (label over input); this
+   just spaces the group. */
+.chalk-identity-challenge {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s3);
+  margin-top: var(--chalk-s4);
+}
+
+/* phase 09b sub-step 5b: cross-link between LoginScreen and
+   RegisterScreen ("no account? register" / "have an account? log in"). */
+.chalk-auth-alt {
+  margin-top: var(--chalk-s4);
+  text-align: center;
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-auth-alt .chalk-auth-link {
+  margin-left: var(--chalk-s1);
+}
+
+/* phase 09b sub-step 5b: StatusBar dropdown menu (logout). */
+.chalk-status-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.chalk-status-menu-trigger {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--chalk-fg);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.chalk-status-menu-trigger:hover,
+.chalk-status-menu-trigger[aria-expanded="true"] {
+  background: var(--chalk-bg-elev);
+  border-color: var(--chalk-fg-muted);
+}
+
+.chalk-status-menu-popover {
+  position: absolute;
+  top: calc(100% + var(--chalk-s1));
+  right: 0;
+  min-width: 8rem;
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-fg-muted);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+}
+
+.chalk-status-menu-item {
+  background: transparent;
+  border: 0;
+  color: var(--chalk-fg);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chalk-status-menu-item:hover,
+.chalk-status-menu-item:focus {
+  background: var(--chalk-bg);
+  outline: none;
+}
+
+/* phase 09b sub-step 6: recovery-login textarea + warn-state hint. */
+.chalk-field-input--textarea {
+  resize: vertical;
+  min-height: 6em;
+  font-family: var(--chalk-mono, ui-monospace, monospace);
+}
+
+.chalk-field-hint--warn {
+  color: var(--chalk-warn);
+}
+
+/* ===== Phase 09c-2: invites + profile panels ============================ */
+
+/* Wider modal variant for ProfilePanel's rotate-recovery view, which
+   reuses RecoveryScreen (designed for the auth flow's wide card). */
+.chalk-modal--wide {
+  max-width: 720px;
+}
+
+/* Common typography inside modal bodies for these two panels: a small
+   uppercase-ish section heading that matches the modal-header style. */
+.chalk-modal-body h3 {
+  margin: 0 0 var(--chalk-s2);
+  font-size: var(--chalk-size-body);
+  font-weight: 400;
+  color: var(--chalk-fg-bright);
+  text-transform: lowercase;
+  letter-spacing: 0.08em;
+}
+
+.chalk-modal-body > section + section {
+  margin-top: var(--chalk-s5);
+  padding-top: var(--chalk-s5);
+  border-top: 1px solid var(--chalk-border);
+}
+
+/* ---- InvitesPanel ---------------------------------------------------- */
+
+.chalk-invites-create {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+.chalk-invites-list-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+.chalk-invites-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s3);
+}
+
+.chalk-invite-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s1);
+  padding: var(--chalk-s3);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+}
+
+.chalk-invite-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--chalk-s2);
+}
+
+.chalk-invite-email {
+  font-weight: 500;
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-invite-status {
+  font-size: var(--chalk-size-small);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 2px var(--chalk-s2);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+}
+
+.chalk-invite-status--active {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg);
+}
+
+.chalk-invite-status--used {
+  color: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-muted);
+}
+
+.chalk-invite-status--revoked {
+  color: var(--chalk-fg-dim);
+  border-color: var(--chalk-fg-dim);
+}
+
+.chalk-invite-status--expired {
+  color: var(--chalk-warn);
+  border-color: var(--chalk-warn);
+}
+
+.chalk-invite-note {
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+  font-style: italic;
+}
+
+.chalk-invite-meta {
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-invite-url-row {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s1);
+}
+
+.chalk-invite-url {
+  flex: 1;
+  font-family: var(--chalk-font);
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg);
+  background: var(--chalk-bg);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  border: 1px solid var(--chalk-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.chalk-invite-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s1);
+}
+
+/* ---- ProfilePanel ---------------------------------------------------- */
+
+.chalk-profile-identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+.chalk-profile-fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--chalk-s2) var(--chalk-s4);
+  margin: 0;
+}
+
+.chalk-profile-fields dt {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  text-transform: lowercase;
+  letter-spacing: 0.05em;
+}
+
+.chalk-profile-fields dd {
+  margin: 0;
+  color: var(--chalk-fg-bright);
+  word-break: break-word;
+}
+
+.chalk-profile-fields dd em {
+  color: var(--chalk-fg-muted);
+  font-style: italic;
+}
+
+.chalk-profile-email-change {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+.chalk-profile-pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s3);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+}
+
+.chalk-profile-pending p {
+  margin: 0;
+}
+
+.chalk-profile-rotate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+/* Inline dismiss-link inside an error banner (used by InvitesPanel
+   row-level revoke error). */
+.chalk-auth-error .chalk-auth-link {
+  margin-left: var(--chalk-s2);
+}
+
+/* ---- Phase 09d-2b: admin moderation panel --------------------------- */
+
+.chalk-admin {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+}
+
+.chalk-admin--full {
+  /* When the admin panel is the top-level view (route === "admin"),
+     it owns the whole viewport. */
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+}
+
+.chalk-admin-header {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s4);
+  padding: var(--chalk-s3) var(--chalk-s4);
+  border-bottom: 1px solid var(--chalk-border);
+  background: var(--chalk-bg-elev);
+  flex-shrink: 0;
+}
+
+.chalk-admin-back {
+  flex-shrink: 0;
+}
+
+.chalk-admin-title {
+  margin: 0;
+  font-size: var(--chalk-size-title);
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.chalk-admin-tabs {
+  display: flex;
+  gap: var(--chalk-s2);
+  margin-left: auto;
+}
+
+.chalk-admin-tab-btn {
+  background: transparent;
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  font-family: var(--chalk-font);
+  font-size: var(--chalk-size-base);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.chalk-admin-tab-btn:hover {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg-dim);
+}
+
+.chalk-admin-tab-btn--active {
+  color: var(--chalk-bg);
+  background: var(--chalk-fg);
+  border-color: var(--chalk-fg);
+}
+
+.chalk-admin-tab-btn--active:hover {
+  color: var(--chalk-bg);
+  background: var(--chalk-fg-bright);
+  border-color: var(--chalk-fg-bright);
+}
+
+.chalk-admin-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--chalk-s4);
+}
+
+.chalk-admin-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s3);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.chalk-admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s3);
+}
+
+.chalk-admin-toolbar-title {
+  font-weight: bold;
+  color: var(--chalk-fg-bright);
+  margin-right: auto;
+}
+
+.chalk-admin-search {
+  flex: 1;
+}
+
+.chalk-admin-search .chalk-field-input {
+  width: 100%;
+}
+
+.chalk-admin-refresh {
+  flex-shrink: 0;
+}
+
+.chalk-admin-action-error {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  border: 1px solid var(--chalk-error);
+  border-radius: var(--chalk-radius);
+  background: rgba(255, 77, 77, 0.08);
+  color: var(--chalk-error);
+}
+
+.chalk-admin-action-error-dismiss {
+  background: transparent;
+  color: var(--chalk-error);
+  border: none;
+  cursor: pointer;
+  font-size: 1.2em;
+  padding: 0 var(--chalk-s1);
+  line-height: 1;
+  margin-left: auto;
+}
+
+.chalk-admin-action-error-dismiss:hover {
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-admin-empty {
+  padding: var(--chalk-s6);
+  text-align: center;
+  color: var(--chalk-fg-dim);
+  font-style: italic;
+}
+
+.chalk-admin-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+}
+
+.chalk-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--chalk-size-base);
+}
+
+.chalk-admin-table thead {
+  background: var(--chalk-bg-elev);
+}
+
+.chalk-admin-table th {
+  text-align: left;
+  padding: var(--chalk-s2) var(--chalk-s3);
+  font-weight: bold;
+  color: var(--chalk-fg-dim);
+  border-bottom: 1px solid var(--chalk-border);
+}
+
+.chalk-admin-table td {
+  padding: var(--chalk-s2) var(--chalk-s3);
+  border-bottom: 1px solid var(--chalk-border);
+  vertical-align: middle;
+}
+
+.chalk-admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.chalk-admin-row {
+  position: relative;
+  transition: background 0.1s;
+}
+
+.chalk-admin-row:hover {
+  background: var(--chalk-bg-elev);
+}
+
+.chalk-admin-row--blocked {
+  color: var(--chalk-warn);
+}
+
+.chalk-admin-row--deleted {
+  color: var(--chalk-fg-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--chalk-fg-muted);
+}
+
+.chalk-admin-cell-username {
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.chalk-admin-cell-email {
+  font-family: var(--chalk-font);
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-admin-cell-status {
+  white-space: nowrap;
+}
+
+.chalk-admin-cell-created,
+.chalk-admin-cell-former {
+  white-space: nowrap;
+  color: var(--chalk-fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.chalk-admin-cell-actions {
+  text-align: right;
+  white-space: nowrap;
+  min-width: 220px;
+}
+
+.chalk-admin-table-actions-col {
+  width: 220px;
+}
+
+.chalk-admin-status-pill {
+  display: inline-block;
+  padding: 2px var(--chalk-s2);
+  border-radius: var(--chalk-radius);
+  font-size: var(--chalk-size-small);
+  font-weight: bold;
+  text-transform: lowercase;
+  border: 1px solid;
+}
+
+.chalk-admin-status-pill--active {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg);
+}
+
+.chalk-admin-status-pill--admin {
+  color: var(--chalk-accent);
+  border-color: var(--chalk-accent);
+}
+
+.chalk-admin-status-pill--blocked {
+  color: var(--chalk-warn);
+  border-color: var(--chalk-warn);
+}
+
+.chalk-admin-status-pill--deleted {
+  color: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-muted);
+}
+
+.chalk-admin-row-actions {
+  display: flex;
+  gap: var(--chalk-s1);
+  justify-content: flex-end;
+  /* Hover-reveal: hidden by default, visible when the row is hovered
+     or any button inside is focused (keyboard a11y). */
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.chalk-admin-row:hover .chalk-admin-row-actions,
+.chalk-admin-row-actions:focus-within {
+  opacity: 1;
+}
+
+/* Phase 9.5 (B8/C4): on touch devices and narrow viewports, the
+   hover-reveal hides actions permanently because no hover event
+   ever fires. Show them by default in those environments. */
+@media (hover: none), (max-width: 640px) {
+  .chalk-admin-row-actions {
+    opacity: 1;
+  }
+}
+
+.chalk-admin-row-action {
+  background: transparent;
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: 2px var(--chalk-s2);
+  font-family: var(--chalk-font);
+  font-size: var(--chalk-size-small);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.chalk-admin-row-action:hover {
+  background: var(--chalk-fg);
+  color: var(--chalk-bg);
+  border-color: var(--chalk-fg);
+}
+
+.chalk-admin-row-action--warn {
+  color: var(--chalk-warn);
+  border-color: var(--chalk-warn);
+}
+
+.chalk-admin-row-action--warn:hover {
+  background: var(--chalk-warn);
+  color: var(--chalk-bg);
+  border-color: var(--chalk-warn);
+}
+
+.chalk-admin-row-action--danger {
+  color: var(--chalk-error);
+  border-color: var(--chalk-error);
+}
+
+.chalk-admin-row-action--danger:hover {
+  background: var(--chalk-error);
+  color: var(--chalk-bg);
+  border-color: var(--chalk-error);
+}
+
+.chalk-admin-row-pending {
+  color: var(--chalk-fg-dim);
+  font-size: 1.2em;
+  display: inline-block;
+  padding: 0 var(--chalk-s2);
+}
+
+.chalk-admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--chalk-s3);
+  padding: var(--chalk-s3) 0;
+}
+
+.chalk-admin-pagination-label {
+  color: var(--chalk-fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.chalk-admin-blacklist-add {
+  display: flex;
+  gap: var(--chalk-s3);
+  align-items: flex-end;
+  padding: var(--chalk-s3);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  background: var(--chalk-bg-elev);
+}
+
+.chalk-admin-blacklist-add .chalk-field {
+  flex: 1;
+}
+
+/* Danger variant for the confirm modal's confirm button. */
+.chalk-button--danger {
+  background: var(--chalk-error);
+  color: var(--chalk-bg);
+  border-color: var(--chalk-error);
+}
+
+.chalk-button--danger:hover:not(:disabled) {
+  background: #ff6666;
+  border-color: #ff6666;
+}
+
+.chalk-button--danger:disabled {
+  background: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-muted);
+}
+
+/* Confirm modal layout */
+.chalk-modal--confirm {
+  max-width: 500px;
+}
+
+.chalk-admin-confirm-warning {
+  font-size: 2em;
+  color: var(--chalk-warn);
+  text-align: center;
+  margin-bottom: var(--chalk-s2);
+}
+
+.chalk-admin-confirm-body p {
+  margin: 0 0 var(--chalk-s2) 0;
+}
+
+.chalk-admin-confirm-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* Utility class for inline dim text (used in table cells for "—") */
+.chalk-fg-dim {
+  color: var(--chalk-fg-dim);
+}
+
+/* ============================================================
+   Phase 9.6a: FriendsPanel styles
+   ============================================================ */
+
+.chalk-friends-panel {
+  width: min(560px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.chalk-friends-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.75rem 1rem 0.5rem;
+  border-bottom: 1px solid var(--chalk-border, #1f2a1f);
+}
+
+.chalk-friends-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.chalk-friends-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem 0;
+  border-bottom: 1px solid var(--chalk-border, #1f2a1f);
+}
+
+.chalk-friends-tab {
+  background: transparent;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  border: none;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.chalk-friends-tab:hover { color: var(--chalk-fg, #c8ffc8); }
+.chalk-friends-tab--active {
+  color: var(--chalk-fg, #c8ffc8);
+  border-bottom-color: var(--chalk-accent, #6effa1);
+}
+
+.chalk-friends-badge {
+  background: var(--chalk-accent, #6effa1);
+  color: var(--chalk-bg, #0a120a);
+  border-radius: 9999px;
+  padding: 0 0.45em;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.chalk-friends-refresh {
+  margin-left: auto;
+  background: transparent;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  border: none;
+  font-family: inherit;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+}
+.chalk-friends-refresh:hover { color: var(--chalk-fg, #c8ffc8); }
+
+.chalk-friends-body {
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.chalk-friends-help {
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-size: 0.85rem;
+  margin: 0 0 0.75rem;
+  line-height: 1.4;
+}
+
+.chalk-friends-add-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.chalk-friends-add-input {
+  flex: 1;
+  background: var(--chalk-bg-elev, #14201a);
+  border: 1px solid var(--chalk-border, #1f2a1f);
+  color: var(--chalk-fg, #c8ffc8);
+  padding: 0.45rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  border-radius: 3px;
+}
+.chalk-friends-add-input:focus {
+  outline: none;
+  border-color: var(--chalk-accent, #6effa1);
+}
+
+.chalk-friends-add-submit {
+  background: var(--chalk-accent, #6effa1);
+  color: var(--chalk-bg, #0a120a);
+  border: none;
+  padding: 0.45rem 1rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.chalk-friends-add-submit:disabled {
+  background: var(--chalk-fg-dim, #5a8a5a);
+  cursor: not-allowed;
+}
+
+.chalk-friends-error {
+  color: var(--chalk-error, #ff7070);
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba(255, 112, 112, 0.08);
+  border-left: 2px solid var(--chalk-error, #ff7070);
+}
+
+.chalk-friends-empty {
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-style: italic;
+  text-align: center;
+  padding: 1.5rem 1rem;
+}
+
+.chalk-friends-section-title {
+  font-size: 0.8rem;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0 0 0.5rem;
+}
+
+.chalk-friends-pending section + section {
+  margin-top: 1rem;
+}
+
+.chalk-friends-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chalk-friends-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.6rem;
+  border-radius: 3px;
+}
+.chalk-friends-row:hover {
+  background: var(--chalk-bg-elev, #14201a);
+}
+
+.chalk-friends-handle {
+  font-family: inherit;
+  color: var(--chalk-fg, #c8ffc8);
+}
+
+.chalk-friends-row-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.chalk-friends-action {
+  background: transparent;
+  border: 1px solid var(--chalk-border, #1f2a1f);
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.chalk-friends-action:hover {
+  color: var(--chalk-fg, #c8ffc8);
+  border-color: var(--chalk-fg-dim, #5a8a5a);
+}
+.chalk-friends-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.chalk-friends-action--accept {
+  color: var(--chalk-accent, #6effa1);
+  border-color: var(--chalk-accent, #6effa1);
+}
+.chalk-friends-action--accept:hover {
+  background: var(--chalk-accent, #6effa1);
+  color: var(--chalk-bg, #0a120a);
+}
+.chalk-friends-action--decline {
+  color: var(--chalk-warn, #ffd060);
+  border-color: var(--chalk-warn, #ffd060);
+}
+.chalk-friends-action--decline:hover {
+  background: var(--chalk-warn, #ffd060);
+  color: var(--chalk-bg, #0a120a);
+}
+
+/* ============================================================
+   Phase 9.6b: sidebar roster section
+   ============================================================ */
+
+/* The sidebar now has two header rows + two lists. Give the
+   second header a top margin so the two sections feel distinct. */
+.chalk-sidebar-header--channels {
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--chalk-border, #1f2a1f);
+}
+
+/* Inline count next to section title. Dimmed by default, takes the
+   accent color when there's something to highlight. */
+.chalk-sidebar-count {
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-size: 0.85em;
+  font-weight: normal;
+  margin-left: 0.25em;
+}
+
+/* Friends section: tighter spacing than channels, slight visual
+   distinction so users feel the hierarchy. */
+.chalk-sidebar-list--friends {
+  /* nothing override-specific; inherits chalk-sidebar-list */
+}
+
+.chalk-sidebar-item--friend .chalk-sidebar-item-name {
+  /* the @ prefix is part of the rendered text; keep typography
+     consistent with channel names */
+}
+
+/* Empty states for both sections use the existing chalk-sidebar-empty
+   rule. No additional CSS needed there. */
+
+/* ============================================================
+   Phase 9.6b tweak: sidebar height + filter
+   ============================================================ */
+
+/* Section wrappers — friends shrinks to fit (with a 40vh cap and
+   internal scroll); channels takes the rest. */
+.chalk-sidebar-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chalk-sidebar-section--friends {
+  /* Don't grow beyond content + cap. The cap prevents one giant
+     roster from pushing channels off-screen. */
+  flex-shrink: 0;
+  max-height: 40vh;
+}
+
+.chalk-sidebar-section--channels {
+  /* Fill the remaining vertical space. */
+  flex: 1;
+  min-height: 0;
+}
+
+/* The friends list within the friends section: scroll INSIDE the
+   section when content overflows the 40vh cap. Override the base
+   .chalk-sidebar-list `flex: 1` (which would cause both sections to
+   fight for space) with `flex: 0 1 auto` so the list sizes to
+   content. */
+.chalk-sidebar-list--friends {
+  flex: 0 1 auto;
+  overflow-y: auto;
+}
+
+/* The channels list keeps the original flex: 1 behavior (inherits
+   from .chalk-sidebar-list); no override needed. */
+
+/* Filter input — only appears when ≥7 friends. Sits between the
+   "friends (N)" header and the list. Inherits the dark theme;
+   matches the .chalk-friends-add-input styling for consistency. */
+.chalk-sidebar-filter {
+  padding: 0 var(--chalk-s2) var(--chalk-s2) var(--chalk-s2);
+  flex-shrink: 0;
+}
+
+.chalk-sidebar-filter-input {
+  width: 100%;
+  background: var(--chalk-bg-elev, #14201a);
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg);
+  padding: 0.3rem 0.5rem;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  box-sizing: border-box;
+}
+.chalk-sidebar-filter-input:focus {
+  outline: none;
+  border-color: var(--chalk-fg-bright);
+}
+.chalk-sidebar-filter-input::placeholder {
+  color: var(--chalk-fg-dim);
+  font-style: italic;
+}
+
+/* ============================================================
+   Phase 9.6c: presence dots
+   ============================================================ */
+
+/* The friend row is a flex layout: dot column, then name. The dot
+   column is fixed width so all names line up regardless of state. */
+.chalk-sidebar-item--friend {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* The dot: 8px circle, always rendered (transparent border for
+   offline so layout doesn't shift). */
+.chalk-presence-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  /* Tiny vertical nudge so the dot optically centers against
+     monospace text baseline. */
+  margin-top: 1px;
+}
+
+/* Online: solid bright green. Uses the same accent as the active
+   channel highlight so it reads as "active." */
+.chalk-presence-dot--online {
+  background: var(--chalk-fg-bright, #6effa1);
+  box-shadow: 0 0 4px rgba(110, 255, 161, 0.4);
+}
+
+/* Away: solid yellow, no glow. */
+.chalk-presence-dot--away {
+  background: var(--chalk-warn, #ffd060);
+}
+
+/* Offline / unknown: hollow grey circle. 1px border, no fill. */
+.chalk-presence-dot--offline {
+  background: transparent;
+  border: 1px solid var(--chalk-fg-dim, #5a8a5a);
+  /* Compensate for the border so the visual diameter still aligns
+     with the filled dots above. */
+  width: 6px;
+  height: 6px;
+}
+
+/* ============================================================
+   Phase 9.6d: alignment fix + lazy-loading indicator
+   ============================================================ */
+
+/* Override .chalk-sidebar-item's `justify-content: space-between`
+   for the friend variant so the dot and name sit together at the
+   start of the row. (The default is appropriate for channels,
+   where "#name" + dm-tag float to opposite edges.) */
+.chalk-sidebar-item--friend {
+  justify-content: flex-start;
+}
+
+/* The name inside a friend row shouldn't try to fill remaining
+   space; it's a label, not a flex grower. */
+.chalk-sidebar-item--friend .chalk-sidebar-item-name {
+  flex: 0 1 auto;
+}
+
+/* Lazy-loading placeholder: three small dots that pulse while a
+   chunk is being fetched. The component sits in place of the
+   real panel, so users see "something is happening" rather than
+   a flash of nothing. */
+.chalk-lazy-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 2rem;
+  min-height: 6rem;
+}
+
+.chalk-lazy-loading-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--chalk-fg-dim);
+  animation: chalk-lazy-pulse 1.2s ease-in-out infinite;
+}
+.chalk-lazy-loading-dot:nth-child(2) { animation-delay: 0.15s; }
+.chalk-lazy-loading-dot:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes chalk-lazy-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40%           { opacity: 1;   transform: scale(1.0); }
+}
+
+.chalk-lazy-error {
+  padding: 1.5rem;
+  color: var(--chalk-error, #ff7070);
+  background: rgba(255, 112, 112, 0.08);
+  border-left: 2px solid var(--chalk-error, #ff7070);
+  margin: 1rem;
+  font-size: var(--chalk-size-small);
+}
+
+/* ============================================================
+   Phase 9.6j: presence picker
+   ============================================================ */
+
+.chalk-presence-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.chalk-presence-trigger {
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0 0.5rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 3px;
+}
+.chalk-presence-trigger:hover {
+  border-color: var(--chalk-border, #1f2a1f);
+  background: var(--chalk-bg-elev, #14201a);
+}
+.chalk-presence-trigger:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* Effective-state-driven coloring of the trigger label. */
+.chalk-presence-trigger--online .chalk-status-label {
+  color: var(--chalk-fg-bright, #6effa1);
+}
+.chalk-presence-trigger--away .chalk-status-label {
+  color: var(--chalk-warn, #ffd060);
+}
+.chalk-presence-trigger--offline .chalk-status-label {
+  color: var(--chalk-fg-dim, #5a8a5a);
+}
+
+.chalk-presence-mode-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  padding: 0 0.25rem;
+}
+
+.chalk-presence-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 12rem;
+  background: var(--chalk-bg-elev, #14201a);
+  border: 1px solid var(--chalk-border, #1f2a1f);
+  padding: 0.3rem 0;
+  z-index: 20;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.chalk-presence-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg, #c8ffc8);
+  font: inherit;
+  text-align: left;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+}
+.chalk-presence-menu-item:hover {
+  background: rgba(110, 255, 161, 0.08);
+}
+.chalk-presence-menu-item--active {
+  color: var(--chalk-fg-bright, #6effa1);
+  background: rgba(110, 255, 161, 0.05);
+}
+.chalk-presence-menu-item--active::before {
+  content: "✓ ";
+}
+
+.chalk-presence-menu-hint {
+  font-size: 0.75rem;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-style: italic;
+}
+
+/* ============================================================
+   Phase 9.7b: light theme
+   ============================================================
+   Activated by setting data-theme="light" on the document root.
+   Redefines every --chalk-* variable so component CSS adapts
+   automatically. Also overrides a handful of hard-coded rgba()
+   values (presence-dot glow) that don't go through variables.
+
+   Palette notes:
+   - bg is a warm cream, not pure white, to reduce eye strain.
+   - fg is warm near-black for similar reasons.
+   - Accent stays a forest green so the brand identity survives the
+     mode switch. (chalk is "the green terminal chat"; making the
+     accent blue would feel like a different product.)
+   - Warn/error nudge toward muted amber/brick so they don't
+     scream against the soft background.
+   ============================================================ */
+
+[data-theme="light"] {
+  --chalk-bg:           #f7f5ee;
+  --chalk-bg-elev:      #ebe7da;
+  --chalk-bg-elev-2:    #ddd7c4;
+  --chalk-fg:           #1f1d17;
+  --chalk-fg-dim:       #6a6657;
+  --chalk-fg-bright:    #1a4d2a;
+  --chalk-fg-muted:     #8e8a7a;
+  --chalk-border:       #c9c2ab;
+  --chalk-accent:       #2d6e3f;
+  --chalk-warn:         #a85f00;
+  --chalk-error:        #9b2a26;
+
+  color-scheme: light;
+}
+
+/* Presence-dot glow uses a hard-coded rgba() in the green theme;
+   override here so the glow color matches the light-theme accent
+   instead of looking like a stray bright-green halo on cream. */
+[data-theme="light"] .chalk-presence-dot--online {
+  box-shadow: 0 0 4px rgba(45, 110, 63, 0.35);
+}
+
+/* The default green theme uses a very dim faux-shadow on most
+   panels (light text on black). In light mode we want a touch of
+   warmth on elevated surfaces -- a 1px inner border reads better
+   than a drop shadow on flat cream. The selectors below add it
+   only to surfaces that visibly elevate (modals, dropdowns,
+   menus). Sidebar and headers already use background contrast. */
+[data-theme="light"] .chalk-modal,
+[data-theme="light"] .chalk-presence-menu,
+[data-theme="light"] .chalk-status-menu {
+  box-shadow: 0 1px 3px rgba(31, 29, 23, 0.08);
+}
+
+/* In light mode, the active-channel highlight in the sidebar is a
+   subtle warm tint rather than the green-on-black we have in the
+   dark theme. Done via opacity of the accent. */
+[data-theme="light"] .chalk-sidebar-item--active {
+  background: rgba(45, 110, 63, 0.10);
+}
+
+/* The presence trigger's hover state in 9.6j uses a bg-elev
+   reference that works fine here -- no override needed. */
+
+/* ============================================================
+   Phase 9.7b: theme picker styling
+   ============================================================ */
+
+.chalk-profile-theme-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s1);
+}
+
+.chalk-profile-theme-option {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  cursor: pointer;
+  transition: border-color 100ms ease;
+}
+.chalk-profile-theme-option:hover {
+  border-color: var(--chalk-accent);
+}
+.chalk-profile-theme-option--active {
+  border-color: var(--chalk-accent);
+  background: var(--chalk-bg-elev);
+}
+
+.chalk-profile-theme-option input[type="radio"] {
+  /* Native radios look out of place; we have a custom visual via
+     the active border + swatch. Hide the native control but keep
+     it focusable for keyboard nav. */
+  appearance: none;
+  -webkit-appearance: none;
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  position: absolute;
+}
+.chalk-profile-theme-option input[type="radio"]:focus-visible
+  + .chalk-profile-theme-swatch {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 2px;
+}
+
+.chalk-profile-theme-swatch {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--chalk-s2);
+  width: 100%;
+}
+
+.chalk-profile-theme-swatch-preview {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--chalk-radius);
+  border: 1px solid var(--chalk-border);
+}
+/* Static preview swatches: do NOT use variables so they show the
+   theme's actual colors regardless of which one is currently active. */
+.chalk-profile-theme-swatch-preview--green {
+  background: linear-gradient(135deg, #000000 0%, #000000 50%, #00ff41 50%, #00ff41 100%);
+}
+.chalk-profile-theme-swatch-preview--light {
+  background: linear-gradient(135deg, #f7f5ee 0%, #f7f5ee 50%, #2d6e3f 50%, #2d6e3f 100%);
+}
+
+.chalk-profile-theme-name {
+  font-weight: 500;
+}
+.chalk-profile-theme-desc {
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-profile-hint {
+  margin-top: var(--chalk-s1);
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+  font-style: italic;
+}
+
+/* ============================================================
+   Phase 9.7c: cyberpunk theme
+   ============================================================
+   Deep violet-black background with hot magenta + electric cyan
+   accents. Body text stays a high-contrast pale lavender for
+   readability (the "neon on pitch-black" movie aesthetic looks
+   great in stills but is brutal to actually read).
+
+   Design choices:
+   - Background is violet-black (#0a0420), not pure black -- the
+     violet undertone is what differentiates this from the green
+     terminal theme.
+   - fg-bright is hot magenta (#ff2eaa) -- emphasis, "you" labels,
+     active states.
+   - Accent is electric cyan (#00f0ff) -- borders, secondary
+     surfaces, links.
+   - Warn keeps an amber/yellow because urgency reads best in
+     yellow regardless of context; pure neon would melt into the
+     rest of the palette.
+   ============================================================ */
+
+[data-theme="cyberpunk"] {
+  --chalk-bg:           #0a0420;
+  --chalk-bg-elev:      #140a32;
+  --chalk-bg-elev-2:    #1f0f4d;
+  --chalk-fg:           #f0e8ff;
+  --chalk-fg-dim:       #8a7ab8;
+  --chalk-fg-bright:    #ff2eaa;
+  --chalk-fg-muted:     #5a4a8a;
+  --chalk-border:       #4a2a8a;
+  --chalk-accent:       #00f0ff;
+  --chalk-warn:         #ffcc00;
+  --chalk-error:        #ff3060;
+
+  color-scheme: dark;
+}
+
+/* Cyberpunk presence-dot glow: cyan halo for online (matches the
+   accent), softer than the default green halo so it doesn't
+   strobe against the violet backdrop. */
+[data-theme="cyberpunk"] .chalk-presence-dot--online {
+  background: var(--chalk-accent);
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
+}
+
+/* Active sidebar item: faint magenta wash instead of the default
+   green tint. */
+[data-theme="cyberpunk"] .chalk-sidebar-item--active {
+  background: rgba(255, 46, 170, 0.12);
+}
+
+/* ============================================================
+   Phase 9.7c: solarized-dark theme
+   ============================================================
+   Ethan Schoonover's well-known palette. Uses the published hex
+   values directly so it matches what people expect from
+   "solarized" in other editors.
+
+   Mapping notes:
+   - chalk-bg          = base03  (#002b36)
+   - chalk-bg-elev     = base02  (#073642)
+   - chalk-fg          = base0   (#839496)  -- body text on dark
+   - chalk-fg-bright   = base1   (#93a1a1)  -- emphasized
+   - chalk-fg-dim      = base01  (#586e75)  -- comments/secondary
+   - chalk-accent      = blue    (#268bd2)  -- the solarized signature
+   - chalk-warn        = yellow  (#b58900)
+   - chalk-error       = red     (#dc322f)
+   ============================================================ */
+
+[data-theme="solarized-dark"] {
+  --chalk-bg:           #002b36;
+  --chalk-bg-elev:      #073642;
+  --chalk-bg-elev-2:    #0e4a5c;
+  --chalk-fg:           #839496;
+  --chalk-fg-dim:       #586e75;
+  --chalk-fg-bright:    #93a1a1;
+  --chalk-fg-muted:     #45626b;
+  --chalk-border:       #073642;
+  --chalk-accent:       #268bd2;
+  --chalk-warn:         #b58900;
+  --chalk-error:        #dc322f;
+
+  color-scheme: dark;
+}
+
+/* Solarized presence-dot glow: a soft blue halo matching the
+   accent. Subtler than the green theme's glow because solarized
+   is a low-saturation palette overall. */
+[data-theme="solarized-dark"] .chalk-presence-dot--online {
+  background: var(--chalk-accent);
+  box-shadow: 0 0 4px rgba(38, 139, 210, 0.45);
+}
+
+/* Active sidebar item: a low-opacity wash of solarized blue. */
+[data-theme="solarized-dark"] .chalk-sidebar-item--active {
+  background: rgba(38, 139, 210, 0.12);
+}
+
+/* ============================================================
+   Phase 9.7c: picker swatches for new themes
+   ============================================================
+   Static preview swatches use hard-coded hex (not variables) so
+   they always show the THEME'S OWN colors regardless of which
+   theme is currently active. Same diagonal-split pattern as the
+   green + light swatches from 9.7b.
+   ============================================================ */
+
+.chalk-profile-theme-swatch-preview--cyberpunk {
+  background: linear-gradient(135deg,
+    #0a0420 0%, #0a0420 50%,
+    #ff2eaa 50%, #ff2eaa 100%);
+}
+
+.chalk-profile-theme-swatch-preview--solarized-dark {
+  background: linear-gradient(135deg,
+    #002b36 0%, #002b36 50%,
+    #268bd2 50%, #268bd2 100%);
+}
+
+/* ============================================================
+   Phase 9.7d: compact mode + no-timestamp grid
+   ============================================================ */
+
+/* Compact: tighter gap between messages, smaller per-row padding. */
+.chalk-messages--compact {
+  gap: 1px;
+}
+.chalk-messages--compact .chalk-message {
+  padding: 1px var(--chalk-s2);
+}
+
+/* No-timestamp variant: drop the leading time column. The grid
+   reflows to sender + body only. */
+.chalk-message--no-time {
+  grid-template-columns: 9ch 1fr;
+}
+
+/* ============================================================
+   Phase 9.7d: ProfilePanel chat section
+   ============================================================
+   Reuses the existing .chalk-profile-field and .chalk-profile-label
+   utilities from earlier phases. Adds a checkbox-row variant and a
+   select-input variant since the appearance section only had
+   radios.
+   ============================================================ */
+
+.chalk-profile-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  cursor: pointer;
+  user-select: none;
+}
+.chalk-profile-checkbox-label input[type="checkbox"] {
+  /* The default checkbox looks fine across themes; just align it. */
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--chalk-accent);
+}
+
+.chalk-profile-select {
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  font: inherit;
+  cursor: pointer;
+}
+.chalk-profile-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.chalk-profile-select:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* ============================================================
+   Phase 9.7e: user color editor
+   ============================================================ */
+
+.chalk-user-colors {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s2);
+}
+
+.chalk-user-colors-empty {
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+  font-style: italic;
+  padding: var(--chalk-s2) 0;
+}
+
+.chalk-user-colors-row {
+  display: grid;
+  grid-template-columns: 1fr 36px minmax(110px, auto) 28px;
+  gap: var(--chalk-s2);
+  align-items: center;
+}
+
+.chalk-user-colors-handle {
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  font: inherit;
+  min-width: 0; /* let it shrink inside grid */
+}
+.chalk-user-colors-handle:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* Native color input -- minimal styling, just align to the row. */
+.chalk-user-colors-color {
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  background: transparent;
+  cursor: pointer;
+}
+
+.chalk-user-colors-scope {
+  /* Reuse .chalk-profile-select but the grid needs a row-aligned
+     height. The native select picks up our padding/font. */
+  height: 28px;
+  padding: 0 var(--chalk-s2);
+}
+
+.chalk-user-colors-delete {
+  background: transparent;
+  color: var(--chalk-fg-dim);
+  border: 1px solid transparent;
+  border-radius: var(--chalk-radius);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: var(--chalk-size-small);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.chalk-user-colors-delete:hover {
+  color: var(--chalk-error);
+  border-color: var(--chalk-error);
+}
+
+.chalk-user-colors-add {
+  align-self: flex-start;
+  margin-top: var(--chalk-s2);
+  background: transparent;
+  color: var(--chalk-fg-bright);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s1) var(--chalk-s3);
+  font: inherit;
+  cursor: pointer;
+}
+.chalk-user-colors-add:hover {
+  border-color: var(--chalk-accent);
+}
+
+/* ============================================================
+   Phase 10b: thread indicator + hover reply button
+   ============================================================ */
+
+/* The group div is display:contents so it doesn\'t alter the
+   existing flex layout of .chalk-messages. The browser ignores it
+   for layout but it still serves as the React key boundary. */
+.chalk-message-group {
+  display: contents;
+}
+
+/* The reply button is positioned at the end of the message grid
+   row, hidden by default, revealed on row hover. */
+.chalk-message {
+  position: relative;
+}
+.chalk-message-reply {
+  /* In the grid, this lands in the body column by default; we
+     pull it visually to the row\'s right edge with margin-left:auto
+     inside a flex... but the row is a grid. Easiest: absolute
+     position relative to .chalk-message, hide by default, show
+     on hover. */
+  /* hover actions are top-anchored so they clear tall image rows */
+  position: absolute;
+  right: var(--chalk-s2);
+  top: var(--chalk-s1);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 2px 8px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 80ms ease;
+}
+.chalk-message:hover .chalk-message-reply,
+.chalk-message-reply:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.chalk-message-reply:hover {
+  color: var(--chalk-fg-bright);
+  border-color: var(--chalk-accent);
+}
+.chalk-message-reply:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* Phase 26 (governance prereq): owner-only delete control. Mirrors the
+   hover-reveal reply button but sits just to its left so the two don't
+   collide. Non-owners never render this, so the reply button's own
+   right-edge position is left untouched. */
+.chalk-message-delete {
+  position: absolute;
+  right: calc(var(--chalk-s2) + 5rem);
+  top: var(--chalk-s1);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 2px 8px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 80ms ease;
+}
+.chalk-message:hover .chalk-message-delete,
+.chalk-message-delete:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.chalk-message-delete:hover {
+  color: var(--chalk-danger, #e5484d);
+  border-color: var(--chalk-danger, #e5484d);
+}
+.chalk-message-delete:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* Phase 26: tombstone rendering for a deleted message body. */
+.chalk-message-deleted {
+  font-style: italic;
+  color: var(--chalk-fg-dim);
+  opacity: 0.8;
+}
+
+/* Phase 10b-fix: thread indicator.
+   - align-self: flex-start so the button shrinks to its content
+     instead of stretching to the row width (it's inside a flex
+     column).
+   - subtle accent-colored text affordance, no border or background
+     box (which made it look like a banner in 10b).
+   - modest fixed indent that doesn't depend on `ch` arithmetic.
+     Doesn't pixel-align with the body column but reads as
+     intentional regardless of timestamp / compact / no-time mode. */
+.chalk-message-thread-indicator {
+  align-self: flex-start;
+  margin-left: var(--chalk-s2);
+  margin-top: 0;
+  margin-bottom: var(--chalk-s1);
+  background: transparent;
+  border: none;
+  color: var(--chalk-accent);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.chalk-message-thread-indicator:hover {
+  color: var(--chalk-fg-bright);
+  text-decoration: underline;
+}
+.chalk-message-thread-indicator:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Compact mode: zero out vertical margin so the feed stays tight. */
+.chalk-messages--compact .chalk-message-thread-indicator {
+  margin-bottom: 0;
+}
+
+/* ============================================================
+   Phase 10c: thread panel
+   ============================================================
+   When state.openThread is set, the SPA adds the
+   chalk-app--thread-open modifier on the root grid container.
+   This re-defines the grid to add a third column for the panel.
+
+   Desktop (>= 768px): three columns -- sidebar / main / thread.
+   Mobile (< 768px): the panel covers main + the channel footer.
+   ============================================================ */
+
+.chalk-app--phase08b.chalk-app--thread-open {
+  grid-template-columns: 220px 1fr 340px;
+  grid-template-areas:
+    "header  header header"
+    "sidebar main   thread"
+    "footer  footer thread";
+}
+.chalk-app--phase08b.chalk-app--thread-open .chalk-thread-panel {
+  grid-area: thread;
+}
+
+/* Panel: vertical flex with header / scrollable body / footer.
+   Top + bottom borders match the existing chalk-channel-header /
+   chalk-footer aesthetics. */
+.chalk-thread-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* let internal scroll work in grid */
+  border-left: 1px solid var(--chalk-border);
+  background: var(--chalk-bg);
+}
+
+.chalk-thread-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--chalk-s2) var(--chalk-s3);
+  border-bottom: 1px solid var(--chalk-border);
+}
+
+.chalk-thread-panel-title {
+  color: var(--chalk-fg-bright);
+  font-size: var(--chalk-size-body);
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+}
+
+.chalk-thread-panel-close {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: var(--chalk-radius);
+}
+.chalk-thread-panel-close:hover {
+  color: var(--chalk-fg-bright);
+  background: var(--chalk-bg-elev);
+}
+.chalk-thread-panel-close:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* Body scrolls; min-height:0 lets it shrink within the flex layout. */
+.chalk-thread-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--chalk-s2) var(--chalk-s2);
+}
+
+.chalk-thread-panel-parent {
+  /* The head message inherits chalk-messages styling because it\'s
+     wrapped in a MessageList. Just give it a soft separator below. */
+  padding-bottom: var(--chalk-s2);
+}
+
+.chalk-thread-panel-divider {
+  height: 1px;
+  background: var(--chalk-border);
+  margin: var(--chalk-s2) 0;
+}
+
+.chalk-thread-panel-loading,
+.chalk-thread-panel-empty {
+  color: var(--chalk-fg-muted);
+  font-style: italic;
+  padding: var(--chalk-s2) var(--chalk-s2);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-thread-panel-footer {
+  border-top: 1px solid var(--chalk-border);
+  padding: var(--chalk-s2);
+}
+
+/* Mobile: < 768px. The panel takes over the full main + channel
+   composer area. We hide main and the channel footer (which has the
+   channel composer) while a thread is open, and let the panel span
+   from sidebar-edge to right-edge of the viewport. */
+@media (max-width: 767px) {
+  .chalk-app--phase08b.chalk-app--thread-open {
+    grid-template-columns: 220px 1fr;
+    grid-template-areas:
+      "header  header"
+      "sidebar thread"
+      "sidebar thread";
+  }
+  .chalk-app--phase08b.chalk-app--thread-open .chalk-main,
+  .chalk-app--phase08b.chalk-app--thread-open .chalk-footer {
+    display: none;
+  }
+}
+
+/* ============================================================
+   Phase 10d: unread indicator suffix
+   ============================================================
+   When a thread has replies the user hasn\'t seen yet, the indicator
+   ("↳ 3 replies") gets a " · new" suffix in fg-bright. The
+   --unread modifier on the button can also be used for bolder
+   styling if desired; for now just the suffix.
+   ============================================================ */
+
+.chalk-message-thread-indicator--unread {
+  /* Bump the base color so the whole indicator reads a touch
+     more emphatically. Subtle -- the suffix carries most of the
+     signal. */
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-message-thread-indicator-new {
+  color: var(--chalk-fg-bright);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* ============================================================
+   Phase 10e: thread preview row
+   ============================================================
+   Sits directly beneath the indicator with the same left indent.
+   One line, ellipsis-truncated. Subtle by default (fg-dim);
+   clicking it opens the thread.
+   ============================================================ */
+
+.chalk-message-thread-preview {
+  align-self: flex-start;
+  /* Phase 10e-tweak: indent past the indicator's "↳ N " prefix so
+     the preview body aligns roughly under the WORD "replies".
+     Fixed-px offset to avoid coupling with the indicator's ch unit
+     (which would shift when font sizes diverge). */
+  margin-left: calc(var(--chalk-s2) + 28px);
+  margin-top: -2px;       /* tuck up against the indicator */
+  margin-bottom: var(--chalk-s1);
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  /* Phase 10e-tweak: smaller + italic. The italic marks the line as
+     meta-context (preview of another message) so it doesn't read
+     as a primary message row. */
+  font-size: 11px;
+  font-style: italic;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  /* single line with ellipsis. max-width keeps it from overflowing
+     past the message column on very wide threads. */
+  max-width: min(60ch, 80%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+.chalk-message-thread-preview:hover {
+  color: var(--chalk-fg);
+}
+.chalk-message-thread-preview:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.chalk-message-thread-preview-sender {
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-message-thread-preview-body {
+  /* inherits color from the parent button */
+}
+
+/* Compact mode: same shrink as the indicator. */
+.chalk-messages--compact .chalk-message-thread-preview {
+  margin-bottom: 0;
+}
+
+/* ===================================================================
+   Phase 11c-2 PR 4: ChannelMembersPanel styles.
+   =================================================================== */
+
+/* Modal sizing tweak: the members panel should be wider than the
+   default Confirm modal so the friend picker doesn't feel cramped. */
+.chalk-channel-members-panel {
+  min-width: min(480px, 90vw);
+  max-width: min(640px, 95vw);
+}
+
+.chalk-channel-members-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s1);
+}
+
+.chalk-channel-members-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--chalk-s2);
+  border: 1px solid var(--chalk-border);
+  background: var(--chalk-bg-elev);
+  gap: var(--chalk-s2);
+}
+
+.chalk-channel-members-handle {
+  color: var(--chalk-fg);
+  font-family: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chalk-channel-members-self-tag,
+.chalk-channel-members-creator-tag {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-channel-members-remove {
+  background: transparent;
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-dim);
+  font-family: inherit;
+  font-size: var(--chalk-size-body);
+  padding: 0 var(--chalk-s2);
+  cursor: pointer;
+  text-transform: lowercase;
+  flex-shrink: 0;
+}
+.chalk-channel-members-remove:hover {
+  border-color: var(--chalk-warn);
+  color: var(--chalk-warn);
+}
+.chalk-channel-members-remove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.chalk-channel-members-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s1);
+  flex-shrink: 0;
+}
+
+.chalk-channel-members-confirm-text {
+  color: var(--chalk-warn);
+  font-size: var(--chalk-size-small);
+  margin-right: var(--chalk-s1);
+}
+
+.chalk-channel-members-error {
+  margin-top: var(--chalk-s2);
+  padding: var(--chalk-s2);
+  border: 1px solid var(--chalk-warn);
+  color: var(--chalk-warn);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-channel-members-empty,
+.chalk-channel-members-hint {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  margin: 0 0 var(--chalk-s2) 0;
+}
+
+/* Compact button variant for inline confirm rows. */
+.chalk-button--small {
+  padding: 0 var(--chalk-s2);
+  font-size: var(--chalk-size-small);
+}
+
+/* "members" button in the channel header. */
+.chalk-channel-header-action {
+  background: transparent;
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-dim);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0 var(--chalk-s2);
+  cursor: pointer;
+  text-transform: lowercase;
+  margin-left: auto;
+}
+.chalk-channel-header-action:hover {
+  border-color: var(--chalk-fg-bright);
+  color: var(--chalk-fg-bright);
+}
+
+
+/* -- Members panel + key status (phase 23e) ------------------------ */
+
+.chalk-members-panel {
+  width: 360px;
+  max-width: 92vw;
+}
+.chalk-members-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.75rem 1rem 0.5rem;
+  border-bottom: 1px solid var(--chalk-border, #1f2a1f);
+}
+.chalk-members-title {
+  color: var(--chalk-fg-bright, #c8ffc8);
+}
+.chalk-members-chan {
+  color: var(--chalk-fg-dim, #5a8a5a);
+  margin-left: 0.35rem;
+}
+.chalk-members-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.chalk-members-refresh {
+  background: transparent;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  border: none;
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+}
+.chalk-members-refresh:hover { color: var(--chalk-fg, #c8ffc8); }
+.chalk-members-refresh:disabled { opacity: 0.5; cursor: default; }
+
+.chalk-members-body {
+  padding: 0.5rem 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.chalk-members-empty {
+  padding: 1rem;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  text-align: center;
+}
+.chalk-members-list { list-style: none; margin: 0; padding: 0; }
+.chalk-members-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 1rem;
+}
+.chalk-members-row:hover { background: var(--chalk-bg-hover, #121912); }
+.chalk-members-handle { color: var(--chalk-fg, #c8ffc8); }
+.chalk-members-you { color: var(--chalk-fg-dim, #5a8a5a); }
+
+.chalk-members-status {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+}
+.chalk-members-status--has { color: var(--chalk-accent, #5cffb1); }
+.chalk-members-status--waiting { color: var(--chalk-fg-muted, #6a7a6a); }
+
+.chalk-members-footer {
+  padding: 0.6rem 1rem 0.8rem;
+  border-top: 1px solid var(--chalk-border, #1f2a1f);
+}
+.chalk-members-reshare {
+  width: 100%;
+  background: transparent;
+  color: var(--chalk-accent, #5cffb1);
+  border: 1px solid var(--chalk-accent, #5cffb1);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+}
+.chalk-members-reshare:hover { background: rgba(92, 255, 177, 0.08); }
+.chalk-members-reshare:disabled { opacity: 0.5; cursor: default; }
+.chalk-members-allset,
+.chalk-members-nokey {
+  display: block;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--chalk-fg-dim, #5a8a5a);
+}
+
+/* -- Verification: badges + verify view (phase 24b) ---------------- */
+
+.chalk-members-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.chalk-verify-badge {
+  font-family: inherit;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  background: transparent;
+  border: 1px solid currentColor;
+  cursor: pointer;
+}
+.chalk-verify-badge:disabled { cursor: default; opacity: 0.7; }
+.chalk-verify-badge--verified { color: var(--chalk-accent, #5cffb1); }
+.chalk-verify-badge--unverified { color: var(--chalk-fg-dim, #5a8a5a); }
+.chalk-verify-badge--changed { color: var(--chalk-warn, #ffcc66); }
+.chalk-verify-badge--none { color: var(--chalk-fg-muted, #6a7a6a); }
+
+.chalk-members-back {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.chalk-members-back:hover { color: var(--chalk-fg, #c8ffc8); }
+
+.chalk-verify-view {
+  padding: 0.75rem 1rem 1rem;
+}
+.chalk-verify-intro {
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin-bottom: 0.75rem;
+}
+.chalk-verify-warn {
+  color: var(--chalk-warn, #ffcc66);
+  border: 1px solid var(--chalk-warn, #ffcc66);
+  padding: 0.5rem 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin-bottom: 0.75rem;
+}
+.chalk-verify-code {
+  background: var(--chalk-bg-alt, #0c130c);
+  border: 1px solid var(--chalk-border, #1f2a1f);
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.chalk-verify-words {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem 0.6rem;
+}
+.chalk-verify-word {
+  color: var(--chalk-accent, #5cffb1);
+  font-size: 0.95rem;
+  text-align: center;
+}
+.chalk-verify-numeric {
+  color: var(--chalk-accent, #5cffb1);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  letter-spacing: 0.05em;
+  word-spacing: 0.2em;
+  text-align: center;
+}
+.chalk-verify-toggle {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.2rem 0;
+  margin-bottom: 0.75rem;
+}
+.chalk-verify-toggle:hover { color: var(--chalk-fg, #c8ffc8); }
+
+.chalk-verify-actions { margin-top: 0.5rem; }
+.chalk-verify-state--verified {
+  color: var(--chalk-accent, #5cffb1);
+  text-align: center;
+  font-size: 0.9rem;
+}
+.chalk-verify-mark {
+  width: 100%;
+  background: transparent;
+  color: var(--chalk-accent, #5cffb1);
+  border: 1px solid var(--chalk-accent, #5cffb1);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+}
+.chalk-verify-mark:hover { background: rgba(92, 255, 177, 0.08); }
+.chalk-verify-confirm-text {
+  color: var(--chalk-fg, #c8ffc8);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin-bottom: 0.5rem;
+}
+.chalk-verify-confirm-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+.chalk-verify-confirm-yes {
+  flex: 1;
+  background: transparent;
+  color: var(--chalk-accent, #5cffb1);
+  border: 1px solid var(--chalk-accent, #5cffb1);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+}
+.chalk-verify-confirm-yes:hover { background: rgba(92, 255, 177, 0.08); }
+.chalk-verify-confirm-no {
+  flex: 1;
+  background: transparent;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  border: 1px solid var(--chalk-border, #1f2a1f);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+}
+.chalk-verify-confirm-no:hover { color: var(--chalk-fg, #c8ffc8); }
+.chalk-verify-empty {
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  text-align: center;
+  padding: 1rem 0;
+}
+
+/* -- Rotate channel key (phase 25-2) ------------------------------- */
+
+.chalk-members-rotate-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--chalk-border, #1f2a1f);
+}
+.chalk-members-rotate {
+  flex: 1;
+  background: transparent;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  border: 1px solid var(--chalk-border, #1f2a1f);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+}
+.chalk-members-rotate:hover:not(:disabled) {
+  color: var(--chalk-fg, #c8ffc8);
+  border-color: var(--chalk-fg-dim, #5a8a5a);
+}
+.chalk-members-rotate:disabled { opacity: 0.5; cursor: default; }
+.chalk-members-keyver {
+  font-size: 0.75rem;
+  color: var(--chalk-fg-muted, #6a7a6a);
+  white-space: nowrap;
+}
+
+/* -- Member removal (remove 'x' + leave + rotation pending) -------- */
+
+.chalk-members-remove {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-muted, #6a7a6a);
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  margin-left: 0.25rem;
+}
+.chalk-members-remove:hover {
+  color: var(--chalk-danger, #e66);
+}
+.chalk-members-leave {
+  margin-top: 0.5rem;
+  width: 100%;
+  background: transparent;
+  color: var(--chalk-fg-muted, #6a7a6a);
+  border: 1px solid var(--chalk-border, #1f2a1f);
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.35rem 0.6rem;
+}
+.chalk-members-leave:hover:not(:disabled) {
+  color: var(--chalk-danger, #e66);
+  border-color: var(--chalk-danger, #e66);
+}
+.chalk-members-leave:disabled { opacity: 0.4; cursor: default; }
+.chalk-members-pending {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--chalk-warn, #ffcc66);
+  border-left: 2px solid var(--chalk-warn, #ffcc66);
+  padding-left: 0.5rem;
+}
+
+/* -- Add member (friend-picker) ----------------------------------- */
+
+.chalk-members-add {
+  margin-top: 0.5rem;
+}
+.chalk-members-add-toggle {
+  width: 100%;
+  background: transparent;
+  color: var(--chalk-fg-dim, #5a8a5a);
+  border: 1px dashed var(--chalk-border, #1f2a1f);
+  font-family: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 0.35rem 0.6rem;
+}
+.chalk-members-add-toggle:hover {
+  color: var(--chalk-fg, #c8ffc8);
+  border-color: var(--chalk-fg-dim, #5a8a5a);
+}
+.chalk-members-add-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  max-height: 9rem;
+  overflow-y: auto;
+}
+.chalk-members-add-list li {
+  margin: 0;
+}
+.chalk-members-add-friend {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--chalk-fg, #c8ffc8);
+  border: none;
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.3rem 0.5rem;
+}
+.chalk-members-add-friend:hover {
+  background: var(--chalk-row-hover, #14201410);
+  color: var(--chalk-accent, #8effa0);
+}
+.chalk-members-add-empty {
+  font-size: 0.78rem;
+  color: var(--chalk-fg-muted, #6a7a6a);
+  padding: 0.3rem 0.5rem;
+}
+
+/* ===== gov-2: governance panel ================================= */
+.chalk-gov-panel {
+  max-width: 460px;
+  width: 100%;
+}
+.chalk-btn {
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+.chalk-btn:hover:not(:disabled) {
+  background: var(--chalk-bg-hover);
+  border-color: var(--chalk-accent);
+}
+.chalk-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.chalk-btn-sm {
+  padding: 0.15rem 0.5rem;
+}
+.chalk-btn-on {
+  background: var(--chalk-accent);
+  color: var(--chalk-bg);
+  border-color: var(--chalk-accent);
+}
+.chalk-btn-danger:hover:not(:disabled) {
+  border-color: var(--chalk-danger);
+  color: var(--chalk-danger);
+}
+.chalk-select {
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0.25rem 0.4rem;
+}
+.chalk-gov-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s3);
+  flex-wrap: wrap;
+  margin-bottom: var(--chalk-s3);
+}
+.chalk-gov-mode-label {
+  color: var(--chalk-fg-dim);
+}
+.chalk-gov-hint {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  margin: 0 0 var(--chalk-s3) 0;
+}
+.chalk-gov-propose {
+  border-top: 1px solid var(--chalk-border);
+  padding-top: var(--chalk-s3);
+  margin-bottom: var(--chalk-s3);
+}
+.chalk-gov-propose-row {
+  display: flex;
+  gap: var(--chalk-s2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.chalk-gov-error {
+  color: var(--chalk-error);
+  font-size: var(--chalk-size-small);
+  margin-bottom: var(--chalk-s2);
+}
+.chalk-gov-resolved-head {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: var(--chalk-s3) 0 var(--chalk-s2) 0;
+}
+.chalk-gov-prop {
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  margin-bottom: var(--chalk-s2);
+}
+.chalk-gov-prop-resolved {
+  opacity: 0.7;
+}
+.chalk-gov-prop-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--chalk-s2);
+}
+.chalk-gov-prop-type {
+  color: var(--chalk-fg-bright);
+}
+.chalk-gov-prop-target {
+  color: var(--chalk-accent);
+}
+.chalk-gov-prop-status {
+  margin-left: auto;
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+}
+.chalk-gov-tally {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  margin: var(--chalk-s2) 0;
+}
+.chalk-gov-tally-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--chalk-bg-elev-2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.chalk-gov-tally-fill {
+  display: block;
+  height: 100%;
+  background: var(--chalk-accent);
+}
+.chalk-gov-tally-counts {
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+  white-space: nowrap;
+}
+.chalk-gov-prop-actions {
+  display: flex;
+  gap: var(--chalk-s2);
+}
+
+/* ===================================================================
+   att-4c: Giphy -- composer button, gated render, search picker.
+   =================================================================== */
+
+/* Composer "GIF" button -- mirrors the paperclip affordance. */
+.chalk-composer-giphy {
+  flex: 0 0 auto;
+  align-self: stretch;
+  padding: 0 var(--chalk-s2);
+  background: transparent;
+  color: var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+.chalk-composer-giphy:hover:not(:disabled) {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg);
+}
+.chalk-composer-giphy:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Rendered GIF in the feed (enabled + allowlisted). Capped like an inline
+   attachment image; the GIF keeps its aspect ratio. */
+.chalk-giphy {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--chalk-s1);
+}
+.chalk-giphy-img {
+  display: block;
+  max-width: min(320px, 100%);
+  height: auto;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  background: var(--chalk-bg-elev);
+}
+.chalk-giphy-tag {
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-muted);
+}
+
+/* Inert placeholder when a GIF is NOT rendered (unset / disabled / bad host
+   / load failure). Never triggers a fetch. */
+.chalk-giphy-blocked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s1);
+  padding: 2px var(--chalk-s2);
+  border: 1px dashed var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  max-width: 100%;
+}
+.chalk-giphy-blocked-icon {
+  color: var(--chalk-fg-dim);
+}
+.chalk-giphy-blocked-text {
+  overflow-wrap: anywhere;
+}
+.chalk-giphy-enable {
+  flex: 0 0 auto;
+  background: transparent;
+  color: var(--chalk-fg-bright);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0 var(--chalk-s2);
+  cursor: pointer;
+}
+.chalk-giphy-enable:hover {
+  border-color: var(--chalk-fg);
+  color: var(--chalk-fg);
+}
+
+/* Search picker overlay. */
+.chalk-giphy-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+}
+.chalk-giphy-picker {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 92vw);
+  max-height: 80vh;
+  background: var(--chalk-bg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  overflow: hidden;
+}
+.chalk-giphy-picker-search {
+  display: flex;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2);
+  border-bottom: 1px solid var(--chalk-border);
+}
+.chalk-giphy-picker-input {
+  flex: 1 1 auto;
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  font-size: var(--chalk-size-base);
+  padding: var(--chalk-s1) var(--chalk-s2);
+}
+.chalk-giphy-picker-close {
+  flex: 0 0 auto;
+  background: transparent;
+  color: var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0 var(--chalk-s2);
+}
+.chalk-giphy-picker-close:hover {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg);
+}
+.chalk-giphy-picker-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--chalk-s2);
+}
+.chalk-giphy-picker-hint {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  margin: var(--chalk-s2) 0;
+}
+.chalk-giphy-picker-error {
+  color: var(--chalk-fg-bright);
+}
+.chalk-giphy-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--chalk-s2);
+}
+.chalk-giphy-picker-tile {
+  display: block;
+  padding: 0;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  background: var(--chalk-bg-elev);
+  cursor: pointer;
+  overflow: hidden;
+}
+.chalk-giphy-picker-tile:hover {
+  border-color: var(--chalk-fg);
+}
+.chalk-giphy-picker-tile img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.chalk-giphy-picker-attribution {
+  margin: 0;
+  padding: var(--chalk-s1) var(--chalk-s2);
+  border-top: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  text-align: right;
+  letter-spacing: 0.08em;
+}

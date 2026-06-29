@@ -27,15 +27,7 @@
 
 import { useEffect, useState } from "preact/hooks";
 import type { EmailChangeState, MeResponse } from "../auth/types";
-import {
-  regenerateRecovery,
-  ApiError,
-  listPasskeys,
-  addPasskeyBegin,
-  addPasskeyFinish,
-  type PasskeyInfo,
-} from "../auth/api";
-import { performRegistration, WebAuthnError } from "../webauthn";
+import { regenerateRecovery, ApiError } from "../auth/api";
 import { RecoveryScreen } from "../auth/RecoveryScreen";
 
 interface Props {
@@ -72,13 +64,6 @@ interface Props {
   // att-2: clear the cached attachment ciphertext (the "clear cached images"
   // guardrail). Optional -- only rendered when the parent wires it.
   onClearImageCache?: () => void | Promise<void>;
-  // att-4b: Giphy consent (tri-state). giphyPref is the current resolved
-  // value; onSetGiphyPref sets it directly (used for the "disable" path);
-  // onRequestEnableGiphy opens the app-level consent modal (the "enable"
-  // path, so the leak is explained before the pref flips to "enabled").
-  giphyPref?: "unset" | "enabled" | "disabled";
-  onSetGiphyPref?: (v: "enabled" | "disabled") => void;
-  onRequestEnableGiphy?: () => void;
 }
 
 export function ProfilePanel({
@@ -90,9 +75,6 @@ export function ProfilePanel({
   onSetChatPref,
   onSetUserColors,
   onClearImageCache,
-  giphyPref,
-  onSetGiphyPref,
-  onRequestEnableGiphy,
   onClose,
   onEmailChangeDraft,
   onEmailChangeSubmit,
@@ -107,65 +89,6 @@ export function ProfilePanel({
   const [rotateError, setRotateError] = useState<string>("");
   // att-2: transient "cleared" confirmation for the image cache control.
   const [imageCacheCleared, setImageCacheCleared] = useState(false);
-
-  // md-4-2: passkey management. The list loads on mount; addState gates
-  // the add button while the browser ceremony runs. null list = not yet
-  // loaded.
-  const [passkeys, setPasskeys] = useState<PasskeyInfo[] | null>(null);
-  const [passkeysError, setPasskeysError] = useState<string>("");
-  const [addState, setAddState] = useState<"idle" | "running">("idle");
-  const [addError, setAddError] = useState<string>("");
-  const [newPasskeyName, setNewPasskeyName] = useState<string>("");
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const list = await listPasskeys();
-        if (!cancelled) {
-          setPasskeys(list);
-          setPasskeysError("");
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setPasskeys([]);
-          setPasskeysError(e instanceof ApiError ? e.message : "couldn't load passkeys");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const onAddPasskey = async () => {
-    setAddError("");
-    setAddState("running");
-    try {
-      const options = await addPasskeyBegin();
-      const att = await performRegistration(options);
-      const created = await addPasskeyFinish(att, newPasskeyName.trim());
-      setPasskeys((prev) => (prev ? [...prev, created] : [created]));
-      setNewPasskeyName("");
-    } catch (e) {
-      if (e instanceof WebAuthnError) {
-        setAddError(
-          e.kind === "user_cancelled"
-            ? "passkey creation was cancelled."
-            : e.kind === "constraint"
-              ? "this device has no authenticator that meets the requirements."
-              : e.message,
-        );
-      } else if (e instanceof ApiError) {
-        setAddError(friendlyAddPasskeyError(e.code, e.message));
-      } else {
-        console.error("add passkey failed:", e);
-        setAddError("couldn't add a passkey; see browser console.");
-      }
-    } finally {
-      setAddState("idle");
-    }
-  };
 
   // Close on Escape (only when not in rotate-showing state; we
   // don't want a stray keypress to lose the new recovery words).
@@ -493,41 +416,6 @@ export function ProfilePanel({
             </section>
           )}
 
-          {/* att-4b: Giphy consent. Enabling routes through the app-level
-              consent modal (onRequestEnableGiphy) so the privacy tradeoff is
-              explained first; disabling is direct. Per-device, default off. */}
-          {onSetGiphyPref && (
-            <section class="chalk-profile-storage" data-testid="giphy-settings">
-              <h3>giphy</h3>
-              <div class="chalk-profile-field">
-                <label class="chalk-profile-checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={giphyPref === "enabled"}
-                    onChange={(e) => {
-                      const on = (e.target as HTMLInputElement).checked;
-                      if (on) {
-                        if (onRequestEnableGiphy) onRequestEnableGiphy();
-                        else onSetGiphyPref("enabled");
-                      } else {
-                        onSetGiphyPref("disabled");
-                      }
-                    }}
-                    data-testid="giphy-toggle"
-                  />
-                  enable Giphy GIFs
-                </label>
-                <p class="chalk-profile-hint" style={{ marginTop: "0.5rem" }}>
-                  {giphyPref === "enabled"
-                    ? "on: Giphy messages render as GIFs, fetched from Giphy's CDN. Your IP and the GIF you view are visible to Giphy. Per-device; affects only you."
-                    : giphyPref === "disabled"
-                      ? "off: Giphy messages show as plain links and are never fetched. Nothing reaches Giphy."
-                      : "not set: Giphy messages show as plain links until you opt in. Enabling lets your browser fetch GIFs from Giphy's CDN, revealing your IP to Giphy."}
-                </p>
-              </div>
-            </section>
-          )}
-
           {/* Email change section */}
           <section class="chalk-profile-email-change">
             <h3>change email</h3>
@@ -626,106 +514,10 @@ export function ProfilePanel({
               {rotateView === "loading" ? "rotating..." : "rotate recovery code"}
             </button>
           </section>
-
-          {/* md-4-2: passkeys. Account access is per-device; add a passkey
-              on each device you use so you don't have to fall back to the
-              one-time recovery code. Distinct from the 24-word decryption
-              phrase, which is client-only and unlocks message history. */}
-          <section class="chalk-profile-passkeys" data-testid="profile-passkeys">
-            <h3>passkeys</h3>
-            <p class="chalk-auth-subtitle">
-              passkeys are how you sign in to this account. add one on each
-              device you use, so you don't have to fall back to your recovery
-              code. this is account sign-in only — it's separate from your
-              24-word decryption phrase, which unlocks your message history.
-            </p>
-            {passkeysError && (
-              <div class="chalk-auth-error" data-testid="passkeys-load-error">{passkeysError}</div>
-            )}
-            {passkeys === null ? (
-              <p class="chalk-profile-hint">loading…</p>
-            ) : passkeys.length === 0 ? (
-              <p class="chalk-profile-hint" data-testid="passkeys-empty">
-                no passkeys on this account yet.
-              </p>
-            ) : (
-              <ul class="chalk-profile-passkey-list" data-testid="passkey-list" style={{ listStyle: "none", padding: 0, margin: "0 0 0.75rem 0" }}>
-                {passkeys.map((pk) => (
-                  <li key={pk.id} class="chalk-profile-passkey" style={{ padding: "0.35rem 0", borderBottom: "1px solid var(--chalk-border, rgba(255,255,255,0.08))" }}>
-                    <div>{pk.name || "unnamed passkey"}</div>
-                    <div class="chalk-profile-hint" style={{ marginTop: 0 }}>
-                      added {formatMillis(pk.createdAt)}
-                      {pk.lastUsedAt ? ` · last used ${formatMillis(pk.lastUsedAt)}` : " · never used"}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {addError && (
-              <div class="chalk-auth-error" data-testid="add-passkey-error">{addError}</div>
-            )}
-            <div class="chalk-profile-field">
-              <label class="chalk-profile-label" for="new-passkey-name">name (optional)</label>
-              <input
-                id="new-passkey-name"
-                class="chalk-field-input"
-                type="text"
-                maxLength={64}
-                placeholder="e.g. work laptop"
-                autoComplete="off"
-                value={newPasskeyName}
-                onInput={(e) => setNewPasskeyName((e.target as HTMLInputElement).value)}
-                disabled={addState === "running"}
-                data-testid="new-passkey-name"
-              />
-            </div>
-            <button
-              type="button"
-              class="chalk-button chalk-button--secondary"
-              onClick={onAddPasskey}
-              disabled={addState === "running"}
-              data-testid="add-passkey-button"
-            >
-              {addState === "running" ? "follow your browser's prompt…" : "add a passkey to this device"}
-            </button>
-          </section>
         </div>
       </div>
     </div>
   );
-}
-
-function friendlyAddPasskeyError(code: string, message: string): string {
-  switch (code) {
-    case "ceremony_validation_failed":
-      return "that passkey couldn't be verified. please try again.";
-    case "ceremony_expired":
-      return "the request timed out. please try again.";
-    case "ceremony_not_found":
-      return "the request couldn't be matched. please try again.";
-    case "persist_failed":
-      return "couldn't save the passkey — it may already be registered on this device.";
-    case "ceremony_user_mismatch":
-    case "no_session":
-    case "invalid_session":
-      return "your session expired. please log in again.";
-    default:
-      return message || "couldn't add a passkey; see browser console.";
-  }
-}
-
-function formatMillis(ms: number): string {
-  try {
-    const d = new Date(ms);
-    if (Number.isNaN(d.getTime())) return "";
-    return d.toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  } catch {
-    return "";
-  }
 }
 
 function friendlyEmailChangeError(code: string, message: string): string {
