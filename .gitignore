@@ -55,3 +55,7 @@ Thumbs.db
 web/.test-build/
 
 .gov*-backup*/
+
+# Applier rollback backups (never commit these)
+.*-backup-*/
+.*-backup-[0-9]*/

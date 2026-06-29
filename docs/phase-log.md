@@ -428,8 +428,57 @@ History above (11a–11d) is left intact — it was accurate when written.
 - 24: picture-word verification (anti key-substitution).
 - 25: weekly space-key rotation + identity-rotation governance.
 
-See `docs/design/chalk-phase-21plus-crypto-rebuild-plan-AMENDMENT.md` for
-the recovery/rotation model and the speculative phase-26+ aging layer.
+(The phase-21+ crypto-rebuild plan and its amendment guided phases 22–25;
+removed after the rebuild shipped. The 22–30 section below records what landed.)
+
+---
+
+## 22–30 — encryption rebuild, governance, attachments, multi-device (delivered) ✅
+
+The phase 21+ plan above ("Planned 22..25") is now BUILT and live. Recorded
+here so this log reflects reality.
+
+**22–25 — identity-wrapped space-key encryption (live).**
+- 22: identity keys — X25519 + Ed25519 from a 24-word BIP-39 phrase, native
+  WebCrypto, `identity_keys` table (one active per user), self-signature.
+- 23: space keys + AES-256-GCM message encryption; server back to blind relay;
+  crypto-agility wrap/message suites (`web/src/crypto/spacekey.ts`); group-
+  members UI rebuilt. chalk is end-to-end encrypted from here on.
+- 24: picture-word (safety-number) verification — anti key-substitution.
+- 25: space-key rotation (creator-minted, monotonic versions) + membership
+  lifecycle: add / remove (rotate-on-removal, wrap-scrub) / leave / re-add,
+  all forward-only.
+
+**Governance (gov-1a .. gov-2-2) — live.** Per-channel `governance_mode`
+(dictator | democratic) with a generic proposal→vote→resolve→action engine.
+Proposal types: remove_member, add_member, delete_message, set_mode. Hardened
+tally (frozen eligibility snapshot, turnout quorum + majority-of-voters,
+target exclusion, set_mode→dictator supermajority reverting to the original
+creator, re-propose cooldown, mandatory expiry, resolve-on-certainty).
+Client governance panel: mode toggle, propose, live tally, vote, cancel.
+
+**Attachments (att-1 .. att-4) — live.** Partitioned `attachments` table,
+chunked HTTP upload/download (the 1 MiB WS frame limit forces it off the WS),
+encrypted blobs + encrypted metadata (server sees only sizes), client-side
+downscaled encrypted previews (preview-first, full-on-scroll), ciphertext
+IndexedDB cache (LRU, clear-on-logout). Giphy via URL-reference with per-user
+tri-state opt-in consent + host allowlist + server-proxied search.
+
+**Multi-device (md-1 .. md-7) — live.** Shared identity key: a second device
+re-enters the 24-word phrase, derives the same identity, and verifies the
+derived key matches the published one before persisting (no divergent-identity
+fork). Self-echo to a user's other devices; passkey enrollment after recovery
+login; passkey deletion with a last-passkey guard. No per-device revocation
+(remedy is identity rotation).
+
+**Admin moderation (09d) — live.** Block / unblock / soft-delete / purge users,
+email blacklist CRUD, admin-protection triggers (migration 0019), SPA admin
+panel.
+
+**Designed, not yet built:** Phase 30 voice/video (Discord-style rooms, mesh +
+coturn relay, identity-bound DTLS anti-MITM) — see
+`docs/design/chalk-phase-30-voice-video-design.md`. Deferred-small: governance
+`set_config` proposal type.
 
 ---
 

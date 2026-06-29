@@ -3,16 +3,15 @@
 ## One-line summary
 
 Multi-instance Go server backed by Postgres (storage + LISTEN/NOTIFY
-pub/sub). Browser client over WebSocket. **As of the phase-21 rip-out,
-messages are plaintext**; end-to-end encryption is being rebuilt from
-phase 22 onward under an identity-wrapped-space-key design (see
-`docs/design/chalk-phase-21plus-crypto-rebuild-plan-AMENDMENT.md`).
+pub/sub). Browser client over WebSocket. **Messages and attachments are
+end-to-end encrypted** under an identity-wrapped-space-key design (phases
+22–25; native WebCrypto, AES-256-GCM), with the server as a blind relay.
 
-> **Crypto status.** chalk previously used MLS (RFC 9420) via a WASM
-> library. That was fully removed in the 21-series (no MLS, no WASM, no
-> bundled crypto). The server currently sees message content. The
-> confidentiality properties below under "Planned E2E crypto" are the
-> phase 22+ target, **not** current behavior.
+> **Crypto status.** chalk is end-to-end encrypted (identity-wrapped space
+> keys, native WebCrypto — no MLS, no WASM, no bundled crypto library). The
+> server stores and relays only ciphertext. The earlier MLS (RFC 9420)
+> implementation was removed in the 21-series and replaced across phases
+> 22–25.
 
 ## Components
 

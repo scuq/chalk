@@ -1,15 +1,13 @@
 # Threat Model
 
-> **Current status (phase 21).** chalk is presently a **plaintext** group
-> chat: MLS was removed in the 21-series rip-out, and the
-> identity-wrapped-space-key encryption is not yet built (phases 22–25).
-> **Right now the server operator and anyone with server/database access
-> can read message content.** The confidentiality guarantees described
-> below are the phase 22+ target. This document states both: what holds
-> today, and what the rebuild restores. Don't rely on the future guarantees
-> until phase 23 ships and is verified.
+> **Current status.** chalk is **end-to-end encrypted**. The
+> identity-wrapped-space-key stack (phases 22–25) is built and live:
+> messages and attachments are encrypted client-side under per-channel
+> space keys, and the server stores only ciphertext. The confidentiality
+> guarantees below are in effect today. The server still sees the metadata
+> enumerated under each adversary.
 
-## Adversaries chalk will defend against (phase 22+)
+## Adversaries chalk defends against
 
 ### Malicious or compromised server operator
 
@@ -22,7 +20,7 @@ attachment content, or private settings. They will still see metadata:
 - Sizes of messages and attachments
 - Coarse online/offline status
 
-**Today this goal is NOT met** — messages are plaintext in Postgres. It is
+**This goal is met today** — messages and attachments are ciphertext in Postgres. It is
 restored when space-key encryption lands (phase 23): the server holds only
 wrapped keys it cannot unwrap and ciphertext it cannot read.
 

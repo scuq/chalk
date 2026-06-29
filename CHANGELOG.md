@@ -12,12 +12,30 @@ All notable changes to chalk are documented here.
   copyright holder; pre-relicense commits remain under their original terms
   (MIT through 9.x, GPL-3.0 during 11a–21).
 
+### Added (post-21 rebuild: encryption, governance, attachments, multi-device)
+- **End-to-end encryption (phases 22–25).** Identity keys (X25519 + Ed25519
+  from a 24-word BIP-39 phrase, native WebCrypto); per-channel space keys with
+  AES-256-GCM; server back to blind relay; safety-number verification; space-key
+  rotation + membership lifecycle (add/remove/leave/re-add, forward-only,
+  rotate-on-removal + wrap-scrub).
+- **Governance.** Per-channel dictator/democratic mode; proposal→vote→resolve
+  engine (remove_member, add_member, delete_message, set_mode) with hardened
+  tally (frozen eligibility, turnout quorum, supermajority for mode-to-dictator,
+  cooldowns, expiry); client governance panel.
+- **Attachments.** Partitioned encrypted-blob store, chunked HTTP transport,
+  encrypted previews + metadata, ciphertext IndexedDB cache; Giphy via
+  URL-reference with per-user opt-in consent + host allowlist.
+- **Multi-device.** Shared-identity-key onboarding (re-enter phrase → verify
+  against published key → persist), self-echo to other devices, passkey
+  enrollment/deletion flows.
+- **Admin moderation (09d).** Block/unblock/soft-delete/purge, email blacklist,
+  admin-protection triggers.
+
 ### Planned
-- Phase 11d (multi-device + history transfer for MLS-encrypted DMs):
-  envelope-wrapped `backup_master_key`, per-conversation per-era
-  HistorySecret storage, recovery-phrase and pairing-based restore,
-  cross-device synchronized critical events. Design specified in
-  `docs/design/phase-11d-doc{1..7}.md`; implementation pending.
+- Phase 30: voice/video — Discord-style voice channels, WebRTC mesh + coturn
+  relay (works when P2P fails), identity-bound DTLS for anti-MITM. Design in
+  `docs/design/chalk-phase-30-voice-video-design.md`.
+- Governance `set_config` proposal type (govern per-channel knobs by vote).
 
 ### Added
 - Phase 11b-3 (MLS DM encryption — receive side and hotfixes): alice2

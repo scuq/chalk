@@ -3,11 +3,10 @@
 JSON over WebSocket. Subprotocol: `chalk.v1`. Path: `/ws`.
 
 >
-> **Crypto status (phase 21):** chalk is currently a **plaintext** group
-> chat — MLS was removed in the 21-series rip-out. The encrypted-channel
-> frames (key distribution, group commits) will be reintroduced under the
-> identity-wrapped-space-key design in phase 22+. This document describes
-> the live `chalk.v1` protocol as it stands today.
+> **Crypto status:** chalk is end-to-end encrypted. Message and attachment
+> bodies on the wire are ciphertext (per-channel space keys, AES-256-GCM);
+> the server relays opaque bytes. Key distribution is via identity-wrapped
+> space-key frames. This document describes the live `chalk.v1` protocol.
 
 Every frame has a `type` (string) and an optional `ref` (correlation ID for request/response). Server-initiated frames omit `ref`.
 

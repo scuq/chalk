@@ -1,6 +1,6 @@
 # chalk — Attachments / Compose (images, files, paste, GIFs) — Design Spec
 
-Status: design, pre-build. chalk-specific (read against the post-thread-fix tree).
+Status: BUILT (att-1..att-4, live). Design record. chalk-specific.
 
 ---
 
