@@ -83,6 +83,9 @@ type CreateChannelInput struct {
 	IsDM      bool
 	CreatedBy uuid.UUID
 	MemberIDs []uuid.UUID
+	// ChannelType is 'text' or 'voice'; empty means 'text' (30-1). A DM
+	// cannot be a voice channel.
+	ChannelType string
 }
 
 // CreateChannel inserts the channel + the per-channel sequence row +
