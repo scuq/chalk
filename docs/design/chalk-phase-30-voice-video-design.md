@@ -8,6 +8,11 @@ Mesh hard-capped to small rooms (<=5). Written against the post-attachments tree
 matches chalk's real docker/Makefile/config conventions.
 
 This supersedes the earlier voice-video sketch. Build the slices in order.
+Includes SCREEN + GAME sharing (Addendum B): one WebRTC transport, two quality
+modes off a single standardized lever -- motion = high-FPS game, detail/text =
+crisp screen. The "crisp Discord replacement" target + honest scope is in
+Addendum C (parity scorecard). Bandwidth probe + adaptive downscaler (fit a
+thin uplink, e.g. ~10 Mbps) is in Addendum D.
 
 ---
 
@@ -82,6 +87,7 @@ ONLY new infra: coturn (separate container) + the WebRTC client code.
       joined_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
       muted       BOOLEAN NOT NULL DEFAULT false,
       video_on    BOOLEAN NOT NULL DEFAULT false,
+      screen_on   BOOLEAN NOT NULL DEFAULT false,   -- sharing screen/game (badge)
       PRIMARY KEY (channel_id, user_id, device_id)
     );
     CREATE INDEX IF NOT EXISTS voice_participants_channel_idx
@@ -102,17 +108,18 @@ Client -> server:
   voice_leave   {channel_id}
   voice_roster  {channel_id}
   voice_signal  {channel_id, to_user, to_device, kind, payload}
-                 kind in {offer, answer, ice}; payload = E2E-encrypted SDP/ICE
-                 (encrypted under the channel space key). Server routes by
+                 kind in {offer, answer, ice, screen_add, screen_remove};
+                 payload = E2E-encrypted SDP/ICE/screen-track-mid (encrypted
+                 under the channel space key). Server routes by
                  (to_user, to_device); NEVER inspects payload.
-  voice_state   {channel_id, muted, video_on}
+  voice_state   {channel_id, muted, video_on, screen_on}
 
 Server -> client (pushes / acks):
-  voice_join_ack {channel_id, roster:[{user_id,device_id,muted,video_on}],
+  voice_join_ack {channel_id, roster:[{user_id,device_id,muted,video_on,screen_on}],
                   ice_servers:[{urls, username, credential}]}   -- TURN creds here
   voice_participant_joined {channel_id, user_id, device_id}
   voice_participant_left   {channel_id, user_id, device_id}
-  voice_participant_state  {channel_id, user_id, device_id, muted, video_on}
+  voice_participant_state  {channel_id, user_id, device_id, muted, video_on, screen_on}
   voice_signal  (relayed peer->peer, payload opaque)
 
 Join handshake (glare-free): the JOINER offers to every existing participant;
@@ -238,6 +245,8 @@ This is the live gate for Phase 30: relay-only call connects between two clients
   the ack -> establish mesh -> appear in the roster for all members.
 - In-call panel WITHIN the chalk UI (not a separate window): participant tiles
   (remote video; hidden <audio> for sound), mute toggle, camera toggle, leave.
+  Plus a SHARE button (screen/game share, Addendum B) -- a shared screen becomes
+  the large primary tile, cameras shrink to a filmstrip (Discord layout).
 - Permissions: handle mic/cam denial (audio-only if cam denied; clear error if
   mic denied).
 - iceTransportPolicy: default 'all'; 'relay' when CHALK_VOICE_FORCE_RELAY (test).
@@ -268,6 +277,8 @@ This is the live gate for Phase 30: relay-only call connects between two clients
     CHALK_TURN_SECRET              static-auth-secret shared with coturn
     CHALK_TURN_TTL_SECS            default 3600
     CHALK_STUN_URLS                optional explicit STUN
+    (adaptive quality / probe knobs -- CHALK_VOICE_PROBE_*, _RECHECK_SECS,
+     _UPLINK_HEADROOM, _AUDIO_KBPS, _MIN_VIDEO_KBPS -- are defined in Addendum D)
 
 ---
 
@@ -305,6 +316,27 @@ This is the live gate for Phase 30: relay-only call connects between two clients
 - **30-6 (polish)**
   reconnection behavior, removed-member cascade, mute/video sync, permission
   denial UX, feature-flag gating, coturn prod notes (turns: + certs).
+
+- **30-7 (client: screen + game share)** -- Addendum B
+  getDisplayMedia + the contentHint mode toggle (motion/detail/text), screen
+  track on its OWN transceiver (camera stays up), perfect-negotiation
+  renegotiation for the mid-call track add/remove, codec preference
+  (AV1>VP9>H264) + bitrate/degradationPreference params, shared app/game audio
+  track, big-tile + filmstrip UI, per-viewer hide (reuses A1). Server touch is
+  tiny (screen_on column + frame field, folded into 30-1/30-2). TypeScript.
+  Gate: tsc/test/build; a relay-only screen share renders on the other client;
+  webrtc-internals confirms motion holds FPS / detail holds resolution.
+
+- **30-8 (client: adaptive quality -- probe + downscaler)** -- Addendum D
+  pre-stream bandwidth probe (starting-tier pick), passive in-call re-checks on
+  the +1/+6/+11 min schedule, the mesh budget divider (total uplink / active
+  outbound senders, audio reserved, screen>camera priority), the tier ladder +
+  hysteresis applied via setParameters (maxBitrate / scaleResolutionDownBy /
+  maxFramerate). Minimal per-sender caps + divider should already land in 30-4;
+  this slice adds the probe, scheduler, and ladder. Depends on 30-7. TypeScript.
+  Gate: tsc/test/build; on a throttled 10 Mbps uplink a 1->4 game share settles
+  to ~720p60 while a screen share stays crisp; per-sender caps visible in
+  webrtc-internals.
 
 Recommend: 30-1 -> 30-2 -> 30-3 (now relay works end to end server-side) ->
 30-4 (the WebRTC + anti-MITM core, tested relay-only) -> 30-5 (the UI) -> 30-6.
@@ -479,3 +511,329 @@ which already broadcasts self-mute/self-video for roster display.
   the device; only encrypted SRTP does, post-processing).
 - No new server config beyond the existing CHALK_VOICE_*/CHALK_TURN_* set; the
   audio engine is pure client.
+
+---
+
+# ADDENDUM B — Screen & game sharing (crisp screen / high-FPS game)
+
+Requirement: share a SCREEN "crisp" (sharp text/detail) AND share a GAME at
+"high FPS." These are the two OPPOSITE ends of a single STANDARDIZED WebRTC
+lever -- so chalk gets both from one transport (the same mesh + coturn already
+built), with a per-share mode toggle. No new infra; the screen share is just
+another WebRTC track on the existing peer connections.
+
+## B0. The core insight: one lever, two modes (W3C contentHint)
+
+Under bitrate pressure an encoder MUST sacrifice EITHER framerate OR resolution
+-- you cannot hold both. WebRTC exposes exactly this choice via
+MediaStreamTrack.contentHint, which the spec maps deterministically onto the
+sender's degradationPreference:
+
+  contentHint = "motion" -> degradationPreference "maintain-framerate"
+                            (drop RESOLUTION to keep FPS)   => GAME mode
+  contentHint = "detail" -> degradationPreference "maintain-resolution"
+                            (drop FPS to keep pixels sharp) => SCREEN mode
+  contentHint = "text"   -> "maintain-resolution"; AND if codec is AV1,
+                            activates AV1 screen-content-coding tools
+                            => SCREEN mode, text-optimized (sharpest edges)
+
+So "high-FPS game" == motion; "crisp screen" == detail/text. The requirement
+IS the contentHint API -- not a hand-wave. (Source: W3C mst-content-hint;
+libWebRTC already auto-enables AV1's screen-content tools for detail/screen
+tracks.) Valid video hints are exactly: "", "motion", "detail", "text".
+
+Implementation:
+
+    const stream = await navigator.mediaDevices.getDisplayMedia(caps); // B3
+    const track  = stream.getVideoTracks()[0];
+    track.contentHint = mode === 'game' ? 'motion'
+                      : mode === 'text' ? 'text'
+                      :                   'detail';   // user-chosen, see UI
+    const sender = pc.addTrack(track, stream);        // SEPARATE transceiver
+
+Pin it explicitly too (don't rely only on the hint's implied default):
+
+    const p = sender.getParameters();
+    p.degradationPreference = mode === 'game' ? 'maintain-framerate'
+                                              : 'maintain-resolution';
+    p.encodings[0].maxBitrate = bitrateFor(mode);     // B3
+    await sender.setParameters(p);
+
+UI: a 3-way "Prioritize" toggle on the share (Discord-style):
+  [ Smooth motion (game) ] [ Sharp detail (screen) ] [ Sharp text (docs/code) ]
+Default to "detail" for a screen/window pick; the user flips to "motion" for a
+game (do NOT try to auto-detect a game -- just default detail + let them flip).
+
+## B1. Separate track -- share screen AND camera at once
+
+The screen share is its OWN video track on its OWN transceiver; it does NOT
+replace the camera. Camera + screen can be up simultaneously (Discord parity).
+addTrack() mid-call => RENEGOTIATION (a new m-line), per peer in the mesh.
+
+  - Receiver must tell screen-track from camera-track. Tag it: send the new
+    transceiver's mid (or a stable track label) inside the encrypted
+    voice_signal payload as {kind:'screen_add', mid}. Receiver maps that
+    incoming track to a big "screen" tile vs a small "camera" tile.
+  - On stop: removeTrack + renegotiate + {kind:'screen_remove'}; broadcast
+    screen_on=false via voice_state so the roster badge clears.
+
+## B2. Mid-call renegotiation glare -> perfect negotiation
+
+The Section 4 glare rule ("joiner offers, existing only answers") covers JOIN
+only. Adding/removing a screen track is a renegotiation started by an EXISTING
+peer, so two peers can offer at once (glare). Adopt the standard PERFECT
+NEGOTIATION pattern per peer pair:
+  - polite/impolite role = deterministic compare of (user_id,device_id).
+  - impolite peer ignores an incoming offer that collides with its own;
+    polite peer rolls back and accepts. Eliminates glare on every mid-call
+    track add/remove. Also future-proofs camera on/off toggles mid-call.
+
+## B3. Codec & bitrate (where "crisp" and "high-FPS" actually come from)
+
+Codec preference (setCodecPreferences / SDP) -> AV1 > VP9 > H.264 > VP8:
+  - AV1 and VP9 carry SCREEN-CONTENT-CODING tools (large savings on sharp
+    edges + flat color); AV1 is ~30% more efficient than VP9. libWebRTC
+    auto-enables AV1's screen tools for detail/text/screen tracks -> the best
+    "crisp" at low bitrate.
+  - BUT AV1 software encode is ~3-5x the CPU of VP9, and HW AV1 encode is still
+    limited across 2026 clients. GATE AV1 behind a capability/CPU check; fall
+    back VP9 (still has screen tools) -> H.264 (strong HW path for high-motion
+    game, sustains 60fps without pinning a core) -> VP8.
+  - Net: SCREEN/crisp -> prefer AV1 (fallback VP9) for edge sharpness;
+    GAME/motion -> VP9 or H.264-HW for sustainable 60fps.
+
+Bitrate (sender.getParameters().encodings[0].maxBitrate):
+  - GAME 1080p60 motion: cap ~2.5-8 Mbps (PER receiver in mesh -- see B4).
+  - SCREEN detail/text: screen content compresses very well; ~0.3-2.5 Mbps is
+    plenty at 1080p, with headroom for full-frame scene-change bursts.
+  - scalabilityMode 'L1T2'/'L1T3' (temporal) for graceful frame dropping;
+    scaleResolutionDownBy for explicit resolution control.
+
+Capture constraints (getDisplayMedia):
+  GAME:   { video:{ frameRate:{ ideal:60, max:60 } } }  + contentHint 'motion'
+  SCREEN: { video:{ frameRate:{ ideal:15, max:30 } } }  + contentHint
+          'detail'|'text'  (low fps, full resolution)
+
+Share app/game AUDIO too (Discord parity): getDisplayMedia({ audio:true })
+captures tab/system audio in Chromium (system audio mainly Chrome/Windows; tab
+audio broadly; Firefox/Safari limited -- feature-detect, degrade to video-only).
+Carry shared audio as a SEPARATE audio track; do NOT route it through the mic
+A3 graph / VAD gate -- it is program audio, not a microphone.
+
+## B4. The honest mesh ceiling (and why big tiers need the SFU seam)
+
+In a mesh the sharer encodes once but UPLOADS N-1 copies. A 1->4 game share at
+8 Mbps = ~32 Mbps upstream from ONE machine -- that is the real limit, not the
+codec. So:
+  - Realistic chalk target (mesh, cap 5): a crisp 1080p SCREEN share to a few
+    viewers is comfortable (screen content is cheap); a 1080p60 GAME share is
+    fine 1->1 / 1->2, strained 1->4 on typical home uplinks.
+  - All viewers receive the SAME stream (mesh = one encode, copied N-1x).
+    Per-viewer quality / 4K-to-many is an SFU feature (server forwards one
+    upstream and selects simulcast/SVC layers per viewer). That is Slice I
+    (SFU seam, unbuilt) -- the documented path to true Discord-tier
+    "1080p60 to a big room." chalk v1 deliberately targets small rooms done
+    well, consistent with the mesh cap.
+
+## B5. Per-viewer controls (reuse Addendum A1) + UX
+
+  - Screen tiles inherit A1: a viewer can locally HIDE a remote screen share
+    (detach track / set the RECEIVER's track.enabled=false) -- same
+    per-viewer, never-signaled pattern as remote video. Saves the viewer's
+    decode/render; sender + other viewers untouched.
+  - In mesh the SHARER owns the single quality; a viewer cannot request a
+    custom quality (that needs SFU/simulcast). So the viewer control is
+    show/hide + local fit (contain/cover) + pop-out/fullscreen -- NOT a
+    quality slider.
+  - Layout: the shared screen is the large primary tile; cameras shrink to a
+    filmstrip; click a camera to swap focus (Discord layout).
+
+## B6. Platform / test caveats (researched)
+
+  - getDisplayMedia needs a transient user gesture; it shows the browser's
+    native picker (screen / window / tab). Worth setting: displaySurface,
+    systemAudio, surfaceSwitching, selfBrowserSurface:'exclude' (avoid the
+    hall-of-mirrors), monitorTypeSurfaces.
+  - Linux/Wayland: capture flows through xdg-desktop-portal + PipeWire; if the
+    portal/PipeWire aren't present the picker is empty.
+  - macOS: first capture triggers the OS Screen-Recording permission prompt;
+    the browser must be granted it in System Settings.
+  - Safari/iOS: WebKit-only, H.264-only, screen capture restricted -- expect
+    video-only and lower ceilings; feature-detect and degrade gracefully.
+  - DEV NOTE (your env): capturing INSIDE the Parallels VM may cap framerate or
+    only expose the VM surface. Validate 60fps GAME mode on a host browser or a
+    real client, not just the trixie VM, before trusting the FPS numbers.
+  - Verify in chrome://webrtc-internals on the OUTBOUND screen track:
+    motion mode -> framesPerSecond holds, frameWidth/Height dip under load;
+    detail mode -> resolution holds, fps dips under load. That divergence is
+    the proof the contentHint/degradationPreference wiring works.
+
+## B7. Anti-MITM & E2E (no extra work)
+
+The screen track rides the SAME DTLS-SRTP transport as audio/video, so Slice F
+(identity-bound fingerprints) and the coturn-relays-ciphertext property cover
+it automatically. No new crypto, no new fingerprint signing. The screen_add/
+screen_remove control rides inside the already-encrypted voice_signal payload;
+coturn and chalkd never see screen pixels.
+
+---
+
+# ADDENDUM C — Discord-parity scorecard (what "replacement" means here)
+
+HAVE (this design):
+  - persistent click-to-join voice rooms + live roster            (core)
+  - audio + video calls; mute / deafen / self-video               (core)
+  - gaming-grade mic: PTT, two-threshold VAD calibration, gain    (Add. A)
+  - on-device noise suppression (NS3 default, RNNoise opt-in)     (Add. A)
+  - per-user + master output volume; per-viewer local mute/hide   (Add. A)
+  - screen share (crisp) + game share (high-FPS) + shared audio   (Add. B)
+  - share screen AND camera together; big-tile + filmstrip layout (Add. B)
+  - E2E (coturn relays ciphertext) + identity-bound anti-MITM     (Slice F)
+
+DEFERRED (honest):
+  - big rooms / 1080p60-to-many / per-viewer quality  -> needs SFU (Slice I)
+  - server-side recording, soundboard, "Go Live" to 50 -> out of scope v1
+  - Krisp-tier commercial noise suppression            -> not FOSS, skipped
+
+Net: chalk targets "Discord for a small, private, self-hosted, E2E group" --
+small rooms done crisply, not a 50-person stage. The crisp-vs-smooth share is
+first-class (Addendum B); the SFU seam (Slice I) is the one documented upgrade
+path to the large-room / high-tier experience.
+
+---
+
+# ADDENDUM D — Bandwidth probe + adaptive downscaler (fit the uplink)
+
+Requirement: (1) a downscaler that shrinks the share when the uplink is small
+(e.g. only ~10 Mbps), (2) a simple speed test BEFORE streaming to pick a sane
+starting quality, (3) re-check 3x during the call (t = +1, +6, +11 min). This
+makes Addendum B's static bitrate caps DYNAMIC and ties them to a measured
+uplink budget. Extends B4 (the mesh upload-multiplication problem).
+
+## D0. What WebRTC already does (so we build only the missing piece)
+
+Don't rebuild congestion control. The browser already:
+  - runs Google Congestion Control (GCC), continuously estimating the path and
+    exposing it via getStats: candidate-pair.availableOutgoingBitrate (bits/s,
+    1 s window) and outbound-rtp.targetBitrate (what it's asking the encoder to
+    hit -- the single closest number to "the estimate").
+  - AUTO-DOWNSCALES the encoder to fit that estimate, and the
+    degradationPreference set in Addendum B decides HOW: motion sheds
+    RESOLUTION (holds FPS), detail/text sheds FPS (holds resolution).
+  - ramps cautiously: a fresh stream starts at ~15% of requested quality and
+    climbs to 100% over ~30 s if the link allows.
+
+So per-stream real-time adaptation is FREE and already on. The TWO things the
+app must add:
+  1. A MESH BUDGET DIVIDER. Each PeerConnection's GCC estimates ITS OWN path
+     independently and they all compete; none knows you're also uploading N-1
+     other copies (B4). The app measures total uplink, reserves audio, and
+     divides the rest across ALL active outbound video senders as explicit
+     maxBitrate caps -- so one share can't starve audio or the other copies.
+  2. A STARTING-TIER pick from a pre-stream probe, to skip the slow 15%->100%
+     ramp and avoid overshooting a thin uplink on join.
+
+## D1. The pre-stream speed test (simple, once, before media flows)
+
+Before the first share, run a short ACTIVE probe (safe -- no media flowing yet):
+  - Simple default: a timed HTTP upload to a tiny new chalkd endpoint
+    (POST /api/netprobe, body discarded, returns server-measured bytes/s) --
+    a ~3-5 s or ~2-4 MB-capped upload. Because ~99% of chalk media is
+    coturn-RELAYED (Section 0) and coturn sits with chalkd, uplink-to-server is
+    a good proxy for the relay uplink the media actually uses.
+  - More representative option: a brief WebRTC probe (open the PC, read
+    availableOutgoingBitrate after ~3-5 s). Heavier to wire; the HTTP probe is
+    the "simple speed test" asked for.
+  - Caveat: a server probe measures uplink to the SERVER. If a pair connects
+    true-P2P rather than relayed, that path can differ -- but relay is the
+    common case here, so it's a sound STARTING estimate, refined live by D0/D2.
+The probe result -> initial uplink budget -> D3 picks the starting tier.
+
+## D2. The in-call re-checks (PASSIVE, on your schedule)
+
+Your ask: re-check 3x, starting +1 min, every +5 min -> t = +1:00, +6:00,
++11:00. IMPORTANT correction vs "speed test": the in-call checks are PASSIVE
+reads of getStats (availableOutgoingBitrate + targetBitrate), NOT active
+saturating tests. An active speed test DURING a call competes with the live
+media and degrades the very call it's measuring -- so we never do that mid-call.
+Passive reads cost nothing and reflect the real, current path.
+
+  - Schedule (configurable): CHALK_VOICE_RECHECK_SECS="60,360,660".
+  - At each tick: sum availableOutgoingBitrate across active candidate-pairs,
+    re-run the D3 divider + tier pick, step the tier (with hysteresis, D3).
+  - PLUS an always-on fast guard, independent of the schedule: the encoder+GCC
+    already protect in real time, and the app may also step DOWN early if
+    targetBitrate stays pinned below the cap or loss spikes -- we never wait
+    5 min to react to a collapsing link. The schedule governs deliberate
+    RE-PLANNING / step-UP; safety is continuous.
+
+## D3. The downscaler (mesh budget -> tier ladder, with hysteresis)
+
+Budget math (per re-check), bits/s:
+  uplink       = max(probe, sum(availableOutgoingBitrate))
+  usable       = uplink * CHALK_VOICE_UPLINK_HEADROOM        // default 0.85
+  audioReserve = activePeers * CHALK_VOICE_AUDIO_KBPS        // default 64/peer
+  videoBudget  = usable - audioReserve
+  perCopy      = videoBudget / activeOutboundVideoSenders    // see note
+Note: count ALL outbound video streams. Screen + camera to 4 peers = 8 streams.
+Give the SCREEN share priority; camera copies take a thumbnail cap first.
+
+Apply via sender.setParameters() (no renegotiation -> cheap, fine to do often):
+  enc.maxBitrate            = tier cap
+  enc.scaleResolutionDownBy = to hit the tier resolution
+  enc.maxFramerate          = tier fps ceiling
+  (+ track.applyConstraints({frameRate}) on the capture side)
+The encoder still does sub-tier shedding under the cap per degradationPreference
+(motion=res, detail=fps). The ladder sets the CEILING; GCC fills underneath.
+
+Tier ladder (per-copy budget; the share mode picks the column):
+  perCopy >=6M : GAME 1080p60 @6M   | SCREEN 1080p @30 @2.5M
+  3-6M         : GAME 1080p60 @4M   | SCREEN 1080p @30 @1.5M
+  1.5-3M       : GAME 720p60  @2.5M | SCREEN 1080p @15 @1.0M
+  0.8-1.5M     : GAME 540p60  @1.2M | SCREEN  900p @10 @0.6M
+  0.4-0.8M     : GAME 360p    @0.6M | SCREEN  720p @8  @0.4M (prefer AV1)
+  <0.4M        : GAME pause+warn / audio-only | SCREEN 720p @5 @0.3M (AV1)
+(Screen content compresses cheaply -- it holds resolution and sheds fps, so even
+thin budgets stay readable. Game holds fps and sheds resolution. This is just
+B0's contentHint doing its job, now under an app-set ceiling.)
+
+Hysteresis (avoid oscillation):
+  - Step DOWN quickly: perCopy under the current tier floor for >~3 s.
+  - Step UP slowly: only after the next tier's budget holds >~30-60 s (GCC
+    ramps slowly anyway). The +5 min cadence is a natural step-up review point;
+    step-down is allowed off-schedule by the fast guard.
+  - One tier per step; never jump multiple tiers at once.
+
+## D4. The 10 Mbps worked example (your number)
+
+uplink 10 Mbps, headroom 0.85 -> usable ~8.5 Mbps. Room cap 5 (N-1 = 4 peers),
+audioReserve ~4 x 64k = 256k -> videoBudget ~8.25 Mbps. ONE share (screen OR
+game), perCopy = videoBudget / fanout:
+  1->1 : ~8.2M -> GAME 1080p60   / SCREEN crisp 1080p, easy headroom
+  1->2 : ~4.1M -> GAME 1080p60   / SCREEN crisp 1080p   (res may dip in game)
+  1->3 : ~2.7M -> GAME 720p60    / SCREEN crisp 1080p@15 (screen is cheap)
+  1->4 : ~2.0M -> GAME 720p60    / SCREEN crisp 1080p@15 (motion holds fps)
+If ALSO sending camera, camera copies take a small thumbnail cap (~150-300k
+each) off the top and the screen keeps the rest. So at 10 Mbps a crisp screen
+share to the whole room is comfortable; a high-FPS game share is great 1->1/1->2
+and gracefully downscales to 720p60 by 1->4 -- exactly the downscale asked for.
+
+## D5. Config + build placement
+
+Config (CHALK_*, client defaults server-provided per the existing pattern):
+  CHALK_VOICE_PROBE_ENABLED    default true
+  CHALK_VOICE_PROBE_BYTES      default 3000000     (cap the probe upload)
+  CHALK_VOICE_RECHECK_SECS     default "60,360,660" (+1, +6, +11 min)
+  CHALK_VOICE_UPLINK_HEADROOM  default 0.85
+  CHALK_VOICE_AUDIO_KBPS       default 64          (per-peer audio reserve)
+  CHALK_VOICE_MIN_VIDEO_KBPS   default 300         (floor before pausing video)
+
+Build:
+  - Server: ONE tiny endpoint POST /api/netprobe (discard body, time it).
+    Optional -- skip it and use the WebRTC-probe / getStats path instead.
+  - Minimal maxBitrate caps + the budget divider land in 30-4 (so the basic
+    call already shares the uplink sanely).
+  - NEW client slice 30-8 (adaptive quality): the pre-stream probe, the
+    re-check scheduler (D2), the tier ladder + hysteresis (D3), the all-senders
+    divider with screen>camera priority. Depends on 30-7 (a working share to
+    adapt). TypeScript.
