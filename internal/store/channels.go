@@ -32,6 +32,10 @@ type Channel struct {
 	// gov-1a). Surfaced in the summary so the client can render the mode and
 	// gate unilateral vs proposal-based actions (gov-2).
 	GovernanceMode string
+	// ChannelType is 'text' (default) or 'voice' (a Discord-style voice room,
+	// 30-1). Voice channels reuse membership/governance/keys; live occupancy
+	// lives in voice_participants (store/voice.go).
+	ChannelType string
 }
 
 // ChannelWithMembers couples a Channel with its full member set.
@@ -60,6 +64,10 @@ var ErrNotAMember = errors.New("not a channel member")
 // ErrDMCardinality is returned when a DM-flagged channel is being created
 // with anything other than exactly 2 distinct members.
 var ErrDMCardinality = errors.New("DM must have exactly 2 members")
+
+// ErrBadChannelType is returned when a create names a channel_type outside
+// {'text','voice'} (30-1).
+var ErrBadChannelType = errors.New("channel_type must be 'text' or 'voice'")
 
 // --- CreateChannel ---------------------------------------------------------
 
@@ -115,6 +123,20 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 		return ChannelWithMembers{}, fmt.Errorf("%w: got %d", ErrDMCardinality, len(members))
 	}
 
+	// 30-1: normalize + fence the channel type. Empty means 'text' so every
+	// pre-30 caller is unchanged; a DM voice room makes no sense (a DM is a
+	// text surface; voice needs a joinable room).
+	channelType := strings.TrimSpace(in.ChannelType)
+	if channelType == "" {
+		channelType = "text"
+	}
+	if channelType != "text" && channelType != "voice" {
+		return ChannelWithMembers{}, fmt.Errorf("%w: got %q", ErrBadChannelType, in.ChannelType)
+	}
+	if in.IsDM && channelType == "voice" {
+		return ChannelWithMembers{}, fmt.Errorf("%w: a DM cannot be a voice channel", ErrBadChannelType)
+	}
+
 	var result ChannelWithMembers
 	// gov-1a: seed this channel's governance columns from the server-wide
 	// defaults captured at startup (withDefaults fills any zero field, so a
@@ -129,13 +151,15 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 			`INSERT INTO channels
 			   (name, is_dm, created_by,
 			    governance_mode, vote_window_days, vote_expiry_hours, min_eligible,
-			    quorum_percent, pass_percent, supermajority_percent, repropose_cooldown_hours)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-			 RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, governance_mode`,
+			    quorum_percent, pass_percent, supermajority_percent, repropose_cooldown_hours,
+			    channel_type)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			 RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, governance_mode, channel_type`,
 			strings.TrimSpace(in.Name), in.IsDM, in.CreatedBy,
 			gd.Mode, gd.VoteWindowDays, gd.VoteExpiryHours, gd.MinEligible,
 			gd.QuorumPercent, gd.PassPercent, gd.SupermajorityPercent, gd.ReproposeCooldownHours,
-		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.GovernanceMode)
+			channelType,
+		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.GovernanceMode, &ch.ChannelType)
 		if err != nil {
 			return fmt.Errorf("insert channel: %w", err)
 		}
@@ -185,10 +209,10 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 func (s *Store) GetChannel(ctx context.Context, channelID uuid.UUID) (Channel, error) {
 	var ch Channel
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, governance_mode
+		`SELECT id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, governance_mode, channel_type
 		   FROM channels WHERE id = $1`,
 		channelID,
-	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.GovernanceMode)
+	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.GovernanceMode, &ch.ChannelType)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Channel{}, ErrChannelNotFound
 	}
@@ -228,7 +252,7 @@ func (s *Store) IsMember(ctx context.Context, channelID, userID uuid.UUID) (bool
 // and the member-count cardinality is small (a few users per channel).
 func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]ChannelWithMembers, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.governance_mode
+		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.governance_mode, c.channel_type
 		   FROM channels c
 		   JOIN channel_members cm ON cm.channel_id = c.id
 		  WHERE cm.user_id = $1
@@ -244,7 +268,7 @@ func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]Ch
 	channelIDs := make([]uuid.UUID, 0, 16)
 	for rows.Next() {
 		var c Channel
-		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.GovernanceMode); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.GovernanceMode, &c.ChannelType); err != nil {
 			return nil, err
 		}
 		channels = append(channels, ChannelWithMembers{Channel: c})

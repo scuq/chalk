@@ -110,6 +110,10 @@ type Config struct {
 	// att-4: Giphy search-proxy settings (CHALK_GIPHY_*). See GiphyConfig
 	// in giphy.go. Disabled unless CHALK_GIPHY_API_KEY is set.
 	Giphy GiphyConfig
+
+	// 30-1: Phase 30 voice/video knobs (CHALK_VOICE_* / CHALK_TURN_* /
+	// CHALK_STUN_URLS). See VoiceConfig for the individual knobs.
+	Voice VoiceConfig
 }
 
 // GovernanceDefaults are the server-wide default governance parameters,
@@ -184,6 +188,9 @@ func Default() Config {
 
 		// att-4: Giphy search proxy.
 		Giphy: defaultGiphyConfig(),
+
+		// 30-1: voice/video.
+		Voice: defaultVoiceConfig(),
 	}
 }
 
@@ -312,6 +319,9 @@ func (c *Config) applyEnv() {
 
 	// att-4: Giphy search proxy from CHALK_GIPHY_* env vars.
 	c.Giphy.applyEnv()
+
+	// 30-1: voice/video from CHALK_VOICE_*/CHALK_TURN_* env vars.
+	c.Voice.applyEnv()
 }
 
 // envInt reads an integer env var. Returns (0, false) when unset or
@@ -429,6 +439,11 @@ func (c Config) Validate() error {
 
 	// att-4: Giphy search proxy.
 	if err := c.Giphy.Validate(); err != nil {
+		return err
+	}
+
+	// 30-1: voice/video.
+	if err := c.Voice.Validate(); err != nil {
 		return err
 	}
 

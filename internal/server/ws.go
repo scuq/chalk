@@ -1573,6 +1573,7 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 		CurrentKeyVersion: c.CurrentKeyVersion,
 		RotationPending:   c.RotationPending,
 		GovernanceMode:    c.GovernanceMode,
+		ChannelType:       c.ChannelType,
 	}
 }
 
@@ -1660,16 +1661,33 @@ func (h *WSHandler) handleCreateChannel(
 		return
 	}
 
+	// 30-1: channel_type preflight (empty => text; the store normalizes and
+	// re-fences, this just gives a friendly error before the tx).
+	switch p.ChannelType {
+	case "", "text":
+	case "voice":
+		if p.IsDM {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel,
+				"a DM cannot be a voice channel")
+			return
+		}
+	default:
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel,
+			"channel_type must be 'text' or 'voice'")
+		return
+	}
+
 	// Build the member list and create.
 	others := make([]uuid.UUID, 0, len(memberSet))
 	for m := range memberSet {
 		others = append(others, m)
 	}
 	created, err := h.store.CreateChannel(ctx, store.CreateChannelInput{
-		Name:      strings.TrimSpace(p.Name),
-		IsDM:      p.IsDM,
-		CreatedBy: callerID,
-		MemberIDs: others,
+		Name:        strings.TrimSpace(p.Name),
+		IsDM:        p.IsDM,
+		CreatedBy:   callerID,
+		MemberIDs:   others,
+		ChannelType: p.ChannelType,
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrDMCardinality) {

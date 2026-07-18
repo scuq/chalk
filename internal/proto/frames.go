@@ -288,6 +288,9 @@ type ChannelSummary struct {
 	// gov-1a/gov-2). Lets the client render the mode and gate unilateral vs
 	// proposal-based actions. Absent from older servers -> treat as "dictator".
 	GovernanceMode string `json:"governance_mode,omitempty"`
+	// ChannelType is 'text' or 'voice' (30-1). Absent from older servers ->
+	// treat as "text".
+	ChannelType string `json:"channel_type,omitempty"`
 }
 
 // ChannelMember pairs a user_id with their handle. Server
