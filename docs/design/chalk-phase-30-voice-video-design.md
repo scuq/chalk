@@ -327,3 +327,155 @@ Build server-first; 30-4 (WebRTC client) is where the real engineering lives.
 - Anti-MITM relies on phase 22 (identity) + phase 24 (verification) -- both DONE.
 - coturn must be provisioned (30-3) before relay works; until then voice is
   STUN-only (fails for most clients) -- which is exactly why 30-3 is early.
+
+---
+
+# ADDENDUM A — Per-viewer controls + gaming-grade audio (added)
+
+User additions: (1) per-remote-user video disable, (2) permanent per-user mute
+(for the "partner in the same room, same channel" case), (3) Mumble-grade audio:
+mic sensitivity/VAD calibration, full audio adjustability, and open-source voice
+isolation / noise suppression. These are CLIENT-LOCAL controls except where noted.
+Research current as of 2026.
+
+## A1. Per-viewer remote controls (client-local, never sent to the room)
+
+Crucial design point: these are LOCAL playback/render decisions on the viewer's
+machine. They do NOT mute/disable for everyone, and they are NOT signaled to the
+server or other peers. (Contrast with self-mute in A4, which IS broadcast so
+others see your mic state.)
+
+- **Disable a remote user's video (per viewer):** stop rendering one or more
+  remote video tiles locally. Implementation: don't attach that peer's video
+  MediaStreamTrack to a <video>, or set the tile hidden; optionally call
+  `track.enabled=false` on the *receiver* side (RTCRtpReceiver) so the decoder
+  can idle. Saves the viewer's CPU/bandwidth-render, leaves the sender + other
+  viewers untouched. Per-user toggle in the participant list; multi-select OK.
+- **Permanent per-user mute (per viewer):** locally silence one specific
+  participant's audio, and PERSIST it so it survives rejoins. The driving case:
+  your partner sits beside you and is in the same voice channel -- you hear them
+  twice (once in the room, once in person), so you mute their stream locally
+  while still hearing everyone else. Implementation: gain-node = 0 (or detach the
+  <audio>) for that peer; store the muted-user-id set in localStorage/IndexedDB
+  keyed per channel so it's remembered. A "muted (local)" badge in the roster +
+  an unmute control. Never affects what others hear.
+- Both are pure client state: no schema, no wire frames, no server involvement.
+  They belong to vv-3 (UI) / a new vv-5 (audio) slice, not the server slices.
+
+## A2. Noise suppression / voice isolation -- open-source options (researched)
+
+The landscape (2026): WebRTC ships a built-in suppressor (NS3, the Speex/AEC3
+chain) toggled by getUserMedia `noiseSuppression:true` -- fine for moderate
+two-way human conversation, weak on non-stationary noise (keyboard, fans, babble)
+which is exactly the gaming case. For better quality you run a deep-learning
+suppressor client-side in an AudioWorklet over WASM. Options:
+
+- **WebRTC built-in NS3** -- free, zero-integration (`noiseSuppression:true` in
+  getUserMedia constraints). Baseline. Use as the default/cheap path.
+- **RNNoise** (Xiph; RNN+DSP) -- the classic open-source choice, compiles cleanly
+  to WASM, used by Jitsi. Caveat: UNMAINTAINED since ~2024 and showing its age on
+  modern noise (mechanical keyboards, fans). Still a solid, license-clean
+  (BSD-style) self-hosted option and the pragmatic pick for chalk. Processes
+  480-sample/10ms frames at 48kHz.
+- **DTLN / dtln-rs** (Datadog open-sourced `dtln-rs`, Apache/MIT) -- DTLN deep
+  model, Rust -> WASM, better quality than RNNoise; ~33ms per 1s on M1. Heavier;
+  some low-end clients can't keep real-time (workadventu.re found p95 spikes on
+  weaker CPUs). A "high quality" tier behind a capability check.
+- **Picovoice Koala / NVIDIA Maxine / Krisp SDK** -- better still, but NOT
+  open-source / free (Krisp went metered May 2026). Out of scope for a
+  self-hosted FOSS app; mention only as the "if you ever want commercial" note.
+
+RECOMMENDATION for chalk (self-hosted, FOSS, privacy-first):
+- Default: WebRTC built-in NS3 (free, no bundle cost).
+- Optional toggle: **RNNoise via AudioWorklet+WASM** as the "better suppression"
+  setting -- license-clean, self-contained, no third party, no per-minute fees,
+  runs entirely client-side (no audio leaves the device -- consistent with
+  chalk's E2E identity). Bundle the .wasm; lazy-load it only when enabled.
+- Leave a seam to swap in dtln-rs later as a "high quality" tier (same
+  AudioWorklet slot), gated on a perf/capability check.
+- IMPORTANT pitfall (from research): do NOT stack suppressors. If RNNoise is on,
+  set getUserMedia `noiseSuppression:false` (disable NS3) so they don't fight and
+  over-suppress/erase sibilants. KEEP `echoCancellation:true` (AEC3) -- RNNoise
+  is a noise suppressor, NOT an echo canceller; you still need AEC.
+
+## A3. The audio pipeline (Web Audio graph) -- "adjust every bit"
+
+To make audio fully tunable (the Mumble/gaming goal), route the mic through a
+Web Audio graph BEFORE it hits the RTCPeerConnection, instead of sending the raw
+getUserMedia track. Graph:
+
+  getUserMedia(mic)
+    -> MediaStreamSource
+    -> [input gain]          (mic volume / amplification, ~0.0-3.0x)
+    -> [noise suppressor]    (AudioWorklet: RNNoise/DTLN, or bypass for NS3)
+    -> [VAD gate]            (voice-activity gate; see A4)
+    -> [optional: high-pass / compressor / limiter]  (clean up rumble, even out level)
+    -> MediaStreamDestination
+    -> pc.addTrack(dest track)
+
+On the RECEIVE side, per remote peer:
+  remote track -> MediaStreamSource -> [per-user gain] -> [master output gain]
+    -> AudioContext destination
+This gives per-user volume (A1 permanent-mute is just gain=0) + master output.
+
+All of this is standard Web Audio + AudioWorklet; nothing leaves the device, so
+it stays consistent with E2E (the server never sees raw or processed audio --
+only the encrypted SRTP after WebRTC).
+
+## A4. Mumble-style mic calibration + transmit modes (the gaming core)
+
+Model the proven Mumble controls (researched). Per-user LOCAL settings,
+persisted:
+
+- **Transmit mode:**
+  - Voice Activity (VAD) -- default; mic transmits when input crosses a threshold.
+  - Push-to-Talk (PTT) -- transmit only while a keybind is held; double-tap-latch
+    + configurable release/hold timer (so word-ends aren't clipped). Best for
+    noisy rooms / gaming.
+  - Continuous -- always transmit (discouraged; transmits background noise).
+- **VAD calibration (Mumble's two-threshold scheme):** a live input VU meter +
+  two thresholds:
+  - "speech below" (silence floor) and "speech above" (definite-voice) with a gap
+    between them (hysteresis) so a brief dip mid-word doesn't cut you off.
+  - Determine activity by amplitude OR signal-to-noise ratio.
+  - A setup wizard: speak normally -> it watches the meter -> auto-suggests the
+    thresholds; user can drag to fine-tune. (This is the "mic sensitivity
+    calibration, Mumble-like" ask.)
+- **Input gain / amplification** (boost a quiet mic; VU meter shows clipping in
+  red so you don't over-drive).
+- **Voice hold timer** (keep transmitting N ms after voice stops -- avoids
+  choppy word-tails).
+- **Per-user output volume** + **master output volume** (receive-side gains, A3).
+- **Self mute / self deafen** keybinds. (Self-mute IS broadcast via voice_state
+  so the roster shows it; per-viewer mutes in A1 are NOT.)
+- **Optional audio cues** (a sound when your mic goes live/idle); off by default.
+- Keybinds for PTT / mute / deafen, user-configurable.
+
+Persistence: all of A1/A4 are client-local settings in localStorage/IndexedDB
+(per-user, and per-channel where it makes sense like the A1 mute set). None of it
+touches the server schema except the EXISTING voice_state frame (muted/video_on)
+which already broadcasts self-mute/self-video for roster display.
+
+## A5. Build placement (these are mostly a new client slice)
+
+- vv-1..vv-4 unchanged (server + WebRTC transport + signaling + anti-MITM).
+- **vv-3 (UI)** gains: per-user "disable video" + "mute (local, persistent)"
+  controls in the participant list; the local-mute persistence store.
+- **NEW vv-5 (audio engine)** -- the Web Audio graph (A3), the noise-suppression
+  AudioWorklet (RNNoise WASM, lazy-loaded, NS3 fallback), VAD gate + PTT, the
+  mic-calibration wizard + VU meters, per-user/master output gains, keybinds.
+  This is its own focused slice -- it's the "gaming-grade audio" surface and is
+  independent of the transport. Build AFTER a basic call works (vv-4) so there's
+  real audio to tune.
+
+## A6. Config / dependency notes
+
+- RNNoise WASM: vendor the .wasm + a small AudioWorklet wrapper; lazy-load only
+  when the user enables "enhanced noise suppression." Confirm the specific
+  RNNoise build's license (Xiph RNNoise is BSD-style/permissive -- compatible
+  with chalk's BSD-3) before bundling; pin the source.
+- Everything in Addendum A is CLIENT-SIDE and leaves no audio with the server,
+  so it adds nothing to the E2E threat surface (raw/processed audio never leaves
+  the device; only encrypted SRTP does, post-processing).
+- No new server config beyond the existing CHALK_VOICE_*/CHALK_TURN_* set; the
+  audio engine is pure client.
