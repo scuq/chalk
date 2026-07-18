@@ -318,6 +318,9 @@ type CreateChannelPayload struct {
 	Name      string   `json:"name"`
 	IsDM      bool     `json:"is_dm,omitempty"`
 	MemberIDs []string `json:"member_ids,omitempty"`
+	// ChannelType requests 'text' (default when empty) or 'voice' (30-1).
+	// A DM cannot be a voice channel.
+	ChannelType string `json:"channel_type,omitempty"`
 }
 
 // CreateChannelAckPayload includes the full ChannelSummary so the client
