@@ -459,6 +459,7 @@ export function VoiceCallPanel({
     big?: boolean;
     onClick?: () => void;
   }) {
+    const pref = tile.isSelf ? undefined : snap.peerAudio[tile.userID];
     return (
       <div
         class={
@@ -497,8 +498,62 @@ export function VoiceCallPanel({
           {tile.part?.screenOn && (
             <span class="chalk-voice-peer-flag" title="sharing screen">s</span>
           )}
+          {!tile.isSelf && pref?.muted && (
+            <span
+              class="chalk-voice-peer-flag chalk-voice-peer-flag--local"
+              title="muted by you (local — they don't know)"
+            >
+              M
+            </span>
+          )}
           {!tile.isSelf && tile.connState && tile.connState !== "connected" && (
             <span class="chalk-voice-peer-conn">{tile.connState}…</span>
+          )}
+          {/* A1/A4 local audio controls (remote peers only). The volume
+              slider needs width, so it lives on the BIG tile -- pin a peer
+              to adjust them; the strip carries just the mute toggle.
+              stopPropagation: these must not re-pin/unpin the tile. */}
+          {!tile.isSelf && (
+            <span
+              class="chalk-voice-peer-audio"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              {big && !pref?.muted && (
+                <input
+                  class="chalk-voice-volume"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={Math.round((pref?.volume ?? 1) * 100)}
+                  onInput={(e) =>
+                    voiceSession.setPeerVolume(
+                      tile.userID,
+                      Number((e.target as HTMLInputElement).value) / 100,
+                    )
+                  }
+                  title={`${label} volume: ${Math.round((pref?.volume ?? 1) * 100)}% (only for you)`}
+                  aria-label={`${label} playback volume`}
+                  data-testid="voice-peer-volume"
+                />
+              )}
+              <button
+                class={
+                  "chalk-voice-localmute" + (pref?.muted ? " chalk-voice-localmute--on" : "")
+                }
+                type="button"
+                onClick={() => voiceSession.setPeerLocalMute(tile.userID, !pref?.muted)}
+                title={
+                  pref?.muted
+                    ? `unmute ${label} (was muted only for you)`
+                    : `mute ${label} for me — they keep talking to everyone else`
+                }
+                data-testid="voice-peer-localmute"
+              >
+                {pref?.muted ? "unmute for me" : "mute for me"}
+              </button>
+            </span>
           )}
         </div>
       </div>

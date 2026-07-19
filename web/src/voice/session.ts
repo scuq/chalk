@@ -27,6 +27,56 @@ import { loadIdentity } from "../crypto/idb";
 import { voiceBus } from "./bus";
 import { VoiceCall, type VoiceDiagnostics } from "./call";
 
+// ---- per-peer local audio prefs (Addendum A: A1 + the element-volume
+// ---- subset of A4) ---------------------------------------------------------
+//
+// Receive-side only: local mute and 0..1 volume applied to OUR playback of a
+// peer. Never touches the wire -- the peer's uplink and everyone else's ears
+// are unchanged, and nothing is broadcast (unlike self-mute, which rides
+// voice_state for the roster). Persisted per CHANNEL per USER in
+// localStorage (design A1: the driving case is "my partner sits beside me
+// in this room" -- a room-scoped preference that must survive rejoins).
+// Volume above 100% (boost) needs the Web Audio gain graph -- that is the
+// vv-5 audio-engine slice, not this one.
+
+export interface PeerAudioPref {
+  /** Local mute (A1). Independent of volume so unmute restores the level. */
+  muted: boolean;
+  /** Playback volume 0..1 (A4 subset; HTMLMediaElement.volume ceiling). */
+  volume: number;
+}
+
+const PEER_AUDIO_LS_KEY = "chalk-voice-peer-audio";
+
+type PeerAudioStore = Record<string, Record<string, PeerAudioPref>>; // channel -> user -> pref
+
+function loadPeerAudioStore(): PeerAudioStore {
+  try {
+    const raw = localStorage.getItem(PEER_AUDIO_LS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as PeerAudioStore;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePeerAudioStore(s: PeerAudioStore): void {
+  try {
+    localStorage.setItem(PEER_AUDIO_LS_KEY, JSON.stringify(s));
+  } catch {
+    /* quota/private-mode: prefs simply won't persist */
+  }
+}
+
+function normalizePref(p: Partial<PeerAudioPref> | undefined): PeerAudioPref {
+  const vol = typeof p?.volume === "number" ? p.volume : 1;
+  return {
+    muted: !!p?.muted,
+    volume: Math.min(1, Math.max(0, vol)),
+  };
+}
+
 export interface SessionRemoteTile {
   key: string;
   userID: string;
@@ -53,6 +103,9 @@ export interface VoiceSessionSnap {
   joinedAt: number | null;
   /** Last user-visible problem; cleared on the next join attempt. */
   error: string | null;
+  /** Per-peer LOCAL audio prefs for the current room, keyed by userID
+   * (A1 local mute + A4-subset volume). Loaded from localStorage on join. */
+  peerAudio: Record<string, PeerAudioPref>;
 }
 
 export interface JoinArgs {
@@ -81,6 +134,7 @@ class VoiceSessionImpl {
     relayOnly: false,
     joinedAt: null,
     error: null,
+    peerAudio: {},
   };
 
   constructor() {
@@ -136,6 +190,13 @@ class VoiceSessionImpl {
       channelID: a.channelID,
       channelName: a.channelName,
       error: null,
+      // A1 persistence: restore this room's local mutes/volumes.
+      peerAudio: Object.fromEntries(
+        Object.entries(loadPeerAudioStore()[a.channelID] ?? {}).map(([u, p]) => [
+          u,
+          normalizePref(p),
+        ]),
+      ),
     });
     try {
       const ident = await loadIdentity(a.selfUserID);
@@ -219,6 +280,7 @@ class VoiceSessionImpl {
       joinedWithVideo: false,
       relayOnly: false,
       joinedAt: null,
+      peerAudio: {},
     });
     if (call) await call.leave();
   }
@@ -275,6 +337,46 @@ class VoiceSessionImpl {
 
   clearError(): void {
     if (this.s.error !== null) this.set({ error: null });
+  }
+
+  // ---- per-peer local audio (A1 + A4 subset) -------------------------------
+
+  peerAudioFor(userID: string): PeerAudioPref {
+    return normalizePref(this.s.peerAudio[userID]);
+  }
+
+  /** A1: locally silence one participant. Persisted per channel. */
+  setPeerLocalMute(userID: string, muted: boolean): void {
+    this.updatePeerAudio(userID, (p) => ({ ...p, muted }));
+  }
+
+  /** A4 subset: playback volume 0..1 for one participant. Persisted. */
+  setPeerVolume(userID: string, volume: number): void {
+    this.updatePeerAudio(userID, (p) => ({
+      ...p,
+      volume: Math.min(1, Math.max(0, volume)),
+    }));
+  }
+
+  private updatePeerAudio(
+    userID: string,
+    fn: (p: PeerAudioPref) => PeerAudioPref,
+  ): void {
+    const cid = this.s.channelID;
+    const next = fn(normalizePref(this.s.peerAudio[userID]));
+    this.set({ peerAudio: { ...this.s.peerAudio, [userID]: next } });
+    if (cid !== null) {
+      const store = loadPeerAudioStore();
+      const room = { ...(store[cid] ?? {}) };
+      if (!next.muted && next.volume === 1) {
+        // Defaults need no row -- keep the store tidy.
+        delete room[userID];
+      } else {
+        room[userID] = next;
+      }
+      store[cid] = room;
+      savePeerAudioStore(store);
+    }
   }
 
   /** Passthrough to the live call's 30-4c diagnostics blob (config +

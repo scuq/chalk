@@ -44,10 +44,20 @@ export function VoiceDock({ onJumpToChannel }: { onJumpToChannel: (channelID: st
 
   return (
     <>
-      {/* Job 1: app-level audio, always rendered while tiles exist. */}
-      {Object.values(snap.tiles).map((t) => (
-        <AudioSink key={t.key} stream={t.stream} />
-      ))}
+      {/* Job 1: app-level audio, always rendered while tiles exist. Each
+          sink applies the peer's LOCAL prefs (A1 mute + A4-subset volume) --
+          receive-side only, invisible to everyone else. */}
+      {Object.values(snap.tiles).map((t) => {
+        const pref = snap.peerAudio[t.userID];
+        return (
+          <AudioSink
+            key={t.key}
+            stream={t.stream}
+            muted={!!pref?.muted}
+            volume={typeof pref?.volume === "number" ? pref.volume : 1}
+          />
+        );
+      })}
 
       {/* Job 2: the connection bar. */}
       {snap.phase !== "idle" && (
@@ -104,12 +114,28 @@ export function VoiceDock({ onJumpToChannel }: { onJumpToChannel: (channelID: st
   );
 }
 
-function AudioSink({ stream }: { stream: MediaStream }) {
+function AudioSink({
+  stream,
+  muted,
+  volume,
+}: {
+  stream: MediaStream;
+  muted: boolean;
+  volume: number;
+}) {
   const ref = useRef<HTMLAudioElement | null>(null);
   useEffect(() => {
     if (ref.current && ref.current.srcObject !== stream) {
       ref.current.srcObject = stream;
     }
   }, [stream]);
+  // Prefs via properties, not attributes: the muted ATTRIBUTE only sets the
+  // default, and volume has no attribute at all.
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.muted = muted;
+      ref.current.volume = Math.min(1, Math.max(0, volume));
+    }
+  }, [muted, volume]);
   return <audio ref={ref} autoPlay style={{ display: "none" }} />;
 }

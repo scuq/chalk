@@ -4250,6 +4250,77 @@ html, body {
   color: var(--chalk-warn);
 }
 
+/* ---- 30-5e: per-peer local audio controls (A1 + A4 subset) -------------- */
+
+/* Local-mute badge: uppercase M in error color -- YOUR state about them,
+   distinct from the lowercase m/c/s flags that mirror THEIR broadcast state. */
+.chalk-voice-peer-flag--local {
+  color: var(--chalk-error);
+  border-color: var(--chalk-error);
+}
+
+.chalk-voice-peer-audio {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chalk-voice-peer-conn + .chalk-voice-peer-audio,
+.chalk-voice-peer-audio + .chalk-voice-peer-conn {
+  margin-left: 6px;
+}
+
+.chalk-voice-localmute {
+  background: transparent;
+  border: 1px dotted var(--chalk-border);
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.chalk-voice-localmute:hover {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg-dim);
+}
+
+.chalk-voice-localmute--on {
+  color: var(--chalk-error);
+  border-color: var(--chalk-error);
+}
+
+/* Minimal range styling on the theme: a thin track, square thumb. */
+.chalk-voice-volume {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 90px;
+  height: 2px;
+  background: var(--chalk-border);
+  outline: none;
+  cursor: pointer;
+}
+
+.chalk-voice-volume::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 8px;
+  height: 12px;
+  background: var(--chalk-fg);
+  border: none;
+}
+
+.chalk-voice-volume::-moz-range-thumb {
+  width: 8px;
+  height: 12px;
+  background: var(--chalk-fg);
+  border: none;
+  border-radius: 0;
+}
+
 /* ---- control bar ---- */
 
 .chalk-voice-bar {
