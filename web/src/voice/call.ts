@@ -1,4 +1,5 @@
-// VoiceCall (Phase 30, slices 30-4 + 30-7a): the client-side WebRTC mesh.
+// VoiceCall (Phase 30, slices 30-4 + 30-7a + 30-7b): the client-side WebRTC
+// mesh.
 //
 // One instance == one live membership in one voice room. It owns:
 //   * the local capture stream (getUserMedia; audio always, camera optional)
@@ -52,7 +53,28 @@
 // {kind:"screen_add", stream_id} control signal sent BEFORE the offer that
 // carries the track (same ordered WS relay + same per-peer op chain, so the
 // announce is processed first; a small pending buffer tolerates reordering
-// anyway). Mode toggle / codec ladder / shared app audio land in 30-7b.
+// anyway).
+//
+// 30-7b completes Addendum B:
+//   * the 3-way share MODE (B0): "motion" (game) / "detail" (screen) /
+//     "text" (docs+code). One W3C lever: contentHint + the pinned
+//     degradationPreference decide what the encoder sacrifices under
+//     pressure -- resolution (motion holds FPS) or framerate (detail/text
+//     hold pixels). Flipping the mode mid-share is live: applyConstraints
+//     (fps ceiling) + hint + setParameters, no re-capture.
+//   * the codec ladder (B3) via setCodecPreferences, MODE-DEPENDENT:
+//     detail/text prefer AV1 (screen-content-coding tools; gated behind a
+//     CPU heuristic, VP9 -- which also has screen tools -- otherwise);
+//     motion prefers VP9 > H.264 (sustainable 60fps; software AV1 would pin
+//     a core) > VP8. A mode flip that changes the ranking renegotiates the
+//     codec through the 30-7a perfect-negotiation machinery.
+//   * shared app/game AUDIO (B3): getDisplayMedia({audio:true}) where the
+//     platform supports it (feature-detected; video-only otherwise). It is
+//     PROGRAM audio, not a microphone: contentHint "music", its own cap,
+//     and it must never run through a mic processing graph (A3, when that
+//     exists).
+//   * mid-call camera add: joining audio-only is no longer terminal --
+//     enableCameraMidCall() acquires and renegotiates the camera in.
 //
 // The server-side contract this file leans on (30-2): signals are relayed
 // only between live participants, payloads are opaque, joined/left/state
@@ -96,10 +118,23 @@ const AUDIO_MAX_BPS = 64_000;
 const TOTAL_VIDEO_UPLINK_BPS = 2_500_000;
 /** Floor per video sender so the divider never starves a stream entirely. */
 const MIN_VIDEO_BPS = 150_000;
-/** Per-receiver screen-share cap (B3: detail/text compresses well; 2.5 Mbps
- * covers crisp 1080p with burst headroom). Mode-dependent caps are 30-7b;
- * the screen>camera priority divider is 30-8. */
+/** Per-receiver screen-share caps (B3). Detail/text: screen content
+ * compresses very well -- 2.5 Mbps covers crisp 1080p with burst headroom.
+ * Motion (game): 1080p60 needs real bitrate; 6 Mbps sits inside B3's
+ * 2.5-8 Mbps band with mesh sanity (the adaptive divider is 30-8). */
 const SCREEN_VIDEO_MAX_BPS = 2_500_000;
+const GAME_VIDEO_MAX_BPS = 6_000_000;
+/** Shared PROGRAM audio cap (Opus music, not voice -- 64k would smear it). */
+const SCREEN_AUDIO_MAX_BPS = 128_000;
+
+/** The B0 share modes. Values ARE the W3C contentHint strings. */
+export type ScreenShareMode = "motion" | "detail" | "text";
+
+/** Codec family preference per mode (B3), best first. AV1 leads for
+ * detail/text ONLY when the CPU heuristic passes (see rankedScreenCodecs). */
+const CODEC_ORDER_DETAIL_AV1 = ["video/av1", "video/vp9", "video/h264", "video/vp8"];
+const CODEC_ORDER_DETAIL_NO_AV1 = ["video/vp9", "video/h264", "video/vp8", "video/av1"];
+const CODEC_ORDER_MOTION = ["video/vp9", "video/h264", "video/vp8", "video/av1"];
 /** Concurrent-join fallback: how long the lower key waits for the joiner's
  * offer before concluding neither side saw the other in a roster. */
 const JOIN_GLARE_FALLBACK_MS = 2_000;
@@ -268,6 +303,11 @@ export class VoiceCall {
   private videoEnabled = false;
   /** 30-7a: the local getDisplayMedia stream while sharing, else null. */
   private screenStream: MediaStream | null = null;
+  /** 30-7b: the active share mode. Sticky across shares within the call. */
+  private screenMode: ScreenShareMode = "detail";
+  /** The codec family (mimeType, lowercase) currently applied to the screen
+   * transceivers -- a mode flip renegotiates only when this would change. */
+  private appliedScreenCodec: string | null = null;
   /** Verified peer identities by userID; null = looked up, unusable. */
   private readonly identities = new Map<string, { ed25519Public: Uint8Array } | null>();
   /** Concurrent-join fallback timers by peer key. */
@@ -290,6 +330,10 @@ export class VoiceCall {
 
   get isSharingScreen(): boolean {
     return this.screenStream !== null;
+  }
+
+  get shareMode(): ScreenShareMode {
+    return this.screenMode;
   }
 
   /** polite: perfect-negotiation role for a pair. Deterministic: the lower
@@ -878,11 +922,26 @@ export class VoiceCall {
     if (!this.joined || this.closed || this.screenStream) return false;
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        // B3 SCREEN capture shape: low fps, full resolution. (Game mode's
-        // 60fps constraint arrives with the 30-7b toggle.)
-        video: { frameRate: { ideal: 15, max: 30 } },
-      });
+      // B6 picker hints: exclude our own tab (hall-of-mirrors), offer
+      // system/tab audio, allow switching the shared surface, list
+      // monitors. All advisory; browsers ignore what they don't know.
+      const opts: MediaStreamConstraints & {
+        selfBrowserSurface?: string;
+        systemAudio?: string;
+        surfaceSwitching?: string;
+        monitorTypeSurfaces?: string;
+      } = {
+        video: this.screenCaptureConstraints(),
+        // B3 shared app/game audio -- feature-detected by the platform:
+        // Chromium returns a tab/system audio track when the user ticks
+        // the box; Firefox/Safari simply return video-only.
+        audio: true,
+        selfBrowserSurface: "exclude",
+        systemAudio: "include",
+        surfaceSwitching: "include",
+        monitorTypeSurfaces: "include",
+      };
+      stream = await navigator.mediaDevices.getDisplayMedia(opts);
     } catch (err) {
       const name = (err as DOMException)?.name ?? "";
       if (name === "NotAllowedError" || name === "AbortError") {
@@ -902,9 +961,12 @@ export class VoiceCall {
       for (const t of stream.getTracks()) t.stop();
       return false;
     }
-    // B0: detail => degradationPreference maintain-resolution (pinned
-    // explicitly per sender in applyBudget too, not just implied).
-    video.contentHint = "detail";
+    // B0: the mode's contentHint on the track (degradationPreference is
+    // pinned explicitly per sender in applyBudget too, not just implied).
+    video.contentHint = this.screenMode;
+    // Shared audio is PROGRAM audio: "music" keeps the encoder from
+    // treating it as speech; it must never enter a mic processing graph.
+    for (const a of stream.getAudioTracks()) a.contentHint = "music";
     // The browser's own "Stop sharing" bar ends the track outside our UI --
     // mirror it into a full stop so peers and roster stay honest.
     video.addEventListener("ended", () => {
@@ -951,8 +1013,108 @@ export class VoiceCall {
       });
     }
     for (const t of stream.getTracks()) t.stop();
+    this.appliedScreenCodec = null;
     if (!this.closed) this.broadcastState();
     this.o.callbacks.onLocalScreenStream(null);
+  }
+
+  /** screenCaptureConstraints: the B3 capture shape for the current mode.
+   * motion = high fps (resolution yields under pressure); detail/text =
+   * low fps, full resolution. Also applied live on a mode flip. */
+  private screenCaptureConstraints(): MediaTrackConstraints {
+    return this.screenMode === "motion"
+      ? { frameRate: { ideal: 60, max: 60 } }
+      : { frameRate: { ideal: 15, max: 30 } };
+  }
+
+  /**
+   * setScreenShareMode (B0): flip the share's priority live -- no
+   * re-capture, no picker. hint + fps constraint + bitrate/degradation
+   * (applyBudget) all apply in place; the codec is renegotiated only when
+   * the mode's ladder actually changes the chosen family.
+   */
+  setScreenShareMode(mode: ScreenShareMode): void {
+    this.screenMode = mode;
+    const stream = this.screenStream;
+    if (!stream) return; // sticky for the next share
+    const video = stream.getVideoTracks()[0];
+    if (video) {
+      video.contentHint = mode;
+      video.applyConstraints(this.screenCaptureConstraints()).catch((err) => {
+        // Constraint rejection degrades quality, not correctness.
+        console.warn("share mode applyConstraints:", err);
+      });
+    }
+    this.applyBudget();
+    this.diag(`share mode -> ${mode}`);
+    // Codec: renegotiate only on a real ranking change (B3).
+    const ranked = this.rankedScreenCodecs();
+    if (!ranked || ranked.length === 0) return;
+    const top = ranked[0].mimeType.toLowerCase();
+    if (top === this.appliedScreenCodec) return;
+    for (const peer of this.peers.values()) {
+      this.enqueue(peer, async (pr) => {
+        if (this.applyScreenCodecPreferences(pr, ranked)) await this.sendOffer(pr);
+      });
+    }
+    this.appliedScreenCodec = top;
+  }
+
+  /**
+   * rankedScreenCodecs (B3): the mode's codec ladder over this browser's
+   * actual send capabilities. detail/text want AV1's screen-content tools
+   * -- but software AV1 encode is 3-5x VP9's CPU, so AV1 leads only when
+   * the machine plausibly has headroom (>= 8 logical cores); VP9 (which
+   * also carries screen tools) otherwise. motion wants sustainable 60fps:
+   * VP9 > H.264 (strong hardware path) > VP8, AV1 last. rtx/red/ulpfec and
+   * anything unranked keep their relative order at the tail. null when the
+   * browser exposes no capability API (ladder skipped, defaults rule).
+   */
+  private rankedScreenCodecs(): RTCRtpCodec[] | null {
+    const caps = RTCRtpSender.getCapabilities?.("video");
+    if (!caps || !caps.codecs || caps.codecs.length === 0) return null;
+    const av1OK = (navigator.hardwareConcurrency ?? 4) >= 8;
+    const order =
+      this.screenMode === "motion"
+        ? CODEC_ORDER_MOTION
+        : av1OK
+          ? CODEC_ORDER_DETAIL_AV1
+          : CODEC_ORDER_DETAIL_NO_AV1;
+    const ranked: RTCRtpCodec[] = [];
+    for (const family of order) {
+      for (const c of caps.codecs) {
+        if (c.mimeType.toLowerCase() === family) ranked.push(c);
+      }
+    }
+    for (const c of caps.codecs) {
+      if (!ranked.includes(c)) ranked.push(c);
+    }
+    return ranked;
+  }
+
+  /** applyScreenCodecPreferences: set the ladder on this pc's SCREEN video
+   * transceivers. Best-effort (Safari/older Firefox may lack the API);
+   * returns true when at least one transceiver accepted it. */
+  private applyScreenCodecPreferences(
+    peer: Peer,
+    ranked: RTCRtpCodec[],
+  ): boolean {
+    const stream = this.screenStream;
+    if (!stream) return false;
+    const screenVideoIDs = new Set(stream.getVideoTracks().map((t) => t.id));
+    let applied = false;
+    for (const tr of peer.pc.getTransceivers()) {
+      const id = tr.sender.track?.id;
+      if (!id || !screenVideoIDs.has(id)) continue;
+      if (typeof tr.setCodecPreferences !== "function") continue;
+      try {
+        tr.setCodecPreferences(ranked);
+        applied = true;
+      } catch (err) {
+        console.warn("setCodecPreferences:", err);
+      }
+    }
+    return applied;
   }
 
   /**
@@ -977,7 +1139,50 @@ export class VoiceCall {
       stream_id: stream.id,
     } satisfies ScreenSignal);
     for (const t of missing) peer.pc.addTrack(t, stream);
+    // B3: the mode's codec ladder rides the SAME negotiation as the track.
+    const ranked = this.rankedScreenCodecs();
+    if (ranked && ranked.length > 0) {
+      this.applyScreenCodecPreferences(peer, ranked);
+      this.appliedScreenCodec = ranked[0].mimeType.toLowerCase();
+    }
     this.applyBudget();
+    return true;
+  }
+
+  /**
+   * enableCameraMidCall (30-7b): a join that degraded to audio-only is no
+   * longer terminal. Acquire a camera track now, fold it into the local
+   * stream, and renegotiate it into every live pc (the 30-7a machinery
+   * makes the mid-call add safe). Returns false when there's nothing to do
+   * (already have a camera / not in a call) or the acquisition failed
+   * (surfaced via onError).
+   */
+  async enableCameraMidCall(): Promise<boolean> {
+    if (!this.joined || this.closed || this.hasVideo || !this.localStream) return false;
+    let track: MediaStreamTrack | undefined;
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: true });
+      track = s.getVideoTracks()[0];
+    } catch (err) {
+      this.o.callbacks.onError(describeMediaError("camera", err));
+      return false;
+    }
+    if (!track) return false;
+    const local = this.localStream;
+    local.addTrack(track);
+    this.hasVideo = true;
+    this.videoEnabled = true;
+    track.enabled = true;
+    this.o.callbacks.onLocalStream(local);
+    this.diag("camera acquired mid-call — renegotiating it in");
+    for (const peer of this.peers.values()) {
+      this.enqueue(peer, async (pr) => {
+        pr.pc.addTrack(track!, local);
+        this.applyBudget();
+        await this.sendOffer(pr);
+      });
+    }
+    this.broadcastState();
     return true;
   }
 
@@ -1027,14 +1232,22 @@ export class VoiceCall {
           params.encodings = [{}];
         }
         params.encodings[0].maxBitrate =
-          kind === "audio" ? AUDIO_MAX_BPS : isScreen ? SCREEN_VIDEO_MAX_BPS : perVideo;
+          kind === "audio"
+            ? isScreen
+              ? SCREEN_AUDIO_MAX_BPS // program audio, not voice
+              : AUDIO_MAX_BPS
+            : isScreen
+              ? this.screenMode === "motion"
+                ? GAME_VIDEO_MAX_BPS
+                : SCREEN_VIDEO_MAX_BPS
+              : perVideo;
         if (isScreen && kind === "video") {
-          // B0: pin the hint's implied preference explicitly. 30-7a is
-          // detail-only; the mode toggle (30-7b) flips this to
-          // maintain-framerate for game shares. Cast: lib.dom omits the
+          // B0: pin the hint's implied preference explicitly (motion holds
+          // FPS, detail/text hold resolution). Cast: lib.dom omits the
           // field in some TS versions; browsers accept it.
           (params as RTCRtpSendParameters & { degradationPreference?: string })
-            .degradationPreference = "maintain-resolution";
+            .degradationPreference =
+              this.screenMode === "motion" ? "maintain-framerate" : "maintain-resolution";
         }
         sender.setParameters(params).catch((err) => {
           console.warn("setParameters:", err);

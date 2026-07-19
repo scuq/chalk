@@ -25,7 +25,8 @@ import type { WSClient } from "../ws-client";
 import type { ChannelCrypto } from "../crypto/channel-crypto";
 import { loadIdentity } from "../crypto/idb";
 import { voiceBus } from "./bus";
-import { VoiceCall, type VoiceDiagnostics } from "./call";
+import { VoiceCall, type VoiceDiagnostics, type ScreenShareMode } from "./call";
+export type { ScreenShareMode } from "./call";
 
 // ---- per-peer local audio prefs (Addendum A: A1 + the element-volume
 // ---- subset of A4) ---------------------------------------------------------
@@ -151,6 +152,12 @@ export interface VoiceSessionSnap {
    * derived boolean, kept explicit for cheap render checks. */
   localScreenStream: MediaStream | null;
   sharing: boolean;
+  /** 30-7b: the B0 priority mode of our share (sticky within the call). */
+  shareMode: ScreenShareMode;
+  /** 30-7b (B5/A1): remote screen shares hidden LOCALLY, by peer key.
+   * View-side only -- the sharer and everyone else are untouched, nothing
+   * is signaled. Transient: reset on leave, sticky across re-shares. */
+  screenHidden: Record<string, boolean>;
   joinedWithVideo: boolean;
   relayOnly: boolean;
   joinedAt: number | null;
@@ -191,6 +198,8 @@ class VoiceSessionImpl {
     camOn: false,
     localScreenStream: null,
     sharing: false,
+    shareMode: "detail",
+    screenHidden: {},
     joinedWithVideo: false,
     relayOnly: false,
     joinedAt: null,
@@ -305,6 +314,11 @@ class VoiceSessionImpl {
           onLocalScreenStream: (stream) =>
             this.set({ localScreenStream: stream, sharing: stream !== null }),
           onPeerScreenStream: (key, userID, deviceID, stream) => {
+            // 30-7b: a peer we hid earlier re-shared -- keep it hidden
+            // (sticky per call) by disabling the fresh video tracks too.
+            if (this.s.screenHidden[key]) {
+              for (const t of stream.getVideoTracks()) t.enabled = false;
+            }
             // Upsert: the camera tile normally exists already (the screen
             // renegotiation strictly follows the first negotiation), but a
             // race-created tile is tolerated -- onPeerStream will replace
@@ -389,6 +403,8 @@ class VoiceSessionImpl {
       camOn: false,
       localScreenStream: null,
       sharing: false,
+      shareMode: "detail",
+      screenHidden: {},
       joinedWithVideo: false,
       relayOnly: false,
       joinedAt: null,
@@ -466,6 +482,42 @@ class VoiceSessionImpl {
     } else {
       await call.startScreenShare();
     }
+  }
+
+  /** 30-7b (B0): flip our share's priority mode. Applies live (hint + fps
+   * + bitrate/degradation; codec renegotiates only on a ranking change)
+   * and sticks for the next share within this call. */
+  setShareMode(mode: ScreenShareMode): void {
+    this.call?.setScreenShareMode(mode);
+    if (this.s.shareMode !== mode) this.set({ shareMode: mode });
+  }
+
+  /**
+   * toggleScreenHidden (30-7b, B5/A1): locally hide/show one peer's screen
+   * share. Disables OUR copy of the receiver's video tracks (skips render;
+   * never signaled -- the sharer keeps streaming to everyone else) and
+   * flags the tile so the stage renders the placeholder.
+   */
+  toggleScreenHidden(key: string): void {
+    const hidden = !this.s.screenHidden[key];
+    const t = this.s.tiles[key];
+    if (t?.screenStream) {
+      for (const v of t.screenStream.getVideoTracks()) v.enabled = !hidden;
+    }
+    this.set({ screenHidden: { ...this.s.screenHidden, [key]: hidden } });
+  }
+
+  /**
+   * enableCamera (30-7b): the audio-only escape hatch -- acquire a camera
+   * mid-call and renegotiate it in. Resolves false when acquisition failed
+   * (the call surfaces the reason via its error callback).
+   */
+  async enableCamera(): Promise<boolean> {
+    const call = this.call;
+    if (!call) return false;
+    const ok = await call.enableCameraMidCall();
+    if (ok) this.set({ joinedWithVideo: true, camOn: true });
+    return ok;
   }
 
   clearError(): void {

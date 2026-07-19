@@ -8,6 +8,11 @@
 //      applies the peer's LOCAL prefs (A1 mute + A4-subset volume).
 //   2. THE BAR. While connected: "voice connected" + room name (click jumps
 //      back to the room), live duration, mute toggle, disconnect.
+//   2b. (30-7b) SHARED-AUDIO sinks + the sharing row. A peer's screen share
+//      can carry PROGRAM audio (tab/system capture) as its own track --
+//      those sinks live here too, under the same per-peer local prefs. And
+//      while YOU share, the dock says so everywhere (with a stop button):
+//      forgetting a live screen share is the classic embarrassment.
 //   3. (30-5f) MICRO PiP. When you're connected to a voice room but looking
 //      at a DIFFERENT channel, the dock shows a tiny live video of the
 //      focused speaker (or a monogram when audio-only) -- Discord's picture
@@ -144,6 +149,22 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
           />
         );
       })}
+      {/* Job 2b (30-7b): shared PROGRAM audio (tab/system capture riding a
+          screen share). Same local prefs as the person's voice -- "mute for
+          me" silences their game too, which is what you meant. */}
+      {Object.values(snap.tiles)
+        .filter((t) => t.screenStream && t.screenStream.getAudioTracks().length > 0)
+        .map((t) => {
+          const pref = snap.peerAudio[t.userID];
+          return (
+            <AudioSink
+              key={t.key + ":screen"}
+              stream={t.screenStream!}
+              muted={!!pref?.muted}
+              volume={typeof pref?.volume === "number" ? pref.volume : 1}
+            />
+          );
+        })}
 
       {/* Job 2/3: the connection bar (+ PiP when viewing elsewhere). */}
       {snap.phase !== "idle" && (
@@ -185,6 +206,23 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
               </span>
             )}
           </div>
+          {snap.sharing && (
+            <div class="chalk-voice-dock-row" data-testid="voice-dock-sharing">
+              <span class="chalk-voice-dock-status" data-connected="true">
+                sharing screen · {snap.shareMode}
+              </span>
+              <span class="chalk-voice-dock-spacer" />
+              <button
+                class="chalk-btn chalk-voice-ctl chalk-voice-ctl--off"
+                type="button"
+                onClick={() => void voiceSession.toggleScreenShare()}
+                title="stop sharing your screen"
+                data-testid="voice-dock-stopshare"
+              >
+                stop
+              </button>
+            </div>
+          )}
           {snap.audioBlocked && (
             <div class="chalk-voice-dock-row chalk-voice-audionudge" data-testid="voice-audio-nudge">
               🔇 click anywhere to enable audio

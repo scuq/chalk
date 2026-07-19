@@ -24,7 +24,7 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ChannelSummary, VoiceParticipant } from "../state/types";
 import type { WSClient } from "../ws-client";
 import type { ChannelCrypto } from "../crypto/channel-crypto";
-import { voiceSession, type SessionRemoteTile } from "../voice/session";
+import { voiceSession, type SessionRemoteTile, type ScreenShareMode } from "../voice/session";
 import { useVoiceSession } from "./VoiceDock";
 import { ChannelGlyph } from "./Sidebar";
 import type { VoiceDiagnostics } from "../voice/call";
@@ -143,14 +143,15 @@ export function VoiceCallPanel({
     });
 
   const toggleCam = () => {
-    if (!voiceSession.toggleCam()) {
-      // No camera track -- the join degraded to audio-only (camera denied
-      // or absent). The 30-7a renegotiation machinery could add one
-      // mid-call; wiring that toggle is deliberately left with the 30-7b
-      // capture/UX work.
-      voiceSession.clearError();
-      setLocalNote("camera unavailable — check browser permissions, then rejoin");
-    }
+    if (voiceSession.toggleCam()) return;
+    // No camera track -- the join degraded to audio-only. 30-7b: try to
+    // acquire one NOW and renegotiate it in (perfect negotiation makes the
+    // mid-call add safe). Failure reasons surface via the session error.
+    voiceSession.clearError();
+    setLocalNote("starting camera…");
+    void voiceSession.enableCamera().then((ok) => {
+      setLocalNote(ok ? null : "camera unavailable — check browser permissions");
+    });
   };
   const [localNote, setLocalNote] = useState<string | null>(null);
   useEffect(() => setLocalNote(null), [hereInCall, channel.id]);
@@ -263,13 +264,17 @@ export function VoiceCallPanel({
     }
     for (const t of Object.values(snap.tiles)) {
       if (!t.screenStream) continue;
+      // 30-7b (B5): a locally hidden share renders as the placeholder tile
+      // (avatar + "show") and never wins the auto-focus.
+      const hidden = !!snap.screenHidden[t.key];
       out.push({
         key: t.key + ":screen",
         userID: t.userID,
         deviceID: t.deviceID,
         isSelf: false,
         stream: t.screenStream,
-        hasLiveVideo: t.screenStream.getVideoTracks().some((x) => x.readyState === "live"),
+        hasLiveVideo:
+          !hidden && t.screenStream.getVideoTracks().some((x) => x.readyState === "live"),
         connState: null,
         isScreen: true,
       });
@@ -277,7 +282,7 @@ export function VoiceCallPanel({
     return out;
     // nowTick keeps hasLiveVideo honest as tracks start/stop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hereInCall, roster, snap.tiles, snap.localStream, snap.localScreenStream, snap.camOn, nowTick]);
+  }, [hereInCall, roster, snap.tiles, snap.localStream, snap.localScreenStream, snap.screenHidden, snap.camOn, nowTick]);
 
   const focusedKey: string | null = useMemo(() => {
     if (stageTiles.length === 0) return null;
@@ -392,11 +397,35 @@ export function VoiceCallPanel({
               title={
                 snap.sharing
                   ? "stop sharing your screen"
-                  : "share a screen, window, or tab (crisp-detail mode; the game/text toggle lands in 30-7b)"
+                  : "share a screen, window, or tab"
               }
             >
               {snap.sharing ? "stop share" : "share"}
             </button>
+            {snap.sharing && (
+              <span class="chalk-voice-modes" data-testid="voice-share-modes">
+                {(
+                  [
+                    ["motion", "game", "Smooth motion — holds FPS, drops resolution under pressure (game mode)"],
+                    ["detail", "screen", "Sharp detail — holds resolution, drops FPS under pressure"],
+                    ["text", "text", "Sharp text — holds resolution + AV1 screen-content tools when available (docs/code)"],
+                  ] as [ScreenShareMode, string, string][]
+                ).map(([mode, label, hint]) => (
+                  <button
+                    key={mode}
+                    class={
+                      "chalk-btn chalk-voice-ctl" +
+                      (snap.shareMode === mode ? " chalk-voice-ctl--on" : "")
+                    }
+                    onClick={() => voiceSession.setShareMode(mode)}
+                    title={hint}
+                    data-testid={"voice-mode-" + mode}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </span>
+            )}
             <button
               class={"chalk-btn chalk-voice-ctl" + (debugOpen ? " chalk-voice-ctl--on" : "")}
               onClick={() => setDebugOpen((v) => !v)}
@@ -555,6 +584,36 @@ export function VoiceCallPanel({
               slider needs width, so it lives on the BIG tile -- pin a peer
               to adjust them; the strip carries just the mute toggle.
               stopPropagation: these must not re-pin/unpin the tile. */}
+          {!tile.isSelf && tile.isScreen && (
+            <span
+              class="chalk-voice-peer-audio"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <button
+                class={
+                  "chalk-voice-localmute" +
+                  (snap.screenHidden[tile.userID + ":" + tile.deviceID]
+                    ? " chalk-voice-localmute--on"
+                    : "")
+                }
+                type="button"
+                onClick={() =>
+                  voiceSession.toggleScreenHidden(tile.userID + ":" + tile.deviceID)
+                }
+                title={
+                  snap.screenHidden[tile.userID + ":" + tile.deviceID]
+                    ? `show ${label}'s screen again`
+                    : `hide ${label}'s screen for me — they keep sharing to everyone else`
+                }
+                data-testid="voice-screen-hide"
+              >
+                {snap.screenHidden[tile.userID + ":" + tile.deviceID]
+                  ? "show for me"
+                  : "hide for me"}
+              </button>
+            </span>
+          )}
           {!tile.isSelf && !tile.isScreen && (
             <span
               class="chalk-voice-peer-audio"
