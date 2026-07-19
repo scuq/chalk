@@ -164,6 +164,20 @@ CHALK_DEV_TURN_SECRET ?= devsecret
 CHALK_DEV_TURN_PORT ?= 3478
 CHALK_DEV_TURN_MIN_PORT ?= 49160
 CHALK_DEV_TURN_MAX_PORT ?= 49200
+# Relay addressing (30-4 field fix). Under host networking coturn auto-picks
+# a relay IP from the host's interfaces; on a VM (Parallels etc.) that address
+# is often not hairpin-reachable, so relay-relay connectivity checks fail
+# even though allocation succeeds. Two modes:
+#   * loopback (default 1): pin listening+relay to 127.0.0.1 -- correct for
+#     the common dev case of BOTH browsers on the same machine as coturn.
+#     Requires --allow-loopback-peers: coturn DENIES loopback peer addresses
+#     by default (CreatePermission -> 403), and with relay-ip=127.0.0.1 every
+#     remote candidate IS a loopback peer. Dev-only; never use in prod.
+#   * external: set CHALK_DEV_TURN_LOOPBACK=0 and CHALK_DEV_TURN_EXTERNAL_IP
+#     to the VM's reachable address to test from other hosts; point
+#     CHALK_TURN_URLS at that IP.
+CHALK_DEV_TURN_LOOPBACK ?= 1
+CHALK_DEV_TURN_EXTERNAL_IP ?=
 
 .PHONY: dev-turn-up
 dev-turn-up: ## Start a coturn container for dev voice (TURN on 3478, host networking)
@@ -182,11 +196,18 @@ dev-turn-up: ## Start a coturn container for dev voice (TURN on 3478, host netwo
 	    --listening-port=$(CHALK_DEV_TURN_PORT) \
 	    --min-port=$(CHALK_DEV_TURN_MIN_PORT) \
 	    --max-port=$(CHALK_DEV_TURN_MAX_PORT) \
+	    $(if $(filter 1,$(CHALK_DEV_TURN_LOOPBACK)),--listening-ip=127.0.0.1 --relay-ip=127.0.0.1 --allow-loopback-peers,) \
+	    $(if $(CHALK_DEV_TURN_EXTERNAL_IP),--external-ip=$(CHALK_DEV_TURN_EXTERNAL_IP),) \
 	    --fingerprint --no-cli --no-tls --no-dtls >/dev/null; \
 	fi
 	@echo "coturn ready:"
 	@echo "  turn:  turn:localhost:$(CHALK_DEV_TURN_PORT)  (udp+tcp)"
 	@echo "  relay: udp $(CHALK_DEV_TURN_MIN_PORT)-$(CHALK_DEV_TURN_MAX_PORT)"
+	@if [ "$(CHALK_DEV_TURN_LOOPBACK)" = "1" ]; then \
+	  echo "  mode:  loopback (127.0.0.1 only -- same-machine browsers)"; \
+	else \
+	  echo "  mode:  external$(if $(CHALK_DEV_TURN_EXTERNAL_IP), (--external-ip=$(CHALK_DEV_TURN_EXTERNAL_IP)),)"; \
+	fi
 	@echo ""
 	@echo "to enable voice against it, run chalkd with:"
 	@echo "  CHALK_VOICE_ENABLED=true \\"

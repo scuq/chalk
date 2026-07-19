@@ -31,10 +31,28 @@ All notable changes to chalk are documented here.
 - **Admin moderation (09d).** Block/unblock/soft-delete/purge, email blacklist,
   admin-protection triggers.
 
+### Added (phase 30: voice/video, slices 30-1 .. 30-6)
+- **Voice channels (Discord-style).** `channel_type='voice'`, live
+  `voice_participants` rooms with orphan janitor, five voice wire frames,
+  server-relayed opaque signaling, per-join HMAC TURN credentials (coturn as
+  mandatory relay; dev + prod compose, `turns:` hardening docs).
+- **Client WebRTC mesh + anti-MITM.** Glare-free offer handshake, E2E-encrypted
+  signaling under the channel space key, Ed25519-signed DTLS fingerprints
+  verified against published identities (abort on mismatch), relay-only mode
+  (`CHALK_VOICE_FORCE_RELAY`), minimal per-sender uplink budget, signal spool
+  for payloads past the NOTIFY cap.
+- **Voice UI.** Sidebar live occupancy with mute/cam/screen badges (❯ / ▶
+  channel glyphs), big-tile + filmstrip stage with click-to-pin focus, call
+  duration, diagnostics drawer (signaling event ring, selected-candidate-pair
+  stats, copy-report).
+- **Polish (30-6).** Removed-member voice eviction cascade (unilateral +
+  governance paths), WS-loss call teardown, post-join mute/video state sync,
+  actionable getUserMedia error messages, `voice_enabled` welcome flag gating
+  all voice UI. Feature-flagged: `CHALK_VOICE_ENABLED` (default off).
+
 ### Planned
-- Phase 30: voice/video — Discord-style voice channels, WebRTC mesh + coturn
-  relay (works when P2P fails), identity-bound DTLS for anti-MITM. Design in
-  `docs/design/chalk-phase-30-voice-video-design.md`.
+- Phase 30 addenda: 30-7 screen/game share (Addendum B), 30-8 adaptive quality
+  probe + downscaler (Addendum D); SFU seam (Slice I) for large rooms.
 - Governance `set_config` proposal type (govern per-channel knobs by vote).
 
 ### Added

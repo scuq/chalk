@@ -475,10 +475,22 @@ login; passkey deletion with a last-passkey guard. No per-device revocation
 email blacklist CRUD, admin-protection triggers (migration 0019), SPA admin
 panel.
 
-**Designed, not yet built:** Phase 30 voice/video (Discord-style rooms, mesh +
-coturn relay, identity-bound DTLS anti-MITM) — see
-`docs/design/chalk-phase-30-voice-video-design.md`. Deferred-small: governance
-`set_config` proposal type.
+**Voice/video (Phase 30, slices 30-1 .. 30-6) — live.** Discord-style voice
+channels: full WebRTC mesh between clients with coturn as the mandatory media
+relay (short-lived HMAC creds minted per join), E2E-encrypted signaling under
+the channel space key with Ed25519-signed DTLS fingerprints (anti-MITM: a bad
+signature aborts the peer, never degrades). Client: sidebar occupancy with
+mute/cam/screen badges (❯ text / ▶ voice glyphs), big-tile + filmstrip stage,
+call duration, in-UI diagnostics drawer (event ring + getStats + copy report).
+Polish: removed-member voice eviction cascade, WS-loss teardown (v1: rejoin by
+click), post-join state sync, getUserMedia error UX, `voice_enabled` welcome
+flag gating the client. Gated behind `CHALK_VOICE_ENABLED`; see
+`docs/design/chalk-phase-30-voice-video-design.md` and `docs/deployment.md`.
+
+**Designed, not yet built:** Phase 30 addenda — 30-7 screen/game share
+(Addendum B) and 30-8 adaptive quality probe/downscaler (Addendum D); future
+SFU seam (Slice I) for large rooms. Deferred-small: governance `set_config`
+proposal type.
 
 ---
 
