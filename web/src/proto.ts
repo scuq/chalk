@@ -236,12 +236,16 @@ export interface ChannelSummaryWire {
   current_key_version?: number; // phase 25; absent from older servers -> 1
   rotation_pending?: boolean; // member removal; absent from older servers -> false
   governance_mode?: string; // gov-2; "dictator" | "democratic"; absent -> "dictator"
+  channel_type?: string; // 30-4; "text" | "voice"; absent from older servers -> "text"
 }
 
 export interface CreateChannelPayload {
   name: string;
   is_dm?: boolean;
   member_ids?: string[];
+  // 30-4: "voice" creates a Discord-style voice room; omitted/"text" is a
+  // normal text channel. Server rejects "voice" for DMs.
+  channel_type?: string;
 }
 
 export interface CreateChannelAckPayload {
@@ -469,4 +473,126 @@ export interface GovernanceEventPayload {
   channel_id: string;
   mode?: string;
   proposal?: ProposalViewWire;
+}
+
+// --- Phase 30 (voice, slice 30-4): TypeScript mirror of internal/proto/voice.go
+
+// Client -> server.
+export const TypeVoiceJoin = "voice_join";
+export const TypeVoiceLeave = "voice_leave";
+export const TypeVoiceRoster = "voice_roster";
+export const TypeVoiceSignal = "voice_signal"; // doubles as the relayed push type
+export const TypeVoiceState = "voice_state";
+
+// Server -> client (acks to a ref).
+export const TypeVoiceJoinAck = "voice_join_ack";
+export const TypeVoiceLeaveAck = "voice_leave_ack";
+export const TypeVoiceRosterAck = "voice_roster_ack";
+export const TypeVoiceStateAck = "voice_state_ack";
+
+// Server -> client (pushes, no ref).
+export const TypeVoiceParticipantJoined = "voice_participant_joined";
+export const TypeVoiceParticipantLeft = "voice_participant_left";
+export const TypeVoiceParticipantState = "voice_participant_state";
+
+// One roster entry: a (user, device) currently in the room + media flags.
+export interface VoiceParticipantWire {
+  user_id: string;
+  device_id: string;
+  muted: boolean;
+  video_on: boolean;
+  screen_on: boolean;
+}
+
+// Mirrors proto.ICEServer -- the RTCIceServer dictionary as handed to a
+// joining client. username/credential are empty for STUN; for TURN they
+// carry the short-lived HMAC credential minted per-join (design §5).
+export interface ICEServerWire {
+  urls: string[];
+  username?: string;
+  credential?: string;
+}
+
+export interface VoiceJoinPayload {
+  channel_id: string;
+}
+
+// Roster EXCLUDES the joiner (the joiner offers to exactly these existing
+// peers -- glare-free, design §4). force_relay mirrors
+// CHALK_VOICE_FORCE_RELAY (§7d: iceTransportPolicy='relay').
+export interface VoiceJoinAckPayload {
+  channel_id: string;
+  roster: VoiceParticipantWire[];
+  ice_servers: ICEServerWire[];
+  force_relay?: boolean;
+}
+
+export interface VoiceLeavePayload {
+  channel_id: string;
+}
+
+export interface VoiceLeaveAckPayload {
+  channel_id: string;
+  left: boolean;
+}
+
+export interface VoiceRosterPayload {
+  channel_id: string;
+}
+
+export interface VoiceRosterAckPayload {
+  channel_id: string;
+  roster: VoiceParticipantWire[];
+}
+
+// The E2E-encrypted signaling blob (SealedSignal from voice/signal-crypto)
+// rides in the payload slot; the server routes by (to_user, to_device) and
+// never inspects it. kind: offer|answer|ice|screen_add|screen_remove.
+export interface VoiceSignalSendPayload {
+  channel_id: string;
+  to_user: string;
+  to_device: string;
+  kind: string;
+  payload: unknown;
+}
+
+// The relayed form delivered to the target device (no ref).
+export interface VoiceSignalPushPayload {
+  channel_id: string;
+  from_user: string;
+  from_device: string;
+  kind: string;
+  payload: unknown;
+}
+
+export interface VoiceStatePayload {
+  channel_id: string;
+  muted: boolean;
+  video_on: boolean;
+  screen_on: boolean;
+}
+
+export interface VoiceStateAckPayload {
+  channel_id: string;
+}
+
+export interface VoiceParticipantJoinedPayload {
+  channel_id: string;
+  user_id: string;
+  device_id: string;
+}
+
+export interface VoiceParticipantLeftPayload {
+  channel_id: string;
+  user_id: string;
+  device_id: string;
+}
+
+export interface VoiceParticipantStatePayload {
+  channel_id: string;
+  user_id: string;
+  device_id: string;
+  muted: boolean;
+  video_on: boolean;
+  screen_on: boolean;
 }

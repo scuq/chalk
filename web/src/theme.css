@@ -3950,3 +3950,100 @@ html, body {
   text-align: right;
   letter-spacing: 0.08em;
 }
+
+/* ---- Phase 30 (30-4): minimal voice call panel ------------------------- */
+/* Deliberately plain; 30-5 delivers the Discord-style layout. */
+
+.chalk-voice-panel {
+  border: 1px solid var(--chalk-border);
+  padding: var(--chalk-s3);
+  margin-bottom: var(--chalk-s3);
+}
+
+.chalk-voice-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  flex-wrap: wrap;
+}
+
+.chalk-voice-camopt {
+  font-size: 12px;
+  color: var(--chalk-fg-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chalk-voice-note {
+  font-size: 12px;
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-voice-relay {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--chalk-fg-dim);
+  border: 1px dashed var(--chalk-border);
+  padding: 1px 4px;
+}
+
+.chalk-voice-error {
+  margin-top: var(--chalk-s2);
+  font-size: 12px;
+  color: var(--chalk-danger, #c33);
+}
+
+.chalk-voice-roster {
+  margin-top: var(--chalk-s2);
+  display: flex;
+  gap: var(--chalk-s2);
+  flex-wrap: wrap;
+}
+
+.chalk-voice-occupant {
+  font-size: 12px;
+  border: 1px solid var(--chalk-border);
+  padding: 1px 6px;
+}
+
+.chalk-voice-tiles {
+  margin-top: var(--chalk-s3);
+  display: flex;
+  gap: var(--chalk-s3);
+  flex-wrap: wrap;
+}
+
+.chalk-voice-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chalk-voice-video {
+  width: 240px;
+  max-width: 100%;
+  background: #000;
+  border: 1px solid var(--chalk-border);
+}
+
+.chalk-voice-video-mirrored {
+  transform: scaleX(-1);
+}
+
+.chalk-voice-audioonly {
+  width: 240px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-dim);
+  font-size: 13px;
+}
+
+.chalk-voice-tile-state {
+  font-size: 11px;
+  color: var(--chalk-fg-dim);
+}

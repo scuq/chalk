@@ -89,6 +89,19 @@ export interface ChannelSummary {
   currentKeyVersion: number; // phase 25; the version new messages encrypt under
   rotationPending: boolean; // member removal: a removal happened, key not yet rotated
   governanceMode: string; // gov-2; "dictator" | "democratic" (default "dictator")
+  channelType: string; // 30-4; "text" | "voice" (default "text")
+}
+
+// 30-4: one live occupant of a voice room, as tracked from the roster ack +
+// joined/left/state pushes. Keyed by (userID, deviceID) -- the same user on
+// another device is a distinct participant (the server rejects that in v1,
+// but the shape supports it).
+export interface VoiceParticipant {
+  userID: string;
+  deviceID: string;
+  muted: boolean;
+  videoOn: boolean;
+  screenOn: boolean;
 }
 
 // gov-2: a governance proposal as the client tracks it. Counts-only tally
@@ -227,6 +240,11 @@ export interface AppState {
 
   // gov-2: governance proposals by channel id (open + recently resolved).
   proposals: Record<string, ProposalView[]>;
+
+  // 30-4: live voice-room occupancy by channel id. Fed by voice_join_ack
+  // (own join), voice_roster_ack, and the joined/left/state pushes (which go
+  // to ALL channel members, so sidebar occupancy can render in 30-5).
+  voiceRosters: Record<string, VoiceParticipant[]>;
 
   // Friends, fetched lazily when the create-channel modal opens.
   friends: Friend[];
@@ -431,6 +449,7 @@ export const initialState: AppState = {
   messages: {},
   historyLoaded: {},
   proposals: {},
+  voiceRosters: {},
   friends: [],
   friendsLoaded: false,
   // Phase 9.6a:
@@ -494,6 +513,11 @@ export type Action =
   | { kind: "channel_added"; channel: ChannelSummary }
   | { kind: "channel_removed"; channelID: string }
   | { kind: "channel_key_version_updated"; channelID: string; currentKeyVersion: number }
+  // ---- Phase 30 (30-4): voice room occupancy --------------------------
+  | { kind: "voice_roster_set"; channelID: string; roster: VoiceParticipant[] }
+  | { kind: "voice_participant_joined"; channelID: string; userID: string; deviceID: string }
+  | { kind: "voice_participant_left"; channelID: string; userID: string; deviceID: string }
+  | { kind: "voice_participant_state"; channelID: string; participant: VoiceParticipant }
   | { kind: "channel_rotation_pending_set"; channelID: string; pending: boolean }
   // Phase 11c-2 PR 4: optimistic local updates on add/remove member.
   | { kind: "channel_member_added"; channelID: string; userID: string; handle: string }

@@ -18,12 +18,15 @@ interface Props {
   friends: Friend[];
   loading: boolean;
   onClose: () => void;
-  onSubmit: (name: string, isDM: boolean, memberIDs: string[]) => void;
+  // 30-4: voice=true creates a Discord-style voice room (channel_type=
+  // 'voice'). Mutually exclusive with DM (the server rejects voice DMs).
+  onSubmit: (name: string, isDM: boolean, memberIDs: string[], voice: boolean) => void;
 }
 
 export function CreateChannelModal({ friends, loading, onClose, onSubmit }: Props) {
   const [name, setName] = useState("");
   const [isDM, setIsDM] = useState(false);
+  const [voice, setVoice] = useState(false); // 30-4
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
@@ -58,7 +61,7 @@ export function CreateChannelModal({ friends, loading, onClose, onSubmit }: Prop
       setError("pick at least one member");
       return;
     }
-    onSubmit(trimmed, isDM, Array.from(selected));
+    onSubmit(trimmed, isDM, Array.from(selected), !isDM && voice);
   };
 
   return (
@@ -113,6 +116,18 @@ export function CreateChannelModal({ friends, loading, onClose, onSubmit }: Prop
             />
             <span>direct message (1:1)</span>
           </label>
+
+          {!isDM && (
+            <label class="chalk-field chalk-field--checkbox">
+              <input
+                type="checkbox"
+                data-testid="create-modal-voice"
+                checked={voice}
+                onChange={(e) => setVoice((e.target as HTMLInputElement).checked)}
+              />
+              <span>voice channel (live audio/video room)</span>
+            </label>
+          )}
 
           <div class="chalk-field">
             <span class="chalk-field-label">members</span>

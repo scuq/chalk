@@ -200,6 +200,69 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     }
 
+    // ---- Phase 30 (30-4): voice room occupancy -------------------------
+    //
+    // The roster is upsert-by-(userID,deviceID). "joined" pushes carry no
+    // media flags, so a new entry starts with defaults; the participant's
+    // first voice_state push (or a roster refresh) fills them in.
+    case "voice_roster_set": {
+      return {
+        ...state,
+        voiceRosters: { ...state.voiceRosters, [action.channelID]: action.roster },
+      };
+    }
+
+    case "voice_participant_joined": {
+      const cur = state.voiceRosters[action.channelID] ?? [];
+      if (cur.some((p) => p.userID === action.userID && p.deviceID === action.deviceID)) {
+        return state;
+      }
+      const next = [
+        ...cur,
+        {
+          userID: action.userID,
+          deviceID: action.deviceID,
+          muted: false,
+          videoOn: false,
+          screenOn: false,
+        },
+      ];
+      return {
+        ...state,
+        voiceRosters: { ...state.voiceRosters, [action.channelID]: next },
+      };
+    }
+
+    case "voice_participant_left": {
+      const cur = state.voiceRosters[action.channelID];
+      if (!cur) return state;
+      const next = cur.filter(
+        (p) => !(p.userID === action.userID && p.deviceID === action.deviceID),
+      );
+      if (next.length === cur.length) return state;
+      return {
+        ...state,
+        voiceRosters: { ...state.voiceRosters, [action.channelID]: next },
+      };
+    }
+
+    case "voice_participant_state": {
+      const cur = state.voiceRosters[action.channelID] ?? [];
+      const idx = cur.findIndex(
+        (p) =>
+          p.userID === action.participant.userID &&
+          p.deviceID === action.participant.deviceID,
+      );
+      // A state push for an unknown participant means we missed the joined
+      // push (reconnect gap) -- upsert rather than drop it.
+      const next = idx >= 0 ? cur.slice() : [...cur, action.participant];
+      if (idx >= 0) next[idx] = action.participant;
+      return {
+        ...state,
+        voiceRosters: { ...state.voiceRosters, [action.channelID]: next },
+      };
+    }
+
     // ---- gov-2: governance ---------------------------------------------
     case "governance_mode_changed": {
       const ch = state.channels[action.channelID];

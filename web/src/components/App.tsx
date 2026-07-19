@@ -91,6 +91,14 @@ import {
   type PresencePayload,
   type PresenceSubscribePayload,
   type PresenceUnsubscribePayload,
+  // Phase 30 (30-4): voice pushes routed to the reducer + voiceBus.
+  TypeVoiceSignal,
+  TypeVoiceParticipantJoined,
+  TypeVoiceParticipantLeft,
+  TypeVoiceParticipantState,
+  type VoiceParticipantJoinedPayload,
+  type VoiceParticipantLeftPayload,
+  type VoiceParticipantStatePayload,
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId, getThreadSeen, setThreadSeen } from "../ws-client";
 import { reducer } from "../state/reducer";
@@ -128,6 +136,10 @@ const GovernancePanel = lazyComponent(() =>
   import("./GovernancePanel").then((m) => m.GovernancePanel)
 );
 import { CreateChannelModal } from "./CreateChannelModal";
+// Phase 30 (30-4): the minimal in-call surface + the frame bus that hands
+// voice pushes from handleFrame to the mounted panel's VoiceCall.
+import { VoiceCallPanel } from "./VoiceCallPanel";
+import { voiceBus } from "../voice/bus";
 import { AuthGate } from "../auth/AuthGate";
 import { IdentitySetupScreen } from "../auth/IdentitySetupScreen";
 import { loadIdentity, loadVerification, saveVerification } from "../crypto/idb";
@@ -197,6 +209,7 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
     currentKeyVersion: w.current_key_version ?? 1,
     rotationPending: w.rotation_pending ?? false,
     governanceMode: w.governance_mode ?? "dictator",
+    channelType: w.channel_type ?? "text", // 30-4
   };
 }
 
@@ -1206,6 +1219,63 @@ export function App() {
         }
         break;
       }
+      // ---- Phase 30 (30-4): voice pushes -----------------------------
+      //
+      // Occupancy deltas feed the reducer (any member sees who's in the
+      // room); ALL voice frames additionally go onto voiceBus so the
+      // mounted VoiceCallPanel's VoiceCall can react (tear down a peer on
+      // "left", process relayed signals). Signals are imperative events
+      // for the live RTCPeerConnection mesh -- they never touch state.
+      case TypeVoiceParticipantJoined: {
+        const p = f.payload as VoiceParticipantJoinedPayload;
+        if (p?.channel_id) {
+          dispatch({
+            kind: "voice_participant_joined",
+            channelID: p.channel_id,
+            userID: p.user_id,
+            deviceID: p.device_id,
+          });
+        }
+        voiceBus.emit(f);
+        break;
+      }
+      case TypeVoiceParticipantLeft: {
+        const p = f.payload as VoiceParticipantLeftPayload;
+        if (p?.channel_id) {
+          dispatch({
+            kind: "voice_participant_left",
+            channelID: p.channel_id,
+            userID: p.user_id,
+            deviceID: p.device_id,
+          });
+        }
+        voiceBus.emit(f);
+        break;
+      }
+      case TypeVoiceParticipantState: {
+        const p = f.payload as VoiceParticipantStatePayload;
+        if (p?.channel_id) {
+          dispatch({
+            kind: "voice_participant_state",
+            channelID: p.channel_id,
+            participant: {
+              userID: p.user_id,
+              deviceID: p.device_id,
+              muted: !!p.muted,
+              videoOn: !!p.video_on,
+              screenOn: !!p.screen_on,
+            },
+          });
+        }
+        voiceBus.emit(f);
+        break;
+      }
+      case TypeVoiceSignal: {
+        // Relayed peer signal (offer/answer/ice). E2E ciphertext payload;
+        // only the in-call manager can open it.
+        voiceBus.emit(f);
+        break;
+      }
       default:
         break;
     }
@@ -1629,7 +1699,7 @@ export function App() {
     return true;
   };
 
-  const onCreateChannel = (name: string, isDM: boolean, memberIDs: string[]) => {
+  const onCreateChannel = (name: string, isDM: boolean, memberIDs: string[], voice: boolean) => {
     const c = clientRef.current;
     if (!c || !c.isOpen()) return;
     const payload: CreateChannelPayload = {
@@ -1637,6 +1707,9 @@ export function App() {
       is_dm: isDM,
       member_ids: memberIDs,
     };
+    // 30-4: only stamp channel_type when it's a voice room -- omitting it
+    // keeps the payload byte-compatible with older servers for text channels.
+    if (voice) payload.channel_type = "voice";
     c.send(TypeCreateChannel, payload, "create-" + Date.now());
   };
 
@@ -1775,7 +1848,7 @@ export function App() {
       ? "dm-" + friend.handle
       : "dm-" + friendUserID.slice(-8);
     dispatch({ kind: "dm_pending_set", userID: friendUserID });
-    onCreateChannel(dmName, true, [friendUserID]);
+    onCreateChannel(dmName, true, [friendUserID], false);
   };
 
   // ---- Phase 09d-2d: backfill `me` after URL-driven registration ---
@@ -2057,6 +2130,9 @@ export function App() {
                 {displayName(activeChannel, state.user?.id ?? null)}
               </span>
               {activeChannel.isDM && <span class="chalk-channel-header-tag">dm</span>}
+              {activeChannel.channelType === "voice" && (
+                <span class="chalk-channel-header-tag">voice</span>
+              )}
               <ModeBadge
                 mode={activeChannel.governanceMode}
                 onClick={() => dispatch({ kind: "open_panel", panel: "governance" })}
@@ -2068,6 +2144,22 @@ export function App() {
                 onClick={() => dispatch({ kind: "open_panel", panel: "members" })}
               />
             </div>
+            {/* Phase 30 (30-4): the minimal call surface for voice channels.
+                Key by channel id so switching rooms unmounts (and thereby
+                leaves) the previous call. 30-5 replaces this with the
+                Discord-style UI. */}
+            {activeChannel.channelType === "voice" && state.user && ccReady && (
+              <VoiceCallPanel
+                key={activeChannel.id}
+                channel={activeChannel}
+                selfUserID={state.user.id}
+                selfDeviceID={state.user.device}
+                client={clientRef}
+                cc={ccRef}
+                roster={state.voiceRosters[activeChannel.id] ?? []}
+                keyReady={keyStatus[activeChannel.id] === "ready"}
+              />
+            )}
             <MessageList
               messages={activeMessages}
               ownDevice={state.user?.device ?? null}
