@@ -1,4 +1,4 @@
-// VoiceCall (Phase 30, slice 30-4): the client-side WebRTC mesh.
+// VoiceCall (Phase 30, slices 30-4 + 30-7a): the client-side WebRTC mesh.
 //
 // One instance == one live membership in one voice room. It owns:
 //   * the local capture stream (getUserMedia; audio always, camera optional)
@@ -13,6 +13,9 @@
 //     (CHALK_VOICE_FORCE_RELAY -- the §7d no-P2P acceptance gate)
 //   * a MINIMAL per-sender uplink budget (design Addendum D says the basic
 //     caps + divider land here in 30-4; the probe/ladder arrive in 30-8)
+//   * 30-7a (Addendum B): screen sharing on its OWN transceivers (camera
+//     stays up), with PERFECT NEGOTIATION for the mid-call track add/remove
+//     -- see the renegotiation note below
 //
 // Glare-free handshake (design §4): the JOINER offers to exactly the peers in
 // its voice_join_ack roster; existing peers only answer. Two corners are
@@ -22,10 +25,34 @@
 //     would wait forever. Fallback: on a joined push for a peer we have no
 //     pc for, arm a short timer; when it fires and the DETERMINISTIC LOWER
 //     key (userID:deviceID string compare) still has no pc, IT offers.
-//   * offer glare (should not occur, but a rejoining peer can race): if an
-//     offer arrives while we have a local offer outstanding for that peer,
-//     the LOWER key stays offerer -- the higher-key side discards its own
-//     attempt and answers.
+//   * offer glare: resolved by PERFECT NEGOTIATION (below); the LOWER key
+//     is the impolite peer and stays offerer -- same deterministic outcome
+//     the join rule always had, now uniform for every offer.
+//
+// Renegotiation (30-7a, design B2): the join rule ("joiner offers, existing
+// answer") only covers the FIRST negotiation. A screen-share start/stop is a
+// mid-call track add/remove initiated by an EXISTING peer, so two peers can
+// legitimately offer at once. The standard perfect-negotiation pattern
+// resolves every collision per peer pair:
+//   * roles are deterministic: LOWER (userID:deviceID) key = IMPOLITE,
+//     higher = POLITE (consistent with the historical join-glare rule).
+//   * a collision = an offer arrives while we are mid-offer ourselves
+//     (makingOffer) or not in "stable". The impolite peer IGNORES the
+//     colliding offer (the polite side will answer ours); the polite peer
+//     rolls back its own attempt (implicit rollback via
+//     setRemoteDescription) and answers theirs.
+//   * consequence: an offer on an ESTABLISHED pair is now a legal
+//     renegotiation, not a rejoin. True rejoins are still safe: the server's
+//     conn cleanup guarantees a participant_left push first, which drops the
+//     old pc, so a rejoining peer's offer always lands on a fresh peer.
+//
+// Screen share (30-7a, design B1): its own capture stream + its own
+// transceivers per pc; the camera/mic senders are untouched. Receivers tell
+// screen from camera by STREAM ID, announced in an encrypted
+// {kind:"screen_add", stream_id} control signal sent BEFORE the offer that
+// carries the track (same ordered WS relay + same per-peer op chain, so the
+// announce is processed first; a small pending buffer tolerates reordering
+// anyway). Mode toggle / codec ladder / shared app audio land in 30-7b.
 //
 // The server-side contract this file leans on (30-2): signals are relayed
 // only between live participants, payloads are opaque, joined/left/state
@@ -69,6 +96,10 @@ const AUDIO_MAX_BPS = 64_000;
 const TOTAL_VIDEO_UPLINK_BPS = 2_500_000;
 /** Floor per video sender so the divider never starves a stream entirely. */
 const MIN_VIDEO_BPS = 150_000;
+/** Per-receiver screen-share cap (B3: detail/text compresses well; 2.5 Mbps
+ * covers crisp 1080p with burst headroom). Mode-dependent caps are 30-7b;
+ * the screen>camera priority divider is 30-8. */
+const SCREEN_VIDEO_MAX_BPS = 2_500_000;
 /** Concurrent-join fallback: how long the lower key waits for the joiner's
  * offer before concluding neither side saw the other in a roster. */
 const JOIN_GLARE_FALLBACK_MS = 2_000;
@@ -91,6 +122,14 @@ export interface VoiceCallCallbacks {
   onPeerState(key: string, state: string): void;
   /** Local capture stream ready (or null after leave) -- for self-preview. */
   onLocalStream(stream: MediaStream | null): void;
+  /** Local screen-share stream started (or null after stop) -- self-preview
+   * tile + the panel's share-button state. */
+  onLocalScreenStream(stream: MediaStream | null): void;
+  /** A remote peer's SCREEN stream is available -- render as a screen tile
+   * (distinct from the camera tile delivered via onPeerStream). */
+  onPeerScreenStream(key: string, userID: string, deviceID: string, stream: MediaStream): void;
+  /** A remote peer stopped sharing -- drop its screen tile. */
+  onPeerScreenGone(key: string): void;
   /** Non-fatal, user-visible problem (peer aborted, signal failed, ...). */
   onError(message: string): void;
 }
@@ -117,6 +156,23 @@ interface Peer {
   hasRemoteDesc: boolean;
   /** Serializes signaling ops per peer (offer/answer/ice ordering). */
   chain: Promise<void>;
+  /** Perfect negotiation (30-7a): true while our createOffer/setLocal
+   * window is open -- an incoming offer during it is a collision. */
+  makingOffer: boolean;
+  /** Perfect negotiation: we (the impolite side) dropped the peer's last
+   * colliding offer; its trailing ICE errors are expected noise. */
+  ignoreOffer: boolean;
+  /** Remote stream IDs announced as screen shares (screen_add). */
+  screenStreamIDs: Set<string>;
+  /** First non-screen remote stream id == the camera/mic stream. */
+  cameraStreamID: string | null;
+  /** Remote streams that arrived before their screen_add announce. */
+  pendingStreams: Map<string, MediaStream>;
+}
+
+/** screen_add / screen_remove control body (rides encrypted, like SDP/ICE). */
+interface ScreenSignal {
+  stream_id: string;
 }
 
 function peerKey(userID: string, deviceID: string): string {
@@ -210,6 +266,8 @@ export class VoiceCall {
   private hasVideo = false;
   private muted = false;
   private videoEnabled = false;
+  /** 30-7a: the local getDisplayMedia stream while sharing, else null. */
+  private screenStream: MediaStream | null = null;
   /** Verified peer identities by userID; null = looked up, unusable. */
   private readonly identities = new Map<string, { ed25519Public: Uint8Array } | null>();
   /** Concurrent-join fallback timers by peer key. */
@@ -228,6 +286,16 @@ export class VoiceCall {
 
   get relayOnly(): boolean {
     return this.forceRelay;
+  }
+
+  get isSharingScreen(): boolean {
+    return this.screenStream !== null;
+  }
+
+  /** polite: perfect-negotiation role for a pair. Deterministic: the lower
+   * key is impolite (keeps its offer), the higher is polite (rolls back). */
+  private polite(peer: Peer): boolean {
+    return this.selfKey > peer.key;
   }
 
   // ---- diagnostics surface (30-4c) ----------------------------------------
@@ -345,7 +413,7 @@ export class VoiceCall {
       const key = peerKey(p.user_id, p.device_id);
       if (key === this.selfKey) continue; // server excludes us, but be safe
       this.diag(`offering to existing peer ${key}`);
-      this.enqueue(this.ensurePeer(p.user_id, p.device_id), (peer) => this.sendOffer(peer));
+      this.enqueue(this.ensurePeer(p.user_id, p.device_id), (peer) => this.offerTo(peer));
     }
   }
 
@@ -402,7 +470,7 @@ export class VoiceCall {
         channel_id: this.o.channelID,
         muted: this.muted,
         video_on: this.hasVideo && this.videoEnabled,
-        screen_on: false, // screen share lands in 30-7
+        screen_on: this.screenStream !== null, // 30-7a
       })
       .catch((err) => console.warn("voice_state:", err));
   }
@@ -436,7 +504,7 @@ export class VoiceCall {
             this.glareTimers.delete(key);
             if (this.closed || !this.joined || this.peers.has(key)) return;
             this.enqueue(this.ensurePeer(p.user_id, p.device_id), (peer) =>
-              this.sendOffer(peer),
+              this.offerTo(peer),
             );
           }, JOIN_GLARE_FALLBACK_MS);
           this.glareTimers.set(key, t);
@@ -480,6 +548,11 @@ export class VoiceCall {
       pendingIce: [],
       hasRemoteDesc: false,
       chain: Promise.resolve(),
+      makingOffer: false,
+      ignoreOffer: false,
+      screenStreamIDs: new Set(),
+      cameraStreamID: null,
+      pendingStreams: new Map(),
     };
     this.peers.set(key, peer);
 
@@ -490,7 +563,24 @@ export class VoiceCall {
     pc.ontrack = (e) => {
       this.diag(`ontrack from ${key}: kind=${e.track.kind} streams=${e.streams.length}`);
       const stream = e.streams[0];
-      if (stream) this.o.callbacks.onPeerStream(key, userID, deviceID, stream);
+      if (!stream) return;
+      // 30-7a routing: a screen_add-announced stream id renders as a screen
+      // tile; the first (or repeated) non-screen stream is the camera/mic.
+      // An UNKNOWN second stream raced ahead of its announce -- buffer it;
+      // the screen_add handler flushes it. (Ordering normally prevents
+      // this: the announce and the offer ride the same per-peer op chain
+      // over the same ordered relay.)
+      if (peer.screenStreamIDs.has(stream.id)) {
+        this.o.callbacks.onPeerScreenStream(key, userID, deviceID, stream);
+        return;
+      }
+      if (peer.cameraStreamID === null || peer.cameraStreamID === stream.id) {
+        peer.cameraStreamID = stream.id;
+        this.o.callbacks.onPeerStream(key, userID, deviceID, stream);
+        return;
+      }
+      this.diag(`unannounced extra stream from ${key} buffered (id=${stream.id})`);
+      peer.pendingStreams.set(stream.id, stream);
     };
     pc.onicecandidate = (e) => {
       this.diag(
@@ -564,17 +654,37 @@ export class VoiceCall {
     };
   }
 
+  /** offerTo: an initial/explicit offer, carrying the active screen share
+   * (if any) so a peer we dial while sharing gets the screen m-lines in the
+   * FIRST negotiation instead of an immediate renegotiation. */
+  private async offerTo(peer: Peer): Promise<void> {
+    await this.attachScreenTracks(peer);
+    await this.sendOffer(peer);
+  }
+
   private async sendOffer(peer: Peer): Promise<void> {
-    const offer = await peer.pc.createOffer();
-    await peer.pc.setLocalDescription(offer);
-    const sdp = peer.pc.localDescription?.sdp ?? offer.sdp ?? "";
-    const fpSig = await signFingerprints(
-      this.o.ed25519Private,
-      this.fpContextTo(peer),
-      extractFingerprints(sdp),
-    );
-    const body: SdpSignal = { sdp, fp_sig: fpSig };
-    await this.sendSignal(peer, "offer", body);
+    peer.makingOffer = true;
+    try {
+      const offer = await peer.pc.createOffer();
+      // A colliding offer can win while createOffer was in flight (the
+      // polite side's implicit rollback). Setting a stale local offer would
+      // throw; skip -- the pair is already renegotiating under their offer.
+      if (peer.pc.signalingState !== "stable") {
+        this.diag(`offer to ${peer.key} superseded (state=${peer.pc.signalingState})`);
+        return;
+      }
+      await peer.pc.setLocalDescription(offer);
+      const sdp = peer.pc.localDescription?.sdp ?? offer.sdp ?? "";
+      const fpSig = await signFingerprints(
+        this.o.ed25519Private,
+        this.fpContextTo(peer),
+        extractFingerprints(sdp),
+      );
+      const body: SdpSignal = { sdp, fp_sig: fpSig };
+      await this.sendSignal(peer, "offer", body);
+    } finally {
+      peer.makingOffer = false;
+    }
   }
 
   private async sendAnswer(peer: Peer): Promise<void> {
@@ -643,8 +753,13 @@ export class VoiceCall {
         case "ice":
           await this.onIce(pr, opened as IceSignal);
           return;
+        case "screen_add":
+          this.onScreenAdd(pr, opened as ScreenSignal);
+          return;
+        case "screen_remove":
+          this.onScreenRemove(pr, opened as ScreenSignal);
+          return;
         default:
-          // screen_add / screen_remove land in 30-7.
           return;
       }
     });
@@ -673,25 +788,29 @@ export class VoiceCall {
       this.abortPeer(peer, "identity check failed on an incoming offer (possible MITM)");
       return;
     }
-    let pr = peer;
-    if (pr.pc.signalingState === "have-local-offer") {
-      // Offer glare: both sides offered. Deterministic: the LOWER key stays
-      // offerer. If that's us, ignore their offer (they'll answer ours by
-      // the mirrored rule). If that's them, restart as a clean answerer.
-      if (this.selfKey < pr.key) return;
-      this.dropPeer(pr.key, false);
-      pr = this.ensurePeer(peer.userID, peer.deviceID);
-    } else if (pr.pc.signalingState === "stable" && pr.hasRemoteDesc) {
-      // A fresh offer on an established pair = the peer rejoined (v1 has no
-      // renegotiation). Start over with a clean pc.
-      this.dropPeer(pr.key, false);
-      pr = this.ensurePeer(peer.userID, peer.deviceID);
+    // Perfect negotiation (B2). Collision = their offer landed while ours
+    // is in flight or unresolved. Impolite (lower key) ignores theirs; the
+    // polite side's setRemoteDescription performs an implicit rollback of
+    // its own outstanding offer. A non-colliding offer on a STABLE pair is
+    // a plain renegotiation (screen add/remove) and just gets answered.
+    const collision =
+      peer.makingOffer || peer.pc.signalingState !== "stable";
+    peer.ignoreOffer = !this.polite(peer) && collision;
+    if (peer.ignoreOffer) {
+      this.diag(`ignored colliding offer from ${peer.key} (impolite)`);
+      return;
     }
-    await pr.pc.setRemoteDescription({ type: "offer", sdp: sig.sdp });
-    this.diag(`applied remote offer from ${pr.key}`);
-    pr.hasRemoteDesc = true;
-    await this.drainIce(pr);
-    await this.sendAnswer(pr);
+    await peer.pc.setRemoteDescription({ type: "offer", sdp: sig.sdp });
+    this.diag(`applied remote offer from ${peer.key}${collision ? " (rolled back own)" : ""}`);
+    peer.hasRemoteDesc = true;
+    await this.drainIce(peer);
+    await this.sendAnswer(peer);
+    // If we are sharing and this peer's pc doesn't carry the screen tracks
+    // yet (e.g. it just [re]joined and offered to us first), renegotiate
+    // them in now that the pair is stable. Idempotent via the sender check.
+    if (this.screenStream && (await this.attachScreenTracks(peer))) {
+      await this.sendOffer(peer);
+    }
   }
 
   private async onAnswer(peer: Peer, sig: SdpSignal): Promise<void> {
@@ -720,7 +839,9 @@ export class VoiceCall {
       }
     } catch (err) {
       // Individual candidate failures are survivable; ICE keeps going.
-      console.warn("addIceCandidate:", err);
+      // While we ignore a colliding offer, its trailing candidates failing
+      // is EXPECTED (perfect negotiation) -- don't even warn.
+      if (!peer.ignoreOffer) console.warn("addIceCandidate:", err);
     }
   }
 
@@ -742,6 +863,147 @@ export class VoiceCall {
     this.dropPeer(peer.key, true);
   }
 
+  // ---- screen share (30-7a, Addendum B) ------------------------------------
+
+  /**
+   * startScreenShare captures a display surface and renegotiates it into
+   * every live pc as SEPARATE transceivers (camera/mic untouched, B1).
+   * 30-7a fixes the mode to "detail" (crisp screen); the 3-way Prioritize
+   * toggle, codec ladder and shared app audio land in 30-7b.
+   *
+   * Returns false when not in a call, already sharing, or the user
+   * cancelled the browser picker (cancel is not an error).
+   */
+  async startScreenShare(): Promise<boolean> {
+    if (!this.joined || this.closed || this.screenStream) return false;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        // B3 SCREEN capture shape: low fps, full resolution. (Game mode's
+        // 60fps constraint arrives with the 30-7b toggle.)
+        video: { frameRate: { ideal: 15, max: 30 } },
+      });
+    } catch (err) {
+      const name = (err as DOMException)?.name ?? "";
+      if (name === "NotAllowedError" || name === "AbortError") {
+        // Picker dismissed / OS screen-recording permission missing.
+        if (name === "NotAllowedError") {
+          this.o.callbacks.onError(
+            "screen capture was not allowed — if you did pick a screen, grant the browser screen-recording permission in the OS settings",
+          );
+        }
+        return false;
+      }
+      this.o.callbacks.onError(`screen capture failed: ${String((err as Error)?.message ?? err)}`);
+      return false;
+    }
+    const video = stream.getVideoTracks()[0];
+    if (!video) {
+      for (const t of stream.getTracks()) t.stop();
+      return false;
+    }
+    // B0: detail => degradationPreference maintain-resolution (pinned
+    // explicitly per sender in applyBudget too, not just implied).
+    video.contentHint = "detail";
+    // The browser's own "Stop sharing" bar ends the track outside our UI --
+    // mirror it into a full stop so peers and roster stay honest.
+    video.addEventListener("ended", () => {
+      void this.stopScreenShare();
+    });
+    this.screenStream = stream;
+    this.diag(`screen share started (stream=${stream.id})`);
+    for (const peer of this.peers.values()) {
+      this.enqueue(peer, async (pr) => {
+        if (await this.attachScreenTracks(pr)) await this.sendOffer(pr);
+      });
+    }
+    this.broadcastState();
+    this.o.callbacks.onLocalScreenStream(stream);
+    return true;
+  }
+
+  /** stopScreenShare removes the screen senders from every pc (with a
+   * renegotiation each), announces screen_remove, and stops capture.
+   * Idempotent; also invoked by the track's own "ended" event. */
+  async stopScreenShare(): Promise<void> {
+    const stream = this.screenStream;
+    if (!stream) return;
+    this.screenStream = null;
+    const trackIDs = new Set(stream.getTracks().map((t) => t.id));
+    this.diag(`screen share stopped (stream=${stream.id})`);
+    for (const peer of this.peers.values()) {
+      this.enqueue(peer, async (pr) => {
+        let removed = false;
+        for (const sender of pr.pc.getSenders()) {
+          if (sender.track && trackIDs.has(sender.track.id)) {
+            try {
+              pr.pc.removeTrack(sender);
+              removed = true;
+            } catch {
+              /* pc closing -- nothing to renegotiate */
+            }
+          }
+        }
+        await this.sendSignal(pr, "screen_remove", {
+          stream_id: stream.id,
+        } satisfies ScreenSignal);
+        if (removed) await this.sendOffer(pr);
+      });
+    }
+    for (const t of stream.getTracks()) t.stop();
+    if (!this.closed) this.broadcastState();
+    this.o.callbacks.onLocalScreenStream(null);
+  }
+
+  /**
+   * attachScreenTracks announces + adds the active screen tracks to one pc.
+   * Returns true when tracks were added (caller renegotiates), false when
+   * not sharing or already attached. The announce PRECEDES the offer on the
+   * same per-peer chain, so the receiver classifies the stream before its
+   * ontrack fires.
+   */
+  private async attachScreenTracks(peer: Peer): Promise<boolean> {
+    const stream = this.screenStream;
+    if (!stream) return false;
+    const have = new Set(
+      peer.pc
+        .getSenders()
+        .map((s) => s.track?.id)
+        .filter((id): id is string => !!id),
+    );
+    const missing = stream.getTracks().filter((t) => !have.has(t.id));
+    if (missing.length === 0) return false;
+    await this.sendSignal(peer, "screen_add", {
+      stream_id: stream.id,
+    } satisfies ScreenSignal);
+    for (const t of missing) peer.pc.addTrack(t, stream);
+    this.applyBudget();
+    return true;
+  }
+
+  /** onScreenAdd marks a remote stream id as a screen share and flushes a
+   * buffered stream that raced ahead of the announce. */
+  private onScreenAdd(peer: Peer, sig: ScreenSignal): void {
+    if (!sig || typeof sig.stream_id !== "string") return;
+    peer.screenStreamIDs.add(sig.stream_id);
+    this.diag(`peer ${peer.key} announced screen stream ${sig.stream_id}`);
+    const buffered = peer.pendingStreams.get(sig.stream_id);
+    if (buffered) {
+      peer.pendingStreams.delete(sig.stream_id);
+      this.o.callbacks.onPeerScreenStream(peer.key, peer.userID, peer.deviceID, buffered);
+    }
+  }
+
+  /** onScreenRemove drops the remote screen tile. The m-line deactivation
+   * arrives separately via the peer's renegotiation offer. */
+  private onScreenRemove(peer: Peer, sig: ScreenSignal): void {
+    if (!sig || typeof sig.stream_id !== "string") return;
+    peer.screenStreamIDs.delete(sig.stream_id);
+    peer.pendingStreams.delete(sig.stream_id);
+    this.diag(`peer ${peer.key} removed screen stream ${sig.stream_id}`);
+    this.o.callbacks.onPeerScreenGone(peer.key);
+  }
+
   // ---- minimal uplink budget (Addendum D, the 30-4 slice of it) ------------
 
   /**
@@ -754,15 +1016,26 @@ export class VoiceCall {
   private applyBudget(): void {
     const n = Math.max(1, this.peers.size);
     const perVideo = Math.max(MIN_VIDEO_BPS, Math.floor(TOTAL_VIDEO_UPLINK_BPS / n));
+    const screenTrackIDs = new Set(this.screenStream?.getTracks().map((t) => t.id) ?? []);
     for (const peer of this.peers.values()) {
       for (const sender of peer.pc.getSenders()) {
         const kind = sender.track?.kind;
         if (kind !== "audio" && kind !== "video") continue;
+        const isScreen = !!sender.track && screenTrackIDs.has(sender.track.id);
         const params = sender.getParameters();
         if (!params.encodings || params.encodings.length === 0) {
           params.encodings = [{}];
         }
-        params.encodings[0].maxBitrate = kind === "audio" ? AUDIO_MAX_BPS : perVideo;
+        params.encodings[0].maxBitrate =
+          kind === "audio" ? AUDIO_MAX_BPS : isScreen ? SCREEN_VIDEO_MAX_BPS : perVideo;
+        if (isScreen && kind === "video") {
+          // B0: pin the hint's implied preference explicitly. 30-7a is
+          // detail-only; the mode toggle (30-7b) flips this to
+          // maintain-framerate for game shares. Cast: lib.dom omits the
+          // field in some TS versions; browsers accept it.
+          (params as RTCRtpSendParameters & { degradationPreference?: string })
+            .degradationPreference = "maintain-resolution";
+        }
         sender.setParameters(params).catch((err) => {
           console.warn("setParameters:", err);
         });
@@ -776,6 +1049,11 @@ export class VoiceCall {
     for (const t of this.localStream?.getTracks() ?? []) t.stop();
     this.localStream = null;
     this.o.callbacks.onLocalStream(null);
+    if (this.screenStream) {
+      for (const t of this.screenStream.getTracks()) t.stop();
+      this.screenStream = null;
+      this.o.callbacks.onLocalScreenStream(null);
+    }
   }
 }
 

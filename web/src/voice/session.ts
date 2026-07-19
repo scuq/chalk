@@ -129,6 +129,9 @@ export interface SessionRemoteTile {
   deviceID: string;
   stream: MediaStream;
   connState: string;
+  /** 30-7a: the peer's screen-share stream while it is sharing, else null.
+   * Rendered as its own stage tile, distinct from the camera tile. */
+  screenStream: MediaStream | null;
 }
 
 export type SessionPhase = "idle" | "joining" | "in-call";
@@ -144,6 +147,10 @@ export interface VoiceSessionSnap {
   localStream: MediaStream | null;
   muted: boolean;
   camOn: boolean;
+  /** 30-7a: our own screen share -- null when not sharing. `sharing` is its
+   * derived boolean, kept explicit for cheap render checks. */
+  localScreenStream: MediaStream | null;
+  sharing: boolean;
   joinedWithVideo: boolean;
   relayOnly: boolean;
   joinedAt: number | null;
@@ -182,6 +189,8 @@ class VoiceSessionImpl {
     localStream: null,
     muted: false,
     camOn: false,
+    localScreenStream: null,
+    sharing: false,
     joinedWithVideo: false,
     relayOnly: false,
     joinedAt: null,
@@ -279,6 +288,8 @@ class VoiceSessionImpl {
                   deviceID,
                   stream,
                   connState: this.s.tiles[key]?.connState ?? "connecting",
+                  // Preserve a screen stream that arrived first (30-7a).
+                  screenStream: this.s.tiles[key]?.screenStream ?? null,
                 },
               },
             }),
@@ -291,6 +302,36 @@ class VoiceSessionImpl {
             if (t) this.set({ tiles: { ...this.s.tiles, [key]: { ...t, connState: state } } });
           },
           onLocalStream: (stream) => this.set({ localStream: stream }),
+          onLocalScreenStream: (stream) =>
+            this.set({ localScreenStream: stream, sharing: stream !== null }),
+          onPeerScreenStream: (key, userID, deviceID, stream) => {
+            // Upsert: the camera tile normally exists already (the screen
+            // renegotiation strictly follows the first negotiation), but a
+            // race-created tile is tolerated -- onPeerStream will replace
+            // `stream` and keep `screenStream`.
+            const prev = this.s.tiles[key];
+            this.set({
+              tiles: {
+                ...this.s.tiles,
+                [key]: prev
+                  ? { ...prev, screenStream: stream }
+                  : {
+                      key,
+                      userID,
+                      deviceID,
+                      stream,
+                      connState: "connecting",
+                      screenStream: stream,
+                    },
+              },
+            });
+          },
+          onPeerScreenGone: (key) => {
+            const t = this.s.tiles[key];
+            if (t && t.screenStream !== null) {
+              this.set({ tiles: { ...this.s.tiles, [key]: { ...t, screenStream: null } } });
+            }
+          },
           onError: (msg) => this.set({ error: msg }),
         },
       });
@@ -346,6 +387,8 @@ class VoiceSessionImpl {
       localStream: null,
       muted: false,
       camOn: false,
+      localScreenStream: null,
+      sharing: false,
       joinedWithVideo: false,
       relayOnly: false,
       joinedAt: null,
@@ -406,6 +449,23 @@ class VoiceSessionImpl {
       return true;
     }
     return false;
+  }
+
+  /**
+   * toggleScreenShare (30-7a): start or stop the screen share. Start opens
+   * the browser's display picker (needs the click's user gesture -- call
+   * it synchronously from the handler). State flows exclusively through
+   * the onLocalScreenStream callback, so the snapshot can never disagree
+   * with the call (the browser "Stop sharing" bar also lands there).
+   */
+  async toggleScreenShare(): Promise<void> {
+    const call = this.call;
+    if (!call) return;
+    if (call.isSharingScreen) {
+      await call.stopScreenShare();
+    } else {
+      await call.startScreenShare();
+    }
   }
 
   clearError(): void {

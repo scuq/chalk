@@ -144,8 +144,10 @@ export function VoiceCallPanel({
 
   const toggleCam = () => {
     if (!voiceSession.toggleCam()) {
-      // No camera track -- the join degraded to audio-only (camera denied or
-      // absent). Adding one mid-call needs renegotiation (30-7).
+      // No camera track -- the join degraded to audio-only (camera denied
+      // or absent). The 30-7a renegotiation machinery could add one
+      // mid-call; wiring that toggle is deliberately left with the 30-7b
+      // capture/UX work.
       voiceSession.clearError();
       setLocalNote("camera unavailable — check browser permissions, then rejoin");
     }
@@ -188,6 +190,9 @@ export function VoiceCallPanel({
     hasLiveVideo: boolean;
     connState: string | null;
     part?: VoiceParticipant;
+    /** 30-7a: this tile is a screen share (own tile, never mirrored, no
+     * per-peer audio controls -- those belong to the person's camera tile). */
+    isScreen?: boolean;
   }
 
   const stageTiles: StageTile[] = useMemo(() => {
@@ -240,14 +245,48 @@ export function VoiceCallPanel({
         connState: t.connState,
       });
     }
+    // 30-7a screen tiles: one extra tile per active share (self + remote),
+    // keyed "<peer>:screen" so pinning distinguishes it from the camera.
+    if (snap.localScreenStream) {
+      out.push({
+        key: selfKey + ":screen",
+        userID: selfUserID,
+        deviceID: selfDeviceID,
+        isSelf: true,
+        stream: snap.localScreenStream,
+        hasLiveVideo: snap.localScreenStream
+          .getVideoTracks()
+          .some((x) => x.readyState === "live"),
+        connState: null,
+        isScreen: true,
+      });
+    }
+    for (const t of Object.values(snap.tiles)) {
+      if (!t.screenStream) continue;
+      out.push({
+        key: t.key + ":screen",
+        userID: t.userID,
+        deviceID: t.deviceID,
+        isSelf: false,
+        stream: t.screenStream,
+        hasLiveVideo: t.screenStream.getVideoTracks().some((x) => x.readyState === "live"),
+        connState: null,
+        isScreen: true,
+      });
+    }
     return out;
     // nowTick keeps hasLiveVideo honest as tracks start/stop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hereInCall, roster, snap.tiles, snap.localStream, snap.camOn, nowTick]);
+  }, [hereInCall, roster, snap.tiles, snap.localStream, snap.localScreenStream, snap.camOn, nowTick]);
 
   const focusedKey: string | null = useMemo(() => {
     if (stageTiles.length === 0) return null;
     if (pinnedKey && stageTiles.some((t) => t.key === pinnedKey)) return pinnedKey;
+    // 30-7a (B5): a screen share is the primary tile -- remote first.
+    const screen =
+      stageTiles.find((t) => t.isScreen && !t.isSelf && t.hasLiveVideo) ??
+      stageTiles.find((t) => t.isScreen && t.hasLiveVideo);
+    if (screen) return screen.key;
     const remoteVideo = stageTiles.find((t) => !t.isSelf && t.hasLiveVideo);
     if (remoteVideo) return remoteVideo.key;
     const remote = stageTiles.find((t) => !t.isSelf);
@@ -345,6 +384,18 @@ export function VoiceCallPanel({
               title={snap.camOn ? "turn camera off" : "turn camera on"}
             >
               {snap.camOn ? "cam off" : "cam on"}
+            </button>
+            <button
+              class={"chalk-btn chalk-voice-ctl" + (snap.sharing ? " chalk-voice-ctl--on" : "")}
+              onClick={() => void voiceSession.toggleScreenShare()}
+              data-testid="voice-share"
+              title={
+                snap.sharing
+                  ? "stop sharing your screen"
+                  : "share a screen, window, or tab (crisp-detail mode; the game/text toggle lands in 30-7b)"
+              }
+            >
+              {snap.sharing ? "stop share" : "share"}
             </button>
             <button
               class={"chalk-btn chalk-voice-ctl" + (debugOpen ? " chalk-voice-ctl--on" : "")}
@@ -449,7 +500,8 @@ export function VoiceCallPanel({
     big?: boolean;
     onClick?: () => void;
   }) {
-    const pref = tile.isSelf ? undefined : snap.peerAudio[tile.userID];
+    const pref = tile.isSelf || tile.isScreen ? undefined : snap.peerAudio[tile.userID];
+    const shownLabel = tile.isScreen ? `${label} — screen` : label;
     return (
       <div
         class={
@@ -472,17 +524,17 @@ export function VoiceCallPanel({
               }
             : undefined
         }
-        title={big ? label : `${label} — click to focus`}
+        title={big ? shownLabel : `${shownLabel} — click to focus`}
       >
         {tile.hasLiveVideo && tile.stream ? (
-          <VideoSurface stream={tile.stream} mirrored={tile.isSelf} />
+          <VideoSurface stream={tile.stream} mirrored={tile.isSelf && !tile.isScreen} />
         ) : (
           <div class="chalk-voice-avatar" aria-hidden="true">
             {(label === "you" ? handleForSelfInitial() : label).slice(0, 1).toUpperCase()}
           </div>
         )}
         <div class="chalk-voice-peer-label">
-          <span class="chalk-voice-peer-name">{label}</span>
+          <span class="chalk-voice-peer-name">{shownLabel}</span>
           {tile.part?.muted && <span class="chalk-voice-peer-flag" title="muted">m</span>}
           {tile.part?.videoOn && <span class="chalk-voice-peer-flag" title="camera on">c</span>}
           {tile.part?.screenOn && (
@@ -503,7 +555,7 @@ export function VoiceCallPanel({
               slider needs width, so it lives on the BIG tile -- pin a peer
               to adjust them; the strip carries just the mute toggle.
               stopPropagation: these must not re-pin/unpin the tile. */}
-          {!tile.isSelf && (
+          {!tile.isSelf && !tile.isScreen && (
             <span
               class="chalk-voice-peer-audio"
               onClick={(e) => e.stopPropagation()}
