@@ -33,6 +33,13 @@ services:
       CHALK_TLS_MODE: "off"   # caddy terminates TLS in front
       CHALK_LOG_FORMAT: "json"
       CHALK_INSTANCE_ID: "instance-1"
+      # Phase 30: voice/video. CHALK_TURN_URLS must be the PUBLIC address
+      # clients can reach (e.g. turn:chat.example.org:3478) -- NOT a
+      # compose-internal name. Leave CHALK_VOICE_ENABLED=false to run
+      # without voice.
+      CHALK_VOICE_ENABLED: "${CHALK_VOICE_ENABLED:-false}"
+      CHALK_TURN_URLS: "${CHALK_TURN_URLS:-}"
+      CHALK_TURN_SECRET: "${CHALK_TURN_SECRET:-}"
     volumes:
       - chalk-blobs:/var/lib/chalk/blobs
     restart: unless-stopped
@@ -48,8 +55,40 @@ services:
       CHALK_TLS_MODE: "off"
       CHALK_LOG_FORMAT: "json"
       CHALK_INSTANCE_ID: "instance-2"
+      # Phase 30: voice/video (see instance-1 notes).
+      CHALK_VOICE_ENABLED: "${CHALK_VOICE_ENABLED:-false}"
+      CHALK_TURN_URLS: "${CHALK_TURN_URLS:-}"
+      CHALK_TURN_SECRET: "${CHALK_TURN_SECRET:-}"
     volumes:
       - chalk-blobs:/var/lib/chalk/blobs
+    restart: unless-stopped
+
+  # Phase 30: coturn is the mandatory media relay for voice/video -- ~99% of
+  # clients need TURN (design doc §0). It relays DTLS-SRTP CIPHERTEXT it
+  # cannot decrypt; allocations are authenticated with short-lived HMAC creds
+  # minted by chalkd from the SHARED CHALK_TURN_SECRET (TURN REST scheme).
+  #
+  # host networking: TURN allocates from a UDP relay port RANGE; mapping the
+  # range through docker NAT is slow and makes coturn advertise container-
+  # internal IPs in relay candidates. With host networking, open in your
+  # firewall: 3478/tcp+udp and ${CHALK_TURN_MIN_PORT:-49160}-${CHALK_TURN_MAX_PORT:-49200}/udp.
+  #
+  # TLS (turns: on 5349) is optional hardening for networks that block plain
+  # 3478 -- see docs/deployment.md "Voice" for the cert-mount recipe. Note the
+  # MEDIA is E2E-encrypted either way; turns: only wraps the TURN control
+  # channel.
+  coturn:
+    image: coturn/coturn:4
+    network_mode: host
+    command: >
+      --log-file=stdout
+      --realm=${CHALK_TURN_REALM:-chalk}
+      --use-auth-secret
+      --static-auth-secret=${CHALK_TURN_SECRET:?set CHALK_TURN_SECRET in the environment}
+      --listening-port=${CHALK_TURN_PORT:-3478}
+      --min-port=${CHALK_TURN_MIN_PORT:-49160}
+      --max-port=${CHALK_TURN_MAX_PORT:-49200}
+      --fingerprint --no-cli --no-tls --no-dtls
     restart: unless-stopped
 
   caddy:

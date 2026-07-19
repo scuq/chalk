@@ -143,6 +143,66 @@ dev-mail-down: ## Stop and remove the dev Mailpit container
 dev-mail-logs: ## Tail the dev Mailpit container logs
 	docker logs -f --tail=100 $(CHALK_DEV_MAIL_NAME)
 
+# ---- dev TURN relay (phase 30) --------------------------------------------
+# coturn is the media relay chalk voice/video REQUIRES in practice: ~99% of
+# real clients sit behind NAT that defeats P2P, so calls flow client ->
+# coturn -> client as DTLS-SRTP ciphertext coturn cannot read (E2E intact;
+# it authenticates allocations with short-lived HMAC creds minted by chalkd
+# from the SHARED static secret -- see internal/turncred).
+#
+# Host networking is used because TURN allocates from a UDP RELAY PORT RANGE;
+# per-port docker NAT for a range is slow and, worse, makes coturn advertise
+# the container-internal IP in relayed candidates. Host networking sidesteps
+# both. (Linux-only; on Docker Desktop for macOS use a real host instead.)
+#
+# These targets are independent of `make dev`: run dev-turn-up, then start
+# chalkd with the printed CHALK_VOICE_* env to enable voice against it.
+
+CHALK_DEV_TURN_NAME ?= chalk-dev-turn
+CHALK_DEV_TURN_IMAGE ?= coturn/coturn:4
+CHALK_DEV_TURN_SECRET ?= devsecret
+CHALK_DEV_TURN_PORT ?= 3478
+CHALK_DEV_TURN_MIN_PORT ?= 49160
+CHALK_DEV_TURN_MAX_PORT ?= 49200
+
+.PHONY: dev-turn-up
+dev-turn-up: ## Start a coturn container for dev voice (TURN on 3478, host networking)
+	@if docker inspect $(CHALK_DEV_TURN_NAME) >/dev/null 2>&1; then \
+	  echo "$(CHALK_DEV_TURN_NAME) already exists; starting it"; \
+	  docker start $(CHALK_DEV_TURN_NAME) >/dev/null; \
+	else \
+	  echo "creating $(CHALK_DEV_TURN_NAME)"; \
+	  docker run -d --name $(CHALK_DEV_TURN_NAME) \
+	    --network host \
+	    $(CHALK_DEV_TURN_IMAGE) \
+	    --log-file=stdout \
+	    --realm=chalk \
+	    --use-auth-secret \
+	    --static-auth-secret=$(CHALK_DEV_TURN_SECRET) \
+	    --listening-port=$(CHALK_DEV_TURN_PORT) \
+	    --min-port=$(CHALK_DEV_TURN_MIN_PORT) \
+	    --max-port=$(CHALK_DEV_TURN_MAX_PORT) \
+	    --fingerprint --no-cli --no-tls --no-dtls >/dev/null; \
+	fi
+	@echo "coturn ready:"
+	@echo "  turn:  turn:localhost:$(CHALK_DEV_TURN_PORT)  (udp+tcp)"
+	@echo "  relay: udp $(CHALK_DEV_TURN_MIN_PORT)-$(CHALK_DEV_TURN_MAX_PORT)"
+	@echo ""
+	@echo "to enable voice against it, run chalkd with:"
+	@echo "  CHALK_VOICE_ENABLED=true \\"
+	@echo "  CHALK_TURN_URLS=turn:localhost:$(CHALK_DEV_TURN_PORT) \\"
+	@echo "  CHALK_TURN_SECRET=$(CHALK_DEV_TURN_SECRET) make dev"
+
+.PHONY: dev-turn-down
+dev-turn-down: ## Stop and remove the dev coturn container
+	@docker stop $(CHALK_DEV_TURN_NAME) >/dev/null 2>&1 || true
+	@docker rm   $(CHALK_DEV_TURN_NAME) >/dev/null 2>&1 || true
+	@echo "dev coturn container removed"
+
+.PHONY: dev-turn-logs
+dev-turn-logs: ## Tail the dev coturn container logs
+	docker logs -f --tail=100 $(CHALK_DEV_TURN_NAME)
+
 .PHONY: clean
 clean: ## Remove build artifacts
 	rm -rf bin/ dist/ coverage.*

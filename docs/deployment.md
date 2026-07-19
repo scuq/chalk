@@ -58,6 +58,66 @@ All flags are also available as `CHALK_*` env vars (e.g. `--listen` ↔ `CHALK_L
 | `--log-format` | `CHALK_LOG_FORMAT` | `console` | `console` / `json` |
 | `--shutdown-grace` | `CHALK_SHUTDOWN_GRACE` | `20s` | |
 | `--instance-id` | `CHALK_INSTANCE_ID` | (auto UUID) | |
+| | `CHALK_VOICE_ENABLED` | `false` | phase 30: master switch for voice/video |
+| | `CHALK_VOICE_MAX_PARTICIPANTS` | `5` | mesh room cap (2..16) |
+| | `CHALK_VOICE_FORCE_RELAY` | `false` | test knob: clients use relay-only ICE |
+| | `CHALK_TURN_URLS` | | comma-separated PUBLIC coturn URIs |
+| | `CHALK_TURN_SECRET` | | shared with coturn `--static-auth-secret` |
+| | `CHALK_TURN_TTL_SECS` | `3600` | minted-credential lifetime |
+| | `CHALK_STUN_URLS` | | optional explicit STUN URIs |
+
+## Voice (TURN relay)
+
+Phase 30 voice/video treats **coturn as a mandatory media relay, not a
+fallback**: in practice ~99% of clients sit behind NAT/firewalls that defeat
+direct P2P, so calls flow client → coturn → client. The relay carries
+**DTLS-SRTP ciphertext it cannot decrypt** — end-to-end encryption is
+unaffected — and chalkd mints **short-lived HMAC credentials** (TURN REST
+scheme) from the shared `CHALK_TURN_SECRET`, so a leaked credential expires
+instead of living forever.
+
+### Dev
+
+```
+make dev-turn-up          # coturn on host networking, secret "devsecret"
+CHALK_VOICE_ENABLED=true \
+CHALK_TURN_URLS=turn:localhost:3478 \
+CHALK_TURN_SECRET=devsecret make dev
+```
+
+`make dev-turn-down` removes it; `make dev-turn-logs` tails allocations.
+
+### Production
+
+The prod compose ships a `coturn` service on **host networking** (a UDP relay
+port *range* through docker NAT is slow and advertises container-internal IPs).
+Required environment: `CHALK_TURN_SECRET` (any long random string; it is the
+coturn `--static-auth-secret`) and `CHALK_TURN_URLS` set to the **public**
+address clients can reach, e.g. `turn:chat.example.org:3478`. Then set
+`CHALK_VOICE_ENABLED=true`.
+
+Firewall: open `3478/tcp+udp` and the relay range `49160–49200/udp` (both
+configurable via `CHALK_TURN_PORT` / `CHALK_TURN_MIN_PORT` / `CHALK_TURN_MAX_PORT`).
+
+**Bandwidth sizing**: voice rooms are a client mesh relayed through coturn — a
+room of N puts ~2×(N−1) media streams per active sender through the relay.
+Small rooms (the default cap is 5) fit comfortably on a modest VPS; what
+matters is *symmetric* bandwidth, roughly (participants × per-stream bitrate ×
+2) at peak. A 1080p screen share tops out around 2.5 Mbps per viewer; budget
+accordingly.
+
+**TLS (`turns:`) hardening** (optional): some restrictive networks block plain
+3478. coturn can additionally listen with TLS on 5349 — mount a cert/key pair
+and add `--tls-listening-port=5349 --cert=/certs/fullchain.pem
+--pkey=/certs/privkey.pem` to the coturn command (dropping `--no-tls`), then
+append `turns:chat.example.org:5349?transport=tcp` to `CHALK_TURN_URLS`. The
+media itself is E2E-encrypted either way; `turns:` only wraps the TURN control
+channel. Reusing Caddy's certificates requires exporting them from the caddy
+data volume on renewal — a renewal hook outside this compose file's scope.
+
+**Secret rotation**: change `CHALK_TURN_SECRET`, restart coturn and chalkd.
+In-flight calls survive until their minted credentials expire (default 1h);
+new joins use the new secret immediately.
 
 ## Backups
 
