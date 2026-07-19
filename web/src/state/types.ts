@@ -245,6 +245,10 @@ export interface AppState {
   // (own join), voice_roster_ack, and the joined/left/state pushes (which go
   // to ALL channel members, so sidebar occupancy can render in 30-5).
   voiceRosters: Record<string, VoiceParticipant[]>;
+  // 30-6: whether the server has voice enabled (welcome.voice_enabled).
+  // Gates the create-modal voice option, the in-channel call panel, and
+  // roster seeding. false until the welcome frame says otherwise.
+  voiceEnabled: boolean;
 
   // Friends, fetched lazily when the create-channel modal opens.
   friends: Friend[];
@@ -450,6 +454,7 @@ export const initialState: AppState = {
   historyLoaded: {},
   proposals: {},
   voiceRosters: {},
+  voiceEnabled: false,
   friends: [],
   friendsLoaded: false,
   // Phase 9.6a:
@@ -508,7 +513,7 @@ export const initialState: AppState = {
 
 export type Action =
   | { kind: "ws_state"; state: ConnectionState; detail?: string }
-  | { kind: "welcome"; userID: string; deviceID: string; handle: string; channels: string[] }
+  | { kind: "welcome"; userID: string; deviceID: string; handle: string; channels: string[]; voiceEnabled: boolean }
   | { kind: "channels_loaded"; channels: ChannelSummary[] }
   | { kind: "channel_added"; channel: ChannelSummary }
   | { kind: "channel_removed"; channelID: string }

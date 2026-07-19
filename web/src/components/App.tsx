@@ -96,6 +96,8 @@ import {
   TypeVoiceParticipantJoined,
   TypeVoiceParticipantLeft,
   TypeVoiceParticipantState,
+  TypeVoiceRoster, // 30-5: sidebar occupancy seed
+  type VoiceRosterAckPayload,
   type VoiceParticipantJoinedPayload,
   type VoiceParticipantLeftPayload,
   type VoiceParticipantStatePayload,
@@ -105,7 +107,7 @@ import { reducer } from "../state/reducer";
 import { initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary, type ProposalView } from "../state/types";
 import { selectGiphyPref } from "../giphy/giphy";
 import { StatusBar } from "./StatusBar";
-import { Sidebar } from "./Sidebar";
+import { Sidebar, ChannelGlyph } from "./Sidebar";
 import { MessageList } from "./MessageList";
 import { ConfirmModal } from "./ConfirmModal";
 import { Composer } from "./Composer";
@@ -139,7 +141,9 @@ import { CreateChannelModal } from "./CreateChannelModal";
 // Phase 30 (30-4): the minimal in-call surface + the frame bus that hands
 // voice pushes from handleFrame to the mounted panel's VoiceCall.
 import { VoiceCallPanel } from "./VoiceCallPanel";
+import { VoiceDock } from "./VoiceDock";
 import { voiceBus } from "../voice/bus";
+import { voiceSession } from "../voice/session";
 import { AuthGate } from "../auth/AuthGate";
 import { IdentitySetupScreen } from "../auth/IdentitySetupScreen";
 import { loadIdentity, loadVerification, saveVerification } from "../crypto/idb";
@@ -836,6 +840,10 @@ export function App() {
   userRef.current = state.user;
   const channelsRef = useRef(state.channels);
   channelsRef.current = state.channels;
+  // 30-6: handleFrame gates roster seeding on the voice flag; same
+  // stale-closure caveat as userRef above, so it reads through a ref.
+  const voiceEnabledRef = useRef(state.voiceEnabled);
+  voiceEnabledRef.current = state.voiceEnabled;
 
   // Track which channel we've already fired fetch_history for. The
   // historyLoaded state flag covers ACK; this ref covers REQUEST so
@@ -883,6 +891,7 @@ export function App() {
           // phase 08c: handle threads to status badge
           handle: w.handle ?? "",
           channels: w.channels,
+          voiceEnabled: !!w.voice_enabled, // 30-6
         }),
       onFrame: (f: Frame) => handleFrame(f),
     });
@@ -893,6 +902,27 @@ export function App() {
   }, [state.authStage]);
 
 
+
+  // ---- Phase 30 (30-5c): app-level voice session lifecycle edges -------
+  //
+  // The persistent call (Discord behavior) is owned by voiceSession, not by
+  // any component -- so the edges that used to ride on panel unmount are
+  // explicit app-level events:
+  //   * WS loss while connected  -> drop from the room (design §9, v1)
+  //   * our room left the channel list (removed / deleted) -> teardown
+  //   * logout -> full reset
+
+  useEffect(() => {
+    if (state.wsState !== "open") voiceSession.handleWsDown();
+  }, [state.wsState]);
+
+  useEffect(() => {
+    voiceSession.leaveIfChannelGone(new Set(Object.keys(state.channels)));
+  }, [state.channels]);
+
+  useEffect(() => {
+    if (state.authStage !== "authed") voiceSession.reset();
+  }, [state.authStage]);
 
   // Phase 23f (fail-closed): run EVERY message through decryptForChannel
   // before it reaches the reducer. It returns plaintext only for properly
@@ -1024,6 +1054,36 @@ export function App() {
           kind: "channels_loaded",
           channels,
         });
+        // 30-5: seed sidebar occupancy for every voice room. The channel
+        // list is (re)fetched on every connect, so this also refreshes
+        // rosters after a reconnect; joined/left/state pushes keep them
+        // current in between. Fire-and-forget per channel: a failed
+        // roster fetch degrades to an empty sublist, nothing else.
+        const rosterClient = clientRef.current;
+        if (rosterClient && rosterClient.isOpen() && voiceEnabledRef.current) {
+          for (const ch of channels) {
+            if (ch.channelType !== "voice") continue;
+            rosterClient
+              .request<{ channel_id: string }, VoiceRosterAckPayload>(
+                TypeVoiceRoster,
+                { channel_id: ch.id },
+              )
+              .then((ack) => {
+                dispatch({
+                  kind: "voice_roster_set",
+                  channelID: ack.channel_id,
+                  roster: (ack.roster ?? []).map((w) => ({
+                    userID: w.user_id,
+                    deviceID: w.device_id,
+                    muted: !!w.muted,
+                    videoOn: !!w.video_on,
+                    screenOn: !!w.screen_on,
+                  })),
+                });
+              })
+              .catch((err) => console.warn("voice_roster seed:", err));
+          }
+        }
         break;
       }
       case TypeFetchHistoryAck: {
@@ -2116,9 +2176,44 @@ export function App() {
           activeID={state.activeChannelID}
           ownUserID={state.user?.id ?? null}
           presence={state.presence}
-          onSelect={(id) => dispatch({ kind: "set_active_channel", channelID: id })}
+          voiceRosters={state.voiceRosters}
+          onSelect={(id) => {
+            dispatch({ kind: "set_active_channel", channelID: id });
+            // 30-5c click-to-join (Addendum C, core): selecting a voice
+            // room connects to it, Discord-style; selecting a different
+            // voice room moves you (session.join handles the move, and
+            // re-clicking the room you are in is a no-op). Gated on the
+            // same readiness as the lobby button -- when the key is not
+            // ready yet, the room opens and the lobby explains.
+            const ch = state.channels[id];
+            if (
+              ch &&
+              ch.channelType === "voice" &&
+              state.voiceEnabled &&
+              state.user &&
+              ccReady &&
+              keyStatus[id] === "ready"
+            ) {
+              void voiceSession.join({
+                channelID: ch.id,
+                channelName: ch.name,
+                selfUserID: state.user.id,
+                selfDeviceID: state.user.device,
+                withVideo: false,
+                client: clientRef,
+                cc: ccRef,
+              });
+            }
+          }}
           onFriendClick={handleFriendClickInRoster}
           onCreateClick={() => dispatch({ kind: "open_create_modal" })}
+        />
+        {/* 30-5c: the persistent-call dock -- app-level audio sinks + the
+            Discord-style connection bar. Renders nothing while idle. */}
+        <VoiceDock
+          onJumpToChannel={(id) =>
+            dispatch({ kind: "set_active_channel", channelID: id })
+          }
         />
       </aside>
 
@@ -2126,13 +2221,21 @@ export function App() {
         {activeChannel ? (
           <>
             <div class="chalk-channel-header" data-testid="channel-header">
+              {/* 30-5: channel-kind glyph -- text vs voice, matching the
+                  sidebar. DMs keep their textual tag instead. */}
+              {!activeChannel.isDM && (
+                <span
+                  class={`chalk-chglyph chalk-chglyph--header ${activeChannel.channelType === "voice" ? "chalk-chglyph--voice" : "chalk-chglyph--text"}`}
+                >
+                  <ChannelGlyph
+                    type={activeChannel.channelType === "voice" ? "voice" : "text"}
+                  />
+                </span>
+              )}
               <span class="chalk-channel-header-name">
                 {displayName(activeChannel, state.user?.id ?? null)}
               </span>
               {activeChannel.isDM && <span class="chalk-channel-header-tag">dm</span>}
-              {activeChannel.channelType === "voice" && (
-                <span class="chalk-channel-header-tag">voice</span>
-              )}
               <ModeBadge
                 mode={activeChannel.governanceMode}
                 onClick={() => dispatch({ kind: "open_panel", panel: "governance" })}
@@ -2148,7 +2251,12 @@ export function App() {
                 Key by channel id so switching rooms unmounts (and thereby
                 leaves) the previous call. 30-5 replaces this with the
                 Discord-style UI. */}
-            {activeChannel.channelType === "voice" && state.user && ccReady && (
+            {activeChannel.channelType === "voice" && !state.voiceEnabled && (
+              <div class="chalk-voice-panel chalk-voice-disabled" data-testid="voice-disabled">
+                voice is disabled on this server (CHALK_VOICE_ENABLED)
+              </div>
+            )}
+            {activeChannel.channelType === "voice" && state.voiceEnabled && state.user && ccReady && (
               <VoiceCallPanel
                 key={activeChannel.id}
                 channel={activeChannel}
@@ -2258,6 +2366,7 @@ export function App() {
         <CreateChannelModal
           friends={state.friends}
           loading={!state.friendsLoaded}
+          voiceEnabled={state.voiceEnabled}
           onClose={() => dispatch({ kind: "close_create_modal" })}
           onSubmit={onCreateChannel}
         />

@@ -1,29 +1,37 @@
-// VoiceCallPanel (Phase 30, slice 30-4): the MINIMAL in-call surface that
-// makes the mesh testable -- join/leave, mute, camera toggle, remote tiles,
-// live roster, relay badge. Deliberately plain: 30-5 delivers the
-// Discord-style sidebar occupancy + tile layout; this panel exists so the
-// §7d acceptance gate (relay-only call between two browsers) has a UI.
+// VoiceCallPanel (Phase 30, slices 30-5 + 30-5c): the in-room view of THE
+// voice session.
 //
-// Ownership: the panel owns one VoiceCall instance for the channel it is
-// mounted on. App routes voice frames onto voiceBus; the panel forwards them
-// to the manager. Unmount (channel switch, logout) leaves the room -- v1 has
-// no background calls.
+// 30-5c moved call OWNERSHIP to the app-level voiceSession singleton (the
+// Discord behavior: the call survives browsing; VoiceDock carries audio and
+// the connection bar everywhere). This panel is now a pure VIEW:
+//
+//   * it renders the 30-5 stage (big tile + filmstrip, click-to-pin focus,
+//     roster-driven "connecting…" honesty, control bar, debug drawer) when
+//     the session is in THIS channel
+//   * when the session is in a DIFFERENT room, it says so and offers the
+//     lobby (joining here moves you -- one call at a time)
+//   * unmount does NOT leave; lifecycle edges (WS loss, removal, logout)
+//     are app-level session events
+//   * NO audio elements here -- remote audio is rendered exactly once, in
+//     VoiceDock; duplicating it would double the output
+//
+// Click-to-join (Addendum C "click-to-join voice rooms", core) lives in
+// App's sidebar onSelect; the lobby buttons remain for the camera variant,
+// for retry after errors, and for servers where auto-join is not possible
+// (channel key not ready at click time).
 
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ChannelSummary, VoiceParticipant } from "../state/types";
 import type { WSClient } from "../ws-client";
 import type { ChannelCrypto } from "../crypto/channel-crypto";
-import { loadIdentity } from "../crypto/idb";
-import { voiceBus } from "../voice/bus";
-import { VoiceCall, type VoicePeerDiag, type VoiceDiagnostics } from "../voice/call";
+import { voiceSession, type SessionRemoteTile } from "../voice/session";
+import { useVoiceSession } from "./VoiceDock";
+import { ChannelGlyph } from "./Sidebar";
+import type { VoiceDiagnostics } from "../voice/call";
 
-interface RemoteTile {
-  key: string;
-  userID: string;
-  deviceID: string;
-  stream: MediaStream;
-  connState: string;
-}
+/** Stats refresh cadence while the drawer is open. Passive getStats reads
+ * only (the Addendum D rule: nothing in-call may compete with media). */
+const DEBUG_STATS_INTERVAL_MS = 2_000;
 
 interface Props {
   channel: ChannelSummary;
@@ -38,6 +46,34 @@ interface Props {
   keyReady: boolean;
 }
 
+/**
+ * describeJoinError (30-6): map the server's voice error codes (the request
+ * rejection arrives as "code: message") to actionable phrasing. Unknown
+ * codes pass through untouched.
+ */
+function describeJoinError(raw: string): string {
+  if (raw.startsWith("voice_room_full")) {
+    return "room is full (server participant cap) — try again when someone leaves";
+  }
+  if (raw.startsWith("voice_disabled")) {
+    return "voice is disabled on this server (CHALK_VOICE_ENABLED)";
+  }
+  if (raw.startsWith("voice_device_conflict")) {
+    return "you are already in this room from another device — leave there first";
+  }
+  return raw;
+}
+
+function fmtDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
 export function VoiceCallPanel({
   channel,
   selfUserID,
@@ -47,20 +83,19 @@ export function VoiceCallPanel({
   roster,
   keyReady,
 }: Props) {
-  const callRef = useRef<VoiceCall | null>(null);
-  const [phase, setPhase] = useState<"idle" | "joining" | "in-call">("idle");
-  const [error, setError] = useState<string | null>(null);
-  const [tiles, setTiles] = useState<Record<string, RemoteTile>>({});
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [muted, setMuted] = useState(false);
-  const [camOn, setCamOn] = useState(false);
-  const [withVideo, setWithVideo] = useState(false);
-  const [relayOnly, setRelayOnly] = useState(false);
-  // 30-4c: diagnostics drawer (ICE/TURN troubleshooting for every user, not
-  // just console readers). Stats poll only while the drawer is open.
+  const snap = useVoiceSession();
+  // 30-5 stage focus: null = automatic; a key = user-pinned. View-local --
+  // pinning is a "what am I looking at" concern, not call state.
+  const [pinnedKey, setPinnedKey] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
   const [diag, setDiag] = useState<VoiceDiagnostics | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const selfKey = selfUserID + ":" + selfDeviceID;
+  const hereInCall = snap.phase === "in-call" && snap.channelID === channel.id;
+  const hereJoining = snap.phase === "joining" && snap.channelID === channel.id;
+  const elsewhere = snap.phase !== "idle" && snap.channelID !== channel.id;
 
   const handleFor = (userID: string): string => {
     if (userID === selfUserID) return "you";
@@ -68,380 +103,431 @@ export function VoiceCallPanel({
     return m?.handle || userID.slice(0, 8);
   };
 
-  // Route voice frames from App onto the live call. Subscribed for the
-  // panel's lifetime; the manager itself filters by channel + self.
-  useEffect(() => {
-    const unsub = voiceBus.subscribe((f) => callRef.current?.handleFrame(f));
-    return unsub;
-  }, []);
+  const rosterFor = (userID: string, deviceID: string): VoiceParticipant | undefined =>
+    roster.find((p) => p.userID === userID && p.deviceID === deviceID);
 
-  // Leaving by unmount: channel switch / logout tears the call down.
+  // Duration ticker while viewing the live room.
   useEffect(() => {
-    return () => {
-      void callRef.current?.leave();
-      callRef.current = null;
-    };
-  }, [channel.id]);
+    if (!hereInCall) return;
+    const id = window.setInterval(() => setNowTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [hereInCall]);
 
-  // 30-4c: poll diagnostics every 2s while the drawer is open and a call
-  // exists. Cheap: bounded event ring + one getStats() per peer per tick.
+  // Debug drawer poll: the 30-4c diagnostics blob (per-peer selected-pair
+  // stats + the event ring) refreshed while open. Passive getStats reads
+  // only (the Addendum D rule: nothing in-call may compete with media).
   useEffect(() => {
-    if (!debugOpen) return undefined;
-    let cancelled = false;
-    const tick = async () => {
-      const d = await callRef.current?.diagnostics();
-      if (!cancelled && d) setDiag(d);
+    if (!debugOpen || !hereInCall) return;
+    let live = true;
+    const poll = () => {
+      void voiceSession.diagnostics().then((d) => {
+        if (live) setDiag(d);
+      });
     };
-    void tick();
-    const id = window.setInterval(() => void tick(), 2000);
+    poll();
+    const id = window.setInterval(poll, DEBUG_STATS_INTERVAL_MS);
     return () => {
-      cancelled = true;
+      live = false;
       window.clearInterval(id);
     };
-  }, [debugOpen, phase]);
+  }, [debugOpen, hereInCall]);
 
-  const copyDiagnostics = async () => {
-    const d = await callRef.current?.diagnostics();
-    if (!d) return;
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(d, null, 2));
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setError("clipboard write failed — copy from the drawer instead");
-    }
-  };
-
-  const join = async () => {
-    if (phase !== "idle") return;
-    const ws = client.current;
-    const crypto_ = cc.current;
-    if (!ws || !ws.isOpen() || !crypto_) {
-      setError("not connected");
-      return;
-    }
-    setError(null);
-    setPhase("joining");
-    try {
-      const ident = await loadIdentity(selfUserID);
-      if (!ident) throw new Error("no local identity — complete identity setup first");
-      const call = new VoiceCall({
-        channelID: channel.id,
-        selfUserID,
-        selfDeviceID,
-        transport: {
-          request: (t, p) => client.current!.request(t, p),
-          send: (t, p, r) => client.current!.send(t, p, r),
-          isOpen: () => client.current?.isOpen() ?? false,
-        },
-        crypto: crypto_,
-        ed25519Private: ident.ed25519Private,
-        callbacks: {
-          onPeerStream: (key, userID, deviceID, stream) =>
-            setTiles((s) => ({
-              ...s,
-              [key]: { key, userID, deviceID, stream, connState: s[key]?.connState ?? "connecting" },
-            })),
-          onPeerGone: (key) =>
-            setTiles((s) => {
-              const { [key]: _gone, ...rest } = s;
-              return rest;
-            }),
-          onPeerState: (key, state) =>
-            setTiles((s) => (s[key] ? { ...s, [key]: { ...s[key], connState: state } } : s)),
-          onLocalStream: (stream) => setLocalStream(stream),
-          onError: (msg) => setError(msg),
-        },
-      });
-      callRef.current = call;
-      await call.join(withVideo);
-      setRelayOnly(call.relayOnly);
-      setCamOn(call.joinedWithVideo);
-      setMuted(false);
-      setPhase("in-call");
-    } catch (err) {
-      setError(String(err instanceof Error ? err.message : err));
-      void callRef.current?.leave();
-      callRef.current = null;
-      setPhase("idle");
-    }
-  };
-
-  const leave = async () => {
-    const call = callRef.current;
-    callRef.current = null;
-    setPhase("idle");
-    setTiles({});
-    setRelayOnly(false);
-    if (call) await call.leave();
-  };
-
-  const toggleMute = () => {
-    const call = callRef.current;
-    if (!call) return;
-    const next = !muted;
-    call.setMuted(next);
-    setMuted(next);
-  };
+  const join = (withVideo: boolean) =>
+    void voiceSession.join({
+      channelID: channel.id,
+      channelName: channel.name,
+      selfUserID,
+      selfDeviceID,
+      withVideo,
+      client,
+      cc,
+    });
 
   const toggleCam = () => {
-    const call = callRef.current;
-    if (!call) return;
-    if (!call.joinedWithVideo) {
-      setError("joined without a camera — leave and rejoin with camera to share video");
-      return;
+    if (!voiceSession.toggleCam()) {
+      // joined audio-only: adding a camera mid-call needs renegotiation (30-7).
+      voiceSession.clearError();
+      // Surface through the session error slot so it renders consistently.
+      // (Direct set: the session exposes no setter; reuse join-error styling.)
+      setLocalNote("joined without a camera — leave and rejoin with camera to share video");
     }
-    const next = !camOn;
-    if (call.setVideoEnabled(next)) setCamOn(next);
+  };
+  const [localNote, setLocalNote] = useState<string | null>(null);
+  useEffect(() => setLocalNote(null), [hereInCall, channel.id]);
+
+  const copyDiagnostics = async () => {
+    const blob = await voiceSession.diagnostics();
+    const report = {
+      generatedAt: new Date().toISOString(),
+      channelName: channel.name,
+      phase: snap.phase,
+      durationMs: snap.joinedAt ? Date.now() - snap.joinedAt : 0,
+      roster,
+      ...(blob ?? { channelID: channel.id, self: selfKey }),
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setLocalNote("clipboard write failed — copy from the console instead");
+      console.log("[chalk voice diagnostics]", report);
+    }
   };
 
-  const tileList = Object.values(tiles);
+  // ---- stage model (30-5) --------------------------------------------------
+  //
+  // One entry per participant the ROSTER says is in the room (self included),
+  // enriched with a media stream when the mesh has delivered one. A roster
+  // entry without a stream renders as "connecting…" -- the honest state.
+
+  interface StageTile {
+    key: string;
+    userID: string;
+    deviceID: string;
+    isSelf: boolean;
+    stream: MediaStream | null;
+    hasLiveVideo: boolean;
+    connState: string | null;
+    part?: VoiceParticipant;
+  }
+
+  const stageTiles: StageTile[] = useMemo(() => {
+    if (!hereInCall) return [];
+    const out: StageTile[] = [];
+    const seen = new Set<string>();
+    // Self first (stable slot in the strip).
+    out.push({
+      key: selfKey,
+      userID: selfUserID,
+      deviceID: selfDeviceID,
+      isSelf: true,
+      stream: snap.localStream,
+      hasLiveVideo:
+        snap.camOn &&
+        !!snap.localStream &&
+        snap.localStream.getVideoTracks().some((t) => t.enabled && t.readyState === "live"),
+      connState: null,
+      part: rosterFor(selfUserID, selfDeviceID),
+    });
+    seen.add(selfKey);
+    for (const p of roster) {
+      const key = p.userID + ":" + p.deviceID;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const t: SessionRemoteTile | undefined = snap.tiles[key];
+      out.push({
+        key,
+        userID: p.userID,
+        deviceID: p.deviceID,
+        isSelf: false,
+        stream: t?.stream ?? null,
+        hasLiveVideo:
+          !!t && t.stream.getVideoTracks().some((x) => x.readyState === "live"),
+        connState: t?.connState ?? "connecting",
+        part: p,
+      });
+    }
+    // A peer with media but (momentarily) missing from the roster -- push
+    // races. Show it rather than dropping video-with-no-tile on the floor.
+    for (const t of Object.values(snap.tiles)) {
+      if (seen.has(t.key)) continue;
+      out.push({
+        key: t.key,
+        userID: t.userID,
+        deviceID: t.deviceID,
+        isSelf: false,
+        stream: t.stream,
+        hasLiveVideo: t.stream.getVideoTracks().some((x) => x.readyState === "live"),
+        connState: t.connState,
+      });
+    }
+    return out;
+    // nowTick keeps hasLiveVideo honest as tracks start/stop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hereInCall, roster, snap.tiles, snap.localStream, snap.camOn, nowTick]);
+
+  const focusedKey: string | null = useMemo(() => {
+    if (stageTiles.length === 0) return null;
+    if (pinnedKey && stageTiles.some((t) => t.key === pinnedKey)) return pinnedKey;
+    const remoteVideo = stageTiles.find((t) => !t.isSelf && t.hasLiveVideo);
+    if (remoteVideo) return remoteVideo.key;
+    const remote = stageTiles.find((t) => !t.isSelf);
+    if (remote) return remote.key;
+    return stageTiles[0].key;
+  }, [stageTiles, pinnedKey]);
+
+  const focused = stageTiles.find((t) => t.key === focusedKey) ?? null;
+  const strip = stageTiles.filter((t) => t.key !== focusedKey);
+
+  // ---- render --------------------------------------------------------------
+
+  const duration = snap.joinedAt ? fmtDuration(Date.now() - snap.joinedAt) : "00:00";
+  void nowTick; // consumed by duration + stage recompute
+  const error = snap.error ?? localNote;
+
   return (
-    <div class="chalk-voice-panel" data-testid="voice-panel">
-      <div class="chalk-voice-controls">
-        {phase !== "in-call" ? (
-          <>
-            <button
-              class="chalk-btn"
-              disabled={phase === "joining" || !keyReady}
-              onClick={() => void join()}
-              data-testid="voice-join"
-            >
-              {phase === "joining" ? "joining…" : "Join voice"}
-            </button>
-            <label class="chalk-voice-camopt">
-              <input
-                type="checkbox"
-                checked={withVideo}
-                onChange={(e) => setWithVideo((e.target as HTMLInputElement).checked)}
-              />{" "}
-              with camera
-            </label>
-            {!keyReady && <span class="chalk-voice-note">waiting for channel key…</span>}
-          </>
-        ) : (
-          <>
-            <button class="chalk-btn" onClick={() => void leave()} data-testid="voice-leave">
-              Leave
-            </button>
-            <button class="chalk-btn" onClick={toggleMute}>
-              {muted ? "Unmute" : "Mute"}
-            </button>
-            <button class="chalk-btn" onClick={toggleCam}>
-              {camOn ? "Camera off" : "Camera on"}
-            </button>
-            {relayOnly && (
-              <span class="chalk-voice-relay" title="iceTransportPolicy=relay (CHALK_VOICE_FORCE_RELAY)">
+    <div class="chalk-voice-panel chalk-voice-panel--v5" data-testid="voice-panel">
+      {!hereInCall ? (
+        <div class="chalk-voice-lobby">
+          {elsewhere && (
+            <span class="chalk-voice-note" data-testid="voice-elsewhere">
+              connected to{" "}
+              <span class="chalk-chglyph chalk-chglyph--voice">
+                <ChannelGlyph type="voice" />
+              </span>
+              {snap.channelName || "another room"} — joining here moves you
+            </span>
+          )}
+          <button
+            class="chalk-btn chalk-voice-joinbtn"
+            disabled={hereJoining || !keyReady}
+            onClick={() => join(false)}
+            data-testid="voice-join"
+          >
+            {hereJoining ? "joining…" : "join voice"}
+          </button>
+          <button
+            class="chalk-btn chalk-voice-joinbtn"
+            disabled={hereJoining || !keyReady}
+            onClick={() => join(true)}
+            data-testid="voice-join-video"
+          >
+            join with camera
+          </button>
+          {!keyReady && <span class="chalk-voice-note">waiting for channel key…</span>}
+          {roster.length === 0 && keyReady && !elsewhere && (
+            <span class="chalk-voice-note">nobody in here yet — be the first</span>
+          )}
+        </div>
+      ) : (
+        <>
+          <div class="chalk-voice-stage" data-testid="voice-stage">
+            {focused && (
+              <div class="chalk-voice-big">
+                <StagePeer
+                  tile={focused}
+                  label={handleFor(focused.userID)}
+                  big
+                  onClick={() => setPinnedKey(null)}
+                />
+              </div>
+            )}
+            {strip.length > 0 && (
+              <div class="chalk-voice-strip" data-testid="voice-strip">
+                {strip.map((t) => (
+                  <StagePeer
+                    key={t.key}
+                    tile={t}
+                    label={handleFor(t.userID)}
+                    onClick={() => setPinnedKey(t.key)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div class="chalk-voice-bar" data-testid="voice-bar">
+            <span class="chalk-voice-duration" data-testid="voice-duration" title="call duration">
+              {duration}
+            </span>
+            {snap.relayOnly && (
+              <span
+                class="chalk-voice-relay"
+                title="iceTransportPolicy=relay (CHALK_VOICE_FORCE_RELAY)"
+              >
                 relay-only
               </span>
             )}
+            <span class="chalk-voice-bar-spacer" />
             <button
-              class="chalk-voice-debug-btn"
+              class={"chalk-btn chalk-voice-ctl" + (snap.muted ? " chalk-voice-ctl--off" : "")}
+              onClick={() => voiceSession.toggleMute()}
+              data-testid="voice-mute"
+              title={snap.muted ? "unmute microphone" : "mute microphone"}
+            >
+              {snap.muted ? "unmute" : "mute"}
+            </button>
+            <button
+              class={"chalk-btn chalk-voice-ctl" + (!snap.camOn ? " chalk-voice-ctl--off" : "")}
+              onClick={toggleCam}
+              data-testid="voice-cam"
+              title={snap.camOn ? "turn camera off" : "turn camera on"}
+            >
+              {snap.camOn ? "cam off" : "cam on"}
+            </button>
+            <button
+              class={"chalk-btn chalk-voice-ctl" + (debugOpen ? " chalk-voice-ctl--on" : "")}
               onClick={() => setDebugOpen((v) => !v)}
-              title="connection diagnostics (ICE/TURN)"
-              data-testid="voice-debug"
+              data-testid="voice-debug-toggle"
+              title="signaling + transport diagnostics"
             >
               debug
             </button>
-          </>
-        )}
-      </div>
+            <button
+              class="chalk-btn chalk-voice-ctl chalk-voice-ctl--leave"
+              onClick={() => void voiceSession.leave()}
+              data-testid="voice-leave"
+            >
+              leave
+            </button>
+          </div>
 
-      {error && <div class="chalk-voice-error">{error}</div>}
+          {debugOpen && (
+            <div class="chalk-voice-drawer" data-testid="voice-debug-drawer">
+              <div class="chalk-voice-drawer-head">
+                <span class="chalk-voice-drawer-title">diagnostics</span>
+                <button class="chalk-btn chalk-voice-ctl" onClick={() => void copyDiagnostics()}>
+                  {copied ? "copied ✓" : "copy report"}
+                </button>
+              </div>
+              <div class="chalk-voice-drawer-stats">
+                {(!diag || diag.peers.length === 0) && (
+                  <div class="chalk-voice-note">no live peer connections</div>
+                )}
+                {diag?.peers.map((p) => (
+                  <div class="chalk-voice-drawer-pair" key={p.key}>
+                    <span class="chalk-voice-drawer-peer">
+                      {handleFor(p.key.split(":")[0])}
+                    </span>{" "}
+                    {p.connectionState}/{p.iceConnectionState}
+                    {p.pair && (
+                      <>
+                        {" · "}
+                        {p.pair.localType}
+                        {p.pair.localAddr ? `(${p.pair.localAddr})` : ""} ⇄ {p.pair.remoteType}
+                        {p.pair.remoteAddr ? `(${p.pair.remoteAddr})` : ""}
+                        {" · "}
+                        {p.pair.protocol}
+                        {p.pair.rttMs !== undefined && ` · rtt ${p.pair.rttMs}ms`}
+                        {p.pair.availableOutgoingKbps !== undefined &&
+                          ` · out≈${p.pair.availableOutgoingKbps}kbps`}
+                        {p.pair.bytesSent !== undefined && p.pair.bytesReceived !== undefined && (
+                          <>
+                            {" · "}↑{Math.round(p.pair.bytesSent / 1024)}KiB ↓
+                            {Math.round(p.pair.bytesReceived / 1024)}KiB
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div class="chalk-voice-drawer-events" data-testid="voice-debug-events">
+                {(!diag || diag.events.length === 0) && (
+                  <div class="chalk-voice-note">no events yet</div>
+                )}
+                {diag?.events
+                  .slice()
+                  .reverse()
+                  .map((e) => (
+                    <div class="chalk-voice-drawer-event" key={e.t + e.msg}>
+                      <span class="chalk-voice-drawer-time">
+                        {new Date(e.t).toTimeString().slice(0, 8)}
+                      </span>{" "}
+                      {e.msg}
+                    </div>
+                  ))}
+              </div>
+              <div class="chalk-voice-drawer-hint">
+                deep inspection: open <code>chrome://webrtc-internals</code> (or{" "}
+                <code>brave://webrtc-internals</code>) in a new tab
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
-      {roster.length > 0 && (
-        <div class="chalk-voice-roster" data-testid="voice-roster">
-          {roster.map((p) => (
-            <span class="chalk-voice-occupant" key={p.userID + ":" + p.deviceID}>
-              {handleFor(p.userID)}
-              {p.muted ? " 🔇" : ""}
-              {p.videoOn ? " 🎥" : ""}
-            </span>
-          ))}
+      {error && (
+        <div class="chalk-voice-error" data-testid="voice-error">
+          {describeJoinError(error)}
         </div>
       )}
+    </div>
+  );
 
-      {phase === "in-call" && (() => {
-        // Honest tiles: a roster occupant without a media stream yet renders
-        // as "connecting to X…" -- "nobody else here yet" ONLY when the room
-        // is genuinely just us. (The old unconditional text was misleading
-        // whenever peers were present but media hadn't connected.)
-        const others = roster.filter(
-          (p) => !(p.userID === selfUserID && p.deviceID === selfDeviceID),
-        );
-        const pending = others.filter(
-          (p) => !tiles[p.userID + ":" + p.deviceID],
-        );
-        return (
-          <div class="chalk-voice-tiles">
-            {localStream && camOn && (
-              <VideoTile stream={localStream} label="you" muted mirrored />
-            )}
-            {tileList.map((t) => (
-              <RemoteMedia key={t.key} tile={t} label={handleFor(t.userID)} />
-            ))}
-            {pending.map((p) => (
-              <div class="chalk-voice-note" key={"pend-" + p.userID + p.deviceID}>
-                connecting to {handleFor(p.userID)}…
-              </div>
-            ))}
-            {others.length === 0 && (
-              <div class="chalk-voice-note">nobody else here yet</div>
-            )}
+  // StagePeer stays inside the component body so it can use handleFor
+  // without prop-drilling. NO AudioSink here (VoiceDock owns audio).
+  function StagePeer({
+    tile,
+    label,
+    big,
+    onClick,
+  }: {
+    tile: StageTile;
+    label: string;
+    big?: boolean;
+    onClick?: () => void;
+  }) {
+    return (
+      <div
+        class={
+          "chalk-voice-peer" +
+          (big ? " chalk-voice-peer--big" : " chalk-voice-peer--strip") +
+          (tile.isSelf ? " chalk-voice-peer--self" : "")
+        }
+        data-testid={big ? "voice-tile-big" : "voice-tile"}
+        data-peer={tile.key}
+        onClick={onClick}
+        role={onClick ? "button" : undefined}
+        tabIndex={onClick ? 0 : undefined}
+        onKeyDown={
+          onClick
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onClick();
+                }
+              }
+            : undefined
+        }
+        title={big ? label : `${label} — click to focus`}
+      >
+        {tile.hasLiveVideo && tile.stream ? (
+          <VideoSurface stream={tile.stream} mirrored={tile.isSelf} />
+        ) : (
+          <div class="chalk-voice-avatar" aria-hidden="true">
+            {(label === "you" ? handleForSelfInitial() : label).slice(0, 1).toUpperCase()}
           </div>
-        );
-      })()}
-
-      {debugOpen && (
-        <VoiceDebugDrawer
-          diag={diag}
-          copied={copied}
-          onCopy={() => void copyDiagnostics()}
-          handleFor={handleFor}
-        />
-      )}
-    </div>
-  );
-}
-
-// RemoteMedia renders a peer: always a hidden autoplay <audio> (sound must
-// flow even without video), plus a <video> tile when the stream carries a
-// live video track.
-function RemoteMedia({ tile, label }: { tile: RemoteTile; label: string }) {
-  const hasVideo = tile.stream.getVideoTracks().length > 0;
-  return (
-    <div class="chalk-voice-tile">
-      <AudioSink stream={tile.stream} />
-      {hasVideo ? (
-        <VideoTile stream={tile.stream} label={label} />
-      ) : (
-        <div class="chalk-voice-audioonly">{label}</div>
-      )}
-      <div class="chalk-voice-tile-state">
-        {label} · {tile.connState}
+        )}
+        <div class="chalk-voice-peer-label">
+          <span class="chalk-voice-peer-name">{label}</span>
+          {tile.part?.muted && <span class="chalk-voice-peer-flag" title="muted">m</span>}
+          {tile.part?.videoOn && <span class="chalk-voice-peer-flag" title="camera on">c</span>}
+          {tile.part?.screenOn && (
+            <span class="chalk-voice-peer-flag" title="sharing screen">s</span>
+          )}
+          {!tile.isSelf && tile.connState && tile.connState !== "connected" && (
+            <span class="chalk-voice-peer-conn">{tile.connState}…</span>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  function handleForSelfInitial(): string {
+    const m = (channel.members ?? []).find((x) => x.userID === selfUserID);
+    return m?.handle || "y";
+  }
 }
 
-function AudioSink({ stream }: { stream: MediaStream }) {
-  const ref = useRef<HTMLAudioElement | null>(null);
-  useEffect(() => {
-    if (ref.current && ref.current.srcObject !== stream) {
-      ref.current.srcObject = stream;
-    }
-  }, [stream]);
-  return <audio ref={ref} autoPlay style={{ display: "none" }} />;
-}
-
-function VideoTile({
-  stream,
-  label,
-  muted,
-  mirrored,
-}: {
-  stream: MediaStream;
-  label: string;
-  muted?: boolean;
-  mirrored?: boolean;
-}) {
+function VideoSurface({ stream, mirrored }: { stream: MediaStream; mirrored?: boolean }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
     if (ref.current && ref.current.srcObject !== stream) {
       ref.current.srcObject = stream;
     }
   }, [stream]);
+  // ALWAYS muted: remote audio flows exclusively through VoiceDock's sinks
+  // (one output path), and self-video must never loop back the mic.
   return (
     <video
       ref={ref}
       class={"chalk-voice-video" + (mirrored ? " chalk-voice-video-mirrored" : "")}
       autoPlay
       playsInline
-      muted={!!muted}
-      title={label}
+      muted
     />
   );
 }
 
-// ---- 30-4c: diagnostics drawer ----------------------------------------------
-//
-// Renders the VoiceCall's structured event ring + live getStats() snapshots
-// so ANY user can troubleshoot ICE/TURN without opening the console, and can
-// hand a complete bug report over with one click ("copy diagnostics").
-// webrtc-internals is referenced as copyable text: browsers refuse to
-// navigate to chrome:// / brave:// URLs from page links by design.
-
-function fmtBytes(n?: number): string {
-  if (n === undefined) return "-";
-  if (n > 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
-  if (n > 1024) return (n / 1024).toFixed(1) + " kB";
-  return n + " B";
-}
-
-function PeerDiagRow({ p, label }: { p: VoicePeerDiag; label: string }) {
-  return (
-    <div class="chalk-voice-diag-peer">
-      <div>
-        <b>{label}</b> · conn={p.connectionState} ice={p.iceConnectionState} gather=
-        {p.iceGatheringState} signaling={p.signalingState}
-      </div>
-      {p.pair ? (
-        <div>
-          pair: {p.pair.localType} {p.pair.localAddr} ⇄ {p.pair.remoteType}{" "}
-          {p.pair.remoteAddr} ({p.pair.protocol})
-          {p.pair.rttMs !== undefined && <> · rtt {p.pair.rttMs}ms</>}
-          {" · "}↑{fmtBytes(p.pair.bytesSent)} ↓{fmtBytes(p.pair.bytesReceived)}
-          {p.pair.availableOutgoingKbps !== undefined && (
-            <> · uplink ~{p.pair.availableOutgoingKbps} kbps</>
-          )}
-        </div>
-      ) : (
-        <div>no selected candidate pair yet (ICE not connected)</div>
-      )}
-    </div>
-  );
-}
-
-function VoiceDebugDrawer({
-  diag,
-  copied,
-  onCopy,
-  handleFor,
-}: {
-  diag: VoiceDiagnostics | null;
-  copied: boolean;
-  onCopy: () => void;
-  handleFor: (userID: string) => string;
-}) {
-  if (!diag) {
-    return <div class="chalk-voice-diag">collecting diagnostics…</div>;
-  }
-  return (
-    <div class="chalk-voice-diag" data-testid="voice-diag">
-      <div class="chalk-voice-diag-head">
-        <span>
-          relay-only={String(diag.forceRelay)} · ice: {diag.iceServerURLs.join(", ") || "(none)"}
-        </span>
-        <button class="chalk-voice-debug-btn" onClick={onCopy}>
-          {copied ? "copied ✓" : "copy diagnostics"}
-        </button>
-      </div>
-      <div class="chalk-voice-diag-hint">
-        deep inspection: open <code>chrome://webrtc-internals</code> (Brave:{" "}
-        <code>brave://webrtc-internals</code>) in a new tab — internal pages can't be
-        linked from here.
-      </div>
-      {diag.peers.length === 0 && <div>no peer connections</div>}
-      {diag.peers.map((p) => (
-        <PeerDiagRow key={p.key} p={p} label={handleFor(p.key.split(":")[0] ?? "")} />
-      ))}
-      <div class="chalk-voice-diag-events">
-        {diag.events.map((e, i) => (
-          <div key={i}>
-            {new Date(e.t).toLocaleTimeString()} {e.msg}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}

@@ -34,6 +34,9 @@ export interface WelcomePayload {
   device_id: string;
   handle: string; // phase 08c; empty for anonymous/legacy
   channels: string[];
+  // 30-6: server feature flag (CHALK_VOICE_ENABLED). Absent from older
+  // servers -> voice UI hidden (the safe default).
+  voice_enabled?: boolean;
 }
 
 export interface SendPayload {

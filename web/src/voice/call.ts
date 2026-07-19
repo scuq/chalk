@@ -123,6 +123,33 @@ function peerKey(userID: string, deviceID: string): string {
   return `${userID}:${deviceID}`;
 }
 
+/**
+ * describeMediaError (30-6): turn getUserMedia's DOMException zoo into a
+ * sentence a person can act on. The raw names (NotAllowedError & co.) mean
+ * nothing to most users; the fix is almost always a browser permission
+ * toggle or a missing/busy device.
+ */
+function describeMediaError(device: "microphone" | "camera", err: unknown): string {
+  const name = (err as DOMException)?.name ?? "";
+  switch (name) {
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+      return `${device} permission denied — allow ${device} access for this site in the browser, then rejoin`;
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return `no ${device} found — plug one in (or pick one in the OS sound settings), then rejoin`;
+    case "NotReadableError":
+    case "TrackStartError":
+      return `${device} is busy or unreadable — another app may be using it`;
+    case "OverconstrainedError":
+      return `${device} does not support the requested settings`;
+    case "SecurityError":
+      return `${device} access blocked — voice needs a secure (https) origin`;
+    default:
+      return `${device} access failed: ${String((err as Error)?.message ?? err)}`;
+  }
+}
+
 // ---- diagnostics (30-4c) ----------------------------------------------------
 //
 // ICE/TURN failures are the hardest thing a user will ever have to explain in
@@ -274,12 +301,14 @@ export class VoiceCall {
         try {
           this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           this.hasVideo = false;
-          this.o.callbacks.onError("camera unavailable — joined audio-only");
+          this.o.callbacks.onError(
+            describeMediaError("camera", err) + " — joined audio-only",
+          );
         } catch (err2) {
-          throw new Error("microphone access denied: " + String(err2));
+          throw new Error(describeMediaError("microphone", err2));
         }
       } else {
-        throw new Error("microphone access denied: " + String(err));
+        throw new Error(describeMediaError("microphone", err));
       }
     }
     this.videoEnabled = this.hasVideo;
@@ -302,6 +331,12 @@ export class VoiceCall {
       `join ack: roster=${(ack.roster ?? []).length} ice_servers=${this.iceServers.length}` +
         ` force_relay=${this.forceRelay}`,
     );
+    // 30-6 mute/video sync: the server inserts the participant row with
+    // video_on=false. A camera join must immediately broadcast its real
+    // flags or every other member's roster badges (sidebar + tiles) lie
+    // until the first manual toggle. Audio-only joins match the defaults,
+    // so skip the round-trip.
+    if (this.hasVideo) this.broadcastState();
 
     // Glare-free: the joiner (us) offers to exactly the ack roster.
     for (const p of ack.roster ?? []) {

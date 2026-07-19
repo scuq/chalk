@@ -17,13 +17,16 @@ import { FriendPicker } from "./FriendPicker";
 interface Props {
   friends: Friend[];
   loading: boolean;
+  // 30-6: server feature flag. When false the voice option is hidden --
+  // the server would reject the join anyway (CHALK_VOICE_ENABLED).
+  voiceEnabled: boolean;
   onClose: () => void;
   // 30-4: voice=true creates a Discord-style voice room (channel_type=
   // 'voice'). Mutually exclusive with DM (the server rejects voice DMs).
   onSubmit: (name: string, isDM: boolean, memberIDs: string[], voice: boolean) => void;
 }
 
-export function CreateChannelModal({ friends, loading, onClose, onSubmit }: Props) {
+export function CreateChannelModal({ friends, loading, voiceEnabled, onClose, onSubmit }: Props) {
   const [name, setName] = useState("");
   const [isDM, setIsDM] = useState(false);
   const [voice, setVoice] = useState(false); // 30-4
@@ -117,7 +120,7 @@ export function CreateChannelModal({ friends, loading, onClose, onSubmit }: Prop
             <span>direct message (1:1)</span>
           </label>
 
-          {!isDM && (
+          {!isDM && voiceEnabled && (
             <label class="chalk-field chalk-field--checkbox">
               <input
                 type="checkbox"

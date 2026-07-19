@@ -129,6 +129,10 @@ type WelcomePayload struct {
 	Role             string    `json:"role,omitempty"`
 	SessionExpiresAt time.Time `json:"session_expires_at,omitempty"`
 	EmailVerified    bool      `json:"email_verified,omitempty"`
+	// Phase 30 (30-6): feature-flag echo so the SPA can gate voice UI
+	// (join buttons, the create-modal voice checkbox, roster fetches)
+	// without a doomed round-trip. Mirrors CHALK_VOICE_ENABLED.
+	VoiceEnabled bool `json:"voice_enabled,omitempty"`
 }
 
 // SendPayload is a plaintext message in phase 04. From phase 10 onwards the

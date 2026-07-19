@@ -176,6 +176,31 @@ func (s *Store) LeaveVoice(
 	return tag.RowsAffected() > 0, nil
 }
 
+// --- EvictVoiceByUser (30-6) -------------------------------------------------
+
+// EvictVoiceByUser removes EVERY voice_participants row a user holds in one
+// channel and returns the deleted rows so the caller can fan out "left"
+// pushes -- the removed-member cascade (design §9: a member removed from the
+// channel must not linger in its voice room). Device-agnostic on purpose:
+// v1 rejects multi-device joins, but the cascade must clear whatever exists.
+// Idempotent: evicting a user with no rows returns an empty slice.
+func (s *Store) EvictVoiceByUser(
+	ctx context.Context,
+	channelID, userID uuid.UUID,
+) ([]VoiceParticipant, error) {
+	rows, err := s.Pool.Query(ctx,
+		`DELETE FROM voice_participants
+		  WHERE channel_id = $1 AND user_id = $2
+		  RETURNING channel_id, user_id, device_id, conn_id, joined_at, muted, video_on, screen_on`,
+		channelID, userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("evict voice by user: %w", err)
+	}
+	defer rows.Close()
+	return scanVoiceParticipants(rows)
+}
+
 // --- VoiceRoster ------------------------------------------------------------
 
 // VoiceRoster returns the live occupants of channelID, oldest joiner first

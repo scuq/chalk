@@ -26,6 +26,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case "welcome":
       return {
         ...state,
+        voiceEnabled: action.voiceEnabled, // 30-6
         user: {
           id: action.userID,
           device: action.deviceID,

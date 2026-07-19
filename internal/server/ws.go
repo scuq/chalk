@@ -329,6 +329,8 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Handle:   handle,
 		Channels: channelIDs,
 	}
+	// 30-6: tell the SPA whether voice is live on this server.
+	welcomePayload.VoiceEnabled = h.cfg.Voice.Enabled
 	if sessionUser != nil {
 		welcomePayload.Username = sessionUser.Username
 		welcomePayload.DisplayName = sessionUser.DisplayName
@@ -2898,6 +2900,13 @@ func (h *WSHandler) handleRemoveMember(
 		}
 		return
 	}
+
+	// 30-6 removed-member cascade: a removed member must also vacate the
+	// channel's voice room. Do it right after the membership delete so the
+	// "left" pushes land before (or with) the member_removed channel event.
+	// (Admin BLOCK needs no equivalent: blocking kicks the user's WS, and
+	// the disconnect path already deletes their voice rows by conn_id.)
+	h.evictVoiceOnMemberRemoval(ctx, channelID, targetID)
 
 	ack, _ := proto.NewFrame(proto.TypeRemoveMemberAck, f.Ref, proto.RemoveMemberAckPayload{
 		ChannelID: p.ChannelID,

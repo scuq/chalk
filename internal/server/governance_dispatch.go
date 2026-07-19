@@ -86,6 +86,8 @@ func (h *WSHandler) planExecution(ctx context.Context, p store.Proposal) (string
 				h.logger.Printf("gov: remove_member %s exec: %v", p.ID, err)
 				return
 			}
+			// 30-6: cascade the removal into the channel's voice room.
+			h.evictVoiceOnMemberRemoval(ctx, p.ChannelID, target)
 			h.pushMemberRemoved(ctx, p.ChannelID, target)
 		}
 

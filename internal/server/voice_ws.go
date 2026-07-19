@@ -526,3 +526,32 @@ func (h *WSHandler) voiceDisconnect(conn *Conn) {
 		})
 	}
 }
+
+// ---- removed-member cascade (30-6) -----------------------------------------
+
+// evictVoiceOnMemberRemoval clears a just-removed member out of the channel's
+// voice room and fans "left" to the REMAINING members (the removed user is no
+// longer a channel member, so pushVoiceToMembers naturally excludes them --
+// their own client tears the call down locally when the channel disappears).
+// Best-effort: a failed eviction is logged, never surfaced to the remover;
+// the orphan janitor is the backstop.
+func (h *WSHandler) evictVoiceOnMemberRemoval(
+	ctx context.Context,
+	channelID, targetID uuid.UUID,
+) {
+	if h.store == nil || !h.cfg.Voice.Enabled {
+		return
+	}
+	gone, err := h.store.EvictVoiceByUser(ctx, channelID, targetID)
+	if err != nil {
+		h.logger.Printf("voice evict on removal (%s in %s): %v", targetID, channelID, err)
+		return
+	}
+	for _, p := range gone {
+		h.pushVoiceToMembers(ctx, p.ChannelID, "left", proto.VoiceParticipantLeftPayload{
+			ChannelID: p.ChannelID.String(),
+			UserID:    p.UserID.String(),
+			DeviceID:  p.DeviceID.String(),
+		})
+	}
+}
