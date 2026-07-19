@@ -268,6 +268,26 @@ func (s *Server) Serve(ctx context.Context) error {
 		}()
 	}
 
+	// 30-2: voice orphan janitor. Sweeps voice_participants rows whose conn
+	// died without Unregister (process crash / netsplit). Instance-scoped:
+	// conn_id rows are "<instanceID>:<connID>" and the sweep only touches
+	// this instance's prefix, against the hub's live-conn snapshot.
+	if s.store != nil && s.hub != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			prefix := s.instanceID + ":"
+			liveConns := func() []string {
+				out := make([]string, 0, 64)
+				s.hub.ForEachConn(func(c *Conn) {
+					out = append(out, prefix+c.ID)
+				})
+				return out
+			}
+			s.store.VoiceJanitorLoop(bgCtx, prefix, time.Minute, 2*time.Minute, liveConns, s.logger.Printf)
+		}()
+	}
+
 	// gov-1b-2: governance expiry sweeper. Resolves proposals whose voting
 	// window closed without an early lock.
 	if s.store != nil && s.wsh != nil {
@@ -389,6 +409,9 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 	case "governance":
 		// gov-1b-1: proposal lifecycle + mode-change pushes.
 		s.handleGovernanceEvent(ev)
+	case "voice":
+		// 30-2: voice roster deltas + relayed signaling.
+		s.handleVoiceEvent(ev)
 	case "prefs":
 		// Phase 9.7a:
 		s.handlePrefsEvent(ev)

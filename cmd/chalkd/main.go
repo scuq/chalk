@@ -223,6 +223,21 @@ func run(args []string) error {
 
 	wsCfg := server.DefaultWSConfig()
 	wsCfg.AttachMaxPerMessage = cfg.Attachments.MaxPerMessage
+	// 30-2: voice signaling knobs.
+	wsCfg.Voice = server.VoiceWSConfig{
+		Enabled:         cfg.Voice.Enabled,
+		MaxParticipants: cfg.Voice.MaxParticipants,
+		ForceRelay:      cfg.Voice.ForceRelay,
+		TurnURLs:        cfg.Voice.TurnURLList(),
+		TurnSecret:      cfg.Voice.TurnSecret,
+		TurnTTL:         cfg.Voice.TurnTTL(),
+		StunURLs:        cfg.Voice.StunURLList(),
+	}
+	if cfg.Voice.Enabled {
+		log.Printf("voice: enabled max_participants=%d force_relay=%v turn_urls=%d stun_urls=%d ttl=%s",
+			cfg.Voice.MaxParticipants, cfg.Voice.ForceRelay,
+			len(cfg.Voice.TurnURLList()), len(cfg.Voice.StunURLList()), cfg.Voice.TurnTTL())
+	}
 	srv, err := server.NewServer(server.Options{
 		Listen:             cfg.Listen,
 		Store:              st,

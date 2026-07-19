@@ -33,6 +33,10 @@ type WSConfig struct {
 	// (CHALK_ATTACH_MAX_PER_MESSAGE). 0 falls back to a safe default in the
 	// send handler.
 	AttachMaxPerMessage int
+
+	// 30-2: voice signaling knobs (CHALK_VOICE_* / CHALK_TURN_*), populated
+	// in cmd/chalkd from config.VoiceConfig. Zero-value = voice disabled.
+	Voice VoiceWSConfig
 }
 
 // DefaultWSConfig returns production defaults.
@@ -257,6 +261,10 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h.hub.Register(conn)
 	defer h.hub.Unregister(conn)
+	// 30-2: voice teardown -- drop this conn's voice_participants rows and
+	// fan "left" per vacated room. Deferred after Unregister registration so
+	// it runs BEFORE it (LIFO), while the conn is still hub-known.
+	defer h.voiceDisconnect(conn)
 
 	// Phase 08: subscribe to per-channel NOTIFY topics for every
 	// channel this user is a member of. Each Subscribe is refcounted
@@ -522,6 +530,18 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleCancelProposal(ctx, c, conn, f)
 		case proto.TypeGovList:
 			h.handleListProposals(ctx, c, conn, f)
+
+		// 30-2: voice signaling.
+		case proto.TypeVoiceJoin:
+			h.handleVoiceJoin(ctx, c, conn, f)
+		case proto.TypeVoiceLeave:
+			h.handleVoiceLeave(ctx, c, conn, f)
+		case proto.TypeVoiceRoster:
+			h.handleVoiceRoster(ctx, c, conn, f)
+		case proto.TypeVoiceSignal:
+			h.handleVoiceSignal(ctx, c, conn, f)
+		case proto.TypeVoiceState:
+			h.handleVoiceState(ctx, c, conn, f)
 
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,

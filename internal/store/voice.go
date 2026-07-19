@@ -287,17 +287,21 @@ func (s *Store) DeleteVoiceParticipantsByConn(
 // what to fan out (30-2 wires the loop with the hub's live-conn snapshot).
 func (s *Store) SweepVoiceOrphans(
 	ctx context.Context,
+	instancePrefix string,
 	liveConnIDs []string,
 	minAge time.Duration,
 ) (int64, error) {
 	if liveConnIDs == nil {
 		liveConnIDs = []string{}
 	}
+	// 30-2: conn_id is instance-prefixed; sweep only THIS instance's rows so
+	// a multi-instance deploy can't reap another instance's live calls.
 	tag, err := s.Pool.Exec(ctx,
 		`DELETE FROM voice_participants
-		  WHERE joined_at < now() - $2::interval
+		  WHERE joined_at < now() - $3::interval
+		    AND conn_id LIKE $2 || '%'
 		    AND conn_id <> ALL($1)`,
-		liveConnIDs, minAge.String(),
+		liveConnIDs, instancePrefix, minAge.String(),
 	)
 	if err != nil {
 		return 0, fmt.Errorf("sweep voice orphans: %w", err)
@@ -312,6 +316,7 @@ func (s *Store) SweepVoiceOrphans(
 // posture as OrphanAttachmentJanitorLoop.
 func (s *Store) VoiceJanitorLoop(
 	ctx context.Context,
+	instancePrefix string,
 	interval, minAge time.Duration,
 	liveConns func() []string,
 	logf func(string, ...any),
@@ -331,7 +336,7 @@ func (s *Store) VoiceJanitorLoop(
 	sweep := func() {
 		cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		n, err := s.SweepVoiceOrphans(cctx, liveConns(), minAge)
+		n, err := s.SweepVoiceOrphans(cctx, instancePrefix, liveConns(), minAge)
 		if err != nil {
 			logf("voice janitor: %v", err)
 			return
