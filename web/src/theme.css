@@ -4047,3 +4047,56 @@ html, body {
   font-size: 11px;
   color: var(--chalk-fg-dim);
 }
+
+/* ---- 30-4c: voice diagnostics drawer ----------------------------------- */
+
+.chalk-voice-debug-btn {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--chalk-fg-dim);
+  background: transparent;
+  border: 1px dotted var(--chalk-border);
+  padding: 1px 5px;
+  cursor: pointer;
+}
+
+.chalk-voice-debug-btn:hover {
+  color: var(--chalk-fg);
+}
+
+.chalk-voice-diag {
+  margin-top: var(--chalk-s2);
+  border: 1px dotted var(--chalk-border);
+  padding: var(--chalk-s2);
+  font-size: 11px;
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-voice-diag-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--chalk-s2);
+  flex-wrap: wrap;
+}
+
+.chalk-voice-diag-hint {
+  margin: var(--chalk-s1, 4px) 0;
+}
+
+.chalk-voice-diag-peer {
+  margin: var(--chalk-s1, 4px) 0;
+  padding: 2px 0;
+  border-top: 1px dotted var(--chalk-border);
+}
+
+.chalk-voice-diag-events {
+  margin-top: var(--chalk-s2);
+  max-height: 160px;
+  overflow-y: auto;
+  font-family: inherit;
+  white-space: nowrap;
+  border-top: 1px dotted var(--chalk-border);
+  padding-top: 2px;
+}

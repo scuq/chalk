@@ -15,7 +15,7 @@ import type { WSClient } from "../ws-client";
 import type { ChannelCrypto } from "../crypto/channel-crypto";
 import { loadIdentity } from "../crypto/idb";
 import { voiceBus } from "../voice/bus";
-import { VoiceCall } from "../voice/call";
+import { VoiceCall, type VoicePeerDiag, type VoiceDiagnostics } from "../voice/call";
 
 interface RemoteTile {
   key: string;
@@ -56,6 +56,11 @@ export function VoiceCallPanel({
   const [camOn, setCamOn] = useState(false);
   const [withVideo, setWithVideo] = useState(false);
   const [relayOnly, setRelayOnly] = useState(false);
+  // 30-4c: diagnostics drawer (ICE/TURN troubleshooting for every user, not
+  // just console readers). Stats poll only while the drawer is open.
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [diag, setDiag] = useState<VoiceDiagnostics | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const handleFor = (userID: string): string => {
     if (userID === selfUserID) return "you";
@@ -77,6 +82,35 @@ export function VoiceCallPanel({
       callRef.current = null;
     };
   }, [channel.id]);
+
+  // 30-4c: poll diagnostics every 2s while the drawer is open and a call
+  // exists. Cheap: bounded event ring + one getStats() per peer per tick.
+  useEffect(() => {
+    if (!debugOpen) return undefined;
+    let cancelled = false;
+    const tick = async () => {
+      const d = await callRef.current?.diagnostics();
+      if (!cancelled && d) setDiag(d);
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [debugOpen, phase]);
+
+  const copyDiagnostics = async () => {
+    const d = await callRef.current?.diagnostics();
+    if (!d) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(d, null, 2));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("clipboard write failed — copy from the drawer instead");
+    }
+  };
 
   const join = async () => {
     if (phase !== "idle") return;
@@ -201,6 +235,14 @@ export function VoiceCallPanel({
                 relay-only
               </span>
             )}
+            <button
+              class="chalk-voice-debug-btn"
+              onClick={() => setDebugOpen((v) => !v)}
+              title="connection diagnostics (ICE/TURN)"
+              data-testid="voice-debug"
+            >
+              debug
+            </button>
           </>
         )}
       </div>
@@ -219,18 +261,44 @@ export function VoiceCallPanel({
         </div>
       )}
 
-      {phase === "in-call" && (
-        <div class="chalk-voice-tiles">
-          {localStream && camOn && (
-            <VideoTile stream={localStream} label="you" muted mirrored />
-          )}
-          {tileList.map((t) => (
-            <RemoteMedia key={t.key} tile={t} label={handleFor(t.userID)} />
-          ))}
-          {tileList.length === 0 && (
-            <div class="chalk-voice-note">nobody else here yet</div>
-          )}
-        </div>
+      {phase === "in-call" && (() => {
+        // Honest tiles: a roster occupant without a media stream yet renders
+        // as "connecting to X…" -- "nobody else here yet" ONLY when the room
+        // is genuinely just us. (The old unconditional text was misleading
+        // whenever peers were present but media hadn't connected.)
+        const others = roster.filter(
+          (p) => !(p.userID === selfUserID && p.deviceID === selfDeviceID),
+        );
+        const pending = others.filter(
+          (p) => !tiles[p.userID + ":" + p.deviceID],
+        );
+        return (
+          <div class="chalk-voice-tiles">
+            {localStream && camOn && (
+              <VideoTile stream={localStream} label="you" muted mirrored />
+            )}
+            {tileList.map((t) => (
+              <RemoteMedia key={t.key} tile={t} label={handleFor(t.userID)} />
+            ))}
+            {pending.map((p) => (
+              <div class="chalk-voice-note" key={"pend-" + p.userID + p.deviceID}>
+                connecting to {handleFor(p.userID)}…
+              </div>
+            ))}
+            {others.length === 0 && (
+              <div class="chalk-voice-note">nobody else here yet</div>
+            )}
+          </div>
+        );
+      })()}
+
+      {debugOpen && (
+        <VoiceDebugDrawer
+          diag={diag}
+          copied={copied}
+          onCopy={() => void copyDiagnostics()}
+          handleFor={handleFor}
+        />
       )}
     </div>
   );
@@ -292,5 +360,88 @@ function VideoTile({
       muted={!!muted}
       title={label}
     />
+  );
+}
+
+// ---- 30-4c: diagnostics drawer ----------------------------------------------
+//
+// Renders the VoiceCall's structured event ring + live getStats() snapshots
+// so ANY user can troubleshoot ICE/TURN without opening the console, and can
+// hand a complete bug report over with one click ("copy diagnostics").
+// webrtc-internals is referenced as copyable text: browsers refuse to
+// navigate to chrome:// / brave:// URLs from page links by design.
+
+function fmtBytes(n?: number): string {
+  if (n === undefined) return "-";
+  if (n > 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
+  if (n > 1024) return (n / 1024).toFixed(1) + " kB";
+  return n + " B";
+}
+
+function PeerDiagRow({ p, label }: { p: VoicePeerDiag; label: string }) {
+  return (
+    <div class="chalk-voice-diag-peer">
+      <div>
+        <b>{label}</b> · conn={p.connectionState} ice={p.iceConnectionState} gather=
+        {p.iceGatheringState} signaling={p.signalingState}
+      </div>
+      {p.pair ? (
+        <div>
+          pair: {p.pair.localType} {p.pair.localAddr} ⇄ {p.pair.remoteType}{" "}
+          {p.pair.remoteAddr} ({p.pair.protocol})
+          {p.pair.rttMs !== undefined && <> · rtt {p.pair.rttMs}ms</>}
+          {" · "}↑{fmtBytes(p.pair.bytesSent)} ↓{fmtBytes(p.pair.bytesReceived)}
+          {p.pair.availableOutgoingKbps !== undefined && (
+            <> · uplink ~{p.pair.availableOutgoingKbps} kbps</>
+          )}
+        </div>
+      ) : (
+        <div>no selected candidate pair yet (ICE not connected)</div>
+      )}
+    </div>
+  );
+}
+
+function VoiceDebugDrawer({
+  diag,
+  copied,
+  onCopy,
+  handleFor,
+}: {
+  diag: VoiceDiagnostics | null;
+  copied: boolean;
+  onCopy: () => void;
+  handleFor: (userID: string) => string;
+}) {
+  if (!diag) {
+    return <div class="chalk-voice-diag">collecting diagnostics…</div>;
+  }
+  return (
+    <div class="chalk-voice-diag" data-testid="voice-diag">
+      <div class="chalk-voice-diag-head">
+        <span>
+          relay-only={String(diag.forceRelay)} · ice: {diag.iceServerURLs.join(", ") || "(none)"}
+        </span>
+        <button class="chalk-voice-debug-btn" onClick={onCopy}>
+          {copied ? "copied ✓" : "copy diagnostics"}
+        </button>
+      </div>
+      <div class="chalk-voice-diag-hint">
+        deep inspection: open <code>chrome://webrtc-internals</code> (Brave:{" "}
+        <code>brave://webrtc-internals</code>) in a new tab — internal pages can't be
+        linked from here.
+      </div>
+      {diag.peers.length === 0 && <div>no peer connections</div>}
+      {diag.peers.map((p) => (
+        <PeerDiagRow key={p.key} p={p} label={handleFor(p.key.split(":")[0] ?? "")} />
+      ))}
+      <div class="chalk-voice-diag-events">
+        {diag.events.map((e, i) => (
+          <div key={i}>
+            {new Date(e.t).toLocaleTimeString()} {e.msg}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

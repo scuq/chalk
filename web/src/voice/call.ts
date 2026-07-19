@@ -123,6 +123,54 @@ function peerKey(userID: string, deviceID: string): string {
   return `${userID}:${deviceID}`;
 }
 
+// ---- diagnostics (30-4c) ----------------------------------------------------
+//
+// ICE/TURN failures are the hardest thing a user will ever have to explain in
+// a bug report, so the manager keeps a structured, always-on event ring (the
+// permanent form of the temporary [voice-dbg] console traces) plus a
+// getStats() snapshot collector. The VoiceCallPanel's "debug" drawer renders
+// both, and "copy diagnostics" produces a pasteable JSON blob. Cheap: the
+// ring is bounded and stats run only while the drawer is open.
+
+/** One timestamped diagnostics event. */
+export interface VoiceDiagEvent {
+  t: number; // unix millis
+  msg: string;
+}
+
+/** A per-peer live snapshot extracted from RTCPeerConnection.getStats(). */
+export interface VoicePeerDiag {
+  key: string;
+  connectionState: string;
+  iceConnectionState: string;
+  iceGatheringState: string;
+  signalingState: string;
+  /** Selected candidate pair, when one exists. */
+  pair?: {
+    localType: string;
+    localAddr: string;
+    remoteType: string;
+    remoteAddr: string;
+    protocol: string;
+    rttMs?: number;
+    bytesSent?: number;
+    bytesReceived?: number;
+    availableOutgoingKbps?: number;
+  };
+}
+
+/** The full copyable diagnostics blob. */
+export interface VoiceDiagnostics {
+  channelID: string;
+  self: string;
+  forceRelay: boolean;
+  iceServerURLs: string[]; // URLs only -- never the short-lived credentials
+  peers: VoicePeerDiag[];
+  events: VoiceDiagEvent[];
+}
+
+const DIAG_RING_MAX = 150;
+
 export class VoiceCall {
   private readonly o: VoiceCallOptions;
   private readonly selfKey: string;
@@ -139,6 +187,8 @@ export class VoiceCall {
   private readonly identities = new Map<string, { ed25519Public: Uint8Array } | null>();
   /** Concurrent-join fallback timers by peer key. */
   private readonly glareTimers = new Map<string, number>();
+  /** 30-4c: bounded diagnostics event ring (see VoiceDiagEvent). */
+  private readonly diagEvents: VoiceDiagEvent[] = [];
 
   constructor(o: VoiceCallOptions) {
     this.o = o;
@@ -151,6 +201,52 @@ export class VoiceCall {
 
   get relayOnly(): boolean {
     return this.forceRelay;
+  }
+
+  // ---- diagnostics surface (30-4c) ----------------------------------------
+
+  /** diag records one event into the bounded ring (and mirrors to debug log). */
+  private diag(msg: string): void {
+    this.diagEvents.push({ t: Date.now(), msg });
+    if (this.diagEvents.length > DIAG_RING_MAX) {
+      this.diagEvents.splice(0, this.diagEvents.length - DIAG_RING_MAX);
+    }
+    console.debug("[voice]", msg);
+  }
+
+  /** diagnostics returns the copyable blob: config + events + last stats. */
+  async diagnostics(): Promise<VoiceDiagnostics> {
+    return {
+      channelID: this.o.channelID,
+      self: this.selfKey,
+      forceRelay: this.forceRelay,
+      iceServerURLs: this.iceServers.flatMap((s) =>
+        Array.isArray(s.urls) ? s.urls : [s.urls as string],
+      ),
+      peers: await this.collectPeerStats(),
+      events: [...this.diagEvents],
+    };
+  }
+
+  /** collectPeerStats snapshots every live pc: states + selected pair. */
+  async collectPeerStats(): Promise<VoicePeerDiag[]> {
+    const out: VoicePeerDiag[] = [];
+    for (const peer of this.peers.values()) {
+      const d: VoicePeerDiag = {
+        key: peer.key,
+        connectionState: peer.pc.connectionState,
+        iceConnectionState: peer.pc.iceConnectionState,
+        iceGatheringState: peer.pc.iceGatheringState,
+        signalingState: peer.pc.signalingState,
+      };
+      try {
+        d.pair = extractSelectedPair(await peer.pc.getStats());
+      } catch {
+        /* stats unavailable (pc closing) -- states alone still help */
+      }
+      out.push(d);
+    }
+    return out;
   }
 
   // ---- lifecycle -----------------------------------------------------------
@@ -202,11 +298,16 @@ export class VoiceCall {
     this.iceServers = (ack.ice_servers ?? []).map(iceServerFromWire);
     this.forceRelay = !!ack.force_relay;
     this.joined = true;
+    this.diag(
+      `join ack: roster=${(ack.roster ?? []).length} ice_servers=${this.iceServers.length}` +
+        ` force_relay=${this.forceRelay}`,
+    );
 
     // Glare-free: the joiner (us) offers to exactly the ack roster.
     for (const p of ack.roster ?? []) {
       const key = peerKey(p.user_id, p.device_id);
       if (key === this.selfKey) continue; // server excludes us, but be safe
+      this.diag(`offering to existing peer ${key}`);
       this.enqueue(this.ensurePeer(p.user_id, p.device_id), (peer) => this.sendOffer(peer));
     }
   }
@@ -349,15 +450,22 @@ export class VoiceCall {
     }
 
     pc.ontrack = (e) => {
+      this.diag(`ontrack from ${key}: kind=${e.track.kind} streams=${e.streams.length}`);
       const stream = e.streams[0];
       if (stream) this.o.callbacks.onPeerStream(key, userID, deviceID, stream);
     };
     pc.onicecandidate = (e) => {
+      this.diag(
+        e.candidate
+          ? `gathered candidate for ${key}: ${candidateTypeOf(e.candidate.candidate)}`
+          : `candidate gathering done for ${key}`,
+      );
       // Trickle: each candidate (and the null end-marker) rides encrypted.
       const body: IceSignal = { candidate: e.candidate ? e.candidate.toJSON() : null };
       void this.sendSignal(peer, "ice", body);
     };
     pc.onconnectionstatechange = () => {
+      this.diag(`conn state ${key} = ${pc.connectionState} (ice=${pc.iceConnectionState})`);
       this.o.callbacks.onPeerState(key, pc.connectionState);
       if (pc.connectionState === "failed" || pc.connectionState === "closed") {
         // v1 reconnection policy (design §9): no automatic ICE restart;
@@ -454,6 +562,7 @@ export class VoiceCall {
       return;
     }
     if (!this.o.transport.isOpen()) return;
+    this.diag(`send ${kind} -> ${peer.key}`);
     try {
       this.o.transport.send<VoiceSignalSendPayload>(TypeVoiceSignal, {
         channel_id: this.o.channelID,
@@ -471,6 +580,7 @@ export class VoiceCall {
 
   private onSignal(p: VoiceSignalPushPayload): void {
     const key = peerKey(p.from_user, p.from_device);
+    this.diag(`recv ${p.kind} <- ${key}`);
     // An offer may create the peer; answer/ice for an unknown peer is stale.
     if (p.kind !== "offer" && !this.peers.has(key)) return;
     const t = this.glareTimers.get(key);
@@ -540,6 +650,7 @@ export class VoiceCall {
       pr = this.ensurePeer(peer.userID, peer.deviceID);
     }
     await pr.pc.setRemoteDescription({ type: "offer", sdp: sig.sdp });
+    this.diag(`applied remote offer from ${pr.key}`);
     pr.hasRemoteDesc = true;
     await this.drainIce(pr);
     await this.sendAnswer(pr);
@@ -552,6 +663,7 @@ export class VoiceCall {
       return;
     }
     await peer.pc.setRemoteDescription({ type: "answer", sdp: sig.sdp });
+    this.diag(`applied remote answer from ${peer.key}`);
     peer.hasRemoteDesc = true;
     await this.drainIce(peer);
   }
@@ -587,6 +699,7 @@ export class VoiceCall {
 
   /** abortPeer tears a peer down loudly -- the Slice F MITM reaction. */
   private abortPeer(peer: Peer, why: string): void {
+    this.diag(`ABORT ${peer.key}: ${why}`);
     this.o.callbacks.onError(why);
     this.dropPeer(peer.key, true);
   }
@@ -632,5 +745,77 @@ function iceServerFromWire(s: ICEServerWire): RTCIceServer {
   const out: RTCIceServer = { urls: s.urls };
   if (s.username) out.username = s.username;
   if (s.credential) out.credential = s.credential;
+  return out;
+}
+
+// ---- diagnostics helpers (30-4c) -------------------------------------------
+
+/** candidateTypeOf pulls the "typ" token out of a raw candidate line. */
+export function candidateTypeOf(candidate: string): string {
+  const m = /\styp\s+(\S+)/.exec(candidate);
+  return m ? m[1] : "?";
+}
+
+/**
+ * extractSelectedPair walks an RTCStatsReport for the nominated/selected
+ * candidate pair and flattens the fields the debug drawer shows. Stats
+ * dictionaries are only loosely typed in lib.dom, so this reads them as
+ * records and tolerates absent fields across browser versions.
+ */
+export function extractSelectedPair(
+  report: RTCStatsReport,
+): VoicePeerDiag["pair"] | undefined {
+  const stats = new Map<string, Record<string, unknown>>();
+  report.forEach((v: unknown, k: string) => {
+    stats.set(k, v as Record<string, unknown>);
+  });
+
+  // Preferred: the transport's selectedCandidatePairId. Fallback: any
+  // candidate-pair with selected/nominated+succeeded.
+  let pair: Record<string, unknown> | undefined;
+  for (const v of stats.values()) {
+    if (v.type === "transport" && typeof v.selectedCandidatePairId === "string") {
+      pair = stats.get(v.selectedCandidatePairId as string);
+      if (pair) break;
+    }
+  }
+  if (!pair) {
+    for (const v of stats.values()) {
+      if (
+        v.type === "candidate-pair" &&
+        (v.selected === true || (v.nominated === true && v.state === "succeeded"))
+      ) {
+        pair = v;
+        break;
+      }
+    }
+  }
+  if (!pair) return undefined;
+
+  const cand = (id: unknown): Record<string, unknown> =>
+    (typeof id === "string" ? stats.get(id) : undefined) ?? {};
+  const local = cand(pair.localCandidateId);
+  const remote = cand(pair.remoteCandidateId);
+  const addr = (c: Record<string, unknown>): string => {
+    const ip = (c.address ?? c.ip ?? "?") as string;
+    const port = (c.port ?? "?") as number | string;
+    return `${ip}:${port}`;
+  };
+
+  const out: NonNullable<VoicePeerDiag["pair"]> = {
+    localType: (local.candidateType ?? "?") as string,
+    localAddr: addr(local),
+    remoteType: (remote.candidateType ?? "?") as string,
+    remoteAddr: addr(remote),
+    protocol: (local.protocol ?? pair.protocol ?? "?") as string,
+  };
+  if (typeof pair.currentRoundTripTime === "number") {
+    out.rttMs = Math.round(pair.currentRoundTripTime * 1000);
+  }
+  if (typeof pair.bytesSent === "number") out.bytesSent = pair.bytesSent;
+  if (typeof pair.bytesReceived === "number") out.bytesReceived = pair.bytesReceived;
+  if (typeof pair.availableOutgoingBitrate === "number") {
+    out.availableOutgoingKbps = Math.round(pair.availableOutgoingBitrate / 1000);
+  }
   return out;
 }
