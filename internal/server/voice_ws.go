@@ -333,14 +333,6 @@ func (h *WSHandler) handleVoiceState(
 
 // ---- voice_signal ----------------------------------------------------------
 
-// voiceSignalEnvelope is what rides the pubsub slot for sub-kind "signal": the
-// push payload plus the target device the consumer filters to. Same package as
-// voice_event.go, so it is shared unexported.
-type voiceSignalEnvelope struct {
-	ToDevice string                       `json:"to_device"`
-	Push     proto.VoiceSignalPushPayload `json:"push"`
-}
-
 func (h *WSHandler) handleVoiceSignal(
 	ctx context.Context,
 	c *websocket.Conn,
@@ -407,20 +399,53 @@ func (h *WSHandler) handleVoiceSignal(
 		return
 	}
 
-	env := voiceSignalEnvelope{
-		ToDevice: toDevice.String(),
-		Push: proto.VoiceSignalPushPayload{
-			ChannelID:  channelID.String(),
-			FromUser:   userID.String(),
-			FromDevice: deviceID.String(),
-			Kind:       p.Kind,
-			Payload:    p.Payload, // opaque ciphertext; forwarded untouched
-		},
-	}
-	if err := h.publishVoiceEvent(ctx, toUser, channelID, "signal", env); err != nil {
+	// 30-4d: the encrypted payload is too large for a NOTIFY (PG's 8000-byte
+	// cap; a camera-bearing offer exceeds it), so it is SPOOLED in the same
+	// transaction as the publish and the event carries only the row id --
+	// the fetch-on-notify pattern messages use. The consumer
+	// (handleVoiceSignalEvent) fetches the row and delivers to the target
+	// device's local conns.
+	if err := h.publishVoiceSignal(ctx, store.VoiceSignalSpoolRow{
+		ChannelID:  channelID,
+		ToUser:     toUser,
+		ToDevice:   toDevice,
+		FromUser:   userID,
+		FromDevice: deviceID,
+		Kind:       p.Kind,
+		Payload:    p.Payload, // opaque ciphertext; spooled untouched
+	}); err != nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "relay failed")
 		h.logger.Printf("voice signal publish: %v", err) // metadata only, never the payload
 	}
+}
+
+// publishVoiceSignal spools one relayed signal and emits the tiny routing
+// event (Kind="voice", FriendKind="signal", MessageID=<spool row id>) in one
+// transaction, so the row is committed exactly when the NOTIFY fires.
+func (h *WSHandler) publishVoiceSignal(
+	ctx context.Context,
+	r store.VoiceSignalSpoolRow,
+) error {
+	if h.store == nil {
+		return errors.New("no store")
+	}
+	return pgxBegin(ctx, h.store, func(tx pgx.Tx) error {
+		id, err := h.store.SpoolVoiceSignalTx(ctx, tx, r)
+		if err != nil {
+			return err
+		}
+		ev := pubsub.Event{
+			Kind:       "voice",
+			UserID:     r.ToUser,
+			ChannelID:  r.ChannelID,
+			InstanceID: h.instanceID,
+			FriendKind: "signal",
+			// MessageID doubles as the spool row id for sub-kind "signal"
+			// (same slot-reuse as message events; documented in 0039).
+			MessageID: id,
+		}
+		return pubsub.PublishWithTx(ctx, tx, ev)
+	})
 }
 
 // ---- push plumbing ---------------------------------------------------------

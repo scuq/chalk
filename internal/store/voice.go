@@ -344,6 +344,16 @@ func (s *Store) VoiceJanitorLoop(
 		if n > 0 {
 			logf("voice janitor: pruned %d orphaned participant row(s)", n)
 		}
+		// 30-4d: also reap undeliverable signal-spool leftovers. Short TTL:
+		// spool rows are consumed within milliseconds in the happy path.
+		sn, serr := s.SweepVoiceSignalSpool(cctx, time.Minute)
+		if serr != nil {
+			logf("voice janitor: %v", serr)
+			return
+		}
+		if sn > 0 {
+			logf("voice janitor: pruned %d stale signal spool row(s)", sn)
+		}
 	}
 	sweep()
 	t := time.NewTicker(interval)
@@ -356,4 +366,93 @@ func (s *Store) VoiceJanitorLoop(
 			sweep()
 		}
 	}
+}
+
+// --- Voice signal spool (30-4d) ----------------------------------------------
+//
+// The relay's E2E-encrypted signal payloads are too large for a NOTIFY (PG
+// caps payloads at 8000 bytes; a camera-bearing SDP offer, encrypted and
+// base64'd, exceeds it). So the payload is spooled here in the SAME
+// transaction as the pubsub publish, and the event carries only the row id --
+// the fetch-on-notify pattern messages use (migration 0039 has the full
+// rationale, including why fetch does NOT delete).
+
+// VoiceSignalSpoolRow is one relayed signal at rest, exactly as posted:
+// routing coordinates plus the sender's opaque ciphertext.
+type VoiceSignalSpoolRow struct {
+	ID         uuid.UUID
+	ChannelID  uuid.UUID
+	ToUser     uuid.UUID
+	ToDevice   uuid.UUID
+	FromUser   uuid.UUID
+	FromDevice uuid.UUID
+	Kind       string
+	Payload    []byte
+	CreatedAt  time.Time
+}
+
+// SpoolVoiceSignalTx inserts a spool row inside the CALLER's transaction --
+// it must share the tx with pubsub.PublishWithTx so the row is visible at
+// NOTIFY delivery (which happens at COMMIT). Returns the new row's id.
+func (s *Store) SpoolVoiceSignalTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	r VoiceSignalSpoolRow,
+) (uuid.UUID, error) {
+	if len(r.Payload) == 0 {
+		return uuid.Nil, errors.New("spool voice signal: empty payload")
+	}
+	var id uuid.UUID
+	err := tx.QueryRow(ctx,
+		`INSERT INTO voice_signal_spool
+		   (channel_id, to_user, to_device, from_user, from_device, kind, payload)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 RETURNING id`,
+		r.ChannelID, r.ToUser, r.ToDevice, r.FromUser, r.FromDevice, r.Kind, r.Payload,
+	).Scan(&id)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("spool voice signal: %w", err)
+	}
+	return id, nil
+}
+
+// FetchVoiceSignal reads a spool row by id. It does NOT delete: with multiple
+// instances every consumer receives the NOTIFY and only the one hosting the
+// target device delivers, so deletion is the TTL sweep's job. A missing row
+// (already swept, or a stale event) returns pgx.ErrNoRows wrapped.
+func (s *Store) FetchVoiceSignal(
+	ctx context.Context,
+	id uuid.UUID,
+) (VoiceSignalSpoolRow, error) {
+	var r VoiceSignalSpoolRow
+	err := s.Pool.QueryRow(ctx,
+		`SELECT id, channel_id, to_user, to_device, from_user, from_device,
+		        kind, payload, created_at
+		   FROM voice_signal_spool
+		  WHERE id = $1`,
+		id,
+	).Scan(&r.ID, &r.ChannelID, &r.ToUser, &r.ToDevice, &r.FromUser,
+		&r.FromDevice, &r.Kind, &r.Payload, &r.CreatedAt)
+	if err != nil {
+		return VoiceSignalSpoolRow{}, fmt.Errorf("fetch voice signal %s: %w", id, err)
+	}
+	return r, nil
+}
+
+// SweepVoiceSignalSpool deletes spool rows older than ttl. Rows are consumed
+// within milliseconds in the happy path; anything old is an undeliverable
+// leftover (recipient offline at delivery, instance restart mid-flight).
+func (s *Store) SweepVoiceSignalSpool(
+	ctx context.Context,
+	ttl time.Duration,
+) (int64, error) {
+	tag, err := s.Pool.Exec(ctx,
+		`DELETE FROM voice_signal_spool
+		  WHERE created_at < now() - $1::interval`,
+		ttl.String(),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("sweep voice signal spool: %w", err)
+	}
+	return tag.RowsAffected(), nil
 }
