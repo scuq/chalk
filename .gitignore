@@ -60,3 +60,4 @@ web/.test-build/
 .*-backup-*/
 .*-backup-[0-9]*/
 .backup*/
+.chalk*-backup/
