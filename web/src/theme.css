@@ -81,7 +81,13 @@ html, body {
 .chalk-app {
   display: grid;
   grid-template-rows: auto 1fr auto;
-  min-height: 100dvh;
+  /* 30-5j: pin the shell to the viewport (height, not min-height) so a short
+     window -- e.g. with devtools open -- makes the middle row scroll INSIDE
+     instead of the whole page overflowing below the fold (composer pushed
+     off-screen, sidebar dock drifting). min-height:0 lets the 1fr row shrink
+     below its content so main/sidebar become the scroll surfaces. */
+  height: 100dvh;
+  min-height: 0;
   max-width: 900px;
   margin: 0 auto;
   padding: 0 var(--chalk-s4);
@@ -97,6 +103,11 @@ html, body {
     "header header"
     "sidebar main"
     "footer footer";
+  /* 30-5j: inherit the viewport-pinned height from .chalk-app; the 1fr
+     middle row shrinks (min-height:0) so sidebar + main scroll internally
+     and the footer composer stays anchored at the bottom. */
+  height: 100dvh;
+  min-height: 0;
   max-width: 1100px;
   column-gap: var(--chalk-s3);
 }
@@ -124,6 +135,9 @@ html, body {
 
 .chalk-main {
   overflow-y: auto;
+  /* 30-5j: allow the grid item to shrink below its content height so the
+     message list scrolls and the footer composer stays on-screen. */
+  min-height: 0;
   padding: var(--chalk-s4) 0;
 }
 
@@ -564,7 +578,12 @@ html, body {
 .chalk-sidebar-inner {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  /* 30-5g: shrinkable so the pinned voice dock (sibling, flex:0 0 auto)
+     always keeps its space on a short window. The friends and channels
+     lists inside already scroll on their own (base .chalk-sidebar-list),
+     so no second scroll container is introduced -- the channel rows scroll
+     within their list and the dock stays a visible footer. */
+  flex: 1 1 auto;
   min-height: 0;
 }
 
@@ -4117,11 +4136,26 @@ html, body {
   font-size: 12px;
   color: var(--chalk-fg);
   cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  /* 30-5f: flex row so the speaker glyph centers against the name instead
+     of sitting on the text baseline (the low-speaker bug in the dock). */
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chalk-voice-dock-channame {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: left;
   min-width: 0;
+}
+
+/* Inline glyph variant: no fixed 1.2em box, shrink to the icon so the flex
+   gap controls spacing. Used in the dock + panel prose. */
+.chalk-chglyph--inline {
+  width: auto;
 }
 
 .chalk-voice-dock-channel:hover {
@@ -4131,6 +4165,72 @@ html, body {
 
 .chalk-voice-dock-spacer {
   flex: 1 1 auto;
+}
+
+/* 30-5i: autoplay-blocked audio nudge inside the connected dock. Amber to
+   read as an actionable notice, not an error. */
+.chalk-voice-audionudge {
+  font-size: 11px;
+  color: var(--chalk-warn);
+  cursor: default;
+}
+
+/* ---- 30-5f: micro PiP preview in the dock ------------------------------- */
+
+.chalk-voice-pip {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 96px;
+  padding: 0;
+  margin-bottom: var(--chalk-s1);
+  border: 1px solid var(--chalk-border);
+  background: #000;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.chalk-voice-pip:hover {
+  border-color: var(--chalk-fg-dim);
+}
+
+.chalk-voice-pip-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #000;
+}
+
+.chalk-voice-pip-mono {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: var(--chalk-fg-muted);
+  background: var(--chalk-bg-elev-2);
+  user-select: none;
+}
+
+/* "▸ back" overlay: appears on hover, bottom-right, so the preview stays
+   clean at rest. */
+.chalk-voice-pip-hint {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  font-size: 10px;
+  color: var(--chalk-fg-bright);
+  background: rgba(0, 0, 0, 0.7);
+  padding: 0 4px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.chalk-voice-pip:hover .chalk-voice-pip-hint {
+  opacity: 1;
 }
 
 /* ---- stage: big tile + filmstrip ---- */

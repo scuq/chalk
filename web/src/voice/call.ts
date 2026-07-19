@@ -280,38 +280,42 @@ export class VoiceCall {
 
   /**
    * join captures local media, enters the room, and offers to every existing
-   * participant from the ack roster. withVideo=false never touches the
-   * camera (no LED for a voice-only join); enabling the camera later
-   * requires renegotiation, which lands in 30-7 -- until then the panel
-   * offers "rejoin with camera".
+   * participant from the ack roster.
+   *
+   * 30-5h: a single join model -- always acquire the camera up front but
+   * start it DISABLED (camera off by default). Because the video track
+   * already exists in the published stream, the panel's cam toggle is
+   * instant (track.enabled flip, no renegotiation). If the camera is denied
+   * or absent we degrade to audio-only; the toggle then reports "no camera"
+   * (mid-call camera add still needs renegotiation, which lands in 30-7).
    */
-  async join(withVideo: boolean): Promise<void> {
+  async join(): Promise<void> {
     if (this.joined || this.closed) return;
     // Media first: if the mic is denied there is no point entering the room.
     try {
       this.localStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
-        video: withVideo,
+        video: true,
       });
-      this.hasVideo = withVideo && this.localStream.getVideoTracks().length > 0;
+      this.hasVideo = this.localStream.getVideoTracks().length > 0;
     } catch (err) {
-      if (withVideo) {
-        // Camera denied/absent but the mic may be fine: degrade to audio-only
-        // rather than failing the join (design §8 permission handling).
-        try {
-          this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          this.hasVideo = false;
-          this.o.callbacks.onError(
-            describeMediaError("camera", err) + " — joined audio-only",
-          );
-        } catch (err2) {
-          throw new Error(describeMediaError("microphone", err2));
-        }
-      } else {
-        throw new Error(describeMediaError("microphone", err));
+      // Camera denied/absent but the mic may be fine: degrade to audio-only
+      // rather than failing the join (design §8 permission handling). A bare
+      // mic-denial still aborts.
+      try {
+        this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.hasVideo = false;
+        this.o.callbacks.onError(
+          describeMediaError("camera", err) + " — joined audio-only",
+        );
+      } catch (err2) {
+        throw new Error(describeMediaError("microphone", err2));
       }
     }
-    this.videoEnabled = this.hasVideo;
+    // Camera OFF by default: disable the track so no LED lights and nothing
+    // is sent until the user toggles it on.
+    this.videoEnabled = false;
+    for (const t of this.localStream.getVideoTracks()) t.enabled = false;
     this.o.callbacks.onLocalStream(this.localStream);
 
     let ack: VoiceJoinAckPayload;
@@ -331,12 +335,10 @@ export class VoiceCall {
       `join ack: roster=${(ack.roster ?? []).length} ice_servers=${this.iceServers.length}` +
         ` force_relay=${this.forceRelay}`,
     );
-    // 30-6 mute/video sync: the server inserts the participant row with
-    // video_on=false. A camera join must immediately broadcast its real
-    // flags or every other member's roster badges (sidebar + tiles) lie
-    // until the first manual toggle. Audio-only joins match the defaults,
-    // so skip the round-trip.
-    if (this.hasVideo) this.broadcastState();
+    // 30-5h: camera starts OFF and mic starts UNMUTED, both matching the
+    // server's default participant row (muted=false, video_on=false), so no
+    // post-join state broadcast is needed -- the roster badges are already
+    // correct. Toggling either later broadcasts via setMuted/setVideoEnabled.
 
     // Glare-free: the joiner (us) offers to exactly the ack roster.
     for (const p of ack.roster ?? []) {
@@ -376,9 +378,10 @@ export class VoiceCall {
   }
 
   /**
-   * setVideoEnabled flips the camera track (only meaningful when the call
-   * was joined with video; adding a camera mid-call needs renegotiation,
-   * 30-7). Returns false when there is no camera track to toggle.
+   * setVideoEnabled flips the pre-acquired camera track on/off (instant --
+   * the track is already in the published stream, 30-5h). Returns false only
+   * when the join degraded to audio-only, i.e. there is no camera track
+   * (adding one mid-call needs renegotiation, 30-7).
    */
   setVideoEnabled(on: boolean): boolean {
     if (!this.hasVideo) return false;

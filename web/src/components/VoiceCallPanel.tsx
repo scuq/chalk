@@ -132,24 +132,22 @@ export function VoiceCallPanel({
     };
   }, [debugOpen, hereInCall]);
 
-  const join = (withVideo: boolean) =>
+  const join = () =>
     void voiceSession.join({
       channelID: channel.id,
       channelName: channel.name,
       selfUserID,
       selfDeviceID,
-      withVideo,
       client,
       cc,
     });
 
   const toggleCam = () => {
     if (!voiceSession.toggleCam()) {
-      // joined audio-only: adding a camera mid-call needs renegotiation (30-7).
+      // No camera track -- the join degraded to audio-only (camera denied or
+      // absent). Adding one mid-call needs renegotiation (30-7).
       voiceSession.clearError();
-      // Surface through the session error slot so it renders consistently.
-      // (Direct set: the session exposes no setter; reuse join-error styling.)
-      setLocalNote("joined without a camera — leave and rejoin with camera to share video");
+      setLocalNote("camera unavailable — check browser permissions, then rejoin");
     }
   };
   const [localNote, setLocalNote] = useState<string | null>(null);
@@ -282,18 +280,10 @@ export function VoiceCallPanel({
           <button
             class="chalk-btn chalk-voice-joinbtn"
             disabled={hereJoining || !keyReady}
-            onClick={() => join(false)}
+            onClick={() => join()}
             data-testid="voice-join"
           >
             {hereJoining ? "joining…" : "join voice"}
-          </button>
-          <button
-            class="chalk-btn chalk-voice-joinbtn"
-            disabled={hereJoining || !keyReady}
-            onClick={() => join(true)}
-            data-testid="voice-join-video"
-          >
-            join with camera
           </button>
           {!keyReady && <span class="chalk-voice-note">waiting for channel key…</span>}
           {roster.length === 0 && keyReady && !elsewhere && (

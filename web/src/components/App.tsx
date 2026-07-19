@@ -924,6 +924,59 @@ export function App() {
     if (state.authStage !== "authed") voiceSession.reset();
   }, [state.authStage]);
 
+  // 30-5i: auto-rejoin after a page reload. A reload cannot preserve WebRTC
+  // state, so the prior session left a hint (sessionStorage). Once we're
+  // authed, the socket is open, crypto is ready and the room's key is ready,
+  // consume the hint EXACTLY ONCE and re-run the normal join. The ref guards
+  // against a second attempt (crash-loop safety); consumeRejoinHint also
+  // clears the hint, so a failed rejoin won't retry. Browsers may suspend
+  // audio playback until the first click -- the dock shows a nudge then.
+  const autoRejoinTried = useRef(false);
+  useEffect(() => {
+    if (autoRejoinTried.current) return;
+    if (
+      state.authStage !== "authed" ||
+      state.wsState !== "open" ||
+      !ccReady ||
+      !state.voiceEnabled ||
+      !state.user
+    ) {
+      return;
+    }
+    const hint = voiceSession.snap().rejoinHint;
+    if (!hint) {
+      autoRejoinTried.current = true; // nothing to do; don't re-check forever
+      return;
+    }
+    const ch = state.channels[hint.channelID];
+    if (!ch || ch.channelType !== "voice") {
+      voiceSession.dismissRejoin();
+      autoRejoinTried.current = true;
+      return;
+    }
+    if (keyStatus[hint.channelID] !== "ready") return; // wait for the key
+    autoRejoinTried.current = true;
+    const consumed = voiceSession.consumeRejoinHint();
+    if (!consumed || !state.user) return;
+    dispatch({ kind: "set_active_channel", channelID: ch.id });
+    void voiceSession.join({
+      channelID: ch.id,
+      channelName: ch.name,
+      selfUserID: state.user.id,
+      selfDeviceID: state.user.device,
+      client: clientRef,
+      cc: ccRef,
+    });
+  }, [
+    state.authStage,
+    state.wsState,
+    ccReady,
+    state.voiceEnabled,
+    state.user,
+    state.channels,
+    keyStatus,
+  ]);
+
   // Phase 23f (fail-closed): run EVERY message through decryptForChannel
   // before it reaches the reducer. It returns plaintext only for properly
   // decrypted ciphertext; a null/0 key_version body is replaced by a blocked
@@ -2199,7 +2252,6 @@ export function App() {
                 channelName: ch.name,
                 selfUserID: state.user.id,
                 selfDeviceID: state.user.device,
-                withVideo: false,
                 client: clientRef,
                 cc: ccRef,
               });
@@ -2211,6 +2263,7 @@ export function App() {
         {/* 30-5c: the persistent-call dock -- app-level audio sinks + the
             Discord-style connection bar. Renders nothing while idle. */}
         <VoiceDock
+          activeChannelID={state.activeChannelID}
           onJumpToChannel={(id) =>
             dispatch({ kind: "set_active_channel", channelID: id })
           }

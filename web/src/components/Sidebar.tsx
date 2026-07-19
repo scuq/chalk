@@ -27,6 +27,9 @@ export function ChannelGlyph({ type }: { type: "text" | "voice" }) {
 }
 
 function TextChannelIcon() {
+  // 30-5f: a speech bubble with two text lines. Reads as "messages"
+  // directly, and doesn't collide with the terminal ">_" prompt used
+  // elsewhere in the app. Pairs naturally with the voice speaker.
   return (
     <svg
       class="chalk-chglyph-svg"
@@ -35,14 +38,15 @@ function TextChannelIcon() {
       height="13"
       fill="none"
       stroke="currentColor"
-      stroke-width="2.4"
+      stroke-width="2"
       stroke-linecap="round"
       stroke-linejoin="round"
       aria-label="text channel"
       role="img"
     >
-      <path d="M4 6l7 6-7 6" />
-      <line x1="14" y1="18" x2="21" y2="18" />
+      <path d="M4 5h16v11H9l-4 3v-3H4z" />
+      <line x1="7.5" y1="9" x2="16.5" y2="9" />
+      <line x1="7.5" y1="12.5" x2="13" y2="12.5" />
     </svg>
   );
 }

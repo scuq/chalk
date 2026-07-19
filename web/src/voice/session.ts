@@ -48,6 +48,52 @@ export interface PeerAudioPref {
 
 const PEER_AUDIO_LS_KEY = "chalk-voice-peer-audio";
 
+// ---- refresh rejoin (30-5h) -------------------------------------------------
+//
+// A page reload tears down every RTCPeerConnection, the getUserMedia streams
+// and the WebSocket -- WebRTC state cannot survive a reload, so a true
+// "stay connected" is impossible. Instead we remember which room we were in
+// (sessionStorage: survives reload, dies with the tab) and the app offers a
+// ONE-CLICK rejoin on next mount. One click is required anyway -- browsers
+// gate mic/camera and audio playback behind a user gesture, and it doubles as
+// the loop guard (no silent auto-rejoin that could crash-loop).
+
+const REJOIN_SS_KEY = "chalk-voice-rejoin";
+
+export interface RejoinHint {
+  channelID: string;
+  channelName: string;
+}
+
+function saveRejoinHint(h: RejoinHint): void {
+  try {
+    sessionStorage.setItem(REJOIN_SS_KEY, JSON.stringify(h));
+  } catch {
+    /* private mode / quota: rejoin simply won't be offered */
+  }
+}
+
+function clearRejoinHint(): void {
+  try {
+    sessionStorage.removeItem(REJOIN_SS_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Read (and keep) the rejoin hint left by a prior session, if any. Called
+ * once on app mount. */
+export function readRejoinHint(): RejoinHint | null {
+  try {
+    const raw = sessionStorage.getItem(REJOIN_SS_KEY);
+    if (!raw) return null;
+    const h = JSON.parse(raw) as RejoinHint;
+    return h && typeof h.channelID === "string" ? h : null;
+  } catch {
+    return null;
+  }
+}
+
 type PeerAudioStore = Record<string, Record<string, PeerAudioPref>>; // channel -> user -> pref
 
 function loadPeerAudioStore(): PeerAudioStore {
@@ -106,6 +152,13 @@ export interface VoiceSessionSnap {
   /** Per-peer LOCAL audio prefs for the current room, keyed by userID
    * (A1 local mute + A4-subset volume). Loaded from localStorage on join. */
   peerAudio: Record<string, PeerAudioPref>;
+  /** 30-5h: a room we were connected to before a page reload. Consumed once
+   * by App to auto-rejoin (30-5i). */
+  rejoinHint: RejoinHint | null;
+  /** 30-5i: remote audio playback is suspended by the browser's autoplay
+   * policy (common right after an auto-rejoin with no user gesture). The
+   * dock shows a "click to enable audio" nudge; any click resumes it. */
+  audioBlocked: boolean;
 }
 
 export interface JoinArgs {
@@ -113,7 +166,6 @@ export interface JoinArgs {
   channelName: string;
   selfUserID: string;
   selfDeviceID: string;
-  withVideo: boolean;
   /** Live refs from App -- read .current at call time (reconnect-safe). */
   client: { current: WSClient | null };
   cc: { current: ChannelCrypto | null };
@@ -135,12 +187,16 @@ class VoiceSessionImpl {
     joinedAt: null,
     error: null,
     peerAudio: {},
+    rejoinHint: null,
+    audioBlocked: false,
   };
 
   constructor() {
     // One bus subscription for the app's lifetime; the manager filters by
     // channel + self, so stray frames are inert.
     voiceBus.subscribe((f: Frame) => this.call?.handleFrame(f));
+    // 30-5h: a hint left by a prior page load = offer a one-click rejoin.
+    this.s.rejoinHint = readRejoinHint();
   }
 
   // ---- store surface -------------------------------------------------------
@@ -239,15 +295,21 @@ class VoiceSessionImpl {
         },
       });
       this.call = call;
-      await call.join(a.withVideo);
+      await call.join();
       this.set({
         phase: "in-call",
         relayOnly: call.relayOnly,
+        // joinedWithVideo = a camera track was acquired (30-5h). camOn starts
+        // false -- camera is off by default, the panel toggle flips it.
         joinedWithVideo: call.joinedWithVideo,
-        camOn: call.joinedWithVideo,
+        camOn: false,
         muted: false,
         joinedAt: Date.now(),
       });
+      // 30-5h: remember the room so a page reload can offer a one-click
+      // rejoin. Cleared on user-initiated leave, kept across refresh.
+      saveRejoinHint({ channelID: a.channelID, channelName: a.channelName });
+      if (this.s.rejoinHint) this.set({ rejoinHint: null });
     } catch (err) {
       const raw = String(err instanceof Error ? err.message : err);
       const dead = this.call;
@@ -265,8 +327,15 @@ class VoiceSessionImpl {
     }
   }
 
-  /** leave disconnects and resets to idle. Idempotent. */
-  async leave(): Promise<void> {
+  /**
+   * leave disconnects and resets to idle. Idempotent.
+   *
+   * userInitiated (default true) clears the refresh-rejoin hint: an explicit
+   * "leave" means don't offer to rejoin. The App's unmount/teardown paths
+   * pass false so a page reload keeps the hint and can offer a rejoin.
+   */
+  async leave(userInitiated = true): Promise<void> {
+    if (userInitiated) clearRejoinHint();
     const call = this.call;
     this.call = null;
     this.set({
@@ -281,6 +350,7 @@ class VoiceSessionImpl {
       relayOnly: false,
       joinedAt: null,
       peerAudio: {},
+      audioBlocked: false,
     });
     if (call) await call.leave();
   }
@@ -292,7 +362,10 @@ class VoiceSessionImpl {
    * a ghost call. The user rejoins with one click once the socket is back. */
   handleWsDown(): void {
     if (this.s.phase === "idle") return;
-    void this.leave();
+    // Keep the rejoin hint (leave(false)): a dropped socket -- including the
+    // brief not-open window while the app boots after a refresh -- should
+    // still offer a one-click rejoin, not silently forget the room.
+    void this.leave(false);
     this.set({
       error: "connection lost — you left the voice room; rejoin once reconnected",
     });
@@ -337,6 +410,35 @@ class VoiceSessionImpl {
 
   clearError(): void {
     if (this.s.error !== null) this.set({ error: null });
+  }
+
+  /** 30-5h: user declined the post-reload rejoin (or it was consumed). */
+  dismissRejoin(): void {
+    clearRejoinHint();
+    if (this.s.rejoinHint) this.set({ rejoinHint: null });
+  }
+
+  /**
+   * consumeRejoinHint (30-5i) returns the stored room ONCE and immediately
+   * clears both storage and the snapshot flag, so the auto-rejoin can never
+   * fire twice or crash-loop: a failed rejoin has already consumed the hint
+   * and won't retry. Returns null if there's nothing to rejoin.
+   */
+  consumeRejoinHint(): RejoinHint | null {
+    const h = this.s.rejoinHint ?? readRejoinHint();
+    if (!h) return null;
+    clearRejoinHint();
+    if (this.s.rejoinHint) this.set({ rejoinHint: null });
+    return h;
+  }
+
+  /** 30-5i: flag/clear the autoplay-blocked state for the dock nudge. */
+  notifyAudioBlocked(): void {
+    if (!this.s.audioBlocked) this.set({ audioBlocked: true });
+  }
+
+  clearAudioBlocked(): void {
+    if (this.s.audioBlocked) this.set({ audioBlocked: false });
   }
 
   // ---- per-peer local audio (A1 + A4 subset) -------------------------------
