@@ -177,6 +177,16 @@ func TestRenderAllTemplates(t *testing.T) {
 		!strings.Contains(string(env), "CHALK_TURN_SECRET=TURNSECRET") {
 		t.Error("env file missing secrets")
 	}
+	// DB URL must be a LITERAL in the env file (password inlined), never a
+	// ${...} cross-reference -- systemd expands Environment= before
+	// EnvironmentFile= loads, so cross-refs collapse to empty.
+	if !strings.Contains(string(env), "CHALK_DB_URL=postgres://chalk:PGSECRET@postgres:5432/chalk") {
+		t.Error("env file must carry a literal CHALK_DB_URL with the password inlined")
+	}
+	if strings.Contains(string(chalkd), "${CHALK_PG_PASSWORD}") ||
+		strings.Contains(string(chalkd), "${CHALK_TURN_SECRET}") {
+		t.Error("chalkd unit must not cross-reference env vars (they expand empty)")
+	}
 	caddy, _ := renderTemplate("Caddyfile", p)
 	if !strings.Contains(string(caddy), "chat.example.org {") {
 		t.Error("Caddyfile missing domain block")

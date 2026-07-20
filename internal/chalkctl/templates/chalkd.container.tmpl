@@ -19,11 +19,9 @@ Environment=CHALK_LISTEN=:8443
 Environment=CHALK_TLS_MODE=off
 Environment=CHALK_LOG_FORMAT=json
 Environment=CHALK_INSTANCE_ID=instance-1
-Environment=CHALK_DB_URL=postgres://chalk:${CHALK_PG_PASSWORD}@postgres:5432/chalk?sslmode=disable
 Environment=CHALK_VOICE_ENABLED={{ .VoiceEnabled }}
 {{- if .VoiceEnabled }}
 Environment=CHALK_TURN_URLS=turn:{{ .Domain }}:3478
-Environment=CHALK_TURN_SECRET=${CHALK_TURN_SECRET}
 {{- end }}
 
 [Service]
