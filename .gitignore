@@ -61,3 +61,4 @@ web/.test-build/
 .*-backup-[0-9]*/
 .backup*/
 .chalk*-backup/
+chalkd/chalkctl
