@@ -16,9 +16,9 @@ const MigrationsDir = "migrations"
 // Web holds the SPA's built bundle at web/dist/.
 //
 // Why dist/ and not the whole web/ tree:
-//   * web/node_modules can be huge (10s of MB) and would bloat the binary
-//   * web/src/ is source, not deployable; not needed at runtime
-//   * the SPA handler navigates into dist/ anyway
+//   - web/node_modules can be huge (10s of MB) and would bloat the binary
+//   - web/src/ is source, not deployable; not needed at runtime
+//   - the SPA handler navigates into dist/ anyway
 //
 // Phase 07 introduces web/dist/. Earlier phases shipped a placeholder
 // web/index.html at the web/ root; phase 07 supersedes it with the
