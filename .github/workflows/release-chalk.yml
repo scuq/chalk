@@ -1,0 +1,121 @@
+# chalk -- release workflow (ops-1a): app container image.
+#
+# Trigger: pushing a semver tag `vX.Y.Z` (NOT `ctl-v*`, which builds chalkctl).
+# Produces a multi-arch (amd64+arm64) image pushed to GHCR, tagged with the
+# exact version, the moving `stable` tag, and by digest; keyless-signed with
+# cosign via the GitHub OIDC token (no keys to manage). Also cut a GitHub
+# Release for the tag.
+#
+# Consumed by chalkctl on the server (pin `ghcr.io/scuq/chalk:vX.Y.Z` or a
+# digest). The weekly security rebuild (ops-2) re-pushes `stable` with fresh
+# base layers on a schedule.
+
+name: release-chalk
+
+on:
+  push:
+    tags:
+      - "v*"           # v1.2.3
+      # ctl-v* tags are handled by release-chalkctl.yml; the glob v* would
+      # also match ctl-v*, so that workflow guards on the prefix and this
+      # one does too (see the `guard` step).
+
+permissions:
+  contents: write      # create the GitHub Release
+  packages: write      # push to GHCR
+  id-token: write      # cosign keyless (OIDC)
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/chalk
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard -- ignore chalkctl tags
+        id: guard
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            ctl-v*) echo "skip=true"  >> "$GITHUB_OUTPUT" ;;
+            *)      echo "skip=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Checkout
+        if: steps.guard.outputs.skip == 'false'
+        uses: actions/checkout@v4
+
+      - name: Derive metadata
+        if: steps.guard.outputs.skip == 'false'
+        id: meta
+        run: |
+          VER="${GITHUB_REF_NAME}"                       # e.g. v1.2.3
+          echo "version=${VER}"          >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU (arm64 emulation)
+        if: steps.guard.outputs.skip == 'false'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        if: steps.guard.outputs.skip == 'false'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: steps.guard.outputs.skip == 'false'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (amd64 + arm64)
+        if: steps.guard.outputs.skip == 'false'
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          # --pull so the base images are fetched fresh (matters for the
+          # weekly security rebuild that reuses this workflow's logic).
+          pull: true
+          provenance: true
+          sbom: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+            ${{ env.IMAGE }}:stable
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.build_date }}
+
+      - name: Install cosign
+        if: steps.guard.outputs.skip == 'false'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign the image by digest (keyless)
+        if: steps.guard.outputs.skip == 'false'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          cosign sign --yes "${IMAGE}:stable"
+
+      - name: Create GitHub Release
+        if: steps.guard.outputs.skip == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            Container image:
+            `${{ env.IMAGE }}:${{ steps.meta.outputs.version }}`
+            digest `${{ steps.build.outputs.digest }}`
+
+            Signed with cosign (keyless). Verify:
+            ```
+            cosign verify ${{ env.IMAGE }}:${{ steps.meta.outputs.version }} \
+              --certificate-identity-regexp 'https://github.com/${{ github.repository }}/' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com
+            ```

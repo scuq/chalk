@@ -1,0 +1,104 @@
+# chalk -- release workflow (ops-1b): chalkctl manager binary.
+#
+# Trigger: pushing a `ctl-vX.Y.Z` tag. chalkctl versions INDEPENDENTLY of the
+# chalk app image (that's the whole point of the two-train split -- updating
+# the app never touches the manager, and the manager self-updates on its own
+# cadence). Produces static per-arch binaries as GitHub Release assets plus a
+# SHA256SUMS file and cosign signatures/certs.
+#
+# This is the ONLY artifact a human downloads by hand:
+#   curl -fsSL .../releases/latest/download/chalkctl_linux_amd64 -o chalkctl
+# ...after which everything is `chalkctl <cmd>`.
+
+name: release-chalkctl
+
+on:
+  push:
+    tags:
+      - "ctl-v*"       # ctl-v0.4.0
+
+permissions:
+  contents: write      # create the Release + upload assets
+  id-token: write      # cosign keyless (OIDC)
+
+jobs:
+  binaries:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build static binaries (amd64 + arm64)
+        run: |
+          set -euo pipefail
+          # Strip the ctl- prefix for the semver stamp: ctl-v0.4.0 -> v0.4.0
+          VER="${GITHUB_REF_NAME#ctl-}"
+          SHA="$(git rev-parse --short HEAD)"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LDFLAGS="-s -w \
+            -X github.com/scuq/chalk/internal/version.Binary=chalkctl \
+            -X github.com/scuq/chalk/internal/version.Version=${VER} \
+            -X github.com/scuq/chalk/internal/version.Commit=${SHA} \
+            -X github.com/scuq/chalk/internal/version.BuildDate=${DATE}"
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            out="dist/chalkctl_linux_${arch}"
+            CGO_ENABLED=0 GOOS=linux GOARCH="${arch}" \
+              go build -trimpath -ldflags="${LDFLAGS}" -o "${out}" ./cmd/chalkctl
+            echo "built ${out}"
+          done
+          ( cd dist && sha256sum chalkctl_linux_* > SHA256SUMS )
+          cat dist/SHA256SUMS
+
+      - name: Smoke-test the amd64 binary
+        run: |
+          chmod +x dist/chalkctl_linux_amd64
+          ./dist/chalkctl_linux_amd64 version
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign binaries (keyless)
+        run: |
+          set -euo pipefail
+          for f in dist/chalkctl_linux_amd64 dist/chalkctl_linux_arm64 dist/SHA256SUMS; do
+            cosign sign-blob --yes \
+              --output-signature "${f}.sig" \
+              --output-certificate "${f}.pem" \
+              "${f}"
+          done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/chalkctl_linux_amd64
+            dist/chalkctl_linux_arm64
+            dist/SHA256SUMS
+            dist/*.sig
+            dist/*.pem
+          body: |
+            `chalkctl` manager binary (static, linux/amd64 + linux/arm64).
+
+            Bootstrap:
+            ```
+            curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/chalkctl_linux_amd64 -o chalkctl
+            chmod +x chalkctl && sudo mv chalkctl /usr/local/bin/
+            chalkctl version
+            ```
+
+            Signed with cosign (keyless). Verify a binary:
+            ```
+            cosign verify-blob chalkctl_linux_amd64 \
+              --signature chalkctl_linux_amd64.sig \
+              --certificate chalkctl_linux_amd64.pem \
+              --certificate-identity-regexp 'https://github.com/${{ github.repository }}/' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com
+            ```
