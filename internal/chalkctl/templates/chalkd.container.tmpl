@@ -12,7 +12,6 @@ Requires=chalk-postgres.service
 [Container]
 ContainerName=chalkd
 Image={{ .Image }}@{{ .Digest }}
-PullPolicy=missing
 Network=chalk.network
 Volume=chalk-blobs.volume:/var/lib/chalk/blobs
 EnvironmentFile=/etc/chalk/chalk.env
