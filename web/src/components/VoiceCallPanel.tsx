@@ -452,6 +452,22 @@ export function VoiceCallPanel({
                 </button>
               </div>
               <div class="chalk-voice-drawer-stats">
+                {diag?.adaptive && (
+                  <div class="chalk-voice-drawer-pair" data-testid="voice-adaptive-line">
+                    <span class="chalk-voice-drawer-peer">adaptive</span>{" "}
+                    uplink≈{diag.adaptive.uplinkKbps}kbps
+                    {diag.adaptive.probeKbps !== null && ` (probe ${diag.adaptive.probeKbps})`}
+                    {" · "}video {diag.adaptive.videoBudgetKbps}kbps
+                    {diag.adaptive.screenTier !== null && (
+                      <>
+                        {" · "}screen {diag.adaptive.screenTier} @
+                        {diag.adaptive.perScreenKbps}kbps
+                      </>
+                    )}
+                    {diag.adaptive.perCameraKbps > 0 &&
+                      ` · cam ${diag.adaptive.perCameraKbps}kbps`}
+                  </div>
+                )}
                 {(!diag || diag.peers.length === 0) && (
                   <div class="chalk-voice-note">no live peer connections</div>
                 )}

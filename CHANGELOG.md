@@ -50,9 +50,28 @@ All notable changes to chalk are documented here.
   actionable getUserMedia error messages, `voice_enabled` welcome flag gating
   all voice UI. Feature-flagged: `CHALK_VOICE_ENABLED` (default off).
 
+### Added (phase 30 addenda: 30-7 screen/game share, 30-8 adaptive quality)
+- **Screen & game sharing (30-7, Addendum B).** Perfect-negotiation
+  renegotiation; screen on separate transceivers (camera + screen
+  simultaneous) announced via `screen_add`/`screen_remove`; three-way
+  motion/detail/text Prioritize toggle (contentHint + degradationPreference);
+  mode-dependent codec ladder (AV1 CPU-gated for detail/text, VP9-first for
+  motion); shared program audio (music hint, 128 kbps); per-viewer screen
+  hide; mid-call camera add; dock sharing row + screen audio sinks.
+- **Adaptive quality (30-8, Addendum D).** Pre-stream uplink probe
+  (`POST /api/netprobe`, session-gated timed discard) picks the starting
+  tier; passive in-call re-checks (`CHALK_VOICE_RECHECK_SECS`, getStats
+  only — never active tests mid-call) with an always-on ~3 s fast
+  down-guard; mesh budget divider (uplink × headroom − audio reserve →
+  per-copy caps, screen prioritized, camera thumbnails while sharing);
+  per-mode tier ladder with hysteresis applied via `sender.setParameters()`
+  (no renegotiation); game bottom rung pauses + warns, auto-resumes. New
+  knobs: `CHALK_VOICE_PROBE_ENABLED/PROBE_BYTES/RECHECK_SECS/`
+  `UPLINK_HEADROOM/AUDIO_KBPS/MIN_VIDEO_KBPS`; policy delivered per-join on
+  `voice_join_ack.adaptive`; planner state in the debug drawer.
+
 ### Planned
-- Phase 30 addenda: 30-7 screen/game share (Addendum B), 30-8 adaptive quality
-  probe + downscaler (Addendum D); SFU seam (Slice I) for large rooms.
+- Phase 30: SFU seam (Slice I) for large voice rooms.
 - Governance `set_config` proposal type (govern per-channel knobs by vote).
 
 ### Added

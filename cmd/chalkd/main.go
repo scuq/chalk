@@ -23,6 +23,7 @@ import (
 	"github.com/scuq/chalk/internal/mail"
 	"github.com/scuq/chalk/internal/migrate"
 	"github.com/scuq/chalk/internal/presence"
+	"github.com/scuq/chalk/internal/proto"
 	"github.com/scuq/chalk/internal/server"
 	"github.com/scuq/chalk/internal/store"
 	"github.com/scuq/chalk/internal/version"
@@ -211,6 +212,10 @@ func run(args []string) error {
 
 		// att-4: Giphy search proxy (nil when no API key configured).
 		GiphyClient: giphyClient,
+
+		// 30-8: uplink probe endpoint policy.
+		NetprobeEnabled:  cfg.Voice.Enabled && cfg.Voice.ProbeEnabled,
+		NetprobeMaxBytes: cfg.Voice.ProbeBytes,
 	}
 	log.Printf("auth: rp_id=%q rp_name=%q rp_origins=%v open_registration=%v dev=%v",
 		authCfg.RPID, authCfg.RPDisplayName, authCfg.RPOrigins,
@@ -232,6 +237,15 @@ func run(args []string) error {
 		TurnSecret:      cfg.Voice.TurnSecret,
 		TurnTTL:         cfg.Voice.TurnTTL(),
 		StunURLs:        cfg.Voice.StunURLList(),
+		// 30-8: adaptive-quality policy echoed on voice_join_ack.
+		Adaptive: &proto.VoiceAdaptiveConfig{
+			ProbeEnabled:   cfg.Voice.ProbeEnabled,
+			ProbeBytes:     cfg.Voice.ProbeBytes,
+			RecheckSecs:    cfg.Voice.RecheckSecList(),
+			UplinkHeadroom: cfg.Voice.UplinkHeadroom,
+			AudioKbps:      cfg.Voice.AudioKbps,
+			MinVideoKbps:   cfg.Voice.MinVideoKbps,
+		},
 	}
 	if cfg.Voice.Enabled {
 		log.Printf("voice: enabled max_participants=%d force_relay=%v turn_urls=%d stun_urls=%d ttl=%s",

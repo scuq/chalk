@@ -41,6 +41,10 @@ type VoiceWSConfig struct {
 	TurnSecret      string
 	TurnTTL         time.Duration
 	StunURLs        []string
+	// 30-8: adaptive-quality policy echoed verbatim on voice_join_ack.
+	// Nil is legal (tests, stripped configs) -- the ack then omits the
+	// block and clients use their baked defaults.
+	Adaptive *proto.VoiceAdaptiveConfig
 }
 
 // voiceConnID is the instance-scoped conn key stored in voice_participants.
@@ -194,6 +198,7 @@ func (h *WSHandler) handleVoiceJoin(
 		Roster:     voiceRosterView(existing),
 		ICEServers: iceView,
 		ForceRelay: h.cfg.Voice.ForceRelay,
+		Adaptive:   h.cfg.Voice.Adaptive,
 	})
 	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
 		h.logger.Printf("voice_join_ack write: %v", err)

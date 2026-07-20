@@ -86,6 +86,12 @@ type HTTPDeps struct {
 	AttachChunkBytes  int
 	AttachFetchWindow time.Duration
 
+	// 30-8: uplink probe endpoint (POST /api/netprobe, design Addendum D).
+	// NetprobeEnabled mirrors CHALK_VOICE_ENABLED && CHALK_VOICE_PROBE_ENABLED;
+	// NetprobeMaxBytes is CHALK_VOICE_PROBE_BYTES, the server-side body cap.
+	NetprobeEnabled  bool
+	NetprobeMaxBytes int64
+
 	// att-4: Giphy search-proxy client, built from config.Giphy and plumbed
 	// in by cmd/chalkd. Nil when CHALK_GIPHY_API_KEY is unset; in that case
 	// the search endpoint answers 503 and /api/auth/config reports

@@ -475,7 +475,7 @@ login; passkey deletion with a last-passkey guard. No per-device revocation
 email blacklist CRUD, admin-protection triggers (migration 0019), SPA admin
 panel.
 
-**Voice/video (Phase 30, slices 30-1 .. 30-6) — live.** Discord-style voice
+**Voice/video (Phase 30, slices 30-1 .. 30-8) — live.** Discord-style voice
 channels: full WebRTC mesh between clients with coturn as the mandatory media
 relay (short-lived HMAC creds minted per join), E2E-encrypted signaling under
 the channel space key with Ed25519-signed DTLS fingerprints (anti-MITM: a bad
@@ -484,13 +484,23 @@ mute/cam/screen badges (❯ text / ▶ voice glyphs), big-tile + filmstrip stage
 call duration, in-UI diagnostics drawer (event ring + getStats + copy report).
 Polish: removed-member voice eviction cascade, WS-loss teardown (v1: rejoin by
 click), post-join state sync, getUserMedia error UX, `voice_enabled` welcome
-flag gating the client. Gated behind `CHALK_VOICE_ENABLED`; see
+flag gating the client. Screen/game share (30-7, Addendum B): separate
+transceivers (camera + screen simultaneous) under perfect negotiation, a
+three-way motion/detail/text Prioritize toggle (W3C contentHint + mode-keyed
+degradationPreference), mode-dependent codec ladder via setCodecPreferences
+(AV1 CPU-gated for detail/text), shared program audio, per-viewer screen
+hide, mid-call camera add. Adaptive quality (30-8, Addendum D): pre-stream
+uplink probe (`POST /api/netprobe`) picks the starting tier; passive getStats
+re-checks on `CHALK_VOICE_RECHECK_SECS` (never active tests mid-call); a mesh
+budget divider (headroom → per-peer audio reserve → per-copy caps, screen
+prioritized over camera thumbnails) feeds a per-mode tier ladder with
+hysteresis (fast down, slow single-rung up), applied via sender.setParameters
+without renegotiation; game bottom rung pauses + warns. Gated behind
+`CHALK_VOICE_ENABLED`; see
 `docs/design/chalk-phase-30-voice-video-design.md` and `docs/deployment.md`.
 
-**Designed, not yet built:** Phase 30 addenda — 30-7 screen/game share
-(Addendum B) and 30-8 adaptive quality probe/downscaler (Addendum D); future
-SFU seam (Slice I) for large rooms. Deferred-small: governance `set_config`
-proposal type.
+**Designed, not yet built:** future SFU seam (Slice I) for large voice rooms.
+Deferred-small: governance `set_config` proposal type.
 
 ---
 

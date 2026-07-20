@@ -114,6 +114,20 @@ type VoiceJoinAckPayload struct {
 	Roster     []VoiceParticipantView `json:"roster"`
 	ICEServers []ICEServer            `json:"ice_servers"`
 	ForceRelay bool                   `json:"force_relay,omitempty"`
+	// 30-8: adaptive-quality policy (design Addendum D) -- the client's mesh
+	// budget divider, tier ladder and pre-stream probe run against these.
+	// Omitted by older servers; the client falls back to baked defaults.
+	Adaptive *VoiceAdaptiveConfig `json:"adaptive,omitempty"`
+}
+
+// VoiceAdaptiveConfig mirrors the CHALK_VOICE_* adaptive knobs (30-8, D5).
+type VoiceAdaptiveConfig struct {
+	ProbeEnabled   bool    `json:"probe_enabled"`
+	ProbeBytes     int64   `json:"probe_bytes"`
+	RecheckSecs    []int   `json:"recheck_secs"`
+	UplinkHeadroom float64 `json:"uplink_headroom"`
+	AudioKbps      int     `json:"audio_kbps"`
+	MinVideoKbps   int     `json:"min_video_kbps"`
 }
 
 // VoiceLeaveAckPayload confirms a leave. Left is false when the caller was

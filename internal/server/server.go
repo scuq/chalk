@@ -190,6 +190,11 @@ func NewServer(opts Options) (*Server, error) {
 		if err := opts.Auth.MountGiphy(mux); err != nil {
 			return nil, fmt.Errorf("mount giphy: %w", err)
 		}
+		// 30-8: pre-stream uplink probe. Always mounted; answers 503 when
+		// voice or the probe is disabled (NetprobeEnabled == false).
+		if err := opts.Auth.MountNetprobe(mux); err != nil {
+			return nil, fmt.Errorf("mount netprobe: %w", err)
+		}
 	}
 
 	// Phase 07: mount the SPA at "/". A WebFS provided via Options is

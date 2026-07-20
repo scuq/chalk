@@ -98,6 +98,18 @@ import {
 } from "../proto";
 import { fetchIdentity } from "../crypto/identity-sync";
 import {
+  DEFAULT_ADAPTIVE,
+  FALLBACK_UPLINK_BPS,
+  HysteresisLadder,
+  divideBudget,
+  ladderFor,
+  parseAdaptiveWire,
+  probeUplink,
+  type AdaptiveSettings,
+  type BudgetPlan,
+  type Tier,
+} from "./adaptive";
+import {
   sealSignal,
   openSignal,
   extractFingerprints,
@@ -110,22 +122,19 @@ import {
   type FingerprintContext,
 } from "./signal-crypto";
 
-// ---- knobs (30-4 minimal; 30-8 replaces the constants with the probe) ------
+// ---- knobs (30-8: video caps are DYNAMIC -- see ./adaptive) ----------------
+//
+// The fixed 30-4 video-cap constants are gone: per-copy video ceilings now
+// come from the Addendum D planner (measured uplink -> headroom -> audio
+// reserve -> mesh divider -> tier ladder with hysteresis). Audio caps stay
+// constant-ish: voice comes from the server's audio_kbps knob, program audio
+// keeps its fixed music-grade cap.
 
-/** Per-sender audio cap. Opus voice is comfortable well below this. */
-const AUDIO_MAX_BPS = 64_000;
-/** Total camera uplink budget split across peers (mesh sends N-1 copies). */
-const TOTAL_VIDEO_UPLINK_BPS = 2_500_000;
-/** Floor per video sender so the divider never starves a stream entirely. */
-const MIN_VIDEO_BPS = 150_000;
-/** Per-receiver screen-share caps (B3). Detail/text: screen content
- * compresses very well -- 2.5 Mbps covers crisp 1080p with burst headroom.
- * Motion (game): 1080p60 needs real bitrate; 6 Mbps sits inside B3's
- * 2.5-8 Mbps band with mesh sanity (the adaptive divider is 30-8). */
-const SCREEN_VIDEO_MAX_BPS = 2_500_000;
-const GAME_VIDEO_MAX_BPS = 6_000_000;
 /** Shared PROGRAM audio cap (Opus music, not voice -- 64k would smear it). */
 const SCREEN_AUDIO_MAX_BPS = 128_000;
+/** How often the passive fast down-guard reads getStats (D2: safety is
+ * continuous; only step-UPs wait for the scheduled replan ticks). */
+const ADAPTIVE_GUARD_MS = 3_000;
 
 /** The B0 share modes. Values ARE the W3C contentHint strings. */
 export type ScreenShareMode = "motion" | "detail" | "text";
@@ -277,6 +286,17 @@ export interface VoicePeerDiag {
   };
 }
 
+/** 30-8: the adaptive planner's last decision, for the debug drawer. */
+export interface VoiceAdaptiveDiag {
+  uplinkKbps: number;
+  probeKbps: number | null;
+  statsKbps: number | null;
+  videoBudgetKbps: number;
+  perCameraKbps: number;
+  perScreenKbps: number;
+  screenTier: string | null;
+}
+
 /** The full copyable diagnostics blob. */
 export interface VoiceDiagnostics {
   channelID: string;
@@ -285,6 +305,7 @@ export interface VoiceDiagnostics {
   iceServerURLs: string[]; // URLs only -- never the short-lived credentials
   peers: VoicePeerDiag[];
   events: VoiceDiagEvent[];
+  adaptive?: VoiceAdaptiveDiag;
 }
 
 const DIAG_RING_MAX = 150;
@@ -308,6 +329,24 @@ export class VoiceCall {
   /** The codec family (mimeType, lowercase) currently applied to the screen
    * transceivers -- a mode flip renegotiates only when this would change. */
   private appliedScreenCodec: string | null = null;
+  // 30-8 adaptive quality (Addendum D):
+  /** Server policy from voice_join_ack.adaptive (defaults until then). */
+  private adaptiveCfg: AdaptiveSettings = DEFAULT_ADAPTIVE;
+  /** Pre-stream probe result, bits/s (D1); null = not run / failed. */
+  private probeBps: number | null = null;
+  /** Last passive getStats uplink estimate, bits/s (D2). */
+  private lastStatsBps: number | null = null;
+  /** Screen-share rung tracker (D3); ladder follows the share mode. */
+  private readonly screenLadder = new HysteresisLadder(ladderFor("detail"));
+  /** The tier + plan applyBudget last applied (diagnostics + change diag). */
+  private appliedTier: Tier | null = null;
+  private lastPlan: BudgetPlan | null = null;
+  /** Capture-side fps last constrained onto the screen track. */
+  private appliedCaptureFps: number | null = null;
+  /** One warning per pause episode (game bottom rung). */
+  private pauseWarned = false;
+  private guardTimer: number | null = null;
+  private recheckTimers: number[] = [];
   /** Verified peer identities by userID; null = looked up, unusable. */
   private readonly identities = new Map<string, { ed25519Public: Uint8Array } | null>();
   /** Concurrent-join fallback timers by peer key. */
@@ -364,6 +403,23 @@ export class VoiceCall {
       ),
       peers: await this.collectPeerStats(),
       events: [...this.diagEvents],
+      adaptive: this.adaptiveDiag(),
+    };
+  }
+
+  /** adaptiveDiag: the planner's last plan, kbps-rounded (30-8). */
+  private adaptiveDiag(): VoiceAdaptiveDiag | undefined {
+    const p = this.lastPlan;
+    if (!p) return undefined;
+    const k = (bps: number): number => Math.round(bps / 1000);
+    return {
+      uplinkKbps: k(p.uplinkBps),
+      probeKbps: this.probeBps === null ? null : k(this.probeBps),
+      statsKbps: this.lastStatsBps === null ? null : k(this.lastStatsBps),
+      videoBudgetKbps: k(p.videoBudgetBps),
+      perCameraKbps: k(p.perCameraBps),
+      perScreenKbps: k(p.perScreenBps),
+      screenTier: this.appliedTier?.name ?? null,
     };
   }
 
@@ -447,6 +503,24 @@ export class VoiceCall {
       `join ack: roster=${(ack.roster ?? []).length} ice_servers=${this.iceServers.length}` +
         ` force_relay=${this.forceRelay}`,
     );
+    // 30-8: adaptive policy + the pre-stream probe (D1). The probe fires
+    // NOW -- concurrent with the signaling handshake but before real media
+    // bandwidth ramps (GCC starts each stream at ~15% and climbs over
+    // ~30 s, so the seconds-long probe finishes before media competes).
+    this.adaptiveCfg = parseAdaptiveWire(ack.adaptive);
+    if (this.adaptiveCfg.probeEnabled) {
+      void probeUplink(this.adaptiveCfg.probeBytes).then((bps) => {
+        if (this.closed) return;
+        this.probeBps = bps;
+        this.diag(
+          bps === null
+            ? "uplink probe failed — planning from stats + fallback"
+            : `uplink probe: ≈${Math.round(bps / 1000)} kbps`,
+        );
+        this.applyBudget();
+      });
+    }
+    this.startAdaptiveTimers();
     // 30-5h: camera starts OFF and mic starts UNMUTED, both matching the
     // server's default participant row (muted=false, video_on=false), so no
     // post-join state broadcast is needed -- the roster badges are already
@@ -467,6 +541,7 @@ export class VoiceCall {
     this.closed = true;
     const wasJoined = this.joined;
     this.joined = false;
+    this.stopAdaptiveTimers();
     for (const t of this.glareTimers.values()) window.clearTimeout(t);
     this.glareTimers.clear();
     for (const key of [...this.peers.keys()]) this.dropPeer(key, false);
@@ -499,6 +574,7 @@ export class VoiceCall {
     if (!this.hasVideo) return false;
     this.videoEnabled = on;
     for (const t of this.localStream?.getVideoTracks() ?? []) t.enabled = on;
+    this.applyBudget(); // 30-8: camera copies enter/leave the divider
     this.broadcastState();
     return true;
   }
@@ -1014,6 +1090,12 @@ export class VoiceCall {
     }
     for (const t of stream.getTracks()) t.stop();
     this.appliedScreenCodec = null;
+    // 30-8: the next share re-seeds its rung from a fresh observation.
+    this.screenLadder.reset();
+    this.appliedTier = null;
+    this.appliedCaptureFps = null;
+    this.pauseWarned = false;
+    this.applyBudget();
     if (!this.closed) this.broadcastState();
     this.o.callbacks.onLocalScreenStream(null);
   }
@@ -1035,6 +1117,10 @@ export class VoiceCall {
    */
   setScreenShareMode(mode: ScreenShareMode): void {
     this.screenMode = mode;
+    // 30-8: the mode picks the ladder column (D3); re-seed from the next
+    // budget observation rather than mapping rungs across ladders.
+    this.screenLadder.switchLadder(ladderFor(mode));
+    this.appliedCaptureFps = null;
     const stream = this.screenStream;
     if (!stream) return; // sticky for the next share
     const video = stream.getVideoTracks()[0];
@@ -1209,18 +1295,144 @@ export class VoiceCall {
     this.o.callbacks.onPeerScreenGone(peer.key);
   }
 
-  // ---- minimal uplink budget (Addendum D, the 30-4 slice of it) ------------
+  // ---- adaptive uplink budget (30-8, Addendum D) ---------------------------
+
+  /** startAdaptiveTimers: the ~3 s passive fast down-guard plus the
+   * scheduled replan ticks (D2, default +1/+6/+11 min from call start).
+   * All reads are getStats -- never an active test mid-call. */
+  private startAdaptiveTimers(): void {
+    this.stopAdaptiveTimers();
+    this.guardTimer = window.setInterval(
+      () => void this.adaptiveTick(false),
+      ADAPTIVE_GUARD_MS,
+    );
+    for (const s of this.adaptiveCfg.recheckSecs) {
+      this.recheckTimers.push(
+        window.setTimeout(() => void this.adaptiveTick(true), s * 1000),
+      );
+    }
+  }
+
+  private stopAdaptiveTimers(): void {
+    if (this.guardTimer !== null) window.clearInterval(this.guardTimer);
+    this.guardTimer = null;
+    for (const t of this.recheckTimers) window.clearTimeout(t);
+    this.recheckTimers = [];
+  }
+
+  /** adaptiveTick: one passive uplink read -> re-plan. replan=true marks the
+   * scheduled D2 ticks where a step-UP may be taken; step-downs are allowed
+   * on every tick (safety is continuous). */
+  private async adaptiveTick(replan: boolean): Promise<void> {
+    if (this.closed || !this.joined) return;
+    const bps = await this.sumAvailableOutgoingBps();
+    if (bps !== null) this.lastStatsBps = bps;
+    if (replan) {
+      this.diag(
+        `adaptive replan tick: stats≈${bps === null ? "?" : Math.round(bps / 1000)} kbps` +
+          ` probe≈${this.probeBps === null ? "?" : Math.round(this.probeBps / 1000)} kbps`,
+      );
+    }
+    this.applyBudget(replan);
+  }
+
+  /** sumAvailableOutgoingBps: GCC's uplink estimate summed across the mesh
+   * (each pc estimates ITS path; the sum approximates the shared uplink the
+   * copies compete on). null until any pair reports. */
+  private async sumAvailableOutgoingBps(): Promise<number | null> {
+    let sum = 0;
+    let seen = false;
+    for (const peer of this.peers.values()) {
+      try {
+        const pair = extractSelectedPair(await peer.pc.getStats());
+        if (pair?.availableOutgoingKbps !== undefined) {
+          sum += pair.availableOutgoingKbps * 1000;
+          seen = true;
+        }
+      } catch {
+        /* pc closing -- skip */
+      }
+    }
+    return seen ? sum : null;
+  }
 
   /**
-   * applyBudget caps every sender: audio at AUDIO_MAX_BPS, camera video at
-   * TOTAL_VIDEO_UPLINK_BPS split evenly across peers (each peer connection
-   * carries its own copy of the stream in a mesh), floored at MIN_VIDEO_BPS.
-   * Applied via setParameters -- no renegotiation. Best-effort: parameter
-   * support varies per browser; failures are logged and ignored.
+   * applyBudget (Addendum D): measured uplink -> headroom -> per-peer audio
+   * reserve -> mesh divider (screen prioritized, camera copies drop to a
+   * thumbnail while sharing) -> tier ladder with hysteresis -> per-sender
+   * ceilings via setParameters (maxBitrate / scaleResolutionDownBy /
+   * maxFramerate + a capture-side frameRate constraint). No renegotiation,
+   * so it's cheap to run on every guard tick. The encoder still sheds
+   * UNDER the ceiling per degradationPreference (motion=resolution,
+   * detail/text=fps); the ladder only sets what it may never exceed.
+   *
+   * Best-effort: parameter support varies per browser; failures are logged
+   * and ignored.
    */
-  private applyBudget(): void {
-    const n = Math.max(1, this.peers.size);
-    const perVideo = Math.max(MIN_VIDEO_BPS, Math.floor(TOTAL_VIDEO_UPLINK_BPS / n));
+  private applyBudget(replan = false): void {
+    const cfg = this.adaptiveCfg;
+    // Sources, best wins: probe (D1) and passive stats (D2), else the
+    // conservative fallback (overshooting a thin uplink is the failure
+    // mode D1 exists to prevent; the +1 min replan corrects upward).
+    const measured = Math.max(this.probeBps ?? 0, this.lastStatsBps ?? 0);
+    const uplink = measured > 0 ? measured : FALLBACK_UPLINK_BPS;
+
+    const screenVideo = this.screenStream?.getVideoTracks()[0] ?? null;
+    const plan = divideBudget(
+      uplink,
+      {
+        peers: this.peers.size,
+        screenActive: !!this.screenStream,
+        screenAudio: (this.screenStream?.getAudioTracks().length ?? 0) > 0,
+        cameraActive: this.hasVideo && this.videoEnabled,
+      },
+      cfg,
+    );
+    this.lastPlan = plan;
+
+    let tier: Tier | null = null;
+    if (this.screenStream) {
+      tier = this.screenLadder.note(plan.perScreenBps, Date.now(), replan);
+      if (tier !== this.appliedTier) {
+        this.diag(
+          `screen tier -> ${tier.name} (per-copy ≈${Math.round(plan.perScreenBps / 1000)} kbps)`,
+        );
+      }
+      this.appliedTier = tier;
+      // Game bottom rung (D3): budget too thin for motion video at all --
+      // pause the track + warn once, auto-resume when the budget recovers
+      // (hysteresis prevents flapping).
+      if (screenVideo) {
+        const shouldPause = !!tier.pause;
+        if (shouldPause && screenVideo.enabled) {
+          screenVideo.enabled = false;
+          this.diag("game share paused: per-copy budget under the floor");
+          if (!this.pauseWarned) {
+            this.pauseWarned = true;
+            this.o.callbacks.onError(
+              "uplink too low for a game share — video paused; switch the share to screen mode or stop sharing",
+            );
+          }
+        } else if (!shouldPause && !screenVideo.enabled) {
+          screenVideo.enabled = true;
+          this.pauseWarned = false;
+          this.diag("game share resumed: budget recovered");
+        }
+        // Capture-side fps ceiling follows the rung (D3); the sender-side
+        // maxFramerate below is the belt to this suspender.
+        if (tier.fps !== this.appliedCaptureFps) {
+          this.appliedCaptureFps = tier.fps;
+          screenVideo
+            .applyConstraints({ frameRate: { ideal: tier.fps, max: tier.fps } })
+            .catch((err) => {
+              console.warn("tier applyConstraints:", err);
+            });
+        }
+      }
+    }
+
+    const audioBps = cfg.audioKbps * 1000;
+    const screenHeight = screenVideo?.getSettings().height;
     const screenTrackIDs = new Set(this.screenStream?.getTracks().map((t) => t.id) ?? []);
     for (const peer of this.peers.values()) {
       for (const sender of peer.pc.getSenders()) {
@@ -1231,23 +1443,25 @@ export class VoiceCall {
         if (!params.encodings || params.encodings.length === 0) {
           params.encodings = [{}];
         }
-        params.encodings[0].maxBitrate =
-          kind === "audio"
-            ? isScreen
-              ? SCREEN_AUDIO_MAX_BPS // program audio, not voice
-              : AUDIO_MAX_BPS
-            : isScreen
-              ? this.screenMode === "motion"
-                ? GAME_VIDEO_MAX_BPS
-                : SCREEN_VIDEO_MAX_BPS
-              : perVideo;
-        if (isScreen && kind === "video") {
+        const enc = params.encodings[0];
+        if (kind === "audio") {
+          enc.maxBitrate = isScreen ? SCREEN_AUDIO_MAX_BPS : audioBps;
+        } else if (isScreen && tier) {
+          enc.maxBitrate = tier.maxBps;
+          enc.maxFramerate = tier.fps;
+          enc.scaleResolutionDownBy =
+            screenHeight && screenHeight > tier.height ? screenHeight / tier.height : 1;
           // B0: pin the hint's implied preference explicitly (motion holds
           // FPS, detail/text hold resolution). Cast: lib.dom omits the
           // field in some TS versions; browsers accept it.
           (params as RTCRtpSendParameters & { degradationPreference?: string })
             .degradationPreference =
               this.screenMode === "motion" ? "maintain-framerate" : "maintain-resolution";
+        } else {
+          // Camera copy: the divider's cap (thumbnail while sharing). When
+          // the camera is off the floor keeps a later toggle-on sane until
+          // the next tick re-plans.
+          enc.maxBitrate = Math.max(plan.perCameraBps, cfg.minVideoKbps * 1000);
         }
         sender.setParameters(params).catch((err) => {
           console.warn("setParameters:", err);

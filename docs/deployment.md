@@ -65,6 +65,12 @@ All flags are also available as `CHALK_*` env vars (e.g. `--listen` ↔ `CHALK_L
 | | `CHALK_TURN_SECRET` | | shared with coturn `--static-auth-secret` |
 | | `CHALK_TURN_TTL_SECS` | `3600` | minted-credential lifetime |
 | | `CHALK_STUN_URLS` | | optional explicit STUN URIs |
+| | `CHALK_VOICE_PROBE_ENABLED` | `true` | 30-8: pre-stream uplink probe (`POST /api/netprobe`) |
+| | `CHALK_VOICE_PROBE_BYTES` | `3000000` | probe upload size / server-side body cap |
+| | `CHALK_VOICE_RECHECK_SECS` | `60,360,660` | in-call replan ticks (passive getStats reads) |
+| | `CHALK_VOICE_UPLINK_HEADROOM` | `0.85` | fraction of measured uplink the planner spends |
+| | `CHALK_VOICE_AUDIO_KBPS` | `64` | per-peer voice reserve |
+| | `CHALK_VOICE_MIN_VIDEO_KBPS` | `300` | per-copy floor before video is unsustainable |
 
 ## Voice (TURN relay)
 

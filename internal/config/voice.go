@@ -45,6 +45,29 @@ type VoiceConfig struct {
 	TurnSecret      string
 	TurnTTLSecs     int
 	StunURLs        string
+
+	// 30-8 (design Addendum D): adaptive-quality knobs, delivered to the
+	// client on voice_join_ack.adaptive so the mesh budget divider and the
+	// tier ladder run against server policy rather than baked constants.
+	//
+	//	ProbeEnabled    whether clients run the pre-stream uplink probe
+	//	                (POST /api/netprobe). CHALK_VOICE_PROBE_ENABLED.
+	//	ProbeBytes      probe upload size cap in bytes; also the server-side
+	//	                body bound on /api/netprobe. CHALK_VOICE_PROBE_BYTES.
+	//	RecheckSecs     comma-separated replan tick offsets from call start,
+	//	                seconds (passive getStats reads, never active tests
+	//	                mid-call). CHALK_VOICE_RECHECK_SECS.
+	//	UplinkHeadroom  fraction of the measured uplink the planner spends
+	//	                (0 < x <= 1). CHALK_VOICE_UPLINK_HEADROOM.
+	//	AudioKbps       per-peer voice reserve. CHALK_VOICE_AUDIO_KBPS.
+	//	MinVideoKbps    per-copy floor before video is unsustainable.
+	//	                CHALK_VOICE_MIN_VIDEO_KBPS.
+	ProbeEnabled   bool
+	ProbeBytes     int64
+	RecheckSecs    string
+	UplinkHeadroom float64
+	AudioKbps      int
+	MinVideoKbps   int
 }
 
 // Voice defaults. Named constants so the values appear once and are referenced
@@ -52,6 +75,15 @@ type VoiceConfig struct {
 const (
 	defaultVoiceMaxParticipants = 5
 	defaultVoiceTurnTTLSecs     = 3600
+
+	// 30-8 adaptive defaults (design D5).
+	defaultVoiceProbeBytes    = 3_000_000
+	defaultVoiceRecheckSecs   = "60,360,660"
+	defaultVoiceHeadroom      = 0.85
+	defaultVoiceAudioKbps     = 64
+	defaultVoiceMinVideoKbps  = 300
+	defaultVoiceProbeBytesMin = 100_000
+	defaultVoiceProbeBytesMax = 50_000_000
 )
 
 func defaultVoiceConfig() VoiceConfig {
@@ -60,6 +92,13 @@ func defaultVoiceConfig() VoiceConfig {
 		MaxParticipants: defaultVoiceMaxParticipants,
 		ForceRelay:      false,
 		TurnTTLSecs:     defaultVoiceTurnTTLSecs,
+
+		ProbeEnabled:   true,
+		ProbeBytes:     defaultVoiceProbeBytes,
+		RecheckSecs:    defaultVoiceRecheckSecs,
+		UplinkHeadroom: defaultVoiceHeadroom,
+		AudioKbps:      defaultVoiceAudioKbps,
+		MinVideoKbps:   defaultVoiceMinVideoKbps,
 	}
 }
 
@@ -118,6 +157,44 @@ func (v *VoiceConfig) applyEnv() {
 	if n, ok := voiceEnvInt("CHALK_TURN_TTL_SECS"); ok {
 		v.TurnTTLSecs = n
 	}
+	// 30-8 adaptive knobs.
+	if b, ok := voiceEnvBool("CHALK_VOICE_PROBE_ENABLED"); ok {
+		v.ProbeEnabled = b
+	}
+	if n, ok := voiceEnvInt("CHALK_VOICE_PROBE_BYTES"); ok {
+		v.ProbeBytes = int64(n)
+	}
+	if s := strings.TrimSpace(os.Getenv("CHALK_VOICE_RECHECK_SECS")); s != "" {
+		v.RecheckSecs = s
+	}
+	if s := strings.TrimSpace(os.Getenv("CHALK_VOICE_UPLINK_HEADROOM")); s != "" {
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			v.UplinkHeadroom = f
+		}
+	}
+	if n, ok := voiceEnvInt("CHALK_VOICE_AUDIO_KBPS"); ok {
+		v.AudioKbps = n
+	}
+	if n, ok := voiceEnvInt("CHALK_VOICE_MIN_VIDEO_KBPS"); ok {
+		v.MinVideoKbps = n
+	}
+}
+
+// RecheckSecList parses the comma-separated RecheckSecs into positive ints,
+// dropping blanks. Validate has already fenced malformed entries.
+func (v VoiceConfig) RecheckSecList() []int {
+	parts := strings.Split(v.RecheckSecs, ",")
+	out := make([]int, 0, len(parts))
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(t); err == nil && n > 0 {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // Validate fails loudly on nonsensical voice settings rather than letting
@@ -133,6 +210,31 @@ func (v VoiceConfig) Validate() error {
 	}
 	if strings.TrimSpace(v.TurnURLs) != "" && strings.TrimSpace(v.TurnSecret) == "" {
 		return fmt.Errorf("CHALK_TURN_SECRET is required when CHALK_TURN_URLS is set (coturn static-auth-secret; the HMAC credential minter cannot sign without it)")
+	}
+	// 30-8 adaptive knobs.
+	if v.ProbeBytes < defaultVoiceProbeBytesMin || v.ProbeBytes > defaultVoiceProbeBytesMax {
+		return fmt.Errorf("CHALK_VOICE_PROBE_BYTES must be in %d..%d (got %d)", defaultVoiceProbeBytesMin, defaultVoiceProbeBytesMax, v.ProbeBytes)
+	}
+	if v.UplinkHeadroom <= 0 || v.UplinkHeadroom > 1 {
+		return fmt.Errorf("CHALK_VOICE_UPLINK_HEADROOM must be in (0,1] (got %g)", v.UplinkHeadroom)
+	}
+	if v.AudioKbps < 16 || v.AudioKbps > 510 {
+		return fmt.Errorf("CHALK_VOICE_AUDIO_KBPS must be in 16..510 (got %d; Opus tops out at 510)", v.AudioKbps)
+	}
+	if v.MinVideoKbps < 50 || v.MinVideoKbps > 2000 {
+		return fmt.Errorf("CHALK_VOICE_MIN_VIDEO_KBPS must be in 50..2000 (got %d)", v.MinVideoKbps)
+	}
+	if len(v.RecheckSecList()) == 0 {
+		return fmt.Errorf("CHALK_VOICE_RECHECK_SECS must contain at least one positive integer (got %q)", v.RecheckSecs)
+	}
+	for _, p := range strings.Split(v.RecheckSecs, ",") {
+		t := strings.TrimSpace(p)
+		if t == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(t); err != nil || n <= 0 {
+			return fmt.Errorf("CHALK_VOICE_RECHECK_SECS entries must be positive integers (got %q)", t)
+		}
 	}
 	return nil
 }

@@ -528,6 +528,20 @@ export interface VoiceJoinAckPayload {
   roster: VoiceParticipantWire[];
   ice_servers: ICEServerWire[];
   force_relay?: boolean;
+  // 30-8: adaptive-quality policy (design Addendum D). Absent on older
+  // servers; the client then uses its baked defaults.
+  adaptive?: VoiceAdaptiveWire;
+}
+
+// VoiceAdaptiveWire mirrors proto.VoiceAdaptiveConfig (30-8, the
+// CHALK_VOICE_* adaptive knobs, design D5).
+export interface VoiceAdaptiveWire {
+  probe_enabled?: boolean;
+  probe_bytes?: number;
+  recheck_secs?: number[];
+  uplink_headroom?: number;
+  audio_kbps?: number;
+  min_video_kbps?: number;
 }
 
 export interface VoiceLeavePayload {
