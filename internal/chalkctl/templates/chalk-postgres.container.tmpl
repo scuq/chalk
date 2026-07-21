@@ -9,7 +9,12 @@ After=network-online.target
 ContainerName=postgres
 Image=docker.io/library/postgres:{{ .PostgresTag }}
 Network=chalk.network
-Volume=chalk-pgdata.volume:/var/lib/postgresql/data
+# PG18+ changed the image VOLUME to /var/lib/postgresql (data lives in a
+# versioned subdir, e.g. 18/docker) to enable pg_upgrade --link. Mounting the
+# old /var/lib/postgresql/data path makes PG18 treat it as an unused mount and
+# write to an anonymous volume instead -> data loss / init failure. Do NOT set
+# PGDATA; the image default is correct.
+Volume=chalk-pgdata.volume:/var/lib/postgresql
 EnvironmentFile=/etc/chalk/chalk.env
 Environment=POSTGRES_DB=chalk
 Environment=POSTGRES_USER=chalk

@@ -258,3 +258,25 @@ func TestCoturnReadsConfigFile(t *testing.T) {
 		t.Error("coturn config should carry the literal secret")
 	}
 }
+
+// TestPostgres18MountPath pins the PG18 volume mount. PG18 moved the image
+// VOLUME to /var/lib/postgresql (data in a versioned subdir); mounting the
+// old .../data path makes PG18 write to an anonymous volume and fail. Must
+// mount the parent, and must NOT override PGDATA.
+func TestPostgres18MountPath(t *testing.T) {
+	p := InitParams{PostgresTag: "18-alpine", Domain: "x.example.org"}
+	unit, err := renderTemplate("chalk-postgres.container", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(unit)
+	if !strings.Contains(s, "chalk-pgdata.volume:/var/lib/postgresql\n") {
+		t.Error("PG18 volume must mount at /var/lib/postgresql (not .../data)")
+	}
+	if strings.Contains(s, ":/var/lib/postgresql/data") {
+		t.Error("PG18 must not mount at the old .../data path")
+	}
+	if strings.Contains(s, "PGDATA") && strings.Contains(s, "Environment=PGDATA") {
+		t.Error("do not override PGDATA; the PG18 image default is correct")
+	}
+}
