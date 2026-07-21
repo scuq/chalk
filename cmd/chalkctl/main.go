@@ -46,7 +46,13 @@ func run(args []string) error {
 		return nil
 	case "init":
 		return runInit(args[1:])
-	case "status", "update", "self-update", "rollback", "backup", "logs":
+	case "down":
+		return runDown(args[1:])
+	case "up":
+		return runUp(args[1:])
+	case "status":
+		return runStatus(args[1:])
+	case "update", "self-update", "rollback", "backup", "logs":
 		return fmt.Errorf("%q is not implemented yet in this build (arrives in a later ops slice)", cmd)
 	default:
 		return fmt.Errorf("unknown command %q (try `chalkctl help`)", cmd)
@@ -69,6 +75,10 @@ func runInit(args []string) error {
 		skipVerify = fs.Bool("skip-verify", false, "skip cosign signature verification (accepts the risk)")
 		noStart    = fs.Bool("no-start", false, "write units but do not start the stack")
 		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file (flags override it)")
+
+		force  = fs.Bool("force", false, "re-apply config over an existing deployment (keeps the DB)")
+		dropDB = fs.Bool("drop-db", false, "with --force: WIPE the database (fresh schema); prompts to confirm")
+		assume = fs.Bool("yes", false, "skip the --drop-db confirmation prompt (non-interactive)")
 
 		adminUser  = fs.String("admin-username", "", "admin username to seed on first boot (required)")
 		adminEmail = fs.String("admin-email", "", "admin email to seed on first boot (required)")
@@ -137,17 +147,98 @@ func runInit(args []string) error {
 		verifier = chalkctl.NewCosignVerifier(repoFromImage(cfg.Image))
 	}
 
+	var confirm func(string) bool
+	if *assume {
+		confirm = func(string) bool { return true }
+	}
+	// --drop-db only meaningful with --force; guard for a clearer error.
+	if *dropDB && !*force {
+		return fmt.Errorf("--drop-db requires --force (it re-applies then wipes the DB)")
+	}
+
 	return chalkctl.Init(chalkctl.InitOptions{
 		Cfg:        cfg,
 		Version:    *verTag,
 		Verifier:   verifier,
 		ConfigPath: *configPath,
 		NoStart:    *noStart,
+		Force:      *force,
+		DropDB:     *dropDB,
+		Confirm:    confirm,
 	})
 }
 
 // repoFromImage turns "ghcr.io/scuq/chalk" into "scuq/chalk" for the cosign
 // identity pin. Falls back to the last two path segments.
+// voiceFromConfig reads the saved config to decide whether coturn is part of
+// the stack, so down/up/status act on the right service set. Defaults to true
+// (voice on) if the config can't be read -- stopping a non-existent coturn is
+// harmless, and it's the safer default for down.
+func voiceFromConfig(configPath string) bool {
+	cfg, err := chalkctl.LoadConfigFile(chalkctl.DefaultConfig(), configPath)
+	if err != nil {
+		return true
+	}
+	return cfg.VoiceEnabled
+}
+
+// runDown stops the stack. --purge removes state.json (so init can re-run);
+// --purge-data ALSO wipes the postgres volume (destroys the database).
+func runDown(args []string) error {
+	fs := flag.NewFlagSet("down", flag.ContinueOnError)
+	var (
+		purge      = fs.Bool("purge", false, "also remove state.json so `init` can run fresh")
+		purgeData  = fs.Bool("purge-data", false, "ALSO wipe the postgres volume (destroys the database)")
+		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file (for voice detection)")
+		statePath  = fs.String("state", chalkctl.DefaultStatePath, "state file path")
+	)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	// --purge-data implies --purge (a wiped DB with stale state is incoherent).
+	if *purgeData {
+		*purge = true
+	}
+	return chalkctl.Down(chalkctl.LifecycleOptions{
+		StatePath:  *statePath,
+		PurgeState: *purge,
+		PurgeData:  *purgeData,
+		Voice:      voiceFromConfig(*configPath),
+	})
+}
+
+// runUp starts a stack that init already wrote.
+func runUp(args []string) error {
+	fs := flag.NewFlagSet("up", flag.ContinueOnError)
+	var (
+		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file (for voice detection)")
+		statePath  = fs.String("state", chalkctl.DefaultStatePath, "state file path")
+	)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	return chalkctl.Up(chalkctl.LifecycleOptions{
+		StatePath: *statePath,
+		Voice:     voiceFromConfig(*configPath),
+	})
+}
+
+// runStatus prints deployed version + service states.
+func runStatus(args []string) error {
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	var (
+		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file (for voice detection)")
+		statePath  = fs.String("state", chalkctl.DefaultStatePath, "state file path")
+	)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	return chalkctl.Status(chalkctl.LifecycleOptions{
+		StatePath: *statePath,
+		Voice:     voiceFromConfig(*configPath),
+	})
+}
+
 func repoFromImage(image string) string {
 	parts := splitSlash(image)
 	if len(parts) >= 2 {
@@ -178,7 +269,9 @@ Usage:
 
 Commands:
   init         bootstrap a deployment (verify, pull+pin, render, bring up, timer)
-  status       show deployed version, health, and update availability
+  up           start the stack (after init)
+  down         stop the stack (--purge to clear state, --purge-data to wipe DB)
+  status       show deployed version, digest, and service states
   update       update the chalk app to the newest release
   self-update  update the chalkctl binary itself
   rollback     restore the previous chalk image
@@ -197,6 +290,9 @@ init flags:
   --attach-max-bytes         upload size cap (0 = chalkd default)
   --giphy-api-key <key>      enable the GIF picker (optional)
   --open-registration[=false] let anyone register (default on; tighten later)
+  --force                    re-apply config over an existing deploy (keeps DB)
+  --drop-db                  with --force: WIPE the database (prompts to confirm)
+  --yes                      skip the --drop-db confirmation (non-interactive)
   --skip-verify              skip cosign signature verification
   --no-start                 write units without starting
   --config <path>            config file (flags override it)

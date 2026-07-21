@@ -1,6 +1,7 @@
 package chalkctl
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -23,6 +24,17 @@ type InitOptions struct {
 	CaddyfileAt string    // DefaultCaddyfile
 	NoStart     bool      // write everything but don't systemctl start
 	Out         io.Writer // progress log; nil -> os.Stdout
+
+	// Force re-runs init over an existing deployment (re-render config + env,
+	// restart). WITHOUT DropDB it PRESERVES the existing DB and secrets (so a
+	// config-only change doesn't break the database). With DropDB it wipes the
+	// postgres volume and generates fresh secrets.
+	Force  bool
+	DropDB bool
+	// Confirm is called for destructive actions (DropDB). It must return true
+	// to proceed. nil -> a default interactive prompt (stdin). Set to a
+	// func returning true for --yes / non-interactive.
+	Confirm func(prompt string) bool
 }
 
 func (o *InitOptions) defaults() {
@@ -78,10 +90,28 @@ func Init(o InitOptions) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	if _, ok, err := LoadState(o.StatePath); err != nil {
+	_, initialized, err := LoadState(o.StatePath)
+	if err != nil {
 		return err
-	} else if ok {
-		return fmt.Errorf("already initialized (%s exists) -- use `chalkctl update` to change the deployed version", o.StatePath)
+	}
+	if initialized && !o.Force {
+		return fmt.Errorf("already initialized (%s exists) -- pass --force to re-apply config, add --drop-db to also wipe the database", o.StatePath)
+	}
+
+	// Destructive-action confirmation (DropDB). Preserve-secrets path needs
+	// no confirmation; wiping the DB does.
+	confirm := o.Confirm
+	if confirm == nil {
+		confirm = promptConfirm
+	}
+	if o.DropDB {
+		if !confirm(fmt.Sprintf(
+			"This will PERMANENTLY DELETE the chalk database for %s.\nType the domain (%s) to confirm: ",
+			cfg.Domain, cfg.Domain)) {
+			return fmt.Errorf("aborted: database wipe not confirmed")
+		}
+	} else if o.Force && initialized {
+		o.logf("--force: re-applying config, PRESERVING the existing database")
 	}
 
 	imageTag := cfg.Image + ":" + o.Version
@@ -106,14 +136,32 @@ func Init(o InitOptions) error {
 	o.logf("pinned digest: %s", digest)
 
 	// -- 4. secrets + render + write ----------------------------------------
-	pg, err := genSecret(24)
-	if err != nil {
-		return err
-	}
-	turn := ""
-	if cfg.VoiceEnabled {
-		if turn, err = genSecret(24); err != nil {
+	// Secret policy:
+	//   - fresh init, or --drop-db: generate NEW secrets (new DB, new creds).
+	//   - --force WITHOUT --drop-db: PRESERVE the existing secrets from the
+	//     current env file, or the running DB (with its old password) would
+	//     reject the newly-generated one.
+	var pg, turn string
+	preserve := o.Force && initialized && !o.DropDB
+	if preserve {
+		existing, rerr := readEnvSecrets(o.EnvPath)
+		if rerr != nil {
+			return fmt.Errorf("--force without --drop-db needs the existing secrets, but %s could not be read (%w); re-run with --drop-db to regenerate", o.EnvPath, rerr)
+		}
+		pg = existing["CHALK_PG_PASSWORD"]
+		turn = existing["CHALK_TURN_SECRET"]
+		if pg == "" {
+			return fmt.Errorf("--force: no CHALK_PG_PASSWORD found in %s to preserve; use --drop-db to regenerate", o.EnvPath)
+		}
+		o.logf("preserving existing DB/TURN secrets")
+	} else {
+		if pg, err = genSecret(24); err != nil {
 			return err
+		}
+		if cfg.VoiceEnabled {
+			if turn, err = genSecret(24); err != nil {
+				return err
+			}
 		}
 	}
 	self, err := os.Executable()
@@ -211,6 +259,29 @@ func Init(o InitOptions) error {
 	}
 	o.logf("wrote %d quadlet units to %s", len(unitTemplates), o.QuadletDir)
 
+	// -- 4b. force: stop the running stack so the restart picks up the new
+	// units/env, and drop the DB volume if requested (after confirmation
+	// above). Fresh init skips this (nothing running).
+	if o.Force && initialized {
+		voice := cfg.VoiceEnabled
+		down := []string{"chalk-caddy.service", "chalkd.service", "chalk-postgres.service"}
+		if voice {
+			down = append([]string{"chalk-coturn.service"}, down...)
+		}
+		for _, svc := range down {
+			_, _ = Systemctl("reset-failed", svc)
+			_, _ = Systemctl("stop", svc)
+		}
+		o.logf("stopped running stack for re-apply")
+		if o.DropDB {
+			if _, err := o.Podman.run("volume", "rm", "-f", "chalk-pgdata"); err != nil {
+				o.logf("(volume rm chalk-pgdata: %v)", err)
+			} else {
+				o.logf("dropped chalk-pgdata volume (database wiped; fresh schema on start)")
+			}
+		}
+	}
+
 	// -- 5. bring up ---------------------------------------------------------
 	if _, err := Systemctl("daemon-reload"); err != nil {
 		return err
@@ -304,4 +375,53 @@ func FirewallHint() string {
 		"3478/tcp+udp (coturn)",
 		"49160-49200/udp (coturn relay)",
 	}, ", ")
+}
+
+// readEnvSecrets parses KEY=value lines from an existing env file, returning
+// the secret values init needs to preserve on --force (without --drop-db).
+func readEnvSecrets(path string) (map[string]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	out := map[string]string{}
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		out[strings.TrimSpace(k)] = strings.TrimSpace(v)
+	}
+	return out, sc.Err()
+}
+
+// promptConfirm asks the operator to type the expected token (shown in the
+// prompt) on stdin. Returns true only if the typed line, trimmed, is
+// non-empty AND appears as a parenthesised token in the prompt -- i.e. the
+// caller embeds the required answer like "...(chalk.example.org) to confirm:".
+// This is a deliberately strict "type the domain" confirmation.
+func promptConfirm(prompt string) bool {
+	fmt.Fprint(os.Stdout, prompt)
+	sc := bufio.NewScanner(os.Stdin)
+	if !sc.Scan() {
+		return false
+	}
+	typed := strings.TrimSpace(sc.Text())
+	if typed == "" {
+		return false
+	}
+	// Extract the token inside the LAST parentheses in the prompt.
+	l := strings.LastIndex(prompt, "(")
+	r := strings.LastIndex(prompt, ")")
+	if l < 0 || r < 0 || r < l {
+		return false
+	}
+	want := prompt[l+1 : r]
+	return typed == want
 }
