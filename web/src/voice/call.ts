@@ -317,6 +317,11 @@ export class VoiceCall {
   private localStream: MediaStream | null = null;
   private iceServers: RTCIceServer[] = [];
   private forceRelay = false;
+  // IPv4-only candidate filtering: drops IPv6 candidates (local and remote)
+  // to avoid non-routable IPv6 ULA paths (e.g. VM/VPN bridge interfaces) whose
+  // TURN host lookups fail. On by default; a genuinely IPv6-reachable deploy
+  // can flip this off.
+  private ipv4Only = true;
   private joined = false;
   private closed = false;
   private hasVideo = false;
@@ -703,6 +708,16 @@ export class VoiceCall {
       peer.pendingStreams.set(stream.id, stream);
     };
     pc.onicecandidate = (e) => {
+      // IPv4-only mitigation: some clients enumerate a non-routable IPv6 ULA
+      // interface (e.g. fdb2:... from a VM/VPN bridge) whose TURN/STUN host
+      // lookups fail ("host lookup received error"). Drop IPv6 candidates so
+      // we never advertise an unreachable path; the IPv4 relay candidate is
+      // the one that actually works here. Guarded by ipv4Only so it can be
+      // turned off if a deploy is genuinely IPv6-reachable.
+      if (this.ipv4Only && e.candidate && isIPv6Candidate(e.candidate)) {
+        this.diag(`dropped IPv6 candidate for ${key} (ipv4-only)`);
+        return;
+      }
       this.diag(
         e.candidate
           ? `gathered candidate for ${key}: ${candidateTypeOf(e.candidate.candidate)}`
@@ -947,6 +962,11 @@ export class VoiceCall {
 
   private async onIce(peer: Peer, sig: IceSignal): Promise<void> {
     if (!sig || sig.candidate === undefined) return;
+    // Drop remote IPv6 candidates under ipv4Only, mirroring the local filter:
+    // pairing against a peer's unreachable IPv6 ULA just wastes checks.
+    if (this.ipv4Only && sig.candidate && isIPv6CandidateInit(sig.candidate)) {
+      return;
+    }
     if (!peer.hasRemoteDesc) {
       if (sig.candidate !== null) peer.pendingIce.push(sig.candidate);
       return;
@@ -1497,6 +1517,27 @@ function iceServerFromWire(s: ICEServerWire): RTCIceServer {
 export function candidateTypeOf(candidate: string): string {
   const m = /\styp\s+(\S+)/.exec(candidate);
   return m ? m[1] : "?";
+}
+
+// isIPv6Candidate reports whether an RTCIceCandidate's connection address is
+// IPv6. The candidate SDP line is:
+//   candidate:<foundation> <component> <transport> <priority> <ADDR> <port> typ ...
+// so the 5th token is the address; an address containing ':' is IPv6.
+export function isIPv6Candidate(c: RTCIceCandidate): boolean {
+  return isIPv6CandidateStr(c.candidate);
+}
+
+// isIPv6CandidateInit is the RTCIceCandidateInit (wire) variant.
+export function isIPv6CandidateInit(c: RTCIceCandidateInit): boolean {
+  return isIPv6CandidateStr(c.candidate ?? "");
+}
+
+function isIPv6CandidateStr(cand: string): boolean {
+  if (!cand) return false;
+  const parts = cand.split(/\s+/);
+  // tokens: [candidate:foundation, component, transport, priority, ADDR, port, "typ", ...]
+  const addr = parts[4];
+  return !!addr && addr.includes(":");
 }
 
 /**
