@@ -11,8 +11,8 @@ import (
 
 // spaHandler serves the SPA from an embedded filesystem rooted at the
 // dist/ subdirectory of webFS. The dist/ subtree is what esbuild emits
-// (index.html, index.js, theme.css plus any chunk files); we serve it
-// at the URL root.
+// (index.html plus content-hashed entry bundles index-XXXX.js /
+// theme-XXXX.css and code-split chunks/*); we serve it at the URL root.
 //
 // Behavior:
 //   - GET /                       -> dist/index.html
@@ -30,9 +30,14 @@ import (
 //     panel)
 //
 // Caching: index.html is no-cache (always revalidate so users see new
-// bundles on next load). Other assets get a short max-age (5 min)
-// since the bundle filenames don't yet carry content hashes. Phase 13
-// can switch to hashed filenames + immutable caching.
+// bundles on next load). Every other asset esbuild emits into dist/ now
+// carries a content hash in its filename (entry bundles index-XXXX.js /
+// theme-XXXX.css and code-split chunks/*-XXXX.js), so those are served
+// immutable with a one-year max-age -- a changed bundle gets a new URL,
+// and unchanged assets stay cached across deploys. This is what removes
+// the hard-refresh requirement: index.html (no-cache) is always re-read,
+// it references the new hashed asset URLs, and the browser fetches only
+// what actually changed.
 //
 // Dotfiles and ".." traversal are refused as a defense-in-depth
 // measure; the dist/ tree shouldn't have any.
@@ -117,7 +122,11 @@ func serveSPA(w http.ResponseWriter, r *http.Request, dist fs.FS) {
 		http.Error(w, "internal: file not seekable", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	// All non-index assets are content-hashed (see build.mjs / spaHandler
+	// doc), so a filename uniquely identifies its bytes: cache immutably for
+	// a year. A new bundle changes the hash and thus the URL, so there's no
+	// stale-cache risk and no revalidation traffic for unchanged assets.
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	http.ServeContent(w, r, clean, info.ModTime(), rs)
 }
 

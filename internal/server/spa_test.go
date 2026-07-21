@@ -69,8 +69,9 @@ func TestSPA_AssetServed(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/css") {
 		t.Errorf("content-type %q, want text/css...", ct)
 	}
-	if cc := resp.Header.Get("Cache-Control"); cc != "public, max-age=300" {
-		t.Errorf("cache-control %q, want public, max-age=300", cc)
+	// Non-index assets are content-hashed and served immutably (see spa.go).
+	if cc := resp.Header.Get("Cache-Control"); cc != "public, max-age=31536000, immutable" {
+		t.Errorf("cache-control %q, want public, max-age=31536000, immutable", cc)
 	}
 }
 

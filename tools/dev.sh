@@ -91,9 +91,11 @@ elif [ -f web/package.json ]; then
   fi
   log "npm run build (SPA bundle)"
   (cd web && npm run build)
-  for f in index.html index.js theme.css; do
-    [ -f "web/dist/$f" ] || die "expected web/dist/$f after build"
-  done
+  # Entry bundles are content-hashed (index-XXXX.js / theme-XXXX.css); check
+  # index.html plus at least one hashed JS and CSS entry rather than fixed names.
+  [ -f "web/dist/index.html" ] || die "expected web/dist/index.html after build"
+  ls web/dist/index-*.js  >/dev/null 2>&1 || die "expected a hashed web/dist/index-*.js after build"
+  ls web/dist/theme-*.css >/dev/null 2>&1 || die "expected a hashed web/dist/theme-*.css after build"
   ok "SPA bundle built"
 else
   warn "no web/package.json; phase 07 not applied? continuing without SPA"
