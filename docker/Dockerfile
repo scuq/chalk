@@ -65,10 +65,23 @@ RUN /out/chalkd --version
 # ---- Runtime stage -------------------------------------------------------
 FROM gcr.io/distroless/static-debian12:nonroot
 
+# Re-declare the build args in this stage so they're in scope for LABEL.
+# (ARGs do not cross stage boundaries; they must be re-declared per stage.)
+ARG VERSION=0.0.0-dev
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+
 LABEL org.opencontainers.image.title="chalk"
 LABEL org.opencontainers.image.description="End-to-end encrypted group chat"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.source="https://github.com/scuq/chalk"
+# Provenance labels -- make `podman inspect <img> --format '{{index .Config.Labels
+# "org.opencontainers.image.revision"}}'` report exactly what's deployed. These
+# were previously absent, so a stale image was indistinguishable from a fresh
+# one at inspect time.
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.revision="${GIT_SHA}"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
 
 COPY --from=build /out/chalkd /chalkd
 
