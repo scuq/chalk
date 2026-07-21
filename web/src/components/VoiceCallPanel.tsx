@@ -571,8 +571,15 @@ export function VoiceCallPanel({
         }
         title={big ? shownLabel : `${shownLabel} — click to focus`}
       >
-        {tile.hasLiveVideo && tile.stream ? (
-          <VideoSurface stream={tile.stream} mirrored={tile.isSelf && !tile.isScreen} />
+        {tile.stream ? (
+          <>
+            <VideoSurface stream={tile.stream} mirrored={tile.isSelf && !tile.isScreen} />
+            {!tile.hasLiveVideo && (
+              <div class="chalk-voice-avatar chalk-voice-avatar--overlay" aria-hidden="true">
+                {(label === "you" ? handleForSelfInitial() : label).slice(0, 1).toUpperCase()}
+              </div>
+            )}
+          </>
         ) : (
           <div class="chalk-voice-avatar" aria-hidden="true">
             {(label === "you" ? handleForSelfInitial() : label).slice(0, 1).toUpperCase()}

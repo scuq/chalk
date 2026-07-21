@@ -4305,6 +4305,15 @@ html, body {
   user-select: none;
 }
 
+/* Overlay variant: covers a mounted <video> when the track has no live video
+   (camera off / not yet live), WITHOUT unmounting the video element. Mounting
+   the video once and toggling this overlay avoids the remount flicker that a
+   conditional <video> caused on every liveness re-check. */
+.chalk-voice-avatar--overlay {
+  position: absolute;
+  inset: 0;
+}
+
 .chalk-voice-peer--big .chalk-voice-avatar {
   font-size: 64px;
 }
