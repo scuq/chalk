@@ -52,7 +52,11 @@ func run(args []string) error {
 		return runUp(args[1:])
 	case "status":
 		return runStatus(args[1:])
-	case "update", "self-update", "rollback", "backup", "logs":
+	case "images":
+		return runImages(args[1:])
+	case "update":
+		return runUpdate(args[1:])
+	case "self-update", "rollback", "backup", "logs":
 		return fmt.Errorf("%q is not implemented yet in this build (arrives in a later ops slice)", cmd)
 	default:
 		return fmt.Errorf("unknown command %q (try `chalkctl help`)", cmd)
@@ -239,6 +243,48 @@ func runStatus(args []string) error {
 	})
 }
 
+func runImages(args []string) error {
+	fs := flag.NewFlagSet("images", flag.ContinueOnError)
+	configPath := fs.String("config", chalkctl.DefaultConfigPath, "config file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := chalkctl.LoadConfigFile(chalkctl.DefaultConfig(), *configPath)
+	if err != nil {
+		return err
+	}
+	return chalkctl.Images(chalkctl.ImagesOptions{Cfg: cfg})
+}
+
+func runUpdate(args []string) error {
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	var (
+		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file")
+		version    = fs.String("version", "", "target release tag (default: channel, e.g. stable)")
+		skipVerify = fs.Bool("skip-verify", false, "skip cosign signature verification")
+		skipHealth = fs.Bool("skip-health", false, "skip the post-swap health check (disables auto-rollback)")
+	)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := chalkctl.LoadConfigFile(chalkctl.DefaultConfig(), *configPath)
+	if err != nil {
+		return err
+	}
+	var verifier chalkctl.Verifier
+	if *skipVerify {
+		verifier = chalkctl.NoopVerifier{}
+	} else {
+		verifier = chalkctl.NewCosignVerifier(repoFromImage(cfg.Image))
+	}
+	return chalkctl.Update(chalkctl.UpdateOptions{
+		Cfg:        cfg,
+		Version:    *version,
+		Verifier:   verifier,
+		SkipHealth: *skipHealth,
+	})
+}
+
 func repoFromImage(image string) string {
 	parts := splitSlash(image)
 	if len(parts) >= 2 {
@@ -272,7 +318,8 @@ Commands:
   up           start the stack (after init)
   down         stop the stack (--purge to clear state, --purge-data to wipe DB)
   status       show deployed version, digest, and service states
-  update       update the chalk app to the newest release
+  images       show version/revision/created for chalk, postgres, coturn images
+  update       update the chalk app to a release (verify, swap, health-check, rollback)
   self-update  update the chalkctl binary itself
   rollback     restore the previous chalk image
   backup       take a database backup now

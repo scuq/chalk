@@ -448,3 +448,46 @@ func confirmMatches(prompt, typed string) bool {
 	}
 	return typed == prompt[l+1:r]
 }
+
+func TestShortDigest(t *testing.T) {
+	if got := shortDigest("sha256:a2d30023c82a9ae6b7883148af4fd"); got != "a2d30023c82a" {
+		t.Errorf("shortDigest = %q", got)
+	}
+	if got := shortDigest("abc"); got != "abc" {
+		t.Errorf("short input: %q", got)
+	}
+}
+
+func TestRepinChalkdImageLine(t *testing.T) {
+	// splitLines/joinLines round-trip + the Image= rewrite logic (without
+	// touching disk): simulate by operating on lines directly.
+	unit := "[Container]\nContainerName=chalkd\nImage=ghcr.io/scuq/chalk@sha256:OLD\nNetwork=chalk.network\n"
+	lines := splitLines(unit)
+	for i, ln := range lines {
+		if hasPrefix(ln, "Image=") {
+			lines[i] = "Image=ghcr.io/scuq/chalk@sha256:NEW"
+		}
+	}
+	out := joinLines(lines)
+	if !strings.Contains(out, "Image=ghcr.io/scuq/chalk@sha256:NEW") {
+		t.Error("Image line not rewritten")
+	}
+	if strings.Contains(out, "sha256:OLD") {
+		t.Error("old digest still present")
+	}
+	if !strings.Contains(out, "ContainerName=chalkd") || !strings.Contains(out, "Network=chalk.network") {
+		t.Error("other lines not preserved")
+	}
+}
+
+func TestFirstNonEmpty(t *testing.T) {
+	if firstNonEmpty("", "b") != "b" {
+		t.Error("empty a -> b")
+	}
+	if firstNonEmpty("a", "b") != "a" {
+		t.Error("non-empty a -> a")
+	}
+	if firstNonEmpty("  ", "b") != "b" {
+		t.Error("blank a -> b")
+	}
+}
