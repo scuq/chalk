@@ -187,19 +187,6 @@ export function VoiceCallPanel({
   // enriched with a media stream when the mesh has delivered one. A roster
   // entry without a stream renders as "connecting…" -- the honest state.
 
-  interface StageTile {
-    key: string;
-    userID: string;
-    deviceID: string;
-    isSelf: boolean;
-    stream: MediaStream | null;
-    hasLiveVideo: boolean;
-    connState: string | null;
-    part?: VoiceParticipant;
-    /** 30-7a: this tile is a screen share (own tile, never mirrored, no
-     * per-peer audio controls -- those belong to the person's camera tile). */
-    isScreen?: boolean;
-  }
 
   const stageTiles: StageTile[] = useMemo(() => {
     if (!hereInCall) return [];
@@ -545,6 +532,20 @@ export function VoiceCallPanel({
 
   // StagePeer stays inside the component body so it can use handleFor
   // without prop-drilling. NO AudioSink here (VoiceDock owns audio).
+}
+
+interface StageTile {
+  key: string;
+  userID: string;
+  deviceID: string;
+  isSelf: boolean;
+  stream: MediaStream | null;
+  hasLiveVideo: boolean;
+  connState: string | null;
+  part?: VoiceParticipant;
+  /** 30-7a: this tile is a screen share (own tile, never mirrored, no
+   * per-peer audio controls -- those belong to the person's camera tile). */
+  isScreen?: boolean;
 }
 
 function StagePeer({
