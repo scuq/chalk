@@ -70,6 +70,12 @@ export interface Message {
   // live push (wireToMessage) and backfilled for history via the window list
   // query (attachments_merged). Undefined/empty for the common text message.
   attachments?: AttachmentRef[];
+  // Client-generated idempotency key set on the optimistic row and echoed
+  // back by the server. The reducer matches a server push to the optimistic
+  // row by this key and replaces it (adopting the server id/seq/ts) rather
+  // than appending a duplicate. Undefined for messages from other senders
+  // and for history-fetched rows.
+  clientMsgID?: string;
 }
 
 // phase 08c: ChannelMember pairs a user_id with their handle.

@@ -274,6 +274,9 @@ function wireToMessage(w: MessagePayload): Message {
       w.attachments && w.attachments.length > 0
         ? w.attachments.map(wireRefToRef)
         : undefined,
+    // Idempotency key echoed back on the live push of a freshly-sent message.
+    // The reducer uses it to replace the optimistic row instead of duplicating.
+    clientMsgID: w.client_msg_id || undefined,
   };
 }
 
@@ -1802,12 +1805,18 @@ export function App() {
         replyCount: 0,
         // att-2: render our own attachments optimistically (no server echo).
         attachments: attachmentRefs.length > 0 ? attachmentRefs : undefined,
+        // Idempotency key: the optimistic row's own local UUID. The server
+        // echoes it back in the live push so the reducer replaces THIS row
+        // (adopting the server id/seq/ts) instead of appending a duplicate
+        // when the echo reaches us (e.g. after a reconnect).
+        clientMsgID: localID,
       },
     });
 
     const payload: SendPayload = { channel_id: cid, body: sendBody, key_version: sendKeyVersion };
     if (parentID) payload.parent_id = parentID;
     if (attachmentIDs.length > 0) payload.attachment_ids = attachmentIDs;
+    payload.client_msg_id = localID;
     c.send(TypeSend, payload);
     return true;
   };
@@ -2289,10 +2298,12 @@ export function App() {
                 {displayName(activeChannel, state.user?.id ?? null)}
               </span>
               {activeChannel.isDM && <span class="chalk-channel-header-tag">dm</span>}
-              <ModeBadge
-                mode={activeChannel.governanceMode}
-                onClick={() => dispatch({ kind: "open_panel", panel: "governance" })}
-              />
+              {!activeChannel.isDM && (
+                <ModeBadge
+                  mode={activeChannel.governanceMode}
+                  onClick={() => dispatch({ kind: "open_panel", panel: "governance" })}
+                />
+              )}
               <EncryptionIndicator
                 status={
                   state.activeChannelID ? keyStatus[state.activeChannelID] : undefined
@@ -2526,7 +2537,7 @@ export function App() {
           onClose={() => dispatch({ kind: "close_panel" })}
         />
       )}
-      {state.openPanel === "governance" && activeChannel && (
+      {state.openPanel === "governance" && activeChannel && !activeChannel.isDM && (
         <GovernancePanel
           channelName={displayName(activeChannel, state.user?.id ?? null)}
           mode={activeChannel.governanceMode}

@@ -500,6 +500,7 @@ func (s *Server) handleMessageEvent(ev pubsub.Event) {
 		ThreadID:     threadStr,
 		KeyVersion:   msg.KeyVersion,
 		Attachments:  attachRefs,
+		ClientMsgID:  ev.ClientMsgID,
 	})
 	if err != nil {
 		s.logger.Printf("pubsub frame: %v", err)

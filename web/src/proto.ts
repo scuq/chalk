@@ -53,6 +53,12 @@ export interface SendPayload {
   // link to this message. The server validates ownership + membership and
   // stamps each row's message_id. Capped per message server-side.
   attachment_ids?: string[];
+  // Client-generated idempotency key (UUID). Echoed back by the server in
+  // MessagePayload.client_msg_id so this client can match the server push
+  // to its optimistic row and replace it instead of duplicating. Prevents
+  // the double-render that occurs on reconnect (per-conn echo-suppression
+  // misses the sender's new conn).
+  client_msg_id?: string;
 }
 
 export interface MessagePayload {
@@ -91,6 +97,11 @@ export interface MessagePayload {
   // (those backfill via GET /api/attachments). Go marshals the []byte
   // enc_meta/enc_preview as standard base64 strings.
   attachments?: AttachmentRefWire[];
+  // Echoes back SendPayload.client_msg_id on the live push of a freshly-sent
+  // message, so the ORIGINATING client can match this to its optimistic row
+  // and replace it (adopting server id/seq/ts). Undefined for history
+  // fetches and messages from other senders.
+  client_msg_id?: string;
 }
 
 // att-2: AttachmentRefWireBase is the shared shape of an attachment descriptor

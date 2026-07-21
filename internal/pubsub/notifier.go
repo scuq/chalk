@@ -75,6 +75,15 @@ type Event struct {
 	// or friend events that didn't originate from a WebSocket send).
 	SenderConnID string `json:"sc,omitempty"`
 
+	// ClientMsgID carries the sender's optimistic idempotency key (a UUID)
+	// for Kind="message" so the echo builder can put it back in the pushed
+	// MessagePayload. The originating client matches it to its optimistic
+	// row and replaces it instead of duplicating (matters on reconnect,
+	// where per-conn echo-suppression misses the sender's new conn). Small
+	// (a UUID) so it stays well under the 8000-byte NOTIFY cap. Empty for
+	// non-message events and for older clients.
+	ClientMsgID string `json:"cmi,omitempty"`
+
 	// Presence, friend, and channel fields.
 	//   UserID:
 	//     For Kind="presence", the user whose aggregated state changed.

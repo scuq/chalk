@@ -162,6 +162,15 @@ type SendPayload struct {
 	// sender) inside the send tx; a mismatch rolls the whole send back.
 	// De-duplicated and capped (CHALK_ATTACH_MAX_PER_MESSAGE) server-side.
 	AttachmentIDs []string `json:"attachment_ids,omitempty"`
+	// ClientMsgID is a client-generated idempotency key (a UUID). The
+	// server never stores it; it rides the pubsub event and is echoed
+	// back in MessagePayload.ClientMsgID so the ORIGINATING client can
+	// match its optimistic row to the server echo and replace it (adopting
+	// the real server id/seq/ts) instead of rendering a duplicate. This
+	// matters on reconnect: echo-suppression is per-conn, so an echo that
+	// arrives on the sender's NEW conn (after the old one dropped) would
+	// otherwise double the message. Empty from older clients (no dedup).
+	ClientMsgID string `json:"client_msg_id,omitempty"`
 }
 
 // MessagePayload is what the server pushes to peers. id and ts are
@@ -218,6 +227,13 @@ type MessagePayload struct {
 	// push. Empty for the common attachment-less message and for history
 	// fetches (those backfill via GET /api/attachments). See AttachmentRef.
 	Attachments []AttachmentRef `json:"attachments,omitempty"`
+	// ClientMsgID echoes back SendPayload.ClientMsgID so the originating
+	// client can match this server push to its optimistic row and replace
+	// it (adopting id/seq/ts) rather than appending a duplicate. Only set
+	// on live pushes of freshly-sent messages; empty for history fetches
+	// (which the client reconciles by server id) and for messages from
+	// other senders. Never stored server-side.
+	ClientMsgID string `json:"client_msg_id,omitempty"`
 }
 
 // ErrorPayload is sent when the server can't process a request. Code is a

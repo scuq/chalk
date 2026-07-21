@@ -311,6 +311,32 @@ export function reducer(state: AppState, action: Action): AppState {
     case "message": {
       const m = action.message;
       const existing = state.messages[m.channelID] ?? [];
+      // Idempotency-key reconciliation (fixes double-echo on reconnect).
+      // If this incoming message carries a clientMsgID that matches an
+      // existing OPTIMISTIC row (one we appended locally on send), replace
+      // that row in place -- adopting the server's id/seq/ts/body -- instead
+      // of appending a second copy. Without this, the optimistic row (local
+      // UUID) and the server echo (server UUID) have different ids, so the
+      // id-dedup below misses and the message renders twice. The echo only
+      // reaches the sender when per-conn echo-suppression misses (e.g. the
+      // send conn dropped and a new one reconnected), which is exactly the
+      // "appears after a while / channel switch, gone on refresh" symptom.
+      if (m.clientMsgID) {
+        const optIdx = existing.findIndex(
+          (x) => x.clientMsgID === m.clientMsgID,
+        );
+        if (optIdx !== -1) {
+          // Replace in place; keep decrypted body from whichever is present
+          // (the incoming push body wins -- it's the canonical server row).
+          const replaced = existing.slice();
+          replaced[optIdx] = { ...existing[optIdx], ...m };
+          const merged = replaced.sort((a, b) => a.seq - b.seq);
+          return {
+            ...state,
+            messages: { ...state.messages, [m.channelID]: merged },
+          };
+        }
+      }
       // Insert in seq order. Most incoming live messages append (highest
       // seq), but historical pushes via cross-instance latency could
       // arrive out of order. Defensively sort.
