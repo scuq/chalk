@@ -24,7 +24,12 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ChannelSummary, VoiceParticipant } from "../state/types";
 import type { WSClient } from "../ws-client";
 import type { ChannelCrypto } from "../crypto/channel-crypto";
-import { voiceSession, type SessionRemoteTile, type ScreenShareMode } from "../voice/session";
+import {
+  voiceSession,
+  type SessionRemoteTile,
+  type ScreenShareMode,
+  type VoiceSessionSnap,
+} from "../voice/session";
 import { useVoiceSession } from "./VoiceDock";
 import { ChannelGlyph } from "./Sidebar";
 import type { VoiceDiagnostics } from "../voice/call";
@@ -344,6 +349,9 @@ export function VoiceCallPanel({
                   label={handleFor(focused.userID)}
                   big
                   onClick={() => setPinnedKey(null)}
+                  snap={snap}
+                  channel={channel}
+                  selfUserID={selfUserID}
                 />
               </div>
             )}
@@ -355,6 +363,9 @@ export function VoiceCallPanel({
                     tile={t}
                     label={handleFor(t.userID)}
                     onClick={() => setPinnedKey(t.key)}
+                    snap={snap}
+                    channel={channel}
+                    selfUserID={selfUserID}
                   />
                 ))}
               </div>
@@ -534,160 +545,168 @@ export function VoiceCallPanel({
 
   // StagePeer stays inside the component body so it can use handleFor
   // without prop-drilling. NO AudioSink here (VoiceDock owns audio).
-  function StagePeer({
-    tile,
-    label,
-    big,
-    onClick,
-  }: {
-    tile: StageTile;
-    label: string;
-    big?: boolean;
-    onClick?: () => void;
-  }) {
-    const pref = tile.isSelf || tile.isScreen ? undefined : snap.peerAudio[tile.userID];
-    const shownLabel = tile.isScreen ? `${label} — screen` : label;
-    return (
-      <div
-        class={
-          "chalk-voice-peer" +
-          (big ? " chalk-voice-peer--big" : " chalk-voice-peer--strip") +
-          (tile.isSelf ? " chalk-voice-peer--self" : "")
-        }
-        data-testid={big ? "voice-tile-big" : "voice-tile"}
-        data-peer={tile.key}
-        onClick={onClick}
-        role={onClick ? "button" : undefined}
-        tabIndex={onClick ? 0 : undefined}
-        onKeyDown={
-          onClick
-            ? (e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onClick();
-                }
-              }
-            : undefined
-        }
-        title={big ? shownLabel : `${shownLabel} — click to focus`}
-      >
-        {tile.stream ? (
-          <>
-            <VideoSurface stream={tile.stream} mirrored={tile.isSelf && !tile.isScreen} />
-            {!tile.hasLiveVideo && (
-              <div class="chalk-voice-avatar chalk-voice-avatar--overlay" aria-hidden="true">
-                {(label === "you" ? handleForSelfInitial() : label).slice(0, 1).toUpperCase()}
-              </div>
-            )}
-          </>
-        ) : (
-          <div class="chalk-voice-avatar" aria-hidden="true">
-            {(label === "you" ? handleForSelfInitial() : label).slice(0, 1).toUpperCase()}
-          </div>
-        )}
-        <div class="chalk-voice-peer-label">
-          <span class="chalk-voice-peer-name">{shownLabel}</span>
-          {tile.part?.muted && <span class="chalk-voice-peer-flag" title="muted">m</span>}
-          {tile.part?.videoOn && <span class="chalk-voice-peer-flag" title="camera on">c</span>}
-          {tile.part?.screenOn && (
-            <span class="chalk-voice-peer-flag" title="sharing screen">s</span>
-          )}
-          {!tile.isSelf && pref?.muted && (
-            <span
-              class="chalk-voice-peer-flag chalk-voice-peer-flag--local"
-              title="muted by you (local — they don't know)"
-            >
-              M
-            </span>
-          )}
-          {!tile.isSelf && tile.connState && tile.connState !== "connected" && (
-            <span class="chalk-voice-peer-conn">{tile.connState}…</span>
-          )}
-          {/* A1/A4 local audio controls (remote peers only). The volume
-              slider needs width, so it lives on the BIG tile -- pin a peer
-              to adjust them; the strip carries just the mute toggle.
-              stopPropagation: these must not re-pin/unpin the tile. */}
-          {!tile.isSelf && tile.isScreen && (
-            <span
-              class="chalk-voice-peer-audio"
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
-            >
-              <button
-                class={
-                  "chalk-voice-localmute" +
-                  (snap.screenHidden[tile.userID + ":" + tile.deviceID]
-                    ? " chalk-voice-localmute--on"
-                    : "")
-                }
-                type="button"
-                onClick={() =>
-                  voiceSession.toggleScreenHidden(tile.userID + ":" + tile.deviceID)
-                }
-                title={
-                  snap.screenHidden[tile.userID + ":" + tile.deviceID]
-                    ? `show ${label}'s screen again`
-                    : `hide ${label}'s screen for me — they keep sharing to everyone else`
-                }
-                data-testid="voice-screen-hide"
-              >
-                {snap.screenHidden[tile.userID + ":" + tile.deviceID]
-                  ? "show for me"
-                  : "hide for me"}
-              </button>
-            </span>
-          )}
-          {!tile.isSelf && !tile.isScreen && (
-            <span
-              class="chalk-voice-peer-audio"
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
-            >
-              {big && !pref?.muted && (
-                <input
-                  class="chalk-voice-volume"
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="5"
-                  value={Math.round((pref?.volume ?? 1) * 100)}
-                  onInput={(e) =>
-                    voiceSession.setPeerVolume(
-                      tile.userID,
-                      Number((e.target as HTMLInputElement).value) / 100,
-                    )
-                  }
-                  title={`${label} volume: ${Math.round((pref?.volume ?? 1) * 100)}% (only for you)`}
-                  aria-label={`${label} playback volume`}
-                  data-testid="voice-peer-volume"
-                />
-              )}
-              <button
-                class={
-                  "chalk-voice-localmute" + (pref?.muted ? " chalk-voice-localmute--on" : "")
-                }
-                type="button"
-                onClick={() => voiceSession.setPeerLocalMute(tile.userID, !pref?.muted)}
-                title={
-                  pref?.muted
-                    ? `unmute ${label} (was muted only for you)`
-                    : `mute ${label} for me — they keep talking to everyone else`
-                }
-                data-testid="voice-peer-localmute"
-              >
-                {pref?.muted ? "unmute for me" : "mute for me"}
-              </button>
-            </span>
-          )}
-        </div>
-      </div>
-    );
-  }
+}
 
-  function handleForSelfInitial(): string {
-    const m = (channel.members ?? []).find((x) => x.userID === selfUserID);
-    return m?.handle || "y";
-  }
+function StagePeer({
+  tile,
+  label,
+  big,
+  onClick,
+  snap,
+  channel,
+  selfUserID,
+}: {
+  tile: StageTile;
+  label: string;
+  big?: boolean;
+  onClick?: () => void;
+  snap: VoiceSessionSnap;
+  channel: ChannelSummary;
+  selfUserID: string;
+}) {
+  const pref = tile.isSelf || tile.isScreen ? undefined : snap.peerAudio[tile.userID];
+  const shownLabel = tile.isScreen ? `${label} — screen` : label;
+  return (
+    <div
+      class={
+        "chalk-voice-peer" +
+        (big ? " chalk-voice-peer--big" : " chalk-voice-peer--strip") +
+        (tile.isSelf ? " chalk-voice-peer--self" : "")
+      }
+      data-testid={big ? "voice-tile-big" : "voice-tile"}
+      data-peer={tile.key}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      title={big ? shownLabel : `${shownLabel} — click to focus`}
+    >
+      {tile.stream ? (
+        <>
+          <VideoSurface stream={tile.stream} mirrored={tile.isSelf && !tile.isScreen} />
+          {!tile.hasLiveVideo && (
+            <div class="chalk-voice-avatar chalk-voice-avatar--overlay" aria-hidden="true">
+              {(label === "you" ? handleForSelfInitial(channel, selfUserID) : label).slice(0, 1).toUpperCase()}
+            </div>
+          )}
+        </>
+      ) : (
+        <div class="chalk-voice-avatar" aria-hidden="true">
+          {(label === "you" ? handleForSelfInitial(channel, selfUserID) : label).slice(0, 1).toUpperCase()}
+        </div>
+      )}
+      <div class="chalk-voice-peer-label">
+        <span class="chalk-voice-peer-name">{shownLabel}</span>
+        {tile.part?.muted && <span class="chalk-voice-peer-flag" title="muted">m</span>}
+        {tile.part?.videoOn && <span class="chalk-voice-peer-flag" title="camera on">c</span>}
+        {tile.part?.screenOn && (
+          <span class="chalk-voice-peer-flag" title="sharing screen">s</span>
+        )}
+        {!tile.isSelf && pref?.muted && (
+          <span
+            class="chalk-voice-peer-flag chalk-voice-peer-flag--local"
+            title="muted by you (local — they don't know)"
+          >
+            M
+          </span>
+        )}
+        {!tile.isSelf && tile.connState && tile.connState !== "connected" && (
+          <span class="chalk-voice-peer-conn">{tile.connState}…</span>
+        )}
+        {/* A1/A4 local audio controls (remote peers only). The volume
+            slider needs width, so it lives on the BIG tile -- pin a peer
+            to adjust them; the strip carries just the mute toggle.
+            stopPropagation: these must not re-pin/unpin the tile. */}
+        {!tile.isSelf && tile.isScreen && (
+          <span
+            class="chalk-voice-peer-audio"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <button
+              class={
+                "chalk-voice-localmute" +
+                (snap.screenHidden[tile.userID + ":" + tile.deviceID]
+                  ? " chalk-voice-localmute--on"
+                  : "")
+              }
+              type="button"
+              onClick={() =>
+                voiceSession.toggleScreenHidden(tile.userID + ":" + tile.deviceID)
+              }
+              title={
+                snap.screenHidden[tile.userID + ":" + tile.deviceID]
+                  ? `show ${label}'s screen again`
+                  : `hide ${label}'s screen for me — they keep sharing to everyone else`
+              }
+              data-testid="voice-screen-hide"
+            >
+              {snap.screenHidden[tile.userID + ":" + tile.deviceID]
+                ? "show for me"
+                : "hide for me"}
+            </button>
+          </span>
+        )}
+        {!tile.isSelf && !tile.isScreen && (
+          <span
+            class="chalk-voice-peer-audio"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            {big && !pref?.muted && (
+              <input
+                class="chalk-voice-volume"
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                value={Math.round((pref?.volume ?? 1) * 100)}
+                onInput={(e) =>
+                  voiceSession.setPeerVolume(
+                    tile.userID,
+                    Number((e.target as HTMLInputElement).value) / 100,
+                  )
+                }
+                title={`${label} volume: ${Math.round((pref?.volume ?? 1) * 100)}% (only for you)`}
+                aria-label={`${label} playback volume`}
+                data-testid="voice-peer-volume"
+              />
+            )}
+            <button
+              class={
+                "chalk-voice-localmute" + (pref?.muted ? " chalk-voice-localmute--on" : "")
+              }
+              type="button"
+              onClick={() => voiceSession.setPeerLocalMute(tile.userID, !pref?.muted)}
+              title={
+                pref?.muted
+                  ? `unmute ${label} (was muted only for you)`
+                  : `mute ${label} for me — they keep talking to everyone else`
+              }
+              data-testid="voice-peer-localmute"
+            >
+              {pref?.muted ? "unmute for me" : "mute for me"}
+            </button>
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+function handleForSelfInitial(channel: ChannelSummary, selfUserID: string): string {
+  const m = (channel.members ?? []).find((x) => x.userID === selfUserID);
+  return m?.handle || "y";
 }
 
 function VideoSurface({ stream, mirrored }: { stream: MediaStream; mirrored?: boolean }) {
