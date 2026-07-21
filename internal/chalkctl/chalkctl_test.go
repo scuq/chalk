@@ -45,6 +45,8 @@ func TestConfigValidate(t *testing.T) {
 	base := DefaultConfig()
 	base.Domain = "chat.example.org"
 	base.Rootful = true
+	base.AdminUsername = "admin"
+	base.AdminEmail = "admin@example.org"
 	if err := base.Validate(); err != nil {
 		t.Fatalf("valid config rejected: %v", err)
 	}
@@ -75,6 +77,9 @@ func TestSaveRoundTrip(t *testing.T) {
 	in.Domain = "chat.example.org"
 	in.Rootful = true
 	in.VoiceEnabled = false
+	in.AdminUsername = "admin"
+	in.AdminEmail = "admin@example.org"
+	in.VoiceMaxParticipants = 12
 	if err := in.Save(p); err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +87,9 @@ func TestSaveRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Domain != in.Domain || out.Rootful != in.Rootful || out.VoiceEnabled != in.VoiceEnabled {
+	if out.Domain != in.Domain || out.Rootful != in.Rootful || out.VoiceEnabled != in.VoiceEnabled ||
+		out.AdminUsername != in.AdminUsername || out.AdminEmail != in.AdminEmail ||
+		out.VoiceMaxParticipants != in.VoiceMaxParticipants {
 		t.Errorf("round trip mismatch: %+v vs %+v", in, out)
 	}
 }
@@ -150,7 +157,8 @@ func TestRenderAllTemplates(t *testing.T) {
 		Version: "v0.1.0", Digest: "sha256:deadbeef",
 		PostgresTag: "18-alpine", CaddyTag: "2-alpine",
 		VoiceEnabled: true, PGPassword: "PGSECRET", TurnSecret: "TURNSECRET",
-		ChalkctlPath: "/usr/local/bin/chalkctl",
+		ChalkctlPath:  "/usr/local/bin/chalkctl",
+		AdminUsername: "admin", AdminEmail: "admin@example.org", OpenRegistration: true,
 	}
 	all := append([]string{}, unitTemplates...)
 	all = append(all, "Caddyfile", "chalk.env", "turnserver.conf", "chalk-update.service", "chalk-update.timer")
@@ -278,5 +286,82 @@ func TestPostgres18MountPath(t *testing.T) {
 	}
 	if strings.Contains(s, "PGDATA") && strings.Contains(s, "Environment=PGDATA") {
 		t.Error("do not override PGDATA; the PG18 image default is correct")
+	}
+}
+
+// TestValidateRequiresAdmin: init must refuse without admin username/email,
+// else the deploy has no login (passkeys enroll onto the seeded admin row).
+func TestValidateRequiresAdmin(t *testing.T) {
+	c := DefaultConfig()
+	c.Domain = "chat.example.org"
+	c.Rootful = true
+	// no admin -> reject
+	if err := c.Validate(); err == nil {
+		t.Error("missing admin username/email should be rejected")
+	}
+	c.AdminUsername = "admin"
+	if err := c.Validate(); err == nil {
+		t.Error("missing admin email should be rejected")
+	}
+	c.AdminEmail = "not-an-email"
+	if err := c.Validate(); err == nil {
+		t.Error("malformed admin email should be rejected")
+	}
+	c.AdminEmail = "admin@example.org"
+	if err := c.Validate(); err != nil {
+		t.Errorf("valid config with admin should pass: %v", err)
+	}
+}
+
+// TestEnvHasWebAuthnAndAdmin pins that the rendered env file carries the
+// login-critical WebAuthn vars (RP ID = domain, https origin) and the admin
+// seed -- without these a fresh deploy cannot be logged into.
+func TestEnvHasWebAuthnAndAdmin(t *testing.T) {
+	p := InitParams{
+		Domain: "chat.example.org", PGPassword: "PG",
+		AdminUsername: "admin", AdminEmail: "admin@example.org",
+		OpenRegistration: true,
+	}
+	env, err := renderTemplate("chalk.env", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(env)
+	for _, want := range []string{
+		"CHALK_RP_ID=chat.example.org",
+		"CHALK_RP_ORIGINS=https://chat.example.org",
+		"CHALK_ADMIN_USERNAME=admin",
+		"CHALK_ADMIN_EMAIL=admin@example.org",
+		"CHALK_OPEN_REGISTRATION=true",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("env file missing %q", want)
+		}
+	}
+}
+
+// TestEnvOptionalKnobs: voice-max / attach-max / giphy appear only when set.
+func TestEnvOptionalKnobs(t *testing.T) {
+	base := InitParams{
+		Domain: "x.example.org", PGPassword: "PG", VoiceEnabled: true, TurnSecret: "T",
+		AdminUsername: "a", AdminEmail: "a@x.org",
+	}
+	// none set -> absent
+	env, _ := renderTemplate("chalk.env", base)
+	for _, absent := range []string{"CHALK_VOICE_MAX_PARTICIPANTS", "CHALK_ATTACH_MAX_BYTES", "CHALK_GIPHY_API_KEY"} {
+		if strings.Contains(string(env), absent) {
+			t.Errorf("%s should be absent when unset", absent)
+		}
+	}
+	// set -> present
+	full := base
+	full.VoiceMaxParticipants = 10
+	full.AttachMaxBytes = 26214400
+	full.GiphyAPIKey = "KEY"
+	env2, _ := renderTemplate("chalk.env", full)
+	for _, want := range []string{"CHALK_VOICE_MAX_PARTICIPANTS=10", "CHALK_ATTACH_MAX_BYTES=26214400", "CHALK_GIPHY_API_KEY=KEY"} {
+		if !strings.Contains(string(env2), want) {
+			t.Errorf("env missing %q when set", want)
+		}
 	}
 }

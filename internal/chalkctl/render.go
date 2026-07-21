@@ -20,6 +20,14 @@ type InitParams struct {
 	PGPassword   string // secret -> env file only
 	TurnSecret   string // secret -> env file only (voice)
 	ChalkctlPath string // absolute path to this binary (update timer)
+
+	// WebAuthn + admin seed + bootstrap + optional knobs (env file).
+	AdminUsername        string
+	AdminEmail           string
+	OpenRegistration     bool
+	VoiceMaxParticipants int    // 0 = omit (chalkd default)
+	AttachMaxBytes       int64  // 0 = omit
+	GiphyAPIKey          string // "" = omit
 }
 
 // renderTemplate loads templates/<name>.tmpl from the embedded FS and renders

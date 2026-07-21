@@ -36,17 +36,33 @@ type Config struct {
 	Channel      string // update channel: stable | <explicit tag>
 	VoiceEnabled bool   // Phase 30 voice on/off
 	Rootful      bool   // MUST be true for this base; init requires --rootful
+
+	// WebAuthn / passkeys. RPID MUST equal the domain or browsers reject
+	// passkey enrollment; origins must be the https origin (auto-derived
+	// from Domain, since chalkd sits behind Caddy and can't infer it).
+	AdminUsername string // seeds the admin row on first boot; enroll a passkey onto it
+	AdminEmail    string // admin email (first boot)
+
+	// Bootstrap: let anyone register so friends can join. TIGHTEN to false
+	// once everyone's in (then use invites).
+	OpenRegistration bool
+
+	// Optional operational knobs (0/"" = leave chalkd's own default).
+	VoiceMaxParticipants int    // CHALK_VOICE_MAX_PARTICIPANTS (mesh cap)
+	AttachMaxBytes       int64  // CHALK_ATTACH_MAX_BYTES (upload cap; disk guard)
+	GiphyAPIKey          string // CHALK_GIPHY_API_KEY (GIF picker; optional)
 }
 
 // DefaultConfig returns the baseline before file/flag overlays.
 func DefaultConfig() Config {
 	return Config{
-		Image:        DefaultImage,
-		PostgresTag:  DefaultPostgresTag,
-		CaddyTag:     DefaultCaddyTag,
-		Channel:      DefaultChannel,
-		VoiceEnabled: true,
-		Rootful:      false,
+		Image:            DefaultImage,
+		PostgresTag:      DefaultPostgresTag,
+		CaddyTag:         DefaultCaddyTag,
+		Channel:          DefaultChannel,
+		VoiceEnabled:     true,
+		Rootful:          false,
+		OpenRegistration: true, // bootstrap: let friends register; tighten later
 	}
 }
 
@@ -101,6 +117,30 @@ func LoadConfigFile(cfg Config, path string) (Config, error) {
 				return cfg, fmt.Errorf("%s:%d: ROOTFUL not a bool: %q", path, line, v)
 			}
 			cfg.Rootful = b
+		case "ADMIN_USERNAME":
+			cfg.AdminUsername = v
+		case "ADMIN_EMAIL":
+			cfg.AdminEmail = v
+		case "OPEN_REGISTRATION":
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: OPEN_REGISTRATION not a bool: %q", path, line, v)
+			}
+			cfg.OpenRegistration = b
+		case "VOICE_MAX_PARTICIPANTS":
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: VOICE_MAX_PARTICIPANTS not an int: %q", path, line, v)
+			}
+			cfg.VoiceMaxParticipants = n
+		case "ATTACH_MAX_BYTES":
+			n, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: ATTACH_MAX_BYTES not an int: %q", path, line, v)
+			}
+			cfg.AttachMaxBytes = n
+		case "GIPHY_API_KEY":
+			cfg.GiphyAPIKey = v
 		default:
 			fmt.Fprintf(os.Stderr, "chalkctl: ignoring unknown config key %q (%s:%d)\n", k, path, line)
 		}
@@ -123,6 +163,18 @@ func (c Config) Save(path string) error {
 	fmt.Fprintf(&b, "CHANNEL=%s\n", c.Channel)
 	fmt.Fprintf(&b, "VOICE_ENABLED=%t\n", c.VoiceEnabled)
 	fmt.Fprintf(&b, "ROOTFUL=%t\n", c.Rootful)
+	fmt.Fprintf(&b, "ADMIN_USERNAME=%s\n", c.AdminUsername)
+	fmt.Fprintf(&b, "ADMIN_EMAIL=%s\n", c.AdminEmail)
+	fmt.Fprintf(&b, "OPEN_REGISTRATION=%t\n", c.OpenRegistration)
+	if c.VoiceMaxParticipants > 0 {
+		fmt.Fprintf(&b, "VOICE_MAX_PARTICIPANTS=%d\n", c.VoiceMaxParticipants)
+	}
+	if c.AttachMaxBytes > 0 {
+		fmt.Fprintf(&b, "ATTACH_MAX_BYTES=%d\n", c.AttachMaxBytes)
+	}
+	// GIPHY_API_KEY is intentionally NOT written here: this config file is
+	// 0644, and the key belongs only in the 0600 env file. It is supplied
+	// per-init via --giphy-api-key when needed.
 	return os.WriteFile(path, []byte(b.String()), 0o644)
 }
 
@@ -136,6 +188,15 @@ func (c Config) Validate() error {
 	}
 	if !c.Rootful {
 		return fmt.Errorf("this base requires rootful podman: pass --rootful (rootless is not supported for binding 80/443/3478)")
+	}
+	if strings.TrimSpace(c.AdminUsername) == "" {
+		return fmt.Errorf("admin username is required (--admin-username): it seeds the admin row you enroll a passkey onto")
+	}
+	if strings.TrimSpace(c.AdminEmail) == "" {
+		return fmt.Errorf("admin email is required (--admin-email)")
+	}
+	if !strings.Contains(c.AdminEmail, "@") {
+		return fmt.Errorf("admin email %q looks wrong", c.AdminEmail)
 	}
 	if c.Image == "" || c.PostgresTag == "" || c.CaddyTag == "" {
 		return fmt.Errorf("image and image tags must be non-empty")

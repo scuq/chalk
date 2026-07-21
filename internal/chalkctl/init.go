@@ -134,6 +134,13 @@ func Init(o InitOptions) error {
 		PGPassword:   pg,
 		TurnSecret:   turn,
 		ChalkctlPath: self,
+
+		AdminUsername:        cfg.AdminUsername,
+		AdminEmail:           cfg.AdminEmail,
+		OpenRegistration:     cfg.OpenRegistration,
+		VoiceMaxParticipants: cfg.VoiceMaxParticipants,
+		AttachMaxBytes:       cfg.AttachMaxBytes,
+		GiphyAPIKey:          cfg.GiphyAPIKey,
 	}
 
 	ts := time.Now().UTC().Format("20060102-150405")
@@ -249,6 +256,11 @@ func Init(o InitOptions) error {
 	}
 
 	fmt.Fprintf(o.Out, "\ndone. https://%s should serve once Caddy issues its cert.\n", cfg.Domain)
+	fmt.Fprintf(o.Out, "admin: open https://%s and enroll a passkey for %q (no password -- passkeys only).\n",
+		cfg.Domain, cfg.AdminUsername)
+	if cfg.OpenRegistration {
+		fmt.Fprintf(o.Out, "note: open registration is ON so friends can sign up; set CHALK_OPEN_REGISTRATION=false + restart once everyone's in.\n")
+	}
 	fmt.Fprintf(o.Out, "check: systemctl status chalkd chalk-caddy chalk-postgres%s\n",
 		voiceStatusHint(cfg.VoiceEnabled))
 	return nil

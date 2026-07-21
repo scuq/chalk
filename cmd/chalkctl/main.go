@@ -69,6 +69,13 @@ func runInit(args []string) error {
 		skipVerify = fs.Bool("skip-verify", false, "skip cosign signature verification (accepts the risk)")
 		noStart    = fs.Bool("no-start", false, "write units but do not start the stack")
 		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file (flags override it)")
+
+		adminUser  = fs.String("admin-username", "", "admin username to seed on first boot (required)")
+		adminEmail = fs.String("admin-email", "", "admin email to seed on first boot (required)")
+		openReg    = fs.Bool("open-registration", true, "let anyone register (bootstrap; tighten later)")
+		voiceMax   = fs.Int("voice-max-participants", 0, "CHALK_VOICE_MAX_PARTICIPANTS (0 = chalkd default of 5)")
+		attachMax  = fs.Int64("attach-max-bytes", 0, "CHALK_ATTACH_MAX_BYTES upload cap (0 = chalkd default)")
+		giphyKey   = fs.String("giphy-api-key", "", "CHALK_GIPHY_API_KEY for the GIF picker (optional)")
 	)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -103,6 +110,24 @@ func runInit(args []string) error {
 	}
 	if set["rootful"] {
 		cfg.Rootful = *rootful
+	}
+	if set["admin-username"] {
+		cfg.AdminUsername = *adminUser
+	}
+	if set["admin-email"] {
+		cfg.AdminEmail = *adminEmail
+	}
+	if set["open-registration"] {
+		cfg.OpenRegistration = *openReg
+	}
+	if set["voice-max-participants"] {
+		cfg.VoiceMaxParticipants = *voiceMax
+	}
+	if set["attach-max-bytes"] {
+		cfg.AttachMaxBytes = *attachMax
+	}
+	if set["giphy-api-key"] {
+		cfg.GiphyAPIKey = *giphyKey
 	}
 
 	var verifier chalkctl.Verifier
@@ -162,13 +187,19 @@ Commands:
   version      print version and exit
 
 init flags:
-  --domain <host>     public hostname (required)
-  --rootful           REQUIRED: run the rootful-podman base
-  --version <tag>     release to deploy (default: --channel, e.g. stable)
-  --voice[=false]     enable/disable voice (default on)
-  --skip-verify       skip cosign signature verification
-  --no-start          write units without starting
-  --config <path>     config file (flags override it)
+  --domain <host>            public hostname (required)
+  --rootful                  REQUIRED: run the rootful-podman base
+  --admin-username <name>    admin to seed on first boot (required)
+  --admin-email <addr>       admin email (required)
+  --version <tag>            release to deploy (default: --channel, e.g. stable)
+  --voice[=false]            enable/disable voice (default on)
+  --voice-max-participants   mesh room cap (0 = chalkd default of 5)
+  --attach-max-bytes         upload size cap (0 = chalkd default)
+  --giphy-api-key <key>      enable the GIF picker (optional)
+  --open-registration[=false] let anyone register (default on; tighten later)
+  --skip-verify              skip cosign signature verification
+  --no-start                 write units without starting
+  --config <path>            config file (flags override it)
 
 Only init/version/help are wired in this build.
 `)
