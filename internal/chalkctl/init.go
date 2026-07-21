@@ -170,6 +170,24 @@ func Init(o InitOptions) error {
 	}
 	o.logf("wrote %s", o.CaddyfileAt)
 
+	// coturn config (voice only): the secret goes in a rendered config FILE
+	// read via -c, never a ${...} on the command line (which would expand
+	// empty at Quadlet parse time -- see chalk.env.tmpl note).
+	if cfg.VoiceEnabled {
+		coturnConf := "/etc/chalk/coturn/turnserver.conf"
+		coturnData, err := renderTemplate("turnserver.conf", p)
+		if err != nil {
+			return err
+		}
+		if err := backup(coturnConf); err != nil {
+			return err
+		}
+		if err := writeFile(coturnConf, coturnData, 0o600); err != nil {
+			return err
+		}
+		o.logf("wrote %s (0600)", coturnConf)
+	}
+
 	// quadlet units
 	for _, name := range unitTemplates {
 		data, err := renderTemplate(name, p)

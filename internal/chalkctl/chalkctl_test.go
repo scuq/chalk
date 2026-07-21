@@ -153,7 +153,7 @@ func TestRenderAllTemplates(t *testing.T) {
 		ChalkctlPath: "/usr/local/bin/chalkctl",
 	}
 	all := append([]string{}, unitTemplates...)
-	all = append(all, "Caddyfile", "chalk.env", "chalk-update.service", "chalk-update.timer")
+	all = append(all, "Caddyfile", "chalk.env", "turnserver.conf", "chalk-update.service", "chalk-update.timer")
 	for _, name := range all {
 		data, err := renderTemplate(name, p)
 		if err != nil {
@@ -213,5 +213,48 @@ func TestRenderVoiceOff(t *testing.T) {
 	env, _ := renderTemplate("chalk.env", p)
 	if strings.Contains(string(env), "CHALK_TURN_SECRET") {
 		t.Error("voice-off env should not carry TURN secret")
+	}
+}
+
+// TestNoEnvVarComposition is the permanent guard for the class of bug that
+// broke three units in production: systemd/Quadlet expands `Environment=` /
+// `Exec=` lines at unit-PARSE time, BEFORE `EnvironmentFile=` loads, so any
+// `${VAR}` referencing an env-file value collapses to an empty string. No
+// template may contain a dollar-brace reference; composed values must be
+// rendered literals (in the env file, or a config file the container reads).
+func TestNoEnvVarComposition(t *testing.T) {
+	entries, err := Templates.ReadDir("templates")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		b, err := Templates.ReadFile("templates/" + e.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), "${") {
+			t.Errorf("%s contains a ${...} env-var reference; Quadlet expands "+
+				"these to empty at parse time -- render a literal instead", e.Name())
+		}
+	}
+}
+
+// TestCoturnReadsConfigFile pins that coturn takes its secret from a mounted
+// config file (-c), not a CLI flag that would env-expand empty.
+func TestCoturnReadsConfigFile(t *testing.T) {
+	p := InitParams{VoiceEnabled: true, TurnSecret: "SECRET", Domain: "x.example.org"}
+	unit, err := renderTemplate("chalk-coturn.container", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(unit), "Exec=-c /etc/coturn/turnserver.conf") {
+		t.Error("coturn unit should read the config file via -c")
+	}
+	conf, err := renderTemplate("turnserver.conf", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(conf), "static-auth-secret=SECRET") {
+		t.Error("coturn config should carry the literal secret")
 	}
 }

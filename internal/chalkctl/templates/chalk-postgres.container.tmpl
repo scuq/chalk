@@ -13,7 +13,6 @@ Volume=chalk-pgdata.volume:/var/lib/postgresql/data
 EnvironmentFile=/etc/chalk/chalk.env
 Environment=POSTGRES_DB=chalk
 Environment=POSTGRES_USER=chalk
-Environment=POSTGRES_PASSWORD=${CHALK_PG_PASSWORD}
 HealthCmd=pg_isready -U chalk -d chalk
 HealthInterval=5s
 HealthTimeout=3s
