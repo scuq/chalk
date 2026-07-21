@@ -178,6 +178,8 @@ func Init(o InitOptions) error {
 		Digest:       digest,
 		PostgresTag:  cfg.PostgresTag,
 		CaddyTag:     cfg.CaddyTag,
+		CoturnTag:    cfg.CoturnTag,
+		TurnVerbose:  cfg.TurnVerbose,
 		VoiceEnabled: cfg.VoiceEnabled,
 		PGPassword:   pg,
 		TurnSecret:   turn,

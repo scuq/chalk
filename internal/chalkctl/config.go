@@ -19,6 +19,7 @@ const (
 	DefaultImage       = "ghcr.io/scuq/chalk"
 	DefaultPostgresTag = "18-alpine"
 	DefaultCaddyTag    = "2-alpine"
+	DefaultCoturnTag   = "4.14.0-r0-alpine"
 	DefaultChannel     = "stable"
 )
 
@@ -33,6 +34,8 @@ type Config struct {
 	Image        string // GHCR image, no tag (DefaultImage)
 	PostgresTag  string // postgres image tag (pinned; manual major upgrades)
 	CaddyTag     string // caddy image tag
+	CoturnTag    string // coturn image tag (alpine)
+	TurnVerbose  bool   // coturn --verbose logging
 	Channel      string // update channel: stable | <explicit tag>
 	VoiceEnabled bool   // Phase 30 voice on/off
 	Rootful      bool   // MUST be true for this base; init requires --rootful
@@ -59,6 +62,8 @@ func DefaultConfig() Config {
 		Image:            DefaultImage,
 		PostgresTag:      DefaultPostgresTag,
 		CaddyTag:         DefaultCaddyTag,
+		CoturnTag:        DefaultCoturnTag,
+		TurnVerbose:      true,
 		Channel:          DefaultChannel,
 		VoiceEnabled:     true,
 		Rootful:          false,
@@ -103,6 +108,14 @@ func LoadConfigFile(cfg Config, path string) (Config, error) {
 			cfg.PostgresTag = v
 		case "CADDY_TAG":
 			cfg.CaddyTag = v
+		case "COTURN_TAG":
+			cfg.CoturnTag = v
+		case "TURN_VERBOSE":
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: TURN_VERBOSE not a bool: %q", path, line, v)
+			}
+			cfg.TurnVerbose = b
 		case "CHANNEL":
 			cfg.Channel = v
 		case "VOICE_ENABLED":
@@ -160,6 +173,8 @@ func (c Config) Save(path string) error {
 	fmt.Fprintf(&b, "IMAGE=%s\n", c.Image)
 	fmt.Fprintf(&b, "POSTGRES_TAG=%s\n", c.PostgresTag)
 	fmt.Fprintf(&b, "CADDY_TAG=%s\n", c.CaddyTag)
+	fmt.Fprintf(&b, "COTURN_TAG=%s\n", c.CoturnTag)
+	fmt.Fprintf(&b, "TURN_VERBOSE=%t\n", c.TurnVerbose)
 	fmt.Fprintf(&b, "CHANNEL=%s\n", c.Channel)
 	fmt.Fprintf(&b, "VOICE_ENABLED=%t\n", c.VoiceEnabled)
 	fmt.Fprintf(&b, "ROOTFUL=%t\n", c.Rootful)
@@ -198,7 +213,7 @@ func (c Config) Validate() error {
 	if !strings.Contains(c.AdminEmail, "@") {
 		return fmt.Errorf("admin email %q looks wrong", c.AdminEmail)
 	}
-	if c.Image == "" || c.PostgresTag == "" || c.CaddyTag == "" {
+	if c.Image == "" || c.PostgresTag == "" || c.CaddyTag == "" || c.CoturnTag == "" {
 		return fmt.Errorf("image and image tags must be non-empty")
 	}
 	return nil

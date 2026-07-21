@@ -16,6 +16,8 @@ type InitParams struct {
 	Digest       string // sha256:... (the pin)
 	PostgresTag  string
 	CaddyTag     string
+	CoturnTag    string
+	TurnVerbose  bool
 	VoiceEnabled bool
 	PGPassword   string // secret -> env file only
 	TurnSecret   string // secret -> env file only (voice)

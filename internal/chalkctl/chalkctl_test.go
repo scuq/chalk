@@ -80,6 +80,8 @@ func TestSaveRoundTrip(t *testing.T) {
 	in.AdminUsername = "admin"
 	in.AdminEmail = "admin@example.org"
 	in.VoiceMaxParticipants = 12
+	in.CoturnTag = "4.14.0-r0-alpine"
+	in.TurnVerbose = false
 	if err := in.Save(p); err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +91,8 @@ func TestSaveRoundTrip(t *testing.T) {
 	}
 	if out.Domain != in.Domain || out.Rootful != in.Rootful || out.VoiceEnabled != in.VoiceEnabled ||
 		out.AdminUsername != in.AdminUsername || out.AdminEmail != in.AdminEmail ||
-		out.VoiceMaxParticipants != in.VoiceMaxParticipants {
+		out.VoiceMaxParticipants != in.VoiceMaxParticipants ||
+		out.CoturnTag != in.CoturnTag || out.TurnVerbose != in.TurnVerbose {
 		t.Errorf("round trip mismatch: %+v vs %+v", in, out)
 	}
 }
@@ -159,6 +162,7 @@ func TestRenderAllTemplates(t *testing.T) {
 		VoiceEnabled: true, PGPassword: "PGSECRET", TurnSecret: "TURNSECRET",
 		ChalkctlPath:  "/usr/local/bin/chalkctl",
 		AdminUsername: "admin", AdminEmail: "admin@example.org", OpenRegistration: true,
+		CoturnTag: "4.14.0-r0-alpine", TurnVerbose: true,
 	}
 	all := append([]string{}, unitTemplates...)
 	all = append(all, "Caddyfile", "chalk.env", "turnserver.conf", "chalk-update.service", "chalk-update.timer")
@@ -255,7 +259,7 @@ func TestCoturnReadsConfigFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(unit), "Exec=-c /etc/coturn/turnserver.conf") {
+	if !strings.Contains(string(unit), "-c /etc/coturn/turnserver.conf") {
 		t.Error("coturn unit should read the config file via -c")
 	}
 	conf, err := renderTemplate("turnserver.conf", p)
@@ -264,6 +268,17 @@ func TestCoturnReadsConfigFile(t *testing.T) {
 	}
 	if !strings.Contains(string(conf), "static-auth-secret=SECRET") {
 		t.Error("coturn config should carry the literal secret")
+	}
+	// Logging is on the CLI in the UNIT (not the config file): coturn's file
+	// logger otherwise hijacks output to /var/tmp/turn_*.log. -n + stdout is
+	// what makes `podman logs coturn` work.
+	for _, want := range []string{"-n --log-file=stdout", "--simple-log"} {
+		if !strings.Contains(string(unit), want) {
+			t.Errorf("coturn unit missing %q (breaks `podman logs coturn`)", want)
+		}
+	}
+	if strings.Contains(string(conf), "log-file=") {
+		t.Error("coturn config must NOT set log-file (belongs on the CLI)")
 	}
 }
 

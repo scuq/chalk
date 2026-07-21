@@ -54,6 +54,8 @@ func run(args []string) error {
 		return runStatus(args[1:])
 	case "images":
 		return runImages(args[1:])
+	case "reconfigure-turn":
+		return runReconfigureTurn(args[1:])
 	case "update":
 		return runUpdate(args[1:])
 	case "self-update", "rollback", "backup", "logs":
@@ -84,12 +86,13 @@ func runInit(args []string) error {
 		dropDB = fs.Bool("drop-db", false, "with --force: WIPE the database (fresh schema); prompts to confirm")
 		assume = fs.Bool("yes", false, "skip the --drop-db confirmation prompt (non-interactive)")
 
-		adminUser  = fs.String("admin-username", "", "admin username to seed on first boot (required)")
-		adminEmail = fs.String("admin-email", "", "admin email to seed on first boot (required)")
-		openReg    = fs.Bool("open-registration", true, "let anyone register (bootstrap; tighten later)")
-		voiceMax   = fs.Int("voice-max-participants", 0, "CHALK_VOICE_MAX_PARTICIPANTS (0 = chalkd default of 5)")
-		attachMax  = fs.Int64("attach-max-bytes", 0, "CHALK_ATTACH_MAX_BYTES upload cap (0 = chalkd default)")
-		giphyKey   = fs.String("giphy-api-key", "", "CHALK_GIPHY_API_KEY for the GIF picker (optional)")
+		adminUser   = fs.String("admin-username", "", "admin username to seed on first boot (required)")
+		adminEmail  = fs.String("admin-email", "", "admin email to seed on first boot (required)")
+		openReg     = fs.Bool("open-registration", true, "let anyone register (bootstrap; tighten later)")
+		voiceMax    = fs.Int("voice-max-participants", 0, "CHALK_VOICE_MAX_PARTICIPANTS (0 = chalkd default of 5)")
+		attachMax   = fs.Int64("attach-max-bytes", 0, "CHALK_ATTACH_MAX_BYTES upload cap (0 = chalkd default)")
+		giphyKey    = fs.String("giphy-api-key", "", "CHALK_GIPHY_API_KEY for the GIF picker (optional)")
+		turnVerbose = fs.Bool("turn-verbose", true, "coturn --verbose logging (default on)")
 	)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -142,6 +145,9 @@ func runInit(args []string) error {
 	}
 	if set["giphy-api-key"] {
 		cfg.GiphyAPIKey = *giphyKey
+	}
+	if set["turn-verbose"] {
+		cfg.TurnVerbose = *turnVerbose
 	}
 
 	var verifier chalkctl.Verifier
@@ -256,6 +262,29 @@ func runImages(args []string) error {
 	return chalkctl.Images(chalkctl.ImagesOptions{Cfg: cfg})
 }
 
+func runReconfigureTurn(args []string) error {
+	fs := flag.NewFlagSet("reconfigure-turn", flag.ContinueOnError)
+	var (
+		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file")
+		verbose    = fs.Bool("turn-verbose", true, "coturn --verbose logging")
+	)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := chalkctl.LoadConfigFile(chalkctl.DefaultConfig(), *configPath)
+	if err != nil {
+		return err
+	}
+	var vp *bool
+	// Only override if the flag was explicitly set.
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "turn-verbose" {
+			vp = verbose
+		}
+	})
+	return chalkctl.ReconfigureTurn(chalkctl.ReconfigureTurnOptions{Cfg: cfg, Verbose: vp})
+}
+
 func runUpdate(args []string) error {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	var (
@@ -319,6 +348,7 @@ Commands:
   down         stop the stack (--purge to clear state, --purge-data to wipe DB)
   status       show deployed version, digest, and service states
   images       show version/revision/created for chalk, postgres, coturn images
+  reconfigure-turn  re-render coturn config+unit and restart coturn only
   update       update the chalk app to a release (verify, swap, health-check, rollback)
   self-update  update the chalkctl binary itself
   rollback     restore the previous chalk image
@@ -336,6 +366,7 @@ init flags:
   --voice-max-participants   mesh room cap (0 = chalkd default of 5)
   --attach-max-bytes         upload size cap (0 = chalkd default)
   --giphy-api-key <key>      enable the GIF picker (optional)
+  --turn-verbose[=false]     coturn verbose logging (default on)
   --open-registration[=false] let anyone register (default on; tighten later)
   --force                    re-apply config over an existing deploy (keeps DB)
   --drop-db                  with --force: WIPE the database (prompts to confirm)
