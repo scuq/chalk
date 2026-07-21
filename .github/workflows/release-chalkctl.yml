@@ -7,7 +7,7 @@
 # SHA256SUMS file and cosign signatures/certs.
 #
 # This is the ONLY artifact a human downloads by hand:
-#   curl -fsSL .../releases/latest/download/chalkctl_linux_amd64 -o chalkctl
+#   curl -fsSL .../releases/download/<tag>/chalkctl_linux_amd64 -o chalkctl
 # ...after which everything is `chalkctl <cmd>`.
 
 name: release-chalkctl
@@ -87,18 +87,22 @@ jobs:
           body: |
             `chalkctl` manager binary (static, linux/amd64 + linux/arm64).
 
-            Bootstrap:
+            Bootstrap (pinned to this release — always correct):
             ```
-            curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/chalkctl_linux_amd64 -o chalkctl
-            chmod +x chalkctl && sudo mv chalkctl /usr/local/bin/
-            chalkctl version
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chalkctl_linux_amd64 -o chalkctl
+            chmod +x chalkctl && sudo mv -f chalkctl /usr/local/bin/chalkctl
+            hash -r && chalkctl version
             ```
+
+            To always grab the newest release instead, use `.../releases/latest/download/...`
+            — note the `latest` redirect can lag a minute or two right after a
+            release is published, so pin the tag if you need this exact version now.
 
             Signed with cosign (keyless). Verify a binary:
             ```
             cosign verify-blob chalkctl_linux_amd64 \
               --signature chalkctl_linux_amd64.sig \
               --certificate chalkctl_linux_amd64.pem \
-              --certificate-identity-regexp 'https://github.com/${{ github.repository }}/' \
+              --certificate-identity-regexp '^https://github.com/${{ github.repository }}/\.github/workflows/release-chalkctl\.yml@refs/tags/' \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com
             ```

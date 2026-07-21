@@ -116,6 +116,6 @@ jobs:
             Signed with cosign (keyless). Verify:
             ```
             cosign verify ${{ env.IMAGE }}:${{ steps.meta.outputs.version }} \
-              --certificate-identity-regexp 'https://github.com/${{ github.repository }}/' \
+              --certificate-identity-regexp '^https://github.com/${{ github.repository }}/\.github/workflows/release-chalk\.yml@refs/tags/' \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com
             ```
