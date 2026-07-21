@@ -3,6 +3,7 @@ package chalkctl
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -142,8 +143,17 @@ func TestCosignIdentityRegexp(t *testing.T) {
 	if !strings.Contains(re, `scuq/chalk`) {
 		t.Errorf("regexp missing repo: %s", re)
 	}
-	if !strings.Contains(re, `release-chalk\.yml`) {
-		t.Errorf("regexp should pin the workflow file: %s", re)
+	if !strings.Contains(re, `release(-chalk)?\.yml`) {
+		t.Errorf("regexp should pin the workflow file (release.yml or legacy): %s", re)
+	}
+	rx := regexp.MustCompile(re)
+	unified := "https://github.com/scuq/chalk/.github/workflows/release.yml@refs/tags/v0.3.0"
+	legacy := "https://github.com/scuq/chalk/.github/workflows/release-chalk.yml@refs/tags/v0.2.0"
+	if !rx.MatchString(unified) {
+		t.Errorf("regexp should match unified release.yml identity: %s", re)
+	}
+	if !rx.MatchString(legacy) {
+		t.Errorf("regexp should still match legacy release-chalk.yml: %s", re)
 	}
 	// dots escaped
 	if strings.Contains(re, "github.com/") {

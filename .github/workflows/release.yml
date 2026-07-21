@@ -1,0 +1,205 @@
+# chalk -- unified release workflow.
+#
+# Trigger: pushing a semver tag `vX.Y.Z`. ONE version, TWO artifacts, ONE
+# GitHub Release:
+#   * the multi-arch app image (amd64+arm64) pushed to GHCR, digest-pinned,
+#     cosign keyless-signed, stamped with version/revision/created labels;
+#   * the chalkctl manager binary (static, amd64+arm64) as Release assets,
+#     cosign sign-blob signed, with a SHA256SUMS file.
+#
+# Both are stamped with the SAME version (the tag), so "the server runs chalk
+# vX.Y.Z" and "chalkctl vX.Y.Z manages it" are one number. This replaces the
+# old two-train split (release-chalk.yml on v*, release-chalkctl.yml on ctl-v*).
+# Old ctl-v* tags remain as history; new releases use a single v* tag.
+#
+# The image job and the binary job run in parallel; the release job waits for
+# both and publishes one Release carrying the image reference + the binaries.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"           # v1.2.3
+
+permissions:
+  contents: write      # create the Release + upload assets
+  packages: write      # push to GHCR
+  id-token: write      # cosign keyless (OIDC)
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/chalk
+
+jobs:
+  # ---- App image (chalkd + web bundle) ------------------------------------
+  image:
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Derive metadata
+        id: meta
+        run: |
+          VER="${GITHUB_REF_NAME}"                       # e.g. v1.2.3
+          echo "version=${VER}"          >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU (arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (amd64 + arm64)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          pull: true
+          provenance: true
+          sbom: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+            ${{ env.IMAGE }}:stable
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.build_date }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign the image by digest (keyless)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          cosign sign --yes "${IMAGE}:stable"
+
+  # ---- chalkctl manager binary --------------------------------------------
+  binaries:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build static binaries (amd64 + arm64)
+        run: |
+          set -euo pipefail
+          VER="${GITHUB_REF_NAME}"                       # v1.2.3 (no prefix strip)
+          SHA="$(git rev-parse --short HEAD)"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LDFLAGS="-s -w \
+            -X github.com/scuq/chalk/internal/version.Binary=chalkctl \
+            -X github.com/scuq/chalk/internal/version.Version=${VER} \
+            -X github.com/scuq/chalk/internal/version.Commit=${SHA} \
+            -X github.com/scuq/chalk/internal/version.BuildDate=${DATE}"
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            out="dist/chalkctl_linux_${arch}"
+            CGO_ENABLED=0 GOOS=linux GOARCH="${arch}" \
+              go build -trimpath -ldflags="${LDFLAGS}" -o "${out}" ./cmd/chalkctl
+            echo "built ${out}"
+          done
+          ( cd dist && sha256sum chalkctl_linux_* > SHA256SUMS )
+          cat dist/SHA256SUMS
+
+      - name: Smoke-test the amd64 binary
+        run: |
+          chmod +x dist/chalkctl_linux_amd64
+          ./dist/chalkctl_linux_amd64 version
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign binaries (keyless)
+        run: |
+          set -euo pipefail
+          for f in dist/chalkctl_linux_amd64 dist/chalkctl_linux_arm64 dist/SHA256SUMS; do
+            cosign sign-blob --yes \
+              --output-signature "${f}.sig" \
+              --output-certificate "${f}.pem" \
+              "${f}"
+          done
+
+      - name: Upload binaries for the release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: chalkctl-dist
+          path: dist/*
+          retention-days: 1
+
+  # ---- One Release carrying both ------------------------------------------
+  release:
+    needs: [image, binaries]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download chalkctl binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: chalkctl-dist
+          path: dist
+
+      - name: Create GitHub Release (image + binaries)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/chalkctl_linux_amd64
+            dist/chalkctl_linux_arm64
+            dist/SHA256SUMS
+            dist/*.sig
+            dist/*.pem
+          body: |
+            **chalk ${{ needs.image.outputs.version }}** — app image + chalkctl manager, one version.
+
+            **App image** (chalkd + web bundle):
+            `${{ env.IMAGE }}:${{ needs.image.outputs.version }}`
+            digest `${{ needs.image.outputs.digest }}`
+
+            Deploy / update on the server:
+            ```
+            sudo chalkctl update --version ${{ needs.image.outputs.version }}
+            ```
+
+            **chalkctl manager binary** (static, linux/amd64 + linux/arm64):
+            ```
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/chalkctl_linux_amd64 -o chalkctl
+            chmod +x chalkctl && sudo mv -f chalkctl /usr/local/bin/chalkctl
+            hash -r && chalkctl version
+            ```
+
+            Both artifacts are cosign keyless-signed. Verify the image:
+            ```
+            cosign verify ${{ env.IMAGE }}:${{ needs.image.outputs.version }} \
+              --certificate-identity-regexp '^https://github.com/${{ github.repository }}/\.github/workflows/release\.yml@refs/tags/' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com
+            ```
+            Verify a binary:
+            ```
+            cosign verify-blob chalkctl_linux_amd64 \
+              --signature chalkctl_linux_amd64.sig \
+              --certificate chalkctl_linux_amd64.pem \
+              --certificate-identity-regexp '^https://github.com/${{ github.repository }}/\.github/workflows/release\.yml@refs/tags/' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com
+            ```

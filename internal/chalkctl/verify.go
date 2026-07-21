@@ -35,14 +35,16 @@ func NewCosignVerifier(repo string) *CosignVerifier {
 
 func (c *CosignVerifier) Describe() string { return "cosign (system binary)" }
 
-// identityRegexp pins the cert subject to the release-chalk workflow file for
-// this repo, across any tag: matches
+// identityRegexp pins the cert subject to the release workflow file for this
+// repo, across any tag. Unified workflow is release.yml; legacy was
+// release-chalk.yml. Accept EITHER so already-deployed images still verify:
 //
+//	https://github.com/<repo>/.github/workflows/release.yml@refs/tags/<anything>
 //	https://github.com/<repo>/.github/workflows/release-chalk.yml@refs/tags/<anything>
 func (c *CosignVerifier) identityRegexp() string {
 	// Escape dots so the regexp is tight, not a wildcard match.
 	repo := strings.ReplaceAll(c.Repo, ".", `\.`)
-	return `^https://github\.com/` + repo + `/\.github/workflows/release-chalk\.yml@refs/tags/`
+	return `^https://github\.com/` + repo + `/\.github/workflows/release(-chalk)?\.yml@refs/tags/`
 }
 
 // Verify runs `cosign verify` with keyless GitHub-OIDC parameters.
