@@ -2713,6 +2713,16 @@ html, body {
   padding: 1px var(--chalk-s2);
 }
 
+/* Phase 9.7l: in compact mode, match the body to the timestamp/sender
+   size (--chalk-size-small) so all three read as one dense line. In the
+   normal (roomy) view the body stays at the larger base size, which is
+   what you want when rows have breathing room; compact is about
+   fitting more on screen, so uniform-small reads cleaner there. Only
+   the body needs lowering -- time and sender are already small. */
+.chalk-messages--compact .chalk-message-body {
+  font-size: var(--chalk-size-small);
+}
+
 /* No-timestamp variant: drop the leading time column. The grid
    reflows to sender + body only. */
 .chalk-message--no-time {
