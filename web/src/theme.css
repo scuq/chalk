@@ -4804,3 +4804,137 @@ html, body {
   border-color: var(--chalk-fg-muted);
   background: var(--chalk-bg-elev-2);
 }
+
+/* ============================================================
+   Phase 9.7g: emoji picker
+   ============================================================
+   Anchored bottom-left above the composer rather than centred, so it
+   sits next to the button that opened it and doesn't cover the
+   conversation. All colours come from theme vars, so it follows
+   whichever theme is active.
+   ============================================================ */
+
+.chalk-emoji-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: transparent;
+}
+
+.chalk-emoji-picker {
+  position: fixed;
+  left: var(--chalk-s4);
+  bottom: 96px;
+  width: min(360px, calc(100vw - 2 * var(--chalk-s4)));
+  max-height: min(420px, 60dvh);
+  display: flex;
+  flex-direction: column;
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.chalk-emoji-picker-search {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2);
+  border-bottom: 1px solid var(--chalk-border);
+}
+
+.chalk-emoji-picker-input {
+  flex: 1 1 auto;
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-fg-muted);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+}
+.chalk-emoji-picker-input::placeholder {
+  color: var(--chalk-fg-dim);
+  opacity: 1;
+}
+
+.chalk-emoji-picker-close {
+  background: transparent;
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: 1px var(--chalk-s2);
+  font-family: inherit;
+  cursor: pointer;
+}
+.chalk-emoji-picker-close:hover {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg-muted);
+}
+
+.chalk-emoji-picker-tabs {
+  display: flex;
+  gap: 2px;
+  padding: var(--chalk-s1) var(--chalk-s2);
+  border-bottom: 1px solid var(--chalk-border);
+  overflow-x: auto;
+}
+
+.chalk-emoji-picker-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--chalk-radius);
+  padding: 2px 6px;
+  font-size: 16px;
+  line-height: 1.2;
+  cursor: pointer;
+  opacity: 0.6;
+}
+.chalk-emoji-picker-tab:hover {
+  opacity: 1;
+  background: var(--chalk-bg-elev-2);
+}
+.chalk-emoji-picker-tab--active {
+  opacity: 1;
+  border-color: var(--chalk-fg-muted);
+  background: var(--chalk-bg-elev-2);
+}
+
+.chalk-emoji-picker-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--chalk-s2);
+}
+
+.chalk-emoji-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
+  gap: 2px;
+}
+
+.chalk-emoji-picker-item {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--chalk-radius);
+  font-size: 20px;
+  line-height: 1;
+  padding: 4px;
+  cursor: pointer;
+}
+.chalk-emoji-picker-item:hover {
+  background: var(--chalk-bg-elev-2);
+  border-color: var(--chalk-fg-muted);
+}
+
+.chalk-emoji-picker-hint {
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+  margin: 0;
+}
+
+.chalk-emoji-picker-footer {
+  padding: var(--chalk-s1) var(--chalk-s2);
+  border-top: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+}

@@ -11,7 +11,13 @@ import { lazyComponent } from "./LazyComponent";
 const GiphyPicker = lazyComponent(() =>
   import("./GiphyPicker").then((m) => m.GiphyPicker)
 );
+// Lazy for the same reason as Giphy: the catalogue is static data most
+// sessions never open.
+const EmojiPicker = lazyComponent(() =>
+  import("./EmojiPicker").then((m) => m.EmojiPicker)
+);
 import { encodeGiphyBody } from "../giphy/giphy";
+import { insertAtCursor } from "../emoji/emoji";
 
 // Phase 9.6g: disabledReason distinguishes the two reasons the
 // composer might be unusable. "offline" reflects a real connection
@@ -62,6 +68,10 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   const [sending, setSending] = useState(false);
   // att-4c: Giphy picker open state.
   const [giphyOpen, setGiphyOpen] = useState(false);
+  // Phase 9.7g: emoji picker open state. The textarea ref lets us splice the
+  // pick in at the caret and restore focus, rather than appending.
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // att-3: per-item upload fraction (0..1) while sending.
   const [progress, setProgress] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -122,6 +132,36 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
       for (const p of prev) if (p.previewURL) URL.revokeObjectURL(p.previewURL);
       return [];
     });
+  };
+
+  // Phase 9.7g: splice an emoji in at the caret (or over the selection),
+  // then put the caret after it and return focus to the textarea so typing
+  // continues naturally. Falls back to appending if the ref is somehow gone.
+  const insertEmoji = (char: string) => {
+    const el = textareaRef.current;
+    if (!el) {
+      setDraft((d) => d + char);
+      return;
+    }
+    const { value, caret } = insertAtCursor(
+      draft,
+      char,
+      el.selectionStart ?? draft.length,
+      el.selectionEnd ?? draft.length,
+    );
+    if (value.length > MAX_LEN) return; // don't silently blow the cap
+    setDraft(value);
+    // The DOM value updates on the next render, so the caret has to be set
+    // after it -- doing it synchronously would use the stale value.
+    window.setTimeout(() => {
+      el.focus();
+      try {
+        el.setSelectionRange(caret, caret);
+      } catch {
+        // Some browsers throw if the element isn't focusable yet; the text
+        // is already correct, only the caret position is lost.
+      }
+    }, 0);
   };
 
   const submit = async () => {
@@ -237,6 +277,13 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
           void onSend(encodeGiphyBody(fullURL));
         }}
       />
+      {/* Phase 9.7g: emoji picker. Picking inserts at the caret and keeps the
+          picker open, so several emoji can be added in one go. */}
+      <EmojiPicker
+        open={emojiOpen}
+        onClose={() => setEmojiOpen(false)}
+        onPick={(char) => insertEmoji(char)}
+      />
       {enableAttachments && dragActive && (
         <div class="chalk-composer-drop-hint" data-testid="composer-drop-hint">
           drop files to attach
@@ -339,14 +386,16 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
               GIF
             </button>
           )}
-          {/* Placeholder for the emoji picker: reserves the affordance and
-              its position. Disabled until the picker itself is built. */}
           <button
             type="button"
             class="chalk-composer-tool chalk-composer-emoji"
-            disabled
-            title="emoji picker -- coming soon"
-            aria-label="emoji picker (coming soon)"
+            onClick={() => {
+              if (effectiveDisabled || sending) return;
+              setEmojiOpen(true);
+            }}
+            disabled={effectiveDisabled || sending}
+            title="insert emoji"
+            aria-label="insert emoji"
             data-testid="composer-emoji"
           >
             🙂
@@ -355,6 +404,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
       )}
       <div class="chalk-composer-row">
         <textarea
+          ref={textareaRef}
           class="chalk-composer-input"
           placeholder={(disabled ? (placeholderText) : (placeholder ?? (placeholderText)))}
           value={draft}
