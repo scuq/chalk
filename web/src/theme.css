@@ -5040,3 +5040,44 @@ html, body {
     var(--chalk-msg-sender-col) + var(--chalk-msg-col-gap) + var(--chalk-s2)
   );
 }
+
+/* ============================================================
+   Phase 9.7j: thread indicator / preview share the body column
+   ============================================================
+   9.7i indented the reply indicator with a ch-based offset applied to
+   the indicator itself -- but `ch` is FONT-RELATIVE, and the indicator
+   renders at --chalk-size-small (12px) while the message grid computes
+   its columns at the base size (14px). The same 16ch expression is
+   therefore ~19px narrower there, so the indicator landed short of the
+   body column. The preview (11px, and offset by a fixed 28px from the
+   group edge) was further out still.
+
+   Fixing it per-element would mean three hand-tuned offsets that drift
+   apart again the moment a font size changes -- which is exactly how
+   this happened. Instead the indent moves to a wrapper pinned at the
+   base font size, so `ch` resolves identically to the grid, and both
+   children simply start at its content edge.
+   ============================================================ */
+
+.chalk-message-thread-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* Pinned so the ch-based padding below matches the message grid. */
+  font-size: var(--chalk-size-base);
+  padding-left: calc(var(--chalk-msg-body-offset) + var(--chalk-s2));
+}
+
+.chalk-messages--no-time .chalk-message-thread-meta {
+  padding-left: calc(
+    var(--chalk-msg-sender-col) + var(--chalk-msg-col-gap) + var(--chalk-s2)
+  );
+}
+
+/* Children now inherit their position from the wrapper. Zeroing these
+   retires the old per-element offsets (including the preview's fixed
+   28px nudge) rather than stacking on top of them. */
+.chalk-message-thread-indicator,
+.chalk-message-thread-preview {
+  margin-left: 0;
+}

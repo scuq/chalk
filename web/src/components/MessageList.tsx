@@ -308,7 +308,12 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
               }
             }
             return (
-              <>
+              // Phase 9.7j: wrapper carries the body-column indent. It must,
+              // because `ch` is font-relative: the indicator (12px) and the
+              // preview (11px) would each resolve the same ch-based offset to
+              // a different width. The wrapper sits at the base font size, so
+              // the offset matches the message grid exactly.
+              <div class="chalk-message-thread-meta">
                 <button
                   type="button"
                   class={`chalk-message-thread-indicator ${hasUnread ? "chalk-message-thread-indicator--unread" : ""}`}
@@ -336,7 +341,7 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
                     </span>
                   </button>
                 )}
-              </>
+              </div>
             );
           })()}
           </div>
