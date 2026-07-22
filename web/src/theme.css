@@ -4620,3 +4620,95 @@ html, body {
   border-color: var(--chalk-fg-muted);
   background: var(--chalk-bg-elev);
 }
+
+/* ============================================================
+   Two more themes: snazzy-light and tokyo-night
+   ============================================================
+   Same structure as the 9.7b/9.7c themes above: a var block per
+   theme, plus the handful of overrides for surfaces that hard-code
+   an rgba() glow or tint rather than reading a variable.
+
+   Note on --chalk-fg-bright: it doubles as the "online" presence
+   dot color (see .chalk-presence-dot--online). So in a light theme
+   it has to be a readable-on-light green rather than a literally
+   brighter foreground, which is the same trick the cream `light`
+   theme uses.
+   ============================================================ */
+
+/* ---- snazzy-light: cool near-white ground, slate text, magenta accent.
+        Base colors follow Snazzy Light's palette rather than the warm
+        cream of the existing `light` theme, so the two read distinctly. */
+[data-theme="snazzy-light"] {
+  --chalk-bg:           #fafbfc;
+  --chalk-bg-elev:      #f0f2f5;
+  --chalk-bg-elev-2:    #e2e7ec;
+  --chalk-fg:           #3b3f51;
+  --chalk-fg-dim:       #767c90;
+  --chalk-fg-bright:    #0f9d70;
+  --chalk-fg-muted:     #9aa1b2;
+  --chalk-border:       #dce1e8;
+  --chalk-accent:       #d3399e;
+  --chalk-warn:         #c26a00;
+  --chalk-error:        #e0433f;
+
+  color-scheme: light;
+}
+
+[data-theme="snazzy-light"] .chalk-presence-dot--online {
+  box-shadow: 0 0 4px rgba(15, 157, 112, 0.35);
+}
+
+/* Flat light ground needs a hint of elevation on floating surfaces,
+   same reasoning as the cream light theme. */
+[data-theme="snazzy-light"] .chalk-modal,
+[data-theme="snazzy-light"] .chalk-presence-menu,
+[data-theme="snazzy-light"] .chalk-status-menu {
+  box-shadow: 0 1px 3px rgba(27, 30, 43, 0.10);
+}
+
+[data-theme="snazzy-light"] .chalk-sidebar-item--active {
+  background: rgba(211, 57, 158, 0.10);
+}
+
+/* ---- tokyo-night: the standard Tokyo Night palette. */
+[data-theme="tokyo-night"] {
+  --chalk-bg:           #1a1b26;
+  --chalk-bg-elev:      #1f2335;
+  --chalk-bg-elev-2:    #292e42;
+  --chalk-fg:           #c0caf5;
+  --chalk-fg-dim:       #7982a9;
+  --chalk-fg-bright:    #c8d3f5;
+  --chalk-fg-muted:     #565f89;
+  --chalk-border:       #292e42;
+  --chalk-accent:       #7aa2f7;
+  --chalk-warn:         #e0af68;
+  --chalk-error:        #f7768e;
+
+  color-scheme: dark;
+}
+
+/* fg-bright here is a pale blue-white, which would make the online dot
+   read as "some light thing" rather than "online". Pin it to Tokyo
+   Night's green instead. */
+[data-theme="tokyo-night"] .chalk-presence-dot--online {
+  background: #9ece6a;
+  box-shadow: 0 0 4px rgba(158, 206, 106, 0.45);
+}
+
+[data-theme="tokyo-night"] .chalk-sidebar-item--active {
+  background: rgba(122, 162, 247, 0.14);
+}
+
+/* Picker swatches: hard-coded hex so each preview shows its OWN theme
+   regardless of which theme is active, matching the 9.7c swatches. */
+.chalk-profile-theme-swatch-preview--snazzy-light {
+  background: linear-gradient(135deg,
+    #fafbfc 0%, #fafbfc 50%,
+    #d3399e 50%, #d3399e 100%);
+}
+
+.chalk-profile-theme-swatch-preview--tokyo-night {
+  background: linear-gradient(135deg,
+    #1a1b26 0%, #1a1b26 50%,
+    #7aa2f7 50%, #7aa2f7 100%);
+}
