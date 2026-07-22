@@ -13,6 +13,7 @@
 //     send subscribe_channel to start receiving messages in the new channel.
 //   - On open_create_modal, if friends not yet loaded, fire friend_list.
 
+import { resolveNickHue } from "../chat/nickcolor";
 import { useCallback, useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
@@ -2280,6 +2281,32 @@ export function App() {
 
       <aside class="chalk-sidebar">
         <Sidebar
+          // Phase 9.7f: nick colors in the roster context menu. hueForHandle
+          // reports what a handle currently renders as (explicit pick, else
+          // the automatic hash) so the picker opens on the live color;
+          // onSetFriendHue persists a pick, or clears it back to automatic.
+          nickColorsEnabled={selectChatPrefs(state.prefs).userColorsEnabled}
+          hueForHandle={(handle) =>
+            resolveNickHue({
+              enabled: true,
+              own: false,
+              handle,
+              selfHue: selectChatPrefs(state.prefs).selfColorHue,
+              userHues: selectChatPrefs(state.prefs).userHues,
+            })
+          }
+          onSetFriendHue={(handle, hue) => {
+            // Same JSONB shallow-merge rule as the other chat prefs: ship the
+            // whole chat object, not just the changed key.
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            const current = selectChatPrefs(state.prefs);
+            const key = handle.toLowerCase();
+            const userHues = { ...current.userHues };
+            if (hue === null) delete userHues[key];
+            else userHues[key] = hue;
+            c.send(TypePrefsSet, { patch: { chat: { ...current, userHues } } });
+          }}
           channels={state.channelOrder.map((id) => state.channels[id])}
           friends={state.friends}
           activeID={state.activeChannelID}

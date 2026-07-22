@@ -8,7 +8,8 @@
 // request per voice channel after the channel list loads, kept current by
 // joined/left/state pushes.
 
-import { useState } from "preact/hooks";
+import { useState, useRef, useEffect } from "preact/hooks";
+import { hexFromHue, hueFromHex } from "../chat/nickcolor";
 import type {
   ChannelSummary,
   Friend,
@@ -85,6 +86,13 @@ interface Props {
   voiceRosters: Record<string, VoiceParticipant[]>;
   onSelect: (channelID: string) => void;
   onFriendClick: (friendUserID: string) => void;
+  // Phase 9.7f: nick colors. hueForHandle resolves the color a handle
+  // currently renders in (explicit pick or auto hash); onSetFriendHue
+  // persists a pick, or clears it back to automatic when passed null.
+  // Both optional so other Sidebar callers are unaffected.
+  nickColorsEnabled?: boolean;
+  hueForHandle?: (handle: string) => number | null;
+  onSetFriendHue?: (handle: string, hue: number | null) => void;
   onCreateClick: () => void;
 }
 
@@ -222,11 +230,59 @@ export function Sidebar({
   voiceRosters,
   onSelect,
   onFriendClick,
+  nickColorsEnabled,
+  hueForHandle,
+  onSetFriendHue,
   onCreateClick,
 }: Props) {
   const [filter, setFilter] = useState("");
 
   const groupChannels = channels.filter((ch) => !ch.isDM);
+  // Phase 9.7f: the roster color menu. Opened by right-click (desktop) or
+  // long-press (touch), anchored at the pointer. Closing on any outside
+  // click/escape keeps it from stranding.
+  const [nickMenu, setNickMenu] = useState<
+    { handle: string; x: number; y: number } | null
+  >(null);
+  // A long-press must NOT also fire the row's click (which opens the DM).
+  // The pointer sequence is down -> (timer fires) -> up -> click, so we set
+  // a flag when the timer fires and consume it in the click handler.
+  const longPressFired = useRef(false);
+  const longPressTimer = useRef<number | null>(null);
+
+  const colorMenuEnabled = nickColorsEnabled !== false && !!onSetFriendHue;
+
+  const openNickMenu = (handle: string, x: number, y: number) => {
+    if (!colorMenuEnabled || !handle) return;
+    // Keep the menu on-screen for presses near the right/bottom edge.
+    const maxX = Math.max(0, window.innerWidth - 210);
+    const maxY = Math.max(0, window.innerHeight - 120);
+    setNickMenu({ handle, x: Math.min(x, maxX), y: Math.min(y, maxY) });
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (!nickMenu) return;
+    const close = () => setNickMenu(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    // Capture phase: the menu stops propagation on its own clicks, so a
+    // click anywhere else closes it.
+    window.addEventListener("click", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [nickMenu]);
+
   const sortedFriends = sortFriends(friends);
 
   const trimmedFilter = filter.trim().toLowerCase();
@@ -290,7 +346,35 @@ export function Sidebar({
                 data-friend-id={friend.userID}
                 data-active={isActive ? "true" : "false"}
                 data-presence={presenceState ?? "offline"}
-                onClick={() => onFriendClick(friend.userID)}
+                onClick={() => {
+                  // Swallow the click that follows a long-press, otherwise
+                  // opening the color menu would also open the DM.
+                  if (longPressFired.current) {
+                    longPressFired.current = false;
+                    return;
+                  }
+                  onFriendClick(friend.userID);
+                }}
+                onContextMenu={(e) => {
+                  if (!colorMenuEnabled || !friend.handle) return;
+                  e.preventDefault();
+                  openNickMenu(friend.handle, e.clientX, e.clientY);
+                }}
+                onPointerDown={(e) => {
+                  if (!colorMenuEnabled || !friend.handle) return;
+                  if (e.pointerType === "mouse") return; // right-click covers desktop
+                  cancelLongPress();
+                  const x = e.clientX;
+                  const y = e.clientY;
+                  const handle = friend.handle;
+                  longPressTimer.current = window.setTimeout(() => {
+                    longPressFired.current = true;
+                    openNickMenu(handle, x, y);
+                  }, 500);
+                }}
+                onPointerUp={cancelLongPress}
+                onPointerLeave={cancelLongPress}
+                onPointerCancel={cancelLongPress}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
@@ -406,6 +490,107 @@ export function Sidebar({
           })}
         </ul>
       </div>
+
+
+      {/* Phase 9.7f: per-friend color menu. Fixed-position so it escapes the
+
+          sidebar's scroll container; stops click propagation so the global
+
+          close-on-outside-click handler doesn't immediately dismiss it. */}
+
+      {nickMenu && (
+
+        <div
+
+          class="chalk-nick-menu"
+
+          style={`left:${nickMenu.x}px;top:${nickMenu.y}px`}
+
+          onClick={(e) => e.stopPropagation()}
+
+          data-testid="nick-color-menu"
+
+          role="dialog"
+
+          aria-label={`color for ${nickMenu.handle}`}
+
+        >
+
+          <div class="chalk-nick-menu-title">
+
+            <span
+
+              class="chalk-nick-swatch"
+
+              style={`--nick-h:${hueForHandle?.(nickMenu.handle) ?? 210}`}
+
+            />
+
+            <span>color for {nickMenu.handle}</span>
+
+          </div>
+
+          <div class="chalk-nick-menu-row">
+
+            <input
+
+              type="color"
+
+              value={hexFromHue(hueForHandle?.(nickMenu.handle) ?? 210)}
+
+              data-testid="nick-color-input"
+
+              onChange={(e) => {
+
+                const hue = hueFromHex((e.target as HTMLInputElement).value);
+
+                if (hue !== null) onSetFriendHue?.(nickMenu.handle, hue);
+
+              }}
+
+            />
+
+            <button
+
+              type="button"
+
+              class="chalk-nick-menu-btn"
+
+              data-testid="nick-color-auto"
+
+              onClick={() => {
+
+                onSetFriendHue?.(nickMenu.handle, null);
+
+                setNickMenu(null);
+
+              }}
+
+            >
+
+              auto
+
+            </button>
+
+            <button
+
+              type="button"
+
+              class="chalk-nick-menu-btn"
+
+              onClick={() => setNickMenu(null)}
+
+            >
+
+              done
+
+            </button>
+
+          </div>
+
+        </div>
+
+      )}
 
     </div>
   );

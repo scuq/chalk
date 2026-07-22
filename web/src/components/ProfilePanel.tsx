@@ -25,6 +25,7 @@
 // button returns to the main panel without rotating, in case the
 // user clicked it by accident.
 
+import { hexFromHue, hueFromHex } from "../chat/nickcolor";
 import { useEffect, useState } from "preact/hooks";
 import type { EmailChangeState, MeResponse } from "../auth/types";
 import {
@@ -61,10 +62,25 @@ interface Props {
     compactMode: boolean;
     // Phase 9.7e:
     userColors: { handle: string; color: string; scope: "all" | "dm" }[];
+    // Phase 9.7f:
+    userColorsEnabled: boolean;
+    selfColorHue: number;
+    userHues: Record<string, number>;
   };
-  onSetChatPref?: <K extends "showTimestamps" | "timestampFormat" | "compactMode">(
+  onSetChatPref?: <
+    K extends
+      | "showTimestamps"
+      | "timestampFormat"
+      | "compactMode"
+      | "userColorsEnabled"
+      | "selfColorHue",
+  >(
     key: K,
-    value: K extends "timestampFormat" ? "hms" | "hm" | "relative" : boolean,
+    value: K extends "timestampFormat"
+      ? "hms" | "hm" | "relative"
+      : K extends "selfColorHue"
+      ? number
+      : boolean,
   ) => void;
   // Phase 9.7e: replace the entire userColors list. We send the full
   // array on every change because JSONB || is a shallow merge so a
@@ -410,6 +426,55 @@ export function ProfilePanel({
                   <span>compact mode <span class="chalk-profile-theme-desc">(tighter row spacing)</span></span>
                 </label>
               </div>
+              {/* Phase 9.7f: nick colors. On by default; the self color is a
+                  hue so it stays readable on every theme. Per-friend colors
+                  are set by right-clicking (or long-pressing) a friend in the
+                  roster, which is noted in the hint below. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={chatPrefs.userColorsEnabled}
+                    onChange={(e) =>
+                      onSetChatPref(
+                        "userColorsEnabled",
+                        (e.target as HTMLInputElement).checked,
+                      )
+                    }
+                    data-testid="chat-user-colors-enabled"
+                  />
+                  <span>color user names in chat</span>
+                </label>
+              </div>
+              {chatPrefs.userColorsEnabled && (
+                <div class="chalk-profile-field">
+                  <label class="chalk-profile-label" for="self-color">
+                    your color
+                  </label>
+                  <div class="chalk-nick-menu-row">
+                    <input
+                      id="self-color"
+                      type="color"
+                      value={hexFromHue(chatPrefs.selfColorHue)}
+                      onChange={(e) => {
+                        const hue = hueFromHex((e.target as HTMLInputElement).value);
+                        if (hue !== null) onSetChatPref("selfColorHue", hue);
+                      }}
+                      data-testid="chat-self-color"
+                    />
+                    <span
+                      class="chalk-nick-preview"
+                      style={`--nick-h:${chatPrefs.selfColorHue}`}
+                    >
+                      you
+                    </span>
+                  </div>
+                  <p class="chalk-profile-hint">
+                    everyone gets an automatic color. right-click (or
+                    long-press) a friend in the roster to change theirs.
+                  </p>
+                </div>
+              )}
               {onSetUserColors && (
                 <div class="chalk-profile-field">
                   <div class="chalk-profile-label">username colors</div>

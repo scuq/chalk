@@ -7,6 +7,7 @@
 // All shapes mirror proto.ts wire types but with client-side conveniences
 // added (e.g. ChannelSummary's createdAt as Date, Message's ts as Date).
 
+import { DEFAULT_SELF_HUE, clampHue } from "../chat/nickcolor";
 import type { ConnectionState } from "../ws-client";
 import type { AttachmentRef } from "../attachments/types";
 import type {
@@ -190,6 +191,12 @@ export interface ChatPrefs {
   compactMode?: boolean;          // default false
   // Phase 9.7e: per-user color overrides for sender labels in chat.
   userColors?: UserColorRule[];
+  // Phase 9.7f: nick coloring. Master switch (default ON), the viewer's own
+  // color, and explicit per-handle picks. Hues (0..359) rather than hex so
+  // the same value stays readable on every theme -- see chat/nickcolor.ts.
+  userColorsEnabled?: boolean;
+  selfColorHue?: number;
+  userHues?: Record<string, number>;
 }
 
 export interface UserPrefs {
@@ -215,6 +222,10 @@ export interface ResolvedChatPrefs {
   compactMode: boolean;
   // Phase 9.7e: defaulted to [] when prefs.chat.userColors is absent.
   userColors: UserColorRule[];
+  // Phase 9.7f: defaulted below (coloring ON, blueish self color, no picks).
+  userColorsEnabled: boolean;
+  selfColorHue: number;
+  userHues: Record<string, number>;
 }
 
 // selectChatPrefs takes the (possibly sparse) prefs.chat and fills in
@@ -226,6 +237,15 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
     timestampFormat: c.timestampFormat ?? "hms",
     compactMode: c.compactMode ?? false,
     userColors: Array.isArray(c.userColors) ? c.userColors : [],
+    // 9.7f: ON by default -- the point of the feature is that everyone is
+    // colored without configuring anything.
+    userColorsEnabled: c.userColorsEnabled ?? true,
+    selfColorHue:
+      typeof c.selfColorHue === "number" ? clampHue(c.selfColorHue) : DEFAULT_SELF_HUE,
+    userHues:
+      c.userHues && typeof c.userHues === "object" && !Array.isArray(c.userHues)
+        ? (c.userHues as Record<string, number>)
+        : {},
   };
 }
 

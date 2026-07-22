@@ -3,6 +3,7 @@ import type { Message } from "../state/types";
 import { AttachmentView } from "./AttachmentView";
 import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
+import { DEFAULT_SELF_HUE, resolveNickHue } from "../chat/nickcolor";
 import { lazyComponent } from "./LazyComponent";
 // Lazy: Giphy render path is opt-in; keep it out of the initial bundle.
 const GiphyView = lazyComponent(() =>
@@ -28,6 +29,10 @@ interface Props {
     compactMode: boolean;
     // Phase 9.7e:
     userColors: { handle: string; color: string; scope: "all" | "dm" }[];
+    // Phase 9.7f: hue-based nick coloring (see chat/nickcolor.ts).
+    userColorsEnabled: boolean;
+    selfColorHue: number;
+    userHues: Record<string, number>;
   };
   // Phase 9.7e: is the active channel a DM? Used to filter scoped color rules.
   isDM?: boolean;
@@ -109,6 +114,9 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
     timestampFormat: "hms" as const,
     compactMode: false,
     userColors: [] as { handle: string; color: string; scope: "all" | "dm" }[],
+    userColorsEnabled: true,
+    selfColorHue: DEFAULT_SELF_HUE,
+    userHues: {} as Record<string, number>,
   };
   const now = new Date();
 
@@ -184,18 +192,30 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
                 {fmtTimeAs(m.ts, display_.timestampFormat, now)}
               </span>
             )}
-            <span
-              class="chalk-message-sender"
-              title={senderTitle}
-              style={
-                // Phase 9.7e: only color other users, never "you".
-                !own && handle && colorByHandle.has(handle.toLowerCase())
-                  ? { color: colorByHandle.get(handle.toLowerCase()) }
-                  : undefined
-              }
-            >
-              {senderLabel}
-            </span>
+            {(() => {
+              // Phase 9.7f: resolve the sender's hue (own -> self color,
+              // otherwise explicit pick / legacy 9.7e hex / auto hash). The
+              // hue goes out as a CSS custom property and the theme supplies
+              // saturation + lightness, so one stored value reads correctly
+              // on both dark and light themes.
+              const nickHue = resolveNickHue({
+                enabled: display_.userColorsEnabled,
+                own,
+                handle,
+                selfHue: display_.selfColorHue,
+                userHues: display_.userHues,
+                legacyColorByHandle: colorByHandle,
+              });
+              return (
+                <span
+                  class={`chalk-message-sender ${nickHue !== null ? "chalk-message-sender--tinted" : ""}`}
+                  title={senderTitle}
+                  style={nickHue !== null ? `--nick-h:${nickHue}` : undefined}
+                >
+                  {senderLabel}
+                </span>
+              );
+            })()}
             {(() => {
               // giphy-layout: a giphy-marked body renders as a gated GIF that
               // BREAKS OUT to the row's left edge (grid-column 1/-1), exactly

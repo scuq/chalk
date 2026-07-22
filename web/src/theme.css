@@ -4712,3 +4712,95 @@ html, body {
     #1a1b26 0%, #1a1b26 50%,
     #7aa2f7 50%, #7aa2f7 100%);
 }
+
+/* ============================================================
+   Phase 9.7f: per-user nick colors
+   ============================================================
+   Sender labels carry only a HUE (--nick-h, set inline per message).
+   Saturation and lightness come from the theme, so a single stored
+   value per user stays readable on every ground -- including themes
+   added later. See web/src/chat/nickcolor.ts for why hue-only.
+   ============================================================ */
+
+/* Dark grounds: light, moderately saturated text. */
+:root {
+  --nick-s: 65%;
+  --nick-l: 68%;
+}
+
+/* Light grounds need the inverse: darker and a touch more saturated,
+   or the labels wash out against near-white. */
+[data-theme="light"],
+[data-theme="snazzy-light"] {
+  --nick-s: 68%;
+  --nick-l: 32%;
+}
+
+.chalk-message-sender--tinted {
+  color: hsl(var(--nick-h, 210) var(--nick-s) var(--nick-l));
+}
+
+/* Small inline swatch used in the profile picker and the roster menu, so
+   a color can be previewed exactly as chat will render it. */
+.chalk-nick-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: hsl(var(--nick-h, 210) var(--nick-s) var(--nick-l));
+  vertical-align: baseline;
+  flex: 0 0 auto;
+}
+.chalk-nick-preview {
+  color: hsl(var(--nick-h, 210) var(--nick-s) var(--nick-l));
+  font-weight: 600;
+}
+
+/* ---- roster color menu (right-click / long-press a friend) ---- */
+.chalk-nick-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 190px;
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  font-size: var(--chalk-size-small);
+}
+.chalk-nick-menu-title {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  color: var(--chalk-fg-dim);
+  margin-bottom: var(--chalk-s2);
+}
+.chalk-nick-menu-row {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+}
+.chalk-nick-menu-row input[type="color"] {
+  width: 34px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  cursor: pointer;
+}
+.chalk-nick-menu-btn {
+  background: transparent;
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: 2px var(--chalk-s2);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  cursor: pointer;
+}
+.chalk-nick-menu-btn:hover {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg-muted);
+  background: var(--chalk-bg-elev-2);
+}
