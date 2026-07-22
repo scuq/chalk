@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
+  TypeSendAck,
   TypeMessageDeleted,
   // Phase 11b-2: MLS welcome + commit_bundle
   // Phase 11c-2 PR 3: MLS commit broadcast + catchup
@@ -58,6 +59,7 @@ import {
   // Phase 9.7a:
   type PrefsAckPayload,
   type MessagePayload,
+  type SendAckPayload,
   type MessageDeletedPayload,
   // gov-2:
   TypeGovernanceEvent,
@@ -1017,6 +1019,22 @@ export function App() {
         void decryptAll((p.messages ?? []).map(wireToMessage)).then((msgs) => {
           msgs.sort((a, b) => a.seq - b.seq);
           dispatch({ kind: "thread_loaded", threadID: p.thread_id, messages: msgs });
+        });
+        break;
+      }
+      case TypeSendAck: {
+        // Our own send committed. Retire the optimistic row deterministically
+        // (see reducer case "send_ack"): the live echo is suppressed for this
+        // connection and history carries no client_msg_id, so this ack is the
+        // only authoritative signal that our optimistic row is now persisted.
+        const p = f.payload as SendAckPayload;
+        dispatch({
+          kind: "send_ack",
+          channelID: p.channel_id,
+          clientMsgID: p.client_msg_id,
+          id: p.id,
+          seq: p.seq,
+          ts: new Date(p.ts),
         });
         break;
       }

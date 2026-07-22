@@ -535,6 +535,17 @@ export type Action =
   | { kind: "channel_member_removed"; channelID: string; userID: string }
   | { kind: "set_active_channel"; channelID: string | null }
   | { kind: "message"; message: Message }
+  // Server confirmed a send committed: retire the optimistic row identified
+  // by clientMsgID, adopting the real server id/seq/ts (or dropping it if the
+  // server row already arrived by another path).
+  | {
+      kind: "send_ack";
+      channelID: string;
+      clientMsgID: string;
+      id: string;
+      seq: number;
+      ts: Date;
+    }
   // Phase 26 (governance prereq): a message was deleted; tombstone it in place.
   | { kind: "message_deleted"; channelID: string; messageID: string; deletedBy?: string; deletedAt?: Date }
   | { kind: "history_loaded"; channelID: string; messages: Message[] }

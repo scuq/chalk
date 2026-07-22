@@ -725,6 +725,12 @@ func (h *WSHandler) handleSend(
 		}
 	}
 
+	// Captured inside the tx so the post-commit send_ack can report the
+	// persisted identity of the message to the sender.
+	var ackMsgID uuid.UUID
+	var ackSeq int64
+	var ackTS time.Time
+
 	err = pgxBegin(ctx, h.store, func(tx pgx.Tx) error {
 		var seq int64
 		if err := tx.QueryRow(ctx,
@@ -754,6 +760,7 @@ func (h *WSHandler) handleSend(
 				return err
 			}
 		}
+		ackMsgID, ackSeq, ackTS = msgID, seq, ts
 		ev := pubsub.Event{
 			Kind:           "message",
 			MessageID:      msgID,
@@ -775,6 +782,30 @@ func (h *WSHandler) handleSend(
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "send failed")
 		h.logger.Printf("send: %v", err)
 		return
+	}
+
+	// send_ack (sender only): the message is committed, so tell the sender
+	// its server identity. The client uses this to retire the optimistic row
+	// it rendered on send -- deterministically, without depending on the live
+	// echo (suppressed for the sender's own conn) or on a history re-fetch
+	// (whose payloads carry no client_msg_id). Only sent when the client
+	// supplied a key; older clients get the previous behaviour.
+	//
+	// A failed ack write is logged, not fatal: the message is already
+	// committed, and the client still converges on the next history fetch.
+	if p.ClientMsgID != "" {
+		ack, aerr := proto.NewFrame(proto.TypeSendAck, f.Ref, proto.SendAckPayload{
+			ClientMsgID: p.ClientMsgID,
+			ID:          ackMsgID.String(),
+			ChannelID:   channelID.String(),
+			Seq:         ackSeq,
+			TS:          ackTS.UnixMilli(),
+		})
+		if aerr != nil {
+			h.logger.Printf("send_ack frame: %v", aerr)
+		} else if werr := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); werr != nil {
+			h.logger.Printf("send_ack write: %v", werr)
+		}
 	}
 }
 

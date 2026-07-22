@@ -308,6 +308,64 @@ export function reducer(state: AppState, action: Action): AppState {
       }
       return { ...state, activeChannelID: action.channelID, openThread: null };
 
+    case "send_ack": {
+      // Deterministic retirement of the optimistic row.
+      //
+      // Why this exists: chalkd echo-suppresses the sender's own connection,
+      // so the sender normally never receives the live push of its own
+      // message -- meaning the clientMsgID reconciliation in case "message"
+      // below never fires for it. Meanwhile the Phase 23g key-ready backstop
+      // re-fetches history on every channel switch, and history payloads
+      // carry no client_msg_id, so the server row lands via history_loaded
+      // and merges by id ALONGSIDE the still-present optimistic row. That is
+      // the duplicate: one row with a "local-" id, one with the server id.
+      //
+      // The ack closes it: the server tells the sender the persisted identity
+      // of its message, so the optimistic row can be retired regardless of
+      // which path (if any) later delivers the server copy.
+      //
+      // Both arrival orders must work:
+      //   ack first -> upgrade the optimistic row in place to the server id.
+      //   row first -> the server row is already present; drop the optimistic.
+      const reconcile = (list: Message[] | undefined): Message[] | null => {
+        if (!list || list.length === 0) return null;
+        const optIdx = list.findIndex((x) => x.clientMsgID === action.clientMsgID);
+        if (optIdx === -1) return null;
+        const serverRowElsewhere = list.some(
+          (x, i) => i !== optIdx && x.id === action.id,
+        );
+        const next = serverRowElsewhere
+          ? list.filter((_, i) => i !== optIdx)
+          : list.map((x, i) =>
+              i === optIdx
+                ? { ...x, id: action.id, seq: action.seq, ts: action.ts }
+                : x,
+            );
+        return next.sort((a, b) => a.seq - b.seq);
+      };
+
+      let next = state;
+      const nextChannel = reconcile(state.messages[action.channelID]);
+      if (nextChannel) {
+        next = {
+          ...next,
+          messages: { ...next.messages, [action.channelID]: nextChannel },
+        };
+      }
+      // A reply's optimistic row is cached in its thread list too; reconcile
+      // there as well so an open thread panel doesn't keep the stale copy.
+      for (const tid of Object.keys(state.threadMessages)) {
+        const nextReplies = reconcile(state.threadMessages[tid]);
+        if (nextReplies) {
+          next = {
+            ...next,
+            threadMessages: { ...next.threadMessages, [tid]: nextReplies },
+          };
+        }
+      }
+      return next;
+    }
+
     case "message": {
       const m = action.message;
       const existing = state.messages[m.channelID] ?? [];

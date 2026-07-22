@@ -23,6 +23,11 @@ export const TypeSend = "send";
 export const TypeWelcome = "welcome";
 export const TypeMessage = "message";
 export const TypeError = "error";
+// Sent to the ORIGINATING connection once a send has committed, carrying the
+// message's persisted server identity plus the client_msg_id the sender chose.
+// Lets the client retire its optimistic row deterministically (the live echo is
+// suppressed for the sender's own conn, and history carries no client_msg_id).
+export const TypeSendAck = "send_ack";
 
 export interface HelloPayload {
   device_id: string;
@@ -102,6 +107,17 @@ export interface MessagePayload {
   // and replace it (adopting server id/seq/ts). Undefined for history
   // fetches and messages from other senders.
   client_msg_id?: string;
+}
+
+// Ack returned to the sender once its send has committed. Carries the
+// persisted server identity of the message so the optimistic row can be
+// retired without waiting on the (suppressed) live echo or a history fetch.
+export interface SendAckPayload {
+  client_msg_id: string;
+  id: string;
+  channel_id: string;
+  seq: number;
+  ts: number;
 }
 
 // att-2: AttachmentRefWireBase is the shared shape of an attachment descriptor

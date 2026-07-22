@@ -90,6 +90,14 @@ const (
 	TypeWelcome = "welcome"
 	TypeMessage = "message"
 	TypeError   = "error"
+	// TypeSendAck acknowledges a send back to the ORIGINATING connection,
+	// carrying the persisted identity of the message (server id/seq/ts)
+	// alongside the client_msg_id the sender chose. This is what lets a
+	// client retire its optimistic row deterministically: chalkd suppresses
+	// the live echo for the sender's own conn, and history payloads don't
+	// carry client_msg_id, so without this ack the optimistic row has no
+	// authoritative signal that it has been persisted.
+	TypeSendAck = "send_ack"
 )
 
 // HelloPayload is sent by the client immediately after connect.
@@ -171,6 +179,25 @@ type SendPayload struct {
 	// arrives on the sender's NEW conn (after the old one dropped) would
 	// otherwise double the message. Empty from older clients (no dedup).
 	ClientMsgID string `json:"client_msg_id,omitempty"`
+}
+
+// SendAckPayload is returned to the sending connection once a send has
+// COMMITTED, so the client can replace its optimistic row with the real
+// server identity (or drop it, if the server row already arrived via
+// history). Sent only when the client supplied a client_msg_id; older
+// clients that don't send one get no ack and behave as before.
+//
+// This is deliberately sent to the sender only -- it is not a broadcast.
+// Other members learn about the message through the normal message push.
+type SendAckPayload struct {
+	// ClientMsgID echoes the sender's idempotency key so the client can
+	// find the exact optimistic row this ack retires.
+	ClientMsgID string `json:"client_msg_id"`
+	// ID, Seq and TS are the persisted server identity of the message.
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
+	Seq       int64  `json:"seq"`
+	TS        int64  `json:"ts"`
 }
 
 // MessagePayload is what the server pushes to peers. id and ts are
