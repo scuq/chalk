@@ -4541,3 +4541,82 @@ html, body {
   color: var(--chalk-fg-dim);
   user-select: all;
 }
+
+/* ------------------------------------------------------------------
+   Composer readability + tool row, and the window pop-out control.
+
+   Appended as overrides rather than edits to the original rules above,
+   so the cascade order is explicit: these are single-class selectors
+   matching the earlier ones, so being last is what makes them win.
+   Everything here uses existing theme vars, so the light theme adapts
+   without a second set of rules.
+   ------------------------------------------------------------------ */
+
+/* Readability: the placeholder used --chalk-fg-muted on a near-black
+   field, which sat well under a comfortable contrast ratio. Move it to
+   --chalk-fg-dim and pin opacity (Firefox applies its own by default).
+   The brighter border gives the field a visible edge instead of it
+   bleeding into the page background. */
+.chalk-composer-input {
+  line-height: 1.5;
+  border-color: var(--chalk-fg-muted);
+}
+.chalk-composer-input::placeholder {
+  color: var(--chalk-fg-dim);
+  opacity: 1;
+}
+
+/* Tool row: attach / GIF / emoji, sitting ABOVE the input rather than
+   competing with it for horizontal space. Smaller than the old inline
+   buttons since they're now a secondary affordance. */
+.chalk-composer-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s1);
+  margin-bottom: var(--chalk-s1);
+}
+.chalk-composer-tool {
+  background: transparent;
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: 1px var(--chalk-s2);
+  min-height: 0;
+  height: 22px;
+  line-height: 1;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  cursor: pointer;
+}
+.chalk-composer-tool:hover:not(:disabled) {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg-muted);
+  background: var(--chalk-bg-elev);
+}
+.chalk-composer-tool:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Pop-out control in the header. */
+.chalk-header-left {
+  display: flex;
+  align-items: baseline;
+  gap: var(--chalk-s3);
+}
+.chalk-popout {
+  background: transparent;
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: 2px var(--chalk-s2);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  line-height: 1.4;
+  cursor: pointer;
+}
+.chalk-popout:hover {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg-muted);
+  background: var(--chalk-bg-elev);
+}

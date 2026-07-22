@@ -2224,7 +2224,36 @@ export function App() {
   return (
     <div class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""}`}>
       <header class="chalk-header">
-        <h1>chalk</h1>
+        <div class="chalk-header-left">
+          <h1>chalk</h1>
+          {/* Pop chalk out into its own right-sized window. Hidden when we
+              ARE the pop-out (window.opener is set), so the button doesn't
+              invite spawning windows from windows. No noopener here on
+              purpose: the child needs window.opener for that check, and it's
+              same-origin anyway. */}
+          {typeof window !== "undefined" && window.opener == null && (
+            <button
+              type="button"
+              class="chalk-popout"
+              title="open chalk in its own window"
+              aria-label="open chalk in its own window"
+              data-testid="popout"
+              onClick={() => {
+                const w = Math.min(1200, window.screen.availWidth);
+                const h = Math.min(860, window.screen.availHeight);
+                const left = Math.max(0, Math.round((window.screen.availWidth - w) / 2));
+                const top = Math.max(0, Math.round((window.screen.availHeight - h) / 2));
+                window.open(
+                  window.location.href,
+                  "chalk-popout",
+                  `popup=yes,width=${w},height=${h},left=${left},top=${top}`,
+                );
+              }}
+            >
+              ⧉ popout
+            </button>
+          )}
+        </div>
         <StatusBar
           state={state.wsState}
           detail={state.wsDetail}

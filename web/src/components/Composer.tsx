@@ -285,53 +285,75 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
           })}
         </div>
       )}
-      <div class="chalk-composer-row">
-        {enableAttachments && (
-          <>
+      {/* Tool row: attach / GIF / emoji live ABOVE the input so they stop
+          eating the field's horizontal space. Rendered only for the main
+          composer (the thread composer stays text-only), which is what
+          enableAttachments/giphyEnabled effectively gate on. The old
+          per-button classes are kept alongside chalk-composer-tool so the
+          existing hover/disabled rules still apply. */}
+      {(enableAttachments || giphyEnabled) && (
+        <div class="chalk-composer-tools" data-testid="composer-tools">
+          {enableAttachments && (
+            <>
+              <button
+                type="button"
+                class="chalk-composer-tool chalk-composer-attach"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={effectiveDisabled || sending}
+                title="attach a file"
+                aria-label="attach a file"
+                data-testid="composer-attach"
+              >
+                📎
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                class="chalk-composer-file-input"
+                style={{ display: "none" }}
+                onChange={onFileChange}
+                data-testid="composer-file-input"
+              />
+            </>
+          )}
+          {giphyEnabled && (
             <button
               type="button"
-              class="chalk-composer-attach"
-              onClick={() => fileInputRef.current?.click()}
+              class="chalk-composer-tool chalk-composer-giphy"
+              onClick={() => {
+                if (effectiveDisabled || sending) return;
+                // Not yet consented -> open the consent modal instead of the
+                // picker. The picker only ever opens for an enabled viewer.
+                if (!giphyReady) {
+                  onRequestEnableGiphy?.();
+                  return;
+                }
+                setGiphyOpen(true);
+              }}
               disabled={effectiveDisabled || sending}
-              title="attach a file"
-              aria-label="attach a file"
-              data-testid="composer-attach"
+              title="send a GIF"
+              aria-label="send a GIF"
+              data-testid="composer-giphy"
             >
-              📎
+              GIF
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              class="chalk-composer-file-input"
-              style={{ display: "none" }}
-              onChange={onFileChange}
-              data-testid="composer-file-input"
-            />
-          </>
-        )}
-        {giphyEnabled && (
+          )}
+          {/* Placeholder for the emoji picker: reserves the affordance and
+              its position. Disabled until the picker itself is built. */}
           <button
             type="button"
-            class="chalk-composer-giphy"
-            onClick={() => {
-              if (effectiveDisabled || sending) return;
-              // Not yet consented -> open the consent modal instead of the
-              // picker. The picker only ever opens for an enabled viewer.
-              if (!giphyReady) {
-                onRequestEnableGiphy?.();
-                return;
-              }
-              setGiphyOpen(true);
-            }}
-            disabled={effectiveDisabled || sending}
-            title="send a GIF"
-            aria-label="send a GIF"
-            data-testid="composer-giphy"
+            class="chalk-composer-tool chalk-composer-emoji"
+            disabled
+            title="emoji picker -- coming soon"
+            aria-label="emoji picker (coming soon)"
+            data-testid="composer-emoji"
           >
-            GIF
+            🙂
           </button>
-        )}
+        </div>
+      )}
+      <div class="chalk-composer-row">
         <textarea
           class="chalk-composer-input"
           placeholder={(disabled ? (placeholderText) : (placeholder ?? (placeholderText)))}
