@@ -5034,6 +5034,11 @@ html, body {
 .chalk-message-giphy,
 .chalk-message-attachments {
   grid-column: 3 / -1;
+  /* Phase 9.7m: the media sits on grid row 2 (row 1 holds time + sender),
+     so it started one line BELOW the username. Pull it up by one body
+     line-height so its top aligns with the sender on row 1, reading as a
+     single message rather than a caption floating beneath an empty row. */
+  margin-top: -1.4em;
 }
 .chalk-message--no-time .chalk-message-giphy,
 .chalk-message--no-time .chalk-message-attachments {
@@ -5075,13 +5080,18 @@ html, body {
   align-items: flex-start;
   /* Pinned so the ch-based padding below matches the message grid. */
   font-size: var(--chalk-size-base);
-  padding-left: calc(var(--chalk-msg-body-offset) + var(--chalk-s2));
+  /* Phase 9.7m: indent to the SENDER column (time + one gap), not the body
+     column, so the "N replies" line sits close to the message's first
+     character instead of under the body text. */
+  padding-left: calc(
+    var(--chalk-msg-time-col) + var(--chalk-msg-col-gap) + var(--chalk-s2)
+  );
 }
 
 .chalk-messages--no-time .chalk-message-thread-meta {
-  padding-left: calc(
-    var(--chalk-msg-sender-col) + var(--chalk-msg-col-gap) + var(--chalk-s2)
-  );
+  /* No time column: the sender starts at the left edge, so a small gutter
+     is enough to clear the row padding. */
+  padding-left: var(--chalk-s2);
 }
 
 /* Children now inherit their position from the wrapper. Zeroing these
