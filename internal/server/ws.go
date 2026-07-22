@@ -1736,6 +1736,33 @@ func (h *WSHandler) handleCreateChannel(
 	for m := range memberSet {
 		others = append(others, m)
 	}
+
+	// DM idempotency: a pair of users has exactly one DM. Creating a second
+	// one is never what the caller wants -- the new channel starts empty and
+	// the earlier conversation is stranded in the old row, which reads to the
+	// user as "my messages disappeared". Nothing in the schema prevents this
+	// (the 0010 trigger only enforces the 2-member cardinality), so enforce
+	// it here: if a DM between these two already exists, ack THAT channel
+	// instead of creating a duplicate.
+	//
+	// No channel_event is published in this path: every member already has
+	// the channel, so there is nothing new to announce.
+	if p.IsDM && len(others) == 1 {
+		if existing, found := h.findExistingDM(ctx, callerID, others[0]); found {
+			handles, hErr := h.store.HandlesByID(ctx, existing.MemberIDs)
+			if hErr != nil {
+				h.logger.Printf("handles lookup (existing DM): %v", hErr)
+				handles = nil
+			}
+			ack, _ := proto.NewFrame(proto.TypeCreateChannelAck, f.Ref,
+				proto.CreateChannelAckPayload{Channel: channelSummaryFromStore(existing, handles)})
+			if werr := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); werr != nil {
+				h.logger.Printf("create_channel_ack (existing DM) write: %v", werr)
+			}
+			return
+		}
+	}
+
 	created, err := h.store.CreateChannel(ctx, store.CreateChannelInput{
 		Name:        strings.TrimSpace(p.Name),
 		IsDM:        p.IsDM,
@@ -1785,6 +1812,34 @@ func (h *WSHandler) handleCreateChannel(
 			h.logger.Printf("publish channel_event added to %s: %v", m, err)
 		}
 	}
+}
+
+// findExistingDM returns the DM channel whose membership is exactly {a, b},
+// if one exists. Used to keep create_channel idempotent for DMs so a pair
+// can't end up with two DM rows (the second would start empty and strand the
+// first one's history).
+//
+// Implemented as a scan of the caller's channels rather than new SQL: a user's
+// channel list is small, DM creation is rare, and reusing ListChannelsForUser
+// avoids adding a query path that would need its own test coverage. Returns
+// false on lookup error -- the caller then proceeds with normal creation,
+// which is the pre-existing behaviour.
+func (h *WSHandler) findExistingDM(ctx context.Context, a, b uuid.UUID) (store.ChannelWithMembers, bool) {
+	channels, err := h.store.ListChannelsForUser(ctx, a)
+	if err != nil {
+		h.logger.Printf("list channels (DM dedupe): %v", err)
+		return store.ChannelWithMembers{}, false
+	}
+	for _, ch := range channels {
+		if !ch.IsDM || len(ch.MemberIDs) != 2 {
+			continue
+		}
+		if (ch.MemberIDs[0] == a && ch.MemberIDs[1] == b) ||
+			(ch.MemberIDs[0] == b && ch.MemberIDs[1] == a) {
+			return ch, true
+		}
+	}
+	return store.ChannelWithMembers{}, false
 }
 
 // handleListChannels returns every channel the caller is a member of.

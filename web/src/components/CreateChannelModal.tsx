@@ -22,13 +22,14 @@ interface Props {
   voiceEnabled: boolean;
   onClose: () => void;
   // 30-4: voice=true creates a Discord-style voice room (channel_type=
-  // 'voice'). Mutually exclusive with DM (the server rejects voice DMs).
+  // 'voice'). isDM is always passed false: 1:1 channels are opened from the
+  // friends roster (which activates the existing DM), not created here. The
+  // param is kept so the App-level wire mapping stays unchanged.
   onSubmit: (name: string, isDM: boolean, memberIDs: string[], voice: boolean) => void;
 }
 
 export function CreateChannelModal({ friends, loading, voiceEnabled, onClose, onSubmit }: Props) {
   const [name, setName] = useState("");
-  const [isDM, setIsDM] = useState(false);
   const [voice, setVoice] = useState(false); // 30-4
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -56,15 +57,14 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, onClose, on
       setError("name too long (max 80)");
       return;
     }
-    if (isDM && selected.size !== 1) {
-      setError("DM needs exactly one other member");
-      return;
-    }
-    if (!isDM && selected.size < 1) {
+    if (selected.size < 1) {
       setError("pick at least one member");
       return;
     }
-    onSubmit(trimmed, isDM, Array.from(selected), !isDM && voice);
+    // is_dm is always false here: a 1:1 is created by clicking a friend in
+    // the roster (which opens the EXISTING DM), never from this modal. A
+    // second DM between the same pair would strand the first one's history.
+    onSubmit(trimmed, false, Array.from(selected), voice);
   };
 
   return (
@@ -103,24 +103,7 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, onClose, on
             />
           </label>
 
-          <label class="chalk-field chalk-field--checkbox">
-            <input
-              type="checkbox"
-              data-testid="create-modal-dm"
-              checked={isDM}
-              onChange={(e) => {
-                const v = (e.target as HTMLInputElement).checked;
-                setIsDM(v);
-                if (v && selected.size > 1) {
-                  // DM allows exactly one; trim to one.
-                  setSelected(new Set([Array.from(selected)[0]!]));
-                }
-              }}
-            />
-            <span>direct message (1:1)</span>
-          </label>
-
-          {!isDM && voiceEnabled && (
+          {voiceEnabled && (
             <label class="chalk-field chalk-field--checkbox">
               <input
                 type="checkbox"
@@ -146,7 +129,7 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, onClose, on
               <FriendPicker
                 friends={friends}
                 selected={selected}
-                singleSelect={isDM}
+                singleSelect={false}
                 onChange={setSelected}
               />
             )}
