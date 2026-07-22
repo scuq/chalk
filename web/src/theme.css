@@ -4963,3 +4963,80 @@ html, body {
 .chalk-composer-tools--icons .chalk-composer-tool svg {
   display: block;
 }
+
+/* ============================================================
+   Phase 9.7i: message row alignment
+   ============================================================
+   Three things made mixed conversations (plain text, thread replies,
+   GIFs, multi-line) read as ragged:
+
+   1. .chalk-message-time / -sender used align-self: center. On a
+      multi-line body that centres them against the whole block, so a
+      3-line message put its timestamp beside line 2 and its first line
+      floated above the timestamp. Baseline alignment puts the
+      timestamp, sender and the body's FIRST line on one line, which is
+      what the eye expects.
+
+   2. Giphy and attachment blocks used grid-column: 1 / -1, breaking out
+      to the far-left edge under the timestamp while text bodies started
+      at the body column. Now they start at the body column too, so
+      every kind of message content shares one left edge.
+
+   3. The thread-reply indicator is a sibling of .chalk-message (not a
+      grid item), so it sat at the group's left edge. It now indents to
+      the same body column.
+
+   The column geometry lives in variables so the body edge is defined
+   once and everything else derives from it -- previously the offset was
+   implied in three places and could drift.
+   ============================================================ */
+
+:root {
+  --chalk-msg-time-col: 8ch;   /* "09:22:03" is exactly 8 -- 7ch clipped */
+  --chalk-msg-sender-col: 8ch;
+  --chalk-msg-col-gap: var(--chalk-s1);
+  --chalk-msg-body-offset: calc(
+    var(--chalk-msg-time-col) + var(--chalk-msg-sender-col) +
+      2 * var(--chalk-msg-col-gap)
+  );
+}
+
+.chalk-message {
+  grid-template-columns:
+    var(--chalk-msg-time-col)
+    var(--chalk-msg-sender-col)
+    1fr;
+  column-gap: var(--chalk-msg-col-gap);
+  row-gap: 0;
+}
+
+.chalk-message--no-time {
+  grid-template-columns: var(--chalk-msg-sender-col) 1fr;
+}
+
+/* (1) first line of a multi-line body lines up with the timestamp. */
+.chalk-message-time,
+.chalk-message-sender {
+  align-self: baseline;
+}
+
+/* (2) media starts at the body column instead of the row's left edge. */
+.chalk-message-giphy,
+.chalk-message-attachments {
+  grid-column: 3 / -1;
+}
+.chalk-message--no-time .chalk-message-giphy,
+.chalk-message--no-time .chalk-message-attachments {
+  grid-column: 2 / -1;
+}
+
+/* (3) reply indicator lines up with the body column. It lives outside
+   the grid, so the offset also has to clear .chalk-message's padding. */
+.chalk-message-thread-indicator {
+  margin-left: calc(var(--chalk-msg-body-offset) + var(--chalk-s2));
+}
+.chalk-messages--no-time .chalk-message-thread-indicator {
+  margin-left: calc(
+    var(--chalk-msg-sender-col) + var(--chalk-msg-col-gap) + var(--chalk-s2)
+  );
+}

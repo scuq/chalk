@@ -129,7 +129,7 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
   }
 
   return (
-    <div class={`chalk-messages ${display_.compactMode ? "chalk-messages--compact" : ""}`} data-testid="messages">
+    <div class={`chalk-messages ${display_.compactMode ? "chalk-messages--compact" : ""} ${display_.showTimestamps ? "" : "chalk-messages--no-time"}`} data-testid="messages">
       {(() => {
         // Phase 9.6i: build a userID → handle lookup once per render
         // pass instead of re-scanning members for every message row.
