@@ -4938,3 +4938,28 @@ html, body {
   color: var(--chalk-fg-dim);
   font-size: var(--chalk-size-small);
 }
+
+/* ============================================================
+   Phase 9.7h: composer tool row -- text vs icon presentation
+   ============================================================ */
+
+/* Text variant: short uppercase labels (FILE / GIF / EMOJI). Slight
+   letter-spacing so they read as labels rather than words, matching
+   how the GIF button already looked. */
+.chalk-composer-tools--text .chalk-composer-tool {
+  letter-spacing: 0.06em;
+}
+
+/* Icon variant: square-ish buttons that centre their glyph. The SVGs
+   stroke with currentColor, so they inherit the button's colour and
+   hover state and need no per-theme rules. */
+.chalk-composer-tools--icons .chalk-composer-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  padding: 0;
+}
+.chalk-composer-tools--icons .chalk-composer-tool svg {
+  display: block;
+}

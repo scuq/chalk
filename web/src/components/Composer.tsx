@@ -57,11 +57,59 @@ interface Props {
   giphyEnabled?: boolean;
   giphyReady?: boolean;
   onRequestEnableGiphy?: () => void;
+  // Phase 9.7h: tool row presentation. "text" (default) renders FILE / GIF /
+  // EMOJI labels; "icons" renders glyphs. The emoji button keeps its 🙂 in
+  // both -- it already is an icon.
+  toolStyle?: "text" | "icons";
 }
 
 const MAX_LEN = 4000;
 
-export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy }: Props) {
+// Phase 9.7h: inline SVG glyphs for the "icons" tool style. Stroked with
+// currentColor so they inherit the button's colour (and therefore the theme
+// and hover state) without any per-theme rules. 14px to sit inside the 22px
+// tool button with room to breathe.
+function IconFile() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </svg>
+  );
+}
+
+// A framed play triangle: reads as "animated image" rather than "video",
+// which is the closest unambiguous glyph for a GIF at this size.
+function IconGif() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="2" y="4" width="20" height="16" rx="3" />
+      <path d="M10 9.2l5.2 2.8-5.2 2.8z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle }: Props) {
+  const icons = toolStyle === "icons";
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [dragActive, setDragActive] = useState(false);
@@ -339,7 +387,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
           per-button classes are kept alongside chalk-composer-tool so the
           existing hover/disabled rules still apply. */}
       {(enableAttachments || giphyEnabled) && (
-        <div class="chalk-composer-tools" data-testid="composer-tools">
+        <div class={`chalk-composer-tools ${icons ? "chalk-composer-tools--icons" : "chalk-composer-tools--text"}`} data-testid="composer-tools">
           {enableAttachments && (
             <>
               <button
@@ -351,7 +399,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
                 aria-label="attach a file"
                 data-testid="composer-attach"
               >
-                📎
+                {icons ? <IconFile /> : "FILE"}
               </button>
               <input
                 ref={fileInputRef}
@@ -383,7 +431,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
               aria-label="send a GIF"
               data-testid="composer-giphy"
             >
-              GIF
+              {icons ? <IconGif /> : "GIF"}
             </button>
           )}
           <button
@@ -398,7 +446,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
             aria-label="insert emoji"
             data-testid="composer-emoji"
           >
-            🙂
+            {icons ? "🙂" : "EMOJI"}
           </button>
         </div>
       )}

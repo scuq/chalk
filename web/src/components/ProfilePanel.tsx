@@ -66,6 +66,8 @@ interface Props {
     userColorsEnabled: boolean;
     selfColorHue: number;
     userHues: Record<string, number>;
+    // Phase 9.7h:
+    composerToolStyle: "text" | "icons";
   };
   onSetChatPref?: <
     K extends
@@ -73,11 +75,14 @@ interface Props {
       | "timestampFormat"
       | "compactMode"
       | "userColorsEnabled"
-      | "selfColorHue",
+      | "selfColorHue"
+      | "composerToolStyle",
   >(
     key: K,
     value: K extends "timestampFormat"
       ? "hms" | "hm" | "relative"
+      : K extends "composerToolStyle"
+      ? "text" | "icons"
       : K extends "selfColorHue"
       ? number
       : boolean,
@@ -475,6 +480,29 @@ export function ProfilePanel({
                   </p>
                 </div>
               )}
+              {/* Phase 9.7h: composer tool row presentation. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-label" for="composer-tool-style">
+                  composer buttons
+                </label>
+                <select
+                  id="composer-tool-style"
+                  class="chalk-profile-select"
+                  value={chatPrefs.composerToolStyle}
+                  onChange={(e) =>
+                    onSetChatPref(
+                      "composerToolStyle",
+                      (e.target as HTMLSelectElement).value === "icons"
+                        ? "icons"
+                        : "text",
+                    )
+                  }
+                  data-testid="composer-tool-style"
+                >
+                  <option value="text">text (FILE, GIF, EMOJI)</option>
+                  <option value="icons">icons</option>
+                </select>
+              </div>
               {onSetUserColors && (
                 <div class="chalk-profile-field">
                   <div class="chalk-profile-label">username colors</div>

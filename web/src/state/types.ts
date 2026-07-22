@@ -197,6 +197,9 @@ export interface ChatPrefs {
   userColorsEnabled?: boolean;
   selfColorHue?: number;
   userHues?: Record<string, number>;
+  // Phase 9.7h: composer tool row presentation. "text" renders FILE / GIF /
+  // EMOJI labels; "icons" renders glyphs. Default "text".
+  composerToolStyle?: "text" | "icons";
 }
 
 export interface UserPrefs {
@@ -226,6 +229,8 @@ export interface ResolvedChatPrefs {
   userColorsEnabled: boolean;
   selfColorHue: number;
   userHues: Record<string, number>;
+  // Phase 9.7h: defaulted to "text".
+  composerToolStyle: "text" | "icons";
 }
 
 // selectChatPrefs takes the (possibly sparse) prefs.chat and fills in
@@ -246,6 +251,7 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
       c.userHues && typeof c.userHues === "object" && !Array.isArray(c.userHues)
         ? (c.userHues as Record<string, number>)
         : {},
+    composerToolStyle: c.composerToolStyle === "icons" ? "icons" : "text",
   };
 }
 
