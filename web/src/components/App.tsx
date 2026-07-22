@@ -2410,6 +2410,7 @@ export function App() {
               messages={activeMessages}
               ownDevice={state.user?.device ?? null}
               ownUserID={state.user?.id ?? null}
+              ownHandle={state.me?.username ?? null}
               members={activeChannel.members ?? []}
               isDM={activeChannel.isDM}
               display={selectChatPrefs(state.prefs)}
@@ -2468,6 +2469,7 @@ export function App() {
             loaded={loaded}
             ownDevice={state.user?.device ?? null}
             ownUserID={state.user?.id ?? null}
+            ownHandle={state.me?.username ?? null}
             members={activeChannel.members ?? []}
             isDM={activeChannel.isDM}
             display={selectChatPrefs(state.prefs)}

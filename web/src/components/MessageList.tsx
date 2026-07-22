@@ -18,6 +18,9 @@ interface Props {
   // devices, AND lets us resolve other senders to handles via the
   // channel's members[] (passed in alongside).
   ownUserID?: string | null;
+  // Phase 9.7k: the viewer's own handle, shown instead of the literal "you"
+  // on their messages. Falls back to "you" when unknown (pre-session).
+  ownHandle?: string | null;
   members?: { userID: string; handle: string }[];
   // empty is the text shown when messages.length === 0.
   empty?: string;
@@ -98,7 +101,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-export function MessageList({ messages, ownDevice, ownUserID, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessages, onDeleteMessage, attachmentController, giphyPref, onRequestEnableGiphy }: Props) {
+export function MessageList({ messages, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessages, onDeleteMessage, attachmentController, giphyPref, onRequestEnableGiphy }: Props) {
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -153,6 +156,31 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
           const key = rule.handle.toLowerCase();
           if (!colorByHandle.has(key)) colorByHandle.set(key, rule.color);
         }
+        // Phase 9.7k: size the sender column to the WIDEST label actually in
+        // this view, not a fixed 8ch. Short-name channels ("you", "alice9")
+        // tighten up; a long handle widens the column just enough. Capped at
+        // 10ch: past that the label wraps (white-space: normal on the cell)
+        // rather than pushing the body arbitrarily far right. Min 4ch so a
+        // channel of only "you" still has a sane gutter.
+        //
+        // Computed from the labels we're about to render: own -> ownHandle,
+        // others -> their handle, else the device-id slice (8).
+        let maxNameLen = 4;
+        for (const mm of messages) {
+          const isOwn =
+            (ownUserID != null && mm.senderUserID !== "" && mm.senderUserID === ownUserID) ||
+            (ownDevice != null && mm.sender === ownDevice);
+          let label: string;
+          if (isOwn) label = (ownHandle && ownHandle.length > 0) ? ownHandle : "you";
+          else {
+            const hh = mm.senderUserID ? handleByUser.get(mm.senderUserID) : undefined;
+            label = hh ?? (mm.sender === "" ? "[unknown]" : mm.sender.slice(-8));
+          }
+          if (label.length > maxNameLen) maxNameLen = label.length;
+        }
+        // Cap so an outlier name wraps instead of shoving every body right.
+        const senderColCh = Math.min(maxNameLen, 10);
+
         return messages.map((m) => {
         // "Own" detection prefers user_id matching when both sides
         // are known; falls back to device matching otherwise. This
@@ -169,7 +197,7 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
           ? handleByUser.get(m.senderUserID)
           : undefined;
         const senderLabel = own
-          ? "you"
+          ? (ownHandle && ownHandle.length > 0 ? ownHandle : "you")
           : handle
           ? handle
           : m.sender === ""
@@ -184,6 +212,7 @@ export function MessageList({ messages, ownDevice, ownUserID, members, empty, di
           <div class="chalk-message-group" key={m.id}>
           <div
             class={`chalk-message ${own ? "chalk-message--own" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"}`}
+            style={`--chalk-msg-sender-col:${senderColCh}ch`}
             data-testid="message"
             title={display_.showTimestamps ? undefined : m.ts.toLocaleString()}
           >

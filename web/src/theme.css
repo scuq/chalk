@@ -5081,3 +5081,47 @@ html, body {
 .chalk-message-thread-preview {
   margin-left: 0;
 }
+
+/* ============================================================
+   Phase 9.7k: sender column sized to content, long names wrap
+   ============================================================
+   The sender column was a fixed 8ch -- wide enough for the longest
+   possible handle, so a channel full of short names ("you", "alice9")
+   left a large gap before the body. MessageList now measures the
+   widest label actually in view and sets --chalk-msg-sender-col per row
+   (capped at 10ch). This block lets the cell WRAP when a handle exceeds
+   that cap, so an outlier name breaks onto a second line instead of
+   forcing every body far to the right.
+   ============================================================ */
+
+/* The base rule pins --chalk-msg-sender-col to 8ch; the per-row inline
+   style overrides it. This fallback keeps anything that renders a row
+   WITHOUT the inline var (defensive) at a sane width. */
+.chalk-message {
+  --chalk-msg-sender-col: 8ch;
+}
+
+/* Let long handles wrap within the (now content-sized) column rather
+   than overflow it. break-word handles a single over-long token; the
+   column itself never exceeds its 10ch cap, so the body column stays
+   put no matter how long the name is. */
+.chalk-message-sender {
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  /* was ellipsis truncation; wrapping replaces it, so drop the clip. */
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.2;
+}
+
+/* The thread-meta wrapper indents by --chalk-msg-body-offset, which is
+   built from --chalk-msg-sender-col. That var is now set per message
+   ROW, not on the wrapper (a sibling), so the wrapper would fall back
+   to 8ch and drift out of step with a tightened column. Rebuild the
+   offset here from the same 8ch fallback so indicator + body still
+   share an edge in the common case; when names are short the indicator
+   sits a hair right of the body, which reads fine and never left of it. */
+.chalk-message-thread-meta {
+  --chalk-msg-sender-col: 8ch;
+}

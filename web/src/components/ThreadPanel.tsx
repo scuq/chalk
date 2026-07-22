@@ -32,6 +32,9 @@ interface Props {
   // Identity bits for MessageList\'s "you" detection.
   ownDevice: string | null;
   ownUserID: string | null;
+  // Phase 9.7k: viewer's own handle, forwarded to the reply MessageLists so
+  // own replies show the username instead of "you".
+  ownHandle?: string | null;
   // Channel members for sender → handle resolution.
   members: { userID: string; handle: string }[];
   isDM: boolean;
@@ -50,6 +53,7 @@ export function ThreadPanel({
   loaded,
   ownDevice,
   ownUserID,
+  ownHandle,
   members,
   isDM,
   display,
@@ -84,6 +88,7 @@ export function ThreadPanel({
               messages={[parent]}
               ownDevice={ownDevice}
               ownUserID={ownUserID}
+              ownHandle={ownHandle}
               members={members}
               isDM={isDM}
               display={display}
@@ -110,6 +115,7 @@ export function ThreadPanel({
             messages={replies}
             ownDevice={ownDevice}
             ownUserID={ownUserID}
+            ownHandle={ownHandle}
             members={members}
             isDM={isDM}
             display={display}
