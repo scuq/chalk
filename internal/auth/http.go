@@ -104,6 +104,10 @@ type HTTPDeps struct {
 	// MountRegistration when nil, so existing wiring and tests need no
 	// change.
 	PendingTOTP *PendingTOTPCache
+
+	// 31-6a: in-flight v2 signups (password+TOTP-first). Lazily
+	// defaulted in MountRegistration when nil.
+	SignupV2 *SignupV2Cache
 }
 
 // MountRegistration registers the auth HTTP endpoints on mux.
@@ -159,6 +163,18 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	mux.HandleFunc("POST /api/auth/login/totp", d.handleLoginTOTP)
 	mux.HandleFunc("POST /api/auth/totp/enroll", RequireSession(d.Store, d.handleTOTPEnroll))
 	mux.HandleFunc("POST /api/auth/totp/confirm", RequireSession(d.Store, d.handleTOTPConfirm))
+	// 31-4: password change (session) + recovery-gated auth reset.
+	mux.HandleFunc("POST /api/auth/password/change", RequireSession(d.Store, d.handleChangePassword))
+	mux.HandleFunc("POST /api/auth/recovery/reset-auth", d.handleRecoveryResetAuth)
+	// 31-6a: v2 signup (password+TOTP first; passkey optional later) +
+	// password-wrapped encryption-entropy upload/fetch.
+	if d.SignupV2 == nil {
+		d.SignupV2 = NewSignupV2Cache()
+	}
+	mux.HandleFunc("POST /api/auth/register/v2/begin", d.handleSignupV2Begin)
+	mux.HandleFunc("POST /api/auth/register/v2/finish", d.handleSignupV2Finish)
+	mux.HandleFunc("PUT /api/auth/seed-wrap", RequireSession(d.Store, d.handleSeedWrapPut))
+	mux.HandleFunc("GET /api/auth/seed-wraps", RequireSession(d.Store, d.handleSeedWrapList))
 	// Phase 09c-1: invites + email change.
 	mux.HandleFunc("POST /api/invites", d.handleCreateInvite)
 	mux.HandleFunc("GET /api/invites/mine", d.handleListMyInvites)
