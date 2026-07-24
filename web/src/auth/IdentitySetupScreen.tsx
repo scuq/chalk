@@ -28,6 +28,7 @@ import { deriveIdentityFromMnemonic } from "../crypto/identity";
 import { saveIdentity } from "../crypto/idb";
 import { publishIdentity, fetchIdentity, type IdentityTransport } from "../crypto/identity-sync";
 import { pickChallengeIndices, checkChallenge, classifyEnteredPhrase } from "../crypto/identity-setup";
+import { maybeUploadSeedWrap } from "./seed-wrap"; // 31-6b
 
 interface Props {
   userID: string;
@@ -150,6 +151,7 @@ export function IdentitySetupScreen({ userID, transport, onReady }: Props) {
       const identity = await deriveIdentityFromMnemonic(mnemonic);
       await saveIdentity(userID, identity);
       await publishIdentity(transport, identity);
+      await maybeUploadSeedWrap(mnemonic); // 31-6b: best-effort, never throws
       onReady();
     } catch (e) {
       setErrorMsg(describe(e));
@@ -187,6 +189,7 @@ export function IdentitySetupScreen({ userID, transport, onReady }: Props) {
         return;
       }
       await saveIdentity(userID, result.identity);
+      await maybeUploadSeedWrap(entered); // 31-6b: best-effort, never throws
       onReady();
     } catch (e) {
       setErrorMsg(describe(e));

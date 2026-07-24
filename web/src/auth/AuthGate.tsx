@@ -36,7 +36,9 @@ import type {
 } from "./types";
 import { fetchAuthConfig, fetchMe, ApiError } from "./api";
 import { LoginScreen } from "./LoginScreen";
-import { RegisterScreen } from "./RegisterScreen";
+// 31-6b: RegisterScreen (passkey-first) is superseded by the wizard; the
+// file remains for reference but is no longer imported.
+import { SignupWizardScreen } from "./SignupWizardScreen";
 import { RecoveryScreen } from "./RecoveryScreen";
 import { RecoveryLoginScreen } from "./RecoveryLoginScreen";
 import { RegenerateScreen } from "./RegenerateScreen";
@@ -248,17 +250,12 @@ export function AuthGate({
         </div>
       );
     }
+    // 31-6b: password+TOTP-first wizard replaces the passkey-first
+    // RegisterScreen. The passkey becomes an optional later addition.
     return (
-      <RegisterScreen
-        form={registration}
+      <SignupWizardScreen
         config={authConfig}
-        onFieldChange={(field, value) =>
-          dispatch({ kind: "auth_form_change", field, value })
-        }
-        onSubmitStart={() => dispatch({ kind: "auth_form_submit_start" })}
-        onSubmitError={(code, message) =>
-          dispatch({ kind: "auth_form_submit_error", code, message })
-        }
+        initialInviteToken={registration.inviteToken || undefined}
         onRegistered={(result) => dispatch({ kind: "auth_registered", result })}
         onGoLogin={() => dispatch({ kind: "auth_go_login" })}
       />
