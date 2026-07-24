@@ -5145,3 +5145,115 @@ html, body {
 .chalk-message-thread-meta {
   --chalk-msg-sender-col: 8ch;
 }
+
+/* ---- phase31-slice31-9a: auth-v2 screen styles ------------------------
+   The password/TOTP screens (31-5 signup wizard, 31-7 login, 31-9
+   migration) introduced form classes that had no rules, so inputs fell
+   back to inline browser defaults. Terminal aesthetic, existing vars. */
+
+.chalk-auth-title {
+  margin: 0;
+  font-size: var(--chalk-size-title);
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-auth-label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s1);
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-auth-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--chalk-bg);
+  color: var(--chalk-fg-bright);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  font: inherit;
+}
+
+.chalk-auth-input:focus {
+  outline: none;
+  border-color: var(--chalk-fg-bright);
+}
+
+.chalk-auth-button {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--chalk-bg-elev-2);
+  color: var(--chalk-fg-bright);
+  border: 1px solid var(--chalk-fg-bright);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s2) var(--chalk-s3);
+  font: inherit;
+  cursor: pointer;
+}
+
+.chalk-auth-button:hover:not(:disabled) {
+  background: var(--chalk-bg-hover);
+}
+
+.chalk-auth-button:disabled {
+  color: var(--chalk-fg-muted);
+  border-color: var(--chalk-border);
+  cursor: not-allowed;
+}
+
+.chalk-auth-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s1);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-auth-checklist .met   { color: var(--chalk-fg-bright); }
+.chalk-auth-checklist .unmet { color: var(--chalk-fg-muted); }
+
+.chalk-auth-strength {
+  margin: 0;
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-auth-strength.strength-1 { color: var(--chalk-danger); }
+.chalk-auth-strength.strength-2 { color: var(--chalk-fg-dim); }
+.chalk-auth-strength.strength-3 { color: var(--chalk-fg); }
+.chalk-auth-strength.strength-4 { color: var(--chalk-fg-bright); }
+
+.chalk-auth-qr {
+  display: block;
+  margin: 0 auto;
+  background: #fff; /* QR needs light quiet zone to scan on dark themes */
+  padding: var(--chalk-s2);
+  image-rendering: pixelated;
+}
+
+.chalk-auth-secret {
+  text-align: center;
+  font-family: var(--chalk-mono);
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg);
+  word-break: break-all;
+  user-select: all;
+}
+
+.chalk-auth-footer {
+  margin: 0;
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-auth-prose {
+  margin: 0;
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-body);
+}
