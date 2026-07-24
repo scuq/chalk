@@ -98,6 +98,12 @@ type HTTPDeps struct {
 	// giphy_enabled=false so the SPA hides the picker. The key lives only
 	// here, never reaching the client.
 	GiphyClient *giphy.Client
+
+	// 31-2: pending-2FA token cache bridging the password/passkey first
+	// factor to the mandatory TOTP step. Lazily defaulted in
+	// MountRegistration when nil, so existing wiring and tests need no
+	// change.
+	PendingTOTP *PendingTOTPCache
 }
 
 // MountRegistration registers the auth HTTP endpoints on mux.
@@ -140,6 +146,14 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	// Sub-step 6: recovery login + forced regenerate.
 	mux.HandleFunc("POST /api/auth/recovery", d.handleRecovery)
 	mux.HandleFunc("POST /api/auth/recovery/regenerate", d.handleRecoveryRegenerate)
+	// 31-2: password login (first factor) + prelogin KDF-params fetch.
+	// TOTP (31-3) is mandatory; login/password issues only a totp_pending
+	// token, never a session.
+	if d.PendingTOTP == nil {
+		d.PendingTOTP = NewPendingTOTPCache(0)
+	}
+	mux.HandleFunc("POST /api/auth/login/prelogin", d.handlePrelogin)
+	mux.HandleFunc("POST /api/auth/login/password", d.handleLoginPassword)
 	// Phase 09c-1: invites + email change.
 	mux.HandleFunc("POST /api/invites", d.handleCreateInvite)
 	mux.HandleFunc("GET /api/invites/mine", d.handleListMyInvites)
