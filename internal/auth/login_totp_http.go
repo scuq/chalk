@@ -1,20 +1,19 @@
-// chalk -- phase31-slice31-3 TOTP HTTP handlers.
-//
-// Three endpoints (mounted in http.go's MountRegistration):
+// chalk -- phase31-slice31-4 TOTP HTTP handlers (staging-aware).
+// (Supersedes the phase31-slice31-3 version: enrollment now STAGES the new
+// secret so any ACTIVE secret keeps working until confirm promotes it.)
 //
 //	POST /api/auth/login/totp   {totp_pending, code}
-//	  The second factor. Peeks the pending token from the password step,
-//	  verifies the code (skew + replay + lockout, atomically in the store),
-//	  and on success MINTS THE SESSION. This is the only login path that
-//	  produces a session, which is what makes TOTP mandatory. A wrong code
-//	  does NOT consume the pending token (the DB lockout bounds guessing);
-//	  the token is consumed only on success.
+//	  Second factor against the ACTIVE secret; mints the session on success.
+//	  A wrong code does not consume the pending token (DB lockout bounds
+//	  guessing); the token is consumed only on success.
 //
 //	POST /api/auth/totp/enroll  (session)  -> {provisioning_uri, secret_b32}
+//	  Stages a fresh secret in totp_pending_secret_enc. First-time setup and
+//	  reset are the same path; an existing active secret is untouched.
+//
 //	POST /api/auth/totp/confirm (session)  {code} -> {confirmed:true}
-//	  Set up / reset TOTP while logged in. Enrollment requires a password to
-//	  already exist (user_auth row); the secret is stored encrypted and
-//	  INACTIVE until confirm succeeds.
+//	  Verifies the code against the STAGED secret and atomically promotes it
+//	  to active (PromotePendingTOTP).
 package auth
 
 import (
@@ -65,7 +64,6 @@ func (d *HTTPDeps) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 	}
 	pend, err := d.PendingTOTP.Peek(token)
 	if err != nil {
-		// Not found or expired: the first factor must be redone.
 		writeError(w, http.StatusUnauthorized, "pending_invalid",
 			"login session expired; sign in again")
 		return
@@ -109,7 +107,6 @@ func (d *HTTPDeps) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 			"incorrect authentication code")
 		return
 	case store.TOTPSuccess:
-		// consume the pending token (one-shot) now that we've succeeded
 		_, _ = d.PendingTOTP.Take(token)
 
 		sess, err := MintSession(r.Context(), d.Store, w,
@@ -140,7 +137,7 @@ func (d *HTTPDeps) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleTOTPEnroll issues a fresh (inactive) TOTP secret for the session user.
+// handleTOTPEnroll stages a fresh (inactive) TOTP secret for the session user.
 func (d *HTTPDeps) handleTOTPEnroll(w http.ResponseWriter, r *http.Request, su *SessionUser) {
 	secret, err := GenerateTOTPSecret()
 	if err != nil {
@@ -160,7 +157,7 @@ func (d *HTTPDeps) handleTOTPEnroll(w http.ResponseWriter, r *http.Request, su *
 		writeError(w, http.StatusInternalServerError, "totp_enc_failed", "internal error")
 		return
 	}
-	if err := d.Store.SetTOTPSecret(r.Context(), su.UserID, enc); err != nil {
+	if err := d.Store.SetPendingTOTPSecret(r.Context(), su.UserID, enc); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusConflict, "password_required",
 				"set a password before enrolling two-factor authentication")
@@ -176,8 +173,7 @@ func (d *HTTPDeps) handleTOTPEnroll(w http.ResponseWriter, r *http.Request, su *
 	})
 }
 
-// handleTOTPConfirm activates a pending TOTP secret after the user proves they
-// scanned it by supplying one valid code.
+// handleTOTPConfirm verifies a code against the STAGED secret and promotes it.
 func (d *HTTPDeps) handleTOTPConfirm(w http.ResponseWriter, r *http.Request, su *SessionUser) {
 	var req totpConfirmRequest
 	if err := decodeJSON(r, &req); err != nil {
@@ -189,23 +185,18 @@ func (d *HTTPDeps) handleTOTPConfirm(w http.ResponseWriter, r *http.Request, su 
 		writeError(w, http.StatusBadRequest, "bad_request", "code is required")
 		return
 	}
-	ua, err := d.Store.GetUserAuth(r.Context(), su.UserID)
+	enc, err := d.Store.GetPendingTOTPSecret(r.Context(), su.UserID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeError(w, http.StatusConflict, "not_enrolled",
+			writeError(w, http.StatusConflict, "no_pending_totp",
 				"no pending two-factor secret to confirm")
 			return
 		}
-		d.Logger.Printf("totp/confirm: get user_auth: %v", err)
+		d.Logger.Printf("totp/confirm: get pending: %v", err)
 		writeError(w, http.StatusInternalServerError, "lookup_failed", "internal error")
 		return
 	}
-	if len(ua.TOTPSecretEnc) == 0 {
-		writeError(w, http.StatusConflict, "no_pending_totp",
-			"no pending two-factor secret to confirm")
-		return
-	}
-	secret, err := DecryptTOTPSecret(ua.TOTPSecretEnc)
+	secret, err := DecryptTOTPSecret(enc)
 	if err != nil {
 		d.Logger.Printf("totp/confirm: decrypt: %v", err)
 		writeError(w, http.StatusInternalServerError, "totp_decrypt_failed", "internal error")
@@ -215,8 +206,8 @@ func (d *HTTPDeps) handleTOTPConfirm(w http.ResponseWriter, r *http.Request, su 
 		writeError(w, http.StatusUnauthorized, "invalid_totp", "incorrect authentication code")
 		return
 	}
-	if err := d.Store.ConfirmTOTP(r.Context(), su.UserID); err != nil {
-		d.Logger.Printf("totp/confirm: confirm: %v", err)
+	if err := d.Store.PromotePendingTOTP(r.Context(), su.UserID); err != nil {
+		d.Logger.Printf("totp/confirm: promote: %v", err)
 		writeError(w, http.StatusInternalServerError, "confirm_failed", "internal error")
 		return
 	}
