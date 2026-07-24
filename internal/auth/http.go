@@ -154,6 +154,11 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	}
 	mux.HandleFunc("POST /api/auth/login/prelogin", d.handlePrelogin)
 	mux.HandleFunc("POST /api/auth/login/password", d.handleLoginPassword)
+	// 31-3: TOTP second factor (mints the session) + session-gated
+	// enroll/confirm.
+	mux.HandleFunc("POST /api/auth/login/totp", d.handleLoginTOTP)
+	mux.HandleFunc("POST /api/auth/totp/enroll", RequireSession(d.Store, d.handleTOTPEnroll))
+	mux.HandleFunc("POST /api/auth/totp/confirm", RequireSession(d.Store, d.handleTOTPConfirm))
 	// Phase 09c-1: invites + email change.
 	mux.HandleFunc("POST /api/invites", d.handleCreateInvite)
 	mux.HandleFunc("GET /api/invites/mine", d.handleListMyInvites)

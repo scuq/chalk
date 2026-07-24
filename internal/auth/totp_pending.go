@@ -127,6 +127,24 @@ func (c *PendingTOTPCache) Len() int {
 	return len(c.entries)
 }
 
+// Peek returns the entry for token WITHOUT consuming it, so a wrong
+// second factor does not force redoing the first factor. Same errors as
+// Take. The caller consumes the token via Take only on success; the
+// DB-side lockout bounds guessing.
+func (c *PendingTOTPCache) Peek(token string) (PendingTOTP, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.entries[token]
+	if !ok {
+		return PendingTOTP{}, ErrPendingNotFound
+	}
+	if c.now().After(e.ExpiresAt) {
+		delete(c.entries, token)
+		return PendingTOTP{}, ErrPendingExpired
+	}
+	return e, nil
+}
+
 // Errors distinguished so the TOTP handler can return different statuses.
 var (
 	ErrPendingNotFound = errors.New("auth: pending 2FA token not found")
