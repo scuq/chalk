@@ -35,7 +35,9 @@ import type {
   VerifyEmailChangeState,
 } from "./types";
 import { fetchAuthConfig, fetchMe, ApiError } from "./api";
-import { LoginScreen } from "./LoginScreen";
+// 31-7: LoginScreen (passkey-only) is embedded inside the password login
+// as a fallback mode; the gate renders the password-first screen.
+import { PasswordLoginScreen } from "./PasswordLoginScreen";
 // 31-6b: RegisterScreen (passkey-first) is superseded by the wizard; the
 // file remains for reference but is no longer imported.
 import { SignupWizardScreen } from "./SignupWizardScreen";
@@ -70,7 +72,6 @@ export function AuthGate({
   authConfig,
   registration,
   registrationResult,
-  login,
   recoveryLogin,
   pendingRegenerateWords,
   me,
@@ -213,21 +214,10 @@ export function AuthGate({
   }
 
   if (authStage === "login") {
+    // 31-7: password+TOTP login (passkey available as an embedded mode).
     return (
-      <LoginScreen
-        form={login}
-        // Show the register link based on the lazily-fetched
-        // authConfig. Defaults to true if config hasn't loaded yet
-        // (the user will see the link; clicking it triggers
-        // RegisterScreen's own config fetch).
+      <PasswordLoginScreen
         showRegisterLink={authConfig ? authConfig.open_registration : true}
-        onFieldChange={(field, value) =>
-          dispatch({ kind: "auth_login_form_change", field, value })
-        }
-        onSubmitStart={() => dispatch({ kind: "auth_login_submit_start" })}
-        onSubmitError={(code, message) =>
-          dispatch({ kind: "auth_login_submit_error", code, message })
-        }
         onLoggedIn={(result: LoginResult) =>
           dispatch({ kind: "auth_logged_in", result })
         }

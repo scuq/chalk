@@ -29,6 +29,8 @@ import { saveIdentity } from "../crypto/idb";
 import { publishIdentity, fetchIdentity, type IdentityTransport } from "../crypto/identity-sync";
 import { pickChallengeIndices, checkChallenge, classifyEnteredPhrase } from "../crypto/identity-setup";
 import { maybeUploadSeedWrap } from "./seed-wrap"; // 31-6b
+import { tryUnlockMnemonicFromWrap } from "./seed-unlock"; // 31-7
+import { takeKEK } from "./kek-holder"; // 31-7
 
 interface Props {
   userID: string;
@@ -66,6 +68,21 @@ export function IdentitySetupScreen({ userID, transport, onReady }: Props) {
         const peer = await fetchIdentity(transport, userID);
         if (cancelled) return;
         if (peer) {
+          // 31-7: silent unlock. If the login just stashed a password KEK
+          // and the account has a seed wrap, reconstruct the phrase and
+          // verify it against the published key -- same check as manual
+          // entry, minus the typing. Any failure falls through to enter.
+          const unlocked = await tryUnlockMnemonicFromWrap();
+          if (!cancelled && unlocked) {
+            const check = await classifyEnteredPhrase(unlocked, peer.x25519Public);
+            if (!cancelled && check.status === "ok") {
+              await saveIdentity(userID, check.identity);
+              takeKEK(); // consumed; wrap already exists server-side
+              onReady();
+              return;
+            }
+          }
+          if (cancelled) return;
           setExpectedX25519(peer.x25519Public);
           setMode("enter");
         } else {

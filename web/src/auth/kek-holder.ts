@@ -22,6 +22,11 @@ export function takeKEK(): Uint8Array | null {
   return k;
 }
 
+/** peekKEK returns the held KEK WITHOUT consuming it (unlock attempts). */
+export function peekKEK(): Uint8Array | null {
+  return held;
+}
+
 /** hasKEK reports whether a KEK is currently held (UI hinting only). */
 export function hasKEK(): boolean {
   return held !== null;
