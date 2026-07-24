@@ -37,6 +37,7 @@ import {
   deletePasskey,
   type PasskeyInfo,
 } from "../auth/api";
+import { SecurityPanel } from "./SecurityPanel"; // 31-8
 import { performRegistration, WebAuthnError } from "../webauthn";
 import { RecoveryScreen } from "../auth/RecoveryScreen";
 
@@ -751,6 +752,9 @@ export function ProfilePanel({
               on each device you use so you don't have to fall back to the
               one-time recovery code. Distinct from the 24-word decryption
               phrase, which is client-only and unlocks message history. */}
+          {/* 31-8: password / two-factor / phrase-link management. */}
+          <SecurityPanel username={me.username} />
+
           <section class="chalk-profile-passkeys" data-testid="profile-passkeys">
             <h3>passkeys</h3>
             <p class="chalk-auth-subtitle">
