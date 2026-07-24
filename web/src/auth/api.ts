@@ -177,19 +177,32 @@ export async function authenticateFinish(att: AssertionResponseJSON): Promise<Lo
     body: JSON.stringify({ credential: att }),
   });
   interface FinishResponse {
-    user_id: string;
-    username: string;
-    display_name: string;
-    role: string;
-    session_expires_at: string;
+    user_id?: string;
+    username?: string;
+    display_name?: string;
+    role?: string;
+    session_expires_at?: string;
+    // 31-9: enrolled accounts get a TOTP challenge instead of a session.
+    totp_required?: boolean;
+    totp_pending?: string;
   }
   const body = await parseResponse<FinishResponse>(resp);
+  if (body.totp_required && body.totp_pending) {
+    return {
+      userID: "",
+      username: "",
+      displayName: "",
+      role: "",
+      sessionExpiresAt: "",
+      totpPending: body.totp_pending,
+    };
+  }
   return {
-    userID: body.user_id,
-    username: body.username,
-    displayName: body.display_name,
-    role: body.role,
-    sessionExpiresAt: body.session_expires_at,
+    userID: body.user_id ?? "",
+    username: body.username ?? "",
+    displayName: body.display_name ?? "",
+    role: body.role ?? "",
+    sessionExpiresAt: body.session_expires_at ?? "",
   };
 }
 
@@ -229,6 +242,7 @@ export async function fetchMe(): Promise<MeResponse | null> {
     email: string;
     email_verified_at: string;
     session_expires_at: string;
+    auth_v2_enrolled?: boolean;
   }
   const body = await parseResponse<MeRaw>(resp);
   return {
@@ -239,6 +253,7 @@ export async function fetchMe(): Promise<MeResponse | null> {
     email: body.email,
     emailVerifiedAt: body.email_verified_at,
     sessionExpiresAt: body.session_expires_at,
+    authV2Enrolled: body.auth_v2_enrolled ?? true,
   };
 }
 

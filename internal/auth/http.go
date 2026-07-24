@@ -175,6 +175,9 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	mux.HandleFunc("POST /api/auth/register/v2/finish", d.handleSignupV2Finish)
 	mux.HandleFunc("PUT /api/auth/seed-wrap", RequireSession(d.Store, d.handleSeedWrapPut))
 	mux.HandleFunc("GET /api/auth/seed-wraps", RequireSession(d.Store, d.handleSeedWrapList))
+	// 31-9: hard-cutover migration endpoints.
+	mux.HandleFunc("POST /api/auth/migration/password", RequireSession(d.Store, d.handleMigrationPassword))
+	mux.HandleFunc("POST /api/auth/migration/complete", RequireSession(d.Store, d.handleMigrationComplete))
 	// Phase 09c-1: invites + email change.
 	mux.HandleFunc("POST /api/invites", d.handleCreateInvite)
 	mux.HandleFunc("GET /api/invites/mine", d.handleListMyInvites)
@@ -809,6 +812,34 @@ func (d *HTTPDeps) handleAuthenticateFinish(w http.ResponseWriter, r *http.Reque
 		d.Logger.Printf("authenticate/finish: UpdateSignCount: %v", err)
 	}
 
+	// 31-9: TOTP gates EVERY login. For an enrolled account the passkey is
+	// only the first factor: instead of a session we hand back a totp_pending
+	// token and the client finishes via /api/auth/login/totp. Un-enrolled
+	// accounts keep the legacy direct session so they can reach the
+	// migration wizard at all.
+	if AuthV2Required() {
+		if ua, uerr := d.Store.GetUserAuth(r.Context(), entry.PendingUser.ID); uerr == nil &&
+			ua.AuthV2Enrolled && ua.TOTPConfirmed() {
+			if d.PendingTOTP == nil {
+				d.PendingTOTP = NewPendingTOTPCache(0)
+			}
+			token, terr := d.PendingTOTP.Issue(entry.PendingUser.ID, "passkey")
+			if terr != nil {
+				d.Logger.Printf("authenticate/finish: pending issue: %v", terr)
+				writeError(w, http.StatusInternalServerError, "pending_failed",
+					"internal error")
+				return
+			}
+			w.Header().Set("Cache-Control", "no-store, private")
+			writeJSON(w, http.StatusOK, map[string]any{
+				"totp_required": true,
+				"totp_pending":  token,
+				"expires_at":    time.Now().Add(TOTPPendingTTL()),
+			})
+			return
+		}
+	}
+
 	// Mint a session and set the cookie.
 	sess, err := MintSession(r.Context(), d.Store, w,
 		entry.PendingUser.ID,
@@ -871,6 +902,8 @@ type meResponse struct {
 	Email            string    `json:"email"`
 	EmailVerifiedAt  time.Time `json:"email_verified_at"`
 	SessionExpiresAt time.Time `json:"session_expires_at"`
+	// 31-9: drives the SPA migration gate.
+	AuthV2Enrolled bool `json:"auth_v2_enrolled"`
 }
 
 // handleMe returns the current user's identity if logged in, or 401
@@ -894,6 +927,13 @@ func (d *HTTPDeps) handleMe(w http.ResponseWriter, r *http.Request) {
 				"internal error")
 			return
 		}
+		// 31-9: enrollment status for the SPA migration gate.
+		enrolled := false
+		if ua, uerr := d.Store.GetUserAuth(r.Context(), su.UserID); uerr == nil {
+			enrolled = ua.AuthV2Enrolled
+		} else if !errors.Is(uerr, store.ErrNotFound) {
+			d.Logger.Printf("me: GetUserAuth: %v", uerr)
+		}
 		writeJSON(w, http.StatusOK, meResponse{
 			UserID:           su.UserID.String(),
 			Username:         su.Username,
@@ -902,6 +942,7 @@ func (d *HTTPDeps) handleMe(w http.ResponseWriter, r *http.Request) {
 			Email:            su.Email,
 			EmailVerifiedAt:  user.EmailVerifiedAt,
 			SessionExpiresAt: su.Session.ExpiresAt,
+			AuthV2Enrolled:   enrolled,
 		})
 	})(w, r)
 }

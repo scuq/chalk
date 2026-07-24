@@ -149,6 +149,7 @@ import { voiceBus } from "../voice/bus";
 import { voiceSession } from "../voice/session";
 import { AuthGate } from "../auth/AuthGate";
 import { IdentitySetupScreen } from "../auth/IdentitySetupScreen";
+import { MigrationScreen } from "../auth/MigrationScreen"; // 31-9
 import { loadIdentity, loadVerification, saveVerification } from "../crypto/idb";
 import { fetchIdentity, type IdentityTransport } from "../crypto/identity-sync";
 import {
@@ -321,6 +322,9 @@ export function App() {
   // different user on this browser).
   const [identityGate, setIdentityGate] =
     useState<"checking" | "ready" | "needs-setup" | null>(null);
+  // 31-9: local flag flipped when the migration wizard completes, so the
+  // gate clears without a /me refetch (the server has committed the flip).
+  const [authV2Done, setAuthV2Done] = useState(false);
   const identityCheckedForRef = useRef<string | null>(null);
   // att-4c: ensure /api/auth/config is loaded once we're authenticated, so
   // server feature flags (giphy_enabled) are available in the app. AuthGate
@@ -2104,6 +2108,17 @@ export function App() {
   // the user's encryption identity before showing the chat. While checking,
   // fall through to the chat (which itself waits on wsState); only when we
   // positively need setup do we render the screen.
+  // 31-9: hard-cutover migration gate. Renders BEFORE the identity gate:
+  // a pre-cutover user must enroll password+TOTP before anything else.
+  if (
+    state.authStage === "authed" &&
+    state.me &&
+    state.me.authV2Enrolled === false &&
+    !authV2Done
+  ) {
+    return <MigrationScreen onDone={() => setAuthV2Done(true)} />;
+  }
+
   if (
     state.authStage === "authed" &&
     state.wsState === "open" &&

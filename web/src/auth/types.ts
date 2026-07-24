@@ -165,6 +165,10 @@ export interface LoginResult {
   displayName: string;
   role: string;
   sessionExpiresAt: string;
+  // 31-9: set when the passkey was accepted but TOTP is still required.
+  // The other identity fields are empty in that case; finish the login
+  // via /api/auth/login/totp with this token.
+  totpPending?: string;
 }
 
 // RecoveryLoginResult: what /api/auth/recovery returned. Same identity
@@ -191,6 +195,10 @@ export interface MeResponse {
   email: string;
   emailVerifiedAt: string; // zero value: "0001-01-01T00:00:00Z"
   sessionExpiresAt: string;
+  // 31-9: false = pre-cutover account; App routes to the migration wizard.
+  // Optional: reducer paths that synthesize a MeResponse from registration/
+  // login results omit it; the /me refetch carries the authoritative value.
+  authV2Enrolled?: boolean;
 }
 
 // AuthState is the auth-related slice of AppState. It's spread into

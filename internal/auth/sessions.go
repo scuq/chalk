@@ -241,6 +241,25 @@ func RequireSession(
 			}
 			return
 		}
+
+		// 31-9: hard-cutover gate. Un-enrolled users may only reach the
+		// enrollment allowlist; everything else 409s so the SPA routes
+		// them into the migration wizard. ErrNotFound = no user_auth row
+		// = not enrolled. Lookup errors fail open (log only): the gate is
+		// a UX fence, not the security boundary -- the session itself is.
+		if AuthV2Required() && !enrollmentExempt(r.URL.Path) {
+			ua, uerr := st.GetUserAuth(r.Context(), su.UserID)
+			enrolled := uerr == nil && ua.AuthV2Enrolled
+			if uerr != nil && !errors.Is(uerr, store.ErrNotFound) {
+				enrolled = true // fail open on lookup errors
+			}
+			if !enrolled {
+				writeError(w, http.StatusConflict,
+					"auth_v2_enrollment_required",
+					"finish setting up password and two-factor sign-in")
+				return
+			}
+		}
 		next(w, r, su)
 	}
 }

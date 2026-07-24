@@ -123,6 +123,13 @@ export function PasswordLoginScreen({ onLoggedIn, onGoRegister, onGoRecovery, sh
       const options = await authenticateBegin(uname);
       const assertion = await performAuthentication(options);
       const result = await authenticateFinish(assertion);
+      // 31-9: enrolled accounts get a TOTP challenge after the passkey.
+      if (result.totpPending) {
+        setTotpPending(result.totpPending);
+        setCode("");
+        setMode("totp");
+        return;
+      }
       onLoggedIn(result);
     } catch (e) {
       if (e instanceof WebAuthnError) {
