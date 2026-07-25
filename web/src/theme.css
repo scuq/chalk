@@ -3120,16 +3120,30 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-message {
   position: relative;
 }
-.chalk-message-reply {
-  /* In the grid, this lands in the body column by default; we
-     pull it visually to the row\'s right edge with margin-left:auto
-     inside a flex... but the row is a grid. Easiest: absolute
-     position relative to .chalk-message, hide by default, show
-     on hover. */
-  /* hover actions are top-anchored so they clear tall image rows */
+/* 33-6: the row-action group. One absolutely-positioned flex container
+   pinned to the row's right edge, so the buttons lay themselves out next to
+   each other instead of each carrying its own hard-coded offset. Top-
+   anchored so it clears tall image rows. Costs no layout space in the
+   message grid, which is why it's absolute rather than a grid cell. */
+.chalk-message-actions {
   position: absolute;
   right: var(--chalk-s2);
   top: var(--chalk-s1);
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 80ms ease;
+}
+
+/* Reveal on row hover, or when either button is keyboard-focused. */
+.chalk-message:hover .chalk-message-actions,
+.chalk-message-actions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.chalk-message-reply {
   background: var(--chalk-bg-elev);
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);
@@ -3138,14 +3152,10 @@ body.chalk-resizing .chalk-sidebar-resizer {
   font-size: var(--chalk-size-small);
   padding: 2px 8px;
   cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 80ms ease;
-}
-.chalk-message:hover .chalk-message-reply,
-.chalk-message-reply:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 .chalk-message-reply:hover {
   color: var(--chalk-fg-bright);
@@ -3156,14 +3166,9 @@ body.chalk-resizing .chalk-sidebar-resizer {
   outline-offset: -1px;
 }
 
-/* Phase 26 (governance prereq): owner-only delete control. Mirrors the
-   hover-reveal reply button but sits just to its left so the two don't
-   collide. Non-owners never render this, so the reply button's own
-   right-edge position is left untouched. */
+/* Phase 26 (governance prereq): owner-only delete control. Same shape as
+   the reply button; the flex group above orders and spaces the two. */
 .chalk-message-delete {
-  position: absolute;
-  right: calc(var(--chalk-s2) + 5rem);
-  top: var(--chalk-s1);
   background: var(--chalk-bg-elev);
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);
@@ -3172,14 +3177,10 @@ body.chalk-resizing .chalk-sidebar-resizer {
   font-size: var(--chalk-size-small);
   padding: 2px 8px;
   cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 80ms ease;
-}
-.chalk-message:hover .chalk-message-delete,
-.chalk-message-delete:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 .chalk-message-delete:hover {
   color: var(--chalk-danger, #e5484d);
@@ -5744,7 +5745,12 @@ body.chalk-resizing .chalk-sidebar-resizer {
     left: 0;
     bottom: 0;
     z-index: 50;
-    width: min(84vw, 320px);
+    /* 33-6: narrower than the original min(84vw, 320px). At 84vw the drawer
+       covered ~80% of a phone screen for a list of short names, and left no
+       sliver of the conversation to orient against or tap to dismiss. The
+       desktop sidebar-width pref deliberately does not apply here -- a
+       fixed overlay and a grid column are different problems. */
+    width: min(70vw, 270px);
     padding: max(var(--chalk-s3), env(safe-area-inset-top)) 0
              max(var(--chalk-s3), env(safe-area-inset-bottom)) 0;
     background: var(--chalk-bg);
@@ -5925,18 +5931,42 @@ body.chalk-resizing .chalk-sidebar-resizer {
    positioned over the meta line, which is shorter than they are, so the
    meta cells also get a floor height -- otherwise the buttons sit on top
    of the message's first line of text. */
-@media (hover: none) and (max-width: 767px) {
-  .chalk-message-reply,
-  .chalk-message-delete {
+/* Any touch device: the actions are permanently visible. 33-6 drops the
+   max-width that used to be on this rule -- a touch tablet is wider than
+   767px, so it got neither hover nor the reveal, leaving reply and delete
+   unreachable there. The meta line is shorter than the buttons overlaying
+   it, so it needs a floor height wherever they're always shown. */
+@media (hover: none) {
+  .chalk-message-actions {
     opacity: 1;
     pointer-events: auto;
-    font-size: calc(11px * var(--chalk-font-scale));
-    padding: 1px 6px;
   }
 
   .chalk-message-time,
   .chalk-message-sender {
     min-height: 22px;
+  }
+}
+
+/* Phone-sized touch only: glyph, no word. "✕ delete" and "↳ reply" at a
+   touch-sized font took most of the row width, wrapping the message body
+   below them. The words stay in the DOM for wider screens; aria-label
+   carries the meaning for screen readers either way. */
+@media (hover: none) and (max-width: 767px) {
+  .chalk-message-action-word {
+    display: none;
+  }
+
+  .chalk-message-reply,
+  .chalk-message-delete {
+    font-size: calc(11px * var(--chalk-font-scale));
+    /* Square-ish tap targets: comfortably hit without the buttons
+       dominating the row the way the labelled versions did. */
+    min-width: 28px;
+    min-height: 24px;
+    padding: 1px 4px;
+    justify-content: center;
+    gap: 0;
   }
 }
 

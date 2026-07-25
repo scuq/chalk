@@ -497,36 +497,49 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
                 ))}
               </div>
             )}
-            {/* Phase 10b: hover-revealed reply button (shown via :hover in
-                CSS, always visible on touch). It's an absolute overlay on
-                the row's right edge, so it costs no layout space -- compact
-                mode gets it too, same as the delete control below.
-                Suppressed on deleted rows. */}
-            {onOpenThread && !m.deleted && (
-              <button
-                type="button"
-                class="chalk-message-reply"
-                title="reply in thread"
-                onClick={() =>
-                  onOpenThread(m.id, m.threadID ?? m.id)
-                }
-                data-testid={`message-reply-${m.id}`}
-              >
-                ↳ reply
-              </button>
-            )}
-            {/* Phase 26 (governance prereq): owner-only delete control.
-                Hidden on already-deleted rows. */}
-            {canDeleteMessages && onDeleteMessage && !m.deleted && (
-              <button
-                type="button"
-                class="chalk-message-delete"
-                title="delete message"
-                onClick={() => onDeleteMessage(m)}
-                data-testid={`message-delete-${m.id}`}
-              >
-                ✕ delete
-              </button>
+            {/* Phase 10b / 26: row actions -- reply in thread, and the
+                owner-only delete. Hover-revealed on desktop, permanently
+                visible on touch (no hover to reveal them with). An absolute
+                overlay on the row's right edge, so they cost no layout
+                space. Suppressed on deleted rows.
+
+                33-6: grouped in one flex container rather than positioned
+                independently. Previously delete was offset by a hard-coded
+                5rem to clear the reply button -- which only held while both
+                carried their full text label, and broke the moment mobile
+                dropped the words to save space. */}
+            {!m.deleted &&
+              (onOpenThread || (canDeleteMessages && onDeleteMessage)) && (
+              <div class="chalk-message-actions">
+                {canDeleteMessages && onDeleteMessage && (
+                  <button
+                    type="button"
+                    class="chalk-message-delete"
+                    title="delete message"
+                    aria-label="delete message"
+                    onClick={() => onDeleteMessage(m)}
+                    data-testid={`message-delete-${m.id}`}
+                  >
+                    <span aria-hidden="true">✕</span>
+                    <span class="chalk-message-action-word">delete</span>
+                  </button>
+                )}
+                {onOpenThread && (
+                  <button
+                    type="button"
+                    class="chalk-message-reply"
+                    title="reply in thread"
+                    aria-label="reply in thread"
+                    onClick={() =>
+                      onOpenThread(m.id, m.threadID ?? m.id)
+                    }
+                    data-testid={`message-reply-${m.id}`}
+                  >
+                    <span aria-hidden="true">↳</span>
+                    <span class="chalk-message-action-word">reply</span>
+                  </button>
+                )}
+              </div>
             )}
           </div>
           {/* Phase 10b: thread indicator. Only rendered for messages
