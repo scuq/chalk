@@ -15,6 +15,7 @@ type UpdateOptions struct {
 	Verifier  Verifier // cosign or noop
 	Podman    *Podman
 	StatePath string
+	EnvPath   string // DefaultEnvPath
 	Out       io.Writer
 
 	// HealthURL is polled after the swap; default https://<domain>/healthz.
@@ -34,6 +35,9 @@ func (o *UpdateOptions) defaults() {
 	}
 	if o.StatePath == "" {
 		o.StatePath = DefaultStatePath
+	}
+	if o.EnvPath == "" {
+		o.EnvPath = DefaultEnvPath
 	}
 	if o.Version == "" {
 		o.Version = firstNonEmpty(o.Cfg.Channel, "stable")
@@ -98,6 +102,14 @@ func Update(o UpdateOptions) error {
 	// The chalkd unit is pinned by digest in its Image= line. Re-pin by
 	// rewriting the one line, then restart. We keep the OLD digest so a
 	// health failure can roll back.
+	// 31-10: auth v2 upgrade path. chalkd >= v0.31 refuses to store TOTP
+	// secrets without CHALK_TOTP_ENC_KEY; deployments initialized earlier
+	// don't have one. Backfill (append-only, never overwrites a present
+	// key) BEFORE the swap so the new binary boots fully configured.
+	if _, err := ensureTOTPEncKey(o.EnvPath, o.Out); err != nil {
+		return fmt.Errorf("ensure CHALK_TOTP_ENC_KEY: %w", err)
+	}
+
 	oldDigest := st.CurrentDigest
 	if err := repinChalkdImage(o.Cfg.Image, newDigest); err != nil {
 		return fmt.Errorf("re-pin chalkd unit: %w", err)
