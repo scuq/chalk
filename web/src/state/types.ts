@@ -263,9 +263,10 @@ export interface ChatPrefs {
 
 export interface UserPrefs {
   // Phase 9.7b: theme name. "green" = default terminal theme. Other valid
-  // values: "light", "snazzy-light", "cyberpunk", "solarized-dark",
-  // "tokyo-night", "lcars", "blade-runner". The picker in ProfilePanel is
-  // the source of truth; each has a [data-theme=...] block in theme.css.
+  // values: "light", "snazzy-light", "warmwhite", "cyberpunk",
+  // "solarized-dark", "tokyo-night", "lcars", "blade-runner". The picker
+  // in ProfilePanel is the source of truth; each has a [data-theme=...]
+  // block in theme.css.
   theme?: string;
   // Phase 9.7d: chat-display sub-prefs.
   chat?: ChatPrefs;

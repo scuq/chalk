@@ -5437,6 +5437,104 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 
 /* ============================================================
+   warmwhite: dark rail beside a paper-white page
+   ============================================================
+   A two-tone theme, unlike every other one here: the sidebar is a
+   dark graphite rail and everything to the right of it is a warm
+   near-white page. That split IS the theme -- a light ground with a
+   normal light sidebar is already `light`.
+
+   The rail is done by redefining the --chalk-* variables *scoped to
+   .chalk-sidebar* rather than by restyling its children. Every rule
+   under there reads the variables from the cascade, so the whole
+   subtree -- filter box, presence dots, nick menu, voice dock, and
+   the mobile drawer, which is the same element -- re-tints from one
+   block and stays correct when new sidebar chrome is added later.
+
+   The graphite is warm rather than the cool slate it would be in a
+   screenshot of a Mac notes app: next to a cream-white page a cool
+   rail reads as a foreign panel bolted on.
+
+   Emphasis on the page is ink black, not a color -- titles get weight
+   and darkness, and the blue is spent only on links and controls,
+   which is what keeps a mostly-white UI calm.
+   ============================================================ */
+
+[data-theme="warmwhite"] {
+  --chalk-bg:           #fcfbf9;
+  --chalk-bg-elev:      #f3f1ec;
+  --chalk-bg-elev-2:    #e8e4dc;
+  --chalk-fg:           #2a2824;
+  --chalk-fg-dim:       #67635c;
+  /* Ink, not a hue: on this ground "bright" means darker than body
+     text. Also drives the online presence dot, pinned below. */
+  --chalk-fg-bright:    #100f0d;
+  --chalk-fg-muted:     #8d8880;
+  --chalk-border:       #e3ded4;
+  --chalk-accent:       #2563eb;
+  --chalk-warn:         #b26a00;
+  /* The cursor red from the source screenshots; it lands on errors
+     because that is the only place a warning color belongs here. */
+  --chalk-error:        #d0342c;
+
+  color-scheme: light;
+}
+
+/* fg-bright is black here, which would make the online dot read as a
+   dead bullet. Pin it to a green that clears 3:1 on white. */
+[data-theme="warmwhite"] .chalk-presence-dot--online {
+  background: #1a7f4b;
+  box-shadow: 0 0 4px rgba(26, 127, 75, 0.35);
+}
+
+/* Same reasoning as the other light themes: a flat pale ground needs a
+   real shadow to separate floating surfaces, and the default 70% black
+   scrim stains rather than dims. */
+[data-theme="warmwhite"] .chalk-modal,
+[data-theme="warmwhite"] .chalk-modal-card,
+[data-theme="warmwhite"] .chalk-presence-menu,
+[data-theme="warmwhite"] .chalk-status-menu {
+  box-shadow: 0 4px 16px rgba(42, 40, 36, 0.16);
+}
+
+[data-theme="warmwhite"] .chalk-modal-backdrop {
+  background: rgba(42, 40, 36, 0.42);
+}
+
+/* ---- the rail. Redefining the variables re-tints the whole subtree;
+        `background` is what the element itself needs, since the
+        desktop sidebar draws no ground of its own. */
+[data-theme="warmwhite"] .chalk-sidebar {
+  --chalk-bg:           #2b2927;
+  --chalk-bg-elev:      #3a3835;
+  --chalk-bg-elev-2:    #454340;
+  --chalk-fg:           #d8d4cd;
+  --chalk-fg-dim:       #a8a29a;
+  /* Near-white: the active channel is white text with a white edge on
+     a lifted row, which is the rail's whole selected state. */
+  --chalk-fg-bright:    #f5f2ec;
+  --chalk-fg-muted:     #837d74;
+  --chalk-border:       #3d3a37;
+  --chalk-accent:       #6ea8ff;
+  --chalk-warn:         #e0a33c;
+  --chalk-error:        #ff8079;
+
+  /* Nick hues are tuned for the page; on the rail they need the dark
+     ground treatment, or the swatch in the nick menu goes to mud. */
+  --nick-l: 68%;
+
+  background: var(--chalk-bg);
+}
+
+/* Picker swatch: three stops, because the split is the theme. */
+.chalk-profile-theme-swatch-preview--warmwhite {
+  background: linear-gradient(135deg,
+    #2b2927 0%, #2b2927 40%,
+    #fcfbf9 40%, #fcfbf9 75%,
+    #2563eb 75%, #2563eb 100%);
+}
+
+/* ============================================================
    Phase 9.7f: per-user nick colors
    ============================================================
    Sender labels carry only a HUE (--nick-h, set inline per message).
@@ -5454,7 +5552,8 @@ body.chalk-resizing .chalk-sidebar-resizer {
 /* Light grounds need the inverse: darker and a touch more saturated,
    or the labels wash out against near-white. */
 [data-theme="light"],
-[data-theme="snazzy-light"] {
+[data-theme="snazzy-light"],
+[data-theme="warmwhite"] {
   --nick-s: 68%;
   --nick-l: 32%;
 }

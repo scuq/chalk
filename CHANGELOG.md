@@ -13,6 +13,15 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **New "warmwhite" theme.** A dark graphite channel rail beside a warm
+  near-white page, with black titles and a blue accent on links and controls.
+  Pick it under appearance in your profile.
+
+---
+
+## v0.3.28 — 25 July 2026 — Version badge and the blade-runner theme
+
+### Added
 - **New "blade-runner" theme.** Neon scarlet on a smoky black city ground,
   with teal links and a soft red glow on emphasis. Pick it under appearance in
   your profile; like every theme, it follows you across devices.
