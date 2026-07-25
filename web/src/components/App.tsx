@@ -481,43 +481,50 @@ export function App() {
     };
   }, [identityGate, state.user?.id]);
 
-  // Phase 23d: when a channel becomes active (and on membership changes),
-  // ensure we hold its key -- fetch+unwrap, or creator-bootstrap a keyless
-  // channel, then auto-rewrap for members who lack it. Records the status
-  // that gates the composer.
+  // Phase 23d: ensure we hold a channel's key -- fetch+unwrap, or
+  // creator-bootstrap a keyless channel, then auto-rewrap for members who lack
+  // it. Records the status that gates the composer.
+  //
+  // 38-3: shared by the channel-open effect below and the key_available push,
+  // which is what rescues a channel that settled as "waiting" because we asked
+  // for the key before a holder had deposited our wrap.
+  const ensureKeyFor = useCallback(async (cid: string) => {
+    const cc = ccRef.current;
+    const ch = channelsRef.current[cid];
+    // No row yet (a key_available that overtook the channel_added render) is
+    // safe to drop: the wrap is already stored, so the ensure that follows the
+    // channel landing in state finds it.
+    if (!cc || !ch) return;
+    try {
+      // Phase 25: tell ChannelCrypto the channel's current key version (from
+      // the server) before ensuring the key, so new sends encrypt under it.
+      cc.setCurrentKeyVersion(cid, ch.currentKeyVersion);
+      const status = await cc.ensureChannelKey(cid, ch.memberIDs, ch.createdBy);
+      setKeyStatus((s) => ({ ...s, [cid]: status }));
+      // Phase 23g backstop: if the key is ready and we already have history for
+      // this channel, some messages may have rendered as the "key not available"
+      // placeholder before the key arrived. Re-fetch the history once so those
+      // bodies re-decrypt in place (no reload). This is also what pulls messages
+      // missed while offline into the active channel after a reconnect.
+      if (status === "ready" && historyLoadedRef.current[cid]) {
+        historyRequestedRef.current.delete(cid);
+        const c = clientRef.current;
+        if (c && c.isOpen()) {
+          c.send<FetchHistoryPayload>(TypeFetchHistory, { channel_id: cid, limit: 50 });
+        }
+      }
+    } catch (err) {
+      console.error("ensureChannelKey failed:", err);
+    }
+  }, []);
+
+  // When a channel becomes active (and on membership changes), ensure its key.
   useEffect(() => {
     const cid = state.activeChannelID;
-    if (!cid || state.wsState !== "open" || !ccReady || !ccRef.current) return;
-    const ch = state.channels[cid];
-    if (!ch) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        // Phase 25: tell ChannelCrypto the channel's current key version (from
-        // the server) before ensuring the key, so new sends encrypt under it.
-        ccRef.current!.setCurrentKeyVersion(cid, ch.currentKeyVersion);
-        const status = await ccRef.current!.ensureChannelKey(cid, ch.memberIDs, ch.createdBy);
-        if (cancelled) return;
-        setKeyStatus((s) => ({ ...s, [cid]: status }));
-        // Phase 23g backstop: if the key just became ready and we already have
-        // history for this channel, some messages may have rendered as the
-        // "key not available" placeholder before the key arrived. Re-fetch the
-        // history once so those bodies re-decrypt in place (no reload).
-        if (status === "ready" && state.historyLoaded[cid]) {
-          historyRequestedRef.current.delete(cid);
-          const c = clientRef.current;
-          if (c && c.isOpen()) {
-            c.send<FetchHistoryPayload>(TypeFetchHistory, { channel_id: cid, limit: 50 });
-          }
-        }
-      } catch (err) {
-        console.error("ensureChannelKey failed:", err);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [state.activeChannelID, state.wsState, state.channels, ccReady]);
+    if (!cid || state.wsState !== "open" || !ccReady) return;
+    if (!state.channels[cid]) return;
+    void ensureKeyFor(cid);
+  }, [state.activeChannelID, state.wsState, state.channels, ccReady, ensureKeyFor]);
 
   // att-2: backfill attachment refs for the active channel. History fetches
   // don't carry attachments (live pushes do), so once history is loaded we pull
@@ -1118,6 +1125,10 @@ export function App() {
   unreadRef.current = state.unread;
   const activeChannelRef = useRef(state.activeChannelID);
   activeChannelRef.current = state.activeChannelID;
+  // 38-3: ensureKeyFor runs from both an effect and a push, so it reads which
+  // channels have history through a ref rather than closing over the state.
+  const historyLoadedRef = useRef(state.historyLoaded);
+  historyLoadedRef.current = state.historyLoaded;
   // Assigned next to the visibilitychange effect, which declares tabVisible.
   const tabVisibleRef = useRef(true);
   // 33-1: highest seq we've already sent a mark_read for, per channel.
@@ -1597,13 +1608,24 @@ export function App() {
       }
       case TypeChannelEvent: {
         const p = f.payload as ChannelEventPayload;
+        if (p.kind === "key_available" && p.channel) {
+          // 38-3: a holder just deposited our wrapped space key. Re-run the
+          // ensure so a channel that settled as "waiting" picks the key up now.
+          // The summary is minimal (id + version) -- everything else comes from
+          // the channel row we already hold, so nothing here touches state.
+          void ensureKeyFor(p.channel.id);
+          break;
+        }
         if (p.kind === "member_added" && p.channel) {
           // Add-member: update the roster from the summary. If WE hold the
           // channel key, reshare it so the newcomer gets the current key
           // (idempotent: skips members who already have a wrap). Any key holder
           // doing this is safe and fixes the offline-inviter case.
           const cid = p.channel.id;
-          const before = state.channels[cid];
+          // 38-2: through the ref, not state -- handleFrame is captured once at
+          // WSClient construction, when the channel map is still empty, so a
+          // direct state read here reports EVERY channel as unknown.
+          const before = channelsRef.current[cid];
           const handles = new Map(
             (p.channel.members ?? []).map((m) => [m.user_id, m.handle ?? ""]),
           );
@@ -1641,7 +1663,7 @@ export function App() {
           // drops the channel entirely. rotation_pending is reflected from the
           // summary so the panel can show it.
           const cid = p.channel.id;
-          const before = state.channels[cid];
+          const before = channelsRef.current[cid]; // 38-2: see member_added
           const after = new Set(p.channel.member_ids ?? []);
           if (before) {
             for (const id of before.memberIDs) {
@@ -1662,7 +1684,7 @@ export function App() {
           // member must lose access to future messages). Auto-rotate silently.
           const cid = p.channel.id;
           dispatch({ kind: "channel_rotation_pending_set", channelID: cid, pending: true });
-          const ch = state.channels[cid];
+          const ch = channelsRef.current[cid]; // 38-2: see member_added
           const members = ch ? ch.memberIDs : (p.channel.member_ids ?? []);
           const curVer = ch ? ch.currentKeyVersion : (p.channel.current_key_version ?? 1);
           void rotateChannelKeyFor(cid, members, curVer).catch((err) =>
@@ -1679,7 +1701,7 @@ export function App() {
           dispatch({ kind: "channel_key_version_updated", channelID: cid, currentKeyVersion: newVer });
           if (ccRef.current) {
             ccRef.current.setCurrentKeyVersion(cid, newVer);
-            const ch = state.channels[cid];
+            const ch = channelsRef.current[cid]; // 38-2: see member_added
             const members = ch ? ch.memberIDs : (p.channel.member_ids ?? []);
             const createdBy = ch ? ch.createdBy : p.channel.created_by;
             void ccRef.current
