@@ -3324,15 +3324,19 @@ func tombstoneOf(m store.Message) (string, int64) {
 
 // handleDeleteMessage soft-deletes a message (governance prerequisite).
 //
-// Authz depends on the channel shape:
+// Authz (mirrored client-side in web/src/chat/deletepolicy.ts):
 //
-//   - Group channel: dictator-style -- ONLY the channel owner may delete. The
-//     democratic delete_message proposal type wraps this same store primitive
-//     (see governance_dispatch.go); a unilateral delete in democratic mode is
+//   - Your OWN message is always yours to delete, in any channel and either
+//     governance mode. Retracting your own words is not a governance act, so
+//     it needs neither the owner nor a vote.
+//   - Someone else's message in a DM: never. There is no meaningful owner in
+//     a two-person channel, and whoever happened to open it gains no
+//     authority over the other member's messages.
+//   - Someone else's message in a group channel: dictator-style, ONLY the
+//     channel owner. In democratic mode nobody deletes another member's
+//     message alone -- the delete_message proposal type wraps this same store
+//     primitive (see governance_dispatch.go) and a unilateral delete is
 //     refused below.
-//   - DM: there is no meaningful owner. Whoever happened to open the DM must
-//     not be able to delete the other member's messages, so the ONLY delete
-//     allowed is the author deleting their own message.
 //
 // On success: store.DeleteMessage scrubs the body server-side and stamps the
 // tombstone (deleted_at, deleted_by), then we push message_deleted on the
@@ -3403,39 +3407,44 @@ func (h *WSHandler) handleDeleteMessage(
 		return
 	}
 
-	if ch.IsDM {
-		// Author-only in a DM, regardless of who created the channel.
-		msg, mErr := h.store.GetMessage(ctx, tsTime, messageID)
-		if mErr != nil {
-			if errors.Is(mErr, store.ErrNotFound) {
-				h.sendError(ctx, c, f.Ref, proto.ErrCodeMessageNotFound, "message not found")
-				return
-			}
-			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "message lookup: "+mErr.Error())
-			return
-		}
-		if msg.ChannelID != channelID {
+	msg, mErr := h.store.GetMessage(ctx, tsTime, messageID)
+	if mErr != nil {
+		if errors.Is(mErr, store.ErrNotFound) {
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeMessageNotFound, "message not found")
 			return
 		}
-		if msg.SenderUserID != callerID {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "message lookup: "+mErr.Error())
+		return
+	}
+	if msg.ChannelID != channelID {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeMessageNotFound, "message not found")
+		return
+	}
+
+	// Deleting your own message skips both the owner check and the democratic
+	// proposal requirement below: it is a retraction, not a governance act.
+	own := msg.SenderUserID != uuid.Nil && msg.SenderUserID == callerID
+	if !own {
+		if ch.IsDM {
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeDeleteForbidden,
 				"in a direct message you may only delete your own messages")
 			return
 		}
-	} else if role != "owner" {
-		h.sendError(ctx, c, f.Ref, proto.ErrCodeDeleteForbidden,
-			"only the channel owner may delete messages")
-		return
-	}
-
-	// gov-1b-2: in democratic mode, deleting a message must go through a
-	// proposal.
-	if gov, gErr := h.store.GetChannelGovernance(ctx, channelID); gErr == nil &&
-		gov.Mode == store.GovernanceModeDemocratic {
-		h.sendError(ctx, c, f.Ref, proto.ErrCodeUnilateralForbidden,
-			"channel is in democratic mode; deleting a message requires a proposal")
-		return
+		// gov-1b-2: in democratic mode, deleting someone else's message must
+		// go through a proposal. Checked before the owner rule so a member
+		// who tries anyway is told to propose rather than told they are not
+		// the owner -- in democratic mode the owner can't do it either.
+		if gov, gErr := h.store.GetChannelGovernance(ctx, channelID); gErr == nil &&
+			gov.Mode == store.GovernanceModeDemocratic {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnilateralForbidden,
+				"channel is in democratic mode; deleting a message requires a proposal")
+			return
+		}
+		if role != "owner" {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeDeleteForbidden,
+				"only the channel owner may delete another member's message")
+			return
+		}
 	}
 
 	del, dErr := h.store.DeleteMessage(ctx, tsTime, messageID, channelID, callerID)

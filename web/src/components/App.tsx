@@ -15,7 +15,7 @@
 
 import { resolveNickHue } from "../chat/nickcolor";
 import { mentionsHandle } from "../chat/mentions";
-import { canDeleteMessage, deleteModeFor } from "../chat/deletepolicy";
+import { deleteActionFor, deleteLabelFor } from "../chat/deletepolicy";
 import { useIsMobile } from "../mobile";
 import { useCallback, useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
@@ -854,11 +854,13 @@ export function App() {
   const deleteChannel = state.activeChannelID
     ? state.channels[state.activeChannelID]
     : undefined;
-  const deleteMode = deleteModeFor(deleteChannel);
-  const canDelete = useCallback(
-    (m: Message) => canDeleteMessage(deleteChannel, m.senderUserID, state.user?.id),
+  const deleteActionOf = useCallback(
+    (m: Message) => deleteActionFor(deleteChannel, m.senderUserID, state.user?.id),
     [deleteChannel, state.user?.id],
   );
+  // What the staged message would cost to delete. Drives the modal copy and
+  // whether the confirm takes one step or two.
+  const deleteAction = pendingDelete ? deleteActionOf(pendingDelete) : "none";
 
   const onDeleteMessage = useCallback((m: Message) => {
     setPendingDelete(m);
@@ -872,14 +874,15 @@ export function App() {
       setPendingDelete(null);
       return;
     }
-    // Dictator-mode group delete asks twice; the first confirm only advances.
-    if (deleteMode === "unilateral" && deleteStep === 1) {
+    // Deleting another member's message unilaterally asks twice; the first
+    // confirm only advances.
+    if (deleteAction === "unilateral" && deleteStep === 1) {
       setDeleteStep(2);
       return;
     }
     setDeleteBusy(true);
     try {
-      if (deleteMode === "proposal") {
+      if (deleteAction === "proposal") {
         // The server refuses a unilateral delete_message in democratic mode;
         // the vote is the only path. payload.ts is required to locate the
         // (ts-partitioned) row when the proposal executes.
@@ -904,7 +907,7 @@ export function App() {
       setPendingDelete(null);
       setDeleteStep(1);
     }
-  }, [pendingDelete, state.activeChannelID, deleteMode, deleteStep]);
+  }, [pendingDelete, state.activeChannelID, deleteAction, deleteStep]);
 
 
   // case where we were offline when the removal happened and missed the
@@ -2734,9 +2737,9 @@ export function App() {
               giphyPref={selectGiphyPref(state.prefs)}
               onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
               threadSeen={state.threadSeen}
-              canDeleteMessage={canDelete}
+              canDeleteMessage={(m) => deleteActionOf(m) !== "none"}
               onDeleteMessage={onDeleteMessage}
-              deleteLabel={deleteMode === "proposal" ? "propose deletion" : "delete"}
+              deleteLabelFor={(m) => deleteLabelFor(deleteActionOf(m))}
               attachmentController={attControllerRef.current ?? undefined}
               onOpenThread={(parentID, threadID) => {
                 // Phase 10b: store the open thread on AppState. 10c
@@ -2790,6 +2793,9 @@ export function App() {
             isDM={activeChannel.isDM}
             display={selectChatPrefs(state.prefs)}
             disabled={state.wsState !== "open"}
+            canDeleteMessage={(m) => deleteActionOf(m) !== "none"}
+            onDeleteMessage={onDeleteMessage}
+            deleteLabelFor={(m) => deleteLabelFor(deleteActionOf(m))}
             onClose={() => dispatch({ kind: "close_thread" })}
             onSend={(body) => onSend(body, tid)}
           />
@@ -2830,39 +2836,39 @@ export function App() {
       )}
 
       {/* Phase 26 (governance prereq) / 35-4: delete confirmation. The copy
-          and the number of confirms follow deleteMode -- deleting your own DM
-          message is not the same act as an owner erasing someone else's, and
-          in a democratic channel this button only opens a vote. */}
+          and the number of confirms follow the staged message's action --
+          retracting your own message is not the same act as an owner erasing
+          someone else's, and in a democratic channel this only opens a vote. */}
       <ConfirmModal
         open={pendingDelete !== null}
         title={
-          deleteMode === "proposal"
+          deleteAction === "proposal"
             ? "Propose deleting this message?"
-            : deleteMode === "own"
+            : deleteAction === "own"
               ? "Delete your message?"
               : deleteStep === 1
                 ? "Delete this message?"
                 : "Delete for everyone — are you sure?"
         }
         body={
-          deleteMode === "proposal"
-            ? "This channel is in democratic mode, so you cannot delete a message on your own. This opens a proposal the channel votes on; the message stays until a majority agrees."
-            : deleteMode === "own"
-              ? "This removes your message from the server for both of you. The other person may still have a local copy of what they already read."
+          deleteAction === "proposal"
+            ? "This channel is in democratic mode, so nobody deletes another member's message alone. This opens a proposal the channel votes on; the message stays until a majority agrees."
+            : deleteAction === "own"
+              ? "This removes your message from the server for everyone in the channel. Anyone who already read it may still have a local copy."
               : deleteStep === 1
                 ? "As the channel owner you can delete this for everyone, including its author. This cannot be undone."
                 : "Last check: the message is erased from the server for every member. Anyone who already read it may still have a local copy."
         }
         confirmLabel={
-          deleteMode === "proposal"
+          deleteAction === "proposal"
             ? "Start vote"
-            : deleteMode === "own"
+            : deleteAction === "own"
               ? "Delete"
               : deleteStep === 1
                 ? "Continue"
                 : "Yes, delete for everyone"
         }
-        danger={deleteMode !== "proposal"}
+        danger={deleteAction !== "proposal"}
         busy={deleteBusy}
         onConfirm={confirmDeleteMessage}
         onCancel={() => {

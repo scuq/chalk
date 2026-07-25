@@ -42,6 +42,12 @@ interface Props {
   display: ResolvedChatPrefs;
   // Composer state.
   disabled: boolean;
+  // 35-5: message deletion, forwarded verbatim to both lists so a reply
+  // obeys exactly the rules its channel does -- a thread is not a place
+  // where deletion means something else. See chat/deletepolicy.ts.
+  canDeleteMessage?: (m: Message) => boolean;
+  onDeleteMessage?: (m: Message) => void;
+  deleteLabelFor?: (m: Message) => string;
   // Callbacks.
   onClose: () => void;
   onSend: (body: string) => void; // already bound to parentID by caller
@@ -58,6 +64,9 @@ export function ThreadPanel({
   isDM,
   display,
   disabled,
+  canDeleteMessage,
+  onDeleteMessage,
+  deleteLabelFor,
   onClose,
   onSend,
 }: Props) {
@@ -92,6 +101,9 @@ export function ThreadPanel({
               members={members}
               isDM={isDM}
               display={display}
+              canDeleteMessage={canDeleteMessage}
+              onDeleteMessage={onDeleteMessage}
+              deleteLabelFor={deleteLabelFor}
               // No onOpenThread: hides the hover-reply button and
               // any indicator (which wouldn\'t apply here anyway --
               // the head\'s replyCount is the indicator we\'re
@@ -119,6 +131,9 @@ export function ThreadPanel({
             members={members}
             isDM={isDM}
             display={display}
+            canDeleteMessage={canDeleteMessage}
+            onDeleteMessage={onDeleteMessage}
+            deleteLabelFor={deleteLabelFor}
             // No onOpenThread inside the panel either; nesting
             // threads-in-threads is out of scope.
           />

@@ -134,17 +134,16 @@ interface Props {
   // that don't care (e.g. the thread panel rendering its head)
   // can omit it.
   threadSeen?: Record<string, number>;
-  // Phase 26 (governance prereq) / 35-3: message deletion. Who may delete
-  // WHICH message depends on the channel (author-only in a DM, owner-only in
-  // a dictator channel, anyone-may-propose in a democratic one), so the
-  // policy is a predicate owned by the caller rather than a flag here.
-  // deleteLabel names the action, since in a democratic channel it starts a
-  // vote instead of deleting. The control sits behind the row's "..." menu:
-  // deletion is destructive and irreversible, so it does not deserve a
-  // one-tap target next to "reply".
+  // Phase 26 (governance prereq) / 35-3: message deletion. Both what you may
+  // do and what it's called vary per message (your own vs another member's,
+  // DM vs group, dictator vs democratic), so the caller owns the policy --
+  // see chat/deletepolicy.ts. deleteLabelFor names the action because in a
+  // democratic channel it opens a vote rather than deleting. The control sits
+  // behind the row's "..." menu: deletion is destructive and irreversible, so
+  // it does not deserve a one-tap target next to "reply".
   canDeleteMessage?: (m: Message) => boolean;
   onDeleteMessage?: (m: Message) => void;
-  deleteLabel?: string;
+  deleteLabelFor?: (m: Message) => string;
   // att-2: receive-side attachment pipeline (decrypt meta/preview/full +
   // download), bound to the channel crypto. When absent (or a message has no
   // attachments) nothing extra renders.
@@ -185,7 +184,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabel, attachmentController, giphyPref, onRequestEnableGiphy }: Props) {
+export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, attachmentController, giphyPref, onRequestEnableGiphy }: Props) {
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dividerRef = useRef<HTMLDivElement | null>(null);
@@ -571,7 +570,7 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
                           }}
                           data-testid={`message-delete-${m.id}`}
                         >
-                          {deleteLabel ?? "delete"}
+                          {deleteLabelFor?.(m) ?? "delete"}
                         </button>
                       </div>
                     )}
