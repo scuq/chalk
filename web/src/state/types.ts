@@ -117,6 +117,22 @@ export interface ChannelUnread {
   mention: boolean;
 }
 
+// 33-4: the frozen "where I left off" window for the channel being viewed.
+//
+// It has to be frozen because opening a channel marks it read within a
+// round-trip (33-1) -- a divider keyed on the live cursor would vanish the
+// moment you arrived. Both ends are captured, not just the start: messages
+// that arrive while you sit in the channel land above throughSeq and are
+// deliberately left unmarked, so a busy channel doesn't slowly turn into a
+// wall of highlight.
+export interface UnreadMark {
+  // Read cursor at capture time. The divider goes before the first message
+  // with seq > afterSeq.
+  afterSeq: number;
+  // Newest message that existed at capture time. Highlighting stops here.
+  throughSeq: number;
+}
+
 export const emptyUnread: ChannelUnread = {
   lastSeq: 0,
   lastReadSeq: 0,
@@ -316,6 +332,12 @@ export interface AppState {
   // so a channel_event summary (which the server builds without a user
   // scope, hence zeroed cursors) can't clobber live state.
   unread: Record<string, ChannelUnread>;
+
+  // 33-4: frozen unread window driving the "new messages" divider and the
+  // highlighted rows. Only ever holds the channel currently being viewed --
+  // a mark for any other channel is stale by definition, since entering a
+  // channel reads it.
+  unreadMarks: Record<string, UnreadMark>;
 
   // gov-2: governance proposals by channel id (open + recently resolved).
   proposals: Record<string, ProposalView[]>;
@@ -529,6 +551,7 @@ export const initialState: AppState = {
   messages: {},
   historyLoaded: {},
   unread: {},
+  unreadMarks: {},
   proposals: {},
   voiceRosters: {},
   voiceEnabled: false,
@@ -610,6 +633,10 @@ export type Action =
   // mention_set: this client decrypted a message in an unfocused channel
   // that names the user. Derived locally -- see state/mentions.ts.
   | { kind: "mention_set"; channelID: string }
+  // unread_mark_refresh: re-capture the frozen unread window for a channel
+  // the user is (re-)attending to. Dispatched when the tab regains focus on
+  // an already-active channel; the channel-switch path captures it inline.
+  | { kind: "unread_mark_refresh"; channelID: string | null }
   | { kind: "message"; message: Message }
   // Server confirmed a send committed: retire the optimistic row identified
   // by clientMsgID, adopting the real server id/seq/ts (or dropping it if the

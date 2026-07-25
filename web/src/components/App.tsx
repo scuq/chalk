@@ -1603,6 +1603,15 @@ export function App() {
   // 33-3: read by mention detection inside handleFrame (see unreadRef).
   tabVisibleRef.current = tabVisible;
 
+  // 33-4: coming back to the tab is the same event as opening the channel --
+  // messages piled up while you were away and the mark_read effect is about
+  // to clear them. Re-freeze the unread window first so they get a divider.
+  // Only on the rising edge; going away must not disturb an existing mark.
+  useEffect(() => {
+    if (!tabVisible) return;
+    dispatch({ kind: "unread_mark_refresh", channelID: activeChannelRef.current });
+  }, [tabVisible]);
+
   // Phase 9.6j: compute the intended presence and send presence_update
   // when it transitions. "intended" is:
   //   - WS not open → offline (server handles via WS close; nothing to send)
@@ -2645,6 +2654,10 @@ export function App() {
             )}
             <MessageList
               messages={activeMessages}
+              // 33-4: channelID drives the "land on entry" scroll; the mark
+              // is the frozen unread window the divider is drawn from.
+              channelID={activeChannel.id}
+              unreadMark={state.unreadMarks[activeChannel.id]}
               ownDevice={state.user?.device ?? null}
               ownUserID={state.user?.id ?? null}
               ownHandle={state.me?.username ?? null}

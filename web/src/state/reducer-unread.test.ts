@@ -160,3 +160,102 @@ test("channel_removed drops the channel's unread state", () => {
 test("hasUnread is false for a channel with no state", () => {
   assert.equal(hasUnread(undefined), false);
 });
+
+// ---- 33-4: the frozen unread window behind the divider ------------------
+
+test("entering a channel with unread freezes the window", () => {
+  let s = reducer(baseState(), {
+    kind: "channels_loaded",
+    channels: [channel({ lastSeq: 10, lastReadSeq: 4 })],
+  });
+  s = reducer(s, { kind: "set_active_channel", channelID: CH });
+  assert.deepEqual(s.unreadMarks[CH], { afterSeq: 4, throughSeq: 10 });
+});
+
+test("entering a caught-up channel leaves no mark", () => {
+  let s = reducer(baseState(), {
+    kind: "channels_loaded",
+    channels: [channel({ lastSeq: 10, lastReadSeq: 10 })],
+  });
+  s = reducer(s, { kind: "set_active_channel", channelID: CH });
+  assert.equal(s.unreadMarks[CH], undefined);
+});
+
+test("the mark survives the channel being marked read", () => {
+  // This is the whole point: opening a channel reads it within a round-trip,
+  // so a divider keyed on the live cursor would vanish on arrival.
+  let s = reducer(baseState(), {
+    kind: "channels_loaded",
+    channels: [channel({ lastSeq: 10, lastReadSeq: 4 })],
+  });
+  s = reducer(s, { kind: "set_active_channel", channelID: CH });
+  s = reducer(s, { kind: "read_state", channelID: CH, lastReadSeq: 10 });
+  assert.equal(hasUnread(s.unread[CH]), false);
+  assert.deepEqual(s.unreadMarks[CH], { afterSeq: 4, throughSeq: 10 });
+});
+
+test("messages arriving while watching do not extend the window", () => {
+  let s = reducer(baseState(), {
+    kind: "channels_loaded",
+    channels: [channel({ lastSeq: 10, lastReadSeq: 4 })],
+  });
+  s = reducer(s, { kind: "set_active_channel", channelID: CH });
+  s = reducer(s, { kind: "message", message: msg({ id: "m99", seq: 11 }) });
+  assert.deepEqual(s.unreadMarks[CH], { afterSeq: 4, throughSeq: 10 });
+});
+
+test("leaving a channel discards its mark", () => {
+  let s = reducer(baseState(), {
+    kind: "channels_loaded",
+    channels: [
+      channel({ lastSeq: 10, lastReadSeq: 4 }),
+      channel({ id: "chan-2", lastSeq: 0, lastReadSeq: 0 }),
+    ],
+  });
+  s = reducer(s, { kind: "set_active_channel", channelID: CH });
+  assert.notEqual(s.unreadMarks[CH], undefined);
+  s = reducer(s, { kind: "set_active_channel", channelID: "chan-2" });
+  assert.equal(s.unreadMarks[CH], undefined);
+});
+
+test("reconnecting into a channel with new messages marks it", () => {
+  // The auto-selected channel on channels_loaded never goes through
+  // set_active_channel, so that path has to capture the window too.
+  const s = reducer(baseState(), {
+    kind: "channels_loaded",
+    channels: [channel({ lastSeq: 22, lastReadSeq: 15 })],
+  });
+  assert.equal(s.activeChannelID, CH);
+  assert.deepEqual(s.unreadMarks[CH], { afterSeq: 15, throughSeq: 22 });
+});
+
+test("refreshing the mark re-freezes against the current cursor", () => {
+  // Tab regains focus after messages piled up on the open channel.
+  let s = reducer(baseState(), {
+    kind: "channels_loaded",
+    channels: [channel({ lastSeq: 5, lastReadSeq: 5 })],
+  });
+  assert.equal(s.unreadMarks[CH], undefined);
+  s = reducer(s, { kind: "message", message: msg({ id: "m6", seq: 6 }) });
+  s = reducer(s, { kind: "message", message: msg({ id: "m7", seq: 7 }) });
+  s = reducer(s, { kind: "unread_mark_refresh", channelID: CH });
+  assert.deepEqual(s.unreadMarks[CH], { afterSeq: 5, throughSeq: 7 });
+});
+
+test("refreshing on a caught-up channel clears any stale mark", () => {
+  let s = reducer(baseState(), {
+    kind: "channels_loaded",
+    channels: [channel({ lastSeq: 10, lastReadSeq: 4 })],
+  });
+  s = reducer(s, { kind: "read_state", channelID: CH, lastReadSeq: 10 });
+  s = reducer(s, { kind: "unread_mark_refresh", channelID: CH });
+  assert.equal(s.unreadMarks[CH], undefined);
+});
+
+test("refreshing with no active channel is a no-op", () => {
+  const s = reducer(baseState(), {
+    kind: "unread_mark_refresh",
+    channelID: null,
+  });
+  assert.deepEqual(s.unreadMarks, {});
+});

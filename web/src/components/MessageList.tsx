@@ -1,3 +1,4 @@
+import { Fragment } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import type { Message } from "../state/types";
 import { AttachmentView } from "./AttachmentView";
@@ -46,8 +47,33 @@ function MessageBody({
   );
 }
 
+// 33-4: how close to the bottom still counts as "following the feed". One
+// message row of slack, so a partly-scrolled last line doesn't unpin you.
+const PINNED_THRESHOLD_PX = 80;
+
+function isNearBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= PINNED_THRESHOLD_PX;
+}
+
+// Nearest scrollable ancestor, or null if nothing scrolls (tests, jsdom).
+function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
+  if (typeof window === "undefined") return null;
+  for (let p = el?.parentElement ?? null; p; p = p.parentElement) {
+    const oy = window.getComputedStyle(p).overflowY;
+    if (oy === "auto" || oy === "scroll") return p;
+  }
+  return null;
+}
+
 interface Props {
   messages: Message[];
+  // 33-4: the channel these messages belong to. Identity, not data -- a
+  // change means "the user navigated", which is what re-arms the landing
+  // scroll. Optional so the thread panel (one continuous view) can omit it.
+  channelID?: string;
+  // 33-4: frozen unread window for this channel, if it had unread messages
+  // when the user arrived. Drives the divider and the highlighted rows.
+  unreadMark?: { afterSeq: number; throughSeq: number };
   ownDevice: string | null;
   // Phase 9.6i: lets the renderer detect "this is my own message"
   // via user_id even when the message arrived from another of my
@@ -137,12 +163,73 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-export function MessageList({ messages, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessages, onDeleteMessage, attachmentController, giphyPref, onRequestEnableGiphy }: Props) {
+export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessages, onDeleteMessage, attachmentController, giphyPref, onRequestEnableGiphy }: Props) {
   const endRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const dividerRef = useRef<HTMLDivElement | null>(null);
+  // 33-4: the channel we've already done the one-time landing scroll for.
+  // Re-arms whenever channelID changes, i.e. on every navigation.
+  const landedRef = useRef<string | null>(null);
+  // 33-4: is the reader sitting at the bottom of the feed? Only then does a
+  // new message scroll the view. Without this, landing on the divider is
+  // undone by the first message that arrives afterwards -- and scrolling
+  // back through history was already interrupted by every new message.
+  const pinnedRef = useRef(true);
 
+  // Watch the scroll position of whichever ancestor actually scrolls
+  // (.chalk-main today). Found by computed style rather than by walking a
+  // known number of parents, so a layout change doesn't silently break it.
   useEffect(() => {
+    const sc = scrollParentOf(rootRef.current);
+    if (!sc) return;
+    const onScroll = () => {
+      pinnedRef.current = isNearBottom(sc);
+    };
+    sc.addEventListener("scroll", onScroll, { passive: true });
+    return () => sc.removeEventListener("scroll", onScroll);
+    // hasMessages is a dependency because the empty state renders a
+    // different root element -- without it, a channel entered while empty
+    // would never get a listener once its history arrived. It flips only on
+    // the empty/non-empty edge, not per message.
+  }, [channelID, messages.length > 0]);
+
+  // 33-4: index of the first message that was unread on arrival -- where the
+  // "new messages" divider goes. -1 when there's nothing to mark.
+  //
+  // Note this looks only at afterSeq. If the unread run is longer than the
+  // page of history we loaded, every visible message is new and the divider
+  // lands at the top, which is honest.
+  const dividerIndex = unreadMark
+    ? messages.findIndex((m) => m.seq > unreadMark.afterSeq)
+    : -1;
+
+  // Scroll behaviour, in two modes.
+  //
+  // On arrival (first commit for this channelID that has messages) we land
+  // once: on the divider if there is one, otherwise at the newest message.
+  // The landing is instant rather than smooth -- animating a jump the user
+  // didn't ask for just makes the view feel like it's still settling.
+  //
+  // After that, any new message pins the view to the bottom as before.
+  useEffect(() => {
+    if (messages.length === 0) return;
+    if (landedRef.current !== (channelID ?? null)) {
+      landedRef.current = channelID ?? null;
+      if (dividerIndex >= 0 && dividerRef.current) {
+        dividerRef.current.scrollIntoView({ behavior: "auto", block: "start" });
+        // Landing mid-history means not pinned. Set it here rather than
+        // waiting for the scroll event, so a message arriving in the same
+        // tick can't win the race and yank us to the bottom.
+        pinnedRef.current = false;
+        return;
+      }
+      endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+      pinnedRef.current = true;
+      return;
+    }
+    if (!pinnedRef.current) return;
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length]);
+  }, [messages.length, channelID, dividerIndex]);
 
   // Phase 9.7d: resolved display settings + "now" for relative time.
   // We capture "now" once per render so all rows in a batch share the
@@ -168,7 +255,7 @@ export function MessageList({ messages, ownDevice, ownUserID, ownHandle, members
   }
 
   return (
-    <div class={`chalk-messages ${display_.compactMode ? "chalk-messages--compact" : ""} ${display_.showTimestamps ? "" : "chalk-messages--no-time"}`} data-testid="messages">
+    <div ref={rootRef} class={`chalk-messages ${display_.compactMode ? "chalk-messages--compact" : ""} ${display_.showTimestamps ? "" : "chalk-messages--no-time"}`} data-testid="messages">
       {(() => {
         // Phase 9.6i: build a userID → handle lookup once per render
         // pass instead of re-scanning members for every message row.
@@ -223,7 +310,7 @@ export function MessageList({ messages, ownDevice, ownUserID, ownHandle, members
         // Cap so an outlier name wraps instead of shoving every body right.
         const senderColCh = Math.min(maxNameLen, 10);
 
-        return messages.map((m) => {
+        return messages.map((m, mi) => {
         // "Own" detection prefers user_id matching when both sides
         // are known; falls back to device matching otherwise. This
         // means if you have multiple devices for the same account,
@@ -250,10 +337,27 @@ export function MessageList({ messages, ownDevice, ownUserID, ownHandle, members
           : m.senderUserID
           ? `${handle ?? "?"} (user ${m.senderUserID.slice(0, 8)}…, device ${m.sender.slice(0, 8)}…)`
           : m.sender;
+        // 33-4: highlight only what was unread on arrival. The upper bound
+        // is what stops messages arriving while you read from joining the
+        // highlighted block.
+        const isUnread =
+          unreadMark !== undefined &&
+          m.seq > unreadMark.afterSeq &&
+          m.seq <= unreadMark.throughSeq;
         return (
-          <div class="chalk-message-group" key={m.id}>
+          <Fragment key={m.id}>
+          {mi === dividerIndex && (
+            <div
+              class="chalk-unread-divider"
+              ref={dividerRef}
+              data-testid="unread-divider"
+            >
+              <span class="chalk-unread-divider-label">new messages</span>
+            </div>
+          )}
+          <div class="chalk-message-group">
           <div
-            class={`chalk-message ${own ? "chalk-message--own" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"}`}
+            class={`chalk-message ${own ? "chalk-message--own" : ""} ${isUnread ? "chalk-message--unread" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"}`}
             style={`--chalk-msg-sender-col:${senderColCh}ch`}
             data-testid="message"
             title={display_.showTimestamps ? undefined : m.ts.toLocaleString()}
@@ -425,6 +529,7 @@ export function MessageList({ messages, ownDevice, ownUserID, ownHandle, members
             );
           })()}
           </div>
+          </Fragment>
         );
       });
       })()}

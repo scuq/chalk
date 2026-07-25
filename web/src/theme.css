@@ -693,6 +693,65 @@ body.chalk-resizing .chalk-sidebar-resizer {
   cursor: pointer;
 }
 
+/* ============================================================
+   Phase 33-4: unread divider + highlighted rows
+   ============================================================ */
+
+/* The "new messages" rule, a direct flex child of .chalk-messages (the
+   message group above it is display:contents, so it doesn't box us in). */
+.chalk-unread-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  margin: var(--chalk-s1) 0;
+  /* Scroll target: landing puts this at the top of the viewport, and a
+     little padding above keeps it off the very edge. */
+  scroll-margin-top: var(--chalk-s3);
+  user-select: none;
+}
+
+.chalk-unread-divider::before,
+.chalk-unread-divider::after {
+  content: "";
+  height: 1px;
+  background: var(--chalk-accent);
+  opacity: 0.55;
+}
+
+/* Short lead-in, then the label, then the rule runs to the right edge --
+   reads as a section marker rather than a centred banner. */
+.chalk-unread-divider::before {
+  flex: 0 0 var(--chalk-s4);
+}
+.chalk-unread-divider::after {
+  flex: 1 1 auto;
+}
+
+.chalk-unread-divider-label {
+  color: var(--chalk-accent);
+  font-size: var(--chalk-size-small);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+/* Rows that were unread on arrival. A tint rather than a weight or color
+   change, because weight and color are already carrying nick identity and
+   the mention chip -- a fourth signal in that space would just be noise.
+   Sits at lower specificity than .chalk-message:hover on purpose, so
+   hovering an unread row still gives the normal hover feedback. */
+.chalk-message--unread {
+  background: color-mix(in srgb, var(--chalk-accent) 8%, transparent);
+}
+
+/* Fallback for engines without color-mix: the elevated surface token is
+   defined by every theme and is the same value hover uses, so the block
+   still reads as lifted, just less distinctly. */
+@supports not (background: color-mix(in srgb, red 50%, transparent)) {
+  .chalk-message--unread {
+    background: var(--chalk-bg-elev);
+  }
+}
+
 .chalk-sidebar-inner {
   display: flex;
   flex-direction: column;

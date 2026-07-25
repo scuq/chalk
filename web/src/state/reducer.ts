@@ -34,6 +34,22 @@ function bumpUnread(
   return { ...unread, [channelID]: next };
 }
 
+// 33-4: capture the frozen unread window for the channel being attended to.
+//
+// Returns a whole map rather than one entry because it also does the
+// discarding: a mark for any other channel is stale the moment you leave,
+// since entering a channel reads it. Returns {} when there is nothing
+// unread, which is what suppresses the divider on a caught-up channel.
+function markForChannel(
+  unread: AppState["unread"],
+  channelID: string | null
+): AppState["unreadMarks"] {
+  if (!channelID) return {};
+  const u = unread[channelID];
+  if (!u || u.lastSeq <= u.lastReadSeq) return {};
+  return { [channelID]: { afterSeq: u.lastReadSeq, throughSeq: u.lastSeq } };
+}
+
 // Phase 26 (governance prereq): placeholder body shown for a deleted message.
 // Renderers key off Message.deleted for styling; this covers any path that
 // reads the body directly.
@@ -104,6 +120,11 @@ export function reducer(state: AppState, action: Action): AppState {
         channelOrder: order,
         activeChannelID: active,
         unread,
+        // 33-4: the channel active after a (re)connect is auto-selected here
+        // rather than through set_active_channel, so capture its unread
+        // window on this path too -- otherwise reconnecting into a channel
+        // with new messages shows no divider.
+        unreadMarks: markForChannel(unread, active),
       };
     }
 
@@ -357,7 +378,20 @@ export function reducer(state: AppState, action: Action): AppState {
       if (action.channelID === state.activeChannelID) {
         return state;
       }
-      return { ...state, activeChannelID: action.channelID, openThread: null };
+      // 33-4: freeze the unread window BEFORE the mark_read effect fires,
+      // which it will as soon as this render commits.
+      return {
+        ...state,
+        activeChannelID: action.channelID,
+        openThread: null,
+        unreadMarks: markForChannel(state.unread, action.channelID),
+      };
+
+    case "unread_mark_refresh":
+      return {
+        ...state,
+        unreadMarks: markForChannel(state.unread, action.channelID),
+      };
 
     case "send_ack": {
       // Deterministic retirement of the optimistic row.
