@@ -91,3 +91,14 @@ export class NotifySounds {
     this.player.close();
   }
 }
+
+// One instance per page. It has to be shared: the frame handlers play
+// sounds and the profile panel previews them, and two instances would
+// mean two AudioContexts with independent unlock state -- previewing in
+// the profile would leave the real sounds still locked.
+let shared: NotifySounds | null = null;
+
+export function notifySounds(): NotifySounds {
+  if (!shared) shared = new NotifySounds();
+  return shared;
+}

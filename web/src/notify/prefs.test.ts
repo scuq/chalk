@@ -33,11 +33,16 @@ test("normalize falls back on junk input", () => {
   }
 });
 
-test("normalize defaults to silence", () => {
+test("normalize defaults to audible chat, silent machinery", () => {
   const p = normalizeSoundPrefs({});
-  assert.equal(p.master, false, "master must default off -- an update must not start making noise");
+  assert.equal(p.master, true);
   assert.equal(p.dnd, false);
-  assert.equal(p.categories.message, false, "'every message' must default off even under master");
+  for (const c of ["mention", "dm", "thread_reply", "message"] as const) {
+    assert.equal(p.categories[c], true, `${c} should be audible out of the box`);
+  }
+  for (const c of ["presence", "connect", "disconnect", "send_confirm"] as const) {
+    assert.equal(p.categories[c], false, `${c} reports on chalk, not on people -- keep it quiet`);
+  }
 });
 
 test("normalize keeps the good half of a partially bad pref", () => {

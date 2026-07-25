@@ -63,13 +63,15 @@ export const MIN_VOLUME = 0;
 export const MAX_VOLUME = 1;
 
 // Per-category defaults, applied only once the master switch is on.
-// "message" is off on purpose: in a busy channel it is the difference
-// between a notification and a metronome.
+//
+// The machine noises stay off. They report on chalk itself rather than on
+// anything a person did, and a flapping connection would otherwise chatter
+// away on its own.
 export const DEFAULT_CATEGORIES: Record<SoundCategory, boolean> = {
   mention: true,
   dm: true,
   thread_reply: true,
-  message: false,
+  message: true,
   presence: false,
   connect: false,
   disconnect: false,
@@ -77,10 +79,16 @@ export const DEFAULT_CATEGORIES: Record<SoundCategory, boolean> = {
   error: true,
 };
 
-// Master off: a build that suddenly starts making noise is a bug report,
-// not a feature. The user turns it on in their profile.
+// On out of the box, including every message. Volume sits low to match:
+// the pack is audible at 0.4 without being the loudest thing on the
+// desktop, and the suppression rules already keep it quiet for whatever
+// channel the user is actually reading.
+//
+// Nothing can actually sound until the user has interacted with the page
+// (see SoundPlayer.unlock), so this cannot startle someone who has merely
+// left a tab open.
 export const DEFAULT_SOUND_PREFS: SoundPrefs = {
-  master: false,
+  master: true,
   volume: 0.4,
   dnd: false,
   categories: { ...DEFAULT_CATEGORIES },

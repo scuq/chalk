@@ -13,16 +13,20 @@ import {
   MIN_GAP_CATEGORY_MS,
   type GateInput,
 } from "./gate.ts";
-import { DEFAULT_SOUND_PREFS, SOUND_CATEGORIES, type SoundPrefs } from "./types.ts";
+import { SOUND_CATEGORIES, type SoundPrefs } from "./types.ts";
 
 // A pref set where everything is audible, so each test silences exactly
-// the one thing it is about.
+// the one thing it is about. Deliberately not DEFAULT_SOUND_PREFS: these
+// tests are about the rules, and they shouldn't start failing because a
+// default was changed.
 const ALL_ON: SoundPrefs = {
   master: true,
   volume: 0.5,
   dnd: false,
   categories: Object.fromEntries(SOUND_CATEGORIES.map((c) => [c, true])) as SoundPrefs["categories"],
 };
+
+const MASTER_OFF: SoundPrefs = { ...ALL_ON, master: false };
 
 function input(over: Partial<GateInput> = {}): GateInput {
   return {
@@ -44,7 +48,7 @@ test("a wanted sound in a hidden tab plays", () => {
 
 test("the master switch silences everything", () => {
   for (const c of SOUND_CATEGORIES) {
-    assert.equal(decideSound(input({ category: c, prefs: DEFAULT_SOUND_PREFS })), "master_off");
+    assert.equal(decideSound(input({ category: c, prefs: MASTER_OFF })), "master_off");
   }
 });
 
@@ -149,10 +153,11 @@ test("nothing plays before the user has interacted with the page", () => {
   assert.equal(decideSound(input({ unlocked: false })), "locked");
 });
 
-test("a locked context does not consume the rate budget", () => {
+test("the pref checks are reported ahead of the lock", () => {
   // "locked" is decided last on purpose: the caller only records a
   // timestamp when the verdict is "play", so a burst of dropped sounds
-  // before the first click must not delay the first real one.
-  const v = decideSound(input({ unlocked: false, prefs: DEFAULT_SOUND_PREFS }));
-  assert.equal(v, "master_off", "pref checks still come first");
+  // before the first click must not delay the first real one. A category
+  // the user switched off should still say so rather than blaming the
+  // lock, which is what makes the verdict useful for debugging.
+  assert.equal(decideSound(input({ unlocked: false, prefs: MASTER_OFF })), "master_off");
 });
