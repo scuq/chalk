@@ -544,8 +544,14 @@ html, body {
   pointer-events: none;
 }
 .chalk-attachment-img-placeholder {
+  /* 33-5: aspect-ratio rather than a fixed height, so the inline box the
+     component computes from the real image dimensions can override it. A
+     literal `height` would win over an inline aspect-ratio and the
+     placeholder would keep its 120px, reintroducing the jump. These
+     defaults still resolve to the previous 200x120 when the sender's
+     client recorded no dimensions. */
   width: 200px;
-  height: 120px;
+  aspect-ratio: 5 / 3;
   background: var(--chalk-bg-elev);
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);

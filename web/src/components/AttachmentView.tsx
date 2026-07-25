@@ -199,6 +199,20 @@ export function AttachmentView({ channelID, att, controller }: Props) {
 
   if (meta.kind === "image") {
     const shownURL = fullURL ?? previewURL;
+    // 33-5: one box size shared by the placeholder and the image itself, so
+    // the swap costs no layout. Without it the placeholder's fixed 200x120
+    // grew to a full-width screenshot the moment the preview decrypted,
+    // shoving the feed down under whoever was reading it.
+    const imageBox =
+      meta.width && meta.height
+        ? {
+            width: "100%",
+            maxWidth: `min(${meta.width}px, 720px, 100%)`,
+            aspectRatio: `${meta.width} / ${meta.height}`,
+          }
+        : meta.width
+        ? { maxWidth: `min(${meta.width}px, 720px, 100%)` }
+        : undefined;
     return (
       <div
         class="chalk-attachment chalk-attachment--image"
@@ -213,12 +227,20 @@ export function AttachmentView({ channelID, att, controller }: Props) {
             title={`${meta.name} (${humanSize(meta.size)}) — click to enlarge`}
             // Never upscale past the image's real pixel width: cap at the
             // smallest of natural width, 720px, and the column width (responsive).
-            style={meta.width ? { maxWidth: `min(${meta.width}px, 720px, 100%)` } : undefined}
+            //
+            // 33-5: when both dimensions are known the box is sized before
+            // the bytes decode (see imageBox). width:100% doesn't enlarge
+            // anything -- max-width already caps at the natural width.
+            style={imageBox}
             onClick={() => setExpanded(true)}
             data-testid="attachment-img"
           />
         ) : (
-          <div class="chalk-attachment-img-placeholder" data-testid="attachment-img-placeholder" />
+          <div
+            class="chalk-attachment-img-placeholder"
+            data-testid="attachment-img-placeholder"
+            style={imageBox}
+          />
         )}
         {expanded && shownURL && (
           <div

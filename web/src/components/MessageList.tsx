@@ -65,6 +65,23 @@ function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
+// 33-5: where the view should stay while the feed is still settling.
+// "divider" and "end" are the two landing targets; null means the user has
+// taken over and nothing should move the view but the user.
+type Anchor = "divider" | "end" | null;
+
+function scrollToAnchor(
+  anchor: Anchor,
+  divider: HTMLElement | null,
+  end: HTMLElement | null,
+) {
+  if (anchor === "divider" && divider) {
+    divider.scrollIntoView({ behavior: "auto", block: "start" });
+  } else if (anchor === "end" && end) {
+    end.scrollIntoView({ behavior: "auto", block: "end" });
+  }
+}
+
 interface Props {
   messages: Message[];
   // 33-4: the channel these messages belong to. Identity, not data -- a
@@ -175,6 +192,14 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
   // undone by the first message that arrives afterwards -- and scrolling
   // back through history was already interrupted by every new message.
   const pinnedRef = useRef(true);
+  // 33-5: what the view is currently anchored to, if anything. Landing is
+  // not a single scroll -- attachments render a 200x120 placeholder and then
+  // swap in a full-size image, and Giphy embeds are lazily imported with no
+  // reserved height. Both inflate the feed AFTER the landing scroll has run,
+  // and neither changes messages.length, so nothing re-ran and the view was
+  // left parked at whichever image grew. Holding the anchor until the user
+  // takes over is what makes the landing survive that.
+  const anchorRef = useRef<Anchor>(null);
 
   // Watch the scroll position of whichever ancestor actually scrolls
   // (.chalk-main today). Found by computed style rather than by walking a
@@ -185,12 +210,45 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
     const onScroll = () => {
       pinnedRef.current = isNearBottom(sc);
     };
+    // Release the anchor on a real user gesture, not on scroll events --
+    // our own programmatic scrolls fire those too, and couldn't be told
+    // apart. keydown goes on the window because page-level scroll keys
+    // (space, PageDown) are rarely delivered to the scroller itself.
+    const release = () => {
+      anchorRef.current = null;
+    };
     sc.addEventListener("scroll", onScroll, { passive: true });
-    return () => sc.removeEventListener("scroll", onScroll);
+    sc.addEventListener("wheel", release, { passive: true });
+    sc.addEventListener("touchstart", release, { passive: true });
+    sc.addEventListener("mousedown", release);
+    window.addEventListener("keydown", release);
+    return () => {
+      sc.removeEventListener("scroll", onScroll);
+      sc.removeEventListener("wheel", release);
+      sc.removeEventListener("touchstart", release);
+      sc.removeEventListener("mousedown", release);
+      window.removeEventListener("keydown", release);
+    };
     // hasMessages is a dependency because the empty state renders a
     // different root element -- without it, a channel entered while empty
     // would never get a listener once its history arrived. It flips only on
     // the empty/non-empty edge, not per message.
+  }, [channelID, messages.length > 0]);
+
+  // 33-5: re-apply the anchor whenever the feed changes height. This is the
+  // fix for late-loading media: every image that resolves fires this, and
+  // the view is put back where the landing meant to leave it.
+  //
+  // scrollIntoView changes scrollTop, not layout, so this can't feed itself.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (anchorRef.current === null) return;
+      scrollToAnchor(anchorRef.current, dividerRef.current, endRef.current);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [channelID, messages.length > 0]);
 
   // 33-4: index of the first message that was unread on arrival -- where the
@@ -215,19 +273,19 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
     if (messages.length === 0) return;
     if (landedRef.current !== (channelID ?? null)) {
       landedRef.current = channelID ?? null;
-      if (dividerIndex >= 0 && dividerRef.current) {
-        dividerRef.current.scrollIntoView({ behavior: "auto", block: "start" });
-        // Landing mid-history means not pinned. Set it here rather than
-        // waiting for the scroll event, so a message arriving in the same
-        // tick can't win the race and yank us to the bottom.
-        pinnedRef.current = false;
-        return;
-      }
-      endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
-      pinnedRef.current = true;
+      // Landing mid-history means not pinned. Set it here rather than
+      // waiting for the scroll event, so a message arriving in the same
+      // tick can't win the race and yank us to the bottom.
+      const landOnDivider = dividerIndex >= 0 && dividerRef.current !== null;
+      pinnedRef.current = !landOnDivider;
+      anchorRef.current = landOnDivider ? "divider" : "end";
+      scrollToAnchor(anchorRef.current, dividerRef.current, endRef.current);
       return;
     }
     if (!pinnedRef.current) return;
+    // Re-arm the anchor: we're following the feed, so keep following it
+    // while this message's images resolve.
+    anchorRef.current = "end";
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length, channelID, dividerIndex]);
 
