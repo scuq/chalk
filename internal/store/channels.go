@@ -43,6 +43,14 @@ type Channel struct {
 type ChannelWithMembers struct {
 	Channel
 	MemberIDs []uuid.UUID
+	// LastSeq is the highest seq assigned in this channel (0 when empty).
+	// Phase 33-1: paired with LastReadSeq it gives the client an unread
+	// indicator without loading any history.
+	LastSeq int64
+	// LastReadSeq is the read cursor of the user this listing was built
+	// for. Zero for listings not scoped to a user (e.g. a create ack,
+	// where the channel is empty anyway).
+	LastReadSeq int64
 }
 
 // Member is one row from channel_members.
@@ -255,9 +263,12 @@ func (s *Store) IsMember(ctx context.Context, channelID, userID uuid.UUID) (bool
 // and the member-count cardinality is small (a few users per channel).
 func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]ChannelWithMembers, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.governance_mode, c.channel_type
+		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.governance_mode, c.channel_type,
+		        GREATEST(COALESCE(cs.next_seq, 1) - 1, 0), COALESCE(cr.last_read_seq, 0)
 		   FROM channels c
 		   JOIN channel_members cm ON cm.channel_id = c.id
+		   LEFT JOIN channel_seq cs ON cs.channel_id = c.id
+		   LEFT JOIN channel_reads cr ON cr.channel_id = c.id AND cr.user_id = $1
 		  WHERE cm.user_id = $1
 		  ORDER BY c.created_at DESC`,
 		userID,
@@ -271,10 +282,11 @@ func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]Ch
 	channelIDs := make([]uuid.UUID, 0, 16)
 	for rows.Next() {
 		var c Channel
-		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.GovernanceMode, &c.ChannelType); err != nil {
+		var lastSeq, lastReadSeq int64
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.GovernanceMode, &c.ChannelType, &lastSeq, &lastReadSeq); err != nil {
 			return nil, err
 		}
-		channels = append(channels, ChannelWithMembers{Channel: c})
+		channels = append(channels, ChannelWithMembers{Channel: c, LastSeq: lastSeq, LastReadSeq: lastReadSeq})
 		channelIDs = append(channelIDs, c.ID)
 	}
 	if err := rows.Err(); err != nil {
@@ -714,6 +726,8 @@ func (s *Store) AddMember(ctx context.Context, channelID, userID uuid.UUID) erro
 		); err != nil {
 			return err
 		}
-		return nil
+		// 33-1: start the new member caught up rather than staring at a
+		// backlog-sized unread dot for history they just gained access to.
+		return seedChannelRead(ctx, tx, channelID, userID)
 	})
 }

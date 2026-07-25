@@ -497,6 +497,10 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 		case proto.TypeFetchThread:
 			h.handleFetchThread(ctx, c, conn, f)
 
+		// Phase 33-1: read cursors
+		case proto.TypeMarkRead:
+			h.handleMarkRead(ctx, c, conn, f)
+
 		// Phase 9.7a: user preferences
 		case proto.TypePrefsGet:
 			h.handlePrefsGet(ctx, c, conn, f)
@@ -757,6 +761,14 @@ func (h *WSHandler) handleSend(
 		// atomically with the message (or the whole send rolls back).
 		if len(attUUIDs) > 0 {
 			if err := h.store.LinkAttachmentsToMessage(ctx, tx, channelID, msgID, ts, sendUserUUID, attUUIDs); err != nil {
+				return err
+			}
+		}
+		// 33-1: sending is reading. Advancing the sender's own cursor here
+		// (rather than leaving it to a client round-trip) keeps their other
+		// devices from flagging their own message as unread.
+		if sendUserUUID != uuid.Nil {
+			if err := store.MarkChannelReadTx(ctx, tx, channelID, sendUserUUID, seq); err != nil {
 				return err
 			}
 		}
@@ -1628,6 +1640,8 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 		RotationPending:   c.RotationPending,
 		GovernanceMode:    c.GovernanceMode,
 		ChannelType:       c.ChannelType,
+		LastSeq:           c.LastSeq,
+		LastReadSeq:       c.LastReadSeq,
 	}
 }
 

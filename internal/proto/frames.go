@@ -291,6 +291,11 @@ type ChannelSummary struct {
 	// ChannelType is 'text' or 'voice' (30-1). Absent from older servers ->
 	// treat as "text".
 	ChannelType string `json:"channel_type,omitempty"`
+	// LastSeq is the highest seq assigned in the channel, 0 when empty.
+	// LastReadSeq is the recipient's read cursor (33-1). The client shows an
+	// unread indicator when LastSeq > LastReadSeq, without fetching history.
+	LastSeq     int64 `json:"last_seq"`
+	LastReadSeq int64 `json:"last_read_seq"`
 }
 
 // ChannelMember pairs a user_id with their handle. Server
@@ -516,7 +521,31 @@ const (
 	TypeDeleteMessage    = "delete_message"
 	TypeDeleteMessageAck = "delete_message_ack"
 	TypeMessageDeleted   = "message_deleted"
+
+	// Phase 33-1: read cursors. mark_read raises the caller's cursor for a
+	// channel; read_state is the push that carries the new cursor to the
+	// same user's OTHER connections so the unread dot clears everywhere.
+	TypeMarkRead    = "mark_read"
+	TypeMarkReadAck = "mark_read_ack"
+	TypeReadState   = "read_state"
 )
+
+// MarkReadPayload raises the caller's read cursor for one channel. Seq is
+// the highest message seq the user has seen. The server clamps it to the
+// channel's last assigned seq and never lets the cursor move backwards, so
+// resends and out-of-order acks are harmless.
+type MarkReadPayload struct {
+	ChannelID string `json:"channel_id"`
+	Seq       int64  `json:"seq"`
+}
+
+// ReadStatePayload reports a channel's read cursor. Used both as the
+// mark_read ack (carrying the effective, possibly clamped, cursor) and as
+// the cross-device push.
+type ReadStatePayload struct {
+	ChannelID   string `json:"channel_id"`
+	LastReadSeq int64  `json:"last_read_seq"`
+}
 
 // PublishChannelKeyPayload uploads ONE member's wrapped space key for a
 // channel + key_version. The caller must be a member of the channel, and so

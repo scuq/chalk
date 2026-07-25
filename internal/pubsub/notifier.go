@@ -55,6 +55,8 @@ type Event struct {
 	// "governance" (gov-1b-1: a proposal/mode change; UserID is the
 	// recipient member, FriendKind the sub-kind, and the
 	// GovernanceEventPayload JSON rides the ChannelEventPayload slot).
+	// "read" (33-1: UserID's read cursor for ChannelID moved; a routing
+	// pointer only -- receivers re-read the cursor from the store).
 	Kind string `json:"k"`
 
 	// Message fields (Kind="message"). MessageID and TS together

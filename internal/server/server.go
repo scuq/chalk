@@ -417,6 +417,9 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 	case "prefs":
 		// Phase 9.7a:
 		s.handlePrefsEvent(ev)
+	case "read":
+		// 33-1: read-cursor sync across a user's devices.
+		s.handleReadEvent(ev)
 	}
 }
 
