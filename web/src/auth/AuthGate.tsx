@@ -9,10 +9,11 @@
 //   - login                      → <LoginScreen>
 //   - registering                → <RegisterScreen>
 //   - confirming-recovery        → <RecoveryScreen intent="registered">
-//   - recovery-login             → <RecoveryLoginScreen>
-//   - regenerate-after-recovery  → <RegenerateScreen> (auto-fetches
-//                                  new words, then renders inner
-//                                  RecoveryScreen intent="regenerated")
+//   - recovery-login             → <RecoveryResetScreen> (31-13: the
+//                                  recovery phrase resets the password
+//                                  and TOTP rather than merely signing
+//                                  in; it shows the fresh words itself,
+//                                  so the old regenerate stage is gone)
 //   - authed                     → not handled here (App renders chat)
 //
 // AuthConfig (which RegisterScreen needs for the dev/open badges)
@@ -27,8 +28,6 @@ import type {
   LoginForm,
   LoginResult,
   MeResponse,
-  RecoveryLoginForm,
-  RecoveryLoginResult,
   RegistrationForm,
   RegistrationResult,
   VerifyEmailChangeState,
@@ -42,8 +41,7 @@ import { PasswordLoginScreen } from "./PasswordLoginScreen";
 // file remains for reference but is no longer imported.
 import { SignupWizardScreen } from "./SignupWizardScreen";
 import { RecoveryScreen } from "./RecoveryScreen";
-import { RecoveryLoginScreen } from "./RecoveryLoginScreen";
-import { RegenerateScreen } from "./RegenerateScreen";
+import { RecoveryResetScreen } from "./RecoveryResetScreen";
 import { AddPasskeyAfterRecoveryScreen } from "./AddPasskeyAfterRecoveryScreen";
 import { RegisterFromInviteScreen } from "./RegisterFromInviteScreen";
 import { VerifyEmailChangeScreen } from "./VerifyEmailChangeScreen";
@@ -54,9 +52,6 @@ interface Props {
   registration: RegistrationForm;
   registrationResult: RegistrationResult | null;
   login: LoginForm;
-  // Phase 09b sub-step 6 additions:
-  recoveryLogin: RecoveryLoginForm;
-  pendingRegenerateWords: string[] | null;
   me: MeResponse | null;
   // Phase 09c-2 additions:
   inviteContext: InviteContext | null;
@@ -72,8 +67,7 @@ export function AuthGate({
   authConfig,
   registration,
   registrationResult,
-  recoveryLogin,
-  pendingRegenerateWords,
+  login,
   me,
   inviteContext,
   verifyEmailChange,
@@ -230,7 +224,7 @@ export function AuthGate({
           dispatch({ kind: "auth_logged_in", result })
         }
         onGoRegister={() => dispatch({ kind: "auth_go_register" })}
-        onGoRecovery={() => dispatch({ kind: "auth_go_recovery" })}
+        onGoRecovery={(username) => dispatch({ kind: "auth_go_recovery", username })}
       />
     );
   }
@@ -286,51 +280,19 @@ export function AuthGate({
 
   if (authStage === "recovery-login") {
     return (
-      <RecoveryLoginScreen
-        form={recoveryLogin}
-        onFieldChange={(field, value) =>
-          dispatch({ kind: "auth_recovery_login_form_change", field, value })
-        }
-        onSubmitStart={() => dispatch({ kind: "auth_recovery_login_submit_start" })}
-        onSubmitError={(code, message) =>
-          dispatch({ kind: "auth_recovery_login_submit_error", code, message })
-        }
-        onRecovered={(result: RecoveryLoginResult) =>
-          dispatch({ kind: "auth_recovered", result })
-        }
+      <RecoveryResetScreen
+        initialUsername={login.username}
+        onDone={(me) => dispatch({ kind: "auth_recovery_reset_done", me })}
+        // The reset itself succeeded but /me didn't answer. The new password
+        // works; sending them to sign-in is honest and recoverable.
+        onFailedAfterReset={() => dispatch({ kind: "auth_me_absent" })}
         onGoLogin={() => dispatch({ kind: "auth_go_login" })}
       />
     );
   }
 
-  if (authStage === "regenerate-after-recovery") {
-    if (!me) {
-      // Shouldn't happen: auth_recovered always populates me before
-      // flipping to this stage. Defensive fallback.
-      return (
-        <div class="chalk-auth" data-testid="auth-regenerate-missing">
-          <div class="chalk-auth-card">
-            <p class="chalk-auth-error">
-              Identity missing. Please refresh and log in.
-            </p>
-          </div>
-        </div>
-      );
-    }
-    return (
-      <RegenerateScreen
-        me={me}
-        pendingWords={pendingRegenerateWords}
-        onWordsLoaded={(words) =>
-          dispatch({ kind: "auth_regenerate_words_loaded", words })
-        }
-        onConfirmed={() => dispatch({ kind: "auth_regenerate_confirmed" })}
-      />
-    );
-  }
-
   if (authStage === "offer-passkey-after-recovery") {
-    // md-6: after a recovery login the user has a session but no passkey
+    // md-6: after a recovery reset the user has a session but no passkey
     // on this device. Offer to enroll one before entering the chat;
     // skippable.
     return (

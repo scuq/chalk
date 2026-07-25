@@ -29,7 +29,7 @@ import type {
   CredentialAssertionOptionsJSON,
   AssertionResponseJSON,
 } from "../webauthn";
-import type { AuthConfig, LoginResult, MeResponse, RecoveryLoginResult, RegistrationResult } from "./types";
+import type { AuthConfig, LoginResult, MeResponse, RegistrationResult } from "./types";
 
 // ApiError represents a structured server error. The code field is
 // stable (see internal/auth/http.go); the message is human-readable.
@@ -284,40 +284,14 @@ export async function logout(): Promise<void> {
 
 // ---- recovery (sub-step 6) -------------------------------------------
 
-// recoveryLogin posts to /api/auth/recovery with the 24-word phrase.
-// On success the server Set-Cookies chalk_session and returns the
-// identity. The returned regenerate_required is always true in 5b/6;
-// the SPA MUST drive the user through regenerateRecovery() before
-// letting them into chat.
-export async function recoveryLogin(username: string, words: string[]): Promise<RecoveryLoginResult> {
-  const resp = await fetch("/api/auth/recovery", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, words }),
-  });
-  interface FinishResponse {
-    user_id: string;
-    username: string;
-    display_name: string;
-    role: string;
-    session_expires_at: string;
-    regenerate_required: boolean;
-  }
-  const body = await parseResponse<FinishResponse>(resp);
-  return {
-    userID: body.user_id,
-    username: body.username,
-    displayName: body.display_name,
-    role: body.role,
-    sessionExpiresAt: body.session_expires_at,
-    regenerateRequired: body.regenerate_required,
-  };
-}
-
 // regenerateRecovery posts to /api/auth/recovery/regenerate. Requires
 // an active session. Returns the freshly-generated 24-word phrase
 // which MUST be displayed once and never persisted by the SPA.
+//
+// 31-13: the phrase-login binding that used to live beside this is gone --
+// recovery now goes through /api/auth/recovery/reset-auth
+// (recovery-reset-api.ts), which resets the password instead of merely
+// signing in.
 export async function regenerateRecovery(): Promise<string[]> {
   const resp = await fetch("/api/auth/recovery/regenerate", {
     method: "POST",

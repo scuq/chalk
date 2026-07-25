@@ -1263,6 +1263,20 @@ func (d *HTTPDeps) handleRecovery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 31-13: under the hard cutover the phrase alone no longer mints a
+	// session -- that would sidestep the mandatory second factor and drop
+	// the user into a shell where the lost password can't be replaced.
+	// Enrolled accounts recover through /api/auth/recovery/reset-auth, which
+	// sets a new password and re-proves (or re-enrolls) TOTP. Un-enrolled
+	// pre-cutover accounts keep this path as their way back in.
+	if AuthV2Required() {
+		if ua, uerr := d.Store.GetUserAuth(r.Context(), user.ID); uerr == nil && ua.AuthV2Enrolled {
+			writeError(w, http.StatusConflict, "auth_reset_required",
+				"use the account reset flow: your recovery phrase sets a new password")
+			return
+		}
+	}
+
 	rec, err := d.Store.GetRecoveryCode(r.Context(), user.ID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {

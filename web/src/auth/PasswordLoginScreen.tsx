@@ -27,7 +27,7 @@ import { setKEK } from "./kek-holder";
 interface Props {
   onLoggedIn: (result: LoginResult) => void;
   onGoRegister: () => void;
-  onGoRecovery?: () => void;
+  onGoRecovery?: (username: string) => void;
   showRegisterLink?: boolean;
 }
 
@@ -266,8 +266,12 @@ export function PasswordLoginScreen({ onLoggedIn, onGoRegister, onGoRecovery, sh
             </>
           )}
           {onGoRecovery && (
-            <button class="chalk-auth-link" type="button" onClick={onGoRecovery}>
-              lost access? recover
+            <button
+              class="chalk-auth-link"
+              type="button"
+              onClick={() => onGoRecovery(username.trim().toLowerCase())}
+            >
+              lost password, authenticator, or passkey?
             </button>
           )}
         </p>

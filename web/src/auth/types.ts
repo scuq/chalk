@@ -53,6 +53,11 @@
 //     and renders VerifyEmailChangeScreen with success/error UX.
 //     Independent of session state (the token alone authorizes the
 //     verify call; a logged-out user can also complete it).
+//
+// 31-13: "recovery-login" now renders RecoveryResetScreen -- the recovery
+// phrase resets the password (and optionally TOTP) instead of merely signing
+// in. It shows the freshly issued words itself, so the separate
+// "regenerate-after-recovery" stage is gone.
 export type AuthStage =
   | "bootstrapping"
   | "login"
@@ -61,7 +66,6 @@ export type AuthStage =
   | "verifying-email-change"
   | "confirming-recovery"
   | "recovery-login"
-  | "regenerate-after-recovery"
   | "offer-passkey-after-recovery"
   | "authed";
 
@@ -121,25 +125,6 @@ export const initialLoginForm: LoginForm = {
   errorMessage: null,
 };
 
-// RecoveryLoginForm: SPA-side draft state of the recovery login form.
-// `phrase` holds the raw text the user types/pastes; we normalize at
-// submit time. busy/error mirror LoginForm.
-export interface RecoveryLoginForm {
-  username: string;
-  phrase: string;
-  busy: boolean;
-  errorCode: string | null;
-  errorMessage: string | null;
-}
-
-export const initialRecoveryLoginForm: RecoveryLoginForm = {
-  username: "",
-  phrase: "",
-  busy: false,
-  errorCode: null,
-  errorMessage: null,
-};
-
 // RegistrationResult: what register/finish returned. Held for the
 // duration of the recovery screen so the user can see their identity
 // AND copy the words. After auth_recovery_confirmed it's cleared
@@ -170,20 +155,6 @@ export interface LoginResult {
   totpPending?: string;
 }
 
-// RecoveryLoginResult: what /api/auth/recovery returned. Same identity
-// shape as LoginResult plus regenerateRequired. In 09b-6 the latter is
-// always true; future flows might set it false (e.g. if a user is
-// going through recovery merely to rotate words proactively from a
-// settings page).
-export interface RecoveryLoginResult {
-  userID: string;
-  username: string;
-  displayName: string;
-  role: string;
-  sessionExpiresAt: string;
-  regenerateRequired: boolean;
-}
-
 // MeResponse: GET /api/auth/me when a valid session exists. Mirrors
 // the server's meResponse shape.
 export interface MeResponse {
@@ -212,12 +183,6 @@ export interface AuthState {
   // StatusBar display, app title bar, future settings panel. Null
   // when not authed.
   me: MeResponse | null;
-  // Sub-step 6: recovery login form + pending regenerate state.
-  recoveryLogin: RecoveryLoginForm;
-  // pendingRegenerateWords is the new 24-word phrase returned by
-  // /recovery/regenerate. Held only for the duration of the
-  // RegenerateScreen; cleared on confirm. Null at all other times.
-  pendingRegenerateWords: string[] | null;
   // Phase 09c-2 additions:
   inviteContext: InviteContext | null;
   verifyEmailChange: VerifyEmailChangeState | null;
@@ -356,8 +321,6 @@ export const initialAuthState: AuthState = {
   registrationResult: null,
   login: initialLoginForm,
   me: null,
-  recoveryLogin: initialRecoveryLoginForm,
-  pendingRegenerateWords: null,
   inviteContext: null,
   verifyEmailChange: null,
   myInvites: initialMyInvitesState,
@@ -388,14 +351,13 @@ export type AuthAction =
   // Navigation:
   | { kind: "auth_go_register" }
   | { kind: "auth_go_login" }
-  // Sub-step 6: recovery login:
-  | { kind: "auth_go_recovery" }
-  | { kind: "auth_recovery_login_form_change"; field: keyof RecoveryLoginForm; value: string }
-  | { kind: "auth_recovery_login_submit_start" }
-  | { kind: "auth_recovery_login_submit_error"; code: string; message: string }
-  | { kind: "auth_recovered"; result: RecoveryLoginResult }
-  | { kind: "auth_regenerate_words_loaded"; words: string[] }
-  | { kind: "auth_regenerate_confirmed" }
+  // Recovery reset (sub-step 6; reworked in 31-13):
+  // username carries whatever was typed on the login screen so the reset
+  // form can pre-fill it.
+  | { kind: "auth_go_recovery"; username?: string }
+  // The phrase reset the password (+ optionally TOTP), the server minted a
+  // session, and the screen resolved the identity via /me.
+  | { kind: "auth_recovery_reset_done"; me: MeResponse }
   | { kind: "auth_passkey_offer_done" }
   // ---- phase 09c-2: invites + email change -------------------------
   // URL-driven flows:

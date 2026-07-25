@@ -11,7 +11,7 @@
 //
 //	POST /api/auth/recovery/reset-auth
 //	  {username, words|phrase, auth_proof_b64, salt_b64, kdf_alg,
-//	   kdf_mem_kib, kdf_iters, kdf_par, reset_totp}
+//	   kdf_mem_kib, kdf_iters, kdf_par, reset_totp, totp_code}
 //	  Forgot-password path, gated by the RECOVERY phrase (the auth-only
 //	  phrase; NOT the encryption phrase, which never leaves the client).
 //	  Verifies + consumes the recovery code exactly like /api/auth/recovery,
@@ -22,14 +22,22 @@
 //	  contract requires immediately installing a new one). The client must
 //	  afterwards re-create the password seed wrap from the ENCRYPTION
 //	  phrase so new devices can unlock keys with the new password.
+//
+//	  31-13: unless reset_totp is set, an account with a confirmed TOTP
+//	  secret must also send a live totp_code -- the recovery phrase resets
+//	  the password, it does not become a single-factor bypass of the second
+//	  factor.
 package auth
 
 import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/scuq/chalk/internal/store"
 )
 
@@ -139,6 +147,9 @@ type resetAuthRequest struct {
 	Phrase   string   `json:"phrase"`
 	newPasswordFields
 	ResetTOTP bool `json:"reset_totp"`
+	// TOTPCode is the live second factor. Required when the account has a
+	// confirmed TOTP secret and ResetTOTP is false; ignored otherwise.
+	TOTPCode string `json:"totp_code"`
 }
 
 type resetAuthResponse struct {
@@ -146,6 +157,64 @@ type resetAuthResponse struct {
 	Username      string   `json:"username"`
 	RecoveryWords []string `json:"recovery_words"`
 	TOTPReset     bool     `json:"totp_reset"`
+}
+
+// verifyResetTOTP checks the live second factor on a recovery-driven reset.
+// Accounts without a confirmed TOTP secret pass through. Writes the error
+// response itself and returns false on failure.
+func (d *HTTPDeps) verifyResetTOTP(w http.ResponseWriter, r *http.Request, userID uuid.UUID, code string) bool {
+	if code == "" {
+		ua, err := d.Store.GetUserAuth(r.Context(), userID)
+		if errors.Is(err, store.ErrNotFound) {
+			return true // pre-migration account: no second factor to prove
+		}
+		if err != nil {
+			d.Logger.Printf("recovery/reset-auth: GetUserAuth: %v", err)
+			writeError(w, http.StatusInternalServerError, "lookup_failed", "internal error")
+			return false
+		}
+		if ua.TOTPConfirmed() {
+			writeError(w, http.StatusUnauthorized, "totp_required",
+				"enter a code from your authenticator app, or choose to reset two-factor")
+			return false
+		}
+		return true
+	}
+
+	now := time.Now()
+	skew := TOTPSkew()
+	res, lockedUntil, err := d.Store.VerifyConsumeTOTP(r.Context(), userID, now,
+		TOTPMaxFailures(), TOTPLockout(),
+		func(secretEnc []byte, lastStep int64) (int64, bool) {
+			secret, derr := DecryptTOTPSecret(secretEnc)
+			if derr != nil {
+				d.Logger.Printf("recovery/reset-auth: decrypt totp secret: %v", derr)
+				return 0, false
+			}
+			return ValidateTOTP(secret, code, now, skew)
+		})
+	if err != nil {
+		d.Logger.Printf("recovery/reset-auth: VerifyConsumeTOTP: %v", err)
+		writeError(w, http.StatusInternalServerError, "verify_failed", "internal error")
+		return false
+	}
+	switch res {
+	case store.TOTPNotEnrolled, store.TOTPSuccess:
+		return true
+	case store.TOTPLocked:
+		retry := int(time.Until(lockedUntil).Seconds())
+		if retry < 1 {
+			retry = 1
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(retry))
+		writeError(w, http.StatusTooManyRequests, "totp_locked",
+			"too many incorrect codes; try again later")
+		return false
+	default:
+		writeError(w, http.StatusUnauthorized, "invalid_totp",
+			"incorrect authentication code")
+		return false
+	}
 }
 
 func (d *HTTPDeps) handleRecoveryResetAuth(w http.ResponseWriter, r *http.Request) {
@@ -217,6 +286,15 @@ func (d *HTTPDeps) handleRecoveryResetAuth(w http.ResponseWriter, r *http.Reques
 			"the recovery words don't match this account")
 		return
 	}
+
+	// Second factor, verified BEFORE the recovery code is consumed so a
+	// mistyped code doesn't burn the phrase. Skipped when the authenticator
+	// is exactly what was lost -- there the phrase stands alone and TOTP is
+	// cleared below for re-enrollment through the minted session.
+	if !req.ResetTOTP && !d.verifyResetTOTP(w, r, user.ID, strings.TrimSpace(req.TOTPCode)) {
+		return
+	}
+
 	if err := d.Store.MarkRecoveryCodeUsed(r.Context(), user.ID); err != nil {
 		d.Logger.Printf("recovery/reset-auth: MarkRecoveryCodeUsed: %v", err)
 		writeError(w, http.StatusInternalServerError, "mark_used_failed",

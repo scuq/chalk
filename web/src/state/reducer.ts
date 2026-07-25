@@ -881,14 +881,6 @@ export function reducer(state: AppState, action: Action): AppState {
           errorMessage: null,
         },
         registrationResult: null,
-        recoveryLogin: {
-          username: "",
-          phrase: "",
-          busy: false,
-          errorCode: null,
-          errorMessage: null,
-        },
-        pendingRegenerateWords: null,
         // Phase 09c-2: clear URL-driven and panel-driven state so a
         // subsequent re-login from the same tab starts clean.
         inviteContext: null,
@@ -942,106 +934,28 @@ export function reducer(state: AppState, action: Action): AppState {
         },
       };
 
-    // ---- Phase 09b sub-step 6: recovery login + regenerate ----------
+    // ---- recovery reset (09b sub-step 6; reworked in 31-13) ---------
 
     case "auth_go_recovery":
-      // User clicked "lost your passkey? recover" on LoginScreen.
+      // User clicked "lost access? recover" on the login screen. Carry the
+      // username over so it isn't retyped; everything else the flow needs
+      // (phrase, new password, TOTP codes) stays local to the screen so no
+      // credential material lands in app state.
       return {
         ...state,
         authStage: "recovery-login",
-        // Pre-fill the username so the user doesn't retype.
-        recoveryLogin: {
-          ...state.recoveryLogin,
-          username: state.login.username,
-          phrase: "",
-          errorCode: null,
-          errorMessage: null,
-        },
+        login: { ...state.login, username: action.username ?? state.login.username },
       };
 
-    case "auth_recovery_login_form_change":
-      return {
-        ...state,
-        recoveryLogin: {
-          ...state.recoveryLogin,
-          [action.field]: action.value,
-          errorCode: null,
-          errorMessage: null,
-        },
-      };
-
-    case "auth_recovery_login_submit_start":
-      return {
-        ...state,
-        recoveryLogin: {
-          ...state.recoveryLogin,
-          busy: true,
-          errorCode: null,
-          errorMessage: null,
-        },
-      };
-
-    case "auth_recovery_login_submit_error":
-      return {
-        ...state,
-        recoveryLogin: {
-          ...state.recoveryLogin,
-          busy: false,
-          errorCode: action.code,
-          errorMessage: action.message,
-        },
-      };
-
-    case "auth_recovered":
-      // Recovery validated. Server has set the cookie, marked the old
-      // recovery code as consumed, and returned regenerate_required.
-      // Move to the regenerate stage; RegenerateScreen will auto-call
-      // /recovery/regenerate on mount.
-      //
-      // We populate `me` here (similar to auth_logged_in) so the
-      // identity is available for StatusBar copy if the user gets
-      // stuck on RegenerateScreen and somehow sees the chat shell.
-      // (They shouldn't — authStage gates that.)
-      return {
-        ...state,
-        authStage: "regenerate-after-recovery",
-        recoveryLogin: {
-          ...state.recoveryLogin,
-          busy: false,
-          phrase: "", // clear the words from memory ASAP
-          errorCode: null,
-          errorMessage: null,
-        },
-        me: {
-          userID: action.result.userID,
-          username: action.result.username,
-          displayName: action.result.displayName,
-          role: action.result.role,
-          email: "",
-          emailVerifiedAt: "",
-          sessionExpiresAt: action.result.sessionExpiresAt,
-        },
-      };
-
-    case "auth_regenerate_words_loaded":
-      // /recovery/regenerate returned. Hold the new words for display
-      // on the RecoveryScreen (intent=regenerated). They live in state
-      // ONLY until auth_regenerate_confirmed, when they're cleared.
-      return {
-        ...state,
-        pendingRegenerateWords: action.words,
-      };
-
-    case "auth_regenerate_confirmed":
-      // User acknowledged the new recovery words. Clear them from
-      // state. md-6: instead of going straight to authed, offer to
-      // enroll a passkey on this device first (the user recovered
-      // because this device had none). The cookie was set back on
-      // /recovery so the add-passkey ceremony + the WS both work.
+    case "auth_recovery_reset_done":
+      // Password (and possibly TOTP) reset, session minted, new recovery
+      // words already acknowledged on-screen. Offer a passkey on this
+      // device before entering the chat -- the user is likely here because
+      // this device had none.
       return {
         ...state,
         authStage: "offer-passkey-after-recovery",
-        pendingRegenerateWords: null,
+        me: action.me,
       };
 
     case "auth_passkey_offer_done":
