@@ -62,6 +62,11 @@ type Message struct {
 	// clients can render a tombstone instead of decrypting an empty body.
 	DeletedAt *time.Time
 	DeletedBy *uuid.UUID
+	// Phase 37-1: in-place edit stamp. Non-nil once the sender has replaced
+	// the body; Seq and TS are unchanged by an edit, so an edited message
+	// keeps its place in history. Populated by GetMessage and the List* feed
+	// queries so clients can render an "(edited)" marker.
+	EditedAt *time.Time
 }
 
 // ErrMessageNotFound is returned by DeleteMessage when no row matches
@@ -127,34 +132,68 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (Message, error) {
 	return m, nil
 }
 
-// GetMessage fetches a message by (ts, id). Both fields are required because
-// the messages table is partitioned by ts.
-func (s *Store) GetMessage(ctx context.Context, ts time.Time, id uuid.UUID) (Message, error) {
+// messageSelect is the column list + joins shared by the two single-row
+// lookups below. They differ only in how they match ts, and keeping the
+// projection in one place keeps the three-site rule (columns / struct fields /
+// scan args) to a single site to check.
+//
+// Phase 9.6i: LEFT JOIN devices so the WS handler can pass sender_user_id to
+// clients (for username rendering). devices may be missing (purged), in which
+// case user_id comes back NULL and SenderUserID stays uuid.Nil.
+const messageSelect = `
+	SELECT m.id, m.channel_id, m.thread_id, m.parent_id,
+	       m.sender_device_id, d.user_id,
+	       m.seq, m.ts, m.delivered_at, m.body, m.key_version,
+	       m.deleted_at, m.deleted_by, m.edited_at
+	  FROM messages m
+	  LEFT JOIN devices d ON d.id = m.sender_device_id
+	 WHERE `
+
+func scanMessage(row pgx.Row) (Message, error) {
 	var m Message
-	// Phase 9.6i: LEFT JOIN devices so the WS handler can pass
-	// sender_user_id to clients (for username rendering). devices
-	// may be missing (purged); coalesce to NULL/uuid.Nil in that
-	// case.
 	var senderUser *uuid.UUID
-	err := s.Pool.QueryRow(ctx,
-		`SELECT m.id, m.channel_id, m.thread_id, m.parent_id,
-		        m.sender_device_id, d.user_id,
-		        m.seq, m.ts, m.delivered_at, m.body, m.key_version,
-		        m.deleted_at, m.deleted_by
-		   FROM messages m
-		   LEFT JOIN devices d ON d.id = m.sender_device_id
-		  WHERE m.ts = $1 AND m.id = $2`,
-		ts, id,
-	).Scan(
+	err := row.Scan(
 		&m.ID, &m.ChannelID, &m.ThreadID, &m.ParentID,
 		&m.SenderDeviceID, &senderUser,
 		&m.Seq, &m.TS, &m.DeliveredAt, &m.Body, &m.KeyVersion,
-		&m.DeletedAt, &m.DeletedBy,
+		&m.DeletedAt, &m.DeletedBy, &m.EditedAt,
 	)
 	if senderUser != nil {
 		m.SenderUserID = *senderUser
 	}
 	return m, translateErr(err)
+}
+
+// GetMessage fetches a message by its EXACT (ts, id). Both fields are required
+// because the messages table is partitioned by ts.
+//
+// The ts must be full precision, which in practice means it came from another
+// store call or from a pubsub event -- NOT off the wire. Wire timestamps are
+// unix-millis while messages.ts is microsecond-precision TIMESTAMPTZ, so an
+// exact match against a wire ts finds nothing. Use GetMessageAtWireTS for that.
+func (s *Store) GetMessage(ctx context.Context, ts time.Time, id uuid.UUID) (Message, error) {
+	return scanMessage(s.Pool.QueryRow(ctx,
+		messageSelect+`m.ts = $1 AND m.id = $2`, ts, id))
+}
+
+// GetMessageAtWireTS fetches a message using a ts that came off the wire in
+// unix-millis.
+//
+// The wire carries ts as unix-millis (MessagePayload.TS is m.TS.UnixMilli()),
+// but messages.ts is microsecond-precision, so `ts = $1` against a wire value
+// matches nothing at all -- not "usually", never, unless a message happened to
+// land exactly on a millisecond boundary. This matches the millis-floored ts
+// as a half-open 1ms range [ts, ts+1ms), which contains exactly the original
+// row, and which also preserves partition pruning (the table is
+// range-partitioned on ts). Same window DeleteMessage and EditMessage use.
+//
+// Returns the row with its FULL-precision TS, which is what callers need for
+// anything that then writes (message_reactions carries the message ts in its
+// composite FK) or publishes (the pubsub listener re-fetches by exact ts).
+func (s *Store) GetMessageAtWireTS(ctx context.Context, wireTS time.Time, id uuid.UUID) (Message, error) {
+	return scanMessage(s.Pool.QueryRow(ctx,
+		messageSelect+`m.id = $2
+		   AND m.ts >= $1 AND m.ts < $1 + interval '1 millisecond'`, wireTS, id))
 }
 
 // DeleteMessage soft-deletes a message: it scrubs the body to an empty bytea,
@@ -231,6 +270,92 @@ func (s *Store) DeleteMessage(
 			return err
 		}
 		m.ID = id
+		// Phase 37-4: reactions go with the body. Leaving them would keep
+		// "who reacted to this, and with what (for anyone holding the key)"
+		// on the server for content that is supposed to be gone from it.
+		// Same transaction as the tombstone: both or neither.
+		return ScrubReactionsForMessageTx(ctx, tx, m.TS, id)
+	})
+	if err != nil {
+		return Message{}, err
+	}
+	return m, nil
+}
+
+// EditMessage replaces a message's body in place and stamps edited_at. The
+// new body is ciphertext the caller re-encrypted under keyVersion; the server
+// never sees either version in the clear, so an edit is opaque to it beyond
+// "this row's bytes changed".
+//
+// WHAT DOES NOT MOVE: seq and ts are untouched. seq is the per-channel
+// ordering every client agrees on, so an edited message must keep its place
+// in history; ts is the partition key, so changing it would move the row
+// between partitions. Only body, key_version and edited_at change.
+//
+// The ts match uses the same half-open 1ms window as DeleteMessage -- the
+// wire carries unix-millis while messages.ts is microsecond-precision, and
+// the range keeps partition pruning alive. channel_id is matched too, so a
+// caller can't reach a message by guessing its id alone.
+//
+// deleted_at IS NULL in the WHERE means an edit can never resurrect a
+// tombstoned message: the scrub wins permanently. That case is reported as
+// ErrAlreadyDeleted rather than ErrMessageNotFound so the handler can say
+// something truthful.
+//
+// AUTHORIZATION IS THE CALLER'S JOB. This primitive does not check who is
+// editing or how old the message is -- handleEditMessage enforces
+// sender-only and the edit window before calling. Keeping the policy in the
+// handler matches DeleteMessage, whose governance rules live there too.
+//
+// Returns the updated row (ID, ChannelID, Seq, TS, EditedAt populated) so the
+// handler can build the message_edited push without a second query. Errors:
+//   - ErrAlreadyDeleted: the row exists but is a tombstone.
+//   - ErrMessageNotFound: no row for (ts-window, id, channel_id).
+func (s *Store) EditMessage(
+	ctx context.Context,
+	ts time.Time,
+	id, channelID uuid.UUID,
+	body []byte,
+	keyVersion int,
+) (Message, error) {
+	var m Message
+	err := s.withTx(ctx, func(tx pgx.Tx) error {
+		row := tx.QueryRow(ctx,
+			`UPDATE messages
+			    SET body = $4,
+			        key_version = $5,
+			        edited_at = now()
+			  WHERE id = $2 AND channel_id = $3
+			    AND ts >= $1 AND ts < $1 + interval '1 millisecond'
+			    AND deleted_at IS NULL
+			 RETURNING channel_id, seq, ts, edited_at`,
+			ts, id, channelID, body, keyVersion,
+		)
+		if err := row.Scan(&m.ChannelID, &m.Seq, &m.TS, &m.EditedAt); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// Zero rows updated: either no such message in this
+				// (ts-window, id, channel_id), or it's a tombstone.
+				var exists bool
+				if e2 := tx.QueryRow(ctx,
+					`SELECT EXISTS(
+					   SELECT 1 FROM messages
+					    WHERE id = $2 AND channel_id = $3
+					      AND ts >= $1 AND ts < $1 + interval '1 millisecond'
+					 )`,
+					ts, id, channelID,
+				).Scan(&exists); e2 != nil {
+					return e2
+				}
+				if exists {
+					return ErrAlreadyDeleted
+				}
+				return ErrMessageNotFound
+			}
+			return err
+		}
+		m.ID = id
+		m.Body = body
+		m.KeyVersion = &keyVersion
 		return nil
 	})
 	if err != nil {

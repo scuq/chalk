@@ -358,7 +358,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 	rows, err := s.Pool.Query(ctx,
 		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
 		        m.ts, m.seq, m.body, m.key_version,
-		        m.deleted_at, m.deleted_by,
+		        m.deleted_at, m.deleted_by, m.edited_at,
 		        m.parent_id, m.thread_id,
 		        COALESCE(r.cnt, 0) AS reply_count,
 		        COALESCE(r.last_seq, 0) AS last_reply_seq,
@@ -407,10 +407,11 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		var lastReplyKeyVersion *int
 		var deletedAt *time.Time
 		var deletedBy *uuid.UUID
+		var editedAt *time.Time
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &senderDev, &senderUser,
 			&m.TS, &m.Seq, &m.Body, &m.KeyVersion,
-			&deletedAt, &deletedBy,
+			&deletedAt, &deletedBy, &editedAt,
 			&parentID, &threadID, &replyCount, &lastReplySeq,
 			&lastReplySender, &lastReplyBody, &lastReplyKeyVersion,
 		); err != nil {
@@ -431,6 +432,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		m.LastReplyKeyVersion = lastReplyKeyVersion
 		m.DeletedAt = deletedAt
 		m.DeletedBy = deletedBy
+		m.EditedAt = editedAt
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {
@@ -468,7 +470,7 @@ func (s *Store) ListMessagesByThread(
 	rows, err := s.Pool.Query(ctx,
 		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
 		        m.ts, m.seq, m.body, m.key_version,
-		        m.deleted_at, m.deleted_by,
+		        m.deleted_at, m.deleted_by, m.edited_at,
 		        m.parent_id, m.thread_id
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
@@ -491,10 +493,11 @@ func (s *Store) ListMessagesByThread(
 		var tID *uuid.UUID
 		var deletedAt *time.Time
 		var deletedBy *uuid.UUID
+		var editedAt *time.Time
 		if err := rows.Scan(
 			&m.ID, &m.ChannelID, &senderDev, &senderUser,
 			&m.TS, &m.Seq, &m.Body, &m.KeyVersion,
-			&deletedAt, &deletedBy,
+			&deletedAt, &deletedBy, &editedAt,
 			&parentID, &tID,
 		); err != nil {
 			return nil, err
@@ -509,6 +512,7 @@ func (s *Store) ListMessagesByThread(
 		m.ThreadID = tID
 		m.DeletedAt = deletedAt
 		m.DeletedBy = deletedBy
+		m.EditedAt = editedAt
 		out = append(out, m)
 	}
 	return out, rows.Err()
