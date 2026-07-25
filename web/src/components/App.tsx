@@ -2499,8 +2499,10 @@ export function App() {
               ☰
             </button>
           )}
-          <Logo />
-          <h1>chalk</h1>
+          <div class="chalk-brand">
+            <Logo />
+            <h1>chalk</h1>
+          </div>
           {/* Pop chalk out into its own right-sized window. Hidden when we
               ARE the pop-out (window.opener is set), so the button doesn't
               invite spawning windows from windows. No noopener here on

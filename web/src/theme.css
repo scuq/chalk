@@ -179,19 +179,22 @@ html, body {
   color: var(--chalk-fg-bright);
 }
 
-/* The mark scales with the wordmark it sits next to. .chalk-header-left
-   aligns its items on the baseline, and an svg's baseline is its bottom
-   edge, so the mark lands on the wordmark's baseline; the negative margin
-   drops it a hair further so it reads centred on the letterforms. */
-.chalk-logo {
-  width: 1.35em;
-  height: 1.35em;
-  flex: none;
+/* Mark + wordmark are one unit: their own box so the gap between them stays
+   tight regardless of .chalk-header-left's wider spacing to the popout
+   button, and so the mark centres on the letterforms instead of sitting on
+   their baseline (an svg's baseline is its bottom edge, which would leave
+   the box towering over the cap height). */
+.chalk-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  font-size: var(--chalk-size-title);
 }
 
-.chalk-header .chalk-logo {
-  font-size: var(--chalk-size-title);
-  margin-bottom: -0.12em;
+.chalk-logo {
+  width: 1.15em;
+  height: 1.15em;
+  flex: none;
 }
 
 .chalk-main {
@@ -5858,9 +5861,8 @@ body.chalk-resizing .chalk-sidebar-resizer {
     font-size: calc(16px * var(--chalk-font-scale));
   }
 
-  .chalk-header .chalk-logo {
+  .chalk-brand {
     font-size: calc(16px * var(--chalk-font-scale));
-    margin-bottom: 0;
   }
 
   /* Connection detail text ("connected to ...") is the first thing to go
