@@ -5,17 +5,51 @@
  * themes (a "dim" or "high-contrast" variant) can override by setting
  * data-theme="dim" on <html>. Phase 07 ships only the default theme.
  *
- * Hack font is bundled locally so the page renders the right glyphs
- * even with no network -- fonts/ contains the woff2 (phase 07 ships
- * a placeholder; drop in the real Hack font file there).
+ * Hack is bundled as woff2 in fonts/ so the page renders the right
+ * glyphs with no network and no third-party font CDN.
  *
  * No CSS framework -- the whole sheet is ~6 KB after minify.
  */
 
-/* Phase 07 ships without a bundled font file. The font chain
- * below names "Hack" first; OS monospace fallback covers the
- * gap. To enable a real font later, add an @font-face block
- * here with a RELATIVE url so esbuild can resolve it. */
+/*! Hack typeface v3.003 -- https://github.com/source-foundry/Hack
+ *  Copyright 2018 Source Foundry Authors, MIT License.
+ *  Bitstream Vera Sans Mono Copyright 2003 Bitstream Inc., Bitstream
+ *  Vera License. Full text: web/fonts/HACK-LICENSE.txt.
+ *  Marked as a legal comment so the notice survives minification and
+ *  ships with the bundle that carries the font bytes.
+ */
+
+/* Relative urls so esbuild's file loader hashes the woff2 into dist/.
+   The browser only fetches the faces a page actually uses, so a typical
+   session pulls regular + bold and never touches the italics. */
+@font-face {
+  font-family: "Hack";
+  src: url("../fonts/hack-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Hack";
+  src: url("../fonts/hack-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Hack";
+  src: url("../fonts/hack-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Hack";
+  src: url("../fonts/hack-bolditalic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
 
 :root {
   /* Palette -- matrix green tuned just a hair off pure #00FF41 so it
@@ -32,12 +66,21 @@
   --chalk-warn:         #ffcc00;
   --chalk-error:        #ff4d4d;
 
-  /* Type */
-  --chalk-font: "Hack", ui-monospace, "Cascadia Code", "JetBrains Mono",
-                "SF Mono", Consolas, "Roboto Mono", monospace;
-  --chalk-size-base: 14px;
-  --chalk-size-small: 12px;
-  --chalk-size-title: 18px;
+  /* Type. --chalk-font and --chalk-font-scale are the two knobs the
+     per-device display prefs write as inline styles on <html> (see
+     src/display-prefs.ts); everything below derives from them, so a
+     scale change resizes the whole UI in one repaint. The values here
+     are the defaults for a device that has never set a preference. */
+  --chalk-font-mono: "Hack", ui-monospace, "Cascadia Code", "JetBrains Mono",
+                     "SF Mono", Consolas, "Roboto Mono", monospace;
+  --chalk-font-sans: system-ui, -apple-system, "Segoe UI", Roboto,
+                     "Helvetica Neue", Arial, sans-serif;
+  --chalk-font-serif: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+  --chalk-font: var(--chalk-font-mono);
+  --chalk-font-scale: 1;
+  --chalk-size-base: calc(14px * var(--chalk-font-scale));
+  --chalk-size-small: calc(12px * var(--chalk-font-scale));
+  --chalk-size-title: calc(18px * var(--chalk-font-scale));
 
   /* Spacing rhythm -- 4px grid */
   --chalk-s1: 4px;
@@ -608,7 +651,7 @@ html, body {
   width: 24px;
   height: 24px;
   font-family: inherit;
-  font-size: 16px;
+  font-size: calc(16px * var(--chalk-font-scale));
   line-height: 1;
   cursor: pointer;
   padding: 0;
@@ -668,7 +711,7 @@ html, body {
 
 .chalk-sidebar-item-tag,
 .chalk-channel-header-tag {
-  font-size: 10px;
+  font-size: calc(10px * var(--chalk-font-scale));
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--chalk-fg-dim);
@@ -750,7 +793,7 @@ html, body {
   border: 1px solid var(--chalk-accent);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   color: var(--chalk-fg);
-  font-size: 11px;
+  font-size: calc(11px * var(--chalk-font-scale));
   line-height: 1.5;
   text-align: left;
   white-space: nowrap;
@@ -879,7 +922,7 @@ html, body {
   background: transparent;
   border: none;
   color: var(--chalk-fg-dim);
-  font-size: 24px;
+  font-size: calc(24px * var(--chalk-font-scale));
   line-height: 1;
   cursor: pointer;
   padding: 0;
@@ -904,7 +947,7 @@ html, body {
   background: transparent;
   border: none;
   color: var(--chalk-fg-dim);
-  font-size: 18px;
+  font-size: calc(18px * var(--chalk-font-scale));
   line-height: 1;
   cursor: pointer;
   padding: 0;
@@ -1188,7 +1231,7 @@ html, body {
   color: var(--chalk-warn);
   border: 1px solid var(--chalk-warn);
   padding: 0 var(--chalk-s1);
-  font-size: 10px;
+  font-size: calc(10px * var(--chalk-font-scale));
   letter-spacing: 0.05em;
 }
 
@@ -2401,7 +2444,7 @@ html, body {
 }
 
 .chalk-presence-mode-badge {
-  font-size: 10px;
+  font-size: calc(10px * var(--chalk-font-scale));
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--chalk-fg-dim, #5a8a5a);
@@ -2593,6 +2636,31 @@ html, body {
 }
 .chalk-profile-theme-swatch-preview--light {
   background: linear-gradient(135deg, #f7f5ee 0%, #f7f5ee 50%, #2d6e3f 50%, #2d6e3f 100%);
+}
+
+/* Font picker: same option rows as the theme picker, with an "Ag"
+   rendered in the candidate family where the color swatch sits. Each
+   sample names its own stack so the row previews the face you'd get
+   rather than the one currently applied. */
+.chalk-profile-font-sample {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--chalk-radius);
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-bright);
+  font-size: var(--chalk-size-small);
+}
+.chalk-profile-font-sample--mono {
+  font-family: var(--chalk-font-mono);
+}
+.chalk-profile-font-sample--sans {
+  font-family: var(--chalk-font-sans);
+}
+.chalk-profile-font-sample--serif {
+  font-family: var(--chalk-font-serif);
 }
 
 .chalk-profile-theme-name {
@@ -3079,7 +3147,7 @@ html, body {
   background: transparent;
   border: none;
   color: var(--chalk-fg-dim);
-  font-size: 18px;
+  font-size: calc(18px * var(--chalk-font-scale));
   line-height: 1;
   cursor: pointer;
   padding: 2px 8px;
@@ -3177,7 +3245,7 @@ html, body {
   /* Phase 10e-tweak: smaller + italic. The italic marks the line as
      meta-context (preview of another message) so it doesn't read
      as a primary message row. */
-  font-size: 11px;
+  font-size: calc(11px * var(--chalk-font-scale));
   font-style: italic;
   cursor: pointer;
   padding: 0;
@@ -4048,7 +4116,7 @@ html, body {
 
 .chalk-sidebar-voicecount {
   margin-left: auto;
-  font-size: 10px;
+  font-size: calc(10px * var(--chalk-font-scale));
   color: var(--chalk-fg-dim);
   border: 1px solid var(--chalk-border);
   padding: 0 4px;
@@ -4115,7 +4183,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: calc(12px * var(--chalk-font-scale));
   color: var(--chalk-fg-dim);
   line-height: 1.6;
   min-width: 0;
@@ -4153,19 +4221,19 @@ html, body {
 }
 
 .chalk-voice-note {
-  font-size: 12px;
+  font-size: calc(12px * var(--chalk-font-scale));
   color: var(--chalk-fg-dim);
 }
 
 .chalk-voice-error {
   margin-top: var(--chalk-s2);
-  font-size: 12px;
+  font-size: calc(12px * var(--chalk-font-scale));
   color: var(--chalk-error);
 }
 
 /* 30-6: feature-flag-off note shown in place of the call panel. */
 .chalk-voice-disabled {
-  font-size: 12px;
+  font-size: calc(12px * var(--chalk-font-scale));
   color: var(--chalk-fg-dim);
 }
 
@@ -4190,7 +4258,7 @@ html, body {
 }
 
 .chalk-voice-dock-status {
-  font-size: 11px;
+  font-size: calc(11px * var(--chalk-font-scale));
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--chalk-fg-bright);
@@ -4202,7 +4270,7 @@ html, body {
 
 .chalk-voice-dock-duration {
   margin-left: auto;
-  font-size: 11px;
+  font-size: calc(11px * var(--chalk-font-scale));
   color: var(--chalk-fg-dim);
   font-variant-numeric: tabular-nums;
 }
@@ -4212,7 +4280,7 @@ html, body {
   border: none;
   padding: 0;
   font: inherit;
-  font-size: 12px;
+  font-size: calc(12px * var(--chalk-font-scale));
   color: var(--chalk-fg);
   cursor: pointer;
   text-align: left;
@@ -4249,7 +4317,7 @@ html, body {
 /* 30-5i: autoplay-blocked audio nudge inside the connected dock. Amber to
    read as an actionable notice, not an error. */
 .chalk-voice-audionudge {
-  font-size: 11px;
+  font-size: calc(11px * var(--chalk-font-scale));
   color: var(--chalk-warn);
   cursor: default;
 }
@@ -4288,7 +4356,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
+  font-size: calc(28px * var(--chalk-font-scale));
   color: var(--chalk-fg-muted);
   background: var(--chalk-bg-elev-2);
   user-select: none;
@@ -4300,7 +4368,7 @@ html, body {
   position: absolute;
   right: 3px;
   bottom: 3px;
-  font-size: 10px;
+  font-size: calc(10px * var(--chalk-font-scale));
   color: var(--chalk-fg-bright);
   background: rgba(0, 0, 0, 0.7);
   padding: 0 4px;
@@ -4378,7 +4446,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
+  font-size: calc(28px * var(--chalk-font-scale));
   color: var(--chalk-fg-muted);
   background: var(--chalk-bg-elev-2);
   user-select: none;
@@ -4394,7 +4462,7 @@ html, body {
 }
 
 .chalk-voice-peer--big .chalk-voice-avatar {
-  font-size: 64px;
+  font-size: calc(64px * var(--chalk-font-scale));
 }
 
 .chalk-voice-peer-label {
@@ -4406,13 +4474,13 @@ html, body {
   align-items: center;
   gap: 4px;
   padding: 2px 6px;
-  font-size: 11px;
+  font-size: calc(11px * var(--chalk-font-scale));
   background: rgba(0, 0, 0, 0.65);
   color: var(--chalk-fg);
 }
 
 .chalk-voice-peer--strip .chalk-voice-peer-label {
-  font-size: 10px;
+  font-size: calc(10px * var(--chalk-font-scale));
   padding: 1px 4px;
 }
 
@@ -4427,14 +4495,14 @@ html, body {
   flex: 0 0 auto;
   border: 1px solid var(--chalk-border);
   padding: 0 3px;
-  font-size: 9px;
+  font-size: calc(9px * var(--chalk-font-scale));
   text-transform: uppercase;
   color: var(--chalk-fg-dim);
 }
 
 .chalk-voice-peer-conn {
   margin-left: auto;
-  font-size: 10px;
+  font-size: calc(10px * var(--chalk-font-scale));
   color: var(--chalk-warn);
 }
 
@@ -4464,7 +4532,7 @@ html, body {
   border: 1px dotted var(--chalk-border);
   color: var(--chalk-fg-dim);
   font: inherit;
-  font-size: 9px;
+  font-size: calc(9px * var(--chalk-font-scale));
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 0 4px;
@@ -4524,13 +4592,13 @@ html, body {
 }
 
 .chalk-voice-duration {
-  font-size: 12px;
+  font-size: calc(12px * var(--chalk-font-scale));
   color: var(--chalk-fg-bright);
   font-variant-numeric: tabular-nums;
 }
 
 .chalk-voice-relay {
-  font-size: 10px;
+  font-size: calc(10px * var(--chalk-font-scale));
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--chalk-fg-dim);
@@ -4539,7 +4607,7 @@ html, body {
 }
 
 .chalk-voice-ctl {
-  font-size: 12px;
+  font-size: calc(12px * var(--chalk-font-scale));
 }
 
 .chalk-voice-ctl--off {
@@ -4563,7 +4631,7 @@ html, body {
   margin-top: var(--chalk-s2);
   border: 1px dashed var(--chalk-border);
   padding: var(--chalk-s2);
-  font-size: 11px;
+  font-size: calc(11px * var(--chalk-font-scale));
 }
 
 .chalk-voice-drawer-head {
@@ -5047,7 +5115,7 @@ html, body {
   border: 1px solid transparent;
   border-radius: var(--chalk-radius);
   padding: 2px 6px;
-  font-size: 16px;
+  font-size: calc(16px * var(--chalk-font-scale));
   line-height: 1.2;
   cursor: pointer;
   opacity: 0.6;
@@ -5078,7 +5146,7 @@ html, body {
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--chalk-radius);
-  font-size: 20px;
+  font-size: calc(20px * var(--chalk-font-scale));
   line-height: 1;
   padding: 4px;
   cursor: pointer;
@@ -5445,7 +5513,7 @@ html, body {
   border-radius: var(--chalk-radius);
   color: var(--chalk-fg-bright);
   font-family: inherit;
-  font-size: 16px;
+  font-size: calc(16px * var(--chalk-font-scale));
   line-height: 1;
   padding: 6px 10px;
   cursor: pointer;
@@ -5482,7 +5550,7 @@ html, body {
   border: none;
   color: var(--chalk-fg-dim);
   font-family: inherit;
-  font-size: 18px;
+  font-size: calc(18px * var(--chalk-font-scale));
   line-height: 1;
   padding: var(--chalk-s2);
   cursor: pointer;
@@ -5559,7 +5627,7 @@ html, body {
   }
 
   .chalk-header h1 {
-    font-size: 16px;
+    font-size: calc(16px * var(--chalk-font-scale));
   }
 
   /* Connection detail text ("connected to ...") is the first thing to go
@@ -5648,11 +5716,13 @@ html, body {
   }
 
   /* iOS zooms the viewport when a focused control renders below 16px,
-     and never zooms back out. Every field pays the 2px to avoid it. */
+     and never zooms back out. Every field pays the 2px to avoid it --
+     and max() keeps that floor intact when the device font scale is
+     set below 1. */
   input,
   textarea,
   select {
-    font-size: 16px;
+    font-size: max(16px, calc(16px * var(--chalk-font-scale)));
   }
 
   /* -- thread panel: full screen instead of a third column ----------- */
@@ -5702,7 +5772,7 @@ html, body {
   .chalk-message-delete {
     opacity: 1;
     pointer-events: auto;
-    font-size: 11px;
+    font-size: calc(11px * var(--chalk-font-scale));
     padding: 1px 6px;
   }
 

@@ -37,6 +37,7 @@ import {
   deletePasskey,
   type PasskeyInfo,
 } from "../auth/api";
+import { FONT_CHOICES, SCALE_STEPS, useDisplayPrefs } from "../display-prefs";
 import { SecurityPanel } from "./SecurityPanel"; // 31-8
 import { performRegistration, WebAuthnError } from "../webauthn";
 import { RecoveryScreen } from "../auth/RecoveryScreen";
@@ -130,6 +131,10 @@ export function ProfilePanel({
   const [rotateError, setRotateError] = useState<string>("");
   // att-2: transient "cleared" confirmation for the image cache control.
   const [imageCacheCleared, setImageCacheCleared] = useState(false);
+
+  // Font family + size. Device-local, so unlike theme these aren't
+  // threaded down from App -- the hook reads and persists them itself.
+  const [display, setDisplay] = useDisplayPrefs();
 
   // md-4-2: passkey management. The list loads on mount; addState gates
   // the add button while the browser ceremony runs. null list = not yet
@@ -340,9 +345,9 @@ export function ProfilePanel({
             </dl>
           </section>
 
-          {onSetTheme && (
-            <section class="chalk-profile-appearance">
-              <h3>appearance</h3>
+          <section class="chalk-profile-appearance">
+            <h3>appearance</h3>
+            {onSetTheme && (
               <div class="chalk-profile-field">
                 <label class="chalk-profile-label" for="theme-picker">theme</label>
                 <div class="chalk-profile-theme-picker" id="theme-picker" role="radiogroup" aria-label="theme">
@@ -381,8 +386,60 @@ export function ProfilePanel({
                   the theme follows you across devices.
                 </p>
               </div>
-            </section>
-          )}
+            )}
+
+            <div class="chalk-profile-field">
+              <label class="chalk-profile-label" for="font-picker">font</label>
+              <div class="chalk-profile-theme-picker" id="font-picker" role="radiogroup" aria-label="font">
+                {FONT_CHOICES.map((f) => (
+                  <label
+                    key={f.value}
+                    class={`chalk-profile-theme-option ${display.font === f.value ? "chalk-profile-theme-option--active" : ""}`}
+                  >
+                    <input
+                      type="radio"
+                      name="display-font"
+                      value={f.value}
+                      checked={display.font === f.value}
+                      onChange={() => setDisplay({ font: f.value })}
+                      data-testid={`font-option-${f.value}`}
+                    />
+                    <span class="chalk-profile-theme-swatch">
+                      <span
+                        class={`chalk-profile-font-sample chalk-profile-font-sample--${f.value}`}
+                        aria-hidden="true"
+                      >
+                        Ag
+                      </span>
+                      <span class="chalk-profile-theme-name">{f.label}</span>
+                      <span class="chalk-profile-theme-desc">{f.desc}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div class="chalk-profile-field">
+              <label class="chalk-profile-label" for="font-size">text size</label>
+              <select
+                id="font-size"
+                class="chalk-profile-select"
+                value={String(display.scale)}
+                onChange={(e) => setDisplay({ scale: Number((e.target as HTMLSelectElement).value) })}
+                data-testid="display-font-scale"
+              >
+                {SCALE_STEPS.map((s) => (
+                  <option key={s.value} value={String(s.value)}>
+                    {s.label} ({Math.round(s.value * 100)}%)
+                  </option>
+                ))}
+              </select>
+              <p class="chalk-profile-hint">
+                font and text size are stored on this device only, so your
+                phone and your desktop can differ.
+              </p>
+            </div>
+          </section>
 
           {onSetChatPref && chatPrefs && (
             <section class="chalk-profile-chat">

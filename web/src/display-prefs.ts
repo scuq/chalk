@@ -1,0 +1,133 @@
+// chalk-web -- per-device display preferences (font family + font size).
+//
+// Deliberately NOT server-synced prefs like theme. The whole point is
+// that the phone and the desktop disagree: a 14px mono that reads fine
+// on a 27" monitor is squint-inducing on a phone held at arm's length.
+// So these live in localStorage, keyed per browser, and never leave the
+// device.
+//
+// Both knobs are applied as inline custom properties on <html>:
+//
+//   --chalk-font        the family stack (an alias into --chalk-font-*)
+//   --chalk-font-scale  a multiplier every font-size in theme.css runs
+//                       through, so one value resizes the whole UI
+//
+// Inline styles outrank the :root and [data-theme=...] blocks, so the
+// device preference wins over whatever the active theme sets.
+
+import { useCallback, useEffect, useState } from "preact/hooks";
+
+export type FontChoice = "mono" | "sans" | "serif";
+
+export interface DisplayPrefs {
+  font: FontChoice;
+  scale: number;
+}
+
+export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = { font: "mono", scale: 1 };
+
+const STORAGE_KEY = "chalk.display.v1";
+
+// Clamp bounds rather than an enum: the stored value only ever comes
+// from the steps below, but a hand-edited localStorage entry shouldn't
+// be able to render the app unusable (or invisible).
+export const MIN_SCALE = 0.8;
+export const MAX_SCALE = 1.5;
+
+export const FONT_CHOICES: { value: FontChoice; label: string; desc: string }[] = [
+  { value: "mono", label: "mono", desc: "Hack, bundled" },
+  { value: "sans", label: "sans", desc: "system UI face" },
+  { value: "serif", label: "serif", desc: "system serif" },
+];
+
+export const SCALE_STEPS: { value: number; label: string }[] = [
+  { value: 0.85, label: "extra small" },
+  { value: 0.925, label: "small" },
+  { value: 1, label: "normal" },
+  { value: 1.1, label: "large" },
+  { value: 1.25, label: "extra large" },
+];
+
+function isFontChoice(v: unknown): v is FontChoice {
+  return v === "mono" || v === "sans" || v === "serif";
+}
+
+// normalizeDisplayPrefs turns anything at all into usable prefs: an
+// unknown font or a missing/NaN scale falls back to the default, and an
+// out-of-range scale is clamped instead of rejected.
+export function normalizeDisplayPrefs(raw: unknown): DisplayPrefs {
+  if (!raw || typeof raw !== "object") return { ...DEFAULT_DISPLAY_PREFS };
+  const o = raw as Record<string, unknown>;
+  const font = isFontChoice(o.font) ? o.font : DEFAULT_DISPLAY_PREFS.font;
+  const n = typeof o.scale === "number" ? o.scale : Number(o.scale);
+  const scale = Number.isFinite(n)
+    ? Math.min(MAX_SCALE, Math.max(MIN_SCALE, n))
+    : DEFAULT_DISPLAY_PREFS.scale;
+  return { font, scale };
+}
+
+// The subset of HTMLElement applyDisplayPrefs needs, so the unit tests
+// can hand it a stub instead of standing up a DOM.
+export interface StyleTarget {
+  style: { setProperty(name: string, value: string): void };
+}
+
+export function applyDisplayPrefs(prefs: DisplayPrefs, target?: StyleTarget): void {
+  const el = target ?? (typeof document !== "undefined" ? document.documentElement : null);
+  if (!el) return;
+  el.style.setProperty("--chalk-font", `var(--chalk-font-${prefs.font})`);
+  el.style.setProperty("--chalk-font-scale", String(prefs.scale));
+}
+
+export function loadDisplayPrefs(): DisplayPrefs {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_DISPLAY_PREFS };
+    return normalizeDisplayPrefs(JSON.parse(raw));
+  } catch {
+    // Private-browsing localStorage throws, and a corrupt entry throws
+    // in JSON.parse. Neither is worth breaking startup over.
+    return { ...DEFAULT_DISPLAY_PREFS };
+  }
+}
+
+export function saveDisplayPrefs(prefs: DisplayPrefs): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+  } catch {
+    // Same as above: the setting just won't survive a reload.
+  }
+}
+
+// useDisplayPrefs owns the setting for whatever component renders the
+// picker. There's no app-level state to thread it through -- nothing on
+// the server knows or cares about it -- so the hook reads, applies, and
+// persists on its own.
+export function useDisplayPrefs(): [DisplayPrefs, (next: Partial<DisplayPrefs>) => void] {
+  const [prefs, setPrefs] = useState<DisplayPrefs>(loadDisplayPrefs);
+
+  const update = useCallback((patch: Partial<DisplayPrefs>) => {
+    setPrefs((prev) => {
+      const next = normalizeDisplayPrefs({ ...prev, ...patch });
+      applyDisplayPrefs(next);
+      saveDisplayPrefs(next);
+      return next;
+    });
+  }, []);
+
+  // A second tab on the same device is the same device: follow its
+  // changes rather than letting the two disagree until reload.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY) return;
+      const next = loadDisplayPrefs();
+      applyDisplayPrefs(next);
+      setPrefs(next);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  return [prefs, update];
+}
