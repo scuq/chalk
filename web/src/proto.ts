@@ -42,6 +42,11 @@ export interface WelcomePayload {
   // 30-6: server feature flag (CHALK_VOICE_ENABLED). Absent from older
   // servers -> voice UI hidden (the safe default).
   voice_enabled?: boolean;
+  // 39-1: the build serving this session -- release tag ("v0.3.27") or
+  // "0.0.0-dev", plus the short commit. Absent from older servers, in which
+  // case the badge reads "dev" and links at main.
+  server_version?: string;
+  server_commit?: string;
 }
 
 export interface SendPayload {

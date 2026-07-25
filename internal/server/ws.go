@@ -20,6 +20,7 @@ import (
 	"github.com/scuq/chalk/internal/proto"
 	"github.com/scuq/chalk/internal/pubsub"
 	"github.com/scuq/chalk/internal/store"
+	"github.com/scuq/chalk/internal/version"
 	"strings"
 )
 
@@ -333,6 +334,9 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// 30-6: tell the SPA whether voice is live on this server.
 	welcomePayload.VoiceEnabled = h.cfg.Voice.Enabled
+	// 39-1: what build is serving this session, for the header version badge.
+	welcomePayload.ServerVersion = version.Version
+	welcomePayload.ServerCommit = version.Commit
 	if sessionUser != nil {
 		welcomePayload.Username = sessionUser.Username
 		welcomePayload.DisplayName = sessionUser.DisplayName

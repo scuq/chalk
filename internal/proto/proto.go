@@ -141,6 +141,14 @@ type WelcomePayload struct {
 	// (join buttons, the create-modal voice checkbox, roster fetches)
 	// without a doomed round-trip. Mirrors CHALK_VOICE_ENABLED.
 	VoiceEnabled bool `json:"voice_enabled,omitempty"`
+	// 39-1: build identification for the SPA's version badge. The server
+	// and the web bundle ship in one image, so the server's version IS the
+	// app version -- the client has no build stamp of its own to consult.
+	// ServerVersion is the release tag ("v0.3.27") or "0.0.0-dev";
+	// ServerCommit is the short SHA (with a "-dirty" suffix off a dirty
+	// tree). Both are already public in the image's OCI labels.
+	ServerVersion string `json:"server_version,omitempty"`
+	ServerCommit  string `json:"server_commit,omitempty"`
 }
 
 // SendPayload is a plaintext message in phase 04. From phase 10 onwards the

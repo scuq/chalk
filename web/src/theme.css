@@ -5174,6 +5174,31 @@ body.chalk-resizing .chalk-sidebar-resizer {
   background: var(--chalk-bg-elev);
 }
 
+/* -- 39-1: version badge ------------------------------------------
+   Sits beside the wordmark, so it has to read as metadata rather
+   than as part of the brand: small, dim, and no underline until
+   hover. Size is fixed rather than relative because .chalk-brand
+   raises the font-size for the wordmark. */
+.chalk-version {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  text-decoration: none;
+  align-self: center;
+}
+.chalk-version:hover,
+.chalk-version:focus-visible {
+  color: var(--chalk-fg);
+  text-decoration: underline;
+}
+.chalk-version--badge {
+  /* Push off the wordmark by more than .chalk-brand's tight logo gap. */
+  margin-left: var(--chalk-s2);
+}
+.chalk-version--row {
+  color: var(--chalk-fg);
+  text-decoration: underline;
+}
+
 /* ============================================================
    Two more themes: snazzy-light and tokyo-night
    ============================================================
@@ -6051,6 +6076,12 @@ body.chalk-resizing .chalk-sidebar-resizer {
   /* Connection detail text ("connected to ...") is the first thing to go
      when the header has to fit next to the ☰ button. */
   .chalk-status-detail {
+    display: none;
+  }
+
+  /* 39-1: same reasoning for the version badge. The profile panel's about
+     section carries it (and the changelog link) on mobile. */
+  .chalk-version--badge {
     display: none;
   }
 

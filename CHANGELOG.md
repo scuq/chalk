@@ -13,6 +13,10 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **The version you're running is shown in the app.** It sits next to the
+  chalk wordmark in the header, and under "about" in your profile; clicking it
+  opens the changelog for that exact build. Development builds read "dev" and
+  link to the latest changelog instead.
 - **React without opening a menu.** A react button sits in the row actions,
   and pressing `r` while hovering a message opens the picker.
 

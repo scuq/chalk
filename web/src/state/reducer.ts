@@ -103,6 +103,8 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         voiceEnabled: action.voiceEnabled, // 30-6
+        serverVersion: action.serverVersion ?? "", // 39-1
+        serverCommit: action.serverCommit ?? "",
         user: {
           id: action.userID,
           device: action.deviceID,

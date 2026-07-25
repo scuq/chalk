@@ -130,6 +130,7 @@ import { reducer } from "../state/reducer";
 import { hasUnread, initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary, type ProposalView, type ReactionSet } from "../state/types";
 import { selectGiphyPref } from "../giphy/giphy";
 import { Logo } from "./Logo";
+import { VersionLink } from "./VersionLink";
 import { StatusBar } from "./StatusBar";
 import { Sidebar, ChannelGlyph } from "./Sidebar";
 import { MessageList } from "./MessageList";
@@ -1183,6 +1184,8 @@ export function App() {
           handle: w.handle ?? "",
           channels: w.channels,
           voiceEnabled: !!w.voice_enabled, // 30-6
+          serverVersion: w.server_version, // 39-1
+          serverCommit: w.server_commit,
         }),
       onFrame: (f: Frame) => handleFrame(f),
     });
@@ -2771,6 +2774,10 @@ export function App() {
           <div class="chalk-brand">
             <Logo />
             <h1>chalk</h1>
+            {/* 39-1: which build this is, linking to its changelog. Hidden on
+                mobile by CSS -- the header is already tight there, and the
+                profile panel carries the same link. */}
+            <VersionLink version={state.serverVersion} commit={state.serverCommit} />
           </div>
           {/* Pop chalk out into its own right-sized window. Hidden inside the
               pop-out itself (see popout.ts for how that's detected), so the
@@ -3320,6 +3327,8 @@ export function App() {
           onEmailChangeDismiss={() => dispatch({ kind: "email_change_dismissed" })}
           onRefresh={refreshProfile}
           refreshing={state.profileRefreshing}
+          serverVersion={state.serverVersion} // 39-1
+          serverCommit={state.serverCommit}
           theme={state.prefs.theme ?? "green"}
           onSetTheme={(t) => {
             // Phase 9.7b: send prefs_set; server merges, acks, and

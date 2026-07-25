@@ -44,6 +44,7 @@ import {
 } from "../auth/api";
 import { FONT_CHOICES, SCALE_STEPS, useDisplayPrefs } from "../display-prefs";
 import { SecurityPanel } from "./SecurityPanel"; // 31-8
+import { VersionLink } from "./VersionLink"; // 39-1
 import { performRegistration, WebAuthnError } from "../webauthn";
 import { RecoveryScreen } from "../auth/RecoveryScreen";
 
@@ -59,6 +60,10 @@ interface Props {
   // if the parent doesn't wire it, the refresh button doesn't render.
   onRefresh?: () => void;
   refreshing?: boolean;
+  // 39-1: the running build, for the "about" section. From the welcome
+  // frame, so empty until the socket is up.
+  serverVersion?: string;
+  serverCommit?: string;
   // Phase 9.7b: theme picker.
   theme?: string;
   onSetTheme?: (theme: string) => void;
@@ -131,6 +136,8 @@ export function ProfilePanel({
   onEmailChangeDismiss,
   onRefresh,
   refreshing,
+  serverVersion,
+  serverCommit,
 }: Props) {
   // Local UI state: are we in the rotate-recovery sub-view?
   // Local because no other component cares.
@@ -952,6 +959,28 @@ export function ProfilePanel({
             >
               {addState === "running" ? "follow your browser's prompt…" : "add a passkey to this device"}
             </button>
+          </section>
+
+          {/* 39-1: which build you're on, and what changed in it. */}
+          <section class="chalk-profile-about">
+            <h3>about</h3>
+            <dl class="chalk-profile-fields">
+              <dt>version</dt>
+              <dd>
+                <VersionLink
+                  version={serverVersion}
+                  commit={serverCommit}
+                  variant="row"
+                  testID="profile-version"
+                />
+                {serverCommit && serverCommit !== "unknown" && (
+                  <span class="chalk-profile-theme-desc"> ({serverCommit})</span>
+                )}
+              </dd>
+            </dl>
+            <p class="chalk-profile-hint">
+              opens the changelog for this build on github.
+            </p>
           </section>
         </div>
       </div>

@@ -360,6 +360,11 @@ export interface AppState {
   // roster seeding. false until the welcome frame says otherwise.
   voiceEnabled: boolean;
 
+  // 39-1: the build we're talking to (welcome.server_version/_commit), shown
+  // as the header version badge. Empty until the welcome frame lands.
+  serverVersion: string;
+  serverCommit: string;
+
   // Friends, fetched lazily when the create-channel modal opens.
   friends: Friend[];
   // Phase 9.6a: incoming + outgoing pending friend requests.
@@ -575,6 +580,8 @@ export const initialState: AppState = {
   proposals: {},
   voiceRosters: {},
   voiceEnabled: false,
+  serverVersion: "",
+  serverCommit: "",
   friends: [],
   friendsLoaded: false,
   // Phase 9.6a:
@@ -633,7 +640,17 @@ export const initialState: AppState = {
 
 export type Action =
   | { kind: "ws_state"; state: ConnectionState; detail?: string }
-  | { kind: "welcome"; userID: string; deviceID: string; handle: string; channels: string[]; voiceEnabled: boolean }
+  | {
+      kind: "welcome";
+      userID: string;
+      deviceID: string;
+      handle: string;
+      channels: string[];
+      voiceEnabled: boolean;
+      // 39-1: absent on older servers, hence optional.
+      serverVersion?: string;
+      serverCommit?: string;
+    }
   | { kind: "channels_loaded"; channels: ChannelSummary[] }
   | { kind: "channel_added"; channel: ChannelSummary }
   | { kind: "channel_removed"; channelID: string }
