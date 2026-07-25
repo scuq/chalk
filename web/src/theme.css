@@ -839,6 +839,25 @@ html, body {
   flex-direction: column;
 }
 
+/* Sibling of .chalk-modal for panels that size themselves (friends,
+   members, governance). It carries the SURFACE -- background, border,
+   scroll containment -- and leaves width/height to the panel class.
+   Without a ground of its own a panel would inherit the backdrop's
+   70% black scrim, which on a light theme turns the whole dialog into
+   muddy olive with unreadable text. */
+.chalk-modal-card {
+  background: var(--chalk-bg);
+  border: 1px solid var(--chalk-fg-bright);
+  border-radius: var(--chalk-radius);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  /* Panels that scroll internally (friends, members) never reach this;
+     it catches the ones that don't (governance) so a long list scrolls
+     instead of spilling past the viewport. */
+  overflow-y: auto;
+}
+
 .chalk-modal-header {
   display: flex;
   align-items: center;
@@ -2480,9 +2499,18 @@ html, body {
    only to surfaces that visibly elevate (modals, dropdowns,
    menus). Sidebar and headers already use background contrast. */
 [data-theme="light"] .chalk-modal,
+[data-theme="light"] .chalk-modal-card,
 [data-theme="light"] .chalk-presence-menu,
 [data-theme="light"] .chalk-status-menu {
-  box-shadow: 0 1px 3px rgba(31, 29, 23, 0.08);
+  box-shadow: 0 4px 16px rgba(31, 29, 23, 0.18);
+}
+
+/* The default scrim is 70% black, tuned for dropping a dark modal onto a
+   dark app. Over cream it reads as a muddy olive wash and drags the whole
+   window down with it. Lighter, and tinted with the theme's own near-black
+   so it dims rather than discolors. */
+[data-theme="light"] .chalk-modal-backdrop {
+  background: rgba(31, 29, 23, 0.45);
 }
 
 /* In light mode, the active-channel highlight in the sidebar is a
@@ -2610,7 +2638,9 @@ html, body {
   --chalk-fg:           #f0e8ff;
   --chalk-fg-dim:       #8a7ab8;
   --chalk-fg-bright:    #ff2eaa;
-  --chalk-fg-muted:     #5a4a8a;
+  /* Lifted from #5a4a8a (2.6:1): the muted tier carries timestamps and
+     placeholders, which vanished into the violet ground. */
+  --chalk-fg-muted:     #7a68ad;
   --chalk-border:       #4a2a8a;
   --chalk-accent:       #00f0ff;
   --chalk-warn:         #ffcc00;
@@ -2655,10 +2685,15 @@ html, body {
   --chalk-bg:           #002b36;
   --chalk-bg-elev:      #073642;
   --chalk-bg-elev-2:    #0e4a5c;
-  --chalk-fg:           #839496;
-  --chalk-fg-dim:       #586e75;
-  --chalk-fg-bright:    #93a1a1;
-  --chalk-fg-muted:     #45626b;
+  /* Shifted one step up solarized's own ramp (base1/base0/base00/base2
+     rather than base0/base01/base01/base1). base01 is the palette's
+     *comment* tone -- authentic, but chalk spends fg-dim on dialog help
+     text and inactive tabs, where 2.4:1 on an elevated row is not
+     readable. Every value here is still a published solarized hex. */
+  --chalk-fg:           #93a1a1;
+  --chalk-fg-dim:       #839496;
+  --chalk-fg-bright:    #eee8d5;
+  --chalk-fg-muted:     #657b83;
   --chalk-border:       #073642;
   --chalk-accent:       #268bd2;
   --chalk-warn:         #b58900;
@@ -4653,31 +4688,42 @@ html, body {
   --chalk-bg-elev:      #f0f2f5;
   --chalk-bg-elev-2:    #e2e7ec;
   --chalk-fg:           #3b3f51;
-  --chalk-fg-dim:       #767c90;
-  --chalk-fg-bright:    #0f9d70;
-  --chalk-fg-muted:     #9aa1b2;
+  /* Snazzy's published tints are tuned for syntax on an editor ground, not
+     for UI text: on #fafbfc they land at 2.5-4.2:1, which is what made the
+     friends dialog hard to read. Darkened just enough to clear 4.5:1 for
+     text and 3:1 for the muted tier, keeping the hues intact. */
+  --chalk-fg-dim:       #63697d;
+  --chalk-fg-bright:    #0b7d59;
+  --chalk-fg-muted:     #7a8195;
   --chalk-border:       #dce1e8;
-  --chalk-accent:       #d3399e;
+  --chalk-accent:       #b52a85;
   --chalk-warn:         #c26a00;
-  --chalk-error:        #e0433f;
+  --chalk-error:        #c0322f;
 
   color-scheme: light;
 }
 
 [data-theme="snazzy-light"] .chalk-presence-dot--online {
-  box-shadow: 0 0 4px rgba(15, 157, 112, 0.35);
+  box-shadow: 0 0 4px rgba(11, 125, 89, 0.35);
 }
 
 /* Flat light ground needs a hint of elevation on floating surfaces,
    same reasoning as the cream light theme. */
 [data-theme="snazzy-light"] .chalk-modal,
+[data-theme="snazzy-light"] .chalk-modal-card,
 [data-theme="snazzy-light"] .chalk-presence-menu,
 [data-theme="snazzy-light"] .chalk-status-menu {
-  box-shadow: 0 1px 3px rgba(27, 30, 43, 0.10);
+  box-shadow: 0 4px 16px rgba(27, 30, 43, 0.16);
+}
+
+/* Same reasoning as the cream theme: soften the scrim so it dims the app
+   instead of staining it. */
+[data-theme="snazzy-light"] .chalk-modal-backdrop {
+  background: rgba(27, 30, 43, 0.42);
 }
 
 [data-theme="snazzy-light"] .chalk-sidebar-item--active {
-  background: rgba(211, 57, 158, 0.10);
+  background: rgba(181, 42, 133, 0.10);
 }
 
 /* ---- tokyo-night: the standard Tokyo Night palette. */
@@ -4686,9 +4732,12 @@ html, body {
   --chalk-bg-elev:      #1f2335;
   --chalk-bg-elev-2:    #292e42;
   --chalk-fg:           #c0caf5;
-  --chalk-fg-dim:       #7982a9;
+  /* Tokyo Night's #565f89 comment tone is 2.8:1 here and its #7982a9 only
+     clears 4.5:1 against the base ground, not the elevated one. Both
+     lifted a step; the hues are unchanged. */
+  --chalk-fg-dim:       #858eb6;
   --chalk-fg-bright:    #c8d3f5;
-  --chalk-fg-muted:     #565f89;
+  --chalk-fg-muted:     #6e77a3;
   --chalk-border:       #292e42;
   --chalk-accent:       #7aa2f7;
   --chalk-warn:         #e0af68;
@@ -4709,8 +4758,77 @@ html, body {
   background: rgba(122, 162, 247, 0.14);
 }
 
+/* ============================================================
+   lcars: Star Trek TNG-era display panel
+   ============================================================
+   Okudagram palette on black: butterscotch body text, the signature
+   #ff9900 orange for emphasis, lilac for secondary, salmon for errors.
+   Accent is LCARS blue so it separates from the orange emphasis rather
+   than competing with it.
+
+   Beyond the variables this theme also bends three shape rules, because
+   LCARS is as much geometry as color: generous pill radii, uppercase
+   wide-tracked headers, and elbow-style colored rails on the surfaces
+   that frame content (sidebar, modals). Everything else inherits.
+   ============================================================ */
+
+[data-theme="lcars"] {
+  --chalk-bg:           #000000;
+  --chalk-bg-elev:      #14101f;
+  --chalk-bg-elev-2:    #241b3a;
+  --chalk-fg:           #ffcc99;
+  --chalk-fg-dim:       #cc99cc;
+  --chalk-fg-bright:    #ff9900;
+  --chalk-fg-muted:     #8877aa;
+  --chalk-border:       #664488;
+  --chalk-accent:       #99ccff;
+  --chalk-warn:         #ffcc66;
+  --chalk-error:        #cc6666;
+
+  /* LCARS panels are all rounded ends; 2px sharp would read as any
+     other dark theme. */
+  --chalk-radius: 10px;
+
+  color-scheme: dark;
+}
+
+/* Orange status light, matching the emphasis color rather than the
+   blue accent -- on a real LCARS panel the "active" tell is amber. */
+[data-theme="lcars"] .chalk-presence-dot--online {
+  background: var(--chalk-fg-bright);
+  box-shadow: 0 0 6px rgba(255, 153, 0, 0.55);
+}
+
+[data-theme="lcars"] .chalk-sidebar-item--active {
+  background: rgba(255, 153, 0, 0.16);
+}
+
+/* Headers as LCARS labels: uppercase, wide tracking, orange. The base
+   sheet lowercases modal titles, so this has to override explicitly. */
+[data-theme="lcars"] .chalk-modal-header h2,
+[data-theme="lcars"] .chalk-friends-title,
+[data-theme="lcars"] .chalk-members-title {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--chalk-fg-bright);
+}
+
+/* The elbow rail: a thick colored edge down the left of framed
+   surfaces, which is the single most recognizable LCARS cue. */
+[data-theme="lcars"] .chalk-modal,
+[data-theme="lcars"] .chalk-modal-card {
+  border: 1px solid var(--chalk-border);
+  border-left: 6px solid var(--chalk-fg-bright);
+}
+
 /* Picker swatches: hard-coded hex so each preview shows its OWN theme
    regardless of which theme is active, matching the 9.7c swatches. */
+.chalk-profile-theme-swatch-preview--lcars {
+  background: linear-gradient(135deg,
+    #000000 0%, #000000 50%,
+    #ff9900 50%, #ff9900 100%);
+}
+
 .chalk-profile-theme-swatch-preview--snazzy-light {
   background: linear-gradient(135deg,
     #fafbfc 0%, #fafbfc 50%,
