@@ -21,6 +21,19 @@ The engineering-level history (which slice shipped what) lives in
   without turning it red. Everything applies to a call you're already in, so
   you can fix a mic mid-conversation without leaving and rejoining, and the
   settings stay on the device rather than following you between machines.
+- **Choose when your mic transmits.** Four options, in the same place: always
+  on (what chalk did until now, and still the default), open when you speak,
+  push to talk, or push to mute. "When I speak" gives you two marks you drag
+  onto the level meter — one for where your voice sits, one for where the room
+  sits — so a pause mid-sentence doesn't cut you off, plus a setting for how
+  long to keep sending after you stop so your last syllable survives. A dot
+  next to the mute button shows when you're actually being heard.
+- **Keys for talking, muting and deafening.** Bind your own: hold-to-talk (or
+  hold-to-mute), a mute toggle, and deafen, which silences everyone at once and
+  mutes you along with them. Unmuting brings your ears back too. Note that keys
+  only reach chalk while a chalk tab is the window in front — a web page can't
+  claim a key from the rest of your system, so push to talk won't work from
+  inside a fullscreen game.
 
 ---
 

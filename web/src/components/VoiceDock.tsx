@@ -144,7 +144,7 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
           <AudioSink
             key={t.key}
             stream={t.stream}
-            muted={!!pref?.muted}
+            muted={snap.deafened || !!pref?.muted}
             volume={typeof pref?.volume === "number" ? pref.volume : 1}
           />
         );
@@ -160,7 +160,7 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
             <AudioSink
               key={t.key + ":screen"}
               stream={t.screenStream!}
-              muted={!!pref?.muted}
+              muted={snap.deafened || !!pref?.muted}
               volume={typeof pref?.volume === "number" ? pref.volume : 1}
             />
           );
@@ -242,6 +242,15 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
               <span class="chalk-voice-dock-channame">{snap.channelName || "voice"}</span>
             </button>
             <span class="chalk-voice-dock-spacer" />
+            {/* 41-5: the gate is open and we are audible. Absent while muted --
+                a live dot next to a mute button reads as a contradiction. */}
+            {!snap.muted && snap.micOpen && (
+              <span
+                class="chalk-voice-live"
+                title="your microphone is transmitting"
+                data-testid="voice-dock-live"
+              />
+            )}
             <button
               class={"chalk-btn chalk-voice-ctl" + (snap.muted ? " chalk-voice-ctl--off" : "")}
               type="button"
@@ -250,6 +259,15 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
               data-testid="voice-dock-mute"
             >
               {snap.muted ? "unmute" : "mute"}
+            </button>
+            <button
+              class={"chalk-btn chalk-voice-ctl" + (snap.deafened ? " chalk-voice-ctl--off" : "")}
+              type="button"
+              onClick={() => voiceSession.toggleDeafen()}
+              title={snap.deafened ? "hear everyone again" : "deafen: silence everyone, and you"}
+              data-testid="voice-dock-deafen"
+            >
+              {snap.deafened ? "undeafen" : "deafen"}
             </button>
             <button
               class="chalk-btn chalk-voice-ctl chalk-voice-ctl--leave"

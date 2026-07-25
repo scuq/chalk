@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_MIC_PREFS,
   MAX_GAIN,
+  MAX_HOLD_MS,
   MIN_GAIN,
   micConstraints,
   needsRecapture,
@@ -24,6 +25,13 @@ test("normalize keeps a valid pref untouched", () => {
     echoCancellation: false,
     noiseSuppression: true,
     autoGainControl: false,
+    mode: "ptt" as const,
+    vadOpen: 0.3,
+    vadClose: 0.1,
+    holdMs: 250,
+    keyTalk: "KeyV",
+    keyMute: "KeyM",
+    keyDeafen: "KeyD",
   };
   assert.deepEqual(normalizeMicPrefs(prefs), prefs);
 });
@@ -109,6 +117,40 @@ test("constraints map all three processing flags through", () => {
 test("constraints never carry gain -- it is ours, not the browser's", () => {
   const c = micConstraints({ ...DEFAULT_MIC_PREFS, gain: 1.8 }) as Record<string, unknown>;
   assert.equal("gain" in c, false);
+});
+
+test("normalize defaults to the mode that changes nothing", () => {
+  // An upgrade must not silently start gating microphones with thresholds
+  // nobody has calibrated -- see the comment on DEFAULT_MIC_PREFS.
+  assert.equal(normalizeMicPrefs({}).mode, "continuous");
+});
+
+test("normalize rejects a mode this build cannot run", () => {
+  assert.equal(normalizeMicPrefs({ mode: "telepathy" }).mode, "continuous");
+  assert.equal(normalizeMicPrefs({ mode: 3 }).mode, "continuous");
+  for (const m of ["continuous", "vad", "ptt", "ptm"]) {
+    assert.equal(normalizeMicPrefs({ mode: m }).mode, m, `${m} must round-trip`);
+  }
+});
+
+test("normalize never lets the silence floor rise above the speech threshold", () => {
+  // Inverted thresholds give a gate that can open but never close.
+  const p = normalizeMicPrefs({ vadOpen: 0.2, vadClose: 0.9 });
+  assert.equal(p.vadOpen, 0.2);
+  assert.equal(p.vadClose, 0.2, "clamped down to meet it");
+});
+
+test("normalize clamps the thresholds and the hold time", () => {
+  assert.equal(normalizeMicPrefs({ vadOpen: 5 }).vadOpen, 1);
+  assert.equal(normalizeMicPrefs({ vadOpen: -1 }).vadOpen, 0);
+  assert.equal(normalizeMicPrefs({ holdMs: -50 }).holdMs, 0);
+  assert.equal(normalizeMicPrefs({ holdMs: 99999 }).holdMs, MAX_HOLD_MS);
+});
+
+test("normalize keeps a long device id but rejects an absurd keybind", () => {
+  const long = "a".repeat(120);
+  assert.equal(normalizeMicPrefs({ deviceId: long }).deviceId, long, "ids are long hashes");
+  assert.equal(normalizeMicPrefs({ keyTalk: long }).keyTalk, "", "a key code is short");
 });
 
 test("gain alone never forces a recapture", () => {

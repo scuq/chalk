@@ -177,6 +177,7 @@ import { VoiceDock } from "./VoiceDock";
 import { SidebarResizer } from "./SidebarResizer";
 import { voiceBus } from "../voice/bus";
 import { voiceSession } from "../voice/session";
+import { installVoiceHotkeys } from "../voice/hotkeys";
 import { AuthGate } from "../auth/AuthGate";
 import { IdentitySetupScreen } from "../auth/IdentitySetupScreen";
 import { MigrationScreen } from "../auth/MigrationScreen"; // 31-9
@@ -2055,6 +2056,11 @@ export function App() {
       window.removeEventListener("keydown", unlock);
     };
   }, []);
+
+  // 41-5: the voice keybinds (push-to-talk / mute / deafen). Installed once for
+  // the app's lifetime -- the handlers no-op when nothing is bound, and the
+  // session ignores mute/deafen outside a call.
+  useEffect(() => installVoiceHotkeys(), []);
 
   // 33-3: read by mention detection inside handleFrame (see unreadRef).
   tabVisibleRef.current = tabVisible;

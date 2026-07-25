@@ -24,12 +24,21 @@
 //
 // Nothing here weakens E2E: this is all pre-SRTP, on the device.
 
-import { micConstraints, type MicPrefs } from "./mic-prefs";
+import { gateConfig, micConstraints, type MicPrefs } from "./mic-prefs";
+import { GATE_CLOSED, nextGate, type GateConfig, type GateState } from "./vad";
+
+/** How often the transmit gate re-decides. 20 ms is well under a syllable. */
+const GATE_TICK_MS = 20;
+
+/** Gate open/close ramp. Long enough not to click, short enough not to clip. */
+const GATE_RAMP_S = 0.008;
 
 export class MicChain {
   private readonly ctx: AudioContext;
   private readonly gainNode: GainNode;
   private readonly analyser: AnalyserNode;
+  /** The transmit gate: 1 while open, 0 while closed. */
+  private readonly gateNode: GainNode;
   private readonly dest: MediaStreamAudioDestinationNode;
   private readonly samples: Float32Array;
   /** The live getUserMedia stream. Held so it is not garbage-collected. */
@@ -38,9 +47,16 @@ export class MicChain {
   private muted = false;
   private closed = false;
 
+  private cfg: GateConfig;
+  private gate: GateState = GATE_CLOSED;
+  private keyHeld = false;
+  private timer: number | null = null;
+  private onGate: ((open: boolean) => void) | null = null;
+
   private constructor(ctx: AudioContext, raw: MediaStream, prefs: MicPrefs) {
     this.ctx = ctx;
     this.raw = raw;
+    this.cfg = gateConfig(prefs);
 
     this.gainNode = ctx.createGain();
     this.gainNode.gain.value = prefs.gain;
@@ -51,12 +67,58 @@ export class MicChain {
     this.analyser.fftSize = 1024;
     this.samples = new Float32Array(this.analyser.fftSize);
 
+    this.gateNode = ctx.createGain();
+    // Start open: every mode except VAD wants to transmit immediately, and VAD
+    // corrects itself on the first tick 20 ms later. Starting closed would clip
+    // the first word of anyone who talks the instant they join.
+    this.gateNode.gain.value = 1;
+    this.gate = { open: true, holdUntil: 0 };
+
     this.dest = ctx.createMediaStreamDestination();
 
     this.source = ctx.createMediaStreamSource(raw);
     this.source.connect(this.gainNode);
     this.gainNode.connect(this.analyser);
-    this.analyser.connect(this.dest);
+    this.analyser.connect(this.gateNode);
+    this.gateNode.connect(this.dest);
+
+    this.startGate();
+  }
+
+  /**
+   * The gate runs on a plain interval rather than in an AudioWorklet.
+   *
+   * A worklet would be immune to background-tab timer throttling, but it also
+   * means shipping the decision logic as a second copy inside a worklet script
+   * -- and that logic (vad.ts) is the part worth being able to unit-test. In
+   * practice a page holding a live getUserMedia and an RTCPeerConnection is
+   * exempt from timer throttling in Chrome and Firefox, so the interval keeps
+   * its cadence for exactly as long as a call is up, which is the only time the
+   * gate matters. Revisit if the worklet slot gets built for RNNoise anyway.
+   */
+  private startGate(): void {
+    this.timer = window.setInterval(() => {
+      const now = performance.now();
+      const prev = this.gate;
+      const next = nextGate(prev, this.cfg, {
+        // Only VAD consults the level, and reading it means an FFT-sized copy
+        // out of the analyser 50 times a second. The key-driven modes skip it.
+        level: this.cfg.mode === "vad" ? this.level() : 0,
+        keyHeld: this.keyHeld,
+        now,
+      });
+      if (next === prev || next.open === prev.open) {
+        this.gate = next;
+        return;
+      }
+      this.gate = next;
+      this.gateNode.gain.setTargetAtTime(
+        next.open ? 1 : 0,
+        this.ctx.currentTime,
+        GATE_RAMP_S,
+      );
+      this.onGate?.(next.open);
+    }, GATE_TICK_MS);
   }
 
   /**
@@ -119,6 +181,28 @@ export class MicChain {
     this.gainNode.gain.setTargetAtTime(gain, this.ctx.currentTime, 0.02);
   }
 
+  /** setPrefs applies everything that does not need a new capture. */
+  setPrefs(prefs: MicPrefs): void {
+    if (this.closed) return;
+    this.setGain(prefs.gain);
+    this.cfg = gateConfig(prefs);
+  }
+
+  /** setKeyHeld reports the push-to-talk / push-to-mute key's state. */
+  setKeyHeld(held: boolean): void {
+    this.keyHeld = held;
+  }
+
+  /** Whether the gate is currently passing audio. Drives the "live" indicator. */
+  get transmitting(): boolean {
+    return this.gate.open && !this.muted;
+  }
+
+  /** onGateChange fires on every gate transition. One subscriber; null clears. */
+  onGateChange(fn: ((open: boolean) => void) | null): void {
+    this.onGate = fn;
+  }
+
   /**
    * setMuted gates the RAW track rather than the published one. Muting the
    * destination track would leave the graph running on live mic audio, so the
@@ -133,7 +217,12 @@ export class MicChain {
     for (const t of this.raw.getAudioTracks()) t.enabled = !muted;
   }
 
-  /** level is the current RMS amplitude, 0..1, post-gain. For the VU meter. */
+  /**
+   * level is the current RMS amplitude, 0..1, post-gain but PRE-gate -- what
+   * the mic is hearing, not what is being sent. That is what the meter and the
+   * threshold sliders need: a meter that dropped to zero the moment the gate
+   * closed could never show you where to put the threshold that closed it.
+   */
   level(): number {
     if (this.closed) return 0;
     this.analyser.getFloatTimeDomainData(this.samples);
@@ -169,6 +258,9 @@ export class MicChain {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    if (this.timer !== null) window.clearInterval(this.timer);
+    this.timer = null;
+    this.onGate = null;
     // The raw tracks are what hold the device -- stopping only the published
     // destination track would leave the mic (and its indicator light) on.
     for (const t of this.raw.getTracks()) t.stop();

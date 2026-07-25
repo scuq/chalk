@@ -184,6 +184,8 @@ export interface VoiceCallCallbacks {
   onPeerScreenGone(key: string): void;
   /** Non-fatal, user-visible problem (peer aborted, signal failed, ...). */
   onError(message: string): void;
+  /** 41-5: the transmit gate opened or closed (VAD / push-to-talk). */
+  onMicGate?(open: boolean): void;
 }
 
 export interface VoiceCallOptions {
@@ -506,6 +508,7 @@ export class VoiceCall {
     const micStream = new MediaStream(captured.getAudioTracks());
     try {
       this.micChain = await MicChain.fromStream(micStream, this.micPrefs);
+      this.micChain.onGateChange((open) => this.o.callbacks.onMicGate?.(open));
     } catch (err) {
       this.diag(`mic graph unavailable, publishing raw capture: ${String(err)}`);
     }
@@ -634,6 +637,11 @@ export class VoiceCall {
   /** The current mic level, 0..1, post-gain. Null when there is no capture. */
   micLevel(): number | null {
     return this.micChain ? this.micChain.level() : null;
+  }
+
+  /** setKeyHeld reports the push-to-talk / push-to-mute key to the gate. */
+  setKeyHeld(held: boolean): void {
+    this.micChain?.setKeyHeld(held);
   }
 
   /**

@@ -10,20 +10,72 @@
 // POST-gain, so the bar responds to the slider as you move it.
 
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import { MAX_GAIN, MIN_GAIN, useMicPrefs } from "../voice/mic-prefs";
+import { MAX_GAIN, MAX_HOLD_MS, MIN_GAIN, useMicPrefs } from "../voice/mic-prefs";
 import { MicChain } from "../voice/mic-chain";
 import { describeMediaError } from "../voice/call";
 import { voiceSession } from "../voice/session";
+import { TRANSMIT_LABELS, TRANSMIT_MODES } from "../voice/vad";
+import { isTypingTarget, keyLabel } from "../voice/hotkeys";
 
 // Above this the signal is about to clip, and clipping is unrecoverable at the
 // far end where a quiet signal is merely quiet. The bar turns red here.
 const CLIP_LEVEL = 0.95;
+
+/**
+ * KeyBind: click, then press the key you want. Captures on the way DOWN the
+ * tree so the global voice hotkeys don't also act on the keystroke -- otherwise
+ * rebinding your mute key would mute you.
+ */
+function KeyBind({
+  label,
+  value,
+  onChange,
+  testId,
+}: {
+  label: string;
+  value: string;
+  onChange: (code: string) => void;
+  testId: string;
+}) {
+  const [capturing, setCapturing] = useState(false);
+
+  useEffect(() => {
+    if (!capturing) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setCapturing(false);
+      // Escape backs out; backspace/delete unbinds. Neither is a plausible
+      // voice key, and without them there is no way to undo a bind.
+      if (e.code === "Escape") return;
+      onChange(e.code === "Backspace" || e.code === "Delete" ? "" : e.code);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [capturing, onChange]);
+
+  return (
+    <div class="chalk-profile-sound-row">
+      <span>{label}</span>
+      <button
+        type="button"
+        class={`chalk-profile-sound-preview${capturing ? " is-capturing" : ""}`}
+        onClick={() => setCapturing((c) => !c)}
+        aria-label={`${label}: ${capturing ? "press a key" : keyLabel(value)}`}
+        data-testid={testId}
+      >
+        {capturing ? "press a key…" : keyLabel(value)}
+      </button>
+    </div>
+  );
+}
 
 export function MicSettings() {
   const [mic, setMic] = useMicPrefs();
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [metering, setMetering] = useState(false);
   const [level, setLevel] = useState(0);
+  const [transmitting, setTransmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // The preview capture, open only while metering outside a call. Held in a
@@ -64,7 +116,9 @@ export function MicSettings() {
 
     const tick = () => {
       if (stopped) return;
-      setLevel(preview.current ? preview.current.level() : (voiceSession.micLevel() ?? 0));
+      const chain = preview.current;
+      setLevel(chain ? chain.level() : (voiceSession.micLevel() ?? 0));
+      setTransmitting(chain ? chain.transmitting : voiceSession.snap().micOpen);
       raf = requestAnimationFrame(tick);
     };
 
@@ -103,12 +157,37 @@ export function MicSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metering]);
 
-  // Push a gain change into the preview immediately, so the bar tracks the
-  // slider under the user's finger. A live call gets the same change through
-  // voiceSession's own subscription (41-4).
+  // Push gain and gate changes into the preview immediately, so the bar tracks
+  // the slider under the user's finger. A live call gets the same change
+  // through voiceSession's own subscription (41-4).
   useEffect(() => {
-    preview.current?.setGain(mic.gain);
-  }, [mic.gain]);
+    preview.current?.setPrefs(mic);
+  }, [mic.gain, mic.mode, mic.vadOpen, mic.vadClose, mic.holdMs]);
+
+  // The global keybinds route the hold key to the live CALL, which does not
+  // exist while someone is only testing. Without this, pressing test in
+  // push-to-talk mode would show "silent" no matter what key you held -- the
+  // two modes that most need testing would be the two you cannot test.
+  useEffect(() => {
+    if (!metering || !mic.keyTalk) return;
+    if (mic.mode !== "ptt" && mic.mode !== "ptm") return;
+    const down = (e: KeyboardEvent) => {
+      if (e.code === mic.keyTalk && !isTypingTarget(e.target)) preview.current?.setKeyHeld(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code === mic.keyTalk) preview.current?.setKeyHeld(false);
+    };
+    const release = () => preview.current?.setKeyHeld(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", release);
+    return () => {
+      release();
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", release);
+    };
+  }, [metering, mic.mode, mic.keyTalk]);
 
   // The device and the processing flags are properties of the capture, so the
   // preview has to re-acquire to reflect them.
@@ -182,7 +261,30 @@ export function MicSettings() {
               class={`chalk-profile-mic-meter-fill${clipping ? " is-clipping" : ""}`}
               style={{ width: `${Math.round(level * 100)}%` }}
             />
+            {/* The thresholds sit ON the meter, because that is the only way
+                either number means anything: you watch where your voice lands
+                and put the marks around it. */}
+            {mic.mode === "vad" && (
+              <>
+                <span
+                  class="chalk-profile-mic-mark chalk-profile-mic-mark--close"
+                  style={{ left: `${mic.vadClose * 100}%` }}
+                />
+                <span
+                  class="chalk-profile-mic-mark chalk-profile-mic-mark--open"
+                  style={{ left: `${mic.vadOpen * 100}%` }}
+                />
+              </>
+            )}
           </div>
+          {metering && (
+            <span
+              class={`chalk-profile-mic-live${transmitting ? " is-live" : ""}`}
+              data-testid="mic-live"
+            >
+              {transmitting ? "sending" : "silent"}
+            </span>
+          )}
           <button
             type="button"
             class="chalk-profile-sound-preview"
@@ -198,6 +300,125 @@ export function MicSettings() {
             {error}
           </p>
         )}
+      </div>
+
+      <div class="chalk-profile-field">
+        <label class="chalk-profile-label">when to transmit</label>
+        <div class="chalk-profile-theme-picker" role="radiogroup" aria-label="transmit mode">
+          {TRANSMIT_MODES.map((m) => (
+            <label
+              class={`chalk-profile-theme-option${mic.mode === m ? " is-active" : ""}`}
+              key={m}
+            >
+              <input
+                type="radio"
+                name="mic-mode"
+                value={m}
+                checked={mic.mode === m}
+                onChange={() => setMic({ mode: m })}
+                data-testid={`mic-mode-${m}`}
+              />
+              <span class="chalk-profile-theme-name">{TRANSMIT_LABELS[m].label}</span>
+              <span class="chalk-profile-theme-desc">{TRANSMIT_LABELS[m].desc}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {mic.mode === "vad" && (
+        <div class="chalk-profile-field">
+          <label class="chalk-profile-label" for="mic-vad-open">
+            speech above{" "}
+            <span class="chalk-profile-theme-desc">
+              ({Math.round(mic.vadOpen * 100)}% — over this, the mic opens)
+            </span>
+          </label>
+          <input
+            id="mic-vad-open"
+            type="range"
+            class="chalk-profile-range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={mic.vadOpen}
+            onChange={(e) => setMic({ vadOpen: Number((e.target as HTMLInputElement).value) })}
+            data-testid="mic-vad-open"
+          />
+          <label class="chalk-profile-label" for="mic-vad-close">
+            silence below{" "}
+            <span class="chalk-profile-theme-desc">
+              ({Math.round(mic.vadClose * 100)}% — under this, it closes again)
+            </span>
+          </label>
+          <input
+            id="mic-vad-close"
+            type="range"
+            class="chalk-profile-range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={mic.vadClose}
+            onChange={(e) => setMic({ vadClose: Number((e.target as HTMLInputElement).value) })}
+            data-testid="mic-vad-close"
+          />
+          <p class="chalk-profile-hint">
+            press test and talk normally. put "speech above" just under where your voice sits, and
+            "silence below" just over where the room sits. the gap between them is what stops the
+            mic flickering on a pause.
+          </p>
+        </div>
+      )}
+
+      {(mic.mode === "vad" || mic.mode === "ptt") && (
+        <div class="chalk-profile-field">
+          <label class="chalk-profile-label" for="mic-hold">
+            keep sending for{" "}
+            <span class="chalk-profile-theme-desc">
+              ({Math.round(mic.holdMs)} ms after you stop)
+            </span>
+          </label>
+          <input
+            id="mic-hold"
+            type="range"
+            class="chalk-profile-range"
+            min={0}
+            max={MAX_HOLD_MS}
+            step={50}
+            value={mic.holdMs}
+            onChange={(e) => setMic({ holdMs: Number((e.target as HTMLInputElement).value) })}
+            data-testid="mic-hold"
+          />
+        </div>
+      )}
+
+      <div class="chalk-profile-field">
+        <label class="chalk-profile-label">keys</label>
+        <div class="chalk-profile-sound-list">
+          {(mic.mode === "ptt" || mic.mode === "ptm") && (
+            <KeyBind
+              label={mic.mode === "ptt" ? "hold to talk" : "hold to mute"}
+              value={mic.keyTalk}
+              onChange={(code) => setMic({ keyTalk: code })}
+              testId="mic-key-talk"
+            />
+          )}
+          <KeyBind
+            label="mute / unmute"
+            value={mic.keyMute}
+            onChange={(code) => setMic({ keyMute: code })}
+            testId="mic-key-mute"
+          />
+          <KeyBind
+            label="deafen"
+            value={mic.keyDeafen}
+            onChange={(code) => setMic({ keyDeafen: code })}
+            testId="mic-key-deafen"
+          />
+        </div>
+        <p class="chalk-profile-hint">
+          keys only work while a chalk tab is in front — a web page can't take a key from the rest
+          of your system, so push to talk won't reach you inside a fullscreen game.
+        </p>
       </div>
 
       <div class="chalk-profile-field">

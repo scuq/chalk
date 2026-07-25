@@ -174,6 +174,10 @@ export interface VoiceSessionSnap {
    * policy (common right after an auto-rejoin with no user gesture). The
    * dock shows a "click to enable audio" nudge; any click resumes it. */
   audioBlocked: boolean;
+  /** 41-5 (A4): deafened -- every remote sink silenced, and us muted with it. */
+  deafened: boolean;
+  /** 41-5: the transmit gate is passing audio right now. Drives the live dot. */
+  micOpen: boolean;
 }
 
 export interface JoinArgs {
@@ -210,7 +214,12 @@ class VoiceSessionImpl {
     peerAudio: {},
     rejoinHint: null,
     audioBlocked: false,
+    deafened: false,
+    micOpen: true,
   };
+
+  /** Self-mute state from before deafening, restored when un-deafening. */
+  private mutedBeforeDeafen = false;
 
   constructor() {
     // One bus subscription for the app's lifetime; the manager filters by
@@ -350,6 +359,7 @@ class VoiceSessionImpl {
             }
           },
           onError: (msg) => this.set({ error: msg }),
+          onMicGate: (open) => this.set({ micOpen: open }),
         },
       });
       this.call = call;
@@ -436,7 +446,10 @@ class VoiceSessionImpl {
       joinedAt: null,
       peerAudio: {},
       audioBlocked: false,
+      deafened: false,
+      micOpen: true,
     });
+    this.mutedBeforeDeafen = false;
     if (call) await call.leave();
   }
 
@@ -478,7 +491,36 @@ class VoiceSessionImpl {
     if (!this.call) return;
     const next = !this.s.muted;
     this.call.setMuted(next);
-    this.set({ muted: next });
+    // Unmuting while deafened is the usual way people discover they are still
+    // deafened, so let it lift the deafen rather than leaving them talking into
+    // a room they cannot hear.
+    this.set({ muted: next, deafened: next ? this.s.deafened : false });
+  }
+
+  /**
+   * toggleDeafen silences every remote sink and mutes us with them -- the
+   * standard pairing, and the honest one: staying audible in a conversation you
+   * have stopped listening to is worse than being off entirely.
+   *
+   * Receive-side deafening is a flag the dock's AudioSinks read; it is not
+   * signaled, so nobody else's client needs to know or agree.
+   */
+  toggleDeafen(): void {
+    if (!this.call) return;
+    const next = !this.s.deafened;
+    if (next) {
+      this.mutedBeforeDeafen = this.s.muted;
+      this.call.setMuted(true);
+      this.set({ deafened: true, muted: true });
+    } else {
+      this.call.setMuted(this.mutedBeforeDeafen);
+      this.set({ deafened: false, muted: this.mutedBeforeDeafen });
+    }
+  }
+
+  /** setKeyHeld reports the push-to-talk / push-to-mute key to the live call. */
+  setKeyHeld(held: boolean): void {
+    this.call?.setKeyHeld(held);
   }
 
   /** Returns false when the call has no camera track (joined audio-only). */

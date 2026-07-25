@@ -11,6 +11,7 @@
 // and sound prefs already set.
 
 import { useCallback, useEffect, useState } from "preact/hooks";
+import { isTransmitMode, type GateConfig, type TransmitMode } from "./vad";
 
 export interface MicPrefs {
   /** "" means the system default device, whatever it happens to be today. */
@@ -21,6 +22,24 @@ export interface MicPrefs {
   /** The browser's built-in suppressor (WebRTC NS3). */
   noiseSuppression: boolean;
   autoGainControl: boolean;
+
+  // Transmit gate (Addendum A4). See vad.ts for what the modes mean.
+  mode: TransmitMode;
+  /** Speech-above threshold, 0..1. */
+  vadOpen: number;
+  /** Silence-below threshold, 0..1. Never above vadOpen. */
+  vadClose: number;
+  /** Keep transmitting this long after the reason to transmit goes away, ms. */
+  holdMs: number;
+
+  // Keybinds, as KeyboardEvent.code ("" = unassigned). They only fire while a
+  // chalk tab has focus -- a web page cannot claim an OS-global hotkey.
+  /** Hold key for push-to-talk / push-to-mute. */
+  keyTalk: string;
+  /** Toggles self-mute (broadcast to the roster, like the call panel button). */
+  keyMute: string;
+  /** Toggles deafen: silences everyone else, and yourself with them. */
+  keyDeafen: string;
 }
 
 const STORAGE_KEY = "chalk.mic.v1";
@@ -32,19 +51,50 @@ const STORAGE_KEY = "chalk.mic.v1";
 export const MIN_GAIN = 0;
 export const MAX_GAIN = 2;
 
+// Two seconds of hold is already an absurdly long tail; the useful range is
+// 100-500 ms and the slider should spend its travel there.
+export const MAX_HOLD_MS = 2000;
+
+// A keybind is stored as a KeyboardEvent.code. The cap is a sanity bound on a
+// hand-edited entry, not a real constraint -- the longest real code is about
+// 20 characters ("MediaTrackPrevious").
+const MAX_KEY_LEN = 32;
+
 // Everything the browser offers is on out of the box, which is also what
 // getUserMedia({audio: true}) did before this existed -- so an existing user's
 // first call after upgrading sounds exactly like their last one before it.
+//
+// The transmit mode defaults to "continuous" for the same reason, even though
+// the design doc makes VAD the default: an upgrade must not silently start
+// gating people's microphones with thresholds nobody has calibrated. Being cut
+// off mid-sentence by a setting you never chose is far worse than transmitting
+// a bit of room tone, and the profile panel makes the better modes findable.
 export const DEFAULT_MIC_PREFS: MicPrefs = {
   deviceId: "",
   gain: 1,
   echoCancellation: true,
   noiseSuppression: true,
   autoGainControl: true,
+  mode: "continuous",
+  vadOpen: 0.2,
+  vadClose: 0.08,
+  holdMs: 300,
+  keyTalk: "",
+  keyMute: "",
+  keyDeafen: "",
 };
 
 function boolOr(v: unknown, fallback: boolean): boolean {
   return typeof v === "boolean" ? v : fallback;
+}
+
+function numOr(v: unknown, fallback: number, min: number, max: number): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+}
+
+function keyOr(v: unknown, fallback: string): string {
+  return typeof v === "string" && v.length <= MAX_KEY_LEN ? v : fallback;
 }
 
 // normalizeMicPrefs fills in every field from a possibly-partial,
@@ -55,17 +105,25 @@ export function normalizeMicPrefs(raw: unknown): MicPrefs {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ...DEFAULT_MIC_PREFS };
   const o = raw as Record<string, unknown>;
 
-  const n = typeof o.gain === "number" ? o.gain : Number(o.gain);
-  const gain = Number.isFinite(n)
-    ? Math.min(MAX_GAIN, Math.max(MIN_GAIN, n))
-    : DEFAULT_MIC_PREFS.gain;
+  const vadOpen = numOr(o.vadOpen, DEFAULT_MIC_PREFS.vadOpen, 0, 1);
+  // The silence floor can never sit above the speech threshold: that inverts
+  // the hysteresis band and gives a gate that can open but never close.
+  const vadClose = Math.min(vadOpen, numOr(o.vadClose, DEFAULT_MIC_PREFS.vadClose, 0, 1));
 
   return {
+    // Not keyOr: a device id is a long opaque hash, well past the key cap.
     deviceId: typeof o.deviceId === "string" ? o.deviceId : DEFAULT_MIC_PREFS.deviceId,
-    gain,
+    gain: numOr(o.gain, DEFAULT_MIC_PREFS.gain, MIN_GAIN, MAX_GAIN),
     echoCancellation: boolOr(o.echoCancellation, DEFAULT_MIC_PREFS.echoCancellation),
     noiseSuppression: boolOr(o.noiseSuppression, DEFAULT_MIC_PREFS.noiseSuppression),
     autoGainControl: boolOr(o.autoGainControl, DEFAULT_MIC_PREFS.autoGainControl),
+    mode: isTransmitMode(o.mode) ? o.mode : DEFAULT_MIC_PREFS.mode,
+    vadOpen,
+    vadClose,
+    holdMs: numOr(o.holdMs, DEFAULT_MIC_PREFS.holdMs, 0, MAX_HOLD_MS),
+    keyTalk: keyOr(o.keyTalk, DEFAULT_MIC_PREFS.keyTalk),
+    keyMute: keyOr(o.keyMute, DEFAULT_MIC_PREFS.keyMute),
+    keyDeafen: keyOr(o.keyDeafen, DEFAULT_MIC_PREFS.keyDeafen),
   };
 }
 
@@ -93,6 +151,16 @@ export function micConstraints(prefs: MicPrefs): MediaTrackConstraints {
   };
   if (prefs.deviceId) c.deviceId = prefs.deviceId;
   return c;
+}
+
+/** gateConfig extracts just the transmit half, for the gate in mic-chain. */
+export function gateConfig(prefs: MicPrefs): GateConfig {
+  return {
+    mode: prefs.mode,
+    vadOpen: prefs.vadOpen,
+    vadClose: prefs.vadClose,
+    holdMs: prefs.holdMs,
+  };
 }
 
 /**

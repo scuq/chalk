@@ -3106,6 +3106,7 @@ body.chalk-resizing .chalk-sidebar-resizer {
   margin-top: var(--chalk-s1);
 }
 .chalk-profile-mic-meter {
+  position: relative;
   flex: 1;
   min-width: 0;
   height: 10px;
@@ -3113,6 +3114,33 @@ body.chalk-resizing .chalk-sidebar-resizer {
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);
   overflow: hidden;
+}
+/* Phase 41-5: the two VAD thresholds, drawn on the meter they refer to. */
+.chalk-profile-mic-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  pointer-events: none;
+}
+.chalk-profile-mic-mark--open {
+  background: var(--chalk-fg-bright);
+}
+.chalk-profile-mic-mark--close {
+  background: var(--chalk-fg-dim);
+}
+.chalk-profile-mic-live {
+  flex: none;
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+}
+.chalk-profile-mic-live.is-live {
+  color: var(--chalk-accent);
+}
+.chalk-profile-sound-preview.is-capturing {
+  color: var(--chalk-fg-bright);
+  border-color: var(--chalk-accent);
 }
 .chalk-profile-mic-meter-fill {
   height: 100%;
@@ -5091,6 +5119,16 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-voice-ctl--on {
   color: var(--chalk-fg-bright);
   border-color: var(--chalk-fg-bright);
+}
+
+/* Phase 41-5: the transmit-gate dot. Only rendered while actually sending, so
+   it needs no "off" state -- its absence is the off state. */
+.chalk-voice-live {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--chalk-accent);
 }
 
 .chalk-voice-ctl--leave {
