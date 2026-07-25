@@ -272,13 +272,29 @@ func (s *Store) SetDeviceState(ctx context.Context, deviceID uuid.UUID, newState
 	return State(prev), nil
 }
 
-// ClearDevicePresence removes a single device's row. Called when a
-// WebSocket disconnects cleanly.
-func (s *Store) ClearDevicePresence(ctx context.Context, deviceID uuid.UUID) (uuid.UUID, error) {
+// ClearDevicePresence removes a single device's row, but only if the row
+// is still owned by instanceID. Called when a WebSocket disconnects.
+//
+// The ownership check matters because there is one row per device_id while
+// a device may have several connections: a reconnect to another instance
+// rewrites instance_id, and the old connection's teardown -- which can run
+// tens of seconds later, once the ping loop notices the dead socket --
+// must not delete the row the new connection just claimed. Deleting it
+// would report the user offline while they are actively connected, and
+// nothing republishes when the row is later re-created.
+//
+// Reconnects landing on the SAME instance can't be distinguished here;
+// the WS layer guards those by checking the hub for surviving conns.
+//
+// Returns uuid.Nil if no row was deleted (already gone, or now owned by
+// another instance).
+func (s *Store) ClearDevicePresence(ctx context.Context, deviceID uuid.UUID, instanceID string) (uuid.UUID, error) {
 	var userID uuid.UUID
 	err := s.Pool.QueryRow(ctx,
-		`DELETE FROM device_presence WHERE device_id = $1 RETURNING user_id`,
-		deviceID,
+		`DELETE FROM device_presence
+		  WHERE device_id = $1 AND instance_id = $2
+		 RETURNING user_id`,
+		deviceID, instanceID,
 	).Scan(&userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, nil

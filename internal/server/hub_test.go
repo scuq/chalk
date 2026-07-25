@@ -1144,3 +1144,50 @@ func TestHubFanOutFreshExcludesByConnIDWithSameDevice(t *testing.T) {
 		t.Fatal("conn-b did not receive")
 	}
 }
+
+// ---- 34-2: presence teardown guard -------------------------------------
+// One device_presence row serves every conn sharing a device_id, so the
+// WS teardown asks the hub whether a sibling conn survives before clearing
+// it. These tests pin that question's answers.
+
+func TestHubHasConnForDeviceSiblingTabSurvives(t *testing.T) {
+	h := NewHub()
+	a, _ := fakeConnWithUser("conn-a", "dev-shared", "alice")
+	b, _ := fakeConnWithUser("conn-b", "dev-shared", "alice")
+	h.Register(a)
+	h.Register(b)
+
+	// conn-a tearing down: teardown runs before Unregister (defer LIFO),
+	// so conn-a must exclude itself and still see conn-b.
+	if !h.HasConnForDevice("alice", "dev-shared", "conn-a") {
+		t.Fatal("sibling tab not seen; presence row would be cleared while conn-b is live")
+	}
+
+	h.Unregister(a)
+
+	// Now conn-b is the last one out: nothing else holds the device.
+	if h.HasConnForDevice("alice", "dev-shared", "conn-b") {
+		t.Fatal("last conn out saw a phantom sibling; presence row would leak")
+	}
+}
+
+func TestHubHasConnForDeviceIgnoresOtherDevicesAndUsers(t *testing.T) {
+	h := NewHub()
+	phone, _ := fakeConnWithUser("conn-phone", "dev-phone", "alice")
+	bob, _ := fakeConnWithUser("conn-bob", "dev-shared", "bob")
+	h.Register(phone)
+	h.Register(bob)
+
+	if h.HasConnForDevice("alice", "dev-laptop", "") {
+		t.Fatal("alice's phone counted as a conn for her laptop")
+	}
+	if h.HasConnForDevice("alice", "dev-shared", "") {
+		t.Fatal("bob's conn counted for alice")
+	}
+	if !h.HasConnForDevice("alice", "dev-phone", "") {
+		t.Fatal("alice's own phone conn not found")
+	}
+	if h.HasConnForDevice("", "dev-phone", "") {
+		t.Fatal("empty userID matched a conn")
+	}
+}

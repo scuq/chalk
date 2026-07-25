@@ -248,6 +248,7 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// connID, which step 2 will use as the routing key so the tabs
 	// don't evict each other.
 	connID := uuid.New().String()
+	deviceType := classifyDeviceType(hello.DeviceType)
 
 	conn := NewConn(connID, hello.DeviceID, connUserID, func(reason error) {
 		msg := "closed"
@@ -257,6 +258,7 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = c.Close(websocket.StatusNormalClosure, msg)
 		cancel()
 	})
+	conn.DeviceType = string(deviceType)
 	defer conn.MarkDone()
 
 	h.hub.Register(conn)
@@ -353,7 +355,6 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Presence: register the device, start the heartbeat, ensure the
 	// transition publishes if state changed.
-	deviceType := classifyDeviceType(hello.DeviceType)
 	var presenceCleanup func()
 	if h.presence != nil {
 		userID := h.lookupUserForDevice(ctx, deviceID)
@@ -366,17 +367,30 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				State:      presence.StateOnline,
 			})
 			if err == nil {
+				conn.SetClaimedPresence(string(presence.StateOnline))
 				if h.publishPresenceChange != nil {
 					if err := h.publishPresenceChange(ctx, userID); err != nil {
 						h.logger.Printf("publish presence on connect: %v", err)
 					}
 				}
-				go h.startPresenceHeartbeat(ctx, deviceID, deviceType)
+				go h.startPresenceHeartbeat(ctx, conn, deviceID, deviceType)
 				presenceCleanup = func() {
+					// One device_presence row serves every connection
+					// sharing this device_id (multi-tab, or a reconnect
+					// whose predecessor hasn't been reaped yet). Clearing
+					// it while a sibling connection is still live would
+					// report the user offline mid-conversation, so the
+					// last connection out is the one that clears. This
+					// deferred cleanup runs before hub.Unregister (LIFO),
+					// hence excluding our own conn ID by hand.
+					if h.hub.HasConnForDevice(conn.UserID, conn.DeviceID, conn.ID) {
+						return
+					}
 					cleanCtx, cancel := context.WithTimeout(
 						context.Background(), 2*time.Second)
 					defer cancel()
-					affectedUser, err := h.presence.ClearDevicePresence(cleanCtx, deviceID)
+					affectedUser, err := h.presence.ClearDevicePresence(
+						cleanCtx, deviceID, h.instanceID)
 					if err != nil {
 						h.logger.Printf("clear presence on disconnect: %v", err)
 						return
@@ -953,6 +967,7 @@ func ensureDeviceForUser(ctx context.Context, st *store.Store, deviceID, userID 
 // That keeps NOTIFY traffic proportional to actual user activity.
 func (h *WSHandler) startPresenceHeartbeat(
 	ctx context.Context,
+	conn *Conn,
 	deviceID uuid.UUID,
 	dt presence.DeviceType,
 ) {
@@ -973,22 +988,57 @@ func (h *WSHandler) startPresenceHeartbeat(
 			if err != nil && !errors.Is(err, presence.ErrDeviceNotPresent) {
 				h.logger.Printf("presence heartbeat: %v", err)
 			}
-			// If the row was missing (janitor reaped us or a state
-			// change cleared it), re-establish online. The client
-			// expects to still be "present" because the WebSocket
+			// If the row was missing (janitor reaped us, or a sibling
+			// connection's teardown cleared it), re-establish it. The
+			// client expects to still be "present" because the WebSocket
 			// itself is still open.
 			if errors.Is(err, presence.ErrDeviceNotPresent) {
 				reCtx, reCancel := context.WithTimeout(ctx, 2*time.Second)
-				_ = h.presence.SetDevicePresence(reCtx, presence.DevicePresence{
-					DeviceID:   deviceID,
-					UserID:     h.lookupUserForDevice(reCtx, deviceID),
-					InstanceID: h.instanceID,
-					DeviceType: dt,
-					State:      presence.StateOnline,
-				})
+				h.repairDevicePresence(reCtx, conn, deviceID, dt)
 				reCancel()
 			}
 		}
+	}
+}
+
+// repairDevicePresence re-inserts the device_presence row for a still-live
+// connection whose row disappeared, restoring the state the client last
+// claimed rather than forcing "online" (a backgrounded tab must stay away).
+//
+// Publishing is the point: subscribers were pushed "offline" when the row
+// vanished, and a silent re-insert would leave them showing that until the
+// next unrelated transition -- which for an open-but-idle tab may never
+// come.
+func (h *WSHandler) repairDevicePresence(
+	ctx context.Context,
+	conn *Conn,
+	deviceID uuid.UUID,
+	dt presence.DeviceType,
+) {
+	userID := h.lookupUserForDevice(ctx, deviceID)
+	if userID == uuid.Nil {
+		h.logger.Printf("repair presence: no user for device %s", deviceID)
+		return
+	}
+	state := presence.State(conn.ClaimedPresence())
+	if state != presence.StateOnline && state != presence.StateAway {
+		state = presence.StateOnline
+	}
+	if err := h.presence.SetDevicePresence(ctx, presence.DevicePresence{
+		DeviceID:   deviceID,
+		UserID:     userID,
+		InstanceID: h.instanceID,
+		DeviceType: dt,
+		State:      state,
+	}); err != nil {
+		h.logger.Printf("repair presence for device %s: %v", deviceID, err)
+		return
+	}
+	if h.publishPresenceChange == nil {
+		return
+	}
+	if err := h.publishPresenceChange(ctx, userID); err != nil {
+		h.logger.Printf("publish presence repair: %v", err)
 	}
 }
 
@@ -1176,7 +1226,21 @@ func (h *WSHandler) handlePresenceUpdate(
 		return
 	}
 
+	conn.SetClaimedPresence(p.State)
+
 	prev, err := h.presence.SetDeviceState(ctx, myDevice, presence.State(p.State))
+	if errors.Is(err, presence.ErrDeviceNotPresent) {
+		// The row went missing while this connection stayed open. Rebuild
+		// it at the claimed state instead of failing the update -- the
+		// client has no way to recover from an error here short of a
+		// reconnect. repairDevicePresence publishes the change.
+		h.repairDevicePresence(ctx, conn, myDevice, classifyDeviceType(conn.DeviceType))
+		ack, _ := proto.NewFrame(proto.TypePresenceUpdateAck, f.Ref,
+			proto.PresenceUpdateAckPayload{State: p.State})
+		data, _ := json.Marshal(ack)
+		_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+		return
+	}
 	if err != nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, err.Error())
 		return

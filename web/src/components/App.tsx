@@ -198,6 +198,11 @@ import {
 } from "../auth/api";
 import { lookupUser } from "../auth/users";
 
+// 34-1: how long the tab has to stay hidden before auto-mode reports away.
+// Long enough that switching tabs to look something up doesn't move the dot,
+// short enough that walking away from the machine still shows.
+const AWAY_AFTER_HIDDEN_MS = 60_000;
+
 function classifyDevice(): "phone" | "tablet" | "desktop" {
   const ua = navigator.userAgent;
   if (/iPad|Tablet|PlayBook|Silk|Android(?!.*Mobile)/i.test(ua)) return "tablet";
@@ -1612,12 +1617,32 @@ export function App() {
     dispatch({ kind: "unread_mark_refresh", channelID: activeChannelRef.current });
   }, [tabVisible]);
 
+  // 34-1: alt-tabbing for a few seconds is not "away". Demoting on the
+  // visibilitychange itself made the dot flicker for everyone watching and
+  // wrote a presence transition (DB write + NOTIFY + fan-out) per tab flip.
+  // Hiding now has to stick for AWAY_AFTER_HIDDEN_MS; coming back is still
+  // applied immediately.
+  const [presenceVisible, setPresenceVisible] = useState<boolean>(
+    typeof document === "undefined" ? true : !document.hidden
+  );
+  useEffect(() => {
+    if (tabVisible) {
+      setPresenceVisible(true);
+      return;
+    }
+    const t = window.setTimeout(
+      () => setPresenceVisible(false),
+      AWAY_AFTER_HIDDEN_MS
+    );
+    return () => window.clearTimeout(t);
+  }, [tabVisible]);
+
   // Phase 9.6j: compute the intended presence and send presence_update
   // when it transitions. "intended" is:
   //   - WS not open → offline (server handles via WS close; nothing to send)
   //   - mode=online → online
   //   - mode=away   → away
-  //   - mode=auto   → tabVisible ? online : away
+  //   - mode=auto   → presenceVisible ? online : away
   useEffect(() => {
     if (state.wsState !== "open" || !state.user) {
       if (state.myEffectivePresence !== "offline") {
@@ -1628,7 +1653,7 @@ export function App() {
     let intended: "online" | "away";
     if (state.myPresenceMode === "online") intended = "online";
     else if (state.myPresenceMode === "away") intended = "away";
-    else intended = tabVisible ? "online" : "away";
+    else intended = presenceVisible ? "online" : "away";
 
     if (intended === state.myEffectivePresence) return;
 
@@ -1641,7 +1666,7 @@ export function App() {
     state.user?.id,
     state.myPresenceMode,
     state.myEffectivePresence,
-    tabVisible,
+    presenceVisible,
   ]);
 
   const presenceSubscribedRef = useRef<Set<string>>(new Set());

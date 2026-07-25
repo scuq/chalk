@@ -205,6 +205,22 @@ func (h *Hub) ConnsForUser(userID string) []*Conn {
 	return out
 }
 
+// HasConnForDevice reports whether any connection other than exceptConnID
+// is currently registered for (userID, deviceID).
+//
+// Presence teardown needs this: two tabs of the same browser share one
+// device_id and therefore one device_presence row, so only the last
+// connection out may clear it. Passing "" as exceptConnID asks the plain
+// "is this device connected at all" question.
+func (h *Hub) HasConnForDevice(userID, deviceID, exceptConnID string) bool {
+	for _, c := range h.ConnsForUser(userID) {
+		if c.DeviceID == deviceID && c.ID != exceptConnID {
+			return true
+		}
+	}
+	return false
+}
+
 // CountUsers returns the number of distinct users with at least one
 // active connection. Phase 09a step 2; mostly for tests and metrics.
 func (h *Hub) CountUsers() int {
@@ -455,6 +471,17 @@ type Conn struct {
 	DeviceID string
 	UserID   string
 
+	// DeviceType is the device class the client declared in its hello
+	// ("phone", "tablet", "desktop" or "browser-unknown"). Presence
+	// bookkeeping needs it to re-create a device_presence row that went
+	// missing while this connection was still live.
+	DeviceType string
+
+	// presenceMu guards claimedPresence, which the presence heartbeat
+	// goroutine reads while the read loop writes it.
+	presenceMu      sync.Mutex
+	claimedPresence string
+
 	// Send is the outbound queue. The writer goroutine reads from this
 	// channel and pushes frames over the WebSocket. Closed by Close.
 	Send chan []byte
@@ -493,6 +520,23 @@ func NewConn(id, deviceID, userID string, closeFn func(error)) *Conn {
 		closed:    make(chan struct{}),
 		CreatedAt: time.Now(),
 	}
+}
+
+// SetClaimedPresence records the last presence state this connection asked
+// for. Read back when a lost device_presence row has to be re-created, so
+// the repair doesn't resurrect a backgrounded tab as "online".
+func (c *Conn) SetClaimedPresence(state string) {
+	c.presenceMu.Lock()
+	c.claimedPresence = state
+	c.presenceMu.Unlock()
+}
+
+// ClaimedPresence returns the last state passed to SetClaimedPresence, or
+// "" if the client never sent a presence_update.
+func (c *Conn) ClaimedPresence() string {
+	c.presenceMu.Lock()
+	defer c.presenceMu.Unlock()
+	return c.claimedPresence
 }
 
 // Enqueue tries to push data onto the send buffer. Returns ErrSendFull if
