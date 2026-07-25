@@ -5,8 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="chalk -- end-to-end encrypted group chat">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#000000">
   <title>chalk</title>
   <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg">
+  <link rel="manifest" href="/manifest.json">
+  <!--
+    iOS ignores the manifest: standalone mode, the home-screen name and the
+    home-screen icon all come from these three instead.
+  -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="chalk">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <link rel="stylesheet" href="/theme.css">
   <!--
     Bundle is emitted by esbuild into web/dist/. chalkd serves it via

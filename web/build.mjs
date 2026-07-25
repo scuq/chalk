@@ -66,26 +66,68 @@ const buildOpts = {
   logLevel: "info",
 };
 
-// emitFavicon copies icons/favicon.svg into dist/icons/ under a
-// content-hashed name and returns that name. The favicon is the one asset
-// index.html references that esbuild never sees, and spa.go serves
-// everything in dist/ as immutable for a year -- so it has to carry a hash
-// too, or a redesigned logo would never reach anyone who has already
-// loaded the app.
-function emitFavicon() {
-  const src = "icons/favicon.svg";
-  if (!existsSync(src)) {
-    throw new Error(`build: ${src} not found`);
+// Static assets esbuild never sees: the favicon, the app icons, and the web
+// app manifest that lists them. They still need content hashes, because
+// spa.go serves everything in dist/ as immutable for a year -- an unhashed
+// icon would stay frozen in every browser that has already loaded chalk.
+const STATIC_ICONS = [
+  "icons/favicon.svg",
+  "icons/apple-touch-icon.png",
+  "icons/icon-192.png",
+  "icons/icon-512.png",
+  "icons/icon-maskable-512.png",
+];
+
+// A leftover reference to a source name would be served immutable for a
+// year under a name whose bytes can change on the next build. Fail the
+// build rather than ship it -- typically an icon added to one file but not
+// to STATIC_ICONS.
+function assertNoUnhashedRefs(text, where) {
+  for (const src of [...STATIC_ICONS, "manifest.json"]) {
+    if (text.includes(`"/${src}"`)) {
+      throw new Error(`build: ${where} still references unhashed /${src}`);
+    }
   }
-  const hash = createHash("sha256")
-    .update(readFileSync(src))
-    .digest("hex")
-    .slice(0, 8)
-    .toUpperCase();
-  const out = `icons/favicon-${hash}.svg`;
+}
+
+function hashedName(src, bytes) {
+  const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 8).toUpperCase();
+  const dot = src.lastIndexOf(".");
+  return `${src.slice(0, dot)}-${hash}${src.slice(dot)}`;
+}
+
+// emitStatic copies the icons and the manifest into dist/ under
+// content-hashed names, and returns a map of source URL -> hashed URL for
+// the callers that reference them. The manifest is emitted last: its icon
+// references are rewritten to the hashed names first, so its own hash
+// covers them and a changed icon produces a changed manifest.
+function emitStatic() {
+  const urls = new Map();
   mkdirSync(`${outdir}/icons`, { recursive: true });
-  copyFileSync(src, `${outdir}/${out}`);
-  return out;
+
+  for (const src of STATIC_ICONS) {
+    if (!existsSync(src)) {
+      throw new Error(`build: ${src} not found in web/ (icons/gen-png.mjs regenerates the PNGs)`);
+    }
+    const out = hashedName(src, readFileSync(src));
+    copyFileSync(src, `${outdir}/${out}`);
+    urls.set(`/${src}`, `/${out}`);
+  }
+
+  const manifestSrc = "manifest.json";
+  if (!existsSync(manifestSrc)) {
+    throw new Error("build: manifest.json not found in web/");
+  }
+  let manifest = readFileSync(manifestSrc, "utf8");
+  for (const [from, to] of urls) {
+    manifest = manifest.split(`"${from}"`).join(`"${to}"`);
+  }
+  assertNoUnhashedRefs(manifest, manifestSrc);
+  const manifestOut = hashedName(manifestSrc, Buffer.from(manifest));
+  writeFileSync(`${outdir}/${manifestOut}`, manifest);
+  urls.set(`/${manifestSrc}`, `/${manifestOut}`);
+
+  return urls;
 }
 
 // rewriteIndexHTML copies src index.html into dist, replacing the stable
@@ -110,8 +152,6 @@ function rewriteIndexHTML(metafile) {
   if (!jsOut) throw new Error("build: could not resolve hashed name for src/index.tsx");
   if (!cssOut) throw new Error("build: could not resolve hashed name for src/theme.css");
 
-  const iconOut = emitFavicon();
-
   let html = readFileSync(src, "utf8");
   // Replace the exact stable references. Guard that each substitution
   // actually matched so a future index.html edit that renames these can't
@@ -119,18 +159,16 @@ function rewriteIndexHTML(metafile) {
   const before = html;
   html = html
     .replace('src="/index.js"', `src="/${jsOut}"`)
-    .replace('href="/theme.css"', `href="/${cssOut}"`)
-    .replace('href="/icons/favicon.svg"', `href="/${iconOut}"`);
-  if (
-    html === before ||
-    html.includes('src="/index.js"') ||
-    html.includes('href="/theme.css"') ||
-    html.includes('href="/icons/favicon.svg"')
-  ) {
+    .replace('href="/theme.css"', `href="/${cssOut}"`);
+  if (html === before || html.includes('src="/index.js"') || html.includes('href="/theme.css"')) {
     throw new Error(
-      "build: index.html did not contain the expected /index.js, /theme.css and /icons/favicon.svg references to rewrite",
+      "build: index.html did not contain the expected /index.js and /theme.css references to rewrite",
     );
   }
+  for (const [from, to] of emitStatic()) {
+    html = html.split(`"${from}"`).join(`"${to}"`);
+  }
+  assertNoUnhashedRefs(html, src);
   writeFileSync(`${outdir}/${src}`, html);
 }
 

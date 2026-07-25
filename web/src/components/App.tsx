@@ -17,6 +17,7 @@ import { resolveNickHue } from "../chat/nickcolor";
 import { mentionsHandle } from "../chat/mentions";
 import { deleteActionFor, deleteLabelFor } from "../chat/deletepolicy";
 import { useIsMobile } from "../mobile";
+import { isPopoutWindow, openPopout } from "../popout";
 import { useCallback, useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
@@ -2503,30 +2504,18 @@ export function App() {
             <Logo />
             <h1>chalk</h1>
           </div>
-          {/* Pop chalk out into its own right-sized window. Hidden when we
-              ARE the pop-out (window.opener is set), so the button doesn't
-              invite spawning windows from windows. No noopener here on
-              purpose: the child needs window.opener for that check, and it's
-              same-origin anyway. */}
-          {/* Pop-out is desktop-only; a phone has no second window to pop into. */}
-          {!isMobile && typeof window !== "undefined" && window.opener == null && (
+          {/* Pop chalk out into its own right-sized window. Hidden inside the
+              pop-out itself (see popout.ts for how that's detected), so the
+              button doesn't invite spawning windows from windows.
+              Desktop-only; a phone has no second window to pop into. */}
+          {!isMobile && !isPopoutWindow() && (
             <button
               type="button"
               class="chalk-popout"
               title="open chalk in its own window"
               aria-label="open chalk in its own window"
               data-testid="popout"
-              onClick={() => {
-                const w = Math.min(1200, window.screen.availWidth);
-                const h = Math.min(860, window.screen.availHeight);
-                const left = Math.max(0, Math.round((window.screen.availWidth - w) / 2));
-                const top = Math.max(0, Math.round((window.screen.availHeight - h) / 2));
-                window.open(
-                  window.location.href,
-                  "chalk-popout",
-                  `popup=yes,width=${w},height=${h},left=${left},top=${top}`,
-                );
-              }}
+              onClick={() => openPopout()}
             >
               ⧉ popout
             </button>
