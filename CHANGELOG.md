@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.3.40 — 26 July 2026 — Notification sounds
 
 ### Added
 - **chalk makes a sound now.** A message, a mention, a DM, a reply in one of
