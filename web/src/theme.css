@@ -3170,9 +3170,13 @@ body.chalk-resizing .chalk-sidebar-resizer {
   outline-offset: -1px;
 }
 
-/* Phase 26 (governance prereq): owner-only delete control. Same shape as
-   the reply button; the flex group above orders and spaces the two. */
-.chalk-message-delete {
+/* 35-4: the overflow trigger. Same shape as the reply button so the group
+   reads as one control strip, but it carries no word -- it's the quiet
+   entry to destructive actions, not an action itself. */
+.chalk-message-more {
+  position: relative;
+}
+.chalk-message-more-btn {
   background: var(--chalk-bg-elev);
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);
@@ -3183,12 +3187,50 @@ body.chalk-resizing .chalk-sidebar-resizer {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  line-height: 1;
+}
+.chalk-message-more-btn:hover {
+  color: var(--chalk-fg-bright);
+  border-color: var(--chalk-accent);
+}
+.chalk-message-more-btn:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* The menu itself drops below the trigger, right-aligned so it stays inside
+   the feed on narrow screens. */
+.chalk-message-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 10rem;
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Phase 26 (governance prereq) / 35-4: the delete item inside that menu. */
+.chalk-message-delete {
+  background: none;
+  border: none;
+  border-radius: var(--chalk-radius);
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 6px 10px;
+  cursor: pointer;
+  text-align: left;
   white-space: nowrap;
 }
 .chalk-message-delete:hover {
   color: var(--chalk-danger, #e5484d);
-  border-color: var(--chalk-danger, #e5484d);
+  background: var(--chalk-bg);
 }
 .chalk-message-delete:focus-visible {
   outline: 1px solid var(--chalk-fg-bright);
@@ -5957,17 +5999,18 @@ body.chalk-resizing .chalk-sidebar-resizer {
   }
 }
 
-/* Phone-sized touch only: glyph, no word. "✕ delete" and "↳ reply" at a
-   touch-sized font took most of the row width, wrapping the message body
-   below them. The words stay in the DOM for wider screens; aria-label
-   carries the meaning for screen readers either way. */
+/* Phone-sized touch only: glyph, no word. "↳ reply" at a touch-sized font
+   took most of the row width, wrapping the message body below it. The words
+   stay in the DOM for wider screens; aria-label carries the meaning for
+   screen readers either way. The menu's own items keep their labels -- they
+   sit in a popover, not in the row. */
 @media (hover: none) and (max-width: 767px) {
   .chalk-message-action-word {
     display: none;
   }
 
   .chalk-message-reply,
-  .chalk-message-delete {
+  .chalk-message-more-btn {
     font-size: calc(11px * var(--chalk-font-scale));
     /* Square-ish tap targets: comfortably hit without the buttons
        dominating the row the way the labelled versions did. */
