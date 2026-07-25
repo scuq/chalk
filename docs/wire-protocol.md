@@ -24,7 +24,7 @@ Every frame has a `type` (string) and an optional `ref` (correlation ID for requ
 |---|---|---|
 | `hello` | `{ device_id }` | First frame after connect |
 | `create_channel` | `{ name, initial_members: [user_id...] }` | |
-| `send` | `{ channel_id, thread_id?, parent_id?, body }` | Application messages (plaintext body) |
+| `send` | `{ channel_id, parent_id?, body, key_version, client_msg_id? }` | `body` is base64 ciphertext; `key_version >= 1` is enforced |
 | `fetch_history` | `{ channel_id, after_seq?, before_seq?, limit }` | Catch-up via per-channel `seq` |
 | `fetch_thread` | `{ channel_id, thread_id }` | All messages in one thread |
 | `upload_blob_init` | `{ size, mime_hint }` | Returns upload URL + token |
@@ -33,6 +33,10 @@ Every frame has a `type` (string) and an optional `ref` (correlation ID for requ
 | `friend_request_send` | `{ handle, encrypted_intro? }` | |
 | `friend_request_accept` | `{ request_id }` | |
 | `ack` | `{ message_id }` | Read receipts (optional) |
+| `delete_message` | `{ channel_id, message_id, ts }` | Own message always; another's per governance |
+| `edit_message` | `{ channel_id, message_id, ts, body, key_version }` | Phase 37: sender only, within 15 min, not deleted |
+| `set_reactions` | `{ channel_id, message_id, ts, body, key_version? }` | Phase 37: replaces YOUR whole set; empty body clears |
+| `fetch_reactions` | `{ channel_id, message_ids }` | Backfill after a history fetch |
 
 ## Server → Client
 
@@ -45,6 +49,9 @@ Every frame has a `type` (string) and an optional `ref` (correlation ID for requ
 | `typing_update` | `{ channel_id, thread_id?, user_id }` | |
 | `friend_request_in` | `{ request_id, from_handle, encrypted_intro? }` | |
 | `friend_added` | `{ user_id, handle, devices: [...] }` | |
+| `message_deleted` | `{ channel_id, message_id, seq, deleted_by?, deleted_at? }` | Tombstone the row locally |
+| `message_edited` | `{ channel_id, message_id, seq, body, key_version, edited_at }` | Phase 37: swap the body in place; `seq` is unchanged |
+| `reaction_update` | `{ channel_id, reaction: { message_id, ts, user_id, body?, key_version? } }` | Phase 37: one member's new set; empty body = cleared |
 | `error` | `{ ref?, code, message }` | |
 
 ## Encoding

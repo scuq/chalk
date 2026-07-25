@@ -19,6 +19,12 @@ attachment content, or private settings. They will still see metadata:
 - When messages were sent (timestamps, ordering)
 - Sizes of messages and attachments
 - Coarse online/offline status
+- That a message was edited, and when (phase 37) — not what it said before
+  or after; only one version is ever stored, as ciphertext
+- Who reacted to which message, and when (phase 37) — **not which emoji.**
+  A reaction is one row per (message, reactor) holding that person's emoji
+  set sealed under the channel key, so the server can count reactors but
+  cannot group by emoji or read any of them
 
 **This goal is met today** — messages and attachments are ciphertext in Postgres. It is
 restored when space-key encryption lands (phase 23): the server holds only

@@ -439,6 +439,46 @@ export class ChannelCrypto {
     return pt ? new TextDecoder().decode(pt) : PLACEHOLDER_FAILED;
   }
 
+  // ---- structured payloads (37-5) ---------------------------------------
+
+  /**
+   * sealJSONForChannel encrypts a JSON-serializable value under the channel's
+   * current key, returning the same base64 body + key version a message send
+   * carries. Used for reaction sets, which are a small JSON array of emoji
+   * rather than display text.
+   */
+  async sealJSONForChannel(channelID: string, value: unknown): Promise<EncryptResult> {
+    return this.encryptForChannel(channelID, JSON.stringify(value));
+  }
+
+  /**
+   * openJSONForChannel is the inverse. Unlike decryptForChannel it returns
+   * NULL rather than a human-readable placeholder when the key is missing or
+   * the body won't open -- a placeholder string is meaningful to a message
+   * renderer but would be a parse error here, and "we can't read this" is
+   * better rendered as "no reactions from this person" than as a broken chip.
+   */
+  async openJSONForChannel<T>(
+    channelID: string,
+    keyVersion: number | undefined,
+    body: string,
+  ): Promise<T | null> {
+    if (!keyVersion || keyVersion < 1 || !body) return null;
+    let bytes: Uint8Array;
+    try {
+      bytes = base64ToBytes(body);
+    } catch {
+      return null;
+    }
+    const pt = await this.decryptBytesForChannel(channelID, keyVersion, bytes);
+    if (!pt) return null;
+    try {
+      return JSON.parse(new TextDecoder().decode(pt)) as T;
+    } catch {
+      return null;
+    }
+  }
+
   // ---- attachment bytes (att-2) ----------------------------------------
 
   /**
