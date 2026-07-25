@@ -4,9 +4,9 @@
 
   <!--
     Master artwork for the chalk mark. Full detail, meant for large
-    renderings (docs, share images, print). The two derivatives are:
-      - icons/favicon.svg      -- same mark, fine detail and glow removed
-      - src/components/Logo.tsx -- same mark, inline, theme-aware notch
+    renderings (docs, share images, print). Two derivatives follow it:
+    icons/favicon.svg drops the fine detail and the glow, and
+    src/components/Logo.tsx inlines it with a theme-aware notch.
     Change this file first, then port the change to both.
   -->
 
