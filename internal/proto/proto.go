@@ -250,6 +250,11 @@ type MessagePayload struct {
 	Deleted   bool   `json:"deleted,omitempty"`
 	DeletedBy string `json:"deleted_by,omitempty"`
 	DeletedAt int64  `json:"deleted_at,omitempty"`
+	// Phase 37-1: server unix-millis of the last in-place edit, or 0 if the
+	// message has never been edited. Body already holds the edited ciphertext
+	// (there is only ever one version), so this exists purely so clients can
+	// render an "(edited)" marker. Omitted for unedited messages.
+	EditedAt int64 `json:"edited_at,omitempty"`
 	// att-1: attachments linked to this message, populated on the live
 	// push. Empty for the common attachment-less message and for history
 	// fetches (those backfill via GET /api/attachments). See AttachmentRef.
@@ -284,6 +289,13 @@ const (
 	// Phase 26 (governance prereq: message deletion):
 	ErrCodeMessageNotFound = "message_not_found"
 	ErrCodeDeleteForbidden = "delete_forbidden"
+	// Phase 37-2: edit refused -- not the sender, already tombstoned, or past
+	// the edit window. Deliberately one code for all three: telling a caller
+	// which of them applies to someone else's message leaks nothing useful and
+	// the client already knows the rules for its own messages.
+	ErrCodeEditForbidden = "edit_forbidden"
+	// Phase 37-4: reaction refused -- currently only "the message is deleted".
+	ErrCodeReactForbidden = "react_forbidden"
 )
 
 // Phase 10a: fetch a thread's messages by thread_id. Like

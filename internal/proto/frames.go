@@ -522,6 +522,23 @@ const (
 	TypeDeleteMessageAck = "delete_message_ack"
 	TypeMessageDeleted   = "message_deleted"
 
+	// Phase 37-2: message edits. edit_message is a client request (sender-only,
+	// inside a 15-minute window); message_edited is the server's per-channel
+	// push carrying the new ciphertext so members swap the body in place.
+	TypeEditMessage    = "edit_message"
+	TypeEditMessageAck = "edit_message_ack"
+	TypeMessageEdited  = "message_edited"
+
+	// Phase 37-4: reactions. set_reactions replaces the CALLER's whole emoji
+	// set for one message (an empty body clears it); reaction_update is the
+	// per-channel push carrying one member's new set; fetch_reactions
+	// backfills a batch of messages after a history fetch.
+	TypeSetReactions      = "set_reactions"
+	TypeSetReactionsAck   = "set_reactions_ack"
+	TypeReactionUpdate    = "reaction_update"
+	TypeFetchReactions    = "fetch_reactions"
+	TypeFetchReactionsAck = "fetch_reactions_ack"
+
 	// Phase 33-1: read cursors. mark_read raises the caller's cursor for a
 	// channel; read_state is the push that carries the new cursor to the
 	// same user's OTHER connections so the unread dot clears everywhere.
@@ -638,6 +655,108 @@ type MessageDeletedPayload struct {
 	Seq       int64  `json:"seq"`
 	DeletedBy string `json:"deleted_by,omitempty"`
 	DeletedAt int64  `json:"deleted_at,omitempty"` // server unix-millis
+}
+
+// EditMessagePayload replaces a message's body with newly encrypted content.
+// TS is the target's server-assigned timestamp in unix-millis, needed to
+// locate the row in the ts-partitioned table (same as DeleteMessagePayload).
+// Body is base64 ciphertext and KeyVersion the channel key version it was
+// encrypted under -- both validated exactly like a fresh send, so an edit can
+// never introduce plaintext or a key version the channel has not reached.
+//
+// Authz (enforced in handleEditMessage): the caller must be the message's
+// sender, the message must not be tombstoned, and it must be younger than the
+// edit window. There is no owner override and no governance path -- editing
+// someone else's words is not a thing anyone gets to do, by vote or otherwise.
+type EditMessagePayload struct {
+	ChannelID  string `json:"channel_id"`
+	MessageID  string `json:"message_id"`
+	TS         int64  `json:"ts"` // unix-millis of the target message
+	Body       string `json:"body"`
+	KeyVersion int    `json:"key_version"`
+}
+
+// EditMessageAckPayload confirms an edit.
+type EditMessageAckPayload struct {
+	ChannelID string `json:"channel_id"`
+	MessageID string `json:"message_id"`
+	EditedAt  int64  `json:"edited_at"` // server unix-millis
+}
+
+// MessageEditedPayload is the per-channel push emitted after a successful
+// edit. Unlike MessageDeletedPayload (a routing pointer -- there is nothing to
+// carry once a body is scrubbed) this carries the new ciphertext inline, so
+// members swap the body in place without a re-fetch. Seq lets clients locate
+// the row; it is unchanged by an edit, and saying so on the wire is what lets
+// the client update in place instead of re-sorting.
+type MessageEditedPayload struct {
+	ChannelID  string `json:"channel_id"`
+	MessageID  string `json:"message_id"`
+	Seq        int64  `json:"seq"`
+	Body       string `json:"body"`
+	KeyVersion int    `json:"key_version"`
+	EditedAt   int64  `json:"edited_at"` // server unix-millis
+}
+
+// SetReactionsPayload replaces the caller's ENTIRE reaction set for one
+// message. There is no add/remove verb: the client sends the set it wants,
+// which makes toggling idempotent and removes any add-vs-remove race between
+// a member's own devices.
+//
+// Body is base64 of the sealed JSON array of emoji, encrypted under the
+// channel space key exactly like a message body -- the server stores opaque
+// bytes and never learns which emoji were picked. An EMPTY body means "no
+// reactions from me on this message" and deletes the row.
+//
+// TS is the target message's unix-millis, needed to locate the row in the
+// ts-partitioned table and to fill the reaction's composite foreign key.
+type SetReactionsPayload struct {
+	ChannelID  string `json:"channel_id"`
+	MessageID  string `json:"message_id"`
+	TS         int64  `json:"ts"`
+	Body       string `json:"body"`                  // base64; "" clears
+	KeyVersion int    `json:"key_version,omitempty"` // omitted when clearing
+}
+
+// SetReactionsAckPayload confirms the stored (or cleared) set.
+type SetReactionsAckPayload struct {
+	ChannelID string `json:"channel_id"`
+	MessageID string `json:"message_id"`
+}
+
+// ReactionWire is one member's sealed reaction set for one message. Body is
+// empty when that member has cleared their reactions -- the push still goes
+// out so other clients drop them from the tally.
+type ReactionWire struct {
+	MessageID  string `json:"message_id"`
+	TS         int64  `json:"ts"` // the message's unix-millis
+	UserID     string `json:"user_id"`
+	Body       string `json:"body,omitempty"`
+	KeyVersion int    `json:"key_version,omitempty"`
+}
+
+// ReactionUpdatePayload is the per-channel push after a set_reactions. It
+// carries the reactor's full set inline rather than a routing pointer:
+// reactions are high-frequency and tiny, so a re-fetch per push per instance
+// would be pure overhead.
+type ReactionUpdatePayload struct {
+	ChannelID string       `json:"channel_id"`
+	Reaction  ReactionWire `json:"reaction"`
+}
+
+// FetchReactionsPayload asks for every reaction on a batch of messages. Sent
+// once after a history fetch rather than per message: history responses don't
+// carry reactions, and the live push only covers changes from here on.
+type FetchReactionsPayload struct {
+	ChannelID  string   `json:"channel_id"`
+	MessageIDs []string `json:"message_ids"`
+}
+
+// FetchReactionsAckPayload returns every reaction row for the requested
+// messages. Messages with no reactions are simply absent.
+type FetchReactionsAckPayload struct {
+	ChannelID string         `json:"channel_id"`
+	Reactions []ReactionWire `json:"reactions"`
 }
 
 // FetchChannelKeyPayload requests the CALLER's own wrapped key for a channel

@@ -538,6 +538,12 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleAddMember(ctx, c, conn, f)
 		case proto.TypeDeleteMessage:
 			h.handleDeleteMessage(ctx, c, conn, f)
+		case proto.TypeEditMessage:
+			h.handleEditMessage(ctx, c, conn, f)
+		case proto.TypeSetReactions:
+			h.handleSetReactions(ctx, c, conn, f)
+		case proto.TypeFetchReactions:
+			h.handleFetchReactions(ctx, c, conn, f)
 
 		// gov-1b-1: governance mode + proposal lifecycle.
 		case proto.TypeGovSetMode:
@@ -2159,6 +2165,7 @@ func (h *WSHandler) handleFetchHistory(
 			Deleted:               m.DeletedAt != nil,
 			DeletedBy:             deletedBy,
 			DeletedAt:             deletedAt,
+			EditedAt:              editedAtOf(m),
 		})
 	}
 
@@ -2319,6 +2326,7 @@ func (h *WSHandler) handleFetchThread(
 			Deleted:      m.DeletedAt != nil,
 			DeletedBy:    deletedBy,
 			DeletedAt:    deletedAt,
+			EditedAt:     editedAtOf(m),
 		})
 	}
 	ack, _ := proto.NewFrame(proto.TypeFetchThreadAck, f.Ref, proto.FetchThreadAckPayload{
@@ -3322,6 +3330,420 @@ func tombstoneOf(m store.Message) (string, int64) {
 	return deletedBy, deletedAt
 }
 
+// editedAtOf renders a message's edit stamp for the wire: unix-millis, or 0
+// when the message has never been edited (the field is omitempty, so 0 simply
+// doesn't appear).
+func editedAtOf(m store.Message) int64 {
+	if m.EditedAt == nil {
+		return 0
+	}
+	return m.EditedAt.UnixMilli()
+}
+
+// editWindow bounds how long after sending a message its author may still
+// edit it. It exists to keep edits in "fix the typo you just made" territory
+// rather than letting anyone silently rewrite a conversation someone replied
+// to an hour ago.
+//
+// A plain const, not a CHALK_* env var: a new env var isn't done until
+// chalkctl generates and preserves it (see CLAUDE.md), which is a lot of
+// machinery for a value nobody is likely to tune. web/src/chat/editpolicy.ts
+// carries the same number for the client-side affordance; the two must move
+// together.
+const editWindow = 15 * time.Minute
+
+// handleEditMessage replaces a message's body with newly encrypted content.
+//
+// Authz (mirrored client-side in web/src/chat/editpolicy.ts):
+//
+//   - Only the SENDER may edit, in every channel type and either governance
+//     mode. There is no owner override and no proposal path: deletion is a
+//     moderation action a channel can have opinions about, but putting words
+//     in someone's mouth is not, so there is deliberately no way for anyone
+//     else to reach this.
+//   - The message must not be tombstoned. A delete is final; an edit must not
+//     resurrect scrubbed content. (Enforced twice: here for a clean error, and
+//     in store.EditMessage's WHERE for the race where a delete commits between
+//     the two.)
+//   - The message must be younger than editWindow.
+//
+// The body is validated exactly like a fresh send -- key_version >= 1 and not
+// ahead of the channel's current version -- so an edit is not a back door for
+// getting plaintext into the store.
+//
+// On success the ack carries the server's edited_at, then message_edited goes
+// out on the per-channel topic. Not idempotent in the delete sense: editing
+// twice is two real edits, and the second simply wins.
+func (h *WSHandler) handleEditMessage(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.EditMessagePayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	// Fail-closed, same rule as handleSend: the server never stores plaintext,
+	// and an edit is a store write like any other.
+	if p.KeyVersion < 1 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeEncryptionRequired,
+			"encryption required: edit must carry key_version >= 1")
+		return
+	}
+	if p.Body == "" {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "body must not be empty")
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
+		return
+	}
+	messageID, err := uuid.Parse(p.MessageID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "message_id not a UUID")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+
+	// GetMemberRole also enforces membership: a non-member is ErrNotAMember,
+	// not "forbidden". The role itself is unused -- no role grants the right
+	// to edit someone else's message -- but the membership check is not.
+	if _, rErr := h.store.GetMemberRole(ctx, channelID, callerID); rErr != nil {
+		if errors.Is(rErr, store.ErrNotAMember) {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of channel")
+			return
+		}
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "role check: "+rErr.Error())
+		return
+	}
+
+	curVer, cvErr := h.store.CurrentKeyVersion(ctx, channelID)
+	if cvErr != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "key version check: "+cvErr.Error())
+		return
+	}
+	if p.KeyVersion > curVer {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeStaleKeyVersion,
+			"key_version is ahead of the channel's current version")
+		return
+	}
+
+	tsTime := time.UnixMilli(p.TS)
+	msg, mErr := h.store.GetMessageAtWireTS(ctx, tsTime, messageID)
+	if mErr != nil {
+		if errors.Is(mErr, store.ErrNotFound) {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeMessageNotFound, "message not found")
+			return
+		}
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "message lookup: "+mErr.Error())
+		return
+	}
+	if msg.ChannelID != channelID {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeMessageNotFound, "message not found")
+		return
+	}
+	if msg.SenderUserID == uuid.Nil || msg.SenderUserID != callerID {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeEditForbidden,
+			"you may only edit your own messages")
+		return
+	}
+	if msg.DeletedAt != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeEditForbidden,
+			"this message has been deleted")
+		return
+	}
+	// Compare against the message's own ts, not its last edit: the window is
+	// how old the MESSAGE is, so repeated edits can't walk it forward
+	// indefinitely.
+	if time.Since(msg.TS) > editWindow {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeEditForbidden,
+			"this message is too old to edit")
+		return
+	}
+
+	ed, eErr := h.store.EditMessage(ctx, tsTime, messageID, channelID, []byte(p.Body), p.KeyVersion)
+	if eErr != nil {
+		switch {
+		case errors.Is(eErr, store.ErrAlreadyDeleted):
+			// A delete committed between the check above and this write.
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeEditForbidden,
+				"this message has been deleted")
+			return
+		case errors.Is(eErr, store.ErrMessageNotFound):
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeMessageNotFound, "message not found")
+			return
+		default:
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "edit message: "+eErr.Error())
+			return
+		}
+	}
+
+	var editedAt int64
+	if ed.EditedAt != nil {
+		editedAt = ed.EditedAt.UnixMilli()
+	}
+	ack, _ := proto.NewFrame(proto.TypeEditMessageAck, f.Ref, proto.EditMessageAckPayload{
+		ChannelID: p.ChannelID,
+		MessageID: p.MessageID,
+		EditedAt:  editedAt,
+	})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+
+	// ed.TS carries the FULL-precision ts the listener needs to re-fetch the
+	// row. SenderConnID is empty on purpose: no echo suppression, so the
+	// editor's other tabs converge on the same body too.
+	if perr := pgxBegin(ctx, h.store, func(tx pgx.Tx) error {
+		ev := pubsub.Event{
+			Kind:       "message_edited",
+			MessageID:  messageID,
+			TS:         ed.TS,
+			ChannelID:  channelID,
+			InstanceID: h.instanceID,
+		}
+		return pubsub.PublishMessageWithTx(ctx, tx, ev)
+	}); perr != nil {
+		h.logger.Printf("publish message_edited %s: %v", messageID, perr)
+	}
+}
+
+// handleSetReactions replaces the caller's reaction set on one message.
+//
+// Authz is deliberately thin: any member of the channel may react to any
+// message in it, including their own. Reactions are not a moderation surface
+// -- there is no owner rule and no governance path, and you can only ever
+// write YOUR OWN row (user_id comes from the session, never from the payload).
+//
+// Refused when the target is tombstoned: reacting to a retraction is
+// meaningless, and DeleteMessage scrubs existing reactions anyway, so allowing
+// it would leave rows that the next delete would silently drop.
+//
+// The body is fail-closed like a send -- a non-empty set must carry
+// key_version >= 1, so the server never stores a readable emoji. An EMPTY body
+// is the "clear my reactions" verb and carries no key version.
+func (h *WSHandler) handleSetReactions(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.SetReactionsPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	clearing := p.Body == ""
+	if !clearing && p.KeyVersion < 1 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeEncryptionRequired,
+			"encryption required: reactions must carry key_version >= 1")
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
+		return
+	}
+	messageID, err := uuid.Parse(p.MessageID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "message_id not a UUID")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+	isMember, mErr := h.store.IsMember(ctx, channelID, callerID)
+	if mErr != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership check: "+mErr.Error())
+		return
+	}
+	if !isMember {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of channel")
+		return
+	}
+	if !clearing {
+		curVer, cvErr := h.store.CurrentKeyVersion(ctx, channelID)
+		if cvErr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "key version check: "+cvErr.Error())
+			return
+		}
+		if p.KeyVersion > curVer {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeStaleKeyVersion,
+				"key_version is ahead of the channel's current version")
+			return
+		}
+	}
+
+	// Wire ts is unix-millis; the window lookup hands back the FULL-precision
+	// ts that message_reactions' composite FK requires.
+	msg, gErr := h.store.GetMessageAtWireTS(ctx, time.UnixMilli(p.TS), messageID)
+	if gErr != nil {
+		if errors.Is(gErr, store.ErrNotFound) {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeMessageNotFound, "message not found")
+			return
+		}
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "message lookup: "+gErr.Error())
+		return
+	}
+	if msg.ChannelID != channelID {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeMessageNotFound, "message not found")
+		return
+	}
+	if msg.DeletedAt != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeReactForbidden,
+			"cannot react to a deleted message")
+		return
+	}
+
+	if _, sErr := h.store.SetReactions(
+		ctx, msg.TS, messageID, channelID, callerID, []byte(p.Body), p.KeyVersion,
+	); sErr != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "set reactions: "+sErr.Error())
+		return
+	}
+
+	ack, _ := proto.NewFrame(proto.TypeSetReactionsAck, f.Ref, proto.SetReactionsAckPayload{
+		ChannelID: p.ChannelID,
+		MessageID: p.MessageID,
+	})
+	data, _ := json.Marshal(ack)
+	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+
+	// UserID identifies WHOSE set changed; the listener re-reads that one row.
+	// No echo suppression, so the reactor's other tabs converge too.
+	if perr := pgxBegin(ctx, h.store, func(tx pgx.Tx) error {
+		ev := pubsub.Event{
+			Kind:       "reaction",
+			MessageID:  messageID,
+			TS:         msg.TS,
+			ChannelID:  channelID,
+			UserID:     callerID,
+			InstanceID: h.instanceID,
+		}
+		return pubsub.PublishMessageWithTx(ctx, tx, ev)
+	}); perr != nil {
+		h.logger.Printf("publish reaction %s: %v", messageID, perr)
+	}
+}
+
+// handleFetchReactions backfills reactions for a batch of messages. History
+// fetches don't carry reactions (they'd bloat every page for a feature most
+// messages don't use), so the client asks once per loaded window.
+func (h *WSHandler) handleFetchReactions(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.FetchReactionsPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+	isMember, mErr := h.store.IsMember(ctx, channelID, callerID)
+	if mErr != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership check: "+mErr.Error())
+		return
+	}
+	if !isMember {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of channel")
+		return
+	}
+	// Bound the batch the same way history is bounded, so one frame can't ask
+	// the server to assemble an unbounded result.
+	if len(p.MessageIDs) > maxReactionFetch {
+		p.MessageIDs = p.MessageIDs[:maxReactionFetch]
+	}
+	ids := make([]uuid.UUID, 0, len(p.MessageIDs))
+	for _, s := range p.MessageIDs {
+		if id, perr := uuid.Parse(s); perr == nil {
+			ids = append(ids, id)
+		}
+	}
+
+	rows, lErr := h.store.ListReactionsForMessages(ctx, channelID, ids)
+	if lErr != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "list reactions: "+lErr.Error())
+		return
+	}
+	out := make([]proto.ReactionWire, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, reactionWireOf(r))
+	}
+	ack, _ := proto.NewFrame(proto.TypeFetchReactionsAck, f.Ref, proto.FetchReactionsAckPayload{
+		ChannelID: p.ChannelID,
+		Reactions: out,
+	})
+	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("fetch_reactions_ack write: %v", err)
+	}
+}
+
+// maxReactionFetch caps one backfill request. History pages at 200, so a
+// window's worth of messages fits in a single round trip.
+const maxReactionFetch = 200
+
+// reactionWireOf renders a stored reaction for the wire. Body is base64'd by
+// the JSON encoder (Go marshals []byte that way), matching how message bodies
+// and attachment enc_meta already cross this boundary.
+func reactionWireOf(r store.Reaction) proto.ReactionWire {
+	w := proto.ReactionWire{
+		MessageID: r.MessageID.String(),
+		TS:        r.MessageTS.UnixMilli(),
+		UserID:    r.UserID.String(),
+		Body:      string(r.Body),
+	}
+	if r.KeyVersion != nil {
+		w.KeyVersion = *r.KeyVersion
+	}
+	return w
+}
+
 // handleDeleteMessage soft-deletes a message (governance prerequisite).
 //
 // Authz (mirrored client-side in web/src/chat/deletepolicy.ts):
@@ -3407,7 +3829,7 @@ func (h *WSHandler) handleDeleteMessage(
 		return
 	}
 
-	msg, mErr := h.store.GetMessage(ctx, tsTime, messageID)
+	msg, mErr := h.store.GetMessageAtWireTS(ctx, tsTime, messageID)
 	if mErr != nil {
 		if errors.Is(mErr, store.ErrNotFound) {
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeMessageNotFound, "message not found")

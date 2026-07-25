@@ -413,6 +413,10 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 		s.handleMessageEvent(ev)
 	case "message_deleted":
 		s.handleMessageDeletedEvent(ev)
+	case "message_edited":
+		s.handleMessageEditedEvent(ev)
+	case "reaction":
+		s.handleReactionEvent(ev)
 	case "presence":
 		s.handlePresenceEvent(ev)
 	case "friend":
@@ -593,6 +597,115 @@ func (s *Server) handleMessageDeletedEvent(ev pubsub.Event) {
 		return
 	}
 	s.broadcastToChannelMembers(ctx, msg.ChannelID, ev.SenderConnID, wire, now)
+}
+
+// handleMessageEditedEvent re-fetches the edited row, builds a message_edited
+// frame carrying the NEW ciphertext, and fans it out so members swap the body
+// in place.
+//
+// Why re-fetch rather than trust the event: the event is a routing pointer
+// like every other kind, and the row is the authority on what the body now is.
+// A concurrent second edit therefore converges on the later write instead of
+// two instances pushing different bodies for the same message.
+//
+// Same freshness reasoning as handleMessageDeletedEvent: gate on time.Now(),
+// not msg.TS. An edit is a "happening now" event about a possibly-old message,
+// so gating on the original ts would skip every member who connected since it
+// was sent. No echo-suppression either (ev.SenderConnID is empty), so the
+// editor's own other tabs converge too.
+func (s *Server) handleMessageEditedEvent(ev pubsub.Event) {
+	if s.store == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	msg, err := s.store.GetMessage(ctx, ev.TS, ev.MessageID)
+	if err != nil {
+		s.logger.Printf("pubsub fetch edited %s: %v", ev.MessageID, err)
+		return
+	}
+	// A delete that landed between the edit and this push wins: the body is
+	// already scrubbed, and pushing it as an edit would tell clients to
+	// replace their tombstone with an empty body. The delete published its
+	// own message_deleted, so dropping this one loses nothing.
+	if msg.DeletedAt != nil {
+		return
+	}
+	var editedAt int64
+	if msg.EditedAt != nil {
+		editedAt = msg.EditedAt.UnixMilli()
+	}
+	keyVersion := 0
+	if msg.KeyVersion != nil {
+		keyVersion = *msg.KeyVersion
+	}
+	frame, err := proto.NewFrame(proto.TypeMessageEdited, "", proto.MessageEditedPayload{
+		ChannelID:  msg.ChannelID.String(),
+		MessageID:  msg.ID.String(),
+		Seq:        msg.Seq,
+		Body:       string(msg.Body),
+		KeyVersion: keyVersion,
+		EditedAt:   editedAt,
+	})
+	if err != nil {
+		s.logger.Printf("message_edited frame: %v", err)
+		return
+	}
+	wire, err := json.Marshal(frame)
+	if err != nil {
+		s.logger.Printf("message_edited marshal: %v", err)
+		return
+	}
+	now := time.Now()
+	if msg.ChannelID == store.DefaultChannelID {
+		s.hub.FanOutFresh(ev.SenderConnID, wire, now)
+		return
+	}
+	s.broadcastToChannelMembers(ctx, msg.ChannelID, ev.SenderConnID, wire, now)
+}
+
+// handleReactionEvent re-reads one member's reaction row and fans out a
+// reaction_update so every member re-tallies.
+//
+// An ABSENT row is not an error: it is how "this member cleared their
+// reactions" is stored, and the push still has to go out (with an empty body)
+// or other clients would keep showing the reactions that were just removed.
+//
+// Freshness gates on time.Now() for the same reason as edits and deletes: the
+// message can be arbitrarily old, so gating on its ts would drop the push for
+// everyone who connected since it was sent.
+func (s *Server) handleReactionEvent(ev pubsub.Event) {
+	if s.store == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	r, _, err := s.store.GetReaction(ctx, ev.TS, ev.MessageID, ev.UserID)
+	if err != nil {
+		s.logger.Printf("pubsub fetch reaction %s: %v", ev.MessageID, err)
+		return
+	}
+	frame, err := proto.NewFrame(proto.TypeReactionUpdate, "", proto.ReactionUpdatePayload{
+		ChannelID: ev.ChannelID.String(),
+		Reaction:  reactionWireOf(r),
+	})
+	if err != nil {
+		s.logger.Printf("reaction_update frame: %v", err)
+		return
+	}
+	wire, err := json.Marshal(frame)
+	if err != nil {
+		s.logger.Printf("reaction_update marshal: %v", err)
+		return
+	}
+	now := time.Now()
+	if ev.ChannelID == store.DefaultChannelID {
+		s.hub.FanOutFresh(ev.SenderConnID, wire, now)
+		return
+	}
+	s.broadcastToChannelMembers(ctx, ev.ChannelID, ev.SenderConnID, wire, now)
 }
 
 // broadcastToChannelMembers sends wire to every locally-connected

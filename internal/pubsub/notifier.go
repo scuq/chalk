@@ -52,6 +52,13 @@ type Event struct {
 	// message was soft-deleted; reuses the message fields MessageID, TS,
 	// ChannelID and is published per-channel via PublishMessageWithTx --
 	// receivers fetch the now-tombstoned row and push message_deleted).
+	// "message_edited" (phase 37-2: a message's body was replaced in place;
+	// same message fields and same per-channel publish as message_deleted,
+	// and likewise a routing pointer -- receivers re-fetch the row so
+	// concurrent edits converge on whatever the last write stored).
+	// "reaction" (phase 37-4: UserID's emoji set for MessageID changed;
+	// also per-channel, also a routing pointer -- receivers re-read that one
+	// row, and an ABSENT row means the user cleared their reactions).
 	// "governance" (gov-1b-1: a proposal/mode change; UserID is the
 	// recipient member, FriendKind the sub-kind, and the
 	// GovernanceEventPayload JSON rides the ChannelEventPayload slot).
