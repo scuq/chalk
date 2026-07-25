@@ -1,232 +1,266 @@
 # Changelog
 
-All notable changes to chalk are documented here.
+What changed in chalk, in plain language — newest first. Version numbers are
+the release tags: one `vX.Y.Z` tag builds both the container image and the
+matching `chalkctl` binary. Day-of releases are grouped by theme rather than
+listed one patch version at a time.
 
-## [Unreleased]
+The engineering-level history (which slice shipped what) lives in
+[docs/phase-log.md](docs/phase-log.md).
 
-### Changed
-- **License: GPL-3.0-or-later → BSD-3-Clause.** chalk moved to GPL in
-  phase 11a only to align with the GPL `@wireapp/core-crypto` dependency.
-  That dependency (and all MLS/WASM code) was removed in the 21-series
-  rip-out, so the project returns to a permissive license. Done by the sole
-  copyright holder; pre-relicense commits remain under their original terms
-  (MIT through 9.x, GPL-3.0 during 11a–21).
+---
 
-### Added (post-21 rebuild: encryption, governance, attachments, multi-device)
-- **End-to-end encryption (phases 22–25).** Identity keys (X25519 + Ed25519
-  from a 24-word BIP-39 phrase, native WebCrypto); per-channel space keys with
-  AES-256-GCM; server back to blind relay; safety-number verification; space-key
-  rotation + membership lifecycle (add/remove/leave/re-add, forward-only,
-  rotate-on-removal + wrap-scrub).
-- **Governance.** Per-channel dictator/democratic mode; proposal→vote→resolve
-  engine (remove_member, add_member, delete_message, set_mode) with hardened
-  tally (frozen eligibility, turnout quorum, supermajority for mode-to-dictator,
-  cooldowns, expiry); client governance panel.
-- **Attachments.** Partitioned encrypted-blob store, chunked HTTP transport,
-  encrypted previews + metadata, ciphertext IndexedDB cache; Giphy via
-  URL-reference with per-user opt-in consent + host allowlist.
-- **Multi-device.** Shared-identity-key onboarding (re-enter phrase → verify
-  against published key → persist), self-echo to other devices, passkey
-  enrollment/deletion flows.
-- **Admin moderation (09d).** Block/unblock/soft-delete/purge, email blacklist,
-  admin-protection triggers.
-
-### Added (phase 30: voice/video, slices 30-1 .. 30-6)
-- **Voice channels (Discord-style).** `channel_type='voice'`, live
-  `voice_participants` rooms with orphan janitor, five voice wire frames,
-  server-relayed opaque signaling, per-join HMAC TURN credentials (coturn as
-  mandatory relay; dev + prod compose, `turns:` hardening docs).
-- **Client WebRTC mesh + anti-MITM.** Glare-free offer handshake, E2E-encrypted
-  signaling under the channel space key, Ed25519-signed DTLS fingerprints
-  verified against published identities (abort on mismatch), relay-only mode
-  (`CHALK_VOICE_FORCE_RELAY`), minimal per-sender uplink budget, signal spool
-  for payloads past the NOTIFY cap.
-- **Voice UI.** Sidebar live occupancy with mute/cam/screen badges (❯ / ▶
-  channel glyphs), big-tile + filmstrip stage with click-to-pin focus, call
-  duration, diagnostics drawer (signaling event ring, selected-candidate-pair
-  stats, copy-report).
-- **Polish (30-6).** Removed-member voice eviction cascade (unilateral +
-  governance paths), WS-loss call teardown, post-join mute/video state sync,
-  actionable getUserMedia error messages, `voice_enabled` welcome flag gating
-  all voice UI. Feature-flagged: `CHALK_VOICE_ENABLED` (default off).
-
-### Added (phase 30 addenda: 30-7 screen/game share, 30-8 adaptive quality)
-- **Screen & game sharing (30-7, Addendum B).** Perfect-negotiation
-  renegotiation; screen on separate transceivers (camera + screen
-  simultaneous) announced via `screen_add`/`screen_remove`; three-way
-  motion/detail/text Prioritize toggle (contentHint + degradationPreference);
-  mode-dependent codec ladder (AV1 CPU-gated for detail/text, VP9-first for
-  motion); shared program audio (music hint, 128 kbps); per-viewer screen
-  hide; mid-call camera add; dock sharing row + screen audio sinks.
-- **Adaptive quality (30-8, Addendum D).** Pre-stream uplink probe
-  (`POST /api/netprobe`, session-gated timed discard) picks the starting
-  tier; passive in-call re-checks (`CHALK_VOICE_RECHECK_SECS`, getStats
-  only — never active tests mid-call) with an always-on ~3 s fast
-  down-guard; mesh budget divider (uplink × headroom − audio reserve →
-  per-copy caps, screen prioritized, camera thumbnails while sharing);
-  per-mode tier ladder with hysteresis applied via `sender.setParameters()`
-  (no renegotiation); game bottom rung pauses + warns, auto-resumes. New
-  knobs: `CHALK_VOICE_PROBE_ENABLED/PROBE_BYTES/RECHECK_SECS/`
-  `UPLINK_HEADROOM/AUDIO_KBPS/MIN_VIDEO_KBPS`; policy delivered per-join on
-  `voice_join_ack.adaptive`; planner state in the debug drawer.
-
-### Planned
-- Phase 30: SFU seam (Slice I) for large voice rooms.
-- Governance `set_config` proposal type (govern per-channel knobs by vote).
+## Unreleased
 
 ### Added
-- Phase 11b-3 (MLS DM encryption — receive side and hotfixes): alice2
-  and bob2 can exchange end-to-end MLS-encrypted DMs over chalkd.
-  `messages.ciphertext` stores opaque MLS ciphertext bytes
-  (~190B/msg); server never sees plaintext. Receive path: `mls_welcome`
-  push frames are processed client-side to join MLS groups;
-  `mls_ciphertext` content type bypasses the LATERAL preview join in
-  `ListMessagesByChannel` so the server-side last-reply preview
-  stays empty for encrypted DMs. Six hotfixes during stabilization
-  (provideTransport ordering, sendCommitBundle return-shape, commit
-  encryptedMessage carrying ~978B in-band data, observer timing).
-  Multi-device deferred to phase 11d.
-- Phase 11b-2 (MLS DM encryption — send side): client-side encryption
-  on send path via `@wireapp/core-crypto`; `mls_commit_bundle` wire
-  frame carries Commit + Welcome up to chalkd, which stores the
-  Commit for late-joining devices and fans the Welcome out to the
-  addressee's connected devices. New `content_type` enum value
-  `mls_ciphertext` alongside the existing `application` (plaintext).
-  Migration 0022 adds `mls_groups` table (`channel_id` PK,
-  `mls_group_id` BYTEA, `current_epoch`); migration 0023 adds
-  `channels.is_mls` boolean. KeyPackage consumption decrements
-  `key_packages.used_at` via `FOR UPDATE SKIP LOCKED` during MLS Add.
-- Phase 11b-1 (DM hard-cutover scaffolding): channel header lock
-  icon for `is_mls=true` DMs; "peer hasn't logged in recently"
-  surface when zero unused KeyPackages exist for the target user; no
-  silent plaintext fallback for new DMs. Pre-existing plaintext DMs
-  stay plaintext for their channel lifetime.
-- Phase 11a (CoreCrypto foundation + relicense): `@wireapp/core-crypto`
-  WASM in `web/vendor/`; Web Worker harness for crypto operations.
-  KeyPackage publish/fetch (`publish_keypkgs` / `fetch_key_packages`
-  wire frames) with server-side `FOR UPDATE SKIP LOCKED` consumption
-  semantics. Migration 0020 adds `key_packages` table; migration
-  0021 adds index for unused-KP lookups. KeyPackage refill threshold:
-  10 KPs stocked, refill triggered when 3 consumed. Defensive
-  `any`-typed probe of CoreCrypto's constructor shape in
-  `web/src/mls/loader.ts` so common upstream renames surface a clear
-  error rather than a build failure.
+- **React without opening a menu.** A react button sits in the row actions,
+  and pressing `r` while hovering a message opens the picker.
+
+### Fixed
+- **Being added to a channel works without a reload.** Two problems, both
+  gone: members showed up as UUID fragments (sender names, roster and mention
+  highlighting) until the next reconnect, and a channel could sit on "waiting
+  for key" forever if you asked for your key a moment before the inviter
+  deposited it. The server now sends handles with the channel, and the client
+  retries the key as soon as it lands.
+
+---
+
+## v0.3.27 — 25 July 2026 — Edit and react
+
+### Added
+- **Emoji reactions.** React to any message; chips with a tally appear under
+  it, and reactions on older messages are fetched as you scroll back.
+  Reactions are end-to-end encrypted like everything else, per user.
+- **Edit your own messages.** Press cursor-up to edit the last one you sent,
+  or use the row menu. Edited messages are marked `(edited)`. The window is
+  15 minutes from when the message was sent, and only the author can edit —
+  there is deliberately no owner override and no vote: deleting is a
+  moderation action a channel can have opinions about, putting words in
+  someone's mouth is not. A deleted message can't be edited back into
+  existence.
+
+---
+
+## v0.3.20 – v0.3.26 — 25 July 2026 — Mobile, unread tracking, deletion, PWA
+
+### Added
+- **Mobile layout.** A roster drawer, stacked message rows, safe-area insets
+  for notched screens, and compact row actions that fit a narrow screen.
+- **Unread tracking.** Per-channel read cursors that sync across your
+  devices, unread and mention dots in the sidebar, a "new messages" divider
+  in the feed, and landing on the first unread message when you open a
+  channel. Mentions are detected client-side, so the server never needs your
+  plaintext.
+- **Message deletion, with rules.** Your own messages are always yours to
+  delete, in any channel. Someone else's follows the channel's governance
+  mode: the owner deletes unilaterally in dictator mode (confirmed twice,
+  since it erases another member's words), and in democratic mode any member
+  can open a proposal the channel votes on. The same rules apply in threads.
+- **Reading comfort.** Resizable sidebar with a remembered width, per-device
+  font family and text size (Hack is bundled, no network fetch), and an LCARS
+  theme.
+- **Installable app.** chalk logo in the header, app icons and a web manifest,
+  so it installs as a PWA; the pop-out window now recognises itself reliably
+  and hides its own pop-out button.
+
+### Fixed
+- **You no longer appear offline while you're online.** A closing tab could
+  delete the presence row a newer connection had just claimed, presence
+  counted devices instead of connections (so a second tab closing took you
+  offline), and after another instance reclaimed a dead one, nothing
+  re-asserted presence for the connections still open. All three fixed;
+  hiding a tab now debounces before marking you away.
+- **The view stops jumping** while images finish loading when you land in a
+  channel.
+- Full-width attachments keep the right-hand gutter instead of running to the
+  window edge.
+- The hover reply button shows in compact mode (delete already did).
+- Modal dialogs have a real surface and readable contrast in every theme.
+
+---
+
+## v0.3.15 – v0.3.19 — 25 July 2026 — Passwords and two-factor (auth v2)
+
+**Heads-up: this changes how everyone logs in.** Existing accounts are walked
+through a migration wizard on their next sign-in.
 
 ### Changed
-- **License**: relicensed chalk from MIT to GPL-3.0-or-later. The sole
-  copyright holder (scuq) is the only contributor of substantive code
-  through this date; relicense was performed to align with the
-  GPL-3.0 license of `@wireapp/core-crypto`, the MLS library
-  introduced in phase 11a. See LICENSE for the full text. Past
-  commits remain available under MIT (their original terms); all
-  releases from phase 11a onward are GPL-3.0-or-later.
-- **Phase numbering**: aligned README, phase-log, and bootstrap on
-  the post-09 numbering scheme. Sub-phases (11a, 11b-1, 11b-2,
-  11b-3, 11d) are now first-class entries rather than collapsed
-  under a parent number. See "Phase numbering note" below.
+- **Sign in with a password and a 6-digit code.** Signup asks for a handle, a
+  password (at least 20 characters across 4 character classes), a TOTP QR code
+  to scan, and then shows you your two 24-word phrases. The password never
+  leaves your browser — it's stretched with Argon2id and the server only sees
+  a derived proof.
+- **Two separate phrases, with separate jobs.** The *recovery phrase* gets you
+  back into the account; the *encryption phrase* is your cryptographic
+  identity and never leaves the client. Losing one does not cost you the
+  other.
+- **Passkeys are a convenience, not a bypass.** They still work, and they
+  still ask for your TOTP code. Two-factor is mandatory on every path.
+- **Recovery resets your login instead of performing it.** The old behaviour
+  signed you in from the phrase alone: that skipped the second factor
+  entirely and left you logged in but unable to change the password you'd
+  forgotten. Now the phrase plus a live TOTP code sets a new password — or,
+  if the authenticator is what you lost, clears TOTP so you can re-enrol
+  through the session it mints.
+- **Claiming the admin account** now uses a one-shot bootstrap token URL
+  (`/?admin_token=…`, printed by `chalkctl init`), which stops working the
+  moment the admin account has credentials. The old passkey-based bootstrap
+  is gone.
 
-### Added (Phase 09 series)
-- Phase 09d (admin moderation): admin user bootstrapped at chalkd
-  startup via `CHALK_ADMIN_USERNAME` + `CHALK_ADMIN_EMAIL`; one-time
-  `?admin_bootstrap=<token>` URL printed to stderr for first-run
-  passkey enrollment. Once enrolled, admin reaches `/admin` panel
-  via StatusBar menu with two tabs: **users** (paginated, searchable
-  list with hover-reveal block / unblock / soft-delete / purge
-  buttons; status pills for active/blocked/deleted/admin) and
-  **blacklist** (add/list/remove blacklisted emails). Purge
-  auto-blacklists the user's email with reason `purged_user`. Block
-  + soft-delete kick all active WebSocket sessions for the affected
-  user via `Hub.CloseConnsForUser`. Migration 0019 adds `blocked_at`
-  + `deleted_at` columns plus the `admin_delete_guard` trigger.
-- Phase 09c (invites + profile + email-change verification):
-  invite-based registration with `?invite=<token>` URLs,
-  ProfilePanel, in-chat InvitesPanel for the admin to mint and
-  revoke invites, email-change with `?verify_email=<token>`
-  verification.
-- Phase 09b (auth): WebAuthn passkey registration and authentication
-  with `go-webauthn`, 24-word BIP-39 recovery codes, session
-  cookies, login/logout, `/api/auth/{config,register/begin,register/finish,authenticate/begin,authenticate/finish,recovery,logout,me}`.
-  SPA gains a full auth flow (LoginScreen, RegisterScreen,
-  RecoveryScreen, RecoveryLoginScreen, RegenerateScreen) gated by
-  AuthGate before the chat UI mounts. Phase 05's device-ensure shim
-  is gone in non-dev mode; dev mode keeps it as `--open-registration`.
-- Phase 09a (multi-tab): hub's local connection map keyed by
-  `userID` instead of `deviceID`, so multiple tabs of the same user
-  no longer evict each other. WebSocket sessions are now scoped to
-  user identity via session cookies.
+### Added
+- **Security panel** in your profile: change password, reset TOTP, relink the
+  encryption phrase.
 
-### Added (Phase 00–08 series)
-- Phase 08c: handles in welcome, channel summaries, and friend
-  picker. Status badge shows `you (alice)`, sidebar DMs show
-  `@bob`, friend picker renders handles with UUID fallback.
-- Phase 08b: SPA channels. Sidebar with channel list, create-channel
-  modal, friend picker via bucketed `friend_list`. `subscribe_channel`
-  wire frame lets the SPA drive per-channel topic subscriptions.
-  Optimistic-append for own sends. Playwright integration tests.
-- Phase 08: channels. Per-channel pubsub topics with dynamic LISTEN
-  refcounting, DM cardinality trigger, `create_channel` /
-  `list_channels` / `fetch_history` / `channel_event` frames.
-  Echo-suppression so the sender device doesn't receive its own
-  message back. Migrations 0009 and 0010.
-- Phase 07: Preact + esbuild SPA. Matrix-green-on-black theme, Hack
-  font, StatusBar, Composer with optimistic local rendering.
-  `tools/dev.sh` and `make dev` for the full local stack. SPA
-  served from `embed.FS` by `chalkd`.
-- Phase 06: presence and friends. `device_presence` table with TTL,
-  multi-device aggregate (active/away/offline), heartbeat + janitor.
-  Friend store with bucketed queries (pending_outgoing,
-  pending_incoming, accepted, blocked). User-lifecycle schema (write
-  paths deferred to phase 11). Migrations 0006–0008.
-- Phase 05: cross-instance fan-out. `internal/pubsub` with NOTIFY
-  publisher and dedicated LISTEN connection on `chalk_global`. Hub
-  integration so a message published on one chalkd instance reaches
-  subscribers on any other.
-- Phase 04: WebSocket relay. `internal/server/ws.go`
-  (coder/websocket), `internal/server/hub.go` (local connection
-  registry by deviceID), ping/pong, wire protocol v0
-  (hello/welcome/send/message). Plaintext payload; MLS arrived in
-  phase 11a/11b.
-- Phase 03: Postgres store. pgx connection pool, embedded migrations
-  runner, initial schema for users + devices + channels + messages.
-  Store interfaces for users (create/upsert/get/count), devices,
-  channels, messages.
-- Phase 02: containerization (Dockerfile, compose files for
-  dev/test/prod, healthcheck).
-- Phase 01: `chalkd` Go skeleton with config, version, and graceful
-  shutdown.
-- Phase 00: bootstrap scaffolding, library helpers, project layout.
+### Fixed
+- **Passkeys synced across devices could refuse to log in** with a "Backup
+  Eligible flag inconsistency" error, because the credential's backup flags
+  weren't stored when it was registered. They're persisted and restored now.
 
-### Known issues
-- Account lifecycle write paths (deactivate, delete, reactivate)
-  aren't wired up; the phase-06 schema supports them but no
-  handlers exist yet. Deferred to a future phase (formerly numbered
-  phase 11 in the older plan; superseded by the current MLS-focused
-  11-series).
-- Multi-device support for MLS-encrypted DMs is incomplete in 11b.
-  A user's second browser profile cannot decrypt MLS DMs sent from
-  their first profile. Resolved in phase 11d (design specified in
-  `docs/design/phase-11d-doc{1..7}.md`).
+---
 
-### Phase numbering note
-The 09+ ordering in `README.md` and `docs/phase-log.md` differs from
-the original `bootstrap/` scaffold's stub names (which had 09 blobs,
-10 mls, 11 friending, 12 hardening, 13 cross-browser). The current
-plan, reflected in this CHANGELOG and `docs/phase-log.md`:
+## v0.3.0 – v0.3.14 — 22–23 July 2026 — Composer, message layout, duplicate messages
 
-- **09** auth (shipped as 09a–09d)
-- **10** (skipped; the original "MLS" phase was folded into the 11
-  series for clarity)
-- **11a** CoreCrypto foundation (shipped)
-- **11b** MLS DM encryption (shipped as 11b-1, 11b-2, 11b-3)
-- **11c** MLS multi-member channel encryption (planned)
-- **11d** Multi-device + history transfer (designed, not yet
-  implemented)
-- **12** Account lifecycle write paths (planned)
-- **13** Blobs / encrypted attachments (planned)
-- **14** Hardening: rate limits, metrics, GC, `--migrate-only`
-  (planned)
-- **15** Cross-browser testing matrix (planned)
+### Added
+- **Emoji picker in the composer** — about 350 emoji in 8 categories with
+  keyword search, so "lol" finds 😂 and "+1" finds 👍. Picks land at the
+  caret (or replace the selection) instead of being appended, and the picker
+  stays open for several picks.
+- **Per-user nick colours**, stored as a hue so they stay readable when you
+  switch themes. Everyone is auto-coloured from their handle; right-click or
+  long-press a friend in the roster to pick or reset theirs.
+- **Two themes:** snazzy-light (cool near-white, magenta accent) and
+  tokyo-night.
+- **Composer tool row** above the input — file, GIF, emoji — as text labels or
+  icons, your choice. It no longer eats the width of the input field.
+- **Pop-out button** that opens chalk in its own right-sized window.
 
-The stubs in `bootstrap/` still carry the old names and will be
-renamed as each phase actually starts. See
-`docs/phase-log.md` for the canonical history.
+### Fixed
+- **Messages no longer appear twice.** Your own send could show up as both the
+  local copy and the server's copy after a reconnect or a channel switch.
+  Every send is now acknowledged to the sender with the stored message, so the
+  local copy is retired exactly once no matter which path delivers the real
+  one.
+- **No more accidental second DM.** The new-channel dialog's "direct message
+  (1:1)" checkbox could create a *second* DM with someone you already had one
+  with — the new one starts empty, so the old conversation reads as "my
+  messages are gone". The checkbox is gone, and asking for a DM that already
+  exists returns the existing one.
+- **Deploys take effect on the next page load.** Bundle filenames are
+  content-hashed and cached immutably, so no more hard refresh after an
+  update.
+- Governance controls are hidden in DMs, where a vote between two people means
+  nothing.
+- **Message rows line up.** Timestamps align with the first line of a
+  multi-line message instead of its middle; GIFs and attachments start at the
+  body column instead of the row edge; the reply indicator and preview sit
+  with the message they belong to; compact mode uses one font size throughout;
+  the sender column is sized to the widest name in view (long names wrap), and
+  shows your own handle rather than "you".
+
+---
+
+## v0.2.0 – v0.2.3 (plus ctl-v0.2.1 … ctl-v0.7.2) — 21–22 July 2026 — Deployment manager and voice fixes
+
+### Added
+- **`chalkctl` grew into a full deployment manager**: `init` seeds the admin
+  identity and WebAuthn config so the deployment is loginable out of the box
+  (with flags for the voice/attachment/Giphy knobs, plus `--force` and
+  `--drop-db`), `up` / `down` / `status` for lifecycle, `images` to show what
+  provenance the running image carries, `update` to verify, swap,
+  health-check and roll back automatically, and `reconfigure-turn`. coturn
+  runs on alpine, the external IPv4 address is detected automatically, and
+  `-n` logs to stdout.
+- **Images carry OCI provenance labels** (version, revision, build date), so
+  `podman inspect` tells you exactly which commit is deployed.
+
+### Fixed
+- **Video stopped flickering** roughly once a second in calls — the video
+  element was being torn down and rebuilt on every re-render instead of
+  being reused.
+- **Calls work on hosts with a VM or VPN bridge.** Non-routable IPv6 ULA
+  candidates were being offered and failing TURN lookup; ICE now filters to
+  IPv4.
+- **Deployments come up on PostgreSQL 18**, which moved its data directory
+  into a versioned subdirectory.
+- **chalkd starts with the configuration it was given.** Quadlet expands
+  `Environment=` before the env file is loaded, so any setting composed from
+  another one collapsed to empty and the server failed to start; composed
+  values are now written out literally, and secrets no longer round-trip
+  through unit files at all (coturn reads its own config file).
+
+---
+
+## v0.1.0 — 20 July 2026 — First tagged release
+
+- **Signed releases.** Multi-arch container image and `chalkctl` binaries,
+  built by CI and cosign-signed, published to GHCR. `chalkctl` verifies the
+  signature before it pulls.
+- **Self-installing deployment.** `chalkctl init` renders podman Quadlet units
+  and brings up chalkd, Postgres and coturn on a fresh host.
+- **Voice and video complete** through screen/game sharing and adaptive
+  quality (see below).
+
+---
+
+## Before v0.1.0 — the untagged build (phases 00–30)
+
+The condensed story. The full slice-by-slice record is in
+[docs/phase-log.md](docs/phase-log.md).
+
+- **End-to-end encryption (phases 22–25).** Your identity keys come from a
+  24-word phrase; each channel has a shared key that encrypts its messages,
+  and that key is handed to each member wrapped under their public key. The
+  server went back to being a blind relay. Includes picture-word verification
+  against key substitution, and key rotation when someone is removed —
+  they can't read anything sent afterwards.
+- **Voice and video (phase 30).** Discord-style voice channels: a WebRTC mesh
+  with coturn as the mandatory relay, signalling encrypted under the channel
+  key, and each peer's call fingerprint signed by their identity (a mismatch
+  aborts the call rather than continuing unverified). Sidebar occupancy with
+  mute/camera/screen badges, a big-tile + filmstrip stage, call duration, and
+  a diagnostics drawer. Screen and game sharing with a motion / detail / text
+  quality preference, shared program audio, and camera plus screen at the
+  same time. Adaptive quality measures your uplink before the call, keeps
+  watching passively during it, and divides the budget across peers instead
+  of overshooting. Off unless `CHALK_VOICE_ENABLED` is set.
+- **Attachments.** Encrypted uploads with encrypted previews and metadata (the
+  server sees only sizes), drag-and-drop and clipboard paste with per-file
+  progress, and a local ciphertext cache. Giphy is opt-in per user and proxied
+  through the server against a host allowlist.
+- **Governance.** Each channel is `dictator` or `democratic`. In democratic
+  mode, removing or adding a member, deleting a message, or changing the mode
+  runs as a proposal the members vote on, with a frozen eligibility snapshot,
+  quorum, cooldowns and expiry.
+- **Multi-device.** A second device re-enters your encryption phrase, derives
+  the same identity and checks it against the published one before saving it,
+  so you can't accidentally fork your identity. Your messages echo to your
+  other devices.
+- **Admin moderation.** Block, unblock, soft-delete and purge users, plus an
+  email blacklist, from an in-app admin panel.
+- **License: GPL-3.0-or-later → BSD-3-Clause.** chalk moved to GPL only to
+  match the `@wireapp/core-crypto` dependency; that dependency and all
+  MLS/WASM code were removed in the 21-series rewrite, so the project returned
+  to a permissive license. Done by the sole copyright holder; pre-relicense
+  commits remain under their original terms (MIT through 9.x, GPL-3.0 during
+  11a–21).
+
+---
+
+## Planned
+
+- A server-side mixer (SFU) for voice rooms too large for a mesh.
+- Governing per-channel settings by vote (`set_config` proposals).
+
+---
+
+## Phase numbering note
+
+Phase numbers in the commit log and [docs/phase-log.md](docs/phase-log.md)
+differ from the original `bootstrap/` scaffold's stub names. The canonical
+mapping: **09** auth (shipped as 09a–09d); **10** skipped (the original "MLS"
+phase folded into the 11-series); **11a** CoreCrypto foundation and **11b** MLS
+DMs (both later removed in the 21-series rip-out); **21** MLS removal; **22–25**
+the encryption rebuild that replaced it; **30** voice/video; **31** password +
+TOTP auth; **32–38** the client polish arc (mobile, unread tracking, presence,
+deletion, branding, edits and reactions).
