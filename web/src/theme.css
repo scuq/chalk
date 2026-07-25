@@ -179,6 +179,21 @@ html, body {
   color: var(--chalk-fg-bright);
 }
 
+/* The mark scales with the wordmark it sits next to. .chalk-header-left
+   aligns its items on the baseline, and an svg's baseline is its bottom
+   edge, so the mark lands on the wordmark's baseline; the negative margin
+   drops it a hair further so it reads centred on the letterforms. */
+.chalk-logo {
+  width: 1.35em;
+  height: 1.35em;
+  flex: none;
+}
+
+.chalk-header .chalk-logo {
+  font-size: var(--chalk-size-title);
+  margin-bottom: -0.12em;
+}
+
 .chalk-main {
   overflow-y: auto;
   /* 30-5j: allow the grid item to shrink below its content height so the
@@ -5746,6 +5761,9 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 
 .chalk-drawer-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--chalk-s2);
   color: var(--chalk-fg-bright);
   letter-spacing: 0.08em;
 }
@@ -5838,6 +5856,11 @@ body.chalk-resizing .chalk-sidebar-resizer {
 
   .chalk-header h1 {
     font-size: calc(16px * var(--chalk-font-scale));
+  }
+
+  .chalk-header .chalk-logo {
+    font-size: calc(16px * var(--chalk-font-scale));
+    margin-bottom: 0;
   }
 
   /* Connection detail text ("connected to ...") is the first thing to go

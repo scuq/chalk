@@ -18,6 +18,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { basename } from "node:path";
 
 const watch = process.argv.includes("--watch");
@@ -65,6 +66,28 @@ const buildOpts = {
   logLevel: "info",
 };
 
+// emitFavicon copies icons/favicon.svg into dist/icons/ under a
+// content-hashed name and returns that name. The favicon is the one asset
+// index.html references that esbuild never sees, and spa.go serves
+// everything in dist/ as immutable for a year -- so it has to carry a hash
+// too, or a redesigned logo would never reach anyone who has already
+// loaded the app.
+function emitFavicon() {
+  const src = "icons/favicon.svg";
+  if (!existsSync(src)) {
+    throw new Error(`build: ${src} not found`);
+  }
+  const hash = createHash("sha256")
+    .update(readFileSync(src))
+    .digest("hex")
+    .slice(0, 8)
+    .toUpperCase();
+  const out = `icons/favicon-${hash}.svg`;
+  mkdirSync(`${outdir}/icons`, { recursive: true });
+  copyFileSync(src, `${outdir}/${out}`);
+  return out;
+}
+
 // rewriteIndexHTML copies src index.html into dist, replacing the stable
 // asset references (/index.js, /theme.css) with the hashed output names
 // pulled from the esbuild metafile. Fails loudly if either entry can't be
@@ -87,6 +110,8 @@ function rewriteIndexHTML(metafile) {
   if (!jsOut) throw new Error("build: could not resolve hashed name for src/index.tsx");
   if (!cssOut) throw new Error("build: could not resolve hashed name for src/theme.css");
 
+  const iconOut = emitFavicon();
+
   let html = readFileSync(src, "utf8");
   // Replace the exact stable references. Guard that each substitution
   // actually matched so a future index.html edit that renames these can't
@@ -94,10 +119,16 @@ function rewriteIndexHTML(metafile) {
   const before = html;
   html = html
     .replace('src="/index.js"', `src="/${jsOut}"`)
-    .replace('href="/theme.css"', `href="/${cssOut}"`);
-  if (html === before || html.includes('src="/index.js"') || html.includes('href="/theme.css"')) {
+    .replace('href="/theme.css"', `href="/${cssOut}"`)
+    .replace('href="/icons/favicon.svg"', `href="/${iconOut}"`);
+  if (
+    html === before ||
+    html.includes('src="/index.js"') ||
+    html.includes('href="/theme.css"') ||
+    html.includes('href="/icons/favicon.svg"')
+  ) {
     throw new Error(
-      "build: index.html did not contain the expected /index.js and /theme.css references to rewrite",
+      "build: index.html did not contain the expected /index.js, /theme.css and /icons/favicon.svg references to rewrite",
     );
   }
   writeFileSync(`${outdir}/${src}`, html);

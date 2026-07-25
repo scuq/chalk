@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="chalk">
+  <!--
+    Favicon build of icons/logo.svg. Same geometry, nudged up 5% to fill the
+    tab chip, with the glow filters and the hairline scribble ticks dropped:
+    at 16-32px a blur is indistinguishable from a smudge and sub-2px strokes
+    disappear into it. Edit logo.svg first, then port the change here.
+  -->
+
+  <defs>
+    <linearGradient id="green" x1="70" y1="40" x2="330" y2="350" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#56f09a"/>
+      <stop offset="0.48" stop-color="#35df83"/>
+      <stop offset="1" stop-color="#20ce70"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="400" rx="64" fill="#080b0d"/>
+
+  <g transform="translate(-10 -10) scale(1.05)">
+    <!-- Speech bubble -->
+    <path
+      d="M111 42
+         H291
+         C329 42 354 68 354 106
+         V267
+         C354 305 329 329 291 329
+         H178
+         L106 376
+         V329
+         C69 327 47 303 47 267
+         V106
+         C47 68 73 42 111 42
+         Z"
+      fill="none"
+      stroke="url(#green)"
+      stroke-width="17"
+      stroke-linecap="round"
+      stroke-linejoin="round"/>
+
+    <!-- Main chalk stick -->
+    <path
+      d="M122.5 211.5
+         L228.5 105.5
+         C236.5 97.5 247.5 98.0 255.5 105.0
+         L269.0 116.5
+         C277.0 123.5 277.5 134.0 270.0 141.5
+         L158.5 253.0
+         Z"
+      fill="url(#green)"/>
+
+    <!-- Dark separator -->
+    <path
+      d="M119.5 214.5
+         L158.0 253.0
+         L151.5 259.5
+         L113.0 221.0
+         Z"
+      fill="#080b0d"/>
+
+    <!-- Rounded chalk end -->
+    <path
+      d="M112.5 222.5
+         L150.5 260.5
+         L142.5 268.5
+         C130.0 281.0 112.0 283.0 101.5 272.5
+         C91.0 262.0 93.0 244.0 105.5 231.5
+         Z"
+      fill="url(#green)"/>
+
+    <!-- Chalk scribble -->
+    <g fill="none" stroke="url(#green)" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M157 275
+               C163 272 168 278 173 274
+               C178 271 183 278 189 274
+               C195 271 199 276 205 273
+               C211 270 217 276 223 273
+               C230 270 236 275 242 272
+               C250 269 257 275 264 272
+               C272 269 280 274 287 271
+               C295 268 303 273 311 270"
+            stroke-width="5.4"/>
+      <path d="M164 279
+               C175 276 183 281 194 277
+               C206 273 216 280 228 276
+               C240 272 252 279 264 275
+               C278 271 292 277 307 273"
+            stroke-width="3.2" opacity="0.85"/>
+    </g>
+  </g>
+</svg>

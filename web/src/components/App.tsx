@@ -118,6 +118,7 @@ import { WSClient, getOrCreateDeviceId, clearDeviceId, getThreadSeen, setThreadS
 import { reducer } from "../state/reducer";
 import { hasUnread, initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary, type ProposalView } from "../state/types";
 import { selectGiphyPref } from "../giphy/giphy";
+import { Logo } from "./Logo";
 import { StatusBar } from "./StatusBar";
 import { Sidebar, ChannelGlyph } from "./Sidebar";
 import { MessageList } from "./MessageList";
@@ -2498,6 +2499,7 @@ export function App() {
               ☰
             </button>
           )}
+          <Logo />
           <h1>chalk</h1>
           {/* Pop chalk out into its own right-sized window. Hidden when we
               ARE the pop-out (window.opener is set), so the button doesn't
@@ -2565,7 +2567,10 @@ export function App() {
             control instead of relying on the ☰ button behind it. */}
         {isMobile && (
           <div class="chalk-drawer-head">
-            <span class="chalk-drawer-title">chalk</span>
+            <span class="chalk-drawer-title">
+              <Logo />
+              chalk
+            </span>
             <button
               type="button"
               class="chalk-drawer-close"
