@@ -10,6 +10,23 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **chalk makes a sound now.** A message, a mention, a DM, a reply in one of
+  your threads — each one is a short stroke of chalk on a board, pitched so you
+  can tell them apart without looking. It stays quiet for the channel you're
+  already reading, never fires more than once every couple of seconds, and can't
+  make a noise at all until you've clicked something, so a tab left open
+  overnight stays silent. Under notifications in your profile you can set the
+  volume, choose what makes a sound, hear each one before you decide, and switch
+  on do-not-disturb. There are sounds for your own connection dropping, a friend
+  coming online and send confirmations too, switched off to begin with. The
+  settings stay on the device instead of following you around, so your phone and
+  your desktop can disagree.
+
+---
+
 ## v0.3.29 — 26 July 2026 — Two new themes
 
 ### Added
