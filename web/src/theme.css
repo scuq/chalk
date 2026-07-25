@@ -467,6 +467,10 @@ html, body {
   flex-direction: column;
   gap: var(--chalk-s2);
   margin-top: var(--chalk-s1);
+  /* Breathing room on the right: the block spans the full row, so without
+     this a wide image sits flush against the row edge and underlaps the
+     hover row-actions pinned there. */
+  padding-right: var(--chalk-s5);
 }
 /* giphy-layout: a giphy message breaks out to the row's left edge, same as an
    attachment image block, instead of sitting in the narrow body column. */
@@ -5844,6 +5848,11 @@ body.chalk-resizing .chalk-sidebar-resizer {
     /* Desktop pulls media up beside the sender; here the meta line is a
        row of its own, so media starts where the body would. */
     margin-top: 0;
+  }
+
+  .chalk-message-attachments {
+    /* The desktop right gutter is too costly on a narrow screen. */
+    padding-right: var(--chalk-s2);
   }
 
   .chalk-message-body {
