@@ -8,6 +8,7 @@
 // added (e.g. ChannelSummary's createdAt as Date, Message's ts as Date).
 
 import { DEFAULT_SELF_HUE, clampHue } from "../chat/nickcolor";
+import { SIDEBAR_WIDTH_DEFAULT, clampSidebarWidth } from "../chat/sidebar-width";
 import type { ConnectionState } from "../ws-client";
 import type { AttachmentRef } from "../attachments/types";
 import type {
@@ -229,6 +230,10 @@ export interface ChatPrefs {
   // Phase 9.7h: composer tool row presentation. "text" renders FILE / GIF /
   // EMOJI labels; "icons" renders glyphs. Default "text".
   composerToolStyle?: "text" | "icons";
+  // 33-4: sidebar column width in px, set by dragging its edge. Clamped to
+  // [SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX] on both write and read. Ignored
+  // on mobile, where the sidebar is a drawer with its own sizing.
+  sidebarWidth?: number;
 }
 
 export interface UserPrefs {
@@ -262,6 +267,8 @@ export interface ResolvedChatPrefs {
   userHues: Record<string, number>;
   // Phase 9.7h: defaulted to "text".
   composerToolStyle: "text" | "icons";
+  // 33-4: defaulted + clamped.
+  sidebarWidth: number;
 }
 
 // selectChatPrefs takes the (possibly sparse) prefs.chat and fills in
@@ -283,6 +290,10 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
         ? (c.userHues as Record<string, number>)
         : {},
     composerToolStyle: c.composerToolStyle === "icons" ? "icons" : "text",
+    sidebarWidth:
+      c.sidebarWidth === undefined
+        ? SIDEBAR_WIDTH_DEFAULT
+        : clampSidebarWidth(c.sidebarWidth),
   };
 }
 

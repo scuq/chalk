@@ -26,6 +26,11 @@
 // user clicked it by accident.
 
 import { hexFromHue, hueFromHex } from "../chat/nickcolor";
+import {
+  SIDEBAR_WIDTH_MAX,
+  SIDEBAR_WIDTH_MIN,
+  clampSidebarWidth,
+} from "../chat/sidebar-width";
 import { useEffect, useState } from "preact/hooks";
 import type { EmailChangeState, MeResponse } from "../auth/types";
 import {
@@ -70,6 +75,8 @@ interface Props {
     userHues: Record<string, number>;
     // Phase 9.7h:
     composerToolStyle: "text" | "icons";
+    // 33-4:
+    sidebarWidth: number;
   };
   onSetChatPref?: <
     K extends
@@ -78,14 +85,15 @@ interface Props {
       | "compactMode"
       | "userColorsEnabled"
       | "selfColorHue"
-      | "composerToolStyle",
+      | "composerToolStyle"
+      | "sidebarWidth",
   >(
     key: K,
     value: K extends "timestampFormat"
       ? "hms" | "hm" | "relative"
       : K extends "composerToolStyle"
       ? "text" | "icons"
-      : K extends "selfColorHue"
+      : K extends "selfColorHue" | "sidebarWidth"
       ? number
       : boolean,
   ) => void;
@@ -489,6 +497,38 @@ export function ProfilePanel({
                   />
                   <span>compact mode <span class="chalk-profile-theme-desc">(tighter row spacing)</span></span>
                 </label>
+              </div>
+              {/* 33-4: sidebar width. Duplicates the drag handle on the
+                  sidebar's edge, which is the faster gesture but invisible
+                  until you hover it. Long channel names ellipsise to fit
+                  whatever width is set. Desktop layout only -- on a phone
+                  the roster is a drawer with its own sizing. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-label" for="sidebar-width">
+                  sidebar width{" "}
+                  <span class="chalk-profile-theme-desc">
+                    ({chatPrefs.sidebarWidth}px, desktop only)
+                  </span>
+                </label>
+                <input
+                  id="sidebar-width"
+                  type="range"
+                  class="chalk-profile-range"
+                  min={SIDEBAR_WIDTH_MIN}
+                  max={SIDEBAR_WIDTH_MAX}
+                  step={4}
+                  value={chatPrefs.sidebarWidth}
+                  // onChange, not onInput: a range fires input on every
+                  // pixel of the drag, and each one is a prefs round-trip
+                  // that fans out to the user's other devices.
+                  onChange={(e) =>
+                    onSetChatPref(
+                      "sidebarWidth",
+                      clampSidebarWidth(Number((e.target as HTMLInputElement).value)),
+                    )
+                  }
+                  data-testid="chat-sidebar-width"
+                />
               </div>
               {/* Phase 9.7f: nick colors. On by default; the self color is a
                   hue so it stays readable on every theme. Per-friend colors

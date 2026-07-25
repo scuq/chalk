@@ -153,6 +153,7 @@ import { CreateChannelModal } from "./CreateChannelModal";
 // voice pushes from handleFrame to the mounted panel's VoiceCall.
 import { VoiceCallPanel } from "./VoiceCallPanel";
 import { VoiceDock } from "./VoiceDock";
+import { SidebarResizer } from "./SidebarResizer";
 import { voiceBus } from "../voice/bus";
 import { voiceSession } from "../voice/session";
 import { AuthGate } from "../auth/AuthGate";
@@ -329,6 +330,27 @@ export function App() {
   // doesn't come back as a stuck overlay after a resize.
   const isMobile = useIsMobile();
   const [navOpen, setNavOpen] = useState(false);
+
+  // 33-4: sidebar width. The committed value lives in prefs (so it follows
+  // the user to their other devices); sidebarDrag holds the in-flight width
+  // during a drag so the column tracks the pointer without a prefs write per
+  // frame. Null means "not dragging -- show the pref".
+  const [sidebarDrag, setSidebarDrag] = useState<number | null>(null);
+  const prefSidebarWidth = selectChatPrefs(state.prefs).sidebarWidth;
+  const sidebarWidth = sidebarDrag ?? prefSidebarWidth;
+  const commitSidebarWidth = useCallback(
+    (w: number) => {
+      setSidebarDrag(null);
+      if (w === prefSidebarWidth) return;
+      const c = clientRef.current;
+      if (!c || !c.isOpen()) return;
+      // Same read-modify-write as the other chat prefs: the server merges at
+      // the top level only, so the whole chat object goes with each patch.
+      const current = state.prefs?.chat ?? {};
+      c.send(TypePrefsSet, { patch: { chat: { ...current, sidebarWidth: w } } });
+    },
+    [prefSidebarWidth, state.prefs],
+  );
   useEffect(() => {
     if (!isMobile) setNavOpen(false);
   }, [isMobile]);
@@ -2378,6 +2400,9 @@ export function App() {
   return (
     <div
       class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${isMobile ? "chalk-app--mobile" : ""} ${navOpen ? "chalk-app--nav-open" : ""}`}
+      // 33-4: drives the sidebar grid column. Omitted on mobile, where the
+      // sidebar is a drawer sized by its own rule.
+      style={isMobile ? undefined : `--chalk-sidebar-w:${sidebarWidth}px`}
     >
       <header class="chalk-header">
         <div class="chalk-header-left">
@@ -2554,6 +2579,15 @@ export function App() {
             dispatch({ kind: "set_active_channel", channelID: id })
           }
         />
+        {/* 33-4: resize handle. Desktop only -- on mobile the sidebar is a
+            fixed-width drawer and the grid column doesn't exist. */}
+        {!isMobile && (
+          <SidebarResizer
+            width={sidebarWidth}
+            onPreview={setSidebarDrag}
+            onCommit={commitSidebarWidth}
+          />
+        )}
       </aside>
 
       <main class="chalk-main">

@@ -140,7 +140,10 @@ html, body {
    The header and footer span both columns. */
 .chalk-app--phase08b {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  /* 33-4: the sidebar column is driven by --chalk-sidebar-w, set inline on
+     the root from the user's pref and clamped in JS. The fallback keeps the
+     pre-33-4 width for any render before prefs load. */
+  grid-template-columns: var(--chalk-sidebar-w, 220px) 1fr;
   grid-template-rows: auto 1fr auto;
   grid-template-areas:
     "header header"
@@ -616,6 +619,78 @@ html, body {
   min-height: 0; /* allow inner overflow to scroll */
   display: flex;
   flex-direction: column;
+  /* 33-4: anchor for the absolutely-positioned resize handle. */
+  position: relative;
+}
+
+/* ============================================================
+   Phase 33-4: sidebar resize handle
+   ============================================================ */
+
+/* An invisible 8px-wide grab strip straddling the sidebar's right border.
+   It sits outside the padding box (right: -4px) so the cursor target
+   covers the border line itself, which is what people aim at. */
+.chalk-sidebar-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -4px;
+  width: 8px;
+  cursor: col-resize;
+  /* Above the sidebar's own content so a channel row can't swallow the
+     grab, but below modals and the voice dock's controls. */
+  z-index: 5;
+  /* The visible affordance is a 2px line drawn inside the strip, shown
+     only on hover/focus so the resting sidebar keeps its clean edge. */
+  background: linear-gradient(
+    to right,
+    transparent 3px,
+    var(--chalk-fg-bright) 3px,
+    var(--chalk-fg-bright) 5px,
+    transparent 5px
+  );
+  opacity: 0;
+  transition: opacity 120ms ease;
+  /* Stop a drag from selecting sidebar text or kicking off a native
+     touch scroll. */
+  touch-action: none;
+  user-select: none;
+}
+
+.chalk-sidebar-resizer:hover,
+.chalk-sidebar-resizer:focus-visible {
+  opacity: 1;
+}
+
+.chalk-sidebar-resizer:focus-visible {
+  outline: none; /* the highlighted line IS the focus indicator */
+}
+
+/* While dragging, the pointer routinely leaves the 8px strip. Pinning the
+   cursor and killing selection document-wide keeps the gesture from
+   looking broken halfway across the message list. */
+body.chalk-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.chalk-resizing .chalk-sidebar-resizer {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chalk-sidebar-resizer {
+    transition: none;
+  }
+}
+
+/* The width slider in profile > display settings. accent-color is enough to
+   pull the native control into the theme without rebuilding thumb and track
+   per browser engine. */
+.chalk-profile-range {
+  width: 100%;
+  accent-color: var(--chalk-fg-bright);
+  cursor: pointer;
 }
 
 .chalk-sidebar-inner {
@@ -3107,7 +3182,7 @@ html, body {
    ============================================================ */
 
 .chalk-app--phase08b.chalk-app--thread-open {
-  grid-template-columns: 220px 1fr 340px;
+  grid-template-columns: var(--chalk-sidebar-w, 220px) 1fr 340px;
   grid-template-areas:
     "header  header header"
     "sidebar main   thread"
@@ -4107,6 +4182,24 @@ html, body {
   align-items: center;
   gap: 2px;
   min-width: 0;
+  /* 33-4: fill the row. Without this the row was only as wide as its
+     content, so the unread dot's margin-left:auto had no free space to
+     consume and it rendered glued to the channel name instead of at the
+     right edge (where the friends list already put it). */
+  flex: 1 1 auto;
+}
+
+/* 33-4: the name is the only element allowed to shrink, so it ellipsises
+   at whatever width is left over after the glyph, badges, and dot have
+   taken theirs. Narrowing the sidebar therefore truncates the name earlier
+   rather than pushing the dot out of view. */
+.chalk-sidebar-item-row .chalk-sidebar-item-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  /* Guarantee a gap between the ellipsis and the dot. The row's 2px gap is
+     all you'd otherwise get once the name has eaten every spare pixel, and
+     "General…●" reads as one glyph. */
+  padding-right: 6px;
 }
 
 .chalk-sidebar-item--voicech {
