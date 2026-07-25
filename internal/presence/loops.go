@@ -66,12 +66,19 @@ type Notifier func(ctx context.Context, userID uuid.UUID) error
 // goes missing (we were declared dead and reaped), we re-register
 // rather than giving up: the alternative is to crash, which loses
 // all currently-connected clients.
+//
+// onReclaim, if non-nil, runs after a successful re-registration. Being
+// reaped means another instance's janitor deleted our row, and the cascade
+// took every device_presence row we owned with it -- every client we hold
+// now reads as offline to their friends. The callback is where the caller
+// re-asserts presence for the connections it still has. nil disables it.
 func HeartbeatLoop(
 	ctx context.Context,
 	st *Store,
 	instanceID, host, version string,
 	cfg LoopConfig,
 	logger Logger,
+	onReclaim func(context.Context),
 ) {
 	if logger == nil {
 		logger = noopLogger{}
@@ -90,6 +97,10 @@ func HeartbeatLoop(
 				logger.Printf("heartbeat: %v; re-registering", err)
 				if err := st.RegisterInstance(ctx, instanceID, host, version); err != nil {
 					logger.Printf("re-register: %v", err)
+					continue
+				}
+				if onReclaim != nil {
+					onReclaim(ctx)
 				}
 			}
 		}

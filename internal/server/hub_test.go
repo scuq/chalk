@@ -1191,3 +1191,50 @@ func TestHubHasConnForDeviceIgnoresOtherDevicesAndUsers(t *testing.T) {
 		t.Fatal("empty userID matched a conn")
 	}
 }
+
+// ---- 34-3: connection-accurate hub accounting --------------------------
+// Count, Conns and CloseAll iterate byConnID, not the device-keyed map,
+// so two tabs sharing a device_id are two connections everywhere.
+
+func TestHubCountsConnsNotDevices(t *testing.T) {
+	h := NewHub()
+	a, _ := fakeConnWithID("conn-a", "dev-shared")
+	b, _ := fakeConnWithID("conn-b", "dev-shared")
+	h.Register(a)
+	h.Register(b)
+
+	if got := h.Count(); got != 2 {
+		t.Fatalf("Count with two tabs on one device: got %d, want 2", got)
+	}
+	if got := h.Conns(); len(got) != 2 {
+		t.Fatalf("Conns with two tabs on one device: got %d, want 2", len(got))
+	}
+
+	h.Unregister(a)
+	if got := h.Count(); got != 1 {
+		t.Fatalf("Count after one tab left: got %d, want 1", got)
+	}
+}
+
+func TestHubCloseAllClosesEverySameDeviceConn(t *testing.T) {
+	h := NewHub()
+	a, aClosed := fakeConnWithID("conn-a", "dev-shared")
+	b, bClosed := fakeConnWithID("conn-b", "dev-shared")
+	h.Register(a)
+	h.Register(b)
+	// CloseAll waits for Wait(); nothing runs the read/write loops here.
+	a.MarkDone()
+	b.MarkDone()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	h.CloseAll(ctx, errors.New("shutdown"))
+
+	if aClosed.Load() != 1 || bClosed.Load() != 1 {
+		t.Fatalf("closeFn calls: conn-a=%d conn-b=%d, want 1 each",
+			aClosed.Load(), bClosed.Load())
+	}
+	if h.Count() != 0 {
+		t.Fatalf("hub not empty after CloseAll: %d", h.Count())
+	}
+}

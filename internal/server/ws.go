@@ -1042,6 +1042,81 @@ func (h *WSHandler) repairDevicePresence(
 	}
 }
 
+// reassertLocalPresence re-creates a device_presence row for every
+// connection this instance still holds, then publishes one change per
+// affected user.
+//
+// Called after our instance row was reaped and re-registered. The reap
+// cascades to device_presence, so every client on this instance silently
+// became offline to their friends; per-connection heartbeats would repair
+// that eventually, but only after up to a device TTL/3 (200s on desktop).
+// We know the connections, so we can fix it in one pass instead.
+func (h *WSHandler) reassertLocalPresence(ctx context.Context) {
+	if h.presence == nil {
+		return
+	}
+	type row struct {
+		userID uuid.UUID
+		dt     presence.DeviceType
+		state  presence.State
+	}
+	rows := map[uuid.UUID]row{}
+	for _, conn := range h.hub.Conns() {
+		deviceID, err := uuid.Parse(conn.DeviceID)
+		if err != nil {
+			continue
+		}
+		userID, err := uuid.Parse(conn.UserID)
+		if err != nil {
+			continue
+		}
+		state := presence.State(conn.ClaimedPresence())
+		if state != presence.StateOnline && state != presence.StateAway {
+			state = presence.StateOnline
+		}
+		// Tabs share one row per device; the more positive claim wins so
+		// a backgrounded tab can't mask a visible sibling.
+		if prev, ok := rows[deviceID]; ok && prev.state == presence.StateOnline {
+			continue
+		}
+		rows[deviceID] = row{
+			userID: userID,
+			dt:     classifyDeviceType(conn.DeviceType),
+			state:  state,
+		}
+	}
+	if len(rows) == 0 {
+		return
+	}
+
+	users := map[uuid.UUID]struct{}{}
+	devices := 0
+	for deviceID, r := range rows {
+		if err := h.presence.SetDevicePresence(ctx, presence.DevicePresence{
+			DeviceID:   deviceID,
+			UserID:     r.userID,
+			InstanceID: h.instanceID,
+			DeviceType: r.dt,
+			State:      r.state,
+		}); err != nil {
+			h.logger.Printf("reassert presence for device %s: %v", deviceID, err)
+			continue
+		}
+		devices++
+		users[r.userID] = struct{}{}
+	}
+	h.logger.Printf("instance reclaimed: reasserted presence for %d device(s), %d user(s)",
+		devices, len(users))
+	if h.publishPresenceChange == nil {
+		return
+	}
+	for u := range users {
+		if err := h.publishPresenceChange(ctx, u); err != nil {
+			h.logger.Printf("publish presence reassert %s: %v", u, err)
+		}
+	}
+}
+
 // lookupUserForDevice returns the user_id for a device. Best-effort;
 // returns uuid.Nil if the device isn't in the devices table (which
 // shouldn't happen since ensureDeviceForTesting creates one in phase 05).

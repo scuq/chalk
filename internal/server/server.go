@@ -329,11 +329,22 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 
 		notifier := presence.PublishPresenceChange(s.store.Pool, s.instanceID)
+		// 34-3: if another instance's janitor declares us dead during a
+		// PG stall, the cascade deletes the presence of every client we
+		// hold. Re-registering isn't enough -- rebuild their rows too.
+		var onReclaim func(context.Context)
+		if s.wsh != nil {
+			onReclaim = func(rctx context.Context) {
+				reCtx, cancel := context.WithTimeout(rctx, 10*time.Second)
+				defer cancel()
+				s.wsh.reassertLocalPresence(reCtx)
+			}
+		}
 		wg.Add(3)
 		go func() {
 			defer wg.Done()
 			presence.HeartbeatLoop(bgCtx, s.presence, s.instanceID, host, "phase06",
-				s.loopCfg, s.logger)
+				s.loopCfg, s.logger, onReclaim)
 		}()
 		go func() {
 			defer wg.Done()

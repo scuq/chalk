@@ -26,6 +26,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Hub registers connections and dispatches messages between them.
@@ -229,11 +231,25 @@ func (h *Hub) CountUsers() int {
 	return len(h.byUser)
 }
 
-// Count returns the number of active connections.
+// Count returns the number of active connections. Keyed on Conn.ID, so
+// two tabs sharing a device_id count as the two connections they are.
 func (h *Hub) Count() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return len(h.conns)
+	return len(h.byConnID)
+}
+
+// Conns returns a snapshot of every active connection on this instance.
+// Used by presence recovery, which has to re-assert a row per connected
+// device after the instance's rows were deleted underneath it.
+func (h *Hub) Conns() []*Conn {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	out := make([]*Conn, 0, len(h.byConnID))
+	for _, c := range h.byConnID {
+		out = append(out, c)
+	}
+	return out
 }
 
 // Broadcast enqueues data to every connection except the one with deviceID
@@ -415,10 +431,14 @@ func (h *Hub) FanOutToUserFresh(userID, exceptConnID string, data []byte, messag
 
 // CloseAll terminates every connection. Used during graceful shutdown.
 // Returns when all conns have stopped, or when ctx expires.
+//
+// Snapshotting byConnID rather than the device-keyed map matters: the
+// latter holds one conn per device_id, so a second tab of the same browser
+// would have survived the shutdown it was supposed to be closed by.
 func (h *Hub) CloseAll(ctx context.Context, reason error) {
 	h.mu.Lock()
-	snap := make([]*Conn, 0, len(h.conns))
-	for _, c := range h.conns {
+	snap := make([]*Conn, 0, len(h.byConnID))
+	for _, c := range h.byConnID {
 		snap = append(snap, c)
 	}
 	h.conns = make(map[string]*Conn)
@@ -506,10 +526,13 @@ type Conn struct {
 // is invoked exactly once when Close is called for the first time; it must
 // be safe to call from any goroutine.
 //
-// Phase 09a: id is the per-conn UUID. Empty string is tolerated for
-// backward compatibility with tests that don't care; production callers
-// in ws.go pass uuid.New().String().
+// Phase 09a: id is the per-conn UUID. An empty id gets one generated:
+// byConnID is what Count, Conns and CloseAll iterate, so an unkeyed conn
+// would be invisible to them.
 func NewConn(id, deviceID, userID string, closeFn func(error)) *Conn {
+	if id == "" {
+		id = uuid.New().String()
+	}
 	return &Conn{
 		ID:        id,
 		DeviceID:  deviceID,
