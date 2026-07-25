@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.3.29 — 26 July 2026 — Two new themes
 
 ### Added
 - **New "warmwhite" theme.** A dark graphite channel rail beside a warm
