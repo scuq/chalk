@@ -32,6 +32,7 @@ const TYPE_ROTATE_CHANNEL_KEY = "rotate_channel_key";
 const TYPE_REMOVE_MEMBER = "remove_member";
 const TYPE_ADD_MEMBER = "add_member";
 const TYPE_DELETE_MESSAGE = "delete_message";
+const TYPE_EDIT_MESSAGE = "edit_message";
 
 interface PublishChannelKeyPayload {
   channel_id: string;
@@ -254,4 +255,45 @@ export async function deleteMessage(
     message_id: messageID,
     ts,
   });
+}
+
+interface EditMessagePayload {
+  channel_id: string;
+  message_id: string;
+  ts: number;
+  body: string;
+  key_version: number;
+}
+interface EditMessageAck {
+  channel_id: string;
+  message_id: string;
+  edited_at: number;
+}
+
+/**
+ * editMessage replaces a message's body with freshly encrypted content. Authz
+ * is server-enforced: only the SENDER, only while the message is younger than
+ * the edit window, and never on a deleted message. body/keyVersion come from
+ * ChannelCrypto.encryptForChannel, so the server stores ciphertext exactly as
+ * it does for a fresh send. Resolves on ack with the server's edited_at;
+ * rejects with the server's error (e.g. edit_forbidden, message_not_found).
+ * The server pushes message_edited to every member, including the editor's
+ * own other tabs.
+ */
+export async function editMessage(
+  ws: ChannelKeyTransport,
+  channelID: string,
+  messageID: string,
+  ts: number,
+  body: string,
+  keyVersion: number,
+): Promise<number> {
+  const ack = await ws.request<EditMessagePayload, EditMessageAck>(TYPE_EDIT_MESSAGE, {
+    channel_id: channelID,
+    message_id: messageID,
+    ts,
+    body,
+    key_version: keyVersion,
+  });
+  return ack.edited_at;
 }

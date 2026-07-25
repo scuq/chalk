@@ -16,13 +16,20 @@
 import { resolveNickHue } from "../chat/nickcolor";
 import { mentionsHandle } from "../chat/mentions";
 import { deleteActionFor, deleteLabelFor } from "../chat/deletepolicy";
+import { canEditMessage, lastEditableMessage } from "../chat/editpolicy";
+import { ownSet, toggle } from "../chat/reactions";
 import { useIsMobile } from "../mobile";
 import { isPopoutWindow, openPopout } from "../popout";
-import { useCallback, useEffect, useReducer, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
   TypeSendAck,
   TypeMessageDeleted,
+  TypeMessageEdited,
+  TypeSetReactions,
+  TypeReactionUpdate,
+  TypeFetchReactions,
+  TypeFetchReactionsAck,
   // Phase 11b-2: MLS welcome + commit_bundle
   // Phase 11c-2 PR 3: MLS commit broadcast + catchup
   TypeSend,
@@ -72,6 +79,9 @@ import {
   type MessagePayload,
   type SendAckPayload,
   type MessageDeletedPayload,
+  type MessageEditedPayload,
+  type ReactionUpdatePayload,
+  type FetchReactionsAckPayload,
   // gov-2:
   TypeGovernanceEvent,
   GovEventModeChanged,
@@ -117,7 +127,7 @@ import {
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId, getThreadSeen, setThreadSeen } from "../ws-client";
 import { reducer } from "../state/reducer";
-import { hasUnread, initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary, type ProposalView } from "../state/types";
+import { hasUnread, initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary, type ProposalView, type ReactionSet } from "../state/types";
 import { selectGiphyPref } from "../giphy/giphy";
 import { Logo } from "./Logo";
 import { StatusBar } from "./StatusBar";
@@ -151,6 +161,11 @@ const MembersPanel = lazyComponent(() =>
 const GovernancePanel = lazyComponent(() =>
   import("./GovernancePanel").then((m) => m.GovernancePanel)
 );
+// 37-5: the reaction picker. Lazy for the same reason the composer's is --
+// the emoji catalogue is static data most sessions never open.
+const EmojiPicker = lazyComponent(() =>
+  import("./EmojiPicker").then((m) => m.EmojiPicker)
+);
 import { CreateChannelModal } from "./CreateChannelModal";
 // Phase 30 (30-4): the minimal in-call surface + the frame bus that hands
 // voice pushes from handleFrame to the mounted panel's VoiceCall.
@@ -170,7 +185,7 @@ import {
   digestToHex,
 } from "../crypto/safety-number";
 import type { MemberVerifyInfo } from "./MembersPanel";
-import { commitRotation, removeMember, addMember, deleteMessage } from "../crypto/spacekey-sync";
+import { commitRotation, removeMember, addMember, deleteMessage, editMessage } from "../crypto/spacekey-sync";
 import {
   ChannelCrypto,
   type ChannelKeyStatus,
@@ -534,6 +549,24 @@ export function App() {
     };
   }, [state.activeChannelID, state.historyLoaded, ccReady]);
 
+  // 37-5: backfill reactions for the active channel, on the same trigger and
+  // for the same reason as attachments -- history fetches don't carry them, so
+  // without this a channel you just opened shows no reactions until someone
+  // reacts again. Asks only for the message ids actually loaded, so the batch
+  // is bounded by the history window rather than by channel size.
+  useEffect(() => {
+    const cid = state.activeChannelID;
+    const c = clientRef.current;
+    if (!cid || !ccReady || !state.historyLoaded[cid] || !c || !c.isOpen()) return;
+    const ids = (state.messages[cid] ?? []).map((m) => m.id).filter((id) => !id.startsWith("local-"));
+    if (ids.length === 0) return;
+    c.send(TypeFetchReactions, { channel_id: cid, message_ids: ids });
+    // Deliberately NOT keyed on state.messages: that changes on every new
+    // message, and re-fetching the whole window per message would be absurd.
+    // Live changes arrive as reaction_update pushes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.activeChannelID, state.historyLoaded, ccReady]);
+
   // Phase 23e: when the members panel opens, fetch which members currently
   // have a wrapped key (the per-member "has key" vs "waiting" status).
   const refreshMemberKeyStatus = useCallback(async () => {
@@ -869,6 +902,129 @@ export function App() {
     setDeleteStep(1);
   }, []);
 
+  // ---- 37-3: message editing --------------------------------------------
+  //
+  // Two independent editors, because there are two composers: the channel feed
+  // and the open thread panel. Keeping them separate means cursor-up in a
+  // thread edits your last REPLY, and the channel composer isn't hijacked by
+  // an edit you started in the panel.
+  const [editingFeed, setEditingFeed] = useState<{ id: string; body: string } | null>(null);
+  const [editingThread, setEditingThread] = useState<{ id: string; body: string } | null>(null);
+
+  const canEditMessageOf = useCallback(
+    (m: Message) => canEditMessage(m, state.user?.id ?? null, Date.now()),
+    [state.user?.id],
+  );
+
+  // An editor is scoped to the thing it was opened from. Leaving that context
+  // -- switching channel, or closing/changing the thread -- abandons the edit
+  // rather than carrying a stale message id into a different conversation.
+  useEffect(() => {
+    setEditingFeed(null);
+  }, [state.activeChannelID]);
+  useEffect(() => {
+    setEditingThread(null);
+  }, [state.openThread?.threadID]);
+
+  // The row menu offers "edit" only on the message cursor-up would open, so
+  // the two entry points agree. The server allows any own message inside the
+  // window; this is the narrower UI promise (see chat/editpolicy.ts).
+  const lastEditableFeedID = useMemo(() => {
+    const cid = state.activeChannelID;
+    if (!cid) return null;
+    const list = (state.messages[cid] ?? []).filter((m) => !m.parentID);
+    return lastEditableMessage(list, state.user?.id ?? null, Date.now())?.id ?? null;
+  }, [state.activeChannelID, state.messages, state.user?.id]);
+
+  const openThreadID = state.openThread?.threadID ?? null;
+  const lastEditableThreadID = useMemo(() => {
+    if (!openThreadID) return null;
+    const list = state.threadMessages[openThreadID] ?? [];
+    return lastEditableMessage(list, state.user?.id ?? null, Date.now())?.id ?? null;
+  }, [openThreadID, state.threadMessages, state.user?.id]);
+
+  // Sending an edit is the same encrypt-then-frame path as a send, minus the
+  // optimistic append: we wait for the authoritative message_edited push so
+  // every device (including this one) converges on what the server stored.
+  const submitEdit = useCallback(
+    async (target: { id: string; body: string } | null, body: string): Promise<boolean> => {
+      const cid = state.activeChannelID;
+      const c = clientRef.current;
+      if (!target || !cid || !c || !c.isOpen() || !ccRef.current) return false;
+      const source =
+        (state.messages[cid] ?? []).find((m) => m.id === target.id) ??
+        Object.values(state.threadMessages)
+          .flat()
+          .find((m) => m.id === target.id);
+      if (!source) return false;
+      const enc = await ccRef.current.encryptForChannel(cid, body);
+      if (enc.kind !== "encrypted") return false; // key vanished; leave the editor open
+      try {
+        await editMessage(
+          { request: (t, p) => c.request(t, p) },
+          cid,
+          source.id,
+          source.ts.getTime(),
+          enc.body,
+          enc.keyVersion,
+        );
+        return true;
+      } catch (err) {
+        console.error("editMessage failed:", err);
+        return false;
+      }
+    },
+    [state.activeChannelID, state.messages, state.threadMessages],
+  );
+
+  // ---- 37-5: reactions ---------------------------------------------------
+  //
+  // The whole set is re-sealed and re-sent on every toggle. That is the point:
+  // set_reactions replaces the row, so a double-click or a second device
+  // converges instead of drifting, and the server never needs to understand
+  // add-vs-remove (it cannot -- it can't read the emoji).
+  //
+  // No optimistic update. The authoritative reaction_update push is what
+  // renders, so every device shows the same tally, and a rejected toggle
+  // (message deleted underneath you) simply never appears.
+  const [reactionPickerFor, setReactionPickerFor] = useState<Message | null>(null);
+
+  const toggleReaction = useCallback(
+    async (m: Message, emoji: string) => {
+      const cid = state.activeChannelID;
+      const c = clientRef.current;
+      const cc = ccRef.current;
+      if (!cid || !c || !c.isOpen() || !cc || !state.user) return;
+      const current = ownSet(state.reactions[m.id] ?? [], state.user.id);
+      const next = toggle(current, emoji);
+      try {
+        if (next.length === 0) {
+          // Empty body is the "clear mine" verb; nothing to seal, and the
+          // server deletes the row rather than storing a sealed empty array.
+          await c.request(TypeSetReactions, {
+            channel_id: cid,
+            message_id: m.id,
+            ts: m.ts.getTime(),
+            body: "",
+          });
+          return;
+        }
+        const sealed = await cc.sealJSONForChannel(cid, next);
+        if (sealed.kind !== "encrypted") return; // no key: fail closed
+        await c.request(TypeSetReactions, {
+          channel_id: cid,
+          message_id: m.id,
+          ts: m.ts.getTime(),
+          body: sealed.body,
+          key_version: sealed.keyVersion,
+        });
+      } catch (err) {
+        console.error("setReactions failed:", err);
+      }
+    },
+    [state.activeChannelID, state.reactions, state.user],
+  );
+
   const confirmDeleteMessage = useCallback(async () => {
     const m = pendingDelete;
     const cid = state.activeChannelID;
@@ -1148,6 +1304,25 @@ export function App() {
     dispatch({ kind: "mention_set", channelID });
   }
 
+  // 37-5: open one member's sealed reaction set. Anything unreadable -- no
+  // key, a cleared set (empty body), a malformed array -- resolves to [],
+  // which renders as "this person reacts with nothing" rather than as a
+  // broken chip. Reaction sets are not worth a placeholder the way a message
+  // body is.
+  async function openReactionSet(
+    channelID: string,
+    r: { body?: string; key_version?: number },
+  ): Promise<string[]> {
+    if (!r.body || !ccRef.current) return [];
+    const opened = await ccRef.current.openJSONForChannel<unknown>(
+      channelID,
+      r.key_version,
+      r.body,
+    );
+    if (!Array.isArray(opened)) return [];
+    return opened.filter((e): e is string => typeof e === "string");
+  }
+
   function handleFrame(f: Frame) {
     switch (f.type) {
       case TypeFetchThreadAck: {
@@ -1206,6 +1381,77 @@ export function App() {
           messageID: p.message_id,
           deletedBy: p.deleted_by || undefined,
           deletedAt: p.deleted_at ? new Date(p.deleted_at) : undefined,
+        });
+        break;
+      }
+
+      case TypeMessageEdited: {
+        const p = f.payload as MessageEditedPayload;
+        // Same fail-closed decrypt as the message push: the edited body is
+        // ciphertext, and an undecryptable one becomes a placeholder rather
+        // than being dispatched raw. If this client is the editor, this is
+        // also what closes the editor -- we never optimistically apply an
+        // edit, so the server's copy is the only one that ever renders.
+        //
+        // No noteMention here: the push carries no sender, and noteMention's
+        // "skip your own messages" test is by sender id, so an edit to your
+        // own message would badge you for mentioning yourself. An edit that
+        // introduces a new mention therefore doesn't raise the badge -- a
+        // small gap, and the honest one until the push carries a sender.
+        const applyEdited = (body: string) => {
+          dispatch({
+            kind: "message_edited",
+            channelID: p.channel_id,
+            messageID: p.message_id,
+            body,
+            keyVersion: p.key_version || undefined,
+            editedAt: new Date(p.edited_at),
+          });
+        };
+        if (ccRef.current) {
+          void ccRef.current
+            .decryptForChannel(p.channel_id, p.key_version, p.body)
+            .then(applyEdited);
+        } else {
+          applyEdited("[encrypted message -- key not available yet]");
+        }
+        break;
+      }
+
+      case TypeReactionUpdate: {
+        const p = f.payload as ReactionUpdatePayload;
+        void openReactionSet(p.channel_id, p.reaction).then((emoji) => {
+          dispatch({
+            kind: "reaction_set",
+            messageID: p.reaction.message_id,
+            userID: p.reaction.user_id,
+            emoji,
+          });
+        });
+        break;
+      }
+
+      case TypeFetchReactionsAck: {
+        const p = f.payload as FetchReactionsAckPayload;
+        // Decrypt the whole batch, then dispatch ONE merge: a dispatch per row
+        // would re-render the feed once per reaction in the loaded window.
+        void Promise.all(
+          p.reactions.map(async (r) => ({
+            r,
+            emoji: await openReactionSet(p.channel_id, r),
+          })),
+        ).then((rows) => {
+          const byMessageID: Record<string, ReactionSet[]> = {};
+          for (const { r, emoji } of rows) {
+            if (emoji.length === 0) continue;
+            (byMessageID[r.message_id] ??= []).push({
+              userID: r.user_id,
+              emoji,
+            });
+          }
+          if (Object.keys(byMessageID).length > 0) {
+            dispatch({ kind: "reactions_merged", byMessageID });
+          }
         });
         break;
       }
@@ -2736,6 +2982,12 @@ export function App() {
               canDeleteMessage={(m) => deleteActionOf(m) !== "none"}
               onDeleteMessage={onDeleteMessage}
               deleteLabelFor={(m) => deleteLabelFor(deleteActionOf(m))}
+              canEditMessage={(m) => m.id === lastEditableFeedID && canEditMessageOf(m)}
+              onEditMessage={(m) => setEditingFeed({ id: m.id, body: m.body })}
+              editingMessageID={editingFeed?.id ?? null}
+              reactions={state.reactions}
+              onToggleReaction={(m, emoji) => void toggleReaction(m, emoji)}
+              onPickReaction={(m) => setReactionPickerFor(m)}
               attachmentController={attControllerRef.current ?? undefined}
               onOpenThread={(parentID, threadID) => {
                 // Phase 10b: store the open thread on AppState. 10c
@@ -2792,6 +3044,23 @@ export function App() {
             canDeleteMessage={(m) => deleteActionOf(m) !== "none"}
             onDeleteMessage={onDeleteMessage}
             deleteLabelFor={(m) => deleteLabelFor(deleteActionOf(m))}
+            canEditMessage={(m) => m.id === lastEditableThreadID && canEditMessageOf(m)}
+            onEditMessage={(m) => setEditingThread({ id: m.id, body: m.body })}
+            reactions={state.reactions}
+            onToggleReaction={(m, emoji) => void toggleReaction(m, emoji)}
+            onPickReaction={(m) => setReactionPickerFor(m)}
+            editing={editingThread}
+            onEditSubmit={async (body) => {
+              const ok = await submitEdit(editingThread, body);
+              if (ok) setEditingThread(null);
+              return ok;
+            }}
+            onEditCancel={() => setEditingThread(null)}
+            onEditLast={() => {
+              const list = state.threadMessages[tid] ?? [];
+              const m = lastEditableMessage(list, state.user?.id ?? null, Date.now());
+              if (m) setEditingThread({ id: m.id, body: m.body });
+            }}
             onClose={() => dispatch({ kind: "close_thread" })}
             onSend={(body) => onSend(body, tid)}
           />
@@ -2813,6 +3082,22 @@ export function App() {
               : "encryption_initializing"
           }
           onSend={(body, pending, opts) => onSend(body, undefined, pending, opts)}
+          editing={editingFeed}
+          onEditSubmit={async (body) => {
+            const ok = await submitEdit(editingFeed, body);
+            if (ok) setEditingFeed(null);
+            return ok;
+          }}
+          onEditCancel={() => setEditingFeed(null)}
+          onEditLast={() => {
+            const cid = state.activeChannelID;
+            if (!cid) return;
+            // Feed-only: thread replies belong to the thread composer's
+            // cursor-up, not this one.
+            const list = (state.messages[cid] ?? []).filter((m) => !m.parentID);
+            const m = lastEditableMessage(list, state.user?.id ?? null, Date.now());
+            if (m) setEditingFeed({ id: m.id, body: m.body });
+          }}
           enableAttachments
           giphyEnabled={state.authConfig?.giphy_enabled ?? false}
           giphyReady={selectGiphyPref(state.prefs) === "enabled"}
@@ -2889,6 +3174,20 @@ export function App() {
           setGiphyConsentOpen(false);
         }}
         onCancel={() => setGiphyConsentOpen(false)}
+      />
+
+      {/* 37-5: pick a NEW reaction for a message. Existing chips toggle
+          directly; this is only for adding one that isn't on the row yet.
+          Reuses the composer's emoji picker unchanged. Closes on pick --
+          unlike the composer, where several emoji in a row is normal. */}
+      <EmojiPicker
+        open={reactionPickerFor !== null}
+        onClose={() => setReactionPickerFor(null)}
+        onPick={(char) => {
+          const m = reactionPickerFor;
+          setReactionPickerFor(null);
+          if (m) void toggleReaction(m, char);
+        }}
       />
 
       {state.openPanel === "friends" && (

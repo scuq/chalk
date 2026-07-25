@@ -66,6 +66,10 @@ export interface Message {
   deleted?: boolean;
   deletedBy?: string;
   deletedAt?: Date;
+  // Phase 37-3: set once the author has edited this message in place. body
+  // already holds the edited text (only one version exists), so this drives
+  // nothing but the "(edited)" marker. Undefined for a never-edited message.
+  editedAt?: Date;
   // att-2: encrypted attachments linked to this message. Populated from the
   // live push (wireToMessage) and backfilled for history via the window list
   // query (attachments_merged). Undefined/empty for the common text message.
@@ -77,6 +81,11 @@ export interface Message {
   // and for history-fetched rows.
   clientMsgID?: string;
 }
+
+// 37-5: one member's decrypted reaction set for one message. Re-exported from
+// chat/reactions.ts so the state layer and the pure tally agree on the shape.
+export type { ReactionSet } from "../chat/reactions";
+import type { ReactionSet } from "../chat/reactions";
 
 // phase 08c: ChannelMember pairs a user_id with their handle.
 export interface ChannelMember {
@@ -398,6 +407,17 @@ export interface AppState {
   threadMessages: Record<string, Message[]>;
   threadLoaded: Record<string, boolean>;
 
+  // 37-5: decrypted reaction sets, keyed by message id, then holding one
+  // entry per member who has reacted.
+  //
+  // Deliberately a PARALLEL record rather than a field on Message. Server
+  // rows overwrite message rows wholesale by id in history_loaded, and the
+  // key-ready backstop re-fetches history on every channel switch, so
+  // anything hung off Message that the feed query doesn't echo would
+  // silently vanish. Reactions come from their own frames, so they live in
+  // their own slice and survive.
+  reactions: Record<string, ReactionSet[]>;
+
   // Phase 10d: highest reply seq the user has "seen" per thread,
   // used to compute unread badges. Persisted to localStorage per
   // user. A reply with seq > threadSeen[threadID] counts as unread.
@@ -580,6 +600,9 @@ export const initialState: AppState = {
   threadMessages: {},
   threadLoaded: {},
 
+  // 37-5:
+  reactions: {},
+
   // Phase 10d:
   threadSeen: {},
   createModalOpen: false,
@@ -651,6 +674,22 @@ export type Action =
     }
   // Phase 26 (governance prereq): a message was deleted; tombstone it in place.
   | { kind: "message_deleted"; channelID: string; messageID: string; deletedBy?: string; deletedAt?: Date }
+  // Phase 37-3: the author replaced a message's body. body is already
+  // decrypted by the time this is dispatched, same as the "message" action.
+  | {
+      kind: "message_edited";
+      channelID: string;
+      messageID: string;
+      body: string;
+      keyVersion?: number;
+      editedAt: Date;
+    }
+  // 37-5: one member's decrypted reaction set for one message changed. An
+  // empty emoji array means they cleared their reactions.
+  | { kind: "reaction_set"; messageID: string; userID: string; emoji: string[] }
+  // 37-5: backfill decrypted sets for a batch of messages after a history
+  // fetch. Replaces whatever was cached for each message id present.
+  | { kind: "reactions_merged"; byMessageID: Record<string, ReactionSet[]> }
   | { kind: "history_loaded"; channelID: string; messages: Message[] }
   // att-2: backfill attachment refs onto already-loaded messages, keyed by
   // message id. Used after the channel-open window list query (history fetches

@@ -1,6 +1,7 @@
 import { Fragment } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { Message } from "../state/types";
+import type { Message, ReactionSet } from "../state/types";
+import { aggregate } from "../chat/reactions";
 import { AttachmentView } from "./AttachmentView";
 import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
@@ -144,6 +145,27 @@ interface Props {
   canDeleteMessage?: (m: Message) => boolean;
   onDeleteMessage?: (m: Message) => void;
   deleteLabelFor?: (m: Message) => string;
+  // Phase 37-3: message editing. Same caller-owns-the-policy shape as delete
+  // (see chat/editpolicy.ts), but a narrower rule: only the author, only
+  // inside the edit window, and the caller additionally restricts it to their
+  // most recent message. Sits in the same "..." menu as delete -- the primary
+  // way in is cursor-up from the composer, so this is the discoverable
+  // fallback rather than the main path.
+  canEditMessage?: (m: Message) => boolean;
+  onEditMessage?: (m: Message) => void;
+  // The message currently open for editing, so its row can show it. Null when
+  // not editing.
+  editingMessageID?: string | null;
+  // 37-5: decrypted reaction sets by message id, and the toggle callback. The
+  // caller owns the crypto and the frame; this only renders chips and reports
+  // clicks. Absent props mean no reaction affordance at all (the thread
+  // panel's head list passes them, the same as delete/edit).
+  reactions?: Record<string, ReactionSet[]>;
+  onToggleReaction?: (m: Message, emoji: string) => void;
+  // Opens the caller's emoji picker for this message. Separate from
+  // onToggleReaction because the picker is a modal the caller owns: chips
+  // toggle a KNOWN emoji, this asks for a new one.
+  onPickReaction?: (m: Message) => void;
   // att-2: receive-side attachment pipeline (decrypt meta/preview/full +
   // download), bound to the channel crypto. When absent (or a message has no
   // attachments) nothing extra renders.
@@ -184,7 +206,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, attachmentController, giphyPref, onRequestEnableGiphy }: Props) {
+export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy }: Props) {
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dividerRef = useRef<HTMLDivElement | null>(null);
@@ -440,7 +462,7 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
           )}
           <div class="chalk-message-group">
           <div
-            class={`chalk-message ${own ? "chalk-message--own" : ""} ${isUnread ? "chalk-message--unread" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"}`}
+            class={`chalk-message ${own ? "chalk-message--own" : ""} ${isUnread ? "chalk-message--unread" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"} ${editingMessageID === m.id ? "chalk-message--editing" : ""}`}
             style={`--chalk-msg-sender-col:${senderColCh}ch`}
             data-testid="message"
             title={display_.showTimestamps ? undefined : m.ts.toLocaleString()}
@@ -498,6 +520,18 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
                         ownHandle={ownHandle}
                       />
                     )}
+                    {/* 37-3: only one version of a message is ever stored, so
+                        this marks that the text changed after it was sent
+                        without offering any history to look at. */}
+                    {!m.deleted && m.editedAt && (
+                      <span
+                        class="chalk-message-edited"
+                        title={`edited ${fmtTimeAs(m.editedAt, display_.timestampFormat, now)}`}
+                        data-testid={`message-edited-${m.id}`}
+                      >
+                        (edited)
+                      </span>
+                    )}
                   </span>
                   {gr && gr.mode !== "text" && (
                     <div class="chalk-message-giphy" data-testid="message-giphy">
@@ -538,10 +572,18 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
                 irreversible click, it lived next to "reply", and on touch
                 both are always visible -- so it moved into the overflow
                 menu, where reaching it is deliberate. */}
-            {!m.deleted &&
-              (onOpenThread || (canDeleteMessage?.(m) && onDeleteMessage)) && (
+            {(() => {
+              // 35-4 / 37-3: the overflow menu holds delete and edit. Either
+              // one alone is enough to render it, so the gate asks whether
+              // ANY menu item applies rather than naming delete specifically.
+              const showDelete = Boolean(canDeleteMessage?.(m) && onDeleteMessage);
+              const showEdit = Boolean(canEditMessage?.(m) && onEditMessage);
+              const showReact = Boolean(onToggleReaction && onPickReaction);
+              const showMenu = showDelete || showEdit || showReact;
+              if (m.deleted || (!onOpenThread && !showMenu)) return null;
+              return (
               <div class="chalk-message-actions">
-                {canDeleteMessage?.(m) && onDeleteMessage && (
+                {showMenu && (
                   <div
                     class="chalk-message-more"
                     onClick={(e) => e.stopPropagation()}
@@ -560,18 +602,48 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
                     </button>
                     {menuFor === m.id && (
                       <div class="chalk-message-menu" role="menu">
-                        <button
-                          type="button"
-                          role="menuitem"
-                          class="chalk-message-delete"
-                          onClick={() => {
-                            setMenuFor(null);
-                            onDeleteMessage(m);
-                          }}
-                          data-testid={`message-delete-${m.id}`}
-                        >
-                          {deleteLabelFor?.(m) ?? "delete"}
-                        </button>
+                        {showReact && (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            class="chalk-message-react"
+                            onClick={() => {
+                              setMenuFor(null);
+                              onPickReaction!(m);
+                            }}
+                            data-testid={`message-react-${m.id}`}
+                          >
+                            add reaction
+                          </button>
+                        )}
+                        {showEdit && (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            class="chalk-message-edit"
+                            onClick={() => {
+                              setMenuFor(null);
+                              onEditMessage!(m);
+                            }}
+                            data-testid={`message-edit-${m.id}`}
+                          >
+                            edit
+                          </button>
+                        )}
+                        {showDelete && (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            class="chalk-message-delete"
+                            onClick={() => {
+                              setMenuFor(null);
+                              onDeleteMessage!(m);
+                            }}
+                            data-testid={`message-delete-${m.id}`}
+                          >
+                            {deleteLabelFor?.(m) ?? "delete"}
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -592,8 +664,45 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
                   </button>
                 )}
               </div>
-            )}
+              );
+            })()}
           </div>
+          {/* 37-5: reaction chips. Suppressed on tombstoned rows (the server
+              scrubs reactions with the body), and rendered only when there is
+              something to show -- an always-present empty bar would add a row
+              of dead space to every message in the feed. Adding the FIRST
+              reaction therefore happens from the "..." menu path in App, not
+              from here. */}
+          {!m.deleted && onToggleReaction && (() => {
+            const sets = reactions?.[m.id];
+            if (!sets || sets.length === 0) return null;
+            const tallies = aggregate(sets, ownUserID);
+            if (tallies.length === 0) return null;
+            return (
+              <div class="chalk-message-reactions" data-testid={`message-reactions-${m.id}`}>
+                {tallies.map((t) => (
+                  <button
+                    key={t.emoji}
+                    type="button"
+                    class={`chalk-reaction ${t.mine ? "chalk-reaction--mine" : ""}`}
+                    onClick={() => onToggleReaction(m, t.emoji)}
+                    title={t.userIDs
+                      .map((u) =>
+                        ownUserID && u === ownUserID
+                          ? "you"
+                          : handleByUser.get(u) ?? "someone",
+                      )
+                      .join(", ")}
+                    aria-pressed={t.mine}
+                    data-testid={`reaction-${m.id}-${t.emoji}`}
+                  >
+                    <span class="chalk-reaction-emoji" aria-hidden="true">{t.emoji}</span>
+                    <span class="chalk-reaction-count">{t.count}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
           {/* Phase 10b: thread indicator. Only rendered for messages
               that are themselves thread heads (no parentID) AND that
               have at least one reply. Clicking opens the thread. */}

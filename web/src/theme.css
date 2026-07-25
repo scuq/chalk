@@ -401,6 +401,45 @@ html, body {
   flex-wrap: wrap;
   gap: var(--chalk-s2);
 }
+/* 37-3: the "you are editing a message" strip above the input. It has to be
+   unmissable -- pressing Enter here replaces an existing message instead of
+   sending a new one -- hence the accent rail, while staying a thin strip so
+   it doesn't shove the composer around. */
+.chalk-composer-editing {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  border-left: 2px solid var(--chalk-accent);
+  background: var(--chalk-bg-elev);
+  border-radius: var(--chalk-radius);
+  font-size: var(--chalk-size-small);
+}
+.chalk-composer-editing-label {
+  color: var(--chalk-accent);
+}
+.chalk-composer-editing-hint {
+  margin-left: auto;
+  color: var(--chalk-fg-dim);
+  opacity: 0.75;
+}
+.chalk-composer-editing-cancel {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  color: var(--chalk-fg-dim);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.chalk-composer-editing-cancel:hover {
+  color: var(--chalk-fg-bright);
+}
+.chalk-composer-editing-cancel:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 2px;
+}
 .chalk-composer-chip {
   display: inline-flex;
   align-items: center;
@@ -3255,11 +3294,128 @@ body.chalk-resizing .chalk-sidebar-resizer {
   outline-offset: -1px;
 }
 
+/* 37-3: the edit item in that same menu. Neutral hover, unlike delete's
+   danger red -- editing your own typo is not a destructive act. */
+.chalk-message-edit {
+  background: none;
+  border: none;
+  border-radius: var(--chalk-radius);
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 6px 10px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+.chalk-message-edit:hover {
+  color: var(--chalk-fg-bright);
+  background: var(--chalk-bg);
+}
+.chalk-message-edit:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
 /* Phase 26: tombstone rendering for a deleted message body. */
 .chalk-message-deleted {
   font-style: italic;
   color: var(--chalk-fg-dim);
   opacity: 0.8;
+}
+
+/* 37-5: the "add reaction" item in the row menu. */
+.chalk-message-react {
+  background: none;
+  border: none;
+  border-radius: var(--chalk-radius);
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 6px 10px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+.chalk-message-react:hover {
+  color: var(--chalk-fg-bright);
+  background: var(--chalk-bg);
+}
+.chalk-message-react:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
+/* 37-5: the chip row under a message. Indented to the body column the same
+   way the thread indicator is, so reactions line up with the text they are
+   about rather than with the timestamp gutter. */
+.chalk-message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+  /* Pinned to the base size for the same reason .chalk-message-thread-meta is:
+     the ch-based indent below is font-relative, so a smaller font here would
+     resolve the same formula to a different width and the two secondary rows
+     under a message would not line up with each other. */
+  font-size: var(--chalk-size-base);
+  padding-left: calc(
+    var(--chalk-msg-time-col) + var(--chalk-msg-col-gap) + var(--chalk-s2)
+  );
+}
+.chalk-messages--no-time .chalk-message-reactions {
+  padding-left: var(--chalk-s2);
+}
+.chalk-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--chalk-border);
+  border-radius: 999px;
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  line-height: 1.5;
+  cursor: pointer;
+}
+.chalk-reaction:hover {
+  border-color: var(--chalk-fg-dim);
+  color: var(--chalk-fg-bright);
+}
+/* Your own reaction reads as pressed: this is the state you toggle off. */
+.chalk-reaction--mine {
+  border-color: var(--chalk-accent);
+  color: var(--chalk-fg-bright);
+}
+.chalk-reaction:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 1px;
+}
+.chalk-reaction-emoji {
+  font-size: 1.05em;
+}
+.chalk-reaction-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 37-3: the "(edited)" marker trailing an edited body. Deliberately quiet --
+   it is a footnote about the message, not part of it. */
+.chalk-message-edited {
+  margin-left: 0.4em;
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+  opacity: 0.7;
+  cursor: default;
+}
+
+/* 37-3: the row whose message is currently open in the composer. A left
+   accent rail rather than a background wash, so the body text keeps its
+   normal contrast while the row is unmistakably the one being edited. */
+.chalk-message--editing {
+  box-shadow: inset 2px 0 0 var(--chalk-accent);
+  background: var(--chalk-bg-elev);
 }
 
 /* Phase 10b-fix: thread indicator.
@@ -5929,7 +6085,9 @@ body.chalk-resizing .chalk-sidebar-resizer {
   }
 
   .chalk-message-thread-meta,
-  .chalk-messages--no-time .chalk-message-thread-meta {
+  .chalk-messages--no-time .chalk-message-thread-meta,
+  .chalk-message-reactions,
+  .chalk-messages--no-time .chalk-message-reactions {
     padding-left: var(--chalk-s2);
   }
 

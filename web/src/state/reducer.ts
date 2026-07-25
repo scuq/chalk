@@ -55,6 +55,39 @@ function markForChannel(
 // reads the body directly.
 const TOMBSTONE_BODY = "[message deleted]";
 
+// Phase 10d/10e: rewrite a thread head's denormalized summary (reply count,
+// newest reply seq, and the one-line preview) from the thread's current reply
+// list. The head lives in the channel feed while the replies live in
+// threadMessages, so any change to a reply has to be pushed back onto the head
+// by hand -- there is no join to re-run.
+//
+// Used both when a reply arrives and when one is edited: an edited newest
+// reply must update the preview snippet too, or the feed keeps showing the
+// pre-edit text until the next history fetch.
+//
+// fallbackTail covers the "no replies in the cache yet" case, where the caller
+// knows the message it just handled is the newest one.
+function withThreadSummary(
+  channelList: Message[],
+  parentID: string,
+  replies: Message[],
+  fallbackTail: Message,
+): Message[] {
+  const tailReply = replies.length > 0 ? replies[replies.length - 1]! : fallbackTail;
+  const lastSeq = replies.reduce((max, r) => (r.seq > max ? r.seq : max), 0);
+  return channelList.map((x) =>
+    x.id === parentID
+      ? {
+          ...x,
+          replyCount: replies.length,
+          lastReplySeq: lastSeq,
+          lastReplySenderUserID: tailReply.senderUserID || undefined,
+          lastReplyBody: tailReply.body || undefined,
+        }
+      : x,
+  );
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.kind) {
     case "ws_state":
@@ -538,39 +571,14 @@ export function reducer(state: AppState, action: Action): AppState {
         const parentID = m.parentID;
         const channelList = nextMessages[parentChannel];
         if (channelList) {
+          // Phase 10e: the preview snippet is taken from the highest-seq reply
+          // in the (post-merge) list rather than from this arrival, so an
+          // out-of-order push can't overwrite a newer reply's preview.
           const tid = m.threadID ?? m.parentID;
           const updatedReplies = nextThreadMessages[tid] ?? [];
-          const newReplyCount = updatedReplies.length;
-          const newLastSeq = updatedReplies.reduce(
-            (max, r) => (r.seq > max ? r.seq : max),
-            0,
-          );
-          // Phase 10e: also update the preview fields so the snippet
-          // beneath the indicator appears immediately for the new
-          // reply. We could use the OLD max-seq reply (if there is
-          // one) when the new arrival isn't actually the newest --
-          // but our merging ensures replies arrive in seq order in
-          // practice, and the optimistic-then-server replacement
-          // (same id, server overwrites) keeps things consistent.
-          //
-          // We pick the reply with the highest seq in the
-          // (post-merge) thread message list to be safe.
-          const tailReply = updatedReplies.length > 0
-            ? updatedReplies[updatedReplies.length - 1]
-            : m;
           liveBumpMessages = {
             ...nextMessages,
-            [parentChannel]: channelList.map((x) =>
-              x.id === parentID
-                ? {
-                    ...x,
-                    replyCount: newReplyCount,
-                    lastReplySeq: newLastSeq,
-                    lastReplySenderUserID: tailReply.senderUserID || undefined,
-                    lastReplyBody: tailReply.body || undefined,
-                  }
-                : x,
-            ),
+            [parentChannel]: withThreadSummary(channelList, parentID, updatedReplies, m),
           };
         }
       }
@@ -641,7 +649,87 @@ export function reducer(state: AppState, action: Action): AppState {
         nextThreadMessages = { ...state.threadMessages, ...rewritten };
       }
 
-      if (nextMessages === state.messages && !threadChanged) {
+      // 37-5: reactions go with the body. The server scrubs them in the same
+      // transaction as the tombstone, so keeping them client-side would show
+      // a reaction bar the server no longer has anything behind.
+      let nextReactions = state.reactions;
+      if (state.reactions[action.messageID]) {
+        const { [action.messageID]: _drop, ...rest } = state.reactions;
+        nextReactions = rest;
+      }
+
+      if (
+        nextMessages === state.messages &&
+        !threadChanged &&
+        nextReactions === state.reactions
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        messages: nextMessages,
+        threadMessages: nextThreadMessages,
+        reactions: nextReactions,
+      };
+    }
+
+    case "message_edited": {
+      // Swap the body in place. seq and ts are untouched by an edit, so the
+      // message keeps its position -- no re-sort, no unread bump, no
+      // divider movement. A tombstoned row is left alone: a delete that
+      // raced the edit wins, and the server drops the push in that case
+      // anyway, so this is belt-and-braces for a stale in-flight frame.
+      const applyEdit = (m: Message): Message =>
+        m.id === action.messageID && !m.deleted
+          ? {
+              ...m,
+              body: action.body,
+              keyVersion: action.keyVersion,
+              editedAt: action.editedAt,
+            }
+          : m;
+
+      // Probe before mapping so a push for a message this client doesn't hold
+      // (another channel's, or one scrolled out of the loaded window) returns
+      // the same references and re-renders nothing.
+      const chanList = state.messages[action.channelID];
+      const chanHit = chanList?.some((m) => m.id === action.messageID && !m.deleted) ?? false;
+      let nextMessages = chanHit
+        ? { ...state.messages, [action.channelID]: chanList!.map(applyEdit) }
+        : state.messages;
+
+      // Same scan as the tombstone case: we don't know which thread holds
+      // the message without looking, and per-thread lists are small.
+      let nextThreadMessages = state.threadMessages;
+      let editedThreadID: string | null = null;
+      const rewritten: Record<string, Message[]> = {};
+      for (const [tid, list] of Object.entries(state.threadMessages)) {
+        if (list.some((m) => m.id === action.messageID && !m.deleted)) {
+          rewritten[tid] = list.map(applyEdit);
+          editedThreadID = tid;
+        }
+      }
+      if (editedThreadID) {
+        nextThreadMessages = { ...state.threadMessages, ...rewritten };
+      }
+
+      // If the edited message is a thread reply, the head's cached preview
+      // may now be showing pre-edit text. Recompute it from the rewritten
+      // reply list; withThreadSummary is a no-op when the edited reply isn't
+      // the newest one.
+      if (editedThreadID) {
+        const headList = nextMessages[action.channelID];
+        const replies = nextThreadMessages[editedThreadID] ?? [];
+        const tail = replies[replies.length - 1];
+        if (headList && tail) {
+          nextMessages = {
+            ...nextMessages,
+            [action.channelID]: withThreadSummary(headList, editedThreadID, replies, tail),
+          };
+        }
+      }
+
+      if (nextMessages === state.messages && !editedThreadID) {
         return state;
       }
       return {
@@ -649,6 +737,40 @@ export function reducer(state: AppState, action: Action): AppState {
         messages: nextMessages,
         threadMessages: nextThreadMessages,
       };
+    }
+
+    case "reaction_set": {
+      const existing = state.reactions[action.messageID] ?? [];
+      const without = existing.filter((r) => r.userID !== action.userID);
+      // An empty set is stored as ABSENCE, mirroring the server (which deletes
+      // the row rather than keeping a sealed empty array). That keeps "did
+      // anyone react" a length check at every layer.
+      const next =
+        action.emoji.length > 0
+          ? [...without, { userID: action.userID, emoji: action.emoji }]
+          : without;
+
+      if (next.length === 0) {
+        if (existing.length === 0) return state; // nothing was there either
+        const { [action.messageID]: _drop, ...rest } = state.reactions;
+        return { ...state, reactions: rest };
+      }
+      return {
+        ...state,
+        reactions: { ...state.reactions, [action.messageID]: next },
+      };
+    }
+
+    case "reactions_merged": {
+      const ids = Object.keys(action.byMessageID);
+      if (ids.length === 0) return state;
+      const nextReactions = { ...state.reactions };
+      for (const id of ids) {
+        const sets = action.byMessageID[id]!;
+        if (sets.length > 0) nextReactions[id] = sets;
+        else delete nextReactions[id];
+      }
+      return { ...state, reactions: nextReactions };
     }
 
     case "history_loaded": {

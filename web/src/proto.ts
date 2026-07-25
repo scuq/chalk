@@ -97,6 +97,10 @@ export interface MessagePayload {
   deleted?: boolean;
   deleted_by?: string;
   deleted_at?: number;
+  // Phase 37-1: server unix-millis of the last in-place edit; undefined when
+  // never edited. body already holds the edited ciphertext (only one version
+  // is ever stored), so this exists only to render an "(edited)" marker.
+  edited_at?: number;
   // att-2: attachments linked to this message, populated on the live push.
   // Empty for the common attachment-less message and for history fetches
   // (those backfill via GET /api/attachments). Go marshals the []byte
@@ -338,6 +342,10 @@ export const ErrCodeDMCardinality = "dm_cardinality";
 // Phase 26 (governance prereq: message deletion):
 export const ErrCodeMessageNotFound = "message_not_found";
 export const ErrCodeDeleteForbidden = "delete_forbidden";
+// Phase 37-2: edit refused -- not the sender, already deleted, or past the
+// edit window. One code for all three; the client already knows the rules for
+// its own messages, so it never needs to distinguish.
+export const ErrCodeEditForbidden = "edit_forbidden";
 
 // --- Helpers --------------------------------------------------------
 
@@ -433,6 +441,93 @@ export interface MessageDeletedPayload {
   seq: number;
   deleted_by?: string;
   deleted_at?: number;
+}
+
+// ---- Phase 37: message edits ---------------------------------------
+
+export const TypeEditMessage = "edit_message";
+export const TypeEditMessageAck = "edit_message_ack";
+export const TypeMessageEdited = "message_edited";
+
+// edit_message: sender-only request to replace a message's body, allowed
+// while the message is younger than EDIT_WINDOW_MS (see chat/editpolicy.ts).
+// ts locates the row in the ts-partitioned table; body/key_version are the
+// re-encrypted content, validated server-side exactly like a fresh send.
+export interface EditMessagePayload {
+  channel_id: string;
+  message_id: string;
+  ts: number;
+  body: string;
+  key_version: number;
+}
+
+export interface EditMessageAckPayload {
+  channel_id: string;
+  message_id: string;
+  edited_at: number;
+}
+
+// message_edited: per-channel push carrying the NEW ciphertext, so members
+// swap the body in place without a re-fetch. seq is unchanged by an edit --
+// the message keeps its position in history.
+export interface MessageEditedPayload {
+  channel_id: string;
+  message_id: string;
+  seq: number;
+  body: string;
+  key_version: number;
+  edited_at: number;
+}
+
+// ---- Phase 37: reactions -------------------------------------------
+
+export const TypeSetReactions = "set_reactions";
+export const TypeSetReactionsAck = "set_reactions_ack";
+export const TypeReactionUpdate = "reaction_update";
+export const TypeFetchReactions = "fetch_reactions";
+export const TypeFetchReactionsAck = "fetch_reactions_ack";
+
+// set_reactions replaces the caller's WHOLE emoji set for one message -- there
+// is no add/remove verb, so toggling is idempotent and two of your own devices
+// can't drift. body is base64 of the sealed JSON array; an empty body clears.
+export interface SetReactionsPayload {
+  channel_id: string;
+  message_id: string;
+  ts: number;
+  body: string;
+  key_version?: number;
+}
+
+export interface SetReactionsAckPayload {
+  channel_id: string;
+  message_id: string;
+}
+
+// One member's sealed set for one message. An empty body means they cleared
+// their reactions; the push still arrives so others drop them from the tally.
+export interface ReactionWire {
+  message_id: string;
+  ts: number;
+  user_id: string;
+  body?: string;
+  key_version?: number;
+}
+
+export interface ReactionUpdatePayload {
+  channel_id: string;
+  reaction: ReactionWire;
+}
+
+// History responses don't carry reactions, so the client asks once per loaded
+// window rather than paying for them on every page of every channel.
+export interface FetchReactionsPayload {
+  channel_id: string;
+  message_ids: string[];
+}
+
+export interface FetchReactionsAckPayload {
+  channel_id: string;
+  reactions: ReactionWire[];
 }
 
 // ---- gov-2: governance (mode + proposal lifecycle) -----------------

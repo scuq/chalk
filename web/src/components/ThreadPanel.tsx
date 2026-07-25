@@ -15,7 +15,7 @@
 // On desktop: this lives in the 3rd column of the .chalk-app grid.
 // On mobile: media query covers main + channel composer entirely.
 
-import type { Message } from "../state/types";
+import type { Message, ReactionSet } from "../state/types";
 import type { ResolvedChatPrefs } from "../state/types";
 import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
@@ -48,6 +48,20 @@ interface Props {
   canDeleteMessage?: (m: Message) => boolean;
   onDeleteMessage?: (m: Message) => void;
   deleteLabelFor?: (m: Message) => string;
+  // 37-3: message editing, forwarded to both lists for the same reason as
+  // delete. The panel's own composer gets the edit-mode props too, so
+  // cursor-up in a thread edits your last REPLY rather than reaching back
+  // into the channel feed.
+  canEditMessage?: (m: Message) => boolean;
+  onEditMessage?: (m: Message) => void;
+  // 37-5: reactions, forwarded to both lists like delete and edit.
+  reactions?: Record<string, ReactionSet[]>;
+  onToggleReaction?: (m: Message, emoji: string) => void;
+  onPickReaction?: (m: Message) => void;
+  editing?: { id: string; body: string } | null;
+  onEditSubmit?: (body: string) => void | Promise<boolean | void>;
+  onEditCancel?: () => void;
+  onEditLast?: () => void;
   // Callbacks.
   onClose: () => void;
   onSend: (body: string) => void; // already bound to parentID by caller
@@ -67,6 +81,15 @@ export function ThreadPanel({
   canDeleteMessage,
   onDeleteMessage,
   deleteLabelFor,
+  canEditMessage,
+  onEditMessage,
+  reactions,
+  onToggleReaction,
+  onPickReaction,
+  editing,
+  onEditSubmit,
+  onEditCancel,
+  onEditLast,
   onClose,
   onSend,
 }: Props) {
@@ -104,6 +127,12 @@ export function ThreadPanel({
               canDeleteMessage={canDeleteMessage}
               onDeleteMessage={onDeleteMessage}
               deleteLabelFor={deleteLabelFor}
+              canEditMessage={canEditMessage}
+              onEditMessage={onEditMessage}
+              editingMessageID={editing?.id ?? null}
+              reactions={reactions}
+              onToggleReaction={onToggleReaction}
+              onPickReaction={onPickReaction}
               // No onOpenThread: hides the hover-reply button and
               // any indicator (which wouldn\'t apply here anyway --
               // the head\'s replyCount is the indicator we\'re
@@ -134,6 +163,12 @@ export function ThreadPanel({
             canDeleteMessage={canDeleteMessage}
             onDeleteMessage={onDeleteMessage}
             deleteLabelFor={deleteLabelFor}
+            canEditMessage={canEditMessage}
+            onEditMessage={onEditMessage}
+            editingMessageID={editing?.id ?? null}
+            reactions={reactions}
+            onToggleReaction={onToggleReaction}
+            onPickReaction={onPickReaction}
             // No onOpenThread inside the panel either; nesting
             // threads-in-threads is out of scope.
           />
@@ -146,6 +181,10 @@ export function ThreadPanel({
           disabledReason={disabled ? "offline" : null}
           onSend={onSend}
           placeholder="reply..."
+          editing={editing}
+          onEditSubmit={onEditSubmit}
+          onEditCancel={onEditCancel}
+          onEditLast={onEditLast}
         />
       </footer>
     </aside>

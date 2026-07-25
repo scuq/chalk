@@ -1,4 +1,4 @@
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { JSX } from "preact";
 import { type PendingAttachment, classifyKind, humanSize } from "../attachments/types";
 import {
@@ -61,6 +61,19 @@ interface Props {
   // EMOJI labels; "icons" renders glyphs. The emoji button keeps its 🙂 in
   // both -- it already is an icon.
   toolStyle?: "text" | "icons";
+  // Phase 37-3: edit mode. When `editing` is non-null the composer is standing
+  // in for one existing message: the draft is that message's text and Enter
+  // routes to onEditSubmit instead of onSend. The parent owns the state so the
+  // message row can highlight itself, and so opening a thread or switching
+  // channel can cancel it.
+  //
+  // onEditLast is the cursor-up entry point: pressing Up on an empty composer
+  // asks the parent for its most recent editable message. The parent answers by
+  // setting `editing` (or not, if there is nothing to edit).
+  editing?: { id: string; body: string } | null;
+  onEditSubmit?: (body: string) => void | Promise<boolean | void>;
+  onEditCancel?: () => void;
+  onEditLast?: () => void;
 }
 
 const MAX_LEN = 4000;
@@ -108,7 +121,7 @@ function IconGif() {
   );
 }
 
-export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle }: Props) {
+export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, editing, onEditSubmit, onEditCancel, onEditLast }: Props) {
   const icons = toolStyle === "icons";
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<PendingAttachment[]>([]);
@@ -143,6 +156,33 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
       : effectiveDisabled
       ? "offline -- waiting to reconnect"
       : "say something...";
+
+  // Phase 37-3: entering edit mode loads the message's text into the draft and
+  // puts the caret at the end -- you pressed Up to fix a typo, so the cursor
+  // belongs where you were typing. Leaving edit mode clears the draft; cursor-up
+  // only fires on an empty composer, so there is never unsent text to restore.
+  const editingID = editing?.id ?? null;
+  useEffect(() => {
+    if (!editing) {
+      setDraft("");
+      return;
+    }
+    setDraft(editing.body);
+    const el = textareaRef.current;
+    if (!el) return;
+    // The DOM value lands on the next render, so defer the caret move.
+    window.setTimeout(() => {
+      el.focus();
+      try {
+        el.setSelectionRange(el.value.length, el.value.length);
+      } catch {
+        // Caret position is cosmetic; the text is already correct.
+      }
+    }, 0);
+    // Keyed on the message id: re-running on every keystroke would fight the
+    // user by resetting the draft to the original text.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingID]);
 
   const makeLocalID = (): string =>
     typeof crypto !== "undefined" && crypto.randomUUID
@@ -215,6 +255,27 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   const submit = async () => {
     if (sending) return;
     const body = draft.trim();
+
+    // Phase 37-3: in edit mode the composer is standing in for one existing
+    // message, so there is no attachment path here -- an edit only ever
+    // replaces text. An empty edit is refused rather than treated as a delete:
+    // deleting is a separate, confirmed action, and it would be a nasty
+    // surprise to lose a message by clearing the box and hitting Enter.
+    if (editing) {
+      if (!body || body.length > MAX_LEN) return;
+      if (body === editing.body) {
+        onEditCancel?.(); // nothing changed; just close the editor
+        return;
+      }
+      setSending(true);
+      try {
+        await onEditSubmit?.(body);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     if (!body && pending.length === 0) return;
     if (body.length > MAX_LEN) return;
 
@@ -260,6 +321,31 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void submit();
+      return;
+    }
+    // Phase 37-3: Escape leaves edit mode. Only when editing -- otherwise
+    // Escape belongs to whatever else is listening (pickers, panels).
+    if (e.key === "Escape" && editing) {
+      e.preventDefault();
+      onEditCancel?.();
+      return;
+    }
+    // Cursor-up on an EMPTY composer opens your last message for editing.
+    // Guarded on empty so Up keeps its normal caret-movement meaning the
+    // moment there is any text -- including a multi-line draft, where moving
+    // between lines is what the key is for. Attachments in the tray mean the
+    // composer is mid-compose too, even with no text yet.
+    if (
+      e.key === "ArrowUp" &&
+      !editing &&
+      draft === "" &&
+      pending.length === 0 &&
+      !effectiveDisabled &&
+      !sending &&
+      onEditLast
+    ) {
+      e.preventDefault();
+      onEditLast();
     }
   };
 
@@ -305,7 +391,13 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     addFileArray(filesFromList(e.dataTransfer?.files));
   };
 
-  const canSend = !effectiveDisabled && !sending && (draft.trim().length > 0 || pending.length > 0);
+  const canSend = editing
+    ? !effectiveDisabled && !sending && draft.trim().length > 0
+    : !effectiveDisabled && !sending && (draft.trim().length > 0 || pending.length > 0);
+  // In edit mode the composer is replacing one message's text, so the
+  // attachment and GIF affordances are hidden rather than disabled: they'd
+  // imply you can add a file to an existing message, which you can't.
+  const showTools = !editing && (enableAttachments || giphyEnabled);
 
   return (
     <div
@@ -337,7 +429,21 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
           drop files to attach
         </div>
       )}
-      {enableAttachments && pending.length > 0 && (
+      {editing && (
+        <div class="chalk-composer-editing" data-testid="composer-editing">
+          <span class="chalk-composer-editing-label">editing message</span>
+          <button
+            type="button"
+            class="chalk-composer-editing-cancel"
+            onClick={() => onEditCancel?.()}
+            data-testid="composer-edit-cancel"
+          >
+            cancel
+          </button>
+          <span class="chalk-composer-editing-hint">escape to cancel</span>
+        </div>
+      )}
+      {enableAttachments && !editing && pending.length > 0 && (
         <div class="chalk-composer-tray" data-testid="composer-tray">
           {pending.map((p) => {
             const frac = progress[p.localID];
@@ -386,7 +492,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
           enableAttachments/giphyEnabled effectively gate on. The old
           per-button classes are kept alongside chalk-composer-tool so the
           existing hover/disabled rules still apply. */}
-      {(enableAttachments || giphyEnabled) && (
+      {showTools && (
         <div class={`chalk-composer-tools ${icons ? "chalk-composer-tools--icons" : "chalk-composer-tools--text"}`} data-testid="composer-tools">
           {enableAttachments && (
             <>
@@ -472,7 +578,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
           disabled={!canSend}
           data-testid="composer-send"
         >
-          {sending ? "sending…" : "send"}
+          {sending ? (editing ? "saving…" : "sending…") : editing ? "save" : "send"}
         </button>
       </div>
     </div>
