@@ -524,6 +524,17 @@ func TestLoginFlowEndToEnd(t *testing.T) {
 		}
 	}()
 	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
+	// Serve in dev mode. The session cookie is Secure outside dev
+	// (sessions.go), and Go's cookiejar will not return a Secure
+	// cookie to an http:// origin — so on a plaintext httptest server
+	// every request after login arrives with no session at all.
+	t.Setenv("CHALK_DEV", "1")
+	// These tests predate the 31-9 hard cutover and register via the
+	// legacy passkey flow, so their users have no user_auth row. With
+	// the cutover active every session-gated call 409s
+	// auth_v2_enrollment_required before reaching the handler under
+	// test. The enrollment gate has its own coverage; here it is noise.
+	t.Setenv("CHALK_AUTH_V2_REQUIRED", "0")
 
 	// ---- httptest server with handlers mounted ------------------------
 	srv := httptest.NewUnstartedServer(nil)
@@ -878,6 +889,17 @@ func TestRecoveryFlowEndToEnd(t *testing.T) {
 		}
 	}()
 	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
+	// Serve in dev mode. The session cookie is Secure outside dev
+	// (sessions.go), and Go's cookiejar will not return a Secure
+	// cookie to an http:// origin — so on a plaintext httptest server
+	// every request after login arrives with no session at all.
+	t.Setenv("CHALK_DEV", "1")
+	// These tests predate the 31-9 hard cutover and register via the
+	// legacy passkey flow, so their users have no user_auth row. With
+	// the cutover active every session-gated call 409s
+	// auth_v2_enrollment_required before reaching the handler under
+	// test. The enrollment gate has its own coverage; here it is noise.
+	t.Setenv("CHALK_AUTH_V2_REQUIRED", "0")
 
 	// ---- server setup -------------------------------------------------
 	srv := httptest.NewUnstartedServer(nil)
@@ -1064,9 +1086,12 @@ func TestRecoveryFlowEndToEnd(t *testing.T) {
 			oldRecResp.StatusCode)
 	}
 	ebOld, _ := decodeError(oldRecResp.Body)
-	// Old words: server stored a fresh hash; old words won't match → invalid_words.
-	if ebOld.Error.Code != "invalid_words" {
-		t.Errorf("recovery with old words error code = %q, want 'invalid_words'",
+	// code_used, not invalid_words: step 7 above recovered with the NEW
+	// words, which consumed the code, and the used-check runs before the
+	// hash compare. Either way the old words are refused, which is the
+	// property under test.
+	if ebOld.Error.Code != "code_used" {
+		t.Errorf("recovery with old words error code = %q, want 'code_used'",
 			ebOld.Error.Code)
 	}
 }
@@ -1095,10 +1120,14 @@ func TestRecoveryUnknownUser(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	// 24 valid-shape but wrong words.
-	fakeWords := make([]string, 24)
-	for i := range fakeWords {
-		fakeWords[i] = "abandon"
+	// Valid-shape but wrong words. They must be a real BIP-39 phrase:
+	// VerifyRecoveryWords checks the checksum, and a phrase that fails
+	// THAT is rejected as invalid_words (400) before the handler ever
+	// looks the user up — which is the shape check doing its job, not
+	// the unknown-user path we're testing here.
+	fakeWords, err := auth.GenerateRecoveryWords()
+	if err != nil {
+		t.Fatalf("GenerateRecoveryWords: %v", err)
 	}
 	body, _ := json.Marshal(map[string]any{
 		"username": "doesnotexist_xyz",
@@ -1278,6 +1307,16 @@ func TestInviteCreatePeekRegisterEndToEnd(t *testing.T) {
 	}
 	cleanup()
 	defer cleanup()
+
+	// Dev mode: the session cookie is Secure outside it, and Go's
+	// cookiejar will not return a Secure cookie over http.
+	t.Setenv("CHALK_DEV", "1")
+	// These tests predate the 31-9 hard cutover and register via the
+	// legacy passkey flow, so their users have no user_auth row. With
+	// the cutover active every session-gated call 409s
+	// auth_v2_enrollment_required before reaching the handler under
+	// test. The enrollment gate has its own coverage; here it is noise.
+	t.Setenv("CHALK_AUTH_V2_REQUIRED", "0")
 
 	// Inviter registers in open-registration mode (no invite needed).
 	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
@@ -1797,6 +1836,16 @@ func setupTestServerWithStore(t *testing.T, st *store.Store) (*httptest.Server, 
 // installs a specific Mailer for assertion-friendly tests.
 func setupTestServerWithMailer(t *testing.T, st *store.Store, mailer mail.Mailer) (*httptest.Server, *auth.HTTPDeps, *http.ServeMux) {
 	t.Helper()
+	// Dev mode: the session cookie is Secure outside it, and Go's
+	// cookiejar will not return a Secure cookie over http.
+	t.Setenv("CHALK_DEV", "1")
+	// These tests predate the 31-9 hard cutover and register via the
+	// legacy passkey flow, so their users have no user_auth row. With
+	// the cutover active every session-gated call 409s
+	// auth_v2_enrollment_required before reaching the handler under
+	// test. The enrollment gate has its own coverage; here it is noise.
+	t.Setenv("CHALK_AUTH_V2_REQUIRED", "0")
+
 	srv := httptest.NewUnstartedServer(nil)
 	addr := srv.Listener.Addr().String()
 	originURL := "http://" + addr

@@ -125,6 +125,17 @@ func setupAdminEnv(t *testing.T) *adminTestEnv {
 	}
 
 	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
+	// Serve in dev mode. The session cookie is Secure outside dev
+	// (sessions.go), and Go's cookiejar will not return a Secure cookie
+	// to an http:// origin — so every admin request below would arrive
+	// with no session and 401 before RequireAdmin is even reached.
+	t.Setenv("CHALK_DEV", "1")
+	// These tests predate the 31-9 hard cutover and register via the
+	// legacy passkey flow, so their users have no user_auth row. With
+	// the cutover active every session-gated call 409s
+	// auth_v2_enrollment_required before reaching the handler under
+	// test. The enrollment gate has its own coverage; here it is noise.
+	t.Setenv("CHALK_AUTH_V2_REQUIRED", "0")
 
 	srv := httptest.NewUnstartedServer(nil)
 	addr := srv.Listener.Addr().String()
