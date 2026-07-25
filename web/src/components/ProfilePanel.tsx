@@ -43,6 +43,9 @@ import {
   type PasskeyInfo,
 } from "../auth/api";
 import { FONT_CHOICES, SCALE_STEPS, useDisplayPrefs } from "../display-prefs";
+import { notifySounds } from "../notify";
+import { useSoundPrefs } from "../notify/prefs";
+import { CATEGORY_LABELS, SOUND_CATEGORIES } from "../notify/types";
 import { SecurityPanel } from "./SecurityPanel"; // 31-8
 import { VersionLink } from "./VersionLink"; // 39-1
 import { performRegistration, WebAuthnError } from "../webauthn";
@@ -150,6 +153,7 @@ export function ProfilePanel({
   // Font family + size. Device-local, so unlike theme these aren't
   // threaded down from App -- the hook reads and persists them itself.
   const [display, setDisplay] = useDisplayPrefs();
+  const [sound, setSound, setSoundCategory] = useSoundPrefs();
 
   // md-4-2: passkey management. The list loads on mount; addState gates
   // the add button while the browser ceremony runs. null list = not yet
@@ -694,6 +698,107 @@ export function ProfilePanel({
               )}
             </section>
           )}
+
+          {/* 40-3: notification sounds. Per-device, so this section talks to
+              localStorage through useSoundPrefs directly rather than taking
+              props -- nothing here goes near the server. Every control is a
+              chalk stroke you can hear before you commit to it. */}
+          <section class="chalk-profile-notifications" data-testid="notify-settings">
+            <h3>notifications</h3>
+
+            <div class="chalk-profile-field">
+              <label class="chalk-profile-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={sound.master}
+                  onChange={(e) => setSound({ master: (e.target as HTMLInputElement).checked })}
+                  data-testid="notify-sounds-master"
+                />
+                <span>play sounds</span>
+              </label>
+            </div>
+
+            <div class="chalk-profile-field">
+              <label class="chalk-profile-label" for="notify-volume">
+                volume{" "}
+                <span class="chalk-profile-theme-desc">({Math.round(sound.volume * 100)}%)</span>
+              </label>
+              <input
+                id="notify-volume"
+                type="range"
+                class="chalk-profile-range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={sound.volume}
+                disabled={!sound.master}
+                // onChange, not onInput: a range fires input on every pixel
+                // of the drag, and each one is a write plus a fan-out to the
+                // other tabs on this device.
+                onChange={(e) => setSound({ volume: Number((e.target as HTMLInputElement).value) })}
+                data-testid="notify-volume"
+              />
+            </div>
+
+            <div class="chalk-profile-field">
+              <label class="chalk-profile-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={sound.dnd}
+                  disabled={!sound.master}
+                  onChange={(e) => setSound({ dnd: (e.target as HTMLInputElement).checked })}
+                  data-testid="notify-dnd"
+                />
+                <span>
+                  do not disturb{" "}
+                  <span class="chalk-profile-theme-desc">(silence everything, keep the badges)</span>
+                </span>
+              </label>
+            </div>
+
+            <div class="chalk-profile-field">
+              <label class="chalk-profile-label">what makes a sound</label>
+              <div class="chalk-profile-sound-list">
+                {SOUND_CATEGORIES.map((c) => (
+                  <div class="chalk-profile-sound-row" key={c}>
+                    <label class="chalk-profile-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={sound.categories[c]}
+                        disabled={!sound.master}
+                        onChange={(e) =>
+                          setSoundCategory(c, (e.target as HTMLInputElement).checked)
+                        }
+                        data-testid={`notify-category-${c}`}
+                      />
+                      <span>
+                        {CATEGORY_LABELS[c].label}
+                        {CATEGORY_LABELS[c].desc && (
+                          <span class="chalk-profile-theme-desc"> — {CATEGORY_LABELS[c].desc}</span>
+                        )}
+                      </span>
+                    </label>
+                    <button
+                      type="button"
+                      class="chalk-profile-sound-preview"
+                      // Deliberately not disabled with the master switch:
+                      // hearing one is how you decide whether to turn the
+                      // whole thing back on.
+                      onClick={() => notifySounds().preview(c)}
+                      aria-label={`play the ${CATEGORY_LABELS[c].label} sound`}
+                      data-testid={`notify-preview-${c}`}
+                    >
+                      play
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p class="chalk-profile-hint">
+                these settings stay on this device — your phone and your desktop can disagree.
+                chalk keeps quiet for whatever channel you're already reading.
+              </p>
+            </div>
+          </section>
 
           {/* att-2: storage -- clear the cached attachment ciphertext. */}
           {onClearImageCache && (

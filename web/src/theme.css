@@ -3057,6 +3057,46 @@ body.chalk-resizing .chalk-sidebar-resizer {
   accent-color: var(--chalk-accent);
 }
 
+/* Phase 40-3: the notification sound category list. Each row is a toggle
+   plus a preview, so the label column has to give and the button must not. */
+.chalk-profile-sound-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s1);
+  margin-top: var(--chalk-s1);
+}
+.chalk-profile-sound-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--chalk-s2);
+}
+.chalk-profile-sound-row .chalk-profile-checkbox-label {
+  /* Long descriptions wrap rather than pushing the button off the edge. */
+  flex: 1;
+  min-width: 0;
+  align-items: flex-start;
+}
+.chalk-profile-sound-preview {
+  flex: none;
+  background: transparent;
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: 0 var(--chalk-s2);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  cursor: pointer;
+}
+.chalk-profile-sound-preview:hover {
+  color: var(--chalk-fg-bright);
+  border-color: var(--chalk-accent);
+}
+.chalk-profile-sound-preview:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
 .chalk-profile-select {
   background: var(--chalk-bg);
   color: var(--chalk-fg);
