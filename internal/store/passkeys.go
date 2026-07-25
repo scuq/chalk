@@ -29,6 +29,13 @@ import (
 // Name is user-chosen at registration time ("my iPhone", "yubikey
 // at desk"). May be empty until the user names the passkey from the
 // settings panel.
+//
+// Flags is the raw WebAuthn AuthenticatorFlags octet (UP/UV/BE/BS/…)
+// as of the last ceremony. nil means the row predates migration 0042
+// and the flags were never recorded; the auth layer adopts the
+// asserted flags on the next successful login. The BackupEligible bit
+// in particular MUST round-trip: go-webauthn rejects a login whose
+// asserted BE differs from the stored one.
 type Passkey struct {
 	CredentialID []byte
 	UserID       uuid.UUID
@@ -36,6 +43,7 @@ type Passkey struct {
 	SignCount    uint64
 	Transports   []string
 	Name         string
+	Flags        *uint8 // nil = unknown (pre-0042 row)
 	CreatedAt    time.Time
 	LastUsedAt   time.Time // zero value if never used
 }
@@ -48,6 +56,11 @@ type Passkey struct {
 //
 // transports may be nil; it's stored as an empty array in that case.
 // name may be empty.
+//
+// flags is the raw AuthenticatorFlags octet from the registration
+// ceremony (webauthn.Credential.Flags.MsgpByte()). It is always known
+// at insert time, so the column is written non-NULL for every row
+// created through this path.
 func (s *Store) AddPasskey(
 	ctx context.Context,
 	credentialID []byte,
@@ -56,6 +69,7 @@ func (s *Store) AddPasskey(
 	signCount uint64,
 	transports []string,
 	name string,
+	flags byte,
 ) (Passkey, error) {
 	if len(credentialID) == 0 {
 		return Passkey{}, fmt.Errorf("AddPasskey: credentialID required")
@@ -73,13 +87,15 @@ func (s *Store) AddPasskey(
 	now := time.Now().UTC()
 	_, err := s.Pool.Exec(ctx,
 		`INSERT INTO passkeys (
-		   credential_id, user_id, public_key, sign_count, transports, name, created_at
-		 ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		credentialID, userID, publicKey, int64(signCount), transports, nameParam, now,
+		   credential_id, user_id, public_key, sign_count, transports, name, flags, created_at
+		 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		credentialID, userID, publicKey, int64(signCount), transports, nameParam,
+		int16(flags), now,
 	)
 	if err != nil {
 		return Passkey{}, fmt.Errorf("add passkey: %w", err)
 	}
+	storedFlags := flags
 	return Passkey{
 		CredentialID: credentialID,
 		UserID:       userID,
@@ -87,6 +103,7 @@ func (s *Store) AddPasskey(
 		SignCount:    signCount,
 		Transports:   transports,
 		Name:         name,
+		Flags:        &storedFlags,
 		CreatedAt:    now,
 	}, nil
 }
@@ -100,8 +117,9 @@ func (s *Store) GetPasskeyByCredentialID(ctx context.Context, credentialID []byt
 	var name *string
 	var lastUsed *time.Time
 	var signCount int64
+	var flags *int16
 	err := s.Pool.QueryRow(ctx,
-		`SELECT credential_id, user_id, public_key, sign_count, transports, name, created_at, last_used_at
+		`SELECT credential_id, user_id, public_key, sign_count, transports, name, flags, created_at, last_used_at
 		   FROM passkeys WHERE credential_id = $1`,
 		credentialID,
 	).Scan(
@@ -111,6 +129,7 @@ func (s *Store) GetPasskeyByCredentialID(ctx context.Context, credentialID []byt
 		&signCount,
 		&pk.Transports,
 		&name,
+		&flags,
 		&pk.CreatedAt,
 		&lastUsed,
 	)
@@ -127,7 +146,20 @@ func (s *Store) GetPasskeyByCredentialID(ctx context.Context, credentialID []byt
 	if lastUsed != nil {
 		pk.LastUsedAt = *lastUsed
 	}
+	pk.Flags = flagsFromColumn(flags)
 	return pk, nil
+}
+
+// flagsFromColumn narrows the SMALLINT flags column to the octet the
+// WebAuthn library round-trips. NULL stays nil (pre-0042 row, unknown).
+// Values outside 0..255 can't occur — the column is only ever written
+// from a byte — but they're masked rather than trusted.
+func flagsFromColumn(v *int16) *uint8 {
+	if v == nil {
+		return nil
+	}
+	b := uint8(*v)
+	return &b
 }
 
 // GetPasskeysForUser returns every credential registered for a user,
@@ -138,7 +170,7 @@ func (s *Store) GetPasskeyByCredentialID(ctx context.Context, credentialID []byt
 //  2. The settings panel that lists passkeys for revocation.
 func (s *Store) GetPasskeysForUser(ctx context.Context, userID uuid.UUID) ([]Passkey, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT credential_id, user_id, public_key, sign_count, transports, name, created_at, last_used_at
+		`SELECT credential_id, user_id, public_key, sign_count, transports, name, flags, created_at, last_used_at
 		   FROM passkeys WHERE user_id = $1
 		   ORDER BY created_at ASC`,
 		userID,
@@ -153,6 +185,7 @@ func (s *Store) GetPasskeysForUser(ctx context.Context, userID uuid.UUID) ([]Pas
 		var name *string
 		var lastUsed *time.Time
 		var signCount int64
+		var flags *int16
 		if err := rows.Scan(
 			&pk.CredentialID,
 			&pk.UserID,
@@ -160,6 +193,7 @@ func (s *Store) GetPasskeysForUser(ctx context.Context, userID uuid.UUID) ([]Pas
 			&signCount,
 			&pk.Transports,
 			&name,
+			&flags,
 			&pk.CreatedAt,
 			&lastUsed,
 		); err != nil {
@@ -172,6 +206,7 @@ func (s *Store) GetPasskeysForUser(ctx context.Context, userID uuid.UUID) ([]Pas
 		if lastUsed != nil {
 			pk.LastUsedAt = *lastUsed
 		}
+		pk.Flags = flagsFromColumn(flags)
 		out = append(out, pk)
 	}
 	if err := rows.Err(); err != nil {
@@ -180,20 +215,27 @@ func (s *Store) GetPasskeysForUser(ctx context.Context, userID uuid.UUID) ([]Pas
 	return out, nil
 }
 
-// UpdateSignCount bumps the sign_count after a successful
-// authentication and sets last_used_at = now(). The auth library
-// validates that newCount > currentCount before calling this; we
-// don't re-check (would race). Idempotent on credentialID being
-// gone: returns ErrNotFound but does not corrupt anything.
-func (s *Store) UpdateSignCount(ctx context.Context, credentialID []byte, newCount uint64) error {
+// RecordPasskeyLogin persists the post-assertion state of a credential:
+// it bumps sign_count, sets last_used_at = now(), and stores the raw
+// AuthenticatorFlags octet. The auth library validates that newCount >
+// currentCount before calling this; we don't re-check (would race).
+// Idempotent on credentialID being gone: returns ErrNotFound but does
+// not corrupt anything.
+//
+// The flags write is not merely a backfill for pre-0042 rows. The
+// BackupState bit legitimately changes over a credential's life (a
+// passkey gets synced to the cloud after the fact), and go-webauthn's
+// storage guidance requires the relying party to track it, so it is
+// rewritten on every login.
+func (s *Store) RecordPasskeyLogin(ctx context.Context, credentialID []byte, newCount uint64, flags byte) error {
 	tag, err := s.Pool.Exec(ctx,
 		`UPDATE passkeys
-		    SET sign_count = $1, last_used_at = now()
-		  WHERE credential_id = $2`,
-		int64(newCount), credentialID,
+		    SET sign_count = $1, flags = $2, last_used_at = now()
+		  WHERE credential_id = $3`,
+		int64(newCount), int16(flags), credentialID,
 	)
 	if err != nil {
-		return fmt.Errorf("update sign count: %w", err)
+		return fmt.Errorf("record passkey login: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound

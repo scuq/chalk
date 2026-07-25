@@ -218,7 +218,7 @@ func (d *HTTPDeps) handleAddPasskeyFinish(w http.ResponseWriter, r *http.Request
 	pk, err := d.Store.AddPasskey(r.Context(),
 		cred.ID, su.UserID, cred.PublicKey,
 		uint64(cred.Authenticator.SignCount), transports,
-		sanitizePasskeyName(req.Name),
+		sanitizePasskeyName(req.Name), cred.Flags.MsgpByte(),
 	)
 	if err != nil {
 		d.Logger.Printf("passkeys/add/finish: AddPasskey: %v", err)

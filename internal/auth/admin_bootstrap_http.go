@@ -310,7 +310,7 @@ func (d *HTTPDeps) handleAdminBootstrapFinish(w http.ResponseWriter, r *http.Req
 	if _, err := d.Store.AddPasskey(r.Context(),
 		cred.ID, entry.PendingUser.ID, cred.PublicKey,
 		uint64(cred.Authenticator.SignCount), transports,
-		"Primary passkey",
+		"Primary passkey", cred.Flags.MsgpByte(),
 	); err != nil {
 		d.Logger.Printf("admin/bootstrap/finish: AddPasskey: %v", err)
 		writeError(w, http.StatusInternalServerError, "persist_failed",

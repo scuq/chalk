@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -28,12 +29,24 @@ import (
 // per credential (we don't filter on authenticator make/model), and
 // clone-warning is a runtime detection that the library handles
 // internally based on sign_count.
+//
+// Flags, by contrast, MUST be restored: go-webauthn compares the stored
+// BackupEligible bit against the one asserted at login and rejects the
+// ceremony on mismatch. Leaving them zero claims BE=0 for every
+// credential, which fails every synced passkey. We round-trip the raw
+// octet through the library's own MsgpByte helpers rather than setting
+// the booleans by hand — CredentialFlags keeps an unexported raw field
+// that only those constructors populate.
+//
+// pk.Flags is nil for rows written before migration 0042. Such a
+// credential keeps BE=0 here; handleAuthenticateFinish adopts the
+// asserted flags for it instead (see adoptLegacyFlags).
 func passkeyToWebauthnCredential(pk store.Passkey) webauthn.Credential {
 	transports := make([]protocol.AuthenticatorTransport, 0, len(pk.Transports))
 	for _, t := range pk.Transports {
 		transports = append(transports, protocol.AuthenticatorTransport(t))
 	}
-	return webauthn.Credential{
+	cred := webauthn.Credential{
 		ID:        pk.CredentialID,
 		PublicKey: pk.PublicKey,
 		Transport: transports,
@@ -41,6 +54,32 @@ func passkeyToWebauthnCredential(pk store.Passkey) webauthn.Credential {
 			SignCount: uint32(pk.SignCount),
 		},
 	}
+	if pk.Flags != nil {
+		cred.Flags = webauthn.CredentialFlagsFromMsgpByte(*pk.Flags)
+	}
+	return cred
+}
+
+// adoptLegacyFlags seeds the flags of a credential whose row predates
+// migration 0042 from the assertion that is about to be validated.
+//
+// The true BE bit of such a row is unrecoverable — it was never stored
+// — so the choice is between trusting the assertion once and locking
+// every existing user out of the passkey path. We trust it once: only
+// for the single credential the assertion names (matched on raw
+// credential ID, so one authenticator can't stamp its flags onto
+// another's row), and only while the stored flags are unknown. The
+// login handler writes the flags immediately afterwards, so from the
+// next login on the BE-change check applies in full.
+func adoptLegacyFlags(creds []webauthn.Credential, passkeys []store.Passkey, parsed *protocol.ParsedCredentialAssertionData) *webauthn.CredentialFlags {
+	for i := range passkeys {
+		if passkeys[i].Flags != nil || !bytes.Equal(passkeys[i].CredentialID, parsed.RawID) {
+			continue
+		}
+		creds[i].Flags = webauthn.NewCredentialFlags(parsed.Response.AuthenticatorData.Flags)
+		return &creds[i].Flags
+	}
+	return nil
 }
 
 // HTTPDeps bundles the dependencies the HTTP handlers need. Held by
@@ -526,6 +565,7 @@ func (d *HTTPDeps) handleRegisterFinish(w http.ResponseWriter, r *http.Request) 
 		SignCount:    uint64(cred.Authenticator.SignCount),
 		Transports:   transports,
 		PasskeyName:  "Primary passkey",
+		Flags:        cred.Flags.MsgpByte(),
 		RecoveryHash: hash,
 	})
 	if regErr != nil {
@@ -794,6 +834,14 @@ func (d *HTTPDeps) handleAuthenticateFinish(w http.ResponseWriter, r *http.Reque
 	for _, pk := range passkeys {
 		creds = append(creds, passkeyToWebauthnCredential(pk))
 	}
+	// Pre-0042 rows carry no flags; take them from this assertion so
+	// the library's BackupEligible comparison has something true to
+	// compare against. One-time per credential — the write-back below
+	// makes the row known.
+	if adopted := adoptLegacyFlags(creds, passkeys, parsed); adopted != nil {
+		d.Logger.Printf("authenticate/finish: adopting flags for pre-0042 credential (BE=%v BS=%v)",
+			adopted.BackupEligible, adopted.BackupState)
+	}
 	wauthUser := &User{
 		ID:          entry.PendingUser.ID,
 		Name:        entry.PendingUser.Username,
@@ -809,13 +857,16 @@ func (d *HTTPDeps) handleAuthenticateFinish(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Bump the passkey's sign_count and last_used_at so replay
-	// defense works on the next login.
-	if err := d.Store.UpdateSignCount(r.Context(),
-		cred.ID, uint64(cred.Authenticator.SignCount)); err != nil {
+	// defense works on the next login, and store the flags the
+	// library just parsed off the assertion (ValidateLogin refreshes
+	// cred.Flags). BackupState can change between logins, so this is
+	// a rewrite every time, not just a backfill.
+	if err := d.Store.RecordPasskeyLogin(r.Context(),
+		cred.ID, uint64(cred.Authenticator.SignCount), cred.Flags.MsgpByte()); err != nil {
 		// Best-effort: log but don't fail. The login is still
 		// valid; we just won't catch a sign-count replay on the
 		// next attempt with this credential.
-		d.Logger.Printf("authenticate/finish: UpdateSignCount: %v", err)
+		d.Logger.Printf("authenticate/finish: RecordPasskeyLogin: %v", err)
 	}
 
 	// 31-9: TOTP gates EVERY login. For an enrolled account the passkey is

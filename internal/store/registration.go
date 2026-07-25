@@ -43,6 +43,7 @@ type RegistrationParams struct {
 	SignCount    uint64
 	Transports   []string
 	PasskeyName  string // human label; may be empty
+	Flags        byte   // raw AuthenticatorFlags octet (UP/UV/BE/BS/…)
 
 	// Recovery. Hash is the salt||argon2id-hash bundle returned by
 	// auth.HashRecoveryWords (48 bytes: 16 salt + 32 hash). The
@@ -157,10 +158,10 @@ func (s *Store) RegisterUser(ctx context.Context, p RegistrationParams) error {
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO passkeys (
 			   credential_id, user_id, public_key,
-			   sign_count, transports, name, created_at
-			 ) VALUES ($1, $2, $3, $4, $5, $6, now())`,
+			   sign_count, transports, name, flags, created_at
+			 ) VALUES ($1, $2, $3, $4, $5, $6, $7, now())`,
 			p.CredentialID, p.UserID, p.PublicKey,
-			int64(p.SignCount), transports, passkeyName,
+			int64(p.SignCount), transports, passkeyName, int16(p.Flags),
 		); err != nil {
 			if isPasskeyUniqueViolation(err) {
 				return ErrCredentialTaken

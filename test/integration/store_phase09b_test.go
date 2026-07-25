@@ -346,7 +346,10 @@ func TestPasskeysAddGetRevoke(t *testing.T) {
 	credID := []byte("test-credential-id-bytes-1234")
 	pubKey := []byte("fake-cose-cbor-key")
 
-	pk, err := st.AddPasskey(c, credID, aliceID, pubKey, 0, []string{"internal", "hybrid"}, "alice's iPhone")
+	// UP|UV|BE|BS — a synced passkey that has been backed up.
+	const regFlags = byte(0x01 | 0x04 | 0x08 | 0x10)
+
+	pk, err := st.AddPasskey(c, credID, aliceID, pubKey, 0, []string{"internal", "hybrid"}, "alice's iPhone", regFlags)
 	if err != nil {
 		t.Fatalf("AddPasskey: %v", err)
 	}
@@ -356,6 +359,9 @@ func TestPasskeysAddGetRevoke(t *testing.T) {
 	}
 	if pk.SignCount != 0 {
 		t.Errorf("SignCount = %d, want 0", pk.SignCount)
+	}
+	if pk.Flags == nil || *pk.Flags != regFlags {
+		t.Errorf("AddPasskey returned Flags = %v, want %#x", pk.Flags, regFlags)
 	}
 
 	got, err := st.GetPasskeyByCredentialID(c, credID)
@@ -371,10 +377,15 @@ func TestPasskeysAddGetRevoke(t *testing.T) {
 	if len(got.Transports) != 2 {
 		t.Errorf("Transports = %v", got.Transports)
 	}
+	if got.Flags == nil || *got.Flags != regFlags {
+		t.Errorf("Flags round-trip = %v, want %#x", got.Flags, regFlags)
+	}
 
-	// Bump sign count.
-	if err := st.UpdateSignCount(c, credID, 5); err != nil {
-		t.Fatalf("UpdateSignCount: %v", err)
+	// Bump sign count. BackupState went from 1 to 0 (credential no
+	// longer backed up); the flags column must follow.
+	const loginFlags = byte(0x01 | 0x04 | 0x08)
+	if err := st.RecordPasskeyLogin(c, credID, 5, loginFlags); err != nil {
+		t.Fatalf("RecordPasskeyLogin: %v", err)
 	}
 	got, err = st.GetPasskeyByCredentialID(c, credID)
 	if err != nil {
@@ -384,7 +395,10 @@ func TestPasskeysAddGetRevoke(t *testing.T) {
 		t.Errorf("SignCount after bump = %d, want 5", got.SignCount)
 	}
 	if got.LastUsedAt.IsZero() {
-		t.Error("LastUsedAt should be set after UpdateSignCount")
+		t.Error("LastUsedAt should be set after RecordPasskeyLogin")
+	}
+	if got.Flags == nil || *got.Flags != loginFlags {
+		t.Errorf("Flags after login = %v, want %#x", got.Flags, loginFlags)
 	}
 
 	// Rename.
@@ -419,7 +433,7 @@ func TestPasskeysListAndCount(t *testing.T) {
 		[]byte("multi-test-passkey-3"),
 	}
 	for _, cid := range creds {
-		if _, err := st.AddPasskey(c, cid, aliceID, []byte("pk"), 0, nil, ""); err != nil {
+		if _, err := st.AddPasskey(c, cid, aliceID, []byte("pk"), 0, nil, "", 0x05); err != nil {
 			t.Fatalf("AddPasskey: %v", err)
 		}
 		t.Cleanup(func() { _ = st.DeletePasskey(c, cid) })
