@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.3.41 — 26 July 2026 — Microphone settings
 
 ### Added
 - **Microphone settings.** There's a microphone section in your profile now.
