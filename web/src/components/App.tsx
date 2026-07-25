@@ -15,6 +15,8 @@
 
 import { resolveNickHue } from "../chat/nickcolor";
 import { mentionsHandle } from "../chat/mentions";
+import { notifySounds, type NotifySounds } from "../notify";
+import { categoryForMessage } from "../notify/classify";
 import { deleteActionFor, deleteLabelFor } from "../chat/deletepolicy";
 import { canEditMessage, lastEditableMessage } from "../chat/editpolicy";
 import { ownSet, toggle } from "../chat/reactions";
@@ -1132,6 +1134,23 @@ export function App() {
   historyLoadedRef.current = state.historyLoaded;
   // Assigned next to the visibilitychange effect, which declares tabVisible.
   const tabVisibleRef = useRef(true);
+  // 40-2: deciding whether an arriving reply belongs to a thread the viewer
+  // is part of needs both halves of the thread -- the parent lives in the
+  // channel's messages, the replies in threadMessages -- and the decision
+  // happens inside handleFrame, so both read through refs.
+  const messagesRef = useRef(state.messages);
+  messagesRef.current = state.messages;
+  const threadMessagesRef = useRef(state.threadMessages);
+  threadMessagesRef.current = state.threadMessages;
+  // 40-4: the presence sound needs the state a friend is coming *from*,
+  // read before the dispatch that overwrites it.
+  const presenceRef = useRef(state.presence);
+  presenceRef.current = state.presence;
+
+  // 40-2: notification sounds. Shared with the profile panel's preview
+  // buttons, so both halves agree about whether audio has been unlocked.
+  const notifyRef = useRef<NotifySounds | null>(null);
+  if (!notifyRef.current) notifyRef.current = notifySounds();
   // 33-1: highest seq we've already sent a mark_read for, per channel.
   // Suppresses re-sends while the ack is in flight. Cleared on reconnect,
   // where the fresh listing re-establishes the real cursors anyway.
@@ -1318,6 +1337,48 @@ export function App() {
     dispatch({ kind: "mention_set", channelID });
   }
 
+  // 40-2: make a noise about a message that just arrived.
+  //
+  // Live pushes only. The other caller of noteMention scans decrypted
+  // history after a reload or a reconnect, and hooking this in there too
+  // would empty the room every time someone opens a laptop -- the whole
+  // backlog would play at once. Everything else (your own messages, the
+  // channel you're reading, do-not-disturb, rate limiting) is handled
+  // downstream in classify.ts and gate.ts.
+  function noteSound(m: { channelID: string; senderUserID: string; parentID?: string }, body: string) {
+    const me = userRef.current;
+    if (!me) return;
+    const ch = channelsRef.current[m.channelID];
+    if (!ch) return;
+    const category = categoryForMessage(
+      { senderUserID: m.senderUserID, body, parentID: m.parentID },
+      { id: me.id, handle: me.handle },
+      { isDM: !!ch.isDM, threadInvolvesViewer: threadInvolvesMe(m, me.id) },
+      mentionsHandle,
+    );
+    if (!category) return;
+    notifyRef.current?.play(category, {
+      tabVisible: tabVisibleRef.current,
+      isRelevantSurfaceOpen: m.channelID === activeChannelRef.current,
+    });
+  }
+
+  // Did the viewer write the parent of this reply, or any reply already in
+  // its thread? Both halves are needed: the parent lives in the channel's
+  // message list, the replies in threadMessages. A thread neither cached
+  // nor loaded answers "no", which is the honest reading -- it means the
+  // viewer hasn't opened it in this session.
+  function threadInvolvesMe(
+    m: { channelID: string; parentID?: string; threadID?: string },
+    meID: string,
+  ): boolean {
+    if (!m.parentID) return false;
+    const parent = (messagesRef.current[m.channelID] ?? []).find((x) => x.id === m.parentID);
+    if (parent?.senderUserID === meID) return true;
+    const tid = m.threadID ?? m.parentID;
+    return (threadMessagesRef.current[tid] ?? []).some((r) => r.senderUserID === meID);
+  }
+
   // 37-5: open one member's sealed reaction set. Anything unreadable -- no
   // key, a cleared set (empty body), a malformed array -- resolves to [],
   // which renders as "this person reacts with nothing" rather than as a
@@ -1362,6 +1423,14 @@ export function App() {
           seq: p.seq,
           ts: new Date(p.ts),
         });
+        // 40-4: off by default. isRelevantSurfaceOpen is false rather than
+        // "is this the active channel" on purpose -- you almost always send
+        // to the channel you're looking at, and passing true would make the
+        // setting do nothing at all.
+        notifyRef.current?.play("send_confirm", {
+          tabVisible: tabVisibleRef.current,
+          isRelevantSurfaceOpen: false,
+        });
         break;
       }
       case TypeMessage: {
@@ -1375,12 +1444,17 @@ export function App() {
             .then((body) => {
               dispatch({ kind: "message", message: { ...m, body } });
               noteMention(m.channelID, m.senderUserID, body); // 33-3
+              noteSound(m, body); // 40-2
             });
         } else {
           dispatch({
             kind: "message",
             message: { ...m, body: "[encrypted message -- key not available yet]" },
           });
+          // Still worth a sound: a message you can't read yet is a message.
+          // The empty body is deliberate -- classifying an unreadable
+          // message as a mention would be guessing.
+          noteSound(m, "");
         }
         break;
       }
@@ -1519,6 +1593,12 @@ export function App() {
         // into the console for now. A toast component is a polish
         // pass.
         console.warn("chalk error:", e.code, e.message);
+        // 40-4: until that toast exists, this sound is the only thing that
+        // tells a user something failed without the console open.
+        notifyRef.current?.play("error", {
+          tabVisible: tabVisibleRef.current,
+          isRelevantSurfaceOpen: false,
+        });
         break;
       }
       case TypeListChannelsAck: {
@@ -1767,6 +1847,18 @@ export function App() {
         // Phase 9.6c: server push with a friend's aggregated state.
         const pp = f.payload as PresencePayload;
         if (pp && pp.user_id) {
+          // 40-4: sound only on a real arrival, and only for a friend we
+          // already had a state for. Subscribing makes the server push the
+          // whole roster at once, so "no previous state" means this is the
+          // seed after a connect -- treating that as everyone coming online
+          // would play the sound N times on every reconnect.
+          const before = presenceRef.current[pp.user_id];
+          if (before !== undefined && before !== "online" && pp.state === "online") {
+            notifyRef.current?.play("presence", {
+              tabVisible: tabVisibleRef.current,
+              isRelevantSurfaceOpen: false,
+            });
+          }
           dispatch({
             kind: "presence_set",
             userID: pp.user_id,
@@ -1923,6 +2015,47 @@ export function App() {
     document.addEventListener("visibilitychange", onChange);
     return () => document.removeEventListener("visibilitychange", onChange);
   }, []);
+
+  // 40-4: your own connection coming and going. Both off by default.
+  //
+  // Driven off transitions, not off the current value, so a re-render
+  // can't replay them. The first open is skipped as well: arriving at a
+  // working app is not news, and on a cold load the sound would be
+  // competing with the page still drawing itself.
+  const prevWsStateRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevWsStateRef.current;
+    prevWsStateRef.current = state.wsState;
+    if (prev === null) return;
+    if (prev === state.wsState) return;
+    const category =
+      state.wsState === "open" ? "connect" : prev === "open" ? "disconnect" : null;
+    if (!category) return;
+    notifyRef.current?.play(category, {
+      tabVisible: tabVisibleRef.current,
+      isRelevantSurfaceOpen: false,
+    });
+  }, [state.wsState]);
+
+  // 40-2: an AudioContext is born suspended and only resume()s from
+  // inside a real user gesture, so the first click or keypress anywhere
+  // is what grants sound for the rest of the session. One-shot, and the
+  // same shape VoiceDock uses to recover autoplay-blocked call audio.
+  //
+  // Until this fires the gate returns "locked" and nothing is queued: a
+  // message that arrives before the user has touched the page is silent
+  // rather than saved up to play later.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const unlock = () => notifyRef.current?.unlock();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
   // 33-3: read by mention detection inside handleFrame (see unreadRef).
   tabVisibleRef.current = tabVisible;
 
