@@ -48,6 +48,16 @@ function MessageBody({
   );
 }
 
+// 37-6: is the keystroke going into something the user is typing in? A bare
+// letter shortcut must never eat a character meant for the composer, a search
+// box, or the emoji picker's own filter field.
+function isTypingTarget(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null;
+  if (!el || typeof el.tagName !== "string") return false;
+  const tag = el.tagName.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable;
+}
+
 // 33-4: how close to the bottom still counts as "following the feed". One
 // message row of slack, so a partly-scrolled last line doesn't unpin you.
 const PINNED_THRESHOLD_PX = 80;
@@ -247,6 +257,34 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
 
   // Never leave a menu hanging over a different channel's feed.
   useEffect(() => setMenuFor(null), [channelID]);
+
+  // 37-6: id of the row the pointer is over, for the "r" shortcut.
+  //
+  // A ref rather than state on purpose: hovering must not re-render the feed
+  // (that would be a full list re-render per row you sweep past), and the only
+  // reader is the keydown handler, which runs outside render anyway.
+  const hoverRef = useRef<string | null>(null);
+
+  // Hover a message, press "r", get the reaction picker. Guarded three ways:
+  // no modifiers (so Ctrl-R still reloads), not while typing anywhere (so "r"
+  // in the composer stays an "r"), and only when the pointer is actually over
+  // a row. Both mounted lists register this, but only the one under the
+  // pointer has a hoverRef set, so exactly one responds.
+  useEffect(() => {
+    if (!onPickReaction) return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "r" || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (isTypingTarget(e.target)) return;
+      const id = hoverRef.current;
+      if (!id) return;
+      const m = messages.find((x) => x.id === id);
+      if (!m || m.deleted) return;
+      e.preventDefault();
+      onPickReaction(m);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [messages, onPickReaction]);
 
   // Watch the scroll position of whichever ancestor actually scrolls
   // (.chalk-main today). Found by computed style rather than by walking a
@@ -460,7 +498,17 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
               <span class="chalk-unread-divider-label">new messages</span>
             </div>
           )}
-          <div class="chalk-message-group">
+          <div
+            class="chalk-message-group"
+            onMouseEnter={onPickReaction ? () => (hoverRef.current = m.id) : undefined}
+            onMouseLeave={
+              onPickReaction
+                ? () => {
+                    if (hoverRef.current === m.id) hoverRef.current = null;
+                  }
+                : undefined
+            }
+          >
           <div
             class={`chalk-message ${own ? "chalk-message--own" : ""} ${isUnread ? "chalk-message--unread" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"} ${editingMessageID === m.id ? "chalk-message--editing" : ""}`}
             style={`--chalk-msg-sender-col:${senderColCh}ch`}
@@ -578,11 +626,27 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
               // ANY menu item applies rather than naming delete specifically.
               const showDelete = Boolean(canDeleteMessage?.(m) && onDeleteMessage);
               const showEdit = Boolean(canEditMessage?.(m) && onEditMessage);
-              const showReact = Boolean(onToggleReaction && onPickReaction);
-              const showMenu = showDelete || showEdit || showReact;
-              if (m.deleted || (!onOpenThread && !showMenu)) return null;
+              const showMenu = showDelete || showEdit;
+              // React and reply are what ANYONE does to a message, so they get
+              // first-class buttons; the menu holds only edit and delete,
+              // which are about owning or moderating it.
+              const showReact = Boolean(onPickReaction);
+              if (m.deleted || (!onOpenThread && !showMenu && !showReact)) return null;
               return (
               <div class="chalk-message-actions">
+                {showReact && (
+                  <button
+                    type="button"
+                    class="chalk-message-react-btn"
+                    title="add reaction (r)"
+                    aria-label="add reaction"
+                    onClick={() => onPickReaction!(m)}
+                    data-testid={`message-react-${m.id}`}
+                  >
+                    <span aria-hidden="true">🙂</span>
+                    <span class="chalk-message-action-word">react</span>
+                  </button>
+                )}
                 {showMenu && (
                   <div
                     class="chalk-message-more"
@@ -602,20 +666,6 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
                     </button>
                     {menuFor === m.id && (
                       <div class="chalk-message-menu" role="menu">
-                        {showReact && (
-                          <button
-                            type="button"
-                            role="menuitem"
-                            class="chalk-message-react"
-                            onClick={() => {
-                              setMenuFor(null);
-                              onPickReaction!(m);
-                            }}
-                            data-testid={`message-react-${m.id}`}
-                          >
-                            add reaction
-                          </button>
-                        )}
                         {showEdit && (
                           <button
                             type="button"

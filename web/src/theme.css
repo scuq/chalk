@@ -3227,6 +3227,33 @@ body.chalk-resizing .chalk-sidebar-resizer {
   outline-offset: -1px;
 }
 
+/* 37-6: react gets a first-class button beside reply rather than a row in the
+   overflow menu. It is the most-used action on a message, and two clicks
+   through a menu is the wrong weight for it. Same shape as reply so the strip
+   reads as one control. */
+.chalk-message-react-btn {
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 2px 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.chalk-message-react-btn:hover {
+  color: var(--chalk-fg-bright);
+  border-color: var(--chalk-accent);
+}
+.chalk-message-react-btn:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
+}
+
 /* 35-4: the overflow trigger. Same shape as the reply button so the group
    reads as one control strip, but it carries no word -- it's the quiet
    entry to destructive actions, not an action itself. */
@@ -6193,6 +6220,7 @@ body.chalk-resizing .chalk-sidebar-resizer {
   }
 
   .chalk-message-reply,
+  .chalk-message-react-btn,
   .chalk-message-more-btn {
     font-size: calc(11px * var(--chalk-font-scale));
     /* Square-ish tap targets: comfortably hit without the buttons
