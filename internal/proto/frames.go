@@ -379,14 +379,20 @@ type FetchHistoryAckPayload struct {
 // ChannelEventPayload is pushed server→client when something happened to
 // a channel the caller cares about. Kinds:
 //
-//   - "added":   the caller was added to a channel (created by someone
+//   - "added":          the caller was added to a channel (created by someone
 //     else). Channel summary attached.
-//   - "removed": the caller was removed from a channel. Channel summary
+//   - "removed":        the caller was removed from a channel. Channel summary
 //     may be partial (just the ID) since the caller no longer
 //     has read access.
-//
-// Phase 08 only emits "added" (on create_channel). "removed" lands when
-// we add remove_member, which is phase 11+.
+//   - "member_added":   the channel's roster gained a member (the summary is
+//     the new roster; the recipient may be the new member).
+//   - "member_removed": the roster lost a member.
+//   - "rotate_needed":  sent to the owner after a removal; rotate the key.
+//   - "key_rotated":    the channel advanced to a new current_key_version.
+//   - "key_available":  a holder deposited the caller's wrapped space key
+//     (38-3). Summary carries only ID + CurrentKeyVersion --
+//     enough to re-run the key fetch, nothing to fold into
+//     the channel row.
 type ChannelEventPayload struct {
 	Kind    string         `json:"kind"`
 	Channel ChannelSummary `json:"channel"`

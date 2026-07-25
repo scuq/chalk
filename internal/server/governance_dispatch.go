@@ -201,7 +201,7 @@ func (h *WSHandler) pushMemberRemoved(ctx context.Context, channelID, targetID u
 	if merr != nil {
 		return
 	}
-	summary := channelSummaryFromStore(store.ChannelWithMembers{Channel: ch, MemberIDs: remaining}, nil)
+	summary := h.channelEventSummary(ctx, ch, remaining)
 	if perr := h.publishChannelEvent(ctx, targetID, channelID, "member_removed", summary); perr != nil {
 		h.logger.Printf("publish member_removed to %s: %v", targetID, perr)
 	}
@@ -226,7 +226,7 @@ func (h *WSHandler) pushMemberAdded(ctx context.Context, channelID uuid.UUID) {
 	if lErr != nil {
 		return
 	}
-	summary := channelSummaryFromStore(store.ChannelWithMembers{Channel: ch, MemberIDs: members}, nil)
+	summary := h.channelEventSummary(ctx, ch, members)
 	for _, m := range members {
 		if perr := h.publishChannelEvent(ctx, m, channelID, "member_added", summary); perr != nil {
 			h.logger.Printf("publish member_added to %s: %v", m, perr)

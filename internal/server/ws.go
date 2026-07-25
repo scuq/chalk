@@ -1750,6 +1750,30 @@ func classifyDeviceType(s string) presence.DeviceType {
 
 // ===== merged from ws_phase08.go =====
 
+// channelEventSummary builds the summary carried by a channel_event push,
+// with member handles filled in.
+//
+// 38-1: handles are not cosmetic. A recipient that learns about a channel from
+// a push (rather than from list_channels) renders sender names, the member
+// roster and mention highlighting from this map -- so a summary without them
+// leaves them showing UUID prefixes until the next reconnect. A failed lookup
+// is non-fatal: the summary degrades to what it used to be.
+func (h *WSHandler) channelEventSummary(
+	ctx context.Context,
+	ch store.Channel,
+	members []uuid.UUID,
+) proto.ChannelSummary {
+	handles, err := h.store.HandlesByID(ctx, members)
+	if err != nil {
+		h.logger.Printf("handles lookup (channel event): %v", err)
+		handles = nil
+	}
+	return channelSummaryFromStore(
+		store.ChannelWithMembers{Channel: ch, MemberIDs: members},
+		handles,
+	)
+}
+
 // channelSummaryFromStore builds a proto.ChannelSummary from a
 // store.ChannelWithMembers. Centralized so the two call sites
 // (create_channel ack and list_channels ack) format identically.
@@ -2827,6 +2851,17 @@ func (h *WSHandler) handlePublishChannelKey(
 	})
 	data, _ := json.Marshal(ack)
 	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+
+	// 38-3: tell the recipient their wrap is here. Without this a client that
+	// asked for its key before the holder deposited it (the newly-added member
+	// racing the inviter's reshare) stays blocked on "waiting" until a reload,
+	// because nothing else re-triggers the key fetch. The summary is minimal on
+	// purpose -- the recipient already holds the real channel row, and building
+	// a full one would cost three queries per wrap on every rotation.
+	if perr := h.publishChannelEvent(ctx, recipientID, channelID, "key_available",
+		proto.ChannelSummary{ID: p.ChannelID, CurrentKeyVersion: ver}); perr != nil {
+		h.logger.Printf("publish key_available to %s: %v", recipientID, perr)
+	}
 }
 
 // handleFetchChannelKey returns the CALLER's own wrapped space key for a
@@ -3050,10 +3085,7 @@ func (h *WSHandler) handleRotateChannelKey(
 	if gerr == nil {
 		memberIDs, merr := h.store.ListMembersForChannel(ctx, channelID)
 		if merr == nil {
-			summary := channelSummaryFromStore(
-				store.ChannelWithMembers{Channel: ch, MemberIDs: memberIDs},
-				nil, // handles tolerated nil
-			)
+			summary := h.channelEventSummary(ctx, ch, memberIDs)
 			for _, m := range memberIDs {
 				if perr := h.publishChannelEvent(ctx, m, channelID, "key_rotated", summary); perr != nil {
 					h.logger.Printf("publish channel_event key_rotated to %s: %v", m, perr)
@@ -3179,10 +3211,7 @@ func (h *WSHandler) handleRemoveMember(
 	if merr != nil {
 		return
 	}
-	summary := channelSummaryFromStore(
-		store.ChannelWithMembers{Channel: ch, MemberIDs: remaining},
-		nil,
-	)
+	summary := h.channelEventSummary(ctx, ch, remaining)
 
 	if perr := h.publishChannelEvent(ctx, targetID, channelID, "member_removed", summary); perr != nil {
 		h.logger.Printf("publish member_removed to %s: %v", targetID, perr)
@@ -3300,10 +3329,7 @@ func (h *WSHandler) handleAddMember(
 	if lErr != nil {
 		return
 	}
-	summary := channelSummaryFromStore(
-		store.ChannelWithMembers{Channel: ch, MemberIDs: members},
-		nil,
-	)
+	summary := h.channelEventSummary(ctx, ch, members)
 
 	for _, m := range members {
 		if perr := h.publishChannelEvent(ctx, m, channelID, "member_added", summary); perr != nil {
