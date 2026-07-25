@@ -267,6 +267,8 @@ export interface ChannelSummaryWire {
   rotation_pending?: boolean; // member removal; absent from older servers -> false
   governance_mode?: string; // gov-2; "dictator" | "democratic"; absent -> "dictator"
   channel_type?: string; // 30-4; "text" | "voice"; absent from older servers -> "text"
+  last_seq?: number; // 33-1; highest seq in the channel; absent from older servers -> 0
+  last_read_seq?: number; // 33-1; this user's read cursor; absent -> 0
 }
 
 export interface CreateChannelPayload {
@@ -383,6 +385,27 @@ export interface FetchThreadAckPayload {
   messages: MessagePayload[];
 }
 
+
+// ---- Phase 33-1: read cursors --------------------------------------
+
+export const TypeMarkRead = "mark_read";
+export const TypeMarkReadAck = "mark_read_ack";
+export const TypeReadState = "read_state";
+
+// mark_read raises this user's read cursor for a channel. The server
+// clamps seq to the channel's last assigned seq and never lets the cursor
+// move backwards, so over-sending is harmless.
+export interface MarkReadPayload {
+  channel_id: string;
+  seq: number;
+}
+
+// read_state is both the mark_read ack (carrying the effective cursor after
+// clamping) and the push that lands on this user's OTHER devices.
+export interface ReadStatePayload {
+  channel_id: string;
+  last_read_seq: number;
+}
 
 // ---- Phase 26: message deletion (governance prereq) ----------------
 

@@ -2,10 +2,37 @@
 // side effects, no I/O. Side effects (sending WS frames, fetching
 // history) live in App.tsx as useEffect hooks driven by state changes.
 
-import type { Action, AppState, Message } from "./types";
+import type { Action, AppState, ChannelUnread, Message } from "./types";
 // Phase 09d-2b: runtime import for the admin panel's initial state
 // (used by the route_to_chat handler to reset the panel cleanly).
-import { initialAdminPanelState } from "./types";
+// 33-1 adds emptyUnread, the zero value for a channel's unread state.
+import { emptyUnread, initialAdminPanelState } from "./types";
+
+// bumpUnread returns the channel's unread state with one field changed,
+// keeping the two invariants the sidebar relies on: the cursors only ever
+// move forward, and the mention flag cannot outlive the unread dot.
+function bumpUnread(
+  unread: AppState["unread"],
+  channelID: string,
+  patch: Partial<ChannelUnread>
+): AppState["unread"] {
+  const cur = unread[channelID] ?? emptyUnread;
+  const next: ChannelUnread = {
+    lastSeq: Math.max(cur.lastSeq, patch.lastSeq ?? 0),
+    lastReadSeq: Math.max(cur.lastReadSeq, patch.lastReadSeq ?? 0),
+    mention: patch.mention ?? cur.mention,
+  };
+  if (next.lastReadSeq >= next.lastSeq) next.mention = false;
+  if (
+    next.lastSeq === cur.lastSeq &&
+    next.lastReadSeq === cur.lastReadSeq &&
+    next.mention === cur.mention &&
+    unread[channelID] !== undefined
+  ) {
+    return unread; // no-op; keep the identity so memoized renders skip
+  }
+  return { ...unread, [channelID]: next };
+}
 
 // Phase 26 (governance prereq): placeholder body shown for a deleted message.
 // Renderers key off Message.deleted for styling; this covers any path that
@@ -45,9 +72,25 @@ export function reducer(state: AppState, action: Action): AppState {
       const sorted = [...action.channels].sort(
         (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
       );
+      // 33-1: rebuild unread from the listing, which is user-scoped and
+      // carries cursors advanced on this user's other devices. Both fields
+      // are monotonic, so we take the max of listing and cache: the listing
+      // supplies reads we missed while offline, the cache supplies messages
+      // that arrived in the gap between connecting and this ack. Channels
+      // absent from the listing drop out entirely.
+      const unread: AppState["unread"] = {};
       for (const ch of sorted) {
         channels[ch.id] = ch;
         order.push(ch.id);
+        const cached = state.unread[ch.id];
+        unread[ch.id] = {
+          lastSeq: Math.max(ch.lastSeq, cached?.lastSeq ?? 0),
+          lastReadSeq: Math.max(ch.lastReadSeq, cached?.lastReadSeq ?? 0),
+          // Mentions are client-derived and not persisted anywhere, so a
+          // reconnect starts from "none known" and the backfill scan in
+          // App.tsx re-establishes them.
+          mention: false,
+        };
       }
       // Auto-select first channel if none active. Fallback to null
       // if there are no channels.
@@ -60,6 +103,7 @@ export function reducer(state: AppState, action: Action): AppState {
         channels,
         channelOrder: order,
         activeChannelID: active,
+        unread,
       };
     }
 
@@ -75,6 +119,8 @@ export function reducer(state: AppState, action: Action): AppState {
       const nextOrder = state.channelOrder.filter((id) => id !== cid);
       const nextMessages = { ...state.messages };
       delete nextMessages[cid];
+      const nextUnread = { ...state.unread };
+      delete nextUnread[cid];
       const nextActive =
         state.activeChannelID === cid
           ? (nextOrder.length > 0 ? nextOrder[0] : null)
@@ -84,6 +130,7 @@ export function reducer(state: AppState, action: Action): AppState {
         channels: nextChannels,
         channelOrder: nextOrder,
         messages: nextMessages,
+        unread: nextUnread,
         activeChannelID: nextActive,
       };
     }
@@ -148,6 +195,10 @@ export function reducer(state: AppState, action: Action): AppState {
         channelOrder: [ch.id, ...state.channelOrder],
         activeChannelID: nextActive,
         dmPendingForUserID: isMatchingDM ? null : state.dmPendingForUserID,
+        unread: bumpUnread(state.unread, ch.id, {
+          lastSeq: ch.lastSeq,
+          lastReadSeq: ch.lastReadSeq,
+        }),
       };
     }
 
@@ -369,6 +420,15 @@ export function reducer(state: AppState, action: Action): AppState {
     case "message": {
       const m = action.message;
       const existing = state.messages[m.channelID] ?? [];
+      // 33-1: every arriving message raises the channel's high-water seq,
+      // which is what makes the unread dot appear. A message you sent
+      // yourself raises the read cursor with it -- the server does the same
+      // inside the send transaction, so the two agree after a reconnect.
+      const isOwn = state.user !== null && m.senderUserID === state.user.id;
+      const nextUnread = bumpUnread(state.unread, m.channelID, {
+        lastSeq: m.seq,
+        lastReadSeq: isOwn ? m.seq : 0,
+      });
       // Idempotency-key reconciliation (fixes double-echo on reconnect).
       // If this incoming message carries a clientMsgID that matches an
       // existing OPTIMISTIC row (one we appended locally on send), replace
@@ -392,6 +452,7 @@ export function reducer(state: AppState, action: Action): AppState {
           return {
             ...state,
             messages: { ...state.messages, [m.channelID]: merged },
+            unread: nextUnread,
           };
         }
       }
@@ -484,8 +545,28 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         messages: liveBumpMessages,
         threadMessages: nextThreadMessages,
+        unread: nextUnread,
       };
     }
+
+    // 33-1: the server-synced cursor moved -- either our own mark_read was
+    // acked, or another of this user's devices read the channel.
+    case "read_state":
+      return {
+        ...state,
+        unread: bumpUnread(state.unread, action.channelID, {
+          lastReadSeq: action.lastReadSeq,
+        }),
+      };
+
+    // 33-3: this client decrypted a message naming the user. Ignored once
+    // the channel is caught up, so a late scan result can't resurrect a
+    // mention the user has already read past.
+    case "mention_set":
+      return {
+        ...state,
+        unread: bumpUnread(state.unread, action.channelID, { mention: true }),
+      };
 
     case "message_deleted": {
       // Tombstone the message in place: keep it in the feed (so seq order and

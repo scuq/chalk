@@ -14,6 +14,7 @@
 //   - On open_create_modal, if friends not yet loaded, fire friend_list.
 
 import { resolveNickHue } from "../chat/nickcolor";
+import { mentionsHandle } from "../chat/mentions";
 import { useIsMobile } from "../mobile";
 import { useCallback, useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
@@ -55,6 +56,12 @@ import {
   TypePrefsSet, // Phase 9.7b
   TypePrefsSetAck,
   TypePrefsChanged,
+  // 33-1: read cursors.
+  TypeMarkRead,
+  TypeMarkReadAck,
+  TypeReadState,
+  type MarkReadPayload,
+  type ReadStatePayload,
   type Frame,
   type WelcomePayload,
   type ErrorPayload,
@@ -108,7 +115,7 @@ import {
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId, getThreadSeen, setThreadSeen } from "../ws-client";
 import { reducer } from "../state/reducer";
-import { initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary, type ProposalView } from "../state/types";
+import { hasUnread, initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary, type ProposalView } from "../state/types";
 import { selectGiphyPref } from "../giphy/giphy";
 import { StatusBar } from "./StatusBar";
 import { Sidebar, ChannelGlyph } from "./Sidebar";
@@ -219,6 +226,8 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
     rotationPending: w.rotation_pending ?? false,
     governanceMode: w.governance_mode ?? "dictator",
     channelType: w.channel_type ?? "text", // 30-4
+    lastSeq: w.last_seq ?? 0, // 33-1
+    lastReadSeq: w.last_read_seq ?? 0, // 33-1
   };
 }
 
@@ -873,6 +882,18 @@ export function App() {
   // stale-closure caveat as userRef above, so it reads through a ref.
   const voiceEnabledRef = useRef(state.voiceEnabled);
   voiceEnabledRef.current = state.voiceEnabled;
+  // 33-3: mention detection runs inside handleFrame, so it reads its inputs
+  // through refs for the same stale-closure reason as userRef above.
+  const unreadRef = useRef(state.unread);
+  unreadRef.current = state.unread;
+  const activeChannelRef = useRef(state.activeChannelID);
+  activeChannelRef.current = state.activeChannelID;
+  // Assigned next to the visibilitychange effect, which declares tabVisible.
+  const tabVisibleRef = useRef(true);
+  // 33-1: highest seq we've already sent a mark_read for, per channel.
+  // Suppresses re-sends while the ack is in flight. Cleared on reconnect,
+  // where the fresh listing re-establishes the real cursors anyway.
+  const markReadSentRef = useRef<Map<string, number>>(new Map());
 
   // Track which channel we've already fired fetch_history for. The
   // historyLoaded state flag covers ACK; this ref covers REQUEST so
@@ -1035,6 +1056,24 @@ export function App() {
     );
   }
 
+  // 33-3: flag a channel as having a mention of the viewer.
+  //
+  // Only decrypted plaintext can answer this, so it happens here rather than
+  // anywhere on the server. Skipped for DMs (every message in a DM is
+  // addressed to you, so a mention badge would say nothing the unread dot
+  // doesn't), for your own messages, and for the channel you're actively
+  // looking at.
+  function noteMention(channelID: string, senderUserID: string, body: string) {
+    const me = userRef.current;
+    if (!me?.handle) return;
+    if (senderUserID === me.id) return;
+    const ch = channelsRef.current[channelID];
+    if (!ch || ch.isDM) return;
+    if (channelID === activeChannelRef.current && tabVisibleRef.current) return;
+    if (!mentionsHandle(body, me.handle)) return;
+    dispatch({ kind: "mention_set", channelID });
+  }
+
   function handleFrame(f: Frame) {
     switch (f.type) {
       case TypeFetchThreadAck: {
@@ -1070,7 +1109,10 @@ export function App() {
         if (ccRef.current) {
           void ccRef.current
             .decryptForChannel(m.channelID, m.keyVersion, m.body)
-            .then((body) => dispatch({ kind: "message", message: { ...m, body } }));
+            .then((body) => {
+              dispatch({ kind: "message", message: { ...m, body } });
+              noteMention(m.channelID, m.senderUserID, body); // 33-3
+            });
         } else {
           dispatch({
             kind: "message",
@@ -1186,9 +1228,32 @@ export function App() {
       }
       case TypeFetchHistoryAck: {
         const p = f.payload as FetchHistoryAckPayload;
-        void decryptAll((p.messages ?? []).map(wireToMessage)).then((messages) =>
-          dispatch({ kind: "history_loaded", channelID: p.channel_id, messages }),
-        );
+        void decryptAll((p.messages ?? []).map(wireToMessage)).then((messages) => {
+          dispatch({ kind: "history_loaded", channelID: p.channel_id, messages });
+          // 33-3: scan the messages that are still unread for a mention of
+          // the viewer. This is what re-establishes mention dots after a
+          // reload or on a device that was offline -- the flag isn't stored
+          // anywhere, because only a client can compute it. Messages older
+          // than this page of history are not scanned.
+          const cursor = unreadRef.current[p.channel_id]?.lastReadSeq ?? 0;
+          for (const m of messages) {
+            if (m.seq <= cursor) continue;
+            noteMention(m.channelID, m.senderUserID, m.body);
+          }
+        });
+        break;
+      }
+      // 33-1: both frames carry the same shape. The ack confirms our own
+      // mark_read (possibly clamped); the push is another of this user's
+      // devices having read the channel.
+      case TypeMarkReadAck:
+      case TypeReadState: {
+        const p = f.payload as ReadStatePayload;
+        dispatch({
+          kind: "read_state",
+          channelID: p.channel_id,
+          lastReadSeq: p.last_read_seq,
+        });
         break;
       }
       case TypeCreateChannelAck: {
@@ -1468,6 +1533,7 @@ export function App() {
     // forget what we'd previously asked for at the protocol layer.
     subscribeSentRef.current = new Set();
     historyRequestedRef.current = new Set();
+    markReadSentRef.current = new Map(); // 33-1
   }, [state.wsState, state.user?.id]);
 
   // Phase 9.7b: apply the user's selected theme to the document root.
@@ -1512,6 +1578,8 @@ export function App() {
     document.addEventListener("visibilitychange", onChange);
     return () => document.removeEventListener("visibilitychange", onChange);
   }, []);
+  // 33-3: read by mention detection inside handleFrame (see unreadRef).
+  tabVisibleRef.current = tabVisible;
 
   // Phase 9.6j: compute the intended presence and send presence_update
   // when it transitions. "intended" is:
@@ -1595,6 +1663,33 @@ export function App() {
       limit: 50,
     });
   }, [state.activeChannelID, state.wsState, state.historyLoaded]);
+
+  // 33-3: backfill mention dots for unread channels the user hasn't opened.
+  //
+  // The mention flag can't be stored or synced -- the server can't see who a
+  // message names -- so after a reload or a spell offline the only way to
+  // know is to decrypt the unread messages and look. We fetch the same page
+  // of history a channel open would fetch (the ack handler does the
+  // scanning), which also warms the channel for a fast first switch.
+  //
+  // Bounded on purpose: group channels only, and only the most recent page.
+  // A channel with more than a page of unread messages may miss a mention
+  // buried below that window -- an accepted cost of keeping mention data off
+  // the server entirely.
+  useEffect(() => {
+    if (state.wsState !== "open") return;
+    const c = clientRef.current;
+    if (!c) return;
+    for (const cid of state.channelOrder) {
+      const ch = state.channels[cid];
+      if (!ch || ch.isDM) continue;
+      if (!hasUnread(state.unread[cid])) continue;
+      if (state.historyLoaded[cid]) continue;
+      if (historyRequestedRef.current.has(cid)) continue;
+      historyRequestedRef.current.add(cid);
+      c.send<FetchHistoryPayload>(TypeFetchHistory, { channel_id: cid, limit: 50 });
+    }
+  }, [state.wsState, state.channelOrder, state.unread, state.historyLoaded]);
 
   // When the modal opens for the first time in a session, fetch friends.
   useEffect(() => {
@@ -2252,6 +2347,32 @@ export function App() {
     }
   }, [state.openThread?.threadID, state.threadMessages, state.threadSeen]);
 
+  // 33-1: looking at a channel marks it read. Fires on channel switch and
+  // on each new message that lands while it's open.
+  //
+  // Gated on tab visibility: a chalk tab left open in the background must
+  // not silently clear the unread dot the user is meant to see on their
+  // phone. Returning to the tab re-runs this (tabVisible is a dependency)
+  // and marks read then.
+  //
+  // No local state is optimistically updated here -- the cursor only moves
+  // when mark_read_ack comes back with the server's clamped value, which
+  // keeps this device's view identical to what the others are told.
+  useEffect(() => {
+    const cid = state.activeChannelID;
+    if (!cid || !tabVisible) return;
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    const u = state.unread[cid];
+    if (!hasUnread(u)) return;
+    // The cursor stays behind until the ack lands, so any unrelated state
+    // change in that window would re-run this effect and re-send. Track
+    // what we've already asked for instead.
+    if ((markReadSentRef.current.get(cid) ?? 0) >= u.lastSeq) return;
+    markReadSentRef.current.set(cid, u.lastSeq);
+    c.send<MarkReadPayload>(TypeMarkRead, { channel_id: cid, seq: u.lastSeq });
+  }, [state.activeChannelID, state.unread, state.wsState, tabVisible]);
+
 
 
   return (
@@ -2385,6 +2506,7 @@ export function App() {
           ownUserID={state.user?.id ?? null}
           presence={state.presence}
           voiceRosters={state.voiceRosters}
+          unread={state.unread}
           onSelect={(id) => {
             dispatch({ kind: "set_active_channel", channelID: id });
             // On mobile the roster covers the conversation, so picking one

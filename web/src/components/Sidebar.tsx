@@ -10,12 +10,31 @@
 
 import { useState, useRef, useEffect } from "preact/hooks";
 import { hexFromHue, hueFromHex } from "../chat/nickcolor";
+import { hasUnread } from "../state/types";
 import type {
   ChannelSummary,
+  ChannelUnread,
   Friend,
   PresenceMap,
   VoiceParticipant,
 } from "../state/types";
+
+// 33-2: the unread marker. Deliberately a dot and not a count -- the
+// sidebar's job is "something happened here", and a number invites reading
+// the sidebar instead of the channel. The mention variant is the same shape
+// in the accent color: same glance, louder answer.
+function UnreadDot({ mention }: { mention: boolean }) {
+  const label = mention ? "unread, you were mentioned" : "unread messages";
+  return (
+    <span
+      class={`chalk-unread-dot ${mention ? "chalk-unread-dot--mention" : ""}`}
+      data-testid={mention ? "sidebar-mention-dot" : "sidebar-unread-dot"}
+      title={label}
+      aria-label={label}
+      role="img"
+    />
+  );
+}
 
 // Channel-kind indicators (30-5d): inline SVGs in currentColor, replacing
 // the 30-5 UTF-8 glyphs (❯ / ▶) whose weight and baseline vary across
@@ -84,6 +103,9 @@ interface Props {
   presence: PresenceMap;
   // 30-5: live voice-room occupancy by channel id (reducer-owned).
   voiceRosters: Record<string, VoiceParticipant[]>;
+  // 33-2: unread + mention state by channel id (reducer-owned). Missing
+  // entry means "nothing unread".
+  unread: Record<string, ChannelUnread>;
   onSelect: (channelID: string) => void;
   onFriendClick: (friendUserID: string) => void;
   // Phase 9.7f: nick colors. hueForHandle resolves the color a handle
@@ -228,6 +250,7 @@ export function Sidebar({
   ownUserID,
   presence,
   voiceRosters,
+  unread,
   onSelect,
   onFriendClick,
   nickColorsEnabled,
@@ -338,6 +361,9 @@ export function Sidebar({
             const dotClass = presenceClass(presenceState);
             const dotLabel = presenceLabel(presenceState);
             const displayName = friend.handle || friend.userID.slice(-8);
+            // A DM has no mention concept (every message is addressed to
+            // you), so the dot is always the plain variant.
+            const dmUnread = dm !== null && hasUnread(unread[dm.id]);
             return (
               <li
                 key={friend.userID}
@@ -393,6 +419,7 @@ export function Sidebar({
                 <span class="chalk-sidebar-item-name">
                   {displayName}
                 </span>
+                {dmUnread && <UnreadDot mention={false} />}
               </li>
             );
           })}
@@ -426,10 +453,12 @@ export function Sidebar({
           {groupChannels.map((ch) => {
             const isVoice = ch.channelType === "voice";
             const roster = isVoice ? (voiceRosters[ch.id] ?? []) : [];
+            const u = unread[ch.id];
+            const showUnread = hasUnread(u);
             return (
               <li
                 key={ch.id}
-                class={`chalk-sidebar-item ${isVoice ? "chalk-sidebar-item--voicech" : ""} ${ch.id === activeID ? "chalk-sidebar-item--active" : ""}`}
+                class={`chalk-sidebar-item ${isVoice ? "chalk-sidebar-item--voicech" : ""} ${ch.id === activeID ? "chalk-sidebar-item--active" : ""} ${showUnread ? "chalk-sidebar-item--unread" : ""}`}
                 data-testid="sidebar-item"
                 data-channel-id={ch.id}
                 data-channel-type={isVoice ? "voice" : "text"}
@@ -460,6 +489,7 @@ export function Sidebar({
                       {roster.length}
                     </span>
                   )}
+                  {showUnread && <UnreadDot mention={u.mention} />}
                 </span>
                 {/* 30-5: live occupant sublist. Rendered inside the channel
                     <li> (still one click target); pointer events fall through

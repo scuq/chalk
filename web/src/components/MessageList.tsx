@@ -4,11 +4,47 @@ import { AttachmentView } from "./AttachmentView";
 import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
 import { DEFAULT_SELF_HUE, resolveNickHue } from "../chat/nickcolor";
+import { splitBodyMentions } from "../chat/mentions";
 import { lazyComponent } from "./LazyComponent";
 // Lazy: Giphy render path is opt-in; keep it out of the initial bundle.
 const GiphyView = lazyComponent(() =>
   import("./GiphyView").then((m) => m.GiphyView)
 );
+
+// 33-3: render a body with member mentions highlighted. The split yields
+// plain strings and mention tokens; both go in as text nodes, so this adds
+// no HTML-injection surface over rendering the raw body.
+function MessageBody({
+  body,
+  known,
+  ownHandle,
+}: {
+  body: string;
+  known: Set<string>;
+  ownHandle?: string | null;
+}) {
+  const segments = splitBodyMentions(body, known);
+  if (segments.length === 1 && !segments[0].handle) return <>{body}</>;
+  const me = ownHandle ? ownHandle.toLowerCase() : null;
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.handle ? (
+          <span
+            key={i}
+            class={`chalk-mention ${seg.handle === me ? "chalk-mention--self" : ""}`}
+            data-testid={seg.handle === me ? "mention-self" : "mention"}
+            data-handle={seg.handle}
+          >
+            {seg.text}
+          </span>
+        ) : (
+          seg.text
+        )
+      )}
+    </>
+  );
+}
 
 interface Props {
   messages: Message[];
@@ -144,6 +180,12 @@ export function MessageList({ messages, ownDevice, ownUserID, ownHandle, members
             }
           }
         }
+        // 33-3: the handles a mention may resolve to in this channel. Only
+        // members get highlighted, so "@nobody" reads as ordinary text
+        // instead of implying someone was pinged.
+        const knownHandles = new Set<string>();
+        for (const h of handleByUser.values()) knownHandles.add(h.toLowerCase());
+        if (ownHandle) knownHandles.add(ownHandle.toLowerCase());
         // Phase 9.7e: lowercase-keyed lookup of user color rules
         // that apply in the current channel. Scope "all" always
         // applies; "dm" only when isDM is true. First-match wins,
@@ -260,7 +302,14 @@ export function MessageList({ messages, ownDevice, ownUserID, ownHandle, members
                         message deleted
                       </span>
                     ) : isGiphy ? null : (
-                      m.body
+                      // 33-3: mentions of channel members render highlighted,
+                      // with the user's own mention louder. Segments are text
+                      // nodes either way -- nothing here is parsed as markup.
+                      <MessageBody
+                        body={m.body}
+                        known={knownHandles}
+                        ownHandle={ownHandle}
+                      />
                     )}
                   </span>
                   {gr && gr.mode !== "text" && (

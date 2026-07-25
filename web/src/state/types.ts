@@ -95,6 +95,37 @@ export interface ChannelSummary {
   rotationPending: boolean; // member removal: a removal happened, key not yet rotated
   governanceMode: string; // gov-2; "dictator" | "democratic" (default "dictator")
   channelType: string; // 30-4; "text" | "voice" (default "text")
+  // 33-1: read-state SEED only, as of the frame that delivered this summary.
+  // Live unread state is state.unread[channelID] -- render from there, never
+  // from these. A channel_event summary carries zeros because the server
+  // builds it without a user scope.
+  lastSeq: number;
+  lastReadSeq: number;
+}
+
+// 33-1/33-3: per-channel unread state.
+//
+// lastSeq/lastReadSeq are seeded from the server (which syncs the cursor
+// across devices) and kept live by incoming messages and read_state pushes.
+// mention is derived purely client-side from decrypted message bodies --
+// the server never sees who was mentioned, so it cannot tell us. It is
+// therefore best-effort: it covers what this client has decrypted.
+export interface ChannelUnread {
+  lastSeq: number;
+  lastReadSeq: number;
+  mention: boolean;
+}
+
+export const emptyUnread: ChannelUnread = {
+  lastSeq: 0,
+  lastReadSeq: 0,
+  mention: false,
+};
+
+// hasUnread is the single definition of "show a dot" so the sidebar and the
+// mark-read effect can never disagree about it.
+export function hasUnread(u: ChannelUnread | undefined): boolean {
+  return u !== undefined && u.lastSeq > u.lastReadSeq;
 }
 
 // 30-4: one live occupant of a voice room, as tracked from the roster ack +
@@ -269,6 +300,11 @@ export interface AppState {
   // Messages, per channel. Missing key means "history not yet fetched."
   messages: Record<string, Message[]>; // by channel id
   historyLoaded: Record<string, boolean>; // per-channel
+
+  // 33-1: unread + mention state per channel id. Kept out of ChannelSummary
+  // so a channel_event summary (which the server builds without a user
+  // scope, hence zeroed cursors) can't clobber live state.
+  unread: Record<string, ChannelUnread>;
 
   // gov-2: governance proposals by channel id (open + recently resolved).
   proposals: Record<string, ProposalView[]>;
@@ -481,6 +517,7 @@ export const initialState: AppState = {
   activeChannelID: null,
   messages: {},
   historyLoaded: {},
+  unread: {},
   proposals: {},
   voiceRosters: {},
   voiceEnabled: false,
@@ -554,6 +591,14 @@ export type Action =
   | { kind: "channel_member_added"; channelID: string; userID: string; handle: string }
   | { kind: "channel_member_removed"; channelID: string; userID: string }
   | { kind: "set_active_channel"; channelID: string | null }
+  // ---- Phase 33: unread + mentions ------------------------------------
+  // read_state: the server-synced cursor moved (mark_read ack, or a push
+  // from another of this user's devices). Monotonic; clears the mention
+  // flag once the cursor catches up to lastSeq.
+  | { kind: "read_state"; channelID: string; lastReadSeq: number }
+  // mention_set: this client decrypted a message in an unfocused channel
+  // that names the user. Derived locally -- see state/mentions.ts.
+  | { kind: "mention_set"; channelID: string }
   | { kind: "message"; message: Message }
   // Server confirmed a send committed: retire the optimistic row identified
   // by clientMsgID, adopting the real server id/seq/ts (or dropping it if the

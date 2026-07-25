@@ -4055,6 +4055,54 @@ html, body {
   border-radius: var(--chalk-radius);
 }
 
+/* ============================================================
+   Phase 33-2: unread indicator
+   ============================================================ */
+
+/* A 7px dot pinned to the right edge of a sidebar row. Smaller than the
+   presence dot on purpose -- presence is about people and is always
+   rendered; unread is transient and should not compete with it. The
+   margin-left:auto works for both row shapes: the channel row's flex
+   container and the friend row's flex-start <li>. */
+.chalk-unread-dot {
+  margin-left: auto;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--chalk-fg);
+}
+
+/* Mention: the same dot in the accent color with a glow, so "someone
+   named me" separates from "something happened" at a glance rather than
+   needing a count. */
+.chalk-unread-dot--mention {
+  background: var(--chalk-accent);
+  box-shadow: 0 0 5px var(--chalk-accent);
+}
+
+/* A voice channel row already spends its right edge on the occupant
+   count; keep the dot from stacking against it. */
+.chalk-sidebar-voicecount + .chalk-unread-dot {
+  margin-left: 4px;
+}
+
+/* 33-3: an @mention inside a message body. Any member mention is tinted;
+   the viewer's own gets a filled chip so it's findable when scrolling back
+   through a channel, which is the whole point of the mention dot. */
+.chalk-mention {
+  color: var(--chalk-accent);
+}
+
+.chalk-mention--self {
+  color: var(--chalk-bg);
+  background: var(--chalk-accent);
+  border-radius: var(--chalk-radius);
+  padding: 0 3px;
+  font-weight: 600;
+}
+
 /* Live occupant sublist under a voice channel. Indented past the glyph
    column so names align with the channel name above. */
 .chalk-sidebar-occupants {
