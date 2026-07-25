@@ -286,10 +286,12 @@ export function MessageList({ messages, ownDevice, ownUserID, ownHandle, members
                 ))}
               </div>
             )}
-            {/* Phase 10b: hover-revealed reply button (desktop;
-                shown via :hover in CSS). Hidden in compact mode to
-                avoid stealing space. Suppressed on deleted rows. */}
-            {onOpenThread && !display_.compactMode && !m.deleted && (
+            {/* Phase 10b: hover-revealed reply button (shown via :hover in
+                CSS, always visible on touch). It's an absolute overlay on
+                the row's right edge, so it costs no layout space -- compact
+                mode gets it too, same as the delete control below.
+                Suppressed on deleted rows. */}
+            {onOpenThread && !m.deleted && (
               <button
                 type="button"
                 class="chalk-message-reply"
