@@ -307,7 +307,10 @@ export interface FetchHistoryAckPayload {
 }
 
 export interface ChannelEventPayload {
-  kind: string; // "added" | "removed"
+  // "added" | "removed" | "member_added" | "member_removed" | "rotate_needed"
+  // | "key_rotated" | "key_available". For "key_available" (38-3) the summary
+  // carries only id + current_key_version.
+  kind: string;
   channel: ChannelSummaryWire;
 }
 
