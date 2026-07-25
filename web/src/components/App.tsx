@@ -15,6 +15,7 @@
 
 import { resolveNickHue } from "../chat/nickcolor";
 import { mentionsHandle } from "../chat/mentions";
+import { canDeleteMessage, deleteModeFor } from "../chat/deletepolicy";
 import { useIsMobile } from "../mobile";
 import { useCallback, useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
@@ -816,13 +817,26 @@ export function App() {
     void onGovListProposals();
   }, [state.openPanel, onGovListProposals]);
 
-  // Phase 26 (governance prereq): owner-only message deletion. The hover
-  // "delete" control in MessageList stages a message here; the ConfirmModal
-  // confirms, then we fire delete_message. The server scrubs the body and
-  // pushes message_deleted to every member (including us), and the reducer
-  // tombstones the row. We do NOT optimistically tombstone: the round-trip is
-  // fast and waiting for the authoritative push keeps all clients in lockstep.
+  // Phase 26 (governance prereq): message deletion. The row menu in
+  // MessageList stages a message here; the ConfirmModal confirms, then we fire
+  // delete_message. The server scrubs the body and pushes message_deleted to
+  // every member (including us), and the reducer tombstones the row. We do NOT
+  // optimistically tombstone: the round-trip is fast and waiting for the
+  // authoritative push keeps all clients in lockstep.
+  //
+  // 35-3/35-4: what a delete MEANS depends on the channel, so the modal and
+  // the confirm handler both branch on deleteMode:
+  //   "own"        -- DM. You may delete your own message and nothing else
+  //                   (mirrored server-side), so one confirm is enough.
+  //   "unilateral" -- group in dictator mode. The owner erases someone else's
+  //                   words for everyone, with no recourse: confirmed twice.
+  //   "proposal"   -- group in democratic mode. Any member may ask, but the
+  //                   channel decides -- the action opens a delete_message
+  //                   proposal and the message stays until the vote passes.
   const [pendingDelete, setPendingDelete] = useState<Message | null>(null);
+  // Which step of the two-step "unilateral" confirmation we're on. Reset
+  // whenever a message is staged.
+  const [deleteStep, setDeleteStep] = useState<1 | 2>(1);
   // att-4b: Giphy consent modal. Opened from the settings toggle when the
   // user moves to enable Giphy from unset/disabled; confirming sends the
   // prefs_set. (att-4c reuses this same modal from the composer button and
@@ -837,8 +851,18 @@ export function App() {
   }, []);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
+  const deleteChannel = state.activeChannelID
+    ? state.channels[state.activeChannelID]
+    : undefined;
+  const deleteMode = deleteModeFor(deleteChannel);
+  const canDelete = useCallback(
+    (m: Message) => canDeleteMessage(deleteChannel, m.senderUserID, state.user?.id),
+    [deleteChannel, state.user?.id],
+  );
+
   const onDeleteMessage = useCallback((m: Message) => {
     setPendingDelete(m);
+    setDeleteStep(1);
   }, []);
 
   const confirmDeleteMessage = useCallback(async () => {
@@ -848,21 +872,39 @@ export function App() {
       setPendingDelete(null);
       return;
     }
+    // Dictator-mode group delete asks twice; the first confirm only advances.
+    if (deleteMode === "unilateral" && deleteStep === 1) {
+      setDeleteStep(2);
+      return;
+    }
     setDeleteBusy(true);
     try {
-      await deleteMessage(
-        { request: (t, p) => clientRef.current!.request(t, p) },
-        cid,
-        m.id,
-        m.ts.getTime(),
-      );
+      if (deleteMode === "proposal") {
+        // The server refuses a unilateral delete_message in democratic mode;
+        // the vote is the only path. payload.ts is required to locate the
+        // (ts-partitioned) row when the proposal executes.
+        await clientRef.current.request(TypeGovPropose, {
+          channel_id: cid,
+          type: "delete_message",
+          target_id: m.id,
+          payload: { ts: m.ts.getTime() },
+        });
+      } else {
+        await deleteMessage(
+          { request: (t, p) => clientRef.current!.request(t, p) },
+          cid,
+          m.id,
+          m.ts.getTime(),
+        );
+      }
     } catch (err) {
       console.error("deleteMessage failed:", err);
     } finally {
       setDeleteBusy(false);
       setPendingDelete(null);
+      setDeleteStep(1);
     }
-  }, [pendingDelete, state.activeChannelID]);
+  }, [pendingDelete, state.activeChannelID, deleteMode, deleteStep]);
 
 
   // case where we were offline when the removal happened and missed the
@@ -2692,10 +2734,9 @@ export function App() {
               giphyPref={selectGiphyPref(state.prefs)}
               onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
               threadSeen={state.threadSeen}
-              canDeleteMessages={
-                !!state.user?.id && activeChannel.createdBy === state.user.id
-              }
+              canDeleteMessage={canDelete}
               onDeleteMessage={onDeleteMessage}
+              deleteLabel={deleteMode === "proposal" ? "propose deletion" : "delete"}
               attachmentController={attControllerRef.current ?? undefined}
               onOpenThread={(parentID, threadID) => {
                 // Phase 10b: store the open thread on AppState. 10c
@@ -2788,18 +2829,46 @@ export function App() {
         />
       )}
 
-      {/* Phase 26 (governance prereq): owner-only delete confirmation. */}
+      {/* Phase 26 (governance prereq) / 35-4: delete confirmation. The copy
+          and the number of confirms follow deleteMode -- deleting your own DM
+          message is not the same act as an owner erasing someone else's, and
+          in a democratic channel this button only opens a vote. */}
       <ConfirmModal
         open={pendingDelete !== null}
-        title="Delete message?"
-        body={
-          "This removes the message from the server for everyone. Anyone who already read it may still have a local copy."
+        title={
+          deleteMode === "proposal"
+            ? "Propose deleting this message?"
+            : deleteMode === "own"
+              ? "Delete your message?"
+              : deleteStep === 1
+                ? "Delete this message?"
+                : "Delete for everyone — are you sure?"
         }
-        confirmLabel="Delete"
-        danger
+        body={
+          deleteMode === "proposal"
+            ? "This channel is in democratic mode, so you cannot delete a message on your own. This opens a proposal the channel votes on; the message stays until a majority agrees."
+            : deleteMode === "own"
+              ? "This removes your message from the server for both of you. The other person may still have a local copy of what they already read."
+              : deleteStep === 1
+                ? "As the channel owner you can delete this for everyone, including its author. This cannot be undone."
+                : "Last check: the message is erased from the server for every member. Anyone who already read it may still have a local copy."
+        }
+        confirmLabel={
+          deleteMode === "proposal"
+            ? "Start vote"
+            : deleteMode === "own"
+              ? "Delete"
+              : deleteStep === 1
+                ? "Continue"
+                : "Yes, delete for everyone"
+        }
+        danger={deleteMode !== "proposal"}
         busy={deleteBusy}
         onConfirm={confirmDeleteMessage}
-        onCancel={() => setPendingDelete(null)}
+        onCancel={() => {
+          setPendingDelete(null);
+          setDeleteStep(1);
+        }}
       />
 
       {/* att-4b: Giphy consent. Reuses ConfirmModal -- confirm enables Giphy

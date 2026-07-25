@@ -1,5 +1,5 @@
 import { Fragment } from "preact";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { Message } from "../state/types";
 import { AttachmentView } from "./AttachmentView";
 import type { AttachmentController } from "../attachments/pipeline";
@@ -134,12 +134,17 @@ interface Props {
   // that don't care (e.g. the thread panel rendering its head)
   // can omit it.
   threadSeen?: Record<string, number>;
-  // Phase 26 (governance prereq): owner-only message deletion. When
-  // canDeleteMessages is true, a hover "delete" control renders on each
-  // non-deleted message; clicking calls onDeleteMessage(m). The caller
-  // (App) wires this to a confirm + the delete_message request.
-  canDeleteMessages?: boolean;
+  // Phase 26 (governance prereq) / 35-3: message deletion. Who may delete
+  // WHICH message depends on the channel (author-only in a DM, owner-only in
+  // a dictator channel, anyone-may-propose in a democratic one), so the
+  // policy is a predicate owned by the caller rather than a flag here.
+  // deleteLabel names the action, since in a democratic channel it starts a
+  // vote instead of deleting. The control sits behind the row's "..." menu:
+  // deletion is destructive and irreversible, so it does not deserve a
+  // one-tap target next to "reply".
+  canDeleteMessage?: (m: Message) => boolean;
   onDeleteMessage?: (m: Message) => void;
+  deleteLabel?: string;
   // att-2: receive-side attachment pipeline (decrypt meta/preview/full +
   // download), bound to the channel crypto. When absent (or a message has no
   // attachments) nothing extra renders.
@@ -180,7 +185,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessages, onDeleteMessage, attachmentController, giphyPref, onRequestEnableGiphy }: Props) {
+export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabel, attachmentController, giphyPref, onRequestEnableGiphy }: Props) {
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dividerRef = useRef<HTMLDivElement | null>(null);
@@ -200,6 +205,27 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
   // left parked at whichever image grew. Holding the anchor until the user
   // takes over is what makes the landing survive that.
   const anchorRef = useRef<Anchor>(null);
+  // 35-4: id of the message whose "..." row menu is open (one at a time).
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+
+  // Dismiss the row menu on Escape or on any click outside it. The menu
+  // itself stops propagation, so its own clicks don't self-close.
+  useEffect(() => {
+    if (!menuFor) return undefined;
+    const close = () => setMenuFor(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuFor(null);
+    };
+    document.addEventListener("click", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuFor]);
+
+  // Never leave a menu hanging over a different channel's feed.
+  useEffect(() => setMenuFor(null), [channelID]);
 
   // Watch the scroll position of whichever ancestor actually scrolls
   // (.chalk-main today). Found by computed style rather than by walking a
@@ -498,31 +524,58 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
               </div>
             )}
             {/* Phase 10b / 26: row actions -- reply in thread, and the
-                owner-only delete. Hover-revealed on desktop, permanently
-                visible on touch (no hover to reveal them with). An absolute
-                overlay on the row's right edge, so they cost no layout
-                space. Suppressed on deleted rows.
+                delete behind a "..." menu. Hover-revealed on desktop,
+                permanently visible on touch (no hover to reveal them with).
+                An absolute overlay on the row's right edge, so they cost no
+                layout space. Suppressed on deleted rows.
 
                 33-6: grouped in one flex container rather than positioned
                 independently. Previously delete was offset by a hard-coded
                 5rem to clear the reply button -- which only held while both
                 carried their full text label, and broke the moment mobile
-                dropped the words to save space. */}
+                dropped the words to save space.
+
+                35-4: delete no longer sits in the row itself. It is one
+                irreversible click, it lived next to "reply", and on touch
+                both are always visible -- so it moved into the overflow
+                menu, where reaching it is deliberate. */}
             {!m.deleted &&
-              (onOpenThread || (canDeleteMessages && onDeleteMessage)) && (
+              (onOpenThread || (canDeleteMessage?.(m) && onDeleteMessage)) && (
               <div class="chalk-message-actions">
-                {canDeleteMessages && onDeleteMessage && (
-                  <button
-                    type="button"
-                    class="chalk-message-delete"
-                    title="delete message"
-                    aria-label="delete message"
-                    onClick={() => onDeleteMessage(m)}
-                    data-testid={`message-delete-${m.id}`}
+                {canDeleteMessage?.(m) && onDeleteMessage && (
+                  <div
+                    class="chalk-message-more"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <span aria-hidden="true">✕</span>
-                    <span class="chalk-message-action-word">delete</span>
-                  </button>
+                    <button
+                      type="button"
+                      class="chalk-message-more-btn"
+                      title="more actions"
+                      aria-label="more actions"
+                      aria-haspopup="menu"
+                      aria-expanded={menuFor === m.id}
+                      onClick={() => setMenuFor(menuFor === m.id ? null : m.id)}
+                      data-testid={`message-more-${m.id}`}
+                    >
+                      <span aria-hidden="true">···</span>
+                    </button>
+                    {menuFor === m.id && (
+                      <div class="chalk-message-menu" role="menu">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          class="chalk-message-delete"
+                          onClick={() => {
+                            setMenuFor(null);
+                            onDeleteMessage(m);
+                          }}
+                          data-testid={`message-delete-${m.id}`}
+                        >
+                          {deleteLabel ?? "delete"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
                 {onOpenThread && (
                   <button
