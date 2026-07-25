@@ -113,6 +113,28 @@ export async function signupV2Finish(input: SignupV2FinishInput): Promise<Regist
   };
 }
 
+export interface AdminClaimProbe {
+  claimable: boolean;
+  username?: string;
+}
+
+/**
+ * probeAdminClaim asks whether an /?admin_token= enrollment URL still
+ * claims anything, and for which username, so the wizard can open
+ * prefilled. Never throws on a bad token — the server answers
+ * {claimable:false} — so callers can treat any failure as "not a claim
+ * URL" and fall through to the normal login path.
+ */
+export async function probeAdminClaim(adminToken: string): Promise<AdminClaimProbe> {
+  const resp = await fetch("/api/auth/admin-claim/probe", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ admin_token: adminToken }),
+  });
+  return parse<AdminClaimProbe>(resp);
+}
+
 /** putSeedWrap uploads the password-wrapped encryption-phrase entropy. */
 export async function putSeedWrap(
   generation: number,

@@ -1,11 +1,11 @@
-// chalk phase 09d e2e — admin bootstrap + moderation panel
+// chalk e2e — admin claim + moderation panel
 //
 // Three serial tests in one describe block, sharing browser context
 // so the session cookie persists across them:
 //
-//   A. Bootstrap: visit ?admin_bootstrap=<token>, drive the WebAuthn
-//      ceremony via Chromium's virtual authenticator, confirm the
-//      recovery words, land in the chat UI as the admin.
+//   A. Claim: visit ?admin_token=<token>, complete the password+TOTP
+//      signup wizard against the seeded-but-unclaimed admin row,
+//      confirm the recovery words, land in the chat UI as the admin.
 //
 //   B. Reach panel: open the StatusBar user menu, click "admin",
 //      assert the URL is /admin and the panel renders the users tab.
@@ -19,69 +19,92 @@
 // Pre-flight expectations:
 //   - chalkd running and reachable at CHALK_BASE_URL (default
 //     http://localhost:8443).
+//   - chalkd started with CHALK_ADMIN_BOOTSTRAP_TOKEN set, and the
+//     SAME value exported into this test's environment. The token
+//     lives in the server's environment and cannot be minted from
+//     here — without it the whole describe block skips.
 //   - Postgres reachable via docker exec chalk-dev-pg (the dev
 //     setup's default container name).
 //   - The "alice", "bob", "carol" fixture users exist (seeded by
 //     tools/dev.sh).
 //
 // Setup approach:
-//   We bypass chalkd's startup banner (which only fires once per
-//   process lifetime when CHALK_ADMIN_USERNAME is set + no admin
-//   row exists). Instead we directly:
-//     1. Wipe the existing admin row + admin_bootstrap_tokens
-//        rows via SQL (with admin_delete_guard temporarily
-//        disabled — the trigger refuses DELETE on admin rows by
-//        default).
-//     2. Insert a fresh admin row.
-//     3. Mint a fresh bootstrap token by inserting into
-//        admin_bootstrap_tokens.
-//     4. URL-encode the token bytes as base64url.
+//   The claim needs a seeded-but-unclaimed admin row: role='admin'
+//   with no user_auth and no passkeys. chalkd creates exactly that on
+//   first boot, but we cannot rely on process lifetime, so we recreate
+//   it directly via SQL (with admin_delete_guard temporarily disabled
+//   — the trigger refuses DELETE on admin rows by default).
 //
-// This tests the user-visible flow (URL → ceremony → recovery →
-// chat) without depending on chalkd restart coordination.
+//   The admin username must match the server's CHALK_ADMIN_USERNAME:
+//   the claim is authorized for that name only.
 //
-// Why CDP virtual authenticator:
-//   Real WebAuthn needs a hardware authenticator. Chromium exposes
-//   a virtual authenticator via CDP that creates and uses
-//   in-memory credentials. Playwright gives us a CDP session
-//   per page; we enable WebAuthn and add a virtual authenticator
-//   before navigating to the bootstrap URL.
+// TOTP:
+//   The wizard shows the base32 secret; we compute the current code
+//   from it the same way an authenticator app would (HMAC-SHA1 over
+//   the 30-second counter, dynamic truncation, 6 digits). No virtual
+//   authenticator is involved — the claim is password + TOTP, not
+//   WebAuthn.
 
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import { execSync } from "node:child_process";
+import { createHmac } from "node:crypto";
 
 // ---- Config ----------------------------------------------------------
 
-const ADMIN_USERNAME = "e2eadmin";
-const ADMIN_EMAIL = "admin@e2e.invalid";
+// The claim only works for the server's configured admin username, so
+// these come from the environment the server was started with.
+const ADMIN_USERNAME = process.env.CHALK_ADMIN_USERNAME ?? "e2eadmin";
+const ADMIN_EMAIL = process.env.CHALK_ADMIN_EMAIL ?? "admin@e2e.invalid";
 const ADMIN_DISPLAY = "e2e admin";
+const ADMIN_TOKEN = process.env.CHALK_ADMIN_BOOTSTRAP_TOKEN ?? "";
+
+// Must satisfy the server's policy: >=20 chars, 4 classes.
+const ADMIN_PASSWORD = "e2e Admin Passw0rd!!";
 
 // Docker container running PG (matches tools/dev.sh default).
 const PG_CONTAINER = process.env.CHALK_TEST_PG_CONTAINER ?? "chalk-dev-pg";
 const PG_USER = process.env.CHALK_TEST_PG_USER ?? "chalk";
 const PG_DB = process.env.CHALK_TEST_PG_DB ?? "chalk";
 
-// Token: 32 random bytes, hex-encoded for the SQL insert.
-// We generate it client-side so we can URL-encode the matching
-// base64url for the navigation step.
-function randomTokenBytes(): Uint8Array {
-  // Node 20+ has webcrypto on the globalThis. Playwright bundles
-  // a recent Node; use the standard API.
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return bytes;
+// ---- TOTP ------------------------------------------------------------
+
+// base32Decode decodes RFC 4648 base32 (no padding needed) — the
+// encoding the wizard shows the TOTP secret in.
+function base32Decode(s: string): Buffer {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0;
+  let value = 0;
+  const out: number[] = [];
+  for (const ch of s.replace(/=+$/, "").replace(/\s/g, "").toUpperCase()) {
+    const idx = alphabet.indexOf(ch);
+    if (idx < 0) continue;
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(out);
 }
 
-function toBase64Url(bytes: Uint8Array): string {
-  // Standard base64 → base64url: + → -, / → _, strip =.
-  const b64 = Buffer.from(bytes).toString("base64");
-  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+// totpNow computes the current 6-digit TOTP code, exactly as an
+// authenticator app would: HMAC-SHA1 over the big-endian 30-second
+// counter, dynamic truncation, modulo 10^6.
+function totpNow(secretB32: string): string {
+  const key = base32Decode(secretB32);
+  const counter = Math.floor(Date.now() / 1000 / 30);
+  const buf = Buffer.alloc(8);
+  buf.writeUInt32BE(Math.floor(counter / 2 ** 32), 0);
+  buf.writeUInt32BE(counter >>> 0, 4);
+  const mac = createHmac("sha1", key).update(buf).digest();
+  const offset = mac[mac.length - 1] & 0x0f;
+  const bin =
+    ((mac[offset] & 0x7f) << 24) |
+    (mac[offset + 1] << 16) |
+    (mac[offset + 2] << 8) |
+    mac[offset + 3];
+  return String(bin % 1_000_000).padStart(6, "0");
 }
 
 // psql wrapper: run a single SQL statement, return stdout.
@@ -105,31 +128,24 @@ function psql(sql: string): string {
 
 // ---- Helpers --------------------------------------------------------
 
-// Wipe and re-seed the admin state for a clean test run.
-// Returns the bootstrap token as a URL-safe string.
-function seedAdminAndMintToken(): { token: string; adminUserID: string } {
-  const tokenBytes = randomTokenBytes();
-  const tokenHex = toHex(tokenBytes);
-  const tokenB64Url = toBase64Url(tokenBytes);
-
+// Wipe and re-seed the admin row in its UNCLAIMED shape: identity
+// only, no user_auth and no passkeys. That absence of credentials is
+// exactly what makes it claimable. Returns the new row's id.
+function seedUnclaimedAdmin(): string {
   // The admin_delete_guard trigger refuses DELETE on admin rows.
-  // Temporarily disable for the wipe. Also drop any unused tokens.
-  // Wrapping in a single -c "..." block keeps the trigger off no
-  // longer than necessary; if the script dies mid-block, the next
-  // run will catch it via the explicit ENABLE.
+  // Temporarily disable for the wipe. Wrapping in a single block keeps
+  // the trigger off no longer than necessary; if the script dies
+  // mid-block, the next run will catch it via the explicit ENABLE.
   psql(`
     ALTER TABLE users DISABLE TRIGGER admin_delete_guard;
     DELETE FROM users WHERE role='admin';
-    DELETE FROM admin_bootstrap_tokens;
     ALTER TABLE users ENABLE TRIGGER admin_delete_guard;
   `);
 
-  // Insert the admin user. Mirror the application's BootstrapAdminUser
-  // schema exactly: id (UUID), handle (citext, matches username),
-  // username, display_name, email, role, email_verified_at. We use
-  // gen_random_uuid() for the id so we don't have to generate one
-  // client-side.
- const insertOut = psql(`
+  // Mirror BootstrapAdminUser's insert exactly: id (UUID), handle
+  // (citext, matches username), username, display_name, email, role,
+  // email_verified_at. gen_random_uuid() saves generating one here.
+  const insertOut = psql(`
     INSERT INTO users (
       id, handle, username, display_name, email,
       role, email_verified_at
@@ -146,48 +162,7 @@ function seedAdminAndMintToken(): { token: string; adminUserID: string } {
   if (!uuidLine) {
     throw new Error(`failed to insert admin row; psql output was:\n${insertOut}`);
   }
-  const adminID = uuidLine;
-
-  // Mint a bootstrap token. The token is stored as bytea; insert
-  // via decode('<hex>', 'hex'). The application reads it the same
-  // way (constant-time compare against the URL-decoded token bytes).
-  psql(`
-    INSERT INTO admin_bootstrap_tokens (token, expires_at)
-    VALUES (decode('${tokenHex}', 'hex'), now() + interval '1 hour')
-  `);
-
-  return { token: tokenB64Url, adminUserID: adminID };
-}
-
-// Install a Chromium virtual authenticator on this page's CDP
-// session. Returns the authenticator ID (useful if we need to
-// inspect credentials later, but for our purposes we just need it
-// installed). Must be called BEFORE navigation to the bootstrap URL
-// — adding the authenticator after navigator.credentials.create()
-// has already been called won't help that in-flight ceremony.
-async function installVirtualAuthenticator(
-  context: BrowserContext,
-  page: Page,
-): Promise<string> {
-  const cdp = await context.newCDPSession(page);
-  await cdp.send("WebAuthn.enable");
-  const { authenticatorId } = await cdp.send(
-    "WebAuthn.addVirtualAuthenticator",
-    {
-      options: {
-        protocol: "ctap2",
-        transport: "internal",
-        hasResidentKey: true,
-        hasUserVerification: true,
-        isUserVerified: true,
-        // Auto-consent: any navigator.credentials.create() or .get()
-        // call resolves without user interaction. Required because
-        // there's no human to click "yes, use the key".
-        automaticPresenceSimulation: true,
-      },
-    },
-  );
-  return authenticatorId;
+  return uuidLine;
 }
 
 // Wait for the user-list to populate with at least one row whose
@@ -205,37 +180,37 @@ async function findUserRowByUsername(page: Page, username: string) {
 
 // ---- The tests ------------------------------------------------------
 
-test.describe.serial("chalk phase 09d admin flow", () => {
-  let bootstrapToken: string;
+test.describe.serial("chalk admin flow", () => {
   // Shared context across the three tests so the session cookie
   // from Test A is available in Test B + C.
   let context: BrowserContext;
   let page: Page;
 
+  // The token lives in chalkd's environment; we cannot mint one from
+  // here the way the old DB-token bootstrap allowed. Without it there
+  // is nothing to test.
+  test.skip(
+    !ADMIN_TOKEN,
+    "CHALK_ADMIN_BOOTSTRAP_TOKEN not set; export the same value chalkd was started with",
+  );
+
   test.beforeAll(async ({ browser }) => {
-    // Seed the DB. This wipes any previous admin and mints a fresh
-    // bootstrap token so the run is reproducible.
-    const seed = seedAdminAndMintToken();
-    bootstrapToken = seed.token;
+    // Reset the admin row to its unclaimed shape so the run repeats.
+    seedUnclaimedAdmin();
 
     context = await browser.newContext();
     page = await context.newPage();
-    // Install the virtual authenticator BEFORE we navigate; once
-    // installed, all subsequent ceremonies on this page auto-consent.
-    await installVirtualAuthenticator(context, page);
   });
 
   test.afterAll(async () => {
     await context?.close();
-    // Best-effort cleanup so we don't leave a fake admin in place.
-    // We wrap in try/catch because the test may have left the
-    // trigger disabled mid-run and we don't want cleanup to mask
-    // the real test failure.
+    // Best-effort cleanup so we don't leave a claimed admin in place.
+    // Wrapped in try/catch because a mid-run failure may have left the
+    // trigger disabled, and cleanup must not mask the real failure.
     try {
       psql(`
         ALTER TABLE users DISABLE TRIGGER admin_delete_guard;
         DELETE FROM users WHERE username='${ADMIN_USERNAME}';
-        DELETE FROM admin_bootstrap_tokens;
         ALTER TABLE users ENABLE TRIGGER admin_delete_guard;
       `);
     } catch {
@@ -243,54 +218,78 @@ test.describe.serial("chalk phase 09d admin flow", () => {
     }
   });
 
-  test("A. bootstrap ceremony lands in chat as admin", async () => {
-    // Visit the bootstrap URL.
-    await page.goto(`/?admin_bootstrap=${bootstrapToken}`);
+  test("A. admin claim lands in chat as admin", async () => {
+    // Visit the enrollment URL chalkctl prints.
+    await page.goto(`/?admin_token=${ADMIN_TOKEN}`);
 
-    // Bootstrap card renders.
-    const card = page.locator("[data-testid='admin-bootstrap-screen']");
-    await expect(card).toBeVisible({ timeout: 5_000 });
+    // The wizard opens directly — no login screen in between. That is
+    // the whole point of the URL, and the regression this guards.
+    const wizard = page.locator("[data-testid='signup-wizard']");
+    await expect(wizard).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.locator("[data-testid='signup-admin-claim-note']"),
+    ).toBeVisible();
 
-    // The URL gets cleaned by history.replaceState — verify there's
-    // no admin_bootstrap query param left.
-    const urlAfterLoad = new URL(page.url());
-    expect(urlAfterLoad.searchParams.has("admin_bootstrap")).toBe(false);
+    // Username is prefilled with the configured admin name and locked.
+    const usernameInput = page.locator("[data-testid='signup-username']");
+    await expect(usernameInput).toHaveValue(ADMIN_USERNAME);
+    await expect(usernameInput).toHaveAttribute("readonly", /.*/);
 
-    // Click register. The virtual authenticator auto-consents to the
-    // navigator.credentials.create() call inside performRegistration().
-    await page.locator("[data-testid='admin-bootstrap-submit']").click();
+    // The token must SURVIVE in the URL: signupV2Begin re-reads it from
+    // window.location.search when it posts. Scrubbing it here would
+    // strip the wizard's authorization.
+    expect(new URL(page.url()).searchParams.get("admin_token")).toBe(ADMIN_TOKEN);
 
-    // The recovery screen should appear with 24 words.
+    // Step 1: email (username is fixed).
+    await page
+      .locator("[data-testid='signup-step-account'] input[type='email']")
+      .fill(ADMIN_EMAIL);
+    await page.locator("[data-testid='signup-account-next']").click();
+
+    // Step 2: password + confirm.
+    const pwInputs = page.locator(
+      "[data-testid='signup-step-password'] input[type='password']",
+    );
+    await pwInputs.nth(0).fill(ADMIN_PASSWORD);
+    await pwInputs.nth(1).fill(ADMIN_PASSWORD);
+    await page.locator("[data-testid='signup-password-next']").click();
+
+    // Step 3: read the provisioned secret and answer with a live code.
+    const totpStep = page.locator("[data-testid='signup-step-totp']");
+    await expect(totpStep).toBeVisible({ timeout: 10_000 });
+    const secret = (
+      await page.locator("[data-testid='signup-secret']").innerText()
+    ).trim();
+    expect(secret.length).toBeGreaterThan(0);
+    await totpStep.locator("input").fill(totpNow(secret));
+    await page.locator("[data-testid='signup-finish']").click();
+
+    // The recovery screen should appear with the words.
     const recovery = page.locator("[data-testid='recovery-screen']");
-    await expect(recovery).toBeVisible({ timeout: 10_000 });
-    const words = page.locator("[data-testid='recovery-words']");
-    await expect(words).toBeVisible();
+    await expect(recovery).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("[data-testid='recovery-words']")).toBeVisible();
+
+    // The claim is committed at this point — assert the identity before
+    // clicking through, so the check does not depend on which gate
+    // (migration, identity setup) renders next.
+    const meResp = await page.request.get("/api/auth/me");
+    expect(meResp.status()).toBe(200);
+    const me = await meResp.json();
+    expect(me.role).toBe("admin");
+    expect(me.username).toBe(ADMIN_USERNAME);
 
     // Acknowledge + continue. The screen gates "continue" behind a
-    // short countdown after the ack is checked; we wait for the
-    // continue button to enable.
-    const ack = page.locator("[data-testid='recovery-ack']");
-    await ack.check();
+    // short countdown after the ack is checked.
+    await page.locator("[data-testid='recovery-ack']").check();
     const cont = page.locator("[data-testid='recovery-continue']");
     await expect(cont).toBeEnabled({ timeout: 10_000 });
     await cont.click();
 
     // We should now be in the chat UI. The StatusBar's user widget
     // shows the username.
-   // await page.reload();
-
     const userWidget = page.locator("[data-testid='status-user-menu-trigger']");
-
     await expect(userWidget).toBeVisible({ timeout: 10_000 });
     await expect(userWidget).toContainText(ADMIN_USERNAME);
-
-    // Sanity: /api/auth/me should return role=admin. We hit it
-    // directly from the page context (cookie is set) to confirm.
-    const meResp = await page.request.get("/api/auth/me");
-    expect(meResp.status()).toBe(200);
-    const me = await meResp.json();
-    expect(me.role).toBe("admin");
-    expect(me.username).toBe(ADMIN_USERNAME);
   });
 
   test("B. status-bar admin menu opens the moderation panel", async () => {

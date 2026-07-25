@@ -26,10 +26,6 @@
 // of the auth surface.
 
 import { ApiError } from "./api";
-import type {
-  CredentialCreationOptionsJSON,
-  AttestationResponseJSON,
-} from "../webauthn";
 
 // ---- shared parser (mirrors auth/api.ts pattern) ----------------------
 
@@ -219,46 +215,4 @@ export async function removeFromBlacklist(email: string): Promise<void> {
     credentials: "same-origin",
   });
   await parseEmpty(resp);
-}
-
-// ---- bootstrap: first-run admin passkey enrollment -------------------
-
-export interface AdminBootstrapBeginResponse {
-  options: CredentialCreationOptionsJSON;
-}
-
-export interface AdminBootstrapFinishResponse {
-  user_id: string;
-  username: string;
-  display_name: string;
-  role: string;
-  recovery_words: string[];
-  session_expires_at: string;
-}
-
-// bootstrapBegin submits the operator's bootstrap token and gets the
-// WebAuthn attestation options. UNAUTHENTICATED — the token IS the
-// credential. Returns the options shape expected by webauthn.ts's
-// decodeCreationOptions (the {publicKey: ...} JSON shape that
-// go-webauthn's BeginRegistration emits).
-export async function bootstrapBegin(token: string): Promise<CredentialCreationOptionsJSON> {
-  const resp = await fetch(`/api/admin/bootstrap/begin`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token }),
-  });
-  const body = await parseResponse<AdminBootstrapBeginResponse>(resp);
-  return body.options;
-}
-
-export async function bootstrapFinish(
-  attestation: AttestationResponseJSON,
-): Promise<AdminBootstrapFinishResponse> {
-  const resp = await fetch(`/api/admin/bootstrap/finish`, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ credential: attestation }),
-  });
-  return parseResponse<AdminBootstrapFinishResponse>(resp);
 }

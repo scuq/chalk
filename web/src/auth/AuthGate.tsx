@@ -20,7 +20,6 @@
 
 import { useEffect } from "preact/hooks";
 import type {
-  AdminBootstrapState,
   AuthAction,
   AuthConfig,
   AuthStage,
@@ -35,6 +34,7 @@ import type {
   VerifyEmailChangeState,
 } from "./types";
 import { fetchAuthConfig, fetchMe, ApiError } from "./api";
+import { probeAdminClaim } from "./signup-v2-api";
 // 31-7: LoginScreen (passkey-only) is embedded inside the password login
 // as a fallback mode; the gate renders the password-first screen.
 import { PasswordLoginScreen } from "./PasswordLoginScreen";
@@ -47,7 +47,6 @@ import { RegenerateScreen } from "./RegenerateScreen";
 import { AddPasskeyAfterRecoveryScreen } from "./AddPasskeyAfterRecoveryScreen";
 import { RegisterFromInviteScreen } from "./RegisterFromInviteScreen";
 import { VerifyEmailChangeScreen } from "./VerifyEmailChangeScreen";
-import { AdminBootstrapScreen } from "./AdminBootstrapScreen";
 
 interface Props {
   authStage: AuthStage;
@@ -62,8 +61,9 @@ interface Props {
   // Phase 09c-2 additions:
   inviteContext: InviteContext | null;
   verifyEmailChange: VerifyEmailChangeState | null;
-  // Phase 09d-2a:
-  adminBootstrap: AdminBootstrapState | null;
+  // 31-11: non-null while claiming the admin account from an
+  // /?admin_token= enrollment URL; fixes the wizard's username.
+  adminClaimUsername: string | null;
   dispatch: (action: AuthAction) => void;
 }
 
@@ -77,7 +77,7 @@ export function AuthGate({
   me,
   inviteContext,
   verifyEmailChange,
-  adminBootstrap,
+  adminClaimUsername,
   dispatch,
 }: Props) {
   // On mount: bootstrap. Phase 09c-2 adds two URL-driven branches
@@ -102,7 +102,7 @@ export function AuthGate({
     const params = new URLSearchParams(window.location.search);
     const inviteToken = params.get("invite");
     const verifyEmailToken = params.get("verify_email");
-    const adminBootstrapToken = params.get("admin_bootstrap");
+    const adminToken = params.get("admin_token");
 
     if (inviteToken) {
       // Clean the URL so a refresh doesn't re-fire the flow. Keep
@@ -117,37 +117,45 @@ export function AuthGate({
       dispatch({ kind: "auth_verify_email_detected", token: verifyEmailToken });
       return;
     }
-    if (adminBootstrapToken) {
-      // Phase 09d-2a: first-run admin enrollment.
+    if (adminToken) {
+      // 31-11: first-run admin enrollment. chalkctl prints this URL.
       //
-      // Phase 9.5 (B7): before showing the bootstrap screen, probe
-      // /me. If we're already authed, the token would just be
-      // rejected with admin_already_enrolled, which is a confusing
-      // UX — drop the token and continue as the existing session.
-      // If we're not authed, fire the bootstrap flow as before.
-      window.history.replaceState({}, "", window.location.pathname);
+      // Note what is NOT here: the replaceState that the branches
+      // above use to scrub the query. signupV2Begin re-reads
+      // admin_token from window.location.search when it POSTs, so
+      // scrubbing it now would strip the wizard's authorization
+      // before it is used. The param goes away with the rest of the
+      // signup, once the account exists.
+      //
+      // Probe first. An already-authed visitor, a spent token, or a
+      // typo should all continue to the ordinary flow rather than
+      // land on a wizard that cannot succeed.
       let cancelled = false;
       fetchMe()
         .then((me) => {
-          if (cancelled) return;
+          if (cancelled) return null;
           if (me) {
-            // Already authed — skip the bootstrap card.
             dispatch({ kind: "auth_me_loaded", me });
-          } else {
+            return null;
+          }
+          return probeAdminClaim(adminToken);
+        })
+        .then((probe) => {
+          if (cancelled || !probe) return;
+          if (probe.claimable && probe.username) {
             dispatch({
-              kind: "auth_admin_bootstrap_detected",
-              token: adminBootstrapToken,
+              kind: "auth_admin_claim_detected",
+              username: probe.username,
             });
+          } else {
+            dispatch({ kind: "auth_me_absent" });
           }
         })
         .catch(() => {
           if (cancelled) return;
-          // /me threw — fall through to bootstrap; the server's
-          // begin call will sort out the real state.
-          dispatch({
-            kind: "auth_admin_bootstrap_detected",
-            token: adminBootstrapToken,
-          });
+          // Probe failed (server unreachable, malformed response).
+          // The login screen is the honest fallback.
+          dispatch({ kind: "auth_me_absent" });
         });
       return () => {
         cancelled = true;
@@ -246,6 +254,7 @@ export function AuthGate({
       <SignupWizardScreen
         config={authConfig}
         initialInviteToken={registration.inviteToken || undefined}
+        adminClaimUsername={adminClaimUsername || undefined}
         onRegistered={(result) => dispatch({ kind: "auth_registered", result })}
         onGoLogin={() => dispatch({ kind: "auth_go_login" })}
       />
@@ -394,40 +403,6 @@ export function AuthGate({
           dispatch({ kind: "auth_verify_email_failed", code, message })
         }
         onDismiss={() => dispatch({ kind: "auth_verify_email_dismissed" })}
-      />
-    );
-  }
-
-  // ---- Phase 09d-2a: admin bootstrap stage --------------------------
-
-  if (authStage === "admin-bootstrap") {
-    if (!adminBootstrap) {
-      // Defensive: the reducer always populates adminBootstrap on
-      // entry to this stage. If somehow missing, fall back to login.
-      return (
-        <div class="chalk-auth" data-testid="auth-admin-bootstrap-missing">
-          <div class="chalk-auth-card">
-            <p class="chalk-auth-error">
-              Admin bootstrap state missing. Please refresh.
-            </p>
-          </div>
-        </div>
-      );
-    }
-    return (
-      <AdminBootstrapScreen
-        token={adminBootstrap.token}
-        busy={adminBootstrap.busy}
-        errorCode={adminBootstrap.errorCode}
-        errorMessage={adminBootstrap.errorMessage}
-        onSubmitStart={() => dispatch({ kind: "auth_admin_bootstrap_submit_start" })}
-        onSubmitError={(code, message) =>
-          dispatch({ kind: "auth_admin_bootstrap_submit_error", code, message })
-        }
-        onBootstrapped={(result) =>
-          dispatch({ kind: "auth_registered", result })
-        }
-        onDismiss={() => dispatch({ kind: "auth_admin_bootstrap_dismissed" })}
       />
     );
   }

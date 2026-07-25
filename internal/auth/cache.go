@@ -59,14 +59,6 @@ type PendingUser struct {
 	Email       string
 	InviteToken []byte
 
-	// Phase 09d-1: admin bootstrap fields. When IsAdminBootstrap is
-	// true, the finish handler takes the admin-bootstrap path (attach
-	// passkey to existing admin row + consume token) instead of the
-	// transactional new-user insert. BootstrapToken carries the raw
-	// 32 bytes so the finish handler can call ConsumeAdminBootstrapToken.
-	IsAdminBootstrap bool
-	BootstrapToken   []byte
-
 	// md-4: add-passkey ceremony. When IsAddPasskey is true the
 	// finish handler attaches the freshly minted credential to the
 	// EXISTING user identified by ID (the authenticated session user)

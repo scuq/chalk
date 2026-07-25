@@ -60,6 +60,18 @@ type pendingSignup struct {
 	User       PendingUser
 	TOTPSecret []byte
 	ExpiresAt  time.Time
+
+	// AdminClaim marks a signup authorized by the one-shot bootstrap
+	// token to take the admin username. AdminAdopt additionally means a
+	// seeded admin row was found at begin and User.ID is ITS id rather
+	// than a fresh uuid, so finish adopts that row (ClaimAdminV2) instead
+	// of inserting one.
+	//
+	// Both live in process memory and are never sent to the client: the
+	// authorization is decided once, at begin, from the token, and cannot
+	// be re-asserted by anything in the finish request.
+	AdminClaim bool
+	AdminAdopt bool
 }
 
 // SignupV2Cache is a goroutine-safe TTL cache of pending v2 signups, keyed by
@@ -145,35 +157,45 @@ func (d *HTTPDeps) handleSignupV2Begin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Admission: open-registration or a valid invite (same gate as the
-	// passkey flow; checkRegistrationAllowed takes the begin-request shape).
-	invite, authErr := d.checkRegistrationAllowed(r.Context(), registerBeginRequest{
-		InviteToken: req.InviteToken,
-		Username:    req.Username,
-		DisplayName: req.DisplayName,
-	})
-	if authErr != nil {
-		writeAuthErr(w, authErr)
-		return
-	}
-
 	username := strings.ToLower(strings.TrimSpace(req.Username))
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	displayName := strings.TrimSpace(req.DisplayName)
+
+	// 31-11: is this the operator claiming the admin account with the
+	// one-shot bootstrap token? Decided before the admission gate because
+	// a valid token IS the admission proof — the enrollment URL has to
+	// work on a deployment that runs with registration closed, which is
+	// the normal steady state.
+	isAdminClaim := d.isAdminClaim(username, req.AdminToken)
+
+	// Admission: open-registration or a valid invite (same gate as the
+	// passkey flow; checkRegistrationAllowed takes the begin-request shape).
+	var invite *store.Invite
+	if !isAdminClaim {
+		var authErr *authError
+		invite, authErr = d.checkRegistrationAllowed(r.Context(), registerBeginRequest{
+			InviteToken: req.InviteToken,
+			Username:    req.Username,
+			DisplayName: req.DisplayName,
+		})
+		if authErr != nil {
+			writeAuthErr(w, authErr)
+			return
+		}
+	}
 
 	if !IsValidUsername(username) {
 		writeError(w, http.StatusBadRequest, "bad_username",
 			"username must match ^[a-z0-9_]{3,32}$")
 		return
 	}
-	if IsReservedUsername(username) {
-		// 31-11: the admin exemption additionally demands the one-shot
-		// bootstrap token. Fail closed when the env token is unset.
-		if username != strings.ToLower(d.AdminUsername) || !adminBootstrapOK(req.AdminToken) {
-			writeError(w, http.StatusConflict, "username_reserved",
-				"that username is reserved")
-			return
-		}
+	if IsReservedUsername(username) && !isAdminClaim {
+		// The admin username is exempt, but only with the token; every
+		// other reserved name is refused outright. Fail closed: an unset
+		// CHALK_ADMIN_BOOTSTRAP_TOKEN makes isAdminClaim false.
+		writeError(w, http.StatusConflict, "username_reserved",
+			"that username is reserved")
+		return
 	}
 	if email == "" && IsDevMode() {
 		email = username + "@localhost.invalid"
@@ -199,17 +221,46 @@ func (d *HTTPDeps) handleSignupV2Begin(w http.ResponseWriter, r *http.Request) {
 			"this email address cannot be used")
 		return
 	}
-	if _, err := d.Store.GetUserByUsername(r.Context(), username); err == nil {
-		writeError(w, http.StatusConflict, "username_taken", "that username is taken")
-		return
+	// The admin claim adopts the row chalkd seeded at first boot, so for
+	// it the "already exists" checks are inverted: the username SHOULD
+	// resolve, and it must resolve to an unclaimed admin. claimUserID
+	// stays uuid.Nil when there is no seeded row (CHALK_ADMIN_USERNAME
+	// was never set) — then the claim creates the admin outright.
+	var claimUserID uuid.UUID
+	if isAdminClaim {
+		admin, err := d.Store.GetUnclaimedAdmin(r.Context())
+		switch {
+		case err == nil && strings.EqualFold(admin.Username, username):
+			claimUserID = admin.ID
+		case err == nil || errors.Is(err, store.ErrNotFound):
+			// Either the admin row is already claimed, or the seeded
+			// admin has a different username than CHALK_ADMIN_USERNAME
+			// now says. Fall through to the ordinary checks below; a
+			// pre-existing row will be reported as username_taken.
+		default:
+			d.Logger.Printf("signup/v2/begin: unclaimed admin lookup: %v", err)
+			writeError(w, http.StatusInternalServerError, "lookup_failed", "internal error")
+			return
+		}
+	}
+
+	if existing, err := d.Store.GetUserByUsername(r.Context(), username); err == nil {
+		if existing.ID != claimUserID || claimUserID == uuid.Nil {
+			writeError(w, http.StatusConflict, "username_taken", "that username is taken")
+			return
+		}
 	} else if !errors.Is(err, store.ErrNotFound) {
 		d.Logger.Printf("signup/v2/begin: username lookup: %v", err)
 		writeError(w, http.StatusInternalServerError, "lookup_failed", "internal error")
 		return
 	}
-	if _, err := d.Store.GetUserByEmail(r.Context(), email); err == nil {
-		writeError(w, http.StatusConflict, "email_taken", "that email is already registered")
-		return
+	if existing, err := d.Store.GetUserByEmail(r.Context(), email); err == nil {
+		// The seed email belongs to the row being claimed; anything else
+		// is a genuine collision.
+		if existing.ID != claimUserID || claimUserID == uuid.Nil {
+			writeError(w, http.StatusConflict, "email_taken", "that email is already registered")
+			return
+		}
 	} else if !errors.Is(err, store.ErrNotFound) {
 		d.Logger.Printf("signup/v2/begin: email lookup: %v", err)
 		writeError(w, http.StatusInternalServerError, "lookup_failed", "internal error")
@@ -237,14 +288,20 @@ func (d *HTTPDeps) handleSignupV2Begin(w http.ResponseWriter, r *http.Request) {
 	if d.SignupV2 == nil {
 		d.SignupV2 = NewSignupV2Cache()
 	}
+	userID := claimUserID
+	if userID == uuid.Nil {
+		userID = uuid.New()
+	}
 	pend := pendingSignup{
 		User: PendingUser{
-			ID:          uuid.New(),
+			ID:          userID,
 			Username:    username,
 			DisplayName: displayName,
 			Email:       email,
 		},
 		TOTPSecret: secret,
+		AdminClaim: isAdminClaim,
+		AdminAdopt: claimUserID != uuid.Nil,
 	}
 	if invite != nil {
 		pend.User.InviteToken = invite.Token
@@ -331,7 +388,7 @@ func (d *HTTPDeps) handleSignupV2Finish(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	regErr := d.Store.RegisterUserV2(r.Context(), store.RegistrationV2Params{
+	params := store.RegistrationV2Params{
 		UserID:        pend.User.ID,
 		Username:      pend.User.Username,
 		DisplayName:   pend.User.DisplayName,
@@ -344,9 +401,28 @@ func (d *HTTPDeps) handleSignupV2Finish(w http.ResponseWriter, r *http.Request) 
 		KDFIters:      req.KDFIters,
 		KDFPar:        req.KDFPar,
 		TOTPSecretEnc: secretEnc,
-	})
+	}
+
+	// An admin claim adopts the seeded row (ClaimAdminV2 keeps its id and
+	// role); with no seeded row to adopt, the account is created as admin
+	// outright. Both branches are authorized by the token checked at
+	// begin — nothing in the finish request can turn an ordinary signup
+	// into an admin one.
+	var regErr error
+	switch {
+	case pend.AdminAdopt:
+		regErr = d.Store.ClaimAdminV2(r.Context(), params)
+	case pend.AdminClaim:
+		params.Role = "admin"
+		regErr = d.Store.RegisterUserV2(r.Context(), params)
+	default:
+		regErr = d.Store.RegisterUserV2(r.Context(), params)
+	}
 	if regErr != nil {
 		switch {
+		case errors.Is(regErr, store.ErrAdminAlreadyClaimed):
+			writeError(w, http.StatusConflict, "admin_already_claimed",
+				"the admin account was claimed while you were signing up")
 		case errors.Is(regErr, store.ErrUsernameTaken):
 			writeError(w, http.StatusConflict, "username_taken",
 				"that username was taken while you were signing up; start again")
@@ -354,7 +430,8 @@ func (d *HTTPDeps) handleSignupV2Finish(w http.ResponseWriter, r *http.Request) 
 			writeError(w, http.StatusConflict, "email_taken",
 				"that email was registered while you were signing up")
 		default:
-			d.Logger.Printf("signup/v2/finish: RegisterUserV2: %v", regErr)
+			d.Logger.Printf("signup/v2/finish: persist (adminClaim=%v): %v",
+				pend.AdminClaim, regErr)
 			writeError(w, http.StatusInternalServerError, "persist_failed",
 				"could not persist registration")
 		}

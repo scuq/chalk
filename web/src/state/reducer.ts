@@ -748,9 +748,9 @@ export function reducer(state: AppState, action: Action): AppState {
       // in at this point. The recovery screen is just a notice; on
       // confirm we go straight to authed (no transitional-handoff).
       //
-      // Phase 09d-2a: also clear adminBootstrap here because the
-      // admin-bootstrap flow funnels success into this same action.
-      // Stale token in state would be harmless but messy.
+      // 31-11: also clear adminClaimUsername here — the admin claim
+      // funnels its success into this same action, and the claim is
+      // over once the account exists.
       return {
         ...state,
         authStage: "confirming-recovery",
@@ -761,7 +761,7 @@ export function reducer(state: AppState, action: Action): AppState {
           errorCode: null,
           errorMessage: null,
         },
-        adminBootstrap: null,
+        adminClaimUsername: null,
       };
 
     case "auth_recovery_confirmed":
@@ -1198,59 +1198,19 @@ export function reducer(state: AppState, action: Action): AppState {
         verifyEmailChange: null,
       };
 
-    // ---- Phase 09d-2a: admin bootstrap (URL-driven) -----------------
+    // ---- 31-11: admin claim (URL-driven) ----------------------------
 
-    case "auth_admin_bootstrap_detected":
-      // AuthGate parsed ?admin_bootstrap=<token> from the URL at
-      // boot. Flip to the new stage; AdminBootstrapScreen waits for
-      // the operator to click "Register admin passkey" before the
-      // ceremony runs. Mutually exclusive with the other URL-driven
-      // flows: AuthGate checks admin_bootstrap AFTER invite and
-      // verify_email, so a URL with both is treated as belonging to
-      // whichever AuthGate saw first.
+    case "auth_admin_claim_detected":
+      // AuthGate saw ?admin_token=<token> and the server confirmed the
+      // account is still claimable. Go straight to the signup wizard
+      // with the username fixed. Mutually exclusive with the other
+      // URL-driven flows: AuthGate checks admin_token AFTER invite and
+      // verify_email, so a URL carrying both belongs to whichever
+      // AuthGate saw first.
       return {
         ...state,
-        authStage: "admin-bootstrap",
-        adminBootstrap: {
-          token: action.token,
-          busy: false,
-          errorCode: null,
-          errorMessage: null,
-        },
-      };
-
-    case "auth_admin_bootstrap_submit_start":
-      if (!state.adminBootstrap) return state;
-      return {
-        ...state,
-        adminBootstrap: {
-          ...state.adminBootstrap,
-          busy: true,
-          errorCode: null,
-          errorMessage: null,
-        },
-      };
-
-    case "auth_admin_bootstrap_submit_error":
-      if (!state.adminBootstrap) return state;
-      return {
-        ...state,
-        adminBootstrap: {
-          ...state.adminBootstrap,
-          busy: false,
-          errorCode: action.code,
-          errorMessage: action.message,
-        },
-      };
-
-    case "auth_admin_bootstrap_dismissed":
-      // User clicked the "Go to login" escape after a terminal
-      // error (admin_already_enrolled, no_admin_row). Clear the
-      // bootstrap state and route to the normal login screen.
-      return {
-        ...state,
-        authStage: "login",
-        adminBootstrap: null,
+        authStage: "registering",
+        adminClaimUsername: action.username,
       };
 
     // ---- Phase 09c-2: InvitesPanel data -----------------------------

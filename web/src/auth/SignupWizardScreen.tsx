@@ -32,6 +32,13 @@ import { setKEK } from "./kek-holder";
 interface Props {
   config: AuthConfig;
   initialInviteToken?: string;
+  // Set when the visitor arrived on an /?admin_token= enrollment URL:
+  // the username is fixed to the configured admin name and the wizard
+  // explains that it is claiming the admin account rather than creating
+  // an ordinary one. The authorization itself is the token in the URL,
+  // which signupV2Begin attaches; locking the field is a UX guard, not
+  // a security one.
+  adminClaimUsername?: string;
   onRegistered: (result: RegistrationResult) => void;
   onGoLogin?: () => void;
 }
@@ -48,13 +55,16 @@ const POLICY_LABELS: Record<string, string> = {
 
 const STRENGTH_LABELS = ["", "weak", "okay", "good", "excellent"] as const;
 
-export function SignupWizardScreen({ config, initialInviteToken, onRegistered, onGoLogin }: Props) {
+export function SignupWizardScreen({
+  config, initialInviteToken, adminClaimUsername, onRegistered, onGoLogin,
+}: Props) {
+  const isAdminClaim = !!adminClaimUsername;
   const [step, setStep] = useState<Step>("account");
   const [busy, setBusy] = useState(false);
   const [banner, setBanner] = useState("");
 
   // step 1
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(adminClaimUsername ?? "");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [invite, setInvite] = useState(initialInviteToken ?? "");
@@ -179,7 +189,16 @@ export function SignupWizardScreen({ config, initialInviteToken, onRegistered, o
   return (
     <div class="chalk-auth" data-testid="signup-wizard">
       <div class="chalk-auth-card">
-        <h1 class="chalk-auth-title">Create your account</h1>
+        <h1 class="chalk-auth-title">
+          {isAdminClaim ? "Claim the admin account" : "Create your account"}
+        </h1>
+        {isAdminClaim && (
+          <p class="chalk-auth-subtitle" data-testid="signup-admin-claim-note">
+            This one-time link enrolls the server's admin account,{" "}
+            <strong>{adminClaimUsername}</strong>. Set a password and an
+            authenticator app; the link stops working once you're done.
+          </p>
+        )}
         {banner && <p class="chalk-auth-error" data-testid="signup-banner">{banner}</p>}
 
         {step === "account" && (
@@ -192,6 +211,8 @@ export function SignupWizardScreen({ config, initialInviteToken, onRegistered, o
                 onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
                 placeholder="a-z, 0-9, _ (3-32 chars)"
                 autocomplete="username"
+                readOnly={isAdminClaim}
+                data-testid="signup-username"
               />
             </label>
             <label class="chalk-auth-label">

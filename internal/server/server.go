@@ -167,15 +167,12 @@ func NewServer(opts Options) (*Server, error) {
 		if err := opts.Auth.MountRegistration(mux); err != nil {
 			return nil, fmt.Errorf("mount auth: %w", err)
 		}
-		// Phase 09d-1: admin moderation + unauthenticated admin
-		// bootstrap endpoints. Mounted unconditionally when Auth is
-		// set; RequireAdmin protects moderation, the bootstrap
-		// token protects the bootstrap endpoints.
+		// Phase 09d-1: admin moderation endpoints, protected by
+		// RequireAdmin. First-run admin enrollment is not here: it is
+		// the token-gated claim on the v2 signup path, mounted with the
+		// other auth routes by MountRegistration.
 		if err := opts.Auth.MountAdmin(mux); err != nil {
 			return nil, fmt.Errorf("mount admin: %w", err)
-		}
-		if err := opts.Auth.MountAdminBootstrap(mux); err != nil {
-			return nil, fmt.Errorf("mount admin bootstrap: %w", err)
 		}
 		// Phase 9.6a: exact-username lookup for the friend-add UI.
 		if err := opts.Auth.MountUserLookup(mux); err != nil {

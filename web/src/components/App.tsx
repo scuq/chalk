@@ -2098,7 +2098,7 @@ export function App() {
         me={state.me}
         inviteContext={state.inviteContext}
         verifyEmailChange={state.verifyEmailChange}
-        adminBootstrap={state.adminBootstrap}
+        adminClaimUsername={state.adminClaimUsername}
         dispatch={dispatch}
       />
     );

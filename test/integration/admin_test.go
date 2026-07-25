@@ -60,10 +60,6 @@ func resetAdminState(t *testing.T) {
 	); err != nil {
 		t.Fatalf("clear non-fixture users: %v", err)
 	}
-	// Clear admin_bootstrap_tokens so a fresh bootstrap can run.
-	if _, err := st.Pool.Exec(c, `DELETE FROM admin_bootstrap_tokens`); err != nil {
-		t.Fatalf("clear bootstrap tokens: %v", err)
-	}
 	// Clear email_blacklist (so PurgeUser tests can re-add).
 	if _, err := st.Pool.Exec(c, `DELETE FROM email_blacklist`); err != nil {
 		t.Fatalf("clear blacklist: %v", err)

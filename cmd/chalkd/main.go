@@ -458,16 +458,15 @@ func deriveOrigin(listen, tlsMode string) string {
 	return fmt.Sprintf("%s://%s:%s", scheme, host, port)
 }
 
-// maybeBootstrapAdmin runs the first-run admin bootstrap if no admin
-// row exists yet AND the operator has set both CHALK_ADMIN_USERNAME
-// and CHALK_ADMIN_EMAIL. Idempotent: skipped if an admin already
-// exists. Phase 09d-1.
+// maybeBootstrapAdmin seeds the admin IDENTITY on first run if no admin
+// row exists yet AND the operator has set both CHALK_ADMIN_USERNAME and
+// CHALK_ADMIN_EMAIL. Idempotent: skipped if an admin already exists.
 //
-// Output: on a fresh bootstrap, prints the admin enrollment URL to
-// stderr. If an active token already exists (e.g. the previous run
-// minted one but the operator never visited the URL), reuses it
-// rather than minting a new one — this lets a restart not invalidate
-// a still-valid URL.
+// It seeds a row with no credentials on it. Taking possession of that
+// row — password + TOTP — is the operator's job, via the enrollment URL
+// chalkctl prints (/?admin_token=<CHALK_ADMIN_BOOTSTRAP_TOKEN>). The
+// absence of credentials is exactly what makes the row claimable, so
+// this must not attach any.
 func maybeBootstrapAdmin(ctx context.Context, st *store.Store, cfg config.Config) error {
 	// Probe: is an admin already bootstrapped? Use GetAdminUser
 	// which returns ErrNotFound when absent. Any other error is
@@ -501,28 +500,7 @@ func maybeBootstrapAdmin(ctx context.Context, st *store.Store, cfg config.Config
 		}
 		return fmt.Errorf("BootstrapAdminUser: %w", err)
 	}
-	log.Printf("admin bootstrap: created admin user %q (id=%s)", admin.Username, admin.ID)
-
-	// Mint a bootstrap token (or reuse an existing active one).
-	tok, err := st.GetActiveAdminBootstrapToken(ctx)
-	if errors.Is(err, store.ErrNotFound) {
-		tok, err = st.CreateAdminBootstrapToken(ctx)
-		if errors.Is(err, store.ErrAdminBootstrapActive) {
-			// Raced with a concurrent instance that won. Re-fetch.
-			tok, err = st.GetActiveAdminBootstrapToken(ctx)
-		}
-		if err != nil {
-			return fmt.Errorf("CreateAdminBootstrapToken: %w", err)
-		}
-	} else if err != nil {
-		return fmt.Errorf("GetActiveAdminBootstrapToken: %w", err)
-	}
-
-	publicURL := strings.TrimSpace(os.Getenv("CHALK_PUBLIC_URL"))
-	if _, err := auth.PrintBootstrapURL(os.Stderr, publicURL, tok.Token, tok.ExpiresAt); err != nil {
-		// Logging failure is non-fatal; the token is still in
-		// the DB.
-		log.Printf("admin bootstrap: PrintBootstrapURL: %v", err)
-	}
+	log.Printf("admin bootstrap: seeded admin user %q (id=%s); claim it at "+
+		"/?admin_token=<CHALK_ADMIN_BOOTSTRAP_TOKEN>", admin.Username, admin.ID)
 	return nil
 }

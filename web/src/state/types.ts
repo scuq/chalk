@@ -11,7 +11,6 @@ import { DEFAULT_SELF_HUE, clampHue } from "../chat/nickcolor";
 import type { ConnectionState } from "../ws-client";
 import type { AttachmentRef } from "../attachments/types";
 import type {
-  AdminBootstrapState,
   AuthAction,
   AuthConfig,
   AuthStage,
@@ -358,7 +357,7 @@ export interface AppState {
   myInvites: MyInvitesState;
   emailChange: EmailChangeState;
   // Phase 09d-2a: first-run admin enrollment via URL param.
-  adminBootstrap: AdminBootstrapState | null;
+  adminClaimUsername: string | null;
 
   // Phase 09c-2 UI: which in-chat panel is open (if any).
   // null = no panel. "invites" → InvitesPanel modal.
@@ -535,7 +534,7 @@ export const initialState: AppState = {
   openPanel: null,
   profileRefreshing: false,
   // Phase 09d-2a:
-  adminBootstrap: initialAuthState.adminBootstrap,
+  adminClaimUsername: initialAuthState.adminClaimUsername,
   // Phase 09d-2b:
   route: "chat",
   adminPanel: initialAdminPanelState,

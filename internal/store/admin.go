@@ -149,6 +149,34 @@ func (s *Store) GetAdminUser(ctx context.Context) (User, error) {
 	return u, translateErr(err)
 }
 
+// unclaimedAdminWhere is the shared predicate for "the seeded admin row
+// that nobody has taken possession of yet": role='admin' with neither an
+// auth-v2 credential row nor a passkey. chalkd seeds the identity at
+// first boot (username/email from the environment) but cannot set any
+// credential, so exactly this shape means "waiting to be claimed".
+//
+// Defining claimability by the absence of credentials rather than by a
+// flag is deliberate: it makes the admin claim one-shot at the data
+// layer. Even if CHALK_ADMIN_BOOTSTRAP_TOKEN later leaks, there is no
+// unclaimed row left for it to act on.
+const unclaimedAdminWhere = `
+	  role = 'admin'
+	  AND NOT EXISTS (SELECT 1 FROM user_auth ua WHERE ua.user_id = users.id)
+	  AND NOT EXISTS (SELECT 1 FROM passkeys p WHERE p.user_id = users.id)`
+
+// GetUnclaimedAdmin returns the seeded-but-unclaimed admin row, or
+// ErrNotFound when there is no admin row at all or the admin has
+// already been claimed. Used by the v2 signup path to decide whether an
+// admin-token-bearing signup may adopt an existing row instead of being
+// rejected as username_taken.
+func (s *Store) GetUnclaimedAdmin(ctx context.Context) (User, error) {
+	var u User
+	err := scanUserRow(s.Pool.QueryRow(ctx,
+		`SELECT `+userCols+` FROM users WHERE`+unclaimedAdminWhere+` LIMIT 1`,
+	), &u)
+	return u, translateErr(err)
+}
+
 // ---- Moderation: block / unblock / soft-delete --------------------------
 
 // ErrUserBlocked is returned by login / recovery paths when the
