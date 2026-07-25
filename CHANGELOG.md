@@ -16,6 +16,9 @@ The engineering-level history (which slice shipped what) lives in
 - **New "warmwhite" theme.** A dark graphite channel rail beside a warm
   near-white page, with black titles and a blue accent on links and controls.
   Pick it under appearance in your profile.
+- **New "azeroth" theme.** Quest gold and bronze frames on a tavern-dark
+  ground, with the rest of the palette borrowed from where those colors come
+  from: green for online, orange for warnings, blue for links.
 
 ---
 

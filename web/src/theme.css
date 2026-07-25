@@ -5535,6 +5535,77 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 
 /* ============================================================
+   azeroth: gilded frames on a tavern-dark ground
+   ============================================================
+   Named for the world rather than the game, the way `lcars` is named
+   for the panel rather than the show.
+
+   What makes this readable as the source at a glance is not one hue
+   but a fixed cast of them, each meaning the same thing it means in
+   the game: quest gold leads, uncommon green is "good/online",
+   legendary orange warns, rare blue is the link color. Spending them
+   on the wrong roles is what would make it look like a generic dark
+   theme with a gold accent.
+
+   The ground is a warm tavern black -- brown-cast, not neutral -- so
+   the bronze frames sit on it as metal on wood rather than as a
+   stroke floating on a void.
+
+   Body text is parchment bone, not gold: a full chat log in #ffd100
+   is a migraine, and the gold only reads as emphasis while most of
+   the screen isn't gold.
+   ============================================================ */
+
+[data-theme="azeroth"] {
+  --chalk-bg:           #0e0c0a;
+  --chalk-bg-elev:      #1b1610;
+  --chalk-bg-elev-2:    #2b2318;
+  --chalk-fg:           #f0e6d2;
+  --chalk-fg-dim:       #b3a184;
+  /* Quest gold. Also drives the online presence dot, pinned below. */
+  --chalk-fg-bright:    #ffd100;
+  --chalk-fg-muted:     #8a7b61;
+  /* Bronze, the frame metal. */
+  --chalk-border:       #6b5424;
+  /* Rare blue, lifted off the game's #0070dd, which is only 4:1 on
+     this ground and is used there for item names, not running text. */
+  --chalk-accent:       #4aa8ff;
+  /* Legendary orange, unchanged -- it is already a warning color. */
+  --chalk-warn:         #ff8000;
+  --chalk-error:        #ff4c4c;
+
+  color-scheme: dark;
+}
+
+/* Uncommon green for "online": the one place the game's green means
+   exactly what a presence dot means. Gold here would read as a
+   decoration rather than a status light. */
+[data-theme="azeroth"] .chalk-presence-dot--online {
+  background: #1eff00;
+  box-shadow: 0 0 5px rgba(30, 255, 0, 0.45);
+}
+
+[data-theme="azeroth"] .chalk-sidebar-item--active {
+  background: rgba(255, 209, 0, 0.13);
+}
+
+/* The gilded frame: bronze edge with a thin gold inner line. Two
+   metals is what separates a game panel from a plain bordered box,
+   and it costs one inset shadow. */
+[data-theme="azeroth"] .chalk-modal,
+[data-theme="azeroth"] .chalk-modal-card {
+  border: 2px solid #a5813a;
+  box-shadow: inset 0 0 0 1px rgba(255, 209, 0, 0.35),
+              0 6px 24px rgba(0, 0, 0, 0.7);
+}
+
+.chalk-profile-theme-swatch-preview--azeroth {
+  background: linear-gradient(135deg,
+    #0e0c0a 0%, #0e0c0a 50%,
+    #ffd100 50%, #ffd100 100%);
+}
+
+/* ============================================================
    Phase 9.7f: per-user nick colors
    ============================================================
    Sender labels carry only a HUE (--nick-h, set inline per message).
