@@ -3127,23 +3127,9 @@ html, body {
   padding: var(--chalk-s2);
 }
 
-/* Mobile: < 768px. The panel takes over the full main + channel
-   composer area. We hide main and the channel footer (which has the
-   channel composer) while a thread is open, and let the panel span
-   from sidebar-edge to right-edge of the viewport. */
-@media (max-width: 767px) {
-  .chalk-app--phase08b.chalk-app--thread-open {
-    grid-template-columns: 220px 1fr;
-    grid-template-areas:
-      "header  header"
-      "sidebar thread"
-      "sidebar thread";
-  }
-  .chalk-app--phase08b.chalk-app--thread-open .chalk-main,
-  .chalk-app--phase08b.chalk-app--thread-open .chalk-footer {
-    display: none;
-  }
-}
+/* Mobile thread layout lives in the mobile section at the end of this
+   file -- the old rule here kept a 220px sidebar column, which no longer
+   exists once the roster becomes a drawer. */
 
 /* ============================================================
    Phase 10d: unread indicator suffix
@@ -5374,4 +5360,312 @@ html, body {
   margin: 0;
   color: var(--chalk-fg-dim);
   font-size: var(--chalk-size-body);
+}
+
+/* ============================================================
+   Mobile layout (<= 767px)
+   ============================================================
+   The desktop shell is a 220px roster column beside the messages. On a
+   phone that leaves ~110px for the message column, and the three-column
+   message grid (time / sender / body) squeezes the body to about one
+   character wide -- text renders as a vertical stripe.
+
+   The fix is a different layout, not smaller type:
+
+     - the shell drops to one column (header / main / footer) and the
+       roster becomes an off-canvas drawer over the messages, toggled by
+       the ☰ button in the header (App.tsx renders it via useIsMobile;
+       the breakpoint below must stay in sync with src/mobile.ts);
+     - message rows put time + sender on their own line and give the
+       body the full width;
+     - thread panel and modals go full-screen instead of side-by-side;
+     - safe-area insets keep content clear of the notch and the home
+       indicator, and form controls sit at 16px so iOS doesn't zoom the
+       viewport when a field takes focus.
+
+   This section is last in the file on purpose: every rule here has to
+   win over the desktop rule it replaces without an !important or a
+   specificity hack.
+   ============================================================ */
+
+/* Drawer chrome. Only rendered on mobile (App.tsx gates it on
+   useIsMobile), so these live outside the media query -- the elements
+   simply don't exist on desktop. */
+.chalk-nav-toggle {
+  background: transparent;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  color: var(--chalk-fg-bright);
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.chalk-nav-toggle:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 1px;
+}
+
+.chalk-nav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.chalk-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--chalk-s2) var(--chalk-s3) var(--chalk-s3);
+  border-bottom: 1px solid var(--chalk-border);
+  margin-bottom: var(--chalk-s2);
+}
+
+.chalk-drawer-title {
+  color: var(--chalk-fg-bright);
+  letter-spacing: 0.08em;
+}
+
+.chalk-drawer-close {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-dim);
+  font-family: inherit;
+  font-size: 18px;
+  line-height: 1;
+  padding: var(--chalk-s2);
+  cursor: pointer;
+}
+
+.chalk-drawer-close:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 1px;
+}
+
+@media (max-width: 767px) {
+  /* -- shell ------------------------------------------------------- */
+
+  .chalk-app,
+  .chalk-app--phase08b,
+  .chalk-app--phase08b.chalk-app--thread-open {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "header"
+      "main"
+      "footer";
+    column-gap: 0;
+    max-width: none;
+    padding-left: max(var(--chalk-s2), env(safe-area-inset-left));
+    padding-right: max(var(--chalk-s2), env(safe-area-inset-right));
+  }
+
+  /* -- roster drawer ------------------------------------------------ */
+
+  .chalk-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 50;
+    width: min(84vw, 320px);
+    padding: max(var(--chalk-s3), env(safe-area-inset-top)) 0
+             max(var(--chalk-s3), env(safe-area-inset-bottom)) 0;
+    background: var(--chalk-bg);
+    border-right: 1px solid var(--chalk-border);
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.6);
+    transform: translateX(-100%);
+    /* visibility (not just the transform) keeps the closed drawer out of
+       the tab order -- otherwise Tab from the header walks into an
+       off-screen roster. */
+    visibility: hidden;
+    transition: transform 160ms ease, visibility 160ms ease;
+    /* Scrolling the roster must not chain into the message list behind it. */
+    overscroll-behavior: contain;
+  }
+
+  .chalk-app--nav-open .chalk-sidebar {
+    transform: none;
+    visibility: visible;
+  }
+
+  .chalk-sidebar-item {
+    /* Comfortable touch target; the desktop padding gives ~28px. */
+    min-height: 44px;
+  }
+
+  /* -- header ------------------------------------------------------- */
+
+  .chalk-header {
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--chalk-s2);
+    padding: max(var(--chalk-s2), env(safe-area-inset-top)) 0 var(--chalk-s2) 0;
+  }
+
+  .chalk-header-left {
+    align-items: center;
+    gap: var(--chalk-s2);
+  }
+
+  .chalk-header h1 {
+    font-size: 16px;
+  }
+
+  /* Connection detail text ("connected to ...") is the first thing to go
+     when the header has to fit next to the ☰ button. */
+  .chalk-status-detail {
+    display: none;
+  }
+
+  /* -- messages ------------------------------------------------------ */
+
+  .chalk-main {
+    padding: var(--chalk-s2) 0;
+    overflow-x: hidden;
+  }
+
+  .chalk-channel-header {
+    flex-wrap: wrap;
+    gap: var(--chalk-s1);
+    padding-bottom: var(--chalk-s2);
+    margin-bottom: var(--chalk-s2);
+  }
+
+  /* Two lines per message: meta above, full-width body below. The
+     desktop `time | sender | body` columns are what collapse the body on
+     a narrow viewport. */
+  .chalk-message {
+    grid-template-columns: auto 1fr;
+    column-gap: var(--chalk-s2);
+    padding: var(--chalk-s1) 0;
+  }
+
+  .chalk-message--no-time {
+    grid-template-columns: 1fr;
+  }
+
+  .chalk-message-time {
+    grid-column: 1;
+  }
+
+  .chalk-message-sender {
+    grid-column: 2;
+  }
+
+  .chalk-message-body,
+  .chalk-message-giphy,
+  .chalk-message-attachments,
+  .chalk-message--no-time .chalk-message-giphy,
+  .chalk-message--no-time .chalk-message-attachments {
+    grid-column: 1 / -1;
+    /* Desktop pulls media up beside the sender; here the meta line is a
+       row of its own, so media starts where the body would. */
+    margin-top: 0;
+  }
+
+  .chalk-message-body {
+    /* A pasted URL is one unbreakable token; let it break anywhere rather
+       than push the whole column wider than the screen. */
+    overflow-wrap: anywhere;
+  }
+
+  .chalk-message-thread-meta,
+  .chalk-messages--no-time .chalk-message-thread-meta {
+    padding-left: var(--chalk-s2);
+  }
+
+  /* -- composer ------------------------------------------------------ */
+
+  .chalk-footer {
+    padding: var(--chalk-s2) 0 max(var(--chalk-s2), env(safe-area-inset-bottom)) 0;
+  }
+
+  .chalk-composer-input {
+    min-width: 0;
+  }
+
+  .chalk-composer-send {
+    padding: 0 var(--chalk-s3);
+  }
+
+  .chalk-composer-tools {
+    flex-wrap: wrap;
+  }
+
+  .chalk-composer-tool {
+    min-height: 36px;
+  }
+
+  /* iOS zooms the viewport when a focused control renders below 16px,
+     and never zooms back out. Every field pays the 2px to avoid it. */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  /* -- thread panel: full screen instead of a third column ----------- */
+
+  .chalk-app--phase08b.chalk-app--thread-open .chalk-thread-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    border-left: none;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* -- modals -------------------------------------------------------- */
+
+  .chalk-modal-backdrop {
+    padding: var(--chalk-s2);
+  }
+
+  .chalk-modal,
+  .chalk-modal-card {
+    /* min-width: 360px alone overflows a 360px viewport once the backdrop
+       padding is counted. */
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+    max-height: 88dvh;
+  }
+
+  .chalk-modal-body {
+    padding: var(--chalk-s3);
+  }
+
+  .chalk-modal-close {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* Touch devices have no hover, so the hover-revealed row actions would be
+   unreachable. Show them permanently instead. They are absolutely
+   positioned over the meta line, which is shorter than they are, so the
+   meta cells also get a floor height -- otherwise the buttons sit on top
+   of the message's first line of text. */
+@media (hover: none) and (max-width: 767px) {
+  .chalk-message-reply,
+  .chalk-message-delete {
+    opacity: 1;
+    pointer-events: auto;
+    font-size: 11px;
+    padding: 1px 6px;
+  }
+
+  .chalk-message-time,
+  .chalk-message-sender {
+    min-height: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chalk-sidebar {
+    transition: none;
+  }
 }

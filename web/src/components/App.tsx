@@ -14,6 +14,7 @@
 //   - On open_create_modal, if friends not yet loaded, fire friend_list.
 
 import { resolveNickHue } from "../chat/nickcolor";
+import { useIsMobile } from "../mobile";
 import { useCallback, useEffect, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
@@ -312,6 +313,24 @@ export function App() {
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [resharing, setResharing] = useState(false);
   const [rotating, setRotating] = useState(false);
+
+  // Mobile: below the phone breakpoint the roster stops being a column and
+  // becomes a drawer over the message list. Desktop never reads navOpen, but
+  // reset it when we widen so a drawer left open on a phone-sized window
+  // doesn't come back as a stuck overlay after a resize.
+  const isMobile = useIsMobile();
+  const [navOpen, setNavOpen] = useState(false);
+  useEffect(() => {
+    if (!isMobile) setNavOpen(false);
+  }, [isMobile]);
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setNavOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navOpen]);
 
   // Phase 22c-3c: identity gate. After the WS welcomes us we know the
   // userID; check whether this device already has the user's encryption
@@ -2236,16 +2255,32 @@ export function App() {
 
 
   return (
-    <div class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""}`}>
+    <div
+      class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${isMobile ? "chalk-app--mobile" : ""} ${navOpen ? "chalk-app--nav-open" : ""}`}
+    >
       <header class="chalk-header">
         <div class="chalk-header-left">
+          {isMobile && (
+            <button
+              type="button"
+              class="chalk-nav-toggle"
+              aria-label={navOpen ? "close channel list" : "open channel list"}
+              aria-expanded={navOpen}
+              aria-controls="chalk-roster"
+              data-testid="nav-toggle"
+              onClick={() => setNavOpen((open) => !open)}
+            >
+              ☰
+            </button>
+          )}
           <h1>chalk</h1>
           {/* Pop chalk out into its own right-sized window. Hidden when we
               ARE the pop-out (window.opener is set), so the button doesn't
               invite spawning windows from windows. No noopener here on
               purpose: the child needs window.opener for that check, and it's
               same-origin anyway. */}
-          {typeof window !== "undefined" && window.opener == null && (
+          {/* Pop-out is desktop-only; a phone has no second window to pop into. */}
+          {!isMobile && typeof window !== "undefined" && window.opener == null && (
             <button
               type="button"
               class="chalk-popout"
@@ -2292,7 +2327,31 @@ export function App() {
         />
       </header>
 
-      <aside class="chalk-sidebar">
+      {isMobile && navOpen && (
+        <div
+          class="chalk-nav-backdrop"
+          data-testid="nav-backdrop"
+          onClick={() => setNavOpen(false)}
+        />
+      )}
+
+      <aside class="chalk-sidebar" id="chalk-roster">
+        {/* The open drawer covers the header, so it carries its own close
+            control instead of relying on the ☰ button behind it. */}
+        {isMobile && (
+          <div class="chalk-drawer-head">
+            <span class="chalk-drawer-title">chalk</span>
+            <button
+              type="button"
+              class="chalk-drawer-close"
+              aria-label="close channel list"
+              data-testid="nav-close"
+              onClick={() => setNavOpen(false)}
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <Sidebar
           // Phase 9.7f: nick colors in the roster context menu. hueForHandle
           // reports what a handle currently renders as (explicit pick, else
@@ -2328,6 +2387,9 @@ export function App() {
           voiceRosters={state.voiceRosters}
           onSelect={(id) => {
             dispatch({ kind: "set_active_channel", channelID: id });
+            // On mobile the roster covers the conversation, so picking one
+            // has to hand the screen back.
+            setNavOpen(false);
             // 30-5c click-to-join (Addendum C, core): selecting a voice
             // room connects to it, Discord-style; selecting a different
             // voice room moves you (session.join handles the move, and
@@ -2353,8 +2415,14 @@ export function App() {
               });
             }
           }}
-          onFriendClick={handleFriendClickInRoster}
-          onCreateClick={() => dispatch({ kind: "open_create_modal" })}
+          onFriendClick={(friendUserID) => {
+            setNavOpen(false);
+            handleFriendClickInRoster(friendUserID);
+          }}
+          onCreateClick={() => {
+            setNavOpen(false);
+            dispatch({ kind: "open_create_modal" });
+          }}
         />
         {/* 30-5c: the persistent-call dock -- app-level audio sinks + the
             Discord-style connection bar. Renders nothing while idle. */}
