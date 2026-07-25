@@ -310,10 +310,16 @@ func (d *HTTPDeps) handleRegisterBegin(w http.ResponseWriter, r *http.Request) {
 			"username must match ^[a-z0-9_]{3,32}$")
 		return
 	}
-	if IsReservedUsername(username) && username != strings.ToLower(d.AdminUsername) {
-		writeError(w, http.StatusConflict, "username_reserved",
-			"that username is reserved")
-		return
+	if IsReservedUsername(username) {
+		// 31-11: legacy passkey registration cannot carry the bootstrap
+		// token (no field in its begin shape) -- so the admin username is
+		// simply not claimable on this path. The admin enrolls via the v2
+		// wizard; this endpoint remains for invite-based signups.
+		if username != strings.ToLower(d.AdminUsername) || !adminBootstrapOK("") {
+			writeError(w, http.StatusConflict, "username_reserved",
+				"that username is reserved")
+			return
+		}
 	}
 	// sub-step 4 fix1: dev-mode email fill
 	// In CHALK_DEV mode, treat an empty email as a request to

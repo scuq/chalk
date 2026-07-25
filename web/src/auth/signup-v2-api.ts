@@ -44,6 +44,7 @@ export interface SignupV2BeginInput {
   display_name?: string;
   email?: string;
   invite_token?: string;
+  admin_token?: string;
 }
 
 export interface SignupV2BeginResult {
@@ -54,6 +55,17 @@ export interface SignupV2BeginResult {
 }
 
 export async function signupV2Begin(input: SignupV2BeginInput): Promise<SignupV2BeginResult> {
+  // 31-11: an admin bootstrap URL (https://host/?admin_token=...) carries
+  // the one-shot token that authorizes claiming the reserved admin
+  // username. Attach it silently; the server ignores it for other names.
+  if (!input.admin_token) {
+    try {
+      const t = new URLSearchParams(window.location.search).get("admin_token");
+      if (t) input = { ...input, admin_token: t };
+    } catch {
+      /* non-browser test envs */
+    }
+  }
   const resp = await fetch("/api/auth/register/v2/begin", {
     method: "POST",
     credentials: "same-origin",

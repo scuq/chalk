@@ -123,6 +123,9 @@ func (c *SignupV2Cache) Take(token string) {
 
 type signupV2BeginRequest struct {
 	InviteToken string `json:"invite_token,omitempty"`
+	// 31-11: required (with CHALK_ADMIN_BOOTSTRAP_TOKEN) to claim the
+	// reserved admin username; ignored for every other username.
+	AdminToken  string `json:"admin_token,omitempty"`
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name,omitempty"`
 	Email       string `json:"email,omitempty"`
@@ -163,10 +166,14 @@ func (d *HTTPDeps) handleSignupV2Begin(w http.ResponseWriter, r *http.Request) {
 			"username must match ^[a-z0-9_]{3,32}$")
 		return
 	}
-	if IsReservedUsername(username) && username != strings.ToLower(d.AdminUsername) {
-		writeError(w, http.StatusConflict, "username_reserved",
-			"that username is reserved")
-		return
+	if IsReservedUsername(username) {
+		// 31-11: the admin exemption additionally demands the one-shot
+		// bootstrap token. Fail closed when the env token is unset.
+		if username != strings.ToLower(d.AdminUsername) || !adminBootstrapOK(req.AdminToken) {
+			writeError(w, http.StatusConflict, "username_reserved",
+				"that username is reserved")
+			return
+		}
 	}
 	if email == "" && IsDevMode() {
 		email = username + "@localhost.invalid"

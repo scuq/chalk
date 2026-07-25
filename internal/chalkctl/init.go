@@ -141,7 +141,7 @@ func Init(o InitOptions) error {
 	//   - --force WITHOUT --drop-db: PRESERVE the existing secrets from the
 	//     current env file, or the running DB (with its old password) would
 	//     reject the newly-generated one.
-	var pg, turn string
+	var pg, turn, totp, adminBoot string
 	preserve := o.Force && initialized && !o.DropDB
 	if preserve {
 		existing, rerr := readEnvSecrets(o.EnvPath)
@@ -150,10 +150,26 @@ func Init(o InitOptions) error {
 		}
 		pg = existing["CHALK_PG_PASSWORD"]
 		turn = existing["CHALK_TURN_SECRET"]
+		totp = existing["CHALK_TOTP_ENC_KEY"]
 		if pg == "" {
 			return fmt.Errorf("--force: no CHALK_PG_PASSWORD found in %s to preserve; use --drop-db to regenerate", o.EnvPath)
 		}
 		o.logf("preserving existing DB/TURN secrets")
+		// 31-10: deployments initialized before auth v2 have no TOTP key.
+		// Generate one on upgrade -- safe, because no TOTP secrets can
+		// exist yet without it. A PRESENT key is always preserved.
+		if totp == "" {
+			if totp, err = genTOTPEncKey(); err != nil {
+				return err
+			}
+			o.logf("generating CHALK_TOTP_ENC_KEY (auth v2 upgrade)")
+		}
+		adminBoot = existing["CHALK_ADMIN_BOOTSTRAP_TOKEN"]
+		if adminBoot == "" {
+			if adminBoot, err = genSecret(24); err != nil {
+				return err
+			}
+		}
 	} else {
 		if pg, err = genSecret(24); err != nil {
 			return err
@@ -162,6 +178,12 @@ func Init(o InitOptions) error {
 			if turn, err = genSecret(24); err != nil {
 				return err
 			}
+		}
+		if totp, err = genTOTPEncKey(); err != nil {
+			return err
+		}
+		if adminBoot, err = genSecret(24); err != nil {
+			return err
 		}
 	}
 	self, err := os.Executable()
@@ -172,18 +194,20 @@ func Init(o InitOptions) error {
 	}
 
 	p := InitParams{
-		Domain:       cfg.Domain,
-		Image:        cfg.Image,
-		Version:      o.Version,
-		Digest:       digest,
-		PostgresTag:  cfg.PostgresTag,
-		CaddyTag:     cfg.CaddyTag,
-		CoturnTag:    cfg.CoturnTag,
-		TurnVerbose:  cfg.TurnVerbose,
-		VoiceEnabled: cfg.VoiceEnabled,
-		PGPassword:   pg,
-		TurnSecret:   turn,
-		ChalkctlPath: self,
+		Domain:              cfg.Domain,
+		Image:               cfg.Image,
+		Version:             o.Version,
+		Digest:              digest,
+		PostgresTag:         cfg.PostgresTag,
+		CaddyTag:            cfg.CaddyTag,
+		CoturnTag:           cfg.CoturnTag,
+		TurnVerbose:         cfg.TurnVerbose,
+		VoiceEnabled:        cfg.VoiceEnabled,
+		PGPassword:          pg,
+		TurnSecret:          turn,
+		TOTPEncKey:          totp,
+		AdminBootstrapToken: adminBoot,
+		ChalkctlPath:        self,
 
 		AdminUsername:        cfg.AdminUsername,
 		AdminEmail:           cfg.AdminEmail,
@@ -329,8 +353,9 @@ func Init(o InitOptions) error {
 	}
 
 	fmt.Fprintf(o.Out, "\ndone. https://%s should serve once Caddy issues its cert.\n", cfg.Domain)
-	fmt.Fprintf(o.Out, "admin: open https://%s and enroll a passkey for %q (no password -- passkeys only).\n",
-		cfg.Domain, cfg.AdminUsername)
+	fmt.Fprintf(o.Out, "admin: create the %q account (password + TOTP; passkeys optional, add one in your profile) at:\n", cfg.AdminUsername)
+	fmt.Fprintf(o.Out, "       https://%s/?admin_token=%s\n", cfg.Domain, adminBoot)
+	fmt.Fprintf(o.Out, "       (one-shot: the token stops working the moment the admin account exists)\n")
 	if cfg.OpenRegistration {
 		fmt.Fprintf(o.Out, "note: open registration is ON so friends can sign up; set CHALK_OPEN_REGISTRATION=false + restart once everyone's in.\n")
 	}

@@ -170,6 +170,7 @@ func TestRenderAllTemplates(t *testing.T) {
 		Version: "v0.1.0", Digest: "sha256:deadbeef",
 		PostgresTag: "18-alpine", CaddyTag: "2-alpine",
 		VoiceEnabled: true, PGPassword: "PGSECRET", TurnSecret: "TURNSECRET",
+		TOTPEncKey: "TOTPKEYX", AdminBootstrapToken: "ADMINBOOTX",
 		ChalkctlPath:  "/usr/local/bin/chalkctl",
 		AdminUsername: "admin", AdminEmail: "admin@example.org", OpenRegistration: true,
 		CoturnTag: "4.14.0-r0-alpine", TurnVerbose: true,
@@ -196,7 +197,9 @@ func TestRenderAllTemplates(t *testing.T) {
 	}
 	env, _ := renderTemplate("chalk.env", p)
 	if !strings.Contains(string(env), "CHALK_PG_PASSWORD=PGSECRET") ||
-		!strings.Contains(string(env), "CHALK_TURN_SECRET=TURNSECRET") {
+		!strings.Contains(string(env), "CHALK_TURN_SECRET=TURNSECRET") ||
+		!strings.Contains(string(env), "CHALK_TOTP_ENC_KEY=TOTPKEYX") ||
+		!strings.Contains(string(env), "CHALK_ADMIN_BOOTSTRAP_TOKEN=ADMINBOOTX") {
 		t.Error("env file missing secrets")
 	}
 	// DB URL must be a LITERAL in the env file (password inlined), never a

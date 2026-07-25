@@ -10,18 +10,20 @@ import (
 
 // InitParams is the data model every template renders against.
 type InitParams struct {
-	Domain       string
-	Image        string // ghcr.io/owner/chalk (no tag)
-	Version      string // v0.1.0 (for comment provenance)
-	Digest       string // sha256:... (the pin)
-	PostgresTag  string
-	CaddyTag     string
-	CoturnTag    string
-	TurnVerbose  bool
-	VoiceEnabled bool
-	PGPassword   string // secret -> env file only
-	TurnSecret   string // secret -> env file only (voice)
-	ChalkctlPath string // absolute path to this binary (update timer)
+	Domain              string
+	Image               string // ghcr.io/owner/chalk (no tag)
+	Version             string // v0.1.0 (for comment provenance)
+	Digest              string // sha256:... (the pin)
+	PostgresTag         string
+	CaddyTag            string
+	CoturnTag           string
+	TurnVerbose         bool
+	VoiceEnabled        bool
+	PGPassword          string // secret -> env file only
+	TurnSecret          string // secret -> env file only (voice)
+	TOTPEncKey          string // secret -> env file only (auth v2 TOTP at-rest key)
+	AdminBootstrapToken string // secret -> env file only (one-shot admin claim)
+	ChalkctlPath        string // absolute path to this binary (update timer)
 
 	// WebAuthn + admin seed + bootstrap + optional knobs (env file).
 	AdminUsername        string
