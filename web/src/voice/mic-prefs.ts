@@ -1,0 +1,168 @@
+// chalk-web -- per-device microphone capture preferences.
+//
+// Phase 30 Addendum A3/A4 (the vv-5 audio engine). Per-device for the same
+// reason the notification volume is: which mic you own, how hot it runs and
+// how noisy the room is are properties of the machine, not of the account.
+// A gain that rescues a quiet headset at a desk would clip a laptop's built-in
+// array. So: localStorage, same shape as notify/prefs.ts, never near the server.
+//
+// The pure half (normalizeMicPrefs, micConstraints) is unit-tested; the
+// localStorage wrappers around it are not, which is the convention the display
+// and sound prefs already set.
+
+import { useCallback, useEffect, useState } from "preact/hooks";
+
+export interface MicPrefs {
+  /** "" means the system default device, whatever it happens to be today. */
+  deviceId: string;
+  /** Post-capture gain, 1 = unity. Applied by the Web Audio graph, not the browser. */
+  gain: number;
+  echoCancellation: boolean;
+  /** The browser's built-in suppressor (WebRTC NS3). */
+  noiseSuppression: boolean;
+  autoGainControl: boolean;
+}
+
+const STORAGE_KEY = "chalk.mic.v1";
+
+// Clamp bounds rather than an enum. 2x is the ceiling because gain is applied
+// before the encoder: beyond roughly 2x a normal speaking voice clips, and a
+// clipped signal is unrecoverable at the far end where a quiet one is merely
+// quiet. The slider is the wrong place to let someone destroy their own audio.
+export const MIN_GAIN = 0;
+export const MAX_GAIN = 2;
+
+// Everything the browser offers is on out of the box, which is also what
+// getUserMedia({audio: true}) did before this existed -- so an existing user's
+// first call after upgrading sounds exactly like their last one before it.
+export const DEFAULT_MIC_PREFS: MicPrefs = {
+  deviceId: "",
+  gain: 1,
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+};
+
+function boolOr(v: unknown, fallback: boolean): boolean {
+  return typeof v === "boolean" ? v : fallback;
+}
+
+// normalizeMicPrefs fills in every field from a possibly-partial,
+// possibly-garbage stored value. Total by construction: this entry is
+// user-editable and survives upgrades, and a throw here would take the profile
+// panel and every voice join down with it.
+export function normalizeMicPrefs(raw: unknown): MicPrefs {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ...DEFAULT_MIC_PREFS };
+  const o = raw as Record<string, unknown>;
+
+  const n = typeof o.gain === "number" ? o.gain : Number(o.gain);
+  const gain = Number.isFinite(n)
+    ? Math.min(MAX_GAIN, Math.max(MIN_GAIN, n))
+    : DEFAULT_MIC_PREFS.gain;
+
+  return {
+    deviceId: typeof o.deviceId === "string" ? o.deviceId : DEFAULT_MIC_PREFS.deviceId,
+    gain,
+    echoCancellation: boolOr(o.echoCancellation, DEFAULT_MIC_PREFS.echoCancellation),
+    noiseSuppression: boolOr(o.noiseSuppression, DEFAULT_MIC_PREFS.noiseSuppression),
+    autoGainControl: boolOr(o.autoGainControl, DEFAULT_MIC_PREFS.autoGainControl),
+  };
+}
+
+/**
+ * micConstraints builds the getUserMedia audio constraints for these prefs.
+ *
+ * deviceId is omitted entirely when empty rather than sent as "": an exact
+ * empty id matches no device and the capture fails outright, where omitting it
+ * means "system default", which is what an empty pref means.
+ *
+ * The device is a plain (non-`exact`) hint on purpose. A saved device that has
+ * since been unplugged should fall back to the default rather than fail the
+ * join -- losing your good mic shouldn't lock you out of the call.
+ *
+ * This is also where the "never stack suppressors" rule from Addendum A2 will
+ * live: when the RNNoise worklet lands, this must emit noiseSuppression:false
+ * so NS3 and RNNoise don't fight and over-suppress. echoCancellation stays on
+ * regardless -- RNNoise suppresses noise, it does not cancel echo.
+ */
+export function micConstraints(prefs: MicPrefs): MediaTrackConstraints {
+  const c: MediaTrackConstraints = {
+    echoCancellation: prefs.echoCancellation,
+    noiseSuppression: prefs.noiseSuppression,
+    autoGainControl: prefs.autoGainControl,
+  };
+  if (prefs.deviceId) c.deviceId = prefs.deviceId;
+  return c;
+}
+
+/**
+ * needsRecapture reports whether moving from `a` to `b` requires a new
+ * getUserMedia. Gain alone is a graph parameter and applies instantly; the
+ * device and the three processing flags are properties of the capture itself.
+ */
+export function needsRecapture(a: MicPrefs, b: MicPrefs): boolean {
+  return (
+    a.deviceId !== b.deviceId ||
+    a.echoCancellation !== b.echoCancellation ||
+    a.noiseSuppression !== b.noiseSuppression ||
+    a.autoGainControl !== b.autoGainControl
+  );
+}
+
+export function loadMicPrefs(): MicPrefs {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_MIC_PREFS };
+    return normalizeMicPrefs(JSON.parse(raw));
+  } catch {
+    // Private-browsing localStorage throws, and a corrupt entry throws in
+    // JSON.parse. Neither is worth failing a call over.
+    return { ...DEFAULT_MIC_PREFS };
+  }
+}
+
+// Same-tab listeners, for the same reason as notify/prefs.ts: the `storage`
+// event deliberately does not fire in the tab that wrote, so it alone would let
+// the profile panel change the gain while the live call in that very tab never
+// hears about it.
+const listeners = new Set<(prefs: MicPrefs) => void>();
+
+export function saveMicPrefs(prefs: MicPrefs): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+  } catch {
+    // The setting just won't survive a reload. Listeners still fire, so it
+    // holds for this session -- including for the call that's running now.
+  }
+  for (const fn of listeners) fn(prefs);
+}
+
+/** subscribeMicPrefs reports every change, from this tab or another one. */
+export function subscribeMicPrefs(onChange: (prefs: MicPrefs) => void): () => void {
+  listeners.add(onChange);
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === STORAGE_KEY) onChange(loadMicPrefs());
+  };
+  if (typeof window !== "undefined") window.addEventListener("storage", onStorage);
+  return () => {
+    listeners.delete(onChange);
+    if (typeof window !== "undefined") window.removeEventListener("storage", onStorage);
+  };
+}
+
+export function useMicPrefs(): [MicPrefs, (patch: Partial<MicPrefs>) => void] {
+  const [prefs, setPrefs] = useState<MicPrefs>(loadMicPrefs);
+
+  const update = useCallback((patch: Partial<MicPrefs>) => {
+    setPrefs((prev) => {
+      const next = normalizeMicPrefs({ ...prev, ...patch });
+      saveMicPrefs(next);
+      return next;
+    });
+  }, []);
+
+  // A second tab on the same device is the same device.
+  useEffect(() => subscribeMicPrefs(setPrefs), []);
+
+  return [prefs, update];
+}

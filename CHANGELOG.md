@@ -10,6 +10,20 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Microphone settings.** There's a microphone section in your profile now.
+  Pick which mic to use when you have more than one, set the input volume by
+  hand when yours is too quiet or too hot, and switch echo cancellation, noise
+  suppression and automatic gain control on or off. Press test to watch a level
+  meter while you talk — drag the volume until you're filling most of the bar
+  without turning it red. Everything applies to a call you're already in, so
+  you can fix a mic mid-conversation without leaving and rejoining, and the
+  settings stay on the device rather than following you between machines.
+
+---
+
 ## v0.3.40 — 26 July 2026 — Notification sounds
 
 ### Added

@@ -121,6 +121,14 @@ import {
   type IceSignal,
   type FingerprintContext,
 } from "./signal-crypto";
+import { MicChain } from "./mic-chain";
+import {
+  DEFAULT_MIC_PREFS,
+  loadMicPrefs,
+  micConstraints,
+  needsRecapture,
+  type MicPrefs,
+} from "./mic-prefs";
 
 // ---- knobs (30-8: video caps are DYNAMIC -- see ./adaptive) ----------------
 //
@@ -229,7 +237,7 @@ function peerKey(userID: string, deviceID: string): string {
  * nothing to most users; the fix is almost always a browser permission
  * toggle or a missing/busy device.
  */
-function describeMediaError(device: "microphone" | "camera", err: unknown): string {
+export function describeMediaError(device: "microphone" | "camera", err: unknown): string {
   const name = (err as DOMException)?.name ?? "";
   switch (name) {
     case "NotAllowedError":
@@ -315,6 +323,10 @@ export class VoiceCall {
   private readonly selfKey: string;
   private readonly peers = new Map<string, Peer>();
   private localStream: MediaStream | null = null;
+  /** 41-2: the mic graph. Owns the real capture; localStream carries its output. */
+  private micChain: MicChain | null = null;
+  /** The prefs the current capture was opened with, to diff incoming changes. */
+  private micPrefs: MicPrefs = DEFAULT_MIC_PREFS;
   private iceServers: RTCIceServer[] = [];
   private forceRelay = false;
   // IPv4-only candidate filtering: drops IPv6 candidates (local and remote)
@@ -465,26 +477,42 @@ export class VoiceCall {
   async join(): Promise<void> {
     if (this.joined || this.closed) return;
     // Media first: if the mic is denied there is no point entering the room.
+    //
+    // 41-2: the mic is still captured together with the camera in ONE
+    // getUserMedia -- asking separately would mean two permission prompts on a
+    // user's first join. Only the audio half is then handed to the graph.
+    this.micPrefs = loadMicPrefs();
+    const audio = micConstraints(this.micPrefs);
+    let captured: MediaStream;
     try {
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: true,
-      });
-      this.hasVideo = this.localStream.getVideoTracks().length > 0;
+      captured = await navigator.mediaDevices.getUserMedia({ audio, video: true });
+      this.hasVideo = captured.getVideoTracks().length > 0;
     } catch (err) {
       // Camera denied/absent but the mic may be fine: degrade to audio-only
       // rather than failing the join (design §8 permission handling). A bare
       // mic-denial still aborts.
       try {
-        this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        captured = await navigator.mediaDevices.getUserMedia({ audio });
         this.hasVideo = false;
-        this.o.callbacks.onError(
-          describeMediaError("camera", err) + " — joined audio-only",
-        );
+        this.o.callbacks.onError(describeMediaError("camera", err) + " — joined audio-only");
       } catch (err2) {
         throw new Error(describeMediaError("microphone", err2));
       }
     }
+
+    // The chain takes ownership of the audio half; the camera track stays with
+    // the call. If the graph cannot be built at all (no Web Audio), publish the
+    // raw mic instead -- a call without a gain slider beats no call.
+    const micStream = new MediaStream(captured.getAudioTracks());
+    try {
+      this.micChain = await MicChain.fromStream(micStream, this.micPrefs);
+    } catch (err) {
+      this.diag(`mic graph unavailable, publishing raw capture: ${String(err)}`);
+    }
+    this.localStream = new MediaStream([
+      this.micChain ? this.micChain.track : micStream.getAudioTracks()[0],
+      ...captured.getVideoTracks(),
+    ]);
     // Camera OFF by default: disable the track so no LED lights and nothing
     // is sent until the user toggles it on.
     this.videoEnabled = false;
@@ -562,11 +590,50 @@ export class VoiceCall {
 
   // ---- local media toggles -------------------------------------------------
 
-  /** setMuted flips the mic track and broadcasts voice_state. */
+  /**
+   * setMuted gates the mic and broadcasts voice_state.
+   *
+   * 41-2: the gating happens at the RAW capture inside the chain, not on the
+   * published track -- see MicChain.setMuted. The fallback covers a chain that
+   * failed to build, where localStream carries the raw track directly.
+   */
   setMuted(muted: boolean): void {
     this.muted = muted;
-    for (const t of this.localStream?.getAudioTracks() ?? []) t.enabled = !muted;
+    if (this.micChain) this.micChain.setMuted(muted);
+    else for (const t of this.localStream?.getAudioTracks() ?? []) t.enabled = !muted;
     this.broadcastState();
+  }
+
+  /**
+   * applyMicPrefs (41-4) pushes a profile-panel change into the live call.
+   *
+   * Gain is a graph parameter and applies instantly. The device and the
+   * processing flags are properties of the capture, so they need a new
+   * getUserMedia -- but because the published track belongs to the graph's
+   * destination node, swapping the mic underneath needs NO renegotiation and
+   * no replaceTrack on any peer. If the new capture fails (device unplugged,
+   * busy, permission revoked) the old one is kept and the user is told.
+   */
+  async applyMicPrefs(next: MicPrefs): Promise<void> {
+    if (this.closed || !this.micChain) return;
+    const prev = this.micPrefs;
+    this.micPrefs = next;
+    this.micChain.setGain(next.gain);
+    if (!needsRecapture(prev, next)) return;
+    try {
+      await this.micChain.recapture(next);
+      this.diag(`mic recaptured: device=${next.deviceId || "default"}`);
+    } catch (err) {
+      this.micPrefs = prev;
+      this.o.callbacks.onError(
+        describeMediaError("microphone", err) + " — kept the previous microphone",
+      );
+    }
+  }
+
+  /** The current mic level, 0..1, post-gain. Null when there is no capture. */
+  micLevel(): number | null {
+    return this.micChain ? this.micChain.level() : null;
   }
 
   /**
@@ -1494,6 +1561,10 @@ export class VoiceCall {
 
   private stopLocalMedia(): void {
     for (const t of this.localStream?.getTracks() ?? []) t.stop();
+    // The chain holds the real mic: stopping localStream's tracks only stops
+    // the graph's output, leaving the device (and its indicator light) live.
+    void this.micChain?.close();
+    this.micChain = null;
     this.localStream = null;
     this.o.callbacks.onLocalStream(null);
     if (this.screenStream) {

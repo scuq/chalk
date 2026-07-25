@@ -46,6 +46,7 @@ import { FONT_CHOICES, SCALE_STEPS, useDisplayPrefs } from "../display-prefs";
 import { notifySounds } from "../notify";
 import { useSoundPrefs } from "../notify/prefs";
 import { CATEGORY_LABELS, SOUND_CATEGORIES } from "../notify/types";
+import { MicSettings } from "./MicSettings"; // 41-3
 import { SecurityPanel } from "./SecurityPanel"; // 31-8
 import { VersionLink } from "./VersionLink"; // 39-1
 import { performRegistration, WebAuthnError } from "../webauthn";
@@ -799,6 +800,11 @@ export function ProfilePanel({
               </p>
             </div>
           </section>
+
+          {/* 41-3: microphone capture settings. Own component -- it owns a
+              live audio graph and a rAF meter loop, which does not belong in
+              the middle of a form. Per-device, same as the sounds above. */}
+          <MicSettings />
 
           {/* att-2: storage -- clear the cached attachment ciphertext. */}
           {onClearImageCache && (

@@ -26,6 +26,7 @@ import type { ChannelCrypto } from "../crypto/channel-crypto";
 import { loadIdentity } from "../crypto/idb";
 import { voiceBus } from "./bus";
 import { VoiceCall, type VoiceDiagnostics, type ScreenShareMode } from "./call";
+import { subscribeMicPrefs } from "./mic-prefs";
 export type { ScreenShareMode } from "./call";
 
 // ---- per-peer local audio prefs (Addendum A: A1 + the element-volume
@@ -187,6 +188,8 @@ export interface JoinArgs {
 
 class VoiceSessionImpl {
   private call: VoiceCall | null = null;
+  /** 41-4: unsubscribe from mic prefs, live only for the duration of a call. */
+  private micUnsub: (() => void) | null = null;
   private listeners = new Set<() => void>();
   private s: VoiceSessionSnap = {
     phase: "idle",
@@ -350,6 +353,13 @@ class VoiceSessionImpl {
         },
       });
       this.call = call;
+      // 41-4: follow the profile panel for as long as this call lives, so a
+      // gain drag or a device swap lands on the running call instead of
+      // waiting for the next one. Subscribed before join() so a change made
+      // while the handshake is in flight is not lost.
+      this.micUnsub = subscribeMicPrefs((prefs) => {
+        void this.call?.applyMicPrefs(prefs);
+      });
       await call.join();
       this.set({
         phase: "in-call",
@@ -369,6 +379,7 @@ class VoiceSessionImpl {
       const raw = String(err instanceof Error ? err.message : err);
       const dead = this.call;
       this.call = null;
+      this.stopMicWatch();
       if (dead) void dead.leave();
       this.set({
         phase: "idle",
@@ -382,6 +393,20 @@ class VoiceSessionImpl {
     }
   }
 
+  private stopMicWatch(): void {
+    this.micUnsub?.();
+    this.micUnsub = null;
+  }
+
+  /**
+   * micLevel is the live capture level, 0..1 post-gain, or null when no call
+   * is running. Lets the profile panel meter the real call rather than opening
+   * a second capture of the same device.
+   */
+  micLevel(): number | null {
+    return this.call?.micLevel() ?? null;
+  }
+
   /**
    * leave disconnects and resets to idle. Idempotent.
    *
@@ -393,6 +418,7 @@ class VoiceSessionImpl {
     if (userInitiated) clearRejoinHint();
     const call = this.call;
     this.call = null;
+    this.stopMicWatch();
     this.set({
       phase: "idle",
       channelID: null,

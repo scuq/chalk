@@ -3097,6 +3097,33 @@ body.chalk-resizing .chalk-sidebar-resizer {
   outline-offset: -1px;
 }
 
+/* Phase 41-3: the mic level meter, sharing the row shape (and the preview
+   button) with the sound rows above. */
+.chalk-profile-mic-test {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s1);
+}
+.chalk-profile-mic-meter {
+  flex: 1;
+  min-width: 0;
+  height: 10px;
+  background: var(--chalk-bg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  overflow: hidden;
+}
+.chalk-profile-mic-meter-fill {
+  height: 100%;
+  background: var(--chalk-accent);
+  /* No transition on width: the whole value of a level meter is that it is
+     instantaneous. Smoothing it would show a level nobody is speaking at. */
+}
+.chalk-profile-mic-meter-fill.is-clipping {
+  background: var(--chalk-error);
+}
+
 .chalk-profile-select {
   background: var(--chalk-bg);
   color: var(--chalk-fg);
