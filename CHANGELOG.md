@@ -13,6 +13,9 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **New "blade-runner" theme.** Neon scarlet on a smoky black city ground,
+  with teal links and a soft red glow on emphasis. Pick it under appearance in
+  your profile; like every theme, it follows you across devices.
 - **The version you're running is shown in the app.** It sits next to the
   chalk wordmark in the header, and under "about" in your profile; clicking it
   opens the changelog for that exact build. Development builds read "dev" and

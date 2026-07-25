@@ -5375,6 +5375,68 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 
 /* ============================================================
+   blade-runner: neon scarlet in a smog-black city
+   ============================================================
+   Red leads: emphasis, active states, presence and the online dot are
+   all the title-card scarlet. The ground is not neutral black but a
+   warm smoke-black -- the ash/haze cast is what separates this from
+   the green terminal theme with a red accent bolted on.
+
+   Body text is a warm bone white rather than red: 14px mono set in
+   saturated red is unreadable for a chat log, and spending the lead
+   color only on what matters is what makes it read as lead.
+
+   The one non-color cue is bloom -- a soft red halo on emphasized
+   text, the way neon smears in rain. Kept to fg-bright only so the
+   message list stays crisp.
+   ============================================================ */
+
+[data-theme="blade-runner"] {
+  --chalk-bg:           #0a0607;
+  --chalk-bg-elev:      #16090b;
+  --chalk-bg-elev-2:    #240e11;
+  --chalk-fg:           #e6d7d0;
+  --chalk-fg-dim:       #b09088;
+  --chalk-fg-bright:    #ff2f2f;
+  --chalk-fg-muted:     #8d6f69;
+  --chalk-border:       #4a1a1c;
+  /* Teal is the film's other neon, and it keeps links and borders
+     legible as a separate signal instead of dissolving into the red. */
+  --chalk-accent:       #4fd6d6;
+  --chalk-warn:         #ffb347;
+  /* Pushed pink-ward so errors don't read as "just more emphasis"
+     against a theme whose emphasis color is already red. */
+  --chalk-error:        #ff7a8a;
+
+  color-scheme: dark;
+}
+
+/* Scarlet status light with a wide, soft halo -- the strongest single
+   cue that this is the neon theme. */
+[data-theme="blade-runner"] .chalk-presence-dot--online {
+  background: var(--chalk-fg-bright);
+  box-shadow: 0 0 7px rgba(255, 47, 47, 0.65);
+}
+
+[data-theme="blade-runner"] .chalk-sidebar-item--active {
+  background: rgba(255, 47, 47, 0.14);
+}
+
+/* Neon bloom on the titles that carry the lead color. */
+[data-theme="blade-runner"] .chalk-modal-header h2,
+[data-theme="blade-runner"] .chalk-friends-title,
+[data-theme="blade-runner"] .chalk-members-title {
+  color: var(--chalk-fg-bright);
+  text-shadow: 0 0 12px rgba(255, 47, 47, 0.45);
+}
+
+.chalk-profile-theme-swatch-preview--blade-runner {
+  background: linear-gradient(135deg,
+    #0a0607 0%, #0a0607 50%,
+    #ff2f2f 50%, #ff2f2f 100%);
+}
+
+/* ============================================================
    Phase 9.7f: per-user nick colors
    ============================================================
    Sender labels carry only a HUE (--nick-h, set inline per message).
