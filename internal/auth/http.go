@@ -212,6 +212,9 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	}
 	mux.HandleFunc("POST /api/auth/register/v2/begin", d.handleSignupV2Begin)
 	mux.HandleFunc("POST /api/auth/register/v2/finish", d.handleSignupV2Finish)
+	// 31-11: does this ?admin_token= URL still claim anything, and for
+	// which username? Lets the SPA open the wizard prefilled.
+	mux.HandleFunc("POST /api/auth/admin-claim/probe", d.handleAdminClaimProbe)
 	mux.HandleFunc("PUT /api/auth/seed-wrap", RequireSession(d.Store, d.handleSeedWrapPut))
 	mux.HandleFunc("GET /api/auth/seed-wraps", RequireSession(d.Store, d.handleSeedWrapList))
 	// 31-9: hard-cutover migration endpoints.

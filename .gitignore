@@ -62,3 +62,7 @@ web/.test-build/
 .backup*/
 .chalk*-backup/
 /chalkctl
+
+CLAUDE.md
+
+.claude/

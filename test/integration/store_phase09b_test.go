@@ -14,9 +14,8 @@ import (
 )
 
 // Phase 09b store-layer integration tests. These exercise the new
-// columns/tables added by migrations 0011-0015 and 0017: the auth
-// columns on users, sessions, passkeys, recovery_codes, and
-// admin_bootstrap_tokens.
+// columns/tables added by migrations 0011-0015: the auth columns on
+// users, sessions, passkeys, and recovery_codes.
 //
 // The fixture users (alice/bob/carol) all share the .invalid email
 // suffix the migration backfilled. New tests below create throwaway
@@ -521,82 +520,48 @@ func TestRecoveryCodeRoundTrip(t *testing.T) {
 	}
 }
 
-// ---- admin bootstrap tokens ------------------------------------------
+// The admin-bootstrap TOKEN lifecycle test that used to live here went
+// away with the 09d DB-token system. First-run admin enrollment is now
+// the env-token-gated claim on the v2 signup path; its HTTP-level
+// coverage lives in internal/auth/admin_claim_test.go.
 
-func TestAdminBootstrapTokenLifecycle(t *testing.T) {
+// ---- admin claimability ------------------------------------------------
+
+// TestUnclaimedAdmin pins the predicate the whole claim flow rests on:
+// a seeded admin row is claimable exactly until it has credentials.
+func TestUnclaimedAdmin(t *testing.T) {
+	resetAdminState(t)
 	st := openStore(t)
 	c := ctx(t)
 
-	// Sweep any pre-existing tokens so this test is isolated. Other
-	// tests might leak state.
-	if _, err := st.Pool.Exec(c, `DELETE FROM admin_bootstrap_tokens`); err != nil {
-		t.Fatalf("sweep: %v", err)
+	// No admin row at all → nothing to claim.
+	if _, err := st.GetUnclaimedAdmin(c); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("no admin row: got %v, want ErrNotFound", err)
 	}
-	t.Cleanup(func() {
-		_, _ = st.Pool.Exec(c, `DELETE FROM admin_bootstrap_tokens`)
+
+	// Seeded by chalkd at first boot: identity only, no credentials.
+	admin, err := st.BootstrapAdminUser(c, store.BootstrapAdminUserParams{
+		Username: "claimadmin",
+		Email:    "claimadmin@example.invalid",
 	})
-
-	// No active token initially.
-	_, err := st.GetActiveAdminBootstrapToken(c)
-	if !errors.Is(err, store.ErrNotFound) {
-		t.Errorf("initial: got %v, want ErrNotFound", err)
-	}
-
-	// Create one.
-	tok, err := st.CreateAdminBootstrapToken(c)
 	if err != nil {
-		t.Fatalf("CreateAdminBootstrapToken: %v", err)
+		t.Fatalf("BootstrapAdminUser: %v", err)
 	}
-	if len(tok.Token) != 32 {
-		t.Errorf("Token length = %d, want 32", len(tok.Token))
-	}
-	if !tok.IsActive() {
-		t.Error("fresh token should be active")
-	}
-
-	// Fetch active.
-	got, err := st.GetActiveAdminBootstrapToken(c)
+	got, err := st.GetUnclaimedAdmin(c)
 	if err != nil {
-		t.Fatalf("GetActiveAdminBootstrapToken: %v", err)
+		t.Fatalf("seeded admin should be claimable: %v", err)
 	}
-	if !bytes.Equal(got.Token, tok.Token) {
-		t.Error("active token doesn't match created")
-	}
-
-	// Creating a second concurrent token is refused.
-	_, err = st.CreateAdminBootstrapToken(c)
-	if !errors.Is(err, store.ErrAdminBootstrapActive) {
-		t.Errorf("second create: got %v, want ErrAdminBootstrapActive", err)
+	if got.ID != admin.ID {
+		t.Errorf("GetUnclaimedAdmin id = %s, want %s", got.ID, admin.ID)
 	}
 
-	// Rotate replaces the active token.
-	rotated, err := st.RotateAdminBootstrapToken(c)
-	if err != nil {
-		t.Fatalf("RotateAdminBootstrapToken: %v", err)
+	// A passkey alone is enough to make it claimed.
+	credID := []byte("unclaimed-admin-test-credential")
+	if _, err := st.AddPasskey(c, credID, admin.ID, []byte("pk"), 0, nil, "", 0x05); err != nil {
+		t.Fatalf("AddPasskey: %v", err)
 	}
-	if bytes.Equal(rotated.Token, tok.Token) {
-		t.Error("rotation should produce a different token")
-	}
-	got, err = st.GetActiveAdminBootstrapToken(c)
-	if err != nil {
-		t.Fatalf("GetActive after rotate: %v", err)
-	}
-	if !bytes.Equal(got.Token, rotated.Token) {
-		t.Error("active token after rotate should be the new one")
-	}
-
-	// Consume.
-	if err := st.ConsumeAdminBootstrapToken(c, rotated.Token); err != nil {
-		t.Fatalf("ConsumeAdminBootstrapToken: %v", err)
-	}
-	// Now no active token.
-	_, err = st.GetActiveAdminBootstrapToken(c)
-	if !errors.Is(err, store.ErrNotFound) {
-		t.Errorf("after consume: got %v, want ErrNotFound", err)
-	}
-	// Double-consume is refused.
-	err = st.ConsumeAdminBootstrapToken(c, rotated.Token)
-	if !errors.Is(err, store.ErrNotFound) {
-		t.Errorf("double-consume: got %v, want ErrNotFound", err)
+	t.Cleanup(func() { _ = st.DeletePasskey(c, credID) })
+	if _, err := st.GetUnclaimedAdmin(c); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("admin with a passkey: got %v, want ErrNotFound", err)
 	}
 }

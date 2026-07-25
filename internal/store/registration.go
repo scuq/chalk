@@ -186,11 +186,23 @@ func (s *Store) RegisterUser(ctx context.Context, p RegistrationParams) error {
 	})
 }
 
+// isUniqueViolation matches pgx's unique-constraint error text. We use
+// a cheap string match (rather than depending on pgconn's SQLSTATE
+// codes directly) so this works across pgx versions. Matches both
+// "unique" and "duplicate" forms.
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "unique") || strings.Contains(msg, "duplicate")
+}
+
 // isUserUniqueViolation reports whether err is a PG unique_violation
 // on the named users column. The check is by substring of the PG
 // error text rather than by pgx error code because the constraint
-// names depend on the migration's index naming. This is the same
-// approach admin_bootstrap.go uses for its own unique checks.
+// names depend on the migration's index naming — the same reasoning as
+// isUniqueViolation above, narrowed to a specific column.
 func isUserUniqueViolation(err error, col string) bool {
 	if err == nil {
 		return false
