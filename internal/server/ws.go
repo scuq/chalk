@@ -2139,6 +2139,7 @@ func (h *WSHandler) handleFetchHistory(
 			lastReplySender = m.LastReplySenderUserID.String()
 		}
 		bodyStr := string(m.Body)
+		deletedBy, deletedAt := tombstoneOf(m)
 		out = append(out, proto.MessagePayload{
 			ID:                    m.ID.String(),
 			ChannelID:             m.ChannelID.String(),
@@ -2155,6 +2156,9 @@ func (h *WSHandler) handleFetchHistory(
 			LastReplyBody:         string(m.LastReplyBody),
 			LastReplyKeyVersion:   m.LastReplyKeyVersion,
 			KeyVersion:            m.KeyVersion,
+			Deleted:               m.DeletedAt != nil,
+			DeletedBy:             deletedBy,
+			DeletedAt:             deletedAt,
 		})
 	}
 
@@ -2300,6 +2304,7 @@ func (h *WSHandler) handleFetchThread(
 			threadStr = m.ThreadID.String()
 		}
 		tBody := string(m.Body)
+		deletedBy, deletedAt := tombstoneOf(m)
 		out = append(out, proto.MessagePayload{
 			ID:           m.ID.String(),
 			ChannelID:    m.ChannelID.String(),
@@ -2311,6 +2316,9 @@ func (h *WSHandler) handleFetchThread(
 			KeyVersion:   m.KeyVersion,
 			ParentID:     parentStr,
 			ThreadID:     threadStr,
+			Deleted:      m.DeletedAt != nil,
+			DeletedBy:    deletedBy,
+			DeletedAt:    deletedAt,
 		})
 	}
 	ack, _ := proto.NewFrame(proto.TypeFetchThreadAck, f.Ref, proto.FetchThreadAckPayload{
@@ -3296,12 +3304,35 @@ func (h *WSHandler) handleAddMember(
 	}
 }
 
+// tombstoneOf renders a message's soft-delete fields for the wire: the
+// deleting user_id (empty when live or the deleter was purged) and the
+// deletion time in unix-millis (0 when live). History and thread fetches must
+// carry these -- without them a re-fetched tombstone looks like a live message
+// with an empty, unencrypted body, and the client renders the "blocked:
+// unencrypted message" placeholder instead of "message deleted".
+func tombstoneOf(m store.Message) (string, int64) {
+	deletedBy := ""
+	if m.DeletedBy != nil {
+		deletedBy = m.DeletedBy.String()
+	}
+	var deletedAt int64
+	if m.DeletedAt != nil {
+		deletedAt = m.DeletedAt.UnixMilli()
+	}
+	return deletedBy, deletedAt
+}
+
 // handleDeleteMessage soft-deletes a message (governance prerequisite).
 //
-// Authz: dictator-style -- ONLY the channel owner may delete. This is the
-// faithful "owner acts unilaterally" semantic; the democratic delete_message
-// proposal type wraps this same store primitive later. A non-owner (even the
-// message's own author) gets delete_forbidden in v1.
+// Authz depends on the channel shape:
+//
+//   - Group channel: dictator-style -- ONLY the channel owner may delete. The
+//     democratic delete_message proposal type wraps this same store primitive
+//     (see governance_dispatch.go); a unilateral delete in democratic mode is
+//     refused below.
+//   - DM: there is no meaningful owner. Whoever happened to open the DM must
+//     not be able to delete the other member's messages, so the ONLY delete
+//     allowed is the author deleting their own message.
 //
 // On success: store.DeleteMessage scrubs the body server-side and stamps the
 // tombstone (deleted_at, deleted_by), then we push message_deleted on the
@@ -3348,8 +3379,8 @@ func (h *WSHandler) handleDeleteMessage(
 		return
 	}
 
-	// Owner-only authz (dictator-style). GetMemberRole also enforces
-	// membership: a non-member is ErrNotAMember, not "forbidden".
+	// GetMemberRole also enforces membership: a non-member is ErrNotAMember,
+	// not "forbidden".
 	role, rErr := h.store.GetMemberRole(ctx, channelID, callerID)
 	if rErr != nil {
 		if errors.Is(rErr, store.ErrNotAMember) {
@@ -3359,7 +3390,40 @@ func (h *WSHandler) handleDeleteMessage(
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "role check: "+rErr.Error())
 		return
 	}
-	if role != "owner" {
+
+	tsTime := time.UnixMilli(p.TS)
+
+	ch, chErr := h.store.GetChannel(ctx, channelID)
+	if chErr != nil {
+		if errors.Is(chErr, store.ErrNotFound) {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeChannelNotFound, "channel not found")
+			return
+		}
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "channel lookup: "+chErr.Error())
+		return
+	}
+
+	if ch.IsDM {
+		// Author-only in a DM, regardless of who created the channel.
+		msg, mErr := h.store.GetMessage(ctx, tsTime, messageID)
+		if mErr != nil {
+			if errors.Is(mErr, store.ErrNotFound) {
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeMessageNotFound, "message not found")
+				return
+			}
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "message lookup: "+mErr.Error())
+			return
+		}
+		if msg.ChannelID != channelID {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeMessageNotFound, "message not found")
+			return
+		}
+		if msg.SenderUserID != callerID {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeDeleteForbidden,
+				"in a direct message you may only delete your own messages")
+			return
+		}
+	} else if role != "owner" {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeDeleteForbidden,
 			"only the channel owner may delete messages")
 		return
@@ -3374,7 +3438,6 @@ func (h *WSHandler) handleDeleteMessage(
 		return
 	}
 
-	tsTime := time.UnixMilli(p.TS)
 	del, dErr := h.store.DeleteMessage(ctx, tsTime, messageID, channelID, callerID)
 	if dErr != nil {
 		switch {
