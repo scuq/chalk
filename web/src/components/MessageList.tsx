@@ -9,6 +9,7 @@ import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
 import { DEFAULT_SELF_HUE, resolveNickHue } from "../chat/nickcolor";
 import { splitBodyParts } from "../chat/links";
+import { fmtRelative } from "../chat/reltime";
 import { lazyComponent } from "./LazyComponent";
 // Lazy: Giphy render path is opt-in; keep it out of the initial bundle.
 const GiphyView = lazyComponent(() =>
@@ -250,21 +251,8 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
     const mm = d.getMinutes().toString().padStart(2, "0");
     return `${hh}:${mm}`;
   }
-  // relative
-  const diffMs = now.getTime() - d.getTime();
-  const sec = Math.floor(diffMs / 1000);
-  if (sec < 5) return "just now";
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  if (day < 2) return "yesterday";
-  if (day < 7) return `${day}d ago`;
-  // Older than a week: short calendar date.
-  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  return `${months[d.getMonth()]} ${d.getDate()}`;
+  // 42-8: shared with the thread inbox, which formats times the same way.
+  return fmtRelative(d, now);
 }
 
 export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy }: Props) {

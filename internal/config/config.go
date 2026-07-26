@@ -114,6 +114,10 @@ type Config struct {
 	// 30-1: Phase 30 voice/video knobs (CHALK_VOICE_* / CHALK_TURN_* /
 	// CHALK_STUN_URLS). See VoiceConfig for the individual knobs.
 	Voice VoiceConfig
+
+	// 42-5: thread inbox knobs (CHALK_THREAD_*). See ThreadsConfig in
+	// threads.go.
+	Threads ThreadsConfig
 }
 
 // GovernanceDefaults are the server-wide default governance parameters,
@@ -191,6 +195,9 @@ func Default() Config {
 
 		// 30-1: voice/video.
 		Voice: defaultVoiceConfig(),
+
+		// 42-5: thread inbox.
+		Threads: defaultThreadsConfig(),
 	}
 }
 
@@ -322,6 +329,9 @@ func (c *Config) applyEnv() {
 
 	// 30-1: voice/video from CHALK_VOICE_*/CHALK_TURN_* env vars.
 	c.Voice.applyEnv()
+
+	// 42-5: thread inbox from CHALK_THREAD_* env vars.
+	c.Threads.applyEnv()
 }
 
 // envInt reads an integer env var. Returns (0, false) when unset or
@@ -444,6 +454,11 @@ func (c Config) Validate() error {
 
 	// 30-1: voice/video.
 	if err := c.Voice.Validate(); err != nil {
+		return err
+	}
+
+	// 42-5: thread inbox.
+	if err := c.Threads.Validate(); err != nil {
 		return err
 	}
 

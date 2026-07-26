@@ -435,6 +435,9 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 	case "read":
 		// 33-1: read-cursor sync across a user's devices.
 		s.handleReadEvent(ev)
+	case "thread_read":
+		// 42-4: the same, for a thread's cursor.
+		s.handleThreadReadEvent(ev)
 	}
 }
 

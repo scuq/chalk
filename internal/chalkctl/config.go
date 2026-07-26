@@ -51,9 +51,10 @@ type Config struct {
 	OpenRegistration bool
 
 	// Optional operational knobs (0/"" = leave chalkd's own default).
-	VoiceMaxParticipants int    // CHALK_VOICE_MAX_PARTICIPANTS (mesh cap)
-	AttachMaxBytes       int64  // CHALK_ATTACH_MAX_BYTES (upload cap; disk guard)
-	GiphyAPIKey          string // CHALK_GIPHY_API_KEY (GIF picker; optional)
+	VoiceMaxParticipants    int    // CHALK_VOICE_MAX_PARTICIPANTS (mesh cap)
+	AttachMaxBytes          int64  // CHALK_ATTACH_MAX_BYTES (upload cap; disk guard)
+	GiphyAPIKey             string // CHALK_GIPHY_API_KEY (GIF picker; optional)
+	ThreadActiveWindowHours int    // CHALK_THREAD_ACTIVE_WINDOW_HOURS (thread inbox recency)
 }
 
 // DefaultConfig returns the baseline before file/flag overlays.
@@ -154,6 +155,12 @@ func LoadConfigFile(cfg Config, path string) (Config, error) {
 			cfg.AttachMaxBytes = n
 		case "GIPHY_API_KEY":
 			cfg.GiphyAPIKey = v
+		case "THREAD_ACTIVE_WINDOW_HOURS":
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: THREAD_ACTIVE_WINDOW_HOURS not an int: %q", path, line, v)
+			}
+			cfg.ThreadActiveWindowHours = n
 		default:
 			fmt.Fprintf(os.Stderr, "chalkctl: ignoring unknown config key %q (%s:%d)\n", k, path, line)
 		}
@@ -186,6 +193,9 @@ func (c Config) Save(path string) error {
 	}
 	if c.AttachMaxBytes > 0 {
 		fmt.Fprintf(&b, "ATTACH_MAX_BYTES=%d\n", c.AttachMaxBytes)
+	}
+	if c.ThreadActiveWindowHours > 0 {
+		fmt.Fprintf(&b, "THREAD_ACTIVE_WINDOW_HOURS=%d\n", c.ThreadActiveWindowHours)
 	}
 	// GIPHY_API_KEY is intentionally NOT written here: this config file is
 	// 0644, and the key belongs only in the 0600 env file. It is supplied

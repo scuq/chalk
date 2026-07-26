@@ -42,3 +42,30 @@ func (s *Server) handleReadEvent(ev pubsub.Event) {
 	wire, _ := json.Marshal(frame)
 	s.hub.FanOutToUser(ev.UserID.String(), ev.SenderConnID, wire)
 }
+
+// Phase 42-4: the same consumer for a thread cursor. Re-reads for the same
+// reason: two devices marking a thread read at once must converge on the
+// stored monotonic value, not on whichever NOTIFY landed last.
+func (s *Server) handleThreadReadEvent(ev pubsub.Event) {
+	if s.store == nil || ev.UserID == uuid.Nil || ev.ThreadID == uuid.Nil {
+		return
+	}
+	if len(s.hub.ConnsForUser(ev.UserID.String())) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	seq, err := s.store.GetThreadRead(ctx, ev.ThreadID, ev.UserID)
+	if err != nil {
+		s.logger.Printf("thread read event fetch: %v", err)
+		return
+	}
+	frame, _ := proto.NewFrame(proto.TypeThreadReadState, "", proto.ThreadReadStatePayload{
+		ChannelID:   ev.ChannelID.String(),
+		ThreadID:    ev.ThreadID.String(),
+		LastReadSeq: seq,
+	})
+	wire, _ := json.Marshal(frame)
+	s.hub.FanOutToUser(ev.UserID.String(), ev.SenderConnID, wire)
+}

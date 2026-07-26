@@ -274,6 +274,18 @@ type MessagePayload struct {
 	// (which the client reconciles by server id) and for messages from
 	// other senders. Never stored server-side.
 	ClientMsgID string `json:"client_msg_id,omitempty"`
+	// Phase 42-3: the RECIPIENT's own thread read state for this row, only
+	// meaningful on a thread head and only populated by history fetches (the
+	// live push has no single recipient to resolve it for). ThreadLastReadSeq
+	// is their read high-water mark among this thread's replies, so a reply is
+	// unread when LastReplySeq > ThreadLastReadSeq; ThreadInvolved is whether
+	// they wrote the head or any reply.
+	//
+	// Sending these with the rows they decorate is what replaced the
+	// per-device localStorage thread cursors: read state now follows the user
+	// across devices without a bulk sync frame.
+	ThreadLastReadSeq int64 `json:"thread_last_read_seq,omitempty"`
+	ThreadInvolved    bool  `json:"thread_involved,omitempty"`
 }
 
 // ErrorPayload is sent when the server can't process a request. Code is a

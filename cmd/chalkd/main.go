@@ -228,6 +228,8 @@ func run(args []string) error {
 
 	wsCfg := server.DefaultWSConfig()
 	wsCfg.AttachMaxPerMessage = cfg.Attachments.MaxPerMessage
+	// 42-5: thread inbox recency window.
+	wsCfg.ThreadActiveWindow = cfg.Threads.ActiveWindow()
 	// 30-2: voice signaling knobs.
 	wsCfg.Voice = server.VoiceWSConfig{
 		Enabled:         cfg.Voice.Enabled,

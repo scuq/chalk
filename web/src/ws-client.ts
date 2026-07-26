@@ -273,43 +273,19 @@ export function clearDeviceId(): void {
   }
 }
 
-// Phase 10d: per-user thread-seen state.
+// Phase 10d's per-user thread-seen localStorage blob lived here until 42-4.
 //
-// Key shape: chalk.threadSeen.<userID> -> JSON map { threadID: seq }.
-// Per-user to avoid collisions when multiple accounts use the same
-// browser profile.
-function threadSeenKey(userID: string): string {
-  return "chalk.threadSeen." + userID;
-}
-
-export function getThreadSeen(userID: string): Record<string, number> {
-  if (!userID) return {};
-  try {
-    const raw = window.localStorage.getItem(threadSeenKey(userID));
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      const out: Record<string, number> = {};
-      for (const k of Object.keys(parsed)) {
-        const v = parsed[k];
-        if (typeof v === "number" && v > 0) out[k] = v;
-      }
-      return out;
-    }
-  } catch {
-    /* corrupt: fall through */
-  }
-  return {};
-}
-
-export function setThreadSeen(
-  userID: string,
-  seen: Record<string, number>,
-): void {
-  if (!userID) return;
-  try {
-    window.localStorage.setItem(threadSeenKey(userID), JSON.stringify(seen));
-  } catch {
-    /* quota or disabled storage: ignore */
-  }
-}
+// It was replaced, not moved: thread read state is now server-side
+// (thread_reads, migration 0047), so it follows the user across devices instead
+// of being stranded on whichever browser happened to read the thread. The two
+// reasons it had to go:
+//
+//   * per-device state made the bug worse. Reading a thread on a phone left the
+//     badge lit on a laptop forever, with nothing to ever clear it.
+//   * it was rewritten IN FULL on every arriving reply -- a synchronous
+//     JSON.stringify plus a localStorage write on the main thread, sized by
+//     every thread the user had ever opened.
+//
+// Nothing replaced it on disk. Cursors arrive with the history rows they
+// decorate (42-3) and via mark_thread_read/thread_read_state (42-4), both
+// bounded by what is on screen.

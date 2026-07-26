@@ -38,6 +38,12 @@ type WSConfig struct {
 	// 30-2: voice signaling knobs (CHALK_VOICE_* / CHALK_TURN_*), populated
 	// in cmd/chalkd from config.VoiceConfig. Zero-value = voice disabled.
 	Voice VoiceWSConfig
+
+	// 42-5: how far back a reply still counts as "active" for the thread
+	// inbox's discovery half (CHALK_THREAD_ACTIVE_WINDOW_HOURS). Defaulted
+	// here rather than left at zero, because a zero window would silently mean
+	// "nothing is ever active".
+	ThreadActiveWindow time.Duration
 }
 
 // DefaultWSConfig returns production defaults.
@@ -48,6 +54,7 @@ func DefaultWSConfig() WSConfig {
 		WriteTimeout:        10 * time.Second,
 		HandshakeTimeout:    5 * time.Second,
 		AttachMaxPerMessage: 10,
+		ThreadActiveWindow:  48 * time.Hour,
 	}
 }
 
@@ -519,6 +526,14 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 		case proto.TypeMarkRead:
 			h.handleMarkRead(ctx, c, conn, f)
 
+		// Phase 42-4: thread read cursors
+		case proto.TypeMarkThreadRead:
+			h.handleMarkThreadRead(ctx, c, conn, f)
+
+		// Phase 42-6: the cross-channel thread inbox
+		case proto.TypeThreadInbox:
+			h.handleThreadInbox(ctx, c, conn, f)
+
 		// Phase 9.7a: user preferences
 		case proto.TypePrefsGet:
 			h.handlePrefsGet(ctx, c, conn, f)
@@ -796,6 +811,16 @@ func (h *WSHandler) handleSend(
 				return err
 			}
 		}
+		// 42-2: a reply is also thread state. Ordered beside MarkChannelReadTx
+		// so the channel cursor and the thread cursor move in one commit -- a
+		// reply you sent must never be unread for you, in the channel OR in the
+		// thread, on any of your devices. Reply path only; a top-level send
+		// does no extra work here.
+		if threadUUID != nil {
+			if err := store.RecordThreadReplyTx(ctx, tx, channelID, *threadUUID, msgID, deviceID, ts, seq); err != nil {
+				return err
+			}
+		}
 		ackMsgID, ackSeq, ackTS = msgID, seq, ts
 		ev := pubsub.Event{
 			Kind:           "message",
@@ -815,6 +840,13 @@ func (h *WSHandler) handleSend(
 		return pubsub.PublishMessageWithTx(ctx, tx, ev)
 	})
 	if err != nil {
+		// 42-2: a reply whose thread head is no longer in messages (only
+		// reachable if the head's partition was detached) is a bad parent, not
+		// a server fault. Everything else still reads as internal.
+		if errors.Is(err, store.ErrThreadHeadNotFound) {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidParent, "thread head not found")
+			return
+		}
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "send failed")
 		h.logger.Printf("send: %v", err)
 		return
@@ -2139,7 +2171,7 @@ func (h *WSHandler) handleFetchHistory(
 		}
 	}
 
-	msgs, err := h.store.ListMessagesByChannel(ctx, channelID, p.BeforeSeq, p.Limit)
+	msgs, err := h.store.ListMessagesByChannel(ctx, channelID, callerID, p.BeforeSeq, p.Limit)
 	if err != nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "fetch: "+err.Error())
 		return
@@ -2194,6 +2226,9 @@ func (h *WSHandler) handleFetchHistory(
 			DeletedBy:             deletedBy,
 			DeletedAt:             deletedAt,
 			EditedAt:              editedAtOf(m),
+			// 42-3: the caller's own thread cursor, resolved by the query.
+			ThreadLastReadSeq: m.ThreadLastReadSeq,
+			ThreadInvolved:    m.ThreadInvolved,
 		})
 	}
 

@@ -294,6 +294,61 @@ export class ChannelCrypto {
     }
   }
 
+  /**
+   * warmChannelKey makes this client hold a channel's key if it already can,
+   * for READING ONLY, and settles the channel either way.
+   *
+   * ensureChannelKey is the wrong tool for the thread inbox. It also bootstraps
+   * (when we are the creator) and rewraps the key for every member who lacks one
+   * -- a recipients probe plus an identity fetch plus a publish, per member, per
+   * channel. Opening an inbox that spans forty channels would fire all of that
+   * at once, to render forty one-line previews.
+   *
+   * What a preview needs is narrower: fetch our own wrap, unwrap it, remember
+   * it, and -- the load-bearing part -- mark the channel SETTLED so
+   * decryptForChannel stops taking the deferred-wait branch. Without the settle,
+   * every preview from a channel we have not opened this session blocks for
+   * keyWaitMs before showing a placeholder anyway.
+   *
+   * Deliberately does NOT report a ChannelKeyStatus: status gates the COMPOSER,
+   * and warming a channel to read one line must never claim we are ready to
+   * send in it.
+   */
+  async warmChannelKey(channelID: string): Promise<void> {
+    try {
+      const v = this.currentVersion(channelID);
+      if (await this.getKey(channelID, v)) return;
+      const wrap = await fetchChannelKey(this.transport, channelID, v);
+      if (!wrap) {
+        // No wrap for us. Someone else may deposit one later; key_available
+        // re-runs the preview decrypt when they do.
+        this.encrypted.add(channelID);
+        return;
+      }
+      const sk = await unwrapSpaceKey(
+        wrap,
+        this.identity.x25519Private,
+        channelID,
+        v,
+        this.identity.userID,
+      );
+      if (!sk) {
+        this.encrypted.add(channelID);
+        return;
+      }
+      await saveSpaceKey(channelID, v, sk);
+      this.remember(channelID, v, sk);
+    } catch {
+      // A warm is best-effort: a preview that cannot be decrypted renders a
+      // placeholder, which is strictly better than a panel that never fills.
+    } finally {
+      // Settle even on failure, so a keyless channel produces an IMMEDIATE
+      // placeholder instead of one 8-second stall per row.
+      this.settled.add(channelID);
+      this.wakeKeyWaiters(channelID);
+    }
+  }
+
   private async ensureChannelKeyInner(
     channelID: string,
     members: string[],

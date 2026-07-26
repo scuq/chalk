@@ -209,12 +209,13 @@ func Init(o InitOptions) error {
 		AdminBootstrapToken: adminBoot,
 		ChalkctlPath:        self,
 
-		AdminUsername:        cfg.AdminUsername,
-		AdminEmail:           cfg.AdminEmail,
-		OpenRegistration:     cfg.OpenRegistration,
-		VoiceMaxParticipants: cfg.VoiceMaxParticipants,
-		AttachMaxBytes:       cfg.AttachMaxBytes,
-		GiphyAPIKey:          cfg.GiphyAPIKey,
+		AdminUsername:           cfg.AdminUsername,
+		AdminEmail:              cfg.AdminEmail,
+		OpenRegistration:        cfg.OpenRegistration,
+		VoiceMaxParticipants:    cfg.VoiceMaxParticipants,
+		AttachMaxBytes:          cfg.AttachMaxBytes,
+		GiphyAPIKey:             cfg.GiphyAPIKey,
+		ThreadActiveWindowHours: cfg.ThreadActiveWindowHours,
 	}
 
 	ts := time.Now().UTC().Format("20060102-150405")

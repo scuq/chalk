@@ -73,6 +73,18 @@ import {
   TypeReadState,
   type MarkReadPayload,
   type ReadStatePayload,
+  // 42-4: thread read cursors.
+  TypeMarkThreadRead,
+  TypeMarkThreadReadAck,
+  TypeThreadReadState,
+  type MarkThreadReadPayload,
+  type ThreadReadStatePayload,
+  // 42-6: the thread inbox.
+  TypeThreadInbox,
+  TypeThreadInboxAck,
+  type ThreadInboxPayload,
+  type ThreadInboxAckPayload,
+  type ThreadInboxEntry,
   type Frame,
   type WelcomePayload,
   type ErrorPayload,
@@ -127,9 +139,9 @@ import {
   type VoiceParticipantLeftPayload,
   type VoiceParticipantStatePayload,
 } from "../proto";
-import { WSClient, getOrCreateDeviceId, clearDeviceId, getThreadSeen, setThreadSeen } from "../ws-client";
+import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
-import { hasUnread, initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary, type ProposalView, type ReactionSet } from "../state/types";
+import { hasUnread, initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow } from "../state/types";
 import { selectGiphyPref } from "../giphy/giphy";
 import { Logo } from "./Logo";
 import { VersionLink } from "./VersionLink";
@@ -163,6 +175,11 @@ const MembersPanel = lazyComponent(() =>
 );
 const GovernancePanel = lazyComponent(() =>
   import("./GovernancePanel").then((m) => m.GovernancePanel)
+);
+// 42-8: the thread inbox. Lazy for the same reason the other panels are -- most
+// sessions never open it, and the dot that advertises it costs nothing.
+const ThreadInboxPanel = lazyComponent(() =>
+  import("./ThreadInboxPanel").then((m) => m.ThreadInboxPanel)
 );
 // 37-5: the reaction picker. Lazy for the same reason the composer's is --
 // the emoji catalogue is static data most sessions never open.
@@ -319,6 +336,33 @@ function wireToMessage(w: MessagePayload): Message {
     // Idempotency key echoed back on the live push of a freshly-sent message.
     // The reducer uses it to replace the optimistic row instead of duplicating.
     clientMsgID: w.client_msg_id || undefined,
+    // 42-3: our own thread cursor, riding along with the head row it decorates.
+    // History fetches only; undefined on a live push.
+    threadLastReadSeq: w.thread_last_read_seq,
+    threadInvolved: w.thread_involved,
+  };
+}
+
+// 42-7: wire -> domain for one inbox row. Bodies stay as they arrive
+// (ciphertext) and are replaced by the decrypt pass; undefined means "not
+// decrypted yet", so an absent body must NOT become an empty string here.
+function wireToThreadInboxRow(w: ThreadInboxEntry): ThreadInboxRow {
+  return {
+    channelID: w.channel_id,
+    threadID: w.thread_id,
+    headSeq: w.head_seq,
+    headTS: new Date(w.head_ts),
+    headSenderUserID: w.head_sender_user_id || undefined,
+    headKeyVersion: w.head_key_version,
+    headDeleted: w.head_deleted || undefined,
+    lastReplySeq: w.last_reply_seq,
+    lastReplyTS: new Date(w.last_reply_ts),
+    lastReplySenderUserID: w.last_reply_sender_user_id || undefined,
+    lastReplyKeyVersion: w.last_reply_key_version,
+    lastReplyDeleted: w.last_reply_deleted || undefined,
+    replyCount: w.reply_count,
+    lastReadSeq: w.last_read_seq,
+    involved: w.involved,
   };
 }
 
@@ -1156,6 +1200,40 @@ export function App() {
   // Suppresses re-sends while the ack is in flight. Cleared on reconnect,
   // where the fresh listing re-establishes the real cursors anyway.
   const markReadSentRef = useRef<Map<string, number>>(new Map());
+  // 42-4: the same, per thread. Cleared on reconnect for the same reason --
+  // history rows carry the real cursors when they come back.
+  const markThreadReadSentRef = useRef<Map<string, number>>(new Map());
+
+  // 42-8: the inbox previews' CIPHERTEXT, keyed by thread id.
+  //
+  // Deliberately a ref and not state: state holds only decrypted previews (an
+  // absent one means "not decrypted yet"), and putting ciphertext beside it
+  // would give every row two sources of truth for the same field. The decrypt
+  // pass reads from here and dispatches plaintext.
+  const inboxCipherRef = useRef<
+    Map<
+      string,
+      {
+        channelID: string;
+        headBody: string;
+        headKeyVersion?: number;
+        headDeleted: boolean;
+        lastReplyBody: string;
+        lastReplyKeyVersion?: number;
+        lastReplyDeleted: boolean;
+      }
+    >
+  >(new Map());
+  // Channels we've already run the read-only key warm for this session. Bounds
+  // the warm pass to once per channel however often the panel is reopened.
+  const inboxWarmedRef = useRef<Set<string>>(new Set());
+  // True while a "load more" request is in flight, so the ack appends instead of
+  // replacing. A ref rather than state because handleFrame reads it.
+  const inboxPagingRef = useRef(false);
+  // The inbox rows as the frame handler last saw them. handleFrame is captured
+  // once at WSClient construction, so it must not read state.threadInbox*.
+  const threadInboxRef = useRef<ThreadInboxRow[]>([]);
+  threadInboxRef.current = [...state.threadInboxActive, ...state.threadInboxAgedUnread];
 
   // Track which channel we've already fired fetch_history for. The
   // historyLoaded state flag covers ACK; this ref covers REQUEST so
@@ -1338,6 +1416,22 @@ export function App() {
     dispatch({ kind: "mention_set", channelID });
   }
 
+  // 42-7: the thread-level half of the same idea. A mention inside a reply makes
+  // that THREAD need you even if you never took part in it -- which is the one
+  // thing the server's `involved` flag cannot know, because it would have to
+  // read the body.
+  //
+  // Deliberately not gated on the active channel the way noteMention is: a
+  // thread badge is per thread, not per channel, so being in the channel does
+  // not mean you have seen the thread.
+  function noteThreadMention(threadID: string, senderUserID: string, body: string) {
+    const me = userRef.current;
+    if (!me?.handle) return;
+    if (senderUserID === me.id) return;
+    if (!mentionsHandle(body, me.handle)) return;
+    dispatch({ kind: "thread_mention_set", threadID });
+  }
+
   // 40-2: make a noise about a message that just arrived.
   //
   // Live pushes only. The other caller of noteMention scans decrypted
@@ -1445,6 +1539,10 @@ export function App() {
             .then((body) => {
               dispatch({ kind: "message", message: { ...m, body } });
               noteMention(m.channelID, m.senderUserID, body); // 33-3
+              if (m.parentID) {
+                // 42-7: a reply naming us makes its thread need us.
+                noteThreadMention(m.threadID ?? m.parentID, m.senderUserID, body);
+              }
               noteSound(m, body); // 40-2
             });
         } else {
@@ -1669,6 +1767,52 @@ export function App() {
           channelID: p.channel_id,
           lastReadSeq: p.last_read_seq,
         });
+        break;
+      }
+      // 42-4: same pairing one level down. The ack confirms our own
+      // mark_thread_read (possibly clamped); the push is another of this
+      // user's devices having read the thread -- which is what makes a badge
+      // cleared on a phone clear on a laptop.
+      case TypeMarkThreadReadAck:
+      case TypeThreadReadState: {
+        const p = f.payload as ThreadReadStatePayload;
+        dispatch({
+          kind: "thread_read_state",
+          threadID: p.thread_id,
+          lastReadSeq: p.last_read_seq,
+        });
+        break;
+      }
+      // 42-6/42-8: a page of the thread inbox. Rows are dispatched with
+      // metadata only so they render immediately; the ciphertext previews go
+      // into a ref for the decrypt pass, which fills them in per channel as each
+      // channel's key settles.
+      case TypeThreadInboxAck: {
+        const p = f.payload as ThreadInboxAckPayload;
+        const activeWire = p.active ?? [];
+        const agedWire = p.aged_unread ?? [];
+        for (const w of [...activeWire, ...agedWire]) {
+          inboxCipherRef.current.set(w.thread_id, {
+            channelID: w.channel_id,
+            headBody: w.head_body ?? "",
+            headKeyVersion: w.head_key_version,
+            headDeleted: w.head_deleted === true,
+            lastReplyBody: w.last_reply_body ?? "",
+            lastReplyKeyVersion: w.last_reply_key_version,
+            lastReplyDeleted: w.last_reply_deleted === true,
+          });
+        }
+        dispatch({
+          kind: "thread_inbox_loaded",
+          active: activeWire.map(wireToThreadInboxRow),
+          agedUnread: agedWire.map(wireToThreadInboxRow),
+          unreadTotal: p.unread_involved_total ?? 0,
+          hasMoreActive: p.has_more_active === true,
+          windowHours: p.active_window_hours || 48,
+          // A page request carries before_ts; the ref tells us which this was.
+          append: inboxPagingRef.current,
+        });
+        inboxPagingRef.current = false;
         break;
       }
       case TypeCreateChannelAck: {
@@ -1972,6 +2116,7 @@ export function App() {
     subscribeSentRef.current = new Set();
     historyRequestedRef.current = new Set();
     markReadSentRef.current = new Map(); // 33-1
+    markThreadReadSentRef.current = new Map(); // 42-4
   }, [state.wsState, state.user?.id]);
 
   // Phase 9.7b: apply the user's selected theme to the document root.
@@ -2782,6 +2927,23 @@ export function App() {
   const activeChannel = state.activeChannelID
     ? state.channels[state.activeChannelID]
     : null;
+
+  // 42-8: lookup maps for the inbox panel, built once here rather than scanned
+  // per row -- the same discipline MessageList's handleByUser follows. The inbox
+  // spans channels, so it cannot reuse the active channel's roster.
+  const threadInboxChannelNames: Record<string, string> = {};
+  const threadInboxHandles: Record<string, string> = {};
+  if (state.openPanel === "threads") {
+    for (const id of state.channelOrder) {
+      const ch = state.channels[id];
+      if (ch) threadInboxChannelNames[id] = displayName(ch, state.user?.id ?? null);
+    }
+    for (const id of state.channelOrder) {
+      for (const m of state.channels[id]?.members ?? []) {
+        if (m.handle) threadInboxHandles[m.userID] = m.handle;
+      }
+    }
+  }
   // Phase 10a: hide replies from the main channel feed. They'll
   // be visible inside the thread panel once 10c lands. Until then,
   // they're in the cache but not rendered. We keep the full list
@@ -2829,20 +2991,10 @@ export function App() {
     c.send(TypeFetchThread, { channel_id: channelID, thread_id: threadID });
   }, [state.openThread?.threadID, state.openThread?.channelID, state.threadLoaded]);
 
-  // Phase 10d: load threadSeen from localStorage once we know the
-  // user id. Keyed per-user so multiple accounts on the same browser
-  // don't collide.
-  useEffect(() => {
-    if (!state.user?.id) return;
-    const seen = getThreadSeen(state.user.id);
-    dispatch({ kind: "thread_seen_init", seen });
-  }, [state.user?.id]);
-
-  // Phase 10d: persist threadSeen to localStorage when it changes.
-  useEffect(() => {
-    if (!state.user?.id) return;
-    setThreadSeen(state.user.id, state.threadSeen);
-  }, [state.user?.id, state.threadSeen]);
+  // 42-4: threadSeen is no longer loaded from or written to localStorage. It
+  // hydrates from history rows (each head carries this viewer's cursor) and
+  // stays in sync through mark_thread_read / thread_read_state, so it now
+  // follows the user across devices instead of being stranded per browser.
 
   // Phase 10d: if a reply arrives while the matching thread panel is
   // open, immediately mark it as seen. This keeps the badge at 0 for
@@ -2885,6 +3037,146 @@ export function App() {
     markReadSentRef.current.set(cid, u.lastSeq);
     c.send<MarkReadPayload>(TypeMarkRead, { channel_id: cid, seq: u.lastSeq });
   }, [state.activeChannelID, state.unread, state.wsState, tabVisible]);
+
+  // 42-4: looking at a THREAD marks it read, durably. Same discipline as the
+  // channel effect above: gated on tab visibility so a background tab can't
+  // silently clear a badge the user is meant to see elsewhere, guarded by an
+  // in-flight ref because the cursor stays behind until the ack lands, and no
+  // optimistic write here -- thread_read_state carries the server's clamped
+  // value to this device and every other one.
+  //
+  // The local threadSeen bump from open_thread / thread_seen_bump still makes
+  // the badge feel instant; this is what makes it survive a reload and reach
+  // the user's other devices.
+  useEffect(() => {
+    if (!state.openThread || !tabVisible) return;
+    const { channelID, threadID } = state.openThread;
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    const replies = state.threadMessages[threadID] ?? [];
+    if (replies.length === 0) return;
+    const maxSeq = replies.reduce((mx, r) => (r.seq > mx ? r.seq : mx), 0);
+    if (maxSeq <= 0) return;
+    if ((markThreadReadSentRef.current.get(threadID) ?? 0) >= maxSeq) return;
+    markThreadReadSentRef.current.set(threadID, maxSeq);
+    c.send<MarkThreadReadPayload>(TypeMarkThreadRead, {
+      channel_id: channelID,
+      thread_id: threadID,
+      seq: maxSeq,
+    });
+  }, [
+    state.openThread?.threadID,
+    state.openThread?.channelID,
+    state.threadMessages,
+    state.wsState,
+    tabVisible,
+  ]);
+
+  // 42-8: fetch the inbox once per connect. A small page, and NO decryption on
+  // this path, so it only costs what the dot needs -- connect stays cheap.
+  useEffect(() => {
+    if (state.wsState !== "open" || !state.user) return;
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    inboxPagingRef.current = false;
+    c.send<ThreadInboxPayload>(TypeThreadInbox, { limit: 25 });
+  }, [state.wsState, state.user?.id]);
+
+  // 42-8: opening the panel refetches a bigger page. Cheap, and it means the
+  // list is current rather than as of connect.
+  useEffect(() => {
+    if (state.openPanel !== "threads") return;
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    inboxPagingRef.current = false;
+    c.send<ThreadInboxPayload>(TypeThreadInbox, { limit: 50 });
+  }, [state.openPanel]);
+
+  // 42-8: a live reply arrived for a thread we hold no row for, so the client
+  // cannot know whether it concerns us -- only the server can. Debounced hard:
+  // a busy channel would otherwise refetch per message.
+  useEffect(() => {
+    if (!state.threadInboxStale) return;
+    const t = window.setTimeout(() => {
+      const c = clientRef.current;
+      if (!c || !c.isOpen()) return;
+      inboxPagingRef.current = false;
+      c.send<ThreadInboxPayload>(TypeThreadInbox, { limit: 50 });
+    }, 30_000);
+    return () => window.clearTimeout(t);
+  }, [state.threadInboxStale]);
+
+  // 42-8: decrypt the previews, per channel, as each channel's key settles.
+  //
+  // Two-phase by design: the rows are already on screen from metadata, and this
+  // fills in the bodies. The problem it solves is specific -- a preview from a
+  // channel we have not opened this session has no settled key, so
+  // decryptForChannel would take the deferred branch and block for keyWaitMs (8s)
+  // before rendering a placeholder anyway. warmChannelKey settles it first,
+  // READ-ONLY: unlike ensureChannelKey it does not bootstrap or rewrap for other
+  // members, which across forty channels would be a request and write storm to
+  // render forty one-line previews.
+  //
+  // Bounded three ways: only channels present in the inbox, at most
+  // KEY_WARM_CONCURRENCY in flight, and once per channel per session.
+  useEffect(() => {
+    if (state.openPanel !== "threads") return;
+    const cc = ccRef.current;
+    if (!cc) return;
+
+    const rows = [...state.threadInboxActive, ...state.threadInboxAgedUnread];
+    const pending = Array.from(new Set(rows.map((r) => r.channelID))).filter(
+      (cid) => !inboxWarmedRef.current.has(cid),
+    );
+    if (pending.length === 0) return;
+    for (const cid of pending) inboxWarmedRef.current.add(cid);
+
+    let cancelled = false;
+    const KEY_WARM_CONCURRENCY = 4;
+
+    const decryptChannel = async (channelID: string) => {
+      await cc.warmChannelKey(channelID);
+      if (cancelled) return;
+      const previews: Record<string, { headBody?: string; lastReplyBody?: string }> = {};
+      for (const r of rows) {
+        if (r.channelID !== channelID) continue;
+        const cipher = inboxCipherRef.current.get(r.threadID);
+        if (!cipher) continue;
+        // Tombstones short-circuit exactly as decryptAll does: an empty body
+        // under a tombstone must render a placeholder, not a failed decrypt.
+        const head = cipher.headDeleted
+          ? "[message deleted]"
+          : cipher.headBody
+            ? await cc.decryptForChannel(channelID, cipher.headKeyVersion, cipher.headBody)
+            : undefined;
+        const reply = cipher.lastReplyDeleted
+          ? "[message deleted]"
+          : cipher.lastReplyBody
+            ? await cc.decryptForChannel(
+                channelID,
+                cipher.lastReplyKeyVersion,
+                cipher.lastReplyBody,
+              )
+            : undefined;
+        previews[r.threadID] = { headBody: head, lastReplyBody: reply };
+      }
+      if (cancelled || Object.keys(previews).length === 0) return;
+      // One dispatch per channel, so the panel fills in visibly instead of in
+      // one late blob, and a slow channel never holds up the others.
+      dispatch({ kind: "thread_inbox_previews", channelID, previews });
+    };
+
+    void (async () => {
+      for (let i = 0; i < pending.length; i += KEY_WARM_CONCURRENCY) {
+        if (cancelled) return;
+        await Promise.all(pending.slice(i, i + KEY_WARM_CONCURRENCY).map(decryptChannel));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [state.openPanel, state.threadInboxActive, state.threadInboxAgedUnread, ccReady]);
 
 
 
@@ -2951,6 +3243,8 @@ export function App() {
             window.history.pushState({}, "", "/admin");
             dispatch({ kind: "route_to_admin" });
           }}
+          onOpenThreads={() => dispatch({ kind: "open_panel", panel: "threads" })}
+          threadsUnread={state.threadInboxUnreadTotal}
           presenceMode={state.myPresenceMode}
           effectivePresence={state.myEffectivePresence}
           onPresenceModeChange={(mode) =>
@@ -3390,6 +3684,41 @@ export function App() {
         />
       )}
 
+      {/* 42-8: the cross-channel thread inbox. Row click switches channel and
+          opens the thread in ONE action -- set_active_channel clears openThread,
+          so two dispatches would only work by ordering luck. ThreadPanel and the
+          existing fetch_thread effect do the rest. */}
+      {state.openPanel === "threads" && (
+        <ThreadInboxPanel
+          active={state.threadInboxActive}
+          agedUnread={state.threadInboxAgedUnread}
+          loaded={state.threadInboxLoaded}
+          hasMoreActive={state.threadInboxHasMoreActive}
+          unreadTotal={state.threadInboxUnreadTotal}
+          windowHours={state.threadInboxWindowHours}
+          threadSeen={state.threadSeen}
+          mentions={state.threadMentions}
+          ownUserID={state.user?.id ?? null}
+          channelNames={threadInboxChannelNames}
+          handles={threadInboxHandles}
+          onOpenThread={(channelID, threadID) => {
+            dispatch({ kind: "open_thread_from_inbox", channelID, threadID });
+            dispatch({ kind: "close_panel" });
+          }}
+          onLoadMore={() => {
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            const oldest = state.threadInboxActive[state.threadInboxActive.length - 1];
+            if (!oldest) return;
+            inboxPagingRef.current = true;
+            c.send<ThreadInboxPayload>(TypeThreadInbox, {
+              before_ts: oldest.lastReplyTS.getTime(),
+              limit: 50,
+            });
+          }}
+          onClose={() => dispatch({ kind: "close_panel" })}
+        />
+      )}
       {state.openPanel === "members" && activeChannel && (
         <MembersPanel
           channelName={displayName(activeChannel, state.user?.id ?? null)}

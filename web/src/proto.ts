@@ -106,6 +106,17 @@ export interface MessagePayload {
   // never edited. body already holds the edited ciphertext (only one version
   // is ever stored), so this exists only to render an "(edited)" marker.
   edited_at?: number;
+  // Phase 42-3: OUR OWN thread read state for this row, only meaningful on a
+  // thread head and only sent on history fetches (a live push has no single
+  // recipient to resolve it for). A reply is unread when
+  // last_reply_seq > thread_last_read_seq. thread_involved means we wrote the
+  // head or one of the replies.
+  //
+  // These replaced the per-device localStorage thread cursors: read state now
+  // arrives with the rows it decorates, so it follows the user across devices
+  // and needs no bulk sync frame.
+  thread_last_read_seq?: number;
+  thread_involved?: boolean;
   // att-2: attachments linked to this message, populated on the live push.
   // Empty for the common attachment-less message and for history fetches
   // (those backfill via GET /api/attachments). Go marshals the []byte
@@ -421,6 +432,85 @@ export interface MarkReadPayload {
 export interface ReadStatePayload {
   channel_id: string;
   last_read_seq: number;
+}
+
+// ---- Phase 42-4: thread read cursors -------------------------------
+
+export const TypeMarkThreadRead = "mark_thread_read";
+export const TypeMarkThreadReadAck = "mark_thread_read_ack";
+export const TypeThreadReadState = "thread_read_state";
+
+// mark_thread_read is mark_read one level down: seq is the highest REPLY seq
+// seen in this thread. Same clamping and same refusal to rewind, so
+// over-sending is harmless. channel_id is carried for the membership check.
+export interface MarkThreadReadPayload {
+  channel_id: string;
+  thread_id: string;
+  seq: number;
+}
+
+// thread_read_state is both the ack and the cross-device push. This is what
+// replaced the per-device localStorage thread cursors: a badge cleared on one
+// device now clears on the others.
+export interface ThreadReadStatePayload {
+  channel_id: string;
+  thread_id: string;
+  last_read_seq: number;
+}
+
+// ---- Phase 42-6: the cross-channel thread inbox --------------------
+
+export const TypeThreadInbox = "thread_inbox";
+export const TypeThreadInboxAck = "thread_inbox_ack";
+
+export interface ThreadInboxPayload {
+  // Pages backwards through last_reply_ts (server unix-millis); 0 = newest.
+  // A ts, not a seq: seq is per-channel and this list spans channels.
+  before_ts?: number;
+  limit?: number;
+}
+
+// One thread worth looking at. head_body / last_reply_body are CIPHERTEXT --
+// same body + key_version pair a MessagePayload carries, decrypted client-side
+// per channel. The server has read neither.
+export interface ThreadInboxEntry {
+  channel_id: string;
+  thread_id: string;
+
+  head_seq: number;
+  head_ts: number;
+  head_sender_user_id?: string;
+  head_body?: string;
+  head_key_version?: number;
+  head_deleted?: boolean;
+
+  last_reply_seq: number;
+  last_reply_ts: number;
+  last_reply_sender_user_id?: string;
+  last_reply_body?: string;
+  last_reply_key_version?: number;
+  last_reply_deleted?: boolean;
+
+  reply_count: number;
+  last_read_seq: number;
+  // We wrote the head or one of the replies. Server-computed from the sending
+  // device, so it needs no plaintext -- it is the server's half of "does this
+  // thread concern me". Mentions are the client's half.
+  involved: boolean;
+}
+
+// Two lists, deliberately not merged: `active` is discovery (bounded by the
+// recency window, paginated), `aged_unread` is the safety net (bounded by
+// involvement, first page only). Merging them would let a busy user's live
+// threads push a forgotten unread one off the page.
+export interface ThreadInboxAckPayload {
+  active: ThreadInboxEntry[];
+  aged_unread?: ThreadInboxEntry[];
+  // Involved threads with an unread reply at ANY age, ignoring both limits, so
+  // the dot stays honest when a list is truncated.
+  unread_involved_total: number;
+  active_window_hours: number;
+  has_more_active?: boolean;
 }
 
 // ---- Phase 26: message deletion (governance prereq) ----------------

@@ -69,6 +69,10 @@ CLAUDE.md
 
 node
 
-chalkctl
+# Built binaries at the repo root. ANCHORED: a bare `chalkctl` also matched the
+# internal/chalkctl/ directory, silently ignoring every new file added there
+# (already-tracked files were unaffected, which is what hid it). /bin/ above
+# covers the copies under bin/.
+/chalkctl
 
 chalk-web@0.0.0-dev

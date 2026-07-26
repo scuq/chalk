@@ -551,6 +551,22 @@ const (
 	TypeMarkRead    = "mark_read"
 	TypeMarkReadAck = "mark_read_ack"
 	TypeReadState   = "read_state"
+
+	// Phase 42-4: thread read cursors. Same three-frame shape as 33-1's
+	// channel cursors, one level down: mark_thread_read raises the caller's
+	// cursor for one thread, thread_read_state is the push that carries it to
+	// the same user's other devices so a thread badge cleared on a phone is
+	// cleared on a laptop.
+	TypeMarkThreadRead    = "mark_thread_read"
+	TypeMarkThreadReadAck = "mark_thread_read_ack"
+	TypeThreadReadState   = "thread_read_state"
+
+	// Phase 42-6: the cross-channel thread inbox. One request returns both
+	// halves of the answer -- threads active inside the recency window, and
+	// threads the caller took part in that have an unread reply at any age --
+	// already ordered newest-first, because the two sets cannot overlap.
+	TypeThreadInbox    = "thread_inbox"
+	TypeThreadInboxAck = "thread_inbox_ack"
 )
 
 // MarkReadPayload raises the caller's read cursor for one channel. Seq is
@@ -568,6 +584,93 @@ type MarkReadPayload struct {
 type ReadStatePayload struct {
 	ChannelID   string `json:"channel_id"`
 	LastReadSeq int64  `json:"last_read_seq"`
+}
+
+// MarkThreadReadPayload raises the caller's read cursor for one thread. Seq is
+// the highest REPLY seq the user has seen in it. Clamped to the thread's newest
+// reply and never allowed backwards, exactly like MarkReadPayload.
+//
+// ChannelID is carried for the membership check; the thread id alone is unique,
+// but authorization is per channel.
+type MarkThreadReadPayload struct {
+	ChannelID string `json:"channel_id"`
+	ThreadID  string `json:"thread_id"`
+	Seq       int64  `json:"seq"`
+}
+
+// ThreadReadStatePayload reports a thread's read cursor. Used both as the
+// mark_thread_read ack (carrying the effective, possibly clamped, cursor) and
+// as the cross-device push.
+type ThreadReadStatePayload struct {
+	ChannelID   string `json:"channel_id"`
+	ThreadID    string `json:"thread_id"`
+	LastReadSeq int64  `json:"last_read_seq"`
+}
+
+// ThreadInboxPayload requests a page of the thread inbox.
+type ThreadInboxPayload struct {
+	// BeforeTS pages backwards through last_reply_ts (server unix-millis).
+	// 0 = newest. The cursor is a ts, not a seq: seq is per-channel and this
+	// list spans channels, so seq gives no cross-channel ordering.
+	BeforeTS int64 `json:"before_ts,omitempty"`
+	Limit    int   `json:"limit,omitempty"`
+}
+
+// ThreadInboxEntry is one thread worth looking at. Head and newest-reply
+// previews are carried as the same body + key_version pair a MessagePayload
+// uses; the server has read neither.
+type ThreadInboxEntry struct {
+	ChannelID string `json:"channel_id"`
+	ThreadID  string `json:"thread_id"`
+
+	HeadSeq        int64  `json:"head_seq"`
+	HeadTS         int64  `json:"head_ts"`
+	HeadSender     string `json:"head_sender_user_id,omitempty"`
+	HeadBody       string `json:"head_body,omitempty"`
+	HeadKeyVersion *int   `json:"head_key_version,omitempty"`
+	HeadDeleted    bool   `json:"head_deleted,omitempty"`
+
+	LastReplySeq        int64  `json:"last_reply_seq"`
+	LastReplyTS         int64  `json:"last_reply_ts"`
+	LastReplySender     string `json:"last_reply_sender_user_id,omitempty"`
+	LastReplyBody       string `json:"last_reply_body,omitempty"`
+	LastReplyKeyVersion *int   `json:"last_reply_key_version,omitempty"`
+	LastReplyDeleted    bool   `json:"last_reply_deleted,omitempty"`
+
+	ReplyCount  int64 `json:"reply_count"`
+	LastReadSeq int64 `json:"last_read_seq"`
+	// Involved: the caller wrote the head or one of the replies. Computed from
+	// sender_device_id -> user_id, so it needs no plaintext. It is the server's
+	// half of "is this thread relevant to me"; the client's half is mentions,
+	// which only a decrypted body can answer.
+	Involved bool `json:"involved"`
+}
+
+// ThreadInboxAckPayload carries one page plus the totals the badge needs.
+//
+// The two lists are separate rather than concatenated because they answer
+// different questions and must not be able to suppress one another: Active is
+// discovery (bounded by the recency window, paginated), AgedUnread is the safety
+// net (bounded by involvement, first page only). Merging them would let a busy
+// user's live threads push a forgotten unread one off the page, which is the
+// failure the whole feature exists to prevent.
+type ThreadInboxAckPayload struct {
+	// Active: a reply inside the recency window, involved or not. Newest first.
+	Active []ThreadInboxEntry `json:"active"`
+	// AgedUnread: the caller took part, has not read the newest reply, and the
+	// thread went quiet before the cutoff. Newest first. Sent with the first
+	// page only; empty on subsequent pages.
+	AgedUnread []ThreadInboxEntry `json:"aged_unread,omitempty"`
+	// UnreadInvolvedTotal counts involved threads with an unread reply at ANY
+	// age, ignoring both limits, so the dot stays honest when either list is
+	// truncated.
+	UnreadInvolvedTotal int `json:"unread_involved_total"`
+	// ActiveWindowHours echoes CHALK_THREAD_ACTIVE_WINDOW_HOURS so the client
+	// can label the list without a second knob to keep in sync.
+	ActiveWindowHours int `json:"active_window_hours"`
+	// HasMoreActive: another page sits behind the oldest Active row. Page with
+	// before_ts = that row's last_reply_ts.
+	HasMoreActive bool `json:"has_more_active"`
 }
 
 // PublishChannelKeyPayload uploads ONE member's wrapped space key for a

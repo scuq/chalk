@@ -64,6 +64,8 @@ type Event struct {
 	// GovernanceEventPayload JSON rides the ChannelEventPayload slot).
 	// "read" (33-1: UserID's read cursor for ChannelID moved; a routing
 	// pointer only -- receivers re-read the cursor from the store).
+	// "thread_read" (42-4: same as "read" one level down -- UserID's cursor
+	// for ThreadID moved. Also a routing pointer; receivers re-read it).
 	Kind string `json:"k"`
 
 	// Message fields (Kind="message"). MessageID and TS together
@@ -115,6 +117,11 @@ type Event struct {
 	// so we carry it as opaque bytes; the receiver in server.go
 	// decodes into proto.ChannelEventPayload.
 	ChannelEventPayload json.RawMessage `json:"cp,omitempty"`
+
+	// ThreadID identifies the thread for Kind="thread_read" (42-4). A thread's
+	// id is its head message's id, so this is unique on its own; ChannelID
+	// rides along too because the push names both.
+	ThreadID uuid.UUID `json:"th,omitempty"`
 
 	// InstanceID tags which chalkd published this. Informational.
 	InstanceID string `json:"i,omitempty"`

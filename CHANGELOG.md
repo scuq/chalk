@@ -12,7 +12,33 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **A "threads" list, so replies stop slipping past you.** A new button in the
+  status bar opens every thread worth your attention across all your channels,
+  with a dot when one of them needs you. It has two groups: *needs you* — a
+  thread you took part in, or one where somebody wrote your name, that has a
+  reply you have not read — and *also active*, anything else that has been
+  replied to recently. Each row shows the channel, who replied last, how many
+  replies there are and a one-line preview; clicking it jumps straight into the
+  thread. A thread you took part in and never read is listed however long ago it
+  went quiet, so nothing is quietly dropped for being old. Self-hosters can
+  change what counts as "recent" from the default two days with
+  `CHALK_THREAD_ACTIVE_WINDOW_HOURS`, or `chalkctl init
+  --thread-active-window-hours`.
+
+### Changed
+- **Opening a channel is faster, and stays fast as history grows.** Loading a
+  conversation used to re-count every reply in every thread on the whole server
+  each time, so it got slower for everyone as the server filled up. It now looks
+  up what it needs directly.
+
 ### Fixed
+- **Threads you have read stay read on your other devices.** Read a thread on
+  your phone and the "new replies" badge stayed lit on your laptop forever, with
+  nothing that would ever clear it — each device kept its own private idea of
+  what you had seen, and a fresh browser treated every thread you had ever read
+  as new again. Which threads you have read now follows you between devices, and
+  clearing a badge in one place clears it everywhere.
 - **The voice connection panel no longer spills over the message list.** With a
   narrow sidebar, the mute, deafen and leave buttons at the bottom left ran off
   the edge of the column and sat on top of the conversation. They now shrink to

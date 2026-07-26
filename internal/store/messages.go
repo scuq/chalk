@@ -67,6 +67,17 @@ type Message struct {
 	// keeps its place in history. Populated by GetMessage and the List* feed
 	// queries so clients can render an "(edited)" marker.
 	EditedAt *time.Time
+	// Phase 42-3: the VIEWER's thread state for this row, only meaningful on a
+	// thread head and only populated by ListMessagesByChannel (which joins
+	// thread_reads for the caller). ThreadLastReadSeq is their read high-water
+	// mark among this thread's replies -- a reply is unread when
+	// LastReplySeq > ThreadLastReadSeq. ThreadInvolved is whether they wrote
+	// the head or any reply.
+	//
+	// These ride along with the row so the client never needs a bulk cursor
+	// sync; see the comment on the query.
+	ThreadLastReadSeq int64
+	ThreadInvolved    bool
 }
 
 // ErrMessageNotFound is returned by DeleteMessage when no row matches
@@ -124,7 +135,19 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (Message, error) {
 			m.ID, m.ChannelID, m.ThreadID, m.ParentID, m.SenderDeviceID,
 			m.Seq, m.Body,
 		)
-		return row.Scan(&m.TS)
+		if err := row.Scan(&m.TS); err != nil {
+			return err
+		}
+		// 42-2: the same thread bookkeeping the WS send handler does. This path
+		// is test-only today, so leaving it out would make the tests describe a
+		// database production never produces.
+		//
+		// Unlike handleSend this still does not advance the channel cursor and
+		// does not publish -- a pre-existing asymmetry, deliberately untouched.
+		if m.ParentID != nil && m.ThreadID != nil {
+			return RecordThreadReplyTx(ctx, tx, m.ChannelID, *m.ThreadID, m.ID, m.SenderDeviceID, m.TS, m.Seq)
+		}
+		return nil
 	})
 	if err != nil {
 		return Message{}, fmt.Errorf("insert message: %w", err)

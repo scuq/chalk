@@ -80,6 +80,45 @@ export interface Message {
   // than appending a duplicate. Undefined for messages from other senders
   // and for history-fetched rows.
   clientMsgID?: string;
+  // 42-3: our own read cursor for this row's thread, sent by the server with
+  // the head row it decorates (history fetches only -- undefined on a live
+  // push, which has no single recipient). The reducer folds it into
+  // state.threadSeen on history_loaded; nothing reads it off the message
+  // afterwards, so it is hydration input rather than render state.
+  threadLastReadSeq?: number;
+  // 42-3: whether we wrote this thread's head or any of its replies. Server-
+  // computed from sender_device_id, so it never needs a decrypted body.
+  threadInvolved?: boolean;
+}
+
+// 42-7: one row of the thread inbox. camelCase mirror of proto.ThreadInboxEntry.
+//
+// headBody / lastReplyBody are the DECRYPTED previews and are optional because
+// they are filled in asynchronously, per channel, after the row is on screen --
+// undefined means "not decrypted yet", which the panel renders as a skeleton.
+export interface ThreadInboxRow {
+  channelID: string;
+  threadID: string;
+
+  headSeq: number;
+  headTS: Date;
+  headSenderUserID?: string;
+  headBody?: string;
+  headKeyVersion?: number;
+  headDeleted?: boolean;
+
+  lastReplySeq: number;
+  lastReplyTS: Date;
+  lastReplySenderUserID?: string;
+  lastReplyBody?: string;
+  lastReplyKeyVersion?: number;
+  lastReplyDeleted?: boolean;
+
+  replyCount: number;
+  // The server's view of our cursor when it built this row. state.threadSeen may
+  // be ahead of it; isThreadUnread takes the max of both.
+  lastReadSeq: number;
+  involved: boolean;
 }
 
 // 37-5: one member's decrypted reaction set for one message. Re-exported from
@@ -430,9 +469,44 @@ export interface AppState {
   // their own slice and survive.
   reactions: Record<string, ReactionSet[]>;
 
-  // Phase 10d: highest reply seq the user has "seen" per thread,
-  // used to compute unread badges. Persisted to localStorage per
-  // user. A reply with seq > threadSeen[threadID] counts as unread.
+  // ---- 42-7: the cross-channel thread inbox --------------------------
+  //
+  // Two ARRAYS, not a Record: the order is the server's (newest first) and
+  // there is at most a page of each, so keying by id would only add a sort
+  // back in. Kept as two lists for the same reason the server sends two --
+  // paginating the active list must never be able to suppress the aged one.
+  //
+  // Previews arrive as ciphertext and are decrypted per channel AFTER the rows
+  // render, so headBody/lastReplyBody are absent on a fresh row and filled in
+  // later. Absent means "not decrypted yet", never "empty".
+  threadInboxActive: ThreadInboxRow[];
+  threadInboxAgedUnread: ThreadInboxRow[];
+  threadInboxLoaded: boolean;
+  threadInboxHasMoreActive: boolean;
+  threadInboxUnreadTotal: number;
+  threadInboxWindowHours: number;
+  // Set when a live reply arrives for a thread we hold no row for. The client
+  // cannot invent a row -- it has no way to know `involved` -- so it asks for a
+  // refetch instead. App.tsx debounces on this.
+  threadInboxStale: boolean;
+
+  // 42-7: threads with a reply that mentions us. A PARALLEL slice, for the
+  // reason the reactions comment above gives: anything hung off a row that a
+  // server payload also carries gets clobbered when that payload is re-applied.
+  // Mentions come from decrypted plaintext the server has never seen, so they
+  // live on their own and survive a refetch.
+  threadMentions: Record<string, boolean>;
+
+  // Phase 10d: highest reply seq the user has "seen" per thread, used to
+  // compute unread badges. A reply with seq > threadSeen[threadID] counts as
+  // unread.
+  //
+  // 42-4: this used to be persisted to localStorage per user, which made it
+  // per-DEVICE -- reading a thread on your phone left the badge lit on your
+  // laptop forever. It is now server-backed (thread_reads, migration 0047) and
+  // hydrated two ways, both bounded: history rows carry the viewer's cursor for
+  // their own thread (42-3), and mark_thread_read/thread_read_state keep it in
+  // sync live. Nothing writes it to disk any more.
   threadSeen: Record<string, number>;
   friendsLoaded: boolean;
 
@@ -462,7 +536,15 @@ export interface AppState {
   // null = no panel. "invites" → InvitesPanel modal.
   // "profile" → ProfilePanel modal. Mutually exclusive with
   // createModalOpen (only one modal-equivalent at a time).
-  openPanel: "invites" | "profile" | "friends" | "members" | "governance" | null;
+  openPanel:
+    | "invites"
+    | "profile"
+    | "friends"
+    | "members"
+    | "governance"
+    // 42-8: the cross-channel thread inbox.
+    | "threads"
+    | null;
   // Phase 09c-2 refresh: spinner state for the ProfilePanel refresh
   // button. InvitesPanel's spinner uses myInvites.loading (which is
   // already there); for profile we need a dedicated flag because
@@ -619,6 +701,15 @@ export const initialState: AppState = {
 
   // Phase 10d:
   threadSeen: {},
+  // 42-7: thread inbox.
+  threadInboxActive: [],
+  threadInboxAgedUnread: [],
+  threadInboxLoaded: false,
+  threadInboxHasMoreActive: false,
+  threadInboxUnreadTotal: 0,
+  threadInboxWindowHours: 48,
+  threadInboxStale: false,
+  threadMentions: {},
   createModalOpen: false,
 
   // Phase 09b sub-step 4 auth-flow initial values.
@@ -723,7 +814,10 @@ export type Action =
   | { kind: "open_create_modal" }
   | { kind: "close_create_modal" }
   // Phase 09c-2: in-chat panel toggles.
-  | { kind: "open_panel"; panel: "invites" | "profile" | "friends" | "members" | "governance" }
+  | {
+      kind: "open_panel";
+      panel: "invites" | "profile" | "friends" | "members" | "governance" | "threads";
+    }
   | { kind: "close_panel" }
   // Phase 09c-2: profile-panel refresh (spinner only; the actual
   // identity update arrives via the existing auth_me_loaded action).
@@ -819,7 +913,33 @@ export type Action =
   | { kind: "thread_loaded"; threadID: string; messages: Message[] }
   // ---- Phase 10d: unread tracking ------------------------------------
   | { kind: "thread_seen_bump"; threadID: string; seq: number }
-  | { kind: "thread_seen_init"; seen: Record<string, number> }
+  // ---- Phase 42-4: durable thread cursors ----------------------------
+  // Replaces thread_seen_init, which hydrated the whole map from a
+  // per-device localStorage blob. Cursors now arrive one at a time, from the
+  // server: as the mark_thread_read ack, or as the cross-device push.
+  | { kind: "thread_read_state"; threadID: string; lastReadSeq: number }
+  // ---- Phase 42-7: the thread inbox ----------------------------------
+  | {
+      kind: "thread_inbox_loaded";
+      active: ThreadInboxRow[];
+      agedUnread: ThreadInboxRow[];
+      unreadTotal: number;
+      hasMoreActive: boolean;
+      windowHours: number;
+      // true when paging: append to the active list instead of replacing it.
+      append: boolean;
+    }
+  // Fills one channel's decrypted previews in place, once its key has settled.
+  | {
+      kind: "thread_inbox_previews";
+      channelID: string;
+      previews: Record<string, { headBody?: string; lastReplyBody?: string }>;
+    }
+  | { kind: "thread_mention_set"; threadID: string }
+  // One action for what set_active_channel + open_thread would do in two.
+  // Necessary, not cosmetic: set_active_channel clears openThread, so two
+  // dispatches only work by ordering luck.
+  | { kind: "open_thread_from_inbox"; channelID: string; threadID: string }
   // ---- gov-2: governance ---------------------------------------------
   | { kind: "governance_mode_changed"; channelID: string; mode: string }
   | { kind: "proposals_loaded"; channelID: string; proposals: ProposalView[] }

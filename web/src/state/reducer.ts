@@ -2,11 +2,20 @@
 // side effects, no I/O. Side effects (sending WS frames, fetching
 // history) live in App.tsx as useEffect hooks driven by state changes.
 
-import type { Action, AppState, ChannelUnread, Message } from "./types";
+import type {
+  Action,
+  AppState,
+  ChannelUnread,
+  Message,
+  ThreadInboxRow,
+} from "./types";
 // Phase 09d-2b: runtime import for the admin panel's initial state
 // (used by the route_to_chat handler to reset the panel cleanly).
 // 33-1 adds emptyUnread, the zero value for a channel's unread state.
 import { emptyUnread, initialAdminPanelState } from "./types";
+// 42-7: dedupe is shared with the panel's grouping so the two agree about what
+// counts as the same thread.
+import { dedupeThreadRows } from "../chat/threadinbox";
 
 // bumpUnread returns the channel's unread state with one field changed,
 // keeping the two invariants the sidebar relies on: the cursors only ever
@@ -585,11 +594,52 @@ export function reducer(state: AppState, action: Action): AppState {
         }
       }
 
+      // 42-7: keep the thread inbox current for threads it already holds.
+      //
+      // A reply to a thread we have NO row for deliberately inserts nothing: the
+      // client cannot know `involved` for it, and guessing would either invent
+      // false urgency or hide a real one. It flags the inbox stale instead and
+      // App.tsx debounces a refetch, which is the only place that answer exists.
+      let inboxActive = state.threadInboxActive;
+      let inboxAged = state.threadInboxAgedUnread;
+      let inboxStale = state.threadInboxStale;
+      if (m.parentID) {
+        const tid = m.threadID ?? m.parentID;
+        let matched = false;
+        const bump = (rows: ThreadInboxRow[]): ThreadInboxRow[] => {
+          const i = rows.findIndex((r) => r.threadID === tid);
+          if (i === -1) return rows;
+          matched = true;
+          const r = rows[i];
+          // An out-of-order push must not rewind the newest-reply pointers.
+          if (m.seq <= r.lastReplySeq) return rows;
+          const updated: ThreadInboxRow = {
+            ...r,
+            lastReplySeq: m.seq,
+            lastReplyTS: m.ts,
+            lastReplySenderUserID: m.senderUserID || undefined,
+            lastReplyBody: m.body,
+            lastReplyKeyVersion: m.keyVersion,
+            lastReplyDeleted: undefined,
+            replyCount: r.replyCount + 1,
+          };
+          // Move to the front: the list is ordered newest-reply-first, and this
+          // reply is now the newest in it.
+          return [updated, ...rows.slice(0, i), ...rows.slice(i + 1)];
+        };
+        inboxActive = bump(state.threadInboxActive);
+        inboxAged = bump(state.threadInboxAgedUnread);
+        if (!matched && state.threadInboxLoaded) inboxStale = true;
+      }
+
       return {
         ...state,
         messages: liveBumpMessages,
         threadMessages: nextThreadMessages,
         unread: nextUnread,
+        threadInboxActive: inboxActive,
+        threadInboxAgedUnread: inboxAged,
+        threadInboxStale: inboxStale,
       };
     }
 
@@ -784,10 +834,29 @@ export function reducer(state: AppState, action: Action): AppState {
       for (const m of existing) byID.set(m.id, m);
       for (const m of action.messages) byID.set(m.id, m);
       const merged = Array.from(byID.values()).sort((a, b) => a.seq - b.seq);
+
+      // 42-3: hydrate thread cursors from the rows themselves. The server
+      // resolved each head's cursor for THIS user, so read state now follows
+      // them across devices -- this replaced the localStorage threadSeen blob.
+      //
+      // Bounded by the page (50 rows), not by every thread the user has ever
+      // touched, which is what made a bulk sync unnecessary. Max, never
+      // assignment: a local bump from open_thread may already be ahead of what
+      // the server knew when it built this page.
+      let threadSeen = state.threadSeen;
+      for (const m of action.messages) {
+        if (m.threadLastReadSeq === undefined || m.parentID) continue;
+        if (m.threadLastReadSeq > (threadSeen[m.id] ?? 0)) {
+          if (threadSeen === state.threadSeen) threadSeen = { ...threadSeen };
+          threadSeen[m.id] = m.threadLastReadSeq;
+        }
+      }
+
       return {
         ...state,
         messages: { ...state.messages, [action.channelID]: merged },
         historyLoaded: { ...state.historyLoaded, [action.channelID]: true },
+        threadSeen,
       };
     }
 
@@ -875,6 +944,11 @@ export function reducer(state: AppState, action: Action): AppState {
         // gov-2: governance panel. App loads the channel's proposals via
         // gov_list_proposals on open; no reducer-owned form state.
         return { ...state, openPanel: "governance" };
+      }
+      if (action.panel === "threads") {
+        // 42-8: the thread inbox. App refetches a bigger page on open and warms
+        // the channel keys the previews need; no reducer-owned form state.
+        return { ...state, openPanel: "threads" };
       }
       // Default: profile. Same behavior as before the hotfix for the
       // profile case specifically.
@@ -1760,8 +1834,93 @@ export function reducer(state: AppState, action: Action): AppState {
         threadSeen: { ...state.threadSeen, [action.threadID]: action.seq },
       };
 
-    case "thread_seen_init":
-      return { ...state, threadSeen: action.seen };
+    // 42-4: the durable cursor arriving from the server -- either as the ack
+    // for our own mark_thread_read or as the push telling us another of this
+    // user's devices read the thread.
+    //
+    // Monotonic, and identity-preserving when nothing moves, like bumpUnread:
+    // the push lands on every device including ones already caught up, and a
+    // fresh object there would re-render the whole feed for no reason.
+    case "thread_read_state": {
+      const cur = state.threadSeen[action.threadID] ?? 0;
+      if (action.lastReadSeq <= cur) return state;
+      return {
+        ...state,
+        threadSeen: { ...state.threadSeen, [action.threadID]: action.lastReadSeq },
+      };
+    }
+
+    // ---- 42-7: the thread inbox ---------------------------------------
+
+    case "thread_inbox_loaded": {
+      // Appending pages the active list; the aged list is first-page-only and
+      // is always replaced wholesale (there is nothing to page through).
+      const active = action.append
+        ? dedupeThreadRows([...state.threadInboxActive, ...action.active])
+        : dedupeThreadRows(action.active);
+      return {
+        ...state,
+        threadInboxActive: active,
+        threadInboxAgedUnread: action.append
+          ? state.threadInboxAgedUnread
+          : dedupeThreadRows(action.agedUnread),
+        threadInboxLoaded: true,
+        threadInboxHasMoreActive: action.hasMoreActive,
+        threadInboxUnreadTotal: action.unreadTotal,
+        threadInboxWindowHours: action.windowHours,
+        // Whatever prompted a refetch has now been answered.
+        threadInboxStale: false,
+      };
+    }
+
+    case "thread_inbox_previews": {
+      // Fill one channel's decrypted previews in place. Identity-preserving
+      // when nothing changes: this fires once per channel as keys settle, and a
+      // fresh array each time would re-render the whole panel per channel.
+      let touched = false;
+      const fill = (rows: ThreadInboxRow[]): ThreadInboxRow[] => {
+        let changed = false;
+        const next = rows.map((r) => {
+          if (r.channelID !== action.channelID) return r;
+          const p = action.previews[r.threadID];
+          if (!p) return r;
+          if (p.headBody === r.headBody && p.lastReplyBody === r.lastReplyBody) return r;
+          changed = true;
+          return {
+            ...r,
+            headBody: p.headBody ?? r.headBody,
+            lastReplyBody: p.lastReplyBody ?? r.lastReplyBody,
+          };
+        });
+        if (!changed) return rows;
+        touched = true;
+        return next;
+      };
+      const active = fill(state.threadInboxActive);
+      const aged = fill(state.threadInboxAgedUnread);
+      if (!touched) return state;
+      return { ...state, threadInboxActive: active, threadInboxAgedUnread: aged };
+    }
+
+    case "thread_mention_set":
+      if (state.threadMentions[action.threadID]) return state;
+      return {
+        ...state,
+        threadMentions: { ...state.threadMentions, [action.threadID]: true },
+      };
+
+    case "open_thread_from_inbox":
+      // Deliberately one action: set_active_channel nulls openThread, so
+      // dispatching the two separately works only by ordering luck. The thread
+      // fetch effect and ThreadPanel take it from here -- no new rendering code.
+      return {
+        ...state,
+        activeChannelID: action.channelID,
+        openThread: { channelID: action.channelID, threadID: action.threadID },
+        // Same freeze the channel switch does, so the "new messages" divider
+        // behaves as it would have on a normal channel open.
+        unreadMarks: markForChannel(state.unread, action.channelID),
+      };
 
     case "thread_loaded": {
       // Phase 10c: server returned a thread's replies. Merge with

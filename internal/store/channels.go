@@ -337,7 +337,9 @@ func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]Ch
 //
 // SenderDeviceID may be NULL after a phase-12 user purge; we scan into
 // a *uuid.UUID and convert to a string at the proto boundary.
-func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, beforeSeq int64, limit int) ([]Message, error) {
+// viewerID is whose thread read cursors decorate the rows. Pass uuid.Nil for a
+// viewerless read; every thread then reports as unread and uninvolved.
+func (s *Store) ListMessagesByChannel(ctx context.Context, channelID, viewerID uuid.UUID, beforeSeq int64, limit int) ([]Message, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -350,43 +352,46 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 		beforeSeq = 1 << 62
 	}
 
-	// Phase 9.6i + 10a: LEFT JOIN devices for username, plus a
-	// LEFT JOIN over a reply-count subquery so the main feed can
-	// render the "N replies" indicator. The reply-count subquery
-	// counts only messages that have a parent (parent_id IS NOT
-	// NULL); thread heads themselves do not count themselves.
+	// Phase 9.6i: LEFT JOIN devices for username.
+	//
+	// 42-3: the thread decoration used to be a GROUP BY over messages with no
+	// channel filter and no ts bound -- a sequential scan plus group-by of
+	// EVERY monthly partition, run to decorate at most 200 rows, on every
+	// history page load -- plus a LATERAL re-finding the newest reply. Both are
+	// now a single-row lookup in thread_activity, and the newest reply's body
+	// is a (ts, id) PRIMARY-KEY probe: ta.last_reply_ts is stored precisely so
+	// this join prunes to one partition instead of scanning all of them.
+	//
+	// The last reply's sender comes from ta.last_reply_sender_id, resolved at
+	// write time, so the devices join it used to need is gone too.
+	//
+	// thread_reads rides along here on purpose: the viewer's cursor arrives
+	// with the row it decorates, so the client never needs a bulk "every thread
+	// cursor I hold" sync -- hydration is bounded by the page, not by every
+	// thread the user has ever touched.
 	rows, err := s.Pool.Query(ctx,
 		`SELECT m.id, m.channel_id, m.sender_device_id, d.user_id,
 		        m.ts, m.seq, m.body, m.key_version,
 		        m.deleted_at, m.deleted_by, m.edited_at,
 		        m.parent_id, m.thread_id,
-		        COALESCE(r.cnt, 0) AS reply_count,
-		        COALESCE(r.last_seq, 0) AS last_reply_seq,
-		        lr_dev.user_id   AS last_reply_sender_user_id,
-		        lr.body          AS last_reply_body,
-		        lr.key_version   AS last_reply_key_version
+		        COALESCE(ta.reply_count, 0)    AS reply_count,
+		        COALESCE(ta.last_reply_seq, 0) AS last_reply_seq,
+		        ta.last_reply_sender_id        AS last_reply_sender_user_id,
+		        lr.body                        AS last_reply_body,
+		        lr.key_version                 AS last_reply_key_version,
+		        COALESCE(tr.last_read_seq, 0)  AS thread_last_read_seq,
+		        COALESCE(tr.involved, FALSE)   AS thread_involved
 		   FROM messages m
 		   LEFT JOIN devices d ON d.id = m.sender_device_id
-		   LEFT JOIN (
-		     SELECT thread_id,
-		            COUNT(*)      AS cnt,
-		            MAX(seq)      AS last_seq
-		       FROM messages
-		      WHERE parent_id IS NOT NULL
-		      GROUP BY thread_id
-		   ) r ON r.thread_id = m.id
-		   LEFT JOIN LATERAL (
-		     SELECT sender_device_id, body, key_version
-		       FROM messages
-		      WHERE thread_id = m.id AND parent_id IS NOT NULL
-		      ORDER BY seq DESC
-		      LIMIT 1
-		   ) lr ON true
-		   LEFT JOIN devices lr_dev ON lr_dev.id = lr.sender_device_id
+		   LEFT JOIN thread_activity ta ON ta.thread_id = m.id
+		   LEFT JOIN messages lr
+		          ON lr.ts = ta.last_reply_ts AND lr.id = ta.last_reply_id
+		   LEFT JOIN thread_reads tr
+		          ON tr.user_id = $4 AND tr.thread_id = m.id
 		  WHERE m.channel_id = $1 AND m.seq < $2
 		  ORDER BY m.seq DESC
 		  LIMIT $3`,
-		channelID, beforeSeq, limit,
+		channelID, beforeSeq, limit, viewerID,
 	)
 	if err != nil {
 		return nil, err
@@ -414,6 +419,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID uuid.UUID, 
 			&deletedAt, &deletedBy, &editedAt,
 			&parentID, &threadID, &replyCount, &lastReplySeq,
 			&lastReplySender, &lastReplyBody, &lastReplyKeyVersion,
+			&m.ThreadLastReadSeq, &m.ThreadInvolved,
 		); err != nil {
 			return nil, err
 		}

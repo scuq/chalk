@@ -32,6 +32,11 @@ interface Props {
   // phase 09d-2b: admin moderation panel entry. Only shown when
   // me.role === "admin".
   onOpenAdmin?: () => void;
+  // 42-8: thread inbox entry point, with a dot when something needs you.
+  // threadsUnread is a COUNT but renders as a dot -- it only decides whether
+  // the dot appears, and feeds the tooltip.
+  onOpenThreads?: () => void;
+  threadsUnread?: number;
   // Phase 9.6j: presence override picker on the connection pill.
   // When provided, clicking the pill opens a small picker with
   // auto / online / away options.
@@ -47,7 +52,7 @@ const labels: Record<ConnectionState, string> = {
   error: "error",
 };
 
-export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenFriends, onOpenAdmin, presenceMode, effectivePresence, onPresenceModeChange }: Props) {
+export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenFriends, onOpenAdmin, onOpenThreads, threadsUnread = 0, presenceMode, effectivePresence, onPresenceModeChange }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   // Phase 9.6j: presence picker.
@@ -160,6 +165,31 @@ export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, on
         <span class="chalk-status-detail" data-testid="status-detail">
           ({detail})
         </span>
+      )}
+      {/* 42-8: the thread inbox. A top-level button rather than a user-menu
+          item, because the whole point is the dot -- a badge hidden behind a
+          click cannot tell you a thread needs you. A dot and not a number, the
+          same call Sidebar makes for channels. */}
+      {state === "open" && onOpenThreads && (
+        <button
+          type="button"
+          class="chalk-status-threads"
+          onClick={onOpenThreads}
+          title={
+            threadsUnread > 0
+              ? `${threadsUnread} thread${threadsUnread === 1 ? "" : "s"} need you`
+              : "active threads"
+          }
+          aria-label={
+            threadsUnread > 0 ? "active threads, some need you" : "active threads"
+          }
+          data-testid="status-threads"
+        >
+          threads
+          {threadsUnread > 0 && (
+            <span class="chalk-unread-dot" data-testid="status-threads-dot" />
+          )}
+        </button>
       )}
       {state === "open" && (
         <div class="chalk-status-menu" ref={menuRef}>

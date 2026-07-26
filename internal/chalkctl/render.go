@@ -26,12 +26,13 @@ type InitParams struct {
 	ChalkctlPath        string // absolute path to this binary (update timer)
 
 	// WebAuthn + admin seed + bootstrap + optional knobs (env file).
-	AdminUsername        string
-	AdminEmail           string
-	OpenRegistration     bool
-	VoiceMaxParticipants int    // 0 = omit (chalkd default)
-	AttachMaxBytes       int64  // 0 = omit
-	GiphyAPIKey          string // "" = omit
+	AdminUsername           string
+	AdminEmail              string
+	OpenRegistration        bool
+	VoiceMaxParticipants    int    // 0 = omit (chalkd default)
+	AttachMaxBytes          int64  // 0 = omit
+	GiphyAPIKey             string // "" = omit
+	ThreadActiveWindowHours int    // 0 = omit (chalkd default of 48h)
 }
 
 // renderTemplate loads templates/<name>.tmpl from the embedded FS and renders

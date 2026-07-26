@@ -92,6 +92,7 @@ func runInit(args []string) error {
 		voiceMax    = fs.Int("voice-max-participants", 0, "CHALK_VOICE_MAX_PARTICIPANTS (0 = chalkd default of 5)")
 		attachMax   = fs.Int64("attach-max-bytes", 0, "CHALK_ATTACH_MAX_BYTES upload cap (0 = chalkd default)")
 		giphyKey    = fs.String("giphy-api-key", "", "CHALK_GIPHY_API_KEY for the GIF picker (optional)")
+		threadWin   = fs.Int("thread-active-window-hours", 0, "CHALK_THREAD_ACTIVE_WINDOW_HOURS thread-inbox recency (0 = chalkd default of 48)")
 		turnVerbose = fs.Bool("turn-verbose", true, "coturn --verbose logging (default on)")
 	)
 	if err := fs.Parse(args); err != nil {
@@ -145,6 +146,9 @@ func runInit(args []string) error {
 	}
 	if set["giphy-api-key"] {
 		cfg.GiphyAPIKey = *giphyKey
+	}
+	if set["thread-active-window-hours"] {
+		cfg.ThreadActiveWindowHours = *threadWin
 	}
 	if set["turn-verbose"] {
 		cfg.TurnVerbose = *turnVerbose
@@ -365,6 +369,8 @@ init flags:
   --voice[=false]            enable/disable voice (default on)
   --voice-max-participants   mesh room cap (0 = chalkd default of 5)
   --attach-max-bytes         upload size cap (0 = chalkd default)
+  --thread-active-window-hours
+                             thread-inbox recency window (0 = chalkd default of 48)
   --giphy-api-key <key>      enable the GIF picker (optional)
   --turn-verbose[=false]     coturn verbose logging (default on)
   --open-registration[=false] let anyone register (default on; tighten later)
