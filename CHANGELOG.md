@@ -22,6 +22,15 @@ The engineering-level history (which slice shipped what) lives in
   inside a thread.
 
 ### Changed
+- **Pop out as many call videos as you like.** The pop-out button used to be on
+  the big tile only, and a second pop-out replaced the first — so you could
+  watch one thing outside the app and no more. Every tile with live video now
+  carries the button, including the small ones in the strip, and each one opens
+  a window of its own: three faces and a screen share can sit side by side while
+  you read another channel. The button turns into a close button for a tile
+  that is already out, and the windows tidy themselves up — a window closes when
+  its camera goes off or its share stops, and all of them close when you leave
+  the call.
 - **Older threads now fade in the threads panel.** Rows dim in steps as their
   last reply ages — ten minutes, an hour, two hours, eight hours, a day, a week
   — so a conversation still going stands out from one that stopped yesterday

@@ -38,7 +38,13 @@ import { useVoiceSession } from "./VoiceDock";
 import { ChannelGlyph } from "./Sidebar";
 import type { VoiceDiagnostics } from "../voice/call";
 import { useNetPrefs } from "../voice/net-prefs";
-import { openStreamPiP } from "../voice/pip";
+import {
+  closeTilePopout,
+  openTilePopout,
+  popoutKeys,
+  subscribePopouts,
+  syncTilePopouts,
+} from "../voice/pip";
 
 /** Stats refresh cadence while the drawer is open. Passive getStats reads
  * only (the Addendum D rule: nothing in-call may compete with media). */
@@ -105,6 +111,10 @@ export function VoiceCallPanel({
   // re-resolved from the stage every render, so a stream swap or a peer
   // leaving can't leave a frozen copy on screen.
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  // Tiles currently showing in windows of their own. Owned by the pip module,
+  // not by this panel: a pop-out outlives the panel (browse to a text channel
+  // and this unmounts), so the panel only mirrors the module's set.
+  const [popped, setPopped] = useState<string[]>(() => popoutKeys());
   const [diag, setDiag] = useState<VoiceDiagnostics | null>(null);
   const [copied, setCopied] = useState(false);
   // Per-device transport knobs. Saving pushes them into the live call (the
@@ -316,24 +326,48 @@ export function VoiceCallPanel({
   const focused = stageTiles.find((t) => t.key === focusedKey) ?? null;
   const strip = stageTiles.filter((t) => t.key !== focusedKey);
 
-  // ---- 45-5: pop the focused tile out ---------------------------------
+  // ---- 45-5 / 47-4: pop tiles out -------------------------------------
   //
-  // Document PiP where the engine has it (a real window, beside the app);
-  // the in-app expanded view everywhere else. Both show the SAME stream --
-  // nothing is cloned, so a pop-out costs no extra decode or bandwidth.
+  // A window per tile, as many as you like: three faces and a screen share
+  // side by side is the case this is for. Where no window can be had (a
+  // blocked pop-up) the in-app expanded view stands in, one tile at a time.
+  // Every view shows the SAME stream -- nothing is cloned, so a pop-out costs
+  // no extra decode or bandwidth.
   const expanded = expandedKey
     ? (stageTiles.find((t) => t.key === expandedKey) ?? null)
     : null;
+
+  useEffect(() => subscribePopouts(() => setPopped(popoutKeys())), []);
+
+  const popLabel = (tile: StageTile) =>
+    handleFor(tile.userID) + (tile.isScreen ? " — screen" : "");
 
   // Video only: a pop-out of an audio-only peer would be a black rectangle,
   // and their audio is already playing through the dock either way.
   const popOut = (tile: StageTile) => {
     if (!tile.stream || !tile.hasLiveVideo) return;
-    const label = handleFor(tile.userID) + (tile.isScreen ? " — screen" : "");
-    void openStreamPiP(tile.stream, label).then((opened) => {
+    if (popped.includes(tile.key)) {
+      closeTilePopout(tile.key);
+      return;
+    }
+    void openTilePopout(tile.key, tile.stream, popLabel(tile)).then((opened) => {
       if (!opened) setExpandedKey(tile.key);
     });
   };
+
+  // Keep the open windows honest: one whose tile stopped showing video closes,
+  // one whose stream was swapped mid-call follows the new stream.
+  useEffect(() => {
+    if (popped.length === 0) return;
+    syncTilePopouts(
+      stageTiles
+        .filter((t) => t.stream && t.hasLiveVideo)
+        .map((t) => ({ key: t.key, stream: t.stream as MediaStream, label: popLabel(t) })),
+    );
+    // popLabel is derived from the roster this render; re-running on tile
+    // changes is enough to keep titles current.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stageTiles, popped]);
 
   // The expanded view follows the call: it closes when what it was showing
   // stops (peer left, share ended, camera off) and when the call itself does.
@@ -395,6 +429,7 @@ export function VoiceCallPanel({
                   big
                   onClick={() => setPinnedKey(null)}
                   onPopOut={focused.hasLiveVideo ? () => popOut(focused) : undefined}
+                  poppedOut={popped.includes(focused.key)}
                   snap={snap}
                   channel={channel}
                   selfUserID={selfUserID}
@@ -409,6 +444,8 @@ export function VoiceCallPanel({
                     tile={t}
                     label={handleFor(t.userID)}
                     onClick={() => setPinnedKey(t.key)}
+                    onPopOut={t.hasLiveVideo ? () => popOut(t) : undefined}
+                    poppedOut={popped.includes(t.key)}
                     snap={snap}
                     channel={channel}
                     selfUserID={selfUserID}
@@ -682,6 +719,7 @@ function StagePeer({
   big,
   onClick,
   onPopOut,
+  poppedOut,
   snap,
   channel,
   selfUserID,
@@ -690,9 +728,11 @@ function StagePeer({
   label: string;
   big?: boolean;
   onClick?: () => void;
-  /** 45-5: show this stream larger -- own window where the engine allows it,
-   * expanded in-app otherwise. Absent on tiles with no stream to show. */
+  /** 45-5: show this stream in a window of its own (expanded in-app when no
+   * window can be had). Absent on tiles with no stream to show. */
   onPopOut?: () => void;
+  /** This tile already has a window open; the button puts it back. */
+  poppedOut?: boolean;
   snap: VoiceSessionSnap;
   channel: ChannelSummary;
   selfUserID: string;
@@ -741,17 +781,24 @@ function StagePeer({
         <span class="chalk-voice-peer-name">{shownLabel}</span>
         {onPopOut && (
           <button
-            class="chalk-voice-popout"
+            class={"chalk-voice-popout" + (poppedOut ? " chalk-voice-popout--on" : "")}
             type="button"
             onClick={(e) => {
               e.stopPropagation(); // must not unpin the tile it pops out
               onPopOut();
             }}
             onKeyDown={(e) => e.stopPropagation()}
-            title={`watch ${shownLabel} in a larger view`}
+            title={
+              poppedOut
+                ? `close the ${shownLabel} window`
+                : `watch ${shownLabel} in a window of its own`
+            }
             data-testid="voice-tile-popout"
+            aria-pressed={poppedOut ? "true" : "false"}
           >
-            ⧉ popout
+            {/* The strip tile is 148px wide -- the glyph alone there, the
+                word on the big tile where there is room for it. */}
+            {big ? (poppedOut ? "⧉ close" : "⧉ popout") : "⧉"}
           </button>
         )}
         {tile.part?.muted && <span class="chalk-voice-peer-flag" title="muted">m</span>}

@@ -5211,6 +5211,7 @@ body.chalk-resizing .chalk-sidebar-resizer {
 /* 45-5: pop the focused tile out. Same dotted-outline weight as the other
    in-label controls -- it belongs to the tile, not to the control bar. */
 .chalk-voice-popout {
+  flex: 0 0 auto;
   background: transparent;
   border: 1px dotted var(--chalk-border);
   color: var(--chalk-fg-dim);
@@ -5225,6 +5226,14 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-voice-popout:hover {
   color: var(--chalk-fg-bright);
   border-color: var(--chalk-fg-dim);
+}
+
+/* 47-4: this tile already has a window open -- solid outline, so a glance at
+   the strip says which of several are out. */
+.chalk-voice-popout--on {
+  border-style: solid;
+  border-color: var(--chalk-accent);
+  color: var(--chalk-accent);
 }
 
 /* 45-5: the in-app expanded view (Firefox/Safari, or a refused PiP request).

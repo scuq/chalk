@@ -24,7 +24,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { voiceSession, type SessionRemoteTile, type VoiceSessionSnap } from "../voice/session";
-import { closeStreamPiP } from "../voice/pip";
+import { closeAllTilePopouts } from "../voice/pip";
 import { ChannelGlyph } from "./Sidebar";
 
 function fmtDuration(ms: number): string {
@@ -74,10 +74,10 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
 
   // 45-5: a popped-out tile is a window of its own, so it outlives the call
   // panel that opened it -- browse to a text channel and that panel unmounts.
-  // The dock is mounted for as long as the app is, so closing the pop-out when
-  // the call ends belongs here rather than there.
+  // The dock is mounted for as long as the app is, so closing the pop-outs
+  // when the call ends belongs here rather than there.
   useEffect(() => {
-    if (snap.phase === "idle") closeStreamPiP();
+    if (snap.phase === "idle") closeAllTilePopouts();
   }, [snap.phase]);
 
   // 30-5f jump shortcut: Ctrl/Cmd+Shift+V snaps to the connected room from
