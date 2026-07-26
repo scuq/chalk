@@ -206,6 +206,8 @@ function AddTab(props: {
             onChange((e.target as HTMLInputElement).value);
           }}
           onKeyDown={(e) => {
+            // 48-2: an Enter that commits an IME candidate is not a submit.
+            if (e.isComposing || e.keyCode === 229) return;
             if (e.key === "Enter" && canSubmit) {
               e.preventDefault();
               onSubmit();

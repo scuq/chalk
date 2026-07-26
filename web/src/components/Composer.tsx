@@ -440,7 +440,11 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     // 42-1: emoticon replacement runs on the text left of the caret, so it
     // only ever fires on the token the user just finished typing -- pasting a
     // wall of text with a ":)" in the middle is left alone.
-    if (emoticonsOn) {
+    // 48-2: never during an IME composition -- swapping text and moving the
+    // caret mid-composition aborts or garbles the candidate on Chromium and
+    // WebKit. The finished token gets its chance on the post-commit input.
+    const composing = (e as unknown as { isComposing?: boolean }).isComposing === true;
+    if (emoticonsOn && !composing) {
       const caret = el.selectionStart ?? value.length;
       const hit = replaceEmoticonBefore(value, caret);
       if (hit) {
@@ -455,6 +459,11 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   };
 
   const onKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>) => {
+    // 48-2: while an IME composition is active, every key belongs to the IME.
+    // Without this, the Enter that commits a CJK candidate would send the
+    // uncommitted draft. keyCode 229 covers engines that deliver the commit
+    // keydown before flipping isComposing off.
+    if (e.isComposing || e.keyCode === 229) return;
     // 42-1: tool shortcuts first -- they carry a modifier, so they can never
     // be the plain Enter/Escape/Up keys handled below.
     const action = matchComposerShortcut(e);
