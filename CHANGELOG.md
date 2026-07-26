@@ -23,6 +23,13 @@ The engineering-level history (which slice shipped what) lives in
   active items use the uncommon-item green instead of rare blue. Quest gold
   is still the emphasis color and the gilded frames stay.
 
+### Fixed
+- **Your own status light now matches everyone else's.** The dot in the
+  online/away pill at the top took its color from the theme — dark in light
+  themes, white in dark ones — instead of the fixed status colors. It is now
+  green when online, amber when away, and a hollow grey ring when offline,
+  the same in every theme, just like the dots next to your friends.
+
 ## v0.3.50 — 27 July 2026 — Thread search inside threads and instant previews
 
 ### Fixed

@@ -271,9 +271,21 @@ html, body {
   background: var(--chalk-fg-muted);
 }
 
-.chalk-status-dot--open       { background: var(--chalk-fg); box-shadow: 0 0 6px var(--chalk-fg); }
+/* "open" and "closed" read as online/offline to the user, so they use
+   the fixed --chalk-presence-* tokens (same as the sidebar dots) rather
+   than the theme palette. Connecting/error are transient connection
+   states and keep the theme's warn/error colors. */
+.chalk-status-dot--open {
+  background: var(--chalk-presence-online);
+  box-shadow: 0 0 4px var(--chalk-presence-online-glow);
+}
 .chalk-status-dot--connecting { background: var(--chalk-warn); animation: chalk-pulse 1s infinite; }
-.chalk-status-dot--closed     { background: var(--chalk-fg-muted); }
+.chalk-status-dot--closed {
+  background: transparent;
+  border: 1px solid var(--chalk-presence-offline);
+  width: 6px;
+  height: 6px;
+}
 .chalk-status-dot--error      { background: var(--chalk-error); }
 
 @keyframes chalk-pulse {

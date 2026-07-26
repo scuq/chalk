@@ -127,7 +127,13 @@ export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, on
             aria-expanded={presenceOpen}
             title={`presence: ${effectivePresence ?? "online"} (mode: ${presenceMode ?? "auto"})`}
           >
-            <span class={`chalk-status-dot chalk-status-dot--${state}`} aria-hidden="true" />
+            {/* Presence dot, not the connection dot: this branch only renders
+                while connected, so the dot should show your presence in the
+                same fixed colors as everyone else's in the sidebar. */}
+            <span
+              class={`chalk-presence-dot chalk-presence-dot--${effectivePresence ?? "online"}`}
+              aria-hidden="true"
+            />
             <span class="chalk-status-label">
               {effectivePresence === "away" ? "away" : "online"}
               {presenceMode && presenceMode !== "auto" ? " ·" : ""}
