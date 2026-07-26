@@ -13,12 +13,23 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
-- **Links in messages are clickable.** Paste an address starting with `http://`
-  or `https://` and it becomes a link that opens in your browser, in a new tab
-  — or in your default browser if you run chalk as an installed app or in a
-  pop-out window. A full stop or a closing bracket at the end of the sentence
-  stays out of the link, and a bracket that belongs to the address keeps it.
-  Only web addresses are ever linked; anything else stays as plain text.
+- **Network controls in the call's debug panel.** The debug button in a voice
+  call now has three switches for how your connection is routed: *relay only*
+  sends everything through the server's relay instead of straight to the other
+  people — it hides your address from them and gets through networks that block
+  direct connections; *ipv4 only* ignores IPv6 paths, for a machine whose IPv6
+  looks available but never connects; *no lan* keeps a call off the local
+  network shortcut. The panel shows which routing is actually in force,
+  including when the server requires the relay for everyone, and a *rejoin*
+  button applies a routing change to the room you are already in. The settings
+  stay on that device and travel into the copied diagnostics report.
+
+### Changed
+- **Calls use IPv6 again.** Every call quietly dropped IPv6 paths to work
+  around one machine with a broken IPv6 interface, which penalised everyone on
+  a working IPv6 network. Calls now use whatever paths your network offers, and
+  the workaround is the *ipv4 only* switch in the call debug panel for anyone
+  who still needs it.
 
 ---
 
@@ -36,6 +47,13 @@ The engineering-level history (which slice shipped what) lives in
   Mac). The new `?` button next to them lists every composer key, including the
   ones nobody finds on their own: shift+enter for a new line, cursor-up to edit
   your last message.
+- **Links in messages are clickable.** Paste an address starting with `http://`
+  or `https://` and it becomes a link that opens in your browser, in a new tab
+  — or in your default browser if you run chalk as an installed app or in a
+  pop-out window. A full stop or a closing bracket at the end of the sentence
+  stays out of the link, and a bracket that belongs to the address keeps it.
+  Only web addresses are ever linked; anything else stays as plain text.
+
 
 ### Changed
 - **Everything you can do to a message is now in one menu.** Right-click a

@@ -11,7 +11,8 @@
 //     PUBLISHED identity before the SDP is applied; a bad signature aborts
 //     that peer (possible MITM), never silently degrades
 //   * iceTransportPolicy: 'relay' when the server says force_relay
-//     (CHALK_VOICE_FORCE_RELAY -- the §7d no-P2P acceptance gate)
+//     (CHALK_VOICE_FORCE_RELAY -- the §7d no-P2P acceptance gate) or when
+//     this device asks for it (./net-prefs, the debug drawer knobs)
 //   * a MINIMAL per-sender uplink budget (design Addendum D says the basic
 //     caps + divider land here in 30-4; the probe/ladder arrive in 30-8)
 //   * 30-7a (Addendum B): screen sharing on its OWN transceivers (camera
@@ -129,6 +130,13 @@ import {
   needsRecapture,
   type MicPrefs,
 } from "./mic-prefs";
+import {
+  candidateTypeOf,
+  iceTransportPolicyFor,
+  loadNetPrefs,
+  shouldDropCandidate,
+  type NetPrefs,
+} from "./net-prefs";
 
 // ---- knobs (30-8: video caps are DYNAMIC -- see ./adaptive) ----------------
 //
@@ -312,6 +320,8 @@ export interface VoiceDiagnostics {
   channelID: string;
   self: string;
   forceRelay: boolean;
+  /** The device's transport knobs, and the ICE policy they resolve to. */
+  net: NetPrefs & { effectivePolicy: RTCIceTransportPolicy };
   iceServerURLs: string[]; // URLs only -- never the short-lived credentials
   peers: VoicePeerDiag[];
   events: VoiceDiagEvent[];
@@ -331,11 +341,8 @@ export class VoiceCall {
   private micPrefs: MicPrefs = DEFAULT_MIC_PREFS;
   private iceServers: RTCIceServer[] = [];
   private forceRelay = false;
-  // IPv4-only candidate filtering: drops IPv6 candidates (local and remote)
-  // to avoid non-routable IPv6 ULA paths (e.g. VM/VPN bridge interfaces) whose
-  // TURN host lookups fail. On by default; a genuinely IPv6-reachable deploy
-  // can flip this off.
-  private ipv4Only = true;
+  /** Per-device transport knobs from the debug drawer (see ./net-prefs). */
+  private netPrefs: NetPrefs = loadNetPrefs();
   private joined = false;
   private closed = false;
   private hasVideo = false;
@@ -417,6 +424,10 @@ export class VoiceCall {
       channelID: this.o.channelID,
       self: this.selfKey,
       forceRelay: this.forceRelay,
+      net: {
+        ...this.netPrefs,
+        effectivePolicy: iceTransportPolicyFor(this.netPrefs, this.forceRelay),
+      },
       iceServerURLs: this.iceServers.flatMap((s) =>
         Array.isArray(s.urls) ? s.urls : [s.urls as string],
       ),
@@ -634,6 +645,40 @@ export class VoiceCall {
     }
   }
 
+  /**
+   * applyNetPrefs pushes a debug-drawer transport change into the live call.
+   *
+   * The candidate filters take effect at once, on everything gathered or
+   * received from here on. The transport policy is handed to every live
+   * peer connection, but a browser only consults it while gathering, so an
+   * already-negotiated peer keeps the path it picked: the honest way to make
+   * relay-only bite for peers that are already up is to rejoin, which is what
+   * the drawer tells the user.
+   */
+  applyNetPrefs(next: NetPrefs): void {
+    if (this.closed) return;
+    const prev = this.netPrefs;
+    this.netPrefs = next;
+    const policy = iceTransportPolicyFor(next, this.forceRelay);
+    if (iceTransportPolicyFor(prev, this.forceRelay) !== policy) {
+      for (const peer of this.peers.values()) {
+        try {
+          peer.pc.setConfiguration({
+            iceServers: this.iceServers,
+            iceTransportPolicy: policy,
+          });
+        } catch (err) {
+          // Not every browser allows narrowing the policy on a live pc.
+          console.warn("setConfiguration:", err);
+        }
+      }
+    }
+    this.diag(
+      `net prefs: transport=${next.transport} (effective ${policy})` +
+        ` ipv4Only=${next.ipv4Only} noHost=${next.noHost}`,
+    );
+  }
+
   /** The current mic level, 0..1, post-gain. Null when there is no capture. */
   micLevel(): number | null {
     return this.micChain ? this.micChain.level() : null;
@@ -737,8 +782,9 @@ export class VoiceCall {
 
     const pc = new RTCPeerConnection({
       iceServers: this.iceServers,
-      // §7d: relay-only proves the no-P2P path. 'all' otherwise.
-      iceTransportPolicy: this.forceRelay ? "relay" : "all",
+      // §7d: relay-only proves the no-P2P path. The device can force relay for
+      // itself too (debug drawer); it can never relax a server force_relay.
+      iceTransportPolicy: iceTransportPolicyFor(this.netPrefs, this.forceRelay),
     });
     const peer: Peer = {
       key,
@@ -783,14 +829,11 @@ export class VoiceCall {
       peer.pendingStreams.set(stream.id, stream);
     };
     pc.onicecandidate = (e) => {
-      // IPv4-only mitigation: some clients enumerate a non-routable IPv6 ULA
-      // interface (e.g. fdb2:... from a VM/VPN bridge) whose TURN/STUN host
-      // lookups fail ("host lookup received error"). Drop IPv6 candidates so
-      // we never advertise an unreachable path; the IPv4 relay candidate is
-      // the one that actually works here. Guarded by ipv4Only so it can be
-      // turned off if a deploy is genuinely IPv6-reachable.
-      if (this.ipv4Only && e.candidate && isIPv6Candidate(e.candidate)) {
-        this.diag(`dropped IPv6 candidate for ${key} (ipv4-only)`);
+      // The device's candidate filters (debug drawer): never advertise a path
+      // this machine has been told is useless -- e.g. the non-routable IPv6 ULA
+      // interface of a VM/VPN bridge, whose TURN host lookups fail.
+      if (e.candidate && shouldDropCandidate(e.candidate.candidate, this.netPrefs)) {
+        this.diag(`dropped local ${candidateTypeOf(e.candidate.candidate)} candidate for ${key}`);
         return;
       }
       this.diag(
@@ -1037,9 +1080,9 @@ export class VoiceCall {
 
   private async onIce(peer: Peer, sig: IceSignal): Promise<void> {
     if (!sig || sig.candidate === undefined) return;
-    // Drop remote IPv6 candidates under ipv4Only, mirroring the local filter:
-    // pairing against a peer's unreachable IPv6 ULA just wastes checks.
-    if (this.ipv4Only && sig.candidate && isIPv6CandidateInit(sig.candidate)) {
+    // Mirror the local filter onto the peer's candidates: pairing against an
+    // address this device has been told is unreachable just wastes checks.
+    if (sig.candidate && shouldDropCandidate(sig.candidate.candidate ?? "", this.netPrefs)) {
       return;
     }
     if (!peer.hasRemoteDesc) {
@@ -1591,33 +1634,6 @@ function iceServerFromWire(s: ICEServerWire): RTCIceServer {
 }
 
 // ---- diagnostics helpers (30-4c) -------------------------------------------
-
-/** candidateTypeOf pulls the "typ" token out of a raw candidate line. */
-export function candidateTypeOf(candidate: string): string {
-  const m = /\styp\s+(\S+)/.exec(candidate);
-  return m ? m[1] : "?";
-}
-
-// isIPv6Candidate reports whether an RTCIceCandidate's connection address is
-// IPv6. The candidate SDP line is:
-//   candidate:<foundation> <component> <transport> <priority> <ADDR> <port> typ ...
-// so the 5th token is the address; an address containing ':' is IPv6.
-export function isIPv6Candidate(c: RTCIceCandidate): boolean {
-  return isIPv6CandidateStr(c.candidate);
-}
-
-// isIPv6CandidateInit is the RTCIceCandidateInit (wire) variant.
-export function isIPv6CandidateInit(c: RTCIceCandidateInit): boolean {
-  return isIPv6CandidateStr(c.candidate ?? "");
-}
-
-function isIPv6CandidateStr(cand: string): boolean {
-  if (!cand) return false;
-  const parts = cand.split(/\s+/);
-  // tokens: [candidate:foundation, component, transport, priority, ADDR, port, "typ", ...]
-  const addr = parts[4];
-  return !!addr && addr.includes(":");
-}
 
 /**
  * extractSelectedPair walks an RTCStatsReport for the nominated/selected

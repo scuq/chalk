@@ -5184,6 +5184,16 @@ body.chalk-resizing .chalk-sidebar-resizer {
   color: var(--chalk-fg-dim);
 }
 
+.chalk-voice-drawer-knobs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--chalk-s1);
+  margin-bottom: var(--chalk-s1);
+  padding-bottom: var(--chalk-s1);
+  border-bottom: 1px solid var(--chalk-border);
+}
+
 .chalk-voice-drawer-stats {
   margin-bottom: var(--chalk-s1);
 }

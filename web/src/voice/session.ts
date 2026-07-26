@@ -27,6 +27,7 @@ import { loadIdentity } from "../crypto/idb";
 import { voiceBus } from "./bus";
 import { VoiceCall, type VoiceDiagnostics, type ScreenShareMode } from "./call";
 import { subscribeMicPrefs } from "./mic-prefs";
+import { subscribeNetPrefs } from "./net-prefs";
 export type { ScreenShareMode } from "./call";
 
 // ---- per-peer local audio prefs (Addendum A: A1 + the element-volume
@@ -192,8 +193,9 @@ export interface JoinArgs {
 
 class VoiceSessionImpl {
   private call: VoiceCall | null = null;
-  /** 41-4: unsubscribe from mic prefs, live only for the duration of a call. */
-  private micUnsub: (() => void) | null = null;
+  /** Unsubscribes from the mic and transport prefs, live only for the
+   * duration of a call. */
+  private prefsUnsubs: (() => void)[] = [];
   private listeners = new Set<() => void>();
   private s: VoiceSessionSnap = {
     phase: "idle",
@@ -367,9 +369,14 @@ class VoiceSessionImpl {
       // gain drag or a device swap lands on the running call instead of
       // waiting for the next one. Subscribed before join() so a change made
       // while the handshake is in flight is not lost.
-      this.micUnsub = subscribeMicPrefs((prefs) => {
-        void this.call?.applyMicPrefs(prefs);
-      });
+      this.prefsUnsubs.push(
+        subscribeMicPrefs((prefs) => {
+          void this.call?.applyMicPrefs(prefs);
+        }),
+        // Same deal for the debug drawer's transport knobs: a flip mid-call
+        // lands on the running call.
+        subscribeNetPrefs((prefs) => this.call?.applyNetPrefs(prefs)),
+      );
       await call.join();
       this.set({
         phase: "in-call",
@@ -389,7 +396,7 @@ class VoiceSessionImpl {
       const raw = String(err instanceof Error ? err.message : err);
       const dead = this.call;
       this.call = null;
-      this.stopMicWatch();
+      this.stopPrefsWatch();
       if (dead) void dead.leave();
       this.set({
         phase: "idle",
@@ -403,9 +410,9 @@ class VoiceSessionImpl {
     }
   }
 
-  private stopMicWatch(): void {
-    this.micUnsub?.();
-    this.micUnsub = null;
+  private stopPrefsWatch(): void {
+    for (const off of this.prefsUnsubs) off();
+    this.prefsUnsubs = [];
   }
 
   /**
@@ -428,7 +435,7 @@ class VoiceSessionImpl {
     if (userInitiated) clearRejoinHint();
     const call = this.call;
     this.call = null;
-    this.stopMicWatch();
+    this.stopPrefsWatch();
     this.set({
       phase: "idle",
       channelID: null,

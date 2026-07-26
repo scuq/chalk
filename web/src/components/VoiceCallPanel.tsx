@@ -33,6 +33,7 @@ import {
 import { useVoiceSession } from "./VoiceDock";
 import { ChannelGlyph } from "./Sidebar";
 import type { VoiceDiagnostics } from "../voice/call";
+import { useNetPrefs } from "../voice/net-prefs";
 
 /** Stats refresh cadence while the drawer is open. Passive getStats reads
  * only (the Addendum D rule: nothing in-call may compete with media). */
@@ -96,6 +97,9 @@ export function VoiceCallPanel({
   const [debugOpen, setDebugOpen] = useState(false);
   const [diag, setDiag] = useState<VoiceDiagnostics | null>(null);
   const [copied, setCopied] = useState(false);
+  // Per-device transport knobs. Saving pushes them into the live call (the
+  // session subscribes for as long as a call runs).
+  const [net, setNet] = useNetPrefs();
 
   const selfKey = selfUserID + ":" + selfDeviceID;
   const hereInCall = snap.phase === "in-call" && snap.channelID === channel.id;
@@ -146,6 +150,14 @@ export function VoiceCallPanel({
       client,
       cc,
     });
+
+  // A transport change only reaches peers that connect after it (a browser
+  // reads iceTransportPolicy while gathering). Leaving and rejoining rebuilds
+  // every peer connection, which is the honest way to apply it to a live room.
+  const rejoin = async () => {
+    await voiceSession.leave();
+    join();
+  };
 
   const toggleCam = () => {
     if (voiceSession.toggleCam()) return;
@@ -449,6 +461,52 @@ export function VoiceCallPanel({
                   {copied ? "copied ✓" : "copy report"}
                 </button>
               </div>
+              <div class="chalk-voice-drawer-knobs" data-testid="voice-net-knobs">
+                <span class="chalk-voice-drawer-peer">transport</span>
+                <button
+                  class={
+                    "chalk-btn chalk-voice-ctl" +
+                    (net.transport === "relay" ? " chalk-voice-ctl--on" : "")
+                  }
+                  onClick={() =>
+                    setNet({ transport: net.transport === "relay" ? "auto" : "relay" })
+                  }
+                  data-testid="voice-knob-relay"
+                  title="Send everything through the TURN server instead of peer-to-peer. Hides your address from the others and gets through restrictive networks; costs the server bandwidth."
+                >
+                  relay only
+                </button>
+                <button
+                  class={
+                    "chalk-btn chalk-voice-ctl" + (net.ipv4Only ? " chalk-voice-ctl--on" : "")
+                  }
+                  onClick={() => setNet({ ipv4Only: !net.ipv4Only })}
+                  data-testid="voice-knob-ipv4"
+                  title="Ignore IPv6 paths on both sides. For a machine whose IPv6 interface (VM or VPN bridge) looks up but never connects."
+                >
+                  ipv4 only
+                </button>
+                <button
+                  class={"chalk-btn chalk-voice-ctl" + (net.noHost ? " chalk-voice-ctl--on" : "")}
+                  onClick={() => setNet({ noHost: !net.noHost })}
+                  data-testid="voice-knob-nohost"
+                  title="Ignore local-network paths, so a call never takes the LAN shortcut and your local addresses are not advertised."
+                >
+                  no lan
+                </button>
+                <span class="chalk-voice-note" data-testid="voice-knob-effective">
+                  {diag ? `ice policy: ${diag.net.effectivePolicy}` : "ice policy: —"}
+                  {diag?.forceRelay && " (server-forced)"}
+                </span>
+                <button
+                  class="chalk-btn chalk-voice-ctl"
+                  onClick={() => void rejoin()}
+                  data-testid="voice-knob-rejoin"
+                  title="Leave and come straight back, so the transport setting applies to peers you are already connected to"
+                >
+                  rejoin
+                </button>
+              </div>
               <div class="chalk-voice-drawer-stats">
                 {diag?.adaptive && (
                   <div class="chalk-voice-drawer-pair" data-testid="voice-adaptive-line">
@@ -514,6 +572,8 @@ export function VoiceCallPanel({
                   ))}
               </div>
               <div class="chalk-voice-drawer-hint">
+                the path filters apply at once; the ice policy applies to peers that
+                connect after it — rejoin to change it for a room you are already in.
                 deep inspection: open <code>chrome://webrtc-internals</code> (or{" "}
                 <code>brave://webrtc-internals</code>) in a new tab
               </div>
