@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.3.52 — 27 July 2026 — No more vanishing messages, kinder browser errors, and a darker darkord
 
 ### Changed
 - **Darkord got darker.** The whole theme drops one more shade: the
