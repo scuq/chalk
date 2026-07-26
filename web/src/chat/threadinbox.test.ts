@@ -12,6 +12,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  bestMatchLine,
   dedupeThreadRows,
   isThreadUnread,
   partitionThreadInbox,
@@ -172,4 +173,32 @@ test("terms match inside words", () => {
 
 test("extra whitespace in a query is not a term", () => {
   assert.equal(threadRowMatches("general", threadQueryTerms("  general  ")), true);
+});
+
+// 47-8: which line a filtered row previews. Bodies come newest-first.
+test("the newest line containing a term wins", () => {
+  const bodies = ["nothing here", "the deploy broke", "deploy it tomorrow"];
+  assert.equal(bestMatchLine(bodies, threadQueryTerms("deploy")), 1);
+});
+
+test("more matched terms beat recency", () => {
+  // "core deploy" should land on the line with both words, not a fresher line
+  // with only one of them.
+  const bodies = ["deploy went fine", "core deploy is stuck"];
+  assert.equal(bestMatchLine(bodies, threadQueryTerms("core deploy")), 1);
+});
+
+test("ties on term count go to the newest line", () => {
+  const bodies = ["deploy again", "deploy first"];
+  assert.equal(bestMatchLine(bodies, threadQueryTerms("deploy")), 0);
+});
+
+test("no line containing any term returns -1", () => {
+  // The row matched on channel or sender metadata alone; the caller keeps the
+  // default preview.
+  assert.equal(bestMatchLine(["alpha", "beta"], threadQueryTerms("gamma")), -1);
+});
+
+test("matching lines is case-insensitive", () => {
+  assert.equal(bestMatchLine(["The Deploy Broke"], threadQueryTerms("deploy")), 0);
 });

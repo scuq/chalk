@@ -7172,6 +7172,12 @@ body.chalk-resizing .chalk-sidebar-resizer {
   white-space: nowrap;
 }
 
+/* 47-8: who wrote the line a filter matched, when it is not the newest reply
+   the row would normally show. */
+.chalk-threadinbox-preview-sender {
+  color: var(--chalk-fg-muted);
+}
+
 .chalk-threadinbox-deleted {
   color: var(--chalk-fg-muted);
   font-style: italic;

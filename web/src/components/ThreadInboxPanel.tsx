@@ -29,18 +29,22 @@
 // thread stands out from one that has been sitting there since yesterday.
 //
 // FILTER IS CLIENT-SIDE (47-2), and can only be: bodies are ciphertext. It sees
-// the rows we hold and, per thread, the head and the newest reply -- everything
-// a row carries. See the note in chat/threadinbox.ts.
+// the rows we hold and, per thread, every line this client has decrypted --
+// App merges live pushes, loaded history and opened threads into threadLines
+// (47-8). A filtered row previews the line that matched, not just the newest
+// reply, so a hit inside a thread explains itself. See chat/threadinbox.ts.
 //
 // Presentational: App owns the frames, the crypto and the grouping.
 
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ThreadInboxRow } from "../state/types";
 import {
+  bestMatchLine,
   partitionThreadInbox,
   threadAgeStep,
   threadQueryTerms,
   threadRowMatches,
+  type ThreadLine,
 } from "../chat/threadinbox";
 import { fmtRelative } from "../chat/reltime";
 
@@ -58,6 +62,9 @@ interface Props {
   // holds the channel list and the member rosters.
   channelNames: Record<string, string>;
   handles: Record<string, string>;
+  // threadID -> every decrypted line this client holds for that thread,
+  // newest-first with the head last. What the filter actually searches (47-8).
+  threadLines: Record<string, ThreadLine[]>;
   onOpenThread: (channelID: string, threadID: string) => void;
   onLoadMore: () => void;
   onClose: () => void;
@@ -75,6 +82,7 @@ export function ThreadInboxPanel({
   ownUserID,
   channelNames,
   handles,
+  threadLines,
   onOpenThread,
   onLoadMore,
   onClose,
@@ -121,13 +129,18 @@ export function ThreadInboxPanel({
           channelNames[r.channelID] ?? "",
           label(r.lastReplySenderUserID),
           label(r.headSenderUserID),
-          r.headBody ?? "",
-          r.lastReplyBody ?? "",
+          // 47-8: every line this client holds for the thread, plus who wrote
+          // it -- so "alice deploy" finds alice's reply deep in the thread,
+          // not just the two previews a row carries.
+          ...(threadLines[r.threadID] ?? []).flatMap((l) => [
+            l.senderUserID ? label(l.senderUserID) : "",
+            l.body,
+          ]),
         ].join(" "),
         terms,
       ),
     );
-  }, [active, agedUnread, terms, channelNames, handles, ownUserID]);
+  }, [active, agedUnread, terms, channelNames, handles, ownUserID, threadLines]);
 
   // Both halves get partitioned by the same rule.
   const { needsYou, alsoActive } = useMemo(
@@ -139,6 +152,16 @@ export function ThreadInboxPanel({
 
   const renderRow = (r: ThreadInboxRow) => {
     const mentioned = mentions[r.threadID] === true;
+    const lines = threadLines[r.threadID] ?? [];
+    // While filtering, preview the line that matched -- an older reply or the
+    // head would otherwise leave the row looking like a false positive. -1
+    // means the match was channel/sender metadata; keep the normal preview.
+    const matchIdx = filtering ? bestMatchLine(lines.map((l) => l.body), terms) : -1;
+    const matched = matchIdx >= 0 ? lines[matchIdx] : undefined;
+    // When the row's own preview has not decrypted yet but this client already
+    // holds the newest reply (thread open, or the reply came in live), show
+    // that instead of a skeleton.
+    const fallback = lines.find((l) => !l.head);
     return (
       <li
         key={r.threadID}
@@ -163,14 +186,23 @@ export function ThreadInboxPanel({
             {mentioned && <span class="chalk-threadinbox-at">@you</span>}
           </div>
           <div class="chalk-threadinbox-preview">
-            {r.lastReplyDeleted ? (
+            {matched ? (
+              <>
+                {matched.senderUserID && (
+                  <span class="chalk-threadinbox-preview-sender">
+                    {label(matched.senderUserID)}:{" "}
+                  </span>
+                )}
+                {matched.body}
+              </>
+            ) : r.lastReplyDeleted ? (
               <span class="chalk-threadinbox-deleted">[message deleted]</span>
-            ) : r.lastReplyBody === undefined ? (
+            ) : (r.lastReplyBody ?? fallback?.body) === undefined ? (
               // Not decrypted yet -- this channel's key has not settled. Not an
               // error, and not "empty".
               <span class="chalk-threadinbox-skeleton" aria-hidden="true" />
             ) : (
-              r.lastReplyBody
+              r.lastReplyBody ?? fallback?.body
             )}
           </div>
         </button>
@@ -211,7 +243,7 @@ export function ThreadInboxPanel({
             placeholder="filter threads..."
             value={query}
             onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-            aria-label="filter threads by channel, sender or preview text"
+            aria-label="filter threads by channel, sender or message text"
             data-testid="threadinbox-search"
           />
           {filtering && (
@@ -239,8 +271,9 @@ export function ThreadInboxPanel({
                 // Being explicit beats letting someone conclude the thread is
                 // gone: what is searchable here is only what this client holds.
                 <>
-                  the filter matches the channel, who replied and the previews
-                  shown &mdash; not every reply in a thread
+                  the filter matches the channel, who wrote, and every message
+                  of a thread this device has seen &mdash; replies never loaded
+                  here can't be searched
                 </>
               ) : (
                 <>threads with a reply in the last {windowHours} hours show up here</>

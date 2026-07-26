@@ -10,6 +10,22 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- **The thread filter now searches inside threads.** Typing in the active-threads
+  panel only matched what each row already displayed — the channel, who replied
+  last, and the two one-line previews — so a word that appeared anywhere else in
+  a thread found nothing, and threads you were looking for silently disappeared
+  from the list. The filter now matches every message of a thread your device
+  has seen (encryption means it can only ever search what was decrypted here),
+  and a matching row shows the line that matched, with who wrote it, instead of
+  an unrelated newest reply.
+- **Thread rows no longer show a blank shimmer for messages you already have.**
+  A row in the active-threads panel could sit on a loading placeholder even
+  though the newest reply was already on your screen in the thread itself; the
+  reply you hold is now shown right away.
+
 ## v0.3.49 — 27 July 2026 — Name colours everywhere and calmer away detection
 
 ### Changed

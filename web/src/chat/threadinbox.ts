@@ -97,9 +97,9 @@ export function threadAgeStep(ts: Date, now: Date): number {
 // Client-side is the only option that exists: bodies are ciphertext, so the
 // server cannot match on them and is deliberately not asked to. It also means
 // the search is honestly limited to what this client holds -- the rows fetched
-// so far, and of each thread only the head and the newest reply, since those are
-// the only bodies an inbox row carries. Replies in the middle of a thread are
-// not searchable from here.
+// so far, and per thread every reply this device has decrypted (47-8: live
+// pushes, loaded history, opened threads -- App merges them into ThreadLine
+// lists). Replies that never reached this device are not searchable from here.
 
 // threadQueryTerms splits a query into lowercased terms. Terms are ANDed, so
 // "core deploy" finds a thread in #core about the deploy regardless of the order
@@ -115,6 +115,39 @@ export function threadRowMatches(haystack: string, terms: string[]): boolean {
   if (terms.length === 0) return true;
   const hay = haystack.toLowerCase();
   return terms.every((t) => hay.includes(t));
+}
+
+// 47-8: one decrypted line of a thread as the inbox filter sees it. Built by
+// App from whatever this client holds -- replies from live pushes, loaded
+// history and opened threads, plus the head. `head` marks the thread's first
+// message so preview fallbacks can prefer an actual reply.
+export interface ThreadLine {
+  senderUserID?: string;
+  body: string;
+  head?: boolean;
+}
+
+// bestMatchLine picks which line a filtered row should preview: the row
+// normally shows only the newest reply, so a match anywhere else -- an older
+// reply, the head -- would leave the row looking like it matched for no
+// reason. Bodies come newest-first (head last); the line containing the most
+// query terms wins and ties go to the newest, so "core deploy" prefers the
+// reply with both words over a fresher one with just one. Returns -1 when no
+// line contains any term (the row matched on channel or sender metadata
+// alone), in which case the caller keeps the default preview.
+export function bestMatchLine(bodies: string[], terms: string[]): number {
+  let best = -1;
+  let bestCount = 0;
+  for (let i = 0; i < bodies.length; i++) {
+    const hay = bodies[i].toLowerCase();
+    let count = 0;
+    for (const t of terms) if (hay.includes(t)) count++;
+    if (count > bestCount) {
+      best = i;
+      bestCount = count;
+    }
+  }
+  return best;
 }
 
 // dedupeThreadRows keeps the first occurrence of each thread id.

@@ -14,6 +14,7 @@
 //   - On open_create_modal, if friends not yet loaded, fire friend_list.
 
 import { resolveNickHue } from "../chat/nickcolor";
+import type { ThreadLine } from "../chat/threadinbox";
 import { TYPING_PING_MS } from "../chat/typing";
 import { typingStore } from "../chat/typing-store";
 import { mentionsHandle } from "../chat/mentions";
@@ -3178,6 +3179,46 @@ export function App() {
       }
     }
   }
+  // 47-8: every decrypted line this client holds per inbox thread, so the
+  // filter can match inside a thread rather than only on the one-line previews
+  // a row carries. Sources are merged and deduped: threadMessages (live pushes
+  // cache replies there even for never-opened threads, and opening a thread
+  // loads the rest) plus replies sitting in the channel history cache. Newest
+  // first, head last -- bestMatchLine and the preview fallback both want an
+  // actual reply to win over the head.
+  const threadInboxLines: Record<string, ThreadLine[]> = {};
+  if (state.openPanel === "threads") {
+    for (const r of [...state.threadInboxAgedUnread, ...state.threadInboxActive]) {
+      const lines: ThreadLine[] = [];
+      const seenIDs = new Set<string>();
+      const cached = state.messages[r.channelID] ?? [];
+      const replies = [
+        ...(state.threadMessages[r.threadID] ?? []),
+        ...cached.filter((m) => m.parentID === r.threadID),
+      ].sort((a, b) => b.seq - a.seq);
+      for (const m of replies) {
+        if (m.deleted || seenIDs.has(m.id)) continue;
+        seenIDs.add(m.id);
+        lines.push({ senderUserID: m.senderUserID || undefined, body: m.body });
+      }
+      // The row's own decrypted preview of the newest reply, when that reply
+      // is not in either cache (e.g. a channel not opened this session).
+      if (
+        r.lastReplyBody &&
+        !r.lastReplyDeleted &&
+        !lines.some((l) => l.body === r.lastReplyBody)
+      ) {
+        lines.unshift({ senderUserID: r.lastReplySenderUserID, body: r.lastReplyBody });
+      }
+      const head = cached.find((m) => m.id === r.threadID);
+      if (head && !head.deleted) {
+        lines.push({ senderUserID: head.senderUserID || undefined, body: head.body, head: true });
+      } else if (r.headBody && !r.headDeleted) {
+        lines.push({ senderUserID: r.headSenderUserID, body: r.headBody, head: true });
+      }
+      threadInboxLines[r.threadID] = lines;
+    }
+  }
   // Phase 10a: hide replies from the main channel feed. They'll
   // be visible inside the thread panel once 10c lands. Until then,
   // they're in the cache but not rendered. We keep the full list
@@ -3963,6 +4004,7 @@ export function App() {
           ownUserID={state.user?.id ?? null}
           channelNames={threadInboxChannelNames}
           handles={threadInboxHandles}
+          threadLines={threadInboxLines}
           onOpenThread={(channelID, threadID) => {
             dispatch({ kind: "open_thread_from_inbox", channelID, threadID });
             dispatch({ kind: "close_panel" });
