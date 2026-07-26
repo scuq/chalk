@@ -887,3 +887,15 @@ export interface VoiceParticipantStatePayload {
 export interface VoicePurgedPayload {
   channel_id: string;
 }
+
+// 46-1: an unsolicited announcement about the server itself. `kind`
+// discriminates so later notices need no new frame type; unknown kinds are
+// ignored, the same tolerance App.tsx's `default: break` gives unknown types.
+export const TypeServerNotice = "server_notice";
+export const NoticeRestarting = "restarting";
+
+export interface ServerNoticePayload {
+  kind: string;
+  version?: string;
+  commit?: string;
+}

@@ -982,3 +982,26 @@ type TypingUpdatePayload struct {
 	ThreadID  string `json:"thread_id,omitempty"`
 	UserID    string `json:"user_id"`
 }
+
+const (
+	// TypeServerNotice is an unsolicited announcement about the server
+	// itself rather than about any channel or user. Kind carries the
+	// specific event, so later notices (maintenance window, read-only
+	// mode) reuse one frame type and one client dispatch case.
+	TypeServerNotice = "server_notice"
+
+	// NoticeRestarting: this process is going down and the socket is about
+	// to close. It says nothing about whether the build that comes back
+	// differs -- the next welcome frame's version settles that.
+	NoticeRestarting = "restarting"
+)
+
+// ServerNoticePayload names the notice and the build that emitted it.
+// Version/Commit duplicate the welcome frame's fields on purpose: a client
+// logging the notice can say which build told it, without holding welcome
+// state, and it costs two short strings.
+type ServerNoticePayload struct {
+	Kind    string `json:"kind"`
+	Version string `json:"version,omitempty"`
+	Commit  string `json:"commit,omitempty"`
+}

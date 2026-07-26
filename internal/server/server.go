@@ -373,6 +373,10 @@ func (s *Server) Serve(ctx context.Context) error {
 		<-ctx.Done()
 		ctxShutdown, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
+		// Before anything that touches the database: the quadlet sets no
+		// StopTimeout, so podman SIGKILLs 10s after SIGTERM, and the
+		// presence clearing below can block on a slow pool.
+		notifyRestarting(s.hub, s.logger)
 		// Clean shutdown: clear our own presence rows so other
 		// instances see our devices go offline immediately rather
 		// than waiting for the janitor.
@@ -387,6 +391,12 @@ func (s *Server) Serve(ctx context.Context) error {
 					`DELETE FROM instances WHERE id = $1`, s.instanceID)
 			}
 		}
+		// Give the write pumps a bounded moment to pick the notice up; the
+		// presence work above usually covers it, but is skipped when there
+		// is no presence store.
+		drainCtx, drainCancel := context.WithTimeout(ctxShutdown, 250*time.Millisecond)
+		s.hub.DrainSends(drainCtx)
+		drainCancel()
 		s.hub.CloseAll(ctxShutdown, nil)
 		_ = s.http.Shutdown(ctxShutdown)
 		cancelBG()

@@ -41,6 +41,28 @@ export function changelogURL(version: string | null | undefined): string {
   return `${REPO}/blob/${releaseTag(version) ?? "main"}/CHANGELOG.md`;
 }
 
+/**
+ * 46-2: identity of a running build, for "did the server change under us?".
+ *
+ * The commit is part of the key because a dev build's version never moves
+ * ("0.0.0-dev") while its commit does. Returns "" when the server reports
+ * neither, which means "cannot tell" -- callers must read that as "no
+ * change", never as an update.
+ *
+ * Two builds off the same dirty tree share a commit and so compare equal.
+ * That is a real blind spot, and the honest one: there is nothing on the
+ * wire that distinguishes them.
+ */
+export function buildKey(
+  version: string | null | undefined,
+  commit: string | null | undefined,
+): string {
+  const v = (version ?? "").trim();
+  const c = (commit ?? "").trim();
+  if (!v && !c) return "";
+  return `${v}@${c}`;
+}
+
 /** Hover text: the full build stamp, commit included when we have one. */
 export function versionTitle(
   version: string | null | undefined,

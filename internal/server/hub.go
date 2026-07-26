@@ -467,6 +467,35 @@ func (h *Hub) CloseAll(ctx context.Context, reason error) {
 	}
 }
 
+// DrainSends blocks until no connection has anything left in its send buffer,
+// or ctx expires. Shutdown uses it so a frame enqueued a moment earlier gets a
+// chance to reach the wire: writeLoop returns on conn.closed without draining
+// Send, so enqueue-then-CloseAll is otherwise a race the frame usually loses.
+//
+// An empty buffer means the write pump picked the frame up, not that the
+// socket write returned -- good enough for a best-effort notice, and tracking
+// per-write completion is a lot of machinery for one caller.
+func (h *Hub) DrainSends(ctx context.Context) {
+	t := time.NewTicker(10 * time.Millisecond)
+	defer t.Stop()
+	for {
+		h.mu.RLock()
+		pending := 0
+		for _, c := range h.byConnID {
+			pending += len(c.Send)
+		}
+		h.mu.RUnlock()
+		if pending == 0 {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
 // ---- Conn ----------------------------------------------------------------
 
 // sendBufSize is the per-connection send queue depth. Each item is a fully

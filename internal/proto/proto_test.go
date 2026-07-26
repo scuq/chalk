@@ -44,6 +44,37 @@ func TestNewFrameRoundTrip(t *testing.T) {
 	}
 }
 
+func TestServerNoticeFrameRoundTrip(t *testing.T) {
+	in := ServerNoticePayload{Kind: NoticeRestarting, Version: "v0.3.46", Commit: "abc1234"}
+	f, err := NewFrame(TypeServerNotice, "", in)
+	if err != nil {
+		t.Fatalf("NewFrame: %v", err)
+	}
+	if f.Ref != "" {
+		t.Errorf("server push must carry no ref, got %q", f.Ref)
+	}
+
+	wire, err := json.Marshal(f)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded Frame
+	if err := json.Unmarshal(wire, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if decoded.Type != TypeServerNotice {
+		t.Errorf("type: %q", decoded.Type)
+	}
+
+	var out ServerNoticePayload
+	if err := decoded.DecodePayload(&out); err != nil {
+		t.Fatalf("DecodePayload: %v", err)
+	}
+	if out != in {
+		t.Errorf("round trip: got %+v, want %+v", out, in)
+	}
+}
+
 func TestNewFrameNilPayloadOK(t *testing.T) {
 	f, err := NewFrame(TypeError, "", nil)
 	if err != nil {

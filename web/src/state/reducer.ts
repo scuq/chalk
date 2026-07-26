@@ -16,6 +16,8 @@ import { emptyUnread, initialAdminPanelState } from "./types";
 // 42-7: dedupe is shared with the panel's grouping so the two agree about what
 // counts as the same thread.
 import { dedupeThreadRows } from "../chat/threadinbox";
+// 46-2: pure string helper, safe to call from the reducer.
+import { buildKey } from "../version";
 
 // bumpUnread returns the channel's unread state with one field changed,
 // keeping the two invariants the sidebar relies on: the cursors only ever
@@ -108,12 +110,29 @@ export function reducer(state: AppState, action: Action): AppState {
         user: action.state === "open" ? state.user : null,
       };
 
-    case "welcome":
+    case "welcome": {
+      // 46-2: welcome lands on every reconnect, so it is also where we find
+      // out the server came back on a different build than the one that
+      // served this tab's bundle.
+      const build = buildKey(action.serverVersion, action.serverCommit);
+      // `??` and not a truthiness check: a baseline of "" (a server too old
+      // to report a build) is a real answer and must stick, so that a later
+      // welcome that DOES carry one reads as "the server was updated".
+      const baseline = state.serverBuildAtLoad ?? build;
+      // Recomputed rather than OR-ed into the previous value, which buys two
+      // things for free: a rollback onto the baseline build takes the pill
+      // away by itself, and a downgrade to a server that reports nothing
+      // ("" -- no evidence either way) leaves no stale pill behind.
+      const updateAvailable =
+        build !== "" && build !== baseline && build !== state.dismissedBuild;
       return {
         ...state,
         voiceEnabled: action.voiceEnabled, // 30-6
         serverVersion: action.serverVersion ?? "", // 39-1
         serverCommit: action.serverCommit ?? "",
+        serverBuildAtLoad: baseline, // 46-2
+        updateAvailable,
+        serverRestarting: false,
         user: {
           id: action.userID,
           device: action.deviceID,
@@ -123,6 +142,17 @@ export function reducer(state: AppState, action: Action): AppState {
         // via a separate list_channels round-trip. We pre-seed
         // channelOrder so the sidebar can show a loading state
         // immediately if needed.
+      };
+    }
+
+    case "server_restarting":
+      return state.serverRestarting ? state : { ...state, serverRestarting: true };
+
+    case "update_dismissed":
+      return {
+        ...state,
+        updateAvailable: false,
+        dismissedBuild: buildKey(state.serverVersion, state.serverCommit),
       };
 
     case "channels_loaded": {

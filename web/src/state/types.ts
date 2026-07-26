@@ -426,6 +426,20 @@ export interface AppState {
   serverVersion: string;
   serverCommit: string;
 
+  // 46-2: "the server moved under us". serverBuildAtLoad is the build key
+  // from the FIRST welcome of this page load -- null before it, so the very
+  // first welcome can never flag an update (this tab's bundle came from
+  // whatever build answered it). dismissedBuild remembers which build the
+  // user waved off, so a plain reconnect doesn't bring the pill back but the
+  // next deploy does. Neither is persisted: a reload is what clears them.
+  serverBuildAtLoad: string | null;
+  updateAvailable: boolean;
+  dismissedBuild: string | null;
+  // 46-3: the server said it is going down, so the disconnect about to show
+  // up is expected. Transient, cleared by the next welcome. Only a hint --
+  // whether this tab is stale is decided by the build comparison, not by this.
+  serverRestarting: boolean;
+
   // Friends, fetched lazily when the create-channel modal opens.
   friends: Friend[];
   // Phase 9.6a: incoming + outgoing pending friend requests.
@@ -686,6 +700,10 @@ export const initialState: AppState = {
   voiceEnabled: false,
   serverVersion: "",
   serverCommit: "",
+  serverBuildAtLoad: null,
+  updateAvailable: false,
+  dismissedBuild: null,
+  serverRestarting: false,
   friends: [],
   friendsLoaded: false,
   // Phase 9.6a:
@@ -764,6 +782,10 @@ export type Action =
       serverVersion?: string;
       serverCommit?: string;
     }
+  // 46-3: the server announced it is restarting (server_notice/restarting).
+  | { kind: "server_restarting" }
+  // 46-2: the user waved off the reload pill.
+  | { kind: "update_dismissed" }
   | { kind: "channels_loaded"; channels: ChannelSummary[] }
   | { kind: "channel_added"; channel: ChannelSummary }
   | { kind: "channel_removed"; channelID: string }

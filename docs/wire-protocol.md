@@ -52,6 +52,7 @@ Every frame has a `type` (string) and an optional `ref` (correlation ID for requ
 | `message_deleted` | `{ channel_id, message_id, seq, deleted_by?, deleted_at? }` | Tombstone the row locally |
 | `message_edited` | `{ channel_id, message_id, seq, body, key_version, edited_at }` | Phase 37: swap the body in place; `seq` is unchanged |
 | `reaction_update` | `{ channel_id, reaction: { message_id, ts, user_id, body?, key_version? } }` | Phase 37: one member's new set; empty body = cleared |
+| `server_notice` | `{ kind, version?, commit? }` | An announcement about the server itself. `kind: "restarting"` is fanned out to every connection on the instance just before graceful shutdown closes them. Unknown kinds are ignored client-side |
 | `error` | `{ ref?, code, message }` | |
 
 ## Encoding

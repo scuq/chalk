@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { changelogURL, isReleaseBuild, versionLabel, versionTitle } from "./version";
+import { buildKey, changelogURL, isReleaseBuild, versionLabel, versionTitle } from "./version";
 
 test("a release build labels and links at its own tag", () => {
   assert.equal(versionLabel("v0.3.27"), "v0.3.27");
@@ -39,4 +39,23 @@ test("the hover title carries the commit when there is one", () => {
   assert.equal(versionTitle("v0.3.27", "unknown"), "chalk v0.3.27 -- open the changelog");
   assert.equal(versionTitle("v0.3.27", ""), "chalk v0.3.27 -- open the changelog");
   assert.equal(versionTitle("", ""), "chalk unknown version -- open the changelog");
+});
+
+test("a build key is empty only when the server reported nothing", () => {
+  // "" means "cannot tell" and must never be read as a change.
+  assert.equal(buildKey("", ""), "");
+  assert.equal(buildKey(null, undefined), "");
+  assert.notEqual(buildKey("v0.3.46", ""), "");
+  assert.notEqual(buildKey("", "abc1234"), "");
+});
+
+test("a build key separates two dev builds off the same version", () => {
+  // The whole reason the commit is in the key: 0.0.0-dev never moves.
+  assert.notEqual(buildKey("0.0.0-dev", "aaaaaaa"), buildKey("0.0.0-dev", "bbbbbbb"));
+  assert.equal(buildKey("0.0.0-dev", "aaaaaaa"), buildKey("0.0.0-dev", "aaaaaaa"));
+});
+
+test("a build key ignores surrounding whitespace but not a dirty suffix", () => {
+  assert.equal(buildKey(" v0.3.46 ", " abc1234 "), buildKey("v0.3.46", "abc1234"));
+  assert.notEqual(buildKey("v0.3.46", "abc1234"), buildKey("v0.3.46", "abc1234-dirty"));
 });

@@ -10,6 +10,22 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## v0.3.47 — 26 July 2026 — Reload prompt when the server updates
+
+### Added
+- **chalk notices when the server has been updated underneath you.** A tab left
+  open across an update keeps running the version it started with, which is how
+  you end up with one person seeing a feature nobody else has. A "new version ·
+  reload" button now appears next to the connection status when the server comes
+  back on a newer build; one click puts that tab on it. Dismiss it if you would
+  rather finish what you were doing — it comes back the next time the server is
+  updated, and it stays away if the server restarts without changing version.
+- **A restart is labelled as one.** When the server is going down it tells every
+  connected tab first, so the short disconnect that follows reads "server
+  restarting" instead of showing a bare error code.
+
+---
+
 ## v0.3.46 — 26 July 2026 — Voice scratchpad, video popout and away detection
 
 ### Added

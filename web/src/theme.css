@@ -6980,6 +6980,50 @@ body.chalk-resizing .chalk-sidebar-resizer {
   margin-left: 0;
 }
 
+/* 46-2: "the server is on a newer build than this tab". Amber for the same
+   reason the audio nudge is amber -- actionable, not an error. Inline in the
+   bar rather than a modal, so nobody's sentence gets interrupted. Deliberately
+   not in the mobile hide block below: unlike the version badge, this one does
+   something. */
+.chalk-status-update {
+  display: inline-flex;
+  align-items: center;
+}
+
+.chalk-status-update-reload {
+  background: transparent;
+  border: 1px solid var(--chalk-warn);
+  color: var(--chalk-warn);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.chalk-status-update-reload:hover,
+.chalk-status-update-reload:focus-visible {
+  background: var(--chalk-warn);
+  color: var(--chalk-bg);
+}
+
+.chalk-status-update-dismiss {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--chalk-fg-muted);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: var(--chalk-s1);
+  margin-left: 2px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.chalk-status-update-dismiss:hover,
+.chalk-status-update-dismiss:focus-visible {
+  color: var(--chalk-fg);
+}
+
 .chalk-threadinbox-panel {
   width: min(46rem, 92vw);
   padding: 0;

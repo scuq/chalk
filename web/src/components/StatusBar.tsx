@@ -37,6 +37,14 @@ interface Props {
   // the dot appears, and feeds the tooltip.
   onOpenThreads?: () => void;
   threadsUnread?: number;
+  // 46-2: the server is serving a newer build than this tab loaded. Offered,
+  // never forced: a reload mid-sentence is worse than a slightly stale tab.
+  updateAvailable?: boolean;
+  onReload?: () => void;
+  onDismissUpdate?: () => void;
+  // 46-3: the server said it is restarting, so the disconnect about to show
+  // up is expected rather than a fault.
+  serverRestarting?: boolean;
   // Phase 9.6j: presence override picker on the connection pill.
   // When provided, clicking the pill opens a small picker with
   // auto / online / away options.
@@ -52,7 +60,7 @@ const labels: Record<ConnectionState, string> = {
   error: "error",
 };
 
-export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenFriends, onOpenAdmin, onOpenThreads, threadsUnread = 0, presenceMode, effectivePresence, onPresenceModeChange }: Props) {
+export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenFriends, onOpenAdmin, onOpenThreads, threadsUnread = 0, updateAvailable = false, onReload, onDismissUpdate, serverRestarting = false, presenceMode, effectivePresence, onPresenceModeChange }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   // Phase 9.6j: presence picker.
@@ -161,9 +169,46 @@ export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, on
           <span class="chalk-status-label">{labels[state]}</span>
         </>
       )}
-      {detail && state !== "open" && (
-        <span class="chalk-status-detail" data-testid="status-detail">
-          ({detail})
+      {/* 46-3: when the server told us it was going down, say so instead of
+          showing the raw close code -- an expected drop shouldn't read as a
+          fault. */}
+      {serverRestarting && state !== "open" ? (
+        <span class="chalk-status-detail" data-testid="status-restarting">
+          (server restarting)
+        </span>
+      ) : (
+        detail && state !== "open" && (
+          <span class="chalk-status-detail" data-testid="status-detail">
+            ({detail})
+          </span>
+        )
+      )}
+      {/* 46-2: the server has moved to a newer build than this tab loaded.
+          Not gated on state === "open": it stays true while reconnecting, and
+          reloading is still the right offer then. */}
+      {updateAvailable && onReload && (
+        <span class="chalk-status-update" data-testid="status-update">
+          <button
+            type="button"
+            class="chalk-status-update-reload"
+            onClick={onReload}
+            title="the server is running a newer version of chalk -- reload to pick it up"
+            data-testid="status-update-reload"
+          >
+            new version · reload
+          </button>
+          {onDismissUpdate && (
+            <button
+              type="button"
+              class="chalk-status-update-dismiss"
+              onClick={onDismissUpdate}
+              title="dismiss"
+              aria-label="dismiss the new version notice"
+              data-testid="status-update-dismiss"
+            >
+              ×
+            </button>
+          )}
         </span>
       )}
       {/* 42-8: the thread inbox. A top-level button rather than a user-menu

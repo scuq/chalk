@@ -147,6 +147,9 @@ import {
   type VoiceParticipantLeftPayload,
   type VoiceParticipantStatePayload,
   type VoicePurgedPayload,
+  TypeServerNotice, // 46-1: the server is going down
+  NoticeRestarting,
+  type ServerNoticePayload,
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
@@ -2152,6 +2155,15 @@ export function App() {
         voiceBus.emit(f);
         break;
       }
+      case TypeServerNotice: {
+        // 46-3: the server is going down (chalkctl update, or a plain
+        // restart). Only a hint that the drop about to happen is expected --
+        // whether this tab is now stale is decided by the build in the next
+        // welcome frame, since a restart onto the SAME build changes nothing.
+        const p = f.payload as ServerNoticePayload;
+        if (p?.kind === NoticeRestarting) dispatch({ kind: "server_restarting" });
+        break;
+      }
       case TypeVoicePurged: {
         // 45-1: the last person left the room, so the server destroyed what
         // was typed in it. Nothing to emit on the bus -- this is state, not a
@@ -3467,6 +3479,10 @@ export function App() {
           }}
           onOpenThreads={() => dispatch({ kind: "open_panel", panel: "threads" })}
           threadsUnread={state.threadInboxUnreadTotal}
+          updateAvailable={state.updateAvailable}
+          onReload={() => window.location.reload()}
+          onDismissUpdate={() => dispatch({ kind: "update_dismissed" })}
+          serverRestarting={state.serverRestarting}
           presenceMode={state.myPresenceMode}
           effectivePresence={state.myEffectivePresence}
           onPresenceModeChange={(mode) =>
