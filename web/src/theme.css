@@ -66,6 +66,15 @@
   --chalk-warn:         #ffcc00;
   --chalk-error:        #ff4d4d;
 
+  /* Presence is a status signal, not part of the palette: these are
+     fixed across every theme so "online" always means the same thing.
+     Tuned to clear 3:1 against both the darkest ground (#000) and the
+     light themes' cream/white. Do not override them in a theme block. */
+  --chalk-presence-online:      #17a557;
+  --chalk-presence-online-glow: rgba(23, 165, 87, 0.45);
+  --chalk-presence-away:        #c47f00;
+  --chalk-presence-offline:     #7f8a82;
+
   /* Type. --chalk-font and --chalk-font-scale are the two knobs the
      per-device display prefs write as inline styles on <html> (see
      src/display-prefs.ts); everything below derives from them, so a
@@ -2677,22 +2686,23 @@ body.chalk-resizing .chalk-sidebar-resizer {
   margin-top: 1px;
 }
 
-/* Online: solid bright green. Uses the same accent as the active
-   channel highlight so it reads as "active." */
+/* Online: solid green with a soft halo. The three states use the
+   fixed --chalk-presence-* tokens, never the theme palette, so a
+   status light means the same thing in every theme. */
 .chalk-presence-dot--online {
-  background: var(--chalk-fg-bright, #6effa1);
-  box-shadow: 0 0 4px rgba(110, 255, 161, 0.4);
+  background: var(--chalk-presence-online);
+  box-shadow: 0 0 4px var(--chalk-presence-online-glow);
 }
 
-/* Away: solid yellow, no glow. */
+/* Away: solid amber, no glow. */
 .chalk-presence-dot--away {
-  background: var(--chalk-warn, #ffd060);
+  background: var(--chalk-presence-away);
 }
 
 /* Offline / unknown: hollow grey circle. 1px border, no fill. */
 .chalk-presence-dot--offline {
   background: transparent;
-  border: 1px solid var(--chalk-fg-dim, #5a8a5a);
+  border: 1px solid var(--chalk-presence-offline);
   /* Compensate for the border so the visual diameter still aligns
      with the filled dots above. */
   width: 6px;
@@ -2786,15 +2796,16 @@ body.chalk-resizing .chalk-sidebar-resizer {
   outline-offset: -1px;
 }
 
-/* Effective-state-driven coloring of the trigger label. */
+/* Effective-state-driven coloring of the trigger label -- same fixed
+   tokens as the dots so your own status matches everyone else's. */
 .chalk-presence-trigger--online .chalk-status-label {
-  color: var(--chalk-fg-bright, #6effa1);
+  color: var(--chalk-presence-online);
 }
 .chalk-presence-trigger--away .chalk-status-label {
-  color: var(--chalk-warn, #ffd060);
+  color: var(--chalk-presence-away);
 }
 .chalk-presence-trigger--offline .chalk-status-label {
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-presence-offline);
 }
 
 .chalk-presence-mode-badge {
@@ -2854,7 +2865,7 @@ body.chalk-resizing .chalk-sidebar-resizer {
    Activated by setting data-theme="light" on the document root.
    Redefines every --chalk-* variable so component CSS adapts
    automatically. Also overrides a handful of hard-coded rgba()
-   values (presence-dot glow) that don't go through variables.
+   values (shadows, tints) that don't go through variables.
 
    Palette notes:
    - bg is a warm cream, not pure white, to reduce eye strain.
@@ -2880,13 +2891,6 @@ body.chalk-resizing .chalk-sidebar-resizer {
   --chalk-error:        #9b2a26;
 
   color-scheme: light;
-}
-
-/* Presence-dot glow uses a hard-coded rgba() in the green theme;
-   override here so the glow color matches the light-theme accent
-   instead of looking like a stray bright-green halo on cream. */
-[data-theme="light"] .chalk-presence-dot--online {
-  box-shadow: 0 0 4px rgba(45, 110, 63, 0.35);
 }
 
 /* The default green theme uses a very dim faux-shadow on most
@@ -3071,14 +3075,6 @@ body.chalk-resizing .chalk-sidebar-resizer {
   color-scheme: dark;
 }
 
-/* Cyberpunk presence-dot glow: cyan halo for online (matches the
-   accent), softer than the default green halo so it doesn't
-   strobe against the violet backdrop. */
-[data-theme="cyberpunk"] .chalk-presence-dot--online {
-  background: var(--chalk-accent);
-  box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
-}
-
 /* Active sidebar item: faint magenta wash instead of the default
    green tint. */
 [data-theme="cyberpunk"] .chalk-sidebar-item--active {
@@ -3122,14 +3118,6 @@ body.chalk-resizing .chalk-sidebar-resizer {
   --chalk-error:        #dc322f;
 
   color-scheme: dark;
-}
-
-/* Solarized presence-dot glow: a soft blue halo matching the
-   accent. Subtler than the green theme's glow because solarized
-   is a low-saturation palette overall. */
-[data-theme="solarized-dark"] .chalk-presence-dot--online {
-  background: var(--chalk-accent);
-  box-shadow: 0 0 4px rgba(38, 139, 210, 0.45);
 }
 
 /* Active sidebar item: a low-opacity wash of solarized blue. */
@@ -5678,11 +5666,9 @@ body.chalk-resizing .chalk-sidebar-resizer {
    theme, plus the handful of overrides for surfaces that hard-code
    an rgba() glow or tint rather than reading a variable.
 
-   Note on --chalk-fg-bright: it doubles as the "online" presence
-   dot color (see .chalk-presence-dot--online). So in a light theme
-   it has to be a readable-on-light green rather than a literally
-   brighter foreground, which is the same trick the cream `light`
-   theme uses.
+   Note on --chalk-fg-bright in a light theme: "bright" means more
+   emphatic than body text, which on a pale ground means darker, not
+   lighter -- the same trick the cream `light` theme uses.
    ============================================================ */
 
 /* ---- snazzy-light: cool near-white ground, slate text, magenta accent.
@@ -5706,10 +5692,6 @@ body.chalk-resizing .chalk-sidebar-resizer {
   --chalk-error:        #c0322f;
 
   color-scheme: light;
-}
-
-[data-theme="snazzy-light"] .chalk-presence-dot--online {
-  box-shadow: 0 0 4px rgba(11, 125, 89, 0.35);
 }
 
 /* Flat light ground needs a hint of elevation on floating surfaces,
@@ -5751,14 +5733,6 @@ body.chalk-resizing .chalk-sidebar-resizer {
   color-scheme: dark;
 }
 
-/* fg-bright here is a pale blue-white, which would make the online dot
-   read as "some light thing" rather than "online". Pin it to Tokyo
-   Night's green instead. */
-[data-theme="tokyo-night"] .chalk-presence-dot--online {
-  background: #9ece6a;
-  box-shadow: 0 0 4px rgba(158, 206, 106, 0.45);
-}
-
 [data-theme="tokyo-night"] .chalk-sidebar-item--active {
   background: rgba(122, 162, 247, 0.14);
 }
@@ -5795,13 +5769,6 @@ body.chalk-resizing .chalk-sidebar-resizer {
   --chalk-radius: 10px;
 
   color-scheme: dark;
-}
-
-/* Orange status light, matching the emphasis color rather than the
-   blue accent -- on a real LCARS panel the "active" tell is amber. */
-[data-theme="lcars"] .chalk-presence-dot--online {
-  background: var(--chalk-fg-bright);
-  box-shadow: 0 0 6px rgba(255, 153, 0, 0.55);
 }
 
 [data-theme="lcars"] .chalk-sidebar-item--active {
@@ -5849,8 +5816,8 @@ body.chalk-resizing .chalk-sidebar-resizer {
 /* ============================================================
    blade-runner: neon scarlet in a smog-black city
    ============================================================
-   Red leads: emphasis, active states, presence and the online dot are
-   all the title-card scarlet. The ground is not neutral black but a
+   Red leads: emphasis and active states are all the title-card
+   scarlet. The ground is not neutral black but a
    warm smoke-black -- the ash/haze cast is what separates this from
    the green terminal theme with a red accent bolted on.
 
@@ -5883,13 +5850,6 @@ body.chalk-resizing .chalk-sidebar-resizer {
   color-scheme: dark;
 }
 
-/* Scarlet status light with a wide, soft halo -- the strongest single
-   cue that this is the neon theme. */
-[data-theme="blade-runner"] .chalk-presence-dot--online {
-  background: var(--chalk-fg-bright);
-  box-shadow: 0 0 7px rgba(255, 47, 47, 0.65);
-}
-
 [data-theme="blade-runner"] .chalk-sidebar-item--active {
   background: rgba(255, 47, 47, 0.14);
 }
@@ -5919,7 +5879,7 @@ body.chalk-resizing .chalk-sidebar-resizer {
    The rail is done by redefining the --chalk-* variables *scoped to
    .chalk-sidebar* rather than by restyling its children. Every rule
    under there reads the variables from the cascade, so the whole
-   subtree -- filter box, presence dots, nick menu, voice dock, and
+   subtree -- filter box, nick menu, voice dock, and
    the mobile drawer, which is the same element -- re-tints from one
    block and stays correct when new sidebar chrome is added later.
 
@@ -5939,7 +5899,7 @@ body.chalk-resizing .chalk-sidebar-resizer {
   --chalk-fg:           #2a2824;
   --chalk-fg-dim:       #67635c;
   /* Ink, not a hue: on this ground "bright" means darker than body
-     text. Also drives the online presence dot, pinned below. */
+     text. */
   --chalk-fg-bright:    #100f0d;
   --chalk-fg-muted:     #8d8880;
   --chalk-border:       #e3ded4;
@@ -5950,13 +5910,6 @@ body.chalk-resizing .chalk-sidebar-resizer {
   --chalk-error:        #d0342c;
 
   color-scheme: light;
-}
-
-/* fg-bright is black here, which would make the online dot read as a
-   dead bullet. Pin it to a green that clears 3:1 on white. */
-[data-theme="warmwhite"] .chalk-presence-dot--online {
-  background: #1a7f4b;
-  box-shadow: 0 0 4px rgba(26, 127, 75, 0.35);
 }
 
 /* Same reasoning as the other light themes: a flat pale ground needs a
@@ -6034,7 +5987,7 @@ body.chalk-resizing .chalk-sidebar-resizer {
   --chalk-bg-elev-2:    #2b2318;
   --chalk-fg:           #f0e6d2;
   --chalk-fg-dim:       #b3a184;
-  /* Quest gold. Also drives the online presence dot, pinned below. */
+  /* Quest gold. */
   --chalk-fg-bright:    #ffd100;
   --chalk-fg-muted:     #8a7b61;
   /* Bronze, the frame metal. */
@@ -6047,14 +6000,6 @@ body.chalk-resizing .chalk-sidebar-resizer {
   --chalk-error:        #ff4c4c;
 
   color-scheme: dark;
-}
-
-/* Uncommon green for "online": the one place the game's green means
-   exactly what a presence dot means. Gold here would read as a
-   decoration rather than a status light. */
-[data-theme="azeroth"] .chalk-presence-dot--online {
-  background: #1eff00;
-  box-shadow: 0 0 5px rgba(30, 255, 0, 0.45);
 }
 
 [data-theme="azeroth"] .chalk-sidebar-item--active {

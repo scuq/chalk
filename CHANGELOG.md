@@ -13,6 +13,12 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Fixed
+- **Online and away now look the same in every theme.** The status light took
+  its colour from the theme, so "online" showed up orange, red or blue
+  depending on which one you were using — and on LCARS online and away were
+  both amber and near-impossible to tell apart. Online is now always green,
+  away always amber, and offline always a plain hollow ring, whichever theme
+  you pick. Your own status in the bottom bar matches.
 - **Name colours were ignored entirely in some browsers.** On affected clients
   every name in chat came out the same blue no matter what was picked — the
   automatic colours, your own colour, and anything chosen from the roster
