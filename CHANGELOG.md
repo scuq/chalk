@@ -12,6 +12,12 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Changed
+- **You stay online longer while chalk sits beside your work.** Having chalk
+  visible but not the focused window used to mark you away after two minutes,
+  which caught anyone running it side-by-side with something else. That now
+  takes five minutes.
+
 ### Fixed
 - **Online and away now look the same in every theme.** The status light took
   its colour from the theme, so "online" showed up orange, red or blue

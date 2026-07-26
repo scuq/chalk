@@ -27,8 +27,11 @@
 export const AWAY_AFTER_HIDDEN_MS = 60_000;
 
 /** Visible but not focused: chalk is on screen somewhere while you work
- * elsewhere. Short, because another window having focus is real evidence. */
-export const IDLE_AFTER_UNFOCUSED_MS = 120_000;
+ * elsewhere. Another window having focus is real evidence, but weaker than it
+ * looks -- a side-by-side layout means chalk is unfocused most of the time
+ * while you are very much reading it, so this sits well above the alt-tab
+ * range and still below the focused timeout. */
+export const IDLE_AFTER_UNFOCUSED_MS = 300_000;
 
 /** Visible AND focused AND untouched. Long, because a focused window in front
  * of you is weak evidence of absence -- you may just be reading. Only reachable
