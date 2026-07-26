@@ -23,6 +23,16 @@ const (
 	DefaultChannel     = "stable"
 )
 
+// coturn's UDP relay port range. Every allocation holds a port for its
+// lifetime, so the range has to absorb a whole deployment's calls plus the
+// allocations that outlive a client which left without releasing them. The
+// range and FirewallHint read the same constants: they drift apart at the cost
+// of allocations that succeed while media silently goes nowhere.
+const (
+	TurnMinPort = 49160
+	TurnMaxPort = 49999
+)
+
 // Config is the persisted deployment configuration. It is written to
 // DefaultConfigPath by `init` and re-read by later commands. The on-disk
 // format is stdlib key=value (no TOML dependency): one KEY=value per line,
@@ -36,6 +46,7 @@ type Config struct {
 	CaddyTag     string // caddy image tag
 	CoturnTag    string // coturn image tag (alpine)
 	TurnVerbose  bool   // coturn --verbose logging
+	PublicIP     string // coturn listening/relay/external IPv4; detected when empty
 	Channel      string // update channel: stable | <explicit tag>
 	VoiceEnabled bool   // Phase 30 voice on/off
 	Rootful      bool   // MUST be true for this base; init requires --rootful
@@ -117,6 +128,8 @@ func LoadConfigFile(cfg Config, path string) (Config, error) {
 				return cfg, fmt.Errorf("%s:%d: TURN_VERBOSE not a bool: %q", path, line, v)
 			}
 			cfg.TurnVerbose = b
+		case "PUBLIC_IP":
+			cfg.PublicIP = v
 		case "CHANNEL":
 			cfg.Channel = v
 		case "VOICE_ENABLED":
@@ -182,6 +195,9 @@ func (c Config) Save(path string) error {
 	fmt.Fprintf(&b, "CADDY_TAG=%s\n", c.CaddyTag)
 	fmt.Fprintf(&b, "COTURN_TAG=%s\n", c.CoturnTag)
 	fmt.Fprintf(&b, "TURN_VERBOSE=%t\n", c.TurnVerbose)
+	if c.PublicIP != "" {
+		fmt.Fprintf(&b, "PUBLIC_IP=%s\n", c.PublicIP)
+	}
 	fmt.Fprintf(&b, "CHANNEL=%s\n", c.Channel)
 	fmt.Fprintf(&b, "VOICE_ENABLED=%t\n", c.VoiceEnabled)
 	fmt.Fprintf(&b, "ROOTFUL=%t\n", c.Rootful)
@@ -225,6 +241,13 @@ func (c Config) Validate() error {
 	}
 	if c.Image == "" || c.PostgresTag == "" || c.CaddyTag == "" || c.CoturnTag == "" {
 		return fmt.Errorf("image and image tags must be non-empty")
+	}
+	// Empty is fine here: init detects it. A bad value is not, and catching it
+	// now beats a coturn that refuses to start after the stack is half up.
+	if c.PublicIP != "" {
+		if err := ValidatePublicIP(c.PublicIP); err != nil {
+			return fmt.Errorf("public IP: %w", err)
+		}
 	}
 	return nil
 }

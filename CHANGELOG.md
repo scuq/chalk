@@ -33,6 +33,21 @@ The engineering-level history (which slice shipped what) lives in
   up what it needs directly.
 
 ### Fixed
+- **Calls now work from networks that block plain UDP.** Your browser was only
+  ever told how to reach the relay over UDP, so on a connection that blocks it —
+  many company and hotel networks — a call sat at "connecting" for forty seconds
+  and then gave up, with no fallback to try. Calls now also offer the relay over
+  TCP, which those networks do let through.
+- **The relay server was running on its own defaults, ignoring its settings.**
+  Everything a self-hoster configured for the relay — the address it hands out,
+  the range of ports it may use, whether it logs anything — was written to a file
+  the relay could not read, so it quietly used built-in defaults instead. That
+  could leave calls unable to connect at all, and left almost nothing in the logs
+  to explain why. Every setting is now applied directly and is visible in
+  `systemctl cat chalk-coturn`. Self-hosters should re-run
+  `chalkctl reconfigure-turn` to pick this up, and open the wider relay port
+  range it now uses (49160-49999/udp) — the range was previously 41 ports for the
+  whole server, which calls could exhaust.
 - **Threads you have read stay read on your other devices.** Read a thread on
   your phone and the "new replies" badge stayed lit on your laptop forever, with
   nothing that would ever clear it — each device kept its own private idea of

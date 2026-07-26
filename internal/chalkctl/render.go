@@ -18,6 +18,9 @@ type InitParams struct {
 	CaddyTag            string
 	CoturnTag           string
 	TurnVerbose         bool
+	PublicIP            string // coturn listening/relay/external address (IPv4)
+	TurnMinPort         int    // coturn UDP relay range, low
+	TurnMaxPort         int    // coturn UDP relay range, high
 	VoiceEnabled        bool
 	PGPassword          string // secret -> env file only
 	TurnSecret          string // secret -> env file only (voice)
@@ -67,6 +70,22 @@ var unitTemplates = []string{
 	"chalkd.container",
 	"chalk-caddy.container",
 	"chalk-coturn.container",
+}
+
+// coturnUnit is the one unit carrying a secret on its Exec line, so it is the
+// one unit written 0600. coturnLegacyConf is the config file older deployments
+// mounted into the container; nothing reads it any more.
+const (
+	coturnUnit       = "chalk-coturn.container"
+	coturnLegacyConf = "/etc/chalk/coturn/turnserver.conf"
+)
+
+// unitMode returns the permissions a quadlet unit is written with.
+func unitMode(name string) os.FileMode {
+	if name == coturnUnit {
+		return 0o600
+	}
+	return 0o644
 }
 
 // writeFile writes data to path (0644 unless mode overrides), creating parent

@@ -94,6 +94,7 @@ func runInit(args []string) error {
 		giphyKey    = fs.String("giphy-api-key", "", "CHALK_GIPHY_API_KEY for the GIF picker (optional)")
 		threadWin   = fs.Int("thread-active-window-hours", 0, "CHALK_THREAD_ACTIVE_WINDOW_HOURS thread-inbox recency (0 = chalkd default of 48)")
 		turnVerbose = fs.Bool("turn-verbose", true, "coturn --verbose logging (default on)")
+		publicIP    = fs.String("public-ip", "", "coturn listening/relay/external IPv4 (default: detect)")
 	)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -152,6 +153,9 @@ func runInit(args []string) error {
 	}
 	if set["turn-verbose"] {
 		cfg.TurnVerbose = *turnVerbose
+	}
+	if set["public-ip"] {
+		cfg.PublicIP = *publicIP
 	}
 
 	var verifier chalkctl.Verifier
@@ -271,6 +275,7 @@ func runReconfigureTurn(args []string) error {
 	var (
 		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file")
 		verbose    = fs.Bool("turn-verbose", true, "coturn --verbose logging")
+		publicIP   = fs.String("public-ip", "", "coturn listening/relay/external IPv4 (default: detect)")
 	)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -286,7 +291,9 @@ func runReconfigureTurn(args []string) error {
 			vp = verbose
 		}
 	})
-	return chalkctl.ReconfigureTurn(chalkctl.ReconfigureTurnOptions{Cfg: cfg, Verbose: vp})
+	return chalkctl.ReconfigureTurn(chalkctl.ReconfigureTurnOptions{
+		Cfg: cfg, ConfigPath: *configPath, Verbose: vp, PublicIP: *publicIP,
+	})
 }
 
 func runUpdate(args []string) error {

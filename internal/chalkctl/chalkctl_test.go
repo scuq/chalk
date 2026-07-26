@@ -1,6 +1,7 @@
 package chalkctl
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -174,9 +175,10 @@ func TestRenderAllTemplates(t *testing.T) {
 		ChalkctlPath:  "/usr/local/bin/chalkctl",
 		AdminUsername: "admin", AdminEmail: "admin@example.org", OpenRegistration: true,
 		CoturnTag: "4.14.0-r0-alpine", TurnVerbose: true,
+		PublicIP: "203.0.113.7", TurnMinPort: TurnMinPort, TurnMaxPort: TurnMaxPort,
 	}
 	all := append([]string{}, unitTemplates...)
-	all = append(all, "Caddyfile", "chalk.env", "turnserver.conf", "chalk-update.service", "chalk-update.timer")
+	all = append(all, "Caddyfile", "chalk.env", "chalk-update.service", "chalk-update.timer")
 	for _, name := range all {
 		data, err := renderTemplate(name, p)
 		if err != nil {
@@ -194,6 +196,10 @@ func TestRenderAllTemplates(t *testing.T) {
 	}
 	if !strings.Contains(string(chalkd), "turn:chat.example.org:3478") {
 		t.Error("voice-on chalkd should have TURN URL")
+	}
+	// UDP-blocking networks have no path without the TCP URL.
+	if !strings.Contains(string(chalkd), "turn:chat.example.org:3478?transport=tcp") {
+		t.Error("voice-on chalkd should offer TURN over TCP as well")
 	}
 	env, _ := renderTemplate("chalk.env", p)
 	if !strings.Contains(string(env), "CHALK_PG_PASSWORD=PGSECRET") ||
@@ -264,34 +270,14 @@ func TestNoEnvVarComposition(t *testing.T) {
 	}
 }
 
-// TestCoturnReadsConfigFile pins that coturn takes its secret from a mounted
-// config file (-c), not a CLI flag that would env-expand empty.
-func TestCoturnReadsConfigFile(t *testing.T) {
-	p := InitParams{VoiceEnabled: true, TurnSecret: "SECRET", Domain: "x.example.org"}
-	unit, err := renderTemplate("chalk-coturn.container", p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(unit), "-c /etc/coturn/turnserver.conf") {
-		t.Error("coturn unit should read the config file via -c")
-	}
-	conf, err := renderTemplate("turnserver.conf", p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(conf), "static-auth-secret=SECRET") {
-		t.Error("coturn config should carry the literal secret")
-	}
-	// Logging is on the CLI in the UNIT (not the config file): coturn's file
-	// logger otherwise hijacks output to /var/tmp/turn_*.log. -n + stdout is
-	// what makes `podman logs coturn` work.
+// Logging stays on the CLI: coturn's file logger otherwise hijacks output to
+// /var/tmp/turn_*.log. -n + stdout is what makes `podman logs coturn` work.
+func TestCoturnLogsToStdout(t *testing.T) {
+	exec := coturnExecLine(t, coturnParams(true))
 	for _, want := range []string{"-n --log-file=stdout", "--simple-log"} {
-		if !strings.Contains(string(unit), want) {
-			t.Errorf("coturn unit missing %q (breaks `podman logs coturn`)", want)
+		if !strings.Contains(exec, want) {
+			t.Errorf("coturn Exec missing %q (breaks `podman logs coturn`)", want)
 		}
-	}
-	if strings.Contains(string(conf), "log-file=") {
-		t.Error("coturn config must NOT set log-file (belongs on the CLI)")
 	}
 }
 
@@ -517,5 +503,152 @@ func TestFirstNonEmpty(t *testing.T) {
 	}
 	if firstNonEmpty("  ", "b") != "b" {
 		t.Error("blank a -> b")
+	}
+}
+
+// coturnBoolFlags are the coturn Exec arguments that legitimately carry no
+// value. Anything else must use --flag=value; see TestCoturnUnitFlagForm.
+var coturnBoolFlags = map[string]bool{
+	"--simple-log": true, "--new-log-timestamp": true, "--use-auth-secret": true,
+	"--fingerprint": true, "--no-cli": true, "--no-tls": true, "--no-dtls": true,
+	"--verbose": true, "--include-reason-string": true, "--log-binding": true,
+}
+
+func coturnExecLine(t *testing.T, p InitParams) string {
+	t.Helper()
+	unit, err := renderTemplate(coturnUnit, p)
+	if err != nil {
+		t.Fatalf("render coturn unit: %v", err)
+	}
+	for _, line := range strings.Split(string(unit), "\n") {
+		if strings.HasPrefix(line, "Exec=") {
+			return strings.TrimPrefix(line, "Exec=")
+		}
+	}
+	t.Fatal("coturn unit has no Exec= line")
+	return ""
+}
+
+func coturnParams(verbose bool) InitParams {
+	return InitParams{
+		CoturnTag: "4.14.0-r0-alpine", TurnSecret: "TURNSECRET",
+		PublicIP: "203.0.113.7", TurnMinPort: TurnMinPort, TurnMaxPort: TurnMaxPort,
+		TurnVerbose: verbose,
+	}
+}
+
+func TestCoturnUnitCarriesFullConfig(t *testing.T) {
+	exec := coturnExecLine(t, coturnParams(true))
+	for _, want := range []string{
+		"--listening-port=3478",
+		fmt.Sprintf("--min-port=%d", TurnMinPort),
+		fmt.Sprintf("--max-port=%d", TurnMaxPort),
+		"--realm=chalk",
+		"--listening-ip=203.0.113.7",
+		"--relay-ip=203.0.113.7",
+		"--external-ip=203.0.113.7",
+		"--use-auth-secret",
+		"--static-auth-secret=TURNSECRET",
+		"--fingerprint",
+		"--no-cli", "--no-tls", "--no-dtls",
+	} {
+		if !strings.Contains(exec, want) {
+			t.Errorf("coturn Exec missing %q\ngot: %s", want, exec)
+		}
+	}
+}
+
+// The mounted config file was silently ignored by the container, so nothing
+// may depend on it again: no -c, no volume, and no DETECT_* guessing.
+func TestCoturnUnitHasNoConfigFile(t *testing.T) {
+	unit, err := renderTemplate(coturnUnit, coturnParams(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Directives only -- the comment block names these to explain their removal.
+	var directives []string
+	for _, line := range strings.Split(string(unit), "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
+			directives = append(directives, line)
+		}
+	}
+	body := strings.Join(directives, "\n")
+	for _, banned := range []string{"turnserver.conf", "DETECT_EXTERNAL_IP", "DETECT_RELAY_IP", "Volume="} {
+		if strings.Contains(body, banned) {
+			t.Errorf("coturn unit must not reference %q any more", banned)
+		}
+	}
+}
+
+// A missing space in `--realm chalk --verbose` produced `--realm
+// chalk--verbose`: realm became a junk string and --verbose vanished, silently.
+// --flag=value form cannot fail that way, so require it everywhere.
+func TestCoturnUnitFlagForm(t *testing.T) {
+	exec := coturnExecLine(t, coturnParams(true))
+	for _, tok := range strings.Fields(exec) {
+		if !strings.HasPrefix(tok, "--") {
+			continue
+		}
+		if strings.Contains(tok, "=") || coturnBoolFlags[tok] {
+			continue
+		}
+		t.Errorf("coturn arg %q takes a value: use --flag=value, not a space", tok)
+	}
+}
+
+func TestCoturnVerboseGatesDiagnostics(t *testing.T) {
+	quiet := coturnExecLine(t, coturnParams(false))
+	for _, diag := range []string{"--verbose", "--include-reason-string", "--log-binding"} {
+		if strings.Contains(quiet, diag) {
+			t.Errorf("turn-verbose=false should not pass %s", diag)
+		}
+	}
+	loud := coturnExecLine(t, coturnParams(true))
+	for _, diag := range []string{"--verbose", "--include-reason-string", "--log-binding"} {
+		if !strings.Contains(loud, diag) {
+			t.Errorf("turn-verbose=true should pass %s", diag)
+		}
+	}
+}
+
+// The Exec line carries the static auth secret, so this unit alone is 0600.
+func TestCoturnUnitModeIsPrivate(t *testing.T) {
+	if unitMode(coturnUnit) != 0o600 {
+		t.Errorf("coturn unit mode = %o, want 600 (it holds the TURN secret)", unitMode(coturnUnit))
+	}
+	if unitMode("chalkd.container") != 0o644 {
+		t.Error("non-secret units should stay 0644")
+	}
+}
+
+func TestFirewallHintMatchesRelayRange(t *testing.T) {
+	want := fmt.Sprintf("%d-%d/udp", TurnMinPort, TurnMaxPort)
+	if !strings.Contains(FirewallHint(), want) {
+		t.Errorf("FirewallHint must advertise %s, got %q", want, FirewallHint())
+	}
+}
+
+func TestValidatePublicIP(t *testing.T) {
+	if err := ValidatePublicIP("46.62.175.213"); err != nil {
+		t.Errorf("public IPv4 rejected: %v", err)
+	}
+	for _, bad := range []string{"", "chalk.example.org", "10.0.0.4", "192.168.1.9", "127.0.0.1", "2001:db8::1"} {
+		if err := ValidatePublicIP(bad); err == nil {
+			t.Errorf("%q should be rejected", bad)
+		}
+	}
+}
+
+func TestResolvePublicIPPrefersConfigured(t *testing.T) {
+	// No network call: a configured address short-circuits detection.
+	got, err := ResolvePublicIP("  46.62.175.213 ", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "46.62.175.213" {
+		t.Errorf("got %q, want the trimmed configured address", got)
+	}
+	if _, err := ResolvePublicIP("10.0.0.1", nil); err == nil {
+		t.Error("a configured private address should fail, not fall back to detection")
 	}
 }

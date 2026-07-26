@@ -193,6 +193,17 @@ func Init(o InitOptions) error {
 		self, _ = filepath.Abs(self)
 	}
 
+	// coturn is told its own public address explicitly. Detected once and
+	// persisted below, so a later `update` re-renders the same address rather
+	// than silently moving the relay.
+	if cfg.VoiceEnabled {
+		ip, err := ResolvePublicIP(cfg.PublicIP, o.logf)
+		if err != nil {
+			return err
+		}
+		cfg.PublicIP = ip
+	}
+
 	p := InitParams{
 		Domain:              cfg.Domain,
 		Image:               cfg.Image,
@@ -202,6 +213,9 @@ func Init(o InitOptions) error {
 		CaddyTag:            cfg.CaddyTag,
 		CoturnTag:           cfg.CoturnTag,
 		TurnVerbose:         cfg.TurnVerbose,
+		PublicIP:            cfg.PublicIP,
+		TurnMinPort:         TurnMinPort,
+		TurnMaxPort:         TurnMaxPort,
 		VoiceEnabled:        cfg.VoiceEnabled,
 		PGPassword:          pg,
 		TurnSecret:          turn,
@@ -252,22 +266,14 @@ func Init(o InitOptions) error {
 	}
 	o.logf("wrote %s", o.CaddyfileAt)
 
-	// coturn config (voice only): the secret goes in a rendered config FILE
-	// read via -c, never a ${...} on the command line (which would expand
-	// empty at Quadlet parse time -- see chalk.env.tmpl note).
+	// coturn's settings used to live in a mounted turnserver.conf; they are
+	// Exec arguments now. The stale file is left alone rather than deleted --
+	// it is inert once nothing mounts it -- but say so, because a leftover
+	// config file is exactly what someone will edit and expect to take effect.
 	if cfg.VoiceEnabled {
-		coturnConf := "/etc/chalk/coturn/turnserver.conf"
-		coturnData, err := renderTemplate("turnserver.conf", p)
-		if err != nil {
-			return err
+		if _, err := os.Stat(coturnLegacyConf); err == nil {
+			o.logf("note: %s is no longer used (coturn is configured via the unit's Exec line)", coturnLegacyConf)
 		}
-		if err := backup(coturnConf); err != nil {
-			return err
-		}
-		if err := writeFile(coturnConf, coturnData, 0o600); err != nil {
-			return err
-		}
-		o.logf("wrote %s (0600)", coturnConf)
 	}
 
 	// quadlet units
@@ -280,7 +286,7 @@ func Init(o InitOptions) error {
 		if err := backup(dst); err != nil {
 			return err
 		}
-		if err := writeFile(dst, data, 0o644); err != nil {
+		if err := writeFile(dst, data, unitMode(name)); err != nil {
 			return err
 		}
 	}
@@ -401,7 +407,7 @@ func FirewallHint() string {
 		"80/tcp (ACME + redirect)",
 		"443/tcp (app)",
 		"3478/tcp+udp (coturn)",
-		"49160-49200/udp (coturn relay)",
+		fmt.Sprintf("%d-%d/udp (coturn relay)", TurnMinPort, TurnMaxPort),
 	}, ", ")
 }
 

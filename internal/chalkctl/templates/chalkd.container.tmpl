@@ -21,7 +21,10 @@ Environment=CHALK_LOG_FORMAT=json
 Environment=CHALK_INSTANCE_ID=instance-1
 Environment=CHALK_VOICE_ENABLED={{ .VoiceEnabled }}
 {{- if .VoiceEnabled }}
-Environment=CHALK_TURN_URLS=turn:{{ .Domain }}:3478
+# Both transports: a turn: URL with no ?transport= param is UDP-only to a
+# browser, which leaves clients on a UDP-blocking NAT with no path at all.
+# coturn listens on TCP 3478 as well (nothing passes --no-tcp).
+Environment=CHALK_TURN_URLS=turn:{{ .Domain }}:3478,turn:{{ .Domain }}:3478?transport=tcp
 {{- end }}
 
 [Service]
