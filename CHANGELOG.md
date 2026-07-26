@@ -10,6 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Links in messages are clickable.** Paste an address starting with `http://`
+  or `https://` and it becomes a link that opens in your browser, in a new tab
+  — or in your default browser if you run chalk as an installed app or in a
+  pop-out window. A full stop or a closing bracket at the end of the sentence
+  stays out of the link, and a bracket that belongs to the address keeps it.
+  Only web addresses are ever linked; anything else stays as plain text.
+
+---
+
 ## v0.3.42 — 26 July 2026 — Composer, emoticons and message actions
 
 ### Added

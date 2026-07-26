@@ -51,6 +51,29 @@ export function mentionsHandle(body: string, handle: string): boolean {
   return mentionedHandles(body).some((h) => h === want);
 }
 
+// Where a mention of a known member sits in a body, as a half-open range.
+export interface MentionSpan {
+  start: number;
+  end: number;
+  handle: string;
+}
+
+// findMentions locates mentions of `known` members. Positions rather than
+// text, so a caller that also marks up other things (links, chat/links.ts)
+// can merge both sets in one pass over the body.
+export function findMentions(body: string, known: Set<string>): MentionSpan[] {
+  const out: MentionSpan[] = [];
+  for (const m of body.matchAll(MENTION_RE)) {
+    const handle = m[2].toLowerCase();
+    if (!known.has(handle)) continue;
+    // m.index points at the boundary character the pattern consumed, not
+    // at the "@". The token itself starts after it.
+    const start = (m.index ?? 0) + m[1].length;
+    out.push({ start, end: start + 1 + m[2].length, handle });
+  }
+  return out;
+}
+
 // splitBodyMentions splits a body into literal and mention segments for
 // rendering. `known` is the set of lowercased handles that are members of
 // the channel; a token naming anyone else stays plain text.
@@ -58,21 +81,15 @@ export function mentionsHandle(body: string, handle: string): boolean {
 // Returns a single literal segment when there is nothing to highlight, so
 // the common case costs one array allocation.
 export function splitBodyMentions(body: string, known: Set<string>): BodySegment[] {
+  const spans = findMentions(body, known);
+  if (spans.length === 0) return [{ text: body }];
   const segments: BodySegment[] = [];
   let cursor = 0;
-  for (const m of body.matchAll(MENTION_RE)) {
-    const handle = m[2].toLowerCase();
-    if (!known.has(handle)) continue;
-    // m.index points at the boundary character the pattern consumed, not
-    // at the "@". The token itself starts after it.
-    const start = (m.index ?? 0) + m[1].length;
-    if (start > cursor) {
-      segments.push({ text: body.slice(cursor, start) });
-    }
-    segments.push({ text: "@" + m[2], handle });
-    cursor = start + 1 + m[2].length;
+  for (const s of spans) {
+    if (s.start > cursor) segments.push({ text: body.slice(cursor, s.start) });
+    segments.push({ text: body.slice(s.start, s.end), handle: s.handle });
+    cursor = s.end;
   }
-  if (segments.length === 0) return [{ text: body }];
   if (cursor < body.length) segments.push({ text: body.slice(cursor) });
   return segments;
 }

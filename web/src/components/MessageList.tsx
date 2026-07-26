@@ -8,16 +8,18 @@ import { AttachmentView } from "./AttachmentView";
 import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
 import { DEFAULT_SELF_HUE, resolveNickHue } from "../chat/nickcolor";
-import { splitBodyMentions } from "../chat/mentions";
+import { splitBodyParts } from "../chat/links";
 import { lazyComponent } from "./LazyComponent";
 // Lazy: Giphy render path is opt-in; keep it out of the initial bundle.
 const GiphyView = lazyComponent(() =>
   import("./GiphyView").then((m) => m.GiphyView)
 );
 
-// 33-3: render a body with member mentions highlighted. The split yields
-// plain strings and mention tokens; both go in as text nodes, so this adds
-// no HTML-injection surface over rendering the raw body.
+// 33-3 / 41-4: render a body with member mentions highlighted and http(s)
+// URLs turned into links. The split yields plain strings, mention tokens and
+// link tokens; the text of all three goes in as text nodes, and a link's href
+// is restricted to http/https by chat/links.ts, so this adds no
+// HTML-injection surface over rendering the raw body.
 function MessageBody({
   body,
   known,
@@ -27,13 +29,30 @@ function MessageBody({
   known: Set<string>;
   ownHandle?: string | null;
 }) {
-  const segments = splitBodyMentions(body, known);
-  if (segments.length === 1 && !segments[0].handle) return <>{body}</>;
+  const segments = splitBodyParts(body, known);
+  if (segments.length === 1 && !segments[0].handle && !segments[0].href) return <>{body}</>;
   const me = ownHandle ? ownHandle.toLowerCase() : null;
   return (
     <>
       {segments.map((seg, i) =>
-        seg.handle ? (
+        seg.href ? (
+          <a
+            key={i}
+            class="chalk-body-link"
+            href={seg.href}
+            target="_blank"
+            // noopener is what matters: the destination is a page someone
+            // else chose, and it must not be able to reach back into this
+            // tab. noreferrer additionally keeps the chalk host out of the
+            // request -- a self-hosted instance's address is not something to
+            // hand to every site anyone ever pastes.
+            rel="noopener noreferrer"
+            title={seg.href}
+            data-testid="body-link"
+          >
+            {seg.text}
+          </a>
+        ) : seg.handle ? (
           <span
             key={i}
             class={`chalk-mention ${seg.handle === me ? "chalk-mention--self" : ""}`}
@@ -604,9 +623,12 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
             onClick={(e) => {
               // The browser synthesises a click when the finger lifts. It
               // would reach the menu's own document-level dismissal and close
-              // the menu the press just opened, so it stops here.
+              // the menu the press just opened, so it stops here -- and it is
+              // cancelled outright, because a press that started on a link
+              // would otherwise navigate away to it.
               if (longPressFired.current) {
                 longPressFired.current = false;
+                e.preventDefault();
                 e.stopPropagation();
               }
             }}

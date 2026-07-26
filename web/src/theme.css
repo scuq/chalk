@@ -4679,6 +4679,24 @@ body.chalk-resizing .chalk-sidebar-resizer {
   font-weight: 600;
 }
 
+/* 41-4: an http(s) URL in a message body. Underlined rather than tinted --
+   a mention is already the accent colour, and two kinds of marked-up token
+   in one line need to be told apart at a glance. Inherits the body's
+   wrapping so a long link still breaks instead of widening the column. */
+.chalk-body-link {
+  color: var(--chalk-fg-bright);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+.chalk-body-link:hover {
+  color: var(--chalk-accent);
+}
+.chalk-body-link:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 1px;
+}
+
 /* Live occupant sublist under a voice channel. Indented past the glyph
    column so names align with the channel name above. */
 .chalk-sidebar-occupants {
