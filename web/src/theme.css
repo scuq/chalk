@@ -6036,13 +6036,14 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 
 /* ============================================================
-   darkord: the familiar dark chat app, one shade darker
+   darkord: the familiar dark chat app, two shades darker
    ============================================================
    Discord's dark mode is a three-step ladder of cool greys:
-   #313338 (chat), #2b2d31 (sidebar), #1e1f22 (rail). "Slightly
-   darker" here means every surface drops one rung -- the base
-   ground becomes the rail grey and the ladder keeps its original
-   spacing, so the depth relationships still read the same way.
+   #313338 (chat), #2b2d31 (sidebar), #1e1f22 (rail). Every
+   surface here drops two rungs -- the ladder is extended past
+   the rail grey with the same spacing (#111214), so the base
+   ground sits below Discord's darkest surface while the depth
+   relationships still read the same way.
 
    Blurple (#5865f2) stays the accent but is only 3.7:1 as text on
    this ground, so where it colors text it is lifted a step, same
@@ -6051,14 +6052,14 @@ body.chalk-resizing .chalk-sidebar-resizer {
    ============================================================ */
 
 [data-theme="darkord"] {
-  --chalk-bg:           #1e1f22;
-  --chalk-bg-elev:      #2b2d31;
-  --chalk-bg-elev-2:    #313338;
+  --chalk-bg:           #111214;
+  --chalk-bg-elev:      #1e1f22;
+  --chalk-bg-elev-2:    #2b2d31;
   --chalk-fg:           #dbdee1;
   --chalk-fg-dim:       #b5bac1;
   --chalk-fg-bright:    #f2f3f5;
   --chalk-fg-muted:     #949ba4;
-  --chalk-border:       #313338;
+  --chalk-border:       #2b2d31;
   --chalk-accent:       #7d87f5;
   --chalk-warn:         #f0b232;
   --chalk-error:        #f16063;
@@ -6072,7 +6073,7 @@ body.chalk-resizing .chalk-sidebar-resizer {
 
 .chalk-profile-theme-swatch-preview--darkord {
   background: linear-gradient(135deg,
-    #1e1f22 0%, #1e1f22 50%,
+    #111214 0%, #111214 50%,
     #5865f2 50%, #5865f2 100%);
 }
 

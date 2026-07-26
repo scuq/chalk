@@ -10,6 +10,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **Darkord got darker.** The whole theme drops one more shade: the
+  background now sits below Discord's darkest grey, with the sidebar and
+  panels stepping down to match, so the depth between surfaces looks the
+  same — just deeper.
+
 ## v0.3.51 — 27 July 2026 — Darkord theme, azeroth greens, and a matching status light
 
 ### Added
