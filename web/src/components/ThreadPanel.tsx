@@ -62,6 +62,9 @@ interface Props {
   onEditSubmit?: (body: string) => void | Promise<boolean | void>;
   onEditCancel?: () => void;
   onEditLast?: () => void;
+  // Forwarded to the reply composer: opening a thread puts the caret in it.
+  // See Composer's focusKey.
+  focusKey?: string | null;
   // Callbacks.
   onClose: () => void;
   onSend: (body: string) => void; // already bound to parentID by caller
@@ -90,6 +93,7 @@ export function ThreadPanel({
   onEditSubmit,
   onEditCancel,
   onEditLast,
+  focusKey,
   onClose,
   onSend,
 }: Props) {
@@ -186,6 +190,7 @@ export function ThreadPanel({
           onEditSubmit={onEditSubmit}
           onEditCancel={onEditCancel}
           onEditLast={onEditLast}
+          focusKey={focusKey}
         />
       </footer>
     </aside>

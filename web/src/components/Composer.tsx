@@ -84,6 +84,14 @@ interface Props {
   onEditSubmit?: (body: string) => void | Promise<boolean | void>;
   onEditCancel?: () => void;
   onEditLast?: () => void;
+  // Identifies what this composer is currently attached to -- the channel for
+  // the feed composer, the thread for a reply composer. A new value means the
+  // user just arrived somewhere new, so the caret moves here and they can type
+  // without reaching for the mouse. `null` means "not this composer's turn"
+  // (a thread panel is open, or the viewport is a phone where stealing focus
+  // would throw up the on-screen keyboard); it also re-arms the focus, so
+  // closing a thread hands the cursor back.
+  focusKey?: string | null;
 }
 
 const MAX_LEN = 4000;
@@ -131,7 +139,7 @@ function IconGif() {
   );
 }
 
-export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast }: Props) {
+export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast, focusKey }: Props) {
   const icons = toolStyle === "icons";
   const emoticonsOn = emoticons !== false;
   const [draft, setDraft] = useState("");
@@ -220,6 +228,24 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     // user by resetting the draft to the original text.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingID]);
+
+  // Focus follows arrival: entering a channel (or opening a thread) puts the
+  // caret in the box you type into. Deferred until the composer is actually
+  // usable -- a channel switch leaves it disabled for a moment while the
+  // encryption key resolves, and a disabled textarea cannot take focus.
+  // Recorded per focusKey so a reconnect, a key arriving late or any other
+  // enable/disable flip in a place you are already sitting does not yank the
+  // caret back out of a picker or off a message you were reacting to.
+  const focusedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (focusKey === null || focusKey === undefined) {
+      focusedFor.current = null;
+      return;
+    }
+    if (effectiveDisabled || focusedFor.current === focusKey) return;
+    focusedFor.current = focusKey;
+    textareaRef.current?.focus();
+  }, [focusKey, effectiveDisabled]);
 
   const makeLocalID = (): string =>
     typeof crypto !== "undefined" && crypto.randomUUID

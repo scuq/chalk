@@ -3548,6 +3548,7 @@ export function App() {
             }}
             onClose={() => dispatch({ kind: "close_thread" })}
             onSend={(body) => onSend(body, tid)}
+            focusKey={isMobile ? null : tid}
           />
         );
       })()}
@@ -3584,6 +3585,9 @@ export function App() {
             const m = lastEditableMessage(list, state.user?.id ?? null, Date.now());
             if (m) setEditingFeed({ id: m.id, body: m.body });
           }}
+          // While a thread is open its composer owns the caret; closing the
+          // thread hands it back here.
+          focusKey={isMobile || state.openThread ? null : state.activeChannelID}
           enableAttachments
           giphyEnabled={state.authConfig?.giphy_enabled ?? false}
           giphyReady={selectGiphyPref(state.prefs) === "enabled"}

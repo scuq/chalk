@@ -27,6 +27,14 @@ The engineering-level history (which slice shipped what) lives in
   --thread-active-window-hours`.
 
 ### Changed
+- **The cursor is already in the message box when you open a channel.** Picking
+  a channel puts the caret in the composer, so you can start typing straight
+  away instead of clicking into the box first; if the channel is still
+  unlocking its encryption, the cursor lands there the moment it is ready.
+  Opening a thread does the same for the reply box, and closing the thread
+  hands the cursor back to the channel's composer. On phones nothing is
+  focused automatically, so the on-screen keyboard stays out of the way until
+  you tap.
 - **Opening a channel is faster, and stays fast as history grows.** Loading a
   conversation used to re-count every reply in every thread on the whole server
   each time, so it got slower for everyone as the server filled up. It now looks
