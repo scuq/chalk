@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.3.46 — 26 July 2026 — Voice scratchpad, video popout and away detection
 
 ### Added
 - **Voice channels have a scratchpad now.** The text in a voice channel is
