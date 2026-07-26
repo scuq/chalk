@@ -18,6 +18,33 @@ The engineering-level history (which slice shipped what) lives in
   panels stepping down to match, so the depth between surfaces looks the
   same — just deeper.
 
+### Fixed
+- **A message can no longer vanish when sent at the wrong moment.** Hitting
+  Enter just as the connection dropped — or before this channel's encryption
+  key had arrived — cleared the box but sent nothing, and the text was simply
+  gone. The message now comes back into the box so it can be sent again.
+- **Typing Japanese, Chinese or Korean no longer sends half-finished words.**
+  Pressing Enter to pick a candidate from the input method sent whatever was
+  in the box mid-composition. Enter now only sends once the word is committed;
+  the same applies to the add-friend box, and automatic emoticon replacement
+  no longer garbles text while it is being composed.
+- **chalk now loads in private browsing and over plain http.** Browsers that
+  block site storage, or a server reached over http instead of https, made the
+  app fail before anything appeared on screen.
+- **Browsers too old for chalk's encryption now get told so.** On such a
+  browser (Safari before 17, Firefox before 132, Chrome/Edge before 137),
+  entering a perfectly correct recovery phrase failed with a generic error
+  that looked like a typo. There is now a clear message naming the browser
+  versions that work — and pointing out when the real problem is a plain-http
+  address.
+- **Thread previews no longer get stuck loading.** Opening the threads panel
+  at the wrong moment, or clicking "show more", could leave rows on the grey
+  loading shimmer forever; they now fill in.
+- **Picking a friend's colour finally works on phones.** Long-pressing a
+  friend in the roster opened the colour menu and instantly closed it again,
+  and on iPhones the press also popped the text-selection bubble. The menu
+  now stays open.
+
 ## v0.3.51 — 27 July 2026 — Darkord theme, azeroth greens, and a matching status light
 
 ### Added

@@ -396,11 +396,16 @@ export function Sidebar({
                 data-friend-id={friend.userID}
                 data-active={isActive ? "true" : "false"}
                 data-presence={presenceState ?? "offline"}
-                onClick={() => {
+                onClick={(e) => {
                   // Swallow the click that follows a long-press, otherwise
-                  // opening the color menu would also open the DM.
+                  // opening the color menu would also open the DM. 48-6: it
+                  // must also stop bubbling -- the menu's window-level
+                  // dismissal listener sits above us, and letting the click
+                  // through closed the menu the press had just opened.
                   if (longPressFired.current) {
                     longPressFired.current = false;
+                    e.preventDefault();
+                    e.stopPropagation();
                     return;
                   }
                   onFriendClick(friend.userID);

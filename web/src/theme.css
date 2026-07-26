@@ -7006,6 +7006,14 @@ body.chalk-resizing .chalk-sidebar-resizer {
     -webkit-user-select: none;
     -webkit-touch-callout: none;
   }
+
+  /* 48-6: roster rows carry the same long-press gesture (nick colour menu),
+     so the press must not raise the text-selection callout either. */
+  .chalk-sidebar-item {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
