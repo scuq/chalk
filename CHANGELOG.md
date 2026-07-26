@@ -27,6 +27,31 @@ The engineering-level history (which slice shipped what) lives in
   someone's screen share while working in front of it; in Firefox and Safari it
   fills the chalk window instead, with a fullscreen button, and Escape or a
   click outside puts it back.
+- **chalk can tell reading from having left.** In Chrome and Edge it asks once,
+  on your first click, whether it may see when you stop touching the computer —
+  not what you do, only whether you are doing anything, and whether the screen
+  is locked. Say yes and reading a long thread no longer makes you look away,
+  while locking your screen shows you as away straight off. Say no and nothing
+  breaks; chalk falls back to guessing from the chalk window. Either way it is a
+  switch under "away detection" in your profile, it is set per device, and none
+  of it is sent anywhere. Firefox and Safari do not offer this at all, so the
+  switch is not shown there.
+
+### Changed
+- **"Away" now means away from the machine, not away from the tab.** Auto
+  presence used to look only at whether the chalk tab was on screen, so leaving
+  chalk open beside the app you were actually working in — or walking off with
+  it in front of a locked screen — showed you online indefinitely. It now
+  watches for typing and mouse movement and whether the window has focus as
+  well. Hiding the tab still takes a minute to count, so flipping tabs does not
+  make your dot flicker for everyone.
+
+### Fixed
+- **Messages that arrived while you were away from your desk are no longer
+  silent.** chalk keeps quiet for the channel you are already reading, but it
+  was treating "that channel is on screen" as proof you were reading it — so the
+  one time you most wanted a sound, with the right channel open and nobody in
+  front of it, was the one time you got none.
 
 ---
 

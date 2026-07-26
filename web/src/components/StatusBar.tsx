@@ -147,7 +147,7 @@ export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, on
                   {m}
                   {m === "auto" && (
                     <span class="chalk-presence-menu-hint">
-                      (follows tab visibility)
+                      (follows your activity)
                     </span>
                   )}
                 </button>

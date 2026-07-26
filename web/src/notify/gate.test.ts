@@ -34,6 +34,7 @@ function input(over: Partial<GateInput> = {}): GateInput {
     prefs: ALL_ON,
     unlocked: true,
     tabVisible: false,
+    userIdle: false,
     isRelevantSurfaceOpen: false,
     now: 1_000_000,
     lastAnyAt: undefined,
@@ -71,6 +72,24 @@ test("rule 1 needs both halves", () => {
   assert.equal(decideSound(input({ tabVisible: false, isRelevantSurfaceOpen: true })), "play");
   // Focused, but reading a different channel.
   assert.equal(decideSound(input({ tabVisible: true, isRelevantSurfaceOpen: false })), "play");
+});
+
+test("a channel on screen with nobody in front of it still makes a noise", () => {
+  // 45-3. The whole point of the idle signal reaching the gate: the window
+  // being up is not evidence anyone read the message. This is the coffee-break
+  // case, and it used to be the one time chalk went quiet.
+  assert.equal(
+    decideSound(input({ tabVisible: true, userIdle: true, isRelevantSurfaceOpen: true })),
+    "play",
+  );
+});
+
+test("idle does not override the pref checks", () => {
+  // Being away is a reason to speak up, never a reason to ignore someone who
+  // asked for silence.
+  const ctx = { tabVisible: true, userIdle: true, isRelevantSurfaceOpen: true };
+  assert.equal(decideSound(input({ ...ctx, prefs: MASTER_OFF })), "master_off");
+  assert.equal(decideSound(input({ ...ctx, prefs: { ...ALL_ON, dnd: true } })), "dnd");
 });
 
 test("rule 1 applies to system categories too", () => {

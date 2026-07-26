@@ -27,6 +27,10 @@ export interface GateInput {
   // page. Before that, playing is not quiet -- it's an error.
   unlocked: boolean;
   tabVisible: boolean;
+  // 45-3: on screen is not the same as being read. Without this, walking away
+  // from a desk with the channel open makes chalk silent for exactly the
+  // stretch you most needed it to speak up.
+  userIdle: boolean;
   // Is the thing this sound is about already on screen? For a message,
   // "its channel is the active one". For events with no surface of their
   // own (connect, error) the caller passes false.
@@ -59,10 +63,13 @@ export function decideSound(input: GateInput): GateVerdict {
   if (!prefs.master) return "master_off";
   if (!prefs.categories[category]) return "category_off";
 
-  // Rule 1. You are looking at the thing. Note this applies to every
-  // category including connect/disconnect/error -- if the window is in
-  // front of you, the status bar has already said it.
-  if (input.tabVisible && input.isRelevantSurfaceOpen) return "already_watching";
+  // Rule 1. You are looking at the thing -- which needs you to be there, not
+  // just the window to be up. Applies to every category including
+  // connect/disconnect/error: if the window is in front of you, the status bar
+  // has already said it.
+  if (input.tabVisible && !input.userIdle && input.isRelevantSurfaceOpen) {
+    return "already_watching";
+  }
 
   // Rule 2.
   if (prefs.dnd) return "dnd";

@@ -208,6 +208,13 @@ import { voiceBus } from "../voice/bus";
 import { voiceSession } from "../voice/session";
 import { applyRemoteMicPrefs, setMicPrefsPublisher } from "../voice/mic-prefs"; // 44-4
 import { installVoiceHotkeys } from "../voice/hotkeys";
+import { installIdleWatch, type IdleWatch } from "../presence/idle";
+import { useIdlePrefs } from "../presence/idle-prefs";
+import {
+  startSystemIdle,
+  systemIdlePermission,
+  type SystemIdlePermission,
+} from "../presence/system-idle";
 import { AuthGate } from "../auth/AuthGate";
 import { IdentitySetupScreen } from "../auth/IdentitySetupScreen";
 import { MigrationScreen } from "../auth/MigrationScreen"; // 31-9
@@ -249,11 +256,6 @@ import {
   ApiError,
 } from "../auth/api";
 import { lookupUser } from "../auth/users";
-
-// 34-1: how long the tab has to stay hidden before auto-mode reports away.
-// Long enough that switching tabs to look something up doesn't move the dot,
-// short enough that walking away from the machine still shows.
-const AWAY_AFTER_HIDDEN_MS = 60_000;
 
 function classifyDevice(): "phone" | "tablet" | "desktop" {
   const ua = navigator.userAgent;
@@ -1202,6 +1204,10 @@ export function App() {
   historyLoadedRef.current = state.historyLoaded;
   // Assigned next to the visibilitychange effect, which declares tabVisible.
   const tabVisibleRef = useRef(true);
+  // 45-3: the sound gate needs to know whether the viewer is actually there,
+  // not merely whether the tab is on screen, and it is asked from inside
+  // handleFrame -- so a ref, for the same reason as tabVisibleRef.
+  const userIdleRef = useRef(false);
   // 40-2: deciding whether an arriving reply belongs to a thread the viewer
   // is part of needs both halves of the thread -- the parent lives in the
   // channel's messages, the replies in threadMessages -- and the decision
@@ -1518,6 +1524,7 @@ export function App() {
     if (!category) return;
     notifyRef.current?.play(category, {
       tabVisible: tabVisibleRef.current,
+      userIdle: userIdleRef.current,
       isRelevantSurfaceOpen: m.channelID === activeChannelRef.current,
     });
   }
@@ -1588,6 +1595,7 @@ export function App() {
         // setting do nothing at all.
         notifyRef.current?.play("send_confirm", {
           tabVisible: tabVisibleRef.current,
+          userIdle: userIdleRef.current,
           isRelevantSurfaceOpen: false,
         });
         break;
@@ -1780,6 +1788,7 @@ export function App() {
         // tells a user something failed without the console open.
         notifyRef.current?.play("error", {
           tabVisible: tabVisibleRef.current,
+          userIdle: userIdleRef.current,
           isRelevantSurfaceOpen: false,
         });
         break;
@@ -2086,6 +2095,7 @@ export function App() {
           if (before !== undefined && before !== "online" && pp.state === "online") {
             notifyRef.current?.play("presence", {
               tabVisible: tabVisibleRef.current,
+              userIdle: userIdleRef.current,
               isRelevantSurfaceOpen: false,
             });
           }
@@ -2297,6 +2307,7 @@ export function App() {
     if (!category) return;
     notifyRef.current?.play(category, {
       tabVisible: tabVisibleRef.current,
+      userIdle: userIdleRef.current,
       isRelevantSurfaceOpen: false,
     });
   }, [state.wsState]);
@@ -2309,9 +2320,16 @@ export function App() {
   // Until this fires the gate returns "locked" and nothing is queued: a
   // message that arrives before the user has touched the page is silent
   // rather than saved up to play later.
+  //
+  // 45-4: the same gesture is what IdleDetector.requestPermission() needs, so
+  // the two share one listener pair rather than racing for the first click.
+  const [hadGesture, setHadGesture] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const unlock = () => notifyRef.current?.unlock();
+    const unlock = () => {
+      notifyRef.current?.unlock();
+      setHadGesture(true);
+    };
     window.addEventListener("pointerdown", unlock, { once: true });
     window.addEventListener("keydown", unlock, { once: true });
     return () => {
@@ -2337,32 +2355,87 @@ export function App() {
     dispatch({ kind: "unread_mark_refresh", channelID: activeChannelRef.current });
   }, [tabVisible]);
 
-  // 34-1: alt-tabbing for a few seconds is not "away". Demoting on the
-  // visibilitychange itself made the dot flicker for everyone watching and
-  // wrote a presence transition (DB write + NOTIFY + fan-out) per tab flip.
-  // Hiding now has to stick for AWAY_AFTER_HIDDEN_MS; coming back is still
-  // applied immediately.
-  const [presenceVisible, setPresenceVisible] = useState<boolean>(
-    typeof document === "undefined" ? true : !document.hidden
-  );
+  // 45-2: auto mode follows activity, not just whether the tab is on screen.
+  // The hidden-tab grace period that used to live here is rule 3 of
+  // decideIdle, so tab flipping behaves exactly as it did (see idle.ts for
+  // why the dot must not move on the visibilitychange itself).
+  //
+  // The watcher is installed once and owns its own listeners; visibility is
+  // pushed in rather than watched twice.
+  const [userIdle, setUserIdle] = useState(false);
+  const idleWatchRef = useRef<IdleWatch | null>(null);
   useEffect(() => {
-    if (tabVisible) {
-      setPresenceVisible(true);
-      return;
-    }
-    const t = window.setTimeout(
-      () => setPresenceVisible(false),
-      AWAY_AFTER_HIDDEN_MS
-    );
-    return () => window.clearTimeout(t);
+    const watch = installIdleWatch((v) => setUserIdle(v.idle));
+    idleWatchRef.current = watch;
+    return () => {
+      idleWatchRef.current = null;
+      watch.stop();
+    };
+  }, []);
+  useEffect(() => {
+    idleWatchRef.current?.setVisible(tabVisible);
   }, [tabVisible]);
+  userIdleRef.current = userIdle;
+
+  // 45-4: the Chromium layer on top -- the only thing that can see input chalk
+  // never received. On by default where it exists; the toggle in the profile
+  // panel turns it off.
+  //
+  // Two ways in. An existing grant (a returning visitor, and sticky once chalk
+  // is installed) starts on load with no prompt. Otherwise we wait for the
+  // first gesture, because requestPermission() needs transient user activation
+  // and calling it on a cold page is a guaranteed NotAllowedError -- and
+  // because a permission prompt on a page nobody has touched yet is rude.
+  const [idlePrefs] = useIdlePrefs();
+  const [systemIdlePerm, setSystemIdlePerm] = useState<SystemIdlePermission | null>(null);
+  useEffect(() => {
+    let live = true;
+    void systemIdlePermission().then((p) => {
+      if (live) setSystemIdlePerm(p);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  // Collapsed to one boolean on purpose: with the three inputs as separate
+  // dependencies, the first click would flip hadGesture under an already-
+  // running detector and tear it down to build the same thing again.
+  const mayWatchSystemIdle =
+    idlePrefs.systemIdle &&
+    (systemIdlePerm === "granted" || (systemIdlePerm === "prompt" && hadGesture));
+  useEffect(() => {
+    if (!mayWatchSystemIdle) return;
+
+    let stop: (() => void) | null = null;
+    let cancelled = false;
+    void startSystemIdle((s) => idleWatchRef.current?.setSystem(s)).then((r) => {
+      if (!r.ok) {
+        // A block is the browser's answer, not the user's, so the pref stays on
+        // and the panel says "blocked" rather than quietly un-ticking itself.
+        setSystemIdlePerm(r.permission);
+        return;
+      }
+      if (cancelled) {
+        r.stop();
+        return;
+      }
+      stop = r.stop;
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+      // Dropping back to "unknown" rather than "active": without the detector
+      // we have no idea, and claiming activity would pin the dot to online.
+      idleWatchRef.current?.setSystem({});
+    };
+  }, [mayWatchSystemIdle]);
 
   // Phase 9.6j: compute the intended presence and send presence_update
   // when it transitions. "intended" is:
   //   - WS not open → offline (server handles via WS close; nothing to send)
   //   - mode=online → online
   //   - mode=away   → away
-  //   - mode=auto   → presenceVisible ? online : away
+  //   - mode=auto   → userIdle ? away : online
   useEffect(() => {
     if (state.wsState !== "open" || !state.user) {
       if (state.myEffectivePresence !== "offline") {
@@ -2373,7 +2446,7 @@ export function App() {
     let intended: "online" | "away";
     if (state.myPresenceMode === "online") intended = "online";
     else if (state.myPresenceMode === "away") intended = "away";
-    else intended = presenceVisible ? "online" : "away";
+    else intended = userIdle ? "away" : "online";
 
     if (intended === state.myEffectivePresence) return;
 
@@ -2386,7 +2459,7 @@ export function App() {
     state.user?.id,
     state.myPresenceMode,
     state.myEffectivePresence,
-    presenceVisible,
+    userIdle,
   ]);
 
   // 43-6: turning the feature off clears whoever is on screen right now, so

@@ -22,10 +22,12 @@ export { loadSoundPrefs, saveSoundPrefs, normalizeSoundPrefs, useSoundPrefs } fr
 export { SOUND_SPECS, type StrokeSpec } from "./synth";
 
 // What the caller knows about the moment the sound is for. Kept to the
-// two facts the suppression rules need, so that adding a category later
+// facts the suppression rules need, so that adding a category later
 // doesn't mean widening this.
 export interface PlayContext {
   tabVisible: boolean;
+  // Whether the viewer has actually been at the machine lately (presence/idle).
+  userIdle: boolean;
   isRelevantSurfaceOpen: boolean;
 }
 
@@ -63,6 +65,7 @@ export class NotifySounds {
       prefs: this.prefs,
       unlocked: this.player.unlocked,
       tabVisible: ctx.tabVisible,
+      userIdle: ctx.userIdle,
       isRelevantSurfaceOpen: ctx.isRelevantSurfaceOpen,
       now,
       lastAnyAt: this.lastAnyAt,

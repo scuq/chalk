@@ -46,6 +46,12 @@ import { FONT_CHOICES, SCALE_STEPS, useDisplayPrefs } from "../display-prefs";
 import { notifySounds } from "../notify";
 import { useSoundPrefs } from "../notify/prefs";
 import { CATEGORY_LABELS, SOUND_CATEGORIES } from "../notify/types";
+import { useIdlePrefs } from "../presence/idle-prefs";
+import {
+  systemIdlePermission,
+  systemIdleSupported,
+  type SystemIdlePermission,
+} from "../presence/system-idle";
 import { SecurityPanel } from "./SecurityPanel"; // 31-8
 import { VersionLink } from "./VersionLink"; // 39-1
 import { performRegistration, WebAuthnError } from "../webauthn";
@@ -165,6 +171,24 @@ export function ProfilePanel({
   // threaded down from App -- the hook reads and persists them itself.
   const [display, setDisplay] = useDisplayPrefs();
   const [sound, setSound, setSoundCategory] = useSoundPrefs();
+
+  // 45-4: away detection. The pref is this device's wish; the permission is
+  // the browser's answer, and the panel has to be able to show them
+  // disagreeing -- a ticked box next to a blocked permission is the one state
+  // people would otherwise read as chalk being broken. Re-asked whenever the
+  // panel opens, since the grant can be revoked from browser settings behind
+  // our back.
+  const [idle, setIdle] = useIdlePrefs();
+  const [idlePerm, setIdlePerm] = useState<SystemIdlePermission | null>(null);
+  useEffect(() => {
+    let live = true;
+    void systemIdlePermission().then((p) => {
+      if (live) setIdlePerm(p);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   // md-4-2: passkey management. The list loads on mount; addState gates
   // the add button while the browser ceremony runs. null list = not yet
@@ -852,6 +876,51 @@ export function ProfilePanel({
               </p>
             </div>
           </section>
+
+          {/* 45-4: away detection. Only rendered where the browser actually
+              has the API -- Firefox and Safari have both declined to implement
+              it, and a switch that cannot do anything is worse than no switch.
+              Per-device for the same reason the sounds are: the permission
+              belongs to this browser and cannot follow you to your phone. */}
+          {systemIdleSupported() && (
+            <section class="chalk-profile-notifications" data-testid="idle-settings">
+              <h3>away detection</h3>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={idle.systemIdle}
+                    onChange={(e) =>
+                      setIdle({ systemIdle: (e.target as HTMLInputElement).checked })
+                    }
+                    data-testid="idle-system"
+                  />
+                  <span>
+                    notice when you leave the machine{" "}
+                    <span class="chalk-profile-theme-desc">
+                      (asks the browser once; chrome and edge only)
+                    </span>
+                  </span>
+                </label>
+              </div>
+              <p class="chalk-profile-hint">
+                {idlePerm === "denied" ? (
+                  <>
+                    your browser has blocked this for chalk, so away is guessed from
+                    activity in the tab instead. the site permissions for this page are
+                    where to undo that.
+                  </>
+                ) : (
+                  <>
+                    with this on, chalk can tell reading a long thread from having walked
+                    away, and stops going quiet for a channel that's on screen with nobody
+                    in front of it. with it off, away is guessed from what you do in the
+                    tab. either way nothing about it leaves this device.
+                  </>
+                )}
+              </p>
+            </section>
+          )}
 
           {/* 44-3: the mic settings live in their own dialog now, opened from
               the ⚙ in the footer's voice cluster. This is the signpost for
