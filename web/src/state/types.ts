@@ -321,6 +321,12 @@ export interface UserPrefs {
   // Giphy URLs as <img> from Giphy's CDN; "disabled" keeps them inert text.
   // See selectGiphyPref / decideGiphyRender in ../giphy/giphy.ts.
   giphy?: "unset" | "enabled" | "disabled";
+  // 44-4: microphone tuning and the voice keybinds, so a second machine isn't
+  // a fresh calibration job. Deliberately NOT the chosen input device -- see
+  // voice/mic-prefs.ts. Shape is SyncedMicPrefs; typed loosely here so
+  // state/types.ts doesn't pull in the voice module, and because mic-prefs'
+  // own normalizer is the thing that validates it.
+  mic?: Record<string, unknown>;
   // [extend with more keys in future phases]
 }
 

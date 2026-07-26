@@ -46,7 +46,6 @@ import { FONT_CHOICES, SCALE_STEPS, useDisplayPrefs } from "../display-prefs";
 import { notifySounds } from "../notify";
 import { useSoundPrefs } from "../notify/prefs";
 import { CATEGORY_LABELS, SOUND_CATEGORIES } from "../notify/types";
-import { MicSettings } from "./MicSettings"; // 41-3
 import { SecurityPanel } from "./SecurityPanel"; // 31-8
 import { VersionLink } from "./VersionLink"; // 39-1
 import { performRegistration, WebAuthnError } from "../webauthn";
@@ -126,6 +125,10 @@ interface Props {
   giphyPref?: "unset" | "enabled" | "disabled";
   onSetGiphyPref?: (v: "enabled" | "disabled") => void;
   onRequestEnableGiphy?: () => void;
+  // 44-3: the mic settings moved into their own dialog, reachable from the
+  // footer's voice cluster. The profile panel keeps a way in for people who
+  // go looking for it here.
+  onOpenMicSettings?: () => void;
 }
 
 export function ProfilePanel({
@@ -140,6 +143,7 @@ export function ProfilePanel({
   giphyPref,
   onSetGiphyPref,
   onRequestEnableGiphy,
+  onOpenMicSettings,
   onClose,
   onEmailChangeDraft,
   onEmailChangeSubmit,
@@ -849,10 +853,28 @@ export function ProfilePanel({
             </div>
           </section>
 
-          {/* 41-3: microphone capture settings. Own component -- it owns a
-              live audio graph and a rAF meter loop, which does not belong in
-              the middle of a form. Per-device, same as the sounds above. */}
-          <MicSettings />
+          {/* 44-3: the mic settings live in their own dialog now, opened from
+              the ⚙ in the footer's voice cluster. This is the signpost for
+              anyone who comes here looking for them. */}
+          {onOpenMicSettings && (
+            <section class="chalk-profile-microphone-link">
+              <h3>microphone</h3>
+              <div class="chalk-profile-field">
+                <button
+                  type="button"
+                  class="chalk-profile-clear-cache"
+                  onClick={onOpenMicSettings}
+                  data-testid="open-mic-settings"
+                >
+                  microphone settings…
+                </button>
+                <p class="chalk-profile-hint" style={{ marginTop: "0.5rem" }}>
+                  input device, level, when to transmit and the voice keys. also on the ⚙ beside
+                  the mute button, under your channel list.
+                </p>
+              </div>
+            </section>
+          )}
 
           {/* att-2: storage -- clear the cached attachment ciphertext. */}
           {onClearImageCache && (

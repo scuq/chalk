@@ -16,6 +16,8 @@ import {
   micConstraints,
   needsRecapture,
   normalizeMicPrefs,
+  sameSyncedMicPrefs,
+  syncedMicPrefs,
 } from "./mic-prefs.ts";
 
 test("normalize keeps a valid pref untouched", () => {
@@ -165,4 +167,26 @@ test("the device and every processing flag force a recapture", () => {
   assert.equal(needsRecapture(a, { ...a, echoCancellation: false }), true);
   assert.equal(needsRecapture(a, { ...a, noiseSuppression: false }), true);
   assert.equal(needsRecapture(a, { ...a, autoGainControl: false }), true);
+});
+
+// 44-4: the account/machine split. The bug this guards against is a deviceId
+// riding along to the server and a second machine then trying to open a
+// microphone that only exists on the first one.
+
+test("the synced half carries every tuning field but not the device", () => {
+  const synced = syncedMicPrefs({ ...DEFAULT_MIC_PREFS, deviceId: "local-hash", gain: 1.6 });
+  assert.equal("deviceId" in synced, false, "the device never leaves this machine");
+  assert.equal(synced.gain, 1.6);
+  // Every other field of MicPrefs is expected to sync; a new one added without
+  // a decision about it should fail here rather than silently stay local.
+  const expected = Object.keys(DEFAULT_MIC_PREFS).filter((k) => k !== "deviceId").sort();
+  assert.deepEqual(Object.keys(synced).sort(), expected);
+});
+
+test("comparing the synced half ignores the device", () => {
+  const a = DEFAULT_MIC_PREFS;
+  assert.equal(sameSyncedMicPrefs(a, { ...a, deviceId: "other" }), true, "device is not synced");
+  assert.equal(sameSyncedMicPrefs(a, { ...a, gain: 1.5 }), false);
+  assert.equal(sameSyncedMicPrefs(a, { ...a, keyMute: "KeyM" }), false);
+  assert.equal(sameSyncedMicPrefs(a, { ...a, mode: "ptt" }), false);
 });

@@ -199,9 +199,12 @@ import { CreateChannelModal } from "./CreateChannelModal";
 // voice pushes from handleFrame to the mounted panel's VoiceCall.
 import { VoiceCallPanel } from "./VoiceCallPanel";
 import { VoiceDock } from "./VoiceDock";
+import { VoiceControls } from "./VoiceControls"; // 44-2
+import { MicSettingsDialog } from "./MicSettingsDialog"; // 44-3
 import { SidebarResizer } from "./SidebarResizer";
 import { voiceBus } from "../voice/bus";
 import { voiceSession } from "../voice/session";
+import { applyRemoteMicPrefs, setMicPrefsPublisher } from "../voice/mic-prefs"; // 44-4
 import { installVoiceHotkeys } from "../voice/hotkeys";
 import { AuthGate } from "../auth/AuthGate";
 import { IdentitySetupScreen } from "../auth/IdentitySetupScreen";
@@ -940,6 +943,9 @@ export function App() {
   // prefs_set. (att-4c reuses this same modal from the composer button and
   // the first received Giphy message.)
   const [giphyConsentOpen, setGiphyConsentOpen] = useState(false);
+  // 44-3: mic settings dialog. App-level because two places open it -- the ⚙
+  // in the footer's voice cluster and the profile panel's signpost.
+  const [micSettingsOpen, setMicSettingsOpen] = useState(false);
   const sendGiphyPref = useCallback((v: "enabled" | "disabled") => {
     const c = clientRef.current;
     if (!c || !c.isOpen()) return;
@@ -2212,6 +2218,29 @@ export function App() {
       root.removeAttribute("data-theme");
     }
   }, [state.prefs.theme]);
+
+  // 44-4: microphone tuning and the voice keybinds follow the account. The
+  // download direction -- initial prefs, and any change pushed from another
+  // device -- folded into the local mic store, which is what the live call,
+  // the meter and the hotkeys actually read.
+  useEffect(() => {
+    if (state.prefs.mic) applyRemoteMicPrefs(state.prefs.mic);
+  }, [state.prefs.mic]);
+
+  // The upload direction. Registered only while the socket is open, so an
+  // edit made offline stays local rather than being silently dropped -- it
+  // still applies to this machine, and the next edit online carries it up.
+  // `mic` is a flat top-level pref (like theme, unlike chat), and the dialog
+  // always publishes the whole synced object, so the server's shallow JSONB
+  // merge is safe.
+  useEffect(() => {
+    if (state.wsState !== "open") return;
+    setMicPrefsPublisher((synced) => {
+      const c = clientRef.current;
+      if (c?.isOpen()) c.send(TypePrefsSet, { patch: { mic: synced } });
+    });
+    return () => setMicPrefsPublisher(null);
+  }, [state.wsState]);
 
   // Phase 9.6c: keep the presence subscription synchronized with the
   // accepted-friends list. Whenever friends change (after a
@@ -3621,52 +3650,62 @@ export function App() {
       })()}
 
       <footer class="chalk-footer">
-        <TypingLine
-          channelID={state.activeChannelID}
-          members={activeChannel?.members}
-          isDM={!!activeChannel?.isDM}
-          display={selectChatPrefs(state.prefs)}
-        />
-        <Composer
-          toolStyle={selectChatPrefs(state.prefs).composerToolStyle}
-          emoticons={selectChatPrefs(state.prefs).emoticons}
-          disabledReason={
-            state.wsState !== "open"
-              ? "offline"
-              : !state.activeChannelID
-              ? "no_channel"
-              : keyStatus[state.activeChannelID] === "ready"
-              ? null
-              : keyStatus[state.activeChannelID] === "waiting"
-              ? "waiting_for_key"
-              : "encryption_initializing"
-          }
-          onSend={(body, pending, opts) => onSend(body, undefined, pending, opts)}
-          onTyping={notifyTyping}
-          editing={editingFeed}
-          onEditSubmit={async (body) => {
-            const ok = await submitEdit(editingFeed, body);
-            if (ok) setEditingFeed(null);
-            return ok;
-          }}
-          onEditCancel={() => setEditingFeed(null)}
-          onEditLast={() => {
-            const cid = state.activeChannelID;
-            if (!cid) return;
-            // Feed-only: thread replies belong to the thread composer's
-            // cursor-up, not this one.
-            const list = (state.messages[cid] ?? []).filter((m) => !m.parentID);
-            const m = lastEditableMessage(list, state.user?.id ?? null, Date.now());
-            if (m) setEditingFeed({ id: m.id, body: m.body });
-          }}
-          // While a thread is open its composer owns the caret; closing the
-          // thread hands it back here.
-          focusKey={isMobile || state.openThread ? null : state.activeChannelID}
-          enableAttachments
-          giphyEnabled={state.authConfig?.giphy_enabled ?? false}
-          giphyReady={selectGiphyPref(state.prefs) === "enabled"}
-          onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
-        />
+        {/* 44-2: the roster-width column the composer's tool rail used to
+            occupy. Voice controls live here now -- always visible, so mute and
+            camera are set before you join rather than after. */}
+        <div class="chalk-footer-left">
+          {state.voiceEnabled && (
+            <VoiceControls onOpenMicSettings={() => setMicSettingsOpen(true)} />
+          )}
+        </div>
+        <div class="chalk-footer-main">
+          <TypingLine
+            channelID={state.activeChannelID}
+            members={activeChannel?.members}
+            isDM={!!activeChannel?.isDM}
+            display={selectChatPrefs(state.prefs)}
+          />
+          <Composer
+            toolStyle={selectChatPrefs(state.prefs).composerToolStyle}
+            emoticons={selectChatPrefs(state.prefs).emoticons}
+            disabledReason={
+              state.wsState !== "open"
+                ? "offline"
+                : !state.activeChannelID
+                ? "no_channel"
+                : keyStatus[state.activeChannelID] === "ready"
+                ? null
+                : keyStatus[state.activeChannelID] === "waiting"
+                ? "waiting_for_key"
+                : "encryption_initializing"
+            }
+            onSend={(body, pending, opts) => onSend(body, undefined, pending, opts)}
+            onTyping={notifyTyping}
+            editing={editingFeed}
+            onEditSubmit={async (body) => {
+              const ok = await submitEdit(editingFeed, body);
+              if (ok) setEditingFeed(null);
+              return ok;
+            }}
+            onEditCancel={() => setEditingFeed(null)}
+            onEditLast={() => {
+              const cid = state.activeChannelID;
+              if (!cid) return;
+              // Feed-only: thread replies belong to the thread composer's
+              // cursor-up, not this one.
+              const list = (state.messages[cid] ?? []).filter((m) => !m.parentID);
+              const m = lastEditableMessage(list, state.user?.id ?? null, Date.now());
+              if (m) setEditingFeed({ id: m.id, body: m.body });
+            }}
+            // While a thread is open its composer owns the caret; closing the
+            // thread hands it back here.
+            focusKey={isMobile || state.openThread ? null : state.activeChannelID}
+            enableAttachments
+            giphyEnabled={state.authConfig?.giphy_enabled ?? false}
+            giphyReady={selectGiphyPref(state.prefs) === "enabled"}
+            onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
+          />
+        </div>
       </footer>
 
 
@@ -3936,8 +3975,11 @@ export function App() {
           giphyPref={selectGiphyPref(state.prefs)}
           onSetGiphyPref={sendGiphyPref}
           onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
+          onOpenMicSettings={() => setMicSettingsOpen(true)}
         />
       )}
+
+      {micSettingsOpen && <MicSettingsDialog onClose={() => setMicSettingsOpen(false)} />}
     </div>
   );
 }

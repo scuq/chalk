@@ -557,10 +557,10 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   // attachment and GIF affordances are hidden rather than disabled: they'd
   // imply you can add a file to an existing message, which you can't.
   const showTools = !editing && (enableAttachments || giphyEnabled);
-  // 42-1: the main composer gets a left rail under the roster column; the
-  // thread composer has no tools and stays a plain stacked box. The rail
-  // element is rendered even while editing (when its buttons are hidden) so
-  // the input does not jump a column's width sideways mid-edit.
+  // 44-1: the main composer gets a tool rail directly above its input; the
+  // thread composer has no tools and stays a plain stacked box. The rail used
+  // to sit in the roster's column, which put the buttons a screen-width away
+  // from the field they act on.
   const railed = enableAttachments || giphyEnabled;
   const mac = isMacPlatform();
 
@@ -600,12 +600,10 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
           data-testid="composer-file-input"
         />
       )}
-      {/* 42-1: tool rail. On desktop this sits in the roster's column, beside
-          the input rather than above it, so the field keeps its full height
-          and the tools stop pushing the message list around. Rendered (empty)
-          during an edit to hold the column open. The old per-button classes
-          are kept alongside chalk-composer-tool so the existing
-          hover/disabled rules still apply. */}
+      {/* 44-1: tool rail, sitting with the field it acts on. Rendered (empty)
+          during an edit so the input does not jump a row's height. The old
+          per-button classes are kept alongside chalk-composer-tool so the
+          existing hover/disabled rules still apply. */}
       {railed && (
         <div
           class={`chalk-composer-rail ${icons ? "chalk-composer-rail--icons" : "chalk-composer-rail--text"}`}

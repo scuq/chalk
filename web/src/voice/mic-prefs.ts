@@ -1,14 +1,23 @@
-// chalk-web -- per-device microphone capture preferences.
+// chalk-web -- microphone capture preferences.
 //
-// Phase 30 Addendum A3/A4 (the vv-5 audio engine). Per-device for the same
-// reason the notification volume is: which mic you own, how hot it runs and
-// how noisy the room is are properties of the machine, not of the account.
-// A gain that rescues a quiet headset at a desk would clip a laptop's built-in
-// array. So: localStorage, same shape as notify/prefs.ts, never near the server.
+// Phase 30 Addendum A3/A4 (the vv-5 audio engine).
 //
-// The pure half (normalizeMicPrefs, micConstraints) is unit-tested; the
-// localStorage wrappers around it are not, which is the convention the display
-// and sound prefs already set.
+// 44-4: split by what the setting is actually a property OF. Everything you
+// tune -- gain, the transmit gate, the processing flags, the voice keys --
+// describes how you want to sound and follows the account through the server's
+// prefs blob, so a second machine is not a fresh calibration job. The chosen
+// input device does not: a deviceId is a per-origin hash of a socket on ONE
+// machine, and syncing it would mean a laptop telling a desktop to use a
+// microphone it has never seen.
+//
+// localStorage remains the runtime source of truth for the whole object -- the
+// live call, the hotkeys and the meter all read it, and it has to answer before
+// the socket is up. The server half arrives via applyRemoteMicPrefs and leaves
+// via the publisher App registers.
+//
+// The pure half (normalizeMicPrefs, micConstraints, syncedMicPrefs) is
+// unit-tested; the localStorage wrappers around it are not, which is the
+// convention the display and sound prefs already set.
 
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { isTransmitMode, type GateConfig, type TransmitMode } from "./vad";
@@ -164,6 +173,28 @@ export function gateConfig(prefs: MicPrefs): GateConfig {
 }
 
 /**
+ * SyncedMicPrefs (44-4): the fields that follow the account. Everything except
+ * deviceId, which is meaningless on another machine.
+ */
+export type SyncedMicPrefs = Omit<MicPrefs, "deviceId">;
+
+/** syncedMicPrefs extracts the account-scoped half, for sending to the server. */
+export function syncedMicPrefs(prefs: MicPrefs): SyncedMicPrefs {
+  const { deviceId: _local, ...synced } = prefs;
+  return synced;
+}
+
+/**
+ * sameSyncedMicPrefs compares the account-scoped half. Used to swallow the
+ * echo of our own write coming back as a prefs ack -- without it, every change
+ * would re-enter the store and re-notify the live call for no reason.
+ */
+export function sameSyncedMicPrefs(a: MicPrefs, b: MicPrefs): boolean {
+  const ka = Object.keys(syncedMicPrefs(a)) as (keyof SyncedMicPrefs)[];
+  return ka.every((k) => a[k] === b[k]);
+}
+
+/**
  * needsRecapture reports whether moving from `a` to `b` requires a new
  * getUserMedia. Gain alone is a graph parameter and applies instantly; the
  * device and the three processing flags are properties of the capture itself.
@@ -191,8 +222,8 @@ export function loadMicPrefs(): MicPrefs {
 
 // Same-tab listeners, for the same reason as notify/prefs.ts: the `storage`
 // event deliberately does not fire in the tab that wrote, so it alone would let
-// the profile panel change the gain while the live call in that very tab never
-// hears about it.
+// the settings dialog change the gain while the live call in that very tab
+// never hears about it.
 const listeners = new Set<(prefs: MicPrefs) => void>();
 
 export function saveMicPrefs(prefs: MicPrefs): void {
@@ -203,6 +234,35 @@ export function saveMicPrefs(prefs: MicPrefs): void {
     // holds for this session -- including for the call that's running now.
   }
   for (const fn of listeners) fn(prefs);
+}
+
+// 44-4: the upload half. App registers a publisher once the socket is up; the
+// module stays ignorant of frames and of the WS client, which is what keeps it
+// usable from the unit tests and from hotkeys.ts.
+let publish: ((synced: SyncedMicPrefs) => void) | null = null;
+
+/** setMicPrefsPublisher installs (or clears, with null) the server sink. */
+export function setMicPrefsPublisher(fn: ((synced: SyncedMicPrefs) => void) | null): void {
+  publish = fn;
+}
+
+/**
+ * applyRemoteMicPrefs folds the account-scoped half of the server's prefs into
+ * the local store. Called when prefs arrive -- on connect, and again whenever
+ * another device changes them.
+ *
+ * It deliberately does NOT publish: this is the download direction, and echoing
+ * it back would be a write loop between two tabs. Unchanged values are dropped
+ * on the floor so the ack of our own write doesn't churn the live call.
+ */
+export function applyRemoteMicPrefs(remote: Partial<SyncedMicPrefs>): void {
+  const current = loadMicPrefs();
+  // deviceId is stripped rather than defaulted: a remote object that somehow
+  // carries one must not move this machine's microphone.
+  const { deviceId: _ignored, ...rest } = remote as Partial<MicPrefs>;
+  const next = normalizeMicPrefs({ ...current, ...rest });
+  if (sameSyncedMicPrefs(current, next)) return;
+  saveMicPrefs(next);
 }
 
 /** subscribeMicPrefs reports every change, from this tab or another one. */
@@ -225,11 +285,15 @@ export function useMicPrefs(): [MicPrefs, (patch: Partial<MicPrefs>) => void] {
     setPrefs((prev) => {
       const next = normalizeMicPrefs({ ...prev, ...patch });
       saveMicPrefs(next);
+      // 44-4: only a deliberate edit uploads. Publishing from the load path
+      // would let a machine that has never opened the dialog overwrite the
+      // account's tuning with this module's defaults.
+      if (publish && !sameSyncedMicPrefs(prev, next)) publish(syncedMicPrefs(next));
       return next;
     });
   }, []);
 
-  // A second tab on the same device is the same device.
+  // Another tab on the same machine, or another machine via the server.
   useEffect(() => subscribeMicPrefs(setPrefs), []);
 
   return [prefs, update];

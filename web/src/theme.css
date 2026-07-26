@@ -205,9 +205,23 @@ html, body {
   padding: var(--chalk-s4) 0;
 }
 
+/* 44-1: the footer carries the two-column alignment the composer used to do
+   for itself -- voice controls under the roster, everything you type under the
+   messages. Same variable and gap as the shell grid, so the columns line up.
+   align-items: end keeps the voice cluster's buttons on the send button's row
+   rather than floating beside the top of the field. */
 .chalk-footer {
   border-top: 1px solid var(--chalk-border);
   padding: var(--chalk-s3) 0 var(--chalk-s4) 0;
+  display: grid;
+  grid-template-columns: var(--chalk-sidebar-w, 220px) 1fr;
+  column-gap: var(--chalk-s3);
+  align-items: end;
+}
+
+.chalk-footer-left,
+.chalk-footer-main {
+  min-width: 0;
 }
 
 /* 43-6: "alice is typing...". The row is reserved whether or not anyone is
@@ -328,23 +342,22 @@ html, body {
   gap: var(--chalk-s2);
 }
 
-/* 42-1: the main composer is two columns that line up with the shell grid --
-   a tool rail under the roster, and the input under the messages. The rail
-   sits at the bottom of its column so its buttons align with the send button
-   rather than floating beside the top of the field. The thread composer keeps
-   the plain stacked layout above. */
+/* 44-1: the main composer stacks its tool rail directly on top of its input.
+   The rail used to occupy the roster's column, which left the buttons sitting
+   a sidebar-width away from the field they act on -- and handed that whole
+   column to four small buttons. The thread composer keeps the plain stacked
+   layout above. */
 .chalk-composer--railed {
-  display: grid;
-  grid-template-columns: var(--chalk-sidebar-w, 220px) 1fr;
-  column-gap: var(--chalk-s3);
-  align-items: end;
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
 }
 
-/* The rail's column width matches the shell's sidebar column exactly (same
-   variable, same column-gap), so the tools line up under the roster and the
-   field lines up under the messages. */
+/* The rail renders empty during an edit (its buttons are hidden), so it holds
+   a tool button's height to stop the field jumping a row mid-edit. */
 .chalk-composer-rail {
   min-width: 0;
+  min-height: 22px;
 }
 
 .chalk-composer-main {
@@ -5204,6 +5217,29 @@ body.chalk-resizing .chalk-sidebar-resizer {
   border-color: var(--chalk-error);
 }
 
+/* ---- 44-2: the always-present footer cluster --------------------------- */
+
+/* Its own query container, on the same terms as the dock's: the roster column
+   is rarely wide enough for four word labels, so this normally renders as the
+   compact "m d v ⚙" row. Wrapping is the fallback for a font scale that busts
+   even that. */
+.chalk-voice-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--chalk-s1);
+  container: voicectl / inline-size;
+}
+
+@container voicectl (max-width: 26em) {
+  .chalk-voice-controls .chalk-voice-ctl-wide {
+    display: none;
+  }
+  .chalk-voice-controls .chalk-voice-ctl-mini {
+    display: inline;
+  }
+}
+
 /* ---- debug drawer (30-4c diagnostics, rebuilt for the 30-5 layout) ---- */
 
 .chalk-voice-drawer {
@@ -5302,10 +5338,9 @@ body.chalk-resizing .chalk-sidebar-resizer {
   opacity: 1;
 }
 
-/* Tool row: attach / GIF / emoji / "?", in the rail beside the input rather
-   than competing with it for horizontal space. Small, because they're a
-   secondary affordance -- the field is the thing. Wraps so a roster column
-   dragged down to its 160px minimum still shows all four. */
+/* Tool row: attach / GIF / emoji / "?", above the input rather than competing
+   with it for horizontal space. Small, because they're a secondary affordance
+   -- the field is the thing. Wraps so a narrow window still shows all four. */
 .chalk-composer-tools {
   display: flex;
   align-items: center;
@@ -6634,21 +6669,26 @@ body.chalk-resizing .chalk-sidebar-resizer {
 
   /* -- composer ------------------------------------------------------ */
 
+  /* No roster column to align to, so the footer stacks: what you type first,
+     the voice controls under it within thumb reach. column-reverse rather than
+     reordering the DOM, so the tab order is the same on both layouts. */
   .chalk-footer {
     padding: var(--chalk-s2) 0 max(var(--chalk-s2), env(safe-area-inset-bottom)) 0;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: var(--chalk-s2);
   }
 
   .chalk-composer-input {
     min-width: 0;
   }
 
-  /* 42-1: no roster column to sit beside, so the rail drops below the input
-     -- column-reverse rather than reordering the DOM, which keeps the tab
-     order (field, then tools) the same on both layouts. */
+  /* The rail drops below the input on a phone: the field belongs against the
+     on-screen keyboard, and the tools are within thumb reach underneath it.
+     column-reverse rather than reordering the DOM, so the tab order (field,
+     then tools) stays the same on both layouts. */
   .chalk-composer--railed {
-    display: flex;
     flex-direction: column-reverse;
-    gap: var(--chalk-s2);
   }
 
   .chalk-composer-send {
@@ -6657,6 +6697,10 @@ body.chalk-resizing .chalk-sidebar-resizer {
   }
 
   .chalk-composer-tool {
+    min-height: 36px;
+  }
+
+  .chalk-composer-rail {
     min-height: 36px;
   }
 

@@ -1,10 +1,10 @@
-// MicSettings (41-3): the microphone section of the profile panel.
+// MicSettings (41-3): the body of the microphone settings dialog.
 //
-// Per-device, like the notification sounds above it, so this talks to
-// localStorage through useMicPrefs directly rather than taking props --
-// nothing here goes near the server.
+// It talks to useMicPrefs directly rather than taking props -- see mic-prefs.ts
+// for what that persists where (44-4: tuning and keybinds follow the account,
+// the chosen input device stays on this machine).
 //
-// The level meter is the point of the section. A gain slider with no feedback
+// The level meter is the point of the panel. A gain slider with no feedback
 // is a guess; with a meter you drag until you are speaking in the top half and
 // not clipping, which is the whole of mic setup for most people. It reads
 // POST-gain, so the bar responds to the slider as you move it.
@@ -204,8 +204,6 @@ export function MicSettings() {
 
   return (
     <section class="chalk-profile-microphone" data-testid="mic-settings">
-      <h3>microphone</h3>
-
       <div class="chalk-profile-field">
         <label class="chalk-profile-label" for="mic-device">
           input device
@@ -476,8 +474,9 @@ export function MicSettings() {
         {unlabeled
           ? "press test once to let the browser name your microphones. "
           : ""}
-        these settings stay on this device. changes apply to a call you're already in — no need to
-        rejoin.
+        everything here except the input device follows your account, so a second machine starts
+        where this one left off — the device stays here, since it names a socket on this computer.
+        changes apply to a call you're already in — no need to rejoin.
       </p>
     </section>
   );

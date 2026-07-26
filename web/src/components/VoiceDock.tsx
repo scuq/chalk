@@ -251,26 +251,11 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
                 data-testid="voice-dock-live"
               />
             )}
-            <button
-              class={"chalk-btn chalk-voice-ctl" + (snap.muted ? " chalk-voice-ctl--off" : "")}
-              type="button"
-              onClick={() => voiceSession.toggleMute()}
-              title={snap.muted ? "unmute microphone" : "mute microphone"}
-              aria-label={snap.muted ? "unmute microphone" : "mute microphone"}
-              data-testid="voice-dock-mute"
-            >
-              <CtlLabel wide={snap.muted ? "unmute" : "mute"} mini="m" />
-            </button>
-            <button
-              class={"chalk-btn chalk-voice-ctl" + (snap.deafened ? " chalk-voice-ctl--off" : "")}
-              type="button"
-              onClick={() => voiceSession.toggleDeafen()}
-              title={snap.deafened ? "hear everyone again" : "deafen: silence everyone, and you"}
-              aria-label={snap.deafened ? "hear everyone again" : "deafen everyone"}
-              data-testid="voice-dock-deafen"
-            >
-              <CtlLabel wide={snap.deafened ? "undeafen" : "deafen"} mini="d" />
-            </button>
+            {/* 44-2: mute and deafen used to live here too. They are global
+                now, and the cluster that owns them sits directly below this
+                dock in the same column -- two identical mute buttons a
+                centimetre apart is worse than one. The dock keeps what is
+                genuinely about THIS call: where it is, how long, and leaving. */}
             <button
               class="chalk-btn chalk-voice-ctl chalk-voice-ctl--leave"
               type="button"

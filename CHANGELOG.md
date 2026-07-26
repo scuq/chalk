@@ -13,6 +13,20 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **Mute, deafen and camera are always within reach — and they stick.** A row
+  of voice controls now sits at the bottom left, under your channel list,
+  whether or not you are in a call. They are not just for the call you are in:
+  whatever they show is how you join the next room. Mute yourself before you
+  walk in and you arrive muted; turn the camera on and you arrive with video,
+  instead of joining live and scrambling for the button. They stay put across
+  leaving a room, dropped connections and page reloads.
+- **Microphone settings have a dialog of their own.** Input device, level and
+  meter, when to transmit, and the voice keys are now behind the ⚙ next to the
+  mute button — where you already are when nobody can hear you — rather than
+  three quarters of the way down the profile panel. The profile panel still
+  points you to it. Everything in it except the chosen input device now follows
+  your account, so a second computer starts from your settings instead of a
+  blank slate; the device stays put, since it names a socket on one machine.
 - **You can see when someone is writing to you.** A line above the message box
   says "alice is typing...", naming up to five people at once — and if more
   than five of you are going at it, it gives up and says the keyboards are on
@@ -34,6 +48,10 @@ The engineering-level history (which slice shipped what) lives in
   --thread-active-window-hours`.
 
 ### Changed
+- **The attach, GIF and emoji buttons moved next to the message box.** They
+  used to sit at the bottom of the channel list, a screen's width from the
+  field they act on, and took up a whole column to do it. They are now on the
+  row directly above the box you type in.
 - **The cursor is already in the message box when you open a channel.** Picking
   a channel puts the caret in the composer, so you can start typing straight
   away instead of clicking into the box first; if the channel is still

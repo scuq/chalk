@@ -97,6 +97,50 @@ export function readRejoinHint(): RejoinHint | null {
   }
 }
 
+// ---- global mute / deafen / camera (44-2) -----------------------------------
+//
+// These three are live controls AND join defaults: whatever the footer cluster
+// shows while you are idle is the state you join the next room in. Discord's
+// behaviour, and the honest one -- a mute you set deliberately should not be
+// silently undone by walking into a room.
+//
+// Per-device localStorage rather than server prefs: "is my mic hot right now"
+// is a property of the machine you are sitting at, and a mute set on the laptop
+// in the office has no business unmuting the desktop at home.
+
+const GLOBAL_VOICE_LS_KEY = "chalk-voice-global";
+
+export interface GlobalVoiceState {
+  muted: boolean;
+  deafened: boolean;
+  /** Whether to join with the camera already publishing. */
+  camOn: boolean;
+}
+
+const DEFAULT_GLOBAL_VOICE: GlobalVoiceState = { muted: false, deafened: false, camOn: false };
+
+function loadGlobalVoice(): GlobalVoiceState {
+  try {
+    const raw = localStorage.getItem(GLOBAL_VOICE_LS_KEY);
+    if (!raw) return { ...DEFAULT_GLOBAL_VOICE };
+    const p = JSON.parse(raw) as Partial<GlobalVoiceState>;
+    // Deafened implies muted everywhere else in this file; normalise on read
+    // so a hand-edited entry cannot produce a state the toggles can't reach.
+    const deafened = !!p?.deafened;
+    return { muted: deafened || !!p?.muted, deafened, camOn: !!p?.camOn };
+  } catch {
+    return { ...DEFAULT_GLOBAL_VOICE };
+  }
+}
+
+function saveGlobalVoice(g: GlobalVoiceState): void {
+  try {
+    localStorage.setItem(GLOBAL_VOICE_LS_KEY, JSON.stringify(g));
+  } catch {
+    /* quota/private-mode: the state holds for this session only */
+  }
+}
+
 type PeerAudioStore = Record<string, Record<string, PeerAudioPref>>; // channel -> user -> pref
 
 function loadPeerAudioStore(): PeerAudioStore {
@@ -223,12 +267,19 @@ class VoiceSessionImpl {
   /** Self-mute state from before deafening, restored when un-deafening. */
   private mutedBeforeDeafen = false;
 
+  /** 44-2: the persisted mute/deafen/camera state. Doubles as the join
+   * default -- see setGlobal and join(). */
+  private global: GlobalVoiceState = { ...DEFAULT_GLOBAL_VOICE };
+
   constructor() {
     // One bus subscription for the app's lifetime; the manager filters by
     // channel + self, so stray frames are inert.
     voiceBus.subscribe((f: Frame) => this.call?.handleFrame(f));
     // 30-5h: a hint left by a prior page load = offer a one-click rejoin.
     this.s.rejoinHint = readRejoinHint();
+    // 44-2: the footer cluster shows this while idle, and join() joins into it.
+    this.global = loadGlobalVoice();
+    this.s = { ...this.s, ...this.global };
   }
 
   // ---- store surface -------------------------------------------------------
@@ -240,6 +291,17 @@ class VoiceSessionImpl {
 
   snap(): VoiceSessionSnap {
     return this.s;
+  }
+
+  /**
+   * setGlobal patches the mute/deafen/camera state. These three are both live
+   * controls and join defaults, so every change is persisted and mirrored into
+   * the render snapshot -- the snapshot fields carry the same names.
+   */
+  private setGlobal(patch: Partial<GlobalVoiceState>): void {
+    this.global = { ...this.global, ...patch };
+    saveGlobalVoice(this.global);
+    this.set(patch);
   }
 
   private set(patch: Partial<VoiceSessionSnap>): void {
@@ -378,14 +440,23 @@ class VoiceSessionImpl {
         subscribeNetPrefs((prefs) => this.call?.applyNetPrefs(prefs)),
       );
       await call.join();
+      // 44-2: join into the state the footer cluster is showing. The call
+      // itself starts unmuted with the camera off (matching the server's
+      // default participant row), so only a differing global needs applying --
+      // and setMuted/setVideoEnabled broadcast the corrected voice_state.
+      const g = this.global;
+      if (g.muted) call.setMuted(true);
+      // A join that degraded to audio-only has no camera track to enable; the
+      // global stands for the next room that does.
+      const camOn = g.camOn && call.joinedWithVideo && call.setVideoEnabled(true);
       this.set({
         phase: "in-call",
         relayOnly: call.relayOnly,
-        // joinedWithVideo = a camera track was acquired (30-5h). camOn starts
-        // false -- camera is off by default, the panel toggle flips it.
+        // joinedWithVideo = a camera track was acquired (30-5h).
         joinedWithVideo: call.joinedWithVideo,
-        camOn: false,
-        muted: false,
+        camOn,
+        muted: g.muted,
+        deafened: g.deafened,
         joinedAt: Date.now(),
       });
       // 30-5h: remember the room so a page reload can offer a one-click
@@ -442,8 +513,6 @@ class VoiceSessionImpl {
       channelName: "",
       tiles: {},
       localStream: null,
-      muted: false,
-      camOn: false,
       localScreenStream: null,
       sharing: false,
       shareMode: "detail",
@@ -453,10 +522,14 @@ class VoiceSessionImpl {
       joinedAt: null,
       peerAudio: {},
       audioBlocked: false,
-      deafened: false,
       micOpen: true,
+      // 44-2: mute, deafen and the camera survive the call -- they are the
+      // footer cluster's state, and the default for the next room. Leaving a
+      // room is not a reason to hand someone back a hot microphone.
+      ...this.global,
     });
-    this.mutedBeforeDeafen = false;
+    // Only meaningful while deafened, which now outlives the call.
+    if (!this.global.deafened) this.mutedBeforeDeafen = false;
     if (call) await call.leave();
   }
 
@@ -494,14 +567,17 @@ class VoiceSessionImpl {
 
   // ---- in-call controls ----------------------------------------------------
 
+  /**
+   * toggleMute flips self-mute. Works with no call running (44-2), where it is
+   * setting the state the next room will be joined in.
+   */
   toggleMute(): void {
-    if (!this.call) return;
     const next = !this.s.muted;
-    this.call.setMuted(next);
+    this.call?.setMuted(next);
     // Unmuting while deafened is the usual way people discover they are still
     // deafened, so let it lift the deafen rather than leaving them talking into
     // a room they cannot hear.
-    this.set({ muted: next, deafened: next ? this.s.deafened : false });
+    this.setGlobal({ muted: next, deafened: next ? this.s.deafened : false });
   }
 
   /**
@@ -513,15 +589,14 @@ class VoiceSessionImpl {
    * signaled, so nobody else's client needs to know or agree.
    */
   toggleDeafen(): void {
-    if (!this.call) return;
     const next = !this.s.deafened;
     if (next) {
       this.mutedBeforeDeafen = this.s.muted;
-      this.call.setMuted(true);
-      this.set({ deafened: true, muted: true });
+      this.call?.setMuted(true);
+      this.setGlobal({ deafened: true, muted: true });
     } else {
-      this.call.setMuted(this.mutedBeforeDeafen);
-      this.set({ deafened: false, muted: this.mutedBeforeDeafen });
+      this.call?.setMuted(this.mutedBeforeDeafen);
+      this.setGlobal({ deafened: false, muted: this.mutedBeforeDeafen });
     }
   }
 
@@ -530,13 +605,22 @@ class VoiceSessionImpl {
     this.call?.setKeyHeld(held);
   }
 
-  /** Returns false when the call has no camera track (joined audio-only). */
+  /**
+   * toggleCam flips the camera. With no call running (44-2) it sets whether
+   * the next room is joined with the camera already publishing.
+   *
+   * Returns false when the running call has no camera track (joined
+   * audio-only) -- enableCamera is the mid-call escape hatch for that.
+   */
   toggleCam(): boolean {
-    if (!this.call) return false;
-    if (!this.call.joinedWithVideo) return false;
     const next = !this.s.camOn;
+    if (!this.call) {
+      this.setGlobal({ camOn: next });
+      return true;
+    }
+    if (!this.call.joinedWithVideo) return false;
     if (this.call.setVideoEnabled(next)) {
-      this.set({ camOn: next });
+      this.setGlobal({ camOn: next });
       return true;
     }
     return false;
@@ -591,7 +675,10 @@ class VoiceSessionImpl {
     const call = this.call;
     if (!call) return false;
     const ok = await call.enableCameraMidCall();
-    if (ok) this.set({ joinedWithVideo: true, camOn: true });
+    if (ok) {
+      this.set({ joinedWithVideo: true });
+      this.setGlobal({ camOn: true });
+    }
     return ok;
   }
 
