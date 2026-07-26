@@ -52,6 +52,11 @@ interface Props {
   // add-member: friends not already in the channel + the add handler
   addableFriends: Friend[];
   onAddMember: (userID: string, handle: string) => void;
+  // 47-5: nick colors, so a member reads the same here as in chat.
+  // hueForHandle returns null when coloring is off or the handle has no
+  // color; selfHue is the viewer's own. Both optional.
+  hueForHandle?: (handle: string) => number | null;
+  selfHue?: number | null;
   // per-member verification (keyed by userID); 24b
   verification: Record<string, MemberVerifyInfo>;
   verificationLoading: boolean;
@@ -87,6 +92,8 @@ export function MembersPanel({
   onRemoveMember,
   addableFriends,
   onAddMember,
+  hueForHandle,
+  selfHue,
   verification,
   verificationLoading,
   onMarkVerified,
@@ -201,9 +208,17 @@ export function MembersPanel({
                     const isYou = ownUserID != null && m.userID === ownUserID;
                     const vinfo = verification[m.userID];
                     const vstate = vinfo?.state ?? "unverified";
+                    const hue = isYou
+                      ? (selfHue ?? null)
+                      : m.handle
+                        ? (hueForHandle?.(m.handle) ?? null)
+                        : null;
                     return (
                       <li key={m.userID} class="chalk-members-row">
-                        <span class="chalk-members-handle">
+                        <span
+                          class={`chalk-members-handle ${hue !== null ? "chalk-nick-tinted" : ""}`}
+                          style={hue !== null ? `--nick-h:${hue}` : undefined}
+                        >
                           {m.handle}
                           {isYou && <span class="chalk-members-you"> (you)</span>}
                         </span>

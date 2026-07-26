@@ -6105,6 +6105,14 @@ body.chalk-resizing .chalk-sidebar-resizer {
   color: hsl(var(--nick-h, 210) var(--nick-s) var(--nick-l));
 }
 
+/* 47-5: the same tint outside the message feed -- roster rows, voice
+   occupants, the members panel. Declared here, after the per-surface name
+   rules it has to beat (.chalk-members-handle sets its own color at equal
+   specificity), so source order settles it without !important. */
+.chalk-nick-tinted {
+  color: hsl(var(--nick-h, 210) var(--nick-s) var(--nick-l));
+}
+
 /* Small inline swatch used in the profile picker and the roster menu, so
    a color can be previewed exactly as chat will render it. */
 .chalk-nick-swatch {

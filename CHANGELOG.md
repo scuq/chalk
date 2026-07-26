@@ -10,6 +10,19 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- **Name colours now show up outside the chat feed.** Picking a colour for
+  someone (right-click or long-press them in the roster) only recoloured their
+  name on their messages — in the roster, the occupant list under a voice
+  channel, and the members panel they stayed the plain theme colour, so the
+  pick looked like it hadn't taken. Those places now use the same colour as
+  chat, including your own colour on rows that read as "you". Turning name
+  colouring off in your profile clears the tint everywhere, as before.
+
+---
+
 ## v0.3.48 — 26 July 2026 — Thread filtering and multi-window video popouts
 
 ### Added

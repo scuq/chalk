@@ -3412,7 +3412,22 @@ export function App() {
     };
   }, [state.openPanel, state.threadInboxActive, state.threadInboxAgedUnread, ccReady]);
 
-
+  // 47-5: nick colors outside the message feed (roster, voice occupants,
+  // members panel). Same resolver the feed uses, so a name reads identically
+  // everywhere; null means "no tint", including when coloring is switched off.
+  const nickHueForHandle = (handle: string): number | null => {
+    const chat = selectChatPrefs(state.prefs);
+    return resolveNickHue({
+      enabled: chat.userColorsEnabled,
+      own: false,
+      handle,
+      selfHue: chat.selfColorHue,
+      userHues: chat.userHues,
+    });
+  };
+  const ownNickHue = selectChatPrefs(state.prefs).userColorsEnabled
+    ? selectChatPrefs(state.prefs).selfColorHue
+    : null;
 
   return (
     <div
@@ -3524,16 +3539,11 @@ export function App() {
           // reports what a handle currently renders as (explicit pick, else
           // the automatic hash) so the picker opens on the live color;
           // onSetFriendHue persists a pick, or clears it back to automatic.
+          // 47-5: it also tints the roster itself, so it honours the master
+          // switch -- null means "leave this name the theme's color".
           nickColorsEnabled={selectChatPrefs(state.prefs).userColorsEnabled}
-          hueForHandle={(handle) =>
-            resolveNickHue({
-              enabled: true,
-              own: false,
-              handle,
-              selfHue: selectChatPrefs(state.prefs).selfColorHue,
-              userHues: selectChatPrefs(state.prefs).userHues,
-            })
-          }
+          hueForHandle={nickHueForHandle}
+          selfHue={ownNickHue}
           onSetFriendHue={(handle, hue) => {
             // Same JSONB shallow-merge rule as the other chat prefs: ship the
             // whole chat object, not just the changed key.
@@ -3997,6 +4007,8 @@ export function App() {
             (fr) => !activeChannel.memberIDs.includes(fr.userID),
           )}
           onAddMember={onAddMember}
+          hueForHandle={nickHueForHandle}
+          selfHue={ownNickHue}
           verification={memberVerify}
           verificationLoading={verifyLoading}
           onMarkVerified={onMarkVerified}

@@ -109,11 +109,16 @@ interface Props {
   onSelect: (channelID: string) => void;
   onFriendClick: (friendUserID: string) => void;
   // Phase 9.7f: nick colors. hueForHandle resolves the color a handle
-  // currently renders in (explicit pick or auto hash); onSetFriendHue
-  // persists a pick, or clears it back to automatic when passed null.
-  // Both optional so other Sidebar callers are unaffected.
+  // currently renders in (explicit pick or auto hash), or null for none --
+  // including when the master switch is off, so callers can tint on its
+  // result alone. onSetFriendHue persists a pick, or clears it back to
+  // automatic when passed null. All optional so other Sidebar callers are
+  // unaffected.
   nickColorsEnabled?: boolean;
   hueForHandle?: (handle: string) => number | null;
+  // 47-5: the viewer's own color, for rows that render as "you" (voice
+  // occupants). null when coloring is off.
+  selfHue?: number | null;
   onSetFriendHue?: (handle: string, hue: number | null) => void;
   onCreateClick: () => void;
 }
@@ -172,6 +177,13 @@ function occupantName(
   if (ownUserID && userID === ownUserID) return "you";
   const m = (ch.members ?? []).find((x) => x.userID === userID);
   return m?.handle || userID.slice(0, 8);
+}
+
+// 47-5: the handle an occupant colors by, or "" when the channel's member
+// list doesn't name them (the row falls back to a userID slice, which has no
+// stable identity to color).
+function occupantHandle(ch: ChannelSummary, userID: string): string {
+  return (ch.members ?? []).find((x) => x.userID === userID)?.handle || "";
 }
 
 // ---- 30-5 badge icons -------------------------------------------------------
@@ -255,6 +267,7 @@ export function Sidebar({
   onFriendClick,
   nickColorsEnabled,
   hueForHandle,
+  selfHue,
   onSetFriendHue,
   onCreateClick,
 }: Props) {
@@ -361,6 +374,12 @@ export function Sidebar({
             const dotClass = presenceClass(presenceState);
             const dotLabel = presenceLabel(presenceState);
             const displayName = friend.handle || friend.userID.slice(-8);
+            // 47-5: same color the roster menu previews and chat renders.
+            // Handle-less friends (userID slice as the label) stay untinted,
+            // matching the message feed's rule for unresolvable senders.
+            const nickHue = friend.handle
+              ? (hueForHandle?.(friend.handle) ?? null)
+              : null;
             // A DM has no mention concept (every message is addressed to
             // you), so the dot is always the plain variant.
             const dmUnread = dm !== null && hasUnread(unread[dm.id]);
@@ -416,7 +435,10 @@ export function Sidebar({
                   class={`chalk-presence-dot ${dotClass}`}
                   aria-label={dotLabel}
                 />
-                <span class="chalk-sidebar-item-name">
+                <span
+                  class={`chalk-sidebar-item-name ${nickHue !== null ? "chalk-nick-tinted" : ""}`}
+                  style={nickHue !== null ? `--nick-h:${nickHue}` : undefined}
+                >
                   {displayName}
                 </span>
                 {dmUnread && <UnreadDot mention={false} />}
@@ -499,20 +521,32 @@ export function Sidebar({
                     class="chalk-sidebar-occupants"
                     data-testid="sidebar-voice-occupants"
                   >
-                    {roster.map((p) => (
-                      <li
-                        class="chalk-sidebar-occupant"
-                        key={p.userID + ":" + p.deviceID}
-                        data-user-id={p.userID}
-                      >
-                        <span class="chalk-sidebar-occupant-name">
-                          {occupantName(ch, ownUserID, p.userID)}
-                        </span>
-                        {p.muted && <MicOffIcon />}
-                        {p.videoOn && <CamIcon />}
-                        {p.screenOn && <ScreenIcon />}
-                      </li>
-                    ))}
+                    {roster.map((p) => {
+                      const isOwn = !!ownUserID && p.userID === ownUserID;
+                      const handle = occupantHandle(ch, p.userID);
+                      const hue = isOwn
+                        ? (selfHue ?? null)
+                        : handle
+                          ? (hueForHandle?.(handle) ?? null)
+                          : null;
+                      return (
+                        <li
+                          class="chalk-sidebar-occupant"
+                          key={p.userID + ":" + p.deviceID}
+                          data-user-id={p.userID}
+                        >
+                          <span
+                            class={`chalk-sidebar-occupant-name ${hue !== null ? "chalk-nick-tinted" : ""}`}
+                            style={hue !== null ? `--nick-h:${hue}` : undefined}
+                          >
+                            {occupantName(ch, ownUserID, p.userID)}
+                          </span>
+                          {p.muted && <MicOffIcon />}
+                          {p.videoOn && <CamIcon />}
+                          {p.screenOn && <ScreenIcon />}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </li>
