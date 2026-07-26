@@ -28,6 +28,16 @@ The engineering-level history (which slice shipped what) lives in
   instead of both looking the same in a sorted list. Hovering or tabbing to a
   row brings it back to full strength.
 
+### Fixed
+- **The call controls stay reachable in a busy voice channel.** With a camera or
+  a screen share on, a filling scratchpad used to push mute, camera, share and
+  the rest of the call bar out of sight below the video — the picture was all
+  that was left. The video now gives up height instead, so the controls under it
+  stay put no matter how tall the call or how full the text.
+- **The "… is typing" line no longer crowds the message box.** Its row was
+  exactly as tall as the text in it, which clipped the tops and tails of letters
+  and left it sitting against the box below. It now has room of its own.
+
 ---
 
 ## v0.3.47 — 26 July 2026 — Reload prompt when the server updates

@@ -228,10 +228,15 @@ html, body {
    typing -- the shell is a grid with a 1fr message pane, so a footer that
    grew and shrank would resize the pane under someone reading it. nowrap +
    ellipsis for the same reason: five handles that wrap to two lines would
-   reintroduce exactly the shift the reservation prevents. */
+   reintroduce exactly the shift the reservation prevents.
+
+   The reserved height and the line box are the same number so the row never
+   moves, and both leave room around the text: at 1.2 the glyphs filled the
+   box edge to edge, so overflow: hidden -- which is there for the ellipsis --
+   shaved ascenders and descenders and the line sat against the composer. */
 .chalk-typing {
-  min-height: 1.2em;
-  line-height: 1.2;
+  min-height: 1.6em;
+  line-height: 1.6;
   font-size: var(--chalk-size-small);
   color: var(--chalk-fg-dim);
   overflow: hidden;
@@ -307,8 +312,44 @@ html, body {
 
 /* The call keeps its natural height until the pane runs out of room. Shrinking
    it (rather than the feed) is what keeps a long debug drawer scrolling inside
-   the panel instead of pushing the text off the bottom. */
+   the panel instead of pushing the text off the bottom.
+
+   The panel is a column that clips rather than scrolls: what gives up height
+   is the video, never the controls under it. Scrolling the panel as a whole
+   put the bar, the error line and the scratchpad rules below the fold as soon
+   as the stage was taller than the room left -- the picture survived and
+   everything you could act on did not. */
 .chalk-main--voice .chalk-voice-panel {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chalk-main--voice .chalk-voice-stage {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+/* The big tile is stretched by this row, so squeezing the stage squeezes the
+   picture with it (object-fit: contain letterboxes, so nothing is cropped).
+   The filmstrip and everything below the stage hold their size. */
+.chalk-main--voice .chalk-voice-big {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.chalk-main--voice .chalk-voice-strip,
+.chalk-main--voice .chalk-voice-bar,
+.chalk-main--voice .chalk-voice-error,
+.chalk-main--voice .chalk-voice-scratch {
+  flex: none;
+}
+
+/* The diagnostics drawer is the one part that keeps its own scrollbar: it is
+   arbitrarily long, and clipping it would hide the tail of the event log. */
+.chalk-main--voice .chalk-voice-drawer {
   flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
