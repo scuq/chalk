@@ -3424,37 +3424,53 @@ export function App() {
 
     let cancelled = false;
     const KEY_WARM_CONCURRENCY = 4;
+    // 48-5: the upfront add above keeps overlapping runs from double-warming,
+    // but "warmed" must only stick once a channel's previews actually made it
+    // to a dispatch. This run's channels that never got there -- cancelled
+    // mid-flight by an effect re-run (panel-open refetch ack, "load more",
+    // the 30s stale refetch) or failed outright -- get their mark rolled
+    // back so a later run retries them instead of leaving the rows on the
+    // skeleton forever.
+    const completed = new Set<string>();
 
     const decryptChannel = async (channelID: string) => {
-      await cc.warmChannelKey(channelID);
-      if (cancelled) return;
-      const previews: Record<string, { headBody?: string; lastReplyBody?: string }> = {};
-      for (const r of rows) {
-        if (r.channelID !== channelID) continue;
-        const cipher = inboxCipherRef.current.get(r.threadID);
-        if (!cipher) continue;
-        // Tombstones short-circuit exactly as decryptAll does: an empty body
-        // under a tombstone must render a placeholder, not a failed decrypt.
-        const head = cipher.headDeleted
-          ? "[message deleted]"
-          : cipher.headBody
-            ? await cc.decryptForChannel(channelID, cipher.headKeyVersion, cipher.headBody)
-            : undefined;
-        const reply = cipher.lastReplyDeleted
-          ? "[message deleted]"
-          : cipher.lastReplyBody
-            ? await cc.decryptForChannel(
-                channelID,
-                cipher.lastReplyKeyVersion,
-                cipher.lastReplyBody,
-              )
-            : undefined;
-        previews[r.threadID] = { headBody: head, lastReplyBody: reply };
+      try {
+        await cc.warmChannelKey(channelID);
+        if (cancelled) return;
+        const previews: Record<string, { headBody?: string; lastReplyBody?: string }> = {};
+        for (const r of rows) {
+          if (r.channelID !== channelID) continue;
+          const cipher = inboxCipherRef.current.get(r.threadID);
+          if (!cipher) continue;
+          // Tombstones short-circuit exactly as decryptAll does: an empty body
+          // under a tombstone must render a placeholder, not a failed decrypt.
+          const head = cipher.headDeleted
+            ? "[message deleted]"
+            : cipher.headBody
+              ? await cc.decryptForChannel(channelID, cipher.headKeyVersion, cipher.headBody)
+              : undefined;
+          const reply = cipher.lastReplyDeleted
+            ? "[message deleted]"
+            : cipher.lastReplyBody
+              ? await cc.decryptForChannel(
+                  channelID,
+                  cipher.lastReplyKeyVersion,
+                  cipher.lastReplyBody,
+                )
+              : undefined;
+          previews[r.threadID] = { headBody: head, lastReplyBody: reply };
+        }
+        if (cancelled) return;
+        if (Object.keys(previews).length > 0) {
+          // One dispatch per channel, so the panel fills in visibly instead of
+          // in one late blob, and a slow channel never holds up the others.
+          dispatch({ kind: "thread_inbox_previews", channelID, previews });
+        }
+        completed.add(channelID);
+      } catch (err) {
+        console.error("thread inbox: preview warm failed for", channelID, err);
+        inboxWarmedRef.current.delete(channelID);
       }
-      if (cancelled || Object.keys(previews).length === 0) return;
-      // One dispatch per channel, so the panel fills in visibly instead of in
-      // one late blob, and a slow channel never holds up the others.
-      dispatch({ kind: "thread_inbox_previews", channelID, previews });
     };
 
     void (async () => {
@@ -3466,6 +3482,9 @@ export function App() {
 
     return () => {
       cancelled = true;
+      for (const cid of pending) {
+        if (!completed.has(cid)) inboxWarmedRef.current.delete(cid);
+      }
     };
   }, [state.openPanel, state.threadInboxActive, state.threadInboxAgedUnread, ccReady]);
 
