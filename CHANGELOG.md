@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.3.50 — 27 July 2026 — Thread search inside threads and instant previews
 
 ### Fixed
 - **The thread filter now searches inside threads.** Typing in the active-threads
