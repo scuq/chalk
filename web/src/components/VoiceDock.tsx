@@ -256,31 +256,49 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
               type="button"
               onClick={() => voiceSession.toggleMute()}
               title={snap.muted ? "unmute microphone" : "mute microphone"}
+              aria-label={snap.muted ? "unmute microphone" : "mute microphone"}
               data-testid="voice-dock-mute"
             >
-              {snap.muted ? "unmute" : "mute"}
+              <CtlLabel wide={snap.muted ? "unmute" : "mute"} mini="m" />
             </button>
             <button
               class={"chalk-btn chalk-voice-ctl" + (snap.deafened ? " chalk-voice-ctl--off" : "")}
               type="button"
               onClick={() => voiceSession.toggleDeafen()}
               title={snap.deafened ? "hear everyone again" : "deafen: silence everyone, and you"}
+              aria-label={snap.deafened ? "hear everyone again" : "deafen everyone"}
               data-testid="voice-dock-deafen"
             >
-              {snap.deafened ? "undeafen" : "deafen"}
+              <CtlLabel wide={snap.deafened ? "undeafen" : "deafen"} mini="d" />
             </button>
             <button
               class="chalk-btn chalk-voice-ctl chalk-voice-ctl--leave"
               type="button"
               onClick={() => void voiceSession.leave()}
               title="disconnect from voice"
+              aria-label="disconnect from voice"
               data-testid="voice-dock-leave"
             >
-              leave
+              <CtlLabel wide="leave" mini="l" />
             </button>
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+// CtlLabel: both spellings of a dock control's label, with CSS picking one.
+// A narrow sidebar can't fit "unmute · undeafen · leave" -- the buttons used
+// to spill out of the column and over the message list -- so a container
+// query on the dock collapses them to single letters. The letter is fixed per
+// control (mic / deafen / leave) rather than tracking the current action:
+// muted + deafened would otherwise render "u u l".
+function CtlLabel({ wide, mini }: { wide: string; mini: string }) {
+  return (
+    <>
+      <span class="chalk-voice-ctl-wide">{wide}</span>
+      <span class="chalk-voice-ctl-mini">{mini}</span>
     </>
   );
 }

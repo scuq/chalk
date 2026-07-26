@@ -4774,6 +4774,8 @@ body.chalk-resizing .chalk-sidebar-resizer {
   flex-direction: column;
   gap: var(--chalk-s1);
   flex: 0 0 auto;
+  /* Query container for the compact control labels below. */
+  container: voicedock / inline-size;
 }
 
 .chalk-voice-dock-row {
@@ -4788,6 +4790,10 @@ body.chalk-resizing .chalk-sidebar-resizer {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--chalk-fg-bright);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chalk-voice-dock-status[data-connected="false"] {
@@ -4796,6 +4802,7 @@ body.chalk-resizing .chalk-sidebar-resizer {
 
 .chalk-voice-dock-duration {
   margin-left: auto;
+  flex: none;
   font-size: calc(11px * var(--chalk-font-scale));
   color: var(--chalk-fg-dim);
   font-variant-numeric: tabular-nums;
@@ -4838,6 +4845,27 @@ body.chalk-resizing .chalk-sidebar-resizer {
 
 .chalk-voice-dock-spacer {
   flex: 1 1 auto;
+}
+
+/* 41-6: compact control labels. Word labels ("unmute", "undeafen", "leave")
+   need roughly 21em of dock before the channel name has anything left; below
+   that the buttons used to push out of the sidebar and sit on top of the
+   message list. The threshold is in em so it tracks the font-scale pref. */
+.chalk-voice-ctl-mini {
+  display: none;
+}
+
+@container voicedock (max-width: 21em) {
+  .chalk-voice-ctl-wide {
+    display: none;
+  }
+  .chalk-voice-ctl-mini {
+    display: inline;
+  }
+  .chalk-voice-dock-row .chalk-voice-ctl {
+    padding-left: var(--chalk-s2);
+    padding-right: var(--chalk-s2);
+  }
 }
 
 /* 30-5i: autoplay-blocked audio nudge inside the connected dock. Amber to
