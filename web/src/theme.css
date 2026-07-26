@@ -271,7 +271,9 @@ html, body {
   display: grid;
   grid-template-columns: 7ch 9ch 1fr;
   gap: var(--chalk-s2);
-  padding: var(--chalk-s1) var(--chalk-s2);
+  /* The extra left padding is the gutter the row's ··· marker sits in. */
+  padding: var(--chalk-s1) var(--chalk-s2) var(--chalk-s1)
+    calc(var(--chalk-s2) + var(--chalk-msg-gutter));
   border-radius: var(--chalk-radius);
   background: transparent;
 }
@@ -311,12 +313,37 @@ html, body {
   gap: var(--chalk-s2);
 }
 
-/* att-2: the input row (paperclip | textarea | send). Flex so it works with
-   or without the paperclip (thread composer has no attach button). */
+/* 42-1: the main composer is two columns that line up with the shell grid --
+   a tool rail under the roster, and the input under the messages. The rail
+   sits at the bottom of its column so its buttons align with the send button
+   rather than floating beside the top of the field. The thread composer keeps
+   the plain stacked layout above. */
+.chalk-composer--railed {
+  display: grid;
+  grid-template-columns: var(--chalk-sidebar-w, 220px) 1fr;
+  column-gap: var(--chalk-s3);
+  align-items: end;
+}
+
+/* The rail's column width matches the shell's sidebar column exactly (same
+   variable, same column-gap), so the tools line up under the roster and the
+   field lines up under the messages. */
+.chalk-composer-rail {
+  min-width: 0;
+}
+
+.chalk-composer-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+  min-width: 0;
+}
+
+/* att-2: the input row (textarea | send). */
 .chalk-composer-row {
   display: flex;
   gap: var(--chalk-s2);
-  align-items: stretch;
+  align-items: end;
 }
 
 .chalk-composer-input {
@@ -348,15 +375,21 @@ html, body {
   cursor: not-allowed;
 }
 
+/* 42-1: a small button parked at the bottom of the field instead of a slab
+   as tall as the textarea. Enter sends; this is for the mouse, and it does
+   not need to be the loudest thing in the footer. */
 .chalk-composer-send {
-  align-self: stretch;
-  padding: 0 var(--chalk-s4);
+  flex: 0 0 auto;
+  align-self: end;
+  height: 26px;
+  padding: 0 var(--chalk-s3);
   background: transparent;
   color: var(--chalk-fg);
   border: 1px solid var(--chalk-fg);
   border-radius: var(--chalk-radius);
   font-family: inherit;
-  font-size: var(--chalk-size-base);
+  font-size: var(--chalk-size-small);
+  line-height: 1;
   text-transform: lowercase;
   letter-spacing: 0.05em;
   cursor: pointer;
@@ -417,6 +450,22 @@ html, body {
 }
 .chalk-composer-editing-label {
   color: var(--chalk-accent);
+}
+/* 42-1: the strip alone was easy to miss when it appeared from a cursor-up
+   you half-meant. Ring the field itself in the accent colour too, so the
+   composer visibly stops being "write a new message". */
+.chalk-composer--editing .chalk-composer-input,
+.chalk-composer--editing .chalk-composer-input:focus {
+  border-color: var(--chalk-accent);
+  outline-color: var(--chalk-accent);
+}
+.chalk-composer--editing .chalk-composer-send {
+  border-color: var(--chalk-accent);
+  color: var(--chalk-accent);
+}
+.chalk-composer--editing .chalk-composer-send:hover:not(:disabled) {
+  background: var(--chalk-accent);
+  color: var(--chalk-bg);
 }
 .chalk-composer-editing-hint {
   margin-left: auto;
@@ -3014,7 +3063,9 @@ body.chalk-resizing .chalk-sidebar-resizer {
   gap: 1px;
 }
 .chalk-messages--compact .chalk-message {
-  padding: 1px var(--chalk-s2);
+  /* The shorthand wins over the base rule, so it has to carry the marker
+     gutter too or compact mode loses it. */
+  padding: 1px var(--chalk-s2) 1px calc(var(--chalk-s2) + var(--chalk-msg-gutter));
 }
 
 /* Phase 9.7l: in compact mode, match the body to the timestamp/sender
@@ -3271,154 +3322,112 @@ body.chalk-resizing .chalk-sidebar-resizer {
   display: contents;
 }
 
-/* The reply button is positioned at the end of the message grid
-   row, hidden by default, revealed on row hover. */
+/* The marker is absolutely placed inside the row's own left padding. */
 .chalk-message {
   position: relative;
 }
-/* 33-6: the row-action group. One absolutely-positioned flex container
-   pinned to the row's right edge, so the buttons lay themselves out next to
-   each other instead of each carrying its own hard-coded offset. Top-
-   anchored so it clears tall image rows. Costs no layout space in the
-   message grid, which is why it's absolute rather than a grid cell. */
-.chalk-message-actions {
+
+/* 41-3: the row menu's handle.
+   It replaces the button strip that used to be pinned to the row's RIGHT
+   edge -- an overlay with no reserved space behind it, so on any message
+   whose first line ran long it painted straight over the words, and even on
+   a short one it meant crossing the whole feed to reach it. The marker sits
+   in the row's left padding instead: a fixed x on every row, outside the
+   grid columns, structurally unable to touch the body. */
+.chalk-message-marker {
   position: absolute;
-  right: var(--chalk-s2);
+  left: var(--chalk-s1);
   top: var(--chalk-s1);
-  display: flex;
-  gap: 4px;
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
   opacity: 0;
   pointer-events: none;
   transition: opacity 80ms ease;
 }
 
-/* Reveal on row hover, or when either button is keyboard-focused. */
-.chalk-message:hover .chalk-message-actions,
-.chalk-message-actions:focus-within {
+/* Revealed on row hover, while its own menu is open, and on keyboard focus. */
+.chalk-message:hover .chalk-message-marker,
+.chalk-message--menu-open .chalk-message-marker,
+.chalk-message-marker:focus-visible {
   opacity: 1;
   pointer-events: auto;
 }
 
-.chalk-message-reply {
-  background: var(--chalk-bg-elev);
-  border: 1px solid var(--chalk-border);
-  border-radius: var(--chalk-radius);
-  color: var(--chalk-fg-dim);
-  font: inherit;
-  font-size: var(--chalk-size-small);
-  padding: 2px 8px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-.chalk-message-reply:hover {
+.chalk-message-marker:hover,
+.chalk-message--menu-open .chalk-message-marker {
   color: var(--chalk-fg-bright);
   border-color: var(--chalk-accent);
 }
-.chalk-message-reply:focus-visible {
+.chalk-message-marker:focus-visible {
   outline: 1px solid var(--chalk-fg-bright);
   outline-offset: -1px;
 }
 
-/* 37-6: react gets a first-class button beside reply rather than a row in the
-   overflow menu. It is the most-used action on a message, and two clicks
-   through a menu is the wrong weight for it. Same shape as reply so the strip
-   reads as one control. */
-.chalk-message-react-btn {
-  background: var(--chalk-bg-elev);
-  border: 1px solid var(--chalk-border);
-  border-radius: var(--chalk-radius);
-  color: var(--chalk-fg-dim);
-  font: inherit;
-  font-size: var(--chalk-size-small);
-  padding: 2px 8px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-.chalk-message-react-btn:hover {
-  color: var(--chalk-fg-bright);
-  border-color: var(--chalk-accent);
-}
-.chalk-message-react-btn:focus-visible {
-  outline: 1px solid var(--chalk-fg-bright);
-  outline-offset: -1px;
-}
-
-/* 35-4: the overflow trigger. Same shape as the reply button so the group
-   reads as one control strip, but it carries no word -- it's the quiet
-   entry to destructive actions, not an action itself. */
-.chalk-message-more {
-  position: relative;
-}
-.chalk-message-more-btn {
-  background: var(--chalk-bg-elev);
-  border: 1px solid var(--chalk-border);
-  border-radius: var(--chalk-radius);
-  color: var(--chalk-fg-dim);
-  font: inherit;
-  font-size: var(--chalk-size-small);
-  padding: 2px 8px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  line-height: 1;
-}
-.chalk-message-more-btn:hover {
-  color: var(--chalk-fg-bright);
-  border-color: var(--chalk-accent);
-}
-.chalk-message-more-btn:focus-visible {
-  outline: 1px solid var(--chalk-fg-bright);
-  outline-offset: -1px;
-}
-
-/* The menu itself drops below the trigger, right-aligned so it stays inside
-   the feed on narrow screens. */
-.chalk-message-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 20;
-  min-width: 10rem;
+/* 41-3: the row menu itself. position:fixed, placed in viewport coordinates
+   by the component -- the feed is an overflow:auto scroller, and the absolute
+   menu this replaces was clipped by it on the last rows of a channel.
+   65 puts it above the phone's full-screen thread panel (60) and below the
+   emoji picker (70), which "react..." opens on top of it. */
+.chalk-msgmenu {
+  position: fixed;
+  z-index: 65;
+  min-width: 12rem;
   background: var(--chalk-bg-elev);
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   padding: 4px;
-  display: flex;
-  flex-direction: column;
+  font-size: var(--chalk-size-small);
 }
 
-/* Phase 26 (governance prereq) / 35-4: the delete item inside that menu. */
-.chalk-message-delete {
+/* The one-click reactions. A single row above the rest, because reacting is
+   what most people came to the menu for. */
+.chalk-msgmenu-quick {
+  display: flex;
+  gap: 2px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--chalk-border);
+}
+.chalk-msgmenu-quick-btn {
   background: none;
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--chalk-radius);
-  color: var(--chalk-fg-dim);
   font: inherit;
-  font-size: var(--chalk-size-small);
-  padding: 6px 10px;
+  font-size: var(--chalk-size-base);
+  line-height: 1;
+  padding: 4px 5px;
   cursor: pointer;
-  text-align: left;
-  white-space: nowrap;
 }
-.chalk-message-delete:hover {
-  color: var(--chalk-danger, #e5484d);
+.chalk-msgmenu-quick-btn:hover {
   background: var(--chalk-bg);
+  border-color: var(--chalk-accent);
 }
-.chalk-message-delete:focus-visible {
+.chalk-msgmenu-quick-btn:focus-visible {
   outline: 1px solid var(--chalk-fg-bright);
   outline-offset: -1px;
 }
 
-/* 37-3: the edit item in that same menu. Neutral hover, unlike delete's
-   danger red -- editing your own typo is not a destructive act. */
-.chalk-message-edit {
+/* Edit and delete come after a rule: they are about owning or moderating a
+   message rather than taking part, and delete is irreversible, so neither
+   should sit where the pointer lands first. */
+.chalk-msgmenu-group {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+}
+.chalk-msgmenu-group + .chalk-msgmenu-group {
+  border-top: 1px solid var(--chalk-border);
+  margin-top: 4px;
+}
+
+.chalk-msgmenu-item {
   background: none;
   border: none;
   border-radius: var(--chalk-radius);
@@ -3430,11 +3439,14 @@ body.chalk-resizing .chalk-sidebar-resizer {
   text-align: left;
   white-space: nowrap;
 }
-.chalk-message-edit:hover {
+.chalk-msgmenu-item:hover {
   color: var(--chalk-fg-bright);
   background: var(--chalk-bg);
 }
-.chalk-message-edit:focus-visible {
+.chalk-msgmenu-item--delete:hover {
+  color: var(--chalk-danger, #e5484d);
+}
+.chalk-msgmenu-item:focus-visible {
   outline: 1px solid var(--chalk-fg-bright);
   outline-offset: -1px;
 }
@@ -3444,28 +3456,6 @@ body.chalk-resizing .chalk-sidebar-resizer {
   font-style: italic;
   color: var(--chalk-fg-dim);
   opacity: 0.8;
-}
-
-/* 37-5: the "add reaction" item in the row menu. */
-.chalk-message-react {
-  background: none;
-  border: none;
-  border-radius: var(--chalk-radius);
-  color: var(--chalk-fg-dim);
-  font: inherit;
-  font-size: var(--chalk-size-small);
-  padding: 6px 10px;
-  cursor: pointer;
-  text-align: left;
-  white-space: nowrap;
-}
-.chalk-message-react:hover {
-  color: var(--chalk-fg-bright);
-  background: var(--chalk-bg);
-}
-.chalk-message-react:focus-visible {
-  outline: 1px solid var(--chalk-fg-bright);
-  outline-offset: -1px;
 }
 
 /* 37-5: the chip row under a message. Indented to the body column the same
@@ -3482,11 +3472,12 @@ body.chalk-resizing .chalk-sidebar-resizer {
      under a message would not line up with each other. */
   font-size: var(--chalk-size-base);
   padding-left: calc(
-    var(--chalk-msg-time-col) + var(--chalk-msg-col-gap) + var(--chalk-s2)
+    var(--chalk-msg-gutter) + var(--chalk-msg-time-col) +
+      var(--chalk-msg-col-gap) + var(--chalk-s2)
   );
 }
 .chalk-messages--no-time .chalk-message-reactions {
-  padding-left: var(--chalk-s2);
+  padding-left: calc(var(--chalk-msg-gutter) + var(--chalk-s2));
 }
 .chalk-reaction {
   display: inline-flex;
@@ -5224,14 +5215,15 @@ body.chalk-resizing .chalk-sidebar-resizer {
   opacity: 1;
 }
 
-/* Tool row: attach / GIF / emoji, sitting ABOVE the input rather than
-   competing with it for horizontal space. Smaller than the old inline
-   buttons since they're now a secondary affordance. */
+/* Tool row: attach / GIF / emoji / "?", in the rail beside the input rather
+   than competing with it for horizontal space. Small, because they're a
+   secondary affordance -- the field is the thing. Wraps so a roster column
+   dragged down to its 160px minimum still shows all four. */
 .chalk-composer-tools {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--chalk-s1);
-  margin-bottom: var(--chalk-s1);
 }
 .chalk-composer-tool {
   background: transparent;
@@ -5254,6 +5246,65 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-composer-tool:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* 42-1: the shortcut cheat sheet. Anchored to the "?" button and opening
+   upward, because the composer is at the bottom of the viewport. */
+.chalk-composer-help {
+  position: relative;
+  display: inline-flex;
+}
+.chalk-composer-help-toggle {
+  width: 22px;
+  padding: 0;
+  text-align: center;
+}
+.chalk-composer-help-sheet {
+  position: absolute;
+  bottom: calc(100% + var(--chalk-s2));
+  left: 0;
+  z-index: 40;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 2 * var(--chalk-s4)));
+  padding: var(--chalk-s2) var(--chalk-s3);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  font-size: var(--chalk-size-small);
+}
+.chalk-composer-help-title {
+  color: var(--chalk-fg-dim);
+  letter-spacing: 0.06em;
+  margin-bottom: var(--chalk-s2);
+}
+.chalk-composer-help-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s1);
+  margin: 0;
+}
+.chalk-composer-help-row {
+  display: flex;
+  gap: var(--chalk-s3);
+}
+.chalk-composer-help-row dt,
+.chalk-composer-help-row dd {
+  margin: 0;
+}
+/* Fixed key column so the descriptions line up. Wide enough for the longest
+   label ("ctrl+shift+f") at the small size. */
+.chalk-composer-help-row dt {
+  flex: 0 0 8.5em;
+}
+.chalk-composer-help-row dd {
+  color: var(--chalk-fg-dim);
+}
+.chalk-composer-help-sheet kbd {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--chalk-fg-bright);
+  white-space: nowrap;
 }
 
 /* Pop-out control in the header. */
@@ -5944,21 +5995,21 @@ body.chalk-resizing .chalk-sidebar-resizer {
 /* Text variant: short uppercase labels (FILE / GIF / EMOJI). Slight
    letter-spacing so they read as labels rather than words, matching
    how the GIF button already looked. */
-.chalk-composer-tools--text .chalk-composer-tool {
+.chalk-composer-rail--text .chalk-composer-tool {
   letter-spacing: 0.06em;
 }
 
 /* Icon variant: square-ish buttons that centre their glyph. The SVGs
    stroke with currentColor, so they inherit the button's colour and
    hover state and need no per-theme rules. */
-.chalk-composer-tools--icons .chalk-composer-tool {
+.chalk-composer-rail--icons .chalk-composer-tool {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 26px;
   padding: 0;
 }
-.chalk-composer-tools--icons .chalk-composer-tool svg {
+.chalk-composer-rail--icons .chalk-composer-tool svg {
   display: block;
 }
 
@@ -5993,6 +6044,13 @@ body.chalk-resizing .chalk-sidebar-resizer {
   --chalk-msg-time-col: 8ch;   /* "09:22:03" is exactly 8 -- 7ch clipped */
   --chalk-msg-sender-col: 8ch;
   --chalk-msg-col-gap: var(--chalk-s1);
+  /* 41-3: reserved strip at the row's left edge for the ··· menu marker.
+     Deliberately px and not ch: it holds one glyph rather than text that
+     lines up with anything, and the same ch value would resolve differently
+     in the row (base size) than in the smaller sibling rows that also have
+     to shift by it. Zeroed on touch, where there is no marker to make room
+     for -- which is what keeps the mobile grid overrides unchanged. */
+  --chalk-msg-gutter: 18px;
   --chalk-msg-body-offset: calc(
     var(--chalk-msg-time-col) + var(--chalk-msg-sender-col) +
       2 * var(--chalk-msg-col-gap)
@@ -6072,14 +6130,15 @@ body.chalk-resizing .chalk-sidebar-resizer {
      column, so the "N replies" line sits close to the message's first
      character instead of under the body text. */
   padding-left: calc(
-    var(--chalk-msg-time-col) + var(--chalk-msg-col-gap) + var(--chalk-s2)
+    var(--chalk-msg-gutter) + var(--chalk-msg-time-col) +
+      var(--chalk-msg-col-gap) + var(--chalk-s2)
   );
 }
 
 .chalk-messages--no-time .chalk-message-thread-meta {
   /* No time column: the sender starts at the left edge, so a small gutter
      is enough to clear the row padding. */
-  padding-left: var(--chalk-s2);
+  padding-left: calc(var(--chalk-msg-gutter) + var(--chalk-s2));
 }
 
 /* Children now inherit their position from the wrapper. Zeroing these
@@ -6496,16 +6555,35 @@ body.chalk-resizing .chalk-sidebar-resizer {
     min-width: 0;
   }
 
-  .chalk-composer-send {
-    padding: 0 var(--chalk-s3);
+  /* 42-1: no roster column to sit beside, so the rail drops below the input
+     -- column-reverse rather than reordering the DOM, which keeps the tab
+     order (field, then tools) the same on both layouts. */
+  .chalk-composer--railed {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: var(--chalk-s2);
   }
 
-  .chalk-composer-tools {
-    flex-wrap: wrap;
+  .chalk-composer-send {
+    height: 34px;
+    padding: 0 var(--chalk-s3);
   }
 
   .chalk-composer-tool {
     min-height: 36px;
+  }
+
+  /* Opening upward from a rail at the very bottom of the screen would put the
+     sheet behind the field, so pin it to the viewport instead. */
+  .chalk-composer-help-sheet {
+    position: fixed;
+    left: var(--chalk-s4);
+    right: var(--chalk-s4);
+    bottom: auto;
+    top: 50%;
+    transform: translateY(-50%);
+    width: auto;
+    max-width: none;
   }
 
   /* iOS zooms the viewport when a focused control renders below 16px,
@@ -6555,49 +6633,30 @@ body.chalk-resizing .chalk-sidebar-resizer {
   }
 }
 
-/* Touch devices have no hover, so the hover-revealed row actions would be
-   unreachable. Show them permanently instead. They are absolutely
-   positioned over the meta line, which is shorter than they are, so the
-   meta cells also get a floor height -- otherwise the buttons sit on top
-   of the message's first line of text. */
-/* Any touch device: the actions are permanently visible. 33-6 drops the
-   max-width that used to be on this rule -- a touch tablet is wider than
-   767px, so it got neither hover nor the reveal, leaving reply and delete
-   unreachable there. The meta line is shorter than the buttons overlaying
-   it, so it needs a floor height wherever they're always shown. */
+/* 41-3: touch has no hover to reveal the marker with, so the gesture there is
+   a long press on the row and there is no visible trigger at all. Zeroing the
+   gutter collapses every calc() that depends on it back to the pre-marker
+   geometry, which is what leaves the mobile grid overrides above untouched.
+   Rows on a phone are the width they were before.
+
+   Selection is off because a 500ms press is now the menu gesture, and the
+   platform's own selection UI would race it. "copy text" in the menu is the
+   replacement, and it is a better one than dragging handles across a line.
+   Desktop selection is not affected -- a right-click on selected text there
+   still yields the browser's own menu. */
 @media (hover: none) {
-  .chalk-message-actions {
-    opacity: 1;
-    pointer-events: auto;
+  :root {
+    --chalk-msg-gutter: 0px;
   }
 
-  .chalk-message-time,
-  .chalk-message-sender {
-    min-height: 22px;
-  }
-}
-
-/* Phone-sized touch only: glyph, no word. "↳ reply" at a touch-sized font
-   took most of the row width, wrapping the message body below it. The words
-   stay in the DOM for wider screens; aria-label carries the meaning for
-   screen readers either way. The menu's own items keep their labels -- they
-   sit in a popover, not in the row. */
-@media (hover: none) and (max-width: 767px) {
-  .chalk-message-action-word {
+  .chalk-message-marker {
     display: none;
   }
 
-  .chalk-message-reply,
-  .chalk-message-react-btn,
-  .chalk-message-more-btn {
-    font-size: calc(11px * var(--chalk-font-scale));
-    /* Square-ish tap targets: comfortably hit without the buttons
-       dominating the row the way the labelled versions did. */
-    min-width: 28px;
-    min-height: 24px;
-    padding: 1px 4px;
-    justify-content: center;
-    gap: 0;
+  .chalk-message {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
 }
 

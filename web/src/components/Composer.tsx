@@ -18,6 +18,13 @@ const EmojiPicker = lazyComponent(() =>
 );
 import { encodeGiphyBody } from "../giphy/giphy";
 import { insertAtCursor } from "../emoji/emoji";
+import { replaceEmoticonBefore } from "../emoji/emoticons";
+import {
+  composerHelp,
+  isMacPlatform,
+  matchComposerShortcut,
+  shortcutLabel,
+} from "../chat/composer-keys";
 
 // Phase 9.6g: disabledReason distinguishes the two reasons the
 // composer might be unusable. "offline" reflects a real connection
@@ -61,6 +68,9 @@ interface Props {
   // EMOJI labels; "icons" renders glyphs. The emoji button keeps its 🙂 in
   // both -- it already is an icon.
   toolStyle?: "text" | "icons";
+  // 42-1: replace typed emoticons with emoji as you type. Defaults to on;
+  // the profile pref turns it off.
+  emoticons?: boolean;
   // Phase 37-3: edit mode. When `editing` is non-null the composer is standing
   // in for one existing message: the draft is that message's text and Enter
   // routes to onEditSubmit instead of onSend. The parent owns the state so the
@@ -121,8 +131,9 @@ function IconGif() {
   );
 }
 
-export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, editing, onEditSubmit, onEditCancel, onEditLast }: Props) {
+export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast }: Props) {
   const icons = toolStyle === "icons";
+  const emoticonsOn = emoticons !== false;
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [dragActive, setDragActive] = useState(false);
@@ -132,7 +143,33 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   // Phase 9.7g: emoji picker open state. The textarea ref lets us splice the
   // pick in at the caret and restore focus, rather than appending.
   const [emojiOpen, setEmojiOpen] = useState(false);
+  // 42-1: the shortcut cheat sheet behind the "?" button.
+  const [helpOpen, setHelpOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const helpRef = useRef<HTMLDivElement | null>(null);
+  // 42-1: the last emoticon we swapped for an emoji, so an immediate
+  // Backspace can put the typed characters back. Cleared by any other edit.
+  const undoEmoticon = useRef<{ caret: number; text: string; emoji: string } | null>(null);
+
+  // 42-1: the help sheet is a popover, so it closes the way popovers do --
+  // Escape or a click anywhere else. Without this it would sit over the
+  // message list until you found the "?" again.
+  useEffect(() => {
+    if (!helpOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const el = helpRef.current;
+      if (el && e.target instanceof Node && !el.contains(e.target)) setHelpOpen(false);
+    };
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setHelpOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [helpOpen]);
   // att-3: per-item upload fraction (0..1) while sending.
   const [progress, setProgress] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -222,6 +259,22 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     });
   };
 
+  // The DOM value updates on the next render, so the caret has to be moved
+  // after it -- doing it synchronously would position against the stale value.
+  const setCaretSoon = (caret: number) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    window.setTimeout(() => {
+      el.focus();
+      try {
+        el.setSelectionRange(caret, caret);
+      } catch {
+        // Some browsers throw if the element isn't focusable yet; the text
+        // is already correct, only the caret position is lost.
+      }
+    }, 0);
+  };
+
   // Phase 9.7g: splice an emoji in at the caret (or over the selection),
   // then put the caret after it and return focus to the textarea so typing
   // continues naturally. Falls back to appending if the ref is somehow gone.
@@ -238,22 +291,37 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
       el.selectionEnd ?? draft.length,
     );
     if (value.length > MAX_LEN) return; // don't silently blow the cap
+    undoEmoticon.current = null;
     setDraft(value);
-    // The DOM value updates on the next render, so the caret has to be set
-    // after it -- doing it synchronously would use the stale value.
-    window.setTimeout(() => {
-      el.focus();
-      try {
-        el.setSelectionRange(caret, caret);
-      } catch {
-        // Some browsers throw if the element isn't focusable yet; the text
-        // is already correct, only the caret position is lost.
-      }
-    }, 0);
+    setCaretSoon(caret);
+  };
+
+  // 42-1: the three tool buttons, reachable from the keyboard as well as the
+  // rail. Kept as one function so a shortcut and a click cannot diverge.
+  const openTool = (action: "emoji" | "gif" | "file") => {
+    if (effectiveDisabled || sending) return;
+    if (action === "emoji") {
+      setEmojiOpen(true);
+      return;
+    }
+    if (action === "file") {
+      if (!enableAttachments || editing) return;
+      fileInputRef.current?.click();
+      return;
+    }
+    if (!giphyEnabled || editing) return;
+    // Not yet consented -> open the consent modal instead of the picker. The
+    // picker only ever opens for an enabled viewer.
+    if (!giphyReady) {
+      onRequestEnableGiphy?.();
+      return;
+    }
+    setGiphyOpen(true);
   };
 
   const submit = async () => {
     if (sending) return;
+    undoEmoticon.current = null;
     const body = draft.trim();
 
     // Phase 37-3: in edit mode the composer is standing in for one existing
@@ -314,13 +382,64 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   };
 
   const onInput = (e: JSX.TargetedEvent<HTMLTextAreaElement>) => {
-    setDraft(e.currentTarget.value);
+    const el = e.currentTarget;
+    const value = el.value;
+    // 42-1: emoticon replacement runs on the text left of the caret, so it
+    // only ever fires on the token the user just finished typing -- pasting a
+    // wall of text with a ":)" in the middle is left alone.
+    if (emoticonsOn) {
+      const caret = el.selectionStart ?? value.length;
+      const hit = replaceEmoticonBefore(value, caret);
+      if (hit) {
+        undoEmoticon.current = { caret: hit.caret, text: hit.text, emoji: hit.emoji };
+        setDraft(hit.value);
+        setCaretSoon(hit.caret);
+        return;
+      }
+    }
+    undoEmoticon.current = null;
+    setDraft(value);
   };
 
   const onKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>) => {
+    // 42-1: tool shortcuts first -- they carry a modifier, so they can never
+    // be the plain Enter/Escape/Up keys handled below.
+    const action = matchComposerShortcut(e);
+    if (action) {
+      e.preventDefault();
+      openTool(action);
+      return;
+    }
+    // 42-1: Backspace straight after an automatic emoticon swap puts the
+    // characters back, for the times you actually meant to write ":)".
+    if (e.key === "Backspace") {
+      const undo = undoEmoticon.current;
+      const el = e.currentTarget;
+      if (
+        undo &&
+        el.selectionStart === el.selectionEnd &&
+        el.selectionStart === undo.caret &&
+        draft.slice(undo.caret - undo.emoji.length, undo.caret) === undo.emoji
+      ) {
+        e.preventDefault();
+        const start = undo.caret - undo.emoji.length;
+        const restored = draft.slice(0, start) + undo.text + draft.slice(undo.caret);
+        undoEmoticon.current = null;
+        setDraft(restored);
+        setCaretSoon(start + undo.text.length);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void submit();
+      return;
+    }
+    // 42-1: with the help sheet open, Escape closes that first -- dismissing a
+    // popover should not also throw away the edit behind it.
+    if (e.key === "Escape" && helpOpen) {
+      e.preventDefault();
+      setHelpOpen(false);
       return;
     }
     // Phase 37-3: Escape leaves edit mode. Only when editing -- otherwise
@@ -398,10 +517,16 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   // attachment and GIF affordances are hidden rather than disabled: they'd
   // imply you can add a file to an existing message, which you can't.
   const showTools = !editing && (enableAttachments || giphyEnabled);
+  // 42-1: the main composer gets a left rail under the roster column; the
+  // thread composer has no tools and stays a plain stacked box. The rail
+  // element is rendered even while editing (when its buttons are hidden) so
+  // the input does not jump a column's width sideways mid-edit.
+  const railed = enableAttachments || giphyEnabled;
+  const mac = isMacPlatform();
 
   return (
     <div
-      class={`chalk-composer ${dragActive ? "chalk-composer--drag-active" : ""}`}
+      class={`chalk-composer ${railed ? "chalk-composer--railed" : ""} ${editing ? "chalk-composer--editing" : ""} ${dragActive ? "chalk-composer--drag-active" : ""}`}
       onDragEnter={enableAttachments ? onDragEnter : undefined}
       onDragOver={enableAttachments ? onDragOver : undefined}
       onDragLeave={enableAttachments ? onDragLeave : undefined}
@@ -424,162 +549,192 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
         onClose={() => setEmojiOpen(false)}
         onPick={(char) => insertEmoji(char)}
       />
-      {enableAttachments && dragActive && (
-        <div class="chalk-composer-drop-hint" data-testid="composer-drop-hint">
-          drop files to attach
-        </div>
+      {enableAttachments && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          class="chalk-composer-file-input"
+          style={{ display: "none" }}
+          onChange={onFileChange}
+          data-testid="composer-file-input"
+        />
       )}
-      {editing && (
-        <div class="chalk-composer-editing" data-testid="composer-editing">
-          <span class="chalk-composer-editing-label">editing message</span>
-          <button
-            type="button"
-            class="chalk-composer-editing-cancel"
-            onClick={() => onEditCancel?.()}
-            data-testid="composer-edit-cancel"
-          >
-            cancel
-          </button>
-          <span class="chalk-composer-editing-hint">escape to cancel</span>
-        </div>
-      )}
-      {enableAttachments && !editing && pending.length > 0 && (
-        <div class="chalk-composer-tray" data-testid="composer-tray">
-          {pending.map((p) => {
-            const frac = progress[p.localID];
-            return (
-              <div class="chalk-composer-chip" key={p.localID} data-testid="composer-chip">
-                {p.kind === "image" && p.previewURL ? (
-                  <img class="chalk-composer-chip-thumb" src={p.previewURL} alt={p.file.name} />
-                ) : (
-                  <span class="chalk-composer-chip-icon" aria-hidden="true">📎</span>
-                )}
-                <span class="chalk-composer-chip-name" title={p.file.name}>
-                  {p.file.name}
-                </span>
-                <span class="chalk-composer-chip-size">{humanSize(p.file.size)}</span>
-                {sending && frac !== undefined ? (
-                  <span
-                    class="chalk-composer-chip-progress"
-                    data-testid="composer-chip-progress"
-                    title={`${Math.round(frac * 100)}%`}
-                  >
-                    <span
-                      class="chalk-composer-chip-progress-fill"
-                      style={{ width: `${Math.round(frac * 100)}%` }}
-                    />
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    class="chalk-composer-chip-remove"
-                    onClick={() => removePending(p.localID)}
-                    title="remove attachment"
-                    aria-label={`remove ${p.file.name}`}
-                    data-testid="composer-chip-remove"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {/* Tool row: attach / GIF / emoji live ABOVE the input so they stop
-          eating the field's horizontal space. Rendered only for the main
-          composer (the thread composer stays text-only), which is what
-          enableAttachments/giphyEnabled effectively gate on. The old
-          per-button classes are kept alongside chalk-composer-tool so the
-          existing hover/disabled rules still apply. */}
-      {showTools && (
-        <div class={`chalk-composer-tools ${icons ? "chalk-composer-tools--icons" : "chalk-composer-tools--text"}`} data-testid="composer-tools">
-          {enableAttachments && (
-            <>
+      {/* 42-1: tool rail. On desktop this sits in the roster's column, beside
+          the input rather than above it, so the field keeps its full height
+          and the tools stop pushing the message list around. Rendered (empty)
+          during an edit to hold the column open. The old per-button classes
+          are kept alongside chalk-composer-tool so the existing
+          hover/disabled rules still apply. */}
+      {railed && (
+        <div
+          class={`chalk-composer-rail ${icons ? "chalk-composer-rail--icons" : "chalk-composer-rail--text"}`}
+          data-testid="composer-rail"
+        >
+          {showTools && (
+            <div class="chalk-composer-tools" data-testid="composer-tools">
+              {enableAttachments && (
+                <button
+                  type="button"
+                  class="chalk-composer-tool chalk-composer-attach"
+                  onClick={() => openTool("file")}
+                  disabled={effectiveDisabled || sending}
+                  title={`attach a file (${shortcutLabel("file", mac)})`}
+                  aria-label="attach a file"
+                  data-testid="composer-attach"
+                >
+                  {icons ? <IconFile /> : "FILE"}
+                </button>
+              )}
+              {giphyEnabled && (
+                <button
+                  type="button"
+                  class="chalk-composer-tool chalk-composer-giphy"
+                  onClick={() => openTool("gif")}
+                  disabled={effectiveDisabled || sending}
+                  title={`send a GIF (${shortcutLabel("gif", mac)})`}
+                  aria-label="send a GIF"
+                  data-testid="composer-giphy"
+                >
+                  {icons ? <IconGif /> : "GIF"}
+                </button>
+              )}
               <button
                 type="button"
-                class="chalk-composer-tool chalk-composer-attach"
-                onClick={() => fileInputRef.current?.click()}
+                class="chalk-composer-tool chalk-composer-emoji"
+                onClick={() => openTool("emoji")}
                 disabled={effectiveDisabled || sending}
-                title="attach a file"
-                aria-label="attach a file"
-                data-testid="composer-attach"
+                title={`insert emoji (${shortcutLabel("emoji", mac)})`}
+                aria-label="insert emoji"
+                data-testid="composer-emoji"
               >
-                {icons ? <IconFile /> : "FILE"}
+                {icons ? "🙂" : "EMOJI"}
               </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                class="chalk-composer-file-input"
-                style={{ display: "none" }}
-                onChange={onFileChange}
-                data-testid="composer-file-input"
-              />
-            </>
+              <div class="chalk-composer-help" ref={helpRef}>
+                <button
+                  type="button"
+                  class="chalk-composer-tool chalk-composer-help-toggle"
+                  onClick={() => setHelpOpen((v) => !v)}
+                  title="keyboard shortcuts"
+                  aria-label="keyboard shortcuts"
+                  aria-expanded={helpOpen}
+                  data-testid="composer-help-toggle"
+                >
+                  ?
+                </button>
+                {helpOpen && (
+                  <div
+                    class="chalk-composer-help-sheet"
+                    role="dialog"
+                    aria-label="composer keyboard shortcuts"
+                    data-testid="composer-help-sheet"
+                  >
+                    <div class="chalk-composer-help-title">shortcuts</div>
+                    <dl class="chalk-composer-help-list">
+                      {composerHelp(mac).map((row) => (
+                        <div class="chalk-composer-help-row" key={row.keys}>
+                          <dt>
+                            <kbd>{row.keys}</kbd>
+                          </dt>
+                          <dd>{row.what}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
-          {giphyEnabled && (
-            <button
-              type="button"
-              class="chalk-composer-tool chalk-composer-giphy"
-              onClick={() => {
-                if (effectiveDisabled || sending) return;
-                // Not yet consented -> open the consent modal instead of the
-                // picker. The picker only ever opens for an enabled viewer.
-                if (!giphyReady) {
-                  onRequestEnableGiphy?.();
-                  return;
-                }
-                setGiphyOpen(true);
-              }}
-              disabled={effectiveDisabled || sending}
-              title="send a GIF"
-              aria-label="send a GIF"
-              data-testid="composer-giphy"
-            >
-              {icons ? <IconGif /> : "GIF"}
-            </button>
-          )}
-          <button
-            type="button"
-            class="chalk-composer-tool chalk-composer-emoji"
-            onClick={() => {
-              if (effectiveDisabled || sending) return;
-              setEmojiOpen(true);
-            }}
-            disabled={effectiveDisabled || sending}
-            title="insert emoji"
-            aria-label="insert emoji"
-            data-testid="composer-emoji"
-          >
-            {icons ? "🙂" : "EMOJI"}
-          </button>
         </div>
       )}
-      <div class="chalk-composer-row">
-        <textarea
-          ref={textareaRef}
-          class="chalk-composer-input"
-          placeholder={(disabled ? (placeholderText) : (placeholder ?? (placeholderText)))}
-          value={draft}
-          onInput={onInput}
-          onKeyDown={onKeyDown}
-          onPaste={enableAttachments ? onPaste : undefined}
-          disabled={effectiveDisabled || sending}
-          rows={2}
-          maxLength={MAX_LEN}
-          data-testid="composer-input"
-          aria-label="message"
-        />
-        <button
-          type="button"
-          class="chalk-composer-send"
-          onClick={() => void submit()}
-          disabled={!canSend}
-          data-testid="composer-send"
-        >
-          {sending ? (editing ? "saving…" : "sending…") : editing ? "save" : "send"}
-        </button>
+      <div class="chalk-composer-main">
+        {enableAttachments && dragActive && (
+          <div class="chalk-composer-drop-hint" data-testid="composer-drop-hint">
+            drop files to attach
+          </div>
+        )}
+        {editing && (
+          <div class="chalk-composer-editing" data-testid="composer-editing">
+            <span class="chalk-composer-editing-label">editing message</span>
+            <button
+              type="button"
+              class="chalk-composer-editing-cancel"
+              onClick={() => onEditCancel?.()}
+              data-testid="composer-edit-cancel"
+            >
+              cancel
+            </button>
+            <span class="chalk-composer-editing-hint">escape to cancel</span>
+          </div>
+        )}
+        {enableAttachments && !editing && pending.length > 0 && (
+          <div class="chalk-composer-tray" data-testid="composer-tray">
+            {pending.map((p) => {
+              const frac = progress[p.localID];
+              return (
+                <div class="chalk-composer-chip" key={p.localID} data-testid="composer-chip">
+                  {p.kind === "image" && p.previewURL ? (
+                    <img class="chalk-composer-chip-thumb" src={p.previewURL} alt={p.file.name} />
+                  ) : (
+                    <span class="chalk-composer-chip-icon" aria-hidden="true">📎</span>
+                  )}
+                  <span class="chalk-composer-chip-name" title={p.file.name}>
+                    {p.file.name}
+                  </span>
+                  <span class="chalk-composer-chip-size">{humanSize(p.file.size)}</span>
+                  {sending && frac !== undefined ? (
+                    <span
+                      class="chalk-composer-chip-progress"
+                      data-testid="composer-chip-progress"
+                      title={`${Math.round(frac * 100)}%`}
+                    >
+                      <span
+                        class="chalk-composer-chip-progress-fill"
+                        style={{ width: `${Math.round(frac * 100)}%` }}
+                      />
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      class="chalk-composer-chip-remove"
+                      onClick={() => removePending(p.localID)}
+                      title="remove attachment"
+                      aria-label={`remove ${p.file.name}`}
+                      data-testid="composer-chip-remove"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div class="chalk-composer-row">
+          <textarea
+            ref={textareaRef}
+            class="chalk-composer-input"
+            placeholder={(disabled ? (placeholderText) : (placeholder ?? (placeholderText)))}
+            value={draft}
+            onInput={onInput}
+            onKeyDown={onKeyDown}
+            onPaste={enableAttachments ? onPaste : undefined}
+            disabled={effectiveDisabled || sending}
+            rows={2}
+            maxLength={MAX_LEN}
+            data-testid="composer-input"
+            aria-label="message"
+          />
+          <button
+            type="button"
+            class="chalk-composer-send"
+            onClick={() => void submit()}
+            disabled={!canSend}
+            data-testid="composer-send"
+          >
+            {sending ? (editing ? "saving…" : "sending…") : editing ? "save" : "send"}
+          </button>
+        </div>
       </div>
     </div>
   );

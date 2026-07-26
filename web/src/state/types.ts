@@ -255,6 +255,9 @@ export interface ChatPrefs {
   // Phase 9.7h: composer tool row presentation. "text" renders FILE / GIF /
   // EMOJI labels; "icons" renders glyphs. Default "text".
   composerToolStyle?: "text" | "icons";
+  // 42-1: replace typed emoticons (":)") with the matching emoji as you type.
+  // Default ON -- it's what every chat client before the web did.
+  emoticons?: boolean;
   // 33-4: sidebar column width in px, set by dragging its edge. Clamped to
   // [SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX] on both write and read. Ignored
   // on mobile, where the sidebar is a drawer with its own sizing.
@@ -293,6 +296,8 @@ export interface ResolvedChatPrefs {
   userHues: Record<string, number>;
   // Phase 9.7h: defaulted to "text".
   composerToolStyle: "text" | "icons";
+  // 42-1: defaulted to true.
+  emoticons: boolean;
   // 33-4: defaulted + clamped.
   sidebarWidth: number;
 }
@@ -316,6 +321,7 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
         ? (c.userHues as Record<string, number>)
         : {},
     composerToolStyle: c.composerToolStyle === "icons" ? "icons" : "text",
+    emoticons: c.emoticons ?? true,
     sidebarWidth:
       c.sidebarWidth === undefined
         ? SIDEBAR_WIDTH_DEFAULT

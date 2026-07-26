@@ -84,6 +84,8 @@ interface Props {
     userHues: Record<string, number>;
     // Phase 9.7h:
     composerToolStyle: "text" | "icons";
+    // 42-1:
+    emoticons: boolean;
     // 33-4:
     sidebarWidth: number;
   };
@@ -95,6 +97,7 @@ interface Props {
       | "userColorsEnabled"
       | "selfColorHue"
       | "composerToolStyle"
+      | "emoticons"
       | "sidebarWidth",
   >(
     key: K,
@@ -616,6 +619,27 @@ export function ProfilePanel({
                   <option value="text">text (FILE, GIF, EMOJI)</option>
                   <option value="icons">icons</option>
                 </select>
+              </div>
+              {/* 42-1: typed emoticons -> emoji. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={chatPrefs.emoticons}
+                    onChange={(e) =>
+                      onSetChatPref(
+                        "emoticons",
+                        (e.target as HTMLInputElement).checked,
+                      )
+                    }
+                    data-testid="chat-emoticons"
+                  />
+                  <span>turn typed emoticons into emoji</span>
+                </label>
+                <p class="chalk-profile-hint">
+                  ":)" becomes 😀 as you type. backspace right after a swap
+                  puts the characters back.
+                </p>
               </div>
               {onSetUserColors && (
                 <div class="chalk-profile-field">

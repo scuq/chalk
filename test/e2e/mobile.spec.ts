@@ -1,18 +1,19 @@
-// chalk 33-6 -- mobile layout spec.
+// chalk -- mobile layout spec.
 //
-// Covers the two things the 33-6 CSS changes can't be verified by the node
-// suite (which has no DOM) and that are easy to regress by touching an
-// unrelated media query:
+// Covers what the node suite (which has no DOM) cannot verify and what is
+// easy to regress by touching an unrelated media query:
 //
 //   1) The roster drawer is a narrow overlay, not most of the screen.
-//   2) Row actions (reply / delete) are permanently visible on touch and
-//      render glyph-only, so they don't eat the message row's width.
-//
-// Plus a desktop counterpart asserting the mobile rules did NOT leak: the
-// actions stay hover-revealed and keep their text labels. That pairing is
-// the actual regression guard -- 33-6 moved the reveal from the individual
-// buttons onto a wrapping .chalk-message-actions group, and a mistake there
-// shows up as either "always visible on desktop" or "never visible at all".
+//   2) Touch gets no permanent row buttons and no ··· marker at all -- a
+//      long press is the whole gesture, and the marker gutter is zeroed so
+//      rows keep their full width.
+//   3) Desktop reveals the marker on hover, and it sits strictly LEFT of the
+//      body. That last assertion is the point of the whole design: the strip
+//      this replaced was an overlay on the row's right edge, and it painted
+//      over the text of any message whose first line ran long.
+//   4) The menu folds itself back inside the viewport instead of being
+//      clipped by the feed's scroller, which is what the old absolute menu
+//      did on the last rows of a channel.
 //
 // Preconditions (shared with every other chat-UI spec in this suite):
 //
@@ -61,8 +62,7 @@ async function open(browser: Browser, opts: object): Promise<Page> {
   return page;
 }
 
-// The row actions only exist once there's a message to hang them off.
-// Returns a locator for the newest reply button.
+// The row menu only exists once there's a message to hang it off.
 async function sendOneMessage(page: Page, phrase: string) {
   await page.locator("[data-testid='composer-input']").fill(phrase);
   await page.locator("[data-testid='composer-send']").click();
@@ -78,7 +78,7 @@ function opacityOf(page: Page, selector: string) {
     .evaluate((el) => window.getComputedStyle(el).opacity);
 }
 
-test.describe("33-6 mobile layout", () => {
+test.describe("mobile layout", () => {
   test("roster drawer is a narrow overlay", async ({ browser }) => {
     const page = await open(browser, PHONE);
 
@@ -106,7 +106,7 @@ test.describe("33-6 mobile layout", () => {
     await page.context().close();
   });
 
-  test("row actions are always visible and glyph-only on touch", async ({ browser }) => {
+  test("touch has no row buttons, and a long press opens the menu", async ({ browser }) => {
     const page = await open(browser, PHONE);
 
     // Fail loudly rather than silently passing if the browser isn't
@@ -115,47 +115,92 @@ test.describe("33-6 mobile layout", () => {
     const coarse = await page.evaluate(() => window.matchMedia("(hover: none)").matches);
     expect(coarse, "(hover: none) must be emulated for this spec to mean anything").toBe(true);
 
-    await sendOneMessage(page, `33-6 mobile probe ${Date.now()}`);
+    await sendOneMessage(page, `mobile probe ${Date.now()}`);
 
-    // Permanently revealed -- there is no hover to reveal them with.
-    // Checked via computed opacity because Playwright's toBeVisible()
-    // treats an opacity:0 element as visible.
-    expect(await opacityOf(page, ".chalk-message-actions")).toBe("1");
+    // Nothing permanent on the row, and no marker either: the press IS the
+    // affordance. The gutter collapses to 0 with it, so the row keeps the
+    // width the old button strip used to take.
+    await expect(page.locator(".chalk-message-marker").last()).toBeHidden();
+    const gutter = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--chalk-msg-gutter").trim(),
+    );
+    expect(gutter).toBe("0px");
 
-    const reply = page.locator("[data-testid^='message-reply-']").last();
-    await expect(reply).toBeVisible();
+    const row = page.locator("[data-testid='message']").last();
+    const box = (await row.boundingBox())!;
+    await row.dispatchEvent("pointerdown", {
+      pointerType: "touch",
+      clientX: box.x + box.width / 2,
+      clientY: box.y + box.height / 2,
+    });
 
-    // The word is dropped; only the glyph remains.
-    await expect(reply.locator(".chalk-message-action-word")).toBeHidden();
-    await expect(reply).toHaveAttribute("aria-label", "reply in thread");
+    const menu = page.locator("[data-testid='message-menu']");
+    await expect(menu).toBeVisible({ timeout: 2_000 });
+    await expect(menu).toHaveCSS("position", "fixed");
 
-    // A labelled button was ~5rem wide and wrapped the body below it. The
-    // glyph-only one is a compact tap target.
-    const box = await reply.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.width).toBeLessThanOrEqual(48);
-    expect(box!.height).toBeGreaterThanOrEqual(20);
+    await row.dispatchEvent("pointerup", { pointerType: "touch" });
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
 
     await page.context().close();
   });
 
-  test("desktop keeps hover-revealed, labelled row actions", async ({ browser }) => {
+  test("desktop reveals the marker on hover, clear of the body text", async ({ browser }) => {
     const page = await open(browser, devices["Desktop Chrome"]);
 
-    await sendOneMessage(page, `33-6 desktop probe ${Date.now()}`);
+    // Long enough that the old right-edge strip would have covered its tail.
+    await sendOneMessage(
+      page,
+      `desktop probe ${Date.now()} https://developer.apple.com/documentation/xcode/installing-the-command-line-tools`,
+    );
 
-    const actions = page.locator(".chalk-message-actions").last();
     const row = page.locator("[data-testid='message']").last();
+    const marker = page.locator(".chalk-message-marker").last();
 
-    // Hidden until the row is hovered.
-    expect(await opacityOf(page, ".chalk-message-actions")).toBe("0");
+    // Hidden until the row is hovered. Checked via computed opacity because
+    // Playwright's toBeVisible() treats an opacity:0 element as visible.
+    expect(await opacityOf(page, ".chalk-message-marker")).toBe("0");
     await row.hover();
-    await expect(actions).toHaveCSS("opacity", "1");
+    await expect(marker).toHaveCSS("opacity", "1");
 
-    // And the text label survives on a pointer device.
-    const reply = page.locator("[data-testid^='message-reply-']").last();
-    await expect(reply.locator(".chalk-message-action-word")).toBeVisible();
-    await expect(reply).toContainText("reply");
+    // The assertion the whole change exists for: the trigger sits in the
+    // row's left padding, so it cannot reach the text no matter how long the
+    // message is.
+    const m = (await marker.boundingBox())!;
+    const body = (await page.locator("[data-testid='message-body']").last().boundingBox())!;
+    expect(m.x + m.width).toBeLessThanOrEqual(body.x);
+
+    await marker.click();
+    const menu = page.locator("[data-testid='message-menu']");
+    await expect(menu).toBeVisible();
+    await expect(menu).toContainText("react...");
+    await expect(menu).toContainText("copy text");
+
+    await page.context().close();
+  });
+
+  test("the menu folds back inside the viewport", async ({ browser }) => {
+    const page = await open(browser, devices["Desktop Chrome"]);
+
+    await sendOneMessage(page, `viewport probe ${Date.now()}`);
+
+    // The newest message sits at the bottom of the feed, which is where the
+    // old absolute menu was clipped by .chalk-main's scroller.
+    const row = page.locator("[data-testid='message']").last();
+    const box = (await row.boundingBox())!;
+    await page.mouse.move(box.x + box.width - 8, box.y + box.height - 2);
+    await page.mouse.down({ button: "right" });
+    await page.mouse.up({ button: "right" });
+
+    const menu = page.locator("[data-testid='message-menu']");
+    await expect(menu).toBeVisible();
+
+    const mb = (await menu.boundingBox())!;
+    const vp = page.viewportSize()!;
+    expect(mb.x).toBeGreaterThanOrEqual(0);
+    expect(mb.y).toBeGreaterThanOrEqual(0);
+    expect(mb.x + mb.width).toBeLessThanOrEqual(vp.width);
+    expect(mb.y + mb.height).toBeLessThanOrEqual(vp.height);
 
     await page.context().close();
   });

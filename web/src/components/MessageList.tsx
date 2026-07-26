@@ -1,7 +1,9 @@
 import { Fragment } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { Message, ReactionSet } from "../state/types";
 import { aggregate } from "../chat/reactions";
+import { buildMessageMenu, type MessageMenuItem } from "../chat/message-menu";
+import { MessageMenu } from "./MessageMenu";
 import { AttachmentView } from "./AttachmentView";
 import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
@@ -57,6 +59,35 @@ function isTypingTarget(t: EventTarget | null): boolean {
   const tag = el.tagName.toLowerCase();
   return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable;
 }
+
+// 41-3: should a right-click on a row fall through to the browser's own menu?
+// Only where the browser's menu is the one the user wants: over a link ("copy
+// link address") and over text they have selected ("copy"). Reimplementing
+// either inside the row menu would be strictly worse than not stealing the
+// gesture in the first place.
+function wantsNativeContextMenu(target: EventTarget | null, row: HTMLElement): boolean {
+  const el = target as HTMLElement | null;
+  // Links, images and the media wrappers: "copy link address" and "save image
+  // as" have no equivalent in our menu, and never will.
+  if (el?.closest?.("a[href], img, .chalk-message-attachments, .chalk-message-giphy")) {
+    return true;
+  }
+  const sel = typeof window !== "undefined" ? window.getSelection() : null;
+  if (!sel || sel.isCollapsed || sel.toString().trim() === "") return false;
+  // Only a selection inside THIS row counts -- a stale one elsewhere on the
+  // page must not disable the menu here.
+  return sel.anchorNode !== null && row.contains(sel.anchorNode);
+}
+
+// How long a touch has to rest on a row before it counts as a press. Matches
+// the roster's colour menu.
+const LONG_PRESS_MS = 500;
+// ...and how far it may wander first. A finger is never perfectly still, so
+// cancelling on any movement at all would make the press unreliable; this is
+// wide enough to survive a resting hand and narrow enough that a scroll or a
+// drag never opens a menu. (The roster's rows are short enough to rely on
+// pointercancel alone; a message row is tall enough to drag inside.)
+const LONG_PRESS_SLOP_PX = 10;
 
 // 33-4: how close to the bottom still counts as "following the feed". One
 // message row of slack, so a partly-scrolled last line doesn't unpin you.
@@ -135,7 +166,8 @@ interface Props {
   // doesn't wire these (e.g. the thread panel before att-4 lands there).
   giphyPref?: GiphyPref;
   onRequestEnableGiphy?: () => void;
-  // Phase 10b: clicked an indicator or hover "reply" button. Dispatches
+  // Phase 10b: clicked a thread indicator or the menu's "reply in thread".
+  // Dispatches
   // up to App.tsx, which routes to an open_thread action.
   // parentID is the message clicked; the parent itself doesn't have
   // to be the thread head, the caller resolves that.
@@ -150,17 +182,17 @@ interface Props {
   // DM vs group, dictator vs democratic), so the caller owns the policy --
   // see chat/deletepolicy.ts. deleteLabelFor names the action because in a
   // democratic channel it opens a vote rather than deleting. The control sits
-  // behind the row's "..." menu: deletion is destructive and irreversible, so
-  // it does not deserve a one-tap target next to "reply".
+  // at the bottom of the row menu, below a rule: deletion is destructive and
+  // irreversible, so it should not be where the pointer lands first.
   canDeleteMessage?: (m: Message) => boolean;
   onDeleteMessage?: (m: Message) => void;
   deleteLabelFor?: (m: Message) => string;
   // Phase 37-3: message editing. Same caller-owns-the-policy shape as delete
   // (see chat/editpolicy.ts), but a narrower rule: only the author, only
   // inside the edit window, and the caller additionally restricts it to their
-  // most recent message. Sits in the same "..." menu as delete -- the primary
-  // way in is cursor-up from the composer, so this is the discoverable
-  // fallback rather than the main path.
+  // most recent message. Sits beside delete in the row menu -- the primary way
+  // in is cursor-up from the composer, so this is the discoverable fallback
+  // rather than the main path.
   canEditMessage?: (m: Message) => boolean;
   onEditMessage?: (m: Message) => void;
   // The message currently open for editing, so its row can show it. Null when
@@ -236,27 +268,38 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
   // left parked at whichever image grew. Holding the anchor until the user
   // takes over is what makes the landing survive that.
   const anchorRef = useRef<Anchor>(null);
-  // 35-4: id of the message whose "..." row menu is open (one at a time).
-  const [menuFor, setMenuFor] = useState<string | null>(null);
-
-  // Dismiss the row menu on Escape or on any click outside it. The menu
-  // itself stops propagation, so its own clicks don't self-close.
-  useEffect(() => {
-    if (!menuFor) return undefined;
-    const close = () => setMenuFor(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuFor(null);
-    };
-    document.addEventListener("click", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("click", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menuFor]);
+  // 41-3: the open row menu -- which message, and where the pointer was.
+  // Coordinates are viewport-relative because the menu is position:fixed. The
+  // message is held by id, not by value: a reaction or an edit landing while
+  // the menu is open replaces the Message object, and a captured one would go
+  // stale under it.
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   // Never leave a menu hanging over a different channel's feed.
-  useEffect(() => setMenuFor(null), [channelID]);
+  useEffect(() => setMenu(null), [channelID]);
+
+  // What this caller lets the viewer do to a given message. One place, so the
+  // marker's visibility, the right-click, the long-press and the "r" shortcut
+  // can never disagree about whether there is a menu to open.
+  const menuItemsFor = useCallback(
+    (m: Message): MessageMenuItem[] =>
+      buildMessageMenu({
+        deleted: Boolean(m.deleted),
+        canReact: Boolean(onPickReaction),
+        canReply: Boolean(onOpenThread),
+        hasText: m.body.trim().length > 0,
+        canEdit: Boolean(canEditMessage?.(m) && onEditMessage),
+        canDelete: Boolean(canDeleteMessage?.(m) && onDeleteMessage),
+        deleteLabel: deleteLabelFor?.(m),
+      }),
+    [onPickReaction, onOpenThread, canEditMessage, onEditMessage, canDeleteMessage, onDeleteMessage, deleteLabelFor],
+  );
+
+  const openMenu = useCallback((m: Message, x: number, y: number) => {
+    setMenu({ id: m.id, x, y });
+  }, []);
+
+  const closeMenu = useCallback(() => setMenu(null), []);
 
   // 37-6: id of the row the pointer is over, for the "r" shortcut.
   //
@@ -265,26 +308,42 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
   // reader is the keydown handler, which runs outside render anyway.
   const hoverRef = useRef<string | null>(null);
 
-  // Hover a message, press "r", get the reaction picker. Guarded three ways:
-  // no modifiers (so Ctrl-R still reloads), not while typing anywhere (so "r"
-  // in the composer stays an "r"), and only when the pointer is actually over
-  // a row. Both mounted lists register this, but only the one under the
-  // pointer has a hoverRef set, so exactly one responds.
+  // Hover a message, press "r", get the menu. Guarded three ways: no
+  // modifiers (so Ctrl-R still reloads), not while typing anywhere (so "r" in
+  // the composer stays an "r"), and only when the pointer is actually over a
+  // row. Both mounted lists register this, but only the one under the pointer
+  // has a hoverRef set, so exactly one responds.
   useEffect(() => {
-    if (!onPickReaction) return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "r" || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
       if (isTypingTarget(e.target)) return;
       const id = hoverRef.current;
       if (!id) return;
       const m = messages.find((x) => x.id === id);
-      if (!m || m.deleted) return;
+      if (!m || menuItemsFor(m).length === 0) return;
+      // Anchor to the row rather than the pointer: the keyboard has no
+      // pointer, and the row's left edge is where the marker would be.
+      const row = rootRef.current?.querySelector<HTMLElement>(`[data-message-id="${id}"]`);
+      const r = row?.getBoundingClientRect();
       e.preventDefault();
-      onPickReaction(m);
+      openMenu(m, r ? r.left + 8 : 0, r ? r.bottom : 0);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [messages, onPickReaction]);
+  }, [messages, menuItemsFor, openMenu]);
+
+  // Touch has no hover to reveal the marker with, so a 500ms press on the row
+  // opens the menu -- the same gesture the roster's colour menu uses.
+  const longPressTimer = useRef<number | null>(null);
+  const longPressFired = useRef(false);
+  const pressOrigin = useRef<{ x: number; y: number } | null>(null);
+  const cancelLongPress = () => {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    pressOrigin.current = null;
+  };
 
   // Watch the scroll position of whichever ancestor actually scrolls
   // (.chalk-main today). Found by computed style rather than by walking a
@@ -500,21 +559,87 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
           )}
           <div
             class="chalk-message-group"
-            onMouseEnter={onPickReaction ? () => (hoverRef.current = m.id) : undefined}
-            onMouseLeave={
-              onPickReaction
-                ? () => {
-                    if (hoverRef.current === m.id) hoverRef.current = null;
-                  }
-                : undefined
-            }
+            onMouseEnter={() => (hoverRef.current = m.id)}
+            onMouseLeave={() => {
+              if (hoverRef.current === m.id) hoverRef.current = null;
+            }}
           >
           <div
-            class={`chalk-message ${own ? "chalk-message--own" : ""} ${isUnread ? "chalk-message--unread" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"} ${editingMessageID === m.id ? "chalk-message--editing" : ""}`}
+            class={`chalk-message ${own ? "chalk-message--own" : ""} ${isUnread ? "chalk-message--unread" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"} ${editingMessageID === m.id ? "chalk-message--editing" : ""} ${menu?.id === m.id ? "chalk-message--menu-open" : ""}`}
             style={`--chalk-msg-sender-col:${senderColCh}ch`}
             data-testid="message"
+            data-message-id={m.id}
             title={display_.showTimestamps ? undefined : m.ts.toLocaleString()}
+            onContextMenu={(e) => {
+              const row = e.currentTarget as HTMLElement;
+              if (wantsNativeContextMenu(e.target, row)) return;
+              if (menuItemsFor(m).length === 0) return;
+              e.preventDefault();
+              openMenu(m, e.clientX, e.clientY);
+            }}
+            onPointerDown={(e) => {
+              if (e.pointerType === "mouse") return; // right-click covers desktop
+              cancelLongPress();
+              longPressFired.current = false;
+              if (menuItemsFor(m).length === 0) return;
+              const x = e.clientX;
+              const y = e.clientY;
+              pressOrigin.current = { x, y };
+              longPressTimer.current = window.setTimeout(() => {
+                longPressFired.current = true;
+                openMenu(m, x, y);
+              }, LONG_PRESS_MS);
+            }}
+            // A press that turns into a scroll or a drag is not a press.
+            onPointerMove={(e) => {
+              const o = pressOrigin.current;
+              if (!o) return;
+              if (Math.hypot(e.clientX - o.x, e.clientY - o.y) > LONG_PRESS_SLOP_PX) {
+                cancelLongPress();
+              }
+            }}
+            onPointerUp={cancelLongPress}
+            onPointerLeave={cancelLongPress}
+            onPointerCancel={cancelLongPress}
+            onClick={(e) => {
+              // The browser synthesises a click when the finger lifts. It
+              // would reach the menu's own document-level dismissal and close
+              // the menu the press just opened, so it stops here.
+              if (longPressFired.current) {
+                longPressFired.current = false;
+                e.stopPropagation();
+              }
+            }}
           >
+            {(() => {
+              // 41-3: the menu's handle, in the row's left padding. It has to
+              // live outside the grid columns -- the strip this replaces was
+              // an overlay on the row's right edge, and it painted over the
+              // text of every message longer than half a line.
+              if (menuItemsFor(m).length === 0) return null;
+              return (
+                <button
+                  type="button"
+                  class="chalk-message-marker"
+                  title="message actions (r)"
+                  aria-label="message actions"
+                  aria-haspopup="menu"
+                  aria-expanded={menu?.id === m.id}
+                  data-testid={`message-marker-${m.id}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (menu?.id === m.id) {
+                      closeMenu();
+                      return;
+                    }
+                    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    openMenu(m, r.left, r.bottom + 2);
+                  }}
+                >
+                  <span aria-hidden="true">···</span>
+                </button>
+              );
+            })()}
             {display_.showTimestamps && (
               <span class="chalk-message-time" title={m.ts.toLocaleString()}>
                 {fmtTimeAs(m.ts, display_.timestampFormat, now)}
@@ -604,125 +729,12 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
                 ))}
               </div>
             )}
-            {/* Phase 10b / 26: row actions -- reply in thread, and the
-                delete behind a "..." menu. Hover-revealed on desktop,
-                permanently visible on touch (no hover to reveal them with).
-                An absolute overlay on the row's right edge, so they cost no
-                layout space. Suppressed on deleted rows.
-
-                33-6: grouped in one flex container rather than positioned
-                independently. Previously delete was offset by a hard-coded
-                5rem to clear the reply button -- which only held while both
-                carried their full text label, and broke the moment mobile
-                dropped the words to save space.
-
-                35-4: delete no longer sits in the row itself. It is one
-                irreversible click, it lived next to "reply", and on touch
-                both are always visible -- so it moved into the overflow
-                menu, where reaching it is deliberate. */}
-            {(() => {
-              // 35-4 / 37-3: the overflow menu holds delete and edit. Either
-              // one alone is enough to render it, so the gate asks whether
-              // ANY menu item applies rather than naming delete specifically.
-              const showDelete = Boolean(canDeleteMessage?.(m) && onDeleteMessage);
-              const showEdit = Boolean(canEditMessage?.(m) && onEditMessage);
-              const showMenu = showDelete || showEdit;
-              // React and reply are what ANYONE does to a message, so they get
-              // first-class buttons; the menu holds only edit and delete,
-              // which are about owning or moderating it.
-              const showReact = Boolean(onPickReaction);
-              if (m.deleted || (!onOpenThread && !showMenu && !showReact)) return null;
-              return (
-              <div class="chalk-message-actions">
-                {showReact && (
-                  <button
-                    type="button"
-                    class="chalk-message-react-btn"
-                    title="add reaction (r)"
-                    aria-label="add reaction"
-                    onClick={() => onPickReaction!(m)}
-                    data-testid={`message-react-${m.id}`}
-                  >
-                    <span aria-hidden="true">🙂</span>
-                    <span class="chalk-message-action-word">react</span>
-                  </button>
-                )}
-                {showMenu && (
-                  <div
-                    class="chalk-message-more"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button
-                      type="button"
-                      class="chalk-message-more-btn"
-                      title="more actions"
-                      aria-label="more actions"
-                      aria-haspopup="menu"
-                      aria-expanded={menuFor === m.id}
-                      onClick={() => setMenuFor(menuFor === m.id ? null : m.id)}
-                      data-testid={`message-more-${m.id}`}
-                    >
-                      <span aria-hidden="true">···</span>
-                    </button>
-                    {menuFor === m.id && (
-                      <div class="chalk-message-menu" role="menu">
-                        {showEdit && (
-                          <button
-                            type="button"
-                            role="menuitem"
-                            class="chalk-message-edit"
-                            onClick={() => {
-                              setMenuFor(null);
-                              onEditMessage!(m);
-                            }}
-                            data-testid={`message-edit-${m.id}`}
-                          >
-                            edit
-                          </button>
-                        )}
-                        {showDelete && (
-                          <button
-                            type="button"
-                            role="menuitem"
-                            class="chalk-message-delete"
-                            onClick={() => {
-                              setMenuFor(null);
-                              onDeleteMessage!(m);
-                            }}
-                            data-testid={`message-delete-${m.id}`}
-                          >
-                            {deleteLabelFor?.(m) ?? "delete"}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {onOpenThread && (
-                  <button
-                    type="button"
-                    class="chalk-message-reply"
-                    title="reply in thread"
-                    aria-label="reply in thread"
-                    onClick={() =>
-                      onOpenThread(m.id, m.threadID ?? m.id)
-                    }
-                    data-testid={`message-reply-${m.id}`}
-                  >
-                    <span aria-hidden="true">↳</span>
-                    <span class="chalk-message-action-word">reply</span>
-                  </button>
-                )}
-              </div>
-              );
-            })()}
           </div>
           {/* 37-5: reaction chips. Suppressed on tombstoned rows (the server
               scrubs reactions with the body), and rendered only when there is
               something to show -- an always-present empty bar would add a row
               of dead space to every message in the feed. Adding the FIRST
-              reaction therefore happens from the "..." menu path in App, not
-              from here. */}
+              reaction therefore happens from the row menu, not from here. */}
           {!m.deleted && onToggleReaction && (() => {
             const sets = reactions?.[m.id];
             if (!sets || sets.length === 0) return null;
@@ -816,6 +828,44 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
       });
       })()}
       <div ref={endRef} />
+      {/* One menu for the whole feed, resolved from the id at render time so
+          it always acts on the message as it stands now. */}
+      {menu && (() => {
+        const m = messages.find((x) => x.id === menu.id);
+        if (!m) return null; // the message went away while the menu was open
+        return (
+          <MessageMenu
+            items={menuItemsFor(m)}
+            x={menu.x}
+            y={menu.y}
+            onClose={closeMenu}
+            onQuickReact={(emoji) => {
+              closeMenu();
+              onToggleReaction?.(m, emoji);
+            }}
+            onPick={(item) => {
+              closeMenu();
+              switch (item.kind) {
+                case "react":
+                  onPickReaction?.(m);
+                  break;
+                case "reply":
+                  onOpenThread?.(m.id, m.threadID ?? m.id);
+                  break;
+                case "copy":
+                  navigator.clipboard?.writeText(m.body).catch(() => {});
+                  break;
+                case "edit":
+                  onEditMessage?.(m);
+                  break;
+                case "delete":
+                  onDeleteMessage?.(m);
+                  break;
+              }
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

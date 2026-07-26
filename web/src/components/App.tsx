@@ -3238,6 +3238,7 @@ export function App() {
       <footer class="chalk-footer">
         <Composer
           toolStyle={selectChatPrefs(state.prefs).composerToolStyle}
+          emoticons={selectChatPrefs(state.prefs).emoticons}
           disabledReason={
             state.wsState !== "open"
               ? "offline"

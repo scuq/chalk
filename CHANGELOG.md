@@ -10,6 +10,49 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Typed emoticons become emoji.** Type `:)` and you get 😀, the way chat
+  clients did it before the web — along with `;)`, `:D`, `:P`, `:(`, `<3`,
+  `8-)` and a couple of dozen more. It only fires on an emoticon typed on its
+  own, so pasted links and "see step 8)" are left alone, and backspace right
+  after a swap puts the characters back when you meant the punctuation. Turn it
+  off under chat settings in your profile.
+- **Keyboard shortcuts for the composer buttons.** `ctrl+e` opens the emoji
+  picker, `ctrl+g` the GIF picker, and `ctrl+shift+f` the file dialog (`⌘` on a
+  Mac). The new `?` button next to them lists every composer key, including the
+  ones nobody finds on their own: shift+enter for a new line, cursor-up to edit
+  your last message.
+
+### Changed
+- **Everything you can do to a message is now in one menu.** Right-click a
+  message — or click the small `···` that appears in the left margin when you
+  hover a line, or press and hold on a phone — and you get a row of one-click
+  reactions, the full emoji picker, reply in thread, copy the text, and edit or
+  delete where those are yours to do. The strip of buttons that used to float
+  over the right-hand end of a message is gone. Hovering a message and pressing
+  `r` opens the same menu. Right-clicking a link, an image or text you have
+  selected still gives you the browser's own menu.
+- **The composer got out of its own way.** The message box now sits directly
+  under the messages, with the file, GIF and emoji buttons moved down beside it
+  into the roster's column instead of stacked above the field. Send is a small
+  button parked at the bottom corner rather than a full-height slab — enter
+  still sends. On a phone the buttons sit under the box instead.
+- **Editing a message looks like editing a message.** Pressing cursor-up to fix
+  your last line now frames the whole box in the accent colour and turns the
+  button into a matching "save", so an edit you started by accident is obvious
+  before you hit enter.
+
+### Fixed
+- **Message actions no longer sit on top of the message.** The old hover
+  buttons covered the end of the first line of anything long enough to reach
+  them, and the "more" menu was cut off by the bottom edge of the conversation
+  when you opened it on the last message in a channel. The new menu opens where
+  your pointer is and moves itself to stay on screen.
+
+---
+
 ## v0.3.41 — 26 July 2026 — Microphone settings
 
 ### Added

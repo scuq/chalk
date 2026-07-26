@@ -113,8 +113,8 @@ export function ThreadPanel({
           // Render the head as a "frozen" message above the divider.
           // We use a tiny MessageList containing just the parent so
           // it renders identically to channel feed rows -- same
-          // sender colors, same timestamps, same body. No hover-
-          // reply button since the head IS the reply target.
+          // sender colors, same timestamps, same body. No reply
+          // action since the head IS the reply target.
           <div class="chalk-thread-panel-parent">
             <MessageList
               messages={[parent]}
@@ -133,8 +133,8 @@ export function ThreadPanel({
               reactions={reactions}
               onToggleReaction={onToggleReaction}
               onPickReaction={onPickReaction}
-              // No onOpenThread: hides the hover-reply button and
-              // any indicator (which wouldn\'t apply here anyway --
+              // No onOpenThread: drops "reply in thread" from the row
+              // menu and hides any indicator (which wouldn\'t apply here --
               // the head\'s replyCount is the indicator we\'re
               // already showing in the main feed).
             />
@@ -181,6 +181,7 @@ export function ThreadPanel({
           disabledReason={disabled ? "offline" : null}
           onSend={onSend}
           placeholder="reply..."
+          emoticons={display.emoticons}
           editing={editing}
           onEditSubmit={onEditSubmit}
           onEditCancel={onEditCancel}
