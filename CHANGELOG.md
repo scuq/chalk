@@ -13,10 +13,13 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Changed
-- **You stay online longer while chalk sits beside your work.** Having chalk
-  visible but not the focused window used to mark you away after two minutes,
-  which caught anyone running it side-by-side with something else. That now
-  takes five minutes.
+- **Away is much slower to trigger.** All three of the "are you still there"
+  timers have been relaxed: a tab in the background now waits two minutes
+  instead of one, chalk visible but not the focused window waits five minutes
+  instead of two, and chalk in front of you with nothing typed or clicked waits
+  thirty-five minutes instead of ten. Reading a long thread, sitting in a call,
+  or keeping chalk beside your work no longer shows you away. A locked screen
+  or a system-wide idle signal still marks you away immediately.
 
 ### Fixed
 - **Online and away now look the same in every theme.** The status light took

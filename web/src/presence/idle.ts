@@ -21,10 +21,11 @@
 // notice (a dot that flickers, a dot stuck on away), and pure is the only
 // version of them testable without a browser.
 
-/** How long a hidden tab has to stay hidden. Alt-tabbing for a few seconds is
- * not away -- demoting on the visibilitychange itself made the dot flicker for
- * everyone watching and wrote a presence transition per tab flip. */
-export const AWAY_AFTER_HIDDEN_MS = 60_000;
+/** How long a hidden tab has to stay hidden. Alt-tabbing away for a minute to
+ * read something else is not away -- demoting on the visibilitychange itself
+ * made the dot flicker for everyone watching and wrote a presence transition
+ * per tab flip. */
+export const AWAY_AFTER_HIDDEN_MS = 120_000;
 
 /** Visible but not focused: chalk is on screen somewhere while you work
  * elsewhere. Another window having focus is real evidence, but weaker than it
@@ -34,9 +35,10 @@ export const AWAY_AFTER_HIDDEN_MS = 60_000;
 export const IDLE_AFTER_UNFOCUSED_MS = 300_000;
 
 /** Visible AND focused AND untouched. Long, because a focused window in front
- * of you is weak evidence of absence -- you may just be reading. Only reachable
+ * of you is weak evidence of absence -- you may just be reading, and a long
+ * thread or a call you are listening to takes no input at all. Only reachable
  * without IdleDetector; with it, rule 4 answers this case properly. */
-export const IDLE_AFTER_FOCUSED_MS = 600_000;
+export const IDLE_AFTER_FOCUSED_MS = 2_100_000;
 
 /** How often the verdict is recomputed while nothing happens. */
 export const EVALUATE_INTERVAL_MS = 15_000;

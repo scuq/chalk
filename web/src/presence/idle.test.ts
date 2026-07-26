@@ -133,9 +133,10 @@ test("a slept or frozen tab resolves on the clock, not on ticks", () => {
   // tabs get none at all, and a closed laptop lid gives none for hours. The
   // verdict has to come out of the timestamp difference alone, so however few
   // intervals actually fired is irrelevant.
-  assert.equal(decideIdle(input({ now: NOW + 30 * 60_000 })).idle, true);
+  const past = NOW + IDLE_AFTER_FOCUSED_MS + 60_000;
+  assert.equal(decideIdle(input({ now: past })).idle, true);
   assert.equal(
-    decideIdle(input({ now: NOW + 30 * 60_000, windowFocused: false })).reason,
+    decideIdle(input({ now: past, windowFocused: false })).reason,
     "unfocused_idle",
   );
 });
