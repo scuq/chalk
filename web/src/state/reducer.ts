@@ -380,6 +380,63 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     }
 
+    // 45-1: the room emptied, so the server destroyed this voice channel's
+    // scratchpad. Everything derived from those messages -- threads, their
+    // read cursors, reactions, the unread window, the inbox rows -- has to go
+    // with them, or the UI keeps rendering rows whose bodies no longer exist
+    // anywhere. historyLoaded stays true: the feed is empty, not unfetched.
+    case "voice_purged": {
+      const cid = action.channelID;
+      const gone = state.messages[cid] ?? [];
+      const threadIDs = new Set<string>();
+      const messageIDs = new Set<string>();
+      for (const m of gone) {
+        messageIDs.add(m.id);
+        if (m.threadID) threadIDs.add(m.threadID);
+      }
+      // A thread's replies live under its head's id, and the head is one of
+      // the messages above -- so its own id is a thread key too.
+      for (const m of gone) threadIDs.add(m.id);
+      for (const tid of threadIDs) {
+        for (const r of state.threadMessages[tid] ?? []) messageIDs.add(r.id);
+      }
+
+      const nextThreadMessages = { ...state.threadMessages };
+      const nextThreadLoaded = { ...state.threadLoaded };
+      const nextThreadSeen = { ...state.threadSeen };
+      const nextThreadMentions = { ...state.threadMentions };
+      for (const tid of threadIDs) {
+        delete nextThreadMessages[tid];
+        delete nextThreadLoaded[tid];
+        delete nextThreadSeen[tid];
+        delete nextThreadMentions[tid];
+      }
+      const nextReactions = { ...state.reactions };
+      for (const mid of messageIDs) delete nextReactions[mid];
+      const nextUnread = { ...state.unread };
+      delete nextUnread[cid];
+      const nextMarks = { ...state.unreadMarks };
+      delete nextMarks[cid];
+
+      return {
+        ...state,
+        messages: { ...state.messages, [cid]: [] },
+        threadMessages: nextThreadMessages,
+        threadLoaded: nextThreadLoaded,
+        threadSeen: nextThreadSeen,
+        threadMentions: nextThreadMentions,
+        reactions: nextReactions,
+        unread: nextUnread,
+        unreadMarks: nextMarks,
+        openThread:
+          state.openThread?.channelID === cid ? null : state.openThread,
+        threadInboxActive: state.threadInboxActive.filter((r) => r.channelID !== cid),
+        threadInboxAgedUnread: state.threadInboxAgedUnread.filter(
+          (r) => r.channelID !== cid,
+        ),
+      };
+    }
+
     // ---- gov-2: governance ---------------------------------------------
     case "governance_mode_changed": {
       const ch = state.channels[action.channelID];

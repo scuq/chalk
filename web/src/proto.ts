@@ -763,6 +763,8 @@ export const TypeVoiceStateAck = "voice_state_ack";
 export const TypeVoiceParticipantJoined = "voice_participant_joined";
 export const TypeVoiceParticipantLeft = "voice_participant_left";
 export const TypeVoiceParticipantState = "voice_participant_state";
+// 45-1: the room emptied and the channel's scratchpad text was destroyed.
+export const TypeVoicePurged = "voice_purged";
 
 // One roster entry: a (user, device) currently in the room + media flags.
 export interface VoiceParticipantWire {
@@ -878,4 +880,10 @@ export interface VoiceParticipantStatePayload {
   muted: boolean;
   video_on: boolean;
   screen_on: boolean;
+}
+
+// 45-1: the last participant left, so the server destroyed everything typed
+// in this voice channel. Sent to every member, in-room or not.
+export interface VoicePurgedPayload {
+  channel_id: string;
 }

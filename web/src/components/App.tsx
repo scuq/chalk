@@ -140,11 +140,13 @@ import {
   TypeVoiceParticipantJoined,
   TypeVoiceParticipantLeft,
   TypeVoiceParticipantState,
+  TypeVoicePurged, // 45-1: scratchpad destroyed
   TypeVoiceRoster, // 30-5: sidebar occupancy seed
   type VoiceRosterAckPayload,
   type VoiceParticipantJoinedPayload,
   type VoiceParticipantLeftPayload,
   type VoiceParticipantStatePayload,
+  type VoicePurgedPayload,
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
@@ -2140,6 +2142,16 @@ export function App() {
         voiceBus.emit(f);
         break;
       }
+      case TypeVoicePurged: {
+        // 45-1: the last person left the room, so the server destroyed what
+        // was typed in it. Nothing to emit on the bus -- this is state, not a
+        // media event.
+        const p = f.payload as VoicePurgedPayload;
+        if (p?.channel_id) {
+          dispatch({ kind: "voice_purged", channelID: p.channel_id });
+        }
+        break;
+      }
       case TypeVoiceParticipantState: {
         const p = f.payload as VoiceParticipantStatePayload;
         if (p?.channel_id) {
@@ -3492,7 +3504,15 @@ export function App() {
         )}
       </aside>
 
-      <main class="chalk-main">
+      {/* 45-3: a voice channel's pane does not scroll. The call sits at the
+          top and the scratchpad fills whatever is left above the composer,
+          clipped -- see .chalk-main--voice. */}
+      <main
+        class={
+          "chalk-main" +
+          (activeChannel?.channelType === "voice" ? " chalk-main--voice" : "")
+        }
+      >
         {activeChannel ? (
           <>
             <div class="chalk-channel-header" data-testid="channel-header">
@@ -3547,6 +3567,7 @@ export function App() {
             )}
             <MessageList
               messages={activeMessages}
+              ephemeral={activeChannel.channelType === "voice"}
               // 33-4: channelID drives the "land on entry" scroll; the mark
               // is the frozen unread window the divider is drawn from.
               channelID={activeChannel.id}
@@ -3589,7 +3610,9 @@ export function App() {
               }}
               empty={!state.historyLoaded[activeChannel.id]
                 ? "loading history..."
-                : "no messages yet. say something."}
+                : activeChannel.channelType === "voice"
+                  ? "scratchpad is empty."
+                  : "no messages yet. say something."}
             />
           </>
         ) : (

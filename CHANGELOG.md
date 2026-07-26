@@ -10,6 +10,26 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Voice channels have a scratchpad now.** The text in a voice channel is
+  meant for the call and nothing else: it shows only as much as fits between
+  the call and the message box, older lines slide off the top and are gone, and
+  the whole thing is deleted — for everyone, and off the server — the moment
+  the last person leaves the room. It is the place for a link, a quick line
+  someone is talking over, or a GIF, not for anything you want to read back
+  tomorrow. The rule is written under the call so nobody has to find it out the
+  hard way.
+- **Pop a video or a shared screen out to watch it larger.** The tile you are
+  focused on has a "popout" button. In Chrome, Edge and Brave it opens in a
+  small window of its own that floats over your other apps, so you can follow
+  someone's screen share while working in front of it; in Firefox and Safari it
+  fills the chalk window instead, with a fullscreen button, and Escape or a
+  click outside puts it back.
+
+---
+
 ## v0.3.45 — 26 July 2026 — Voice controls, microphone settings and typing indicators
 
 ### Added

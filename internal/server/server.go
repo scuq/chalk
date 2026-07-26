@@ -286,7 +286,18 @@ func (s *Server) Serve(ctx context.Context) error {
 				})
 				return out
 			}
-			s.store.VoiceJanitorLoop(bgCtx, prefix, time.Minute, 2*time.Minute, liveConns, s.logger.Printf)
+			// 45-1: a swept room can be a room that just emptied, so the
+			// crash path reaches the scratchpad purge too.
+			onVacated := func(channels []uuid.UUID) {
+				if s.wsh == nil {
+					return
+				}
+				for _, cid := range channels {
+					s.wsh.purgeVoiceScratch(bgCtx, cid)
+				}
+			}
+			s.store.VoiceJanitorLoop(bgCtx, prefix, time.Minute, 2*time.Minute,
+				liveConns, onVacated, s.logger.Printf)
 		}()
 	}
 

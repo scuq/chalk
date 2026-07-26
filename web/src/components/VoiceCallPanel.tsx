@@ -38,6 +38,7 @@ import { useVoiceSession } from "./VoiceDock";
 import { ChannelGlyph } from "./Sidebar";
 import type { VoiceDiagnostics } from "../voice/call";
 import { useNetPrefs } from "../voice/net-prefs";
+import { openStreamPiP } from "../voice/pip";
 
 /** Stats refresh cadence while the drawer is open. Passive getStats reads
  * only (the Addendum D rule: nothing in-call may compete with media). */
@@ -99,6 +100,11 @@ export function VoiceCallPanel({
   const [pinnedKey, setPinnedKey] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
+  // 45-5: the tile blown up in the in-app expanded view -- the fallback for
+  // engines without document PiP. Held by KEY, not by value: the tile is
+  // re-resolved from the stage every render, so a stream swap or a peer
+  // leaving can't leave a frozen copy on screen.
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [diag, setDiag] = useState<VoiceDiagnostics | null>(null);
   const [copied, setCopied] = useState(false);
   // Per-device transport knobs. Saving pushes them into the live call (the
@@ -310,6 +316,42 @@ export function VoiceCallPanel({
   const focused = stageTiles.find((t) => t.key === focusedKey) ?? null;
   const strip = stageTiles.filter((t) => t.key !== focusedKey);
 
+  // ---- 45-5: pop the focused tile out ---------------------------------
+  //
+  // Document PiP where the engine has it (a real window, beside the app);
+  // the in-app expanded view everywhere else. Both show the SAME stream --
+  // nothing is cloned, so a pop-out costs no extra decode or bandwidth.
+  const expanded = expandedKey
+    ? (stageTiles.find((t) => t.key === expandedKey) ?? null)
+    : null;
+
+  // Video only: a pop-out of an audio-only peer would be a black rectangle,
+  // and their audio is already playing through the dock either way.
+  const popOut = (tile: StageTile) => {
+    if (!tile.stream || !tile.hasLiveVideo) return;
+    const label = handleFor(tile.userID) + (tile.isScreen ? " — screen" : "");
+    void openStreamPiP(tile.stream, label).then((opened) => {
+      if (!opened) setExpandedKey(tile.key);
+    });
+  };
+
+  // The expanded view follows the call: it closes when what it was showing
+  // stops (peer left, share ended, camera off) and when the call itself does.
+  useEffect(() => {
+    if (expandedKey && !expanded?.hasLiveVideo) setExpandedKey(null);
+  }, [expandedKey, expanded]);
+  useEffect(() => {
+    if (!hereInCall) setExpandedKey(null);
+  }, [hereInCall]);
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpandedKey(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
+
   // ---- render --------------------------------------------------------------
 
   const duration = snap.joinedAt ? fmtDuration(Date.now() - snap.joinedAt) : "00:00";
@@ -352,6 +394,7 @@ export function VoiceCallPanel({
                   label={handleFor(focused.userID)}
                   big
                   onClick={() => setPinnedKey(null)}
+                  onPopOut={focused.hasLiveVideo ? () => popOut(focused) : undefined}
                   snap={snap}
                   channel={channel}
                   selfUserID={selfUserID}
@@ -591,6 +634,27 @@ export function VoiceCallPanel({
           {describeJoinError(error)}
         </div>
       )}
+
+      {expanded && (
+        <ExpandedTile
+          tile={expanded}
+          label={handleFor(expanded.userID) + (expanded.isScreen ? " — screen" : "")}
+          onClose={() => setExpandedKey(null)}
+        />
+      )}
+
+      {/* 45-4: the rules of the room's text, stated where the text is. It sits
+          below the call and directly above the feed it describes, and shows in
+          the lobby too -- someone typing here before anyone joins is exactly
+          the person who needs to know it won't be kept. */}
+      <div class="chalk-voice-scratch" data-testid="voice-scratch-note">
+        <span class="chalk-voice-scratch-tag">scratchpad</span>
+        <span>
+          text here is for the call: only what fits stays on screen, older lines
+          scroll away for good, and everything is deleted for everyone once the
+          last person leaves. keep it short — a line, a link, a GIF.
+        </span>
+      </div>
     </div>
   );
 
@@ -617,6 +681,7 @@ function StagePeer({
   label,
   big,
   onClick,
+  onPopOut,
   snap,
   channel,
   selfUserID,
@@ -625,6 +690,9 @@ function StagePeer({
   label: string;
   big?: boolean;
   onClick?: () => void;
+  /** 45-5: show this stream larger -- own window where the engine allows it,
+   * expanded in-app otherwise. Absent on tiles with no stream to show. */
+  onPopOut?: () => void;
   snap: VoiceSessionSnap;
   channel: ChannelSummary;
   selfUserID: string;
@@ -671,6 +739,21 @@ function StagePeer({
       )}
       <div class="chalk-voice-peer-label">
         <span class="chalk-voice-peer-name">{shownLabel}</span>
+        {onPopOut && (
+          <button
+            class="chalk-voice-popout"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation(); // must not unpin the tile it pops out
+              onPopOut();
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+            title={`watch ${shownLabel} in a larger view`}
+            data-testid="voice-tile-popout"
+          >
+            ⧉ popout
+          </button>
+        )}
         {tile.part?.muted && <span class="chalk-voice-peer-flag" title="muted">m</span>}
         {tile.part?.videoOn && <span class="chalk-voice-peer-flag" title="camera on">c</span>}
         {tile.part?.screenOn && (
@@ -768,6 +851,78 @@ function StagePeer({
   );
 }
 
+
+/**
+ * ExpandedTile (45-5): one stream filling the app, for the engines that have
+ * no document Picture-in-Picture (Firefox, Safari) and for a browser that
+ * refused to open one. Backdrop click and Escape close it; the fullscreen
+ * button hands the same element to the Fullscreen API, which all three
+ * engines do have.
+ *
+ * Muted, like every other video surface here: VoiceDock owns audio output.
+ */
+function ExpandedTile({
+  tile,
+  label,
+  onClose,
+}: {
+  tile: StageTile;
+  label: string;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const toggleFullscreen = () => {
+    const el = ref.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
+    }
+    // Safari still wants the prefixed call.
+    const anyEl = el as HTMLDivElement & { webkitRequestFullscreen?: () => void };
+    if (el.requestFullscreen) void el.requestFullscreen();
+    else anyEl.webkitRequestFullscreen?.();
+  };
+  return (
+    <div
+      ref={ref}
+      class="chalk-voice-expanded"
+      data-testid="voice-expanded"
+      role="dialog"
+      aria-label={label}
+      onClick={onClose}
+    >
+      <div class="chalk-voice-expanded-stage" onClick={(e) => e.stopPropagation()}>
+        {tile.stream ? (
+          <VideoSurface stream={tile.stream} mirrored={tile.isSelf && !tile.isScreen} />
+        ) : (
+          <div class="chalk-voice-avatar" aria-hidden="true">
+            {label.slice(0, 1).toUpperCase()}
+          </div>
+        )}
+        <div class="chalk-voice-expanded-bar">
+          <span class="chalk-voice-expanded-name">{label}</span>
+          <span class="chalk-voice-bar-spacer" />
+          <button
+            class="chalk-btn chalk-voice-ctl"
+            onClick={toggleFullscreen}
+            data-testid="voice-expanded-fullscreen"
+          >
+            fullscreen
+          </button>
+          <button
+            class="chalk-btn chalk-voice-ctl"
+            onClick={onClose}
+            data-testid="voice-expanded-close"
+            title="close (esc)"
+          >
+            close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function handleForSelfInitial(channel: ChannelSummary, selfUserID: string): string {
   const m = (channel.members ?? []).find((x) => x.userID === selfUserID);

@@ -308,42 +308,65 @@ func (s *Store) DeleteVoiceParticipantsByConn(
 // netsplit). minAge guards the race where a row was just inserted for a conn
 // the caller's snapshot hasn't seen yet. An empty liveConnIDs list means "no
 // live conns on this instance": every sufficiently old row of THIS sweep's
-// view is an orphan. Returns the number of rows removed; the caller decides
-// what to fan out (30-2 wires the loop with the hub's live-conn snapshot).
+// view is an orphan. Returns the number of rows removed and the distinct
+// channels they were in; the caller decides what to fan out (30-2 wires the
+// loop with the hub's live-conn snapshot, 45-1 purges vacated scratchpads).
 func (s *Store) SweepVoiceOrphans(
 	ctx context.Context,
 	instancePrefix string,
 	liveConnIDs []string,
 	minAge time.Duration,
-) (int64, error) {
+) (int64, []uuid.UUID, error) {
 	if liveConnIDs == nil {
 		liveConnIDs = []string{}
 	}
 	// 30-2: conn_id is instance-prefixed; sweep only THIS instance's rows so
 	// a multi-instance deploy can't reap another instance's live calls.
-	tag, err := s.Pool.Exec(ctx,
+	rows, err := s.Pool.Query(ctx,
 		`DELETE FROM voice_participants
 		  WHERE joined_at < now() - $3::interval
 		    AND conn_id LIKE $2 || '%'
-		    AND conn_id <> ALL($1)`,
+		    AND conn_id <> ALL($1)
+		 RETURNING channel_id`,
 		liveConnIDs, instancePrefix, minAge.String(),
 	)
 	if err != nil {
-		return 0, fmt.Errorf("sweep voice orphans: %w", err)
+		return 0, nil, fmt.Errorf("sweep voice orphans: %w", err)
 	}
-	return tag.RowsAffected(), nil
+	defer rows.Close()
+	var n int64
+	seen := make(map[uuid.UUID]bool)
+	var channels []uuid.UUID
+	for rows.Next() {
+		var cid uuid.UUID
+		if err := rows.Scan(&cid); err != nil {
+			return 0, nil, fmt.Errorf("sweep voice orphans: %w", err)
+		}
+		n++
+		if !seen[cid] {
+			seen[cid] = true
+			channels = append(channels, cid)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, nil, fmt.Errorf("sweep voice orphans: %w", err)
+	}
+	return n, channels, nil
 }
 
 // VoiceJanitorLoop runs SweepVoiceOrphans once immediately and then every
 // interval until ctx is canceled. liveConns supplies the current live WS
 // Conn.IDs (the hub's snapshot; wired in 30-2 -- until then a caller may pass
-// nil to skip sweeping entirely). Errors are logged, not fatal, the same
-// posture as OrphanAttachmentJanitorLoop.
+// nil to skip sweeping entirely). onVacated (45-1, optional) is handed the
+// channels a sweep touched, so the crash path reaches the same scratchpad
+// purge a clean leave does. Errors are logged, not fatal, the same posture as
+// OrphanAttachmentJanitorLoop.
 func (s *Store) VoiceJanitorLoop(
 	ctx context.Context,
 	instancePrefix string,
 	interval, minAge time.Duration,
 	liveConns func() []string,
+	onVacated func([]uuid.UUID),
 	logf func(string, ...any),
 ) {
 	if logf == nil {
@@ -361,13 +384,16 @@ func (s *Store) VoiceJanitorLoop(
 	sweep := func() {
 		cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		n, err := s.SweepVoiceOrphans(cctx, instancePrefix, liveConns(), minAge)
+		n, vacated, err := s.SweepVoiceOrphans(cctx, instancePrefix, liveConns(), minAge)
 		if err != nil {
 			logf("voice janitor: %v", err)
 			return
 		}
 		if n > 0 {
 			logf("voice janitor: pruned %d orphaned participant row(s)", n)
+		}
+		if len(vacated) > 0 && onVacated != nil {
+			onVacated(vacated)
 		}
 		// 30-4d: also reap undeliverable signal-spool leftovers. Short TTL:
 		// spool rows are consumed within milliseconds in the happy path.

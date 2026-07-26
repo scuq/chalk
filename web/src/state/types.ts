@@ -773,6 +773,9 @@ export type Action =
   | { kind: "voice_participant_joined"; channelID: string; userID: string; deviceID: string }
   | { kind: "voice_participant_left"; channelID: string; userID: string; deviceID: string }
   | { kind: "voice_participant_state"; channelID: string; participant: VoiceParticipant }
+  // 45-1: the room emptied and the server destroyed the channel's scratchpad.
+  // Everything derived from those messages goes with them.
+  | { kind: "voice_purged"; channelID: string }
   | { kind: "channel_rotation_pending_set"; channelID: string; pending: boolean }
   // Phase 11c-2 PR 4: optimistic local updates on add/remove member.
   | { kind: "channel_member_added"; channelID: string; userID: string; handle: string }

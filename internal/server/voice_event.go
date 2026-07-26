@@ -2,7 +2,8 @@ package server
 
 // 30-2/30-4d: consumer side of voice pushes. A Kind="voice" Event on
 // chalk_global carries the sub-kind in FriendKind (joined | left | state |
-// signal). Roster deltas (joined/left/state) are tiny and ride inline in the
+// purged | signal). Roster deltas (joined/left/state) and the 45-1 scratchpad
+// purge are tiny and ride inline in the
 // opaque ChannelEventPayload slot; "signal" payloads are too large for a
 // NOTIFY (PG's 8000-byte cap) so the event is a routing pointer (MessageID =
 // voice_signal_spool row id) and the ciphertext is fetched from the spool.
@@ -61,6 +62,13 @@ func (s *Server) handleVoiceEvent(ev pubsub.Event) {
 			return
 		}
 		frameType, payload = proto.TypeVoiceParticipantState, p
+	case "purged":
+		var p proto.VoicePurgedPayload
+		if err := json.Unmarshal(ev.ChannelEventPayload, &p); err != nil {
+			s.logger.Printf("voice event decode (purged): %v", err)
+			return
+		}
+		frameType, payload = proto.TypeVoicePurged, p
 	default:
 		return
 	}

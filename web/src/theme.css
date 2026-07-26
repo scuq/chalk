@@ -292,6 +292,42 @@ html, body {
   font-style: italic;
 }
 
+/* 45-3: the voice-channel scratchpad. The pane is a fixed frame rather than a
+   scroller -- there is no history here to scroll back through, so the call
+   holds the top and the text takes whatever is left above the composer. */
+.chalk-main--voice {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chalk-main--voice .chalk-channel-header {
+  flex: none;
+}
+
+/* The call keeps its natural height until the pane runs out of room. Shrinking
+   it (rather than the feed) is what keeps a long debug drawer scrolling inside
+   the panel instead of pushing the text off the bottom. */
+.chalk-main--voice .chalk-voice-panel {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* justify-content: flex-end + overflow: hidden is the rotation: the newest
+   line sits on the bottom edge, and each one that arrives pushes the oldest
+   past the top of the frame, where it is clipped and unreachable. */
+.chalk-messages--ephemeral {
+  flex: 1 1 auto;
+  min-height: 6em;
+  overflow: hidden;
+  justify-content: flex-end;
+}
+
+.chalk-messages--ephemeral.chalk-messages--empty {
+  min-height: 0;
+}
+
 .chalk-empty-hint {
   margin: 0;
 }
@@ -4790,6 +4826,29 @@ body.chalk-resizing .chalk-sidebar-resizer {
   color: var(--chalk-fg-dim);
 }
 
+/* 45-4: the scratchpad rules, stated at the seam between the call and the
+   text it governs. Dashed rule above it so it reads as a boundary rather than
+   as another control in the bar. */
+.chalk-voice-scratch {
+  display: flex;
+  align-items: baseline;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s2);
+  padding-top: var(--chalk-s2);
+  border-top: 1px dashed var(--chalk-border);
+  font-size: calc(11px * var(--chalk-font-scale));
+  line-height: 1.4;
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-voice-scratch-tag {
+  flex: none;
+  font-size: calc(10px * var(--chalk-font-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--chalk-warn);
+}
+
 /* ---- 30-5c: persistent-call dock (Discord's bottom-left panel) ---------- */
 
 .chalk-voice-dock {
@@ -5106,6 +5165,69 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-voice-peer-conn + .chalk-voice-peer-audio,
 .chalk-voice-peer-audio + .chalk-voice-peer-conn {
   margin-left: 6px;
+}
+
+/* 45-5: pop the focused tile out. Same dotted-outline weight as the other
+   in-label controls -- it belongs to the tile, not to the control bar. */
+.chalk-voice-popout {
+  background: transparent;
+  border: 1px dotted var(--chalk-border);
+  color: var(--chalk-fg-dim);
+  font: inherit;
+  font-size: calc(9px * var(--chalk-font-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.chalk-voice-popout:hover {
+  color: var(--chalk-fg-bright);
+  border-color: var(--chalk-fg-dim);
+}
+
+/* 45-5: the in-app expanded view (Firefox/Safari, or a refused PiP request).
+   Covers the app rather than living in the pane -- the point is size. */
+.chalk-voice-expanded {
+  position: fixed;
+  inset: 0;
+  /* Above the pickers (60/70), below the modals (100): a modal opened over it
+     still has to be reachable. */
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.92);
+  display: grid;
+  place-items: center;
+  padding: var(--chalk-s3);
+}
+
+.chalk-voice-expanded-stage {
+  position: relative;
+  width: min(100%, 1600px);
+  max-height: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 1px solid var(--chalk-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.chalk-voice-expanded-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2);
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.chalk-voice-expanded-name {
+  font-size: calc(12px * var(--chalk-font-scale));
+  color: var(--chalk-fg-bright);
 }
 
 .chalk-voice-localmute {

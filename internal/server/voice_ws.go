@@ -251,6 +251,7 @@ func (h *WSHandler) handleVoiceLeave(
 			UserID:    userID.String(),
 			DeviceID:  deviceID.String(),
 		})
+		h.purgeVoiceScratch(ctx, channelID)
 	}
 }
 
@@ -529,7 +530,36 @@ func (h *WSHandler) voiceDisconnect(conn *Conn) {
 			UserID:    p.UserID.String(),
 			DeviceID:  p.DeviceID.String(),
 		})
+		h.purgeVoiceScratch(ctx, p.ChannelID)
 	}
+}
+
+// ---- scratchpad purge (45-1) -----------------------------------------------
+
+// purgeVoiceScratch destroys a voice channel's text once its room has emptied
+// and tells the members it happened. Called from every path that can remove
+// the last participant: an explicit leave, a WS teardown, the removed-member
+// cascade, and the orphan janitor.
+//
+// Best-effort by design: the emptiness check lives in the store transaction,
+// so a failed or skipped call leaves the scratchpad standing until the NEXT
+// call in that room ends -- never deletes something it shouldn't.
+func (h *WSHandler) purgeVoiceScratch(ctx context.Context, channelID uuid.UUID) {
+	if h.store == nil {
+		return
+	}
+	purged, n, err := h.store.PurgeVoiceScratchIfEmpty(ctx, channelID)
+	if err != nil {
+		h.logger.Printf("voice scratch purge %s: %v", channelID, err)
+		return
+	}
+	if !purged {
+		return
+	}
+	h.logger.Printf("voice scratch purge %s: room empty, %d message(s) removed", channelID, n)
+	h.pushVoiceToMembers(ctx, channelID, "purged", proto.VoicePurgedPayload{
+		ChannelID: channelID.String(),
+	})
 }
 
 // ---- removed-member cascade (30-6) -----------------------------------------
@@ -558,5 +588,6 @@ func (h *WSHandler) evictVoiceOnMemberRemoval(
 			UserID:    p.UserID.String(),
 			DeviceID:  p.DeviceID.String(),
 		})
+		h.purgeVoiceScratch(ctx, p.ChannelID)
 	}
 }

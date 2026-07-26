@@ -27,6 +27,8 @@ const (
 	TypeVoiceParticipantJoined = "voice_participant_joined"
 	TypeVoiceParticipantLeft   = "voice_participant_left"
 	TypeVoiceParticipantState  = "voice_participant_state"
+	// 45-1: the room emptied, so the channel's scratchpad text was destroyed.
+	TypeVoicePurged = "voice_purged"
 	// TypeVoiceSignal doubles as the push type for a relayed signal
 	// (server->client voice_signal carries VoiceSignalPushPayload).
 )
@@ -172,6 +174,14 @@ type VoiceParticipantStatePayload struct {
 	Muted     bool   `json:"muted"`
 	VideoOn   bool   `json:"video_on"`
 	ScreenOn  bool   `json:"screen_on"`
+}
+
+// VoicePurgedPayload announces that the last participant left channelID's room
+// and its scratchpad text was destroyed server-side (45-1). Every member gets
+// it, in-room or not, so nobody is left rendering messages that no longer
+// exist anywhere.
+type VoicePurgedPayload struct {
+	ChannelID string `json:"channel_id"`
 }
 
 // VoiceSignalPushPayload is the relayed form of a voice_signal delivered to

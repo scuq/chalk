@@ -232,7 +232,17 @@ interface Props {
   // download), bound to the channel crypto. When absent (or a message has no
   // attachments) nothing extra renders.
   attachmentController?: AttachmentController;
+  // 45-3: voice-channel scratchpad mode. The feed is not history here -- it
+  // lives for the duration of a call -- so it shows only what fits above the
+  // composer and lets the rest scroll off the top for good. No scrollback
+  // means the landing/anchor machinery has nothing to do either.
+  ephemeral?: boolean;
 }
+
+// 45-3: how many scratchpad rows are kept in the DOM. Well past what any
+// realistic pane shows -- the clipping is done by CSS, this only stops a long
+// call from growing an unbounded list of nodes nobody can scroll to.
+const EPHEMERAL_MAX_ROWS = 60;
 
 function fmtTime(d: Date): string {
   // Legacy hms format. Kept for the fallback path when display
@@ -255,7 +265,8 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return fmtRelative(d, now);
 }
 
-export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy }: Props) {
+export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy, ephemeral }: Props) {
+  const messages = ephemeral ? allMessages.slice(-EPHEMERAL_MAX_ROWS) : allMessages;
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dividerRef = useRef<HTMLDivElement | null>(null);
@@ -356,6 +367,7 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
   // (.chalk-main today). Found by computed style rather than by walking a
   // known number of parents, so a layout change doesn't silently break it.
   useEffect(() => {
+    if (ephemeral) return; // 45-3: nothing scrolls, nothing to follow
     const sc = scrollParentOf(rootRef.current);
     if (!sc) return;
     const onScroll = () => {
@@ -384,7 +396,7 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
     // different root element -- without it, a channel entered while empty
     // would never get a listener once its history arrived. It flips only on
     // the empty/non-empty edge, not per message.
-  }, [channelID, messages.length > 0]);
+  }, [channelID, messages.length > 0, ephemeral]);
 
   // 33-5: re-apply the anchor whenever the feed changes height. This is the
   // fix for late-loading media: every image that resolves fires this, and
@@ -393,14 +405,14 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
   // scrollIntoView changes scrollTop, not layout, so this can't feed itself.
   useEffect(() => {
     const el = rootRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
+    if (ephemeral || !el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
       if (anchorRef.current === null) return;
       scrollToAnchor(anchorRef.current, dividerRef.current, endRef.current);
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [channelID, messages.length > 0]);
+  }, [channelID, messages.length > 0, ephemeral]);
 
   // 33-4: index of the first message that was unread on arrival -- where the
   // "new messages" divider goes. -1 when there's nothing to mark.
@@ -421,7 +433,7 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
   //
   // After that, any new message pins the view to the bottom as before.
   useEffect(() => {
-    if (messages.length === 0) return;
+    if (ephemeral || messages.length === 0) return;
     if (landedRef.current !== (channelID ?? null)) {
       landedRef.current = channelID ?? null;
       // Landing mid-history means not pinned. Set it here rather than
@@ -438,7 +450,7 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
     // while this message's images resolve.
     anchorRef.current = "end";
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, channelID, dividerIndex]);
+  }, [messages.length, channelID, dividerIndex, ephemeral]);
 
   // Phase 9.7d: resolved display settings + "now" for relative time.
   // We capture "now" once per render so all rows in a batch share the
@@ -457,14 +469,17 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
 
   if (messages.length === 0) {
     return (
-      <div class="chalk-messages chalk-messages--empty" data-testid="messages">
+      <div
+        class={`chalk-messages chalk-messages--empty ${ephemeral ? "chalk-messages--ephemeral" : ""}`}
+        data-testid="messages"
+      >
         <p class="chalk-empty-hint">{empty ?? "no messages yet. say something."}</p>
       </div>
     );
   }
 
   return (
-    <div ref={rootRef} class={`chalk-messages ${display_.compactMode ? "chalk-messages--compact" : ""} ${display_.showTimestamps ? "" : "chalk-messages--no-time"}`} data-testid="messages">
+    <div ref={rootRef} class={`chalk-messages ${display_.compactMode ? "chalk-messages--compact" : ""} ${display_.showTimestamps ? "" : "chalk-messages--no-time"} ${ephemeral ? "chalk-messages--ephemeral" : ""}`} data-testid="messages">
       {(() => {
         // Phase 9.6i: build a userID → handle lookup once per render
         // pass instead of re-scanning members for every message row.
