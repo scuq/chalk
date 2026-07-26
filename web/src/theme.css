@@ -3333,23 +3333,40 @@ body.chalk-resizing .chalk-sidebar-resizer {
    whose first line ran long it painted straight over the words, and even on
    a short one it meant crossing the whole feed to reach it. The marker sits
    in the row's left padding instead: a fixed x on every row, outside the
-   grid columns, structurally unable to touch the body. */
+   grid columns, structurally unable to touch the body.
+
+   The glyph is a VERTICAL ellipsis: "···" is three monospace characters wide
+   and, boxed, measured wider than the gutter itself, so it reached into the
+   timestamp. "⋮" is one character, which fits with room to spare. No border
+   or fill either -- this is a quiet handle in a margin, not a button competing
+   with the time it sits next to. */
 .chalk-message-marker {
   position: absolute;
   left: var(--chalk-s1);
   top: var(--chalk-s1);
-  background: var(--chalk-bg-elev);
-  border: 1px solid var(--chalk-border);
+  /* Bounded by the gutter by construction, so it cannot creep back over the
+     timestamp if the font scale changes. */
+  width: calc(var(--chalk-msg-gutter) - 2px);
+  box-sizing: border-box;
+  background: none;
+  border: none;
   border-radius: var(--chalk-radius);
-  color: var(--chalk-fg-dim);
+  color: var(--chalk-fg-muted);
   font: inherit;
   font-size: var(--chalk-size-small);
   line-height: 1;
-  padding: 2px 4px;
+  padding: 1px 0;
+  text-align: center;
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
   transition: opacity 80ms ease;
+}
+
+/* Compact rows are 1px-padded, so the roomy top offset would hang the marker
+   below the line it belongs to. */
+.chalk-messages--compact .chalk-message-marker {
+  top: 1px;
 }
 
 /* Revealed on row hover, while its own menu is open, and on keyboard focus. */
@@ -3363,7 +3380,6 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-message-marker:hover,
 .chalk-message--menu-open .chalk-message-marker {
   color: var(--chalk-fg-bright);
-  border-color: var(--chalk-accent);
 }
 .chalk-message-marker:focus-visible {
   outline: 1px solid var(--chalk-fg-bright);

@@ -27,7 +27,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ### Changed
 - **Everything you can do to a message is now in one menu.** Right-click a
-  message — or click the small `···` that appears in the left margin when you
+  message — or click the small `⋮` that appears in the left margin when you
   hover a line, or press and hold on a phone — and you get a row of one-click
   reactions, the full emoji picker, reply in thread, copy the text, and edit or
   delete where those are yours to do. The strip of buttons that used to float

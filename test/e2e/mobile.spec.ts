@@ -164,10 +164,13 @@ test.describe("mobile layout", () => {
     await expect(marker).toHaveCSS("opacity", "1");
 
     // The assertion the whole change exists for: the trigger sits in the
-    // row's left padding, so it cannot reach the text no matter how long the
-    // message is.
+    // row's left padding, so it clears both the timestamp and the body no
+    // matter how long the message is. The timestamp is the tighter of the two
+    // and the one a too-wide glyph creeps over first.
     const m = (await marker.boundingBox())!;
+    const time = (await page.locator(".chalk-message-time").last().boundingBox())!;
     const body = (await page.locator("[data-testid='message-body']").last().boundingBox())!;
+    expect(m.x + m.width).toBeLessThanOrEqual(time.x);
     expect(m.x + m.width).toBeLessThanOrEqual(body.x);
 
     await marker.click();

@@ -636,7 +636,7 @@ export function MessageList({ messages, channelID, unreadMark, ownDevice, ownUse
                     openMenu(m, r.left, r.bottom + 2);
                   }}
                 >
-                  <span aria-hidden="true">···</span>
+                  <span aria-hidden="true">⋮</span>
                 </button>
               );
             })()}
