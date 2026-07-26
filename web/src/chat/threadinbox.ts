@@ -63,6 +63,60 @@ export function partitionThreadInbox<T extends ThreadRelevanceFacts>(
   return { needsYou, alsoActive };
 }
 
+// 47-1: how faint a row should read, from how long ago its last reply landed.
+//
+// Bands, not a continuous ramp. A smooth curve makes two rows an hour apart look
+// identical while still costing every row a distinct opacity; discrete steps at
+// the boundaries a reader actually thinks in -- ten minutes, an hour, this
+// morning, today, this week -- make "still happening" and "yesterday" read as
+// different kinds of thing at a glance.
+const threadAgeBoundsMS = [
+  10 * 60_000, // 10m
+  60 * 60_000, // 1h
+  2 * 3_600_000, // 2h
+  8 * 3_600_000, // 8h
+  24 * 3_600_000, // 24h
+  7 * 24 * 3_600_000, // 1w
+];
+
+// threadAgeStep returns 0 (freshest) through threadAgeBoundsMS.length (oldest).
+// A timestamp in the future -- clock skew between us and the sender -- lands on
+// 0 rather than going negative.
+export function threadAgeStep(ts: Date, now: Date): number {
+  const age = now.getTime() - ts.getTime();
+  let step = 0;
+  for (const bound of threadAgeBoundsMS) {
+    if (age < bound) break;
+    step++;
+  }
+  return step;
+}
+
+// 47-2: filtering the inbox, client-side.
+//
+// Client-side is the only option that exists: bodies are ciphertext, so the
+// server cannot match on them and is deliberately not asked to. It also means
+// the search is honestly limited to what this client holds -- the rows fetched
+// so far, and of each thread only the head and the newest reply, since those are
+// the only bodies an inbox row carries. Replies in the middle of a thread are
+// not searchable from here.
+
+// threadQueryTerms splits a query into lowercased terms. Terms are ANDed, so
+// "core deploy" finds a thread in #core about the deploy regardless of the order
+// the two words appear in the row.
+export function threadQueryTerms(query: string): string[] {
+  return query.toLowerCase().split(/\s+/).filter((t) => t.length > 0);
+}
+
+// threadRowMatches tests one row's searchable text against parsed terms. The
+// haystack is built by the caller because the interesting parts -- channel name,
+// sender handle -- are resolved from app state, not carried on the row.
+export function threadRowMatches(haystack: string, terms: string[]): boolean {
+  if (terms.length === 0) return true;
+  const hay = haystack.toLowerCase();
+  return terms.every((t) => hay.includes(t));
+}
+
 // dedupeThreadRows keeps the first occurrence of each thread id.
 //
 // The two server halves cannot overlap (the recency cutoff partitions them), but

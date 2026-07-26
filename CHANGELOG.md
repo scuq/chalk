@@ -10,6 +10,26 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **The threads panel can be filtered.** A box at the top of the panel narrows
+  the list as you type, matching the channel name, who replied, and the preview
+  text shown on each row. Type more than one word to narrow further — all of
+  them have to match, in any order. Escape clears the filter; a second Escape
+  closes the panel. The filter never leaves your device, so it only covers the
+  threads the panel has loaded and the previews it can show, not every reply
+  inside a thread.
+
+### Changed
+- **Older threads now fade in the threads panel.** Rows dim in steps as their
+  last reply ages — ten minutes, an hour, two hours, eight hours, a day, a week
+  — so a conversation still going stands out from one that stopped yesterday
+  instead of both looking the same in a sorted list. Hovering or tabbing to a
+  row brings it back to full strength.
+
+---
+
 ## v0.3.47 — 26 July 2026 — Reload prompt when the server updates
 
 ### Added

@@ -23,11 +23,25 @@
 // settles, so `lastReplyBody === undefined` means "not decrypted yet" and draws
 // a skeleton. One slow or keyless channel never holds up the list.
 //
+// AGE FADES THE ROW (47-1). Rows are already newest-first, but a sorted list
+// says nothing about *how much* newer -- ten minutes and ten hours look the
+// same. Opacity bands from threadAgeStep make the drop-off visible, so a live
+// thread stands out from one that has been sitting there since yesterday.
+//
+// FILTER IS CLIENT-SIDE (47-2), and can only be: bodies are ciphertext. It sees
+// the rows we hold and, per thread, the head and the newest reply -- everything
+// a row carries. See the note in chat/threadinbox.ts.
+//
 // Presentational: App owns the frames, the crypto and the grouping.
 
-import { useEffect, useMemo } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ThreadInboxRow } from "../state/types";
-import { partitionThreadInbox } from "../chat/threadinbox";
+import {
+  partitionThreadInbox,
+  threadAgeStep,
+  threadQueryTerms,
+  threadRowMatches,
+} from "../chat/threadinbox";
 import { fmtRelative } from "../chat/reltime";
 
 interface Props {
@@ -65,21 +79,23 @@ export function ThreadInboxPanel({
   onLoadMore,
   onClose,
 }: Props) {
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      // Escape backs out one level at a time: it clears the filter first, so a
+      // mistyped query does not also cost you the panel.
+      if (query.length > 0) {
+        setQuery("");
+        return;
+      }
+      onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  // The aged-unread rows come FIRST: they are the ones the recency window would
-  // otherwise have hidden, which is the whole reason the server sends them
-  // separately. Both halves then get partitioned by the same rule.
-  const { needsYou, alsoActive } = useMemo(
-    () => partitionThreadInbox([...agedUnread, ...active], threadSeen, mentions),
-    [active, agedUnread, threadSeen, mentions],
-  );
+  }, [onClose, query]);
 
   // One clock per render pass, like MessageList: a Date per row would make rows
   // in the same list disagree about "now".
@@ -91,6 +107,36 @@ export function ThreadInboxPanel({
     return handles[userID] ?? "someone";
   };
 
+  const terms = useMemo(() => threadQueryTerms(query), [query]);
+
+  // The aged-unread rows come FIRST: they are the ones the recency window would
+  // otherwise have hidden, which is the whole reason the server sends them
+  // separately.
+  const rows = useMemo(() => {
+    const all = [...agedUnread, ...active];
+    if (terms.length === 0) return all;
+    return all.filter((r) =>
+      threadRowMatches(
+        [
+          channelNames[r.channelID] ?? "",
+          label(r.lastReplySenderUserID),
+          label(r.headSenderUserID),
+          r.headBody ?? "",
+          r.lastReplyBody ?? "",
+        ].join(" "),
+        terms,
+      ),
+    );
+  }, [active, agedUnread, terms, channelNames, handles, ownUserID]);
+
+  // Both halves get partitioned by the same rule.
+  const { needsYou, alsoActive } = useMemo(
+    () => partitionThreadInbox(rows, threadSeen, mentions),
+    [rows, threadSeen, mentions],
+  );
+
+  const filtering = terms.length > 0;
+
   const renderRow = (r: ThreadInboxRow) => {
     const mentioned = mentions[r.threadID] === true;
     return (
@@ -101,6 +147,7 @@ export function ThreadInboxPanel({
         <button
           type="button"
           class="chalk-threadinbox-row"
+          data-age={threadAgeStep(r.lastReplyTS, now)}
           onClick={() => onOpenThread(r.channelID, r.threadID)}
           data-testid={`threadinbox-row-${r.threadID}`}
         >
@@ -156,13 +203,48 @@ export function ThreadInboxPanel({
           </button>
         </div>
 
+        <div class="chalk-threadinbox-search">
+          <input
+            ref={inputRef}
+            type="text"
+            class="chalk-threadinbox-input"
+            placeholder="filter threads..."
+            value={query}
+            onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+            aria-label="filter threads by channel, sender or preview text"
+            data-testid="threadinbox-search"
+          />
+          {filtering && (
+            <button
+              type="button"
+              class="chalk-threadinbox-clear"
+              onClick={() => {
+                setQuery("");
+                inputRef.current?.focus();
+              }}
+              aria-label="clear filter"
+            >
+              x
+            </button>
+          )}
+        </div>
+
         {!loaded ? (
           <div class="chalk-threadinbox-empty">loading&hellip;</div>
         ) : needsYou.length === 0 && alsoActive.length === 0 ? (
           <div class="chalk-threadinbox-empty">
-            nothing needs you
+            {filtering ? "no threads match" : "nothing needs you"}
             <div class="chalk-threadinbox-empty-hint">
-              threads with a reply in the last {windowHours} hours show up here
+              {filtering ? (
+                // Being explicit beats letting someone conclude the thread is
+                // gone: what is searchable here is only what this client holds.
+                <>
+                  the filter matches the channel, who replied and the previews
+                  shown &mdash; not every reply in a thread
+                </>
+              ) : (
+                <>threads with a reply in the last {windowHours} hours show up here</>
+              )}
             </div>
           </div>
         ) : (
@@ -171,7 +253,9 @@ export function ThreadInboxPanel({
               <div class="chalk-threadinbox-section">
                 <div class="chalk-sidebar-header">
                   <span>needs you</span>
-                  {unreadTotal > needsYou.length && (
+                  {/* Suppressed while filtering: "3 of 40" would be comparing a
+                      filtered count against the unfiltered server total. */}
+                  {!filtering && unreadTotal > needsYou.length && (
                     <span class="chalk-sidebar-count">
                       ({needsYou.length} of {unreadTotal})
                     </span>

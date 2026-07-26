@@ -7044,6 +7044,44 @@ body.chalk-resizing .chalk-sidebar-resizer {
   font-weight: 600;
 }
 
+.chalk-threadinbox-search {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2) var(--chalk-s4);
+  border-bottom: 1px solid var(--chalk-border);
+}
+
+.chalk-threadinbox-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-fg-muted);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-threadinbox-input::placeholder {
+  color: var(--chalk-fg-dim);
+  opacity: 1;
+}
+
+.chalk-threadinbox-clear {
+  background: transparent;
+  border: 0;
+  color: var(--chalk-fg-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.chalk-threadinbox-clear:hover,
+.chalk-threadinbox-clear:focus-visible {
+  color: var(--chalk-fg);
+}
+
 .chalk-threadinbox-section + .chalk-threadinbox-section {
   border-top: 1px solid var(--chalk-border);
 }
@@ -7069,9 +7107,23 @@ body.chalk-resizing .chalk-sidebar-resizer {
   cursor: pointer;
 }
 
+/* Age bands (47-1): the older the last reply, the fainter the row. The steps
+   come from threadAgeStep -- 10m, 1h, 2h, 8h, 24h, 1w -- and the floor stays
+   above the point where the text stops being comfortably readable, because
+   these rows are still a list you are meant to be able to scan and click.
+   Hover and keyboard focus restore full strength: whatever you are pointing at
+   is what you are reading. */
+.chalk-threadinbox-row[data-age="1"] { opacity: 0.88; }
+.chalk-threadinbox-row[data-age="2"] { opacity: 0.78; }
+.chalk-threadinbox-row[data-age="3"] { opacity: 0.68; }
+.chalk-threadinbox-row[data-age="4"] { opacity: 0.58; }
+.chalk-threadinbox-row[data-age="5"] { opacity: 0.5; }
+.chalk-threadinbox-row[data-age="6"] { opacity: 0.44; }
+
 .chalk-threadinbox-row:hover,
 .chalk-threadinbox-row:focus-visible {
   background: var(--chalk-bg-elev);
+  opacity: 1;
 }
 
 /* A mentioned thread gets the accent edge, the same signal

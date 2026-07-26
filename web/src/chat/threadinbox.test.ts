@@ -15,6 +15,9 @@ import {
   dedupeThreadRows,
   isThreadUnread,
   partitionThreadInbox,
+  threadAgeStep,
+  threadQueryTerms,
+  threadRowMatches,
   type ThreadRelevanceFacts,
 } from "./threadinbox.ts";
 
@@ -111,4 +114,62 @@ test("dedupe keeps the first occurrence of a thread", () => {
 test("dedupe returns an equivalent list when there is nothing to remove", () => {
   const rows = [{ threadID: "a" }, { threadID: "b" }];
   assert.deepEqual(dedupeThreadRows(rows), rows);
+});
+
+// 47-1: age bands. What matters is that each boundary is a step, and that the
+// band is closed at the top -- a reply exactly 10 minutes old is already in the
+// older band, not still in the freshest one.
+const now = new Date("2026-07-26T12:00:00Z");
+const ago = (ms: number) => new Date(now.getTime() - ms);
+
+test("a fresh reply sits in the brightest band", () => {
+  assert.equal(threadAgeStep(ago(0), now), 0);
+  assert.equal(threadAgeStep(ago(9 * 60_000), now), 0);
+});
+
+test("each threshold moves the row one band fainter", () => {
+  assert.equal(threadAgeStep(ago(10 * 60_000), now), 1);
+  assert.equal(threadAgeStep(ago(60 * 60_000), now), 2);
+  assert.equal(threadAgeStep(ago(2 * 3_600_000), now), 3);
+  assert.equal(threadAgeStep(ago(8 * 3_600_000), now), 4);
+  assert.equal(threadAgeStep(ago(24 * 3_600_000), now), 5);
+  assert.equal(threadAgeStep(ago(7 * 24 * 3_600_000), now), 6);
+});
+
+test("age saturates at the oldest band", () => {
+  assert.equal(threadAgeStep(ago(365 * 24 * 3_600_000), now), 6);
+});
+
+test("a timestamp from the future is treated as fresh, not inverted", () => {
+  // Clock skew between us and the sending device. Better to read as new than to
+  // fall out of the band range.
+  assert.equal(threadAgeStep(ago(-60_000), now), 0);
+});
+
+// 47-2: the filter.
+test("an empty query matches everything", () => {
+  assert.deepEqual(threadQueryTerms(""), []);
+  assert.deepEqual(threadQueryTerms("   "), []);
+  assert.equal(threadRowMatches("anything", []), true);
+});
+
+test("matching is case-insensitive in both directions", () => {
+  assert.equal(threadRowMatches("Feature Requests", threadQueryTerms("FEATURE")), true);
+  assert.equal(threadRowMatches("FEATURE REQUESTS", threadQueryTerms("feature")), true);
+});
+
+test("terms are ANDed and order-independent", () => {
+  const hay = "[CORE] General blade the deploy broke again";
+  assert.equal(threadRowMatches(hay, threadQueryTerms("deploy blade")), true);
+  assert.equal(threadRowMatches(hay, threadQueryTerms("blade deploy")), true);
+  assert.equal(threadRowMatches(hay, threadQueryTerms("blade rollback")), false);
+});
+
+test("terms match inside words", () => {
+  // Substring, not word-prefix: half-typed queries should narrow as you type.
+  assert.equal(threadRowMatches("rollback", threadQueryTerms("ollb")), true);
+});
+
+test("extra whitespace in a query is not a term", () => {
+  assert.equal(threadRowMatches("general", threadQueryTerms("  general  ")), true);
 });
