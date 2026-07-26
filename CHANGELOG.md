@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.3.48 — 26 July 2026 — Thread filtering and multi-window video popouts
 
 ### Added
 - **The threads panel can be filtered.** A box at the top of the panel narrows
