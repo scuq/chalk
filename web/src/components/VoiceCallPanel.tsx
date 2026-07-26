@@ -19,8 +19,10 @@
 // App-level effect keyed off keyStatus, triggered by the sidebar's onSelect
 // dispatching set_active_channel; it fires whether the channel key was
 // already ready (revisit) or becomes ready asynchronously (first visit), so
-// both cases auto-join. The lobby buttons remain for the camera variant and
-// for retry after errors.
+// both cases auto-join -- but only once per selection, so hanging up while
+// still viewing the room stays hung up. The lobby buttons remain for the
+// camera variant, for retry after errors, and to rejoin after leaving
+// without switching channels first.
 
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ChannelSummary, VoiceParticipant } from "../state/types";

@@ -1325,14 +1325,28 @@ export function App() {
   // automatically. Keying this off keyStatus instead of the click makes both
   // cases the same: it fires as soon as the active channel is a voice room
   // AND its key is ready, whether that's immediate (cached) or async (first
-  // visit). voiceSession.join is idempotent for the room we're already in/
-  // joining, so this is a no-op on renders where nothing changed.
+  // visit).
+  //
+  // It must fire at most ONCE per selection, which is what autoJoinedForRef
+  // enforces. session.join is only idempotent while we are in/joining the
+  // room -- once you hang up it happily reconnects, and this effect's deps
+  // include state.channels, whose identity is rebuilt by channels_loaded on
+  // every socket connect (also by membership, rotation and governance
+  // updates). Without the guard, hanging up while still viewing the room
+  // meant the next reconnect silently dragged you back into the call. It
+  // also keeps a WS drop consistent with design §9: you rejoin with a click,
+  // not automatically. Selecting a different channel re-arms it, so leaving
+  // and later re-picking the room still auto-joins.
+  const autoJoinedForRef = useRef<string | null>(null);
   useEffect(() => {
     const cid = state.activeChannelID;
+    if (autoJoinedForRef.current !== cid) autoJoinedForRef.current = null;
     if (!cid || !state.voiceEnabled || !state.user || !ccReady) return;
     const ch = state.channels[cid];
     if (!ch || ch.channelType !== "voice") return;
     if (keyStatus[cid] !== "ready") return;
+    if (autoJoinedForRef.current === cid) return;
+    autoJoinedForRef.current = cid;
     void voiceSession.join({
       channelID: ch.id,
       channelName: ch.name,
