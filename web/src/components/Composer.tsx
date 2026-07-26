@@ -92,6 +92,11 @@ interface Props {
   // would throw up the on-screen keyboard); it also re-arms the focus, so
   // closing a thread hands the cursor back.
   focusKey?: string | null;
+  // 43-7: called on every keystroke with "the draft has text in it". The
+  // parent decides whether that becomes a ping -- it owns the rate limit and
+  // the pref. Only the feed composer passes this; a thread reply doesn't
+  // announce itself (nothing renders a thread indicator yet).
+  onTyping?: (active: boolean) => void;
 }
 
 const MAX_LEN = 4000;
@@ -139,7 +144,7 @@ function IconGif() {
   );
 }
 
-export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast, focusKey }: Props) {
+export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast, focusKey, onTyping }: Props) {
   const icons = toolStyle === "icons";
   const emoticonsOn = emoticons !== false;
   const [draft, setDraft] = useState("");
@@ -377,6 +382,9 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     if (pending.length === 0) {
       onSend(body);
       setDraft("");
+      // The draft is gone, so we are no longer typing -- and the next
+      // character should ping at once rather than wait out the old window.
+      onTyping?.(false);
       return;
     }
 
@@ -397,6 +405,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
         return;
       }
       setDraft("");
+      onTyping?.(false);
       clearPending();
       setProgress({});
       setSending(false);
@@ -410,6 +419,11 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   const onInput = (e: JSX.TargetedEvent<HTMLTextAreaElement>) => {
     const el = e.currentTarget;
     const value = el.value;
+    // 43-7: first thing, ahead of the emoticon branch below -- that one
+    // returns early, and every keystroke that completes an emoticon would
+    // otherwise go unannounced. Editing an existing message is not composing,
+    // so it never pings.
+    if (!editing) onTyping?.(value.length > 0);
     // 42-1: emoticon replacement runs on the text left of the caret, so it
     // only ever fires on the token the user just finished typing -- pasting a
     // wall of text with a ":)" in the middle is left alone.

@@ -88,6 +88,8 @@ interface Props {
     emoticons: boolean;
     // 33-4:
     sidebarWidth: number;
+    // 43-8:
+    typingIndicators: boolean;
   };
   onSetChatPref?: <
     K extends
@@ -98,7 +100,8 @@ interface Props {
       | "selfColorHue"
       | "composerToolStyle"
       | "emoticons"
-      | "sidebarWidth",
+      | "sidebarWidth"
+      | "typingIndicators",
   >(
     key: K,
     value: K extends "timestampFormat"
@@ -639,6 +642,27 @@ export function ProfilePanel({
                 <p class="chalk-profile-hint">
                   ":)" becomes 😀 as you type. backspace right after a swap
                   puts the characters back.
+                </p>
+              </div>
+              {/* 43-8: typing indicators, both directions at once. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={chatPrefs.typingIndicators}
+                    onChange={(e) =>
+                      onSetChatPref(
+                        "typingIndicators",
+                        (e.target as HTMLInputElement).checked,
+                      )
+                    }
+                    data-testid="chat-typing-indicators"
+                  />
+                  <span>show who is typing</span>
+                </label>
+                <p class="chalk-profile-hint">
+                  works both ways: turn it off and you stop seeing "alice is
+                  typing...", and nobody sees it about you either.
                 </p>
               </div>
               {onSetUserColors && (

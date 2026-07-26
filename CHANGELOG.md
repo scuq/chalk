@@ -13,6 +13,13 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **You can see when someone is writing to you.** A line above the message box
+  says "alice is typing...", naming up to five people at once — and if more
+  than five of you are going at it, it gives up and says the keyboards are on
+  fire. A name disappears a few seconds after the person stops, or the moment
+  their message lands. Threads don't have this yet. If you'd rather not take
+  part, turn "show who is typing" off in your profile: it works both ways, so
+  you stop seeing it and nobody sees it about you either.
 - **A "threads" list, so replies stop slipping past you.** A new button in the
   status bar opens every thread worth your attention across all your channels,
   with a dot when one of them needs you. It has two groups: *needs you* — a

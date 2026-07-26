@@ -301,6 +301,10 @@ export interface ChatPrefs {
   // [SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX] on both write and read. Ignored
   // on mobile, where the sidebar is a drawer with its own sizing.
   sidebarWidth?: number;
+  // 43-4: "X is typing" indicators. Default ON, and reciprocal -- off means
+  // this client neither sends pings nor renders anyone else's, so you can't
+  // watch without being watched.
+  typingIndicators?: boolean;
 }
 
 export interface UserPrefs {
@@ -339,6 +343,8 @@ export interface ResolvedChatPrefs {
   emoticons: boolean;
   // 33-4: defaulted + clamped.
   sidebarWidth: number;
+  // 43-4: defaulted to true.
+  typingIndicators: boolean;
 }
 
 // selectChatPrefs takes the (possibly sparse) prefs.chat and fills in
@@ -365,6 +371,7 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
       c.sidebarWidth === undefined
         ? SIDEBAR_WIDTH_DEFAULT
         : clampSidebarWidth(c.sidebarWidth),
+    typingIndicators: c.typingIndicators ?? true,
   };
 }
 

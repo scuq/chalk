@@ -98,6 +98,11 @@ type WSHandler struct {
 	// See ws_phase08b.go for the helpers.
 	connSubs sync.Map
 
+	// Phase 43-2: per-conn typing rate state, keyed by *Conn like connSubs.
+	// Values are *typingLimiter; see typing_ws.go. Drained by
+	// releaseTypingState at disconnect.
+	typingLimiters sync.Map
+
 	// gov-1b-2: per-instance in-flight set of proposals currently being
 	// resolved, to collapse concurrent dispatch of the same proposal. Keyed
 	// by uuid.UUID. Zero-value ready.
@@ -314,6 +319,7 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	defer h.releaseConnSubs(conn)
+	defer h.releaseTypingState(conn)
 
 	// Welcome.
 	//
@@ -533,6 +539,10 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 		// Phase 42-6: the cross-channel thread inbox
 		case proto.TypeThreadInbox:
 			h.handleThreadInbox(ctx, c, conn, f)
+
+		// Phase 43-2: typing indicators
+		case proto.TypeTyping:
+			h.handleTyping(ctx, c, conn, f)
 
 		// Phase 9.7a: user preferences
 		case proto.TypePrefsGet:

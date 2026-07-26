@@ -567,6 +567,14 @@ const (
 	// already ordered newest-first, because the two sets cannot overlap.
 	TypeThreadInbox    = "thread_inbox"
 	TypeThreadInboxAck = "thread_inbox_ack"
+
+	// Phase 43-1: typing indicators. Two frames, not three: typing is
+	// fire-and-forget, so there is no ack -- a client that is over the
+	// server's rate limit, or is not a member, simply sees nothing happen.
+	// typing_update is the push to the channel's OTHER members; the typist's
+	// own devices never receive it.
+	TypeTyping       = "typing"
+	TypeTypingUpdate = "typing_update"
 )
 
 // MarkReadPayload raises the caller's read cursor for one channel. Seq is
@@ -952,4 +960,25 @@ type PrefsSetPayload struct {
 // keeps the SPA's handler logic tight.
 type PrefsAckPayload struct {
 	Prefs map[string]any `json:"prefs"`
+}
+
+// TypingPayload says "I am composing in this channel, right now". Nothing is
+// persisted and there is no ack; the client re-sends every few seconds while
+// composing and simply stops when it stops.
+//
+// ThreadID is carried but currently unused: the thread composer does not send
+// typing and receivers drop any update that names a thread. It is on the wire
+// from the start so adding thread indicators later needs no protocol change.
+type TypingPayload struct {
+	ChannelID string `json:"channel_id"`
+	ThreadID  string `json:"thread_id,omitempty"`
+}
+
+// TypingUpdatePayload is the push naming who is composing. Receivers hold the
+// entry for a few seconds and drop it unless another update refreshes it, so a
+// client that disappears mid-sentence ages out on its own.
+type TypingUpdatePayload struct {
+	ChannelID string `json:"channel_id"`
+	ThreadID  string `json:"thread_id,omitempty"`
+	UserID    string `json:"user_id"`
 }

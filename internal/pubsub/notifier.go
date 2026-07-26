@@ -66,6 +66,10 @@ type Event struct {
 	// pointer only -- receivers re-read the cursor from the store).
 	// "thread_read" (42-4: same as "read" one level down -- UserID's cursor
 	// for ThreadID moved. Also a routing pointer; receivers re-read it).
+	// "typing" (43-3: UserID is composing in ChannelID. The one kind that is
+	// NOT a routing pointer and references no row at all -- it carries its
+	// whole meaning, is published per-channel WITHOUT a transaction via
+	// PublishEphemeral, and is delivered to every member EXCEPT UserID).
 	Kind string `json:"k"`
 
 	// Message fields (Kind="message"). MessageID and TS together

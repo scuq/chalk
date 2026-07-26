@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // ChannelTopic returns the Postgres NOTIFY topic name for the given
@@ -56,6 +57,33 @@ func PublishMessageWithTx(ctx context.Context, tx pgx.Tx, ev Event) error {
 	topic := ChannelTopic(ev.ChannelID)
 	_, err = tx.Exec(ctx, `SELECT pg_notify($1, $2)`, topic, string(payload))
 	if err != nil {
+		return fmt.Errorf("pg_notify (%s): %w", topic, err)
+	}
+	return nil
+}
+
+// PublishEphemeral emits a NOTIFY on ev's per-channel topic WITHOUT a
+// transaction (phase 43-2, typing indicators).
+//
+// This is only correct for events that reference no row. Anything durable must
+// use PublishMessageWithTx so the NOTIFY is delivered at the same COMMIT that
+// inserts the row the receiver will go and fetch -- publish a pointer to a row
+// that hasn't committed yet and receivers race the writer. A typing ping
+// carries its whole meaning in the event and touches no table, so a
+// transaction here would be a BEGIN/COMMIT round trip protecting nothing.
+//
+// The bare pg_notify runs in its own implicit transaction and is delivered
+// immediately.
+func PublishEphemeral(ctx context.Context, pool *pgxpool.Pool, ev Event) error {
+	if ev.ChannelID == uuid.Nil {
+		return fmt.Errorf("publish ephemeral: empty ChannelID")
+	}
+	payload, err := ev.Encode()
+	if err != nil {
+		return err
+	}
+	topic := ChannelTopic(ev.ChannelID)
+	if _, err := pool.Exec(ctx, `SELECT pg_notify($1, $2)`, topic, string(payload)); err != nil {
 		return fmt.Errorf("pg_notify (%s): %w", topic, err)
 	}
 	return nil

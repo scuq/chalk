@@ -14,6 +14,8 @@
 //   - On open_create_modal, if friends not yet loaded, fire friend_list.
 
 import { resolveNickHue } from "../chat/nickcolor";
+import { TYPING_PING_MS } from "../chat/typing";
+import { typingStore } from "../chat/typing-store";
 import { mentionsHandle } from "../chat/mentions";
 import { notifySounds, type NotifySounds } from "../notify";
 import { categoryForMessage } from "../notify/classify";
@@ -79,6 +81,11 @@ import {
   TypeThreadReadState,
   type MarkThreadReadPayload,
   type ThreadReadStatePayload,
+  // 43-1: typing indicators.
+  TypeTyping,
+  TypeTypingUpdate,
+  type TypingPayload,
+  type TypingUpdatePayload,
   // 42-6: the thread inbox.
   TypeThreadInbox,
   TypeThreadInboxAck,
@@ -150,6 +157,7 @@ import { Sidebar, ChannelGlyph } from "./Sidebar";
 import { MessageList } from "./MessageList";
 import { ConfirmModal } from "./ConfirmModal";
 import { Composer } from "./Composer";
+import { TypingLine } from "./TypingLine";
 // Phase 11c-2 PR 4: member-management modal.
 import { ThreadPanel } from "./ThreadPanel";
 // Phase 9.6d: heavy panels are lazy-loaded so the initial bundle
@@ -1173,6 +1181,13 @@ export function App() {
   unreadRef.current = state.unread;
   const activeChannelRef = useRef(state.activeChannelID);
   activeChannelRef.current = state.activeChannelID;
+  // 43-6: whether this viewer takes part in typing indicators at all. Read
+  // inside handleFrame, so it goes through a ref for the same stale-closure
+  // reason as userRef above -- without it the store would keep filling, and
+  // keep its sweep timer running, for someone who asked not to see any of it.
+  const typingEnabled = selectChatPrefs(state.prefs).typingIndicators;
+  const typingEnabledRef = useRef(typingEnabled);
+  typingEnabledRef.current = typingEnabled;
   // 38-3: ensureKeyFor runs from both an effect and a push, so it reads which
   // channels have history through a ref rather than closing over the state.
   const historyLoadedRef = useRef(state.historyLoaded);
@@ -1569,9 +1584,29 @@ export function App() {
         });
         break;
       }
+      case TypeTypingUpdate: {
+        const p = f.payload as TypingUpdatePayload;
+        // Two guards the server already applies, repeated here because a
+        // mixed-version fleet is cheaper to survive than to diagnose: never
+        // show ourselves, and ignore thread pings (nothing renders them, and
+        // "alice is typing" in the channel while she replies in a thread
+        // nobody has open would be actively wrong).
+        // userRef, not state.user: handleFrame is captured by the WS effect
+        // before welcome lands, so the closure's state.user is null forever.
+        if (!typingEnabledRef.current) break;
+        if (!p.user_id || p.user_id === userRef.current?.id) break;
+        if (p.thread_id) break;
+        typingStore.note(p.channel_id, p.user_id, Date.now());
+        break;
+      }
+
       case TypeMessage: {
         const wire = f.payload as MessagePayload;
         const m = wireToMessage(wire);
+        // They were typing this. Drop the name now rather than leaving it up
+        // for the rest of the TTL, which reads as a second message coming.
+        // Keyed on the user, not m.sender -- that field is a device id.
+        if (m.senderUserID) typingStore.clearUser(m.channelID, m.senderUserID);
         // Phase 23f (fail-closed): always decrypt before dispatch; a null-
         // version or undecryptable body becomes a placeholder, never cleartext.
         if (ccRef.current) {
@@ -1995,6 +2030,7 @@ export function App() {
         if (p.kind === "removed" && p.channel) {
           const cid = p.channel.id;
           dispatch({ kind: "channel_removed", channelID: cid });
+          typingStore.clearChannel(cid);
           // Allow a future re-add to re-subscribe.
           subscribeSentRef.current.delete(cid);
         }
@@ -2312,6 +2348,34 @@ export function App() {
     presenceVisible,
   ]);
 
+  // 43-6: turning the feature off clears whoever is on screen right now, so
+  // the line goes away immediately rather than at the next TTL.
+  useEffect(() => {
+    if (!typingEnabled) typingStore.clearAll();
+  }, [typingEnabled]);
+
+  // 43-7: when we last announced ourselves, per channel. Keyed by channel so
+  // the first keystroke after switching pings immediately instead of serving
+  // out the previous room's window; cleared on send so the next character
+  // does the same.
+  const typingSentRef = useRef<Map<string, number>>(new Map());
+  const notifyTyping = (active: boolean) => {
+    const cid = state.activeChannelID;
+    if (!cid) return;
+    if (!active) {
+      typingSentRef.current.delete(cid);
+      return;
+    }
+    if (!typingEnabled) return;
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    const now = Date.now();
+    const last = typingSentRef.current.get(cid) ?? 0;
+    if (now - last < TYPING_PING_MS) return;
+    typingSentRef.current.set(cid, now);
+    c.send<TypingPayload>(TypeTyping, { channel_id: cid });
+  };
+
   const presenceSubscribedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (state.wsState !== "open") {
@@ -2319,6 +2383,9 @@ export function App() {
       // Also clear the presence map: an offline-and-back round-trip
       // shouldn't leave stale "online" dots from before the drop.
       dispatch({ kind: "presence_reset" });
+      // Same reasoning for typing: names frozen across a drop are worse than
+      // none, and over a long one the typist may have left entirely.
+      typingStore.clearAll();
       return;
     }
     const c = clientRef.current;
@@ -3554,6 +3621,12 @@ export function App() {
       })()}
 
       <footer class="chalk-footer">
+        <TypingLine
+          channelID={state.activeChannelID}
+          members={activeChannel?.members}
+          isDM={!!activeChannel?.isDM}
+          display={selectChatPrefs(state.prefs)}
+        />
         <Composer
           toolStyle={selectChatPrefs(state.prefs).composerToolStyle}
           emoticons={selectChatPrefs(state.prefs).emoticons}
@@ -3569,6 +3642,7 @@ export function App() {
               : "encryption_initializing"
           }
           onSend={(body, pending, opts) => onSend(body, undefined, pending, opts)}
+          onTyping={notifyTyping}
           editing={editingFeed}
           onEditSubmit={async (body) => {
             const ok = await submitEdit(editingFeed, body);

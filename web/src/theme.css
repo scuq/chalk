@@ -210,6 +210,21 @@ html, body {
   padding: var(--chalk-s3) 0 var(--chalk-s4) 0;
 }
 
+/* 43-6: "alice is typing...". The row is reserved whether or not anyone is
+   typing -- the shell is a grid with a 1fr message pane, so a footer that
+   grew and shrank would resize the pane under someone reading it. nowrap +
+   ellipsis for the same reason: five handles that wrap to two lines would
+   reintroduce exactly the shift the reservation prevents. */
+.chalk-typing {
+  min-height: 1.2em;
+  line-height: 1.2;
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* -- StatusBar ---------------------------------------------------- */
 
 .chalk-status {

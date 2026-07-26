@@ -438,6 +438,9 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 	case "thread_read":
 		// 42-4: the same, for a thread's cursor.
 		s.handleThreadReadEvent(ev)
+	case "typing":
+		// 43-3: someone is composing; tell the channel's other members.
+		s.handleTypingEvent(ev)
 	}
 }
 

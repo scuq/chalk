@@ -29,7 +29,7 @@ Every frame has a `type` (string) and an optional `ref` (correlation ID for requ
 | `fetch_thread` | `{ channel_id, thread_id }` | All messages in one thread |
 | `upload_blob_init` | `{ size, mime_hint }` | Returns upload URL + token |
 | `presence_set` | `{ state: "active"\|"away"\|"dnd" }` | Per-device |
-| `typing` | `{ channel_id, thread_id? }` | Ephemeral, not persisted |
+| `typing` | `{ channel_id, thread_id? }` | Ephemeral, not persisted. No ack. Throttled server-side; over-rate and non-member frames are dropped silently. `thread_id` is relayed but unused |
 | `friend_request_send` | `{ handle, encrypted_intro? }` | |
 | `friend_request_accept` | `{ request_id }` | |
 | `ack` | `{ message_id }` | Read receipts (optional) |
@@ -46,7 +46,7 @@ Every frame has a `type` (string) and an optional `ref` (correlation ID for requ
 | `message` | `{ id, channel_id, thread_id?, parent_id?, sender, ts, seq, body }` | |
 | `member_change` | `{ channel_id, added: [...], removed: [...] }` | |
 | `presence_update` | `{ user_id, online, encrypted_state? }` | Friend presence change |
-| `typing_update` | `{ channel_id, thread_id?, user_id }` | |
+| `typing_update` | `{ channel_id, thread_id?, user_id }` | Sent to a channel's other members only -- never to the typist's own devices. Holds for a few seconds, then expires client-side; there is no stop frame |
 | `friend_request_in` | `{ request_id, from_handle, encrypted_intro? }` | |
 | `friend_added` | `{ user_id, handle, devices: [...] }` | |
 | `message_deleted` | `{ channel_id, message_id, seq, deleted_by?, deleted_at? }` | Tombstone the row locally |

@@ -434,6 +434,29 @@ export interface ReadStatePayload {
   last_read_seq: number;
 }
 
+// ---- Phase 43-1: typing indicators ---------------------------------
+
+export const TypeTyping = "typing";
+export const TypeTypingUpdate = "typing_update";
+
+// typing is fire-and-forget: no ack, nothing persisted. Re-send it every few
+// seconds while composing; the server throttles anything faster and drops it
+// silently. thread_id is on the wire for a future thread indicator -- the
+// thread composer does not send it today.
+export interface TypingPayload {
+  channel_id: string;
+  thread_id?: string;
+}
+
+// typing_update names one person composing in a channel. Never delivered to
+// the typist's own devices. Entries age out after TYPING_TTL_MS unless another
+// update refreshes them.
+export interface TypingUpdatePayload {
+  channel_id: string;
+  thread_id?: string;
+  user_id: string;
+}
+
 // ---- Phase 42-4: thread read cursors -------------------------------
 
 export const TypeMarkThreadRead = "mark_thread_read";
