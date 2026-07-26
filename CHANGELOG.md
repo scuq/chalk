@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.3.49 — 27 July 2026 — Name colours everywhere and calmer away detection
 
 ### Changed
 - **Away is much slower to trigger.** All three of the "are you still there"
