@@ -557,10 +557,10 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   // attachment and GIF affordances are hidden rather than disabled: they'd
   // imply you can add a file to an existing message, which you can't.
   const showTools = !editing && (enableAttachments || giphyEnabled);
-  // 44-1: the main composer gets a tool rail directly above its input; the
-  // thread composer has no tools and stays a plain stacked box. The rail used
-  // to sit in the roster's column, which put the buttons a screen-width away
-  // from the field they act on.
+  // 44-5: the main composer gets a tool block immediately left of its input;
+  // the thread composer has no tools and stays a plain stacked box. The block
+  // used to sit in the roster's column, which put the buttons a screen-width
+  // away from the field they act on.
   const railed = enableAttachments || giphyEnabled;
   const mac = isMacPlatform();
 
@@ -599,91 +599,6 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
           onChange={onFileChange}
           data-testid="composer-file-input"
         />
-      )}
-      {/* 44-1: tool rail, sitting with the field it acts on. Rendered (empty)
-          during an edit so the input does not jump a row's height. The old
-          per-button classes are kept alongside chalk-composer-tool so the
-          existing hover/disabled rules still apply. */}
-      {railed && (
-        <div
-          class={`chalk-composer-rail ${icons ? "chalk-composer-rail--icons" : "chalk-composer-rail--text"}`}
-          data-testid="composer-rail"
-        >
-          {showTools && (
-            <div class="chalk-composer-tools" data-testid="composer-tools">
-              {enableAttachments && (
-                <button
-                  type="button"
-                  class="chalk-composer-tool chalk-composer-attach"
-                  onClick={() => openTool("file")}
-                  disabled={effectiveDisabled || sending}
-                  title={`attach a file (${shortcutLabel("file", mac)})`}
-                  aria-label="attach a file"
-                  data-testid="composer-attach"
-                >
-                  {icons ? <IconFile /> : "FILE"}
-                </button>
-              )}
-              {giphyEnabled && (
-                <button
-                  type="button"
-                  class="chalk-composer-tool chalk-composer-giphy"
-                  onClick={() => openTool("gif")}
-                  disabled={effectiveDisabled || sending}
-                  title={`send a GIF (${shortcutLabel("gif", mac)})`}
-                  aria-label="send a GIF"
-                  data-testid="composer-giphy"
-                >
-                  {icons ? <IconGif /> : "GIF"}
-                </button>
-              )}
-              <button
-                type="button"
-                class="chalk-composer-tool chalk-composer-emoji"
-                onClick={() => openTool("emoji")}
-                disabled={effectiveDisabled || sending}
-                title={`insert emoji (${shortcutLabel("emoji", mac)})`}
-                aria-label="insert emoji"
-                data-testid="composer-emoji"
-              >
-                {icons ? "🙂" : "EMOJI"}
-              </button>
-              <div class="chalk-composer-help" ref={helpRef}>
-                <button
-                  type="button"
-                  class="chalk-composer-tool chalk-composer-help-toggle"
-                  onClick={() => setHelpOpen((v) => !v)}
-                  title="keyboard shortcuts"
-                  aria-label="keyboard shortcuts"
-                  aria-expanded={helpOpen}
-                  data-testid="composer-help-toggle"
-                >
-                  ?
-                </button>
-                {helpOpen && (
-                  <div
-                    class="chalk-composer-help-sheet"
-                    role="dialog"
-                    aria-label="composer keyboard shortcuts"
-                    data-testid="composer-help-sheet"
-                  >
-                    <div class="chalk-composer-help-title">shortcuts</div>
-                    <dl class="chalk-composer-help-list">
-                      {composerHelp(mac).map((row) => (
-                        <div class="chalk-composer-help-row" key={row.keys}>
-                          <dt>
-                            <kbd>{row.keys}</kbd>
-                          </dt>
-                          <dd>{row.what}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
       )}
       <div class="chalk-composer-main">
         {enableAttachments && dragActive && (
@@ -749,6 +664,94 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
           </div>
         )}
         <div class="chalk-composer-row">
+          {/* 44-5: the tool block, immediately left of the field it acts on.
+              A 2x2 grid rather than a row or a column: a row stole width from
+              the field, a column of four made the footer twice as tall. The
+              block is rendered (empty) during an edit to hold its width, so
+              the field does not slide sideways mid-edit. The old per-button
+              classes are kept alongside chalk-composer-tool so the existing
+              hover/disabled rules still apply. */}
+          {railed && (
+            <div
+              class={`chalk-composer-rail ${icons ? "chalk-composer-rail--icons" : "chalk-composer-rail--text"}`}
+              data-testid="composer-rail"
+            >
+              {showTools && (
+                <div class="chalk-composer-tools" data-testid="composer-tools">
+                  {enableAttachments && (
+                    <button
+                      type="button"
+                      class="chalk-composer-tool chalk-composer-attach"
+                      onClick={() => openTool("file")}
+                      disabled={effectiveDisabled || sending}
+                      title={`attach a file (${shortcutLabel("file", mac)})`}
+                      aria-label="attach a file"
+                      data-testid="composer-attach"
+                    >
+                      {icons ? <IconFile /> : "FILE"}
+                    </button>
+                  )}
+                  {giphyEnabled && (
+                    <button
+                      type="button"
+                      class="chalk-composer-tool chalk-composer-giphy"
+                      onClick={() => openTool("gif")}
+                      disabled={effectiveDisabled || sending}
+                      title={`send a GIF (${shortcutLabel("gif", mac)})`}
+                      aria-label="send a GIF"
+                      data-testid="composer-giphy"
+                    >
+                      {icons ? <IconGif /> : "GIF"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    class="chalk-composer-tool chalk-composer-emoji"
+                    onClick={() => openTool("emoji")}
+                    disabled={effectiveDisabled || sending}
+                    title={`insert emoji (${shortcutLabel("emoji", mac)})`}
+                    aria-label="insert emoji"
+                    data-testid="composer-emoji"
+                  >
+                    {icons ? "🙂" : "EMOJI"}
+                  </button>
+                  <div class="chalk-composer-help" ref={helpRef}>
+                    <button
+                      type="button"
+                      class="chalk-composer-tool chalk-composer-help-toggle"
+                      onClick={() => setHelpOpen((v) => !v)}
+                      title="keyboard shortcuts"
+                      aria-label="keyboard shortcuts"
+                      aria-expanded={helpOpen}
+                      data-testid="composer-help-toggle"
+                    >
+                      ?
+                    </button>
+                    {helpOpen && (
+                      <div
+                        class="chalk-composer-help-sheet"
+                        role="dialog"
+                        aria-label="composer keyboard shortcuts"
+                        data-testid="composer-help-sheet"
+                      >
+                        <div class="chalk-composer-help-title">shortcuts</div>
+                        <dl class="chalk-composer-help-list">
+                          {composerHelp(mac).map((row) => (
+                            <div class="chalk-composer-help-row" key={row.keys}>
+                              <dt>
+                                <kbd>{row.keys}</kbd>
+                              </dt>
+                              <dd>{row.what}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <textarea
             ref={textareaRef}
             class="chalk-composer-input"

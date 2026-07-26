@@ -342,11 +342,10 @@ html, body {
   gap: var(--chalk-s2);
 }
 
-/* 44-1: the main composer stacks its tool rail directly on top of its input.
-   The rail used to occupy the roster's column, which left the buttons sitting
-   a sidebar-width away from the field they act on -- and handed that whole
-   column to four small buttons. The thread composer keeps the plain stacked
-   layout above. */
+/* 44-5: the main composer is a plain stacked box like the thread one -- the
+   tool block lives inside the input row now, not in a column of its own. The
+   rail used to occupy the whole roster column, which left the buttons sitting
+   a sidebar-width away from the field they act on. */
 .chalk-composer--railed {
   display: flex;
   flex-direction: column;
@@ -354,10 +353,10 @@ html, body {
 }
 
 /* The rail renders empty during an edit (its buttons are hidden), so it holds
-   a tool button's height to stop the field jumping a row mid-edit. */
+   the block's width to stop the field sliding sideways mid-edit. */
 .chalk-composer-rail {
-  min-width: 0;
-  min-height: 22px;
+  flex: none;
+  min-width: 56px;
 }
 
 .chalk-composer-main {
@@ -5217,27 +5216,47 @@ body.chalk-resizing .chalk-sidebar-resizer {
   border-color: var(--chalk-error);
 }
 
-/* ---- 44-2: the always-present footer cluster --------------------------- */
+/* ---- 44-2/44-6: the always-present footer panel ------------------------ */
 
-/* Its own query container, on the same terms as the dock's: the roster column
-   is rarely wide enough for four word labels, so this normally renders as the
-   compact "m d v ⚙" row. Wrapping is the fallback for a font scale that busts
-   even that. */
+/* Same border, raised background and margins as .chalk-voice-dock, which sits
+   directly above it in this column -- the two read as one voice block rather
+   than a panel and four loose buttons. Four equal columns so the buttons fill
+   the roster width at any sidebar size instead of huddling at the left edge. */
 .chalk-voice-controls {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--chalk-s1);
-  container: voicectl / inline-size;
+  margin: 0 var(--chalk-s2);
+  border: 1px solid var(--chalk-border);
+  background: var(--chalk-bg-elev);
+  padding: var(--chalk-s2);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--chalk-s2);
 }
 
-@container voicectl (max-width: 26em) {
-  .chalk-voice-controls .chalk-voice-ctl-wide {
-    display: none;
-  }
-  .chalk-voice-controls .chalk-voice-ctl-mini {
-    display: inline;
-  }
+.chalk-voice-ctlbtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  min-height: 32px;
+  padding: 0;
+  background: transparent;
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  cursor: pointer;
+}
+
+.chalk-voice-ctlbtn:hover {
+  color: var(--chalk-fg-bright);
+  border-color: var(--chalk-fg-muted);
+  background: var(--chalk-bg-elev-2);
+}
+
+/* Muted, deafened, camera-off: the state you can be caught out by, so it gets
+   the warning colour rather than a subtler "inactive" treatment. */
+.chalk-voice-ctlbtn.is-off {
+  color: var(--chalk-warn);
+  border-color: var(--chalk-warn);
 }
 
 /* ---- debug drawer (30-4c diagnostics, rebuilt for the 30-5 layout) ---- */
@@ -5338,13 +5357,16 @@ body.chalk-resizing .chalk-sidebar-resizer {
   opacity: 1;
 }
 
-/* Tool row: attach / GIF / emoji / "?", above the input rather than competing
-   with it for horizontal space. Small, because they're a secondary affordance
-   -- the field is the thing. Wraps so a narrow window still shows all four. */
+/* 44-5: attach / GIF / emoji / "?" as a 2x2 block against the left edge of the
+   input. Two columns rather than one row or one column: a row ate the field's
+   width, and a column of four made the footer twice as tall as the field it
+   sits beside. align-content: end keeps the block's bottom on the input's
+   bottom when the field is dragged taller. */
 .chalk-composer-tools {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  align-content: end;
+  justify-content: start;
   gap: var(--chalk-s1);
 }
 .chalk-composer-tool {
@@ -6121,14 +6143,16 @@ body.chalk-resizing .chalk-sidebar-resizer {
   letter-spacing: 0.06em;
 }
 
-/* Icon variant: square-ish buttons that centre their glyph. The SVGs
-   stroke with currentColor, so they inherit the button's colour and
-   hover state and need no per-theme rules. */
+/* Icon variant: square buttons that centre their glyph. The SVGs stroke with
+   currentColor, so they inherit the button's colour and hover state and need
+   no per-theme rules. 26px square x 2 rows lands the block at the same height
+   as the two-row input beside it. */
 .chalk-composer-rail--icons .chalk-composer-tool {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 26px;
+  height: 26px;
   padding: 0;
 }
 .chalk-composer-rail--icons .chalk-composer-tool svg {
@@ -6683,25 +6707,30 @@ body.chalk-resizing .chalk-sidebar-resizer {
     min-width: 0;
   }
 
-  /* The rail drops below the input on a phone: the field belongs against the
-     on-screen keyboard, and the tools are within thumb reach underneath it.
-     column-reverse rather than reordering the DOM, so the tab order (field,
-     then tools) stays the same on both layouts. */
-  .chalk-composer--railed {
-    flex-direction: column-reverse;
-  }
-
   .chalk-composer-send {
     height: 34px;
     padding: 0 var(--chalk-s3);
   }
 
-  .chalk-composer-tool {
-    min-height: 36px;
+  /* 44-5: bigger squares for thumbs. The block is then 2 x 34px + the gap, so
+     the field is given the same height rather than leaving dead space beside
+     it -- two lines of input on a phone is no hardship. */
+  .chalk-composer-rail--icons .chalk-composer-tool {
+    width: 34px;
+    height: 34px;
+  }
+
+  /* Word labels are opt-in now, but they still have to be tappable. */
+  .chalk-composer-rail--text .chalk-composer-tool {
+    height: 34px;
   }
 
   .chalk-composer-rail {
-    min-height: 36px;
+    min-width: 72px;
+  }
+
+  .chalk-composer-input {
+    min-height: 72px;
   }
 
   /* Opening upward from a rail at the very bottom of the screen would put the

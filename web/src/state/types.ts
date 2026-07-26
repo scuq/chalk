@@ -291,8 +291,10 @@ export interface ChatPrefs {
   userColorsEnabled?: boolean;
   selfColorHue?: number;
   userHues?: Record<string, number>;
-  // Phase 9.7h: composer tool row presentation. "text" renders FILE / GIF /
-  // EMOJI labels; "icons" renders glyphs. Default "text".
+  // Phase 9.7h: composer tool presentation. "text" renders FILE / GIF / EMOJI
+  // labels; "icons" renders glyphs. Default "icons" since 44-5 -- the tools
+  // are a 2x2 block against the input now, and word labels make it three
+  // times as wide as the glyphs do for no gain in clarity.
   composerToolStyle?: "text" | "icons";
   // 42-1: replace typed emoticons (":)") with the matching emoji as you type.
   // Default ON -- it's what every chat client before the web did.
@@ -343,7 +345,7 @@ export interface ResolvedChatPrefs {
   userColorsEnabled: boolean;
   selfColorHue: number;
   userHues: Record<string, number>;
-  // Phase 9.7h: defaulted to "text".
+  // Phase 9.7h: defaulted to "icons" (44-5).
   composerToolStyle: "text" | "icons";
   // 42-1: defaulted to true.
   emoticons: boolean;
@@ -371,7 +373,7 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
       c.userHues && typeof c.userHues === "object" && !Array.isArray(c.userHues)
         ? (c.userHues as Record<string, number>)
         : {},
-    composerToolStyle: c.composerToolStyle === "icons" ? "icons" : "text",
+    composerToolStyle: c.composerToolStyle === "text" ? "text" : "icons",
     emoticons: c.emoticons ?? true,
     sidebarWidth:
       c.sidebarWidth === undefined

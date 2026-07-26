@@ -14,7 +14,7 @@ import { MAX_GAIN, MAX_HOLD_MS, MIN_GAIN, useMicPrefs } from "../voice/mic-prefs
 import { MicChain } from "../voice/mic-chain";
 import { describeMediaError } from "../voice/call";
 import { voiceSession } from "../voice/session";
-import { TRANSMIT_LABELS, TRANSMIT_MODES } from "../voice/vad";
+import { TRANSMIT_LABELS, TRANSMIT_MODES, isTransmitMode } from "../voice/vad";
 import { isTypingTarget, keyLabel } from "../voice/hotkeys";
 
 // Above this the signal is about to clip, and clipping is unrecoverable at the
@@ -300,27 +300,32 @@ export function MicSettings() {
         )}
       </div>
 
+      {/* 44-7: a dropdown, not four stacked cards. The four modes are mutually
+          exclusive one-liners, and as cards they took more of the dialog than
+          the level meter -- which is the thing you actually came here to
+          watch. The chosen mode's explanation sits under the select, so
+          nothing is lost by collapsing them. */}
       <div class="chalk-profile-field">
-        <label class="chalk-profile-label">when to transmit</label>
-        <div class="chalk-profile-theme-picker" role="radiogroup" aria-label="transmit mode">
+        <label class="chalk-profile-label" for="mic-mode">
+          when to transmit
+        </label>
+        <select
+          id="mic-mode"
+          class="chalk-profile-select"
+          value={mic.mode}
+          onChange={(e) => {
+            const v = (e.target as HTMLSelectElement).value;
+            if (isTransmitMode(v)) setMic({ mode: v });
+          }}
+          data-testid="mic-mode"
+        >
           {TRANSMIT_MODES.map((m) => (
-            <label
-              class={`chalk-profile-theme-option${mic.mode === m ? " is-active" : ""}`}
-              key={m}
-            >
-              <input
-                type="radio"
-                name="mic-mode"
-                value={m}
-                checked={mic.mode === m}
-                onChange={() => setMic({ mode: m })}
-                data-testid={`mic-mode-${m}`}
-              />
-              <span class="chalk-profile-theme-name">{TRANSMIT_LABELS[m].label}</span>
-              <span class="chalk-profile-theme-desc">{TRANSMIT_LABELS[m].desc}</span>
-            </label>
+            <option value={m} key={m}>
+              {TRANSMIT_LABELS[m].label}
+            </option>
           ))}
-        </div>
+        </select>
+        <p class="chalk-profile-hint">{TRANSMIT_LABELS[mic.mode].desc}</p>
       </div>
 
       {mic.mode === "vad" && (
