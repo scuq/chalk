@@ -1316,6 +1316,33 @@ export function App() {
     if (state.authStage !== "authed") voiceSession.reset();
   }, [state.authStage]);
 
+  // Click-to-join (Addendum C, core): selecting a voice room connects to it,
+  // Discord-style. This used to be a synchronous check inside the sidebar's
+  // onSelect, but that raced ensureChannelKey (the effect above) -- on a
+  // channel's first-ever visit the key isn't ready yet at click time, so the
+  // join was skipped and the lobby's manual "join voice" button showed
+  // instead; only a later visit (key already cached in keyStatus) joined
+  // automatically. Keying this off keyStatus instead of the click makes both
+  // cases the same: it fires as soon as the active channel is a voice room
+  // AND its key is ready, whether that's immediate (cached) or async (first
+  // visit). voiceSession.join is idempotent for the room we're already in/
+  // joining, so this is a no-op on renders where nothing changed.
+  useEffect(() => {
+    const cid = state.activeChannelID;
+    if (!cid || !state.voiceEnabled || !state.user || !ccReady) return;
+    const ch = state.channels[cid];
+    if (!ch || ch.channelType !== "voice") return;
+    if (keyStatus[cid] !== "ready") return;
+    void voiceSession.join({
+      channelID: ch.id,
+      channelName: ch.name,
+      selfUserID: state.user.id,
+      selfDeviceID: state.user.device,
+      client: clientRef,
+      cc: ccRef,
+    });
+  }, [state.activeChannelID, state.channels, state.voiceEnabled, state.user, ccReady, keyStatus]);
+
   // 30-5i: auto-rejoin after a page reload. A reload cannot preserve WebRTC
   // state, so the prior session left a hint (sessionStorage). Once we're
   // authed, the socket is open, crypto is ready and the room's key is ready,
@@ -3320,30 +3347,12 @@ export function App() {
             // On mobile the roster covers the conversation, so picking one
             // has to hand the screen back.
             setNavOpen(false);
-            // 30-5c click-to-join (Addendum C, core): selecting a voice
-            // room connects to it, Discord-style; selecting a different
-            // voice room moves you (session.join handles the move, and
-            // re-clicking the room you are in is a no-op). Gated on the
-            // same readiness as the lobby button -- when the key is not
-            // ready yet, the room opens and the lobby explains.
-            const ch = state.channels[id];
-            if (
-              ch &&
-              ch.channelType === "voice" &&
-              state.voiceEnabled &&
-              state.user &&
-              ccReady &&
-              keyStatus[id] === "ready"
-            ) {
-              void voiceSession.join({
-                channelID: ch.id,
-                channelName: ch.name,
-                selfUserID: state.user.id,
-                selfDeviceID: state.user.device,
-                client: clientRef,
-                cc: ccRef,
-              });
-            }
+            // 30-5c click-to-join (Addendum C, core): selecting a voice room
+            // connects to it, Discord-style. The actual join call lives in
+            // the keyStatus-driven effect above (it fires off this same
+            // set_active_channel dispatch) so first-time visits -- where the
+            // channel key isn't ready yet -- join automatically too, instead
+            // of only on a later revisit.
           }}
           onFriendClick={(friendUserID) => {
             setNavOpen(false);

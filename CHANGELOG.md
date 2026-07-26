@@ -45,6 +45,12 @@ The engineering-level history (which slice shipped what) lives in
   single letters — `m`, `d`, `l`, still colour-coded and with the full wording
   on hover — and grow back to words once the sidebar is wide enough to hold
   them.
+- **Voice channels join automatically the first time too.** Opening a voice
+  channel you had never visited before showed a "join voice" button instead of
+  connecting right away — only a later visit, once you had already opened that
+  room once, joined automatically on click. Every visit now behaves the same
+  way: picking a voice channel joins it as soon as it's ready, first time or
+  not.
 
 ---
 
