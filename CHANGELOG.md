@@ -10,16 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.3.45 — 26 July 2026 — Voice controls, microphone settings and typing indicators
 
 ### Added
-- **Mute, deafen and camera are always within reach — and they stick.** A row
+- **Mute, deafen and camera are always within reach — and they stick.** A panel
   of voice controls now sits at the bottom left, under your channel list,
   whether or not you are in a call. They are not just for the call you are in:
   whatever they show is how you join the next room. Mute yourself before you
   walk in and you arrive muted; turn the camera on and you arrive with video,
   instead of joining live and scrambling for the button. They stay put across
-  leaving a room, dropped connections and page reloads.
+  leaving a room, dropped connections and page reloads. The mute and deafen
+  buttons that used to be in the "voice connected" panel are gone, since they
+  now sit directly below it and did the same thing.
 - **Microphone settings have a dialog of their own.** Input device, level and
   meter, when to transmit, and the voice keys are now behind the ⚙ next to the
   mute button — where you already are when nobody can hear you — rather than
@@ -27,6 +29,8 @@ The engineering-level history (which slice shipped what) lives in
   points you to it. Everything in it except the chosen input device now follows
   your account, so a second computer starts from your settings instead of a
   blank slate; the device stays put, since it names a socket on one machine.
+  "When to transmit" is a dropdown now rather than four stacked cards, so the
+  level meter is no longer pushed off the screen by them.
 - **You can see when someone is writing to you.** A line above the message box
   says "alice is typing...", naming up to five people at once — and if more
   than five of you are going at it, it gives up and says the keyboards are on
@@ -50,8 +54,11 @@ The engineering-level history (which slice shipped what) lives in
 ### Changed
 - **The attach, GIF and emoji buttons moved next to the message box.** They
   used to sit at the bottom of the channel list, a screen's width from the
-  field they act on, and took up a whole column to do it. They are now on the
-  row directly above the box you type in.
+  field they act on, and took up a whole column to do it. They are now a small
+  block against the left edge of the box you type in. They also show as icons
+  by default instead of the words FILE / GIF / EMOJI, since the block would
+  otherwise be three times as wide; if you preferred the words, the composer
+  buttons setting in your profile still has them.
 - **The cursor is already in the message box when you open a channel.** Picking
   a channel puts the caret in the composer, so you can start typing straight
   away instead of clicking into the box first; if the channel is still
