@@ -378,13 +378,26 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     if (!body && pending.length === 0) return;
     if (body.length > MAX_LEN) return;
 
-    // Text-only: send immediately, no progress UI.
+    // Text-only: no progress UI. The box clears synchronously so rapid
+    // typing never fights a disabled textarea -- but onSend resolves false
+    // when the send was blocked (socket just dropped, key not here yet), and
+    // losing the message silently would be worse than a moment of surprise.
+    // On refusal the draft is put back, unless the user has already started
+    // typing something new in the meantime.
     if (pending.length === 0) {
-      onSend(body);
       setDraft("");
       // The draft is gone, so we are no longer typing -- and the next
       // character should ping at once rather than wait out the old window.
       onTyping?.(false);
+      let result: boolean | void;
+      try {
+        result = await onSend(body);
+      } catch {
+        result = false;
+      }
+      if (result === false) {
+        setDraft((cur) => (cur === "" ? body : cur));
+      }
       return;
     }
 
