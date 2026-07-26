@@ -242,13 +242,45 @@ export class WSClient {
 // identity; for now we just need stability across page reloads so the
 // server's per-device presence bookkeeping doesn't churn.
 const DEVICE_ID_KEY = "chalk.deviceId";
+
+// 48-3: crypto.randomUUID is secure-context-only and missing on older
+// WebKit, so a plain-http LAN deploy would crash here before the socket
+// ever opened. The fallback only has to be unique across one user's own
+// devices, so Math.random is acceptable.
+function randomDeviceId(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+// 48-3: when localStorage itself is unavailable (private browsing with a
+// zero quota, storage blocked by policy) the id lives here instead --
+// stable for this page load, regenerated on reload. The server tolerates
+// the churn via ensureDeviceForUser's rebind path (see below).
+let memoryDeviceId: string | null = null;
+
 export function getOrCreateDeviceId(): string {
-  const existing = window.localStorage.getItem(DEVICE_ID_KEY);
+  if (memoryDeviceId) return memoryDeviceId;
+  let existing: string | null = null;
+  try {
+    existing = window.localStorage.getItem(DEVICE_ID_KEY);
+  } catch {
+    // storage unavailable; fall through to the in-memory id
+  }
   if (existing && /^[0-9a-f-]{36}$/i.test(existing)) {
     return existing;
   }
-  const fresh = crypto.randomUUID();
-  window.localStorage.setItem(DEVICE_ID_KEY, fresh);
+  const fresh = randomDeviceId();
+  try {
+    window.localStorage.setItem(DEVICE_ID_KEY, fresh);
+  } catch {
+    memoryDeviceId = fresh;
+  }
   return fresh;
 }
 
@@ -263,13 +295,12 @@ export function getOrCreateDeviceId(): string {
 // here means the rebind path is rare and the server log line for it
 // is genuinely interesting when it fires.
 export function clearDeviceId(): void {
+  memoryDeviceId = null;
   try {
     window.localStorage.removeItem(DEVICE_ID_KEY);
   } catch {
-    // localStorage can throw in private-browsing edge cases; we
-    // already tolerate missing-storage in getOrCreateDeviceId by
-    // generating a fresh id each call, so a missed clear here is
-    // harmless.
+    // localStorage can throw in private-browsing edge cases; without
+    // storage the id was in-memory anyway, and that was cleared above.
   }
 }
 
