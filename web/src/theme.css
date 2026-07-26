@@ -6080,10 +6080,18 @@ body.chalk-resizing .chalk-sidebar-resizer {
 /* ============================================================
    Phase 9.7f: per-user nick colors
    ============================================================
-   Sender labels carry only a HUE (--nick-h, set inline per message).
-   Saturation and lightness come from the theme, so a single stored
-   value per user stays readable on every ground -- including themes
-   added later. See web/src/chat/nickcolor.ts for why hue-only.
+   A name's HUE is per-user; saturation and lightness come from the
+   theme, so a single stored value per user stays readable on every
+   ground -- including themes added later. See web/src/chat/nickcolor.ts
+   for why hue-only.
+
+   The hue arrives in a full inline declaration
+   (color: hsl(65 var(--nick-s) var(--nick-l))), NOT as an inline
+   --nick-h that these rules read: some WebKit builds drop custom
+   properties assigned through style.cssText, which is how Preact
+   applies a string style, and every name fell back to one hue there.
+   The --nick-h fallbacks below therefore only ever paint an element
+   whose inline style is missing entirely.
    ============================================================ */
 
 /* Dark grounds: light, moderately saturated text. */

@@ -25,7 +25,7 @@
 // button returns to the main panel without rotating, in case the
 // user clicked it by accident.
 
-import { hexFromHue, hueFromHex } from "../chat/nickcolor";
+import { hexFromHue, hueFromHex, nickTintStyle } from "../chat/nickcolor";
 import {
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
@@ -617,7 +617,7 @@ export function ProfilePanel({
                     />
                     <span
                       class="chalk-nick-preview"
-                      style={`--nick-h:${chatPrefs.selfColorHue}`}
+                      style={nickTintStyle(chatPrefs.selfColorHue)}
                     >
                       you
                     </span>

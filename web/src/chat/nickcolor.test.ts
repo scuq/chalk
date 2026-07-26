@@ -6,6 +6,7 @@ import {
   hueFromString,
   hueFromHex,
   hexFromHue,
+  nickTintStyle,
   resolveNickHue,
 } from "./nickcolor.ts";
 
@@ -30,6 +31,27 @@ test("hueFromString is stable, case-insensitive, and in range", () => {
 test("hueFromString separates typical handles", () => {
   const hues = ["alice9", "craigtester", "andowin", "scuq"].map(hueFromString);
   assert.equal(new Set(hues).size, hues.length, "no collisions on these");
+});
+
+test("nickTintStyle inlines the hue and leaves s/l to the theme", () => {
+  // The hue must be a literal in the declaration. A custom property here
+  // (--nick-h:65) is what some WebKit builds dropped, painting every name
+  // the fallback hue.
+  assert.equal(
+    nickTintStyle(65),
+    "color:hsl(65 var(--nick-s) var(--nick-l))",
+  );
+  assert.equal(
+    nickTintStyle(221, "background"),
+    "background:hsl(221 var(--nick-s) var(--nick-l))",
+  );
+  assert.ok(!nickTintStyle(65).includes("--nick-h"));
+  // Junk can't produce "hsl(NaN ...)", which would kill the declaration.
+  assert.equal(
+    nickTintStyle(NaN),
+    `color:hsl(${DEFAULT_SELF_HUE} var(--nick-s) var(--nick-l))`,
+  );
+  assert.equal(nickTintStyle(-30), "color:hsl(330 var(--nick-s) var(--nick-l))");
 });
 
 test("hueFromHex reads primaries and tolerates a missing #", () => {

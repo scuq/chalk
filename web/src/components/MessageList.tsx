@@ -7,7 +7,7 @@ import { MessageMenu } from "./MessageMenu";
 import { AttachmentView } from "./AttachmentView";
 import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
-import { DEFAULT_SELF_HUE, resolveNickHue } from "../chat/nickcolor";
+import { DEFAULT_SELF_HUE, nickTintStyle, resolveNickHue } from "../chat/nickcolor";
 import { splitBodyParts } from "../chat/links";
 import { fmtRelative } from "../chat/reltime";
 import { lazyComponent } from "./LazyComponent";
@@ -688,7 +688,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                 <span
                   class={`chalk-message-sender ${nickHue !== null ? "chalk-message-sender--tinted" : ""}`}
                   title={senderTitle}
-                  style={nickHue !== null ? `--nick-h:${nickHue}` : undefined}
+                  style={nickHue !== null ? nickTintStyle(nickHue) : undefined}
                 >
                   {senderLabel}
                 </span>

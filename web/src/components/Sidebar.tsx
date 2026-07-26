@@ -9,7 +9,12 @@
 // joined/left/state pushes.
 
 import { useState, useRef, useEffect } from "preact/hooks";
-import { hexFromHue, hueFromHex } from "../chat/nickcolor";
+import {
+  DEFAULT_SELF_HUE,
+  hexFromHue,
+  hueFromHex,
+  nickTintStyle,
+} from "../chat/nickcolor";
 import { hasUnread } from "../state/types";
 import type {
   ChannelSummary,
@@ -437,7 +442,7 @@ export function Sidebar({
                 />
                 <span
                   class={`chalk-sidebar-item-name ${nickHue !== null ? "chalk-nick-tinted" : ""}`}
-                  style={nickHue !== null ? `--nick-h:${nickHue}` : undefined}
+                  style={nickHue !== null ? nickTintStyle(nickHue) : undefined}
                 >
                   {displayName}
                 </span>
@@ -537,7 +542,7 @@ export function Sidebar({
                         >
                           <span
                             class={`chalk-sidebar-occupant-name ${hue !== null ? "chalk-nick-tinted" : ""}`}
-                            style={hue !== null ? `--nick-h:${hue}` : undefined}
+                            style={hue !== null ? nickTintStyle(hue) : undefined}
                           >
                             {occupantName(ch, ownUserID, p.userID)}
                           </span>
@@ -586,7 +591,10 @@ export function Sidebar({
 
               class="chalk-nick-swatch"
 
-              style={`--nick-h:${hueForHandle?.(nickMenu.handle) ?? 210}`}
+              style={nickTintStyle(
+                hueForHandle?.(nickMenu.handle) ?? DEFAULT_SELF_HUE,
+                "background",
+              )}
 
             />
 

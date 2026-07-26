@@ -22,6 +22,7 @@
 // member's safety number / verification state, and passes them in.
 
 import { useEffect, useState } from "preact/hooks";
+import { nickTintStyle } from "../chat/nickcolor";
 import type { ChannelMember, Friend } from "../state/types";
 import type { VerificationState } from "../crypto/safety-number";
 
@@ -217,7 +218,7 @@ export function MembersPanel({
                       <li key={m.userID} class="chalk-members-row">
                         <span
                           class={`chalk-members-handle ${hue !== null ? "chalk-nick-tinted" : ""}`}
-                          style={hue !== null ? `--nick-h:${hue}` : undefined}
+                          style={hue !== null ? nickTintStyle(hue) : undefined}
                         >
                           {m.handle}
                           {isYou && <span class="chalk-members-you"> (you)</span>}

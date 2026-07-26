@@ -7,7 +7,7 @@
 
 import type { JSX } from "preact";
 
-import { resolveNickHue } from "../chat/nickcolor";
+import { nickTintStyle, resolveNickHue } from "../chat/nickcolor";
 import { typingSegments } from "../chat/typing";
 import { useTypists } from "../chat/typing-store";
 import type { ChannelMember, ResolvedChatPrefs } from "../state/types";
@@ -73,7 +73,7 @@ export function TypingLine({ channelID, members, isDM, display }: Props): JSX.El
           <span
             key={i}
             class={hue !== null ? "chalk-message-sender--tinted" : undefined}
-            style={hue !== null ? `--nick-h:${hue}` : undefined}
+            style={hue !== null ? nickTintStyle(hue) : undefined}
           >
             {seg.text}
           </span>

@@ -13,6 +13,13 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Fixed
+- **Name colours were ignored entirely in some browsers.** On affected clients
+  every name in chat came out the same blue no matter what was picked — the
+  automatic colours, your own colour, and anything chosen from the roster
+  picker all collapsed to one shade, including the little preview dot in the
+  picker itself. Names now carry their colour in a way every browser applies,
+  and still shift with the theme so they stay readable on light and dark
+  grounds.
 - **Name colours now show up outside the chat feed.** Picking a colour for
   someone (right-click or long-press them in the roster) only recoloured their
   name on their messages — in the roster, the occupant list under a voice

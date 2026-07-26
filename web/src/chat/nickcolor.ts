@@ -9,7 +9,7 @@
 //
 //   :root                       { --nick-s: 65%; --nick-l: 68%; }  /* dark  */
 //   [data-theme="snazzy-light"] { --nick-s: 68%; --nick-l: 32%; }  /* light */
-//   .chalk-message-sender--tinted { color: hsl(var(--nick-h) var(--nick-s) var(--nick-l)); }
+//   <span style="color: hsl(65 var(--nick-s) var(--nick-l))">      /* the name */
 //
 // One stored number per user stays correct on every theme, including any
 // theme added later. The colour <input> still works -- we just derive the hue
@@ -86,6 +86,25 @@ export function hexFromHue(hue: number, s = 0.65, l = 0.6): string {
   const to255 = (v: number): string =>
     Math.round(v * 255).toString(16).padStart(2, "0");
   return `#${to255(toC(h + 1 / 3))}${to255(toC(h))}${to255(toC(h - 1 / 3))}`;
+}
+
+// nickTintStyle renders the inline declaration that paints a name.
+//
+// WHY NOT style="--nick-h:65"
+// ---------------------------
+// The obvious shape is to set the hue as a custom property inline and let a
+// class do the hsl(). Preact assigns string styles via element.style.cssText,
+// and some WebKit builds drop custom-property declarations set that way --
+// silently, so the hsl() fell back to its default hue and EVERY name rendered
+// the same blue on those clients. Putting the hue in the declaration itself
+// removes the custom property from the path; saturation and lightness stay
+// theme-supplied var()s, which resolve from :root and have never been the
+// problem.
+export function nickTintStyle(
+  hue: number,
+  prop: "color" | "background" = "color",
+): string {
+  return `${prop}:hsl(${clampHue(hue)} var(--nick-s) var(--nick-l))`;
 }
 
 export interface NickHueInput {
