@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.3.51 — 27 July 2026 — Darkord theme, azeroth greens, and a matching status light
 
 ### Added
 - **New theme: darkord.** The familiar dark chat-app look — cool grey
