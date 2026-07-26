@@ -10,6 +10,13 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **New theme: darkord.** The familiar dark chat-app look — cool grey
+  surfaces with a blurple accent — tuned one shade darker across the board.
+  Available in the theme picker in your profile.
+
 ## v0.3.50 — 27 July 2026 — Thread search inside threads and instant previews
 
 ### Fixed

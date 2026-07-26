@@ -405,7 +405,7 @@ export function ProfilePanel({
               <div class="chalk-profile-field">
                 <label class="chalk-profile-label" for="theme-picker">theme</label>
                 <div class="chalk-profile-theme-picker" id="theme-picker" role="radiogroup" aria-label="theme">
-                  {(["green", "light", "snazzy-light", "warmwhite", "cyberpunk", "solarized-dark", "tokyo-night", "lcars", "blade-runner", "azeroth"] as const).map((t) => (
+                  {(["green", "light", "snazzy-light", "warmwhite", "cyberpunk", "solarized-dark", "tokyo-night", "lcars", "blade-runner", "azeroth", "darkord"] as const).map((t) => (
                     <label
                       key={t}
                       class={`chalk-profile-theme-option ${(theme ?? "green") === t ? "chalk-profile-theme-option--active" : ""}`}
@@ -432,7 +432,8 @@ export function ProfilePanel({
                             t === "tokyo-night" ? "tokyo night blue" :
                             t === "lcars" ? "starship okudagram" :
                             t === "blade-runner" ? "neon scarlet, smog black" :
-                            "gilded frames, tavern dark"
+                            t === "azeroth" ? "gilded frames, tavern dark" :
+                            "blurple on deep grey"
                           }
                         </span>
                       </span>
