@@ -390,5 +390,16 @@ export function IdentitySetupScreen({ userID, transport, onReady }: Props) {
 }
 
 function describe(e: unknown): string {
+  // 48-4: a missing WebCrypto curve is a browser problem, not a phrase
+  // problem -- say so instead of surfacing a cryptic NotSupportedError.
+  // The boot-time gate in App normally catches this first; this is the
+  // backstop in case the probe was skipped or raced.
+  if (e instanceof Error && e.name === "NotSupportedError") {
+    return (
+      "This browser can't run chalk's end-to-end encryption (it lacks " +
+      "WebCrypto X25519/Ed25519 support). Use a current browser: " +
+      "Safari 17+, Firefox 132+, or Chrome/Edge 137+."
+    );
+  }
   return e instanceof Error ? e.message : String(e);
 }

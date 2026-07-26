@@ -221,6 +221,8 @@ import {
 } from "../presence/system-idle";
 import { AuthGate } from "../auth/AuthGate";
 import { IdentitySetupScreen } from "../auth/IdentitySetupScreen";
+import { UnsupportedBrowserScreen } from "../auth/UnsupportedBrowserScreen";
+import { cryptoSupported } from "../crypto/support";
 import { MigrationScreen } from "../auth/MigrationScreen"; // 31-9
 import { loadIdentity, loadVerification, saveVerification } from "../crypto/idb";
 import { fetchIdentity, type IdentityTransport } from "../crypto/identity-sync";
@@ -460,8 +462,10 @@ export function App() {
   // present locally; "needs-setup" = render the screen; null = still
   // checking. The check re-runs if the userID changes (e.g. re-login as a
   // different user on this browser).
+  // 48-4: "unsupported" = this browser lacks the WebCrypto curves the whole
+  // E2E layer needs; render an honest dead-end instead of the setup screen.
   const [identityGate, setIdentityGate] =
-    useState<"checking" | "ready" | "needs-setup" | null>(null);
+    useState<"checking" | "ready" | "needs-setup" | "unsupported" | null>(null);
   // 31-9: local flag flipped when the migration wizard completes, so the
   // gate clears without a /me refetch (the server has committed the flip).
   const [authV2Done, setAuthV2Done] = useState(false);
@@ -495,6 +499,14 @@ export function App() {
     setIdentityGate("checking");
     let cancelled = false;
     (async () => {
+      // 48-4: probe the WebCrypto curves before anything identity-shaped.
+      // Without this, an unsupported browser landed on the setup screen,
+      // where a correct 24-word phrase then failed with a generic error --
+      // indistinguishable, to the user, from having mistyped their phrase.
+      if (!(await cryptoSupported())) {
+        if (!cancelled) setIdentityGate("unsupported");
+        return;
+      }
       try {
         const existing = await loadIdentity(uid);
         if (cancelled) return;
@@ -3122,6 +3134,10 @@ export function App() {
     !authV2Done
   ) {
     return <MigrationScreen onDone={() => setAuthV2Done(true)} />;
+  }
+
+  if (identityGate === "unsupported") {
+    return <UnsupportedBrowserScreen />;
   }
 
   if (
