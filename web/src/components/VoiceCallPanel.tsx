@@ -15,10 +15,12 @@
 //   * NO audio elements here -- remote audio is rendered exactly once, in
 //     VoiceDock; duplicating it would double the output
 //
-// Click-to-join (Addendum C "click-to-join voice rooms", core) lives in
-// App's sidebar onSelect; the lobby buttons remain for the camera variant,
-// for retry after errors, and for servers where auto-join is not possible
-// (channel key not ready at click time).
+// Click-to-join (Addendum C "click-to-join voice rooms", core) lives in an
+// App-level effect keyed off keyStatus, triggered by the sidebar's onSelect
+// dispatching set_active_channel; it fires whether the channel key was
+// already ready (revisit) or becomes ready asynchronously (first visit), so
+// both cases auto-join. The lobby buttons remain for the camera variant and
+// for retry after errors.
 
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ChannelSummary, VoiceParticipant } from "../state/types";
