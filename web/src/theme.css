@@ -5960,21 +5960,23 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 
 /* ============================================================
-   azeroth: gilded frames on a tavern-dark ground
+   azeroth: gold on forest-dark green
    ============================================================
    Named for the world rather than the game, the way `lcars` is named
    for the panel rather than the show.
 
-   What makes this readable as the source at a glance is not one hue
-   but a fixed cast of them, each meaning the same thing it means in
-   the game: quest gold leads, uncommon green is "good/online",
-   legendary orange warns, rare blue is the link color. Spending them
-   on the wrong roles is what would make it look like a generic dark
-   theme with a gold accent.
+   The world is green -- Elwynn, Ashenvale, the login forests -- so
+   the ground is a green-cast forest black rather than a neutral one,
+   and the link/active color is the game's uncommon-item green
+   (#1eff00, tamed a step: full-saturation max-green is unreadable as
+   running link text). The rest is the fixed cast, each hue meaning
+   what it means in the game: quest gold for emphasis, legendary
+   orange warns, red for errors. Spending them on the wrong roles is
+   what would make it look like a generic dark theme with an accent.
 
-   The ground is a warm tavern black -- brown-cast, not neutral -- so
-   the bronze frames sit on it as metal on wood rather than as a
-   stroke floating on a void.
+   The bronze frames stay: gold-on-green over a metal-edged panel is
+   the default UI over a forest scene, which is most of what the game
+   looks like.
 
    Body text is parchment bone, not gold: a full chat log in #ffd100
    is a migraine, and the gold only reads as emphasis while most of
@@ -5982,19 +5984,18 @@ body.chalk-resizing .chalk-sidebar-resizer {
    ============================================================ */
 
 [data-theme="azeroth"] {
-  --chalk-bg:           #0e0c0a;
-  --chalk-bg-elev:      #1b1610;
-  --chalk-bg-elev-2:    #2b2318;
-  --chalk-fg:           #f0e6d2;
-  --chalk-fg-dim:       #b3a184;
+  --chalk-bg:           #0b0e08;
+  --chalk-bg-elev:      #161c10;
+  --chalk-bg-elev-2:    #232d18;
+  --chalk-fg:           #eae5cf;
+  --chalk-fg-dim:       #a9ab85;
   /* Quest gold. */
   --chalk-fg-bright:    #ffd100;
-  --chalk-fg-muted:     #8a7b61;
+  --chalk-fg-muted:     #7f8763;
   /* Bronze, the frame metal. */
   --chalk-border:       #6b5424;
-  /* Rare blue, lifted off the game's #0070dd, which is only 4:1 on
-     this ground and is used there for item names, not running text. */
-  --chalk-accent:       #4aa8ff;
+  /* Uncommon green, pulled down from #1eff00. */
+  --chalk-accent:       #2edd4f;
   /* Legendary orange, unchanged -- it is already a warning color. */
   --chalk-warn:         #ff8000;
   --chalk-error:        #ff4c4c;
@@ -6003,7 +6004,7 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 
 [data-theme="azeroth"] .chalk-sidebar-item--active {
-  background: rgba(255, 209, 0, 0.13);
+  background: rgba(46, 221, 79, 0.12);
 }
 
 /* The gilded frame: bronze edge with a thin gold inner line. Two
@@ -6018,8 +6019,8 @@ body.chalk-resizing .chalk-sidebar-resizer {
 
 .chalk-profile-theme-swatch-preview--azeroth {
   background: linear-gradient(135deg,
-    #0e0c0a 0%, #0e0c0a 50%,
-    #ffd100 50%, #ffd100 100%);
+    #0b0e08 0%, #0b0e08 50%,
+    #2edd4f 50%, #2edd4f 100%);
 }
 
 /* ============================================================

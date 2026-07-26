@@ -17,6 +17,12 @@ The engineering-level history (which slice shipped what) lives in
   surfaces with a blurple accent — tuned one shade darker across the board.
   Available in the theme picker in your profile.
 
+### Changed
+- **The azeroth theme got its green.** The ground was a brown tavern black
+  with nothing green anywhere; it is now a forest-dark green, and links and
+  active items use the uncommon-item green instead of rare blue. Quest gold
+  is still the emphasis color and the gilded frames stay.
+
 ## v0.3.50 — 27 July 2026 — Thread search inside threads and instant previews
 
 ### Fixed

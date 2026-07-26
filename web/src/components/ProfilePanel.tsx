@@ -432,7 +432,7 @@ export function ProfilePanel({
                             t === "tokyo-night" ? "tokyo night blue" :
                             t === "lcars" ? "starship okudagram" :
                             t === "blade-runner" ? "neon scarlet, smog black" :
-                            t === "azeroth" ? "gilded frames, tavern dark" :
+                            t === "azeroth" ? "gold on forest green" :
                             "blurple on deep grey"
                           }
                         </span>
