@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.3.42 — 26 July 2026 — Composer, emoticons and message actions
 
 ### Added
 - **Typed emoticons become emoji.** Type `:)` and you get 😀, the way chat
