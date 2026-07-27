@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.3.53 — 27 July 2026 — One place for call controls
 
 ### Changed
 - **One set of call controls instead of two.** Mute, camera and leave no
