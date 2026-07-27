@@ -40,6 +40,13 @@ The engineering-level history (which slice shipped what) lives in
   from the sidebar shows up under notification rules, where it can be changed
   or removed. The friend menu now also opens for friends without a nick color
   set up.
+- **Notification rules follow you across devices — encrypted.** Priorities
+  and per-person/per-channel rules set on one device now appear on your
+  others. The rules name who and what you've singled out, so unlike the theme
+  they never reach the server readably: they're encrypted on your device with
+  a key derived from your identity, and the server only ever stores
+  ciphertext. Sound volume, do-not-disturb, and chalk's own noises stay
+  per-device, as before.
 
 ### Changed
 - **Chat notifications are now driven by priority rules.** Every notification

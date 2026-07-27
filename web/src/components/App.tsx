@@ -26,6 +26,7 @@ import { notifyBanners } from "../notify/banners";
 import { titleController } from "../notify/title";
 import { actionsFor, resolvePriority, type RulesConfig } from "../notify/rules";
 import { loadRulesConfig, subscribeRulesConfig } from "../notify/rules-store";
+import { RulesSync } from "../notify/rules-sync";
 import { loadSoundPrefs, subscribeSoundPrefs } from "../notify/prefs";
 import {
   channelEventNotifies,
@@ -576,6 +577,50 @@ export function App() {
       cancelled = true;
     };
   }, [identityGate, state.user?.id]);
+
+  // 50-6: cross-device sync of the notification rules, encrypted under a
+  // key derived from the identity (rules-sync.ts). Started once the
+  // identity is usable; until then the local cache serves.
+  const rulesSyncRef = useRef<RulesSync | null>(null);
+  const [rulesSyncReady, setRulesSyncReady] = useState(false);
+  useEffect(() => {
+    if (!ccReady) return;
+    const uid = state.user?.id;
+    if (!uid || rulesSyncRef.current) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const id = await loadIdentity(uid);
+        if (!id || cancelled) return;
+        const sync = new RulesSync();
+        await sync.start(id.x25519Private, {
+          send: (patch) => {
+            const c = clientRef.current;
+            if (c && c.isOpen()) c.send(TypePrefsSet, { patch });
+          },
+        });
+        if (cancelled) {
+          sync.stop();
+          return;
+        }
+        rulesSyncRef.current = sync;
+        setRulesSyncReady(true);
+      } catch (err) {
+        console.error("rules-sync: start failed:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ccReady, state.user?.id]);
+
+  // Apply the server's blob whenever prefs land -- but only once they
+  // HAVE landed: pushing local before the first prefs_get_ack could
+  // clobber a newer blob written by another device.
+  useEffect(() => {
+    if (!rulesSyncReady || !state.prefsLoaded) return;
+    void rulesSyncRef.current?.applyRemote(state.prefs.notify_rules_enc);
+  }, [rulesSyncReady, state.prefsLoaded, state.prefs.notify_rules_enc]);
 
   // Phase 23d: ensure we hold a channel's key -- fetch+unwrap, or
   // creator-bootstrap a keyless channel, then auto-rewrap for members who lack

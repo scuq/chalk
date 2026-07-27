@@ -330,6 +330,9 @@ export interface UserPrefs {
   // state/types.ts doesn't pull in the voice module, and because mic-prefs'
   // own normalizer is the thing that validates it.
   mic?: Record<string, unknown>;
+  // 50-6: the notification rules blob -- AES-256-GCM ciphertext, base64.
+  // The server never sees inside it; see notify/rules-sync.ts.
+  notify_rules_enc?: string;
   // [extend with more keys in future phases]
 }
 
