@@ -18,6 +18,8 @@
 import type { Message, ReactionSet } from "../state/types";
 import type { ResolvedChatPrefs } from "../state/types";
 import type { PendingAttachment } from "../attachments/types";
+import type { AttachmentController } from "../attachments/pipeline";
+import type { GiphyPref } from "../giphy/giphy";
 import { MessageList } from "./MessageList";
 import { Composer, type SendOptions } from "./Composer";
 
@@ -82,6 +84,11 @@ interface Props {
   giphyReady?: boolean;
   onRequestEnableGiphy?: () => void;
   toolStyle?: "text" | "icons";
+  // Receive side of the same parity: without the controller MessageList
+  // renders an attachment-only reply as an empty row, and without giphyPref
+  // a GIF reply renders as its raw marker body. Forwarded to both lists.
+  attachmentController?: AttachmentController;
+  giphyPref?: GiphyPref;
   // Callbacks.
   onClose: () => void;
   // Already bound to parentID by the caller. The return value matters:
@@ -125,6 +132,8 @@ export function ThreadPanel({
   giphyReady,
   onRequestEnableGiphy,
   toolStyle,
+  attachmentController,
+  giphyPref,
   onClose,
   onSend,
 }: Props) {
@@ -188,6 +197,9 @@ export function ThreadPanel({
               reactions={reactions}
               onToggleReaction={onToggleReaction}
               onPickReaction={onPickReaction}
+              attachmentController={attachmentController}
+              giphyPref={giphyPref}
+              onRequestEnableGiphy={onRequestEnableGiphy}
               // No onOpenThread: drops "reply in thread" from the row
               // menu and hides any indicator (which wouldn\'t apply here --
               // the head\'s replyCount is the indicator we\'re
@@ -224,6 +236,9 @@ export function ThreadPanel({
             reactions={reactions}
             onToggleReaction={onToggleReaction}
             onPickReaction={onPickReaction}
+            attachmentController={attachmentController}
+            giphyPref={giphyPref}
+            onRequestEnableGiphy={onRequestEnableGiphy}
             // No onOpenThread inside the panel either; nesting
             // threads-in-threads is out of scope.
           />

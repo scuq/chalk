@@ -3960,6 +3960,8 @@ export function App() {
             giphyReady={selectGiphyPref(state.prefs) === "enabled"}
             onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
             toolStyle={selectChatPrefs(state.prefs).composerToolStyle}
+            attachmentController={attControllerRef.current ?? undefined}
+            giphyPref={selectGiphyPref(state.prefs)}
             focusKey={isMobile ? null : tid}
           />
         );
