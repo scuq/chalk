@@ -13,6 +13,11 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **Thread replies get the full composer.** The reply box in a thread now has
+  the same tools as the channel composer: attach files, paste a screenshot,
+  drag-and-drop, GIFs and the emoji picker — and it lines up with the main
+  composer instead of sitting in its own differently-padded box. A reply that
+  fails to send also keeps its text now instead of silently losing it.
 - **Threads have titles now.** A thread is titled by the message it was
   started on: the title heads the thread panel and each row in the threads
   list, so you can tell threads apart without opening them. A thread started

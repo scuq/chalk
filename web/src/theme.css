@@ -3846,9 +3846,12 @@ body.chalk-resizing .chalk-sidebar-resizer {
   font-size: var(--chalk-size-small);
 }
 
+/* Same vertical rhythm as .chalk-footer so the reply composer sits on the
+   same baseline as the channel composer next to it; horizontal padding stays
+   s2 to line up with the panel body above. */
 .chalk-thread-panel-footer {
   border-top: 1px solid var(--chalk-border);
-  padding: var(--chalk-s2);
+  padding: var(--chalk-s3) var(--chalk-s2) var(--chalk-s4);
 }
 
 /* Mobile thread layout lives in the mobile section at the end of this
@@ -7074,6 +7077,12 @@ body.chalk-resizing .chalk-sidebar-resizer {
     border-left: none;
     padding: env(safe-area-inset-top) env(safe-area-inset-right)
              env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* Same tightened rhythm as the mobile .chalk-footer; the safe-area inset
+     is already on the panel itself. */
+  .chalk-thread-panel-footer {
+    padding: var(--chalk-s2);
   }
 
   /* -- modals -------------------------------------------------------- */

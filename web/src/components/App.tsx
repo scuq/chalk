@@ -3954,7 +3954,12 @@ export function App() {
               if (m) setEditingThread({ id: m.id, body: m.body });
             }}
             onClose={() => dispatch({ kind: "close_thread" })}
-            onSend={(body) => onSend(body, tid)}
+            onSend={(body, pending, opts) => onSend(body, tid, pending, opts)}
+            enableAttachments
+            giphyEnabled={state.authConfig?.giphy_enabled ?? false}
+            giphyReady={selectGiphyPref(state.prefs) === "enabled"}
+            onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
+            toolStyle={selectChatPrefs(state.prefs).composerToolStyle}
             focusKey={isMobile ? null : tid}
           />
         );

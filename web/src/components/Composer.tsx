@@ -54,8 +54,8 @@ interface Props {
   ) => void | Promise<boolean | void>;
   placeholder?: string;
   // att-2/att-3: opt in to the attachment affordance (paperclip + picker +
-  // drag-drop + paste + pending tray with per-item progress). Only the main
-  // composer sets this; the thread composer stays text-only.
+  // drag-drop + paste + pending tray with per-item progress). Both the feed
+  // and thread composers set this.
   enableAttachments?: boolean;
   // att-4c: Giphy composer button. giphyEnabled shows the button (server has
   // an API key); giphyReady means the local viewer's consent pref is
@@ -579,10 +579,10 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   // attachment and GIF affordances are hidden rather than disabled: they'd
   // imply you can add a file to an existing message, which you can't.
   const showTools = !editing && (enableAttachments || giphyEnabled);
-  // 44-5: the main composer gets a tool block immediately left of its input;
-  // the thread composer has no tools and stays a plain stacked box. The block
-  // used to sit in the roster's column, which put the buttons a screen-width
-  // away from the field they act on.
+  // 44-5: the tool block sits immediately left of the input. It used to live
+  // in the roster's column, which put the buttons a screen-width away from
+  // the field they act on. A caller that passes neither attachments nor
+  // giphy still gets a plain stacked box.
   const railed = enableAttachments || giphyEnabled;
   const mac = isMacPlatform();
 

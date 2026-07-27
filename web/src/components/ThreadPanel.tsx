@@ -17,8 +17,9 @@
 
 import type { Message, ReactionSet } from "../state/types";
 import type { ResolvedChatPrefs } from "../state/types";
+import type { PendingAttachment } from "../attachments/types";
 import { MessageList } from "./MessageList";
-import { Composer } from "./Composer";
+import { Composer, type SendOptions } from "./Composer";
 
 interface Props {
   // The thread head. Already in the channel cache; the panel\'s caller
@@ -73,9 +74,24 @@ interface Props {
   // 49-1: jump the channel feed to the head message. Absent hides the
   // button (tests, callers that predate it).
   onShowParent?: () => void;
+  // Composer tools, forwarded verbatim so a thread reply offers the same
+  // affordances as a channel message: attach, paste an image, GIF, emoji.
+  // See Composer for what each does.
+  enableAttachments?: boolean;
+  giphyEnabled?: boolean;
+  giphyReady?: boolean;
+  onRequestEnableGiphy?: () => void;
+  toolStyle?: "text" | "icons";
   // Callbacks.
   onClose: () => void;
-  onSend: (body: string) => void; // already bound to parentID by caller
+  // Already bound to parentID by the caller. The return value matters:
+  // false means the send was blocked and the composer restores the draft
+  // (or keeps the attachment tray) for a retry.
+  onSend: (
+    body: string,
+    attachments?: PendingAttachment[],
+    opts?: SendOptions,
+  ) => void | Promise<boolean | void>;
 }
 
 export function ThreadPanel({
@@ -104,6 +120,11 @@ export function ThreadPanel({
   focusKey,
   title,
   onShowParent,
+  enableAttachments,
+  giphyEnabled,
+  giphyReady,
+  onRequestEnableGiphy,
+  toolStyle,
   onClose,
   onSend,
 }: Props) {
@@ -216,6 +237,11 @@ export function ThreadPanel({
           onSend={onSend}
           placeholder="reply..."
           emoticons={display.emoticons}
+          enableAttachments={enableAttachments}
+          giphyEnabled={giphyEnabled}
+          giphyReady={giphyReady}
+          onRequestEnableGiphy={onRequestEnableGiphy}
+          toolStyle={toolStyle}
           editing={editing}
           onEditSubmit={onEditSubmit}
           onEditCancel={onEditCancel}
