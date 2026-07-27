@@ -10,7 +10,7 @@
 // The rules are docs/notification-sounds.md "Suppression rules", plus the
 // two pref checks that precede them.
 
-import type { SoundCategory, SoundPrefs } from "./types";
+import { isMachineCategory, type SoundCategory, type SoundPrefs } from "./types";
 
 // Rate limits. Two of them, because one isn't enough: the global floor
 // stops a busy channel turning into a rattle, and the per-category floor
@@ -61,7 +61,10 @@ export function decideSound(input: GateInput): GateVerdict {
   const { prefs, category } = input;
 
   if (!prefs.master) return "master_off";
-  if (!prefs.categories[category]) return "category_off";
+  // Only the machine noises have an on/off toggle here. The notification
+  // event types were already routed by the rules engine before this gate
+  // was asked -- a muted one never reaches it.
+  if (isMachineCategory(category) && !prefs.categories[category]) return "category_off";
 
   // Rule 1. You are looking at the thing -- which needs you to be there, not
   // just the window to be up. Applies to every category including

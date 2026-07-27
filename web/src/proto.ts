@@ -235,6 +235,14 @@ export const TypeFriendList = "friend_list";
 export const TypeFriendListAck = "friend_list_ack";
 export const TypeFriendEvent = "friend_event";
 
+// FriendEventPayload mirrors proto.FriendEventPayload. Kind is one of
+// request_received | accepted | declined | removed.
+export interface FriendEventPayload {
+  kind: string;
+  from_user_id: string;
+  handle: string;
+}
+
 // phase 08b uses friend_list to populate the create-channel friend picker.
 export interface FriendListPayload {} // no fields; server returns the caller's friends
 

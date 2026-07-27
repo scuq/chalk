@@ -6,7 +6,7 @@
 // to get subtly wrong (your own message, a reply in a thread you never
 // touched) and hard to check by hand in a browser.
 
-import type { SoundCategory } from "./types";
+import type { NotifyEventType } from "./rules";
 
 // Just enough of a Message to decide. Structural on purpose: the notify
 // module has no business importing app state types.
@@ -41,7 +41,7 @@ export function categoryForMessage(
   me: ViewerFacts,
   where: Surroundings,
   mentions: MentionTest,
-): SoundCategory | null {
+): NotifyEventType | null {
   // Your own words, arriving back at you. The sending tab is
   // echo-suppressed server-side, but your other devices and any
   // post-reconnect replay do deliver this.

@@ -5,16 +5,21 @@
 // normalize has to be total over all of that -- the failure mode we care
 // about is a stored value that either throws on load (no app) or that
 // turns every category on at full volume (a noise complaint).
+//
+// Since 50-2 the categories here are the machine noises only; the chat
+// and event categories are the rules engine's business (rules.test.ts).
+// Normalize dropping them from a v1-shaped entry IS the v1 -> v2
+// migration, so that behaviour is pinned below.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { normalizeSoundPrefs } from "./prefs.ts";
 import {
   DEFAULT_SOUND_PREFS,
+  MACHINE_CATEGORIES,
   MAX_VOLUME,
   MIN_VOLUME,
-  SOUND_CATEGORIES,
-  type SoundCategory,
+  type MachineCategory,
 } from "./types.ts";
 
 test("normalize keeps a valid pref untouched", () => {
@@ -22,7 +27,7 @@ test("normalize keeps a valid pref untouched", () => {
     master: true,
     volume: 0.7,
     dnd: true,
-    categories: { ...DEFAULT_SOUND_PREFS.categories, message: true },
+    categories: { ...DEFAULT_SOUND_PREFS.categories, presence: true },
   };
   assert.deepEqual(normalizeSoundPrefs(prefs), prefs);
 });
@@ -33,13 +38,11 @@ test("normalize falls back on junk input", () => {
   }
 });
 
-test("normalize defaults to audible chat, silent machinery", () => {
+test("normalize defaults to silent machinery, audible errors", () => {
   const p = normalizeSoundPrefs({});
   assert.equal(p.master, true);
   assert.equal(p.dnd, false);
-  for (const c of ["mention", "dm", "thread_reply", "message"] as const) {
-    assert.equal(p.categories[c], true, `${c} should be audible out of the box`);
-  }
+  assert.equal(p.categories.error, true, "a failed send should be heard");
   for (const c of ["presence", "connect", "disconnect", "send_confirm"] as const) {
     assert.equal(p.categories[c], false, `${c} reports on chalk, not on people -- keep it quiet`);
   }
@@ -65,28 +68,43 @@ test("normalize accepts a numeric string volume", () => {
 test("normalize fills in every category, whatever was stored", () => {
   for (const raw of [{}, { categories: null }, { categories: [] }, { categories: "all" }]) {
     const p = normalizeSoundPrefs(raw);
-    for (const c of SOUND_CATEGORIES) {
+    for (const c of MACHINE_CATEGORIES) {
       assert.equal(typeof p.categories[c], "boolean", `${c} must be present`);
     }
   }
 });
 
 test("normalize takes only booleans for a category", () => {
-  const p = normalizeSoundPrefs({ categories: { message: "yes", mention: false } });
-  assert.equal(p.categories.message, DEFAULT_SOUND_PREFS.categories.message);
-  assert.equal(p.categories.mention, false, "an explicit false must survive");
+  const p = normalizeSoundPrefs({ categories: { presence: "yes", connect: false } });
+  assert.equal(p.categories.presence, DEFAULT_SOUND_PREFS.categories.presence);
+  assert.equal(p.categories.connect, false, "an explicit false must survive");
 });
 
-test("normalize drops categories this build cannot play", () => {
-  const p = normalizeSoundPrefs({ categories: { mention: true, klaxon: true } });
-  assert.deepEqual(Object.keys(p.categories).sort(), [...SOUND_CATEGORIES].sort());
+test("normalize migrates a v1 entry: chat categories drop, the rest carries", () => {
+  const v1 = {
+    master: false,
+    volume: 0.9,
+    dnd: true,
+    categories: { mention: false, dm: true, message: false, presence: true, error: false },
+  };
+  const p = normalizeSoundPrefs(v1);
+  assert.equal(p.master, false);
+  assert.equal(p.volume, 0.9);
+  assert.equal(p.dnd, true);
+  assert.equal(p.categories.presence, true);
+  assert.equal(p.categories.error, false);
+  assert.deepEqual(
+    Object.keys(p.categories).sort(),
+    [...MACHINE_CATEGORIES].sort(),
+    "no chat category may survive into v2 prefs",
+  );
 });
 
 test("every category round-trips both ways", () => {
-  for (const c of SOUND_CATEGORIES) {
+  for (const c of MACHINE_CATEGORIES) {
     for (const on of [true, false]) {
       const p = normalizeSoundPrefs({ categories: { [c]: on } });
-      assert.equal(p.categories[c as SoundCategory], on);
+      assert.equal(p.categories[c as MachineCategory], on);
     }
   }
 });

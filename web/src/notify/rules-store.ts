@@ -13,7 +13,6 @@
 // is recomputed on every load rather than written back, so the old
 // toggles keep working until the first real rules edit persists.
 
-import { loadSoundPrefs } from "./prefs";
 import {
   defaultRulesConfig,
   normalizeRulesConfig,
@@ -22,6 +21,9 @@ import {
 } from "./rules";
 
 const STORAGE_KEY = "chalk.notify.rules.v1";
+// Read raw rather than through loadSoundPrefs: v2 prefs no longer carry
+// the chat categories, and the seed needs the v1 entry as the user left it.
+const V1_PREFS_KEY = "chalk.notify.v1";
 
 // The event types that existed as v1 sound categories. presence and the
 // machine noises stay device-local prefs and never become rules.
@@ -37,6 +39,21 @@ export function seedRulesFromSoundCategories(
   return config;
 }
 
+function v1SoundCategories(): Partial<Record<string, boolean>> {
+  try {
+    const raw = window.localStorage.getItem(V1_PREFS_KEY);
+    if (!raw) return {};
+    const o = JSON.parse(raw) as Record<string, unknown> | null;
+    const cats = o?.categories;
+    if (cats && typeof cats === "object" && !Array.isArray(cats)) {
+      return cats as Partial<Record<string, boolean>>;
+    }
+  } catch {
+    // Corrupt v1 entry: seed from defaults instead.
+  }
+  return {};
+}
+
 export function loadRulesConfig(): RulesConfig {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -45,7 +62,7 @@ export function loadRulesConfig(): RulesConfig {
     // Corrupt entry or private-browsing localStorage; fall through to
     // the seed rather than break startup.
   }
-  return seedRulesFromSoundCategories(loadSoundPrefs().categories);
+  return seedRulesFromSoundCategories(v1SoundCategories());
 }
 
 const listeners = new Set<(config: RulesConfig) => void>();

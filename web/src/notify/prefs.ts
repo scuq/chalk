@@ -12,19 +12,26 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 import {
   DEFAULT_SOUND_PREFS,
+  MACHINE_CATEGORIES,
   MAX_VOLUME,
   MIN_VOLUME,
-  SOUND_CATEGORIES,
-  type SoundCategory,
+  type MachineCategory,
   type SoundPrefs,
 } from "./types";
 
-const STORAGE_KEY = "chalk.notify.v1";
+// v2: the chat categories moved out to the rules engine (phase 50), so
+// prefs now hold only master/volume/dnd plus the machine noises. v1 is
+// still read as a fallback -- normalize simply ignores the chat keys --
+// and left in place, both so a downgrade keeps working and because the
+// rules store seeds its one-time migration from it.
+const STORAGE_KEY = "chalk.notify.v2";
+const V1_STORAGE_KEY = "chalk.notify.v1";
 
 // normalizeSoundPrefs fills in every field from a possibly-partial,
 // possibly-garbage stored value. An unknown category key is dropped
 // rather than carried, so a downgrade can't resurrect a category this
-// build doesn't know how to play.
+// build doesn't know how to play -- and a v1 entry's chat categories are
+// dropped the same way, which IS the v1 -> v2 migration.
 export function normalizeSoundPrefs(raw: unknown): SoundPrefs {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return { ...DEFAULT_SOUND_PREFS, categories: { ...DEFAULT_SOUND_PREFS.categories } };
@@ -40,8 +47,8 @@ export function normalizeSoundPrefs(raw: unknown): SoundPrefs {
     o.categories && typeof o.categories === "object" && !Array.isArray(o.categories)
       ? (o.categories as Record<string, unknown>)
       : {};
-  const categories = {} as Record<SoundCategory, boolean>;
-  for (const c of SOUND_CATEGORIES) {
+  const categories = {} as Record<MachineCategory, boolean>;
+  for (const c of MACHINE_CATEGORIES) {
     categories[c] =
       typeof rawCats[c] === "boolean" ? (rawCats[c] as boolean) : DEFAULT_SOUND_PREFS.categories[c];
   }
@@ -56,7 +63,8 @@ export function normalizeSoundPrefs(raw: unknown): SoundPrefs {
 
 export function loadSoundPrefs(): SoundPrefs {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw =
+      window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(V1_STORAGE_KEY);
     if (!raw) return normalizeSoundPrefs(null);
     return normalizeSoundPrefs(JSON.parse(raw));
   } catch {
@@ -90,7 +98,7 @@ export function saveSoundPrefs(prefs: SoundPrefs): void {
 export function useSoundPrefs(): [
   SoundPrefs,
   (patch: Partial<SoundPrefs>) => void,
-  (category: SoundCategory, on: boolean) => void,
+  (category: MachineCategory, on: boolean) => void,
 ] {
   const [prefs, setPrefs] = useState<SoundPrefs>(loadSoundPrefs);
 
@@ -102,7 +110,7 @@ export function useSoundPrefs(): [
     });
   }, []);
 
-  const setCategory = useCallback((category: SoundCategory, on: boolean) => {
+  const setCategory = useCallback((category: MachineCategory, on: boolean) => {
     setPrefs((prev) => {
       const next = normalizeSoundPrefs({
         ...prev,

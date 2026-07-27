@@ -137,6 +137,56 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     body: 0.18,
     gain: 0.58,
   },
+  // A rising pair with a wide interval -- an invitation, not an alarm.
+  // Sits between dm and mention in brightness: a call starting is worth
+  // looking up for, but nobody is asking for you by name.
+  voice: {
+    centers: [560, 940],
+    strokeMs: 125,
+    gapMs: 55,
+    q: 1.05,
+    sweep: 1.45,
+    lowpassHz: 2800,
+    body: 0.2,
+    gain: 0.78,
+  },
+  // A door opening: one warm low stroke, then a brighter one -- you've
+  // been let in somewhere new.
+  channel_added: {
+    centers: [420, 720],
+    strokeMs: 115,
+    gapMs: 45,
+    q: 1,
+    sweep: 1.4,
+    lowpassHz: 2500,
+    body: 0.24,
+    gain: 0.7,
+  },
+  // Personal like the dm stroke but narrower in travel: someone is at
+  // the door rather than already talking to you.
+  friend_request: {
+    centers: [640, 760],
+    strokeMs: 110,
+    gapMs: 50,
+    q: 1.05,
+    sweep: 1.3,
+    lowpassHz: 2600,
+    body: 0.18,
+    gain: 0.72,
+  },
+  // Flat and even, two strokes at almost the same height: a notice being
+  // pinned to the board, deliberately without urgency in either
+  // direction -- a proposal is neither good nor bad news.
+  governance: {
+    centers: [520, 560],
+    strokeMs: 120,
+    gapMs: 45,
+    q: 0.95,
+    sweep: 1.2,
+    lowpassHz: 2300,
+    body: 0.22,
+    gain: 0.64,
+  },
   // Soft and low-contrast; a friend appearing is information, not a
   // summons.
   presence: {

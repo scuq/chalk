@@ -10,6 +10,28 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **New notification sounds for things that aren't messages.** Someone
+  starting a call in one of your voice channels, being added to a channel,
+  receiving a friend request, and a proposal opening or resolving in a
+  channel you're in each have their own chalk stroke now. Like every other
+  sound, they stay quiet for whatever you're already looking at.
+
+### Changed
+- **Chat notifications are now driven by priority rules.** Every notification
+  (mentions, DMs, thread replies, channel messages, calls, and the new event
+  sounds) is assigned a priority, and the priority decides what happens —
+  today that's sound, with desktop banners and tab blinking coming next. Any
+  chat sound you had switched off carries over as muted. The per-category
+  checkboxes in profile → notifications now cover only chalk's own noises
+  (connection, send confirmation, errors, friends coming online); the chat
+  and event types move to the notification rules settings arriving in this
+  series.
+
+---
+
 ## v0.3.54 — 27 July 2026 — Threads catch up
 
 ### Added

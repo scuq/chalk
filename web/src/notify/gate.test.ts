@@ -13,7 +13,7 @@ import {
   MIN_GAP_CATEGORY_MS,
   type GateInput,
 } from "./gate.ts";
-import { SOUND_CATEGORIES, type SoundPrefs } from "./types.ts";
+import { MACHINE_CATEGORIES, SOUND_CATEGORIES, type SoundPrefs } from "./types.ts";
 
 // A pref set where everything is audible, so each test silences exactly
 // the one thing it is about. Deliberately not DEFAULT_SOUND_PREFS: these
@@ -23,7 +23,9 @@ const ALL_ON: SoundPrefs = {
   master: true,
   volume: 0.5,
   dnd: false,
-  categories: Object.fromEntries(SOUND_CATEGORIES.map((c) => [c, true])) as SoundPrefs["categories"],
+  categories: Object.fromEntries(
+    MACHINE_CATEGORIES.map((c) => [c, true]),
+  ) as SoundPrefs["categories"],
 };
 
 const MASTER_OFF: SoundPrefs = { ...ALL_ON, master: false };
@@ -53,10 +55,24 @@ test("the master switch silences everything", () => {
   }
 });
 
-test("a category the user turned off stays off", () => {
-  const prefs = { ...ALL_ON, categories: { ...ALL_ON.categories, mention: false } };
-  assert.equal(decideSound(input({ category: "mention", prefs })), "category_off");
-  assert.equal(decideSound(input({ category: "dm", prefs })), "play");
+test("a machine category the user turned off stays off", () => {
+  const prefs = { ...ALL_ON, categories: { ...ALL_ON.categories, presence: false } };
+  assert.equal(decideSound(input({ category: "presence", prefs })), "category_off");
+  assert.equal(decideSound(input({ category: "error", prefs })), "play");
+});
+
+test("event categories have no prefs toggle -- the rules engine owns them", () => {
+  // 50-2: a muted event type never reaches the gate at all, so prefs
+  // silencing one here would be a second, contradictory switch.
+  const prefs = {
+    ...ALL_ON,
+    categories: Object.fromEntries(
+      MACHINE_CATEGORIES.map((c) => [c, false]),
+    ) as SoundPrefs["categories"],
+  };
+  for (const c of ["mention", "dm", "message", "voice", "friend_request"] as const) {
+    assert.equal(decideSound(input({ category: c, prefs })), "play");
+  }
 });
 
 // Rule 1.

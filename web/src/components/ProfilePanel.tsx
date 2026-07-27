@@ -45,7 +45,7 @@ import {
 import { FONT_CHOICES, SCALE_STEPS, useDisplayPrefs } from "../display-prefs";
 import { notifySounds } from "../notify";
 import { useSoundPrefs } from "../notify/prefs";
-import { CATEGORY_LABELS, SOUND_CATEGORIES } from "../notify/types";
+import { CATEGORY_LABELS, MACHINE_CATEGORIES } from "../notify/types";
 import { useIdlePrefs } from "../presence/idle-prefs";
 import {
   systemIdlePermission,
@@ -835,10 +835,13 @@ export function ProfilePanel({
               </label>
             </div>
 
+            {/* 50-2: only the machine noises live here now. What the chat
+                and event notifications do is the rules engine's business,
+                configured in the notification rules panel. */}
             <div class="chalk-profile-field">
-              <label class="chalk-profile-label">what makes a sound</label>
+              <label class="chalk-profile-label">chalk's own noises</label>
               <div class="chalk-profile-sound-list">
-                {SOUND_CATEGORIES.map((c) => (
+                {MACHINE_CATEGORIES.map((c) => (
                   <div class="chalk-profile-sound-row" key={c}>
                     <label class="chalk-profile-checkbox-label">
                       <input

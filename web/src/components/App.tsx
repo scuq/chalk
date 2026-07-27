@@ -21,6 +21,15 @@ import { mentionsHandle } from "../chat/mentions";
 import { threadTitle, attachmentTitle } from "../chat/threadtitle";
 import { notifySounds, type NotifySounds } from "../notify";
 import { categoryForMessage } from "../notify/classify";
+import { publishNotifyEvent, subscribeNotifyEvents } from "../notify/bus";
+import { actionsFor, resolvePriority, type RulesConfig } from "../notify/rules";
+import { loadRulesConfig, subscribeRulesConfig } from "../notify/rules-store";
+import {
+  channelEventNotifies,
+  friendEventNotifies,
+  governanceEventNotifies,
+  voiceCallStarted,
+} from "../notify/events";
 import { deleteActionFor, deleteLabelFor } from "../chat/deletepolicy";
 import { canEditMessage, lastEditableMessage } from "../chat/editpolicy";
 import { ownSet, toggle } from "../chat/reactions";
@@ -131,6 +140,7 @@ import {
   type ChannelEventPayload,
   type SubscribeChannelPayload,
   type FriendListPayload,
+  type FriendEventPayload,
   type FriendListAckPayload,
   // Phase 9.6c:
   type PresencePayload,
@@ -1241,6 +1251,14 @@ export function App() {
   // buttons, so both halves agree about whether audio has been unlocked.
   const notifyRef = useRef<NotifySounds | null>(null);
   if (!notifyRef.current) notifyRef.current = notifySounds();
+  // 50-2: the voice "call started" decision needs the roster as it stood
+  // before the join being handled -- read inside handleFrame, so a ref.
+  const voiceRostersRef = useRef(state.voiceRosters);
+  voiceRostersRef.current = state.voiceRosters;
+  // 50-2: the rules config, read inside handleFrame's bus consumer. Kept
+  // current by subscribeRulesConfig below rather than by render.
+  const rulesConfigRef = useRef<RulesConfig | null>(null);
+  if (!rulesConfigRef.current) rulesConfigRef.current = loadRulesConfig();
   // 33-1: highest seq we've already sent a mark_read for, per channel.
   // Suppresses re-sends while the ack is in flight. Cleared on reconnect,
   // where the fresh listing re-establishes the real cursors anyway.
@@ -1293,6 +1311,33 @@ export function App() {
   // firing concurrently for the same channel and racing into a doomed second
   // rotation (the server's monotonic guard rejects it with stale_key_version).
   const rotatingChannelsRef = useRef<Set<string>>(new Set());
+
+  // 50-2: the notification bus consumer -- the one place events meet the
+  // rules. Publishers (noteSound, the event frame cases) report what
+  // happened; this resolves a priority, looks up the actions for it, and
+  // drives the sinks. Sound is the only sink so far; banners and blinking
+  // join here in later slices.
+  useEffect(() => {
+    const unsubRules = subscribeRulesConfig((c) => {
+      rulesConfigRef.current = c;
+    });
+    const unsubBus = subscribeNotifyEvents((ev) => {
+      const cfg = rulesConfigRef.current;
+      if (!cfg) return;
+      const actions = actionsFor(resolvePriority(ev, cfg.rules), cfg.profiles);
+      if (actions.sound) {
+        notifyRef.current?.play(ev.type, {
+          tabVisible: tabVisibleRef.current,
+          userIdle: userIdleRef.current,
+          isRelevantSurfaceOpen: !!ev.channelID && ev.channelID === activeChannelRef.current,
+        });
+      }
+    });
+    return () => {
+      unsubRules();
+      unsubBus();
+    };
+  }, []);
 
   // --- WS lifecycle ----------------------------------------------------
 
@@ -1518,15 +1563,20 @@ export function App() {
     dispatch({ kind: "thread_mention_set", threadID });
   }
 
-  // 40-2: make a noise about a message that just arrived.
+  // 40-2 / 50-2: report a message that just arrived to the notification
+  // bus. classify.ts still decides what kind of event it is; whether and
+  // how it notifies is the rules engine's call, downstream of the bus.
   //
   // Live pushes only. The other caller of noteMention scans decrypted
   // history after a reload or a reconnect, and hooking this in there too
   // would empty the room every time someone opens a laptop -- the whole
   // backlog would play at once. Everything else (your own messages, the
   // channel you're reading, do-not-disturb, rate limiting) is handled
-  // downstream in classify.ts and gate.ts.
-  function noteSound(m: { channelID: string; senderUserID: string; parentID?: string }, body: string) {
+  // downstream in the bus consumer and gate.ts.
+  function noteSound(
+    m: { channelID: string; senderUserID: string; parentID?: string; threadID?: string },
+    body: string,
+  ) {
     const me = userRef.current;
     if (!me) return;
     const ch = channelsRef.current[m.channelID];
@@ -1538,10 +1588,12 @@ export function App() {
       mentionsHandle,
     );
     if (!category) return;
-    notifyRef.current?.play(category, {
-      tabVisible: tabVisibleRef.current,
-      userIdle: userIdleRef.current,
-      isRelevantSurfaceOpen: m.channelID === activeChannelRef.current,
+    publishNotifyEvent({
+      type: category,
+      senderUserID: m.senderUserID,
+      channelID: m.channelID,
+      threadID: m.parentID ? (m.threadID ?? m.parentID) : undefined,
+      isDM: !!ch.isDM,
     });
   }
 
@@ -1774,6 +1826,23 @@ export function App() {
             if (p.proposal)
               dispatch({ kind: "proposal_resolved", channelID: p.channel_id, proposal: wireToProposal(p.proposal) });
             break;
+        }
+        // 50-2: a proposal opening or resolving is worth telling the
+        // viewer about -- it is time-boxed, and missing it means missing
+        // the vote. Their own proposals stay quiet (events.ts).
+        if (
+          userRef.current &&
+          governanceEventNotifies({
+            kind: p.kind,
+            createdBy: p.proposal?.created_by,
+            meID: userRef.current.id,
+          })
+        ) {
+          publishNotifyEvent({
+            type: "governance",
+            senderUserID: p.proposal?.created_by,
+            channelID: p.channel_id,
+          });
         }
         break;
       }
@@ -2057,6 +2126,12 @@ export function App() {
               channel_id: cid,
             });
           }
+          // 50-2: being added to a channel is news for the person added --
+          // and "added" is exactly that; the kinds existing members see
+          // (member_added etc.) stay quiet (events.ts).
+          if (channelEventNotifies(p.kind)) {
+            publishNotifyEvent({ type: "channel_added", channelID: cid });
+          }
         }
         // Phase 11c-7: a member (possibly us) was removed from a
         // channel. If it's us, drop the channel from the sidebar live.
@@ -2133,6 +2208,16 @@ export function App() {
         if (c && c.isOpen()) {
           c.send(TypeFriendList, {});
         }
+        // 50-2: a received request is the one friend event that asks the
+        // viewer to do something; the rest stay quiet (events.ts).
+        const p = f.payload as FriendEventPayload;
+        if (p && friendEventNotifies(p.kind)) {
+          publishNotifyEvent({
+            type: "friend_request",
+            senderUserID: p.from_user_id,
+            senderHandle: p.handle || undefined,
+          });
+        }
         break;
       }
       // ---- Phase 30 (30-4): voice pushes -----------------------------
@@ -2145,6 +2230,26 @@ export function App() {
       case TypeVoiceParticipantJoined: {
         const p = f.payload as VoiceParticipantJoinedPayload;
         if (p?.channel_id) {
+          // 50-2: only the join that turns an empty room into a call
+          // notifies, and only for someone else's join -- read against
+          // the roster BEFORE the dispatch below applies this one.
+          // Reconnect roster seeding arrives as voice_roster acks, not as
+          // join pushes, so this cannot burst on connect.
+          const me = userRef.current;
+          if (
+            me &&
+            voiceCallStarted({
+              joinerUserID: p.user_id,
+              meID: me.id,
+              priorRosterSize: (voiceRostersRef.current[p.channel_id] ?? []).length,
+            })
+          ) {
+            publishNotifyEvent({
+              type: "voice",
+              senderUserID: p.user_id,
+              channelID: p.channel_id,
+            });
+          }
           dispatch({
             kind: "voice_participant_joined",
             channelID: p.channel_id,
