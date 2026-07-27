@@ -179,17 +179,6 @@ export function VoiceCallPanel({
     join();
   };
 
-  const toggleCam = () => {
-    if (voiceSession.toggleCam()) return;
-    // No camera track -- the join degraded to audio-only. 30-7b: try to
-    // acquire one NOW and renegotiate it in (perfect negotiation makes the
-    // mid-call add safe). Failure reasons surface via the session error.
-    voiceSession.clearError();
-    setLocalNote("starting camera…");
-    void voiceSession.enableCamera().then((ok) => {
-      setLocalNote(ok ? null : "camera unavailable — check browser permissions");
-    });
-  };
   const [localNote, setLocalNote] = useState<string | null>(null);
   useEffect(() => setLocalNote(null), [hereInCall, channel.id]);
 
@@ -468,34 +457,6 @@ export function VoiceCallPanel({
               </span>
             )}
             <span class="chalk-voice-bar-spacer" />
-            <button
-              class={"chalk-btn chalk-voice-ctl" + (snap.muted ? " chalk-voice-ctl--off" : "")}
-              onClick={() => voiceSession.toggleMute()}
-              data-testid="voice-mute"
-              title={snap.muted ? "unmute microphone" : "mute microphone"}
-            >
-              {snap.muted ? "unmute" : "mute"}
-            </button>
-            <button
-              class={"chalk-btn chalk-voice-ctl" + (!snap.camOn ? " chalk-voice-ctl--off" : "")}
-              onClick={toggleCam}
-              data-testid="voice-cam"
-              title={snap.camOn ? "turn camera off" : "turn camera on"}
-            >
-              {snap.camOn ? "cam off" : "cam on"}
-            </button>
-            <button
-              class={"chalk-btn chalk-voice-ctl" + (snap.sharing ? " chalk-voice-ctl--on" : "")}
-              onClick={() => void voiceSession.toggleScreenShare()}
-              data-testid="voice-share"
-              title={
-                snap.sharing
-                  ? "stop sharing your screen"
-                  : "share a screen, window, or tab"
-              }
-            >
-              {snap.sharing ? "stop share" : "share"}
-            </button>
             {snap.sharing && (
               <span class="chalk-voice-modes" data-testid="voice-share-modes">
                 {(
@@ -527,13 +488,6 @@ export function VoiceCallPanel({
               title="signaling + transport diagnostics"
             >
               debug
-            </button>
-            <button
-              class="chalk-btn chalk-voice-ctl chalk-voice-ctl--leave"
-              onClick={() => void voiceSession.leave()}
-              data-testid="voice-leave"
-            >
-              leave
             </button>
           </div>
 

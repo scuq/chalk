@@ -5392,7 +5392,7 @@ body.chalk-resizing .chalk-sidebar-resizer {
 
 /* Same border, raised background and margins as .chalk-voice-dock, which sits
    directly above it in this column -- the two read as one voice block rather
-   than a panel and four loose buttons. Four equal columns so the buttons fill
+   than a panel and five loose buttons. Five equal columns so the buttons fill
    the roster width at any sidebar size instead of huddling at the left edge. */
 .chalk-voice-controls {
   margin: 0 var(--chalk-s2);
@@ -5400,7 +5400,7 @@ body.chalk-resizing .chalk-sidebar-resizer {
   background: var(--chalk-bg-elev);
   padding: var(--chalk-s2);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: var(--chalk-s2);
 }
 
@@ -5429,6 +5429,20 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-voice-ctlbtn.is-off {
   color: var(--chalk-warn);
   border-color: var(--chalk-warn);
+}
+
+/* Live screen share -- also a state you can be caught out by. */
+.chalk-voice-ctlbtn.is-on {
+  color: var(--chalk-warn);
+  border-color: var(--chalk-warn);
+}
+
+/* Share outside a call: nothing to share into yet. */
+.chalk-voice-ctlbtn:disabled {
+  color: var(--chalk-fg-muted);
+  border-color: var(--chalk-border);
+  background: transparent;
+  cursor: default;
 }
 
 /* ---- debug drawer (30-4c diagnostics, rebuilt for the 30-5 layout) ---- */

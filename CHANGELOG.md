@@ -10,6 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **One set of call controls instead of two.** Mute, camera and leave no
+  longer repeat under the video: the always-visible voice panel in the
+  bottom-left corner is now the one place for them, and screen sharing moved
+  there too (it lights up while you're sharing, and is greyed out until
+  you're in a call). Under the video only the call timer, the share quality
+  modes and the debug drawer remain.
+- **The settings button in the voice panel now looks like a gear.** It used
+  to read as a sun.
+
 ## v0.3.52 — 27 July 2026 — No more vanishing messages, kinder browser errors, and a darker darkord
 
 ### Changed

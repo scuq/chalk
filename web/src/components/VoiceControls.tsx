@@ -1,5 +1,5 @@
-// VoiceControls (44-2): the always-present mute / deafen / camera / settings
-// panel, in the footer column under the roster.
+// VoiceControls (44-2): the always-present mute / deafen / camera / share /
+// settings panel, in the footer column under the roster.
 //
 // The point of it being always present is that all three toggles are GLOBAL
 // (see voiceSession's setGlobal): outside a call they set the state the next
@@ -75,11 +75,21 @@ function IconCamera({ off }: { off?: boolean }) {
   );
 }
 
+function IconScreen() {
+  return (
+    <Glyph>
+      <rect x="2" y="4" width="20" height="13" rx="2" />
+      <path d="M8 21h8M12 17v4" />
+    </Glyph>
+  );
+}
+
+// A toothed ring around the hub, not radiating spokes -- spokes read as a sun.
 function IconGear() {
   return (
     <Glyph>
-      <circle cx="12" cy="12" r="3.2" />
-      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </Glyph>
   );
 }
@@ -98,9 +108,9 @@ export function VoiceControls({ onOpenMicSettings }: Props) {
 
   const toggleCam = () => {
     if (voiceSession.toggleCam()) return;
-    // In a call that joined audio-only there is no camera track to flip.
-    // Acquiring one mid-call is the call panel's job (it has somewhere to
-    // report a failure); from here, just ask for it.
+    // In a call that joined audio-only there is no camera track to flip --
+    // ask for one mid-call. A failure surfaces through the session error,
+    // which the call panel renders.
     void voiceSession.enableCamera();
   };
 
@@ -150,6 +160,27 @@ export function VoiceControls({ onOpenMicSettings }: Props) {
         data-testid="voice-controls-cam"
       >
         <IconCamera off={!snap.camOn} />
+      </button>
+      {/* Share is the one control here with no "default for the next room":
+          the display picker needs a live call (and a user gesture), so outside
+          one the button is disabled rather than pretending to set anything. */}
+      <button
+        class={"chalk-voice-ctlbtn" + (snap.sharing ? " is-on" : "")}
+        type="button"
+        disabled={!inCall}
+        onClick={() => void voiceSession.toggleScreenShare()}
+        title={
+          !inCall
+            ? "share a screen — join a voice room first"
+            : snap.sharing
+              ? "stop sharing your screen"
+              : "share a screen, window, or tab"
+        }
+        aria-pressed={snap.sharing}
+        aria-label={snap.sharing ? "stop sharing your screen" : "share your screen"}
+        data-testid="voice-controls-share"
+      >
+        <IconScreen />
       </button>
       <button
         class="chalk-voice-ctlbtn"
