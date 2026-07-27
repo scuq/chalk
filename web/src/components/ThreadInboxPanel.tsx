@@ -47,6 +47,7 @@ import {
   type ThreadLine,
 } from "../chat/threadinbox";
 import { fmtRelative } from "../chat/reltime";
+import { threadTitle } from "../chat/threadtitle";
 
 interface Props {
   active: ThreadInboxRow[];
@@ -162,6 +163,15 @@ export function ThreadInboxPanel({
     // holds the newest reply (thread open, or the reply came in live), show
     // that instead of a skeleton.
     const fallback = lines.find((l) => !l.head);
+    // 49-1: the thread's title -- its head message. The row's own preview
+    // decrypts per channel; until then a head line this client already holds
+    // (thread opened, or the head is in loaded history) fills in. headKnown
+    // separates "still decrypting" (skeleton) from "known but empty"
+    // (attachment-only head: drop the line rather than pulse forever).
+    const headLine = lines.find((l) => l.head);
+    const headTitle = threadTitle(r.headBody ?? headLine?.body);
+    const headKnown =
+      r.headBody !== undefined || headLine !== undefined || r.headDeleted === true;
     return (
       <li
         key={r.threadID}
@@ -185,6 +195,17 @@ export function ThreadInboxPanel({
             <span class="chalk-threadinbox-when">{fmtRelative(r.lastReplyTS, now)}</span>
             {mentioned && <span class="chalk-threadinbox-at">@you</span>}
           </div>
+          {r.headDeleted ? (
+            <div class="chalk-threadinbox-headline">
+              <span class="chalk-threadinbox-deleted">[message deleted]</span>
+            </div>
+          ) : !headKnown ? (
+            <div class="chalk-threadinbox-headline">
+              <span class="chalk-threadinbox-skeleton" aria-hidden="true" />
+            </div>
+          ) : headTitle !== null ? (
+            <div class="chalk-threadinbox-headline">{headTitle}</div>
+          ) : null}
           <div class="chalk-threadinbox-preview">
             {matched ? (
               <>

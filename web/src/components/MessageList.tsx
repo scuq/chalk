@@ -237,6 +237,13 @@ interface Props {
   // composer and lets the rest scroll off the top for good. No scrollback
   // means the landing/anchor machinery has nothing to do either.
   ephemeral?: boolean;
+  // 49-1: "show message" -- the row to scroll to and flash-highlight, or
+  // null/absent for none. While the row is not yet in `messages` (App may
+  // still be backfilling history pages to reach it) the effect simply waits;
+  // onFlashDone fires once the highlight has run, and the caller clears the
+  // id in response.
+  flashMessageID?: string | null;
+  onFlashDone?: () => void;
 }
 
 // 45-3: how many scratchpad rows are kept in the DOM. Well past what any
@@ -265,7 +272,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return fmtRelative(d, now);
 }
 
-export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy, ephemeral }: Props) {
+export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy, ephemeral, flashMessageID, onFlashDone }: Props) {
   const messages = ephemeral ? allMessages.slice(-EPHEMERAL_MAX_ROWS) : allMessages;
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -452,6 +459,30 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length, channelID, dividerIndex, ephemeral]);
 
+  // 49-1: "show message" -- scroll the flash target into view once it
+  // exists. Declared after the landing effect so a channel-switch-and-jump
+  // in one action ends on the target, not on the landing anchor. Backfill
+  // pages arriving change messages.length, so a target that isn't loaded yet
+  // is retried, not failed. The anchor is dropped for good: the user asked
+  // to be HERE, and the next live message must not yank them to the bottom.
+  useEffect(() => {
+    if (ephemeral || !flashMessageID) return;
+    const row = rootRef.current?.querySelector<HTMLElement>(
+      `[data-message-id="${flashMessageID}"]`,
+    );
+    if (!row) return;
+    anchorRef.current = null;
+    pinnedRef.current = false;
+    row.scrollIntoView({ behavior: "auto", block: "center" });
+    // Outlives the highlight animation; the caller clears flashMessageID in
+    // response, which removes the row class.
+    const t = window.setTimeout(() => onFlashDone?.(), 1600);
+    return () => window.clearTimeout(t);
+    // onFlashDone is deliberately not a dep: the caller recreates it every
+    // render, and re-arming the timer each render would keep pushing "done"
+    // out under a busy feed.
+  }, [flashMessageID, messages.length, channelID, ephemeral]);
+
   // Phase 9.7d: resolved display settings + "now" for relative time.
   // We capture "now" once per render so all rows in a batch share the
   // same reference point; a setInterval would re-render every minute
@@ -587,7 +618,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
             }}
           >
           <div
-            class={`chalk-message ${own ? "chalk-message--own" : ""} ${isUnread ? "chalk-message--unread" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"} ${editingMessageID === m.id ? "chalk-message--editing" : ""} ${menu?.id === m.id ? "chalk-message--menu-open" : ""}`}
+            class={`chalk-message ${own ? "chalk-message--own" : ""} ${isUnread ? "chalk-message--unread" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"} ${editingMessageID === m.id ? "chalk-message--editing" : ""} ${menu?.id === m.id ? "chalk-message--menu-open" : ""} ${flashMessageID === m.id ? "chalk-message--flash" : ""}`}
             style={`--chalk-msg-sender-col:${senderColCh}ch`}
             data-testid="message"
             data-message-id={m.id}

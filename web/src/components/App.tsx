@@ -18,6 +18,7 @@ import type { ThreadLine } from "../chat/threadinbox";
 import { TYPING_PING_MS } from "../chat/typing";
 import { typingStore } from "../chat/typing-store";
 import { mentionsHandle } from "../chat/mentions";
+import { threadTitle } from "../chat/threadtitle";
 import { notifySounds, type NotifySounds } from "../notify";
 import { categoryForMessage } from "../notify/classify";
 import { deleteActionFor, deleteLabelFor } from "../chat/deletepolicy";
@@ -3363,6 +3364,63 @@ export function App() {
     tabVisible,
   ]);
 
+  // 49-1: "show message" -- the feed row the thread panel asked to jump to,
+  // plus the head's seq so the backfill below knows when to stop looking.
+  // Cleared by the MessageList once the flash has run, or on navigation.
+  const [flashMessage, setFlashMessage] = useState<{
+    channelID: string;
+    messageID: string;
+    seq: number | null;
+  } | null>(null);
+  const flashPagesRef = useRef(0);
+
+  useEffect(() => {
+    // Navigating away cancels the jump; a flash in a channel you left is
+    // just a stale scroll waiting to happen.
+    setFlashMessage((f) => (f && f.channelID !== state.activeChannelID ? null : f));
+  }, [state.activeChannelID]);
+
+  // 49-1: the jump target can be older than the loaded history window (the
+  // feed loads the newest 50). Page backwards with before_seq -- the reducer's
+  // history_loaded merges by id, so each ack just grows the window -- until
+  // the row is present, we have paged past where its seq says it must be
+  // (deleted so hard even the tombstone is gone), or a sanity cap trips.
+  const flashList = flashMessage ? state.messages[flashMessage.channelID] : undefined;
+  useEffect(() => {
+    const f = flashMessage;
+    if (!f) {
+      flashPagesRef.current = 0;
+      return;
+    }
+    const list = flashList ?? [];
+    if (list.some((m) => m.id === f.messageID)) {
+      flashPagesRef.current = 0;
+      return;
+    }
+    // Seq 0 rows are local echoes still waiting for the server; the list is
+    // kept seq-ascending by the reducer.
+    const real = list.filter((m) => m.seq > 0);
+    if (real.length === 0) return; // initial history fetch still in flight
+    const oldest = real[0]!.seq;
+    if (f.seq !== null && oldest <= f.seq) {
+      setFlashMessage(null);
+      return;
+    }
+    if (flashPagesRef.current >= 20) {
+      // ~1000 messages of crawling is enough; give up quietly.
+      setFlashMessage(null);
+      return;
+    }
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    flashPagesRef.current += 1;
+    c.send<FetchHistoryPayload>(TypeFetchHistory, {
+      channel_id: f.channelID,
+      before_seq: oldest,
+      limit: 50,
+    });
+  }, [flashMessage, flashList]);
+
   // 42-8: fetch the inbox once per connect. A small page, and NO decryption on
   // this path, so it only costs what the dot needs -- connect stays cheap.
   useEffect(() => {
@@ -3747,6 +3805,13 @@ export function App() {
               // is the frozen unread window the divider is drawn from.
               channelID={activeChannel.id}
               unreadMark={state.unreadMarks[activeChannel.id]}
+              // 49-1: "show message" jump target from the thread panel.
+              flashMessageID={
+                flashMessage && flashMessage.channelID === activeChannel.id
+                  ? flashMessage.messageID
+                  : null
+              }
+              onFlashDone={() => setFlashMessage(null)}
               ownDevice={state.user?.device ?? null}
               ownUserID={state.user?.id ?? null}
               ownHandle={state.me?.username ?? null}
@@ -3808,9 +3873,30 @@ export function App() {
         const parent = allActiveMessages.find((m) => m.id === tid);
         const replies = state.threadMessages[tid] ?? [];
         const loaded = state.threadLoaded[tid] ?? false;
+        // 49-1: title + "show message". The inbox row stands in when the
+        // parent is not in the channel cache: it carries the decrypted head
+        // preview and the head's seq (which the jump's backfill needs).
+        const inboxRow = [...state.threadInboxAgedUnread, ...state.threadInboxActive].find(
+          (r) => r.threadID === tid,
+        );
+        const title = parent?.deleted
+          ? null
+          : threadTitle(parent?.body ?? inboxRow?.headBody);
+        const threadChannelID = state.openThread.channelID;
         return (
           <ThreadPanel
             parent={parent}
+            title={title}
+            onShowParent={() => {
+              setFlashMessage({
+                channelID: threadChannelID,
+                messageID: tid,
+                seq: parent?.seq ?? inboxRow?.headSeq ?? null,
+              });
+              // On mobile the panel covers the feed entirely, so the jump
+              // would be invisible behind it.
+              if (isMobile) dispatch({ kind: "close_thread" });
+            }}
             replies={replies}
             loaded={loaded}
             ownDevice={state.user?.device ?? null}

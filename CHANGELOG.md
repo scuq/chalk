@@ -13,6 +13,15 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **Threads have titles now.** A thread is titled by the message it was
+  started on: the title heads the thread panel and each row in the threads
+  list, so you can tell threads apart without opening them. (Titles are
+  derived on your device from the decrypted message — the server still never
+  sees them.)
+- **"show message" in a thread jumps to where it started.** The thread
+  panel's header has a new "show message" button that scrolls the channel to
+  the original message and highlights it — loading older history first if
+  the message is further back than what's on screen.
 - **New theme: exchalk.** A true-black theme in the style of the big
   corporate meetings app's dark mode — black window, dark-grey panels,
   sky-blue links and a gold favorites accent. Pick it under profile →

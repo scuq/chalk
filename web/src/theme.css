@@ -993,6 +993,29 @@ body.chalk-resizing .chalk-sidebar-resizer {
   }
 }
 
+/* 49-1: the row the thread panel's "show message" jump landed on. One
+   pulse that fades out; the class outlives the animation but forwards fill
+   leaves the row transparent again. */
+.chalk-message--flash {
+  animation: chalk-message-flash 1.4s ease-out 1 forwards;
+}
+@keyframes chalk-message-flash {
+  from {
+    background: color-mix(in srgb, var(--chalk-accent) 35%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+@supports not (background: color-mix(in srgb, red 50%, transparent)) {
+  /* No animated tint without color-mix; a static lift that disappears when
+     the class is cleared still marks the row. */
+  .chalk-message--flash {
+    animation: none;
+    background: var(--chalk-bg-elev);
+  }
+}
+
 .chalk-sidebar-inner {
   display: flex;
   flex-direction: column;
@@ -3726,6 +3749,7 @@ body.chalk-resizing .chalk-sidebar-resizer {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--chalk-s2);
   padding: var(--chalk-s2) var(--chalk-s3);
   border-bottom: 1px solid var(--chalk-border);
 }
@@ -3735,6 +3759,44 @@ body.chalk-resizing .chalk-sidebar-resizer {
   font-size: var(--chalk-size-body);
   letter-spacing: 0.08em;
   text-transform: lowercase;
+}
+
+/* 49-1: when the title is the head message itself, it is user text -- no
+   lowercase transform, no label spacing, and it clips to one line. */
+.chalk-thread-panel-title--head {
+  text-transform: none;
+  letter-spacing: normal;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chalk-thread-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s1);
+  flex: 0 0 auto;
+}
+
+.chalk-thread-panel-showparent {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--chalk-radius);
+  white-space: nowrap;
+}
+.chalk-thread-panel-showparent:hover {
+  color: var(--chalk-fg-bright);
+  background: var(--chalk-bg-elev);
+}
+.chalk-thread-panel-showparent:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: -1px;
 }
 
 .chalk-thread-panel-close {
@@ -7278,6 +7340,17 @@ body.chalk-resizing .chalk-sidebar-resizer {
 
 .chalk-threadinbox-at {
   color: var(--chalk-accent);
+}
+
+/* 49-1: the thread's title -- its head message, one line, clipped. Sits
+   between the metadata and the latest-reply preview so a row reads as
+   "what the thread is about", then "where it is now". */
+.chalk-threadinbox-headline {
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* One line, clipped. The preview is a hint about whether the thread matters,

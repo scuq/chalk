@@ -65,6 +65,14 @@ interface Props {
   // Forwarded to the reply composer: opening a thread puts the caret in it.
   // See Composer's focusKey.
   focusKey?: string | null;
+  // 49-1: the thread's title, derived from the head message body. Computed
+  // by App rather than from `parent` here because App may know the body
+  // even when the parent row is not in the channel cache (the thread inbox
+  // decrypts its own head previews). Null falls back to a generic label.
+  title?: string | null;
+  // 49-1: jump the channel feed to the head message. Absent hides the
+  // button (tests, callers that predate it).
+  onShowParent?: () => void;
   // Callbacks.
   onClose: () => void;
   onSend: (body: string) => void; // already bound to parentID by caller
@@ -94,22 +102,44 @@ export function ThreadPanel({
   onEditCancel,
   onEditLast,
   focusKey,
+  title,
+  onShowParent,
   onClose,
   onSend,
 }: Props) {
   return (
     <aside class="chalk-thread-panel" data-testid="thread-panel">
       <header class="chalk-thread-panel-header">
-        <span class="chalk-thread-panel-title">thread</span>
-        <button
-          type="button"
-          class="chalk-thread-panel-close"
-          onClick={onClose}
-          title="close thread"
-          data-testid="thread-panel-close"
+        <span
+          class={`chalk-thread-panel-title${title ? " chalk-thread-panel-title--head" : ""}`}
+          // The full head body on hover, since the visible title is clipped.
+          title={title ?? undefined}
+          data-testid="thread-panel-title"
         >
-          ×
-        </button>
+          {title ?? "thread"}
+        </span>
+        <div class="chalk-thread-panel-actions">
+          {onShowParent && (
+            <button
+              type="button"
+              class="chalk-thread-panel-showparent"
+              onClick={onShowParent}
+              title="jump to the message this thread was started on"
+              data-testid="thread-panel-show-parent"
+            >
+              show message
+            </button>
+          )}
+          <button
+            type="button"
+            class="chalk-thread-panel-close"
+            onClick={onClose}
+            title="close thread"
+            data-testid="thread-panel-close"
+          >
+            ×
+          </button>
+        </div>
       </header>
 
       <div class="chalk-thread-panel-body" data-testid="thread-panel-body">
