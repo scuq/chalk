@@ -47,6 +47,12 @@ The engineering-level history (which slice shipped what) lives in
   a key derived from your identity, and the server only ever stores
   ciphertext. Sound volume, do-not-disturb, and chalk's own noises stay
   per-device, as before.
+- **An unread count on the tab.** The title shows "(n) chalk" — counting
+  unread DMs, channels you were mentioned in, unread threads you're part of,
+  and open friend requests — and the app icon carries the same number where
+  chalk is installed as an app. It clears by itself as things get read,
+  including on your other devices, and stays visible under do-not-disturb:
+  silencing interruptions doesn't hide what's waiting.
 
 ### Changed
 - **Chat notifications are now driven by priority rules.** Every notification

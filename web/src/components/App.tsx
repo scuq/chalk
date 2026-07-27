@@ -22,6 +22,7 @@ import { threadTitle, attachmentTitle } from "../chat/threadtitle";
 import { notifySounds, type NotifySounds } from "../notify";
 import { categoryForMessage } from "../notify/classify";
 import { publishNotifyEvent, subscribeNotifyEvents } from "../notify/bus";
+import { badgeCount } from "../notify/badge";
 import { notifyBanners } from "../notify/banners";
 import { titleController } from "../notify/title";
 import { actionsFor, resolvePriority, type RulesConfig } from "../notify/rules";
@@ -2539,6 +2540,36 @@ export function App() {
   useEffect(() => {
     if (tabVisible && state.activeChannelID) notifyBanners().closeChannel(state.activeChannelID);
   }, [tabVisible, state.activeChannelID]);
+
+  // 50-7: the unread badge -- "(n) chalk" in the tab title, and the app
+  // icon badge where installed as a PWA. Derived purely from read-cursor
+  // state (badge.ts), so it clears on its own when things are read on
+  // any device, and it deliberately ignores DND: silencing interruptions
+  // is not the same as hiding what's waiting.
+  useEffect(() => {
+    const dmChannelIDs = new Set(
+      Object.values(state.channels)
+        .filter((ch) => ch.isDM)
+        .map((ch) => ch.id),
+    );
+    const n = badgeCount({
+      unread: state.unread,
+      dmChannelIDs,
+      threadInboxUnreadTotal: state.threadInboxUnreadTotal,
+      pendingIncomingCount: state.pendingIncoming.length,
+    });
+    titleController().setCount(n);
+    const nav = navigator as Navigator & {
+      setAppBadge?: (n?: number) => Promise<void>;
+      clearAppBadge?: () => Promise<void>;
+    };
+    if (nav.setAppBadge && nav.clearAppBadge) {
+      void (n > 0 ? nav.setAppBadge(n) : nav.clearAppBadge()).catch(() => {
+        // Support is feature-detected but can still be policy-refused
+        // (e.g. not installed); the title prefix carries the count then.
+      });
+    }
+  }, [state.unread, state.channels, state.threadInboxUnreadTotal, state.pendingIncoming]);
 
   // 40-4: your own connection coming and going. Both off by default.
   //

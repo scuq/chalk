@@ -1,7 +1,135 @@
-# Notification Sounds
+# Notifications
 
-Built in phase 40. Client-side only; the server knows nothing about any of
-this.
+Sounds built in phase 40; the full notification system — rules engine, OS
+banners, tab blink, unread badge, encrypted cross-device sync — in phase 50.
+Client-side end to end: the server stores one opaque ciphertext blob and
+otherwise knows nothing about any of this.
+
+## The model: bus → rules → priorities → sinks
+
+```
+frame handlers ──normalize──▶ bus (NotifyEvent) ──▶ resolvePriority(event, rules) → mute | 1..4
+                                                          │  user > channel > type default
+                                                          ▼
+                                          profiles[priority] → { sound, banner, blink }
+                                                          │
+                       ┌──────────────────────────────────┼─────────────────────┐
+                       ▼                                  ▼                     ▼
+                 sound sink                        banner sink             blink sink
+             (synth.ts, gate.ts)                  (banners.ts)             (title.ts)
+
+read cursors / thread inbox / friend requests ──▶ badge (badge.ts; independent of all of the above)
+```
+
+Two indirections, both deliberate:
+
+- **Rules assign priorities, never actions.** Defaults per event type,
+  overridable per user and per channel; most specific wins (a person you
+  singled out beats the channel it happened in, which beats the kind of thing
+  it was). Mute is priority 0. Consequence to know about: a muted channel
+  also mutes mentions in it — a per-user rule is the way to punch through.
+- **Priorities map to actions once, globally.** "This friend should banner"
+  is expressed as "this friend is P4" plus "P4 banners". Changing what P4
+  means updates every P4 rule at once.
+
+Modules: `web/src/notify/` — `bus.ts` (event stream), `rules.ts` (the pure
+engine + edit helpers), `rules-store.ts` (persistence), `classify.ts` (which
+event a message is), `events.ts` (which event a non-message frame is),
+`gate.ts` (moment-level suppression for sounds and banners), `synth.ts`,
+`banners.ts`, `title.ts`, `badge.ts`, `rules-sync.ts`. The one consumer that
+ties bus to sinks lives in `App.tsx`.
+
+## Event types
+
+| Type | Default priority | Fires on |
+|---|---|---|
+| `mention` | 4 | someone writes your handle in a channel |
+| `dm` | 4 | any message in a 1:1 — thread replies in a DM included |
+| `thread_reply` | 3 | a reply in a thread you wrote in, outside DMs |
+| `channel_added` | 3 | you're added to a channel |
+| `friend_request` | 3 | a friend request arrives (accept/decline/removal stay quiet) |
+| `voice` | 2 | a call **starts** — someone else joins an *empty* voice room; later joiners are silent, and scratchpad chat never notifies |
+| `governance` | 2 | a proposal opens or resolves, except your own |
+| `message` | 1 | any other new message |
+
+Exactly one event per arriving message: the four chat types are a precedence
+order (`classify.ts`). A DM outranks a mention, because in a 1:1 the channel
+already tells you the message is for you. Mentions are derived on-device from
+the decrypted body — bodies are ciphertext, so the server can never know
+about them (see migrations 0043/0047 for that refusal).
+
+Default action profiles: P1/P2 `{sound}`, P3 `{sound, blink}`, P4
+`{sound, banner, blink}`.
+
+## Sinks
+
+**Sound** — the chalk-stroke pack, unchanged from phase 40 (design notes
+below). The gate (`decideSound`) applies moment-level suppression with named
+verdicts: already-watching (tab focused + relevant surface open + not idle),
+DND, 2 s global / 5 s per-category rate floors, audio-unlock. The per-category
+pref check now applies only to machine noises — a muted event type never
+reaches the gate.
+
+**OS banners** (`banners.ts` + `decideBanner`) — page-context `Notification`
+with the decrypted sender/preview, rendered locally by the OS; nothing leaves
+the device. No rate limit and no unlock: collapse is the OS `tag` mechanism
+(one banner per channel / per thread / per concern), which also dedupes
+across tabs. Banners close themselves when the thing they announced is read
+— on any device, since read cursors sync — and clicking one focuses the
+window and lands in the right channel or thread. Permission is requested
+only from the settings toggle, never on load. Platform reality: desktop
+Chrome/Firefox/Safari work; **Android Chrome throws** on page-context
+construction (needs a service worker chalk doesn't have) and iOS lacks the
+API — a probe turns that into "unsupported" and the UI hides the feature.
+macOS may re-alert on tag replacement; accepted.
+
+**Tab blink** (`title.ts`) — the title alternates with a ● marker until the
+tab regains focus or visibility. Never starts while the window is visible
+and focused (nothing would clear it). One controller owns `document.title`
+for both the blink and the badge count, so the two can't fight. DND silences
+blink along with sounds and banners.
+
+**Badge** (`badge.ts`) — `"(n) chalk"` in the title plus
+`navigator.setAppBadge` where installed. Pure derivation of read-cursor
+state — unread DMs + mentioned channels + involved unread threads + open
+friend requests — the "needs you" line the thread inbox drew, not raw
+volume. Deliberately exempt from rules and DND: silencing interruptions is
+not hiding what's waiting.
+
+## Rules UI
+
+- **NotificationsPanel** (profile → notifications → "notification rules…"):
+  the P1–P4 action matrix, per-event-type defaults with sound previews, and
+  the per-person / per-channel rule lists (add, change, remove).
+- **Sidebar context menus**: right-click or long-press a friend or channel →
+  set priority or mute on the spot. Same store, same helpers (`withUserRule`
+  / `withChannelRule`), so a quick-set is a first-class rule the panel shows.
+
+## Storage and sync
+
+Two stores, split on purpose:
+
+- **Device-local** (`chalk.notify.v2` in localStorage): master, volume, DND,
+  and the machine-noise toggles (`presence`, `connect`, `disconnect`,
+  `send_confirm`, `error` — sounds about chalk itself; no rule should ever
+  banner them). Volume is a property of the machine; the phone and the desk
+  can disagree. v1 entries are still read; normalize dropping their chat
+  categories *is* the migration.
+- **Synced, encrypted** (`chalk.notify.rules.v1` locally, mirrored to the
+  server): the rules and profiles. They name the people and channels you've
+  singled out — exactly what `user_preferences` (plaintext JSONB the server
+  reads) must not carry — so `rules-sync.ts` seals them with AES-256-GCM
+  under a key HKDF-derived from the identity's X25519 scalar
+  (salt `chalk-notify-rules-salt-v1`, info `chalk-notify-rules-v1`) and
+  ships base64 ciphertext through the ordinary prefs flow under the flat key
+  `notify_rules_enc`. Every device holding the identity derives the same
+  key; the server stores noise. Whole-blob last-write-wins; on connect the
+  server copy is applied over the local cache, a blob-less server is seeded
+  from local, and an undecryptable blob is ignored rather than allowed to
+  eat the local ruleset. Until identity unlock, the local cache serves.
+
+First-run seeding: with no rules stored, a v1 sound category the user had
+switched off becomes a muted event type — the closest pre-rules equivalent.
 
 ## Sound design
 
@@ -40,44 +168,6 @@ should sound like the board being wiped, and the tests hold it to that.
 The numbers in `SOUND_SPECS` were tuned by ear. Treat the table as a recording
 of that session rather than as arithmetic: changing one means listening again.
 
-## Categories
-
-| Category | Default | Fires on |
-|---|---|---|
-| `mention` | on | someone writes your handle in a channel |
-| `dm` | on | any message in a 1:1 |
-| `thread_reply` | on | a reply in a thread you wrote in |
-| `message` | on | any other new message |
-| `presence` | off | a friend goes from away/offline to online |
-| `connect` / `disconnect` | off | your own connection |
-| `send_confirm` | off | the server acked your send |
-| `error` | on | a server error frame |
-
-Exactly one sound per arriving message: the four chat categories are a
-precedence order, resolved in `web/src/notify/classify.ts`. A DM outranks a
-mention, because in a 1:1 the channel already tells you the message is for you.
-
-## Suppression rules
-
-In `web/src/notify/gate.ts`, applied in this order, and every one of them is
-reported as a named verdict rather than a bare boolean so a "my sounds randomly
-don't fire" report is answerable.
-
-1. Master switch off, or this category off
-2. Tab focused **and** the relevant channel already open → no sound
-3. Do not disturb → no sounds at all
-4. Under 2 s since any sound, or under 5 s since this category → no sound
-5. Audio not yet unlocked → drop, never queue
-
-Rule 2 applies to `connect`/`disconnect`/`error` too: if the window is in front
-of you, the status bar has already said it.
-
-Two more guards live at the call sites in `App.tsx` because they need app state:
-your own messages never sound (they come back to you on your other devices and
-after a reconnect), and only live pushes sound — the history backfill that runs
-on reload calls the same classifier and would otherwise play the entire backlog
-at once.
-
 ## Unlocking
 
 An `AudioContext` is born suspended and only resumes from inside a real user
@@ -89,33 +179,27 @@ created until then either.
 This is also why sounds can default to on without startling anyone: a tab left
 open and never touched cannot make a noise.
 
-## Settings
+## Guards at the call sites
 
-Per-device, in `localStorage` under `chalk.notify.v1` — **not** the server-synced
-prefs blob that carries the theme. Two reasons: `user_preferences` is plaintext
-JSONB the server reads, so keeping sounds local is the only way to honour "the
-server never sees your sound preferences"; and volume is a property of the
-machine, the same argument `display-prefs.ts` makes for fonts.
-
-```js
-{ master: true, volume: 0.4, dnd: false, categories: { mention: true, ... } }
-```
-
-The profile panel's notifications section is the UI, with a preview button per
-category. Writes notify same-tab listeners as well as firing the cross-tab
-`storage` event, so a toggle takes effect immediately in every tab without a
-reload.
+Two live in `App.tsx` because they need app state: your own messages never
+notify (they come back to you on your other devices and after a reconnect),
+and only live pushes publish to the bus — the history backfill on reload
+calls the same classifier and would otherwise play the entire backlog at
+once. Voice reconnects are safe the same way: roster seeding arrives as
+`voice_roster` acks, not join pushes.
 
 ## Not built
 
 - **`dnd_schedule`** — a time-window scheduler. The `dnd` boolean exists; the
   schedule is its own slice.
-- **A sample-based pack.** `pack: "synth"` is not stored either: there is one
-  pack, and a discriminator with one value discriminates nothing. Both return
-  together.
-- **OS-level notifications.** The category model and suppression rules would
-  carry over unchanged. Permission would be requested only when the user
-  explicitly enables them, never on load.
+- **A sample-based pack.** There is one pack, and a discriminator with one
+  value discriminates nothing.
+- **True push (service worker + Web Push).** Banners need an open tab or
+  installed PWA; with chalk closed, nothing arrives. A service worker would
+  also need channel-key access to show decrypted previews — its own design
+  problem, not an afternoon.
+- **Per-(type, scope) rules** — e.g. "mentions still notify in this muted
+  channel". The resolver's shape permits it; the UI cost is why it waits.
 - **`error` on decryption failure.** It fires on server error frames only.
   Detecting a failed decrypt means string-matching the fail-closed placeholder
   body, which is too fragile to build on.
