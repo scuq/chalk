@@ -39,6 +39,12 @@ The engineering-level history (which slice shipped what) lives in
   semi-transparent when idle — visible, but no longer competing for
   attention — and return to full strength on hover or when you join a call.
 
+### Fixed
+- **Text sent with an image is visible again.** Sending a message with both
+  an attachment and typed text drew the image over the text line in
+  desktop-width windows, so the caption looked lost — it now shows above
+  the image.
+
 ## v0.3.53 — 27 July 2026 — One place for call controls
 
 ### Changed

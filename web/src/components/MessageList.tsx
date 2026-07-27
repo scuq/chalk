@@ -599,6 +599,15 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
           unreadMark !== undefined &&
           m.seq > unreadMark.afterSeq &&
           m.seq <= unreadMark.throughSeq;
+        // giphy-layout: a giphy-marked body renders as a gated GIF that
+        // BREAKS OUT to the row's left edge (grid-column 1/-1), exactly
+        // like an attachment image -- not inline in the narrow body
+        // column. Non-giphy bodies render as plain text in the body span.
+        const gr = m.deleted ? null : decideGiphyRender(m.body, giphyPref ?? "unset");
+        const isGiphy = gr !== null && gr.mode !== "text";
+        // The body span renders nothing (no text, no deletion notice, no
+        // edited marker); media on such rows pulls up beside the sender.
+        const noBody = !m.deleted && (isGiphy || m.body.trim() === "") && !m.editedAt;
         return (
           <Fragment key={m.id}>
           {mi === dividerIndex && (
@@ -618,7 +627,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
             }}
           >
           <div
-            class={`chalk-message ${own ? "chalk-message--own" : ""} ${isUnread ? "chalk-message--unread" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"} ${editingMessageID === m.id ? "chalk-message--editing" : ""} ${menu?.id === m.id ? "chalk-message--menu-open" : ""} ${flashMessageID === m.id ? "chalk-message--flash" : ""}`}
+            class={`chalk-message ${own ? "chalk-message--own" : ""} ${isUnread ? "chalk-message--unread" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"} ${editingMessageID === m.id ? "chalk-message--editing" : ""} ${menu?.id === m.id ? "chalk-message--menu-open" : ""} ${flashMessageID === m.id ? "chalk-message--flash" : ""} ${noBody ? "chalk-message--no-body" : ""}`}
             style={`--chalk-msg-sender-col:${senderColCh}ch`}
             data-testid="message"
             data-message-id={m.id}
@@ -725,51 +734,39 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                 </span>
               );
             })()}
-            {(() => {
-              // giphy-layout: a giphy-marked body renders as a gated GIF that
-              // BREAKS OUT to the row's left edge (grid-column 1/-1), exactly
-              // like an attachment image -- not inline in the narrow body
-              // column. Non-giphy bodies render as plain text in the body span.
-              const gr = m.deleted ? null : decideGiphyRender(m.body, giphyPref ?? "unset");
-              const isGiphy = gr !== null && gr.mode !== "text";
-              return (
-                <>
-                  <span class="chalk-message-body" data-testid="message-body">
-                    {m.deleted ? (
-                      <span class="chalk-message-deleted" data-testid="message-deleted">
-                        message deleted
-                      </span>
-                    ) : isGiphy ? null : (
-                      // 33-3: mentions of channel members render highlighted,
-                      // with the user's own mention louder. Segments are text
-                      // nodes either way -- nothing here is parsed as markup.
-                      <MessageBody
-                        body={m.body}
-                        known={knownHandles}
-                        ownHandle={ownHandle}
-                      />
-                    )}
-                    {/* 37-3: only one version of a message is ever stored, so
-                        this marks that the text changed after it was sent
-                        without offering any history to look at. */}
-                    {!m.deleted && m.editedAt && (
-                      <span
-                        class="chalk-message-edited"
-                        title={`edited ${fmtTimeAs(m.editedAt, display_.timestampFormat, now)}`}
-                        data-testid={`message-edited-${m.id}`}
-                      >
-                        (edited)
-                      </span>
-                    )}
-                  </span>
-                  {gr && gr.mode !== "text" && (
-                    <div class="chalk-message-giphy" data-testid="message-giphy">
-                      <GiphyView render={gr} onRequestEnableGiphy={onRequestEnableGiphy} />
-                    </div>
-                  )}
-                </>
-              );
-            })()}
+            <span class="chalk-message-body" data-testid="message-body">
+              {m.deleted ? (
+                <span class="chalk-message-deleted" data-testid="message-deleted">
+                  message deleted
+                </span>
+              ) : isGiphy ? null : (
+                // 33-3: mentions of channel members render highlighted,
+                // with the user's own mention louder. Segments are text
+                // nodes either way -- nothing here is parsed as markup.
+                <MessageBody
+                  body={m.body}
+                  known={knownHandles}
+                  ownHandle={ownHandle}
+                />
+              )}
+              {/* 37-3: only one version of a message is ever stored, so
+                  this marks that the text changed after it was sent
+                  without offering any history to look at. */}
+              {!m.deleted && m.editedAt && (
+                <span
+                  class="chalk-message-edited"
+                  title={`edited ${fmtTimeAs(m.editedAt, display_.timestampFormat, now)}`}
+                  data-testid={`message-edited-${m.id}`}
+                >
+                  (edited)
+                </span>
+              )}
+            </span>
+            {gr && gr.mode !== "text" && (
+              <div class="chalk-message-giphy" data-testid="message-giphy">
+                <GiphyView render={gr} onRequestEnableGiphy={onRequestEnableGiphy} />
+              </div>
+            )}
             {/* att-2: encrypted attachments. Each decrypts independently and
                 fails closed to a locked placeholder if the key is missing.
                 Suppressed on deleted rows. */}

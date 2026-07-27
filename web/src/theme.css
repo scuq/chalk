@@ -6528,10 +6528,15 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-message-giphy,
 .chalk-message-attachments {
   grid-column: 3 / -1;
-  /* Phase 9.7m: the media sits on grid row 2 (row 1 holds time + sender),
-     so it started one line BELOW the username. Pull it up by one body
-     line-height so its top aligns with the sender on row 1, reading as a
-     single message rather than a caption floating beneath an empty row. */
+}
+/* Phase 9.7m: the media sits on grid row 2 (row 1 holds time + sender),
+   so it started one line BELOW the username. Pull it up by one body
+   line-height so its top aligns with the sender on row 1, reading as a
+   single message rather than a caption floating beneath an empty row.
+   Only when the body span renders nothing -- on a captioned image the
+   same pull-up painted the image over the caption's line. */
+.chalk-message--no-body .chalk-message-giphy,
+.chalk-message--no-body .chalk-message-attachments {
   margin-top: -1.4em;
 }
 .chalk-message--no-time .chalk-message-giphy,
@@ -6968,7 +6973,9 @@ body.chalk-resizing .chalk-sidebar-resizer {
   .chalk-message-giphy,
   .chalk-message-attachments,
   .chalk-message--no-time .chalk-message-giphy,
-  .chalk-message--no-time .chalk-message-attachments {
+  .chalk-message--no-time .chalk-message-attachments,
+  .chalk-message--no-body .chalk-message-giphy,
+  .chalk-message--no-body .chalk-message-attachments {
     grid-column: 1 / -1;
     /* Desktop pulls media up beside the sender; here the meta line is a
        row of its own, so media starts where the body would. */
