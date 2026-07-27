@@ -6092,6 +6092,47 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 
 /* ============================================================
+   exchalk: the corporate meetings app, dark mode
+   ============================================================
+   True-black window chrome with a two-step grey ladder for the
+   panels (#1a1a1a list, #262626 elevated), near-white text, and
+   sky-blue links -- the dark theme of the big video-meetings
+   client. The gold (#fc9d03) is its favorites star; it doubles
+   as the warn tone since urgency reads well in that amber.
+
+   The red is lifted a step from the source palette's #f7594d
+   (4.9:1 on black) so error text clears the muted-tier floor.
+   ============================================================ */
+
+[data-theme="exchalk"] {
+  --chalk-bg:           #000000;
+  --chalk-bg-elev:      #1a1a1a;
+  --chalk-bg-elev-2:    #262626;
+  --chalk-fg:           #f7f7f7;
+  --chalk-fg-dim:       #b2b2b2;
+  --chalk-fg-bright:    #ffffff;
+  --chalk-fg-muted:     #8f8f8f;
+  --chalk-border:       #262626;
+  --chalk-accent:       #64b4fa;
+  --chalk-warn:         #fc9d03;
+  --chalk-error:        #fc6b60;
+
+  color-scheme: dark;
+}
+
+/* Active sidebar item: the source app highlights the selected
+   conversation with a neutral grey pill, not an accent wash. */
+[data-theme="exchalk"] .chalk-sidebar-item--active {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.chalk-profile-theme-swatch-preview--exchalk {
+  background: linear-gradient(135deg,
+    #000000 0%, #000000 50%,
+    #64b4fa 50%, #64b4fa 100%);
+}
+
+/* ============================================================
    Phase 9.7f: per-user nick colors
    ============================================================
    A name's HUE is per-user; saturation and lightness come from the

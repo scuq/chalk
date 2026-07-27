@@ -10,6 +10,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **New theme: exchalk.** A true-black theme in the style of the big
+  corporate meetings app's dark mode — black window, dark-grey panels,
+  sky-blue links and a gold favorites accent. Pick it under profile →
+  appearance.
+
 ## v0.3.53 — 27 July 2026 — One place for call controls
 
 ### Changed
