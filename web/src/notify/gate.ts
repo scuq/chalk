@@ -89,3 +89,40 @@ export function decideSound(input: GateInput): GateVerdict {
 
   return "play";
 }
+
+// --- 50-3: the same idea for OS banners --------------------------------
+//
+// Deliberately no rate limit and no unlock: banners collapse through the
+// OS tag mechanism (one banner per tag, newer replaces older), and the
+// Notification API needs a granted permission rather than a gesture.
+// Whether a banner is wanted at all was already the rules engine's call;
+// this only decides whether this moment is one to interrupt.
+
+export interface BannerGateInput {
+  // The constructor probe: false where page-context Notifications don't
+  // exist or are known to throw (Android Chrome without a service worker).
+  supported: boolean;
+  permission: "default" | "denied" | "granted";
+  dnd: boolean;
+  tabVisible: boolean;
+  userIdle: boolean;
+  isRelevantSurfaceOpen: boolean;
+}
+
+export type BannerVerdict =
+  | "show"
+  | "unsupported"
+  | "no_permission"
+  | "already_watching"
+  | "dnd";
+
+export function decideBanner(input: BannerGateInput): BannerVerdict {
+  if (!input.supported) return "unsupported";
+  if (input.permission !== "granted") return "no_permission";
+  // Same as sound rule 1: you are looking at the thing, and you're there.
+  if (input.tabVisible && !input.userIdle && input.isRelevantSurfaceOpen) {
+    return "already_watching";
+  }
+  if (input.dnd) return "dnd";
+  return "show";
+}

@@ -18,6 +18,11 @@ The engineering-level history (which slice shipped what) lives in
   receiving a friend request, and a proposal opening or resolving in a
   channel you're in each have their own chalk stroke now. Like every other
   sound, they stay quiet for whatever you're already looking at.
+- **The tab blinks when something needs you.** Higher-priority
+  notifications — mentions, DMs, thread replies, friend requests, channel
+  invites — make a backgrounded chalk tab alternate its title with a ● marker
+  until you come back to it. Do-not-disturb silences the blinking along with
+  the sounds.
 
 ### Changed
 - **Chat notifications are now driven by priority rules.** Every notification

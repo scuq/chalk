@@ -8,9 +8,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  decideBanner,
   decideSound,
   MIN_GAP_ANY_MS,
   MIN_GAP_CATEGORY_MS,
+  type BannerGateInput,
   type GateInput,
 } from "./gate.ts";
 import { MACHINE_CATEGORIES, SOUND_CATEGORIES, type SoundPrefs } from "./types.ts";
@@ -195,4 +197,52 @@ test("the pref checks are reported ahead of the lock", () => {
   // the user switched off should still say so rather than blaming the
   // lock, which is what makes the verdict useful for debugging.
   assert.equal(decideSound(input({ unlocked: false, prefs: MASTER_OFF })), "master_off");
+});
+
+// --- 50-3: the banner gate ---------------------------------------------
+
+function bannerInput(over: Partial<BannerGateInput> = {}): BannerGateInput {
+  return {
+    supported: true,
+    permission: "granted",
+    dnd: false,
+    tabVisible: false,
+    userIdle: false,
+    isRelevantSurfaceOpen: false,
+    ...over,
+  };
+}
+
+test("a banner for a hidden tab shows", () => {
+  assert.equal(decideBanner(bannerInput()), "show");
+});
+
+test("no support and no permission are named, in that order", () => {
+  assert.equal(decideBanner(bannerInput({ supported: false })), "unsupported");
+  assert.equal(
+    decideBanner(bannerInput({ supported: false, permission: "denied" })),
+    "unsupported",
+    "an unsupported platform must not blame the permission",
+  );
+  for (const p of ["default", "denied"] as const) {
+    assert.equal(decideBanner(bannerInput({ permission: p })), "no_permission");
+  }
+});
+
+test("banner rule 1 mirrors the sound gate", () => {
+  assert.equal(
+    decideBanner(bannerInput({ tabVisible: true, isRelevantSurfaceOpen: true })),
+    "already_watching",
+  );
+  // Both halves required, and idle re-arms it -- same as sounds.
+  assert.equal(decideBanner(bannerInput({ tabVisible: true })), "show");
+  assert.equal(decideBanner(bannerInput({ isRelevantSurfaceOpen: true })), "show");
+  assert.equal(
+    decideBanner(bannerInput({ tabVisible: true, userIdle: true, isRelevantSurfaceOpen: true })),
+    "show",
+  );
+});
+
+test("do not disturb silences banners too", () => {
+  assert.equal(decideBanner(bannerInput({ dnd: true })), "dnd");
 });

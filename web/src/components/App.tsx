@@ -22,8 +22,11 @@ import { threadTitle, attachmentTitle } from "../chat/threadtitle";
 import { notifySounds, type NotifySounds } from "../notify";
 import { categoryForMessage } from "../notify/classify";
 import { publishNotifyEvent, subscribeNotifyEvents } from "../notify/bus";
+import { notifyBanners } from "../notify/banners";
+import { titleController } from "../notify/title";
 import { actionsFor, resolvePriority, type RulesConfig } from "../notify/rules";
 import { loadRulesConfig, subscribeRulesConfig } from "../notify/rules-store";
+import { loadSoundPrefs, subscribeSoundPrefs } from "../notify/prefs";
 import {
   channelEventNotifies,
   friendEventNotifies,
@@ -1312,31 +1315,51 @@ export function App() {
   // rotation (the server's monotonic guard rejects it with stale_key_version).
   const rotatingChannelsRef = useRef<Set<string>>(new Set());
 
-  // 50-2: the notification bus consumer -- the one place events meet the
-  // rules. Publishers (noteSound, the event frame cases) report what
+  // 50-2/50-3: the notification bus consumer -- the one place events meet
+  // the rules. Publishers (noteSound, the event frame cases) report what
   // happened; this resolves a priority, looks up the actions for it, and
-  // drives the sinks. Sound is the only sink so far; banners and blinking
-  // join here in later slices.
+  // drives the sinks: sound, OS banner, title blink.
   useEffect(() => {
     const unsubRules = subscribeRulesConfig((c) => {
       rulesConfigRef.current = c;
+    });
+    // The sound and banner sinks read dnd through their own gates; the
+    // blink has no gate of its own, so it checks here.
+    let dnd = loadSoundPrefs().dnd;
+    const unsubPrefs = subscribeSoundPrefs((p) => {
+      dnd = p.dnd;
     });
     const unsubBus = subscribeNotifyEvents((ev) => {
       const cfg = rulesConfigRef.current;
       if (!cfg) return;
       const actions = actionsFor(resolvePriority(ev, cfg.rules), cfg.profiles);
-      if (actions.sound) {
-        notifyRef.current?.play(ev.type, {
-          tabVisible: tabVisibleRef.current,
-          userIdle: userIdleRef.current,
-          isRelevantSurfaceOpen: !!ev.channelID && ev.channelID === activeChannelRef.current,
-        });
-      }
+      const moment = {
+        tabVisible: tabVisibleRef.current,
+        userIdle: userIdleRef.current,
+        isRelevantSurfaceOpen: !!ev.channelID && ev.channelID === activeChannelRef.current,
+      };
+      if (actions.sound) notifyRef.current?.play(ev.type, moment);
+      if (actions.banner) notifyBanners().show(ev, moment);
+      // blink() itself declines while the window is visible and focused.
+      if (actions.blink && !dnd) titleController().blink();
     });
     return () => {
       unsubRules();
+      unsubPrefs();
       unsubBus();
     };
+  }, []);
+
+  // 50-3: clicking a banner focuses the window and goes to what it was
+  // about. Installed once; dispatch is stable for the app's lifetime.
+  useEffect(() => {
+    notifyBanners().setNavigateHandler((nav) => {
+      if (nav.channelID && nav.threadID) {
+        dispatch({ kind: "open_thread_from_inbox", channelID: nav.channelID, threadID: nav.threadID });
+      } else if (nav.channelID) {
+        dispatch({ kind: "set_active_channel", channelID: nav.channelID });
+      }
+    });
   }, []);
 
   // --- WS lifecycle ----------------------------------------------------
@@ -1594,6 +1617,10 @@ export function App() {
       channelID: m.channelID,
       threadID: m.parentID ? (m.threadID ?? m.parentID) : undefined,
       isDM: !!ch.isDM,
+      senderHandle: ch.members.find((mem) => mem.userID === m.senderUserID)?.handle,
+      channelName: ch.name || undefined,
+      // Decrypted on this device; the banner sink renders it locally.
+      preview: body || undefined,
     });
   }
 
@@ -1842,6 +1869,8 @@ export function App() {
             type: "governance",
             senderUserID: p.proposal?.created_by,
             channelID: p.channel_id,
+            channelName: channelsRef.current[p.channel_id]?.name || undefined,
+            preview: p.kind === GovEventProposalOpened ? "a proposal opened" : "a proposal resolved",
           });
         }
         break;
@@ -2130,7 +2159,11 @@ export function App() {
           // and "added" is exactly that; the kinds existing members see
           // (member_added etc.) stay quiet (events.ts).
           if (channelEventNotifies(p.kind)) {
-            publishNotifyEvent({ type: "channel_added", channelID: cid });
+            publishNotifyEvent({
+              type: "channel_added",
+              channelID: cid,
+              channelName: p.channel.name || undefined,
+            });
           }
         }
         // Phase 11c-7: a member (possibly us) was removed from a
@@ -2244,10 +2277,13 @@ export function App() {
               priorRosterSize: (voiceRostersRef.current[p.channel_id] ?? []).length,
             })
           ) {
+            const vch = channelsRef.current[p.channel_id];
             publishNotifyEvent({
               type: "voice",
               senderUserID: p.user_id,
               channelID: p.channel_id,
+              senderHandle: vch?.members.find((mem) => mem.userID === p.user_id)?.handle,
+              channelName: vch?.name || undefined,
             });
           }
           dispatch({
@@ -2419,6 +2455,41 @@ export function App() {
     document.addEventListener("visibilitychange", onChange);
     return () => document.removeEventListener("visibilitychange", onChange);
   }, []);
+
+  // --- 50-3: banner teardown -------------------------------------------
+  //
+  // A banner announces something unread. The moment it stops being
+  // unread -- read here, read on the phone, the tab brought back to the
+  // channel -- the banner is stale, and stale banners are how people
+  // learn to ignore them. Cursors sync across devices, so watching local
+  // state covers the remote reads too. Closing a tag with no banner
+  // behind it is a no-op, so none of this needs to know what was shown.
+  useEffect(() => {
+    for (const [cid, u] of Object.entries(state.unread)) {
+      if (!hasUnread(u)) notifyBanners().closeChannel(cid);
+    }
+  }, [state.unread]);
+
+  // Thread cursors: any advance means the viewer (on some device) went
+  // into that thread; whatever the banner said, they've seen newer.
+  const prevThreadSeenRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    const prev = prevThreadSeenRef.current;
+    for (const [tid, seq] of Object.entries(state.threadSeen)) {
+      if (prev[tid] !== seq) notifyBanners().closeThread(tid);
+    }
+    prevThreadSeenRef.current = state.threadSeen;
+  }, [state.threadSeen]);
+
+  useEffect(() => {
+    if (state.pendingIncoming.length === 0) notifyBanners().closeFriend();
+  }, [state.pendingIncoming]);
+
+  // Coming back to the tab clears the active channel's banner without
+  // waiting for the mark_read round-trip.
+  useEffect(() => {
+    if (tabVisible && state.activeChannelID) notifyBanners().closeChannel(state.activeChannelID);
+  }, [tabVisible, state.activeChannelID]);
 
   // 40-4: your own connection coming and going. Both off by default.
   //
