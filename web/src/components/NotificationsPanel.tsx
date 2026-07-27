@@ -22,18 +22,18 @@
 
 import { useEffect, useState } from "preact/hooks";
 import type { ChannelSummary, Friend } from "../state/types";
+import { PrioritySelect } from "./PrioritySelect";
 import { notifyBanners } from "../notify/banners";
 import { notifySounds } from "../notify";
 import {
   EVENT_TYPE_LABELS,
   NOTIFY_EVENT_TYPES,
-  isPriority,
+  PRIORITY_LABELS,
   withChannelRule,
   withProfileAction,
   withTypeDefault,
   withUserRule,
   type ActionSet,
-  type Priority,
 } from "../notify/rules";
 import { useRulesConfig } from "../notify/rules-store";
 
@@ -41,44 +41,6 @@ interface Props {
   friends: Friend[];
   channels: ChannelSummary[];
   onClose: () => void;
-}
-
-const PRIORITY_LABELS: Record<Priority, string> = {
-  0: "mute",
-  1: "1 · lowest",
-  2: "2",
-  3: "3",
-  4: "4 · highest",
-};
-
-function PrioritySelect(props: {
-  value: Priority | null;
-  // null = "default": clears an override. Omitted for the defaults rows,
-  // which always have a priority.
-  withDefault?: boolean;
-  testid: string;
-  onChange: (p: Priority | null) => void;
-}) {
-  return (
-    <select
-      class="chalk-notify-priority-select"
-      value={props.value === null ? "default" : String(props.value)}
-      data-testid={props.testid}
-      onChange={(e) => {
-        const v = (e.target as HTMLSelectElement).value;
-        if (v === "default") return props.onChange(null);
-        const n = Number(v);
-        if (isPriority(n)) props.onChange(n);
-      }}
-    >
-      {props.withDefault && <option value="default">default</option>}
-      {([0, 1, 2, 3, 4] as const).map((p) => (
-        <option key={p} value={String(p)}>
-          {PRIORITY_LABELS[p]}
-        </option>
-      ))}
-    </select>
-  );
 }
 
 export function NotificationsPanel({ friends, channels, onClose }: Props) {

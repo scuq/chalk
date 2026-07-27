@@ -152,6 +152,16 @@ export function isPriority(v: unknown): v is Priority {
   return v === 0 || v === 1 || v === 2 || v === 3 || v === 4;
 }
 
+// Shared by the rules panel and the sidebar quick-set menus, so a
+// priority is called the same thing everywhere it can be picked.
+export const PRIORITY_LABELS: Record<Priority, string> = {
+  0: "mute",
+  1: "1 · lowest",
+  2: "2",
+  3: "3",
+  4: "4 · highest",
+};
+
 // --- Editing -----------------------------------------------------------
 //
 // Every place that changes a rule -- the settings panel, the sidebar

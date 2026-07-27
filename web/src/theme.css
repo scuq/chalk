@@ -3355,6 +3355,12 @@ body.chalk-resizing .chalk-sidebar-resizer {
   color: var(--chalk-fg-bright);
   border-color: var(--chalk-accent);
 }
+/* 50-5: the notification row in the sidebar context menus. */
+.chalk-nick-menu-label {
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+  margin-right: var(--chalk-s1);
+}
 
 /* Phase 41-3: the mic level meter, sharing the row shape (and the preview
    button) with the sound rows above. */

@@ -34,6 +34,12 @@ The engineering-level history (which slice shipped what) lives in
   per channel, and disappear on their own once you've read the thing anywhere,
   including on another device. Banners need a one-time browser permission,
   asked from the panel, and are desktop-only.
+- **Right-click to set notification priority.** Right-click (or long-press) a
+  friend or a channel in the sidebar to set their notification priority — or
+  mute them — on the spot. It makes the same rule the panel does: anything set
+  from the sidebar shows up under notification rules, where it can be changed
+  or removed. The friend menu now also opens for friends without a nick color
+  set up.
 
 ### Changed
 - **Chat notifications are now driven by priority rules.** Every notification

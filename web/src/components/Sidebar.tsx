@@ -15,6 +15,9 @@ import {
   hueFromHex,
   nickTintStyle,
 } from "../chat/nickcolor";
+import { PrioritySelect } from "./PrioritySelect";
+import { withChannelRule, withUserRule } from "../notify/rules";
+import { useRulesConfig } from "../notify/rules-store";
 import { hasUnread } from "../state/types";
 import type {
   ChannelSummary,
@@ -286,11 +289,16 @@ export function Sidebar({
   const [filter, setFilter] = useState("");
 
   const groupChannels = channels.filter((ch) => !ch.isDM);
-  // Phase 9.7f: the roster color menu. Opened by right-click (desktop) or
+  // Phase 9.7f: the roster context menu. Opened by right-click (desktop) or
   // long-press (touch), anchored at the pointer. Closing on any outside
-  // click/escape keeps it from stranding.
+  // click/escape keeps it from stranding. 50-5: carries the userID too --
+  // the color half works by handle, the notification rule by id -- and the
+  // channels got the same menu for their own rules.
   const [nickMenu, setNickMenu] = useState<
-    { handle: string; x: number; y: number } | null
+    { userID: string; handle: string; x: number; y: number } | null
+  >(null);
+  const [channelMenu, setChannelMenu] = useState<
+    { channelID: string; name: string; x: number; y: number } | null
   >(null);
   // A long-press must NOT also fire the row's click (which opens the DM).
   // The pointer sequence is down -> (timer fires) -> up -> click, so we set
@@ -300,12 +308,26 @@ export function Sidebar({
 
   const colorMenuEnabled = nickColorsEnabled !== false && !!onSetFriendHue;
 
-  const openNickMenu = (handle: string, x: number, y: number) => {
-    if (!colorMenuEnabled || !handle) return;
-    // Keep the menu on-screen for presses near the right/bottom edge.
-    const maxX = Math.max(0, window.innerWidth - 210);
-    const maxY = Math.max(0, window.innerHeight - 120);
-    setNickMenu({ handle, x: Math.min(x, maxX), y: Math.min(y, maxY) });
+  // 50-5: quick-set rules live in the same store the rules panel edits;
+  // a mute made here is viewable, editable, and deletable there.
+  const [rulesConfig, updateRules] = useRulesConfig();
+
+  // Keep the menu on-screen for presses near the right/bottom edge.
+  const clampMenu = (x: number, y: number) => ({
+    x: Math.min(x, Math.max(0, window.innerWidth - 210)),
+    y: Math.min(y, Math.max(0, window.innerHeight - 150)),
+  });
+
+  const openNickMenu = (friend: Friend, x: number, y: number) => {
+    const at = clampMenu(x, y);
+    setChannelMenu(null);
+    setNickMenu({ userID: friend.userID, handle: friend.handle, ...at });
+  };
+
+  const openChannelMenu = (ch: ChannelSummary, x: number, y: number) => {
+    const at = clampMenu(x, y);
+    setNickMenu(null);
+    setChannelMenu({ channelID: ch.id, name: ch.name, ...at });
   };
 
   const cancelLongPress = () => {
@@ -316,8 +338,11 @@ export function Sidebar({
   };
 
   useEffect(() => {
-    if (!nickMenu) return;
-    const close = () => setNickMenu(null);
+    if (!nickMenu && !channelMenu) return;
+    const close = () => {
+      setNickMenu(null);
+      setChannelMenu(null);
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
     };
@@ -329,7 +354,7 @@ export function Sidebar({
       window.removeEventListener("click", close);
       window.removeEventListener("keydown", onKey);
     };
-  }, [nickMenu]);
+  }, [nickMenu, channelMenu]);
 
   const sortedFriends = sortFriends(friends);
 
@@ -418,20 +443,17 @@ export function Sidebar({
                   onFriendClick(friend.userID);
                 }}
                 onContextMenu={(e) => {
-                  if (!colorMenuEnabled || !friend.handle) return;
                   e.preventDefault();
-                  openNickMenu(friend.handle, e.clientX, e.clientY);
+                  openNickMenu(friend, e.clientX, e.clientY);
                 }}
                 onPointerDown={(e) => {
-                  if (!colorMenuEnabled || !friend.handle) return;
                   if (e.pointerType === "mouse") return; // right-click covers desktop
                   cancelLongPress();
                   const x = e.clientX;
                   const y = e.clientY;
-                  const handle = friend.handle;
                   longPressTimer.current = window.setTimeout(() => {
                     longPressFired.current = true;
-                    openNickMenu(handle, x, y);
+                    openNickMenu(friend, x, y);
                   }, 500);
                 }}
                 onPointerUp={cancelLongPress}
@@ -528,7 +550,33 @@ export function Sidebar({
                 data-channel-id={ch.id}
                 data-channel-type={isVoice ? "voice" : "text"}
                 data-active={ch.id === activeID ? "true" : "false"}
-                onClick={() => onSelect(ch.id)}
+                onClick={(e) => {
+                  // 50-5: same long-press/click interplay as the friend rows.
+                  if (longPressFired.current) {
+                    longPressFired.current = false;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                  }
+                  onSelect(ch.id);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  openChannelMenu(ch, e.clientX, e.clientY);
+                }}
+                onPointerDown={(e) => {
+                  if (e.pointerType === "mouse") return; // right-click covers desktop
+                  cancelLongPress();
+                  const x = e.clientX;
+                  const y = e.clientY;
+                  longPressTimer.current = window.setTimeout(() => {
+                    longPressFired.current = true;
+                    openChannelMenu(ch, x, y);
+                  }, 500);
+                }}
+                onPointerUp={cancelLongPress}
+                onPointerLeave={cancelLongPress}
+                onPointerCancel={cancelLongPress}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
@@ -599,107 +647,101 @@ export function Sidebar({
       </div>
 
 
-      {/* Phase 9.7f: per-friend color menu. Fixed-position so it escapes the
-
+      {/* Phase 9.7f / 50-5: per-friend context menu -- nick color plus the
+          notification priority quick-set. Fixed-position so it escapes the
           sidebar's scroll container; stops click propagation so the global
-
           close-on-outside-click handler doesn't immediately dismiss it. */}
-
       {nickMenu && (
-
         <div
-
           class="chalk-nick-menu"
-
           style={`left:${nickMenu.x}px;top:${nickMenu.y}px`}
-
           onClick={(e) => e.stopPropagation()}
-
           data-testid="nick-color-menu"
-
           role="dialog"
-
-          aria-label={`color for ${nickMenu.handle}`}
-
+          aria-label={`menu for ${nickMenu.handle || "friend"}`}
         >
-
           <div class="chalk-nick-menu-title">
-
-            <span
-
-              class="chalk-nick-swatch"
-
-              style={nickTintStyle(
-                hueForHandle?.(nickMenu.handle) ?? DEFAULT_SELF_HUE,
-                "background",
-              )}
-
-            />
-
-            <span>color for {nickMenu.handle}</span>
-
+            {colorMenuEnabled && nickMenu.handle && (
+              <span
+                class="chalk-nick-swatch"
+                style={nickTintStyle(
+                  hueForHandle?.(nickMenu.handle) ?? DEFAULT_SELF_HUE,
+                  "background",
+                )}
+              />
+            )}
+            <span>{nickMenu.handle || nickMenu.userID.slice(-8)}</span>
           </div>
-
+          {colorMenuEnabled && nickMenu.handle && (
+            <div class="chalk-nick-menu-row">
+              <input
+                type="color"
+                value={hexFromHue(hueForHandle?.(nickMenu.handle) ?? 210)}
+                data-testid="nick-color-input"
+                onChange={(e) => {
+                  const hue = hueFromHex((e.target as HTMLInputElement).value);
+                  if (hue !== null) onSetFriendHue?.(nickMenu.handle, hue);
+                }}
+              />
+              <button
+                type="button"
+                class="chalk-nick-menu-btn"
+                data-testid="nick-color-auto"
+                onClick={() => {
+                  onSetFriendHue?.(nickMenu.handle, null);
+                  setNickMenu(null);
+                }}
+              >
+                auto
+              </button>
+              <button
+                type="button"
+                class="chalk-nick-menu-btn"
+                onClick={() => setNickMenu(null)}
+              >
+                done
+              </button>
+            </div>
+          )}
+          {/* 50-5: writes the same rule the panel's "per person" list
+              edits; "default" clears it. */}
           <div class="chalk-nick-menu-row">
-
-            <input
-
-              type="color"
-
-              value={hexFromHue(hueForHandle?.(nickMenu.handle) ?? 210)}
-
-              data-testid="nick-color-input"
-
-              onChange={(e) => {
-
-                const hue = hueFromHex((e.target as HTMLInputElement).value);
-
-                if (hue !== null) onSetFriendHue?.(nickMenu.handle, hue);
-
-              }}
-
+            <span class="chalk-nick-menu-label">notifications</span>
+            <PrioritySelect
+              value={rulesConfig.rules.users[nickMenu.userID] ?? null}
+              withDefault
+              testid="nick-menu-priority"
+              onChange={(p) => updateRules(withUserRule(rulesConfig, nickMenu.userID, p))}
             />
-
-            <button
-
-              type="button"
-
-              class="chalk-nick-menu-btn"
-
-              data-testid="nick-color-auto"
-
-              onClick={() => {
-
-                onSetFriendHue?.(nickMenu.handle, null);
-
-                setNickMenu(null);
-
-              }}
-
-            >
-
-              auto
-
-            </button>
-
-            <button
-
-              type="button"
-
-              class="chalk-nick-menu-btn"
-
-              onClick={() => setNickMenu(null)}
-
-            >
-
-              done
-
-            </button>
-
           </div>
-
         </div>
+      )}
 
+      {/* 50-5: per-channel menu -- notification priority only, for now. A
+          "mute" here is a rule like any other: it shows up in the rules
+          panel and can be edited or deleted there. */}
+      {channelMenu && (
+        <div
+          class="chalk-nick-menu"
+          style={`left:${channelMenu.x}px;top:${channelMenu.y}px`}
+          onClick={(e) => e.stopPropagation()}
+          data-testid="channel-menu"
+          role="dialog"
+          aria-label={`menu for #${channelMenu.name}`}
+        >
+          <div class="chalk-nick-menu-title">
+            <span>#{channelMenu.name}</span>
+          </div>
+          <div class="chalk-nick-menu-row">
+            <span class="chalk-nick-menu-label">notifications</span>
+            <PrioritySelect
+              value={rulesConfig.rules.channels[channelMenu.channelID] ?? null}
+              withDefault
+              testid="channel-menu-priority"
+              onChange={(p) => updateRules(withChannelRule(rulesConfig, channelMenu.channelID, p))}
+            />
+          </div>
+        </div>
       )}
 
     </div>
