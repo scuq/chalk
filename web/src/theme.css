@@ -7160,32 +7160,39 @@ body.chalk-resizing .chalk-sidebar-resizer {
    42-8: the cross-channel thread inbox
    ============================================================ */
 
-/* The status-bar entry point. A plain text button rather than an icon, to
-   match the rest of the bar; the dot is what actually carries the signal, so
-   it sits inline instead of using .chalk-unread-dot's margin-left:auto
-   (which is meant for a sidebar row's right edge). */
-.chalk-status-threads {
-  display: inline-flex;
+/* 49-6: the entry point moved from the status bar into the sidebar, between
+   friends and channels, so every unread dot lives in the same column. Styled
+   as its own separated section row; the dot inherits margin-left:auto and
+   sits on the right edge like the friend and channel rows' dots. */
+.chalk-sidebar-section--threads {
+  flex-shrink: 0;
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--chalk-border, #1f2a1f);
+}
+
+.chalk-sidebar-threads {
+  display: flex;
   align-items: center;
-  gap: var(--chalk-s1);
+  gap: var(--chalk-s2);
+  width: 100%;
   background: transparent;
-  border: 1px solid transparent;
+  border: none;
   color: var(--chalk-fg);
   font: inherit;
-  font-size: var(--chalk-size-small);
+  text-align: left;
   padding: var(--chalk-s1) var(--chalk-s2);
   cursor: pointer;
-  border-radius: 2px;
 }
 
-.chalk-status-threads:hover,
-.chalk-status-threads:focus-visible {
+.chalk-sidebar-threads:hover,
+.chalk-sidebar-threads:focus-visible {
   background: var(--chalk-bg-elev);
-  border-color: var(--chalk-fg-muted);
 }
 
-.chalk-status-threads .chalk-unread-dot {
-  margin-left: 0;
+.chalk-sidebar-threads-glyph {
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
 }
 
 /* 46-2: "the server is on a newer build than this tab". Amber for the same

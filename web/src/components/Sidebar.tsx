@@ -126,6 +126,11 @@ interface Props {
   selfHue?: number | null;
   onSetFriendHue?: (handle: string, hue: number | null) => void;
   onCreateClick: () => void;
+  // 49-6: the thread-inbox entry point, relocated here from the status bar so
+  // every unread dot lives in the sidebar. threadsUnread is a COUNT but
+  // renders as a dot -- same call as the channel rows.
+  onOpenThreads?: () => void;
+  threadsUnread?: number;
 }
 
 // Show the filter input above the friends list only when the roster
@@ -275,6 +280,8 @@ export function Sidebar({
   selfHue,
   onSetFriendHue,
   onCreateClick,
+  onOpenThreads,
+  threadsUnread = 0,
 }: Props) {
   const [filter, setFilter] = useState("");
 
@@ -457,6 +464,32 @@ export function Sidebar({
           })}
         </ul>
       </div>
+
+      {/* ---- threads entry (49-6) ---- */}
+      {onOpenThreads && (
+        <div class="chalk-sidebar-section chalk-sidebar-section--threads">
+          <button
+            type="button"
+            class="chalk-sidebar-threads"
+            data-testid="sidebar-threads"
+            onClick={onOpenThreads}
+            title={
+              threadsUnread > 0
+                ? `${threadsUnread} thread${threadsUnread === 1 ? "" : "s"} need you`
+                : "active threads"
+            }
+            aria-label={
+              threadsUnread > 0 ? "active threads, some need you" : "active threads"
+            }
+          >
+            <span class="chalk-sidebar-threads-glyph" aria-hidden="true">
+              ↳
+            </span>
+            <span class="chalk-sidebar-title">threads</span>
+            {threadsUnread > 0 && <UnreadDot mention={false} />}
+          </button>
+        </div>
+      )}
 
       {/* ---- channels section ---- */}
       <div class="chalk-sidebar-section chalk-sidebar-section--channels">

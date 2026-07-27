@@ -3642,8 +3642,6 @@ export function App() {
             window.history.pushState({}, "", "/admin");
             dispatch({ kind: "route_to_admin" });
           }}
-          onOpenThreads={() => dispatch({ kind: "open_panel", panel: "threads" })}
-          threadsUnread={state.threadInboxUnreadTotal}
           updateAvailable={state.updateAvailable}
           onReload={() => window.location.reload()}
           onDismissUpdate={() => dispatch({ kind: "update_dismissed" })}
@@ -3733,6 +3731,13 @@ export function App() {
             setNavOpen(false);
             dispatch({ kind: "open_create_modal" });
           }}
+          // 49-6: the thread inbox lives with the other unread dots now. On
+          // mobile the sidebar is a drawer, so opening the panel closes it.
+          onOpenThreads={() => {
+            setNavOpen(false);
+            dispatch({ kind: "open_panel", panel: "threads" });
+          }}
+          threadsUnread={state.threadInboxUnreadTotal}
         />
         {/* 30-5c: the persistent-call dock -- app-level audio sinks + the
             Discord-style connection bar. Renders nothing while idle. */}
