@@ -2385,6 +2385,25 @@ func (h *WSHandler) handleFetchThread(
 		}
 		tBody := string(m.Body)
 		deletedBy, deletedAt := tombstoneOf(m)
+		// att-2 parity with the live push (server.go): thread replies are
+		// loaded on panel open, not via the channel window query that
+		// backfills the feed, so their refs ride on the ack itself. Cheap
+		// indexed probe; empty for the common attachment-less reply.
+		var attachRefs []proto.AttachmentRef
+		if rows, aerr := h.store.ListAttachmentRefsForMessage(ctx, m.ID); aerr != nil {
+			h.logger.Printf("fetch_thread attachment refs %s: %v", m.ID, aerr)
+		} else {
+			for _, a := range rows {
+				attachRefs = append(attachRefs, proto.AttachmentRef{
+					ID:         a.ID.String(),
+					ByteLen:    a.ByteLen,
+					KeyVersion: a.KeyVersion,
+					EncMeta:    a.EncMeta,
+					EncPreview: a.EncPreview,
+					PreviewLen: a.PreviewLen,
+				})
+			}
+		}
 		out = append(out, proto.MessagePayload{
 			ID:           m.ID.String(),
 			ChannelID:    m.ChannelID.String(),
@@ -2400,6 +2419,7 @@ func (h *WSHandler) handleFetchThread(
 			DeletedBy:    deletedBy,
 			DeletedAt:    deletedAt,
 			EditedAt:     editedAtOf(m),
+			Attachments:  attachRefs,
 		})
 	}
 	ack, _ := proto.NewFrame(proto.TypeFetchThreadAck, f.Ref, proto.FetchThreadAckPayload{
