@@ -3275,6 +3275,87 @@ body.chalk-resizing .chalk-sidebar-resizer {
   outline-offset: -1px;
 }
 
+/* 50-4: the notification rules panel. Shares the modal shell and the
+   profile panel's field/hint/preview styles; only the rule rows and the
+   priority matrix are its own. */
+.chalk-notify-panel {
+  width: min(560px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.chalk-notify-panel-body {
+  overflow-y: auto;
+  padding: var(--chalk-s2) var(--chalk-s3) var(--chalk-s3);
+}
+.chalk-notify-panel-body section + section {
+  margin-top: var(--chalk-s3);
+}
+.chalk-notify-panel-body h3 {
+  margin: 0 0 var(--chalk-s1);
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+  text-transform: lowercase;
+}
+.chalk-notify-matrix {
+  border-collapse: collapse;
+}
+.chalk-notify-matrix th,
+.chalk-notify-matrix td {
+  padding: 2px var(--chalk-s2);
+  text-align: center;
+  font-weight: normal;
+  font-size: var(--chalk-size-small);
+}
+.chalk-notify-matrix td:first-child,
+.chalk-notify-matrix th:first-child {
+  text-align: left;
+  padding-left: 0;
+}
+.chalk-notify-rule-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--chalk-s2);
+}
+.chalk-notify-rule-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chalk-notify-rule-controls {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s1);
+}
+.chalk-notify-priority-select {
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 1px var(--chalk-s1);
+  max-width: 100%;
+}
+.chalk-notify-permission-btn {
+  background: transparent;
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: 2px var(--chalk-s2);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  cursor: pointer;
+}
+.chalk-notify-permission-btn:hover {
+  color: var(--chalk-fg-bright);
+  border-color: var(--chalk-accent);
+}
+
 /* Phase 41-3: the mic level meter, sharing the row shape (and the preview
    button) with the sound rows above. */
 .chalk-profile-mic-test {

@@ -203,6 +203,10 @@ const MembersPanel = lazyComponent(() =>
 const GovernancePanel = lazyComponent(() =>
   import("./GovernancePanel").then((m) => m.GovernancePanel)
 );
+// 50-4: notification rules + priorities.
+const NotificationsPanel = lazyComponent(() =>
+  import("./NotificationsPanel").then((m) => m.NotificationsPanel)
+);
 // 42-8: the thread inbox. Lazy for the same reason the other panels are -- most
 // sessions never open it, and the dot that advertises it costs nothing.
 const ThreadInboxPanel = lazyComponent(() =>
@@ -4292,6 +4296,14 @@ export function App() {
         }}
       />
 
+      {state.openPanel === "notifications" && (
+        <NotificationsPanel
+          friends={state.friends}
+          channels={Object.values(state.channels)}
+          onClose={() => dispatch({ kind: "close_panel" })}
+        />
+      )}
+
       {state.openPanel === "friends" && (
         <FriendsPanel
           state={state.friendsPanel}
@@ -4437,6 +4449,7 @@ export function App() {
           onEmailChangeSubmit={onStartEmailChange}
           onEmailChangeDismiss={() => dispatch({ kind: "email_change_dismissed" })}
           onRefresh={refreshProfile}
+          onOpenNotificationRules={() => dispatch({ kind: "open_panel", panel: "notifications" })}
           refreshing={state.profileRefreshing}
           serverVersion={state.serverVersion} // 39-1
           serverCommit={state.serverCommit}

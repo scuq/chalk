@@ -15,6 +15,10 @@ import {
   defaultRulesConfig,
   normalizeRulesConfig,
   resolvePriority,
+  withChannelRule,
+  withProfileAction,
+  withTypeDefault,
+  withUserRule,
   type NotifyRules,
   type RuleFacts,
 } from "./rules.ts";
@@ -136,6 +140,32 @@ test("v1 seed: a switched-off chat category becomes a muted type", () => {
   assert.equal(config.rules.defaults.mention, DEFAULT_TYPE_PRIORITIES.mention);
   assert.equal(config.rules.defaults.message, DEFAULT_TYPE_PRIORITIES.message);
   assert.deepEqual(config.profiles, defaultRulesConfig().profiles);
+});
+
+test("the edit helpers set, change, and clear without touching the rest", () => {
+  // Both the panel and the context menus edit through these; the same
+  // shape from either place is the whole point.
+  let c = defaultRulesConfig();
+  c = withUserRule(c, "u1", 4);
+  c = withChannelRule(c, "c1", 0);
+  c = withTypeDefault(c, "message", 2);
+  c = withProfileAction(c, 2, "blink", true);
+  assert.equal(c.rules.users.u1, 4);
+  assert.equal(c.rules.channels.c1, 0);
+  assert.equal(c.rules.defaults.message, 2);
+  assert.equal(c.profiles[2].blink, true);
+  assert.equal(c.profiles[2].sound, true, "untouched actions keep their value");
+
+  // null clears: back to "no override", not to a fifth priority.
+  c = withUserRule(c, "u1", null);
+  c = withChannelRule(c, "c1", null);
+  assert.ok(!("u1" in c.rules.users));
+  assert.ok(!("c1" in c.rules.channels));
+
+  // Pure: the starting config was never mutated.
+  const fresh = defaultRulesConfig();
+  assert.deepEqual(withUserRule(fresh, "u9", 3) !== fresh, true);
+  assert.deepEqual(fresh, defaultRulesConfig());
 });
 
 test("bus: publish reaches subscribers until they unsubscribe", () => {

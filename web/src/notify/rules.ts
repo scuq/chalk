@@ -152,6 +152,60 @@ export function isPriority(v: unknown): v is Priority {
   return v === 0 || v === 1 || v === 2 || v === 3 || v === 4;
 }
 
+// --- Editing -----------------------------------------------------------
+//
+// Every place that changes a rule -- the settings panel, the sidebar
+// context menus -- goes through these, so a rule made anywhere is the
+// same shape everywhere. All pure: callers persist the result via
+// rules-store.
+
+export function withTypeDefault(
+  config: RulesConfig,
+  t: NotifyEventType,
+  p: Priority,
+): RulesConfig {
+  return {
+    ...config,
+    rules: { ...config.rules, defaults: { ...config.rules.defaults, [t]: p } },
+  };
+}
+
+// null clears the rule: "default" is the absence of an override, not a
+// fifth priority.
+export function withUserRule(
+  config: RulesConfig,
+  userID: string,
+  p: Priority | null,
+): RulesConfig {
+  const users = { ...config.rules.users };
+  if (p === null) delete users[userID];
+  else users[userID] = p;
+  return { ...config, rules: { ...config.rules, users } };
+}
+
+export function withChannelRule(
+  config: RulesConfig,
+  channelID: string,
+  p: Priority | null,
+): RulesConfig {
+  const channels = { ...config.rules.channels };
+  if (p === null) delete channels[channelID];
+  else channels[channelID] = p;
+  return { ...config, rules: { ...config.rules, channels } };
+}
+
+export function withProfileAction(
+  config: RulesConfig,
+  p: 1 | 2 | 3 | 4,
+  action: keyof ActionSet,
+  on: boolean,
+): RulesConfig {
+  return {
+    ...config,
+    profiles: { ...config.profiles, [p]: { ...config.profiles[p], [action]: on } },
+  };
+}
+
 // normalizeRulesConfig fills every field from a possibly-partial,
 // possibly-garbage value -- same totality contract as
 // normalizeSoundPrefs, and for the same reason: this shape comes back

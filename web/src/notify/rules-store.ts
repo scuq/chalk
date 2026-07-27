@@ -13,6 +13,7 @@
 // is recomputed on every load rather than written back, so the old
 // toggles keep working until the first real rules edit persists.
 
+import { useCallback, useEffect, useState } from "preact/hooks";
 import {
   defaultRulesConfig,
   normalizeRulesConfig,
@@ -75,6 +76,23 @@ export function saveRulesConfig(config: RulesConfig): void {
     // holds for this session.
   }
   for (const fn of listeners) fn(config);
+}
+
+// useRulesConfig owns the config for the settings panel and the context
+// menus, the same way useSoundPrefs owns the sound prefs: read, persist,
+// follow other writers (this tab or another).
+export function useRulesConfig(): [RulesConfig, (next: RulesConfig) => void] {
+  const [config, setConfig] = useState<RulesConfig>(loadRulesConfig);
+
+  const update = useCallback((next: RulesConfig) => {
+    const norm = normalizeRulesConfig(next);
+    saveRulesConfig(norm);
+    setConfig(norm);
+  }, []);
+
+  useEffect(() => subscribeRulesConfig(setConfig), []);
+
+  return [config, update];
 }
 
 export function subscribeRulesConfig(onChange: (config: RulesConfig) => void): () => void {

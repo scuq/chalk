@@ -1037,6 +1037,11 @@ export function reducer(state: AppState, action: Action): AppState {
         // the channel keys the previews need; no reducer-owned form state.
         return { ...state, openPanel: "threads" };
       }
+      if (action.panel === "notifications") {
+        // 50-4: notification rules. The panel talks to localStorage through
+        // useRulesConfig directly; no reducer-owned form state.
+        return { ...state, openPanel: "notifications" };
+      }
       // Default: profile. Same behavior as before the hotfix for the
       // profile case specifically.
       return { ...state, openPanel: "profile" };

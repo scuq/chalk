@@ -68,6 +68,8 @@ interface Props {
   // (e.g. if you verified an email change in another tab). Optional —
   // if the parent doesn't wire it, the refresh button doesn't render.
   onRefresh?: () => void;
+  // 50-4: opens the notification rules panel (replaces this one).
+  onOpenNotificationRules?: () => void;
   refreshing?: boolean;
   // 39-1: the running build, for the "about" section. From the welcome
   // frame, so empty until the socket is up.
@@ -155,6 +157,7 @@ export function ProfilePanel({
   onEmailChangeSubmit,
   onEmailChangeDismiss,
   onRefresh,
+  onOpenNotificationRules,
   refreshing,
   serverVersion,
   serverCommit,
@@ -834,6 +837,24 @@ export function ProfilePanel({
                 </span>
               </label>
             </div>
+
+            {/* 50-4: everything about people -- which events matter, who is
+                loud, what a priority does -- lives in the rules panel. */}
+            {onOpenNotificationRules && (
+              <div class="chalk-profile-field">
+                <button
+                  type="button"
+                  class="chalk-notify-permission-btn"
+                  data-testid="open-notify-rules"
+                  onClick={onOpenNotificationRules}
+                >
+                  notification rules…
+                </button>
+                <p class="chalk-profile-hint">
+                  priorities, per-person and per-channel rules, desktop banners.
+                </p>
+              </div>
+            )}
 
             {/* 50-2: only the machine noises live here now. What the chat
                 and event notifications do is the rules engine's business,

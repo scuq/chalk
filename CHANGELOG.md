@@ -23,6 +23,17 @@ The engineering-level history (which slice shipped what) lives in
   invites — make a backgrounded chalk tab alternate its title with a ● marker
   until you come back to it. Do-not-disturb silences the blinking along with
   the sounds.
+- **A notification rules panel, and desktop banners.** Profile →
+  notifications → "notification rules…" opens the new panel: choose what each
+  priority does (sound, desktop banner, blink), what priority each kind of
+  event gets, and add per-person or per-channel overrides — mute a busy
+  channel, or make one friend always break through. A person's rule beats
+  their channel's, which beats the defaults. Desktop banners show the
+  decrypted sender and preview (rendered locally by your OS — nothing leaves
+  the device), click through to the right channel or thread, collapse to one
+  per channel, and disappear on their own once you've read the thing anywhere,
+  including on another device. Banners need a one-time browser permission,
+  asked from the panel, and are desktop-only.
 
 ### Changed
 - **Chat notifications are now driven by priority rules.** Every notification
