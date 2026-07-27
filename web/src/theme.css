@@ -3848,10 +3848,14 @@ body.chalk-resizing .chalk-sidebar-resizer {
 
 /* Same vertical rhythm as .chalk-footer so the reply composer sits on the
    same baseline as the channel composer next to it; horizontal padding stays
-   s2 to line up with the panel body above. */
+   s2 to line up with the panel body above. The extra padding-top term is the
+   typing line's reserved height (.chalk-typing: 1.6em at size-small) -- the
+   channel footer carries that row above its composer and this one doesn't,
+   so without it the two border-top lines sit at different heights. */
 .chalk-thread-panel-footer {
   border-top: 1px solid var(--chalk-border);
-  padding: var(--chalk-s3) var(--chalk-s2) var(--chalk-s4);
+  padding: calc(var(--chalk-s3) + 1.6 * var(--chalk-size-small)) var(--chalk-s2)
+    var(--chalk-s4);
 }
 
 /* Mobile thread layout lives in the mobile section at the end of this
