@@ -5466,6 +5466,19 @@ body.chalk-resizing .chalk-sidebar-resizer {
   gap: var(--chalk-s2);
 }
 
+/* Outside a call the panel only sets defaults for the next room, so it fades
+   back -- discoverable, but not competing with live UI. Full strength returns
+   on hover (and via :focus-within for keyboard users) and while in a call. */
+.chalk-voice-controls.is-idle {
+  opacity: 0.45;
+  transition: opacity 0.15s ease;
+}
+
+.chalk-voice-controls.is-idle:hover,
+.chalk-voice-controls.is-idle:focus-within {
+  opacity: 1;
+}
+
 .chalk-voice-ctlbtn {
   display: flex;
   align-items: center;

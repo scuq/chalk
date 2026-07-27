@@ -29,6 +29,12 @@ The engineering-level history (which slice shipped what) lives in
   sky-blue links and a gold favorites accent. Pick it under profile →
   appearance.
 
+### Changed
+- **The voice panel fades while you're not in a call.** The mute, deafen,
+  camera, share and settings buttons in the bottom-left corner now sit
+  semi-transparent when idle — visible, but no longer competing for
+  attention — and return to full strength on hover or when you join a call.
+
 ## v0.3.53 — 27 July 2026 — One place for call controls
 
 ### Changed

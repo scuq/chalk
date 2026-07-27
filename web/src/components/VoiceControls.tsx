@@ -115,7 +115,10 @@ export function VoiceControls({ onOpenMicSettings }: Props) {
   };
 
   return (
-    <div class="chalk-voice-controls" data-testid="voice-controls">
+    <div
+      class={"chalk-voice-controls" + (inCall ? "" : " is-idle")}
+      data-testid="voice-controls"
+    >
       <button
         class={"chalk-voice-ctlbtn" + (snap.muted ? " is-off" : "")}
         type="button"
