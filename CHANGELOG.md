@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.4.0 — 27 July 2026 — Notifications get rules
 
 ### Added
 - **New notification sounds for things that aren't messages.** Someone
@@ -58,12 +58,11 @@ The engineering-level history (which slice shipped what) lives in
 - **Chat notifications are now driven by priority rules.** Every notification
   (mentions, DMs, thread replies, channel messages, calls, and the new event
   sounds) is assigned a priority, and the priority decides what happens —
-  today that's sound, with desktop banners and tab blinking coming next. Any
-  chat sound you had switched off carries over as muted. The per-category
-  checkboxes in profile → notifications now cover only chalk's own noises
-  (connection, send confirmation, errors, friends coming online); the chat
-  and event types move to the notification rules settings arriving in this
-  series.
+  sound, desktop banner, tab blink, or nothing at all. Any chat sound you had
+  switched off carries over as muted. The per-category checkboxes in profile →
+  notifications now cover only chalk's own noises (connection, send
+  confirmation, errors, friends coming online); the chat and event types are
+  configured in the notification rules panel.
 
 ---
 
