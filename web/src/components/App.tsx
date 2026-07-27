@@ -25,7 +25,6 @@ import { deleteActionFor, deleteLabelFor } from "../chat/deletepolicy";
 import { canEditMessage, lastEditableMessage } from "../chat/editpolicy";
 import { ownSet, toggle } from "../chat/reactions";
 import { useIsMobile } from "../mobile";
-import { isPopoutWindow, openPopout } from "../popout";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
@@ -3626,22 +3625,6 @@ export function App() {
                 profile panel carries the same link. */}
             <VersionLink version={state.serverVersion} commit={state.serverCommit} />
           </div>
-          {/* Pop chalk out into its own right-sized window. Hidden inside the
-              pop-out itself (see popout.ts for how that's detected), so the
-              button doesn't invite spawning windows from windows.
-              Desktop-only; a phone has no second window to pop into. */}
-          {!isMobile && !isPopoutWindow() && (
-            <button
-              type="button"
-              class="chalk-popout"
-              title="open chalk in its own window"
-              aria-label="open chalk in its own window"
-              data-testid="popout"
-              onClick={() => openPopout()}
-            >
-              ⧉ popout
-            </button>
-          )}
         </div>
         <StatusBar
           state={state.wsState}

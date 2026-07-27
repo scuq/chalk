@@ -30,6 +30,10 @@ The engineering-level history (which slice shipped what) lives in
   appearance.
 
 ### Changed
+- **The "⧉ popout" button is gone from the header.** It opened chalk in a
+  popup window that didn't work reliably. For a dedicated chalk window,
+  install chalk as an app instead (your browser's install option — chalk is
+  a PWA).
 - **The voice panel fades while you're not in a call.** The mute, deafen,
   camera, share and settings buttons in the bottom-left corner now sit
   semi-transparent when idle — visible, but no longer competing for

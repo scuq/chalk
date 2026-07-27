@@ -189,10 +189,10 @@ html, body {
 }
 
 /* Mark + wordmark are one unit: their own box so the gap between them stays
-   tight regardless of .chalk-header-left's wider spacing to the popout
-   button, and so the mark centres on the letterforms instead of sitting on
-   their baseline (an svg's baseline is its bottom edge, which would leave
-   the box towering over the cap height). */
+   tight regardless of .chalk-header-left's wider spacing, and so the mark
+   centres on the letterforms instead of sitting on their baseline (an svg's
+   baseline is its bottom edge, which would leave the box towering over the
+   cap height). */
 .chalk-brand {
   display: flex;
   align-items: center;
@@ -5712,27 +5712,11 @@ body.chalk-resizing .chalk-sidebar-resizer {
   white-space: nowrap;
 }
 
-/* Pop-out control in the header. */
+/* Header left cluster: brand, plus the nav toggle on mobile. */
 .chalk-header-left {
   display: flex;
   align-items: baseline;
   gap: var(--chalk-s3);
-}
-.chalk-popout {
-  background: transparent;
-  color: var(--chalk-fg-dim);
-  border: 1px solid var(--chalk-border);
-  border-radius: var(--chalk-radius);
-  padding: 2px var(--chalk-s2);
-  font-family: inherit;
-  font-size: var(--chalk-size-small);
-  line-height: 1.4;
-  cursor: pointer;
-}
-.chalk-popout:hover {
-  color: var(--chalk-fg);
-  border-color: var(--chalk-fg-muted);
-  background: var(--chalk-bg-elev);
 }
 
 /* -- 39-1: version badge ------------------------------------------
