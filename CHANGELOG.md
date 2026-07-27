@@ -15,9 +15,11 @@ The engineering-level history (which slice shipped what) lives in
 ### Added
 - **Threads have titles now.** A thread is titled by the message it was
   started on: the title heads the thread panel and each row in the threads
-  list, so you can tell threads apart without opening them. (Titles are
-  derived on your device from the decrypted message — the server still never
-  sees them.)
+  list, so you can tell threads apart without opening them. A thread started
+  on an image or file with no text is titled by that instead — "[image]" or
+  "[file]" (with a count when there are several), and the thread panel shows
+  the filename, like "image: cat.png". (Titles are derived on your device
+  from the decrypted message — the server still never sees them.)
 - **"show message" in a thread jumps to where it started.** The thread
   panel's header has a new "show message" button that scrolls the channel to
   the original message and highlights it — loading older history first if

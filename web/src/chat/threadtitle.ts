@@ -25,3 +25,26 @@ export function threadTitle(
   // the title (one giant word, a URL); then a mid-word clip reads better.
   return (sp > max / 2 ? cut.slice(0, sp) : cut).trimEnd() + "…";
 }
+
+// 49-2: fallback title for a head with no usable text but attachments.
+//
+// Image-ness is knowable WITHOUT decrypting anything: an attachment ref
+// carries an inline encrypted preview for image kinds only, so the caller
+// can pass allImages straight off the refs. The filename lives in the
+// encrypted meta; when the caller has decrypted it (thread panel, local
+// AES on a tiny blob), it upgrades the bare kind label to "image: cat.png".
+// Multi-attachment heads keep a count label -- one filename would
+// misrepresent the rest.
+export function attachmentTitle(
+  count: number,
+  allImages: boolean,
+  name?: string,
+  max = THREAD_TITLE_MAX,
+): string | null {
+  if (count <= 0) return null;
+  const kind = allImages ? "image" : "file";
+  if (count === 1) {
+    return name ? threadTitle(`${kind}: ${name}`, max) : `[${kind}]`;
+  }
+  return `[${count} ${kind}s]`;
+}

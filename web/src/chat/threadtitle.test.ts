@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { threadTitle, THREAD_TITLE_MAX } from "./threadtitle";
+import { threadTitle, attachmentTitle, THREAD_TITLE_MAX } from "./threadtitle";
 
 test("short body passes through untouched", () => {
   assert.equal(threadTitle("deploy friday?"), "deploy friday?");
@@ -38,4 +38,27 @@ test("a single giant word clips mid-word rather than vanishing", () => {
 test("exactly max length is not clipped", () => {
   const body = "y".repeat(THREAD_TITLE_MAX);
   assert.equal(threadTitle(body), body);
+});
+
+test("attachment-only head titles by kind", () => {
+  assert.equal(attachmentTitle(1, true), "[image]");
+  assert.equal(attachmentTitle(1, false), "[file]");
+});
+
+test("no attachments is null so the caller can fall back", () => {
+  assert.equal(attachmentTitle(0, true), null);
+});
+
+test("a decrypted filename upgrades the single-attachment title", () => {
+  assert.equal(attachmentTitle(1, true, "cat.png"), "image: cat.png");
+  assert.equal(attachmentTitle(1, false, "notes.pdf"), "file: notes.pdf");
+});
+
+test("a long filename clips like any other title", () => {
+  assert.equal(attachmentTitle(1, false, "x".repeat(100), 10), "file: xxxx…");
+});
+
+test("several attachments title by count, not by one name", () => {
+  assert.equal(attachmentTitle(3, true, "cat.png"), "[3 images]");
+  assert.equal(attachmentTitle(2, false), "[2 files]");
 });

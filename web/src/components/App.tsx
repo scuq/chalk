@@ -18,7 +18,7 @@ import type { ThreadLine } from "../chat/threadinbox";
 import { TYPING_PING_MS } from "../chat/typing";
 import { typingStore } from "../chat/typing-store";
 import { mentionsHandle } from "../chat/mentions";
-import { threadTitle } from "../chat/threadtitle";
+import { threadTitle, attachmentTitle } from "../chat/threadtitle";
 import { notifySounds, type NotifySounds } from "../notify";
 import { categoryForMessage } from "../notify/classify";
 import { deleteActionFor, deleteLabelFor } from "../chat/deletepolicy";
@@ -3364,6 +3364,39 @@ export function App() {
     tabVisible,
   ]);
 
+  // 49-2: filename for an attachment-only thread head. A text body always
+  // wins as the title; when there is none, the head's single attachment gets
+  // its meta decrypted (local AES on a tiny blob, no network) so the panel
+  // can say "image: cat.png" instead of a bare "[image]". Keyed by ref id:
+  // stale entries from a previously opened thread are simply never matched.
+  const [headMetaName, setHeadMetaName] = useState<{ refID: string; name: string } | null>(null);
+  const openThreadParent = state.openThread
+    ? (state.messages[state.openThread.channelID] ?? []).find(
+        (m) => m.id === state.openThread!.threadID,
+      )
+    : undefined;
+  useEffect(() => {
+    const ot = state.openThread;
+    const p = openThreadParent;
+    const att = attControllerRef.current;
+    if (!ot || !p || p.deleted || !att) return;
+    if (threadTitle(p.body) !== null) return; // text wins; meta not needed
+    const refs = p.attachments ?? [];
+    if (refs.length !== 1) return; // multi-attachment heads keep the count label
+    const ref = refs[0]!;
+    // Not a dep on purpose: this guard only stops re-decrypting when the
+    // parent object churns (history merges rebuild the list), and the set
+    // below must not re-trigger the effect.
+    if (headMetaName?.refID === ref.id) return;
+    let cancelled = false;
+    void att.decryptMeta(ot.channelID, ref).then((meta) => {
+      if (!cancelled && meta?.name) setHeadMetaName({ refID: ref.id, name: meta.name });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [state.openThread?.threadID, openThreadParent]);
+
   // 49-1: "show message" -- the feed row the thread panel asked to jump to,
   // plus the head's seq so the backfill below knows when to stop looking.
   // Cleared by the MessageList once the flash has run, or on navigation.
@@ -3879,9 +3912,20 @@ export function App() {
         const inboxRow = [...state.threadInboxAgedUnread, ...state.threadInboxActive].find(
           (r) => r.threadID === tid,
         );
+        // 49-2: a head with no text titles by its attachments -- "[image]"
+        // straight off the refs (only image kinds carry an inline preview),
+        // upgraded to "image: cat.png" once the meta effect above resolves.
+        const headRefs = parent?.attachments ?? [];
         const title = parent?.deleted
           ? null
-          : threadTitle(parent?.body ?? inboxRow?.headBody);
+          : threadTitle(parent?.body ?? inboxRow?.headBody) ??
+            attachmentTitle(
+              headRefs.length,
+              headRefs.every((r) => !!r.encPreviewB64),
+              headRefs.length === 1 && headMetaName?.refID === headRefs[0]!.id
+                ? headMetaName.name
+                : undefined,
+            );
         const threadChannelID = state.openThread.channelID;
         return (
           <ThreadPanel
