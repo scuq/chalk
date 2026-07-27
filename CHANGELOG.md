@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.3.54 — 27 July 2026 — Threads catch up
 
 ### Added
 - **Thread replies get the full composer.** The reply box in a thread now has
