@@ -50,6 +50,14 @@ test("a DM outranks a mention", () => {
   assert.equal(call(msg(), where({ isDM: true })), "dm");
 });
 
+test("a thread reply inside a DM is still a DM", () => {
+  // The notification taxonomy counts everything in a 1:1 as dm, thread
+  // replies included -- this pins the precedence that makes it so.
+  const reply = msg({ parentID: "p1" });
+  assert.equal(call(reply, where({ isDM: true, threadInvolvesViewer: true })), "dm");
+  assert.equal(call(reply, where({ isDM: true, threadInvolvesViewer: false })), "dm");
+});
+
 test("a reply only counts as a thread reply if you're in the thread", () => {
   const reply = msg({ parentID: "p1" });
   assert.equal(call(reply, where({ threadInvolvesViewer: true })), "thread_reply");
