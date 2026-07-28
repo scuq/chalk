@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.4.2 — 28 July 2026 — Voice devices and mic tuning
 
 ### Added
 - **Pick your camera and your speakers, not just your microphone.** The
