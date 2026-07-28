@@ -8,18 +8,34 @@
 // is a guess; with a meter you drag until you are speaking in the top half and
 // not clipping, which is the whole of mic setup for most people. It reads
 // POST-gain, so the bar responds to the slider as you move it.
+//
+// 44-8: the two VAD thresholds ARE handles on that meter now, rather than a
+// pair of sliders somewhere below it. Both halves of the old arrangement were
+// wrong: a threshold is only meaningful against the level it is compared to, so
+// setting it on a separate track meant reading a percentage off one control and
+// guessing where that fell on another -- and the meter's linear scale had the
+// whole useful range squeezed into its left tenth (see meter-scale.ts).
 
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import { MAX_GAIN, MAX_HOLD_MS, MIN_GAIN, useMicPrefs } from "../voice/mic-prefs";
+import { MAX_GAIN, MAX_HOLD_MS, MIN_GAIN, useMicPrefs, type MicPrefs } from "../voice/mic-prefs";
 import { MicChain } from "../voice/mic-chain";
 import { describeMediaError } from "../voice/call";
 import { voiceSession } from "../voice/session";
 import { TRANSMIT_LABELS, TRANSMIT_MODES, isTransmitMode } from "../voice/vad";
 import { isTypingTarget, keyLabel } from "../voice/hotkeys";
+import { METER_FLOOR_DB, dbLabel, meterPos, meterRms, rmsToDb } from "../voice/meter-scale";
 
-// Above this the signal is about to clip, and clipping is unrecoverable at the
-// far end where a quiet signal is merely quiet. The bar turns red here.
-const CLIP_LEVEL = 0.95;
+// Above this the signal is too hot to leave alone: clipping is unrecoverable at
+// the far end, where a quiet signal is merely quiet. The bar turns red here.
+//
+// -6 dBFS, not the 0.95 RMS this used to compare against -- a full-scale sine
+// is only 0.707 RMS, so the old warning could not fire for any real signal.
+const HOT_LEVEL = 0.5;
+
+// One arrow key of threshold, as a fraction of the meter's travel. 1% of 60 dB
+// is 0.6 dB, which is about the smallest step worth having.
+const KEY_STEP = 0.01;
+const KEY_STEP_COARSE = 0.05;
 
 /**
  * KeyBind: click, then press the key you want. Captures on the way DOWN the
@@ -70,9 +86,108 @@ function KeyBind({
   );
 }
 
-export function MicSettings() {
-  const [mic, setMic] = useMicPrefs();
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+/**
+ * ThresholdHandle: one of the two VAD marks, dragged along the meter it is
+ * compared against.
+ *
+ * Pointer capture, so a drag that wanders off a 16px-tall track keeps tracking
+ * instead of stopping dead. Focusable with arrow keys, because the last decibel
+ * of a threshold is easier to type than to drag -- and because a control with
+ * no keyboard path is not a control for everyone.
+ */
+function ThresholdHandle({
+  kind,
+  label,
+  value,
+  onMove,
+  posFromClientX,
+  testId,
+}: {
+  kind: "open" | "close";
+  label: string;
+  value: number;
+  onMove: (rms: number) => void;
+  posFromClientX: (clientX: number) => number;
+  testId: string;
+}) {
+  const dragging = useRef(false);
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    const step = e.shiftKey ? KEY_STEP_COARSE : KEY_STEP;
+    let pos = meterPos(value);
+    switch (e.key) {
+      case "ArrowLeft":
+      case "ArrowDown":
+        pos -= step;
+        break;
+      case "ArrowRight":
+      case "ArrowUp":
+        pos += step;
+        break;
+      case "Home":
+        pos = 0;
+        break;
+      case "End":
+        pos = 1;
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+    onMove(meterRms(pos));
+  };
+
+  return (
+    <div
+      role="slider"
+      tabIndex={0}
+      class={`chalk-profile-mic-mark chalk-profile-mic-mark--${kind}`}
+      style={{ left: `${meterPos(value) * 100}%` }}
+      aria-label={label}
+      aria-valuemin={METER_FLOOR_DB}
+      aria-valuemax={0}
+      aria-valuenow={Math.round(rmsToDb(value))}
+      aria-valuetext={dbLabel(value)}
+      onKeyDown={onKeyDown}
+      onPointerDown={(e) => {
+        dragging.current = true;
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        // preventDefault stops the browser starting a text selection across the
+        // panel, but it also suppresses the focus that would follow, so take it
+        // by hand -- otherwise arrow keys do nothing until you tab back in.
+        e.preventDefault();
+        (e.currentTarget as HTMLElement).focus();
+      }}
+      onPointerMove={(e) => {
+        if (dragging.current) onMove(meterRms(posFromClientX(e.clientX)));
+      }}
+      onPointerUp={() => {
+        dragging.current = false;
+      }}
+      onPointerCancel={() => {
+        dragging.current = false;
+      }}
+      data-testid={testId}
+    />
+  );
+}
+
+/**
+ * MicMeter owns the preview capture and the level it draws.
+ *
+ * A component of its own because the level updates every animation frame, and
+ * inside MicSettings that re-rendered the device list, four sliders and three
+ * keybind buttons sixty times a second -- which is what made dragging anything
+ * in this panel feel like it was catching. Here the 60 Hz redraw is a bar and
+ * two handles.
+ */
+function MicMeter({
+  mic,
+  setMic,
+}: {
+  mic: MicPrefs;
+  setMic: (patch: Partial<MicPrefs>) => void;
+}) {
   const [metering, setMetering] = useState(false);
   const [level, setLevel] = useState(0);
   const [transmitting, setTransmitting] = useState(false);
@@ -82,28 +197,15 @@ export function MicSettings() {
   // ref, not state: the rAF loop and the cleanup both need the current value
   // without re-running on every change.
   const preview = useRef<MicChain | null>(null);
+  const track = useRef<HTMLDivElement | null>(null);
 
-  // Labels are empty until mic permission has been granted at least once, so
-  // an un-permitted browser shows a list of anonymous "microphone 2" entries.
-  // Pressing test grants it, which is why the hint points there.
-  const unlabeled = devices.length > 0 && devices.every((d) => !d.label);
-
-  const refreshDevices = useCallback(async () => {
-    try {
-      const all = await navigator.mediaDevices.enumerateDevices();
-      setDevices(all.filter((d) => d.kind === "audioinput"));
-    } catch {
-      setDevices([]);
-    }
+  /** Where a pointer landed, as a 0..1 fraction of the meter's width. */
+  const posFromClientX = useCallback((clientX: number): number => {
+    const el = track.current;
+    if (!el) return 0;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 ? (clientX - r.left) / r.width : 0;
   }, []);
-
-  useEffect(() => {
-    if (!navigator.mediaDevices) return;
-    void refreshDevices();
-    // Plugging a headset in while this panel is open should just work.
-    navigator.mediaDevices.addEventListener("devicechange", refreshDevices);
-    return () => navigator.mediaDevices.removeEventListener("devicechange", refreshDevices);
-  }, [refreshDevices]);
 
   // Metering. A live call is already capturing, so meter THAT rather than
   // opening a second capture of the same device -- two captures of one mic
@@ -200,7 +302,113 @@ export function MicSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mic.deviceId, mic.echoCancellation, mic.noiseSuppression, mic.autoGainControl]);
 
-  const clipping = level >= CLIP_LEVEL;
+  const hot = level >= HOT_LEVEL;
+
+  return (
+    <div class="chalk-profile-field">
+      <div class="chalk-profile-mic-test">
+        <div class="chalk-profile-mic-meter" ref={track} data-testid="mic-meter">
+          <div
+            class="chalk-profile-mic-meter-bar"
+            role="meter"
+            aria-label="microphone level"
+            aria-valuenow={Math.round(rmsToDb(level))}
+            aria-valuemin={METER_FLOOR_DB}
+            aria-valuemax={0}
+            aria-valuetext={dbLabel(level)}
+          >
+            <div
+              class={`chalk-profile-mic-meter-fill${hot ? " is-clipping" : ""}`}
+              style={{ width: `${meterPos(level) * 100}%` }}
+            />
+          </div>
+          {/* The thresholds sit ON the meter, because that is the only place
+              either number means anything: you watch where your voice lands and
+              drag the marks around it. */}
+          {mic.mode === "vad" && (
+            <>
+              <ThresholdHandle
+                kind="close"
+                label="silence below"
+                value={mic.vadClose}
+                onMove={(v) => setMic({ vadClose: v })}
+                posFromClientX={posFromClientX}
+                testId="mic-vad-close"
+              />
+              <ThresholdHandle
+                kind="open"
+                label="speech above"
+                value={mic.vadOpen}
+                onMove={(v) => setMic({ vadOpen: v })}
+                posFromClientX={posFromClientX}
+                testId="mic-vad-open"
+              />
+            </>
+          )}
+        </div>
+        {metering && (
+          <span
+            class={`chalk-profile-mic-live${transmitting ? " is-live" : ""}`}
+            data-testid="mic-live"
+          >
+            {transmitting ? "sending" : "silent"}
+          </span>
+        )}
+        <button
+          type="button"
+          class="chalk-profile-sound-preview"
+          onClick={() => setMetering((on) => !on)}
+          aria-label={metering ? "stop metering the microphone" : "test the microphone"}
+          data-testid="mic-test"
+        >
+          {metering ? "stop" : "test"}
+        </button>
+      </div>
+      {error && (
+        <p class="chalk-profile-hint" data-testid="mic-error">
+          {error}
+        </p>
+      )}
+      {mic.mode === "vad" && (
+        <div class="chalk-profile-mic-thresholds">
+          <span>
+            speech above <span class="chalk-profile-theme-desc">({dbLabel(mic.vadOpen)})</span>
+          </span>
+          <span>
+            silence below <span class="chalk-profile-theme-desc">({dbLabel(mic.vadClose)})</span>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function MicSettings() {
+  const [mic, setMic] = useMicPrefs();
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+
+  // Labels are empty until mic permission has been granted at least once, so
+  // an un-permitted browser shows a list of anonymous "microphone 2" entries.
+  // Pressing test grants it, which is why the hint points there.
+  const unlabeled = devices.length > 0 && devices.every((d) => !d.label);
+
+  const refreshDevices = useCallback(async () => {
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices();
+      setDevices(all.filter((d) => d.kind === "audioinput"));
+    } catch {
+      setDevices([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!navigator.mediaDevices) return;
+    void refreshDevices();
+    // Plugging a headset in while this panel is open should just work.
+    navigator.mediaDevices.addEventListener("devicechange", refreshDevices);
+    return () => navigator.mediaDevices.removeEventListener("devicechange", refreshDevices);
+  }, [refreshDevices]);
+
 
   return (
     <section class="chalk-profile-microphone" data-testid="mic-settings">
@@ -237,68 +445,16 @@ export function MicSettings() {
           max={MAX_GAIN}
           step={0.05}
           value={mic.gain}
-          // onChange, not onInput: a range fires input on every pixel of the
-          // drag, and each one is a write plus a fan-out to the other tabs.
-          onChange={(e) => setMic({ gain: Number((e.target as HTMLInputElement).value) })}
+          // onInput, so the meter moves under your finger rather than jumping
+          // when you let go. It used to be onChange because every pixel of the
+          // drag was a write plus a fan-out to the other tabs and the server;
+          // 44-8 coalesces the upload in mic-prefs, so live tracking is cheap.
+          onInput={(e) => setMic({ gain: Number((e.target as HTMLInputElement).value) })}
           data-testid="mic-gain"
         />
       </div>
 
-      <div class="chalk-profile-field">
-        <div class="chalk-profile-mic-test">
-          <div
-            class="chalk-profile-mic-meter"
-            role="meter"
-            aria-label="microphone level"
-            aria-valuenow={Math.round(level * 100)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            data-testid="mic-meter"
-          >
-            <div
-              class={`chalk-profile-mic-meter-fill${clipping ? " is-clipping" : ""}`}
-              style={{ width: `${Math.round(level * 100)}%` }}
-            />
-            {/* The thresholds sit ON the meter, because that is the only way
-                either number means anything: you watch where your voice lands
-                and put the marks around it. */}
-            {mic.mode === "vad" && (
-              <>
-                <span
-                  class="chalk-profile-mic-mark chalk-profile-mic-mark--close"
-                  style={{ left: `${mic.vadClose * 100}%` }}
-                />
-                <span
-                  class="chalk-profile-mic-mark chalk-profile-mic-mark--open"
-                  style={{ left: `${mic.vadOpen * 100}%` }}
-                />
-              </>
-            )}
-          </div>
-          {metering && (
-            <span
-              class={`chalk-profile-mic-live${transmitting ? " is-live" : ""}`}
-              data-testid="mic-live"
-            >
-              {transmitting ? "sending" : "silent"}
-            </span>
-          )}
-          <button
-            type="button"
-            class="chalk-profile-sound-preview"
-            onClick={() => setMetering((on) => !on)}
-            aria-label={metering ? "stop metering the microphone" : "test the microphone"}
-            data-testid="mic-test"
-          >
-            {metering ? "stop" : "test"}
-          </button>
-        </div>
-        {error && (
-          <p class="chalk-profile-hint" data-testid="mic-error">
-            {error}
-          </p>
-        )}
-      </div>
+      <MicMeter mic={mic} setMic={setMic} />
 
       {/* 44-7: a dropdown, not four stacked cards. The four modes are mutually
           exclusive one-liners, and as cards they took more of the dialog than
@@ -329,47 +485,12 @@ export function MicSettings() {
       </div>
 
       {mic.mode === "vad" && (
-        <div class="chalk-profile-field">
-          <label class="chalk-profile-label" for="mic-vad-open">
-            speech above{" "}
-            <span class="chalk-profile-theme-desc">
-              ({Math.round(mic.vadOpen * 100)}% — over this, the mic opens)
-            </span>
-          </label>
-          <input
-            id="mic-vad-open"
-            type="range"
-            class="chalk-profile-range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={mic.vadOpen}
-            onChange={(e) => setMic({ vadOpen: Number((e.target as HTMLInputElement).value) })}
-            data-testid="mic-vad-open"
-          />
-          <label class="chalk-profile-label" for="mic-vad-close">
-            silence below{" "}
-            <span class="chalk-profile-theme-desc">
-              ({Math.round(mic.vadClose * 100)}% — under this, it closes again)
-            </span>
-          </label>
-          <input
-            id="mic-vad-close"
-            type="range"
-            class="chalk-profile-range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={mic.vadClose}
-            onChange={(e) => setMic({ vadClose: Number((e.target as HTMLInputElement).value) })}
-            data-testid="mic-vad-close"
-          />
-          <p class="chalk-profile-hint">
-            press test and talk normally. put "speech above" just under where your voice sits, and
-            "silence below" just over where the room sits. the gap between them is what stops the
-            mic flickering on a pause.
-          </p>
-        </div>
+        <p class="chalk-profile-hint">
+          press test and talk normally, then drag the two marks on the meter above: the bright one
+          just under where your voice sits, the dim one just over where the quiet room sits. the gap
+          between them is what stops the mic flickering on a pause. arrow keys nudge a mark once it
+          has focus.
+        </p>
       )}
 
       {(mic.mode === "vad" || mic.mode === "ptt") && (
@@ -388,7 +509,7 @@ export function MicSettings() {
             max={MAX_HOLD_MS}
             step={50}
             value={mic.holdMs}
-            onChange={(e) => setMic({ holdMs: Number((e.target as HTMLInputElement).value) })}
+            onInput={(e) => setMic({ holdMs: Number((e.target as HTMLInputElement).value) })}
             data-testid="mic-hold"
           />
         </div>
@@ -452,7 +573,8 @@ export function MicSettings() {
           <span>
             noise suppression{" "}
             <span class="chalk-profile-theme-desc">
-              (your browser's — good on fans and hum, weaker on keyboards)
+              (your browser's — it learns steady sounds like fans and hum, so it barely touches
+              keyboards and door slams. for those, use "when i speak" above)
             </span>
           </span>
         </label>
@@ -469,7 +591,8 @@ export function MicSettings() {
           <span>
             automatic gain control{" "}
             <span class="chalk-profile-theme-desc">
-              (the browser rides the level for you — turn it off to set input volume by hand)
+              (off by default: it fills your pauses by winding the mic up until the room is as loud
+              as you were, and it moves the floor the marks above are set against)
             </span>
           </span>
         </label>

@@ -50,7 +50,10 @@ test("normalize defaults to the system default device at unity gain", () => {
   assert.equal(p.gain, 1);
   assert.equal(p.echoCancellation, true);
   assert.equal(p.noiseSuppression, true);
-  assert.equal(p.autoGainControl, true);
+  // 44-8: AGC is the one processing flag that is off out of the box -- it
+  // raises the room to voice level in every pause, which is both the "noise
+  // suppression does nothing" complaint and a moving floor under the VAD marks.
+  assert.equal(p.autoGainControl, false);
 });
 
 test("normalize keeps the good half of a partially bad pref", () => {
@@ -166,7 +169,9 @@ test("the device and every processing flag force a recapture", () => {
   assert.equal(needsRecapture(a, { ...a, deviceId: "other" }), true);
   assert.equal(needsRecapture(a, { ...a, echoCancellation: false }), true);
   assert.equal(needsRecapture(a, { ...a, noiseSuppression: false }), true);
-  assert.equal(needsRecapture(a, { ...a, autoGainControl: false }), true);
+  // Flipped ON, since 44-8 made off the default: comparing a default against
+  // itself would prove nothing.
+  assert.equal(needsRecapture(a, { ...a, autoGainControl: true }), true);
 });
 
 // 44-4: the account/machine split. The bug this guards against is a deviceId

@@ -69,21 +69,28 @@ export const MAX_HOLD_MS = 2000;
 // 20 characters ("MediaTrackPrevious").
 const MAX_KEY_LEN = 32;
 
-// Everything the browser offers is on out of the box, which is also what
-// getUserMedia({audio: true}) did before this existed -- so an existing user's
-// first call after upgrading sounds exactly like their last one before it.
+// Echo cancellation and noise suppression are on out of the box, which is what
+// getUserMedia({audio: true}) did before this existed.
 //
-// The transmit mode defaults to "continuous" for the same reason, even though
-// the design doc makes VAD the default: an upgrade must not silently start
-// gating people's microphones with thresholds nobody has calibrated. Being cut
-// off mid-sentence by a setting you never chose is far worse than transmitting
-// a bit of room tone, and the profile panel makes the better modes findable.
+// Automatic gain control is NOT, since 44-8. AGC rides the level to fill the
+// channel, so in the gaps between sentences it winds the mic up until room
+// tone, fan noise and keystrokes are as loud as the voice it was following --
+// which is exactly the complaint people bring to the noise suppression
+// checkbox. It also moves the floor around under the VAD thresholds, so a gate
+// calibrated while sitting quietly re-opens on nothing an hour later. The gain
+// slider and the level meter exist to set this by hand, once.
+//
+// The transmit mode defaults to "continuous" even though the design doc makes
+// VAD the default: an upgrade must not silently start gating people's
+// microphones with thresholds nobody has calibrated. Being cut off mid-sentence
+// by a setting you never chose is far worse than transmitting a bit of room
+// tone, and the profile panel makes the better modes findable.
 export const DEFAULT_MIC_PREFS: MicPrefs = {
   deviceId: "",
   gain: 1,
   echoCancellation: true,
   noiseSuppression: true,
-  autoGainControl: true,
+  autoGainControl: false,
   mode: "continuous",
   vadOpen: 0.2,
   vadClose: 0.08,
@@ -246,6 +253,28 @@ export function setMicPrefsPublisher(fn: ((synced: SyncedMicPrefs) => void) | nu
   publish = fn;
 }
 
+// 44-8: a threshold handle dragged along the meter is a change per pointer
+// move, and a slider tracked live is a change per pixel. localStorage stays
+// immediate -- it is the runtime source of truth, and the live call and the
+// hotkeys read it -- but the upload is coalesced, so a two-second drag costs
+// one frame instead of a hundred.
+const PUBLISH_DELAY_MS = 400;
+let publishTimer: ReturnType<typeof setTimeout> | null = null;
+let publishPending: SyncedMicPrefs | null = null;
+
+function schedulePublish(synced: SyncedMicPrefs): void {
+  publishPending = synced;
+  if (publishTimer !== null) return;
+  publishTimer = setTimeout(() => {
+    publishTimer = null;
+    const next = publishPending;
+    publishPending = null;
+    // Read `publish` now, not when the drag started: the socket may have gone
+    // down and come back with a new sink in between.
+    if (next && publish) publish(next);
+  }, PUBLISH_DELAY_MS);
+}
+
 /**
  * applyRemoteMicPrefs folds the account-scoped half of the server's prefs into
  * the local store. Called when prefs arrive -- on connect, and again whenever
@@ -288,7 +317,7 @@ export function useMicPrefs(): [MicPrefs, (patch: Partial<MicPrefs>) => void] {
       // 44-4: only a deliberate edit uploads. Publishing from the load path
       // would let a machine that has never opened the dialog overwrite the
       // account's tuning with this module's defaults.
-      if (publish && !sameSyncedMicPrefs(prev, next)) publish(syncedMicPrefs(next));
+      if (publish && !sameSyncedMicPrefs(prev, next)) schedulePublish(syncedMicPrefs(next));
       return next;
     });
   }, []);

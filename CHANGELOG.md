@@ -10,6 +10,35 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **You set the "when i speak" thresholds by dragging them on the level
+  meter now.** The two marks that decide when your mic opens and closes are
+  handles on the meter itself — drag them to sit either side of where your
+  voice lands, instead of guessing a percentage on a separate slider. The
+  meter is also drawn in decibels, so a normal speaking voice sits around the
+  middle of the bar rather than squashed into the first centimetre, and small
+  moves are actually small. Arrow keys nudge a mark once you've clicked it.
+- **Automatic gain control now starts off.** Unless you turned it on
+  yourself, chalk no longer lets the browser ride your input level. It was
+  filling the pauses between sentences by winding the mic up until your
+  keyboard and your fan were as loud as your voice — which is what made
+  noise suppression look like it wasn't doing anything — and it kept moving
+  the floor that the "when i speak" marks are set against. Set your input
+  volume once with the meter instead.
+
+### Fixed
+- **The microphone sliders no longer lag behind your finger.** Input volume
+  and the thresholds used to jump to their new value only when you let go of
+  the slider, and the meter's constant redraw made the whole dialog feel
+  sticky while dragging. Everything tracks live now.
+- **The meter's red "too loud" warning can actually appear.** It was set at a
+  level no real microphone signal reaches, so a clipping input looked
+  perfectly fine.
+
+---
+
 ## v0.4.1 — 28 July 2026 — A VS Code light theme
 
 ### Added
