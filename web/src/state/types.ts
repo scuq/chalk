@@ -311,7 +311,7 @@ export interface ChatPrefs {
 
 export interface UserPrefs {
   // Phase 9.7b: theme name. "green" = default terminal theme. Other valid
-  // values: "light", "snazzy-light", "warmwhite", "cyberpunk",
+  // values: "light", "snazzy-light", "warmwhite", "vscode-light", "cyberpunk",
   // "solarized-dark", "tokyo-night", "lcars", "blade-runner",
   // "azeroth", "darkord", "exchalk". The picker in ProfilePanel is the source of
   // truth; each

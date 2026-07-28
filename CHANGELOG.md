@@ -10,6 +10,15 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## v0.4.1 — 28 July 2026 — A VS Code light theme
+
+### Added
+- **A VS Code light theme.** The theme picker now has "vscode-light": pure
+  white ground, black text, and the familiar VS Code status-bar blue as the
+  accent — for people who want chalk to match their editor.
+
+---
+
 ## v0.4.0 — 27 July 2026 — Notifications get rules
 
 ### Added

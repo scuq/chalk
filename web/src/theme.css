@@ -6286,6 +6286,63 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 
 /* ============================================================
+   vscode-light: VS Code's "Light (Visual Studio)" theme
+   ============================================================
+   Pure white editor ground, black text, the #007acc status-bar
+   blue as accent, and the classic navy keyword tone for emphasis.
+   Greys come straight from the workbench palette: #f3f3f3 widget
+   ground, #e8e8e8 list hover, #d4d4d4 menu border.
+
+   The only departures are contrast fixes, same policy as the
+   other themes: VS Code's #bf8803 warning amber is 3.1:1 on
+   white, darkened to #9a6700 to clear 4.5:1 with the hue kept;
+   error uses the token palette's "invalid" red, which already
+   clears.
+   ============================================================ */
+
+[data-theme="vscode-light"] {
+  --chalk-bg:           #ffffff;
+  --chalk-bg-elev:      #f3f3f3;
+  --chalk-bg-elev-2:    #e8e8e8;
+  --chalk-fg:           #000000;
+  --chalk-fg-dim:       #6f6f6f;
+  --chalk-fg-bright:    #000080;
+  --chalk-fg-muted:     #767676;
+  --chalk-border:       #d4d4d4;
+  --chalk-accent:       #007acc;
+  --chalk-warn:         #9a6700;
+  --chalk-error:        #cd3131;
+
+  color-scheme: light;
+}
+
+/* Flat white needs elevation on floating surfaces, same as the other
+   light themes -- VS Code itself gives its widgets this shadow. */
+[data-theme="vscode-light"] .chalk-modal,
+[data-theme="vscode-light"] .chalk-modal-card,
+[data-theme="vscode-light"] .chalk-presence-menu,
+[data-theme="vscode-light"] .chalk-status-menu {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+}
+
+/* Soften the default 70% scrim so it dims the white app rather than
+   plunging it, same reasoning as the other light themes. */
+[data-theme="vscode-light"] .chalk-modal-backdrop {
+  background: rgba(0, 0, 0, 0.42);
+}
+
+/* VS Code highlights the active list row with a soft blue wash. */
+[data-theme="vscode-light"] .chalk-sidebar-item--active {
+  background: rgba(0, 122, 204, 0.12);
+}
+
+.chalk-profile-theme-swatch-preview--vscode-light {
+  background: linear-gradient(135deg,
+    #ffffff 0%, #ffffff 50%,
+    #007acc 50%, #007acc 100%);
+}
+
+/* ============================================================
    Phase 9.7f: per-user nick colors
    ============================================================
    A name's HUE is per-user; saturation and lightness come from the
@@ -6312,7 +6369,8 @@ body.chalk-resizing .chalk-sidebar-resizer {
    or the labels wash out against near-white. */
 [data-theme="light"],
 [data-theme="snazzy-light"],
-[data-theme="warmwhite"] {
+[data-theme="warmwhite"],
+[data-theme="vscode-light"] {
   --nick-s: 68%;
   --nick-l: 32%;
 }
