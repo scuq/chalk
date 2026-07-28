@@ -268,6 +268,8 @@ export class SoundPlayer {
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private volume: number;
+  /** "" = the system default output. See setOutput. */
+  private outputId = "";
 
   constructor(volume: number) {
     this.volume = volume;
@@ -284,6 +286,30 @@ export class SoundPlayer {
     }
   }
 
+  /**
+   * setOutput routes the sounds to the chosen output device (44-9), so they
+   * follow the same speakers as the call rather than always the system default.
+   *
+   * AudioContext.setSinkId is newer and narrower than the element-level one --
+   * Chromium only, and not in every version that has the element form. The
+   * remembered id is applied again on unlock(), since the context that is
+   * supposed to carry it may not exist yet when the setting is changed.
+   */
+  setOutput(outputId: string): void {
+    this.outputId = outputId;
+    void this.applyOutput();
+  }
+
+  private async applyOutput(): Promise<void> {
+    const ctx = this.ctx as (AudioContext & { setSinkId?: (id: string) => Promise<void> }) | null;
+    if (!ctx?.setSinkId) return;
+    try {
+      await ctx.setSinkId(this.outputId);
+    } catch {
+      /* Unplugged, or not permitted. The sounds stay on the previous device. */
+    }
+  }
+
   // Must be called from a user gesture: browsers start every AudioContext
   // suspended, and resume() only resolves inside one. Safe to call again.
   async unlock(): Promise<void> {
@@ -297,6 +323,7 @@ export class SoundPlayer {
       this.master.gain.value = this.volume;
       this.master.connect(this.ctx.destination);
       this.noise = makeNoiseBuffer(this.ctx);
+      void this.applyOutput();
     }
     if (this.ctx.state !== "running") {
       try {

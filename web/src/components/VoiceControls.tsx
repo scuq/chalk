@@ -189,8 +189,8 @@ export function VoiceControls({ onOpenMicSettings }: Props) {
         class="chalk-voice-ctlbtn"
         type="button"
         onClick={onOpenMicSettings}
-        title="microphone and input settings"
-        aria-label="microphone and input settings"
+        title="voice and video settings"
+        aria-label="voice and video settings"
         data-testid="voice-controls-settings"
       >
         <IconGear />

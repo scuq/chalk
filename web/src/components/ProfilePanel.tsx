@@ -954,7 +954,7 @@ export function ProfilePanel({
               anyone who comes here looking for them. */}
           {onOpenMicSettings && (
             <section class="chalk-profile-microphone-link">
-              <h3>microphone</h3>
+              <h3>voice &amp; video</h3>
               <div class="chalk-profile-field">
                 <button
                   type="button"
@@ -962,11 +962,11 @@ export function ProfilePanel({
                   onClick={onOpenMicSettings}
                   data-testid="open-mic-settings"
                 >
-                  microphone settings…
+                  voice &amp; video settings…
                 </button>
                 <p class="chalk-profile-hint" style={{ marginTop: "0.5rem" }}>
-                  input device, level, when to transmit and the voice keys. also on the ⚙ beside
-                  the mute button, under your channel list.
+                  microphone, camera and output device, level, when to transmit and the voice
+                  keys. also on the ⚙ beside the mute button, under your channel list.
                 </p>
               </div>
             </section>

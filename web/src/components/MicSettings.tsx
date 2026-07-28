@@ -24,6 +24,7 @@ import { voiceSession } from "../voice/session";
 import { TRANSMIT_LABELS, TRANSMIT_MODES, isTransmitMode } from "../voice/vad";
 import { isTypingTarget, keyLabel } from "../voice/hotkeys";
 import { METER_FLOOR_DB, dbLabel, meterPos, meterRms, rmsToDb } from "../voice/meter-scale";
+import { canChooseOutput, useDevicePrefs, useMediaDevices } from "../voice/device-prefs";
 
 // Above this the signal is too hot to leave alone: clipping is unrecoverable at
 // the far end, where a quiet signal is merely quiet. The bar turns red here.
@@ -383,54 +384,106 @@ function MicMeter({
   );
 }
 
+/**
+ * DeviceSelect: one "which of these do I use" dropdown.
+ *
+ * 44-9: hidden when the machine has nothing to choose between, unless a device
+ * is already picked -- a stale choice for a webcam that has since been unplugged
+ * has to stay reachable, or there is no way to take it back.
+ */
+function DeviceSelect({
+  id,
+  label,
+  fallbackName,
+  devices,
+  value,
+  onChange,
+  testId,
+  alwaysShow,
+}: {
+  id: string;
+  label: string;
+  fallbackName: string;
+  devices: MediaDeviceInfo[];
+  value: string;
+  onChange: (deviceId: string) => void;
+  testId: string;
+  alwaysShow?: boolean;
+}) {
+  if (!alwaysShow && devices.length < 2 && !value) return null;
+  return (
+    <div class="chalk-profile-field">
+      <label class="chalk-profile-label" for={id}>
+        {label}
+      </label>
+      <select
+        id={id}
+        class="chalk-profile-select"
+        value={value}
+        onChange={(e) => onChange((e.target as HTMLSelectElement).value)}
+        data-testid={testId}
+      >
+        <option value="">system default</option>
+        {devices.map((d, i) => (
+          <option value={d.deviceId} key={d.deviceId}>
+            {d.label || `${fallbackName} ${i + 1}`}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 export function MicSettings() {
   const [mic, setMic] = useMicPrefs();
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [dev, setDev] = useDevicePrefs();
+  const devices = useMediaDevices();
 
   // Labels are empty until mic permission has been granted at least once, so
   // an un-permitted browser shows a list of anonymous "microphone 2" entries.
   // Pressing test grants it, which is why the hint points there.
-  const unlabeled = devices.length > 0 && devices.every((d) => !d.label);
-
-  const refreshDevices = useCallback(async () => {
-    try {
-      const all = await navigator.mediaDevices.enumerateDevices();
-      setDevices(all.filter((d) => d.kind === "audioinput"));
-    } catch {
-      setDevices([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!navigator.mediaDevices) return;
-    void refreshDevices();
-    // Plugging a headset in while this panel is open should just work.
-    navigator.mediaDevices.addEventListener("devicechange", refreshDevices);
-    return () => navigator.mediaDevices.removeEventListener("devicechange", refreshDevices);
-  }, [refreshDevices]);
-
+  const unlabeled =
+    devices.audioinput.length > 0 && devices.audioinput.every((d) => !d.label);
 
   return (
     <section class="chalk-profile-microphone" data-testid="mic-settings">
-      <div class="chalk-profile-field">
-        <label class="chalk-profile-label" for="mic-device">
-          input device
-        </label>
-        <select
-          id="mic-device"
-          class="chalk-profile-select"
-          value={mic.deviceId}
-          onChange={(e) => setMic({ deviceId: (e.target as HTMLSelectElement).value })}
-          data-testid="mic-device"
-        >
-          <option value="">system default</option>
-          {devices.map((d, i) => (
-            <option value={d.deviceId} key={d.deviceId}>
-              {d.label || `microphone ${i + 1}`}
-            </option>
-          ))}
-        </select>
-      </div>
+      <DeviceSelect
+        id="mic-device"
+        label="input device"
+        fallbackName="microphone"
+        devices={devices.audioinput}
+        value={mic.deviceId}
+        onChange={(deviceId) => setMic({ deviceId })}
+        testId="mic-device"
+        // The one picker that shows even with a single microphone: it is the
+        // first thing anyone looks for when nobody can hear them, and a browser
+        // that has not been given permission yet reports one anonymous entry.
+        alwaysShow
+      />
+
+      <DeviceSelect
+        id="camera-device"
+        label="camera"
+        fallbackName="camera"
+        devices={devices.videoinput}
+        value={dev.cameraId}
+        onChange={(cameraId) => setDev({ cameraId })}
+        testId="camera-device"
+      />
+
+      {/* Firefox does not list output devices and Safari cannot route to one,
+          so on those this is absent rather than a control that does nothing. */}
+      {canChooseOutput() && (
+        <DeviceSelect
+          id="output-device"
+          label="output device"
+          fallbackName="speakers"
+          devices={devices.audiooutput}
+          value={dev.outputId}
+          onChange={(outputId) => setDev({ outputId })}
+          testId="output-device"
+        />
+      )}
 
       <div class="chalk-profile-field">
         <label class="chalk-profile-label" for="mic-gain">
@@ -599,12 +652,10 @@ export function MicSettings() {
       </div>
 
       <p class="chalk-profile-hint">
-        {unlabeled
-          ? "press test once to let the browser name your microphones. "
-          : ""}
-        everything here except the input device follows your account, so a second machine starts
-        where this one left off — the device stays here, since it names a socket on this computer.
-        changes apply to a call you're already in — no need to rejoin.
+        {unlabeled ? "press test once to let the browser name your devices. " : ""}
+        everything here except the three device pickers follows your account, so a second machine
+        starts where this one left off — the devices stay here, since they name sockets on this
+        computer. changes apply to a call you're already in — no need to rejoin.
       </p>
     </section>
   );

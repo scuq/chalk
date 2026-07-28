@@ -28,6 +28,7 @@ import { voiceBus } from "./bus";
 import { VoiceCall, type VoiceDiagnostics, type ScreenShareMode } from "./call";
 import { subscribeMicPrefs } from "./mic-prefs";
 import { subscribeNetPrefs } from "./net-prefs";
+import { subscribeDevicePrefs } from "./device-prefs";
 export type { ScreenShareMode } from "./call";
 
 // ---- per-peer local audio prefs (Addendum A: A1 + the element-volume
@@ -438,6 +439,11 @@ class VoiceSessionImpl {
         // Same deal for the debug drawer's transport knobs: a flip mid-call
         // lands on the running call.
         subscribeNetPrefs((prefs) => this.call?.applyNetPrefs(prefs)),
+        // 44-9: and for the camera. The output device is not here -- that one
+        // is applied by the dock's <audio> elements, which own playback.
+        subscribeDevicePrefs((prefs) => {
+          void this.call?.applyDevicePrefs(prefs);
+        }),
       );
       await call.join();
       // 44-2: join into the state the footer cluster is showing. The call

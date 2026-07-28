@@ -137,6 +137,7 @@ import {
   shouldDropCandidate,
   type NetPrefs,
 } from "./net-prefs";
+import { cameraConstraints, loadDevicePrefs, type DevicePrefs } from "./device-prefs";
 
 // ---- knobs (30-8: video caps are DYNAMIC -- see ./adaptive) ----------------
 //
@@ -343,6 +344,8 @@ export class VoiceCall {
   private forceRelay = false;
   /** Per-device transport knobs from the debug drawer (see ./net-prefs). */
   private netPrefs: NetPrefs = loadNetPrefs();
+  /** Which camera and which speakers this machine uses (see ./device-prefs). */
+  private devicePrefs: DevicePrefs = loadDevicePrefs();
   private joined = false;
   private closed = false;
   private hasVideo = false;
@@ -495,10 +498,12 @@ export class VoiceCall {
     // getUserMedia -- asking separately would mean two permission prompts on a
     // user's first join. Only the audio half is then handed to the graph.
     this.micPrefs = loadMicPrefs();
+    this.devicePrefs = loadDevicePrefs();
     const audio = micConstraints(this.micPrefs);
+    const video = cameraConstraints(this.devicePrefs);
     let captured: MediaStream;
     try {
-      captured = await navigator.mediaDevices.getUserMedia({ audio, video: true });
+      captured = await navigator.mediaDevices.getUserMedia({ audio, video });
       this.hasVideo = captured.getVideoTracks().length > 0;
     } catch (err) {
       // Camera denied/absent but the mic may be fine: degrade to audio-only
@@ -643,6 +648,74 @@ export class VoiceCall {
         describeMediaError("microphone", err) + " — kept the previous microphone",
       );
     }
+  }
+
+  /**
+   * applyDevicePrefs (44-9) pushes a camera change into the live call.
+   *
+   * The output device is not handled here: playback belongs to the <audio>
+   * elements the dock owns, and this class never touches them.
+   *
+   * Swapping the camera is a replaceTrack on every sender carrying the old one
+   * -- same kind, same codec, so no renegotiation and no black frame for
+   * anyone watching. Capture first and only stop the old track once the new one
+   * is in hand, so a camera that is gone or busy leaves the user still visible,
+   * which is the same rule MicChain.recapture follows.
+   */
+  async applyDevicePrefs(next: DevicePrefs): Promise<void> {
+    if (this.closed) return;
+    const prev = this.devicePrefs;
+    this.devicePrefs = next;
+    if (prev.cameraId === next.cameraId) return;
+    const local = this.localStream;
+    const old = local?.getVideoTracks()[0];
+    // No camera to swap: audio-only joins pick the new one up when the
+    // mid-call add acquires, and a fresh join reads the pref outright.
+    if (!local || !old) return;
+
+    let fresh: MediaStreamTrack | undefined;
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: cameraConstraints(next) });
+      fresh = s.getVideoTracks()[0];
+    } catch (err) {
+      this.devicePrefs = prev;
+      this.o.callbacks.onError(describeMediaError("camera", err) + " — kept the previous camera");
+      return;
+    }
+    if (!fresh) {
+      this.devicePrefs = prev;
+      return;
+    }
+    if (this.closed) {
+      fresh.stop();
+      return;
+    }
+
+    // The camera can be mid-toggle; a fresh capture always starts enabled.
+    fresh.enabled = this.videoEnabled;
+    // Not on the per-peer negotiation chain, and awaited rather than queued:
+    // replaceTrack with the same kind changes no SDP, so it is safe alongside
+    // an offer in flight -- and every sender must be carrying the new track
+    // before the old one is stopped, or watchers get a black frame for as long
+    // as the queue takes to drain.
+    const swaps: Promise<void>[] = [];
+    for (const peer of this.peers.values()) {
+      for (const sender of peer.pc.getSenders()) {
+        if (sender.track?.id === old.id) {
+          swaps.push(
+            sender.replaceTrack(fresh).catch((err) => {
+              this.diag(`camera swap failed for ${peer.key}: ${String(err)}`);
+            }),
+          );
+        }
+      }
+    }
+    await Promise.all(swaps);
+    local.removeTrack(old);
+    local.addTrack(fresh);
+    old.stop();
+    this.o.callbacks.onLocalStream(local);
+    this.diag(`camera switched: device=${next.cameraId || "default"}`);
   }
 
   /**
@@ -1385,7 +1458,9 @@ export class VoiceCall {
     if (!this.joined || this.closed || this.hasVideo || !this.localStream) return false;
     let track: MediaStreamTrack | undefined;
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: true });
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: cameraConstraints(this.devicePrefs),
+      });
       track = s.getVideoTracks()[0];
     } catch (err) {
       this.o.callbacks.onError(describeMediaError("camera", err));

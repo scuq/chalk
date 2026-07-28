@@ -14,6 +14,7 @@
 import { decideSound, type GateVerdict } from "./gate";
 import { loadSoundPrefs, subscribeSoundPrefs } from "./prefs";
 import { SoundPlayer } from "./synth";
+import { loadDevicePrefs, subscribeDevicePrefs } from "../voice/device-prefs";
 import type { SoundCategory, SoundPrefs } from "./types";
 
 export * from "./types";
@@ -35,6 +36,7 @@ export class NotifySounds {
   private prefs: SoundPrefs;
   private player: SoundPlayer;
   private unsubscribe: (() => void) | null = null;
+  private unsubscribeDevices: (() => void) | null = null;
   private lastAnyAt: number | undefined;
   private lastByCategory: Partial<Record<SoundCategory, number>> = {};
 
@@ -45,6 +47,10 @@ export class NotifySounds {
       this.prefs = next;
       this.player.setVolume(next.volume);
     });
+    // 44-9: the chosen output device is a machine setting, so the sounds
+    // follow the same speakers the call does.
+    this.player.setOutput(loadDevicePrefs().outputId);
+    this.unsubscribeDevices = subscribeDevicePrefs((p) => this.player.setOutput(p.outputId));
   }
 
   // Call from a real user gesture. Until this has run the gate returns
@@ -91,6 +97,8 @@ export class NotifySounds {
   dispose(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.unsubscribeDevices?.();
+    this.unsubscribeDevices = null;
     this.player.close();
   }
 }

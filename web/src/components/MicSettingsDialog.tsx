@@ -1,4 +1,4 @@
-// MicSettingsDialog (44-3): the microphone settings, in a dialog of their own.
+// MicSettingsDialog (44-3): the voice and video settings, in a dialog of their own.
 //
 // They used to be a section three quarters of the way down the profile panel,
 // which is the wrong place for the one setting you reach for mid-conversation
@@ -6,8 +6,9 @@
 // beside the mute button, where you already are when something is wrong -- and
 // still from the profile panel, for people who go looking there.
 //
-// Nothing but mic and input lives here on purpose. The level meter needs the
-// user watching it, and it cannot compete for attention with a theme picker.
+// Nothing but capture, playback and the devices they use lives here on purpose.
+// The level meter needs the user watching it, and it cannot compete for
+// attention with a theme picker.
 
 import { useEffect } from "preact/hooks";
 import { MicSettings } from "./MicSettings";
@@ -39,7 +40,7 @@ export function MicSettingsDialog({ onClose }: Props) {
         aria-labelledby="mic-settings-title"
       >
         <header class="chalk-modal-header">
-          <h2 id="mic-settings-title">microphone</h2>
+          <h2 id="mic-settings-title">voice &amp; video</h2>
           <button
             class="chalk-modal-close"
             type="button"

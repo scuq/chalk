@@ -12,7 +12,23 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **Pick your camera and your speakers, not just your microphone.** The
+  settings dialog behind the ⚙ beside the mute button now has a camera picker
+  and an output picker alongside the input one. Both appear only when there is
+  more than one of that kind plugged in — one webcam and one set of speakers
+  needs no choosing. Switching camera works mid-call: the people watching see
+  the new one without the call dropping or so much as a black frame. The
+  output choice moves call audio *and* notification sounds to that device, so
+  a call can live in your headset while the rest of the machine keeps its
+  speakers. Choosing an output needs a browser that supports it — Chrome and
+  Edge do, Firefox and Safari don't, and there the picker stays hidden rather
+  than pretending. Like the microphone, these stay on this computer: they name
+  sockets that don't exist on your other machines.
+
 ### Changed
+- **The microphone dialog is now "voice & video".** Same dialog, same place —
+  it just holds more than the microphone.
 - **You set the "when i speak" thresholds by dragging them on the level
   meter now.** The two marks that decide when your mic opens and closes are
   handles on the meter itself — drag them to sit either side of where your

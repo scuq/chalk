@@ -25,6 +25,7 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { voiceSession, type SessionRemoteTile, type VoiceSessionSnap } from "../voice/session";
 import { closeAllTilePopouts } from "../voice/pip";
+import { applySinkId, useAudioOutput } from "../voice/device-prefs";
 import { ChannelGlyph } from "./Sidebar";
 
 function fmtDuration(ms: number): string {
@@ -314,6 +315,10 @@ function AudioSink({
   volume: number;
 }) {
   const ref = useRef<HTMLAudioElement | null>(null);
+  // 44-9: playback follows the chosen output device. Per element rather than
+  // once globally, because setSinkId IS a property of the element -- and the
+  // sinks come and go with the peers.
+  const outputId = useAudioOutput();
   useEffect(() => {
     if (ref.current && ref.current.srcObject !== stream) {
       ref.current.srcObject = stream;
@@ -334,6 +339,11 @@ function AudioSink({
       ref.current.volume = Math.min(1, Math.max(0, volume));
     }
   }, [muted, volume]);
+  // Re-applied on every new stream too: a sink set before srcObject exists is
+  // not carried across in every engine.
+  useEffect(() => {
+    void applySinkId(ref.current, outputId);
+  }, [outputId, stream]);
   return <audio ref={ref} autoPlay style={{ display: "none" }} />;
 }
 
