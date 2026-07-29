@@ -12,7 +12,29 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **Mark every thread read without reading them.** The threads list has a
+  "mark all read" button in its top right. It clears the unread mark on the
+  threads it is showing you — so with a filter typed in, it clears only what
+  matches — and, like reading a thread, it clears them on your other devices
+  too.
+
 ### Changed
+- **A voice channel's chat no longer nags you from outside the call.** The
+  unread dot on a voice channel, and its share of the count on the tab, now
+  only appear while you are actually in that room. Text typed during a call is
+  destroyed when the call ends, so from the outside there was never anything
+  there to go and read.
+
+### Fixed
+- **An unread dot on a voice channel could outlive the call it belonged to.**
+  When everyone left and the call's chat was destroyed, the dot could come
+  back on the next reconnect — pointing at a channel with nothing in it, and
+  refusing to clear. Emptying the room now marks it read for everybody.
+- **Reading a thread left the threads dot sitting there.** The unread marker
+  beside "threads" only caught up the next time you opened the list, so
+  clearing it appeared to take two visits. It now updates as soon as a thread
+  is read, here or on another device.
 - **The browser is now told exactly where chalk is allowed to talk.** Every
   page chalk serves carries a policy pinning scripts, styles, fonts and
   network connections to your own server, so nothing that ships inside chalk

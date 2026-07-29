@@ -193,6 +193,21 @@ export function hasUnread(u: ChannelUnread | undefined): boolean {
   return u !== undefined && u.lastSeq > u.lastReadSeq;
 }
 
+// countsAsUnread narrows hasUnread for a VOICE channel: its text is a
+// scratchpad for the call in progress (45-1), so a dot on it is only ever news
+// to someone in the room. Outside the room it is a nag about text you were not
+// part of and that gets destroyed the moment the call ends -- and being pulled
+// into a call by an unread dot is exactly the behaviour a voice channel should
+// not have.
+export function countsAsUnread(
+  u: ChannelUnread | undefined,
+  channelType: string,
+  inVoiceRoom: boolean,
+): boolean {
+  if (!hasUnread(u)) return false;
+  return channelType !== "voice" || inVoiceRoom;
+}
+
 // 30-4: one live occupant of a voice room, as tracked from the roster ack +
 // joined/left/state pushes. Keyed by (userID, deviceID) -- the same user on
 // another device is a distinct participant (the server rejects that in v1,

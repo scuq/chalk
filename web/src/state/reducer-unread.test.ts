@@ -10,6 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { reducer } from "./reducer.ts";
 import {
+  countsAsUnread,
   hasUnread,
   initialState,
   type AppState,
@@ -258,4 +259,37 @@ test("refreshing with no active channel is a no-op", () => {
     channelID: null,
   });
   assert.deepEqual(s.unreadMarks, {});
+});
+
+// ---- 45-3: a voice channel's scratchpad dot ------------------------------
+//
+// The text in a voice channel exists for the call and is destroyed with it, so
+// a dot on it is only news to someone in the room.
+
+test("a voice channel shows no dot from outside the room", () => {
+  const u = { lastSeq: 9, lastReadSeq: 3, mention: false };
+  assert.equal(hasUnread(u), true);
+  assert.equal(countsAsUnread(u, "voice", false), false);
+});
+
+test("a voice channel shows the dot to someone in the room", () => {
+  const u = { lastSeq: 9, lastReadSeq: 3, mention: false };
+  assert.equal(countsAsUnread(u, "voice", true), true);
+});
+
+test("a mention in a scratchpad is still suppressed from outside", () => {
+  // Being named in text that is about to be destroyed is not a reason to be
+  // pulled into a call.
+  const u = { lastSeq: 9, lastReadSeq: 3, mention: true };
+  assert.equal(countsAsUnread(u, "voice", false), false);
+});
+
+test("text channels are unaffected by room presence", () => {
+  const u = { lastSeq: 9, lastReadSeq: 3, mention: false };
+  assert.equal(countsAsUnread(u, "text", false), true);
+});
+
+test("a caught-up voice channel shows nothing even in the room", () => {
+  const u = { lastSeq: 9, lastReadSeq: 9, mention: false };
+  assert.equal(countsAsUnread(u, "voice", true), false);
 });

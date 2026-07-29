@@ -18,7 +18,7 @@ import {
 import { PrioritySelect } from "./PrioritySelect";
 import { withChannelRule, withUserRule } from "../notify/rules";
 import { useRulesConfig } from "../notify/rules-store";
-import { hasUnread } from "../state/types";
+import { countsAsUnread, hasUnread } from "../state/types";
 import type {
   ChannelSummary,
   ChannelUnread,
@@ -541,7 +541,12 @@ export function Sidebar({
             const isVoice = ch.channelType === "voice";
             const roster = isVoice ? (voiceRosters[ch.id] ?? []) : [];
             const u = unread[ch.id];
-            const showUnread = hasUnread(u);
+            // 45-3: my own presence in the room decides whether the scratchpad
+            // may show a dot. Read off the roster rather than the call session:
+            // the server owns who is in the room, and this is the same list the
+            // occupant sublist below renders.
+            const inRoom = !!ownUserID && roster.some((p) => p.userID === ownUserID);
+            const showUnread = countsAsUnread(u, ch.channelType, inRoom);
             return (
               <li
                 key={ch.id}

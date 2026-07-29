@@ -7449,6 +7449,29 @@ body.chalk-resizing .chalk-sidebar-resizer {
   font-weight: 600;
 }
 
+.chalk-threadinbox-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+}
+
+.chalk-threadinbox-markall {
+  background: transparent;
+  border: 1px solid var(--chalk-border);
+  border-radius: 2px;
+  color: var(--chalk-fg-muted);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0 var(--chalk-s2);
+  cursor: pointer;
+}
+
+.chalk-threadinbox-markall:hover,
+.chalk-threadinbox-markall:focus-visible {
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg);
+}
+
 .chalk-threadinbox-search {
   display: flex;
   align-items: center;

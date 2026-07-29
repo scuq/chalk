@@ -40,6 +40,7 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ThreadInboxRow } from "../state/types";
 import {
   bestMatchLine,
+  isThreadUnread,
   partitionThreadInbox,
   threadAgeStep,
   threadQueryTerms,
@@ -67,6 +68,10 @@ interface Props {
   // newest-first with the head last. What the filter actually searches (47-8).
   threadLines: Record<string, ThreadLine[]>;
   onOpenThread: (channelID: string, threadID: string) => void;
+  // 47-10: clear the rows listed here without opening them. Gets exactly the
+  // rows the button was offered for, so what it marks is what was on screen --
+  // including while filtering.
+  onMarkAllRead: (rows: ThreadInboxRow[]) => void;
   onLoadMore: () => void;
   onClose: () => void;
 }
@@ -85,6 +90,7 @@ export function ThreadInboxPanel({
   handles,
   threadLines,
   onOpenThread,
+  onMarkAllRead,
   onLoadMore,
   onClose,
 }: Props) {
@@ -147,6 +153,14 @@ export function ThreadInboxPanel({
   const { needsYou, alsoActive } = useMemo(
     () => partitionThreadInbox(rows, threadSeen, mentions),
     [rows, threadSeen, mentions],
+  );
+
+  // 47-10: every listed row with an unread reply, in both groups -- "mark all
+  // read" is about the badge, and the badge doesn't care which group a thread
+  // landed in.
+  const unreadRows = useMemo(
+    () => rows.filter((r) => isThreadUnread(r, threadSeen)),
+    [rows, threadSeen],
   );
 
   const filtering = terms.length > 0;
@@ -246,14 +260,31 @@ export function ThreadInboxPanel({
               <span class="chalk-sidebar-count">({needsYou.length})</span>
             )}
           </div>
-          <button
-            type="button"
-            class="chalk-modal-close"
-            onClick={onClose}
-            aria-label="close"
-          >
-            x
-          </button>
+          <div class="chalk-threadinbox-actions">
+            {unreadRows.length > 0 && (
+              <button
+                type="button"
+                class="chalk-threadinbox-markall"
+                onClick={() => onMarkAllRead(unreadRows)}
+                title={
+                  filtering
+                    ? `mark the ${unreadRows.length} matching ${unreadRows.length === 1 ? "thread" : "threads"} read`
+                    : "mark every thread listed here read"
+                }
+                data-testid="threadinbox-mark-all-read"
+              >
+                mark all read
+              </button>
+            )}
+            <button
+              type="button"
+              class="chalk-modal-close"
+              onClick={onClose}
+              aria-label="close"
+            >
+              x
+            </button>
+          </div>
         </div>
 
         <div class="chalk-threadinbox-search">

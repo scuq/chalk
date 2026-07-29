@@ -2552,8 +2552,19 @@ export function App() {
         .filter((ch) => ch.isDM)
         .map((ch) => ch.id),
     );
+    // 45-3: a voice channel's scratchpad only counts while you are in the room,
+    // exactly as the sidebar dot does (countsAsUnread) -- otherwise the tab
+    // would carry a number for text that is about to be destroyed.
+    const ownID = state.user?.id ?? null;
+    const unreadForBadge = Object.fromEntries(
+      Object.entries(state.unread).filter(([cid]) => {
+        const ch = state.channels[cid];
+        if (ch?.channelType !== "voice") return true;
+        return (state.voiceRosters[cid] ?? []).some((p) => p.userID === ownID);
+      }),
+    );
     const n = badgeCount({
-      unread: state.unread,
+      unread: unreadForBadge,
       dmChannelIDs,
       threadInboxUnreadTotal: state.threadInboxUnreadTotal,
       pendingIncomingCount: state.pendingIncoming.length,
@@ -2569,7 +2580,14 @@ export function App() {
         // (e.g. not installed); the title prefix carries the count then.
       });
     }
-  }, [state.unread, state.channels, state.threadInboxUnreadTotal, state.pendingIncoming]);
+  }, [
+    state.unread,
+    state.channels,
+    state.voiceRosters,
+    state.user?.id,
+    state.threadInboxUnreadTotal,
+    state.pendingIncoming,
+  ]);
 
   // 40-4: your own connection coming and going. Both off by default.
   //
@@ -3743,6 +3761,28 @@ export function App() {
     return () => window.clearTimeout(t);
   }, [state.threadInboxStale]);
 
+  // 47-9: a thread cursor moved, so the threads dot has to be recounted.
+  //
+  // The number behind that dot is the SERVER's -- involved threads with an
+  // unread reply, at any age and with no limit -- so only a refetch can move
+  // it. Without this the dot survived reading the thread and only cleared the
+  // next time the panel was opened (which refetches), which read as "I have to
+  // click it twice".
+  //
+  // Debounced, and only when there is something to clear: a thread you are
+  // watching bumps its cursor per arriving reply, and channel history hydrates
+  // cursors on every channel you open.
+  useEffect(() => {
+    if (state.threadInboxUnreadTotal === 0) return;
+    const t = window.setTimeout(() => {
+      const c = clientRef.current;
+      if (!c || !c.isOpen()) return;
+      inboxPagingRef.current = false;
+      c.send<ThreadInboxPayload>(TypeThreadInbox, { limit: 50 });
+    }, 1200);
+    return () => window.clearTimeout(t);
+  }, [state.threadSeen]);
+
   // 42-8: decrypt the previews, per channel, as each channel's key settles.
   //
   // Two-phase by design: the rows are already on screen from metadata, and this
@@ -4432,6 +4472,27 @@ export function App() {
           onOpenThread={(channelID, threadID) => {
             dispatch({ kind: "open_thread_from_inbox", channelID, threadID });
             dispatch({ kind: "close_panel" });
+          }}
+          onMarkAllRead={(rows) => {
+            // 47-10: one mark_thread_read per row -- the same frame reading the
+            // thread sends, so the cursor lands in the same place and reaches
+            // this user's other devices the same way. The local bump is
+            // optimistic; each ack carries the server's clamped value.
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            for (const r of rows) {
+              c.send<MarkThreadReadPayload>(TypeMarkThreadRead, {
+                channel_id: r.channelID,
+                thread_id: r.threadID,
+                seq: r.lastReplySeq,
+              });
+              markThreadReadSentRef.current.set(r.threadID, r.lastReplySeq);
+              dispatch({
+                kind: "thread_seen_bump",
+                threadID: r.threadID,
+                seq: r.lastReplySeq,
+              });
+            }
           }}
           onLoadMore={() => {
             const c = clientRef.current;
