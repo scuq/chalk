@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.4.3 — 29 July 2026 — Unread indicators and browser hardening
 
 ### Added
 - **Mark every thread read without reading them.** The threads list has a
@@ -25,6 +25,15 @@ The engineering-level history (which slice shipped what) lives in
   only appear while you are actually in that room. Text typed during a call is
   destroyed when the call ends, so from the outside there was never anything
   there to go and read.
+- **The browser is now told exactly where chalk is allowed to talk.** Every
+  page chalk serves carries a policy pinning scripts, styles, fonts and
+  network connections to your own server, so nothing that ships inside chalk
+  can quietly reach a third party — and a page can no longer be embedded in a
+  frame by another site. The one deliberate exception is Giphy: a GIF still
+  loads from Giphy's own servers, for the people who turned Giphy on and for
+  nobody else. Chalk also stops handing your address to sites you click
+  through to, which matters most for the links that carry a one-time token —
+  an invite, or an admin claim.
 
 ### Fixed
 - **An unread dot on a voice channel could outlive the call it belonged to.**
@@ -35,15 +44,6 @@ The engineering-level history (which slice shipped what) lives in
   beside "threads" only caught up the next time you opened the list, so
   clearing it appeared to take two visits. It now updates as soon as a thread
   is read, here or on another device.
-- **The browser is now told exactly where chalk is allowed to talk.** Every
-  page chalk serves carries a policy pinning scripts, styles, fonts and
-  network connections to your own server, so nothing that ships inside chalk
-  can quietly reach a third party — and a page can no longer be embedded in a
-  frame by another site. The one deliberate exception is Giphy: a GIF still
-  loads from Giphy's own servers, for the people who turned Giphy on and for
-  nobody else. Chalk also stops handing your address to sites you click
-  through to, which matters most for the links that carry a one-time token —
-  an invite, or an admin claim.
 
 ---
 
