@@ -62,6 +62,10 @@ export function parseGiphyBody(body: string): { url: string } | null {
 // host, so a malicious sender can't smuggle an arbitrary URL through the
 // giphy marker to grab the viewer's IP or probe internal hosts. Giphy serves
 // GIFs from media0..media4.giphy.com and i.giphy.com.
+//
+// Adding a host here is not enough on its own: img-src in the served CSP
+// (giphyImgSources, internal/server/spa.go) has to list it too, or the
+// browser refuses the fetch this allowlist just permitted.
 const GIPHY_ALLOWED_HOSTS = new Set<string>([
   "media.giphy.com",
   "media0.giphy.com",

@@ -163,16 +163,24 @@ function attach(
   const doc = win.document;
   doc.title = label;
   doc.body.innerHTML = "";
-  const style = doc.createElement("style");
-  style.textContent =
-    "html,body{margin:0;height:100%;background:#000;overflow:hidden}" +
-    "video{width:100%;height:100%;object-fit:contain;display:block}";
-  doc.head.appendChild(style);
+  // Styled through the CSSOM rather than an injected <style>: a pop-out
+  // inherits the opener's CSP, and an inline stylesheet is precisely what
+  // style-src 'self' refuses. Property assignment is not gated by CSP.
+  for (const el of [doc.documentElement, doc.body]) {
+    el.style.margin = "0";
+    el.style.height = "100%";
+    el.style.background = "#000";
+    el.style.overflow = "hidden";
+  }
   const video = doc.createElement("video");
   video.autoplay = true;
   video.playsInline = true;
   video.muted = true;
   video.srcObject = stream;
+  video.style.width = "100%";
+  video.style.height = "100%";
+  video.style.objectFit = "contain";
+  video.style.display = "block";
   doc.body.appendChild(video);
 
   const po: Popout = { win, video, stream, unwatch: () => {} };

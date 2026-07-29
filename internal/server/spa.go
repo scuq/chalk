@@ -41,6 +41,12 @@ import (
 //
 // Dotfiles and ".." traversal are refused as a defense-in-depth
 // measure; the dist/ tree shouldn't have any.
+//
+// Security headers: see contentSecurityPolicy below. They are set here
+// rather than in the Caddy templates so that every way of running chalkd
+// -- behind chalkctl's Caddy, behind someone else's proxy, or directly --
+// gets the same policy, and so the policy travels with the bundle it was
+// written for.
 func spaHandler(webFS fs.FS, distDir string) (http.Handler, error) {
 	dist, err := fs.Sub(webFS, distDir)
 	if err != nil {
@@ -56,7 +62,77 @@ func spaHandler(webFS fs.FS, distDir string) (http.Handler, error) {
 	}), nil
 }
 
+// giphyImgSources mirrors GIPHY_ALLOWED_HOSTS in web/src/giphy/giphy.ts.
+const giphyImgSources = "https://media.giphy.com https://media0.giphy.com " +
+	"https://media1.giphy.com https://media2.giphy.com https://media3.giphy.com " +
+	"https://media4.giphy.com https://i.giphy.com"
+
+// contentSecurityPolicy is the policy chalk serves on its own documents.
+//
+// The directive carrying the weight is connect-src. chalk is a blind relay:
+// everything valuable is decrypted in this origin, and the identity private
+// key lives in its IndexedDB. Pinning every outbound connection to our own
+// origin is what stops a compromised bundled dependency from being able to
+// talk to anyone but us -- the WebSocket included, since CSP 'self' covers
+// the ws/wss upgrade of the page's own origin and App builds its URL from
+// window.location.
+//
+// Three allowances are load-bearing rather than lax:
+//
+//   - 'wasm-unsafe-eval': Argon2id runs in WebAssembly (hash-wasm) on every
+//     login. Without it nobody can derive a key, i.e. nobody can log in.
+//   - data: in img-src: the TOTP enrollment QR is a data: GIF produced by
+//     qrcode-generator. blob: in img-src/media-src is every decrypted
+//     attachment -- they are decrypted client-side and handed to <img> and
+//     <video> as blob URLs, so they are never fetched as themselves.
+//   - the Giphy CDN hosts in img-src: a rendered GIF is fetched by the
+//     viewer's own browser straight from Giphy (that IS the feature, and the
+//     leak it implies is what the per-viewer opt-in exists to gate). The
+//     search API is proxied through us and needs nothing here.
+//
+// The Giphy list must stay in step with GIPHY_ALLOWED_HOSTS in
+// web/src/giphy/giphy.ts -- that check is the primary gate and this is the
+// browser-level second lock behind it. The policy cannot be narrowed to
+// viewers who opted in: the document is served before we know who is asking.
+//
+// style-src is strict, which costs two small accommodations elsewhere: the
+// noscript notice styles from theme.css instead of a style attribute, and
+// the pop-out windows style their elements through the CSSOM (which CSP
+// does not gate) instead of injecting a <style>.
+var contentSecurityPolicy = strings.Join([]string{
+	"default-src 'self'",
+	"script-src 'self' 'wasm-unsafe-eval'",
+	"style-src 'self'",
+	"img-src 'self' data: blob: " + giphyImgSources,
+	"media-src 'self' blob:",
+	"font-src 'self'",
+	"connect-src 'self'",
+	"manifest-src 'self'",
+	"worker-src 'self'",
+	"object-src 'none'",
+	"frame-src 'none'",
+	"base-uri 'self'",
+	"form-action 'self'",
+	"frame-ancestors 'none'",
+}, "; ")
+
+// setDocumentHeaders applies the policy that only makes sense on a document
+// response. Referrer-Policy matters more than it looks: chalk puts one-shot
+// secrets in the query string (?admin_token=, invite links), and message
+// bodies render user-supplied http(s) links, so a Referer header is a way
+// for a URL that was meant for one person to reach a stranger's access log.
+func setDocumentHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Frame-Options", "DENY")
+}
+
 func serveSPA(w http.ResponseWriter, r *http.Request, dist fs.FS) {
+	// Before any branch, including the 404s: an asset the browser is allowed
+	// to re-type by sniffing is an asset that can be something other than
+	// what dist/ says it is.
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+
 	upath := strings.TrimPrefix(r.URL.Path, "/")
 	if upath == "" {
 		serveIndex(w, r, dist)
@@ -147,6 +223,7 @@ func serveIndex(w http.ResponseWriter, r *http.Request, dist fs.FS) {
 		http.Error(w, "internal: index.html not seekable", http.StatusInternalServerError)
 		return
 	}
+	setDocumentHeaders(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeContent(w, r, "index.html", info.ModTime(), rs)

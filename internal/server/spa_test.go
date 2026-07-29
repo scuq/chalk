@@ -184,3 +184,93 @@ func TestSPA_MissingIndexHTMLFailsConstructor(t *testing.T) {
 		t.Fatal("spaHandler should fail when index.html is missing")
 	}
 }
+
+// ---- security headers ----------------------------------------------------
+
+func TestSPA_DocumentCarriesSecurityHeaders(t *testing.T) {
+	srv := newSPATestServer(t, map[string]string{
+		"dist/index.html": "<html>chalk</html>",
+	})
+	defer srv.Close()
+
+	for _, path := range []string{"/", "/channels/general"} {
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("get %s: %v", path, err)
+		}
+		resp.Body.Close()
+		csp := resp.Header.Get("Content-Security-Policy")
+		if csp == "" {
+			t.Fatalf("%s: no Content-Security-Policy", path)
+		}
+		// Spot-check the directives whose absence would be a real hole, and
+		// the two allowances whose absence would break login and the TOTP QR.
+		for _, want := range []string{
+			"default-src 'self'",
+			"connect-src 'self'",
+			"frame-ancestors 'none'",
+			"object-src 'none'",
+			"'wasm-unsafe-eval'",
+			"img-src 'self' data: blob:",
+			// Blocking these would silently kill Giphy rendering for
+			// viewers who opted in.
+			"https://media2.giphy.com",
+			"https://i.giphy.com",
+		} {
+			if !strings.Contains(csp, want) {
+				t.Errorf("%s: CSP %q missing %q", path, csp, want)
+			}
+		}
+		if rp := resp.Header.Get("Referrer-Policy"); rp != "no-referrer" {
+			t.Errorf("%s: referrer-policy %q, want no-referrer", path, rp)
+		}
+		if xcto := resp.Header.Get("X-Content-Type-Options"); xcto != "nosniff" {
+			t.Errorf("%s: x-content-type-options %q, want nosniff", path, xcto)
+		}
+	}
+}
+
+// Assets get nosniff but no document policy: CSP on a .js response is inert,
+// and shipping it there would only invite it to drift from the real one.
+func TestSPA_AssetNosniffWithoutDocumentHeaders(t *testing.T) {
+	srv := newSPATestServer(t, map[string]string{
+		"dist/index.html": "<html></html>",
+		"dist/theme.css":  "body{color:#0f0}",
+	})
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/theme.css")
+	if err != nil {
+		t.Fatalf("get /theme.css: %v", err)
+	}
+	resp.Body.Close()
+	if xcto := resp.Header.Get("X-Content-Type-Options"); xcto != "nosniff" {
+		t.Errorf("x-content-type-options %q, want nosniff", xcto)
+	}
+	if csp := resp.Header.Get("Content-Security-Policy"); csp != "" {
+		t.Errorf("asset carries a CSP (%q); it belongs on documents only", csp)
+	}
+}
+
+// A 404 is still a response the browser types; nosniff has to survive the
+// early returns that reject traversal and dotfiles.
+func TestSPA_NotFoundKeepsNosniff(t *testing.T) {
+	srv := newSPATestServer(t, map[string]string{
+		"dist/index.html": "<html></html>",
+	})
+	defer srv.Close()
+
+	for _, path := range []string{"/missing.js", "/.env"} {
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("get %s: %v", path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 404 {
+			t.Fatalf("%s: status %d, want 404", path, resp.StatusCode)
+		}
+		if xcto := resp.Header.Get("X-Content-Type-Options"); xcto != "nosniff" {
+			t.Errorf("%s: x-content-type-options %q, want nosniff", path, xcto)
+		}
+	}
+}

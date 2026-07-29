@@ -54,6 +54,7 @@ interface FakeEl {
   playsInline?: boolean;
   muted?: boolean;
   innerHTML: string;
+  style: Record<string, string>;
   appendChild(c: FakeEl): void;
 }
 
@@ -64,6 +65,7 @@ function el(tag: string): FakeEl {
     srcObject: null,
     children: [],
     innerHTML: "",
+    style: {},
     appendChild(c: FakeEl) {
       this.children.push(c);
     },
@@ -76,6 +78,7 @@ interface FakeWin {
   focused: number;
   document: {
     title: string;
+    documentElement: FakeEl;
     head: FakeEl;
     body: FakeEl;
     createElement(tag: string): FakeEl;
@@ -93,7 +96,13 @@ function fakeWin(name: string): FakeWin {
     name,
     closed: false,
     focused: 0,
-    document: { title: "", head: el("head"), body: el("body"), createElement: el },
+    document: {
+      title: "",
+      documentElement: el("html"),
+      head: el("head"),
+      body: el("body"),
+      createElement: el,
+    },
     listeners: {},
     addEventListener(type, fn) {
       (this.listeners[type] ??= []).push(fn);

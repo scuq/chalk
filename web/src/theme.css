@@ -128,6 +128,16 @@ html, body {
   color: var(--chalk-bg);
 }
 
+/* The no-JavaScript notice. Lives here rather than in a style attribute on
+   index.html because style-src is strict; hardcoded rather than themed
+   because the themes are applied by the script that did not run. */
+.chalk-noscript {
+  color: #00ff41;
+  background: #000;
+  font-family: monospace;
+  padding: 2rem;
+}
+
 /* -- App shell ---------------------------------------------------- */
 
 .chalk-app {

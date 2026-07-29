@@ -10,6 +10,21 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **The browser is now told exactly where chalk is allowed to talk.** Every
+  page chalk serves carries a policy pinning scripts, styles, fonts and
+  network connections to your own server, so nothing that ships inside chalk
+  can quietly reach a third party — and a page can no longer be embedded in a
+  frame by another site. The one deliberate exception is Giphy: a GIF still
+  loads from Giphy's own servers, for the people who turned Giphy on and for
+  nobody else. Chalk also stops handing your address to sites you click
+  through to, which matters most for the links that carry a one-time token —
+  an invite, or an admin claim.
+
+---
+
 ## v0.4.2 — 28 July 2026 — Voice devices and mic tuning
 
 ### Added
