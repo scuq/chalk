@@ -123,6 +123,7 @@ import {
   type FingerprintContext,
 } from "./signal-crypto";
 import { MicChain } from "./mic-chain";
+import { CameraChain } from "./camera-chain";
 import {
   DEFAULT_MIC_PREFS,
   loadMicPrefs,
@@ -338,6 +339,8 @@ export class VoiceCall {
   private localStream: MediaStream | null = null;
   /** 41-2: the mic graph. Owns the real capture; localStream carries its output. */
   private micChain: MicChain | null = null;
+  /** 44-10: the camera graph. Same deal -- owns the device, publishes a canvas. */
+  private cameraChain: CameraChain | null = null;
   /** The prefs the current capture was opened with, to diff incoming changes. */
   private micPrefs: MicPrefs = DEFAULT_MIC_PREFS;
   private iceServers: RTCIceServer[] = [];
@@ -518,9 +521,9 @@ export class VoiceCall {
       }
     }
 
-    // The chain takes ownership of the audio half; the camera track stays with
-    // the call. If the graph cannot be built at all (no Web Audio), publish the
-    // raw mic instead -- a call without a gain slider beats no call.
+    // Each graph takes ownership of its half of the capture. If either cannot
+    // be built, publish that half raw -- a call without a gain slider or
+    // without a mid-call camera swap still beats no call.
     const micStream = new MediaStream(captured.getAudioTracks());
     try {
       this.micChain = await MicChain.fromStream(micStream, this.micPrefs);
@@ -528,14 +531,23 @@ export class VoiceCall {
     } catch (err) {
       this.diag(`mic graph unavailable, publishing raw capture: ${String(err)}`);
     }
+    const cameraTracks = captured.getVideoTracks();
+    if (cameraTracks.length > 0) {
+      try {
+        this.cameraChain = CameraChain.fromStream(new MediaStream(cameraTracks));
+      } catch (err) {
+        this.diag(`camera graph unavailable, publishing raw capture: ${String(err)}`);
+      }
+    }
     this.localStream = new MediaStream([
       this.micChain ? this.micChain.track : micStream.getAudioTracks()[0],
-      ...captured.getVideoTracks(),
+      ...(this.cameraChain ? [this.cameraChain.track] : cameraTracks),
     ]);
-    // Camera OFF by default: disable the track so no LED lights and nothing
-    // is sent until the user toggles it on.
+    // Camera OFF by default: disable the published track so nothing is sent,
+    // and park the graph so nothing is drawn, until the user toggles it on.
     this.videoEnabled = false;
     for (const t of this.localStream.getVideoTracks()) t.enabled = false;
+    this.cameraChain?.setActive(false);
     this.o.callbacks.onLocalStream(this.localStream);
 
     let ack: VoiceJoinAckPayload;
@@ -656,65 +668,30 @@ export class VoiceCall {
    * The output device is not handled here: playback belongs to the <audio>
    * elements the dock owns, and this class never touches them.
    *
-   * Swapping the camera is a replaceTrack on every sender carrying the old one
-   * -- same kind, same codec, so no renegotiation and no black frame for
-   * anyone watching. Capture first and only stop the old track once the new one
-   * is in hand, so a camera that is gone or busy leaves the user still visible,
-   * which is the same rule MicChain.recapture follows.
+   * 44-10: the swap is now entirely inside the camera graph. The published
+   * track belongs to the graph's canvas, so changing the device behind it
+   * touches no sender, no SDP and no peer connection -- where this used to
+   * fan replaceTrack out across every peer and race the negotiation queue,
+   * there is now nothing to coordinate.
    */
   async applyDevicePrefs(next: DevicePrefs): Promise<void> {
     if (this.closed) return;
     const prev = this.devicePrefs;
     this.devicePrefs = next;
     if (prev.cameraId === next.cameraId) return;
-    const local = this.localStream;
-    const old = local?.getVideoTracks()[0];
-    // No camera to swap: audio-only joins pick the new one up when the
-    // mid-call add acquires, and a fresh join reads the pref outright.
-    if (!local || !old) return;
+    // No graph: either an audio-only join (which picks the new camera up when
+    // the mid-call add acquires) or the raw-publish fallback, where there is
+    // no stable published track to swap behind. A fresh join reads the pref
+    // outright either way.
+    if (!this.cameraChain) return;
 
-    let fresh: MediaStreamTrack | undefined;
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: cameraConstraints(next) });
-      fresh = s.getVideoTracks()[0];
+      await this.cameraChain.recapture(next);
     } catch (err) {
       this.devicePrefs = prev;
       this.o.callbacks.onError(describeMediaError("camera", err) + " — kept the previous camera");
       return;
     }
-    if (!fresh) {
-      this.devicePrefs = prev;
-      return;
-    }
-    if (this.closed) {
-      fresh.stop();
-      return;
-    }
-
-    // The camera can be mid-toggle; a fresh capture always starts enabled.
-    fresh.enabled = this.videoEnabled;
-    // Not on the per-peer negotiation chain, and awaited rather than queued:
-    // replaceTrack with the same kind changes no SDP, so it is safe alongside
-    // an offer in flight -- and every sender must be carrying the new track
-    // before the old one is stopped, or watchers get a black frame for as long
-    // as the queue takes to drain.
-    const swaps: Promise<void>[] = [];
-    for (const peer of this.peers.values()) {
-      for (const sender of peer.pc.getSenders()) {
-        if (sender.track?.id === old.id) {
-          swaps.push(
-            sender.replaceTrack(fresh).catch((err) => {
-              this.diag(`camera swap failed for ${peer.key}: ${String(err)}`);
-            }),
-          );
-        }
-      }
-    }
-    await Promise.all(swaps);
-    local.removeTrack(old);
-    local.addTrack(fresh);
-    old.stop();
-    this.o.callbacks.onLocalStream(local);
     this.diag(`camera switched: device=${next.cameraId || "default"}`);
   }
 
@@ -771,7 +748,12 @@ export class VoiceCall {
   setVideoEnabled(on: boolean): boolean {
     if (!this.hasVideo) return false;
     this.videoEnabled = on;
+    // Two halves: disabling the PUBLISHED track is what turns the far end
+    // black, and parking the graph stops the draw loop feeding a canvas
+    // nobody is sending. The device itself stays open either way -- see
+    // CameraChain.setActive.
     for (const t of this.localStream?.getVideoTracks() ?? []) t.enabled = on;
+    this.cameraChain?.setActive(on);
     this.applyBudget(); // 30-8: camera copies enter/leave the divider
     this.broadcastState();
     return true;
@@ -1456,17 +1438,19 @@ export class VoiceCall {
    */
   async enableCameraMidCall(): Promise<boolean> {
     if (!this.joined || this.closed || this.hasVideo || !this.localStream) return false;
-    let track: MediaStreamTrack | undefined;
+    let chain: CameraChain;
     try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: cameraConstraints(this.devicePrefs),
-      });
-      track = s.getVideoTracks()[0];
+      chain = await CameraChain.open(this.devicePrefs);
     } catch (err) {
       this.o.callbacks.onError(describeMediaError("camera", err));
       return false;
     }
-    if (!track) return false;
+    if (this.closed) {
+      chain.close();
+      return false;
+    }
+    this.cameraChain = chain;
+    const track = chain.track;
     const local = this.localStream;
     local.addTrack(track);
     this.hasVideo = true;
@@ -1476,7 +1460,7 @@ export class VoiceCall {
     this.diag("camera acquired mid-call — renegotiating it in");
     for (const peer of this.peers.values()) {
       this.enqueue(peer, async (pr) => {
-        pr.pc.addTrack(track!, local);
+        pr.pc.addTrack(track, local);
         this.applyBudget();
         await this.sendOffer(pr);
       });
@@ -1687,10 +1671,13 @@ export class VoiceCall {
 
   private stopLocalMedia(): void {
     for (const t of this.localStream?.getTracks() ?? []) t.stop();
-    // The chain holds the real mic: stopping localStream's tracks only stops
-    // the graph's output, leaving the device (and its indicator light) live.
+    // The graphs hold the real devices: stopping localStream's tracks only
+    // stops their output, leaving the mic and camera (and their indicator
+    // lights) live.
     void this.micChain?.close();
     this.micChain = null;
+    this.cameraChain?.close();
+    this.cameraChain = null;
     this.localStream = null;
     this.o.callbacks.onLocalStream(null);
     if (this.screenStream) {
