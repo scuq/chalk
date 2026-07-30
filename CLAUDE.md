@@ -155,37 +155,15 @@ before declaring any change done.
 ## Current state / open items
 
 Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
-(user-facing). Latest release: v0.4.4. Only what is NOT done belongs here.
+(user-facing). Latest release: v0.4.5. Only what is NOT done belongs here.
 
-- Phases through 52-2 are committed. Complete arcs: auth v2 (31), voice/video
+- Phases through 54-4 are committed. Complete arcs: auth v2 (31), voice/video
   (30-1 … 30-8 plus the 41/44/47/48 mic, device and call-UI work), governance
   (gov-1/gov-2, panel included), attachments, multi-device, unread + read
   cursors (33), threads and the thread inbox (42/47/49), notifications
   (40/50), mobile layout (32), CSP + security headers (51-1), the voice
-  scratchpad (45).
-- **In flight: phase 52 — camera background effects.** 52-1 put a
-  `FrameProcessor` seam in the camera graph's draw step (`camera-chain.ts`),
-  added the per-machine `backgroundBlur` device pref, and takes the platform's
-  own blur where a camera offers it (`camera-effects.ts`, precedence in
-  `planBackgroundBlur`). 52-2 does it ourselves everywhere else:
-  `@mediapipe/tasks-vision` selfie segmentation, `import()`ed so ~12 MB of
-  WASM stays out of the bundle until someone turns blur on, self-hosted from
-  a content-hashed `dist/mediapipe-<hash>/` (build.mjs) with the model
-  committed at `web/assets/mediapipe/`. 52-3 is the frame-budget ladder
-  (`camera-budget.ts`): segment every Nth frame rather than drop frames, give
-  up and say so at the floor. 52-4 is the settings preview (`CameraPreview` in
-  `MicSettings.tsx`), which runs the real pipeline through the shared
-  `applyBlurTo` and defers to the call's own published stream when there is one
-  (`previewSource`) rather than opening the camera twice.
-- **Phase 53-1 — the parking lot.** A pseudo-channel between friends and
-  threads that shows nothing: `state.parked` (reducer-owned, seeded from
-  `parking.ts`'s localStorage flag at `useReducer` init so a reload stays
-  parked) swaps the conversation pane for the logo screensaver and hides
-  `.chalk-footer-main` by CSS, so the composer keeps its draft. Parking is a
-  screen state, not a navigation — `activeChannelID` is untouched, which is why
-  `set_active_channel` had to stop short-circuiting on the same channel, and
-  why the mark-read effect and OS banners are gated on `parked`. Title + hide
-  are account prefs (`prefs.parkingLot`, `selectParkingLotPrefs`).
+  scratchpad (45), camera background effects (52), the parking lot (53-1),
+  roster filter + channel groups (54, plan in `docs/PHASE-54-ROSTER.md`).
 - Next candidates, none started: the SFU seam (voice design Slice I) for rooms
   too large for a mesh; governance `set_config` proposals.
 - Deferred cleanup, all verified still open:

@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.4.5 — 30 July 2026 — Channel groups and a roster filter
 
 ### Added
 - **File a channel under whatever group you like.** The channel's
