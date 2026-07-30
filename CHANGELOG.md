@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.4.7 — 30 July 2026 — Mention autocomplete and a calmer start
 
 ### Added
 - **Typing `@` now suggests who to mention.** The composer pops up a list
