@@ -164,8 +164,12 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   (40/50), mobile layout (32), CSP + security headers (51-1), the voice
   scratchpad (45), camera background effects (52), the parking lot (53-1),
   roster filter + channel groups (54, plan in `docs/PHASE-54-ROSTER.md`).
-- Next candidates, none started: the SFU seam (voice design Slice I) for rooms
-  too large for a mesh; governance `set_config` proposals.
+- Next up: **phase 55 — main-feed scrollback paging** (plan in
+  `docs/PHASE-55-HISTORY.md`, not started). Fixes the fetch-window
+  starvation in thread-heavy channels: the newest-50 history page counts
+  replies the feed then filters out, and nothing pages backwards.
+- Other candidates, none started: the SFU seam (voice design Slice I) for
+  rooms too large for a mesh; governance `set_config` proposals.
 - Deferred cleanup, all verified still open:
   - `RegisterFromInviteScreen` still registers passkey-first
     (`navigator.credentials.create()`), out of step with the auth-v2 password
