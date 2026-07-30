@@ -60,6 +60,43 @@ export function planBackgroundBlur(
   return "off";
 }
 
+/**
+ * canvasFilterSupported reports whether a 2D context honours `filter`.
+ *
+ * Probed rather than assumed because the failure is silent AND privacy-
+ * relevant: assigning `filter` on a context that does not implement it is
+ * accepted and ignored, so a blur that relies on it would publish a sharp
+ * picture of the room while telling the user it was hidden. Cached -- this is
+ * a property of the engine, and it is asked once per frame otherwise.
+ */
+let filterSupport: boolean | null = null;
+
+export function canvasFilterSupported(): boolean {
+  if (filterSupport !== null) return filterSupport;
+  try {
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (!ctx) return (filterSupport = false);
+    ctx.filter = "blur(2px)";
+    filterSupport = ctx.filter !== "none" && ctx.filter !== "";
+  } catch {
+    filterSupport = false;
+  }
+  return filterSupport;
+}
+
+/**
+ * processorBlurAvailable reports whether we could run our own blur here.
+ *
+ * WebAssembly is the hard requirement (the segmenter is a WASM module); the
+ * canvas work has a fallback for everything else. It does NOT check whether
+ * the ~12 MB runtime will actually download and start -- that is only knowable
+ * by trying, which is why BlurProcessor.create can still fail after this
+ * returns true.
+ */
+export function processorBlurAvailable(): boolean {
+  return typeof WebAssembly !== "undefined" && typeof document !== "undefined";
+}
+
 /** The constraint shape, kept separate because it too is off-spec. */
 interface BlurConstraints extends MediaTrackConstraints {
   backgroundBlur?: boolean;

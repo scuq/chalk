@@ -274,3 +274,47 @@ func TestSPA_NotFoundKeepsNosniff(t *testing.T) {
 		}
 	}
 }
+
+// 52-2: the background-blur runtime is WASM, and WebAssembly's streaming
+// instantiation refuses anything not typed application/wasm. Go's mime table
+// has no entry for the extension and we send nosniff, so without an explicit
+// type the blur silently fails to start on a MIME technicality.
+func TestSPA_WasmContentType(t *testing.T) {
+	srv := newSPATestServer(t, map[string]string{
+		"dist/index.html":                          "<html></html>",
+		"dist/mediapipe-ABCD1234/vision_wasm.wasm": "\x00asm\x01\x00\x00\x00",
+		"dist/mediapipe-ABCD1234/selfie.tflite":    "TFL3",
+	})
+	defer srv.Close()
+
+	for _, tc := range []struct{ path, want string }{
+		{"/mediapipe-ABCD1234/vision_wasm.wasm", "application/wasm"},
+		{"/mediapipe-ABCD1234/selfie.tflite", "application/octet-stream"},
+	} {
+		resp, err := http.Get(srv.URL + tc.path)
+		if err != nil {
+			t.Fatalf("get %s: %v", tc.path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("%s status: %d", tc.path, resp.StatusCode)
+		}
+		if ct := resp.Header.Get("Content-Type"); ct != tc.want {
+			t.Errorf("%s content-type %q, want %q", tc.path, ct, tc.want)
+		}
+		// The whole point of the hashed directory: these are cacheable forever.
+		if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+			t.Errorf("%s cache-control %q, want immutable", tc.path, cc)
+		}
+	}
+}
+
+func TestContentTypeForLeavesKnownTypesAlone(t *testing.T) {
+	// Everything else keeps ServeContent's own answer; a map that grew to
+	// cover .js and .css would be a second, quietly diverging mime table.
+	for _, name := range []string{"index-AB12.js", "theme-CD34.css", "icons/favicon-EF56.svg"} {
+		if got := contentTypeFor(name); got != "" {
+			t.Errorf("contentTypeFor(%q) = %q, want empty", name, got)
+		}
+	}
+}

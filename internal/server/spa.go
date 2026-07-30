@@ -203,7 +203,35 @@ func serveSPA(w http.ResponseWriter, r *http.Request, dist fs.FS) {
 	// a year. A new bundle changes the hash and thus the URL, so there's no
 	// stale-cache risk and no revalidation traffic for unchanged assets.
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	if ct := contentTypeFor(clean); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
 	http.ServeContent(w, r, clean, info.ModTime(), rs)
+}
+
+// contentTypeFor names the types http.ServeContent would otherwise have to
+// guess at, returning "" for everything it already knows.
+//
+// This is not a nicety for .wasm (52-2). ServeContent falls back to sniffing
+// the first bytes, we send X-Content-Type-Options: nosniff, and
+// WebAssembly.instantiateStreaming REFUSES anything that is not
+// application/wasm -- so without this the background-blur runtime fails to
+// start, on a MIME technicality, with an error that points nowhere near here.
+//
+// Go's own table has no entry for either extension, and mime.AddExtensionType
+// would reach into process-global state that a test or an embedding program
+// could see; a local map is the smaller thing to reason about.
+func contentTypeFor(name string) string {
+	switch path.Ext(name) {
+	case ".wasm":
+		return "application/wasm"
+	case ".tflite":
+		// No registered type exists. Being explicit stops the sniffer from
+		// deciding a model file is text and stops nosniff from blocking it.
+		return "application/octet-stream"
+	default:
+		return ""
+	}
 }
 
 func serveIndex(w http.ResponseWriter, r *http.Request, dist fs.FS) {

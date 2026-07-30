@@ -12,6 +12,23 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **Blur your background on video calls.** There's a "blur my background"
+  switch under the camera picker in settings. Turn it on and the room behind
+  you goes soft while you stay sharp — mid-call, without the picture dropping
+  for anyone watching. It's a per-machine setting, so blurring on the desktop
+  doesn't turn it on for your phone.
+
+  Where your camera or operating system can blur by itself, chalk lets it —
+  that costs nothing and looks better. Everywhere else chalk does it in your
+  browser, which means downloading about 3.7 MB the first time you switch it
+  on (cached from then on) and using a noticeable amount of processor while
+  your camera is on. Nothing about it leaves your machine: the picture is
+  separated from the background on your own device, before anything is
+  encrypted, and no part of it is ever sent anywhere. If it can't start, or
+  stops, chalk tells you plainly that your camera is unblurred rather than
+  leaving you to guess.
+
 ### Fixed
 - **The threads marker now keeps up with the threads.** It was a number the
   server worked out when the list was last fetched, so it lagged in both

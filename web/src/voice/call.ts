@@ -124,6 +124,10 @@ import {
 } from "./signal-crypto";
 import { MicChain } from "./mic-chain";
 import { CameraChain } from "./camera-chain";
+// Static import, but NOT of MediaPipe: camera-blur is a small module that
+// import()s the ~12 MB runtime itself, so nothing heavy reaches this bundle.
+import { BlurProcessor } from "./camera-blur";
+import { planBackgroundBlur, processorBlurAvailable } from "./camera-effects";
 import {
   DEFAULT_MIC_PREFS,
   loadMicPrefs,
@@ -719,11 +723,41 @@ export class VoiceCall {
     const chain = this.cameraChain;
     if (!chain) return;
     const native = await chain.setBackgroundBlur(on);
-    this.diag(
-      on
-        ? `background blur on: ${native ? "camera" : "unavailable on this camera"}`
-        : "background blur off",
-    );
+    const plan = planBackgroundBlur(on, {
+      native,
+      processor: processorBlurAvailable(),
+    });
+    if (plan !== "processor") {
+      // Native took it, or it is off, or nothing here can do it. In every one
+      // of those the draw step goes back to a plain copy -- including the
+      // native case, where stacking our blur on the camera's would cost a core
+      // to make the picture worse.
+      chain.setProcessor(null);
+      this.diag(`background blur: ${plan === "native" ? "camera" : "off"}`);
+      return;
+    }
+    if (chain.hasProcessor) return; // already blurring; the toggle did not move
+    // Loading is ~12 MB on first use, so this can take a moment on a slow
+    // link. Nothing waits on it: the call runs unblurred until it lands, which
+    // is honest, and the camera is usually still off this early anyway.
+    try {
+      const processor = await BlurProcessor.create((err) => {
+        this.o.callbacks.onError("background blur stopped — your camera is unblurred");
+        this.diag(`background blur dropped: ${String(err)}`);
+      });
+      // The toggle may have moved back off, or the call ended, while we
+      // downloaded. Closing here rather than installing it is the difference
+      // between a stale effect and a leaked WASM heap.
+      if (this.closed || !this.devicePrefs.backgroundBlur || this.cameraChain !== chain) {
+        processor.close();
+        return;
+      }
+      chain.setProcessor(processor);
+      this.diag("background blur on: local segmentation");
+    } catch (err) {
+      this.o.callbacks.onError("couldn't start background blur — your camera is unblurred");
+      this.diag(`background blur unavailable: ${String(err)}`);
+    }
   }
 
   /**

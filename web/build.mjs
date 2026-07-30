@@ -27,7 +27,58 @@ const dev = process.env.NODE_ENV !== "production";
 const outdir = "dist";
 mkdirSync(outdir, { recursive: true });
 
+// 52-2: the MediaPipe runtime for background blur.
+//
+// These three files cannot be content-hashed INDIVIDUALLY: MediaPipe's
+// FilesetResolver builds the URLs itself from a base path we hand it, and the
+// WASM loader then fetches its own .wasm relative to that. Their names are
+// fixed by the library.
+//
+// So the DIRECTORY carries the hash instead. That is not cosmetic here --
+// spa.go serves everything in dist/ as immutable for a year, on the standing
+// promise that a filename identifies its bytes. An unhashed 11 MB WASM would
+// be frozen in every browser that ever loaded it, with no way to ship a fix.
+// A new build with different bytes gets a new directory and therefore a new
+// URL, and the base path is compiled into the bundle (__MEDIAPIPE_BASE__).
+//
+// Only the SIMD build ships. chalk's support floor (see docs/browser-support.md)
+// is well past every engine that shipped WASM SIMD, so the nosimd variant is
+// 10 MB of dead weight -- and FilesetResolver only asks for it on a browser we
+// already refuse to run on.
+const MEDIAPIPE_SRC = [
+  ["node_modules/@mediapipe/tasks-vision/wasm/vision_wasm_internal.js", "vision_wasm_internal.js"],
+  ["node_modules/@mediapipe/tasks-vision/wasm/vision_wasm_internal.wasm", "vision_wasm_internal.wasm"],
+  ["assets/mediapipe/selfie_segmenter.tflite", "selfie_segmenter.tflite"],
+];
+
+// emitMediaPipe copies the runtime into dist/mediapipe-<hash>/ and returns the
+// base path to compile in. The hash covers every file, so changing the model
+// alone still busts the directory.
+function emitMediaPipe() {
+  const digest = createHash("sha256");
+  const bytes = [];
+  for (const [src] of MEDIAPIPE_SRC) {
+    if (!existsSync(src)) {
+      throw new Error(`build: ${src} not found (run npm install)`);
+    }
+    const b = readFileSync(src);
+    digest.update(b);
+    bytes.push(b);
+  }
+  const base = `/mediapipe-${digest.digest("hex").slice(0, 8).toUpperCase()}`;
+  mkdirSync(`${outdir}${base}`, { recursive: true });
+  MEDIAPIPE_SRC.forEach(([, out], i) => {
+    writeFileSync(`${outdir}${base}/${out}`, bytes[i]);
+  });
+  return base;
+}
+
+const mediapipeBase = emitMediaPipe();
+
 const buildOpts = {
+  // The blur processor reads this instead of hardcoding a path, so the bundle
+  // and the directory it points at are always emitted by the same build.
+  define: { __MEDIAPIPE_BASE__: JSON.stringify(mediapipeBase) },
   entryPoints: ["src/index.tsx", "src/theme.css"],
   bundle: true,
   outdir,

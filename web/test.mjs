@@ -69,7 +69,11 @@ for (const t of tests) {
     // component module: we don't want to drag the JSX runtime
     // into pure-logic tests. Mark preact as external; the test
     // body never executes it because we only test helpers.
-    external: ["preact"],
+    // 52-2: and the MediaPipe runtime, for the same reason plus a bigger one --
+    // camera-blur.ts import()s ~300 KB of browser-only JS that no pure-logic
+    // test executes, and bundling it into every test build would cost seconds
+    // per run to inline code that never gets called.
+    external: ["preact", "@mediapipe/tasks-vision"],
     sourcemap: "inline",
     logLevel: "warning",
   });
