@@ -54,10 +54,18 @@ export interface FrameSize {
  *     effect must never cost someone their camera.
  */
 export interface FrameProcessor {
+  /**
+   * budgetMs is the time between pump ticks -- how long this render has before
+   * it is costing frames rather than spending them. Passed in because only the
+   * chain knows the rate it is pumping at (it follows the camera's own), and a
+   * processor that adapts (52-3) has to measure itself against the real one,
+   * not against an assumed 30 fps.
+   */
   render(
     ctx: CanvasRenderingContext2D,
     source: HTMLVideoElement,
     size: FrameSize,
+    budgetMs: number,
   ): void | Promise<void>;
   /** Called when the chain gives up on this processor. Report it here. */
   onDropped?(err: unknown): void;
@@ -264,7 +272,7 @@ export class CameraChain {
     // same catch as one that rejects; without it the throw would escape the
     // interval callback and the fallback below would never run.
     void Promise.resolve()
-      .then(() => p.render(this.ctx, this.video, size))
+      .then(() => p.render(this.ctx, this.video, size, this.intervalMs))
       .then(() => {
         this.failures = 0;
       })

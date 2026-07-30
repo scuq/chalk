@@ -562,6 +562,20 @@ export function VoiceCallPanel({
                       ` · cam ${diag.adaptive.perCameraKbps}kbps`}
                   </div>
                 )}
+                {/* 52-3: what the blur is costing, and whether it has had to
+                    thin out its segmentation to fit. The first place to look
+                    when someone reports choppy video with blur on. */}
+                {diag?.blur && (
+                  <div class="chalk-voice-drawer-pair" data-testid="voice-blur-line">
+                    <span class="chalk-voice-drawer-peer">blur</span>{" "}
+                    {diag.blur.costMs}ms/frame
+                    {" · "}
+                    {diag.blur.every === 1
+                      ? "every frame"
+                      : `every ${diag.blur.every} frames`}
+                    {diag.blur.gaveUp && " · gave up (too slow)"}
+                  </div>
+                )}
                 {(!diag || diag.peers.length === 0) && (
                   <div class="chalk-voice-note">no live peer connections</div>
                 )}

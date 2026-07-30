@@ -25,9 +25,14 @@ The engineering-level history (which slice shipped what) lives in
   on (cached from then on) and using a noticeable amount of processor while
   your camera is on. Nothing about it leaves your machine: the picture is
   separated from the background on your own device, before anything is
-  encrypted, and no part of it is ever sent anywhere. If it can't start, or
-  stops, chalk tells you plainly that your camera is unblurred rather than
-  leaving you to guess.
+  encrypted, and no part of it is ever sent anywhere.
+
+  On a machine that struggles, blur gets out of the way rather than ruining
+  the call: it quietly does less work per second — which at worst makes the
+  edge around you lag a little — instead of letting your video turn choppy for
+  everyone watching. If it still can't keep up it switches itself off and says
+  so, and the same goes if it can't start at all. You are always told when
+  your camera is unblurred rather than left to guess.
 
 ### Fixed
 - **The threads marker now keeps up with the threads.** It was a number the

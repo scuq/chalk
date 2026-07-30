@@ -126,7 +126,7 @@ import { MicChain } from "./mic-chain";
 import { CameraChain } from "./camera-chain";
 // Static import, but NOT of MediaPipe: camera-blur is a small module that
 // import()s the ~12 MB runtime itself, so nothing heavy reaches this bundle.
-import { BlurProcessor } from "./camera-blur";
+import { BlurProcessor, type BlurStats } from "./camera-blur";
 import { planBackgroundBlur, processorBlurAvailable } from "./camera-effects";
 import {
   DEFAULT_MIC_PREFS,
@@ -332,6 +332,10 @@ export interface VoiceDiagnostics {
   peers: VoicePeerDiag[];
   events: VoiceDiagEvent[];
   adaptive?: VoiceAdaptiveDiag;
+  /** 52-3: present only while our own background blur is running. Absent means
+   *  blur is off, or the camera is doing it (which costs us nothing to report
+   *  on because it costs us nothing at all). */
+  blur?: BlurStats;
 }
 
 const DIAG_RING_MAX = 150;
@@ -345,6 +349,10 @@ export class VoiceCall {
   private micChain: MicChain | null = null;
   /** 44-10: the camera graph. Same deal -- owns the device, publishes a canvas. */
   private cameraChain: CameraChain | null = null;
+  /** 52-3: the live blur processor's counters, for the diagnostics drawer.
+   *  A getter rather than a snapshot so the drawer reads the current numbers
+   *  and not whatever they were when blur was switched on. */
+  private blurStats: (() => BlurStats) | null = null;
   /** The prefs the current capture was opened with, to diff incoming changes. */
   private micPrefs: MicPrefs = DEFAULT_MIC_PREFS;
   private iceServers: RTCIceServer[] = [];
@@ -444,6 +452,7 @@ export class VoiceCall {
       peers: await this.collectPeerStats(),
       events: [...this.diagEvents],
       adaptive: this.adaptiveDiag(),
+      blur: this.blurStats?.(),
     };
   }
 
@@ -733,6 +742,7 @@ export class VoiceCall {
       // native case, where stacking our blur on the camera's would cost a core
       // to make the picture worse.
       chain.setProcessor(null);
+      this.blurStats = null;
       this.diag(`background blur: ${plan === "native" ? "camera" : "off"}`);
       return;
     }
@@ -742,6 +752,13 @@ export class VoiceCall {
     // is honest, and the camera is usually still off this early anyway.
     try {
       const processor = await BlurProcessor.create((err) => {
+        // Reached two ways: the chain gave up on a processor that kept
+        // throwing (52-1), and the processor giving up on a machine it cannot
+        // keep pace with (52-3). Clearing the chain covers the second -- the
+        // first has already done it -- and setProcessor(null) is a no-op when
+        // it is already gone, so the two paths need no telling apart.
+        this.cameraChain?.setProcessor(null);
+        this.blurStats = null;
         this.o.callbacks.onError("background blur stopped — your camera is unblurred");
         this.diag(`background blur dropped: ${String(err)}`);
       });
@@ -753,6 +770,7 @@ export class VoiceCall {
         return;
       }
       chain.setProcessor(processor);
+      this.blurStats = () => processor.stats();
       this.diag("background blur on: local segmentation");
     } catch (err) {
       this.o.callbacks.onError("couldn't start background blur — your camera is unblurred");
@@ -1744,6 +1762,9 @@ export class VoiceCall {
     this.micChain = null;
     this.cameraChain?.close();
     this.cameraChain = null;
+    // The chain's close() closed the processor with it; drop the getter so the
+    // drawer cannot report on a torn-down effect.
+    this.blurStats = null;
     this.localStream = null;
     this.o.callbacks.onLocalStream(null);
     if (this.screenStream) {

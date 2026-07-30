@@ -26,6 +26,13 @@
 
 import type { FrameProcessor, FrameSize } from "./camera-chain";
 import { canvasFilterSupported } from "./camera-effects";
+import {
+  INITIAL_CADENCE,
+  ema,
+  planCadence,
+  shouldRunExpensiveStep,
+  type Cadence,
+} from "./camera-budget";
 
 // Injected by build.mjs (esbuild define). Declared as possibly-undefined and
 // read through a typeof guard so the module still imports under the test
@@ -79,6 +86,16 @@ export function maskToAlpha(mask: Float32Array, out: Uint8ClampedArray): void {
   }
 }
 
+/** 52-3: what the blur is costing, as the diagnostics drawer reports it. */
+export interface BlurStats {
+  /** Smoothed cost of a full render, in ms. */
+  costMs: number;
+  /** Segmenting every Nth frame; 1 is every frame. */
+  every: number;
+  /** True once it gave up on this machine. */
+  gaveUp: boolean;
+}
+
 /** The subset of MediaPipe we use, so the import stays a type-only concern. */
 type Segmenter = {
   segmentForVideo(
@@ -124,6 +141,14 @@ export class BlurProcessor implements FrameProcessor {
   private maskPixels: ImageData | null = null;
   private closed = false;
   private readonly report: (err: unknown) => void;
+  // 52-3: the frame budget ladder. `frame` counts renders, not segmentations,
+  // because the cadence is expressed in frames; `haveMask` is what makes
+  // skipping safe -- there is nothing to reuse until the first one lands.
+  private cadence: Cadence = INITIAL_CADENCE;
+  private cost: number | null = null;
+  private frame = 0;
+  private haveMask = false;
+  private gaveUp = false;
 
   private constructor(segmenter: Segmenter, report: (err: unknown) => void) {
     this.segmenter = segmenter;
@@ -152,30 +177,91 @@ export class BlurProcessor implements FrameProcessor {
     return new BlurProcessor(await loadSegmenter(), report);
   }
 
-  render(ctx: CanvasRenderingContext2D, source: HTMLVideoElement, size: FrameSize): void {
-    if (this.closed) return;
-    // performance.now() rather than a frame counter: MediaPipe rejects a
-    // timestamp that does not advance, and wall-clock is what "video mode"
-    // expects for its internal frame pacing.
-    const result = this.segmenter.segmentForVideo(source, performance.now());
-    try {
-      const mask = result.confidenceMasks?.[0];
-      if (!mask) throw new Error("background blur: segmenter returned no mask");
-      this.paint(ctx, source, size, mask);
-    } finally {
-      result.close();
-    }
-  }
-
-  private paint(
+  render(
     ctx: CanvasRenderingContext2D,
     source: HTMLVideoElement,
     size: FrameSize,
-    mask: { getAsFloat32Array(): Float32Array; width: number; height: number },
+    budgetMs: number,
   ): void {
-    // 1. The mask, at ITS resolution (256x256 for this model). Upscaling
-    //    happens in the draw below, where the browser's bilinear filter
-    //    feathers the edge for nothing.
+    if (this.closed) return;
+    const started = performance.now();
+
+    // Segment on the cadence's schedule, but never before the first mask
+    // exists -- compositing against an empty mask publishes a person-shaped
+    // hole, which is a worse picture than no effect at all.
+    if (!this.haveMask || shouldRunExpensiveStep(this.frame, this.cadence.every)) {
+      // performance.now() rather than a frame counter: MediaPipe rejects a
+      // timestamp that does not advance, and wall-clock is what "video mode"
+      // expects for its internal frame pacing.
+      const result = this.segmenter.segmentForVideo(source, started);
+      try {
+        const mask = result.confidenceMasks?.[0];
+        if (!mask) throw new Error("background blur: segmenter returned no mask");
+        this.updateMask(mask);
+        this.haveMask = true;
+      } finally {
+        result.close();
+      }
+    }
+    this.paint(ctx, source, size);
+
+    this.frame++;
+    this.cost = ema(this.cost, performance.now() - started);
+    const next = planCadence(this.cadence, this.cost, budgetMs);
+    if (next.every !== this.cadence.every) {
+      console.debug(
+        `[voice] background blur: segmenting every ${next.every} frame(s) ` +
+          `(${this.cost.toFixed(1)}ms of ${budgetMs}ms)`,
+      );
+    }
+    this.cadence = next;
+    if (next.giveUp) this.giveUp();
+  }
+
+  /**
+   * giveUp fires when even the slowest cadence cannot fit the budget.
+   *
+   * Deferred to a task rather than called inline: the caller's handler removes
+   * this processor from the chain, which closes it -- from inside its own
+   * render. Once, because the chain may run several more frames before the
+   * removal takes effect.
+   */
+  private giveUp(): void {
+    if (this.gaveUp) return;
+    this.gaveUp = true;
+    const cost = this.cost ?? 0;
+    setTimeout(
+      () => this.report(new Error(`too slow for this machine (${cost.toFixed(0)}ms per frame)`)),
+      0,
+    );
+  }
+
+  /** What the diagnostics drawer reports (52-3). */
+  stats(): BlurStats {
+    return {
+      costMs: Math.round((this.cost ?? 0) * 10) / 10,
+      every: this.cadence.every,
+      gaveUp: this.gaveUp,
+    };
+  }
+
+  /**
+   * updateMask redraws the mask canvas from a fresh segmentation.
+   *
+   * Separate from paint because of the cadence: the mask canvas SURVIVES
+   * between renders, and a skipped frame composites against the one already
+   * there. That is the whole trick -- the expensive step is the segmentation,
+   * not the drawing.
+   *
+   * The mask stays at ITS resolution (256x256 for this model); upscaling
+   * happens in the composite, where the browser's bilinear filter feathers the
+   * edge for nothing.
+   */
+  private updateMask(mask: {
+    getAsFloat32Array(): Float32Array;
+    width: number;
+    height: number;
+  }): void {
     if (
       this.maskCanvas.width !== mask.width ||
       this.maskCanvas.height !== mask.height ||
@@ -187,8 +273,10 @@ export class BlurProcessor implements FrameProcessor {
     }
     maskToAlpha(mask.getAsFloat32Array(), this.maskPixels.data);
     this.maskCtx.putImageData(this.maskPixels, 0, 0);
+  }
 
-    // 2. The person, cut out of a sharp copy. destination-in keeps only what
+  private paint(ctx: CanvasRenderingContext2D, source: HTMLVideoElement, size: FrameSize): void {
+    // 1. The person, cut out of a sharp copy. destination-in keeps only what
     //    the mask's alpha covers.
     if (this.personCanvas.width !== size.width || this.personCanvas.height !== size.height) {
       this.personCanvas.width = size.width;
@@ -201,7 +289,7 @@ export class BlurProcessor implements FrameProcessor {
     this.personCtx.drawImage(this.maskCanvas, 0, 0, size.width, size.height);
     this.personCtx.globalCompositeOperation = "source-over";
 
-    // 3. The room, blurred, with the person laid back over it.
+    // 2. The room, blurred, with the person laid back over it.
     this.drawBlurred(ctx, source, size);
     ctx.drawImage(this.personCanvas, 0, 0, size.width, size.height);
   }
