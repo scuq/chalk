@@ -13,6 +13,11 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **File a channel under whatever group you like.** The channel's
+  right-click menu now has a "group" field: pick one of your existing
+  groups or type a new one, and the channel moves there — in your sidebar
+  only, on all your devices; everyone else keeps the creator's suggestion.
+  A reset button puts it back where the creator filed it.
 - **The channel list can fold into groups.** Once your channels live in
   more than one group, the sidebar shows them under collapsible headers —
   click a header to fold a group away, and a dot on the folded header

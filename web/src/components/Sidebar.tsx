@@ -18,7 +18,11 @@ import {
 import { PrioritySelect } from "./PrioritySelect";
 import { filterRoster, showRosterFilter } from "../chat/roster-filter";
 import {
+  DEFAULT_GROUP,
+  canonicalizeGroup,
+  effectiveGroup,
   groupRoster,
+  knownGroups,
   loadCollapsedGroups,
   saveCollapsedGroups,
 } from "../chat/channel-groups";
@@ -165,6 +169,12 @@ interface Props {
   // Headers only appear once a second group exists -- an all-'General'
   // roster looks exactly like the ungrouped one.
   groupingEnabled?: boolean;
+  // 54-4: this user's channel id -> group overrides (resolved prefs), and
+  // the setter behind the context menu's group row. null group = back to
+  // the creator's suggestion. Optional so other Sidebar callers are
+  // unaffected; the menu row only renders when the setter is provided.
+  groupOverrides?: Record<string, string>;
+  onSetChannelGroup?: (channelID: string, group: string | null) => void;
   // 53-1: the parking lot. A pseudo-channel that shows nothing -- one click
   // and the conversation pane is a logo. null hides the row (the setting), and
   // parked highlights it the way an open channel is highlighted.
@@ -321,6 +331,8 @@ export function Sidebar({
   onSetFriendHue,
   onCreateClick,
   groupingEnabled = true,
+  groupOverrides,
+  onSetChannelGroup,
   parkingName,
   parked = false,
   onPark,
@@ -347,6 +359,10 @@ export function Sidebar({
   const [channelMenu, setChannelMenu] = useState<
     { channelID: string; name: string; x: number; y: number } | null
   >(null);
+  // 54-4: the group overrides in play this render, and the menu's group-row
+  // draft (seeded on open, committed explicitly).
+  const overrides = groupOverrides ?? {};
+  const [groupDraft, setGroupDraft] = useState("");
   // A long-press must NOT also fire the row's click (which opens the DM).
   // The pointer sequence is down -> (timer fires) -> up -> click, so we set
   // a flag when the timer fires and consume it in the click handler.
@@ -374,6 +390,9 @@ export function Sidebar({
   const openChannelMenu = (ch: ChannelSummary, x: number, y: number) => {
     const at = clampMenu(x, y);
     setNickMenu(null);
+    // 54-4: the group row edits a draft seeded with what the menu opened on
+    // (the user's effective group), committed on Enter/blur/datalist pick.
+    setGroupDraft(effectiveGroup(ch, overrides));
     setChannelMenu({ channelID: ch.id, name: ch.name, ...at });
   };
 
@@ -418,9 +437,29 @@ export function Sidebar({
   // 54-3: grouped view. An active filter always renders flat -- a match
   // hidden inside a collapsed group would read as "filter is broken" -- and
   // a single group draws no headers. Collapse state is per-machine.
-  const channelGroups = groupRoster(groupChannels);
+  const channelGroups = groupRoster(groupChannels, overrides);
   const groupedView =
     groupingEnabled && channelFilter.trim() === "" && channelGroups.length > 1;
+  // 54-4: datalist + canonicalization target for the menu's group row.
+  const groupNames = knownGroups(channels, overrides);
+
+  // Commit the menu's group draft: canonicalize against the groups the user
+  // already sees; landing back on the creator's suggestion CLEARS the
+  // override rather than storing a redundant copy of it.
+  const commitGroupDraft = () => {
+    if (!channelMenu || !onSetChannelGroup) return;
+    const ch = channels.find((c) => c.id === channelMenu.channelID);
+    if (!ch) return;
+    const next = canonicalizeGroup(groupDraft, groupNames);
+    const suggested = ch.groupName.trim() || DEFAULT_GROUP;
+    const current = effectiveGroup(ch, overrides);
+    if (next.toLowerCase() === suggested.toLowerCase()) {
+      if (overrides[ch.id] !== undefined) onSetChannelGroup(ch.id, null);
+    } else if (next !== current) {
+      onSetChannelGroup(ch.id, next);
+    }
+    setGroupDraft(next);
+  };
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
     loadCollapsedGroups()
   );
@@ -909,6 +948,59 @@ export function Sidebar({
               onChange={(p) => updateRules(withChannelRule(rulesConfig, channelMenu.channelID, p))}
             />
           </div>
+          {/* 54-4: move to group. Free text + the groups already in the
+              roster; committed on Enter/blur/pick (onChange covers the
+              latter two). Typing the creator's suggestion back clears the
+              override -- the reset button is the discoverable way to do
+              the same. Only YOUR roster moves; everyone else keeps theirs. */}
+          {onSetChannelGroup && (() => {
+            const ch = channels.find((c) => c.id === channelMenu.channelID);
+            if (!ch) return null;
+            const overridden = overrides[ch.id] !== undefined;
+            const suggested = ch.groupName.trim() || DEFAULT_GROUP;
+            return (
+              <div class="chalk-nick-menu-row">
+                <span class="chalk-nick-menu-label">group</span>
+                <input
+                  type="text"
+                  class="chalk-nick-menu-group-input"
+                  data-testid="channel-menu-group"
+                  value={groupDraft}
+                  maxLength={80}
+                  list="sidebar-group-options"
+                  onInput={(e) => setGroupDraft((e.target as HTMLInputElement).value)}
+                  onChange={commitGroupDraft}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      commitGroupDraft();
+                      setChannelMenu(null);
+                    }
+                  }}
+                  aria-label="move channel to group"
+                />
+                {overridden && (
+                  <button
+                    type="button"
+                    class="chalk-nick-menu-btn"
+                    data-testid="channel-menu-group-reset"
+                    title={`back to the creator's suggestion (${suggested})`}
+                    onClick={() => {
+                      onSetChannelGroup(ch.id, null);
+                      setGroupDraft(suggested);
+                    }}
+                  >
+                    reset
+                  </button>
+                )}
+                <datalist id="sidebar-group-options">
+                  {groupNames.map((g) => (
+                    <option key={g} value={g} />
+                  ))}
+                </datalist>
+              </div>
+            );
+          })()}
         </div>
       )}
 

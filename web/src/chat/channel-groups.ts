@@ -14,16 +14,28 @@ import type { ChannelSummary } from "../state/types";
 // omitting it entirely must land in the same group.
 export const DEFAULT_GROUP = "General";
 
-// Distinct group names across the user's non-DM channels, sorted with
-// DEFAULT_GROUP first. This is the datalist behind the create modal's
-// group field.
-export function knownGroups(channels: ChannelSummary[]): string[] {
+// 54-4: the group a channel actually files under for THIS user -- their
+// override when set, else the creator's suggestion; blank means the default.
+export function effectiveGroup(
+  ch: ChannelSummary,
+  overrides: Record<string, string> = {}
+): string {
+  const g = (overrides[ch.id] ?? ch.groupName).trim();
+  return g || DEFAULT_GROUP;
+}
+
+// Distinct group names across the user's non-DM channels (as the user sees
+// them, overrides applied), sorted with DEFAULT_GROUP first. This is the
+// datalist behind the create modal's group field and the move-to-group row.
+export function knownGroups(
+  channels: ChannelSummary[],
+  overrides: Record<string, string> = {}
+): string[] {
   const seen = new Map<string, string>(); // lower-cased -> first-seen casing
   seen.set(DEFAULT_GROUP.toLowerCase(), DEFAULT_GROUP);
   for (const ch of channels) {
     if (ch.isDM) continue;
-    const g = ch.groupName.trim();
-    if (!g) continue;
+    const g = effectiveGroup(ch, overrides);
     const key = g.toLowerCase();
     if (!seen.has(key)) seen.set(key, g);
   }
@@ -56,11 +68,15 @@ export interface RosterGroup {
 // Partition channels into ordered groups: DEFAULT_GROUP first, the rest
 // alphabetical. Channel order within a group is the input order (the
 // sidebar's newest-first), untouched. Callers pass non-DM channels only;
-// a channel with a blank group lands in DEFAULT_GROUP.
-export function groupRoster(channels: ChannelSummary[]): RosterGroup[] {
+// a channel with a blank group lands in DEFAULT_GROUP. Overrides (54-4)
+// move individual channels for this user.
+export function groupRoster(
+  channels: ChannelSummary[],
+  overrides: Record<string, string> = {}
+): RosterGroup[] {
   const byKey = new Map<string, RosterGroup>();
   for (const ch of channels) {
-    const name = ch.groupName.trim() || DEFAULT_GROUP;
+    const name = effectiveGroup(ch, overrides);
     const key = name.toLowerCase();
     let g = byKey.get(key);
     if (!g) {

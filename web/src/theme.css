@@ -2744,6 +2744,25 @@ body.chalk-resizing .chalk-sidebar-resizer {
   white-space: nowrap;
 }
 
+/* 54-4: the context menu's move-to-group input. Same family as the
+   sidebar filter input, sized to sit in a menu row next to the label
+   (and the reset button when an override is set). */
+.chalk-nick-menu-group-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--chalk-bg-elev, #14201a);
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg);
+  padding: 0.2rem 0.4rem;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  box-sizing: border-box;
+}
+.chalk-nick-menu-group-input:focus {
+  outline: none;
+  border-color: var(--chalk-fg-bright);
+}
+
 /* ============================================================
    Phase 9.6c: presence dots
    ============================================================ */

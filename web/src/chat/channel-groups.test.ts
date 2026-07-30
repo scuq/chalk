@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_GROUP,
   canonicalizeGroup,
+  effectiveGroup,
   groupRoster,
   knownGroups,
   loadCollapsedGroups,
@@ -121,6 +122,39 @@ test("groupRoster files blank groups under the default", () => {
 
 test("groupRoster of nothing is nothing", () => {
   assert.deepEqual(groupRoster([]), []);
+});
+
+test("effectiveGroup prefers the override, falls back to the suggestion", () => {
+  const ch = channel({ id: "a", groupName: "Dev" });
+  assert.equal(effectiveGroup(ch), "Dev");
+  assert.equal(effectiveGroup(ch, { a: "Ops" }), "Ops");
+  assert.equal(effectiveGroup(ch, { other: "Ops" }), "Dev");
+  assert.equal(effectiveGroup(channel({ id: "b", groupName: "" }), {}), DEFAULT_GROUP);
+});
+
+test("groupRoster applies overrides when partitioning", () => {
+  const got = groupRoster(
+    [
+      channel({ id: "a", groupName: "Dev" }),
+      channel({ id: "b", groupName: "Dev" }),
+    ],
+    { b: "Ops" }
+  );
+  assert.deepEqual(
+    got.map((g) => [g.name, g.channels.map((c) => c.id)]),
+    [
+      ["Dev", ["a"]],
+      ["Ops", ["b"]],
+    ]
+  );
+});
+
+test("knownGroups sees the roster through overrides", () => {
+  const got = knownGroups(
+    [channel({ id: "a", groupName: "Dev" })],
+    { a: "Ops" }
+  );
+  assert.deepEqual(got, [DEFAULT_GROUP, "Ops"]);
 });
 
 test("loadCollapsedGroups without a window is an empty set", () => {

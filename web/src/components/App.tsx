@@ -4055,6 +4055,22 @@ export function App() {
           channels={state.channelOrder.map((id) => state.channels[id])}
           friends={state.friends}
           groupingEnabled={selectRosterPrefs(state.prefs).groupingEnabled}
+          groupOverrides={selectRosterPrefs(state.prefs).groupOverrides}
+          onSetChannelGroup={(channelID, group) => {
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            const current = selectRosterPrefs(state.prefs);
+            // Rebuild keeping only channels still in the roster, so
+            // overrides for channels you've since left don't pile up in
+            // prefs forever. Whole roster object over the wire, as always.
+            const next: Record<string, string> = {};
+            for (const [id, g] of Object.entries(current.groupOverrides)) {
+              if (state.channels[id]) next[id] = g;
+            }
+            if (group === null) delete next[channelID];
+            else next[channelID] = group;
+            c.send(TypePrefsSet, { patch: { roster: { ...current, groupOverrides: next } } });
+          }}
           activeID={state.activeChannelID}
           ownUserID={state.user?.id ?? null}
           presence={state.presence}
@@ -4424,7 +4440,10 @@ export function App() {
           friends={state.friends}
           loading={!state.friendsLoaded}
           voiceEnabled={state.voiceEnabled}
-          knownGroups={knownGroups(Object.values(state.channels))}
+          knownGroups={knownGroups(
+            Object.values(state.channels),
+            selectRosterPrefs(state.prefs).groupOverrides
+          )}
           onClose={() => dispatch({ kind: "close_create_modal" })}
           onSubmit={onCreateChannel}
         />

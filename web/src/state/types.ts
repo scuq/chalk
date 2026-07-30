@@ -379,9 +379,11 @@ export interface UserPrefs {
 }
 
 // 54-3: roster prefs as stored (sparse). groupingEnabled toggles the
-// grouped channels view; 54-4 adds per-channel group overrides here.
+// grouped channels view; groupOverrides (54-4) maps channel id -> the group
+// THIS user files it under, overriding the creator's suggestion.
 export interface RosterPrefs {
   groupingEnabled?: boolean;
+  groupOverrides?: Record<string, string>;
 }
 
 // Phase 9.7d: resolved chat prefs (all fields required + defaulted).
@@ -441,12 +443,25 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
 // becomes visible once a second group exists.
 export interface ResolvedRosterPrefs {
   groupingEnabled: boolean;
+  // 54-4: channel id -> group name. Only sane entries survive resolution
+  // (string values, non-empty after trim); everything else reads as "no
+  // override" rather than a group named "" or a crash on junk prefs.
+  groupOverrides: Record<string, string>;
 }
 
 export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterPrefs {
   const r = prefs?.roster ?? {};
+  const overrides: Record<string, string> = {};
+  if (r.groupOverrides && typeof r.groupOverrides === "object" && !Array.isArray(r.groupOverrides)) {
+    for (const [id, g] of Object.entries(r.groupOverrides)) {
+      if (typeof g !== "string") continue;
+      const trimmed = g.trim();
+      if (trimmed) overrides[id] = trimmed;
+    }
+  }
   return {
     groupingEnabled: r.groupingEnabled ?? true,
+    groupOverrides: overrides,
   };
 }
 
