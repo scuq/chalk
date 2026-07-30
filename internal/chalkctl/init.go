@@ -230,6 +230,8 @@ func Init(o InitOptions) error {
 		AttachMaxBytes:          cfg.AttachMaxBytes,
 		GiphyAPIKey:             cfg.GiphyAPIKey,
 		ThreadActiveWindowHours: cfg.ThreadActiveWindowHours,
+		LinkPreviewEnabled:      cfg.LinkPreviewEnabled,
+		LinkPreviewDomains:      cfg.LinkPreviewDomains,
 	}
 
 	ts := time.Now().UTC().Format("20060102-150405")

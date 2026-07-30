@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/scuq/chalk/internal/giphy"
+	"github.com/scuq/chalk/internal/linkpreview"
 	"github.com/scuq/chalk/internal/mail"
 	"github.com/scuq/chalk/internal/store"
 )
@@ -137,6 +138,16 @@ type HTTPDeps struct {
 	// giphy_enabled=false so the SPA hides the picker. The key lives only
 	// here, never reaching the client.
 	GiphyClient *giphy.Client
+
+	// 57-1: link-preview fetcher, built from config.LinkPreview and plumbed
+	// in by cmd/chalkd. Nil when CHALK_LINKPREVIEW_ENABLED=false; the
+	// endpoints then answer 503 and /api/auth/config reports
+	// linkpreview_enabled=false. LinkPreviewDomains is the default
+	// whitelist the SPA auto-offers previews for (a consent/UX control;
+	// the fetcher's SSRF guards are the security boundary).
+	LinkPreview        *linkpreview.Client
+	LinkPreviewDomains []string
+	linkPreviewLimiter *linkpreview.RateLimiter
 
 	// 31-2: pending-2FA token cache bridging the password/passkey first
 	// factor to the mandatory TOTP step. Lazily defaulted in
@@ -305,6 +316,12 @@ type configResponse struct {
 	// shows the composer Giphy button only when true. Independent of the
 	// per-user consent pref, which is a SPA-only concern.
 	GiphyEnabled bool `json:"giphy_enabled"`
+	// 57-1: whether the link-preview fetcher is available, and the default
+	// domain whitelist a pasted link auto-offers a preview for. The SPA
+	// overlays per-user overrides; both are independent of the per-user
+	// consent pref, which is a SPA-only concern.
+	LinkPreviewEnabled bool     `json:"linkpreview_enabled"`
+	LinkPreviewDomains []string `json:"linkpreview_domains"`
 }
 
 // ---- handlers ----------------------------------------------------------
@@ -322,6 +339,9 @@ func (d *HTTPDeps) handleConfig(w http.ResponseWriter, r *http.Request) {
 		DevMode:           IsDevMode(),
 		RecoveryWordCount: RecoveryWordCount,
 		GiphyEnabled:      d.GiphyClient != nil,
+
+		LinkPreviewEnabled: d.LinkPreview != nil,
+		LinkPreviewDomains: d.LinkPreviewDomains,
 	})
 }
 

@@ -92,6 +92,8 @@ func runInit(args []string) error {
 		voiceMax    = fs.Int("voice-max-participants", 0, "CHALK_VOICE_MAX_PARTICIPANTS (0 = chalkd default of 5)")
 		attachMax   = fs.Int64("attach-max-bytes", 0, "CHALK_ATTACH_MAX_BYTES upload cap (0 = chalkd default)")
 		giphyKey    = fs.String("giphy-api-key", "", "CHALK_GIPHY_API_KEY for the GIF picker (optional)")
+		lpEnabled   = fs.Bool("linkpreview", true, "enable link previews (sender-side page fetch)")
+		lpDomains   = fs.String("linkpreview-domains", "", "CHALK_LINKPREVIEW_DOMAINS whitelist override, comma-separated (default: YouTube + Steam)")
 		threadWin   = fs.Int("thread-active-window-hours", 0, "CHALK_THREAD_ACTIVE_WINDOW_HOURS thread-inbox recency (0 = chalkd default of 48)")
 		turnVerbose = fs.Bool("turn-verbose", true, "coturn --verbose logging (default on)")
 		publicIP    = fs.String("public-ip", "", "coturn listening/relay/external IPv4 (default: detect)")
@@ -147,6 +149,12 @@ func runInit(args []string) error {
 	}
 	if set["giphy-api-key"] {
 		cfg.GiphyAPIKey = *giphyKey
+	}
+	if set["linkpreview"] {
+		cfg.LinkPreviewEnabled = *lpEnabled
+	}
+	if set["linkpreview-domains"] {
+		cfg.LinkPreviewDomains = *lpDomains
 	}
 	if set["thread-active-window-hours"] {
 		cfg.ThreadActiveWindowHours = *threadWin
@@ -379,6 +387,9 @@ init flags:
   --thread-active-window-hours
                              thread-inbox recency window (0 = chalkd default of 48)
   --giphy-api-key <key>      enable the GIF picker (optional)
+  --linkpreview[=false]      enable link previews (default on)
+  --linkpreview-domains <l>  preview whitelist override, comma-separated
+                             (default: YouTube + Steam)
   --turn-verbose[=false]     coturn verbose logging (default on)
   --open-registration[=false] let anyone register (default on; tighten later)
   --force                    re-apply config over an existing deploy (keeps DB)

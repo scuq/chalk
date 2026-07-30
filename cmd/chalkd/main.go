@@ -20,6 +20,7 @@ import (
 	"github.com/scuq/chalk/internal/config"
 	"github.com/scuq/chalk/internal/friends"
 	"github.com/scuq/chalk/internal/giphy"
+	"github.com/scuq/chalk/internal/linkpreview"
 	"github.com/scuq/chalk/internal/mail"
 	"github.com/scuq/chalk/internal/migrate"
 	"github.com/scuq/chalk/internal/presence"
@@ -196,6 +197,17 @@ func run(args []string) error {
 		log.Printf("giphy: disabled (CHALK_GIPHY_API_KEY unset)")
 	}
 
+	// 57-1: build the link-preview fetcher unless disabled. When disabled,
+	// lpClient stays nil -> the endpoints answer 503 and /api/auth/config
+	// reports linkpreview_enabled=false.
+	var lpClient *linkpreview.Client
+	if cfg.LinkPreview.Enabled {
+		lpClient = linkpreview.New(cfg.LinkPreview.Timeout())
+		log.Printf("linkpreview: enabled (domains=%v)", cfg.LinkPreview.Domains)
+	} else {
+		log.Printf("linkpreview: disabled (CHALK_LINKPREVIEW_ENABLED=false)")
+	}
+
 	authDeps := &auth.HTTPDeps{
 		Service:       authSvc,
 		Cache:         ceremonyCache,
@@ -212,6 +224,10 @@ func run(args []string) error {
 
 		// att-4: Giphy search proxy (nil when no API key configured).
 		GiphyClient: giphyClient,
+
+		// 57-1: link previews (nil when disabled).
+		LinkPreview:        lpClient,
+		LinkPreviewDomains: cfg.LinkPreview.Domains,
 
 		// 30-8: uplink probe endpoint policy.
 		NetprobeEnabled:  cfg.Voice.Enabled && cfg.Voice.ProbeEnabled,

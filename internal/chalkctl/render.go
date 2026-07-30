@@ -36,6 +36,8 @@ type InitParams struct {
 	AttachMaxBytes          int64  // 0 = omit
 	GiphyAPIKey             string // "" = omit
 	ThreadActiveWindowHours int    // 0 = omit (chalkd default of 48h)
+	LinkPreviewEnabled      bool   // false = write CHALK_LINKPREVIEW_ENABLED=false
+	LinkPreviewDomains      string // "" = omit (chalkd's built-in whitelist)
 }
 
 // renderTemplate loads templates/<name>.tmpl from the embedded FS and renders

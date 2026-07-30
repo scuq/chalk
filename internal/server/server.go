@@ -187,6 +187,11 @@ func NewServer(opts Options) (*Server, error) {
 		if err := opts.Auth.MountGiphy(mux); err != nil {
 			return nil, fmt.Errorf("mount giphy: %w", err)
 		}
+		// 57-1: link-preview fetcher. Always mounted; answers 503 when
+		// disabled (d.LinkPreview == nil).
+		if err := opts.Auth.MountLinkPreview(mux); err != nil {
+			return nil, fmt.Errorf("mount linkpreview: %w", err)
+		}
 		// 30-8: pre-stream uplink probe. Always mounted; answers 503 when
 		// voice or the probe is disabled (NetprobeEnabled == false).
 		if err := opts.Auth.MountNetprobe(mux); err != nil {

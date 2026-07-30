@@ -84,6 +84,8 @@ func TestSaveRoundTrip(t *testing.T) {
 	in.VoiceMaxParticipants = 12
 	in.CoturnTag = "4.14.0-r0-alpine"
 	in.TurnVerbose = false
+	in.LinkPreviewEnabled = false
+	in.LinkPreviewDomains = "youtube.com,example.com"
 	if err := in.Save(p); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +96,9 @@ func TestSaveRoundTrip(t *testing.T) {
 	if out.Domain != in.Domain || out.Rootful != in.Rootful || out.VoiceEnabled != in.VoiceEnabled ||
 		out.AdminUsername != in.AdminUsername || out.AdminEmail != in.AdminEmail ||
 		out.VoiceMaxParticipants != in.VoiceMaxParticipants ||
-		out.CoturnTag != in.CoturnTag || out.TurnVerbose != in.TurnVerbose {
+		out.CoturnTag != in.CoturnTag || out.TurnVerbose != in.TurnVerbose ||
+		out.LinkPreviewEnabled != in.LinkPreviewEnabled ||
+		out.LinkPreviewDomains != in.LinkPreviewDomains {
 		t.Errorf("round trip mismatch: %+v vs %+v", in, out)
 	}
 }
@@ -377,6 +381,34 @@ func TestEnvOptionalKnobs(t *testing.T) {
 		if !strings.Contains(string(env2), want) {
 			t.Errorf("env missing %q when set", want)
 		}
+	}
+}
+
+// TestEnvLinkPreview (57-1): the CHALK_LINKPREVIEW_* lines appear only when
+// the operator diverges from chalkd's defaults (enabled, built-in whitelist).
+func TestEnvLinkPreview(t *testing.T) {
+	base := InitParams{
+		Domain: "x.example.org", PGPassword: "PG", VoiceEnabled: true, TurnSecret: "T",
+		AdminUsername: "a", AdminEmail: "a@x.org",
+		LinkPreviewEnabled: true,
+	}
+	env, _ := renderTemplate("chalk.env", base)
+	if strings.Contains(string(env), "CHALK_LINKPREVIEW") {
+		t.Errorf("defaults must render no CHALK_LINKPREVIEW_* lines:\n%s", env)
+	}
+
+	disabled := base
+	disabled.LinkPreviewEnabled = false
+	env2, _ := renderTemplate("chalk.env", disabled)
+	if !strings.Contains(string(env2), "CHALK_LINKPREVIEW_ENABLED=false") {
+		t.Errorf("disabled must render CHALK_LINKPREVIEW_ENABLED=false:\n%s", env2)
+	}
+
+	domains := base
+	domains.LinkPreviewDomains = "youtube.com,example.com"
+	env3, _ := renderTemplate("chalk.env", domains)
+	if !strings.Contains(string(env3), "CHALK_LINKPREVIEW_DOMAINS=youtube.com,example.com") {
+		t.Errorf("domains override must render CHALK_LINKPREVIEW_DOMAINS:\n%s", env3)
 	}
 }
 

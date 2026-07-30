@@ -111,6 +111,10 @@ type Config struct {
 	// in giphy.go. Disabled unless CHALK_GIPHY_API_KEY is set.
 	Giphy GiphyConfig
 
+	// 57-1: link-preview fetcher settings (CHALK_LINKPREVIEW_*). See
+	// LinkPreviewConfig in linkpreview.go.
+	LinkPreview LinkPreviewConfig
+
 	// 30-1: Phase 30 voice/video knobs (CHALK_VOICE_* / CHALK_TURN_* /
 	// CHALK_STUN_URLS). See VoiceConfig for the individual knobs.
 	Voice VoiceConfig
@@ -192,6 +196,9 @@ func Default() Config {
 
 		// att-4: Giphy search proxy.
 		Giphy: defaultGiphyConfig(),
+
+		// 57-1: link previews.
+		LinkPreview: defaultLinkPreviewConfig(),
 
 		// 30-1: voice/video.
 		Voice: defaultVoiceConfig(),
@@ -327,6 +334,9 @@ func (c *Config) applyEnv() {
 	// att-4: Giphy search proxy from CHALK_GIPHY_* env vars.
 	c.Giphy.applyEnv()
 
+	// 57-1: link previews from CHALK_LINKPREVIEW_* env vars.
+	c.LinkPreview.applyEnv()
+
 	// 30-1: voice/video from CHALK_VOICE_*/CHALK_TURN_* env vars.
 	c.Voice.applyEnv()
 
@@ -449,6 +459,11 @@ func (c Config) Validate() error {
 
 	// att-4: Giphy search proxy.
 	if err := c.Giphy.Validate(); err != nil {
+		return err
+	}
+
+	// 57-1: link previews.
+	if err := c.LinkPreview.Validate(); err != nil {
 		return err
 	}
 

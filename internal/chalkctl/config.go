@@ -66,6 +66,12 @@ type Config struct {
 	AttachMaxBytes          int64  // CHALK_ATTACH_MAX_BYTES (upload cap; disk guard)
 	GiphyAPIKey             string // CHALK_GIPHY_API_KEY (GIF picker; optional)
 	ThreadActiveWindowHours int    // CHALK_THREAD_ACTIVE_WINDOW_HOURS (thread inbox recency)
+
+	// 57-1: link previews. Enabled defaults true (chalkd's own default);
+	// Domains is the comma-separated whitelist override ("" = chalkd's
+	// built-in YouTube + Steam list).
+	LinkPreviewEnabled bool   // CHALK_LINKPREVIEW_ENABLED
+	LinkPreviewDomains string // CHALK_LINKPREVIEW_DOMAINS
 }
 
 // DefaultConfig returns the baseline before file/flag overlays.
@@ -80,6 +86,8 @@ func DefaultConfig() Config {
 		VoiceEnabled:     true,
 		Rootful:          false,
 		OpenRegistration: true, // bootstrap: let friends register; tighten later
+
+		LinkPreviewEnabled: true,
 	}
 }
 
@@ -168,6 +176,14 @@ func LoadConfigFile(cfg Config, path string) (Config, error) {
 			cfg.AttachMaxBytes = n
 		case "GIPHY_API_KEY":
 			cfg.GiphyAPIKey = v
+		case "LINKPREVIEW_ENABLED":
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: LINKPREVIEW_ENABLED not a bool: %q", path, line, v)
+			}
+			cfg.LinkPreviewEnabled = b
+		case "LINKPREVIEW_DOMAINS":
+			cfg.LinkPreviewDomains = v
 		case "THREAD_ACTIVE_WINDOW_HOURS":
 			n, err := strconv.Atoi(v)
 			if err != nil {
@@ -212,6 +228,10 @@ func (c Config) Save(path string) error {
 	}
 	if c.ThreadActiveWindowHours > 0 {
 		fmt.Fprintf(&b, "THREAD_ACTIVE_WINDOW_HOURS=%d\n", c.ThreadActiveWindowHours)
+	}
+	fmt.Fprintf(&b, "LINKPREVIEW_ENABLED=%t\n", c.LinkPreviewEnabled)
+	if c.LinkPreviewDomains != "" {
+		fmt.Fprintf(&b, "LINKPREVIEW_DOMAINS=%s\n", c.LinkPreviewDomains)
 	}
 	// GIPHY_API_KEY is intentionally NOT written here: this config file is
 	// 0644, and the key belongs only in the 0600 env file. It is supplied
