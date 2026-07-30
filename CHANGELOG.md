@@ -10,6 +10,22 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Links from YouTube and Steam can now unfurl into preview cards.** Paste
+  a link from a whitelisted site into the composer and chalk offers a card —
+  title, description, thumbnail — that you can inspect and remove before
+  sending; everyone then sees the card instead of a bare URL. Built the
+  privacy-careful way: it's opt-in (nothing happens until you say yes), only
+  *your* self-hosted server ever fetches the page, and the finished preview
+  travels inside the end-to-end-encrypted message — the people you send it to
+  fetch nothing and are revealed to no one. The card always shows the real
+  destination host, since the rest of a preview is the sender's word. In
+  settings you can add your own sites to the whitelist, drop the defaults,
+  or hide incoming cards altogether; server admins can change the default
+  whitelist or switch the feature off for everyone.
+
 ## v0.4.7 — 30 July 2026 — Mention autocomplete and a calmer start
 
 ### Added

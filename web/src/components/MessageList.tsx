@@ -8,6 +8,7 @@ import { MessageMenu } from "./MessageMenu";
 import { AttachmentView } from "./AttachmentView";
 import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
+import { decideLinkPreviewRender } from "../linkpreview/linkpreview";
 import { DEFAULT_SELF_HUE, nickTintStyle, resolveNickHue } from "../chat/nickcolor";
 import { splitBodyParts } from "../chat/links";
 import { fmtRelative } from "../chat/reltime";
@@ -15,6 +16,10 @@ import { lazyComponent } from "./LazyComponent";
 // Lazy: Giphy render path is opt-in; keep it out of the initial bundle.
 const GiphyView = lazyComponent(() =>
   import("./GiphyView").then((m) => m.GiphyView)
+);
+// Lazy for the same reason: most feeds have no preview cards on screen.
+const LinkPreviewView = lazyComponent(() =>
+  import("./LinkPreviewView").then((m) => m.LinkPreviewView)
 );
 
 // 33-3 / 41-4: render a body with member mentions highlighted and http(s)
@@ -187,6 +192,10 @@ interface Props {
   // doesn't wire these (e.g. the thread panel before att-4 lands there).
   giphyPref?: GiphyPref;
   onRequestEnableGiphy?: () => void;
+  // 57-4: the viewer's "hide preview cards" display pref. Rendering a card
+  // costs no fetches (everything is in the encrypted message), so unlike
+  // Giphy there is no consent gate here -- just taste.
+  linkPreviewHide?: boolean;
   // Phase 10b: clicked a thread indicator or the menu's "reply in thread".
   // Dispatches
   // up to App.tsx, which routes to an open_thread action.
@@ -283,7 +292,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return fmtRelative(d, now);
 }
 
-export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy, ephemeral, flashMessageID, onFlashDone, onLoadOlder, historyComplete, oldestSeq }: Props) {
+export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy, linkPreviewHide, ephemeral, flashMessageID, onFlashDone, onLoadOlder, historyComplete, oldestSeq }: Props) {
   const messages = ephemeral ? allMessages.slice(-EPHEMERAL_MAX_ROWS) : allMessages;
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -741,15 +750,28 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
           unreadMark !== undefined &&
           m.seq > unreadMark.afterSeq &&
           m.seq <= unreadMark.throughSeq;
+        // 57-4: a linkpreview-marked body splits into the accompanying text
+        // (rendered as the normal body, mentions and all) and a card that
+        // breaks out below like an attachment. "hidden" (the viewer's
+        // display pref) keeps just the text; the thumbnail then shows as a
+        // plain image attachment via the normal row below. A corrupt or
+        // hostile payload degrades to mode "text" -- the raw body renders
+        // as-is and nothing else happens.
+        const lp = m.deleted ? null : decideLinkPreviewRender(m.body, linkPreviewHide ?? false);
+        const lpPreview = lp !== null && lp.mode === "preview" ? lp : null;
+        const displayBody = lp !== null && lp.mode !== "text" ? lp.text : m.body;
         // giphy-layout: a giphy-marked body renders as a gated GIF that
         // BREAKS OUT to the row's left edge (grid-column 1/-1), exactly
         // like an attachment image -- not inline in the narrow body
         // column. Non-giphy bodies render as plain text in the body span.
-        const gr = m.deleted ? null : decideGiphyRender(m.body, giphyPref ?? "unset");
+        const gr =
+          m.deleted || (lp !== null && lp.mode !== "text")
+            ? null
+            : decideGiphyRender(m.body, giphyPref ?? "unset");
         const isGiphy = gr !== null && gr.mode !== "text";
         // The body span renders nothing (no text, no deletion notice, no
         // edited marker); media on such rows pulls up beside the sender.
-        const noBody = !m.deleted && (isGiphy || m.body.trim() === "") && !m.editedAt;
+        const noBody = !m.deleted && (isGiphy || displayBody.trim() === "") && !m.editedAt;
         return (
           <Fragment key={m.id}>
           {mi === dividerIndex && (
@@ -886,7 +908,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                 // with the user's own mention louder. Segments are text
                 // nodes either way -- nothing here is parsed as markup.
                 <MessageBody
-                  body={m.body}
+                  body={displayBody}
                   known={knownHandles}
                   ownHandle={ownHandle}
                 />
@@ -909,10 +931,23 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                 <GiphyView render={gr} onRequestEnableGiphy={onRequestEnableGiphy} />
               </div>
             )}
+            {/* 57-4: the preview card. It owns ALL of the row's attachments
+                (thumb inside the card, the rest as a normal row), so the
+                generic attachments block below is suppressed for it. */}
+            {lpPreview && (
+              <div class="chalk-message-linkpreview" data-testid="message-linkpreview-wrap">
+                <LinkPreviewView
+                  payload={lpPreview.preview}
+                  channelID={m.channelID}
+                  attachments={m.attachments}
+                  controller={attachmentController}
+                />
+              </div>
+            )}
             {/* att-2: encrypted attachments. Each decrypts independently and
                 fails closed to a locked placeholder if the key is missing.
                 Suppressed on deleted rows. */}
-            {!m.deleted && attachmentController && m.attachments && m.attachments.length > 0 && (
+            {!m.deleted && !lpPreview && attachmentController && m.attachments && m.attachments.length > 0 && (
               <div class="chalk-message-attachments" data-testid="message-attachments">
                 {m.attachments.map((att) => (
                   <AttachmentView

@@ -60,6 +60,24 @@ function normalizeDomains(list: unknown): string[] {
   return out;
 }
 
+// normalizeDomainInput turns a user-typed whitelist entry into a bare
+// lower-case hostname, or null if it isn't one (the settings editor rejects
+// it). Forgiving on the way in: a pasted "https://example.com/path" means
+// example.com.
+export function normalizeDomainInput(input: string): string | null {
+  let t = input.trim().toLowerCase();
+  if (t === "") return null;
+  if (t.includes("://")) {
+    try {
+      t = new URL(t).hostname;
+    } catch {
+      return null;
+    }
+  }
+  if (/[\s/:@?#]/.test(t) || !t.includes(".") || t.startsWith(".") || t.endsWith(".")) return null;
+  return t;
+}
+
 // isWhitelistedURL reports whether url is a well-formed https URL whose host
 // is one of domains or a subdomain of one ("youtube.com" matches
 // "www.youtube.com" but never "notyoutube.com"). Fail closed.

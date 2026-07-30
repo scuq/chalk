@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   selectLinkPreviewPref,
   effectiveLinkPreviewDomains,
+  normalizeDomainInput,
   isWhitelistedURL,
   findPreviewableURL,
   LINKPREVIEW_SENTINEL,
@@ -61,6 +62,20 @@ test("effectiveLinkPreviewDomains: garbage entries dropped", () => {
     linkpreviewDomains: { added: ["https://x.com", "a b.com", "", 5, "ok.com"] },
   } as unknown as UserPrefs;
   assert.deepEqual(effectiveLinkPreviewDomains([], prefs), ["ok.com"]);
+});
+
+// ---- domain input normalization ----------------------------------------
+
+test("normalizeDomainInput accepts hostnames, extracts from urls, rejects junk", () => {
+  assert.equal(normalizeDomainInput("Bandcamp.COM"), "bandcamp.com");
+  assert.equal(normalizeDomainInput("  music.example.org "), "music.example.org");
+  assert.equal(normalizeDomainInput("https://Store.Steampowered.com/app/440"), "store.steampowered.com");
+  assert.equal(normalizeDomainInput(""), null);
+  assert.equal(normalizeDomainInput("no spaces.com"), null);
+  assert.equal(normalizeDomainInput("nodots"), null);
+  assert.equal(normalizeDomainInput(".leading.dot"), null);
+  assert.equal(normalizeDomainInput("trailing.dot."), null);
+  assert.equal(normalizeDomainInput("host:8080"), null);
 });
 
 // ---- whitelist matching ------------------------------------------------

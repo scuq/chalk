@@ -33,6 +33,8 @@ import {
 } from "../chat/sidebar-width";
 import { useEffect, useState } from "preact/hooks";
 import type { EmailChangeState, MeResponse } from "../auth/types";
+import type { LinkPreviewDomainPrefs } from "../state/types";
+import { normalizeDomainInput } from "../linkpreview/linkpreview";
 import {
   regenerateRecovery,
   ApiError,
@@ -138,6 +140,20 @@ interface Props {
   giphyPref?: "unset" | "enabled" | "disabled";
   onSetGiphyPref?: (v: "enabled" | "disabled") => void;
   onRequestEnableGiphy?: () => void;
+  // 57-4: link-preview settings. Same tri-state shape as Giphy (enable
+  // routes through the app-level consent modal). The domain lists control
+  // which pasted links auto-offer a preview on the COMPOSE side: server
+  // defaults can be unchecked (-> overrides.removed), own domains added
+  // (-> overrides.added). linkPreviewHide is display-only: keep received
+  // cards as plain text.
+  linkPreviewPref?: "unset" | "enabled" | "disabled";
+  onSetLinkPreviewPref?: (v: "enabled" | "disabled") => void;
+  onRequestEnableLinkPreview?: () => void;
+  linkPreviewServerDomains?: string[];
+  linkPreviewOverrides?: LinkPreviewDomainPrefs;
+  onSetLinkPreviewDomains?: (next: LinkPreviewDomainPrefs) => void;
+  linkPreviewHide?: boolean;
+  onSetLinkPreviewHide?: (hide: boolean) => void;
   // 44-3: the mic settings moved into their own dialog, reachable from the
   // footer's voice cluster. The profile panel keeps a way in for people who
   // go looking for it here.
@@ -164,6 +180,14 @@ export function ProfilePanel({
   giphyPref,
   onSetGiphyPref,
   onRequestEnableGiphy,
+  linkPreviewPref,
+  onSetLinkPreviewPref,
+  onRequestEnableLinkPreview,
+  linkPreviewServerDomains,
+  linkPreviewOverrides,
+  onSetLinkPreviewDomains,
+  linkPreviewHide,
+  onSetLinkPreviewHide,
   onOpenMicSettings,
   parkingLot,
   onSetParkingLot,
@@ -1152,6 +1176,61 @@ export function ProfilePanel({
             </section>
           )}
 
+          {/* 57-4: link previews. Enabling routes through the app-level
+              consent modal like Giphy; disabling is direct. The domain
+              editor shapes the compose-side whitelist only -- received
+              cards render regardless (they cost no fetches), unless the
+              separate hide toggle is on. */}
+          {onSetLinkPreviewPref && (
+            <section class="chalk-profile-storage" data-testid="linkpreview-settings">
+              <h3>link previews</h3>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={linkPreviewPref === "enabled"}
+                    onChange={(e) => {
+                      const on = (e.target as HTMLInputElement).checked;
+                      if (on) {
+                        if (onRequestEnableLinkPreview) onRequestEnableLinkPreview();
+                        else onSetLinkPreviewPref("enabled");
+                      } else {
+                        onSetLinkPreviewPref("disabled");
+                      }
+                    }}
+                    data-testid="linkpreview-toggle"
+                  />
+                  build previews for links I send
+                </label>
+                <p class="chalk-profile-hint" style={{ marginTop: "0.5rem" }}>
+                  {linkPreviewPref === "enabled"
+                    ? "on: pasting a whitelisted link asks YOUR server to fetch the page; the preview travels inside the encrypted message. The site sees the server's address, the server sees the link. Nobody else fetches anything."
+                    : "off: links you send stay plain text. Previews others send still show (they cost you nothing -- everything is inside the encrypted message)."}
+                </p>
+                {onSetLinkPreviewHide && (
+                  <label class="chalk-profile-checkbox-label" style={{ marginTop: "0.5rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={linkPreviewHide === true}
+                      onChange={(e) =>
+                        onSetLinkPreviewHide((e.target as HTMLInputElement).checked)
+                      }
+                      data-testid="linkpreview-hide-toggle"
+                    />
+                    hide preview cards others send (show plain text)
+                  </label>
+                )}
+                {onSetLinkPreviewDomains && (
+                  <LinkPreviewDomainEditor
+                    serverDomains={linkPreviewServerDomains ?? []}
+                    overrides={linkPreviewOverrides}
+                    onSet={onSetLinkPreviewDomains}
+                  />
+                )}
+              </div>
+            </section>
+          )}
+
           {/* Email change section */}
           <section class="chalk-profile-email-change">
             <h3>change email</h3>
@@ -1464,4 +1543,106 @@ function formatTimestamp(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+// 57-4: the compose-side whitelist editor. Server defaults are checkboxes
+// (unchecking records the domain in overrides.removed); own additions are
+// listed with a remove control and grown through the input below. The whole
+// overrides object is sent on every change -- JSONB shallow merge, like the
+// chat block.
+function LinkPreviewDomainEditor({
+  serverDomains,
+  overrides,
+  onSet,
+}: {
+  serverDomains: string[];
+  overrides: LinkPreviewDomainPrefs | undefined;
+  onSet: (next: LinkPreviewDomainPrefs) => void;
+}) {
+  const [input, setInput] = useState("");
+  const [inputError, setInputError] = useState(false);
+  const added = (overrides?.added ?? []).filter((d) => typeof d === "string");
+  const removed = new Set((overrides?.removed ?? []).filter((d) => typeof d === "string"));
+
+  const setDefaultEnabled = (domain: string, enabled: boolean) => {
+    const nextRemoved = enabled
+      ? [...removed].filter((d) => d !== domain)
+      : [...new Set([...removed, domain])];
+    onSet({ added, removed: nextRemoved });
+  };
+
+  const addDomain = () => {
+    const d = normalizeDomainInput(input);
+    if (d === null || added.includes(d) || serverDomains.includes(d)) {
+      setInputError(true);
+      return;
+    }
+    setInputError(false);
+    setInput("");
+    onSet({ added: [...added, d], removed: [...removed] });
+  };
+
+  const removeAdded = (domain: string) => {
+    onSet({ added: added.filter((d) => d !== domain), removed: [...removed] });
+  };
+
+  return (
+    <div class="chalk-linkpreview-domains" data-testid="linkpreview-domains">
+      <p class="chalk-profile-hint" style={{ marginTop: "0.75rem" }}>
+        preview links from these sites (and their subdomains):
+      </p>
+      {serverDomains.map((d) => (
+        <label class="chalk-profile-checkbox-label chalk-linkpreview-domain-row" key={d}>
+          <input
+            type="checkbox"
+            checked={!removed.has(d)}
+            onChange={(e) => setDefaultEnabled(d, (e.target as HTMLInputElement).checked)}
+            data-testid={`linkpreview-domain-${d}`}
+          />
+          {d}
+        </label>
+      ))}
+      {added.map((d) => (
+        <div class="chalk-linkpreview-domain-row chalk-linkpreview-domain-row--added" key={d}>
+          <span>{d}</span>
+          <button
+            type="button"
+            class="chalk-linkpreview-domain-remove"
+            onClick={() => removeAdded(d)}
+            title={`stop previewing ${d}`}
+            aria-label={`remove ${d}`}
+            data-testid={`linkpreview-domain-remove-${d}`}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      <div class="chalk-linkpreview-domain-add">
+        <input
+          type="text"
+          value={input}
+          placeholder="add a site, e.g. bandcamp.com"
+          class={inputError ? "chalk-linkpreview-domain-input--error" : ""}
+          onInput={(e) => {
+            setInput((e.target as HTMLInputElement).value);
+            setInputError(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addDomain();
+            }
+          }}
+          data-testid="linkpreview-domain-input"
+        />
+        <button type="button" onClick={addDomain} data-testid="linkpreview-domain-add">
+          add
+        </button>
+      </div>
+      <p class="chalk-profile-hint">
+        your server fetches whatever you ask it to preview; this list only
+        decides which links offer one automatically.
+      </p>
+    </div>
+  );
 }

@@ -95,6 +95,9 @@ interface Props {
   // a GIF reply renders as its raw marker body. Forwarded to both lists.
   attachmentController?: AttachmentController;
   giphyPref?: GiphyPref;
+  // 57-4: the viewer's hide-preview-cards display pref, forwarded to both
+  // lists so a thread renders cards exactly like the feed does.
+  linkPreviewHide?: boolean;
   // Callbacks.
   onClose: () => void;
   // Already bound to parentID by the caller. The return value matters:
@@ -144,6 +147,7 @@ export function ThreadPanel({
   toolStyle,
   attachmentController,
   giphyPref,
+  linkPreviewHide,
   onClose,
   onSend,
 }: Props) {
@@ -210,6 +214,7 @@ export function ThreadPanel({
               attachmentController={attachmentController}
               giphyPref={giphyPref}
               onRequestEnableGiphy={onRequestEnableGiphy}
+              linkPreviewHide={linkPreviewHide}
               // No onOpenThread: drops "reply in thread" from the row
               // menu and hides any indicator (which wouldn\'t apply here --
               // the head\'s replyCount is the indicator we\'re
@@ -249,6 +254,7 @@ export function ThreadPanel({
             attachmentController={attachmentController}
             giphyPref={giphyPref}
             onRequestEnableGiphy={onRequestEnableGiphy}
+            linkPreviewHide={linkPreviewHide}
             // No onOpenThread inside the panel either; nesting
             // threads-in-threads is out of scope.
           />

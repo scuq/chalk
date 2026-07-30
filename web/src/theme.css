@@ -830,6 +830,109 @@ html, body {
   color: var(--chalk-fg-bright);
 }
 
+/* -- 57-4: received link-preview card ------------------------------ */
+/* Breaks out below the body like an attachment. The whole card is one
+   anchor to the real destination; the host line at the bottom is the
+   trustworthy part, so it stays visible even on a text-only card. */
+.chalk-message-linkpreview {
+  grid-column: 1 / -1;
+  margin-top: var(--chalk-s1);
+  min-width: 0;
+}
+.chalk-linkpreview-card {
+  display: flex;
+  gap: var(--chalk-s2);
+  max-width: 28rem;
+  padding: var(--chalk-s2);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-left: 2px solid var(--chalk-accent);
+  border-radius: var(--chalk-radius);
+  font-size: var(--chalk-size-small);
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+}
+.chalk-linkpreview-card:hover {
+  border-color: var(--chalk-fg-dim);
+  border-left-color: var(--chalk-accent);
+}
+.chalk-linkpreview-thumb {
+  width: 4.6em;
+  height: 4.6em;
+  object-fit: cover;
+  border-radius: var(--chalk-radius);
+  flex: none;
+}
+.chalk-linkpreview-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  min-width: 0;
+}
+.chalk-linkpreview-site {
+  color: var(--chalk-fg-muted);
+  font-size: 0.85em;
+}
+.chalk-linkpreview-title {
+  color: var(--chalk-fg-bright);
+}
+.chalk-linkpreview-desc {
+  color: var(--chalk-fg-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.chalk-linkpreview-host {
+  color: var(--chalk-fg-muted);
+  font-size: 0.85em;
+}
+.chalk-linkpreview-card:hover .chalk-linkpreview-title {
+  text-decoration: underline;
+}
+
+/* -- 57-4: settings domain editor ---------------------------------- */
+.chalk-linkpreview-domains {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s1);
+}
+.chalk-linkpreview-domain-row {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  font-size: var(--chalk-size-small);
+}
+.chalk-linkpreview-domain-row--added {
+  padding-left: 1.55em; /* aligns with the checkbox rows above */
+}
+.chalk-linkpreview-domain-remove {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0 0.2em;
+  line-height: 1;
+}
+.chalk-linkpreview-domain-remove:hover {
+  color: var(--chalk-fg-bright);
+}
+.chalk-linkpreview-domain-add {
+  display: flex;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s1);
+}
+.chalk-linkpreview-domain-add input {
+  flex: 1;
+  min-width: 0;
+}
+.chalk-linkpreview-domain-input--error {
+  border-color: var(--chalk-error, #c33) !important;
+}
+
 /* -- att-3: drag-drop affordance + per-item upload progress -------- */
 .chalk-composer--drag-active {
   outline: 1px dashed var(--chalk-fg);

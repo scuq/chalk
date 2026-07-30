@@ -4288,6 +4288,7 @@ export function App() {
               display={selectChatPrefs(state.prefs)}
               giphyPref={selectGiphyPref(state.prefs)}
               onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
+              linkPreviewHide={state.prefs?.linkpreviewHideCards === true}
               threadSeen={state.threadSeen}
               canDeleteMessage={(m) => deleteActionOf(m) !== "none"}
               onDeleteMessage={onDeleteMessage}
@@ -4418,6 +4419,7 @@ export function App() {
             toolStyle={selectChatPrefs(state.prefs).composerToolStyle}
             attachmentController={attControllerRef.current ?? undefined}
             giphyPref={selectGiphyPref(state.prefs)}
+            linkPreviewHide={state.prefs?.linkpreviewHideCards === true}
             focusKey={isMobile ? null : tid}
           />
         );
@@ -4835,6 +4837,23 @@ export function App() {
           giphyPref={selectGiphyPref(state.prefs)}
           onSetGiphyPref={sendGiphyPref}
           onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
+          linkPreviewPref={selectLinkPreviewPref(state.prefs)}
+          onSetLinkPreviewPref={sendLinkPreviewPref}
+          onRequestEnableLinkPreview={() => setLinkPreviewConsentOpen(true)}
+          linkPreviewServerDomains={state.authConfig?.linkpreview_domains ?? []}
+          linkPreviewOverrides={state.prefs?.linkpreviewDomains}
+          // Sent whole like every other prefs object -- JSONB shallow merge.
+          onSetLinkPreviewDomains={(next) => {
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            c.send(TypePrefsSet, { patch: { linkpreviewDomains: next } });
+          }}
+          linkPreviewHide={state.prefs?.linkpreviewHideCards === true}
+          onSetLinkPreviewHide={(hide) => {
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            c.send(TypePrefsSet, { patch: { linkpreviewHideCards: hide } });
+          }}
           onOpenMicSettings={() => setMicSettingsOpen(true)}
         />
       )}
