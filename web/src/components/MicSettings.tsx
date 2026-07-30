@@ -471,6 +471,28 @@ export function MicSettings() {
         testId="camera-device"
       />
 
+      {/* 52-1: sits under the camera picker because it is a property of the
+          picture, not of the call. Per-machine, like the camera itself. */}
+      <div class="chalk-profile-field">
+        <label class="chalk-profile-checkbox-label">
+          <input
+            type="checkbox"
+            checked={dev.backgroundBlur}
+            onChange={(e) =>
+              setDev({ backgroundBlur: (e.target as HTMLInputElement).checked })
+            }
+            data-testid="camera-background-blur"
+          />
+          <span>
+            blur my background{" "}
+            <span class="chalk-profile-theme-desc">
+              (hides the room behind you while your camera is on. takes effect
+              immediately, mid-call and all)
+            </span>
+          </span>
+        </label>
+      </div>
+
       {/* Firefox does not list output devices and Safari cannot route to one,
           so on those this is absent rather than a control that does nothing. */}
       {canChooseOutput() && (

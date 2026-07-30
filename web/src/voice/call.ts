@@ -535,6 +535,10 @@ export class VoiceCall {
     if (cameraTracks.length > 0) {
       try {
         this.cameraChain = CameraChain.fromStream(new MediaStream(cameraTracks));
+        // 52-1: not awaited -- a driver that is slow to answer the constraint
+        // must not hold up the join behind it, and the camera starts disabled
+        // anyway, so the blur is in place well before a frame is published.
+        void this.applyBackgroundBlur(this.devicePrefs.backgroundBlur);
       } catch (err) {
         this.diag(`camera graph unavailable, publishing raw capture: ${String(err)}`);
       }
@@ -678,6 +682,9 @@ export class VoiceCall {
     if (this.closed) return;
     const prev = this.devicePrefs;
     this.devicePrefs = next;
+    if (prev.backgroundBlur !== next.backgroundBlur) {
+      await this.applyBackgroundBlur(next.backgroundBlur);
+    }
     if (prev.cameraId === next.cameraId) return;
     // No graph: either an audio-only join (which picks the new camera up when
     // the mid-call add acquires) or the raw-publish fallback, where there is
@@ -693,6 +700,30 @@ export class VoiceCall {
       return;
     }
     this.diag(`camera switched: device=${next.cameraId || "default"}`);
+  }
+
+  /**
+   * applyBackgroundBlur (52-1) puts the current preference into effect on the
+   * live camera graph.
+   *
+   * Called on every path that produces a graph -- the join, the mid-call camera
+   * add, and the toggle itself -- because each of those hands us a camera that
+   * knows nothing about the preference.
+   *
+   * A machine where nothing can blur logs it and carries on: the wish stays
+   * stored for the machine that can honour it, and a call is not the place to
+   * argue with someone about their hardware. 52-2 is what makes this reach the
+   * other case, by falling back to a frame processor when native declines.
+   */
+  private async applyBackgroundBlur(on: boolean): Promise<void> {
+    const chain = this.cameraChain;
+    if (!chain) return;
+    const native = await chain.setBackgroundBlur(on);
+    this.diag(
+      on
+        ? `background blur on: ${native ? "camera" : "unavailable on this camera"}`
+        : "background blur off",
+    );
   }
 
   /**
@@ -1450,6 +1481,7 @@ export class VoiceCall {
       return false;
     }
     this.cameraChain = chain;
+    void this.applyBackgroundBlur(this.devicePrefs.backgroundBlur); // 52-1
     const track = chain.track;
     const local = this.localStream;
     local.addTrack(track);

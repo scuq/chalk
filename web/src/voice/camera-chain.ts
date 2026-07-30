@@ -16,6 +16,7 @@
 // Nothing here weakens E2E: this is all pre-SRTP, on the device.
 
 import { cameraConstraints, type DevicePrefs } from "./device-prefs";
+import { applyNativeBlur } from "./camera-effects";
 
 /** Pump rate when the source will not say what it runs at. */
 const DEFAULT_FPS = 30;
@@ -34,6 +35,45 @@ export interface FrameSize {
   width: number;
   height: number;
 }
+
+/**
+ * 52-1: what goes IN the draw step.
+ *
+ * A processor paints the frame that gets published, given the live camera
+ * element. Async because segmentation is: a mask costs milliseconds, and a
+ * synchronous contract would either lie about that or force the work onto the
+ * pump's tick.
+ *
+ * The contract the chain guarantees in return:
+ *   - never re-entered: a tick that arrives while the previous render is still
+ *     in flight is DROPPED, not queued. Under load the far end sees a lower
+ *     frame rate, which is what a video call should do, rather than latency
+ *     that grows without bound.
+ *   - a throw is survivable: the chain draws the plain frame for that tick, and
+ *     drops the processor entirely once it has failed repeatedly. A broken
+ *     effect must never cost someone their camera.
+ */
+export interface FrameProcessor {
+  render(
+    ctx: CanvasRenderingContext2D,
+    source: HTMLVideoElement,
+    size: FrameSize,
+  ): void | Promise<void>;
+  /** Called when the chain gives up on this processor. Report it here. */
+  onDropped?(err: unknown): void;
+  close(): void;
+}
+
+/**
+ * Consecutive render failures tolerated before the processor is dropped.
+ *
+ * Not one: a single failed frame is routine (a GPU context lost on a laptop
+ * lid, a first call racing the model's warm-up), and tearing an effect down
+ * for it would make blur flicker off under exactly the conditions it works
+ * hardest. Not many either -- a processor failing every frame is producing
+ * nothing but a plain picture with the CPU cost of an effect.
+ */
+export const MAX_PROCESSOR_FAILURES = 5;
 
 /** frameIntervalMs turns a target frame rate into a pump period, in ms. */
 export function frameIntervalMs(fps: number): number {
@@ -84,6 +124,17 @@ export class CameraChain {
   private timer: number | null = null;
   private active = true;
   private closed = false;
+  /** 52-1: the effect in the draw step, if any. */
+  private processor: FrameProcessor | null = null;
+  /** True between a render starting and settling; the next tick is dropped. */
+  private rendering = false;
+  private failures = 0;
+  /**
+   * Desired background blur, held here rather than derived from the track:
+   * a recapture hands us a fresh device that starts with the platform's
+   * default, so the wish has to outlive the track it was applied to.
+   */
+  private blur = false;
 
   private constructor(raw: MediaStream, fps: number) {
     this.raw = raw;
@@ -185,6 +236,14 @@ export class CameraChain {
   private draw(): void {
     if (this.closed) return;
     if (this.video.paused) this.play();
+    const p = this.processor;
+    // Dropped, not queued -- see the FrameProcessor contract. This comes BEFORE
+    // the resize below, and has to: assigning a canvas dimension clears it, so
+    // resizing on a tick we then skip would publish one blank frame, and worse,
+    // would pull the canvas out from under a render already drawing into it.
+    // Skipping everything leaves the previous picture standing, which is what a
+    // dropped frame should look like.
+    if (p && this.rendering) return;
     const size = drawSize(
       { width: this.canvas.width, height: this.canvas.height },
       this.video.videoWidth,
@@ -196,7 +255,82 @@ export class CameraChain {
       this.canvas.width = size.width;
       this.canvas.height = size.height;
     }
-    this.ctx.drawImage(this.video, 0, 0, size.width, size.height);
+    if (!p) {
+      this.ctx.drawImage(this.video, 0, 0, size.width, size.height);
+      return;
+    }
+    this.rendering = true;
+    // Promise.resolve() so a processor that throws SYNCHRONOUSLY lands in the
+    // same catch as one that rejects; without it the throw would escape the
+    // interval callback and the fallback below would never run.
+    void Promise.resolve()
+      .then(() => p.render(this.ctx, this.video, size))
+      .then(() => {
+        this.failures = 0;
+      })
+      .catch((err) => this.onRenderFailed(p, err, size))
+      .finally(() => {
+        this.rendering = false;
+      });
+  }
+
+  /**
+   * A render failed: show the plain frame for this tick, and give up on the
+   * effect if it keeps happening. Publishing an unprocessed frame is a visible
+   * degradation -- the room the user meant to hide is briefly there -- but a
+   * frozen or black picture is worse, and silently sending nothing is worst.
+   */
+  private onRenderFailed(p: FrameProcessor, err: unknown, size: FrameSize): void {
+    if (this.closed) return;
+    this.failures++;
+    try {
+      this.ctx.drawImage(this.video, 0, 0, size.width, size.height);
+    } catch {
+      /* The element has no frame yet; the next tick draws one. */
+    }
+    if (this.failures < MAX_PROCESSOR_FAILURES) return;
+    this.processor = null;
+    this.failures = 0;
+    try {
+      p.onDropped?.(err);
+    } finally {
+      p.close();
+    }
+  }
+
+  /**
+   * setProcessor swaps the effect in the draw step. Passing null returns the
+   * graph to a plain copy.
+   *
+   * Takes ownership: the outgoing processor is closed here, so a caller that
+   * wants to keep one must not hand it over. The published track is untouched
+   * either way -- turning an effect on mid-call is invisible to every peer,
+   * which is the entire point of the canvas sitting in the middle.
+   */
+  setProcessor(next: FrameProcessor | null): void {
+    if (this.closed || this.processor === next) return;
+    this.processor?.close();
+    this.processor = next;
+    this.failures = 0;
+  }
+
+  /** Whether an effect is currently installed in the draw step. */
+  get hasProcessor(): boolean {
+    return this.processor !== null;
+  }
+
+  /**
+   * setBackgroundBlur records the wish and tries to have the PLATFORM grant it,
+   * reporting whether it did. A false return means the camera cannot blur
+   * itself here and the caller should install a processor instead (52-2).
+   *
+   * Idempotent and re-applied on recapture, because a new device arrives with
+   * the platform's default rather than with our preference.
+   */
+  async setBackgroundBlur(on: boolean): Promise<boolean> {
+    if (this.closed) return false;
+    this.blur = on;
+    return applyNativeBlur(this.raw.getVideoTracks()[0], on);
   }
 
   /**
@@ -248,6 +382,10 @@ export class CameraChain {
     // A fresh capture always starts enabled; carry the on/off state across.
     for (const t of next.getVideoTracks()) t.enabled = this.active;
     for (const t of old.getTracks()) t.stop();
+    // 52-1: and carry the blur across too. The new device knows nothing about
+    // the constraint the old one was holding, so without this a camera swap
+    // would quietly un-blur the room.
+    if (this.blur) await applyNativeBlur(next.getVideoTracks()[0], true);
   }
 
   /** close stops the real camera and the published track. Idempotent. */
@@ -255,6 +393,8 @@ export class CameraChain {
     if (this.closed) return;
     this.closed = true;
     this.stopPump();
+    this.processor?.close();
+    this.processor = null;
     // The raw tracks are what hold the device -- stopping only the canvas
     // capture would leave the camera (and its indicator light) on.
     for (const t of this.raw.getTracks()) t.stop();

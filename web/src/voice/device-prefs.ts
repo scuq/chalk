@@ -26,6 +26,12 @@ export interface DevicePrefs {
   cameraId: string;
   /** "" means the system default output. Only meaningful where setSinkId is. */
   outputId: string;
+  /**
+   * 52-1: blur the room behind you. Per-machine like the devices above, and
+   * for a related reason: what it costs to honour depends on this machine's
+   * camera and CPU, so "on" on the desktop should not follow you to the phone.
+   */
+  backgroundBlur: boolean;
 }
 
 const STORAGE_KEY = "chalk.devices.v1";
@@ -33,6 +39,7 @@ const STORAGE_KEY = "chalk.devices.v1";
 export const DEFAULT_DEVICE_PREFS: DevicePrefs = {
   cameraId: "",
   outputId: "",
+  backgroundBlur: false,
 };
 
 /** normalizeDevicePrefs fills every field from a possibly-garbage stored value.
@@ -43,6 +50,10 @@ export function normalizeDevicePrefs(raw: unknown): DevicePrefs {
   return {
     cameraId: typeof o.cameraId === "string" ? o.cameraId : DEFAULT_DEVICE_PREFS.cameraId,
     outputId: typeof o.outputId === "string" ? o.outputId : DEFAULT_DEVICE_PREFS.outputId,
+    backgroundBlur:
+      typeof o.backgroundBlur === "boolean"
+        ? o.backgroundBlur
+        : DEFAULT_DEVICE_PREFS.backgroundBlur,
   };
 }
 

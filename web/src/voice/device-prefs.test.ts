@@ -12,7 +12,7 @@ import {
 } from "./device-prefs.ts";
 
 test("normalize keeps a valid pref untouched", () => {
-  const prefs = { cameraId: "cam-1", outputId: "spk-2" };
+  const prefs = { cameraId: "cam-1", outputId: "spk-2", backgroundBlur: true };
   assert.deepEqual(normalizeDevicePrefs(prefs), prefs);
 });
 
@@ -45,4 +45,30 @@ test("a chosen camera is a hint, not a requirement", () => {
   // Plain deviceId rather than {exact}: a camera unplugged since it was chosen
   // must degrade to another one rather than fail the join.
   assert.deepEqual(c, { deviceId: "cam-1" });
+});
+
+// ---- 52-1: background blur ------------------------------------------------
+
+test("blur is off until someone asks for it", () => {
+  assert.equal(normalizeDevicePrefs({}).backgroundBlur, false);
+  assert.equal(DEFAULT_DEVICE_PREFS.backgroundBlur, false);
+});
+
+test("a stored blur preference survives a reload", () => {
+  assert.equal(normalizeDevicePrefs({ backgroundBlur: true }).backgroundBlur, true);
+});
+
+test("a non-boolean blur value falls back to off", () => {
+  // Written by an older build, or by hand. Failing OPEN here would turn
+  // someone's camera effect on without them asking.
+  for (const junk of ["true", 1, null, {}]) {
+    assert.equal(normalizeDevicePrefs({ backgroundBlur: junk }).backgroundBlur, false);
+  }
+});
+
+test("upgrading from a pre-52 stored pref keeps the devices", () => {
+  const p = normalizeDevicePrefs({ cameraId: "cam-1", outputId: "spk-2" });
+  assert.equal(p.cameraId, "cam-1");
+  assert.equal(p.outputId, "spk-2");
+  assert.equal(p.backgroundBlur, false);
 });
