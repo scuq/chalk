@@ -4461,6 +4461,9 @@ export function App() {
             giphyEnabled={state.authConfig?.giphy_enabled ?? false}
             giphyReady={selectGiphyPref(state.prefs) === "enabled"}
             onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
+            // 56-1: @ completes against the channel roster. DMs included --
+            // a mention there is odd but harmless, and 33-3 highlights it.
+            mentionHandles={activeChannel?.members.map((m) => m.handle)}
           />
         </div>
       </footer>

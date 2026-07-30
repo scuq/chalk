@@ -12,6 +12,15 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **Typing `@` now suggests who to mention.** The composer pops up a list
+  of the channel's members as soon as you type `@`, narrowing as you keep
+  typing — arrow keys or the mouse to pick, Enter or Tab to complete, Escape
+  to dismiss. Mentions themselves already worked (a message naming
+  `@your_handle` highlights it and marks the channel), but you had to know a
+  member's exact handle and type it blind; now the roster comes to you. Works
+  in thread replies and while editing a message, too.
+
 ### Changed
 - **Chalk now starts in the parking lot.** Opening or reloading chalk used
   to drop you straight into a conversation of its own choosing (whichever

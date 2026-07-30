@@ -262,6 +262,7 @@ export function ThreadPanel({
           onEditCancel={onEditCancel}
           onEditLast={onEditLast}
           focusKey={focusKey}
+          mentionHandles={members.map((m) => m.handle)}
         />
       </footer>
     </aside>

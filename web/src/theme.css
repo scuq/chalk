@@ -514,6 +514,45 @@ html, body {
   flex-direction: column;
   gap: var(--chalk-s2);
   min-width: 0;
+  /* 56-1: anchor for the @mention autocomplete popup. */
+  position: relative;
+}
+
+/* 56-1: the @mention autocomplete. Opens upward -- the composer sits at
+   the bottom of the viewport -- and spans the composer's width so it never
+   needs caret-position math. Same elevation recipe as the shortcut sheet. */
+.chalk-composer-mentions {
+  position: absolute;
+  bottom: calc(100% + var(--chalk-s1));
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  padding: var(--chalk-s1);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.chalk-composer-mention-item {
+  background: transparent;
+  border: none;
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  text-align: left;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg);
+  cursor: pointer;
+}
+/* Selection follows the keyboard and the pointer through the same class;
+   :hover alone would leave two rows highlighted while arrowing. */
+.chalk-composer-mention-item--active {
+  background: var(--chalk-bg-elev-2);
+  color: var(--chalk-fg-bright);
 }
 
 /* att-2: the input row (textarea | send). */

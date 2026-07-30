@@ -25,6 +25,12 @@ import {
   matchComposerShortcut,
   shortcutLabel,
 } from "../chat/composer-keys";
+import {
+  type MentionToken,
+  activeMentionToken,
+  applyMention,
+  matchMentionHandles,
+} from "../chat/mention-complete";
 
 // Phase 9.6g: disabledReason distinguishes the two reasons the
 // composer might be unusable. "offline" reflects a real connection
@@ -97,6 +103,10 @@ interface Props {
   // the pref. Only the feed composer passes this; a thread reply doesn't
   // announce itself (nothing renders a thread indicator yet).
   onTyping?: (active: boolean) => void;
+  // 56-1: handles offered by the @mention autocomplete -- the members of
+  // whatever this composer sends into. Absent or empty disables the popup;
+  // typed @handles still work, they just aren't completed.
+  mentionHandles?: string[];
 }
 
 const MAX_LEN = 4000;
@@ -144,7 +154,7 @@ function IconGif() {
   );
 }
 
-export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast, focusKey, onTyping }: Props) {
+export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast, focusKey, onTyping, mentionHandles }: Props) {
   const icons = toolStyle === "icons";
   const emoticonsOn = emoticons !== false;
   const [draft, setDraft] = useState("");
@@ -163,6 +173,13 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   // 42-1: the last emoticon we swapped for an emoji, so an immediate
   // Backspace can put the typed characters back. Cleared by any other edit.
   const undoEmoticon = useRef<{ caret: number; text: string; emoji: string } | null>(null);
+  // 56-1: the partial @token under the caret; null means the popup is
+  // closed. Escape remembers the token's start position so the popup stays
+  // down while the user keeps typing that same mention by hand -- moving or
+  // finishing the token forgets the dismissal.
+  const [mention, setMention] = useState<MentionToken | null>(null);
+  const [mentionSel, setMentionSel] = useState(0);
+  const mentionDismissed = useRef<number | null>(null);
 
   // 42-1: the help sheet is a popover, so it closes the way popovers do --
   // Escape or a click anywhere else. Without this it would sit over the
@@ -213,6 +230,10 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   // only fires on an empty composer, so there is never unsent text to restore.
   const editingID = editing?.id ?? null;
   useEffect(() => {
+    // 56-1: entering or leaving edit mode swaps the whole draft; any mention
+    // popup belonged to the old text.
+    mentionDismissed.current = null;
+    setMention(null);
     if (!editing) {
       setDraft("");
       return;
@@ -327,6 +348,54 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     setCaretSoon(caret);
   };
 
+  // 56-1: re-derive the mention token from the draft and caret. Called from
+  // every path that moves either: typing (onInput), clicking, and the
+  // caret-movement keys the popup doesn't own (onKeyUp for arrows/Home/End).
+  const syncMention = (value: string, caret: number) => {
+    const token =
+      mentionHandles && mentionHandles.length > 0
+        ? activeMentionToken(value, caret)
+        : null;
+    if (!token) {
+      mentionDismissed.current = null;
+      if (mention) setMention(null);
+      return;
+    }
+    if (mentionDismissed.current !== null && mentionDismissed.current !== token.start) {
+      mentionDismissed.current = null;
+    }
+    if (mentionDismissed.current === token.start) {
+      if (mention) setMention(null);
+      return;
+    }
+    if (!mention || mention.start !== token.start || mention.prefix !== token.prefix) {
+      setMention(token);
+      setMentionSel(0);
+    }
+  };
+
+  // Matches are derived per render rather than stored: the roster can change
+  // under an open popup (someone joins), and stale state would offer them
+  // a beat late or a ghost a beat long.
+  const mentionMatches =
+    mention && mentionHandles
+      ? matchMentionHandles(mention.prefix, mentionHandles).slice(0, 8)
+      : [];
+  const mentionOpen = mentionMatches.length > 0 && !effectiveDisabled && !sending;
+  const mentionCursor = Math.min(mentionSel, mentionMatches.length - 1);
+
+  const acceptMention = (handle: string) => {
+    const el = textareaRef.current;
+    if (!mention || !el) return;
+    const caret = el.selectionStart ?? draft.length;
+    const r = applyMention(draft, mention, caret, handle);
+    if (r.value.length > MAX_LEN) return; // don't silently blow the cap
+    undoEmoticon.current = null;
+    setMention(null);
+    setDraft(r.value);
+    setCaretSoon(r.caret);
+  };
+
   // 42-1: the three tool buttons, reachable from the keyboard as well as the
   // rail. Kept as one function so a shortcut and a click cannot diverge.
   const openTool = (action: "emoji" | "gif" | "file") => {
@@ -353,6 +422,10 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   const submit = async () => {
     if (sending) return;
     undoEmoticon.current = null;
+    // The draft is about to be replaced wholesale; a token parsed from the
+    // old text must not leave the popup floating over the new one.
+    mentionDismissed.current = null;
+    setMention(null);
     const body = draft.trim();
 
     // Phase 37-3: in edit mode the composer is standing in for one existing
@@ -451,11 +524,29 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
         undoEmoticon.current = { caret: hit.caret, text: hit.text, emoji: hit.emoji };
         setDraft(hit.value);
         setCaretSoon(hit.caret);
+        syncMention(hit.value, hit.caret);
         return;
       }
     }
     undoEmoticon.current = null;
     setDraft(value);
+    syncMention(value, el.selectionStart ?? value.length);
+  };
+
+  // 56-1: arrow/Home/End move the caret without an input event; a click can
+  // land it anywhere. Both re-derive the token so the popup follows the
+  // caret rather than the last keystroke. keyup only for the movement keys
+  // the popup branch in onKeyDown doesn't already own -- the keyup of an
+  // accepting Enter arrives while the DOM still holds the pre-splice text,
+  // and a blanket sync would reopen the popup over it.
+  const onCaretKeyUp = (e: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") return;
+    const el = e.currentTarget;
+    syncMention(el.value, el.selectionStart ?? el.value.length);
+  };
+  const onCaretClick = (e: JSX.TargetedMouseEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    syncMention(el.value, el.selectionStart ?? el.value.length);
   };
 
   const onKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>) => {
@@ -471,6 +562,30 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
       e.preventDefault();
       openTool(action);
       return;
+    }
+    // 56-1: with the mention popup open, the navigation keys belong to it.
+    // Everything else falls through -- ordinary typing narrows the matches
+    // via onInput, and Shift+Enter keeps meaning "newline" (the break ends
+    // the token, so the popup closes on its own).
+    if (mentionOpen) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const n = mentionMatches.length;
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        setMentionSel((mentionCursor + step + n) % n);
+        return;
+      }
+      if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey) {
+        e.preventDefault();
+        acceptMention(mentionMatches[mentionCursor]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        mentionDismissed.current = mention?.start ?? null;
+        setMention(null);
+        return;
+      }
     }
     // 42-1: Backspace straight after an automatic emoticon swap puts the
     // characters back, for the times you actually meant to write ":)".
@@ -685,6 +800,33 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
             })}
           </div>
         )}
+        {/* 56-1: the @mention autocomplete. Anchored above the composer so
+            it never covers what's being typed. mousedown is swallowed so a
+            click doesn't blur the textarea before it can accept. */}
+        {mentionOpen && (
+          <div
+            class="chalk-composer-mentions"
+            role="listbox"
+            aria-label="mention a member"
+            data-testid="composer-mentions"
+          >
+            {mentionMatches.map((h, i) => (
+              <button
+                type="button"
+                role="option"
+                aria-selected={i === mentionCursor}
+                class={`chalk-composer-mention-item ${i === mentionCursor ? "chalk-composer-mention-item--active" : ""}`}
+                key={h}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => acceptMention(h)}
+                onMouseEnter={() => setMentionSel(i)}
+                data-testid="composer-mention-item"
+              >
+                @{h}
+              </button>
+            ))}
+          </div>
+        )}
         <div class="chalk-composer-row">
           {/* 44-5: the tool block, immediately left of the field it acts on.
               A 2x2 grid rather than a row or a column: a row stole width from
@@ -781,6 +923,9 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
             value={draft}
             onInput={onInput}
             onKeyDown={onKeyDown}
+            onKeyUp={onCaretKeyUp}
+            onClick={onCaretClick}
+            onBlur={() => setMention(null)}
             onPaste={enableAttachments ? onPaste : undefined}
             disabled={effectiveDisabled || sending}
             rows={2}

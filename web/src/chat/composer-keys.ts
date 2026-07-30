@@ -78,6 +78,7 @@ export function composerHelp(mac: boolean): HelpRow[] {
   return [
     { keys: "enter", what: "send" },
     { keys: "shift+enter", what: "new line" },
+    { keys: "@", what: "mention a member" },
     { keys: "↑", what: "edit your last message" },
     { keys: "esc", what: "cancel editing" },
     { keys: shortcutLabel("emoji", mac), what: "emoji picker" },
