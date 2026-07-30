@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.4.4 — 30 July 2026 — Background blur and the parking lot
 
 ### Added
 - **Somewhere to put chalk when someone walks up behind you.** There's a new
