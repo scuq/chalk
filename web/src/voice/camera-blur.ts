@@ -24,8 +24,13 @@
 // smoothing on, which feathers its edges for free -- a binary mask drawn
 // hard-edged looks cut out with scissors.
 
-import type { FrameProcessor, FrameSize } from "./camera-chain";
-import { canvasFilterSupported } from "./camera-effects";
+import type { CameraChain, FrameProcessor, FrameSize } from "./camera-chain";
+import {
+  canvasFilterSupported,
+  planBackgroundBlur,
+  processorBlurAvailable,
+  type BlurPlan,
+} from "./camera-effects";
 import {
   INITIAL_CADENCE,
   ema,
@@ -84,6 +89,52 @@ export function maskToAlpha(mask: Float32Array, out: Uint8ClampedArray): void {
   for (let i = 0; i < mask.length; i++) {
     out[i * 4 + 3] = mask[i] >= MASK_THRESHOLD ? 255 : 0;
   }
+}
+
+/**
+ * applyBlurTo puts a blur preference into effect on a camera graph, whichever
+ * way this machine can honour it, and reports which way that was.
+ *
+ * 52-4: shared by the live call and the settings preview, and that sharing is
+ * the point rather than a convenience. Two copies of the native-else-processor
+ * precedence would eventually disagree, and the shape of that bug is a preview
+ * that shows someone a blurred room while the call publishes a sharp one.
+ *
+ * stillWanted is re-checked after the download, which can take a while on a
+ * cold cache: the toggle may have gone back off, the call may have ended, or
+ * the preview may have been stopped. Closing the processor there rather than
+ * installing it is the difference between a stale effect and a leaked WASM
+ * heap. Throws if the runtime cannot start, leaving the caller to phrase it.
+ */
+export async function applyBlurTo(
+  chain: CameraChain,
+  want: boolean,
+  opts: { stillWanted: () => boolean; onGiveUp: (err: unknown) => void },
+): Promise<{ plan: BlurPlan; stats: (() => BlurStats) | null }> {
+  const native = await chain.setBackgroundBlur(want);
+  const plan = planBackgroundBlur(want, {
+    native,
+    processor: processorBlurAvailable(),
+  });
+  if (plan !== "processor") {
+    // Native took it, or it is off, or nothing here can do it. In every one of
+    // those the draw step goes back to a plain copy -- including the native
+    // case, where stacking our blur on the camera's would cost a core to make
+    // the picture worse.
+    chain.setProcessor(null);
+    return { plan, stats: null };
+  }
+  // Already blurring: the preference did not actually move. The caller keeps
+  // whatever stats getter it already had.
+  if (chain.hasProcessor) return { plan, stats: null };
+
+  const processor = await BlurProcessor.create(opts.onGiveUp);
+  if (!opts.stillWanted()) {
+    processor.close();
+    return { plan: "off", stats: null };
+  }
+  chain.setProcessor(processor);
+  return { plan, stats: () => processor.stats() };
 }
 
 /** 52-3: what the blur is costing, as the diagnostics drawer reports it. */

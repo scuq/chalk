@@ -24,7 +24,15 @@ import { voiceSession } from "../voice/session";
 import { TRANSMIT_LABELS, TRANSMIT_MODES, isTransmitMode } from "../voice/vad";
 import { isTypingTarget, keyLabel } from "../voice/hotkeys";
 import { METER_FLOOR_DB, dbLabel, meterPos, meterRms, rmsToDb } from "../voice/meter-scale";
-import { canChooseOutput, useDevicePrefs, useMediaDevices } from "../voice/device-prefs";
+import {
+  canChooseOutput,
+  useDevicePrefs,
+  useMediaDevices,
+  type DevicePrefs,
+} from "../voice/device-prefs";
+import { CameraChain } from "../voice/camera-chain";
+import { applyBlurTo } from "../voice/camera-blur";
+import { previewSource } from "../voice/camera-effects";
 
 // Above this the signal is too hot to leave alone: clipping is unrecoverable at
 // the far end, where a quiet signal is merely quiet. The bar turns red here.
@@ -434,6 +442,157 @@ function DeviceSelect({
   );
 }
 
+/**
+ * CameraPreview (52-4): what your camera is about to send, before you send it.
+ *
+ * Without this the blur toggle is a promise you cannot check -- it does nothing
+ * visible until you are in a call with your camera on, which is the worst
+ * moment to discover that your room is still legible or that the effect is too
+ * slow for this machine.
+ *
+ * ON DEMAND, never automatic. Opening the camera because someone opened the
+ * settings dialog would light their camera indicator for a setting they came
+ * to change about the microphone.
+ *
+ * It runs the REAL pipeline -- the same CameraChain and the same applyBlurTo as
+ * a call -- so what it shows is what peers would get, including the cadence
+ * backing off on a slow machine. A mock would be a picture of a feature rather
+ * than the feature.
+ */
+function CameraPreview({ dev }: { dev: DevicePrefs }) {
+  const [on, setOn] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  // The chain is ours only when we opened it; when the preview is showing the
+  // call's own picture there is nothing here to close.
+  const chain = useRef<CameraChain | null>(null);
+
+  // The call's published video, or null when it has none. Tracked rather than
+  // read once: turning the camera on or off in the call while this is open
+  // changes which source is the right one, and being a dependency below means
+  // the switch happens by re-running the one start path instead of a second.
+  const [callVideo, setCallVideo] = useState<MediaStream | null>(() => {
+    const s = voiceSession.snap();
+    return previewSource(s) === "call" ? s.localStream : null;
+  });
+  useEffect(
+    () =>
+      voiceSession.subscribe(() => {
+        const s = voiceSession.snap();
+        setCallVideo(previewSource(s) === "call" ? s.localStream : null);
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    if (!on) return;
+    let stopped = false;
+
+    const start = async () => {
+      if (callVideo) {
+        setStream(callVideo);
+        return;
+      }
+      try {
+        const opened = await CameraChain.open(dev);
+        if (stopped) {
+          opened.close();
+          return;
+        }
+        chain.current = opened;
+        setStream(new MediaStream([opened.track]));
+        setError(null);
+        await applyBlurTo(opened, dev.backgroundBlur, {
+          stillWanted: () => !stopped,
+          onGiveUp: () => {
+            if (!stopped) setError("blur is too slow on this machine — it turned itself off");
+          },
+        });
+      } catch (err) {
+        if (stopped) return;
+        setError(describeMediaError("camera", err));
+        setOn(false);
+      }
+    };
+    void start();
+
+    return () => {
+      stopped = true;
+      const opened = chain.current;
+      chain.current = null;
+      opened?.close();
+      setStream(null);
+    };
+    // dev is read once to open the capture; later changes are pushed into the
+    // live chain by the two effects below rather than by reopening it. The
+    // cleanup closing our chain when callVideo appears is deliberate: the call
+    // taking its camera up means our second capture of the same device should
+    // go away.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [on, callVideo]);
+
+  // Toggling blur while the preview is up applies to it immediately -- that is
+  // the whole point of having it open while you decide.
+  useEffect(() => {
+    const opened = chain.current;
+    if (!opened) return;
+    applyBlurTo(opened, dev.backgroundBlur, {
+      stillWanted: () => chain.current === opened,
+      onGiveUp: () => setError("blur is too slow on this machine — it turned itself off"),
+    }).catch(() => setError("couldn't start background blur"));
+  }, [dev.backgroundBlur]);
+
+  // The device is a property of the capture, so the preview has to re-acquire.
+  useEffect(() => {
+    chain.current?.recapture(dev).catch((err) => setError(describeMediaError("camera", err)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dev.cameraId]);
+
+  return (
+    <div class="chalk-profile-field">
+      <div class="chalk-profile-camera-preview">
+        {stream && <PreviewSurface stream={stream} />}
+        <button
+          type="button"
+          class="chalk-profile-camera-btn"
+          onClick={() => {
+            setError(null);
+            setOn((v) => !v);
+          }}
+          aria-label={on ? "stop the camera preview" : "preview the camera"}
+          data-testid="camera-preview-toggle"
+        >
+          {on ? "stop preview" : "preview"}
+        </button>
+      </div>
+      {error && (
+        <p class="chalk-profile-hint" data-testid="camera-preview-error">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Mirrored, like every other self-view in the app: an un-mirrored preview of
+ *  your own face reads as someone else's camera. */
+function PreviewSurface({ stream }: { stream: MediaStream }) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    if (ref.current && ref.current.srcObject !== stream) ref.current.srcObject = stream;
+  }, [stream]);
+  return (
+    <video
+      ref={ref}
+      class="chalk-voice-video chalk-voice-video-mirrored chalk-profile-camera-video"
+      data-testid="camera-preview-video"
+      autoPlay
+      playsInline
+      muted
+    />
+  );
+}
+
 export function MicSettings() {
   const [mic, setMic] = useMicPrefs();
   const [dev, setDev] = useDevicePrefs();
@@ -492,6 +651,8 @@ export function MicSettings() {
           </span>
         </label>
       </div>
+
+      <CameraPreview dev={dev} />
 
       {/* Firefox does not list output devices and Safari cannot route to one,
           so on those this is absent rather than a control that does nothing. */}

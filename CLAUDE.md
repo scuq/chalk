@@ -67,7 +67,7 @@ gofmt -l .                         # must be empty before commit
 # client (from web/)
 npm install
 npx tsc --noEmit
-node test.mjs                      # node:test suite; currently 725 tests, 0 fail
+node test.mjs                      # node:test suite; currently 729 tests, 0 fail
 node build.mjs
 
 # database (dev)
@@ -173,11 +173,12 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   a content-hashed `dist/mediapipe-<hash>/` (build.mjs) with the model
   committed at `web/assets/mediapipe/`. 52-3 is the frame-budget ladder
   (`camera-budget.ts`): segment every Nth frame rather than drop frames, give
-  up and say so at the floor.
-- Next candidates, none started: a blur preview in settings (today the toggle
-  does nothing visible until you are in a call with the camera on); the SFU
-  seam (voice design Slice I) for rooms too large for a mesh; governance
-  `set_config` proposals.
+  up and say so at the floor. 52-4 is the settings preview (`CameraPreview` in
+  `MicSettings.tsx`), which runs the real pipeline through the shared
+  `applyBlurTo` and defers to the call's own published stream when there is one
+  (`previewSource`) rather than opening the camera twice.
+- Next candidates, none started: the SFU seam (voice design Slice I) for rooms
+  too large for a mesh; governance `set_config` proposals.
 - Deferred cleanup, all verified still open:
   - `RegisterFromInviteScreen` still registers passkey-first
     (`navigator.credentials.create()`), out of step with the auth-v2 password

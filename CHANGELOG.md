@@ -14,10 +14,13 @@ The engineering-level history (which slice shipped what) lives in
 
 ### Added
 - **Blur your background on video calls.** There's a "blur my background"
-  switch under the camera picker in settings. Turn it on and the room behind
-  you goes soft while you stay sharp — mid-call, without the picture dropping
-  for anyone watching. It's a per-machine setting, so blurring on the desktop
-  doesn't turn it on for your phone.
+  switch under the camera picker in settings, with a preview button beside it
+  so you can see exactly what your camera is about to send before you send it —
+  no need to be in a call to set it up, and the preview shows the real thing,
+  blur and all. Turn it on and the room behind you goes soft while you stay
+  sharp — mid-call, without the picture dropping for anyone watching. It's a
+  per-machine setting, so blurring on the desktop doesn't turn it on for your
+  phone.
 
   Where your camera or operating system can blur by itself, chalk lets it —
   that costs nothing and looks better. Everywhere else chalk does it in your

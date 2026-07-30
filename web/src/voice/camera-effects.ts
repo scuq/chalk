@@ -97,6 +97,27 @@ export function processorBlurAvailable(): boolean {
   return typeof WebAssembly !== "undefined" && typeof document !== "undefined";
 }
 
+/**
+ * 52-4: where the settings preview should get its picture.
+ *
+ *   "call" -- a live call is already publishing video, so show THAT. It is the
+ *             real published frame, already blurred by the real pipeline, and
+ *             it costs nothing extra.
+ *   "own"  -- no call, or its camera is off. Open a short-lived capture.
+ *
+ * The rule exists to avoid opening the same camera twice while it is being
+ * published: a second capture with different constraints can make the browser
+ * reconfigure the shared device, which would disturb the picture everyone in
+ * the call is watching. It is the same call MicSettings already makes for the
+ * level meter (41-3), for the same reason.
+ */
+export function previewSource(snap: {
+  camOn: boolean;
+  localStream: MediaStream | null;
+}): "call" | "own" {
+  return snap.camOn && snap.localStream !== null ? "call" : "own";
+}
+
 /** The constraint shape, kept separate because it too is off-spec. */
 interface BlurConstraints extends MediaTrackConstraints {
   backgroundBlur?: boolean;

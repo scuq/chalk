@@ -3380,6 +3380,42 @@ body.chalk-resizing .chalk-sidebar-resizer {
   gap: var(--chalk-s2);
   margin-top: var(--chalk-s1);
 }
+
+/* 52-4: the camera preview. The button sits beside the picture rather than
+   under it so the row keeps its height when nothing is playing. */
+.chalk-profile-camera-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s1);
+}
+
+.chalk-profile-camera-video {
+  width: 240px;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  border: 1px solid var(--chalk-border);
+  border-radius: 2px;
+  object-fit: cover;
+}
+
+.chalk-profile-camera-btn {
+  background: transparent;
+  border: 1px solid var(--chalk-fg-muted);
+  border-radius: 2px;
+  color: var(--chalk-fg);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: var(--chalk-s1) var(--chalk-s3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chalk-profile-camera-btn:hover,
+.chalk-profile-camera-btn:focus-visible {
+  background: var(--chalk-bg-elev);
+}
 /* 44-8: the outer element is only a positioning context now, so the threshold
    handles can hang past the bar's ends without being clipped by the overflow
    rule that keeps the fill inside the rounded corners. */

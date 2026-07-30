@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nativeBlurCapable, planBackgroundBlur } from "./camera-effects.ts";
+import { nativeBlurCapable, planBackgroundBlur, previewSource } from "./camera-effects.ts";
 
 test("a camera offering the choice is capable", () => {
   assert.equal(nativeBlurCapable({ backgroundBlur: [false, true] }), true);
@@ -43,4 +43,26 @@ test("wanting blur nothing can produce is off, not an error", () => {
 
 test("not wanting blur is off however capable the machine is", () => {
   assert.equal(planBackgroundBlur(false, { native: true, processor: true }), "off");
+});
+
+// ---- 52-4: where the settings preview gets its picture --------------------
+
+test("a call publishing video is the preview", () => {
+  // The real published frame, already blurred by the real pipeline, for free.
+  const s = { camOn: true, localStream: {} as MediaStream };
+  assert.equal(previewSource(s), "call");
+});
+
+test("a call with the camera off opens its own capture", () => {
+  assert.equal(previewSource({ camOn: false, localStream: {} as MediaStream }), "own");
+});
+
+test("no call at all opens its own capture", () => {
+  assert.equal(previewSource({ camOn: false, localStream: null }), "own");
+});
+
+test("camOn with no stream yet is not a preview source", () => {
+  // The window between toggling the camera on and the track existing. Showing
+  // "call" here would attach null and leave a dead black rectangle.
+  assert.equal(previewSource({ camOn: true, localStream: null }), "own");
 });
