@@ -146,6 +146,10 @@ interface Props {
   // prefs, so both travel with you; sent whole, like the chat block.
   parkingLot?: { name: string; hidden: boolean };
   onSetParkingLot?: (next: { name: string; hidden: boolean }) => void;
+  // 54-3: whether the sidebar groups channels under their group names.
+  // Account pref, so the roster reads the same on every device.
+  rosterGroupingEnabled?: boolean;
+  onSetRosterGrouping?: (enabled: boolean) => void;
 }
 
 export function ProfilePanel({
@@ -163,6 +167,8 @@ export function ProfilePanel({
   onOpenMicSettings,
   parkingLot,
   onSetParkingLot,
+  rosterGroupingEnabled,
+  onSetRosterGrouping,
   onClose,
   onEmailChangeDraft,
   onEmailChangeSubmit,
@@ -806,6 +812,34 @@ export function ProfilePanel({
                   </button>
                 </div>
               )}
+            </section>
+          )}
+
+          {/* 54-3: channel grouping. Off renders the sidebar's channel list
+              flat, exactly as before phase 54. */}
+          {rosterGroupingEnabled !== undefined && onSetRosterGrouping && (
+            <section class="chalk-profile-roster" data-testid="roster-settings">
+              <h3>channel list</h3>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={rosterGroupingEnabled}
+                    onChange={(e) =>
+                      onSetRosterGrouping((e.target as HTMLInputElement).checked)
+                    }
+                    data-testid="roster-grouping"
+                  />
+                  <span>
+                    group channels{" "}
+                    <span class="chalk-profile-theme-desc">
+                      (collapsible headers in the sidebar, once more than one
+                      group exists; each channel's group is suggested by its
+                      creator)
+                    </span>
+                  </span>
+                </label>
+              </div>
             </section>
           )}
 

@@ -17,6 +17,12 @@ import {
 } from "../chat/nickcolor";
 import { PrioritySelect } from "./PrioritySelect";
 import { filterRoster, showRosterFilter } from "../chat/roster-filter";
+import {
+  groupRoster,
+  loadCollapsedGroups,
+  saveCollapsedGroups,
+} from "../chat/channel-groups";
+import type { RosterGroup } from "../chat/channel-groups";
 import { withChannelRule, withUserRule } from "../notify/rules";
 import { useRulesConfig } from "../notify/rules-store";
 import { countsAsUnread, hasUnread } from "../state/types";
@@ -155,6 +161,10 @@ interface Props {
   selfHue?: number | null;
   onSetFriendHue?: (handle: string, hue: number | null) => void;
   onCreateClick: () => void;
+  // 54-3: render the channels section grouped by each channel's group name.
+  // Headers only appear once a second group exists -- an all-'General'
+  // roster looks exactly like the ungrouped one.
+  groupingEnabled?: boolean;
   // 53-1: the parking lot. A pseudo-channel that shows nothing -- one click
   // and the conversation pane is a logo. null hides the row (the setting), and
   // parked highlights it the way an open channel is highlighted.
@@ -310,6 +320,7 @@ export function Sidebar({
   selfHue,
   onSetFriendHue,
   onCreateClick,
+  groupingEnabled = true,
   parkingName,
   parked = false,
   onPark,
@@ -403,6 +414,40 @@ export function Sidebar({
 
   const visibleChannels = filterRoster(groupChannels, channelFilter, (ch) => ch.name);
   const showChannelFilter = showRosterFilter(groupChannels.length);
+
+  // 54-3: grouped view. An active filter always renders flat -- a match
+  // hidden inside a collapsed group would read as "filter is broken" -- and
+  // a single group draws no headers. Collapse state is per-machine.
+  const channelGroups = groupRoster(groupChannels);
+  const groupedView =
+    groupingEnabled && channelFilter.trim() === "" && channelGroups.length > 1;
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
+    loadCollapsedGroups()
+  );
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      saveCollapsedGroups(next);
+      return next;
+    });
+  };
+
+  // The channels <ul> renders one flat row list either way: headers
+  // interleaved with the visible channels when grouped, just the filtered
+  // channels when not. Keeps the (large) channel-row JSX single-sourced.
+  type RosterRow =
+    | { kind: "header"; group: RosterGroup }
+    | { kind: "channel"; ch: ChannelSummary };
+  const rosterRows: RosterRow[] = groupedView
+    ? channelGroups.flatMap((g): RosterRow[] => [
+        { kind: "header", group: g },
+        ...(collapsedGroups.has(g.key)
+          ? []
+          : g.channels.map((ch): RosterRow => ({ kind: "channel", ch }))),
+      ])
+    : visibleChannels.map((ch): RosterRow => ({ kind: "channel", ch }));
 
   return (
     <div class="chalk-sidebar-inner" data-testid="sidebar">
@@ -613,7 +658,49 @@ export function Sidebar({
           {groupChannels.length > 0 && visibleChannels.length === 0 && (
             <li class="chalk-sidebar-empty">no matches</li>
           )}
-          {visibleChannels.map((ch) => {
+          {rosterRows.map((row) => {
+            if (row.kind === "header") {
+              const g = row.group;
+              const isCollapsed = collapsedGroups.has(g.key);
+              // Rolled-up dot, only while folded: same countsAsUnread call
+              // the rows themselves make, so folding a group can't become
+              // an accidental mute. Mention variant wins.
+              let rollUnread = false;
+              let rollMention = false;
+              if (isCollapsed) {
+                for (const ch of g.channels) {
+                  const u = unread[ch.id];
+                  const r = ch.channelType === "voice" ? (voiceRosters[ch.id] ?? []) : [];
+                  const inR = !!ownUserID && r.some((p) => p.userID === ownUserID);
+                  if (countsAsUnread(u, ch.channelType, inR)) {
+                    rollUnread = true;
+                    if (u.mention) rollMention = true;
+                  }
+                }
+              }
+              return (
+                <li key={"group:" + g.key} class="chalk-sidebar-group">
+                  <button
+                    type="button"
+                    class="chalk-sidebar-group-header"
+                    data-testid="sidebar-group-header"
+                    data-group={g.key}
+                    data-collapsed={isCollapsed ? "true" : "false"}
+                    aria-expanded={!isCollapsed}
+                    onClick={() => toggleGroup(g.key)}
+                    title={isCollapsed ? `expand ${g.name}` : `collapse ${g.name}`}
+                  >
+                    <span class="chalk-sidebar-group-arrow" aria-hidden="true">
+                      {isCollapsed ? "▸" : "▾"}
+                    </span>
+                    <span class="chalk-sidebar-group-name">{g.name}</span>
+                    <span class="chalk-sidebar-count">({g.channels.length})</span>
+                    {rollUnread && <UnreadDot mention={rollMention} />}
+                  </button>
+                </li>
+              );
+            }
+            const ch = row.ch;
             const isVoice = ch.channelType === "voice";
             const roster = isVoice ? (voiceRosters[ch.id] ?? []) : [];
             const u = unread[ch.id];

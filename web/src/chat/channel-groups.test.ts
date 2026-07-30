@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_GROUP,
   canonicalizeGroup,
+  groupRoster,
   knownGroups,
+  loadCollapsedGroups,
 } from "./channel-groups";
 import type { ChannelSummary } from "../state/types";
 
@@ -72,4 +74,56 @@ test("canonicalizeGroup adopts existing casing on a case-insensitive hit", () =>
 
 test("canonicalizeGroup passes a genuinely new name through trimmed", () => {
   assert.equal(canonicalizeGroup("  Gaming  ", [DEFAULT_GROUP]), "Gaming");
+});
+
+test("groupRoster puts the default group first, rest alphabetical", () => {
+  const got = groupRoster([
+    channel({ id: "a", groupName: "zeta" }),
+    channel({ id: "b", groupName: "Alpha" }),
+    channel({ id: "c", groupName: DEFAULT_GROUP }),
+  ]);
+  assert.deepEqual(
+    got.map((g) => g.name),
+    [DEFAULT_GROUP, "Alpha", "zeta"]
+  );
+});
+
+test("groupRoster merges case-insensitively and keeps first-seen casing", () => {
+  const got = groupRoster([
+    channel({ id: "a", groupName: "Dev" }),
+    channel({ id: "b", groupName: "dev" }),
+  ]);
+  assert.equal(got.length, 1);
+  assert.equal(got[0].name, "Dev");
+  assert.equal(got[0].key, "dev");
+  assert.deepEqual(
+    got[0].channels.map((c) => c.id),
+    ["a", "b"]
+  );
+});
+
+test("groupRoster keeps input order within a group", () => {
+  const got = groupRoster([
+    channel({ id: "newest", groupName: "Ops" }),
+    channel({ id: "older", groupName: "Ops" }),
+  ]);
+  assert.deepEqual(
+    got[0].channels.map((c) => c.id),
+    ["newest", "older"]
+  );
+});
+
+test("groupRoster files blank groups under the default", () => {
+  const got = groupRoster([channel({ id: "a", groupName: "  " })]);
+  assert.equal(got.length, 1);
+  assert.equal(got[0].name, DEFAULT_GROUP);
+});
+
+test("groupRoster of nothing is nothing", () => {
+  assert.deepEqual(groupRoster([]), []);
+});
+
+test("loadCollapsedGroups without a window is an empty set", () => {
+  // node has no localStorage; the helper must fail closed (all expanded).
+  assert.deepEqual(loadCollapsedGroups(), new Set());
 });

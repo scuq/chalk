@@ -373,7 +373,15 @@ export interface UserPrefs {
   notify_rules_enc?: string;
   // 53-1: the parking lot's title + whether its row shows.
   parkingLot?: ParkingLotPrefs;
+  // 54-3: roster display prefs (channel grouping).
+  roster?: RosterPrefs;
   // [extend with more keys in future phases]
+}
+
+// 54-3: roster prefs as stored (sparse). groupingEnabled toggles the
+// grouped channels view; 54-4 adds per-channel group overrides here.
+export interface RosterPrefs {
+  groupingEnabled?: boolean;
 }
 
 // Phase 9.7d: resolved chat prefs (all fields required + defaulted).
@@ -424,6 +432,21 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
         ? SIDEBAR_WIDTH_DEFAULT
         : clampSidebarWidth(c.sidebarWidth),
     typingIndicators: c.typingIndicators ?? true,
+  };
+}
+
+// 54-3: resolved roster prefs, same contract as ResolvedChatPrefs.
+// Grouping defaults ON: with every channel in 'General' the sidebar renders
+// exactly as before (a single group draws no headers), so the default only
+// becomes visible once a second group exists.
+export interface ResolvedRosterPrefs {
+  groupingEnabled: boolean;
+}
+
+export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterPrefs {
+  const r = prefs?.roster ?? {};
+  return {
+    groupingEnabled: r.groupingEnabled ?? true,
   };
 }
 

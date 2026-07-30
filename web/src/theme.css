@@ -2707,6 +2707,44 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 
 /* ============================================================
+   Phase 54-3: channel groups in the sidebar
+   ============================================================ */
+
+/* A group header is a full-width button row between channel rows.
+   Muted like the section titles so the channel names stay the loudest
+   text in the column; the whole row is the fold/unfold click target. */
+.chalk-sidebar-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0.25rem var(--chalk-s2);
+  margin-top: 0.25rem;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+  cursor: pointer;
+  text-align: left;
+}
+
+.chalk-sidebar-group-header:hover {
+  color: var(--chalk-fg);
+}
+
+.chalk-sidebar-group-arrow {
+  flex-shrink: 0;
+  width: 0.8em;
+}
+
+.chalk-sidebar-group-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
    Phase 9.6c: presence dots
    ============================================================ */
 

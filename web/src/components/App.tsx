@@ -169,7 +169,7 @@ import {
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
-import { hasUnread, initialState, selectChatPrefs, selectParkingLotPrefs, type AppState, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow } from "../state/types";
+import { hasUnread, initialState, selectChatPrefs, selectParkingLotPrefs, selectRosterPrefs, type AppState, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow } from "../state/types";
 import { loadParked, saveParked } from "../parking";
 import { selectGiphyPref } from "../giphy/giphy";
 import { Logo } from "./Logo";
@@ -4054,6 +4054,7 @@ export function App() {
           }}
           channels={state.channelOrder.map((id) => state.channels[id])}
           friends={state.friends}
+          groupingEnabled={selectRosterPrefs(state.prefs).groupingEnabled}
           activeID={state.activeChannelID}
           ownUserID={state.user?.id ?? null}
           presence={state.presence}
@@ -4721,6 +4722,15 @@ export function App() {
             const c = clientRef.current;
             if (!c || !c.isOpen()) return;
             c.send(TypePrefsSet, { patch: { parkingLot: next } });
+          }}
+          // 54-3: same shallow-merge rule -- the whole roster object goes
+          // over, so 54-4's group overrides won't get wiped by this toggle.
+          rosterGroupingEnabled={selectRosterPrefs(state.prefs).groupingEnabled}
+          onSetRosterGrouping={(enabled) => {
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            const current = selectRosterPrefs(state.prefs);
+            c.send(TypePrefsSet, { patch: { roster: { ...current, groupingEnabled: enabled } } });
           }}
           onClearImageCache={() => clearAttachmentCache()}
           giphyPref={selectGiphyPref(state.prefs)}

@@ -13,6 +13,13 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **The channel list can fold into groups.** Once your channels live in
+  more than one group, the sidebar shows them under collapsible headers —
+  click a header to fold a group away, and a dot on the folded header
+  still tells you something unread is inside. Which groups you keep
+  folded is remembered per device, the filter box always searches across
+  all of them, and you can turn grouping off entirely in settings under
+  "channel list".
 - **Channels can carry a group.** Creating a channel now has an optional
   "group" field — a suggestion for how the channel should be grouped in
   the sidebar. Pick an existing group from the list or type a new one;
