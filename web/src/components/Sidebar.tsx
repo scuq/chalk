@@ -16,6 +16,7 @@ import {
   nickTintStyle,
 } from "../chat/nickcolor";
 import { PrioritySelect } from "./PrioritySelect";
+import { filterRoster, showRosterFilter } from "../chat/roster-filter";
 import { withChannelRule, withUserRule } from "../notify/rules";
 import { useRulesConfig } from "../notify/rules-store";
 import { countsAsUnread, hasUnread } from "../state/types";
@@ -167,11 +168,6 @@ interface Props {
   threadsUnread?: number;
 }
 
-// Show the filter input above the friends list only when the roster
-// has at least this many entries. Below the threshold the input
-// would be clutter (you can scan a 1-6 friend list at a glance).
-const FRIEND_FILTER_THRESHOLD = 7;
-
 function sortFriends(friends: Friend[]): Friend[] {
   return [...friends].sort((a, b) => {
     if (a.handle && !b.handle) return -1;
@@ -321,6 +317,9 @@ export function Sidebar({
   threadsUnread = 0,
 }: Props) {
   const [filter, setFilter] = useState("");
+  // 54-1: the channels list gets the same filter treatment as friends.
+  // Separate state -- each input appears only when its own list is long.
+  const [channelFilter, setChannelFilter] = useState("");
 
   const groupChannels = channels.filter((ch) => !ch.isDM);
   // 53-1: the active channel is still pointed at while parked, but it isn't on
@@ -395,14 +394,15 @@ export function Sidebar({
 
   const sortedFriends = sortFriends(friends);
 
-  const trimmedFilter = filter.trim().toLowerCase();
-  const visibleFriends = trimmedFilter
-    ? sortedFriends.filter((f) =>
-        (f.handle || f.userID).toLowerCase().includes(trimmedFilter)
-      )
-    : sortedFriends;
+  const visibleFriends = filterRoster(
+    sortedFriends,
+    filter,
+    (f) => f.handle || f.userID
+  );
+  const showFilter = showRosterFilter(sortedFriends.length);
 
-  const showFilter = sortedFriends.length >= FRIEND_FILTER_THRESHOLD;
+  const visibleChannels = filterRoster(groupChannels, channelFilter, (ch) => ch.name);
+  const showChannelFilter = showRosterFilter(groupChannels.length);
 
   return (
     <div class="chalk-sidebar-inner" data-testid="sidebar">
@@ -588,6 +588,21 @@ export function Sidebar({
             title="new channel"
           >+</button>
         </div>
+
+        {showChannelFilter && (
+          <div class="chalk-sidebar-filter">
+            <input
+              type="text"
+              class="chalk-sidebar-filter-input"
+              data-testid="sidebar-channels-filter"
+              placeholder="filter…"
+              value={channelFilter}
+              onInput={(e) => setChannelFilter((e.target as HTMLInputElement).value)}
+              aria-label="filter channels"
+            />
+          </div>
+        )}
+
         <ul
           class="chalk-sidebar-list chalk-sidebar-list--channels"
           data-testid="sidebar-list"
@@ -595,7 +610,10 @@ export function Sidebar({
           {groupChannels.length === 0 && (
             <li class="chalk-sidebar-empty">no channels yet</li>
           )}
-          {groupChannels.map((ch) => {
+          {groupChannels.length > 0 && visibleChannels.length === 0 && (
+            <li class="chalk-sidebar-empty">no matches</li>
+          )}
+          {visibleChannels.map((ch) => {
             const isVoice = ch.channelType === "voice";
             const roster = isVoice ? (voiceRosters[ch.id] ?? []) : [];
             const u = unread[ch.id];

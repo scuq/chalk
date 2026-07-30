@@ -10,6 +10,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Filter for a long channel list.** When the sidebar's channel list grows
+  past a handful of entries, a filter box appears above it — type a few
+  letters and only matching channels stay visible, the same way the friends
+  list already works.
+
 ## v0.4.4 — 30 July 2026 — Background blur and the parking lot
 
 ### Added
