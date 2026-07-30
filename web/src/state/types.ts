@@ -375,7 +375,25 @@ export interface UserPrefs {
   parkingLot?: ParkingLotPrefs;
   // 54-3: roster display prefs (channel grouping).
   roster?: RosterPrefs;
+  // 57-2: link-preview consent (tri-state). Absent = "unset" (default OFF):
+  // no sender-side preview generation until the user opts in. Gates only
+  // GENERATION -- received cards render from E2E data with zero fetches.
+  // See selectLinkPreviewPref in ../linkpreview/linkpreview.ts.
+  linkpreview?: "unset" | "enabled" | "disabled";
+  // 57-2: per-user whitelist overrides layered onto the server's default
+  // list (effectiveLinkPreviewDomains): added domains auto-offer previews,
+  // removed ones stop doing so.
+  linkpreviewDomains?: LinkPreviewDomainPrefs;
+  // 57-2: display-only -- hide received preview cards (render just the
+  // text). Independent of the consent pref above.
+  linkpreviewHideCards?: boolean;
   // [extend with more keys in future phases]
+}
+
+// 57-2: link-preview whitelist overrides as stored (sparse).
+export interface LinkPreviewDomainPrefs {
+  added?: string[];
+  removed?: string[];
 }
 
 // 54-3: roster prefs as stored (sparse). groupingEnabled toggles the

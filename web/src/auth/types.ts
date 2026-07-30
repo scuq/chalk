@@ -81,6 +81,11 @@ export interface AuthConfig {
   // Giphy button is shown only when true. Per-user consent (prefs.giphy) is
   // separate and gates whether the picker/search actually run.
   giphy_enabled: boolean;
+  // 57-2: whether the server's link-preview fetcher is available, and the
+  // default domain whitelist. Per-user consent (prefs.linkpreview) and
+  // overrides (prefs.linkpreviewDomains) are separate SPA-side concerns.
+  linkpreview_enabled: boolean;
+  linkpreview_domains: string[];
 }
 
 // RegistrationForm is the SPA-side draft state of the registration
