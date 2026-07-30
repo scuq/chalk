@@ -10,6 +10,17 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- **The threads marker now keeps up with the threads.** It was a number the
+  server worked out when the list was last fetched, so it lagged in both
+  directions: a reply landing in a thread you're part of didn't light it up
+  until minutes later, and reading that thread didn't put it out. Both now
+  happen as they occur, on this device and on your others.
+
+---
+
 ## v0.4.3 — 29 July 2026 — Unread indicators and browser hardening
 
 ### Added

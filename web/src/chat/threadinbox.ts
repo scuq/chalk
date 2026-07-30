@@ -39,6 +39,47 @@ export function isThreadUnread(
   return row.lastReplySeq > cursor;
 }
 
+// 45-4: the number behind the sidebar's threads dot, kept live between fetches.
+//
+// The total is the SERVER's -- involved threads with an unread reply, at any age
+// and with no limit -- and only it can count the threads whose rows this client
+// doesn't hold. But it is a snapshot: between fetches a reply can land on a
+// thread we hold, or one we hold can be read here or on another device, and a
+// dot that waits for the next fetch to notice is a dot people learn to distrust.
+//
+// So: take the server's number and correct it by what we can see. Every held row
+// either agrees with the snapshot or has moved one way since, and each move is
+// worth exactly one. unreadAtFetch is frozen at the ack for this reason -- it
+// says what the server counted, which is not the same question as "is this row
+// unread now".
+//
+// Involvement only, because that is what the total counts. Mentions refine the
+// panel's "needs you" grouping, but the server cannot see them (bodies are
+// ciphertext), so folding them in here would mean adding to a number that will
+// drop them again on the next fetch.
+export interface ThreadCountFacts extends ThreadRelevanceFacts {
+  unreadAtFetch: boolean;
+}
+
+export function threadsNeedingYouCount(
+  serverTotal: number,
+  rows: ThreadCountFacts[],
+  seen: Record<string, number>,
+): number {
+  let delta = 0;
+  const counted = new Set<string>();
+  for (const r of rows) {
+    if (!r.involved || counted.has(r.threadID)) continue;
+    counted.add(r.threadID);
+    const unreadNow = isThreadUnread(r, seen);
+    if (unreadNow && !r.unreadAtFetch) delta++;
+    else if (!unreadNow && r.unreadAtFetch) delta--;
+  }
+  // A correction can only ever be wrong downwards -- a row we hold that the
+  // server counted twice, say -- and a negative badge is nonsense either way.
+  return Math.max(0, serverTotal + delta);
+}
+
 // partitionThreadInbox splits rows into the two groups the panel renders.
 //
 // "Needs you" is unread AND (involved OR mentioned). A forty-reply thread you

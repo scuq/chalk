@@ -119,6 +119,11 @@ export interface ThreadInboxRow {
   // be ahead of it; isThreadUnread takes the max of both.
   lastReadSeq: number;
   involved: boolean;
+  // 45-4: was this row unread when the SERVER last counted, i.e. is it one of
+  // the threads behind threadInboxUnreadTotal? Frozen at the ack -- unlike
+  // lastReplySeq, which live replies bump -- because it is what the derived
+  // count subtracts from that total (threadsNeedingYouCount).
+  unreadAtFetch: boolean;
 }
 
 // 37-5: one member's decrypted reaction set for one message. Re-exported from

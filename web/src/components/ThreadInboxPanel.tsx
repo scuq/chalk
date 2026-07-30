@@ -68,7 +68,7 @@ interface Props {
   // newest-first with the head last. What the filter actually searches (47-8).
   threadLines: Record<string, ThreadLine[]>;
   onOpenThread: (channelID: string, threadID: string) => void;
-  // 47-10: clear the rows listed here without opening them. Gets exactly the
+  // 45-3: clear the rows listed here without opening them. Gets exactly the
   // rows the button was offered for, so what it marks is what was on screen --
   // including while filtering.
   onMarkAllRead: (rows: ThreadInboxRow[]) => void;
@@ -155,7 +155,7 @@ export function ThreadInboxPanel({
     [rows, threadSeen, mentions],
   );
 
-  // 47-10: every listed row with an unread reply, in both groups -- "mark all
+  // 45-3: every listed row with an unread reply, in both groups -- "mark all
   // read" is about the badge, and the badge doesn't care which group a thread
   // landed in.
   const unreadRows = useMemo(

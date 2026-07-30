@@ -14,7 +14,7 @@
 //   - On open_create_modal, if friends not yet loaded, fire friend_list.
 
 import { resolveNickHue } from "../chat/nickcolor";
-import type { ThreadLine } from "../chat/threadinbox";
+import { threadsNeedingYouCount, type ThreadLine } from "../chat/threadinbox";
 import { TYPING_PING_MS } from "../chat/typing";
 import { typingStore } from "../chat/typing-store";
 import { mentionsHandle } from "../chat/mentions";
@@ -403,6 +403,7 @@ function wireToThreadInboxRow(w: ThreadInboxEntry): ThreadInboxRow {
     replyCount: w.reply_count,
     lastReadSeq: w.last_read_seq,
     involved: w.involved,
+    unreadAtFetch: w.last_reply_seq > w.last_read_seq,
   };
 }
 
@@ -2541,6 +2542,25 @@ export function App() {
     if (tabVisible && state.activeChannelID) notifyBanners().closeChannel(state.activeChannelID);
   }, [tabVisible, state.activeChannelID]);
 
+  // 45-4: how many threads need you, as of RIGHT NOW rather than as of the
+  // last inbox fetch. The sidebar dot and the tab badge both render this, so
+  // they cannot disagree about it. See threadsNeedingYouCount for why the
+  // server's total is corrected rather than replaced.
+  const threadsNeedingYou = useMemo(
+    () =>
+      threadsNeedingYouCount(
+        state.threadInboxUnreadTotal,
+        [...state.threadInboxActive, ...state.threadInboxAgedUnread],
+        state.threadSeen,
+      ),
+    [
+      state.threadInboxUnreadTotal,
+      state.threadInboxActive,
+      state.threadInboxAgedUnread,
+      state.threadSeen,
+    ],
+  );
+
   // 50-7: the unread badge -- "(n) chalk" in the tab title, and the app
   // icon badge where installed as a PWA. Derived purely from read-cursor
   // state (badge.ts), so it clears on its own when things are read on
@@ -2566,7 +2586,7 @@ export function App() {
     const n = badgeCount({
       unread: unreadForBadge,
       dmChannelIDs,
-      threadInboxUnreadTotal: state.threadInboxUnreadTotal,
+      threadInboxUnreadTotal: threadsNeedingYou,
       pendingIncomingCount: state.pendingIncoming.length,
     });
     titleController().setCount(n);
@@ -2585,7 +2605,7 @@ export function App() {
     state.channels,
     state.voiceRosters,
     state.user?.id,
-    state.threadInboxUnreadTotal,
+    threadsNeedingYou,
     state.pendingIncoming,
   ]);
 
@@ -3761,17 +3781,16 @@ export function App() {
     return () => window.clearTimeout(t);
   }, [state.threadInboxStale]);
 
-  // 47-9: a thread cursor moved, so the threads dot has to be recounted.
+  // 45-3: a thread cursor moved, so re-sync the server's total behind it.
   //
-  // The number behind that dot is the SERVER's -- involved threads with an
-  // unread reply, at any age and with no limit -- so only a refetch can move
-  // it. Without this the dot survived reading the thread and only cleared the
-  // next time the panel was opened (which refetches), which read as "I have to
-  // click it twice".
+  // threadsNeedingYouCount already corrects that total for every row this
+  // client holds, which is what makes the dot clear the instant a thread is
+  // read. This is for the threads it does NOT hold rows for -- involved and
+  // unread beyond the page we fetched -- where only the server can recount.
   //
-  // Debounced, and only when there is something to clear: a thread you are
-  // watching bumps its cursor per arriving reply, and channel history hydrates
-  // cursors on every channel you open.
+  // Debounced, and only when the server thinks something is unread: a thread
+  // you are watching bumps its cursor per arriving reply, and channel history
+  // hydrates cursors on every channel you open.
   useEffect(() => {
     if (state.threadInboxUnreadTotal === 0) return;
     const t = window.setTimeout(() => {
@@ -4033,7 +4052,7 @@ export function App() {
             setNavOpen(false);
             dispatch({ kind: "open_panel", panel: "threads" });
           }}
-          threadsUnread={state.threadInboxUnreadTotal}
+          threadsUnread={threadsNeedingYou}
         />
         {/* 30-5c: the persistent-call dock -- app-level audio sinks + the
             Discord-style connection bar. Renders nothing while idle. */}
@@ -4461,7 +4480,7 @@ export function App() {
           agedUnread={state.threadInboxAgedUnread}
           loaded={state.threadInboxLoaded}
           hasMoreActive={state.threadInboxHasMoreActive}
-          unreadTotal={state.threadInboxUnreadTotal}
+          unreadTotal={threadsNeedingYou}
           windowHours={state.threadInboxWindowHours}
           threadSeen={state.threadSeen}
           mentions={state.threadMentions}
@@ -4474,7 +4493,7 @@ export function App() {
             dispatch({ kind: "close_panel" });
           }}
           onMarkAllRead={(rows) => {
-            // 47-10: one mark_thread_read per row -- the same frame reading the
+            // 45-3: one mark_thread_read per row -- the same frame reading the
             // thread sends, so the cursor lands in the same place and reaches
             // this user's other devices the same way. The local bump is
             // optimistic; each ack carries the server's clamped value.

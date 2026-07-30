@@ -19,6 +19,8 @@ import {
   threadAgeStep,
   threadQueryTerms,
   threadRowMatches,
+  threadsNeedingYouCount,
+  type ThreadCountFacts,
   type ThreadRelevanceFacts,
 } from "./threadinbox.ts";
 
@@ -201,4 +203,61 @@ test("no line containing any term returns -1", () => {
 
 test("matching lines is case-insensitive", () => {
   assert.equal(bestMatchLine(["The Deploy Broke"], threadQueryTerms("deploy")), 0);
+});
+
+// ---- 45-4: the live count behind the threads dot -------------------------
+//
+// The server's total is a snapshot. What matters is that the dot tracks what
+// the user just did -- read a thread, got a reply -- instead of waiting for
+// the next fetch to agree.
+
+function countRow(over: Partial<ThreadCountFacts> = {}): ThreadCountFacts {
+  return {
+    threadID: "t1",
+    lastReplySeq: 10,
+    lastReadSeq: 0,
+    involved: true,
+    unreadAtFetch: true,
+    ...over,
+  };
+}
+
+test("with nothing held the server's total stands", () => {
+  assert.equal(threadsNeedingYouCount(3, [], {}), 3);
+});
+
+test("reading a counted thread drops the total by one", () => {
+  const rows = [countRow({ threadID: "a" }), countRow({ threadID: "b" })];
+  assert.equal(threadsNeedingYouCount(2, rows, { a: 10 }), 1);
+});
+
+test("reading the last one clears it without waiting for a refetch", () => {
+  assert.equal(threadsNeedingYouCount(1, [countRow()], { t1: 10 }), 0);
+});
+
+test("a reply on a thread that was read raises the total by one", () => {
+  // The row's lastReplySeq was bumped in place by the live push; what the
+  // server counted (nothing) is frozen in unreadAtFetch.
+  const row = countRow({ lastReadSeq: 10, lastReplySeq: 12, unreadAtFetch: false });
+  assert.equal(threadsNeedingYouCount(0, [row], {}), 1);
+});
+
+test("a row that has not moved since the fetch changes nothing", () => {
+  assert.equal(threadsNeedingYouCount(1, [countRow()], {}), 1);
+});
+
+test("threads you are not involved in never move the count", () => {
+  // The total counts involvement only -- the server cannot see mentions.
+  const rows = [countRow({ involved: false, unreadAtFetch: false, lastReadSeq: 0 })];
+  assert.equal(threadsNeedingYouCount(0, rows, {}), 0);
+});
+
+test("a thread listed twice is corrected once", () => {
+  const rows = [countRow(), countRow()];
+  assert.equal(threadsNeedingYouCount(1, rows, { t1: 10 }), 0);
+});
+
+test("the count never goes negative", () => {
+  const rows = [countRow({ threadID: "a" }), countRow({ threadID: "b" })];
+  assert.equal(threadsNeedingYouCount(1, rows, { a: 10, b: 10 }), 0);
 });
