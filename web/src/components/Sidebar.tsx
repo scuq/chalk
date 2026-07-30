@@ -101,6 +101,31 @@ function VoiceChannelIcon() {
   );
 }
 
+// 53-1: the parking lot's row icon. An eye with a line through it -- the row
+// can be renamed to anything, so the glyph has to carry the meaning on its
+// own: what's here is what isn't shown. Same stroke family as the rest.
+function ParkingIcon() {
+  return (
+    <svg
+      class="chalk-chglyph-svg"
+      viewBox="0 0 24 24"
+      width="13"
+      height="13"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" />
+      <circle cx="12" cy="12" r="2.6" />
+      <line x1="3" y1="21" x2="21" y2="3" />
+    </svg>
+  );
+}
+
 interface Props {
   channels: ChannelSummary[];
   friends: Friend[];
@@ -129,6 +154,12 @@ interface Props {
   selfHue?: number | null;
   onSetFriendHue?: (handle: string, hue: number | null) => void;
   onCreateClick: () => void;
+  // 53-1: the parking lot. A pseudo-channel that shows nothing -- one click
+  // and the conversation pane is a logo. null hides the row (the setting), and
+  // parked highlights it the way an open channel is highlighted.
+  parkingName?: string | null;
+  parked?: boolean;
+  onPark?: () => void;
   // 49-6: the thread-inbox entry point, relocated here from the status bar so
   // every unread dot lives in the sidebar. threadsUnread is a COUNT but
   // renders as a dot -- same call as the channel rows.
@@ -283,12 +314,18 @@ export function Sidebar({
   selfHue,
   onSetFriendHue,
   onCreateClick,
+  parkingName,
+  parked = false,
+  onPark,
   onOpenThreads,
   threadsUnread = 0,
 }: Props) {
   const [filter, setFilter] = useState("");
 
   const groupChannels = channels.filter((ch) => !ch.isDM);
+  // 53-1: the active channel is still pointed at while parked, but it isn't on
+  // screen -- so no row claims to be the one you are reading.
+  const activeRow = parked ? null : activeID;
   // Phase 9.7f: the roster context menu. Opened by right-click (desktop) or
   // long-press (touch), anchored at the pointer. Closing on any outside
   // click/escape keeps it from stranding. 50-5: carries the userID too --
@@ -406,7 +443,7 @@ export function Sidebar({
           )}
           {visibleFriends.map((friend) => {
             const dm = findDMWithFriend(channels, friend.userID, ownUserID);
-            const isActive = dm !== null && dm.id === activeID;
+            const isActive = dm !== null && dm.id === activeRow;
             const presenceState = presence[friend.userID];
             const dotClass = presenceClass(presenceState);
             const dotLabel = presenceLabel(presenceState);
@@ -487,6 +524,27 @@ export function Sidebar({
         </ul>
       </div>
 
+      {/* ---- parking lot (53-1) ---- */}
+      {parkingName && onPark && (
+        <div class="chalk-sidebar-section chalk-sidebar-section--parking">
+          <button
+            type="button"
+            class={`chalk-sidebar-parking ${parked ? "chalk-sidebar-parking--active" : ""}`}
+            data-testid="sidebar-parking"
+            data-active={parked ? "true" : "false"}
+            onClick={onPark}
+            title={`${parkingName} — hide the conversation`}
+            aria-label={`${parkingName} — hide the conversation`}
+            aria-pressed={parked}
+          >
+            <span class="chalk-sidebar-parking-glyph">
+              <ParkingIcon />
+            </span>
+            <span class="chalk-sidebar-item-name">{parkingName}</span>
+          </button>
+        </div>
+      )}
+
       {/* ---- threads entry (49-6) ---- */}
       {onOpenThreads && (
         <div class="chalk-sidebar-section chalk-sidebar-section--threads">
@@ -550,11 +608,11 @@ export function Sidebar({
             return (
               <li
                 key={ch.id}
-                class={`chalk-sidebar-item ${isVoice ? "chalk-sidebar-item--voicech" : ""} ${ch.id === activeID ? "chalk-sidebar-item--active" : ""} ${showUnread ? "chalk-sidebar-item--unread" : ""}`}
+                class={`chalk-sidebar-item ${isVoice ? "chalk-sidebar-item--voicech" : ""} ${ch.id === activeRow ? "chalk-sidebar-item--active" : ""} ${showUnread ? "chalk-sidebar-item--unread" : ""}`}
                 data-testid="sidebar-item"
                 data-channel-id={ch.id}
                 data-channel-type={isVoice ? "voice" : "text"}
-                data-active={ch.id === activeID ? "true" : "false"}
+                data-active={ch.id === activeRow ? "true" : "false"}
                 onClick={(e) => {
                   // 50-5: same long-press/click interplay as the friend rows.
                   if (longPressFired.current) {

@@ -9,6 +9,7 @@
 
 import { DEFAULT_SELF_HUE, clampHue } from "../chat/nickcolor";
 import { SIDEBAR_WIDTH_DEFAULT, clampSidebarWidth } from "../chat/sidebar-width";
+import { parkingLotName } from "../parking";
 import type { ConnectionState } from "../ws-client";
 import type { AttachmentRef } from "../attachments/types";
 import type {
@@ -329,6 +330,19 @@ export interface ChatPrefs {
   typingIndicators?: boolean;
 }
 
+// 53-1: the parking lot's own settings. Account-synced rather than
+// per-device: the title is a personal label, and hiding the row is a decision
+// about your chalk, not about this browser. Whether you are parked right now
+// is the per-device half -- see ../parking.ts.
+export interface ParkingLotPrefs {
+  // Displayed instead of "Parking Lot". Normalized on read, not on write, so
+  // an old or hand-edited value can never leave the row unlabelled.
+  name?: string;
+  // Drops the row from the sidebar entirely. Parking stays reachable through
+  // the setting itself, which is the only way back if you hide it while parked.
+  hidden?: boolean;
+}
+
 export interface UserPrefs {
   // Phase 9.7b: theme name. "green" = default terminal theme. Other valid
   // values: "light", "snazzy-light", "warmwhite", "vscode-light", "cyberpunk",
@@ -353,6 +367,8 @@ export interface UserPrefs {
   // 50-6: the notification rules blob -- AES-256-GCM ciphertext, base64.
   // The server never sees inside it; see notify/rules-sync.ts.
   notify_rules_enc?: string;
+  // 53-1: the parking lot's title + whether its row shows.
+  parkingLot?: ParkingLotPrefs;
   // [extend with more keys in future phases]
 }
 
@@ -404,6 +420,22 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
         ? SIDEBAR_WIDTH_DEFAULT
         : clampSidebarWidth(c.sidebarWidth),
     typingIndicators: c.typingIndicators ?? true,
+  };
+}
+
+// 53-1: resolved parking-lot prefs, same contract as ResolvedChatPrefs.
+export interface ResolvedParkingLotPrefs {
+  name: string;
+  hidden: boolean;
+}
+
+export function selectParkingLotPrefs(
+  prefs: UserPrefs | undefined,
+): ResolvedParkingLotPrefs {
+  const p = prefs?.parkingLot ?? {};
+  return {
+    name: parkingLotName(p.name),
+    hidden: p.hidden === true,
   };
 }
 
@@ -499,6 +531,14 @@ export interface AppState {
   // null when no thread is open. The threadID is always the thread
   // head's id (computed by resolveThreadID).
   openThread: { channelID: string; threadID: string } | null;
+
+  // 53-1: parked -- the conversation pane is showing the parking lot instead
+  // of whatever activeChannelID points at. The channel pointer is deliberately
+  // left alone: parking is a screen state, not a navigation, and the channel
+  // it hides is still the one every effect keyed on activeChannelID is talking
+  // about. What parking does change is that nothing is being read, so the
+  // mark-read effect and the notification banners both stand down.
+  parked: boolean;
 
   // Phase 10c: thread message caches.
   //   threadMessages[threadID] is the list of replies for that thread,
@@ -751,6 +791,10 @@ export const initialState: AppState = {
   // Phase 10b:
   openThread: null,
 
+  // 53-1: App re-seeds this from localStorage at useReducer init, so a reload
+  // while parked comes back parked.
+  parked: false,
+
   // Phase 10c:
   threadMessages: {},
   threadLoaded: {},
@@ -829,6 +873,9 @@ export type Action =
   | { kind: "channel_member_added"; channelID: string; userID: string; handle: string }
   | { kind: "channel_member_removed"; channelID: string; userID: string }
   | { kind: "set_active_channel"; channelID: string | null }
+  // 53-1: park (hide the conversation pane) or leave the parking lot. Picking
+  // any channel or thread unparks on its own; this action is the row itself.
+  | { kind: "set_parked"; parked: boolean }
   // ---- Phase 33: unread + mentions ------------------------------------
   // read_state: the server-synced cursor moved (mark_read ack, or a push
   // from another of this user's devices). Monotonic; clears the mention

@@ -13,6 +13,22 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **Somewhere to put chalk when someone walks up behind you.** There's a new
+  row in the sidebar, between your friends and your threads, called "Parking
+  Lot". Click it and the conversation is gone: no messages, no names, no
+  half-typed line in the box — just the chalk mark drifting on an empty field.
+  Chalk stays open and connected the whole time, so a call keeps running and
+  nobody you're talking to sees you leave. Click any channel to come back
+  exactly where you were, draft and all.
+
+  While you're parked, nothing gets marked read and no notification pops up
+  with a message in it — a sound still tells you something arrived, without
+  saying what. It also survives a reload, so refreshing the page doesn't drop
+  you back into the last conversation you had open.
+
+  You can call it something other than "Parking Lot" in settings, and the name
+  you pick follows you to your other devices. If you'd rather not have the row
+  at all, the same place turns it off.
 - **Blur your background on video calls.** There's a "blur my background"
   switch under the camera picker in settings, with a preview button beside it
   so you can see exactly what your camera is about to send before you send it —

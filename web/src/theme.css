@@ -7685,3 +7685,97 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-threadinbox-more:focus-visible {
   background: var(--chalk-bg-elev);
 }
+
+/* ============================================================
+   53-1: the parking lot
+   ============================================================ */
+
+/* The sidebar row. Same separated-section treatment as the thread inbox
+   below it, so friends / parking / threads read as one column of entry
+   points rather than the roster growing an odd tail. */
+.chalk-sidebar-section--parking {
+  flex-shrink: 0;
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--chalk-border, #1f2a1f);
+}
+
+.chalk-sidebar-parking {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg);
+  font: inherit;
+  text-align: left;
+  padding: var(--chalk-s1) var(--chalk-s2);
+  cursor: pointer;
+}
+
+.chalk-sidebar-parking:hover,
+.chalk-sidebar-parking:focus-visible {
+  background: var(--chalk-bg-elev);
+}
+
+.chalk-sidebar-parking--active {
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-sidebar-parking-glyph {
+  display: inline-flex;
+  color: var(--chalk-fg-dim);
+  line-height: 0;
+}
+
+.chalk-sidebar-parking--active .chalk-sidebar-parking-glyph {
+  color: var(--chalk-accent);
+}
+
+/* The pane itself. Unlike a channel it must not scroll -- there is nothing
+   to scroll to, and a stray scrollbar would be the one hint that something
+   is behind this. */
+.chalk-main--parked {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chalk-parking {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Fitted to the pane, whichever way it is narrow. Dim rather than bright:
+   the point of the screen is that nothing on it asks to be looked at. */
+.chalk-parking-mark {
+  width: min(55%, 45vh);
+  height: auto;
+  opacity: 0.28;
+  animation: chalk-parking-drift 28s ease-in-out infinite;
+}
+
+/* A screensaver drifts. Slowly and by a few percent, which is enough to keep
+   a static mark off one set of pixels for hours at a time. */
+@keyframes chalk-parking-drift {
+  0%   { transform: translate(-3%, 2%) scale(0.98); }
+  50%  { transform: translate(3%, -2%) scale(1.02); }
+  100% { transform: translate(-3%, 2%) scale(0.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chalk-parking-mark {
+    animation: none;
+  }
+}
+
+/* Hidden, not unmounted: the composer keeps its draft and its pending
+   attachments while parked. */
+.chalk-footer-main--parked {
+  display: none;
+}

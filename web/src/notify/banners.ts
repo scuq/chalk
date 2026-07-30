@@ -199,6 +199,13 @@ export class NotifyBanners {
     this.closeTag("chalk-friend");
   }
 
+  // 53-1: parking the conversation takes the banners with it -- one still on
+  // screen from a moment ago carries the text the click just hid.
+  closeAll(): void {
+    for (const n of this.byTag.values()) n.close();
+    this.byTag.clear();
+  }
+
   private closeTag(tag: string): void {
     const n = this.byTag.get(tag);
     if (!n) return;

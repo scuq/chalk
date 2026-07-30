@@ -177,6 +177,15 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   `MicSettings.tsx`), which runs the real pipeline through the shared
   `applyBlurTo` and defers to the call's own published stream when there is one
   (`previewSource`) rather than opening the camera twice.
+- **Phase 53-1 — the parking lot.** A pseudo-channel between friends and
+  threads that shows nothing: `state.parked` (reducer-owned, seeded from
+  `parking.ts`'s localStorage flag at `useReducer` init so a reload stays
+  parked) swaps the conversation pane for the logo screensaver and hides
+  `.chalk-footer-main` by CSS, so the composer keeps its draft. Parking is a
+  screen state, not a navigation — `activeChannelID` is untouched, which is why
+  `set_active_channel` had to stop short-circuiting on the same channel, and
+  why the mark-read effect and OS banners are gated on `parked`. Title + hide
+  are account prefs (`prefs.parkingLot`, `selectParkingLotPrefs`).
 - Next candidates, none started: the SFU seam (voice design Slice I) for rooms
   too large for a mesh; governance `set_config` proposals.
 - Deferred cleanup, all verified still open:

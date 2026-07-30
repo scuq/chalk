@@ -506,7 +506,10 @@ export function reducer(state: AppState, action: Action): AppState {
     case "set_active_channel":
       // No-op if same. Switching to a channel triggers fetch_history
       // via a useEffect in App.tsx; reducer stays pure.
-      if (action.channelID === state.activeChannelID) {
+      // 53-1: unless we are parked -- then clicking the channel you were
+      // already in is how you come back to it, and returning `state` would
+      // leave the parking lot on screen with no way out but a second click.
+      if (action.channelID === state.activeChannelID && !state.parked) {
         return state;
       }
       // 33-4: freeze the unread window BEFORE the mark_read effect fires,
@@ -515,7 +518,18 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         activeChannelID: action.channelID,
         openThread: null,
+        parked: false,
         unreadMarks: markForChannel(state.unread, action.channelID),
+      };
+
+    // 53-1: parking closes the thread panel with the same argument the pane
+    // itself is closed with -- it renders messages, so it cannot survive.
+    case "set_parked":
+      if (state.parked === action.parked) return state;
+      return {
+        ...state,
+        parked: action.parked,
+        openThread: action.parked ? null : state.openThread,
       };
 
     case "unread_mark_refresh":
@@ -2009,6 +2023,8 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         activeChannelID: action.channelID,
         openThread: { channelID: action.channelID, threadID: action.threadID },
+        // 53-1: opening a thread is asking to read it.
+        parked: false,
         // Same freeze the channel switch does, so the "new messages" divider
         // behaves as it would have on a normal channel open.
         unreadMarks: markForChannel(state.unread, action.channelID),

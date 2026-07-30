@@ -43,6 +43,11 @@ import {
   type PasskeyInfo,
 } from "../auth/api";
 import { FONT_CHOICES, SCALE_STEPS, useDisplayPrefs } from "../display-prefs";
+import {
+  PARKING_LOT_DEFAULT_NAME,
+  PARKING_LOT_NAME_MAX,
+  parkingLotName,
+} from "../parking";
 import { notifySounds } from "../notify";
 import { useSoundPrefs } from "../notify/prefs";
 import { CATEGORY_LABELS, MACHINE_CATEGORIES } from "../notify/types";
@@ -137,6 +142,10 @@ interface Props {
   // footer's voice cluster. The profile panel keeps a way in for people who
   // go looking for it here.
   onOpenMicSettings?: () => void;
+  // 53-1: the parking lot's title and whether its row shows at all. Account
+  // prefs, so both travel with you; sent whole, like the chat block.
+  parkingLot?: { name: string; hidden: boolean };
+  onSetParkingLot?: (next: { name: string; hidden: boolean }) => void;
 }
 
 export function ProfilePanel({
@@ -152,6 +161,8 @@ export function ProfilePanel({
   onSetGiphyPref,
   onRequestEnableGiphy,
   onOpenMicSettings,
+  parkingLot,
+  onSetParkingLot,
   onClose,
   onEmailChangeDraft,
   onEmailChangeSubmit,
@@ -169,6 +180,22 @@ export function ProfilePanel({
   const [rotateError, setRotateError] = useState<string>("");
   // att-2: transient "cleared" confirmation for the image cache control.
   const [imageCacheCleared, setImageCacheCleared] = useState(false);
+
+  // 53-1: the parking lot's title, typed here and committed on blur. Kept as
+  // a draft so the field doesn't fight the user mid-word, and re-seeded when
+  // the pref changes under us (another device renamed it).
+  const [parkingDraft, setParkingDraft] = useState(parkingLot?.name ?? "");
+  useEffect(() => {
+    setParkingDraft(parkingLot?.name ?? "");
+  }, [parkingLot?.name]);
+  const commitParkingName = () => {
+    if (!parkingLot || !onSetParkingLot) return;
+    // Normalize here too, so an emptied field snaps back to the default in
+    // the box rather than only in the sidebar.
+    const name = parkingLotName(parkingDraft);
+    setParkingDraft(name);
+    if (name !== parkingLot.name) onSetParkingLot({ name, hidden: parkingLot.hidden });
+  };
 
   // Font family + size. Device-local, so unlike theme these aren't
   // threaded down from App -- the hook reads and persists them itself.
@@ -779,6 +806,63 @@ export function ProfilePanel({
                   </button>
                 </div>
               )}
+            </section>
+          )}
+
+          {/* 53-1: the parking lot. Both settings are account-level: the title
+              is a personal label and hiding the row is a decision about your
+              chalk, so they follow you to your other devices. */}
+          {parkingLot && onSetParkingLot && (
+            <section class="chalk-profile-parking" data-testid="parking-settings">
+              <h3>parking lot</h3>
+              <p class="chalk-profile-hint">
+                A row in the sidebar that holds nothing. Click it when someone
+                walks up behind you: the conversation is replaced by the chalk
+                mark, and chalk stays connected — calls keep running, nothing
+                is marked read, and no notification pops up with the text in
+                it. Pick any channel to come back.
+              </p>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-label" for="parking-name">
+                  what to call it
+                </label>
+                <input
+                  id="parking-name"
+                  class="chalk-field-input"
+                  type="text"
+                  maxLength={PARKING_LOT_NAME_MAX}
+                  placeholder={PARKING_LOT_DEFAULT_NAME}
+                  value={parkingDraft}
+                  data-testid="parking-name"
+                  onInput={(e) => setParkingDraft((e.target as HTMLInputElement).value)}
+                  // Committed on blur/Enter rather than per keystroke: every
+                  // commit is a prefs round-trip that fans out to this user's
+                  // other devices.
+                  onChange={commitParkingName}
+                  onBlur={commitParkingName}
+                />
+              </div>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={!parkingLot.hidden}
+                    onChange={(e) =>
+                      onSetParkingLot({
+                        name: parkingLot.name,
+                        hidden: !(e.target as HTMLInputElement).checked,
+                      })
+                    }
+                    data-testid="parking-visible"
+                  />
+                  <span>
+                    show it in the sidebar{" "}
+                    <span class="chalk-profile-theme-desc">
+                      (off hides the row; this setting is the way back)
+                    </span>
+                  </span>
+                </label>
+              </div>
             </section>
           )}
 

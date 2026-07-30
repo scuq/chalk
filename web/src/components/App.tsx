@@ -169,7 +169,8 @@ import {
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
-import { hasUnread, initialState, selectChatPrefs, type AppState, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow } from "../state/types";
+import { hasUnread, initialState, selectChatPrefs, selectParkingLotPrefs, type AppState, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow } from "../state/types";
+import { loadParked, saveParked } from "../parking";
 import { selectGiphyPref } from "../giphy/giphy";
 import { Logo } from "./Logo";
 import { VersionLink } from "./VersionLink";
@@ -408,9 +409,12 @@ function wireToThreadInboxRow(w: ThreadInboxEntry): ThreadInboxRow {
 }
 
 export function App() {
-  const [state, dispatch] = useReducer<AppState, Parameters<typeof reducer>[1]>(
+  // 53-1: the parked flag is seeded here rather than by a mount effect, so a
+  // reload while parked never renders a frame of the channel it was hiding.
+  const [state, dispatch] = useReducer<AppState, Parameters<typeof reducer>[1], AppState>(
     reducer,
-    initialState
+    initialState,
+    (s) => ({ ...s, parked: loadParked() })
   );
   const clientRef = useRef<WSClient | null>(null);
   // Phase 23d: per-channel encryption orchestration. Built once the identity
@@ -1271,6 +1275,10 @@ export function App() {
   unreadRef.current = state.unread;
   const activeChannelRef = useRef(state.activeChannelID);
   activeChannelRef.current = state.activeChannelID;
+  // 53-1: read from the notification bus subscriber, which is installed once
+  // and would otherwise close over the first render's value.
+  const parkedRef = useRef(state.parked);
+  parkedRef.current = state.parked;
   // 43-6: whether this viewer takes part in typing indicators at all. Read
   // inside handleFrame, so it goes through a ref for the same stale-closure
   // reason as userRef above -- without it the store would keep filling, and
@@ -1387,10 +1395,15 @@ export function App() {
       const moment = {
         tabVisible: tabVisibleRef.current,
         userIdle: userIdleRef.current,
-        isRelevantSurfaceOpen: !!ev.channelID && ev.channelID === activeChannelRef.current,
+        // 53-1: parked means the channel is on screen in name only.
+        isRelevantSurfaceOpen:
+          !parkedRef.current && !!ev.channelID && ev.channelID === activeChannelRef.current,
       };
       if (actions.sound) notifyRef.current?.play(ev.type, moment);
-      if (actions.banner) notifyBanners().show(ev, moment);
+      // 53-1: an OS banner carries the message text, so it would put on the
+      // screen exactly what parking took off it. Sounds still fire -- a noise
+      // tells you something arrived without saying what.
+      if (actions.banner && !parkedRef.current) notifyBanners().show(ev, moment);
       // blink() itself declines while the window is visible and focused.
       if (actions.blink && !dnd) titleController().blink();
     });
@@ -2539,8 +2552,18 @@ export function App() {
   // Coming back to the tab clears the active channel's banner without
   // waiting for the mark_read round-trip.
   useEffect(() => {
-    if (tabVisible && state.activeChannelID) notifyBanners().closeChannel(state.activeChannelID);
-  }, [tabVisible, state.activeChannelID]);
+    if (tabVisible && state.activeChannelID && !state.parked) {
+      notifyBanners().closeChannel(state.activeChannelID);
+    }
+  }, [tabVisible, state.activeChannelID, state.parked]);
+
+  // 53-1: remember the parking across a reload, and pull down anything the OS
+  // is still showing -- a banner from a second ago would undo the click that
+  // just cleared the screen.
+  useEffect(() => {
+    saveParked(state.parked);
+    if (state.parked) notifyBanners().closeAll();
+  }, [state.parked]);
 
   // 45-4: how many threads need you, as of RIGHT NOW rather than as of the
   // last inbox fetch. The sidebar dot and the tab badge both render this, so
@@ -3473,6 +3496,9 @@ export function App() {
     ? state.channels[state.activeChannelID]
     : null;
 
+  // 53-1: the parking lot's title + whether its row is shown.
+  const parking = selectParkingLotPrefs(state.prefs);
+
   // 42-8: lookup maps for the inbox panel, built once here rather than scanned
   // per row -- the same discipline MessageList's handleByUser follows. The inbox
   // spans channels, so it cannot reuse the active channel's roster.
@@ -3608,9 +3634,11 @@ export function App() {
   // No local state is optimistically updated here -- the cursor only moves
   // when mark_read_ack comes back with the server's clamped value, which
   // keeps this device's view identical to what the others are told.
+  // 53-1: parked is the same argument as a hidden tab -- the channel is still
+  // the active one, but nobody is reading it, so its dot stays.
   useEffect(() => {
     const cid = state.activeChannelID;
-    if (!cid || !tabVisible) return;
+    if (!cid || !tabVisible || state.parked) return;
     const c = clientRef.current;
     if (!c || !c.isOpen()) return;
     const u = state.unread[cid];
@@ -3621,7 +3649,7 @@ export function App() {
     if ((markReadSentRef.current.get(cid) ?? 0) >= u.lastSeq) return;
     markReadSentRef.current.set(cid, u.lastSeq);
     c.send<MarkReadPayload>(TypeMarkRead, { channel_id: cid, seq: u.lastSeq });
-  }, [state.activeChannelID, state.unread, state.wsState, tabVisible]);
+  }, [state.activeChannelID, state.unread, state.wsState, tabVisible, state.parked]);
 
   // 42-4: looking at a THREAD marks it read, durably. Same discipline as the
   // channel effect above: gated on tab visibility so a background tab can't
@@ -4046,6 +4074,14 @@ export function App() {
             setNavOpen(false);
             dispatch({ kind: "open_create_modal" });
           }}
+          // 53-1: the parking lot. Hidden when the setting says so; parking
+          // itself is a state change, no server round-trip involved.
+          parkingName={parking.hidden ? null : parking.name}
+          parked={state.parked}
+          onPark={() => {
+            setNavOpen(false);
+            dispatch({ kind: "set_parked", parked: true });
+          }}
           // 49-6: the thread inbox lives with the other unread dots now. On
           // mobile the sidebar is a drawer, so opening the panel closes it.
           onOpenThreads={() => {
@@ -4079,10 +4115,33 @@ export function App() {
       <main
         class={
           "chalk-main" +
-          (activeChannel?.channelType === "voice" ? " chalk-main--voice" : "")
+          (state.parked
+            ? " chalk-main--parked"
+            : activeChannel?.channelType === "voice"
+              ? " chalk-main--voice"
+              : "")
         }
       >
-        {activeChannel ? (
+        {/* 53-1: the parking lot wins over whatever channel is still selected.
+            Nothing about that channel is unloaded -- messages, the call, the
+            key state all stay exactly as they were; they are just not on
+            screen. The composer is hidden the same way (see the footer), which
+            keeps a half-typed line out of sight without losing it. */}
+        {state.parked ? (
+          <>
+            <div class="chalk-channel-header" data-testid="channel-header">
+              <span class="chalk-channel-header-name">{parking.name}</span>
+            </div>
+            <div
+              class="chalk-parking"
+              data-testid="parking-lot"
+              role="img"
+              aria-label={`${parking.name} — the conversation is hidden`}
+            >
+              <Logo class="chalk-parking-mark" />
+            </div>
+          </>
+        ) : activeChannel ? (
           <>
             <div class="chalk-channel-header" data-testid="channel-header">
               {/* 30-5: channel-kind glyph -- text vs voice, matching the
@@ -4296,7 +4355,14 @@ export function App() {
             <VoiceControls onOpenMicSettings={() => setMicSettingsOpen(true)} />
           )}
         </div>
-        <div class="chalk-footer-main">
+        {/* 53-1: hidden, not unmounted -- the composer owns its draft and its
+            pending attachments in local state, and parking must not be a way
+            to lose the message you were halfway through writing. The voice
+            controls beside it stay: they carry no text. */}
+        <div
+          class={`chalk-footer-main ${state.parked ? "chalk-footer-main--parked" : ""}`}
+          data-testid="footer-main"
+        >
           <TypingLine
             channelID={state.activeChannelID}
             members={activeChannel?.members}
@@ -4641,6 +4707,14 @@ export function App() {
             const current = selectChatPrefs(state.prefs);
             const next = { ...current, userColors: rules };
             c.send(TypePrefsSet, { patch: { chat: next } });
+          }}
+          // 53-1: same shallow-merge rule as the chat block -- the whole
+          // parkingLot object goes over, not the changed key.
+          parkingLot={parking}
+          onSetParkingLot={(next) => {
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            c.send(TypePrefsSet, { patch: { parkingLot: next } });
           }}
           onClearImageCache={() => clearAttachmentCache()}
           giphyPref={selectGiphyPref(state.prefs)}
