@@ -1855,6 +1855,7 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 		RotationPending:   c.RotationPending,
 		GovernanceMode:    c.GovernanceMode,
 		ChannelType:       c.ChannelType,
+		GroupName:         c.GroupName,
 		LastSeq:           c.LastSeq,
 		LastReadSeq:       c.LastReadSeq,
 	}
@@ -1881,6 +1882,13 @@ func (h *WSHandler) handleCreateChannel(
 	if strings.TrimSpace(p.Name) == "" || len(p.Name) > 80 {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel,
 			"name must be 1-80 chars after trim")
+		return
+	}
+	// 54-2: same cap as the name; empty is fine (the store defaults it to
+	// 'General').
+	if len(strings.TrimSpace(p.GroupName)) > 80 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel,
+			"group_name too long (max 80)")
 		return
 	}
 	if h.store == nil {
@@ -1998,6 +2006,7 @@ func (h *WSHandler) handleCreateChannel(
 		CreatedBy:   callerID,
 		MemberIDs:   others,
 		ChannelType: p.ChannelType,
+		GroupName:   p.GroupName,
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrDMCardinality) {

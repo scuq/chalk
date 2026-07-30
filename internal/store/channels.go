@@ -36,6 +36,10 @@ type Channel struct {
 	// 30-1). Voice channels reuse membership/governance/keys; live occupancy
 	// lives in voice_participants (store/voice.go).
 	ChannelType string
+	// GroupName is the creator's roster-grouping suggestion (54-2). Set once
+	// at creation, never updated: per-user regrouping happens client-side in
+	// prefs. 'General' for pre-54 channels and DMs.
+	GroupName string
 }
 
 // ChannelWithMembers couples a Channel with its full member set.
@@ -94,6 +98,9 @@ type CreateChannelInput struct {
 	// ChannelType is 'text' or 'voice'; empty means 'text' (30-1). A DM
 	// cannot be a voice channel.
 	ChannelType string
+	// GroupName is the roster-grouping suggestion (54-2). Empty means
+	// 'General'. Trimmed; same 80-char cap as the channel name.
+	GroupName string
 }
 
 // CreateChannel inserts the channel + the per-channel sequence row +
@@ -148,6 +155,17 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 		return ChannelWithMembers{}, fmt.Errorf("%w: a DM cannot be a voice channel", ErrBadChannelType)
 	}
 
+	// 54-2: normalize the group suggestion. Empty means the default group so
+	// every pre-54 caller (and the DM path, which never sends one) lands in
+	// 'General' -- matching the migration DEFAULT for existing rows.
+	groupName := strings.TrimSpace(in.GroupName)
+	if groupName == "" {
+		groupName = "General"
+	}
+	if len(groupName) > 80 {
+		return ChannelWithMembers{}, errors.New("group_name too long (max 80)")
+	}
+
 	var result ChannelWithMembers
 	// gov-1a: seed this channel's governance columns from the server-wide
 	// defaults captured at startup (withDefaults fills any zero field, so a
@@ -163,14 +181,14 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 			   (name, is_dm, created_by,
 			    governance_mode, vote_window_days, vote_expiry_hours, min_eligible,
 			    quorum_percent, pass_percent, supermajority_percent, repropose_cooldown_hours,
-			    channel_type)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-			 RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, governance_mode, channel_type`,
+			    channel_type, group_name)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			 RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, governance_mode, channel_type, group_name`,
 			strings.TrimSpace(in.Name), in.IsDM, in.CreatedBy,
 			gd.Mode, gd.VoteWindowDays, gd.VoteExpiryHours, gd.MinEligible,
 			gd.QuorumPercent, gd.PassPercent, gd.SupermajorityPercent, gd.ReproposeCooldownHours,
-			channelType,
-		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.GovernanceMode, &ch.ChannelType)
+			channelType, groupName,
+		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName)
 		if err != nil {
 			return fmt.Errorf("insert channel: %w", err)
 		}
@@ -220,10 +238,10 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 func (s *Store) GetChannel(ctx context.Context, channelID uuid.UUID) (Channel, error) {
 	var ch Channel
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, governance_mode, channel_type
+		`SELECT id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, governance_mode, channel_type, group_name
 		   FROM channels WHERE id = $1`,
 		channelID,
-	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.GovernanceMode, &ch.ChannelType)
+	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Channel{}, ErrChannelNotFound
 	}
@@ -263,7 +281,7 @@ func (s *Store) IsMember(ctx context.Context, channelID, userID uuid.UUID) (bool
 // and the member-count cardinality is small (a few users per channel).
 func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]ChannelWithMembers, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.governance_mode, c.channel_type,
+		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.governance_mode, c.channel_type, c.group_name,
 		        GREATEST(COALESCE(cs.next_seq, 1) - 1, 0), COALESCE(cr.last_read_seq, 0)
 		   FROM channels c
 		   JOIN channel_members cm ON cm.channel_id = c.id
@@ -283,7 +301,7 @@ func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]Ch
 	for rows.Next() {
 		var c Channel
 		var lastSeq, lastReadSeq int64
-		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.GovernanceMode, &c.ChannelType, &lastSeq, &lastReadSeq); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.GovernanceMode, &c.ChannelType, &c.GroupName, &lastSeq, &lastReadSeq); err != nil {
 			return nil, err
 		}
 		channels = append(channels, ChannelWithMembers{Channel: c, LastSeq: lastSeq, LastReadSeq: lastReadSeq})

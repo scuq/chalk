@@ -44,6 +44,7 @@ function channel(over: Partial<ChannelSummary> = {}): ChannelSummary {
     rotationPending: false,
     governanceMode: "dictator",
     channelType: "text",
+    groupName: "General",
     lastSeq: 0,
     lastReadSeq: 0,
     ...over,

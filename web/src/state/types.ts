@@ -150,6 +150,10 @@ export interface ChannelSummary {
   rotationPending: boolean; // member removal: a removal happened, key not yet rotated
   governanceMode: string; // gov-2; "dictator" | "democratic" (default "dictator")
   channelType: string; // 30-4; "text" | "voice" (default "text")
+  // 54-2: the creator's grouping suggestion, set once at creation. The group
+  // a channel actually renders under is per-user (override prefs, 54-4);
+  // this is only the seed. "General" for DMs and pre-54 channels.
+  groupName: string;
   // 33-1: read-state SEED only, as of the frame that delivered this summary.
   // Live unread state is state.unread[channelID] -- render from there, never
   // from these. A channel_event summary carries zeros because the server

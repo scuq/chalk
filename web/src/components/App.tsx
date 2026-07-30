@@ -221,6 +221,7 @@ const EmojiPicker = lazyComponent(() =>
   import("./EmojiPicker").then((m) => m.EmojiPicker)
 );
 import { CreateChannelModal } from "./CreateChannelModal";
+import { DEFAULT_GROUP, knownGroups } from "../chat/channel-groups";
 // Phase 30 (30-4): the minimal in-call surface + the frame bus that hands
 // voice pushes from handleFrame to the mounted panel's VoiceCall.
 import { VoiceCallPanel } from "./VoiceCallPanel";
@@ -312,6 +313,7 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
     rotationPending: w.rotation_pending ?? false,
     governanceMode: w.governance_mode ?? "dictator",
     channelType: w.channel_type ?? "text", // 30-4
+    groupName: w.group_name ?? "General", // 54-2
     lastSeq: w.last_seq ?? 0, // 33-1
     lastReadSeq: w.last_read_seq ?? 0, // 33-1
   };
@@ -3180,7 +3182,7 @@ export function App() {
     return true;
   };
 
-  const onCreateChannel = (name: string, isDM: boolean, memberIDs: string[], voice: boolean) => {
+  const onCreateChannel = (name: string, isDM: boolean, memberIDs: string[], voice: boolean, group?: string) => {
     const c = clientRef.current;
     if (!c || !c.isOpen()) return;
     const payload: CreateChannelPayload = {
@@ -3191,6 +3193,9 @@ export function App() {
     // 30-4: only stamp channel_type when it's a voice room -- omitting it
     // keeps the payload byte-compatible with older servers for text channels.
     if (voice) payload.channel_type = "voice";
+    // 54-2: same rule for the group -- omit the default so the payload is
+    // unchanged for callers that don't group (the DM path passes nothing).
+    if (group && group !== DEFAULT_GROUP) payload.group_name = group;
     c.send(TypeCreateChannel, payload, "create-" + Date.now());
   };
 
@@ -4418,6 +4423,7 @@ export function App() {
           friends={state.friends}
           loading={!state.friendsLoaded}
           voiceEnabled={state.voiceEnabled}
+          knownGroups={knownGroups(Object.values(state.channels))}
           onClose={() => dispatch({ kind: "close_create_modal" })}
           onSubmit={onCreateChannel}
         />

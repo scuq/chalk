@@ -13,6 +13,12 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **Channels can carry a group.** Creating a channel now has an optional
+  "group" field — a suggestion for how the channel should be grouped in
+  the sidebar. Pick an existing group from the list or type a new one;
+  leaving it empty files the channel under "General", where all existing
+  channels live too. (Grouped display in the sidebar is coming next; for
+  now the group is just remembered.)
 - **Filter for a long channel list.** When the sidebar's channel list grows
   past a handful of entries, a filter box appears above it — type a few
   letters and only matching channels stay visible, the same way the friends

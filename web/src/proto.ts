@@ -295,6 +295,7 @@ export interface ChannelSummaryWire {
   rotation_pending?: boolean; // member removal; absent from older servers -> false
   governance_mode?: string; // gov-2; "dictator" | "democratic"; absent -> "dictator"
   channel_type?: string; // 30-4; "text" | "voice"; absent from older servers -> "text"
+  group_name?: string; // 54-2; creator's grouping suggestion; absent -> "General"
   last_seq?: number; // 33-1; highest seq in the channel; absent from older servers -> 0
   last_read_seq?: number; // 33-1; this user's read cursor; absent -> 0
 }
@@ -306,6 +307,8 @@ export interface CreateChannelPayload {
   // 30-4: "voice" creates a Discord-style voice room; omitted/"text" is a
   // normal text channel. Server rejects "voice" for DMs.
   channel_type?: string;
+  // 54-2: roster-grouping suggestion. Omitted -> "General" server-side.
+  group_name?: string;
 }
 
 export interface CreateChannelAckPayload {

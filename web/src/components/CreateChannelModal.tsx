@@ -13,6 +13,7 @@
 import { useEffect, useState } from "preact/hooks";
 import type { Friend } from "../state/types";
 import { FriendPicker } from "./FriendPicker";
+import { DEFAULT_GROUP, canonicalizeGroup } from "../chat/channel-groups";
 
 interface Props {
   friends: Friend[];
@@ -20,16 +21,21 @@ interface Props {
   // 30-6: server feature flag. When false the voice option is hidden --
   // the server would reject the join anyway (CHALK_VOICE_ENABLED).
   voiceEnabled: boolean;
+  // 54-2: group names already in the roster, for the datalist. Typing one
+  // of these (any casing) reuses it instead of minting a near-duplicate.
+  knownGroups: string[];
   onClose: () => void;
   // 30-4: voice=true creates a Discord-style voice room (channel_type=
   // 'voice'). isDM is always passed false: 1:1 channels are opened from the
   // friends roster (which activates the existing DM), not created here. The
   // param is kept so the App-level wire mapping stays unchanged.
-  onSubmit: (name: string, isDM: boolean, memberIDs: string[], voice: boolean) => void;
+  // 54-2: group is the canonicalized grouping suggestion, never empty.
+  onSubmit: (name: string, isDM: boolean, memberIDs: string[], voice: boolean, group: string) => void;
 }
 
-export function CreateChannelModal({ friends, loading, voiceEnabled, onClose, onSubmit }: Props) {
+export function CreateChannelModal({ friends, loading, voiceEnabled, knownGroups, onClose, onSubmit }: Props) {
   const [name, setName] = useState("");
+  const [group, setGroup] = useState(""); // 54-2; empty -> DEFAULT_GROUP
   const [voice, setVoice] = useState(false); // 30-4
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +63,10 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, onClose, on
       setError("name too long (max 80)");
       return;
     }
+    if (group.trim().length > 80) {
+      setError("group too long (max 80)");
+      return;
+    }
     if (selected.size < 1) {
       setError("pick at least one member");
       return;
@@ -64,7 +74,7 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, onClose, on
     // is_dm is always false here: a 1:1 is created by clicking a friend in
     // the roster (which opens the EXISTING DM), never from this modal. A
     // second DM between the same pair would strand the first one's history.
-    onSubmit(trimmed, false, Array.from(selected), voice);
+    onSubmit(trimmed, false, Array.from(selected), voice, canonicalizeGroup(group, knownGroups));
   };
 
   return (
@@ -101,6 +111,29 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, onClose, on
               maxLength={80}
               placeholder="general"
             />
+          </label>
+
+          {/* 54-2: the grouping suggestion. A combobox in the HTML sense --
+              free text plus a datalist of groups already in the roster, so
+              reusing a group is one click and typos don't fork near-
+              duplicates (submit canonicalizes case against knownGroups). */}
+          <label class="chalk-field">
+            <span class="chalk-field-label">group</span>
+            <input
+              type="text"
+              class="chalk-field-input"
+              data-testid="create-modal-group"
+              value={group}
+              onInput={(e) => setGroup((e.target as HTMLInputElement).value)}
+              maxLength={80}
+              placeholder={DEFAULT_GROUP}
+              list="create-modal-group-options"
+            />
+            <datalist id="create-modal-group-options">
+              {knownGroups.map((g) => (
+                <option key={g} value={g} />
+              ))}
+            </datalist>
           </label>
 
           {voiceEnabled && (

@@ -291,6 +291,9 @@ type ChannelSummary struct {
 	// ChannelType is 'text' or 'voice' (30-1). Absent from older servers ->
 	// treat as "text".
 	ChannelType string `json:"channel_type,omitempty"`
+	// GroupName is the creator's roster-grouping suggestion (54-2). Absent
+	// from older servers -> treat as "General".
+	GroupName string `json:"group_name,omitempty"`
 	// LastSeq is the highest seq assigned in the channel, 0 when empty.
 	// LastReadSeq is the recipient's read cursor (33-1). The client shows an
 	// unread indicator when LastSeq > LastReadSeq, without fetching history.
@@ -326,6 +329,10 @@ type CreateChannelPayload struct {
 	// ChannelType requests 'text' (default when empty) or 'voice' (30-1).
 	// A DM cannot be a voice channel.
 	ChannelType string `json:"channel_type,omitempty"`
+	// GroupName is the creator's roster-grouping suggestion (54-2). Empty
+	// means 'General'. Trimmed; ≤80 chars like Name. Set once at creation --
+	// per-user regrouping is a client prefs concern, not a server mutation.
+	GroupName string `json:"group_name,omitempty"`
 }
 
 // CreateChannelAckPayload includes the full ChannelSummary so the client
