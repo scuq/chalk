@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.4.6 — 30 July 2026 — Scrollback reaches all the way back
 
 ### Changed
 - **Loading older messages is faster in thread-heavy channels.** Each
