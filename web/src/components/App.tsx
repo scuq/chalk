@@ -169,8 +169,7 @@ import {
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
-import { hasUnread, initialState, selectChatPrefs, selectParkingLotPrefs, selectRosterPrefs, type AppState, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow } from "../state/types";
-import { loadParked, saveParked } from "../parking";
+import { hasUnread, initialState, selectChatPrefs, selectParkingLotPrefs, selectRosterPrefs, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow } from "../state/types";
 import { selectGiphyPref } from "../giphy/giphy";
 import { Logo } from "./Logo";
 import { VersionLink } from "./VersionLink";
@@ -412,13 +411,7 @@ function wireToThreadInboxRow(w: ThreadInboxEntry): ThreadInboxRow {
 }
 
 export function App() {
-  // 53-1: the parked flag is seeded here rather than by a mount effect, so a
-  // reload while parked never renders a frame of the channel it was hiding.
-  const [state, dispatch] = useReducer<AppState, Parameters<typeof reducer>[1], AppState>(
-    reducer,
-    initialState,
-    (s) => ({ ...s, parked: loadParked() })
-  );
+  const [state, dispatch] = useReducer(reducer, initialState);
   const clientRef = useRef<WSClient | null>(null);
   // Phase 23d: per-channel encryption orchestration. Built once the identity
   // is ready; reads clientRef.current dynamically so it survives reconnects.
@@ -2570,11 +2563,9 @@ export function App() {
     }
   }, [tabVisible, state.activeChannelID, state.parked]);
 
-  // 53-1: remember the parking across a reload, and pull down anything the OS
-  // is still showing -- a banner from a second ago would undo the click that
-  // just cleared the screen.
+  // 53-1: parking pulls down anything the OS is still showing -- a banner
+  // from a second ago would undo the click that just cleared the screen.
   useEffect(() => {
-    saveParked(state.parked);
     if (state.parked) notifyBanners().closeAll();
   }, [state.parked]);
 

@@ -838,9 +838,9 @@ export const initialState: AppState = {
   // Phase 10b:
   openThread: null,
 
-  // 53-1: App re-seeds this from localStorage at useReducer init, so a reload
-  // while parked comes back parked.
-  parked: false,
+  // 53-1: every session starts parked -- the parking lot is the startup
+  // screen, so a reload or restart never opens a conversation on its own.
+  parked: true,
 
   // Phase 10c:
   threadMessages: {},

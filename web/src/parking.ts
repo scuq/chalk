@@ -5,12 +5,12 @@
 // connected, the call keeps running, the window keeps its shape -- there is
 // simply nothing left in it to read. Leaving is picking any channel again.
 //
-// Two things live here: the name the row carries (an account pref, so the
-// title you chose follows you to your other devices -- see
-// selectParkingLotPrefs in state/types.ts) and whether this browser is
-// currently parked, which is per-device by nature and survives a reload. That
-// last part matters: without it, F5 drops you straight back into the last
-// channel you had open, which is the one moment you least want it.
+// It is also the startup screen: every session begins parked (see initialState
+// in state/types.ts), so a reload or restart never opens a conversation on its
+// own -- F5 with someone behind you lands here, not in the channel you had
+// open. What lives in this file is the name the row carries, an account pref
+// so the title you chose follows you to your other devices -- see
+// selectParkingLotPrefs in state/types.ts.
 
 export const PARKING_LOT_DEFAULT_NAME = "Parking Lot";
 
@@ -24,25 +24,4 @@ export function parkingLotName(raw: unknown): string {
   if (typeof raw !== "string") return PARKING_LOT_DEFAULT_NAME;
   const cleaned = raw.replace(/\s+/g, " ").trim().slice(0, PARKING_LOT_NAME_MAX);
   return cleaned || PARKING_LOT_DEFAULT_NAME;
-}
-
-const PARKED_KEY = "chalk.parked.v1";
-
-export function loadParked(): boolean {
-  try {
-    return window.localStorage.getItem(PARKED_KEY) === "1";
-  } catch {
-    // Private-browsing localStorage throws. Not being parked is the safe
-    // reading of "we don't know": the user is one click from parking again.
-    return false;
-  }
-}
-
-export function saveParked(parked: boolean): void {
-  try {
-    if (parked) window.localStorage.setItem(PARKED_KEY, "1");
-    else window.localStorage.removeItem(PARKED_KEY);
-  } catch {
-    // Same as above: parking just won't survive the reload.
-  }
 }

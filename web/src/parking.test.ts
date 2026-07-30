@@ -1,5 +1,4 @@
-// The parking lot's two stored values: the title (account pref, normalized on
-// read) and whether this device is parked (localStorage, survives a reload).
+// The parking lot's stored title (account pref, normalized on read).
 //
 // The title matters more than it looks: it's the only label on the row, so
 // "empty" or "forty lines of whitespace" has to resolve to something a person
@@ -10,9 +9,7 @@ import assert from "node:assert/strict";
 import {
   PARKING_LOT_DEFAULT_NAME,
   PARKING_LOT_NAME_MAX,
-  loadParked,
   parkingLotName,
-  saveParked,
 } from "./parking.ts";
 import { selectParkingLotPrefs } from "./state/types.ts";
 
@@ -60,59 +57,4 @@ test("only a literal true hides the row", () => {
       false,
     );
   }
-});
-
-// The parked flag. Stubbed storage rather than a DOM: what's being tested is
-// that a missing or junk entry reads as "not parked" and that saving false
-// clears the entry instead of leaving a falsey string behind.
-function withStorage(store: Map<string, string> | null, fn: () => void) {
-  const g = globalThis as { window?: unknown };
-  const prev = g.window;
-  g.window = {
-    localStorage: {
-      getItem(k: string) {
-        if (!store) throw new Error("storage disabled");
-        return store.has(k) ? store.get(k)! : null;
-      },
-      setItem(k: string, v: string) {
-        if (!store) throw new Error("storage disabled");
-        store.set(k, v);
-      },
-      removeItem(k: string) {
-        if (!store) throw new Error("storage disabled");
-        store.delete(k);
-      },
-    },
-  };
-  try {
-    fn();
-  } finally {
-    g.window = prev;
-  }
-}
-
-test("parked survives a save/load round trip", () => {
-  const store = new Map<string, string>();
-  withStorage(store, () => {
-    assert.equal(loadParked(), false);
-    saveParked(true);
-    assert.equal(loadParked(), true);
-    saveParked(false);
-    assert.equal(store.size, 0);
-    assert.equal(loadParked(), false);
-  });
-});
-
-test("a junk entry reads as not parked", () => {
-  const store = new Map<string, string>([["chalk.parked.v1", "yes"]]);
-  withStorage(store, () => {
-    assert.equal(loadParked(), false);
-  });
-});
-
-test("storage that throws does not break startup", () => {
-  withStorage(null, () => {
-    assert.equal(loadParked(), false);
-    saveParked(true); // must not throw
-  });
 });

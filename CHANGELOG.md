@@ -10,6 +10,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **Chalk now starts in the parking lot.** Opening or reloading chalk used
+  to drop you straight into a conversation of its own choosing (whichever
+  one was created most recently). It now lands on the parking lot screen —
+  nothing on display until you pick a channel.
+
 ## v0.4.6 — 30 July 2026 — Scrollback reaches all the way back
 
 ### Changed

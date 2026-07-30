@@ -16,14 +16,21 @@ import { initialState, type AppState } from "./types.ts";
 const CH = "chan-1";
 const OTHER = "chan-2";
 
+// A session that has already navigated into a channel: initialState starts
+// parked (the parking lot is the startup screen), so unpark explicitly.
 function baseState(over: Partial<AppState> = {}): AppState {
   return {
     ...initialState,
+    parked: false,
     activeChannelID: CH,
     user: { id: "user-me", device: "dev-me", handle: "me" },
     ...over,
   };
 }
+
+test("a fresh session starts parked", () => {
+  assert.equal(initialState.parked, true);
+});
 
 test("parking keeps the active channel and closes the thread panel", () => {
   const s = reducer(
