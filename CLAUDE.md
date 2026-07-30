@@ -155,9 +155,9 @@ before declaring any change done.
 ## Current state / open items
 
 Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
-(user-facing). Latest release: v0.4.7. Only what is NOT done belongs here.
+(user-facing). Latest release: v0.4.8. Only what is NOT done belongs here.
 
-- Phases through 56-1 are committed. Complete arcs: auth v2 (31), voice/video
+- Phases through 57-4 are committed. Complete arcs: auth v2 (31), voice/video
   (30-1 … 30-8 plus the 41/44/47/48 mic, device and call-UI work), governance
   (gov-1/gov-2, panel included), attachments, multi-device, unread + read
   cursors (33), threads and the thread inbox (42/47/49), notifications
@@ -165,7 +165,9 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   scratchpad (45), camera background effects (52), the parking lot
   (53-1/53-2), roster filter + channel groups (54, plan in
   `docs/PHASE-54-ROSTER.md`), main-feed scrollback paging (55, plan in
-  `docs/PHASE-55-HISTORY.md`), composer @mention autocomplete (56-1).
+  `docs/PHASE-55-HISTORY.md`), composer @mention autocomplete (56-1), link
+  previews (57, plan in `docs/PHASE-57-LINKPREVIEW.md`: sender-built,
+  E2E-embedded, opt-in, SSRF-guarded server fetcher).
 - Next candidates, none started: the SFU seam (voice design Slice I) for
   rooms too large for a mesh; governance `set_config` proposals.
 - Deferred cleanup, all verified still open:

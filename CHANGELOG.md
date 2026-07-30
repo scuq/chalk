@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.4.8 — 31 July 2026 — Link previews without the leaks
 
 ### Added
 - **Links from YouTube and Steam can now unfurl into preview cards.** Paste
