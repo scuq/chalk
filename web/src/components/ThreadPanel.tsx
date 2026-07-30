@@ -20,6 +20,7 @@ import type { ResolvedChatPrefs } from "../state/types";
 import type { PendingAttachment } from "../attachments/types";
 import type { AttachmentController } from "../attachments/pipeline";
 import type { GiphyPref } from "../giphy/giphy";
+import type { LinkPreviewPref } from "../linkpreview/linkpreview";
 import { MessageList } from "./MessageList";
 import { Composer, type SendOptions } from "./Composer";
 
@@ -83,6 +84,11 @@ interface Props {
   giphyEnabled?: boolean;
   giphyReady?: boolean;
   onRequestEnableGiphy?: () => void;
+  // 57-3: link-preview props, forwarded verbatim to the reply composer.
+  linkPreviewEnabled?: boolean;
+  linkPreviewPref?: LinkPreviewPref;
+  linkPreviewDomains?: string[];
+  onRequestEnableLinkPreview?: () => void;
   toolStyle?: "text" | "icons";
   // Receive side of the same parity: without the controller MessageList
   // renders an attachment-only reply as an empty row, and without giphyPref
@@ -131,6 +137,10 @@ export function ThreadPanel({
   giphyEnabled,
   giphyReady,
   onRequestEnableGiphy,
+  linkPreviewEnabled,
+  linkPreviewPref,
+  linkPreviewDomains,
+  onRequestEnableLinkPreview,
   toolStyle,
   attachmentController,
   giphyPref,
@@ -256,6 +266,10 @@ export function ThreadPanel({
           giphyEnabled={giphyEnabled}
           giphyReady={giphyReady}
           onRequestEnableGiphy={onRequestEnableGiphy}
+          linkPreviewEnabled={linkPreviewEnabled}
+          linkPreviewPref={linkPreviewPref}
+          linkPreviewDomains={linkPreviewDomains}
+          onRequestEnableLinkPreview={onRequestEnableLinkPreview}
           toolStyle={toolStyle}
           editing={editing}
           onEditSubmit={onEditSubmit}

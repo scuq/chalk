@@ -749,6 +749,87 @@ html, body {
   color: var(--chalk-fg-bright);
 }
 
+/* -- 57-3: composer link-preview card ------------------------------ */
+/* One strip for all three states (consent ask, loading, ready card).
+   Same visual family as the tray chips: elevated, bordered, small type. */
+.chalk-composer-linkpreview {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  font-size: var(--chalk-size-small);
+  min-width: 0;
+}
+.chalk-composer-linkpreview-ask,
+.chalk-composer-linkpreview-loading {
+  color: var(--chalk-fg-dim);
+}
+.chalk-composer-linkpreview-enable {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  color: var(--chalk-accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.chalk-composer-linkpreview-enable:hover {
+  color: var(--chalk-fg-bright);
+}
+.chalk-composer-linkpreview-thumb {
+  width: 3.4em;
+  height: 3.4em;
+  object-fit: cover;
+  border-radius: var(--chalk-radius);
+  flex: none;
+}
+.chalk-composer-linkpreview-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1em;
+  min-width: 0;
+}
+.chalk-composer-linkpreview-site {
+  color: var(--chalk-fg-muted);
+  font-size: 0.85em;
+}
+.chalk-composer-linkpreview-title {
+  color: var(--chalk-fg-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chalk-composer-linkpreview-desc {
+  color: var(--chalk-fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The one thing on the card the reader can trust: the real destination. */
+.chalk-composer-linkpreview-host {
+  color: var(--chalk-fg-muted);
+  font-size: 0.85em;
+}
+.chalk-composer-linkpreview-dismiss {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0 0.2em;
+  line-height: 1;
+  align-self: flex-start;
+}
+.chalk-composer-linkpreview-dismiss:hover {
+  color: var(--chalk-fg-bright);
+}
+
 /* -- att-3: drag-drop affordance + per-item upload progress -------- */
 .chalk-composer--drag-active {
   outline: 1px dashed var(--chalk-fg);

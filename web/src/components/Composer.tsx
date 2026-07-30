@@ -17,6 +17,17 @@ const EmojiPicker = lazyComponent(() =>
   import("./EmojiPicker").then((m) => m.EmojiPicker)
 );
 import { encodeGiphyBody } from "../giphy/giphy";
+import {
+  type LinkPreviewPayload,
+  type LinkPreviewPref,
+  decideLinkPreviewOffer,
+  encodeLinkPreviewBody,
+} from "../linkpreview/linkpreview";
+import {
+  fetchLinkPreview,
+  fetchLinkPreviewThumb,
+  linkPreviewThumbFilename,
+} from "../linkpreview/fetch";
 import { insertAtCursor } from "../emoji/emoji";
 import { replaceEmoticonBefore } from "../emoji/emoticons";
 import {
@@ -107,9 +118,41 @@ interface Props {
   // whatever this composer sends into. Absent or empty disables the popup;
   // typed @handles still work, they just aren't completed.
   mentionHandles?: string[];
+  // 57-3: sender-side link previews. linkPreviewEnabled mirrors the server
+  // flag (fetcher available); linkPreviewPref is the viewer's tri-state
+  // consent; linkPreviewDomains is the effective whitelist (server default +
+  // user overrides). When a whitelisted URL is in the draft and the pref is
+  // "unset", the card slot offers consent instead -- accepting goes through
+  // onRequestEnableLinkPreview (App owns the modal), mirroring Giphy.
+  linkPreviewEnabled?: boolean;
+  linkPreviewPref?: LinkPreviewPref;
+  linkPreviewDomains?: string[];
+  onRequestEnableLinkPreview?: () => void;
 }
 
+// 57-3: the preview card's lifecycle. "consent" and "loading" render as thin
+// rows; "ready" is the dismissible card whose payload rides into the send.
+type PreviewCard =
+  | { state: "consent"; url: string }
+  | { state: "loading"; url: string }
+  | {
+      state: "ready";
+      url: string;
+      payload: LinkPreviewPayload;
+      thumb: { blob: Blob; objectURL: string } | null;
+    };
+
 const MAX_LEN = 4000;
+
+// 57-3: the card always names the real destination host -- preview text is
+// sender-asserted, the host is what the reader can trust.
+function hostOfURL(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
 
 // Phase 9.7h: inline SVG glyphs for the "icons" tool style. Stroked with
 // currentColor so they inherit the button's colour (and therefore the theme
@@ -154,7 +197,7 @@ function IconGif() {
   );
 }
 
-export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast, focusKey, onTyping, mentionHandles }: Props) {
+export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast, focusKey, onTyping, mentionHandles, linkPreviewEnabled, linkPreviewPref, linkPreviewDomains, onRequestEnableLinkPreview }: Props) {
   const icons = toolStyle === "icons";
   const emoticonsOn = emoticons !== false;
   const [draft, setDraft] = useState("");
@@ -206,6 +249,99 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   // Drag enter/leave fire per child; a depth counter keeps the affordance
   // stable until the pointer actually leaves the composer.
   const dragDepth = useRef(0);
+
+  // 57-3: the link-preview card. previewDismissed remembers per-URL "no"s so
+  // a dismissed card doesn't pop back on the next keystroke; it forgets on a
+  // successful send. previewSeq staleness-guards the async fetch: a newer
+  // draft supersedes an in-flight one, and its late result is dropped.
+  const [previewCard, setPreviewCard] = useState<PreviewCard | null>(null);
+  const previewDismissed = useRef<Set<string>>(new Set());
+  const previewSeq = useRef(0);
+
+  const clearPreviewCard = () => {
+    previewSeq.current++;
+    setPreviewCard((cur) => {
+      if (cur === null) return cur;
+      if (cur.state === "ready" && cur.thumb) URL.revokeObjectURL(cur.thumb.objectURL);
+      return null;
+    });
+  };
+
+  const dismissPreview = () => {
+    setPreviewCard((cur) => {
+      if (cur) previewDismissed.current.add(cur.url);
+      if (cur?.state === "ready" && cur.thumb) URL.revokeObjectURL(cur.thumb.objectURL);
+      return null;
+    });
+    previewSeq.current++;
+    textareaRef.current?.focus();
+  };
+
+  // Debounced URL detection. The deps use a joined key for the domains list
+  // so a parent re-render with an equal-but-new array doesn't re-arm the
+  // timer on every frame.
+  const domainsKey = (linkPreviewDomains ?? []).join(",");
+  useEffect(() => {
+    if (!linkPreviewEnabled || editing) {
+      clearPreviewCard();
+      return;
+    }
+    const offer = decideLinkPreviewOffer(
+      draft,
+      linkPreviewPref ?? "unset",
+      linkPreviewDomains ?? [],
+    );
+    if (offer.mode === "none" || previewDismissed.current.has(offer.url)) {
+      clearPreviewCard();
+      return;
+    }
+    // Already showing (or fetching) this URL in the right mode: leave it be.
+    if (
+      previewCard &&
+      previewCard.url === offer.url &&
+      (offer.mode === "consent") === (previewCard.state === "consent")
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      if (offer.mode === "consent") {
+        previewSeq.current++;
+        setPreviewCard({ state: "consent", url: offer.url });
+        return;
+      }
+      const seq = ++previewSeq.current;
+      setPreviewCard({ state: "loading", url: offer.url });
+      void (async () => {
+        const fp = await fetchLinkPreview(offer.url);
+        if (seq !== previewSeq.current) return;
+        if (!fp) {
+          // Nothing usable (or the fetch failed): stop asking for this URL
+          // so a dead page doesn't re-trigger on every keystroke.
+          previewDismissed.current.add(offer.url);
+          setPreviewCard(null);
+          return;
+        }
+        let thumb: { blob: Blob; objectURL: string } | null = null;
+        if (fp.imageURL) {
+          const blob = await fetchLinkPreviewThumb(fp.imageURL);
+          if (seq !== previewSeq.current) return;
+          if (blob) {
+            try {
+              thumb = { blob, objectURL: URL.createObjectURL(blob) };
+            } catch {
+              thumb = null; // card still renders text-only
+            }
+          }
+        }
+        setPreviewCard({ state: "ready", url: offer.url, payload: fp.payload, thumb });
+      })();
+    }, 500);
+    return () => window.clearTimeout(timer);
+    // previewCard is intentionally read but not a dep: the guard above only
+    // prevents re-fetching the URL already on screen; the card's own state
+    // changes must not re-arm the debounce timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, linkPreviewEnabled, linkPreviewPref, domainsKey, editing]);
 
   const effectiveDisabled =
     disabledReason !== null && disabledReason !== undefined
@@ -451,36 +587,60 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     if (!body && pending.length === 0) return;
     if (body.length > MAX_LEN) return;
 
+    // 57-3: a ready preview card rides along -- the payload is folded into
+    // the body (encrypted like any other text) and the thumbnail becomes a
+    // leading attachment the renderer recognizes by filename convention. The
+    // MAX_LEN check above ran on the TYPED text; the marker + payload are
+    // wire framing, not the user "typing more".
+    let sendText = body;
+    let items = pending;
+    const card = previewCard;
+    const cardActive = card !== null && card.state === "ready";
+    if (card !== null && card.state === "ready") {
+      sendText = encodeLinkPreviewBody(card.payload, body);
+      if (card.thumb) {
+        const mime = card.thumb.blob.type;
+        const file = new File([card.thumb.blob], linkPreviewThumbFilename(mime), { type: mime });
+        items = [{ localID: makeLocalID(), file, kind: "image" }, ...pending];
+      }
+    }
+    const sentPreview = () => {
+      if (!cardActive) return;
+      previewDismissed.current.clear();
+      clearPreviewCard();
+    };
+
     // Text-only: no progress UI. The box clears synchronously so rapid
     // typing never fights a disabled textarea -- but onSend resolves false
     // when the send was blocked (socket just dropped, key not here yet), and
     // losing the message silently would be worse than a moment of surprise.
     // On refusal the draft is put back, unless the user has already started
     // typing something new in the meantime.
-    if (pending.length === 0) {
+    if (items.length === 0) {
       setDraft("");
       // The draft is gone, so we are no longer typing -- and the next
       // character should ping at once rather than wait out the old window.
       onTyping?.(false);
       let result: boolean | void;
       try {
-        result = await onSend(body);
+        result = await onSend(sendText);
       } catch {
         result = false;
       }
       if (result === false) {
         setDraft((cur) => (cur === "" ? body : cur));
+        return;
       }
+      sentPreview();
       return;
     }
 
     // With attachments: keep the tray visible and render per-item progress
     // until the upload completes, then clear.
-    const items = pending;
     setSending(true);
     setProgress({});
     try {
-      const result = await onSend(body, items, {
+      const result = await onSend(sendText, items, {
         onProgress: (localID, loaded, total) => {
           setProgress((prev) => ({ ...prev, [localID]: total > 0 ? loaded / total : 0 }));
         },
@@ -493,6 +653,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
       setDraft("");
       onTyping?.(false);
       clearPending();
+      sentPreview();
       setProgress({});
       setSending(false);
     } catch {
@@ -755,6 +916,72 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
               cancel
             </button>
             <span class="chalk-composer-editing-hint">escape to cancel</span>
+          </div>
+        )}
+        {/* 57-3: link-preview card. Three shapes: a consent ask (pref still
+            unset), a thin loading row, and the ready card that will ride the
+            next send. All dismissible; dismissing remembers the URL so the
+            card doesn't reappear while the link is still in the draft. */}
+        {previewCard && !editing && (
+          <div
+            class={`chalk-composer-linkpreview chalk-composer-linkpreview--${previewCard.state}`}
+            data-testid="composer-linkpreview"
+          >
+            {previewCard.state === "consent" ? (
+              <>
+                <span class="chalk-composer-linkpreview-ask">
+                  preview this link for everyone?
+                </span>
+                <button
+                  type="button"
+                  class="chalk-composer-linkpreview-enable"
+                  onClick={() => onRequestEnableLinkPreview?.()}
+                  data-testid="composer-linkpreview-enable"
+                >
+                  enable previews
+                </button>
+              </>
+            ) : previewCard.state === "loading" ? (
+              <span class="chalk-composer-linkpreview-loading">building preview…</span>
+            ) : (
+              <>
+                {previewCard.thumb && (
+                  <img
+                    class="chalk-composer-linkpreview-thumb"
+                    src={previewCard.thumb.objectURL}
+                    alt=""
+                  />
+                )}
+                <span class="chalk-composer-linkpreview-text">
+                  {previewCard.payload.site_name !== "" && (
+                    <span class="chalk-composer-linkpreview-site">
+                      {previewCard.payload.site_name}
+                    </span>
+                  )}
+                  <span class="chalk-composer-linkpreview-title">
+                    {previewCard.payload.title}
+                  </span>
+                  {previewCard.payload.description !== "" && (
+                    <span class="chalk-composer-linkpreview-desc">
+                      {previewCard.payload.description}
+                    </span>
+                  )}
+                  <span class="chalk-composer-linkpreview-host">
+                    {hostOfURL(previewCard.payload.url)}
+                  </span>
+                </span>
+              </>
+            )}
+            <button
+              type="button"
+              class="chalk-composer-linkpreview-dismiss"
+              onClick={dismissPreview}
+              title="send without preview"
+              aria-label="send without preview"
+              data-testid="composer-linkpreview-dismiss"
+            >
+              ✕
+            </button>
           </div>
         )}
         {enableAttachments && !editing && pending.length > 0 && (

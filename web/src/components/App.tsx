@@ -171,6 +171,10 @@ import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
 import { hasUnread, initialState, selectChatPrefs, selectParkingLotPrefs, selectRosterPrefs, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow } from "../state/types";
 import { selectGiphyPref } from "../giphy/giphy";
+import {
+  selectLinkPreviewPref,
+  effectiveLinkPreviewDomains,
+} from "../linkpreview/linkpreview";
 import { Logo } from "./Logo";
 import { VersionLink } from "./VersionLink";
 import { StatusBar } from "./StatusBar";
@@ -1037,6 +1041,22 @@ export function App() {
     // safe under the server's shallow JSONB merge.
     c.send(TypePrefsSet, { patch: { giphy: v } });
   }, []);
+  // 57-3: link-preview consent, same shape as Giphy's. Opened from the
+  // composer's "enable previews" affordance (and later the settings toggle);
+  // confirming patches the flat pref, which flips the composer to generating.
+  const [linkPreviewConsentOpen, setLinkPreviewConsentOpen] = useState(false);
+  const sendLinkPreviewPref = useCallback((v: "enabled" | "disabled") => {
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    c.send(TypePrefsSet, { patch: { linkpreview: v } });
+  }, []);
+  // Memoized so the composer's debounce effect doesn't see a fresh array
+  // every App render.
+  const linkPreviewDomains = useMemo(
+    () =>
+      effectiveLinkPreviewDomains(state.authConfig?.linkpreview_domains, state.prefs),
+    [state.authConfig, state.prefs],
+  );
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   const deleteChannel = state.activeChannelID
@@ -4391,6 +4411,10 @@ export function App() {
             giphyEnabled={state.authConfig?.giphy_enabled ?? false}
             giphyReady={selectGiphyPref(state.prefs) === "enabled"}
             onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
+            linkPreviewEnabled={state.authConfig?.linkpreview_enabled ?? false}
+            linkPreviewPref={selectLinkPreviewPref(state.prefs)}
+            linkPreviewDomains={linkPreviewDomains}
+            onRequestEnableLinkPreview={() => setLinkPreviewConsentOpen(true)}
             toolStyle={selectChatPrefs(state.prefs).composerToolStyle}
             attachmentController={attControllerRef.current ?? undefined}
             giphyPref={selectGiphyPref(state.prefs)}
@@ -4461,6 +4485,10 @@ export function App() {
             giphyEnabled={state.authConfig?.giphy_enabled ?? false}
             giphyReady={selectGiphyPref(state.prefs) === "enabled"}
             onRequestEnableGiphy={() => setGiphyConsentOpen(true)}
+            linkPreviewEnabled={state.authConfig?.linkpreview_enabled ?? false}
+            linkPreviewPref={selectLinkPreviewPref(state.prefs)}
+            linkPreviewDomains={linkPreviewDomains}
+            onRequestEnableLinkPreview={() => setLinkPreviewConsentOpen(true)}
             // 56-1: @ completes against the channel roster. DMs included --
             // a mention there is odd but harmless, and 33-3 highlights it.
             mentionHandles={activeChannel?.members.map((m) => m.handle)}
@@ -4541,6 +4569,24 @@ export function App() {
           setGiphyConsentOpen(false);
         }}
         onCancel={() => setGiphyConsentOpen(false)}
+      />
+
+      {/* 57-3: link-preview consent. Confirm enables SENDER-side preview
+          generation -- the only network cost is the user's own chalkd
+          fetching a page they were about to link. Recipients never fetch
+          anything; the preview rides inside the encrypted message. */}
+      <ConfirmModal
+        open={linkPreviewConsentOpen}
+        title="Enable link previews?"
+        body={
+          "When you paste a link from a whitelisted site (YouTube, Steam by default), chalk asks YOUR server to fetch the page and bundles a small preview -- title, description, thumbnail -- into the encrypted message. The linked site sees your server's address, not yours; your server sees which link you previewed. Other members never fetch anything -- the preview travels end-to-end encrypted like the rest of the message. Every preview is shown to you first and can be removed before sending. You can turn this off anytime in settings."
+        }
+        confirmLabel="Enable previews"
+        onConfirm={() => {
+          sendLinkPreviewPref("enabled");
+          setLinkPreviewConsentOpen(false);
+        }}
+        onCancel={() => setLinkPreviewConsentOpen(false)}
       />
 
       {/* 37-5: pick a NEW reaction for a message. Existing chips toggle
