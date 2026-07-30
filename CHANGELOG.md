@@ -12,6 +12,12 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Changed
+- **Loading older messages is faster in thread-heavy channels.** Each
+  "page" of scrollback now brings in a full screen of actual conversation
+  instead of sometimes only a message or two — thread replies no longer
+  count against what a page can carry.
+
 ### Fixed
 - **Old messages are reachable again in busy channels.** Scrolling to the
   top of a conversation now loads what came before, page by page, until

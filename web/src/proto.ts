@@ -325,6 +325,10 @@ export interface FetchHistoryPayload {
   channel_id: string;
   before_seq?: number;
   limit?: number;
+  // 55-2: exclude thread replies, so a scrollback page is `limit` rows the
+  // main feed will actually show. Only the paging path sets it -- the
+  // initial fetch keeps replies for the mention scan and thread warm-up.
+  heads_only?: boolean;
 }
 
 export interface FetchHistoryAckPayload {

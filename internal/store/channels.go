@@ -357,7 +357,11 @@ func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]Ch
 // a *uuid.UUID and convert to a string at the proto boundary.
 // viewerID is whose thread read cursors decorate the rows. Pass uuid.Nil for a
 // viewerless read; every thread then reports as unread and uninvolved.
-func (s *Store) ListMessagesByChannel(ctx context.Context, channelID, viewerID uuid.UUID, beforeSeq int64, limit int) ([]Message, error) {
+//
+// headsOnly (55-2) drops thread replies, so a page is limit top-level rows.
+// A short heads-only page still proves the beginning is reached: any reply
+// older than the window has a head older still, which would have been listed.
+func (s *Store) ListMessagesByChannel(ctx context.Context, channelID, viewerID uuid.UUID, beforeSeq int64, limit int, headsOnly bool) ([]Message, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -368,6 +372,12 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID, viewerID u
 	// to a large sentinel for the query.
 	if beforeSeq <= 0 {
 		beforeSeq = 1 << 62
+	}
+
+	// 55-2: a fixed literal, never user input, so concatenation is safe.
+	headsFilter := ""
+	if headsOnly {
+		headsFilter = " AND m.parent_id IS NULL"
 	}
 
 	// Phase 9.6i: LEFT JOIN devices for username.
@@ -406,7 +416,7 @@ func (s *Store) ListMessagesByChannel(ctx context.Context, channelID, viewerID u
 		          ON lr.ts = ta.last_reply_ts AND lr.id = ta.last_reply_id
 		   LEFT JOIN thread_reads tr
 		          ON tr.user_id = $4 AND tr.thread_id = m.id
-		  WHERE m.channel_id = $1 AND m.seq < $2
+		  WHERE m.channel_id = $1 AND m.seq < $2`+headsFilter+`
 		  ORDER BY m.seq DESC
 		  LIMIT $3`,
 		channelID, beforeSeq, limit, viewerID,

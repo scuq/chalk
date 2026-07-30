@@ -3597,6 +3597,11 @@ export function App() {
       channel_id: cid,
       before_seq: oldestLoadedSeq,
       limit: HISTORY_PAGE_SIZE,
+      // 55-2: replies would be filtered out of the feed anyway; without
+      // this a page in a thread-heavy channel advances almost nothing.
+      // An old server ignores the flag and the filter above handles the
+      // replies -- strictly the 55-1 behaviour, nothing breaks.
+      heads_only: true,
     });
   };
 

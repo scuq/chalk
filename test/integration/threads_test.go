@@ -362,7 +362,7 @@ func TestListMessagesByChannel_CarriesThreadCursors(t *testing.T) {
 
 	headRow := func(viewer uuid.UUID) store.Message {
 		t.Helper()
-		msgs, err := st.ListMessagesByChannel(c, chID, viewer, 0, 50)
+		msgs, err := st.ListMessagesByChannel(c, chID, viewer, 0, 50, false)
 		if err != nil {
 			t.Fatalf("ListMessagesByChannel: %v", err)
 		}
@@ -432,7 +432,7 @@ func TestListMessagesByChannel_ReplylessMessageHasNoThreadState(t *testing.T) {
 
 	lonely := insertHead(t, st, chID, aliceDev)
 
-	msgs, err := st.ListMessagesByChannel(c, chID, aliceID, 0, 50)
+	msgs, err := st.ListMessagesByChannel(c, chID, aliceID, 0, 50, false)
 	if err != nil {
 		t.Fatalf("ListMessagesByChannel: %v", err)
 	}
@@ -450,6 +450,42 @@ func TestListMessagesByChannel_ReplylessMessageHasNoThreadState(t *testing.T) {
 		return
 	}
 	t.Fatal("a message with no replies fell out of the feed; a LEFT JOIN degraded to an inner join")
+}
+
+// TestListMessagesByChannel_HeadsOnly guards 55-2: with headsOnly set the
+// page carries no replies, but the head still arrives with its thread
+// decorations -- the client's reply counts and snippets come from these
+// rows, so a heads-only page that lost them would blank every thread badge
+// loaded through scrollback.
+func TestListMessagesByChannel_HeadsOnly(t *testing.T) {
+	st := openStore(t)
+	chID, aliceDev, bobDev := seedThreadChannel(t, st)
+	c := ctx(t)
+
+	head := insertHead(t, st, chID, aliceDev)
+	insertReply(t, st, chID, bobDev, head, head)
+	last := insertReply(t, st, chID, bobDev, head, head)
+
+	msgs, err := st.ListMessagesByChannel(c, chID, aliceID, 0, 50, true)
+	if err != nil {
+		t.Fatalf("ListMessagesByChannel(headsOnly): %v", err)
+	}
+	found := false
+	for _, m := range msgs {
+		if m.ParentID != nil {
+			t.Errorf("heads-only page contains reply %s", m.ID)
+		}
+		if m.ID == head {
+			found = true
+			if m.ReplyCount != 2 || m.LastReplySeq != last {
+				t.Errorf("head lost its decorations: count=%d last=%d, want 2/%d",
+					m.ReplyCount, m.LastReplySeq, last)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the head is missing from a heads-only page")
+	}
 }
 
 // ---- 42-1: thread read cursors ------------------------------------------

@@ -371,6 +371,14 @@ type FetchHistoryPayload struct {
 	ChannelID string `json:"channel_id"`
 	BeforeSeq int64  `json:"before_seq,omitempty"`
 	Limit     int    `json:"limit,omitempty"`
+	// HeadsOnly excludes thread replies from the page (55-2). Scrollback
+	// paging sets it so every page is limit VISIBLE rows -- the main feed
+	// renders only thread heads, and in a thread-heavy channel a full page
+	// could otherwise be almost entirely replies the client filters out.
+	// The initial (no BeforeSeq) fetch deliberately doesn't: replies there
+	// feed the client's mention scan and warm the newest threads. Default
+	// false, so older clients and servers are byte-compatible either way.
+	HeadsOnly bool `json:"heads_only,omitempty"`
 }
 
 // FetchHistoryAckPayload returns up to Limit messages in descending seq

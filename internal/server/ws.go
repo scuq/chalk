@@ -2190,7 +2190,7 @@ func (h *WSHandler) handleFetchHistory(
 		}
 	}
 
-	msgs, err := h.store.ListMessagesByChannel(ctx, channelID, callerID, p.BeforeSeq, p.Limit)
+	msgs, err := h.store.ListMessagesByChannel(ctx, channelID, callerID, p.BeforeSeq, p.Limit, p.HeadsOnly)
 	if err != nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "fetch: "+err.Error())
 		return
