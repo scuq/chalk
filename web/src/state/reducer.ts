@@ -957,6 +957,11 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         messages: { ...state.messages, [action.channelID]: merged },
         historyLoaded: { ...state.historyLoaded, [action.channelID]: true },
+        // 55-1: raise-only. A later full page (e.g. the key-ready refetch of
+        // the newest 50) must not clear what a short page already proved.
+        historyComplete: action.complete
+          ? { ...state.historyComplete, [action.channelID]: true }
+          : state.historyComplete,
         threadSeen,
       };
     }

@@ -404,6 +404,48 @@ html, body {
   margin: 0;
 }
 
+/* ============================================================
+   Phase 55-1: scroll-up pagination
+   ============================================================ */
+
+/* The observer target. 1px tall so intersection is unambiguous;
+   visually nothing. */
+.chalk-history-sentinel {
+  height: 1px;
+  flex-shrink: 0;
+}
+
+/* End cap and loading line: quiet, centered, out of the feed's voice. */
+.chalk-history-cap {
+  text-align: center;
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+  padding: var(--chalk-s2) 0;
+  user-select: none;
+}
+
+.chalk-history-cap--loading {
+  font-style: italic;
+}
+
+/* The manual fallback when auto-fill damps out. */
+.chalk-history-more {
+  display: block;
+  margin: var(--chalk-s2) auto;
+  background: none;
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-dim);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+}
+
+.chalk-history-more:hover {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg-bright);
+}
+
 .chalk-message {
   display: grid;
   grid-template-columns: 7ch 9ch 1fr;

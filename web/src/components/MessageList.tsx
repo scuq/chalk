@@ -1,5 +1,6 @@
 import { Fragment } from "preact";
-import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { autoPagingAllowed, nextEmptyStreak } from "../chat/history-paging";
 import type { Message, ReactionSet } from "../state/types";
 import { aggregate } from "../chat/reactions";
 import { buildMessageMenu, type MessageMenuItem } from "../chat/message-menu";
@@ -244,6 +245,16 @@ interface Props {
   // id in response.
   flashMessageID?: string | null;
   onFlashDone?: () => void;
+  // 55-1: scroll-up pagination (docs/PHASE-55-HISTORY.md). onLoadOlder asks
+  // the caller for the page before the oldest loaded row; historyComplete
+  // says the channel's beginning is loaded; oldestSeq is the oldest loaded
+  // seq from the UNFILTERED list -- it moves on every landed page, even one
+  // of pure thread replies that changes nothing visible, and that movement
+  // is how this component knows a page arrived. All optional: callers
+  // without them (thread panel, scratchpad) get no paging affordance.
+  onLoadOlder?: () => void;
+  historyComplete?: boolean;
+  oldestSeq?: number | null;
 }
 
 // 45-3: how many scratchpad rows are kept in the DOM. Well past what any
@@ -272,7 +283,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return fmtRelative(d, now);
 }
 
-export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy, ephemeral, flashMessageID, onFlashDone }: Props) {
+export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy, ephemeral, flashMessageID, onFlashDone, onLoadOlder, historyComplete, oldestSeq }: Props) {
   const messages = ephemeral ? allMessages.slice(-EPHEMERAL_MAX_ROWS) : allMessages;
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -483,6 +494,95 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     // out under a busy feed.
   }, [flashMessageID, messages.length, channelID, ephemeral]);
 
+  // ---- 55-1: scroll-up pagination ----------------------------------------
+  //
+  // A sentinel row above the oldest message, watched by an
+  // IntersectionObserver. Scrolling to the top fires it; so does a feed too
+  // short to scroll at all, where the sentinel is simply visible -- that's
+  // the auto-fill that heals a first page eaten by thread replies.
+  const paging = !ephemeral && !!onLoadOlder;
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const [olderWaiting, setOlderWaiting] = useState(false);
+  const [autoBlocked, setAutoBlocked] = useState(false);
+  const emptyStreakRef = useRef(0);
+  const headsAtRequestRef = useRef(0);
+  const prevOldestRef = useRef<number | null>(null);
+  const prevHeightRef = useRef<number | null>(null);
+  const pagingChannelRef = useRef<string | null>(null);
+
+  // Fresh channel, fresh paging posture.
+  useEffect(() => {
+    setOlderWaiting(false);
+    setAutoBlocked(false);
+    emptyStreakRef.current = 0;
+  }, [channelID]);
+
+  const requestOlder = () => {
+    // oldestSeq == null means the initial page hasn't landed -- the caller
+    // would drop the request and the spinner would strand.
+    if (!paging || olderWaiting || historyComplete || oldestSeq == null) return;
+    headsAtRequestRef.current = messages.length;
+    setOlderWaiting(true);
+    onLoadOlder!();
+  };
+  // The observer callback outlives renders; give it the fresh closure.
+  const requestOlderRef = useRef(requestOlder);
+  requestOlderRef.current = requestOlder;
+
+  // A page landed: oldestSeq moved (any rows at all, even reply-only) or
+  // the channel completed (an empty page moves nothing). Feed the damping
+  // counter with how many VISIBLE rows the page surfaced. messages.length
+  // is read, not a dep: heads changing without the oldest seq moving is an
+  // append (live message), not a page.
+  useEffect(() => {
+    if (!olderWaiting) return;
+    setOlderWaiting(false);
+    emptyStreakRef.current = nextEmptyStreak(
+      emptyStreakRef.current,
+      messages.length - headsAtRequestRef.current,
+    );
+    setAutoBlocked(!autoPagingAllowed(emptyStreakRef.current));
+  }, [oldestSeq, historyComplete]);
+
+  // Keep the same rows on screen when a page prepends above them. Manual
+  // restoration (Safari has no overflow-anchor): snapshot the scroll height
+  // every pass, and when the oldest loaded seq moved DOWN, the height delta
+  // is exactly the prepended content -- push scrollTop by it before paint.
+  // No dep array on purpose: the snapshot must be from the render directly
+  // before the prepend, or an interleaved append would inflate the delta.
+  useLayoutEffect(() => {
+    const el = scrollParentOf(rootRef.current);
+    const oldest = oldestSeq ?? null;
+    const prevOldest = prevOldestRef.current;
+    const prevHeight = prevHeightRef.current;
+    const sameChannel = pagingChannelRef.current === (channelID ?? null);
+    pagingChannelRef.current = channelID ?? null;
+    prevOldestRef.current = oldest;
+    prevHeightRef.current = el ? el.scrollHeight : null;
+    if (!el || !sameChannel || prevOldest === null || oldest === null) return;
+    if (oldest >= prevOldest || prevHeight === null) return;
+    el.scrollTop += el.scrollHeight - prevHeight;
+  });
+
+  // The observer. Recreated after every landed page on purpose: observe()
+  // fires an initial callback with the current intersection, and that is
+  // what keeps auto-fill going while the feed is still too short to scroll
+  // (a sentinel that never leaves the viewport never crosses a threshold).
+  useEffect(() => {
+    if (!paging || historyComplete || autoBlocked || olderWaiting) return;
+    if (typeof IntersectionObserver === "undefined") return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) requestOlderRef.current();
+      },
+      { root: scrollParentOf(el) },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [paging, historyComplete, autoBlocked, olderWaiting, channelID, oldestSeq]);
+
   // Phase 9.7d: resolved display settings + "now" for relative time.
   // We capture "now" once per render so all rows in a batch share the
   // same reference point; a setInterval would re-render every minute
@@ -498,12 +598,53 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
   };
   const now = new Date();
 
+  // 55-1: the paging row above the oldest message. Exactly one of: the end
+  // cap (nothing older exists), a loading line (page in flight), the manual
+  // button (auto-fill damped out on a reply-only stretch), or the invisible
+  // sentinel the observer watches.
+  const pagingRow = !paging ? null : historyComplete ? (
+    <div class="chalk-history-cap" data-testid="history-beginning">
+      — beginning of channel —
+    </div>
+  ) : olderWaiting ? (
+    <div class="chalk-history-cap chalk-history-cap--loading" data-testid="history-loading">
+      loading older…
+    </div>
+  ) : autoBlocked ? (
+    <button
+      type="button"
+      class="chalk-history-more"
+      data-testid="history-load-older"
+      onClick={() => {
+        emptyStreakRef.current = 0;
+        setAutoBlocked(false);
+        requestOlder();
+      }}
+    >
+      load older messages
+    </button>
+  ) : (
+    <div
+      ref={sentinelRef}
+      class="chalk-history-sentinel"
+      data-testid="history-sentinel"
+      aria-hidden="true"
+    />
+  );
+
   if (messages.length === 0) {
     return (
       <div
+        ref={rootRef}
         class={`chalk-messages chalk-messages--empty ${ephemeral ? "chalk-messages--ephemeral" : ""}`}
         data-testid="messages"
       >
+        {/* A feed can be visibly empty while replies fill the loaded window
+            (the extreme of the starvation this slice fixes) -- the sentinel
+            must render here too or auto-fill could never start. Suppressed
+            until the initial page lands (oldestSeq set), and the "beginning"
+            cap is noise above "no messages yet", so complete shows nothing. */}
+        {oldestSeq != null && !historyComplete && pagingRow}
         <p class="chalk-empty-hint">{empty ?? "no messages yet. say something."}</p>
       </div>
     );
@@ -511,6 +652,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
 
   return (
     <div ref={rootRef} class={`chalk-messages ${display_.compactMode ? "chalk-messages--compact" : ""} ${display_.showTimestamps ? "" : "chalk-messages--no-time"} ${ephemeral ? "chalk-messages--ephemeral" : ""}`} data-testid="messages">
+      {pagingRow}
       {(() => {
         // Phase 9.6i: build a userID → handle lookup once per render
         // pass instead of re-scanning members for every message row.

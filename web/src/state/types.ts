@@ -495,6 +495,10 @@ export interface AppState {
   // Messages, per channel. Missing key means "history not yet fetched."
   messages: Record<string, Message[]>; // by channel id
   historyLoaded: Record<string, boolean>; // per-channel
+  // 55-1: true once a history page came back short -- the beginning of the
+  // channel is loaded and there is nothing older to page for. Sticky for
+  // the session: live messages append and can never un-complete it.
+  historyComplete: Record<string, boolean>; // per-channel
 
   // 33-1: unread + mention state per channel id. Kept out of ChannelSummary
   // so a channel_event summary (which the server builds without a user
@@ -801,6 +805,7 @@ export const initialState: AppState = {
   activeChannelID: null,
   messages: {},
   historyLoaded: {},
+  historyComplete: {},
   unread: {},
   unreadMarks: {},
   proposals: {},
@@ -960,7 +965,10 @@ export type Action =
   // 37-5: backfill decrypted sets for a batch of messages after a history
   // fetch. Replaces whatever was cached for each message id present.
   | { kind: "reactions_merged"; byMessageID: Record<string, ReactionSet[]> }
-  | { kind: "history_loaded"; channelID: string; messages: Message[] }
+  // 55-1: complete=true when the page came back short (the channel's
+  // beginning is loaded). Optional and only ever raises the flag, so the
+  // existing dispatch sites and fixtures are unchanged.
+  | { kind: "history_loaded"; channelID: string; messages: Message[]; complete?: boolean }
   // att-2: backfill attachment refs onto already-loaded messages, keyed by
   // message id. Used after the channel-open window list query (history fetches
   // don't carry attachments; the live push does).

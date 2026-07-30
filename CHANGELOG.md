@@ -10,6 +10,19 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- **Old messages are reachable again in busy channels.** Scrolling to the
+  top of a conversation now loads what came before, page by page, until
+  "beginning of channel" says there is nothing older. Channels with lively
+  threads used to show only a few minutes of history with no way back —
+  each thread reply silently ate a slot in the one page of history that
+  ever loaded. The feed also tops itself up automatically when a
+  thread-heavy stretch would otherwise leave it near-empty.
+
+---
+
 ## v0.4.5 — 30 July 2026 — Channel groups and a roster filter
 
 ### Added

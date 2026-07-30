@@ -222,6 +222,7 @@ const EmojiPicker = lazyComponent(() =>
 );
 import { CreateChannelModal } from "./CreateChannelModal";
 import { DEFAULT_GROUP, knownGroups } from "../chat/channel-groups";
+import { HISTORY_PAGE_SIZE, pageMarksComplete } from "../chat/history-paging";
 // Phase 30 (30-4): the minimal in-call surface + the frame bus that hands
 // voice pushes from handleFrame to the mounted panel's VoiceCall.
 import { VoiceCallPanel } from "./VoiceCallPanel";
@@ -659,7 +660,7 @@ export function App() {
         historyRequestedRef.current.delete(cid);
         const c = clientRef.current;
         if (c && c.isOpen()) {
-          c.send<FetchHistoryPayload>(TypeFetchHistory, { channel_id: cid, limit: 50 });
+          c.send<FetchHistoryPayload>(TypeFetchHistory, { channel_id: cid, limit: HISTORY_PAGE_SIZE });
         }
       }
     } catch (err) {
@@ -1367,6 +1368,10 @@ export function App() {
   // we don't fire a duplicate during the round-trip.
   const historyRequestedRef = useRef<Set<string>>(new Set());
 
+  // 55-1: channels with an older-page request in flight, so a jittery
+  // sentinel can't stack requests. Cleared by the fetch_history ack.
+  const olderInFlightRef = useRef<Set<string>>(new Set());
+
   // Track which channels we've subscribe_channeled. Avoids duplicate
   // sends on idempotent channel_event delivery.
   const subscribeSentRef = useRef<Set<string>>(new Set());
@@ -2014,8 +2019,14 @@ export function App() {
       }
       case TypeFetchHistoryAck: {
         const p = f.payload as FetchHistoryAckPayload;
+        // 55-1: the paging guard clears on ANY page for the channel, and a
+        // short page means the beginning of the channel is loaded. Counted
+        // on the raw rows (every sender asks for HISTORY_PAGE_SIZE), before
+        // decryption can do anything to the list.
+        olderInFlightRef.current.delete(p.channel_id);
+        const complete = pageMarksComplete((p.messages ?? []).length);
         void decryptAll((p.messages ?? []).map(wireToMessage)).then((messages) => {
-          dispatch({ kind: "history_loaded", channelID: p.channel_id, messages });
+          dispatch({ kind: "history_loaded", channelID: p.channel_id, messages, complete });
           // 33-3: scan the messages that are still unread for a mention of
           // the viewer. This is what re-establishes mention dots after a
           // reload or on a device that was offline -- the flag isn't stored
@@ -2884,7 +2895,7 @@ export function App() {
     historyRequestedRef.current.add(cid);
     c.send<FetchHistoryPayload>(TypeFetchHistory, {
       channel_id: cid,
-      limit: 50,
+      limit: HISTORY_PAGE_SIZE,
     });
   }, [state.activeChannelID, state.wsState, state.historyLoaded]);
 
@@ -2911,7 +2922,7 @@ export function App() {
       if (state.historyLoaded[cid]) continue;
       if (historyRequestedRef.current.has(cid)) continue;
       historyRequestedRef.current.add(cid);
-      c.send<FetchHistoryPayload>(TypeFetchHistory, { channel_id: cid, limit: 50 });
+      c.send<FetchHistoryPayload>(TypeFetchHistory, { channel_id: cid, limit: HISTORY_PAGE_SIZE });
     }
   }, [state.wsState, state.channelOrder, state.unread, state.historyLoaded]);
 
@@ -3569,6 +3580,26 @@ export function App() {
     : [];
   const activeMessages = allActiveMessages.filter((m) => !m.parentID);
 
+  // 55-1: scroll-up pagination. oldestLoadedSeq comes from the UNFILTERED
+  // list -- a page of pure replies moves it even though no visible row
+  // changed, and MessageList uses exactly that movement to know a page
+  // landed. Seq 0 rows are local echoes still waiting for the server.
+  const oldestLoadedSeq = allActiveMessages.find((m) => m.seq > 0)?.seq ?? null;
+  const onLoadOlder = () => {
+    const cid = state.activeChannelID;
+    const c = clientRef.current;
+    if (!cid || !c || !c.isOpen()) return;
+    if (state.historyComplete[cid]) return;
+    if (olderInFlightRef.current.has(cid)) return;
+    if (oldestLoadedSeq === null) return; // initial page still in flight
+    olderInFlightRef.current.add(cid);
+    c.send<FetchHistoryPayload>(TypeFetchHistory, {
+      channel_id: cid,
+      before_seq: oldestLoadedSeq,
+      limit: HISTORY_PAGE_SIZE,
+    });
+  };
+
   // Phase 09b sub-step 5b: logout handler. Fires the server-side
   // session delete, then dispatches auth_logged_out to flip the SPA
   // back to LoginScreen. Errors are logged but we proceed with the
@@ -3776,7 +3807,7 @@ export function App() {
     c.send<FetchHistoryPayload>(TypeFetchHistory, {
       channel_id: f.channelID,
       before_seq: oldest,
-      limit: 50,
+      limit: HISTORY_PAGE_SIZE,
     });
   }, [flashMessage, flashList]);
 
@@ -4218,6 +4249,10 @@ export function App() {
             <MessageList
               messages={activeMessages}
               ephemeral={activeChannel.channelType === "voice"}
+              // 55-1: scroll-up pagination.
+              onLoadOlder={onLoadOlder}
+              historyComplete={!!state.historyComplete[activeChannel.id]}
+              oldestSeq={oldestLoadedSeq}
               // 33-4: channelID drives the "land on entry" scroll; the mark
               // is the frozen unread window the divider is drawn from.
               channelID={activeChannel.id}
