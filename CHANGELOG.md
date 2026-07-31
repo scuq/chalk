@@ -16,6 +16,9 @@ The engineering-level history (which slice shipped what) lives in
 - **Working next to a visible chalk window keeps you online longer.** With
   chalk on screen but another window focused, the away dot now waits 10
   minutes of no interaction instead of 5 before showing you as away.
+- **Reactions are easier to hit on phones.** The quick-react emoji row on a
+  long-pressed message and the cells of the full emoji picker were sized for
+  a mouse pointer; on touch screens they now have proper thumb-sized targets.
 
 ### Fixed
 - **On phones, the room name now stays visible while you read.** The channel

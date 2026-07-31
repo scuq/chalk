@@ -7742,6 +7742,27 @@ body.chalk-resizing .chalk-sidebar-resizer {
     -webkit-user-select: none;
     -webkit-touch-callout: none;
   }
+
+  /* Emoji are picked with a thumb here, not a cursor. The desktop sizes
+     (29x24 quick-react buttons, 32px picker cells) are mouse-precision;
+     give both a ~42px touch target instead. The quick row grows from
+     6x31px to 6x50px and still fits the folded menu on a 320px phone. */
+  .chalk-msgmenu-quick {
+    gap: var(--chalk-s1);
+  }
+
+  .chalk-msgmenu-quick-btn {
+    min-width: 42px;
+    min-height: 42px;
+  }
+
+  .chalk-emoji-picker-grid {
+    grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+  }
+
+  .chalk-emoji-picker-item {
+    min-height: 42px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
