@@ -57,16 +57,22 @@ const PEER_AUDIO_LS_KEY = "chalk-voice-peer-audio";
 // A page reload tears down every RTCPeerConnection, the getUserMedia streams
 // and the WebSocket -- WebRTC state cannot survive a reload, so a true
 // "stay connected" is impossible. Instead we remember which room we were in
-// (sessionStorage: survives reload, dies with the tab) and the app offers a
-// ONE-CLICK rejoin on next mount. One click is required anyway -- browsers
-// gate mic/camera and audio playback behind a user gesture, and it doubles as
-// the loop guard (no silent auto-rejoin that could crash-loop).
+// (sessionStorage: survives reload, dies with the tab) and App auto-rejoins
+// once on the next mount (30-5i; the dock nudges if autoplay is gated). The
+// same hint, held in memory with wsDrop set, drives the rejoin after a
+// mid-session socket drop. Consuming the hint clears it, so a failed rejoin
+// can never crash-loop.
 
 const REJOIN_SS_KEY = "chalk-voice-rejoin";
 
 export interface RejoinHint {
   channelID: string;
   channelName: string;
+  /** Set when the hint comes from a mid-session socket drop (handleWsDown):
+   * rejoin in place, without refocusing the room -- the user may be reading
+   * a different channel while the call rides in the dock. Absent on the
+   * reload path, where the fresh page has no context worth preserving. */
+  wsDrop?: boolean;
 }
 
 function saveRejoinHint(h: RejoinHint): void {
@@ -543,15 +549,22 @@ class VoiceSessionImpl {
 
   /** WS loss while connected (design §9 v1): drop from the room -- the
    * server already vacated our row by conn_id; lingering locally would be
-   * a ghost call. The user rejoins with one click once the socket is back. */
+   * a ghost call. The room is re-entered automatically once the socket is
+   * back: we leave the SAME rejoin hint a page reload does, but in memory
+   * too, and App re-arms its auto-rejoin consumer on every drop. No fresh
+   * user gesture is needed -- the one that joined the call originally
+   * already unlocked audio playback. */
   handleWsDown(): void {
     if (this.s.phase === "idle") return;
-    // Keep the rejoin hint (leave(false)): a dropped socket -- including the
-    // brief not-open window while the app boots after a refresh -- should
-    // still offer a one-click rejoin, not silently forget the room.
+    const channelID = this.s.channelID;
+    const channelName = this.s.channelName;
+    // leave(false) keeps the sessionStorage hint; the synchronous part of
+    // leave() resets the snapshot before our set() below layers the hint
+    // and the banner on top.
     void this.leave(false);
     this.set({
-      error: "connection lost — you left the voice room; rejoin once reconnected",
+      error: "connection lost — rejoining voice once the connection is back",
+      rejoinHint: channelID ? { channelID, channelName, wsDrop: true } : this.s.rejoinHint,
     });
   }
 
@@ -565,10 +578,12 @@ class VoiceSessionImpl {
     }
   }
 
-  /** Logout: full teardown, error cleared (nothing to tell a logged-out user). */
+  /** Logout: full teardown, error cleared (nothing to tell a logged-out user).
+   * The in-memory rejoin hint dies too -- a drop-then-logout must not carry a
+   * room across to the next sign-in. */
   reset(): void {
     void this.leave();
-    this.set({ error: null });
+    this.set({ error: null, rejoinHint: null });
   }
 
   // ---- in-call controls ----------------------------------------------------

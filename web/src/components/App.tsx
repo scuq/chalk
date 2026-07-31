@@ -1674,12 +1674,20 @@ export function App() {
   // against a second attempt (crash-loop safety); consumeRejoinHint also
   // clears the hint, so a failed rejoin won't retry. Browsers may suspend
   // audio playback until the first click -- the dock shows a nudge then.
+  //
+  // The ref re-arms whenever the socket is down: a mid-session drop during a
+  // call also leaves a hint (handleWsDown), and each reconnect gets exactly
+  // one shot at consuming it. A failed rejoin still can't loop -- the hint
+  // is gone until the next drop re-creates it.
   const autoRejoinTried = useRef(false);
   useEffect(() => {
+    if (state.wsState !== "open") {
+      autoRejoinTried.current = false;
+      return;
+    }
     if (autoRejoinTried.current) return;
     if (
       state.authStage !== "authed" ||
-      state.wsState !== "open" ||
       !ccReady ||
       !state.voiceEnabled ||
       !state.user
@@ -1701,7 +1709,7 @@ export function App() {
     autoRejoinTried.current = true;
     const consumed = voiceSession.consumeRejoinHint();
     if (!consumed || !state.user) return;
-    dispatch({ kind: "set_active_channel", channelID: ch.id });
+    if (!consumed.wsDrop) dispatch({ kind: "set_active_channel", channelID: ch.id });
     void voiceSession.join({
       channelID: ch.id,
       channelName: ch.name,
