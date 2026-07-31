@@ -79,9 +79,12 @@ export type EncryptBytesResult =
   | { kind: "encrypted"; ciphertext: Uint8Array; keyVersion: number }
   | { kind: "waiting" };
 
-const PLACEHOLDER_NO_KEY = "[encrypted message \u2014 key not available yet]";
-const PLACEHOLDER_FAILED = "[could not decrypt this message]";
-const PLACEHOLDER_PLAINTEXT_BLOCKED = "[blocked: unencrypted message]";
+// Exported since 61-1: search must recognize placeholder bodies so it can
+// skip them (and deep search can count what this device couldn't decrypt)
+// without retyping the strings and silently drifting.
+export const PLACEHOLDER_NO_KEY = "[encrypted message \u2014 key not available yet]";
+export const PLACEHOLDER_FAILED = "[could not decrypt this message]";
+export const PLACEHOLDER_PLAINTEXT_BLOCKED = "[blocked: unencrypted message]";
 
 export class ChannelCrypto {
   private readonly transport: CryptoTransport;
