@@ -155,7 +155,7 @@ before declaring any change done.
 ## Current state / open items
 
 Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
-(user-facing). Latest release: v0.4.9. Only what is NOT done belongs here.
+(user-facing). Latest release: v0.4.10. Only what is NOT done belongs here.
 
 - Phases through 57-4 are committed. Complete arcs: auth v2 (31), voice/video
   (30-1 … 30-8 plus the 41/44/47/48 mic, device and call-UI work), governance

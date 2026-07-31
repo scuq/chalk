@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.4.10 — 31 July 2026 — Phone polish and real YouTube titles
 
 ### Changed
 - **Working next to a visible chalk window keeps you online longer.** With
