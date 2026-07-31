@@ -218,6 +218,10 @@ const NotificationsPanel = lazyComponent(() =>
 const ThreadInboxPanel = lazyComponent(() =>
   import("./ThreadInboxPanel").then((m) => m.ThreadInboxPanel)
 );
+// 61-2: message search.
+const SearchPanel = lazyComponent(() =>
+  import("./SearchPanel").then((m) => m.SearchPanel)
+);
 // 37-5: the reaction picker. Lazy for the same reason the composer's is --
 // the emoji catalogue is static data most sessions never open.
 const EmojiPicker = lazyComponent(() =>
@@ -226,6 +230,13 @@ const EmojiPicker = lazyComponent(() =>
 import { CreateChannelModal } from "./CreateChannelModal";
 import { DEFAULT_GROUP, knownGroups } from "../chat/channel-groups";
 import { HISTORY_PAGE_SIZE, pageMarksComplete } from "../chat/history-paging";
+// 61-3: the full-history search crawl.
+import {
+  runDeepSearch,
+  withTimeout,
+  DEEP_PAGE_TIMEOUT_MS,
+  type DeepSearchProgress,
+} from "../chat/deep-search";
 // Phase 30 (30-4): the minimal in-call surface + the frame bus that hands
 // voice pushes from handleFrame to the mounted panel's VoiceCall.
 import { VoiceCallPanel } from "./VoiceCallPanel";
@@ -478,6 +489,23 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [navOpen]);
+
+  // 61-2: Ctrl/Cmd+K toggles message search. Deliberately NOT gated on
+  // isTypingTarget -- reaching for search from the composer is the common
+  // case, and the browser grabs this chord for its own UI if we don't
+  // preventDefault. Bare "k" is untouched.
+  useEffect(() => {
+    if (!state.user || state.route !== "chat") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+      if (e.key.toLowerCase() !== "k") return;
+      e.preventDefault();
+      if (state.openPanel === "search") dispatch({ kind: "close_panel" });
+      else dispatch({ kind: "open_panel", panel: "search" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state.user, state.route, state.openPanel]);
 
   // Phase 22c-3c: identity gate. After the WS welcomes us we know the
   // userID; check whether this device already has the user's encryption
@@ -3524,17 +3552,18 @@ export function App() {
 
   // 42-8: lookup maps for the inbox panel, built once here rather than scanned
   // per row -- the same discipline MessageList's handleByUser follows. The inbox
-  // spans channels, so it cannot reuse the active channel's roster.
-  const threadInboxChannelNames: Record<string, string> = {};
-  const threadInboxHandles: Record<string, string> = {};
-  if (state.openPanel === "threads") {
+  // spans channels, so it cannot reuse the active channel's roster. 61-2: the
+  // search panel spans channels the same way and shares the maps.
+  const panelChannelNames: Record<string, string> = {};
+  const panelHandles: Record<string, string> = {};
+  if (state.openPanel === "threads" || state.openPanel === "search") {
     for (const id of state.channelOrder) {
       const ch = state.channels[id];
-      if (ch) threadInboxChannelNames[id] = displayName(ch, state.user?.id ?? null);
+      if (ch) panelChannelNames[id] = displayName(ch, state.user?.id ?? null);
     }
     for (const id of state.channelOrder) {
       for (const m of state.channels[id]?.members ?? []) {
-        if (m.handle) threadInboxHandles[m.userID] = m.handle;
+        if (m.handle) panelHandles[m.userID] = m.handle;
       }
     }
   }
@@ -3822,6 +3851,105 @@ export function App() {
       limit: HISTORY_PAGE_SIZE,
     });
   }, [flashMessage, flashList]);
+
+  // 61-2: a clicked search result. close_panel is explicit because
+  // set_active_channel deliberately leaves openPanel alone. Replies never
+  // render in the main feed (the !parentID filter), so a reply result opens
+  // its thread instead of flashing -- open_thread_from_inbox switches channel
+  // and opens the thread in one action, same as the inbox rows. Feed results
+  // ride the 49-1 flash; the row is guaranteed present (it was searched out
+  // of state.messages), so the backfill crawl above is a no-op.
+  const onOpenSearchResult = (m: Message) => {
+    dispatch({ kind: "close_panel" });
+    if (m.parentID && m.threadID) {
+      dispatch({
+        kind: "open_thread_from_inbox",
+        channelID: m.channelID,
+        threadID: m.threadID,
+      });
+      return;
+    }
+    if (m.channelID !== state.activeChannelID) {
+      dispatch({ kind: "set_active_channel", channelID: m.channelID });
+    }
+    setFlashMessage({ channelID: m.channelID, messageID: m.id, seq: m.seq });
+  };
+
+  // 61-3: the deep-search crawl. One at a time, explicit start only. The
+  // progress object outlives the crawl (phase done/stopped/error) so the
+  // panel can report how it ended; the abort controller does not -- a null
+  // ref is what "nothing running" means.
+  const [deepSearch, setDeepSearch] = useState<{
+    channelID: string;
+    progress: DeepSearchProgress;
+  } | null>(null);
+  const deepAbortRef = useRef<AbortController | null>(null);
+
+  const stopDeepSearch = () => deepAbortRef.current?.abort();
+
+  const startDeepSearch = () => {
+    const cid = state.activeChannelID;
+    const c = clientRef.current;
+    if (!cid || !c || !c.isOpen()) return;
+    // Nothing to crawl: the store already reaches the channel's beginning.
+    if (state.historyComplete[cid]) return;
+    if (deepAbortRef.current) return;
+    const ctrl = new AbortController();
+    deepAbortRef.current = ctrl;
+    setDeepSearch({
+      channelID: cid,
+      progress: { scanned: 0, undecryptable: 0, oldestTS: null, phase: "running" },
+    });
+    void runDeepSearch<Message>({
+      startBeforeSeq: oldestLoadedSeq,
+      signal: ctrl.signal,
+      // request() correlates the ack by ref and settles it directly -- these
+      // pages never reach the global fetch_history_ack handler, so the
+      // scrollback guards and its page-size-50 completion inference stay
+      // untouched. The timeout covers the one hole in request(): a waiter is
+      // never rejected if the socket dies under it.
+      fetchPage: async (beforeSeq, limit) => {
+        if (!c.isOpen()) throw new Error("connection lost");
+        const ack = await withTimeout(
+          c.request<FetchHistoryPayload, FetchHistoryAckPayload>(TypeFetchHistory, {
+            channel_id: cid,
+            before_seq: beforeSeq,
+            limit,
+          }),
+          DEEP_PAGE_TIMEOUT_MS,
+        );
+        return decryptAll((ack.messages ?? []).map(wireToMessage));
+      },
+      // The same merge scrollback uses: by id, re-sorted, historyComplete
+      // raise-only. An open search panel re-filters over state.messages, so
+      // results stream in with no extra wiring. The 33-3 mention scan on the
+      // shared ack path is deliberately skipped -- these rows are old
+      // history, not unread.
+      onPage: (messages, complete) => {
+        dispatch({ kind: "history_loaded", channelID: cid, messages, complete });
+      },
+      onProgress: (progress) => setDeepSearch({ channelID: cid, progress }),
+    }).finally(() => {
+      if (deepAbortRef.current === ctrl) deepAbortRef.current = null;
+    });
+  };
+
+  // Closing the panel or leaving the crawled channel cancels the crawl: the
+  // pages already merged stay (they are ordinary history), but nobody is
+  // watching the progress any more and the next open starts clean.
+  useEffect(() => {
+    if (state.openPanel !== "search") {
+      deepAbortRef.current?.abort();
+      setDeepSearch((d) => (d ? null : d));
+    }
+  }, [state.openPanel]);
+  useEffect(() => {
+    if (deepSearch && deepSearch.channelID !== state.activeChannelID) {
+      deepAbortRef.current?.abort();
+      setDeepSearch(null);
+    }
+  }, [state.activeChannelID, deepSearch?.channelID]);
+  useEffect(() => () => deepAbortRef.current?.abort(), []);
 
   // 42-8: fetch the inbox once per connect. A small page, and NO decryption on
   // this path, so it only costs what the dot needs -- connect stays cheap.
@@ -4243,6 +4371,17 @@ export function App() {
                 }
                 onClick={() => dispatch({ kind: "open_panel", panel: "members" })}
               />
+              {/* 61-2: message search. Also on Ctrl/Cmd+K. */}
+              <button
+                type="button"
+                class="chalk-channel-search"
+                onClick={() => dispatch({ kind: "open_panel", panel: "search" })}
+                title="search messages (Ctrl+K)"
+                aria-label="search messages"
+                data-testid="channel-search-button"
+              >
+                search
+              </button>
             </div>
             {/* Phase 30 (30-4): the minimal call surface for voice channels.
                 Key by channel id so switching rooms unmounts (and thereby
@@ -4616,6 +4755,25 @@ export function App() {
         />
       )}
 
+      {/* 61-2: message search over what this client holds. */}
+      {state.openPanel === "search" && (
+        <SearchPanel
+          activeChannelID={state.activeChannelID}
+          messagesByChannel={state.messages}
+          channelNames={panelChannelNames}
+          handles={panelHandles}
+          ownUserID={state.user?.id ?? null}
+          historyComplete={
+            !!state.activeChannelID && !!state.historyComplete[state.activeChannelID]
+          }
+          deep={deepSearch?.progress ?? null}
+          onStartDeep={startDeepSearch}
+          onStopDeep={stopDeepSearch}
+          onOpenResult={onOpenSearchResult}
+          onClose={() => dispatch({ kind: "close_panel" })}
+        />
+      )}
+
       {state.openPanel === "friends" && (
         <FriendsPanel
           state={state.friendsPanel}
@@ -4663,8 +4821,8 @@ export function App() {
           threadSeen={state.threadSeen}
           mentions={state.threadMentions}
           ownUserID={state.user?.id ?? null}
-          channelNames={threadInboxChannelNames}
-          handles={threadInboxHandles}
+          channelNames={panelChannelNames}
+          handles={panelHandles}
           threadLines={threadInboxLines}
           onOpenThread={(channelID, threadID) => {
             dispatch({ kind: "open_thread_from_inbox", channelID, threadID });

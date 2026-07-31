@@ -8081,6 +8081,249 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 
 /* ============================================================
+   61-2: message search
+   ============================================================ */
+
+/* The header entry point. Pushed to the right edge: name/badges cluster on
+   the left, search is a tool, not part of the channel's identity. */
+.chalk-channel-search {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--chalk-border);
+  border-radius: 2px;
+  color: var(--chalk-fg-muted);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0 var(--chalk-s2);
+  cursor: pointer;
+}
+
+.chalk-channel-search:hover,
+.chalk-channel-search:focus-visible {
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg);
+}
+
+.chalk-search-panel {
+  width: min(46rem, 92vw);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chalk-search-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--chalk-s3) var(--chalk-s4);
+  border-bottom: 1px solid var(--chalk-border);
+}
+
+.chalk-search-title {
+  font-weight: 600;
+}
+
+.chalk-search-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s3);
+  padding: var(--chalk-s2) var(--chalk-s4);
+  border-bottom: 1px solid var(--chalk-border);
+  flex-wrap: wrap;
+}
+
+.chalk-search-inputwrap {
+  flex: 1 1 12rem;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+}
+
+.chalk-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-fg-muted);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-search-input::placeholder {
+  color: var(--chalk-fg-dim);
+  opacity: 1;
+}
+
+.chalk-search-clear {
+  background: transparent;
+  border: 0;
+  color: var(--chalk-fg-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.chalk-search-clear:hover,
+.chalk-search-clear:focus-visible {
+  color: var(--chalk-fg);
+}
+
+.chalk-search-scopes {
+  display: flex;
+  gap: var(--chalk-s1);
+}
+
+.chalk-search-scope {
+  background: transparent;
+  border: 1px solid var(--chalk-border);
+  border-radius: 2px;
+  color: var(--chalk-fg-muted);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0 var(--chalk-s2);
+  cursor: pointer;
+}
+
+.chalk-search-scope--on {
+  border-color: var(--chalk-accent);
+  color: var(--chalk-fg);
+}
+
+.chalk-search-scope:hover:not(:disabled),
+.chalk-search-scope:focus-visible {
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg);
+}
+
+.chalk-search-scope:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chalk-search-capnote {
+  padding: var(--chalk-s1) var(--chalk-s4);
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+  border-bottom: 1px solid var(--chalk-border);
+}
+
+.chalk-search-list {
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.chalk-search-item {
+  list-style: none;
+}
+
+/* The whole row is the click target, same construction as the thread
+   inbox rows. */
+.chalk-search-row {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--chalk-border);
+  color: var(--chalk-fg);
+  font: inherit;
+  text-align: left;
+  padding: var(--chalk-s2) var(--chalk-s4);
+  cursor: pointer;
+}
+
+.chalk-search-row:hover,
+.chalk-search-row:focus-visible {
+  background: var(--chalk-bg-elev);
+}
+
+.chalk-search-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--chalk-s3);
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-search-chan {
+  color: var(--chalk-accent);
+}
+
+.chalk-search-thread {
+  font-size: calc(10px * var(--chalk-font-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-border);
+  padding: 1px 4px;
+}
+
+.chalk-search-when {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.chalk-search-snippet {
+  margin-top: 2px;
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg);
+  overflow-wrap: anywhere;
+}
+
+/* Hits keep the row's colors -- browser-default mark yellow reads as a
+   different UI. Weight + accent is enough. */
+.chalk-search-hit {
+  background: transparent;
+  color: var(--chalk-accent);
+  font-weight: 600;
+}
+
+.chalk-search-empty {
+  padding: var(--chalk-s5) var(--chalk-s4);
+  text-align: center;
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-search-empty-hint {
+  margin-top: var(--chalk-s2);
+  font-size: var(--chalk-size-small);
+}
+
+/* 61-3: the full-history crawl footer. */
+.chalk-search-deep {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--chalk-s3);
+  padding: var(--chalk-s2) var(--chalk-s4);
+  border-top: 1px solid var(--chalk-border);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-search-deep-status {
+  color: var(--chalk-fg-muted);
+}
+
+.chalk-search-deep-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--chalk-fg-muted);
+  border-radius: 2px;
+  color: var(--chalk-fg);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: var(--chalk-s1) var(--chalk-s3);
+  cursor: pointer;
+}
+
+.chalk-search-deep-btn:hover,
+.chalk-search-deep-btn:focus-visible {
+  background: var(--chalk-bg-elev);
+}
+
+/* ============================================================
    53-1: the parking lot
    ============================================================ */
 

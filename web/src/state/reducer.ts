@@ -1061,6 +1061,11 @@ export function reducer(state: AppState, action: Action): AppState {
         // useRulesConfig directly; no reducer-owned form state.
         return { ...state, openPanel: "notifications" };
       }
+      if (action.panel === "search") {
+        // 61-2: message search. Query and scope are component-local; the
+        // corpus it searches is state.messages, which App passes in.
+        return { ...state, openPanel: "search" };
+      }
       // Default: profile. Same behavior as before the hotfix for the
       // profile case specifically.
       return { ...state, openPanel: "profile" };

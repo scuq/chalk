@@ -703,6 +703,8 @@ export interface AppState {
     | "threads"
     // 50-4: notification rules + priorities.
     | "notifications"
+    // 61-2: message search over what this client holds.
+    | "search"
     | null;
   // Phase 09c-2 refresh: spinner state for the ProfilePanel refresh
   // button. InvitesPanel's spinner uses myInvites.loading (which is
@@ -1004,7 +1006,8 @@ export type Action =
         | "members"
         | "governance"
         | "threads"
-        | "notifications";
+        | "notifications"
+        | "search";
     }
   | { kind: "close_panel" }
   // Phase 09c-2: profile-panel refresh (spinner only; the actual

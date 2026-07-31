@@ -12,6 +12,19 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **Search your messages.** A search button in the channel header — or
+  Ctrl/Cmd+K anywhere — finds messages in the current channel or across every
+  conversation loaded on this device, matching on text, sender and channel
+  name. Clicking a result jumps straight to the message; results from inside
+  a thread open that thread. Because chalk is end-to-end encrypted, search
+  runs entirely on your device over messages it has already decrypted.
+- **Search can go all the way back.** When what's loaded isn't enough, one
+  click walks the current channel's entire history — with a live count, how
+  far back it has reached, and a stop button — and results appear as they're
+  found. Nothing is fetched until you ask; messages this device never had
+  the keys for are counted and reported rather than silently skipped.
+
 ### Fixed
 - **Giphy GIFs are no longer tiny on Safari.** On Safari — desktop and
   iPhone — GIFs in the feed rendered at a fraction of their real size, much
