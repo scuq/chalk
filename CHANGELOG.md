@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.5.1 — 1 August 2026 — Sturdier calls and a handier phone list
 
 ### Added
 - The phone's conversation-list view now has a pinned "friends" entry that
