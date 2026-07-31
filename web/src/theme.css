@@ -7515,7 +7515,10 @@ body.chalk-resizing .chalk-sidebar-resizer {
   }
 
   .chalk-channel-header {
-    flex-wrap: wrap;
+    /* One row, always: the header is pinned (below), so a long channel
+       name must ellipsize rather than wrap it into a slab that eats the
+       feed. min-width: 0 on the name span makes the shrink possible. */
+    flex-wrap: nowrap;
     gap: var(--chalk-s1);
     padding-bottom: var(--chalk-s2);
     margin-bottom: var(--chalk-s2);
@@ -7529,6 +7532,13 @@ body.chalk-resizing .chalk-sidebar-resizer {
     padding-top: var(--chalk-s2);
     background: var(--chalk-bg);
     z-index: 5;
+  }
+
+  .chalk-channel-header-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* Two lines per message: meta above, full-width body below. The
