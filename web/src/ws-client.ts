@@ -204,7 +204,11 @@ export class WSClient {
     }
     // Codes 1002 (protocol error) and 1008 (policy violation) usually
     // mean the cause won't auto-resolve: wrong subprotocol, malformed
-    // hello, account not active. Stop trying.
+    // hello, account not active. Stop trying. Note the server closes
+    // ping timeouts with app code 4008, not 1008, precisely so they
+    // fall through to the reconnect path below -- a missed pong is a
+    // congested or flaky link (video call chewing the uplink, laptop
+    // lid closed), not a reason to give up.
     if (e.code === 1002 || e.code === 1008) {
       this.stopped = true;
       this.setState("error", `closed (code=${e.code}, reason=${e.reason || "policy"})`);

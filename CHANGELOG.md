@@ -10,6 +10,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- A connection dropped for unresponsiveness — easiest to hit during a video
+  call on a slow uplink — used to strand the app on a "ping timeout" error
+  until you refreshed the page. It now reconnects automatically like any
+  other network drop.
+
 ## v0.5.0 — 31 July 2026 — Zuckermode and message search
 
 ### Added

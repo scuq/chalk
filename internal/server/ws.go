@@ -24,6 +24,13 @@ import (
 	"strings"
 )
 
+// StatusPingTimeout is the close code for a connection dropped because
+// the peer stopped answering pings. It is app-defined (4000-4999) rather
+// than StatusPolicyViolation because clients treat 1008 as permanent and
+// stop reconnecting; a ping timeout is transient (congested uplink during
+// a video call, suspended laptop) and the client should retry.
+const StatusPingTimeout websocket.StatusCode = 4008
+
 // WSConfig tunes WebSocket behavior.
 type WSConfig struct {
 	PingInterval     time.Duration
@@ -946,7 +953,7 @@ func (h *WSHandler) pingLoop(ctx context.Context, c *websocket.Conn) {
 			err := c.Ping(pingCtx)
 			cancel()
 			if err != nil {
-				_ = c.Close(websocket.StatusPolicyViolation, "ping timeout")
+				_ = c.Close(StatusPingTimeout, "ping timeout")
 				return
 			}
 		}
