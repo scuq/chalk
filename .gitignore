@@ -64,6 +64,8 @@ web/.test-build/
 /chalkctl
 
 .claude/
+!.claude/
+!.claude/skills/
 
 node
 

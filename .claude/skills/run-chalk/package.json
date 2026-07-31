@@ -1,0 +1,9 @@
+{
+  "name": "run-chalk-driver",
+  "private": true,
+  "type": "module",
+  "description": "Playwright driver for the run-chalk skill. Pinned >=1.55 because the chat UI needs Chromium >=137 (WebCrypto Ed25519); the repo's test/e2e pin (1.48 / Chromium 130) cannot reach it.",
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
+  }
+}
