@@ -121,6 +121,12 @@ html, body {
   /* Prevent iOS double-tap zoom on the composer button without
      disabling pinch-zoom on text. */
   touch-action: manipulation;
+  /* iOS Safari inflates text it deems too small ("font boosting"),
+     most visibly on rotation to landscape. The UI sets its own sizes
+     deliberately; pinch-zoom and the 16px control floor below remain
+     the accessibility outlets. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 ::selection {
@@ -7622,16 +7628,6 @@ body.chalk-resizing .chalk-sidebar-resizer {
     max-width: none;
   }
 
-  /* iOS zooms the viewport when a focused control renders below 16px,
-     and never zooms back out. Every field pays the 2px to avoid it --
-     and max() keeps that floor intact when the device font scale is
-     set below 1. */
-  input,
-  textarea,
-  select {
-    font-size: max(16px, calc(16px * var(--chalk-font-scale)));
-  }
-
   /* -- thread panel: full screen instead of a third column ----------- */
 
   .chalk-app--phase08b.chalk-app--thread-open .chalk-thread-panel {
@@ -7672,6 +7668,24 @@ body.chalk-resizing .chalk-sidebar-resizer {
   .chalk-modal-close {
     width: 32px;
     height: 32px;
+  }
+}
+
+/* iOS zooms the viewport when a focused control renders below 16px, and
+   never zooms back out. Every field pays the 2px to avoid it -- and max()
+   keeps that floor intact when the device font scale is set below 1.
+
+   !important is load-bearing: the floor must beat every class rule that
+   sets a control's font-size (.chalk-auth-input's font: inherit,
+   .chalk-composer-input's var(--chalk-size-base), ...) -- as a bare
+   element selector it silently lost to all of them. And (hover: none)
+   joins the width query because a phone held in landscape is wider than
+   767px but zooms all the same. */
+@media (max-width: 767px), (hover: none) {
+  input,
+  textarea,
+  select {
+    font-size: max(16px, calc(16px * var(--chalk-font-scale))) !important;
   }
 }
 

@@ -17,6 +17,14 @@ The engineering-level history (which slice shipped what) lives in
   chalk on screen but another window focused, the away dot now waits 10
   minutes of no interaction instead of 5 before showing you as away.
 
+### Fixed
+- **iPhones no longer zoom the whole page when you tap into a field.** iOS
+  Safari auto-zooms any input smaller than 16px and never zooms back out —
+  tapping the message box, the sign-in form, the channel-create dialog, or
+  the search fields left the page stuck zoomed-in. Every field on a phone
+  now renders at 16px, and rotating to landscape no longer inflates text
+  unpredictably.
+
 ## v0.4.9 — 31 July 2026 — One-click friends and edits that reach back
 
 ### Added
