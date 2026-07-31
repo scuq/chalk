@@ -9,10 +9,10 @@
 // expanding in place to the full roster with presence, because the
 // activity-sorted list buries anyone you haven't talked to lately.
 
-import { useState } from "preact/hooks";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { ZuckerFriend, ZuckerRow } from "../chat/zucker";
 import type { PresenceMap } from "../state/types";
-import { filterRoster, showRosterFilter } from "../chat/roster-filter";
+import { filterRoster } from "../chat/roster-filter";
 import { fmtRelative } from "../chat/reltime";
 import { UnreadDot } from "./UnreadDot";
 import { ChannelGlyph, presenceClass, presenceLabel } from "./Sidebar";
@@ -46,9 +46,17 @@ export function ZuckerList({
   onCreateChannel,
 }: Props) {
   const [friendsOpen, setFriendsOpen] = useState(false);
-  // 64-2: quick filter over the conversation rows. Same threshold and match
-  // rule as the sidebar's rosters (54-1); short lists don't need it.
+  // 64-2/64-5: quick filter over the conversation rows, same match rule as
+  // the sidebar's rosters (54-1). Hidden behind the header's magnifier
+  // toggle; closing it clears the query so no invisible filter lingers.
+  const [filterOpen, setFilterOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const filterRef = useRef<HTMLInputElement>(null);
+  // Layout effect: focus at commit, before paint, so opening the filter
+  // never shows an unfocused field first.
+  useLayoutEffect(() => {
+    if (filterOpen) filterRef.current?.focus();
+  }, [filterOpen]);
   const visibleRows = filterRoster(rows, filter, (r) => r.name);
   const onlineCount = friends.filter((f) => f.presence === "online").length;
   // One clock per render, the MessageList precedent: a list of relative
@@ -58,6 +66,20 @@ export function ZuckerList({
     <div class="chalk-zucker" data-testid="zucker-list">
       <div class="chalk-zucker-head">
         <span class="chalk-zucker-title">conversations</span>
+        <button
+          type="button"
+          class={`chalk-zucker-add ${filterOpen ? "chalk-zucker-add--active" : ""}`}
+          onClick={() => {
+            if (filterOpen) setFilter("");
+            setFilterOpen(!filterOpen);
+          }}
+          title="filter conversations"
+          aria-label="filter conversations"
+          aria-pressed={filterOpen}
+          data-testid="zucker-filter-toggle"
+        >
+          ⌕
+        </button>
         <button
           type="button"
           class="chalk-zucker-add"
@@ -138,7 +160,7 @@ export function ZuckerList({
         {threadsUnread > 0 && <UnreadDot mention={false} />}
       </button>
 
-      {showRosterFilter(rows.length) && (
+      {filterOpen && (
         <div class="chalk-zucker-filter">
           <input
             type="text"
@@ -146,6 +168,7 @@ export function ZuckerList({
             data-testid="zucker-filter"
             placeholder="filter…"
             value={filter}
+            ref={filterRef}
             onInput={(e) => setFilter((e.target as HTMLInputElement).value)}
             aria-label="filter conversations"
           />

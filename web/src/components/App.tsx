@@ -182,8 +182,8 @@ import { Sidebar, ChannelGlyph } from "./Sidebar";
 // 62-6: Zuckermode -- the phone's unified conversation list.
 import { ZuckerList } from "./ZuckerList";
 import { buildConversationList, buildFriendList, previewText } from "../chat/zucker";
-// 64-3: swipe-right from the left edge = the Zuckermode back button.
-import { beginSwipe, swipeTriggered, type SwipeStart } from "../chat/swipe-back";
+// 64-3/64-4: swipe right in a conversation = the Zuckermode back button.
+import { swipeCancelled, swipeTriggered, type SwipeStart } from "../chat/swipe-back";
 import { MessageList } from "./MessageList";
 import { ConfirmModal } from "./ConfirmModal";
 import { Composer } from "./Composer";
@@ -4536,20 +4536,38 @@ export function App() {
               ? " chalk-main--voice"
               : "")
         }
-        /* 64-3: swipe right from the left edge does what the header's back
-           button does. Only the chat screen arms it; triggering mid-drag
-           (not on release) makes the navigation feel immediate. */
+        /* 64-3/64-4: swipe right anywhere in the conversation does what the
+           header's back button does (the left screen edge is unusable --
+           iOS keeps it for its own history gesture). Only the chat screen
+           arms it; triggering mid-drag (not on release) makes the
+           navigation feel immediate. */
         onTouchStart={(e) => {
           zuckerSwipeRef.current = null;
           if (!zuckerActive || zuckerScreen !== "chat") return;
           if (e.touches.length !== 1) return;
+          // A touch on something horizontally pannable or draggable -- a
+          // scrolling code block, the voice volume slider -- is for that
+          // element, not for navigating back.
+          let el = e.target as HTMLElement | null;
+          while (el && el !== e.currentTarget) {
+            const tag = el.tagName;
+            if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+            if (el.scrollWidth > el.clientWidth + 1) return;
+            el = el.parentElement;
+          }
           const t = e.touches[0];
-          zuckerSwipeRef.current = beginSwipe(t.clientX, t.clientY);
+          zuckerSwipeRef.current = { x: t.clientX, y: t.clientY };
         }}
         onTouchMove={(e) => {
           const start = zuckerSwipeRef.current;
           if (!start) return;
           const t = e.touches[0];
+          // A touch that turned into a vertical scroll stays dead until the
+          // finger lifts -- it must not fire on the way through a diagonal.
+          if (swipeCancelled(start, t.clientX, t.clientY)) {
+            zuckerSwipeRef.current = null;
+            return;
+          }
           if (!swipeTriggered(start, t.clientX, t.clientY)) return;
           zuckerSwipeRef.current = null;
           // Same exit as the parked screen's back button: un-park so the

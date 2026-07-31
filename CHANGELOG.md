@@ -10,6 +10,22 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- The phone conversation list's quick filter now sits behind a
+  magnifying-glass button next to the add-friend and new-channel buttons,
+  instead of appearing on its own once the list grows. Tap to show the
+  filter, tap again to hide it and clear the query.
+
+### Fixed
+- The swipe-right gesture back to the conversation list didn't work on
+  iPhones: it required starting the swipe at the very edge of the screen,
+  which iOS reserves for its own back gesture, so the app never saw it.
+  Swiping right now works from anywhere in the conversation; sideways
+  drags on things that pan or slide (wide code blocks, the call volume
+  slider) still do that instead of navigating.
+
 ## v0.5.1 — 1 August 2026 — Sturdier calls and a handier phone list
 
 ### Added

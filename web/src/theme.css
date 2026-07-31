@@ -7818,6 +7818,13 @@ body.chalk-resizing .chalk-sidebar-resizer {
     cursor: pointer;
   }
 
+  /* 64-5: the filter toggle while its input is showing. */
+  .chalk-zucker-add--active {
+    background: var(--chalk-bg-elev, #14201a);
+    color: var(--chalk-fg-bright);
+    border-color: var(--chalk-fg-bright);
+  }
+
   .chalk-zucker-pinned {
     display: flex;
     align-items: center;
