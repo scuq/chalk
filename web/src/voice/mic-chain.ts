@@ -25,6 +25,7 @@
 // Nothing here weakens E2E: this is all pre-SRTP, on the device.
 
 import { gateConfig, micConstraints, type MicPrefs } from "./mic-prefs";
+import { resolveMicPrefs } from "./device-resolve";
 import { GATE_CLOSED, nextGate, type GateConfig, type GateState } from "./vad";
 
 /** How often the transmit gate re-decides. 20 ms is well under a syllable. */
@@ -159,7 +160,11 @@ export class MicChain {
    * threw, so callers can apply their own error phrasing.
    */
   static async open(prefs: MicPrefs): Promise<MicChain> {
-    const raw = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(prefs) });
+    // 63-3: a stale saved deviceId re-resolves by label before capture, so a
+    // device that changed ids since it was picked is still the one opened.
+    const raw = await navigator.mediaDevices.getUserMedia({
+      audio: micConstraints(await resolveMicPrefs(prefs)),
+    });
     try {
       return await MicChain.fromStream(raw, prefs);
     } catch (err) {
@@ -171,6 +176,13 @@ export class MicChain {
   /** The track to publish. Stable across device and constraint changes. */
   get track(): MediaStreamTrack {
     return this.dest.stream.getAudioTracks()[0];
+  }
+
+  /** 63-3: which device the RAW capture is actually on right now, or null
+   * when the engine doesn't report one. What devicechange compares against. */
+  currentDeviceId(): string | null {
+    const t = this.raw.getAudioTracks()[0];
+    return t?.getSettings().deviceId ?? null;
   }
 
   /** setGain applies instantly; no renegotiation, no capture restart. */
@@ -239,7 +251,10 @@ export class MicChain {
    */
   async recapture(prefs: MicPrefs): Promise<void> {
     if (this.closed) return;
-    const next = await navigator.mediaDevices.getUserMedia({ audio: micConstraints(prefs) });
+    // 63-3: same label re-resolution as open() -- see device-resolve.ts.
+    const next = await navigator.mediaDevices.getUserMedia({
+      audio: micConstraints(await resolveMicPrefs(prefs)),
+    });
     if (this.closed) {
       for (const t of next.getTracks()) t.stop();
       return;

@@ -35,6 +35,13 @@ The engineering-level history (which slice shipped what) lives in
   good, with a manual rejoin once you were back online. The room is now
   rejoined automatically as soon as the connection recovers, without
   switching you away from whatever channel you were reading.
+- The microphone chosen in settings could silently stop applying — typically
+  after a browser restart, or when the chosen headset wasn't connected yet
+  at join time — and calls fell back to the built-in mic (most visible on
+  macOS with AirPods). The chosen mic is now remembered by name: it is found
+  again across restarts, connecting it mid-call switches the call over to it
+  automatically, and when it is genuinely absent chalk says so instead of
+  switching silently.
 
 ## v0.5.0 — 31 July 2026 — Zuckermode and message search
 

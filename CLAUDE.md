@@ -182,6 +182,10 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   - The threads dot's server total is only re-synced on a debounced refetch;
     threads whose inbox rows this client doesn't hold still lag until then
     (`threadsNeedingYouCount` corrects only held rows).
+  - The camera choice (`device-prefs.ts` cameraId) has the same stale-id
+    weakness the mic had before 63-3 (Brave re-randomizes deviceIds per
+    session; late-plugged devices unmatched). Fix the same way: persist the
+    label, resolve via `voice/device-resolve.ts` at capture time.
   - `docker/Dockerfile`'s frontend stage runs `npm run build` without
     `NODE_ENV=production`, so released images ship unminified bundles with
     inline sourcemaps. Costlier since 52-2 (the MediaPipe chunk is 153 KB

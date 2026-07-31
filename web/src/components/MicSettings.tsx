@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { MAX_GAIN, MAX_HOLD_MS, MIN_GAIN, useMicPrefs, type MicPrefs } from "../voice/mic-prefs";
 import { MicChain } from "../voice/mic-chain";
+import { resolveDeviceId } from "../voice/device-resolve";
 import { describeMediaError } from "../voice/call";
 import { voiceSession } from "../voice/session";
 import { TRANSMIT_LABELS, TRANSMIT_MODES, isTransmitMode } from "../voice/vad";
@@ -611,8 +612,16 @@ export function MicSettings() {
         label="input device"
         fallbackName="microphone"
         devices={devices.audioinput}
-        value={mic.deviceId}
-        onChange={(deviceId) => setMic({ deviceId })}
+        // 63-3: a stale id (Brave re-randomizes them per session) shows as the
+        // device it re-resolves to by label -- the one a capture would open.
+        value={resolveDeviceId(mic.deviceId, mic.deviceLabel, devices.audioinput) || mic.deviceId}
+        // The label rides along so future sessions can re-resolve the id.
+        onChange={(deviceId) =>
+          setMic({
+            deviceId,
+            deviceLabel: devices.audioinput.find((d) => d.deviceId === deviceId)?.label ?? "",
+          })
+        }
         testId="mic-device"
         // The one picker that shows even with a single microphone: it is the
         // first thing anyone looks for when nobody can hear them, and a browser

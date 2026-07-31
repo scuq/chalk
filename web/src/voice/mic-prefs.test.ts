@@ -23,6 +23,7 @@ import {
 test("normalize keeps a valid pref untouched", () => {
   const prefs = {
     deviceId: "abc123",
+    deviceLabel: "scuq's AirPods Pro",
     gain: 1.4,
     echoCancellation: false,
     noiseSuppression: true,
@@ -179,12 +180,20 @@ test("the device and every processing flag force a recapture", () => {
 // microphone that only exists on the first one.
 
 test("the synced half carries every tuning field but not the device", () => {
-  const synced = syncedMicPrefs({ ...DEFAULT_MIC_PREFS, deviceId: "local-hash", gain: 1.6 });
+  const synced = syncedMicPrefs({
+    ...DEFAULT_MIC_PREFS,
+    deviceId: "local-hash",
+    deviceLabel: "USB Interface",
+    gain: 1.6,
+  });
   assert.equal("deviceId" in synced, false, "the device never leaves this machine");
+  assert.equal("deviceLabel" in synced, false, "63-3: nor does its label");
   assert.equal(synced.gain, 1.6);
   // Every other field of MicPrefs is expected to sync; a new one added without
   // a decision about it should fail here rather than silently stay local.
-  const expected = Object.keys(DEFAULT_MIC_PREFS).filter((k) => k !== "deviceId").sort();
+  const expected = Object.keys(DEFAULT_MIC_PREFS)
+    .filter((k) => k !== "deviceId" && k !== "deviceLabel")
+    .sort();
   assert.deepEqual(Object.keys(synced).sort(), expected);
 });
 

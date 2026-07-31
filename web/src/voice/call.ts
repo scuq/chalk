@@ -143,6 +143,7 @@ import {
 } from "./net-prefs";
 import { cameraConstraints, loadDevicePrefs, type DevicePrefs } from "./device-prefs";
 import { SpeakingTracker, SPEAKING_POLL_MS } from "./speaking";
+import { listAudioInputs, resolveDeviceId, resolveMicPrefs } from "./device-resolve";
 
 // ---- knobs (30-8: video caps are DYNAMIC -- see ./adaptive) ----------------
 //
@@ -249,6 +250,10 @@ interface ScreenSignal {
 function peerKey(userID: string, deviceID: string): string {
   return `${userID}:${deviceID}`;
 }
+
+/** 63-3: devicechange events arrive in bursts (one device can register as
+ * input and output separately); wait for the dust to settle before acting. */
+const DEVICE_SETTLE_MS = 800;
 
 /**
  * describeMediaError (30-6): turn getUserMedia's DOMException zoo into a
@@ -394,6 +399,10 @@ export class VoiceCall {
   private pauseWarned = false;
   private guardTimer: number | null = null;
   private recheckTimers: number[] = [];
+  // 63-3: mid-call device watch (AirPods appearing, a mic unplugged).
+  private deviceWatchOff: (() => void) | null = null;
+  private deviceWatchTimer: number | null = null;
+  private micSwitching = false;
   // 63-2: speaking detection (the green audio dot).
   private speakTimer: number | null = null;
   private readonly speakTracker = new SpeakingTracker();
@@ -525,7 +534,17 @@ export class VoiceCall {
     // user's first join. Only the audio half is then handed to the graph.
     this.micPrefs = loadMicPrefs();
     this.devicePrefs = loadDevicePrefs();
-    const audio = micConstraints(this.micPrefs);
+    // 63-3: map the saved mic (id + label) onto today's device list before
+    // capturing; a saved device that is genuinely absent falls back to the
+    // default WITH a note, instead of silently (macOS: the internal mic).
+    const resolvedMic = await resolveMicPrefs(this.micPrefs);
+    if (this.micPrefs.deviceId && !resolvedMic.deviceId) {
+      this.diag(
+        `chosen mic not present (${this.micPrefs.deviceLabel || this.micPrefs.deviceId}); using system default`,
+      );
+      this.o.callbacks.onError("chosen microphone not found — using the system default");
+    }
+    const audio = micConstraints(resolvedMic);
     const video = cameraConstraints(this.devicePrefs);
     let captured: MediaStream;
     try {
@@ -613,6 +632,7 @@ export class VoiceCall {
     }
     this.startAdaptiveTimers();
     this.startSpeakingPoll();
+    this.startDeviceWatch();
     // 30-5h: camera starts OFF and mic starts UNMUTED, both matching the
     // server's default participant row (muted=false, video_on=false), so no
     // post-join state broadcast is needed -- the roster badges are already
@@ -635,6 +655,7 @@ export class VoiceCall {
     this.joined = false;
     this.stopAdaptiveTimers();
     this.stopSpeakingPoll();
+    this.stopDeviceWatch();
     for (const t of this.glareTimers.values()) window.clearTimeout(t);
     this.glareTimers.clear();
     for (const key of [...this.peers.keys()]) this.dropPeer(key, false);
@@ -1571,6 +1592,64 @@ export class VoiceCall {
     peer.pendingStreams.delete(sig.stream_id);
     this.diag(`peer ${peer.key} removed screen stream ${sig.stream_id}`);
     this.o.callbacks.onPeerScreenGone(peer.key);
+  }
+
+  // ---- mid-call device watch (63-3) ----------------------------------------
+  //
+  // devicechange fires when anything is plugged, paired or pulled. Re-resolve
+  // the saved mic (id, then label -- device-resolve.ts) against the new list
+  // and recapture when that lands somewhere other than the device currently
+  // captured: the chosen AirPods just appeared, or the mic in use vanished.
+  // With no saved choice there is no target to follow -- on macOS the OS
+  // default moving is invisible to us, which is exactly why picking the
+  // device once by name is the supported path.
+  //
+  // The settle delay coalesces the burst of events one device can fire
+  // (AirPods register input and output separately).
+
+  private startDeviceWatch(): void {
+    if (this.deviceWatchOff || !navigator.mediaDevices?.addEventListener) return;
+    const onChange = () => {
+      if (this.deviceWatchTimer !== null) window.clearTimeout(this.deviceWatchTimer);
+      this.deviceWatchTimer = window.setTimeout(() => {
+        this.deviceWatchTimer = null;
+        void this.deviceChangeTick();
+      }, DEVICE_SETTLE_MS);
+    };
+    navigator.mediaDevices.addEventListener("devicechange", onChange);
+    this.deviceWatchOff = () =>
+      navigator.mediaDevices.removeEventListener("devicechange", onChange);
+  }
+
+  private stopDeviceWatch(): void {
+    this.deviceWatchOff?.();
+    this.deviceWatchOff = null;
+    if (this.deviceWatchTimer !== null) window.clearTimeout(this.deviceWatchTimer);
+    this.deviceWatchTimer = null;
+  }
+
+  private async deviceChangeTick(): Promise<void> {
+    if (this.closed || !this.joined || !this.micChain || this.micSwitching) return;
+    const prefs = this.micPrefs;
+    const inputs = await listAudioInputs();
+    const current = this.micChain.currentDeviceId();
+    const target = resolveDeviceId(prefs.deviceId, prefs.deviceLabel, inputs);
+    const currentPresent = current !== null && inputs.some((d) => d.deviceId === current);
+    // Switch when the chosen device resolves somewhere new, or when the
+    // device being captured is gone (then even target="" helps: recapturing
+    // the default restores audio a dead mic silently stopped delivering).
+    if (!((target !== "" && target !== current) || !currentPresent)) return;
+    this.micSwitching = true;
+    try {
+      await this.micChain.recapture(prefs);
+      this.diag(
+        `devicechange: mic recaptured (now=${this.micChain.currentDeviceId() ?? "?"}, target=${target || "default"})`,
+      );
+    } catch (err) {
+      this.diag(`devicechange: mic recapture failed: ${String(err)}`);
+    } finally {
+      this.micSwitching = false;
+    }
   }
 
   // ---- speaking detection (63-2) -------------------------------------------

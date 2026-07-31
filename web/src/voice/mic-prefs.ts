@@ -25,6 +25,11 @@ import { isTransmitMode, type GateConfig, type TransmitMode } from "./vad";
 export interface MicPrefs {
   /** "" means the system default device, whatever it happens to be today. */
   deviceId: string;
+  /** 63-3: the chosen device's label at pick time. deviceIds churn (Brave
+   * regenerates them per session; late-plugged devices have none yet), so
+   * captures re-resolve a stale id by this label -- see device-resolve.ts.
+   * Local-only, like deviceId. */
+  deviceLabel: string;
   /** Post-capture gain, 1 = unity. Applied by the Web Audio graph, not the browser. */
   gain: number;
   echoCancellation: boolean;
@@ -87,6 +92,7 @@ const MAX_KEY_LEN = 32;
 // tone, and the profile panel makes the better modes findable.
 export const DEFAULT_MIC_PREFS: MicPrefs = {
   deviceId: "",
+  deviceLabel: "",
   gain: 1,
   echoCancellation: true,
   noiseSuppression: true,
@@ -129,6 +135,8 @@ export function normalizeMicPrefs(raw: unknown): MicPrefs {
   return {
     // Not keyOr: a device id is a long opaque hash, well past the key cap.
     deviceId: typeof o.deviceId === "string" ? o.deviceId : DEFAULT_MIC_PREFS.deviceId,
+    deviceLabel:
+      typeof o.deviceLabel === "string" ? o.deviceLabel : DEFAULT_MIC_PREFS.deviceLabel,
     gain: numOr(o.gain, DEFAULT_MIC_PREFS.gain, MIN_GAIN, MAX_GAIN),
     echoCancellation: boolOr(o.echoCancellation, DEFAULT_MIC_PREFS.echoCancellation),
     noiseSuppression: boolOr(o.noiseSuppression, DEFAULT_MIC_PREFS.noiseSuppression),
@@ -181,13 +189,13 @@ export function gateConfig(prefs: MicPrefs): GateConfig {
 
 /**
  * SyncedMicPrefs (44-4): the fields that follow the account. Everything except
- * deviceId, which is meaningless on another machine.
+ * the device choice (id + label), which is meaningless on another machine.
  */
-export type SyncedMicPrefs = Omit<MicPrefs, "deviceId">;
+export type SyncedMicPrefs = Omit<MicPrefs, "deviceId" | "deviceLabel">;
 
 /** syncedMicPrefs extracts the account-scoped half, for sending to the server. */
 export function syncedMicPrefs(prefs: MicPrefs): SyncedMicPrefs {
-  const { deviceId: _local, ...synced } = prefs;
+  const { deviceId: _local, deviceLabel: _label, ...synced } = prefs;
   return synced;
 }
 
@@ -286,9 +294,9 @@ function schedulePublish(synced: SyncedMicPrefs): void {
  */
 export function applyRemoteMicPrefs(remote: Partial<SyncedMicPrefs>): void {
   const current = loadMicPrefs();
-  // deviceId is stripped rather than defaulted: a remote object that somehow
-  // carries one must not move this machine's microphone.
-  const { deviceId: _ignored, ...rest } = remote as Partial<MicPrefs>;
+  // The device choice is stripped rather than defaulted: a remote object that
+  // somehow carries one must not move this machine's microphone.
+  const { deviceId: _ignored, deviceLabel: _ignoredLabel, ...rest } = remote as Partial<MicPrefs>;
   const next = normalizeMicPrefs({ ...current, ...rest });
   if (sameSyncedMicPrefs(current, next)) return;
   saveMicPrefs(next);
