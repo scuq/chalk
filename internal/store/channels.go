@@ -55,6 +55,20 @@ type ChannelWithMembers struct {
 	// for. Zero for listings not scoped to a user (e.g. a create ack,
 	// where the channel is empty anyway).
 	LastReadSeq int64
+	// 62-2: newest-message pointer + its ciphertext, for the unified
+	// conversation list. Metadata comes from channel_activity; body and
+	// key_version are joined from messages at read time (the
+	// ThreadInboxEntry precedent: the server ships ciphertext it cannot
+	// read, the client decrypts the preview). All nil/zero when the
+	// channel has no messages, and on paths that don't run the listing
+	// query (create ack, channel_event pushes).
+	LastMsgID         *uuid.UUID
+	LastMsgTS         *time.Time
+	LastMsgSeq        int64
+	LastMsgSender     *uuid.UUID
+	LastMsgBody       []byte
+	LastMsgKeyVersion *int
+	LastMsgDeleted    bool
 }
 
 // Member is one row from channel_members.
@@ -282,11 +296,17 @@ func (s *Store) IsMember(ctx context.Context, channelID, userID uuid.UUID) (bool
 func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]ChannelWithMembers, error) {
 	rows, err := s.Pool.Query(ctx,
 		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.governance_mode, c.channel_type, c.group_name,
-		        GREATEST(COALESCE(cs.next_seq, 1) - 1, 0), COALESCE(cr.last_read_seq, 0)
+		        GREATEST(COALESCE(cs.next_seq, 1) - 1, 0), COALESCE(cr.last_read_seq, 0),
+		        ca.last_msg_id, ca.last_msg_ts, COALESCE(ca.last_msg_seq, 0), ca.last_sender_id,
+		        m.body, m.key_version, m.deleted_at
 		   FROM channels c
 		   JOIN channel_members cm ON cm.channel_id = c.id
 		   LEFT JOIN channel_seq cs ON cs.channel_id = c.id
 		   LEFT JOIN channel_reads cr ON cr.channel_id = c.id AND cr.user_id = $1
+		   -- 62-2: newest-message pointer; the (ts, id) pair makes the body
+		   -- join a single-partition primary-key probe (0049 header).
+		   LEFT JOIN channel_activity ca ON ca.channel_id = c.id
+		   LEFT JOIN messages m ON m.ts = ca.last_msg_ts AND m.id = ca.last_msg_id
 		  WHERE cm.user_id = $1
 		  ORDER BY c.created_at DESC`,
 		userID,
@@ -300,11 +320,21 @@ func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]Ch
 	channelIDs := make([]uuid.UUID, 0, 16)
 	for rows.Next() {
 		var c Channel
-		var lastSeq, lastReadSeq int64
-		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.GovernanceMode, &c.ChannelType, &c.GroupName, &lastSeq, &lastReadSeq); err != nil {
+		var lastSeq, lastReadSeq, lastMsgSeq int64
+		var lastMsgID, lastSender *uuid.UUID
+		var lastMsgTS, deletedAt *time.Time
+		var lastMsgBody []byte
+		var lastMsgKeyVersion *int
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.GovernanceMode, &c.ChannelType, &c.GroupName, &lastSeq, &lastReadSeq,
+			&lastMsgID, &lastMsgTS, &lastMsgSeq, &lastSender, &lastMsgBody, &lastMsgKeyVersion, &deletedAt); err != nil {
 			return nil, err
 		}
-		channels = append(channels, ChannelWithMembers{Channel: c, LastSeq: lastSeq, LastReadSeq: lastReadSeq})
+		channels = append(channels, ChannelWithMembers{
+			Channel: c, LastSeq: lastSeq, LastReadSeq: lastReadSeq,
+			LastMsgID: lastMsgID, LastMsgTS: lastMsgTS, LastMsgSeq: lastMsgSeq,
+			LastMsgSender: lastSender, LastMsgBody: lastMsgBody,
+			LastMsgKeyVersion: lastMsgKeyVersion, LastMsgDeleted: deletedAt != nil,
+		})
 		channelIDs = append(channelIDs, c.ID)
 	}
 	if err := rows.Err(); err != nil {

@@ -299,6 +299,19 @@ type ChannelSummary struct {
 	// unread indicator when LastSeq > LastReadSeq, without fetching history.
 	LastSeq     int64 `json:"last_seq"`
 	LastReadSeq int64 `json:"last_read_seq"`
+	// 62-2: newest-message activity for the unified conversation list
+	// (Zuckermode). LastMsgBody is CIPHERTEXT the server cannot read,
+	// shipped so the client can decrypt a preview without fetching history
+	// (the ThreadInboxEntry precedent). All absent when the channel has no
+	// messages -- and on channel_event pushes, which don't run the listing
+	// query; clients must merge monotonically by LastMsgSeq.
+	LastMsgID         string `json:"last_msg_id,omitempty"`
+	LastMsgSeq        int64  `json:"last_msg_seq,omitempty"`
+	LastMsgTS         int64  `json:"last_msg_ts,omitempty"` // unix-millis
+	LastMsgSender     string `json:"last_msg_sender_user_id,omitempty"`
+	LastMsgBody       string `json:"last_msg_body,omitempty"`
+	LastMsgKeyVersion int    `json:"last_msg_key_version,omitempty"`
+	LastMsgDeleted    bool   `json:"last_msg_deleted,omitempty"`
 }
 
 // ChannelMember pairs a user_id with their handle. Server

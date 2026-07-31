@@ -831,6 +831,11 @@ func (h *WSHandler) handleSend(
 				return err
 			}
 		}
+		// 62-1: every message is also the channel's newest activity; the
+		// unified conversation list sorts and previews from this pointer.
+		if err := store.RecordChannelActivityTx(ctx, tx, channelID, msgID, deviceID, ts, seq); err != nil {
+			return err
+		}
 		ackMsgID, ackSeq, ackTS = msgID, seq, ts
 		ev := pubsub.Event{
 			Kind:           "message",
@@ -1843,7 +1848,7 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 			Handle: handles[m], // empty string if unknown, fine
 		})
 	}
-	return proto.ChannelSummary{
+	s := proto.ChannelSummary{
 		ID:                c.ID.String(),
 		Name:              c.Name,
 		IsDM:              c.IsDM,
@@ -1859,6 +1864,28 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 		LastSeq:           c.LastSeq,
 		LastReadSeq:       c.LastReadSeq,
 	}
+	// 62-2: activity fields only when the listing query found a newest
+	// message (seq starts at 1, so 0 means "no activity row"). The body
+	// join can still come back NULL if the message's partition was
+	// detached (0049 header) -- the summary then degrades to metadata.
+	if c.LastMsgSeq > 0 {
+		s.LastMsgSeq = c.LastMsgSeq
+		if c.LastMsgID != nil {
+			s.LastMsgID = c.LastMsgID.String()
+		}
+		if c.LastMsgTS != nil {
+			s.LastMsgTS = c.LastMsgTS.UnixMilli()
+		}
+		if c.LastMsgSender != nil {
+			s.LastMsgSender = c.LastMsgSender.String()
+		}
+		s.LastMsgBody = string(c.LastMsgBody)
+		if c.LastMsgKeyVersion != nil {
+			s.LastMsgKeyVersion = *c.LastMsgKeyVersion
+		}
+		s.LastMsgDeleted = c.LastMsgDeleted
+	}
+	return s
 }
 
 // handleCreateChannel inserts a channel + members and acks with the

@@ -145,9 +145,13 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (Message, error) {
 		// Unlike handleSend this still does not advance the channel cursor and
 		// does not publish -- a pre-existing asymmetry, deliberately untouched.
 		if m.ParentID != nil && m.ThreadID != nil {
-			return RecordThreadReplyTx(ctx, tx, m.ChannelID, *m.ThreadID, m.ID, m.SenderDeviceID, m.TS, m.Seq)
+			if err := RecordThreadReplyTx(ctx, tx, m.ChannelID, *m.ThreadID, m.ID, m.SenderDeviceID, m.TS, m.Seq); err != nil {
+				return err
+			}
 		}
-		return nil
+		// 62-1: unconditional, unlike the reply-only thread bookkeeping --
+		// every message advances its channel's newest-activity pointer.
+		return RecordChannelActivityTx(ctx, tx, m.ChannelID, m.ID, m.SenderDeviceID, m.TS, m.Seq)
 	})
 	if err != nil {
 		return Message{}, fmt.Errorf("insert message: %w", err)
