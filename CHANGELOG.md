@@ -13,6 +13,16 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- The phone's conversation-list view now has a pinned "friends" entry that
+  expands to your full friends list — everyone with their online status,
+  online friends first — so you can find someone without scanning the
+  conversation list. Tapping a friend opens your chat with them.
+- The phone's conversation-list view now shows a quick filter above the
+  conversations once the list is long enough, matching the filter the
+  desktop sidebar already had.
+- On phones, you can now swipe right from the left edge of a conversation
+  to go back to the conversation list, instead of reaching for the back
+  button.
 - Call tiles now show a green dot while sound is coming from that person, so
   you can see who is talking at a glance. Your own tile shows it while your
   mic is live and unmuted.

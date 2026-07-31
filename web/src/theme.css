@@ -7834,6 +7834,70 @@ body.chalk-resizing .chalk-sidebar-resizer {
     cursor: pointer;
   }
 
+  /* 64-1: the friends row's right-aligned "n/m online" note. */
+  .chalk-zucker-pinned-note {
+    margin-left: auto;
+    font-size: var(--chalk-size-small);
+    color: var(--chalk-fg-dim);
+  }
+
+  /* 64-1: the expanded friends sublist. Indented past the pinned rows so
+     it reads as nested; capped so a big roster can't swallow the screen. */
+  .chalk-zucker-friends {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-height: 40vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-bottom: 1px solid var(--chalk-border);
+  }
+
+  .chalk-zucker-friend {
+    display: flex;
+    align-items: center;
+    gap: var(--chalk-s2);
+    width: 100%;
+    min-height: 44px;
+    padding: 0 var(--chalk-s3) 0 calc(var(--chalk-s3) * 2);
+    background: none;
+    color: var(--chalk-fg);
+    border: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .chalk-zucker-friend-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--chalk-fg-bright);
+  }
+
+  .chalk-zucker-friend-state {
+    flex: 0 0 auto;
+    font-size: var(--chalk-size-small);
+    color: var(--chalk-fg-dim);
+  }
+
+  .chalk-zucker-friends-empty {
+    padding: var(--chalk-s2) calc(var(--chalk-s3) * 2);
+    color: var(--chalk-fg-dim);
+    font-style: italic;
+  }
+
+  /* 64-2: the conversation quick filter, above the rows it narrows. The
+     input reuses the sidebar filter's styling. */
+  .chalk-zucker-filter {
+    flex-shrink: 0;
+    padding: var(--chalk-s2) var(--chalk-s3);
+    border-bottom: 1px solid var(--chalk-border);
+  }
+
   .chalk-zucker-rows {
     flex: 1 1 auto;
     min-height: 0;

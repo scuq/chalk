@@ -75,6 +75,37 @@ export interface ZuckerRow {
   otherUserID: string | null;
 }
 
+// 64-1: the pinned friends sublist -- every friend with their presence,
+// online first, so finding someone doesn't mean scanning a conversation
+// list that is sorted by activity, not by name.
+export interface ZuckerFriend {
+  userID: string;
+  name: string;
+  presence: "online" | "away" | "offline";
+}
+
+const PRESENCE_RANK = { online: 0, away: 1, offline: 2 } as const;
+
+export function buildFriendList(
+  friends: { userID: string; handle: string }[],
+  presence: Record<string, string>,
+): ZuckerFriend[] {
+  const rows: ZuckerFriend[] = friends.map((f) => {
+    const raw = presence[f.userID];
+    return {
+      userID: f.userID,
+      name: f.handle || f.userID.slice(-8),
+      presence: raw === "online" || raw === "away" ? raw : "offline",
+    };
+  });
+  rows.sort(
+    (a, b) =>
+      PRESENCE_RANK[a.presence] - PRESENCE_RANK[b.presence] ||
+      a.name.localeCompare(b.name),
+  );
+  return rows;
+}
+
 // buildConversationList flattens channels + activity + unread into the
 // sorted row list. Name resolution is injected (nameFor wraps App's
 // displayName; handleFor resolves a user id to a handle) so this module

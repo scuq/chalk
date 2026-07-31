@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildConversationList,
+  buildFriendList,
   previewText,
   DELETED_PREVIEW,
   type ZuckerChannel,
@@ -185,4 +186,38 @@ test("viewMode resolves junk-safely: only the exact string zucker turns it on", 
     selectRosterPrefs({ roster: { viewMode: "whatsapp" as never } }).viewMode,
     "classic",
   );
+});
+
+// ---- buildFriendList (64-1) ------------------------------------------
+
+test("friends sort online first, then away, then offline, names within", () => {
+  const rows = buildFriendList(
+    [
+      { userID: "u1", handle: "zed" },
+      { userID: "u2", handle: "amy" },
+      { userID: "u3", handle: "bob" },
+      { userID: "u4", handle: "cat" },
+    ],
+    { u1: "online", u2: "offline", u3: "away", u4: "online" },
+  );
+  assert.deepEqual(
+    rows.map((r) => `${r.name}:${r.presence}`),
+    ["cat:online", "zed:online", "bob:away", "amy:offline"],
+  );
+});
+
+test("missing or unknown presence resolves to offline", () => {
+  const rows = buildFriendList(
+    [
+      { userID: "u1", handle: "a" },
+      { userID: "u2", handle: "b" },
+    ],
+    { u2: "sleeping" },
+  );
+  assert.deepEqual(rows.map((r) => r.presence), ["offline", "offline"]);
+});
+
+test("handle-less friends fall back to a userID slice", () => {
+  const rows = buildFriendList([{ userID: "user-123456789", handle: "" }], {});
+  assert.equal(rows[0].name, "23456789");
 });

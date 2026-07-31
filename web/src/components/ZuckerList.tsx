@@ -5,10 +5,14 @@
 //
 // The pinned rows above the list keep the two non-conversation surfaces the
 // classic drawer carried (parking lot, thread inbox); the header buttons
-// keep its two "+" entry points.
+// keep its two "+" entry points. 64-1 adds a third pinned row: friends,
+// expanding in place to the full roster with presence, because the
+// activity-sorted list buries anyone you haven't talked to lately.
 
-import type { ZuckerRow } from "../chat/zucker";
+import { useState } from "preact/hooks";
+import type { ZuckerFriend, ZuckerRow } from "../chat/zucker";
 import type { PresenceMap } from "../state/types";
+import { filterRoster, showRosterFilter } from "../chat/roster-filter";
 import { fmtRelative } from "../chat/reltime";
 import { UnreadDot } from "./UnreadDot";
 import { ChannelGlyph, presenceClass, presenceLabel } from "./Sidebar";
@@ -16,10 +20,12 @@ import { ChannelGlyph, presenceClass, presenceLabel } from "./Sidebar";
 interface Props {
   rows: ZuckerRow[];
   presence: PresenceMap;
+  friends: ZuckerFriend[];
   // null hides the row (prefs.parkingLot.hidden), mirroring the sidebar.
   parkingName: string | null;
   threadsUnread: number;
   onSelect: (channelID: string) => void;
+  onFriendSelect: (userID: string) => void;
   onPark: () => void;
   onOpenThreads: () => void;
   onAddFriend: () => void;
@@ -29,14 +35,22 @@ interface Props {
 export function ZuckerList({
   rows,
   presence,
+  friends,
   parkingName,
   threadsUnread,
   onSelect,
+  onFriendSelect,
   onPark,
   onOpenThreads,
   onAddFriend,
   onCreateChannel,
 }: Props) {
+  const [friendsOpen, setFriendsOpen] = useState(false);
+  // 64-2: quick filter over the conversation rows. Same threshold and match
+  // rule as the sidebar's rosters (54-1); short lists don't need it.
+  const [filter, setFilter] = useState("");
+  const visibleRows = filterRoster(rows, filter, (r) => r.name);
+  const onlineCount = friends.filter((f) => f.presence === "online").length;
   // One clock per render, the MessageList precedent: a list of relative
   // times must agree with itself.
   const now = new Date();
@@ -79,6 +93,44 @@ export function ZuckerList({
       <button
         type="button"
         class="chalk-zucker-pinned"
+        onClick={() => setFriendsOpen(!friendsOpen)}
+        aria-expanded={friendsOpen}
+        data-testid="zucker-friends"
+      >
+        <span>@ friends</span>
+        <span class="chalk-zucker-pinned-note">
+          {onlineCount}/{friends.length} online
+        </span>
+      </button>
+      {friendsOpen && (
+        <ul class="chalk-zucker-friends" data-testid="zucker-friends-list">
+          {friends.length === 0 && (
+            <li class="chalk-zucker-friends-empty">no friends yet</li>
+          )}
+          {friends.map((f) => (
+            <li key={f.userID}>
+              <button
+                type="button"
+                class="chalk-zucker-friend"
+                onClick={() => onFriendSelect(f.userID)}
+                data-testid="zucker-friend"
+                data-user-id={f.userID}
+                data-presence={f.presence}
+              >
+                <span
+                  class={`chalk-presence-dot ${presenceClass(f.presence)}`}
+                  aria-label={presenceLabel(f.presence)}
+                />
+                <span class="chalk-zucker-friend-name">{f.name}</span>
+                <span class="chalk-zucker-friend-state">{f.presence}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button
+        type="button"
+        class="chalk-zucker-pinned"
         onClick={onOpenThreads}
         data-testid="zucker-threads"
       >
@@ -86,8 +138,25 @@ export function ZuckerList({
         {threadsUnread > 0 && <UnreadDot mention={false} />}
       </button>
 
+      {showRosterFilter(rows.length) && (
+        <div class="chalk-zucker-filter">
+          <input
+            type="text"
+            class="chalk-sidebar-filter-input"
+            data-testid="zucker-filter"
+            placeholder="filter…"
+            value={filter}
+            onInput={(e) => setFilter((e.target as HTMLInputElement).value)}
+            aria-label="filter conversations"
+          />
+        </div>
+      )}
+
       <ul class="chalk-zucker-rows" data-testid="zucker-rows">
-        {rows.map((r) => (
+        {rows.length > 0 && visibleRows.length === 0 && (
+          <li class="chalk-zucker-friends-empty">no matches</li>
+        )}
+        {visibleRows.map((r) => (
           <li key={r.id}>
             <button
               type="button"

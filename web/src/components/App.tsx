@@ -181,7 +181,9 @@ import { StatusBar } from "./StatusBar";
 import { Sidebar, ChannelGlyph } from "./Sidebar";
 // 62-6: Zuckermode -- the phone's unified conversation list.
 import { ZuckerList } from "./ZuckerList";
-import { buildConversationList, previewText } from "../chat/zucker";
+import { buildConversationList, buildFriendList, previewText } from "../chat/zucker";
+// 64-3: swipe-right from the left edge = the Zuckermode back button.
+import { beginSwipe, swipeTriggered, type SwipeStart } from "../chat/swipe-back";
 import { MessageList } from "./MessageList";
 import { ConfirmModal } from "./ConfirmModal";
 import { Composer } from "./Composer";
@@ -547,6 +549,15 @@ export function App() {
     zuckerVoiceRoomID,
     zuckerHandles,
   ]);
+  // 64-1: the friends sublist behind the pinned row -- full roster with
+  // presence, online first.
+  const zuckerFriends = useMemo(
+    () => (zuckerActive ? buildFriendList(state.friends, state.presence) : []),
+    [zuckerActive, state.friends, state.presence],
+  );
+  // 64-3: an armed edge swipe on the chat screen; null between touches.
+  // A ref, not state -- coordinates during a drag must not cause renders.
+  const zuckerSwipeRef = useRef<SwipeStart | null>(null);
 
   // 33-4: sidebar width. The committed value lives in prefs (so it follows
   // the user to their other devices); sidebarDrag holds the in-flight width
@@ -3474,8 +3485,11 @@ export function App() {
   //
   // Either opens the existing DM with this friend, or creates one
   // on the fly. The reducer's dm_pending_set + channel_added wiring
-  // takes care of auto-activating the channel once it lands.
-  const handleFriendClickInRoster = (friendUserID: string) => {
+  // takes care of auto-activating the channel once it lands. Returns
+  // whether a DM was activated synchronously (64-1: the Zuckermode friends
+  // list flips to the chat screen right away in that case; the pending
+  // path flips via the dm_pending effect once the channel lands).
+  const handleFriendClickInRoster = (friendUserID: string): boolean => {
     // 1. Existing DM? Activate it directly.
     const ownID = state.user?.id ?? state.me?.userID ?? null;
     if (ownID) {
@@ -3486,7 +3500,7 @@ export function App() {
         const otherID = ch.memberIDs.find((m) => m !== ownID);
         if (otherID === friendUserID) {
           dispatch({ kind: "set_active_channel", channelID: ch.id });
-          return;
+          return true;
         }
       }
     }
@@ -3500,13 +3514,14 @@ export function App() {
     // channels to render as "@handle" from the members list), so
     // we just need something stable and non-empty.
     const c = clientRef.current;
-    if (!c || !c.isOpen()) return;
+    if (!c || !c.isOpen()) return false;
     const friend = state.friends.find((f) => f.userID === friendUserID);
     const dmName = friend && friend.handle
       ? "dm-" + friend.handle
       : "dm-" + friendUserID.slice(-8);
     dispatch({ kind: "dm_pending_set", userID: friendUserID });
     onCreateChannel(dmName, true, [friendUserID], false);
+    return false;
   };
 
   // ---- Phase 09d-2d: backfill `me` after URL-driven registration ---
@@ -4521,6 +4536,33 @@ export function App() {
               ? " chalk-main--voice"
               : "")
         }
+        /* 64-3: swipe right from the left edge does what the header's back
+           button does. Only the chat screen arms it; triggering mid-drag
+           (not on release) makes the navigation feel immediate. */
+        onTouchStart={(e) => {
+          zuckerSwipeRef.current = null;
+          if (!zuckerActive || zuckerScreen !== "chat") return;
+          if (e.touches.length !== 1) return;
+          const t = e.touches[0];
+          zuckerSwipeRef.current = beginSwipe(t.clientX, t.clientY);
+        }}
+        onTouchMove={(e) => {
+          const start = zuckerSwipeRef.current;
+          if (!start) return;
+          const t = e.touches[0];
+          if (!swipeTriggered(start, t.clientX, t.clientY)) return;
+          zuckerSwipeRef.current = null;
+          // Same exit as the parked screen's back button: un-park so the
+          // state doesn't linger invisibly behind the list.
+          if (state.parked) dispatch({ kind: "set_parked", parked: false });
+          setZuckerScreen("list");
+        }}
+        onTouchEnd={() => {
+          zuckerSwipeRef.current = null;
+        }}
+        onTouchCancel={() => {
+          zuckerSwipeRef.current = null;
+        }}
       >
         {/* 62-6: Zuckermode's list screen replaces the conversation
             entirely; everything below stays mounted-but-hidden logic-free
@@ -4530,11 +4572,18 @@ export function App() {
           <ZuckerList
             rows={zuckerRows}
             presence={state.presence}
+            friends={zuckerFriends}
             parkingName={parking.hidden ? null : parking.name}
             threadsUnread={threadsNeedingYou}
             onSelect={(id) => {
               dispatch({ kind: "set_active_channel", channelID: id });
               setZuckerScreen("chat");
+            }}
+            onFriendSelect={(userID) => {
+              // An existing DM activates synchronously -- flip to it now. A
+              // freshly created one flips via the dm_pending effect above
+              // once the channel lands.
+              if (handleFriendClickInRoster(userID)) setZuckerScreen("chat");
             }}
             onPark={() => {
               dispatch({ kind: "set_parked", parked: true });
