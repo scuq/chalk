@@ -7519,6 +7519,16 @@ body.chalk-resizing .chalk-sidebar-resizer {
     gap: var(--chalk-s1);
     padding-bottom: var(--chalk-s2);
     margin-bottom: var(--chalk-s2);
+    /* Pin the room name to the top of the feed. On desktop the roster
+       always says where you are; on a phone the header is the ONLY
+       indicator, and it used to scroll away with the messages. The
+       negative top swallows .chalk-main's own top padding (compensated
+       by padding-top) so no sliver of feed shows above the pinned bar. */
+    position: sticky;
+    top: calc(-1 * var(--chalk-s2));
+    padding-top: var(--chalk-s2);
+    background: var(--chalk-bg);
+    z-index: 5;
   }
 
   /* Two lines per message: meta above, full-width body below. The

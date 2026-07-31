@@ -18,6 +18,11 @@ The engineering-level history (which slice shipped what) lives in
   minutes of no interaction instead of 5 before showing you as away.
 
 ### Fixed
+- **On phones, the room name now stays visible while you read.** The channel
+  or DM title used to sit at the very top of the message history and scroll
+  away with it, so mid-conversation there was no way to tell which room —
+  or whose direct chat — you were looking at. It now stays pinned above the
+  messages.
 - **iPhones no longer zoom the whole page when you tap into a field.** iOS
   Safari auto-zooms any input smaller than 16px and never zooms back out —
   tapping the message box, the sign-in form, the channel-create dialog, or
