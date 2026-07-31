@@ -31,10 +31,15 @@ import (
 )
 
 const (
-	maxRedirects  = 3
-	maxHTMLBytes  = 1 << 20 // 1 MiB: og tags live in <head>; truncation is fine
-	maxImageBytes = 5 << 20
-	userAgent     = "chalkd-linkpreview/1.0"
+	maxRedirects = 3
+	// 2 MiB: og tags live in <head>, but YouTube watch pages put them around
+	// byte 686k of a ~1.2 MB document -- a 1 MiB cap sat one fat head away
+	// from silently truncating every og tag and landing in the wrong-fallback
+	// path.
+	maxHTMLBytes   = 2 << 20
+	maxImageBytes  = 5 << 20
+	maxOEmbedBytes = 64 << 10
+	userAgent      = "chalkd-linkpreview/1.0"
 
 	// Rune caps applied to extracted fields; a preview is a summary, not a
 	// mirror. The client re-caps on receive (payloads are sender-asserted).
@@ -68,7 +73,8 @@ type Preview struct {
 // New.
 type Client struct {
 	hc           *http.Client
-	allowPrivate bool // tests only: httptest servers are loopback
+	oembedBase   string // YouTube oEmbed endpoint; overridden in tests
+	allowPrivate bool   // tests only: httptest servers are loopback
 }
 
 // Option customizes a Client.
@@ -89,7 +95,7 @@ func WithHTTPClient(hc *http.Client) Option {
 
 // New builds a Client with the given per-fetch timeout.
 func New(timeout time.Duration, opts ...Option) *Client {
-	c := &Client{}
+	c := &Client{oembedBase: youtubeOEmbedBase}
 	for _, o := range opts {
 		o(c)
 	}
@@ -124,8 +130,16 @@ func New(timeout time.Duration, opts ...Option) *Client {
 	return c
 }
 
-// Fetch retrieves rawURL and extracts its OpenGraph metadata.
+// Fetch retrieves rawURL and extracts its OpenGraph metadata. YouTube video
+// URLs bypass the HTML path entirely and go through oEmbed (see oembed.go).
 func (c *Client) Fetch(ctx context.Context, rawURL string) (*Preview, error) {
+	u, err := parsePreviewURL(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if isYouTubeVideoURL(u) {
+		return c.fetchYouTubeOEmbed(ctx, u)
+	}
 	resp, err := c.get(ctx, rawURL, "text/html")
 	if err != nil {
 		return nil, err
@@ -178,11 +192,21 @@ func (c *Client) FetchImage(ctx context.Context, rawURL string) ([]byte, string,
 	return body, ct, nil
 }
 
-// get validates rawURL and performs the guarded GET.
-func (c *Client) get(ctx context.Context, rawURL, accept string) (*http.Response, error) {
+// parsePreviewURL is the single https-only/no-userinfo URL gate shared by
+// Fetch and get.
+func parsePreviewURL(rawURL string) (*url.URL, error) {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
 		return nil, ErrBadURL
+	}
+	return u, nil
+}
+
+// get validates rawURL and performs the guarded GET.
+func (c *Client) get(ctx context.Context, rawURL, accept string) (*http.Response, error) {
+	u, err := parsePreviewURL(rawURL)
+	if err != nil {
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -190,6 +214,9 @@ func (c *Client) get(ctx context.Context, rawURL, accept string) (*http.Response
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", accept)
+	// Without this, upstreams localize by the server's IP geolocation and the
+	// server's location leaks into E2E-embedded preview text.
+	req.Header.Set("Accept-Language", "en")
 	resp, err := c.hc.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("linkpreview: fetch failed: %w", err)

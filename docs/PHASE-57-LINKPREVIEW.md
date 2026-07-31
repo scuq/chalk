@@ -84,19 +84,37 @@ Hardening, all of it mandatory:
   re-dial through the same guard. Rejected: loopback, RFC1918, link-local
   (v4 + v6), CGNAT 100.64/10, ULA fc00::/7, multicast, unspecified, and
   the other special-purpose ranges. Fail closed.
-- Max 3 redirects; response caps 1 MiB HTML / 5 MiB image; short timeout
+- Max 3 redirects; response caps 2 MiB HTML / 5 MiB image (YouTube watch
+  pages put their og tags around byte 686k of a ~1.2 MB document, so 1 MiB
+  was one fat head away from truncating them all); short timeout
   (`CHALK_LINKPREVIEW_TIMEOUT_SECONDS`, default 8).
 - Content-type enforced: `text/html` for pages, `image/*` for thumbnails.
-- No cookies sent or stored; generic `chalkd-linkpreview` User-Agent.
+- No cookies sent or stored; generic `chalkd-linkpreview` User-Agent;
+  static `Accept-Language: en` so upstream localization reflects nothing
+  about the server's IP geolocation (which would otherwise leak into
+  E2E-embedded preview text).
 - Per-user rate limit (20 fetches/min) so an authed user can't turn chalkd
   into a crawling proxy.
 
-Metadata extraction is OpenGraph only (`og:title`, `og:description`,
-`og:image`, `og:site_name`, with `<title>`/meta-description fallback) via a
-small hand-rolled meta-tag scanner on stdlib — YouTube and Steam both serve
-OG tags server-side; no oEmbed, no HTML-parsing dependency, no JS
+Metadata extraction is OpenGraph (`og:title`, `og:description`, `og:image`,
+`og:site_name`, with `<title>`/meta-description fallback) via a small
+hand-rolled meta-tag scanner on stdlib — no HTML-parsing dependency, no JS
 execution. UTF-8 assumed. If a page yields no usable metadata the endpoint
 returns an empty-fields preview and the composer simply offers nothing.
+
+**Exception: YouTube video URLs** (`/watch?v=`, `/shorts/<id>`,
+`/live/<id>`, `youtu.be/<id>`) go through YouTube's public oEmbed JSON
+endpoint (`internal/linkpreview/oembed.go`) instead of HTML fetching. The
+original design said "no oEmbed" to avoid parsing dependencies, but
+YouTube's bot mitigation intermittently serves the fetcher an og-less,
+geo-localized shell page, and the `<title>` fallback turned that into a
+wrong-but-plausible card (empty " - YouTube" title, homepage description in
+the server's geo language). oEmbed returns the real title, channel, and
+thumbnail as ~1 KB of JSON (stdlib `encoding/json`, still no new deps),
+404s on unknown ids, and goes through the same guarded client (dial guard,
+timeout, https-only). oEmbed failure means *no card* — never a fallback to
+the HTML path, which is exactly the wrong-card path. Channel, playlist, and
+homepage URLs keep the OG path.
 
 ## On-the-wire format
 

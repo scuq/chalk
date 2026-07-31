@@ -27,9 +27,10 @@ func newTLSServer(t *testing.T, handler http.Handler) (*httptest.Server, *Client
 }
 
 func TestFetchHappyPath(t *testing.T) {
-	var gotUA string
+	var gotUA, gotLang string
 	srv, c := newTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUA = r.Header.Get("User-Agent")
+		gotLang = r.Header.Get("Accept-Language")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, `<head>
 			<meta property="og:title" content="A Video">
@@ -52,6 +53,144 @@ func TestFetchHappyPath(t *testing.T) {
 	if gotUA != userAgent {
 		t.Fatalf("User-Agent = %q", gotUA)
 	}
+	if gotLang != "en" {
+		t.Fatalf("Accept-Language = %q, want en (geo-localized upstream text leaks the server's location)", gotLang)
+	}
+}
+
+func TestIsYouTubeVideoURL(t *testing.T) {
+	cases := []struct {
+		url  string
+		want bool
+	}{
+		{"https://www.youtube.com/watch?v=abc", true},
+		{"https://youtube.com/watch?v=abc&t=42&list=x", true},
+		{"https://m.youtube.com/watch?v=abc", true},
+		{"https://WWW.YOUTUBE.COM/watch?v=abc", true},
+		{"https://www.youtube.com./watch?v=abc", true},
+		{"https://www.youtube.com/shorts/abc", true},
+		{"https://www.youtube.com/shorts/abc/", true},
+		{"https://www.youtube.com/live/abc", true},
+		{"https://youtu.be/abc", true},
+		{"https://youtu.be/abc?t=10", true},
+
+		{"https://www.youtube.com/", false},
+		{"https://www.youtube.com/watch", false},
+		{"https://www.youtube.com/watch?v=", false},
+		{"https://www.youtube.com/playlist?list=x", false},
+		{"https://www.youtube.com/channel/UC123", false},
+		{"https://www.youtube.com/@handle", false},
+		{"https://www.youtube.com/shorts/", false},
+		{"https://youtu.be/", false},
+		{"https://youtu.be/abc/extra", false},
+		{"https://music.youtube.com/watch?v=abc", false},
+		{"https://youtube.com.evil.com/watch?v=abc", false},
+		{"https://evil.com/watch?v=abc", false},
+	}
+	for _, tc := range cases {
+		u, err := parsePreviewURL(tc.url)
+		if err != nil {
+			t.Fatalf("parsePreviewURL(%q): %v", tc.url, err)
+		}
+		if got := isYouTubeVideoURL(u); got != tc.want {
+			t.Errorf("isYouTubeVideoURL(%q) = %v, want %v", tc.url, got, tc.want)
+		}
+	}
+}
+
+// oembedServer serves oEmbed JSON at /oembed and fails the test if anything
+// hits the catch-all: video URLs must never take the HTML path.
+func oembedServer(t *testing.T, oembed http.HandlerFunc) *Client {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oembed", oembed)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("HTML path hit for %s; video URLs must go through oEmbed only", r.URL)
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<head><meta property="og:title" content="WRONG"></head>`)
+	})
+	srv, c := newTLSServer(t, mux)
+	c.oembedBase = srv.URL + "/oembed"
+	return c
+}
+
+func TestFetchYouTubeOEmbed(t *testing.T) {
+	videoURL := "https://www.youtube.com/watch?v=abc&t=42"
+	c := oembedServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("format"); got != "json" {
+			t.Errorf("format = %q, want json", got)
+		}
+		if got := r.URL.Query().Get("url"); got != videoURL {
+			t.Errorf("url param = %q, want the original video url %q", got, videoURL)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"title":"A Video","author_name":"A Channel","provider_name":"YouTube","thumbnail_url":"https://i.ytimg.com/vi/abc/hqdefault.jpg"}`)
+	})
+
+	p, err := c.Fetch(context.Background(), videoURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.URL != videoURL {
+		t.Fatalf("URL = %q, want the user's url, not the oembed endpoint", p.URL)
+	}
+	if p.Title != "A Video" || p.Description != "A Channel" || p.SiteName != "YouTube" {
+		t.Fatalf("preview = %+v", p)
+	}
+	if p.ImageURL != "https://i.ytimg.com/vi/abc/hqdefault.jpg" {
+		t.Fatalf("ImageURL = %q", p.ImageURL)
+	}
+}
+
+func TestFetchYouTubeOEmbedFailureNoFallback(t *testing.T) {
+	c := oembedServer(t, func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	if _, err := c.Fetch(context.Background(), "https://youtu.be/nosuchvid"); err == nil {
+		t.Fatal("want error when oEmbed 404s; no card beats a wrong card")
+	}
+}
+
+func TestFetchYouTubeOEmbedRejectsBadPayload(t *testing.T) {
+	t.Run("non-json content type", func(t *testing.T) {
+		c := oembedServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprint(w, `<head></head>`)
+		})
+		if _, err := c.Fetch(context.Background(), "https://youtu.be/abc"); err == nil {
+			t.Fatal("want error for non-json oEmbed response")
+		}
+	})
+	t.Run("non-https thumbnail dropped", func(t *testing.T) {
+		c := oembedServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"title":"A Video","thumbnail_url":"http://i.ytimg.com/vi/abc/hq.jpg"}`)
+		})
+		p, err := c.Fetch(context.Background(), "https://youtu.be/abc")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.ImageURL != "" {
+			t.Fatalf("ImageURL = %q, want empty for non-https thumbnail", p.ImageURL)
+		}
+		if p.SiteName != "YouTube" {
+			t.Fatalf("SiteName = %q, want the YouTube default when provider_name is absent", p.SiteName)
+		}
+	})
+	t.Run("over-long title capped", func(t *testing.T) {
+		long := strings.Repeat("x", maxTitleRunes+50)
+		c := oembedServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"title":%q}`, long)
+		})
+		p, err := c.Fetch(context.Background(), "https://youtu.be/abc")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len([]rune(p.Title)) != maxTitleRunes {
+			t.Fatalf("title length = %d runes, want capped at %d", len([]rune(p.Title)), maxTitleRunes)
+		}
+	})
 }
 
 func TestFetchRejectsBadURLs(t *testing.T) {

@@ -21,6 +21,13 @@ The engineering-level history (which slice shipped what) lives in
   a mouse pointer; on touch screens they now have proper thumb-sized targets.
 
 ### Fixed
+- **YouTube link previews no longer show a wrong card.** Pasting a YouTube
+  video link sometimes produced a card with an empty " - YouTube" title and a
+  generic description in the wrong language, because YouTube served the
+  preview fetcher a placeholder page instead of the video. Video previews now
+  come from YouTube's own metadata service and show the real title and
+  channel name — and when that lookup fails, chalk shows no card rather than
+  a wrong one.
 - **On phones, the room name now stays visible while you read.** The channel
   or DM title used to sit at the very top of the message history and scroll
   away with it, so mid-conversation there was no way to tell which room —
