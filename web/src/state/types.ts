@@ -160,6 +160,30 @@ export interface ChannelSummary {
   // builds it without a user scope.
   lastSeq: number;
   lastReadSeq: number;
+  // 62-3: newest-message activity SEED, same contract as lastSeq above:
+  // live state is state.activity[channelID] -- render from there. Metadata
+  // only; the ciphertext preview rides outside the reducer (App's cipher
+  // stash) until decrypted. All absent on channel_event summaries.
+  lastMsgID?: string;
+  lastMsgTS?: number; // unix-millis
+  lastMsgSeq?: number;
+  lastMsgSender?: string; // user id; absent when the sender was purged
+  lastMsgDeleted?: boolean;
+}
+
+// 62-3: per-channel newest-message activity, the unified conversation
+// list's sort key and preview. Seeded from the channel listing, kept live
+// by the message/edit/delete pushes; merges are seq-monotonic (a
+// channel_event summary carries no activity and must not wipe this).
+// preview is decrypted plaintext (rendered through previewText) or null
+// while only ciphertext is held.
+export interface ChannelActivity {
+  msgID: string | null;
+  ts: number; // unix-millis
+  seq: number;
+  senderUserID: string | null;
+  preview: string | null;
+  deleted: boolean;
 }
 
 // 33-1/33-3: per-channel unread state.
@@ -402,6 +426,10 @@ export interface LinkPreviewDomainPrefs {
 export interface RosterPrefs {
   groupingEnabled?: boolean;
   groupOverrides?: Record<string, string>;
+  // 62-5: "zucker" swaps the phone's drawer navigation for one WhatsApp-
+  // style conversation list (Zuckermode). Synced account-wide but consumed
+  // only on mobile -- the chat.sidebarWidth precedent: desktop ignores it.
+  viewMode?: "classic" | "zucker";
 }
 
 // Phase 9.7d: resolved chat prefs (all fields required + defaulted).
@@ -465,6 +493,8 @@ export interface ResolvedRosterPrefs {
   // (string values, non-empty after trim); everything else reads as "no
   // override" rather than a group named "" or a crash on junk prefs.
   groupOverrides: Record<string, string>;
+  // 62-5: anything but the exact string "zucker" resolves to classic.
+  viewMode: "classic" | "zucker";
 }
 
 export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterPrefs {
@@ -480,6 +510,7 @@ export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterP
   return {
     groupingEnabled: r.groupingEnabled ?? true,
     groupOverrides: overrides,
+    viewMode: r.viewMode === "zucker" ? "zucker" : "classic",
   };
 }
 
@@ -522,6 +553,12 @@ export interface AppState {
   // so a channel_event summary (which the server builds without a user
   // scope, hence zeroed cursors) can't clobber live state.
   unread: Record<string, ChannelUnread>;
+
+  // 62-3: newest-message activity per channel id, for the unified
+  // conversation list (Zuckermode): sort key + decrypted preview. Same
+  // out-of-ChannelSummary reasoning as unread above; merges are
+  // seq-monotonic.
+  activity: Record<string, ChannelActivity>;
 
   // 33-4: frozen unread window driving the "new messages" divider and the
   // highlighted rows. Only ever holds the channel currently being viewed --
@@ -827,6 +864,7 @@ export const initialState: AppState = {
   historyLoaded: {},
   historyComplete: {},
   unread: {},
+  activity: {},
   unreadMarks: {},
   proposals: {},
   voiceRosters: {},
@@ -1095,6 +1133,11 @@ export type Action =
   | { kind: "presence_mode_set"; mode: "auto" | "online" | "away" }
   | { kind: "my_effective_presence_set"; state: "online" | "away" | "offline" }
   // ---- Phase 9.7a: preferences -----------------------------------
+  // 62-7: a decrypted preview for the channel's newest message, from the
+  // warm loop. seq is the seq of the ciphertext that was decrypted; the
+  // reducer drops the result unless it still matches activity[channelID]
+  // (a live message may have superseded it mid-decrypt).
+  | { kind: "channel_preview"; channelID: string; seq: number; preview: string }
   | { kind: "prefs_loaded"; prefs: UserPrefs }
   | { kind: "prefs_merged"; prefs: UserPrefs }
   // ---- Phase 10b: threading -----------------------------------------

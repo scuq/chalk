@@ -298,6 +298,16 @@ export interface ChannelSummaryWire {
   group_name?: string; // 54-2; creator's grouping suggestion; absent -> "General"
   last_seq?: number; // 33-1; highest seq in the channel; absent from older servers -> 0
   last_read_seq?: number; // 33-1; this user's read cursor; absent -> 0
+  // 62-2: newest-message activity (Zuckermode). last_msg_body is ciphertext
+  // the server cannot read; the client decrypts it into a preview. All
+  // absent when the channel is empty or on channel_event pushes.
+  last_msg_id?: string;
+  last_msg_seq?: number;
+  last_msg_ts?: number; // unix-millis
+  last_msg_sender_user_id?: string;
+  last_msg_body?: string;
+  last_msg_key_version?: number;
+  last_msg_deleted?: boolean;
 }
 
 export interface CreateChannelPayload {

@@ -5,6 +5,8 @@
 import type {
   Action,
   AppState,
+  ChannelActivity,
+  ChannelSummary,
   ChannelUnread,
   Message,
   ThreadInboxRow,
@@ -16,8 +18,51 @@ import { emptyUnread, initialAdminPanelState } from "./types";
 // 42-7: dedupe is shared with the panel's grouping so the two agree about what
 // counts as the same thread.
 import { dedupeThreadRows } from "../chat/threadinbox";
+// 62-3: one-line preview rendering for the unified conversation list; pure
+// string helper on the buildKey precedent.
+import { DELETED_PREVIEW, previewText } from "../chat/zucker";
 // 46-2: pure string helper, safe to call from the reducer.
 import { buildKey } from "../version";
+
+// bumpActivity advances a channel's newest-message pointer, mirroring
+// bumpUnread's monotonic contract: a summary with lower (or no) seq --
+// notably a channel_event summary, which carries no activity at all --
+// can never move the pointer backwards or wipe a decrypted preview.
+// Equal seq keeps whichever side has a preview (the listing re-delivers
+// ciphertext for a message this client already decrypted live).
+function bumpActivity(
+  activity: AppState["activity"],
+  channelID: string,
+  incoming: ChannelActivity
+): AppState["activity"] {
+  const cur = activity[channelID];
+  if (cur !== undefined) {
+    if (incoming.seq < cur.seq) return activity;
+    if (incoming.seq === cur.seq) {
+      if (incoming.preview === null || incoming.preview === cur.preview) {
+        return activity;
+      }
+      return { ...activity, [channelID]: { ...cur, preview: incoming.preview } };
+    }
+  }
+  if (incoming.seq <= 0) return activity; // no activity to record
+  return { ...activity, [channelID]: incoming };
+}
+
+// activityFromSummary lifts a ChannelSummary's activity seed (62-3) into a
+// ChannelActivity, or null when the summary carries none (empty channel, or
+// a channel_event summary built without listing data).
+function activityFromSummary(ch: ChannelSummary): ChannelActivity | null {
+  if (!ch.lastMsgSeq || ch.lastMsgSeq <= 0) return null;
+  return {
+    msgID: ch.lastMsgID ?? null,
+    ts: ch.lastMsgTS ?? 0,
+    seq: ch.lastMsgSeq,
+    senderUserID: ch.lastMsgSender ?? null,
+    preview: null, // ciphertext rides outside the reducer until decrypted
+    deleted: ch.lastMsgDeleted ?? false,
+  };
+}
 
 // bumpUnread returns the channel's unread state with one field changed,
 // keeping the two invariants the sidebar relies on: the cursors only ever
@@ -169,6 +214,10 @@ export function reducer(state: AppState, action: Action): AppState {
       // that arrived in the gap between connecting and this ack. Channels
       // absent from the listing drop out entirely.
       const unread: AppState["unread"] = {};
+      // 62-3: activity follows the same rebuild rule as unread -- listing
+      // and cache merge monotonically, channels absent from the listing
+      // drop out.
+      let activity: AppState["activity"] = {};
       for (const ch of sorted) {
         channels[ch.id] = ch;
         order.push(ch.id);
@@ -181,6 +230,10 @@ export function reducer(state: AppState, action: Action): AppState {
           // App.tsx re-establishes them.
           mention: false,
         };
+        const cachedAct = state.activity[ch.id];
+        if (cachedAct !== undefined) activity[ch.id] = cachedAct;
+        const seed = activityFromSummary(ch);
+        if (seed !== null) activity = bumpActivity(activity, ch.id, seed);
       }
       // Auto-select first channel if none active. Fallback to null
       // if there are no channels.
@@ -194,6 +247,7 @@ export function reducer(state: AppState, action: Action): AppState {
         channelOrder: order,
         activeChannelID: active,
         unread,
+        activity,
         // 33-4: the channel active after a (re)connect is auto-selected here
         // rather than through set_active_channel, so capture its unread
         // window on this path too -- otherwise reconnecting into a channel
@@ -216,6 +270,8 @@ export function reducer(state: AppState, action: Action): AppState {
       delete nextMessages[cid];
       const nextUnread = { ...state.unread };
       delete nextUnread[cid];
+      const nextActivity = { ...state.activity };
+      delete nextActivity[cid];
       const nextActive =
         state.activeChannelID === cid
           ? (nextOrder.length > 0 ? nextOrder[0] : null)
@@ -226,6 +282,7 @@ export function reducer(state: AppState, action: Action): AppState {
         channelOrder: nextOrder,
         messages: nextMessages,
         unread: nextUnread,
+        activity: nextActivity,
         activeChannelID: nextActive,
       };
     }
@@ -284,6 +341,9 @@ export function reducer(state: AppState, action: Action): AppState {
         ? ch.id
         : state.activeChannelID ?? ch.id;
       // Insert at the top of the order (newest).
+      // 62-3: seed activity from the summary when it carries any (a
+      // channel_event summary usually doesn't -- monotonic no-op then).
+      const seed = activityFromSummary(ch);
       return {
         ...state,
         channels: { ...state.channels, [ch.id]: ch },
@@ -294,6 +354,10 @@ export function reducer(state: AppState, action: Action): AppState {
           lastSeq: ch.lastSeq,
           lastReadSeq: ch.lastReadSeq,
         }),
+        activity:
+          seed !== null
+            ? bumpActivity(state.activity, ch.id, seed)
+            : state.activity,
       };
     }
 
@@ -447,9 +511,15 @@ export function reducer(state: AppState, action: Action): AppState {
       delete nextUnread[cid];
       const nextMarks = { ...state.unreadMarks };
       delete nextMarks[cid];
+      // 62-3: the purge hard-deleted the scratchpad's messages, and the
+      // server-side FK cascade dropped the channel's activity row with
+      // them (0049). Mirror it: the room went quiet.
+      const nextActivity = { ...state.activity };
+      delete nextActivity[cid];
 
       return {
         ...state,
+        activity: nextActivity,
         messages: { ...state.messages, [cid]: [] },
         threadMessages: nextThreadMessages,
         threadLoaded: nextThreadLoaded,
@@ -608,6 +678,16 @@ export function reducer(state: AppState, action: Action): AppState {
         lastSeq: m.seq,
         lastReadSeq: isOwn ? m.seq : 0,
       });
+      // 62-3: a live message is its channel's newest activity, and its body
+      // is already decrypted at dispatch time -- the preview is free here.
+      const nextActivity = bumpActivity(state.activity, m.channelID, {
+        msgID: m.id,
+        ts: m.ts.getTime(),
+        seq: m.seq,
+        senderUserID: m.senderUserID ?? null,
+        preview: m.deleted ? DELETED_PREVIEW : previewText(m.body),
+        deleted: m.deleted ?? false,
+      });
       // Idempotency-key reconciliation (fixes double-echo on reconnect).
       // If this incoming message carries a clientMsgID that matches an
       // existing OPTIMISTIC row (one we appended locally on send), replace
@@ -632,6 +712,7 @@ export function reducer(state: AppState, action: Action): AppState {
             ...state,
             messages: { ...state.messages, [m.channelID]: merged },
             unread: nextUnread,
+            activity: nextActivity,
           };
         }
       }
@@ -738,9 +819,28 @@ export function reducer(state: AppState, action: Action): AppState {
         messages: liveBumpMessages,
         threadMessages: nextThreadMessages,
         unread: nextUnread,
+        activity: nextActivity,
         threadInboxActive: inboxActive,
         threadInboxAgedUnread: inboxAged,
         threadInboxStale: inboxStale,
+      };
+    }
+
+    // 62-7: the warm loop decrypted a listing preview. Applied only while
+    // the pointer still matches the ciphertext's seq -- a live message may
+    // have superseded it mid-decrypt, and its (newer) preview must win.
+    case "channel_preview": {
+      const cur = state.activity[action.channelID];
+      if (cur === undefined || cur.seq !== action.seq || cur.deleted) {
+        return state;
+      }
+      if (cur.preview === action.preview) return state;
+      return {
+        ...state,
+        activity: {
+          ...state.activity,
+          [action.channelID]: { ...cur, preview: action.preview },
+        },
       };
     }
 
@@ -811,10 +911,23 @@ export function reducer(state: AppState, action: Action): AppState {
         nextReactions = rest;
       }
 
+      // 62-3: deleting the channel's newest message tombstones its preview.
+      // Checked against the activity pointer, not the message cache -- the
+      // channel may never have been opened here.
+      const actCur = state.activity[action.channelID];
+      const nextActivity =
+        actCur !== undefined && actCur.msgID === action.messageID && !actCur.deleted
+          ? {
+              ...state.activity,
+              [action.channelID]: { ...actCur, deleted: true, preview: DELETED_PREVIEW },
+            }
+          : state.activity;
+
       if (
         nextMessages === state.messages &&
         !threadChanged &&
-        nextReactions === state.reactions
+        nextReactions === state.reactions &&
+        nextActivity === state.activity
       ) {
         return state;
       }
@@ -823,6 +936,7 @@ export function reducer(state: AppState, action: Action): AppState {
         messages: nextMessages,
         threadMessages: nextThreadMessages,
         reactions: nextReactions,
+        activity: nextActivity,
       };
     }
 
@@ -882,13 +996,33 @@ export function reducer(state: AppState, action: Action): AppState {
         }
       }
 
-      if (nextMessages === state.messages && !editedThreadID) {
+      // 62-3: an edit of the channel's newest message re-renders its
+      // preview in place (seq/ts untouched, so no re-sort). Same
+      // pointer-not-cache check as the tombstone case; a tombstoned
+      // pointer is left alone -- the delete won.
+      const editActCur = state.activity[action.channelID];
+      const nextActivity =
+        editActCur !== undefined &&
+        editActCur.msgID === action.messageID &&
+        !editActCur.deleted
+          ? {
+              ...state.activity,
+              [action.channelID]: { ...editActCur, preview: previewText(action.body) },
+            }
+          : state.activity;
+
+      if (
+        nextMessages === state.messages &&
+        !editedThreadID &&
+        nextActivity === state.activity
+      ) {
         return state;
       }
       return {
         ...state,
         messages: nextMessages,
         threadMessages: nextThreadMessages,
+        activity: nextActivity,
       };
     }
 
