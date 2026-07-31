@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.5.2 — 1 August 2026 — The back swipe that works
 
 ### Changed
 - The phone conversation list's quick filter now sits behind a
