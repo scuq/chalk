@@ -10,6 +10,13 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **Working next to a visible chalk window keeps you online longer.** With
+  chalk on screen but another window focused, the away dot now waits 10
+  minutes of no interaction instead of 5 before showing you as away.
+
 ## v0.4.9 — 31 July 2026 — One-click friends and edits that reach back
 
 ### Added
