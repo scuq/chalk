@@ -5091,14 +5091,19 @@ body.chalk-resizing .chalk-sidebar-resizer {
 /* Rendered GIF in the feed (enabled + allowlisted). Capped like an inline
    attachment image; the GIF keeps its aspect ratio. */
 .chalk-giphy {
-  display: inline-flex;
+  /* Block-level so the width is definite: Safari resolves the img's
+     percentage against a shrink-to-fit inline-flex as the "via Giphy" tag
+     width, rendering the GIF tiny. */
+  display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 2px;
   margin-top: var(--chalk-s1);
+  max-width: 320px;
 }
 .chalk-giphy-img {
   display: block;
-  max-width: min(320px, 100%);
+  max-width: 100%;
   height: auto;
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);

@@ -10,6 +10,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- **Giphy GIFs are no longer tiny on Safari.** On Safari — desktop and
+  iPhone — GIFs in the feed rendered at a fraction of their real size, much
+  smaller than in other browsers. They now display at the same size
+  everywhere.
+
 ## v0.4.10 — 31 July 2026 — Phone polish and real YouTube titles
 
 ### Changed
