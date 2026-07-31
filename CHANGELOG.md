@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.5.0 — 31 July 2026 — Zuckermode and message search
 
 ### Added
 - **Zuckermode: a WhatsApp-style home screen for phones.** Opt in under
