@@ -2809,6 +2809,18 @@ body.chalk-resizing .chalk-sidebar-resizer {
   margin-top: 1rem;
 }
 
+/* 59-1: the server directory under the add tab's username input. */
+.chalk-friends-directory {
+  margin-top: 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--chalk-border, #1f2a1f);
+}
+
+.chalk-friends-dim {
+  color: var(--chalk-fg-dim, #5a8a5a);
+  font-size: 0.85rem;
+}
+
 .chalk-friends-list {
   list-style: none;
   margin: 0;

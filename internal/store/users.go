@@ -268,6 +268,40 @@ func (s *Store) CountUsers(ctx context.Context) (int64, error) {
 	return n, err
 }
 
+// DirectoryUser is one row of the server-wide user directory (59-1):
+// just enough to render an "add friend" row. No email, no timestamps.
+type DirectoryUser struct {
+	ID          uuid.UUID
+	Username    string
+	DisplayName string
+}
+
+// ListDirectoryUsers returns every active user except the caller,
+// ordered by username. Active mirrors the friend-add lookup gate:
+// admin-blocked and soft-deleted accounts are not discoverable.
+func (s *Store) ListDirectoryUsers(ctx context.Context, exclude uuid.UUID) ([]DirectoryUser, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT id, username::text, display_name
+		   FROM users
+		  WHERE id <> $1
+		    AND blocked_at IS NULL
+		    AND deleted_at IS NULL
+		  ORDER BY username`, exclude)
+	if err != nil {
+		return nil, fmt.Errorf("list directory users: %w", err)
+	}
+	defer rows.Close()
+	out := []DirectoryUser{} // never nil so JSON serializes as []
+	for rows.Next() {
+		var u DirectoryUser
+		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName); err != nil {
+			return nil, fmt.Errorf("scan directory user: %w", err)
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 // HandlesByID returns a map of user_id -> handle for the given user IDs.
 // Missing rows are simply absent from the map (caller treats absence as
 // "unknown user"). Empty input returns an empty map without hitting PG.

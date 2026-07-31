@@ -11,7 +11,10 @@
 //      if found, send a friend_request WS frame with the resolved
 //      user_id. If not found, surface "no user named <x>". Errors
 //      from the WS ack (already friends, blocked, etc.) surface
-//      inline.
+//      inline. 59-1: below the input, the server directory
+//      (/api/users/directory) lists everyone on the server with a
+//      one-click "add" per row; rows already friended or pending
+//      show a status label instead.
 //
 //   2. "pending" — two grouped lists: incoming (you can accept or
 //      decline) and outgoing (you can cancel; which the wire
@@ -29,6 +32,8 @@
 // renders whatever the reducer says.
 
 import { useEffect, useState } from "preact/hooks";
+import { listUserDirectory } from "../auth/users";
+import type { UserLookupResult } from "../auth/users";
 import type { FriendsPanelState, Friend } from "../state/types";
 
 interface Props {
@@ -46,6 +51,9 @@ interface Props {
   onAddFormChange: (value: string) => void;
   onAddSubmit: () => void;
   onClearAddError: () => void;
+  // 59-1: direct add from the server directory (user_id already
+  // known, no username lookup roundtrip).
+  onAddUser: (userID: string) => void;
   // "pending" and "friends" tab actions.
   onAccept: (userID: string) => void;
   onDecline: (userID: string) => void;
@@ -59,7 +67,7 @@ interface Props {
 export function FriendsPanel(props: Props) {
   const {
     state, friends, pendingIncoming, pendingOutgoing,
-    onClose, onAddFormChange, onAddSubmit, onClearAddError,
+    onClose, onAddFormChange, onAddSubmit, onClearAddError, onAddUser,
     onAccept, onDecline, onRemove, onTabChange, onRefresh,
   } = props;
 
@@ -151,6 +159,11 @@ export function FriendsPanel(props: Props) {
               onChange={onAddFormChange}
               onSubmit={onAddSubmit}
               onClearError={onClearAddError}
+              friends={friends}
+              pendingIncoming={pendingIncoming}
+              pendingOutgoing={pendingOutgoing}
+              pendingActionUserID={state.pendingActionUserID}
+              onAddUser={onAddUser}
             />
           )}
           {state.activeTab === "pending" && (
@@ -177,6 +190,24 @@ export function FriendsPanel(props: Props) {
 
 // ---- "add" tab ---------------------------------------------------------
 
+// 59-1: relationship status for a directory row. Friends and pending
+// (either direction) rows show a label instead of the add button.
+function directoryStatus(
+  userID: string,
+  friends: Friend[],
+  pendingIncoming: Friend[],
+  pendingOutgoing: Friend[]
+): "friends" | "pending" | null {
+  if (friends.some((f) => f.userID === userID)) return "friends";
+  if (
+    pendingIncoming.some((f) => f.userID === userID) ||
+    pendingOutgoing.some((f) => f.userID === userID)
+  ) {
+    return "pending";
+  }
+  return null;
+}
+
 function AddTab(props: {
   value: string;
   busy: boolean;
@@ -184,9 +215,39 @@ function AddTab(props: {
   onChange: (v: string) => void;
   onSubmit: () => void;
   onClearError: () => void;
+  friends: Friend[];
+  pendingIncoming: Friend[];
+  pendingOutgoing: Friend[];
+  pendingActionUserID: string | null;
+  onAddUser: (userID: string) => void;
 }) {
-  const { value, busy, error, onChange, onSubmit, onClearError } = props;
+  const {
+    value, busy, error, onChange, onSubmit, onClearError,
+    friends, pendingIncoming, pendingOutgoing,
+    pendingActionUserID, onAddUser,
+  } = props;
   const canSubmit = !busy && value.trim().length >= 3;
+
+  // 59-1: the server directory, fetched fresh each time the tab
+  // mounts. Local state on purpose -- it's a read-only listing with
+  // no lifecycle beyond this tab, so the reducer has no stake in it.
+  const [directory, setDirectory] = useState<UserLookupResult[] | null>(null);
+  const [dirError, setDirError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    listUserDirectory()
+      .then((users) => {
+        if (!cancelled) setDirectory(users);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setDirError(err instanceof Error ? err.message : String(err));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div class="chalk-friends-add" data-testid="friends-add">
@@ -232,6 +293,62 @@ function AddTab(props: {
           {error}
         </div>
       )}
+
+      {/* 59-1: everyone on this server, addable in one click. */}
+      <section class="chalk-friends-directory" data-testid="friends-directory">
+        <h4 class="chalk-friends-section-title">everyone on this server</h4>
+        {dirError && (
+          <div class="chalk-friends-error" data-testid="friends-directory-error">
+            couldn't load the user list: {dirError}
+          </div>
+        )}
+        {!dirError && directory === null && (
+          <div class="chalk-friends-empty">loading…</div>
+        )}
+        {directory !== null && directory.length === 0 && (
+          <div class="chalk-friends-empty" data-testid="friends-directory-empty">
+            nobody else is on this server yet
+          </div>
+        )}
+        {directory !== null && directory.length > 0 && (
+          <ul class="chalk-friends-list">
+            {directory.map((u) => {
+              const status = directoryStatus(
+                u.user_id, friends, pendingIncoming, pendingOutgoing
+              );
+              return (
+                <li
+                  key={u.user_id}
+                  class="chalk-friends-row"
+                  data-testid="friends-directory-row"
+                >
+                  <span class="chalk-friends-handle">
+                    @{u.username}
+                    {u.display_name && u.display_name !== u.username && (
+                      <span class="chalk-friends-dim"> {u.display_name}</span>
+                    )}
+                  </span>
+                  <span class="chalk-friends-row-actions">
+                    {status !== null ? (
+                      <span class="chalk-friends-dim" data-testid="friends-directory-status">
+                        {status}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        class="chalk-friends-action chalk-friends-action--accept"
+                        data-testid="friends-directory-add"
+                        onClick={() => onAddUser(u.user_id)}
+                        disabled={pendingActionUserID === u.user_id}
+                      >add</button>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

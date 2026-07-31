@@ -165,6 +165,10 @@ interface Props {
   selfHue?: number | null;
   onSetFriendHue?: (handle: string, hue: number | null) => void;
   onCreateClick: () => void;
+  // 59-1: the friends header's "+" — opens the add-friend flow (the
+  // friends panel on its "add" tab, which lists everyone on the
+  // server). Optional so other Sidebar callers are unaffected.
+  onAddFriendClick?: () => void;
   // 54-3: render the channels section grouped by each channel's group name.
   // Headers only appear once a second group exists -- an all-'General'
   // roster looks exactly like the ungrouped one.
@@ -330,6 +334,7 @@ export function Sidebar({
   selfHue,
   onSetFriendHue,
   onCreateClick,
+  onAddFriendClick,
   groupingEnabled = true,
   groupOverrides,
   onSetChannelGroup,
@@ -499,6 +504,16 @@ export function Sidebar({
               <span class="chalk-sidebar-count">({sortedFriends.length})</span>
             )}
           </span>
+          {onAddFriendClick && (
+            <button
+              class="chalk-sidebar-new"
+              type="button"
+              data-testid="sidebar-add-friend"
+              onClick={onAddFriendClick}
+              aria-label="add friend"
+              title="add friend"
+            >+</button>
+          )}
         </div>
 
         {showFilter && (

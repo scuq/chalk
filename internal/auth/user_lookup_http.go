@@ -45,14 +45,16 @@ type userLookupResponse struct {
 // (We compile it once at package load; reused by handleUserLookup.)
 var usernameLookupRegex = regexp.MustCompile(`^[a-z0-9_]{3,32}$`)
 
-// MountUserLookup registers GET /api/users/lookup. Call from the
-// HTTP wiring in cmd/chalkd alongside the other Mount* calls.
-// Returns nil unconditionally; the signature matches MountAdmin /
-// MountRegistration so the wiring in internal/server/server.go can
-// treat them uniformly.
+// MountUserLookup registers GET /api/users/lookup and (59-1) the
+// user directory. Call from the HTTP wiring in cmd/chalkd alongside
+// the other Mount* calls. Returns nil unconditionally; the signature
+// matches MountAdmin / MountRegistration so the wiring in
+// internal/server/server.go can treat them uniformly.
 func (d *HTTPDeps) MountUserLookup(mux *http.ServeMux) error {
 	mux.Handle("GET /api/users/lookup",
 		RequireSession(d.Store, d.handleUserLookup))
+	mux.Handle("GET /api/users/directory",
+		RequireSession(d.Store, d.handleUserDirectory))
 	return nil
 }
 

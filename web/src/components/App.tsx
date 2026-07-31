@@ -3264,6 +3264,19 @@ export function App() {
     }
   };
 
+  // 59-1: add straight from the server directory — the user_id is
+  // already known, so no username lookup roundtrip. Same re-fetch
+  // pattern as accept/decline: the directory row's "add" flips to
+  // "pending" once the friend_list_ack lands.
+  const handleFriendAddByID = (userID: string) => {
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    dispatch({ kind: "friends_action_start", userID });
+    c.send(TypeFriendRequest, { to_user_id: userID });
+    c.send(TypeFriendList, {});
+    setTimeout(() => dispatch({ kind: "friends_action_done", userID }), 800);
+  };
+
   const handleFriendAccept = (userID: string) => {
     const c = clientRef.current;
     if (!c || !c.isOpen()) return;
@@ -4126,6 +4139,13 @@ export function App() {
             setNavOpen(false);
             dispatch({ kind: "open_create_modal" });
           }}
+          // 59-1: the friends "+" — the friends panel on its "add" tab,
+          // where the server directory lists everyone addable.
+          onAddFriendClick={() => {
+            setNavOpen(false);
+            dispatch({ kind: "friends_panel_tab_change", tab: "add" });
+            dispatch({ kind: "open_panel", panel: "friends" });
+          }}
           // 53-1: the parking lot. Hidden when the setting says so; parking
           // itself is a state change, no server round-trip involved.
           parkingName={parking.hidden ? null : parking.name}
@@ -4605,6 +4625,7 @@ export function App() {
           onClose={() => dispatch({ kind: "close_panel" })}
           onAddFormChange={(v) => dispatch({ kind: "friends_add_input_change", value: v })}
           onAddSubmit={handleFriendAddSubmit}
+          onAddUser={handleFriendAddByID}
           onClearAddError={() => dispatch({ kind: "friends_add_clear_error" })}
           onAccept={handleFriendAccept}
           onDecline={handleFriendDecline}

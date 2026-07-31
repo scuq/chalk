@@ -58,6 +58,19 @@ export interface UserLookupResult {
 // matched user, or null when the server returns 404. Other errors
 // (network, 500, 401) propagate as ApiError so the caller can
 // distinguish "no match" from "lookup failed."
+// listUserDirectory hits GET /api/users/directory (59-1). Returns
+// every active user on the server except the caller, sorted by
+// username. Errors propagate as ApiError.
+export async function listUserDirectory(): Promise<UserLookupResult[]> {
+  const resp = await fetch("/api/users/directory", {
+    method: "GET",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+  const body = await parseResponse<{ users: UserLookupResult[] }>(resp);
+  return body.users ?? [];
+}
+
 export async function lookupUser(username: string): Promise<UserLookupResult | null> {
   const trimmed = username.trim().toLowerCase();
   if (trimmed === "") {

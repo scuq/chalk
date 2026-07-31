@@ -12,6 +12,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **A "+" next to the friends header lists everyone on the server, addable
+  in one click.** Like the channels "+", but for people: it opens the
+  friends panel's add tab, which now shows the whole server directory —
+  people you've already friended or have a pending request with are marked,
+  everyone else has an add button. No more typing an exact username to find
+  someone.
+
 ### Changed
 - **Any of your recent messages can be edited from its menu, not just the
   latest.** The row menu's "Edit" used to appear only on your single most
