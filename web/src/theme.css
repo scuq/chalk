@@ -7694,6 +7694,168 @@ body.chalk-resizing .chalk-sidebar-resizer {
     width: 32px;
     height: 32px;
   }
+
+  /* -- 62-6: Zuckermode ---------------------------------------------- */
+  /* The unified conversation list as the home screen. JS already gates
+     the mode to phones; these rules only exist inside the mobile block
+     because that is the only place the class can appear. */
+
+  /* Belt-and-braces with the JSX: no drawer affordances in this mode. */
+  .chalk-app--zucker .chalk-nav-toggle {
+    display: none;
+  }
+
+  /* The list owns the whole main column; the feed's usual padding would
+     double up with the rows' own. */
+  .chalk-app--zucker-list .chalk-main {
+    padding: 0;
+  }
+
+  .chalk-zucker {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .chalk-zucker-head {
+    display: flex;
+    align-items: center;
+    gap: var(--chalk-s2);
+    padding: var(--chalk-s2) var(--chalk-s3);
+    border-bottom: 1px solid var(--chalk-border);
+  }
+
+  .chalk-zucker-title {
+    flex: 1 1 auto;
+    color: var(--chalk-fg-bright);
+  }
+
+  .chalk-zucker-add {
+    min-width: 44px;
+    min-height: 44px;
+    background: none;
+    color: var(--chalk-fg);
+    border: 1px solid var(--chalk-border);
+    border-radius: var(--chalk-radius);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .chalk-zucker-pinned {
+    display: flex;
+    align-items: center;
+    gap: var(--chalk-s2);
+    width: 100%;
+    min-height: 44px;
+    padding: 0 var(--chalk-s3);
+    background: none;
+    color: var(--chalk-fg);
+    border: none;
+    border-bottom: 1px solid var(--chalk-border);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .chalk-zucker-rows {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+    /* Scrolling the list must not chain into anything behind it. */
+    overscroll-behavior: contain;
+  }
+
+  .chalk-zucker-row {
+    display: flex;
+    align-items: center;
+    gap: var(--chalk-s2);
+    width: 100%;
+    min-height: 56px;
+    padding: var(--chalk-s2) var(--chalk-s3);
+    background: none;
+    color: var(--chalk-fg);
+    border: none;
+    border-bottom: 1px solid var(--chalk-border);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .chalk-zucker-row-badge {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+  }
+
+  .chalk-zucker-row-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .chalk-zucker-row-top {
+    display: flex;
+    align-items: baseline;
+    gap: var(--chalk-s2);
+  }
+
+  .chalk-zucker-row-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--chalk-fg-bright);
+  }
+
+  .chalk-zucker-row-when {
+    flex: 0 0 auto;
+    font-size: var(--chalk-size-small);
+    color: var(--chalk-fg-dim);
+    white-space: nowrap;
+  }
+
+  .chalk-zucker-row-preview {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--chalk-size-small);
+    color: var(--chalk-fg-muted);
+  }
+
+  .chalk-zucker-row-sender {
+    color: var(--chalk-fg-dim);
+  }
+
+  .chalk-zucker-row-empty {
+    font-style: italic;
+    color: var(--chalk-fg-dim);
+  }
+
+  /* The way back from a conversation to the list; lives in the sticky
+     channel header, sized for a thumb. */
+  .chalk-zucker-back {
+    min-width: 44px;
+    min-height: 34px;
+    margin-right: var(--chalk-s1);
+    background: none;
+    color: var(--chalk-fg-bright);
+    border: 1px solid var(--chalk-border);
+    border-radius: var(--chalk-radius);
+    font: inherit;
+    font-size: calc(18px * var(--chalk-font-scale));
+    line-height: 1;
+    cursor: pointer;
+  }
 }
 
 /* iOS zooms the viewport when a focused control renders below 16px, and

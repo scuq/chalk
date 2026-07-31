@@ -166,6 +166,10 @@ interface Props {
   // Account pref, so the roster reads the same on every device.
   rosterGroupingEnabled?: boolean;
   onSetRosterGrouping?: (enabled: boolean) => void;
+  // 62-5: Zuckermode -- the phone's unified conversation list. Synced
+  // account-wide, consumed only on mobile.
+  zuckerEnabled?: boolean;
+  onSetZucker?: (enabled: boolean) => void;
 }
 
 export function ProfilePanel({
@@ -193,6 +197,8 @@ export function ProfilePanel({
   onSetParkingLot,
   rosterGroupingEnabled,
   onSetRosterGrouping,
+  zuckerEnabled,
+  onSetZucker,
   onClose,
   onEmailChangeDraft,
   onEmailChangeSubmit,
@@ -864,6 +870,32 @@ export function ProfilePanel({
                   </span>
                 </label>
               </div>
+              {/* 62-5: Zuckermode. Rendered inside the channel-list section
+                  because it is a roster-presentation choice; the pref is
+                  synced but only phones act on it. */}
+              {zuckerEnabled !== undefined && onSetZucker && (
+                <div class="chalk-profile-field">
+                  <label class="chalk-profile-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={zuckerEnabled}
+                      onChange={(e) =>
+                        onSetZucker((e.target as HTMLInputElement).checked)
+                      }
+                      data-testid="roster-zuckermode"
+                    />
+                    <span>
+                      Zuckermode{" "}
+                      <span class="chalk-profile-theme-desc">
+                        (phones only: replaces the sidebar with one
+                        WhatsApp-style list of every conversation — people and
+                        channels together, newest first, with a preview of the
+                        last message)
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
             </section>
           )}
 

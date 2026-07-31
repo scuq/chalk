@@ -13,6 +13,16 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **Zuckermode: a WhatsApp-style home screen for phones.** Opt in under
+  settings → channel list, and on a phone chalk opens to one list of every
+  conversation — people and channels together, newest first, each row
+  showing who spoke last and a preview of what they said, plus the usual
+  unread dot. Tap a conversation to open it full-screen; the back arrow in
+  its header returns to the list. The parking lot and your thread inbox
+  stay pinned above the list, and the two "+" buttons for friends and
+  channels move into its header. Previews are decrypted on your device
+  like everything else — the server still never reads a message. Off by
+  default; desktop keeps the classic sidebar either way.
 - **Search your messages.** A search button in the channel header — or
   Ctrl/Cmd+K anywhere — finds messages in the current channel or across every
   conversation loaded on this device, matching on text, sender and channel

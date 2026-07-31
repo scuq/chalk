@@ -179,6 +179,9 @@ import { Logo } from "./Logo";
 import { VersionLink } from "./VersionLink";
 import { StatusBar } from "./StatusBar";
 import { Sidebar, ChannelGlyph } from "./Sidebar";
+// 62-6: Zuckermode -- the phone's unified conversation list.
+import { ZuckerList } from "./ZuckerList";
+import { buildConversationList, previewText } from "../chat/zucker";
 import { MessageList } from "./MessageList";
 import { ConfirmModal } from "./ConfirmModal";
 import { Composer } from "./Composer";
@@ -331,6 +334,14 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
     groupName: w.group_name ?? "General", // 54-2
     lastSeq: w.last_seq ?? 0, // 33-1
     lastReadSeq: w.last_read_seq ?? 0, // 33-1
+    // 62-3: activity metadata only -- the ciphertext body stays out of the
+    // domain type (and the reducer); the list-ack handler stashes it in
+    // zuckerCipherRef for the preview decrypt pass.
+    lastMsgID: w.last_msg_id,
+    lastMsgTS: w.last_msg_ts,
+    lastMsgSeq: w.last_msg_seq,
+    lastMsgSender: w.last_msg_sender_user_id,
+    lastMsgDeleted: w.last_msg_deleted,
   };
 }
 
@@ -457,6 +468,85 @@ export function App() {
   // doesn't come back as a stuck overlay after a resize.
   const isMobile = useIsMobile();
   const [navOpen, setNavOpen] = useState(false);
+
+  // 62-6: Zuckermode. When the synced pref says "zucker" AND we're on a
+  // phone, the unified conversation list replaces the drawer navigation:
+  // the list is the home screen, a row opens its conversation full-screen,
+  // and the header's back arrow returns to the list. Desktop ignores the
+  // pref entirely (the chat.sidebarWidth precedent). Which screen is
+  // showing is local UI state at the same altitude as the drawer it
+  // replaces.
+  const zuckerActive =
+    isMobile && selectRosterPrefs(state.prefs).viewMode === "zucker";
+  const [zuckerScreen, setZuckerScreen] = useState<"list" | "chat">("list");
+  useEffect(() => {
+    if (zuckerActive) {
+      // Entering the mode (toggle flipped, or a resize crossed the
+      // breakpoint) lands on the list; the drawer has no business open.
+      setZuckerScreen("list");
+      setNavOpen(false);
+    }
+  }, [zuckerActive]);
+  // A DM created from the friends panel auto-activates via the reducer's
+  // dm_pending machinery; hand the navigation off to the chat screen when
+  // that happens, or the user would land back on a list with the new DM
+  // silently selected behind it.
+  const prevDmPendingRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      zuckerActive &&
+      prevDmPendingRef.current !== null &&
+      state.dmPendingForUserID === null
+    ) {
+      setZuckerScreen("chat");
+    }
+    prevDmPendingRef.current = state.dmPendingForUserID;
+  }, [state.dmPendingForUserID, zuckerActive]);
+  // The voice room this user is currently in (roster membership), for the
+  // list's voice-dot suppression -- same countsAsUnread rule as the sidebar.
+  const zuckerVoiceRoomID = useMemo(() => {
+    const ownID = state.user?.id ?? null;
+    if (ownID === null) return null;
+    for (const [cid, roster] of Object.entries(state.voiceRosters)) {
+      if (roster.some((p) => p.userID === ownID)) return cid;
+    }
+    return null;
+  }, [state.voiceRosters, state.user]);
+  // userID -> handle for preview sender labels: friends first, then every
+  // channel's member roster (which carries handles since 08c).
+  const zuckerHandles = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const ch of Object.values(state.channels)) {
+      for (const mem of ch.members) if (mem.handle) m[mem.userID] = mem.handle;
+    }
+    for (const f of state.friends) if (f.handle) m[f.userID] = f.handle;
+    return m;
+  }, [state.channels, state.friends]);
+  const zuckerRows = useMemo(() => {
+    if (!zuckerActive) return [];
+    return buildConversationList(
+      state.channelOrder,
+      state.channels,
+      state.activity,
+      state.unread,
+      state.user?.id ?? null,
+      zuckerVoiceRoomID,
+      (ch) => {
+        const full = state.channels[ch.id];
+        return full ? displayName(full, state.user?.id ?? null) : ch.id;
+      },
+      (userID) => zuckerHandles[userID] ?? userID.slice(-8),
+    );
+  }, [
+    zuckerActive,
+    state.channelOrder,
+    state.channels,
+    state.activity,
+    state.unread,
+    state.user,
+    zuckerVoiceRoomID,
+    zuckerHandles,
+  ]);
 
   // 33-4: sidebar width. The committed value lives in prefs (so it follows
   // the user to their other devices); sidebarDrag holds the in-flight width
@@ -1376,6 +1466,18 @@ export function App() {
       }
     >
   >(new Map());
+  // 62-3: newest-message ciphertext per channel, from the channel listing.
+  // Same contract as inboxCipherRef above: state.activity holds only
+  // decrypted previews, ciphertext waits here for the Zuckermode decrypt
+  // pass (62-7). Keyed by channel id; seq lets the pass discard results a
+  // live message superseded.
+  const zuckerCipherRef = useRef<
+    Map<string, { body: string; keyVersion?: number; seq: number; deleted: boolean }>
+  >(new Map());
+  // Channels whose stashed preview the decrypt pass already handled (or is
+  // handling). A re-listing with a newer seq deletes the mark so the pass
+  // runs again; same once-per-content bound as inboxWarmedRef.
+  const zuckerWarmedRef = useRef<Set<string>>(new Set());
   // Channels we've already run the read-only key warm for this session. Bounds
   // the warm pass to once per channel however often the panel is reopened.
   const inboxWarmedRef = useRef<Set<string>>(new Set());
@@ -2005,6 +2107,22 @@ export function App() {
       case TypeListChannelsAck: {
         const p = f.payload as ListChannelsAckPayload;
         const channels = (p.channels ?? []).map(wireToChannel);
+        // 62-3: stash newest-message ciphertext for the Zuckermode preview
+        // pass before dispatching -- metadata renders immediately, previews
+        // fill in as each channel's key settles. A re-listing (reconnect)
+        // with a newer seq replaces the stash so the pass re-decrypts.
+        for (const w of p.channels ?? []) {
+          if (!w.last_msg_seq || w.last_msg_seq <= 0) continue;
+          const prev = zuckerCipherRef.current.get(w.id);
+          if (prev !== undefined && prev.seq >= w.last_msg_seq) continue;
+          zuckerCipherRef.current.set(w.id, {
+            body: w.last_msg_body ?? "",
+            keyVersion: w.last_msg_key_version,
+            seq: w.last_msg_seq,
+            deleted: w.last_msg_deleted === true,
+          });
+          zuckerWarmedRef.current.delete(w.id);
+        }
         dispatch({
           kind: "channels_loaded",
           channels,
@@ -4097,6 +4215,80 @@ export function App() {
     };
   }, [state.openPanel, state.threadInboxActive, state.threadInboxAgedUnread, ccReady]);
 
+  // 62-7: Zuckermode's preview decrypt pass -- the thread-inbox loop above,
+  // one level up: the channel listing stashed each channel's newest-message
+  // ciphertext (zuckerCipherRef); this settles keys READ-ONLY and decrypts
+  // one preview per channel, filling rows in as each key lands. Gated on the
+  // mode being active so only opted-in users pay for it, and bounded the
+  // same three ways (stashed channels only, KEY_WARM_CONCURRENCY in flight,
+  // once per stashed seq -- the list-ack handler clears the warmed mark when
+  // a reconnect re-stashes a newer message).
+  useEffect(() => {
+    if (!zuckerActive || !ccReady) return;
+    const cc = ccRef.current;
+    if (!cc) return;
+
+    const pending = Array.from(zuckerCipherRef.current.keys()).filter(
+      (cid) => !zuckerWarmedRef.current.has(cid),
+    );
+    if (pending.length === 0) return;
+    for (const cid of pending) zuckerWarmedRef.current.add(cid);
+
+    let cancelled = false;
+    const KEY_WARM_CONCURRENCY = 4;
+    // 48-5 discipline: a mark only sticks once the preview made it to a
+    // dispatch; cancelled or failed channels roll back so a later run
+    // retries them instead of leaving rows preview-less forever.
+    const completed = new Set<string>();
+
+    const decryptChannel = async (channelID: string) => {
+      try {
+        const cipher = zuckerCipherRef.current.get(channelID);
+        if (!cipher) {
+          completed.add(channelID);
+          return;
+        }
+        // Tombstones short-circuit as decryptAll does; the reducer renders
+        // the deleted preview from the flag either way.
+        let plain: string;
+        if (cipher.deleted) {
+          plain = "[message deleted]";
+        } else {
+          await cc.warmChannelKey(channelID);
+          if (cancelled) return;
+          plain = await cc.decryptForChannel(channelID, cipher.keyVersion, cipher.body);
+        }
+        if (cancelled) return;
+        dispatch({
+          kind: "channel_preview",
+          channelID,
+          seq: cipher.seq,
+          preview: previewText(plain),
+        });
+        completed.add(channelID);
+      } catch (err) {
+        console.error("zucker: preview warm failed for", channelID, err);
+        zuckerWarmedRef.current.delete(channelID);
+      }
+    };
+
+    void (async () => {
+      for (let i = 0; i < pending.length; i += KEY_WARM_CONCURRENCY) {
+        if (cancelled) return;
+        await Promise.all(pending.slice(i, i + KEY_WARM_CONCURRENCY).map(decryptChannel));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      for (const cid of pending) {
+        if (!completed.has(cid)) zuckerWarmedRef.current.delete(cid);
+      }
+    };
+    // state.channelOrder changes identity on every channels_loaded, which is
+    // exactly when the stash gains entries worth (re)warming.
+  }, [zuckerActive, ccReady, state.channelOrder]);
+
   // 47-5: nick colors outside the message feed (roster, voice occupants,
   // members panel). Same resolver the feed uses, so a name reads identically
   // everywhere; null means "no tint", including when coloring is switched off.
@@ -4116,14 +4308,14 @@ export function App() {
 
   return (
     <div
-      class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${isMobile ? "chalk-app--mobile" : ""} ${navOpen ? "chalk-app--nav-open" : ""}`}
+      class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${isMobile ? "chalk-app--mobile" : ""} ${navOpen && !zuckerActive ? "chalk-app--nav-open" : ""} ${zuckerActive ? "chalk-app--zucker" : ""} ${zuckerActive && zuckerScreen === "list" ? "chalk-app--zucker-list" : ""}`}
       // 33-4: drives the sidebar grid column. Omitted on mobile, where the
       // sidebar is a drawer sized by its own rule.
       style={isMobile ? undefined : `--chalk-sidebar-w:${sidebarWidth}px`}
     >
       <header class="chalk-header">
         <div class="chalk-header-left">
-          {isMobile && (
+          {isMobile && !zuckerActive && (
             <button
               type="button"
               class="chalk-nav-toggle"
@@ -4173,7 +4365,7 @@ export function App() {
         />
       </header>
 
-      {isMobile && navOpen && (
+      {isMobile && navOpen && !zuckerActive && (
         <div
           class="chalk-nav-backdrop"
           data-testid="nav-backdrop"
@@ -4322,14 +4514,56 @@ export function App() {
               : "")
         }
       >
-        {/* 53-1: the parking lot wins over whatever channel is still selected.
-            Nothing about that channel is unloaded -- messages, the call, the
-            key state all stay exactly as they were; they are just not on
-            screen. The composer is hidden the same way (see the footer), which
-            keeps a half-typed line out of sight without losing it. */}
-        {state.parked ? (
+        {/* 62-6: Zuckermode's list screen replaces the conversation
+            entirely; everything below stays mounted-but-hidden logic-free
+            because the branch swaps content, not the surrounding chrome
+            (the footer hides its composer the parked way). */}
+        {zuckerActive && zuckerScreen === "list" ? (
+          <ZuckerList
+            rows={zuckerRows}
+            presence={state.presence}
+            parkingName={parking.hidden ? null : parking.name}
+            threadsUnread={threadsNeedingYou}
+            onSelect={(id) => {
+              dispatch({ kind: "set_active_channel", channelID: id });
+              setZuckerScreen("chat");
+            }}
+            onPark={() => {
+              dispatch({ kind: "set_parked", parked: true });
+              setZuckerScreen("chat");
+            }}
+            onOpenThreads={() => dispatch({ kind: "open_panel", panel: "threads" })}
+            onAddFriend={() => {
+              dispatch({ kind: "friends_panel_tab_change", tab: "add" });
+              dispatch({ kind: "open_panel", panel: "friends" });
+            }}
+            onCreateChannel={() => dispatch({ kind: "open_create_modal" })}
+          />
+        ) : /* 53-1: the parking lot wins over whatever channel is still
+            selected. Nothing about that channel is unloaded -- messages, the
+            call, the key state all stay exactly as they were; they are just
+            not on screen. The composer is hidden the same way (see the
+            footer), which keeps a half-typed line out of sight without
+            losing it. */
+        state.parked ? (
           <>
             <div class="chalk-channel-header" data-testid="channel-header">
+              {zuckerActive && (
+                <button
+                  type="button"
+                  class="chalk-zucker-back"
+                  aria-label="back to conversations"
+                  data-testid="zucker-back"
+                  onClick={() => {
+                    // Un-park on the way out: the list is the home screen
+                    // here, so "parked" would otherwise linger invisibly.
+                    dispatch({ kind: "set_parked", parked: false });
+                    setZuckerScreen("list");
+                  }}
+                >
+                  ‹
+                </button>
+              )}
               <span class="chalk-channel-header-name">{parking.name}</span>
             </div>
             <div
@@ -4344,6 +4578,19 @@ export function App() {
         ) : activeChannel ? (
           <>
             <div class="chalk-channel-header" data-testid="channel-header">
+              {/* 62-6: Zuckermode's way back to the list. Sits in the sticky
+                  header, so it is reachable however deep the scrollback. */}
+              {zuckerActive && (
+                <button
+                  type="button"
+                  class="chalk-zucker-back"
+                  aria-label="back to conversations"
+                  data-testid="zucker-back"
+                  onClick={() => setZuckerScreen("list")}
+                >
+                  ‹
+                </button>
+              )}
               {/* 30-5: channel-kind glyph -- text vs voice, matching the
                   sidebar. DMs keep their textual tag instead. */}
               {!activeChannel.isDM && (
@@ -4581,7 +4828,7 @@ export function App() {
             to lose the message you were halfway through writing. The voice
             controls beside it stay: they carry no text. */}
         <div
-          class={`chalk-footer-main ${state.parked ? "chalk-footer-main--parked" : ""}`}
+          class={`chalk-footer-main ${state.parked || (zuckerActive && zuckerScreen === "list") ? "chalk-footer-main--parked" : ""}`}
           data-testid="footer-main"
         >
           <TypingLine
@@ -4994,6 +5241,17 @@ export function App() {
             if (!c || !c.isOpen()) return;
             const current = selectRosterPrefs(state.prefs);
             c.send(TypePrefsSet, { patch: { roster: { ...current, groupingEnabled: enabled } } });
+          }}
+          zuckerEnabled={selectRosterPrefs(state.prefs).viewMode === "zucker"}
+          onSetZucker={(enabled) => {
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            // JSONB merge is shallow: resend the whole roster object so the
+            // grouping fields survive this write (54-3 precedent above).
+            const current = selectRosterPrefs(state.prefs);
+            c.send(TypePrefsSet, {
+              patch: { roster: { ...current, viewMode: enabled ? "zucker" : "classic" } },
+            });
           }}
           onClearImageCache={() => clearAttachmentCache()}
           giphyPref={selectGiphyPref(state.prefs)}

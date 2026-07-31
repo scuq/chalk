@@ -38,22 +38,9 @@ import type {
   VoiceParticipant,
 } from "../state/types";
 
-// 33-2: the unread marker. Deliberately a dot and not a count -- the
-// sidebar's job is "something happened here", and a number invites reading
-// the sidebar instead of the channel. The mention variant is the same shape
-// in the accent color: same glance, louder answer.
-function UnreadDot({ mention }: { mention: boolean }) {
-  const label = mention ? "unread, you were mentioned" : "unread messages";
-  return (
-    <span
-      class={`chalk-unread-dot ${mention ? "chalk-unread-dot--mention" : ""}`}
-      data-testid={mention ? "sidebar-mention-dot" : "sidebar-unread-dot"}
-      title={label}
-      aria-label={label}
-      role="img"
-    />
-  );
-}
+// 33-2: the unread marker. Extracted to UnreadDot.tsx in 62-6 so the
+// Zuckermode conversation list renders the identical dot.
+import { UnreadDot } from "./UnreadDot";
 
 // Channel-kind indicators (30-5d): inline SVGs in currentColor, replacing
 // the 30-5 UTF-8 glyphs (❯ / ▶) whose weight and baseline vary across
@@ -217,14 +204,15 @@ function findDMWithFriend(
 
 // Phase 9.6c: map state string to a CSS modifier class. "online" →
 // solid green; "away" → solid yellow; everything else (including
-// missing entries) → hollow grey.
-function presenceClass(state: string | undefined): string {
+// missing entries) → hollow grey. Exported for the Zuckermode list (62-6),
+// which shows the same dot on DM rows.
+export function presenceClass(state: string | undefined): string {
   if (state === "online") return "chalk-presence-dot--online";
   if (state === "away") return "chalk-presence-dot--away";
   return "chalk-presence-dot--offline";
 }
 
-function presenceLabel(state: string | undefined): string {
+export function presenceLabel(state: string | undefined): string {
   if (state === "online") return "online";
   if (state === "away") return "away";
   return "offline";
