@@ -5783,6 +5783,27 @@ body.chalk-resizing .chalk-sidebar-resizer {
   font-size: calc(44px * var(--chalk-font-scale));
 }
 
+/* 63-2: sound is arriving from this tile right now. Top-right so it reads
+   against video without covering the bottom label bar. */
+.chalk-voice-speak-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--chalk-accent);
+  box-shadow: 0 0 6px var(--chalk-accent);
+  pointer-events: none;
+}
+
+.chalk-voice-peer--strip .chalk-voice-speak-dot {
+  width: 7px;
+  height: 7px;
+  top: 4px;
+  right: 4px;
+}
+
 .chalk-voice-peer-label {
   position: absolute;
   left: 0;

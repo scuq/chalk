@@ -142,6 +142,7 @@ import {
   type NetPrefs,
 } from "./net-prefs";
 import { cameraConstraints, loadDevicePrefs, type DevicePrefs } from "./device-prefs";
+import { SpeakingTracker, SPEAKING_POLL_MS } from "./speaking";
 
 // ---- knobs (30-8: video caps are DYNAMIC -- see ./adaptive) ----------------
 //
@@ -199,6 +200,9 @@ export interface VoiceCallCallbacks {
   onError(message: string): void;
   /** 41-5: the transmit gate opened or closed (VAD / push-to-talk). */
   onMicGate?(open: boolean): void;
+  /** 63-2: the set of peers currently audible changed (sorted peer keys).
+   * Fires only on change, a few times a second at most. */
+  onSpeaking?(keys: string[]): void;
 }
 
 export interface VoiceCallOptions {
@@ -390,6 +394,13 @@ export class VoiceCall {
   private pauseWarned = false;
   private guardTimer: number | null = null;
   private recheckTimers: number[] = [];
+  // 63-2: speaking detection (the green audio dot).
+  private speakTimer: number | null = null;
+  private readonly speakTracker = new SpeakingTracker();
+  /** Last played-out timestamp per receiver, to tell live audio from a
+   * DTX-frozen source that stopped sending. */
+  private readonly speakPrevTs = new WeakMap<RTCRtpReceiver, number>();
+  private speakEmitted = "";
   /** Verified peer identities by userID; null = looked up, unusable. */
   private readonly identities = new Map<string, { ed25519Public: Uint8Array } | null>();
   /** Concurrent-join fallback timers by peer key. */
@@ -601,6 +612,7 @@ export class VoiceCall {
       });
     }
     this.startAdaptiveTimers();
+    this.startSpeakingPoll();
     // 30-5h: camera starts OFF and mic starts UNMUTED, both matching the
     // server's default participant row (muted=false, video_on=false), so no
     // post-join state broadcast is needed -- the roster badges are already
@@ -622,6 +634,7 @@ export class VoiceCall {
     const wasJoined = this.joined;
     this.joined = false;
     this.stopAdaptiveTimers();
+    this.stopSpeakingPoll();
     for (const t of this.glareTimers.values()) window.clearTimeout(t);
     this.glareTimers.clear();
     for (const key of [...this.peers.keys()]) this.dropPeer(key, false);
@@ -1558,6 +1571,53 @@ export class VoiceCall {
     peer.pendingStreams.delete(sig.stream_id);
     this.diag(`peer ${peer.key} removed screen stream ${sig.stream_id}`);
     this.o.callbacks.onPeerScreenGone(peer.key);
+  }
+
+  // ---- speaking detection (63-2) -------------------------------------------
+  //
+  // A few times a second, read each peer's inbound audioLevel via
+  // getSynchronizationSources -- synchronous and passive, so it never
+  // competes with media (the Addendum D rule getStats polling would bump
+  // into). The SpeakingTracker adds the noise floor and the hold window;
+  // the callback fires only when the audible set actually changes. On
+  // engines without sync sources (Firefox) the sources list is empty and
+  // no dot ever shows -- a quiet degrade, not an error.
+
+  private startSpeakingPoll(): void {
+    this.stopSpeakingPoll();
+    this.speakTimer = window.setInterval(() => this.speakingTick(), SPEAKING_POLL_MS);
+  }
+
+  private stopSpeakingPoll(): void {
+    if (this.speakTimer !== null) window.clearInterval(this.speakTimer);
+    this.speakTimer = null;
+    if (this.speakEmitted !== "") {
+      this.speakEmitted = "";
+      this.o.callbacks.onSpeaking?.([]);
+    }
+  }
+
+  private speakingTick(): void {
+    if (this.closed || !this.joined) return;
+    const now = Date.now();
+    for (const peer of this.peers.values()) {
+      for (const recv of peer.pc.getReceivers()) {
+        if (recv.track?.kind !== "audio") continue;
+        const sources = recv.getSynchronizationSources?.() ?? [];
+        for (const src of sources) {
+          // A timestamp frozen since the last poll means no new audio was
+          // played out (DTX/silence) -- its stale level must not count.
+          const fresh = this.speakPrevTs.get(recv) !== src.timestamp;
+          this.speakPrevTs.set(recv, src.timestamp);
+          this.speakTracker.sample(peer.key, src.audioLevel ?? 0, fresh, now);
+        }
+      }
+    }
+    const keys = this.speakTracker.current(now);
+    const joined = keys.join("\n");
+    if (joined === this.speakEmitted) return;
+    this.speakEmitted = joined;
+    this.o.callbacks.onSpeaking?.(keys);
   }
 
   // ---- adaptive uplink budget (30-8, Addendum D) ---------------------------

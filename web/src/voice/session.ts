@@ -230,6 +230,9 @@ export interface VoiceSessionSnap {
   deafened: boolean;
   /** 41-5: the transmit gate is passing audio right now. Drives the live dot. */
   micOpen: boolean;
+  /** 63-2: peers currently audible (keyed "<userID>:<deviceID>"). Drives the
+   * green audio dot on their tiles; self uses micOpen instead. */
+  speaking: Record<string, boolean>;
 }
 
 export interface JoinArgs {
@@ -269,6 +272,7 @@ class VoiceSessionImpl {
     audioBlocked: false,
     deafened: false,
     micOpen: true,
+    speaking: {},
   };
 
   /** Self-mute state from before deafening, restored when un-deafening. */
@@ -431,6 +435,8 @@ class VoiceSessionImpl {
           },
           onError: (msg) => this.set({ error: msg }),
           onMicGate: (open) => this.set({ micOpen: open }),
+          onSpeaking: (keys) =>
+            this.set({ speaking: Object.fromEntries(keys.map((k) => [k, true])) }),
         },
       });
       this.call = call;
@@ -535,6 +541,7 @@ class VoiceSessionImpl {
       peerAudio: {},
       audioBlocked: false,
       micOpen: true,
+      speaking: {},
       // 44-2: mute, deafen and the camera survive the call -- they are the
       // footer cluster's state, and the default for the next room. Leaving a
       // room is not a reason to hand someone back a hot microphone.

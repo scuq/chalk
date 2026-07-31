@@ -756,6 +756,10 @@ function StagePeer({
 }) {
   const pref = tile.isSelf || tile.isScreen ? undefined : snap.peerAudio[tile.userID];
   const shownLabel = tile.isScreen ? `${label} — screen` : label;
+  // 63-2: green dot = sound arriving from this tile right now. Camera tiles
+  // only (a share's audio, when any, belongs to the person's camera tile);
+  // self runs off the transmit gate -- the honest "what others hear".
+  const audible = !tile.isScreen && (tile.isSelf ? snap.micOpen && !snap.muted : !!snap.speaking[tile.key]);
   return (
     <div
       class={
@@ -797,6 +801,13 @@ function StagePeer({
         <div class="chalk-voice-avatar" aria-hidden="true">
           {(label === "you" ? handleForSelfInitial(channel, selfUserID) : label).slice(0, 1).toUpperCase()}
         </div>
+      )}
+      {audible && (
+        <span
+          class="chalk-voice-speak-dot"
+          data-testid="voice-speaking"
+          title={tile.isSelf ? "your mic is live" : "receiving audio"}
+        />
       )}
       <div class="chalk-voice-peer-label">
         <span class="chalk-voice-peer-name">{shownLabel}</span>

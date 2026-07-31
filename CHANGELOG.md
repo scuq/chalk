@@ -12,6 +12,11 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- Call tiles now show a green dot while sound is coming from that person, so
+  you can see who is talking at a glance. Your own tile shows it while your
+  mic is live and unmuted.
+
 ### Changed
 - Group calls with three or more people now show everyone in a grid of
   equal-size tiles instead of one big picture with small thumbnails — rows
