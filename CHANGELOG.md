@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.4.9 — 31 July 2026 — One-click friends and edits that reach back
 
 ### Added
 - **A "+" next to the friends header lists everyone on the server, addable
