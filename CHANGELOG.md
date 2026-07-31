@@ -17,6 +17,10 @@ The engineering-level history (which slice shipped what) lives in
   call on a slow uplink — used to strand the app on a "ping timeout" error
   until you refreshed the page. It now reconnects automatically like any
   other network drop.
+- Losing the connection mid-call used to kick you out of the voice room for
+  good, with a manual rejoin once you were back online. The room is now
+  rejoined automatically as soon as the connection recovers, without
+  switching you away from whatever channel you were reading.
 
 ## v0.5.0 — 31 July 2026 — Zuckermode and message search
 
