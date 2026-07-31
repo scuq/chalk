@@ -10,6 +10,15 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **Any of your recent messages can be edited from its menu, not just the
+  latest.** The row menu's "Edit" used to appear only on your single most
+  recent message, so a typo two messages back was stuck. It now appears on
+  every message of yours still inside the 15-minute edit window. Cursor-up in
+  an empty composer still jumps to your latest message.
+
 ## v0.4.8 — 31 July 2026 — Link previews without the leaks
 
 ### Added

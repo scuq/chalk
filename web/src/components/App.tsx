@@ -1099,23 +1099,6 @@ export function App() {
     setEditingThread(null);
   }, [state.openThread?.threadID]);
 
-  // The row menu offers "edit" only on the message cursor-up would open, so
-  // the two entry points agree. The server allows any own message inside the
-  // window; this is the narrower UI promise (see chat/editpolicy.ts).
-  const lastEditableFeedID = useMemo(() => {
-    const cid = state.activeChannelID;
-    if (!cid) return null;
-    const list = (state.messages[cid] ?? []).filter((m) => !m.parentID);
-    return lastEditableMessage(list, state.user?.id ?? null, Date.now())?.id ?? null;
-  }, [state.activeChannelID, state.messages, state.user?.id]);
-
-  const openThreadID = state.openThread?.threadID ?? null;
-  const lastEditableThreadID = useMemo(() => {
-    if (!openThreadID) return null;
-    const list = state.threadMessages[openThreadID] ?? [];
-    return lastEditableMessage(list, state.user?.id ?? null, Date.now())?.id ?? null;
-  }, [openThreadID, state.threadMessages, state.user?.id]);
-
   // Sending an edit is the same encrypt-then-frame path as a send, minus the
   // optimistic append: we wait for the authoritative message_edited push so
   // every device (including this one) converges on what the server stored.
@@ -4293,7 +4276,7 @@ export function App() {
               canDeleteMessage={(m) => deleteActionOf(m) !== "none"}
               onDeleteMessage={onDeleteMessage}
               deleteLabelFor={(m) => deleteLabelFor(deleteActionOf(m))}
-              canEditMessage={(m) => m.id === lastEditableFeedID && canEditMessageOf(m)}
+              canEditMessage={canEditMessageOf}
               onEditMessage={(m) => setEditingFeed({ id: m.id, body: m.body })}
               editingMessageID={editingFeed?.id ?? null}
               reactions={state.reactions}
@@ -4389,7 +4372,7 @@ export function App() {
             canDeleteMessage={(m) => deleteActionOf(m) !== "none"}
             onDeleteMessage={onDeleteMessage}
             deleteLabelFor={(m) => deleteLabelFor(deleteActionOf(m))}
-            canEditMessage={(m) => m.id === lastEditableThreadID && canEditMessageOf(m)}
+            canEditMessage={canEditMessageOf}
             onEditMessage={(m) => setEditingThread({ id: m.id, body: m.body })}
             reactions={state.reactions}
             onToggleReaction={(m, emoji) => void toggleReaction(m, emoji)}

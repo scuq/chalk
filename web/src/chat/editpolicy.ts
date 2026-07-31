@@ -10,13 +10,12 @@
 //   - canEditMessage is the SERVER's rule, mirrored so the UI never offers an
 //     action that would come back refused: your own message, not deleted, and
 //     younger than EDIT_WINDOW_MS.
-//   - lastEditableMessage is a UI AFFORDANCE, not a security boundary. The
-//     feature exists for "fix the typo you just sent", so cursor-up targets
-//     your most recent message and the row menu only offers editing there.
-//     The server does not enforce last-ness -- a crafted client could edit any
-//     of its own messages inside the window, which is fine: they are that
-//     author's own words either way, and the age window is what actually
-//     constrains rewriting a conversation.
+//   - lastEditableMessage is a UI AFFORDANCE, not a security boundary: it
+//     picks the message cursor-up opens ("fix the typo you just sent"). The
+//     row menu is not restricted to it -- it offers editing on anything
+//     canEditMessage allows, matching the server, which never enforced
+//     last-ness: they are that author's own words either way, and the age
+//     window is what actually constrains rewriting a conversation.
 
 /**
  * How long after sending a message its author may still edit it. Must match
