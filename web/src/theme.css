@@ -392,6 +392,20 @@ html, body {
   overflow-y: auto;
 }
 
+/* 63-1: past four participants the grid needs its rows more than the
+   scratchpad needs its height -- halve the feed's guaranteed floor and fold
+   the rules note to a single line. :has() because the feed is a sibling of
+   the call panel, not a child. */
+.chalk-main--voice:has(.chalk-voice-grid--crowded) .chalk-messages--ephemeral {
+  min-height: 3em;
+}
+
+.chalk-main--voice:has(.chalk-voice-grid--crowded) .chalk-voice-scratch > span:last-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* justify-content: flex-end + overflow: hidden is the rotation: the newest
    line sits on the bottom edge, and each one that arrives pushes the oldest
    past the top of the frame, where it is clipped and unreachable. */
@@ -5663,6 +5677,43 @@ body.chalk-resizing .chalk-sidebar-resizer {
   padding-bottom: 2px;
 }
 
+/* 63-1: group calls (3+ tiles, no pin, no live share) render as a grid of
+   identical tiles: two columns, rows added downward as people join. Every
+   tile shares the same constraints, so every participant gets the same
+   rectangle; --voice-grid-rows (set inline by the panel) caps tile height so
+   the whole grid stays within the viewport share the spotlight used. */
+.chalk-voice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--chalk-s2);
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.chalk-voice-peer--grid {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: calc(56vh / var(--voice-grid-rows, 1));
+  cursor: pointer;
+}
+
+.chalk-voice-peer--grid:hover {
+  border-color: var(--chalk-fg-dim);
+}
+
+/* An odd headcount squares the last row off with an inert filler tile. */
+.chalk-voice-peer--dummy {
+  cursor: default;
+  border-style: dashed;
+  background: var(--chalk-bg-elev-2);
+  opacity: 0.4;
+}
+
+.chalk-voice-peer--dummy:hover {
+  border-color: var(--chalk-border);
+}
+
 .chalk-voice-peer {
   position: relative;
   background: #000;
@@ -5726,6 +5777,10 @@ body.chalk-resizing .chalk-sidebar-resizer {
 
 .chalk-voice-peer--big .chalk-voice-avatar {
   font-size: calc(64px * var(--chalk-font-scale));
+}
+
+.chalk-voice-peer--grid .chalk-voice-avatar {
+  font-size: calc(44px * var(--chalk-font-scale));
 }
 
 .chalk-voice-peer-label {

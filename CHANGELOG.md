@@ -12,6 +12,15 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Changed
+- Group calls with three or more people now show everyone in a grid of
+  equal-size tiles instead of one big picture with small thumbnails — rows
+  are added as people join, and past four participants the scratchpad
+  shrinks to give the grid more room. Clicking a tile still brings back the
+  big-picture view focused on that person (click the big picture to return
+  to the grid), and a screen share still takes the spotlight. Two-person
+  calls look the same as before.
+
 ### Fixed
 - A connection dropped for unresponsiveness — easiest to hit during a video
   call on a slow uplink — used to strand the app on a "ping timeout" error

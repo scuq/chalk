@@ -7,7 +7,9 @@
 //
 //   * it renders the 30-5 stage (big tile + filmstrip, click-to-pin focus,
 //     roster-driven "connecting…" honesty, control bar, debug drawer) when
-//     the session is in THIS channel
+//     the session is in THIS channel -- or, for group calls of three or
+//     more (63-1), a grid of identical tiles (voice/grid.ts); pinning a
+//     tile or a live screen share brings the spotlight back
 //   * when the session is in a DIFFERENT room, it says so and offers the
 //     lobby (joining here moves you -- one call at a time)
 //   * unmount does NOT leave; lifecycle edges (WS loss, removal, logout)
@@ -45,6 +47,7 @@ import {
   subscribePopouts,
   syncTilePopouts,
 } from "../voice/pip";
+import { gridPlan, isCrowded, useGrid } from "../voice/grid";
 
 /** Stats refresh cadence while the drawer is open. Passive getStats reads
  * only (the Addendum D rule: nothing in-call may compete with media). */
@@ -315,6 +318,13 @@ export function VoiceCallPanel({
   const focused = stageTiles.find((t) => t.key === focusedKey) ?? null;
   const strip = stageTiles.filter((t) => t.key !== focusedKey);
 
+  // 63-1: group calls render as a grid of identical tiles. The spotlight
+  // stays for 1:1, for a pinned tile (clicking a grid tile pins it; clicking
+  // the big tile unpins, back to the grid) and while a share is live.
+  const hasLiveShare = stageTiles.some((t) => t.isScreen && t.hasLiveVideo);
+  const gridMode = useGrid(stageTiles.length) && !hasLiveShare && !pinnedKey;
+  const grid = gridPlan(stageTiles.length);
+
   // ---- 45-5 / 47-4: pop tiles out -------------------------------------
   //
   // A window per tile, as many as you like: three faces and a screen share
@@ -410,27 +420,20 @@ export function VoiceCallPanel({
       ) : (
         <>
           <div class="chalk-voice-stage" data-testid="voice-stage">
-            {focused && (
-              <div class="chalk-voice-big">
-                <StagePeer
-                  tile={focused}
-                  label={handleFor(focused.userID)}
-                  big
-                  onClick={() => setPinnedKey(null)}
-                  onPopOut={focused.hasLiveVideo ? () => popOut(focused) : undefined}
-                  poppedOut={popped.includes(focused.key)}
-                  snap={snap}
-                  channel={channel}
-                  selfUserID={selfUserID}
-                />
-              </div>
-            )}
-            {strip.length > 0 && (
-              <div class="chalk-voice-strip" data-testid="voice-strip">
-                {strip.map((t) => (
+            {gridMode ? (
+              <div
+                class={
+                  "chalk-voice-grid" +
+                  (isCrowded(stageTiles.length) ? " chalk-voice-grid--crowded" : "")
+                }
+                style={`--voice-grid-rows: ${grid.rows}`}
+                data-testid="voice-grid"
+              >
+                {stageTiles.map((t) => (
                   <StagePeer
                     key={t.key}
                     tile={t}
+                    grid
                     label={handleFor(t.userID)}
                     onClick={() => setPinnedKey(t.key)}
                     onPopOut={t.hasLiveVideo ? () => popOut(t) : undefined}
@@ -440,7 +443,50 @@ export function VoiceCallPanel({
                     selfUserID={selfUserID}
                   />
                 ))}
+                {Array.from({ length: grid.dummies }, (_, i) => (
+                  <div
+                    key={`dummy-${i}`}
+                    class="chalk-voice-peer chalk-voice-peer--grid chalk-voice-peer--dummy"
+                    data-testid="voice-tile-dummy"
+                    aria-hidden="true"
+                  />
+                ))}
               </div>
+            ) : (
+              <>
+                {focused && (
+                  <div class="chalk-voice-big">
+                    <StagePeer
+                      tile={focused}
+                      label={handleFor(focused.userID)}
+                      big
+                      onClick={() => setPinnedKey(null)}
+                      onPopOut={focused.hasLiveVideo ? () => popOut(focused) : undefined}
+                      poppedOut={popped.includes(focused.key)}
+                      snap={snap}
+                      channel={channel}
+                      selfUserID={selfUserID}
+                    />
+                  </div>
+                )}
+                {strip.length > 0 && (
+                  <div class="chalk-voice-strip" data-testid="voice-strip">
+                    {strip.map((t) => (
+                      <StagePeer
+                        key={t.key}
+                        tile={t}
+                        label={handleFor(t.userID)}
+                        onClick={() => setPinnedKey(t.key)}
+                        onPopOut={t.hasLiveVideo ? () => popOut(t) : undefined}
+                        poppedOut={popped.includes(t.key)}
+                        snap={snap}
+                        channel={channel}
+                        selfUserID={selfUserID}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -685,6 +731,7 @@ function StagePeer({
   tile,
   label,
   big,
+  grid,
   onClick,
   onPopOut,
   poppedOut,
@@ -695,6 +742,8 @@ function StagePeer({
   tile: StageTile;
   label: string;
   big?: boolean;
+  /** 63-1: equal-size grid tile (group calls); clicking pins to spotlight. */
+  grid?: boolean;
   onClick?: () => void;
   /** 45-5: show this stream in a window of its own (expanded in-app when no
    * window can be had). Absent on tiles with no stream to show. */
@@ -711,7 +760,11 @@ function StagePeer({
     <div
       class={
         "chalk-voice-peer" +
-        (big ? " chalk-voice-peer--big" : " chalk-voice-peer--strip") +
+        (big
+          ? " chalk-voice-peer--big"
+          : grid
+            ? " chalk-voice-peer--grid"
+            : " chalk-voice-peer--strip") +
         (tile.isSelf ? " chalk-voice-peer--self" : "")
       }
       data-testid={big ? "voice-tile-big" : "voice-tile"}
@@ -765,8 +818,8 @@ function StagePeer({
             aria-pressed={poppedOut ? "true" : "false"}
           >
             {/* The strip tile is 148px wide -- the glyph alone there, the
-                word on the big tile where there is room for it. */}
-            {big ? (poppedOut ? "⧉ close" : "⧉ popout") : "⧉"}
+                word on the big and grid tiles where there is room for it. */}
+            {big || grid ? (poppedOut ? "⧉ close" : "⧉ popout") : "⧉"}
           </button>
         )}
         {tile.part?.muted && <span class="chalk-voice-peer-flag" title="muted">m</span>}
