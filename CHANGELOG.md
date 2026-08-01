@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.5.5 — 1 August 2026 — Tidier settings and shorter links
 
 ### Added
 - The profile window has a filter box: type "volume" or "passkey" and only
