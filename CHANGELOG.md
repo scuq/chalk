@@ -30,6 +30,18 @@ The engineering-level history (which slice shipped what) lives in
   off individually under "chalk's own noises" in notification settings, where
   the play button previews them.
 
+### Fixed
+- Opening a channel with a lot of unread messages no longer throws you to the
+  newest message a moment after landing. The view used to settle on the "new
+  messages" line, then jump to the bottom as soon as older history filled in
+  behind it — losing the place you were meant to start reading. It now stays
+  on the line, and nothing but your own scrolling moves it.
+- A channel you have never opened, or one you are hundreds of messages behind
+  in, no longer keeps loading older pages by itself until it reaches the very
+  beginning. It fills in enough history to give the first unread message some
+  context above it and then stops, leaving the usual "load older messages"
+  button for going further back.
+
 ## v0.5.7 — 1 August 2026 — Four fonts, tamed scrollbars and a boss key
 
 ### Added

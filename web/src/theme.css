@@ -341,6 +341,13 @@ html {
 
 .chalk-main {
   overflow-y: auto;
+  /* The feed restores its own scroll position when a scrollback page
+     prepends (MessageList's 55-1 layout effect), because Safari has no
+     scroll anchoring. Where the browser DOES have it, both corrections
+     applied to the same prepend and the view shot past the bottom -- which
+     then read as "the reader is following the feed" and threw away the
+     landing on the unread divider. One corrector only. */
+  overflow-anchor: none;
   /* 30-5j: allow the grid item to shrink below its content height so the
      message list scrolls and the footer composer stays on-screen. */
   min-height: 0;

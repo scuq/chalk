@@ -1,6 +1,6 @@
 import { Fragment } from "preact";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { autoPagingAllowed, nextEmptyStreak } from "../chat/history-paging";
+import { autoPagingAllowed, landingFillAllowed, nextEmptyStreak } from "../chat/history-paging";
 import type { Message, ReactionSet } from "../state/types";
 import { aggregate } from "../chat/reactions";
 import { buildMessageMenu, type MessageMenuItem } from "../chat/message-menu";
@@ -492,6 +492,13 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
       scrollToAnchor(anchorRef.current, dividerRef.current, endRef.current);
       return;
     }
+    // A held divider anchor outranks pinnedRef. The reader was put
+    // mid-history deliberately and has not taken over yet, so nothing that
+    // arrives -- or that our own paging surgery does to the scroll offset --
+    // may re-aim the view at the newest message. pinnedRef is derived from
+    // scroll events, and a scrollback page prepending under the landing
+    // moves the offset without the reader touching anything.
+    if (anchorRef.current === "divider") return;
     if (!pinnedRef.current) return;
     // Re-arm the anchor: we're following the feed, so keep following it
     // while this message's images resolve.
@@ -534,6 +541,8 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
   const [olderWaiting, setOlderWaiting] = useState(false);
   const [autoBlocked, setAutoBlocked] = useState(false);
   const emptyStreakRef = useRef(0);
+  // Pages the landing has spent looking for context above the divider.
+  const landingPagesRef = useRef(0);
   const headsAtRequestRef = useRef(0);
   const prevOldestRef = useRef<number | null>(null);
   const prevHeightRef = useRef<number | null>(null);
@@ -544,6 +553,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     setOlderWaiting(false);
     setAutoBlocked(false);
     emptyStreakRef.current = 0;
+    landingPagesRef.current = 0;
   }, [channelID]);
 
   const requestOlder = () => {
@@ -570,7 +580,17 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
       emptyStreakRef.current,
       messages.length - headsAtRequestRef.current,
     );
-    setAutoBlocked(!autoPagingAllowed(emptyStreakRef.current));
+    // A page fetched while the landing anchor is still held was not asked for
+    // by the reader -- the divider landed on the first row, which leaves the
+    // sentinel in view. Spend a bounded budget filling context above it; a
+    // cursor older than the whole channel would otherwise keep the divider on
+    // the first row page after page, all the way to the beginning.
+    let landingSpent = false;
+    if (anchorRef.current === "divider") {
+      landingPagesRef.current += 1;
+      landingSpent = !landingFillAllowed(landingPagesRef.current);
+    }
+    setAutoBlocked(!autoPagingAllowed(emptyStreakRef.current) || landingSpent);
   }, [oldestSeq, historyComplete]);
 
   // Keep the same rows on screen when a page prepends above them. Manual
@@ -647,6 +667,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
       data-testid="history-load-older"
       onClick={() => {
         emptyStreakRef.current = 0;
+        landingPagesRef.current = 0;
         setAutoBlocked(false);
         requestOlder();
       }}
