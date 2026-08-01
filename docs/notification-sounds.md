@@ -187,6 +187,14 @@ should sound like the board being wiped, and the tests hold it to that.
 The numbers in `SOUND_SPECS` were tuned by ear. Treat the table as a recording
 of that session rather than as arithmetic: changing one means listening again.
 
+`node tools/sound-bench.mjs` builds the bench for that listening pass —
+a single self-contained page with every category, the real `stroke()` graph
+and the live spec table extracted from the source (so the bench can never
+drift from what chalk plays), a slider per parameter, A/B against the
+committed version, and the invariants above enforced as live warnings. Its
+"copy tuned specs" block goes straight back into the table; the prose
+comments go with it.
+
 ## Unlocking
 
 An `AudioContext` is born suspended and only resumes from inside a real user

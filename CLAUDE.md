@@ -67,8 +67,11 @@ gofmt -l .                         # must be empty before commit
 # client (from web/)
 npm install
 npx tsc --noEmit
-node test.mjs                      # node:test suite; currently 729 tests, 0 fail
+node test.mjs                      # node:test suite; currently 951 tests, 0 fail
 node build.mjs
+
+# notification sounds (from the repo root)
+node tools/sound-bench.mjs         # regenerate + open tools/sound-bench.html
 
 # database (dev)
 sudo docker exec -i chalk-dev-pg psql -U chalk -d chalk
@@ -111,6 +114,16 @@ before declaring any change done.
 - **gofmt realignment**: const blocks, struct fields, and keyed composite
   literals get value/comment column realignment. Never assume byte-exact
   content of such regions; re-read before editing.
+- **Notification sounds are tuned by ear, never derived.** `SOUND_SPECS`
+  (`web/src/notify/synth.ts`) is the recording of a listening session, and
+  its comments say *why* each number is what it is — changing one means
+  listening again and rewriting the comment with it. `node
+  tools/sound-bench.mjs` builds the bench that session needs (every
+  category, the real synth graph extracted from the source so it can't
+  drift, sliders, A/B against what's committed, and the `synth.test.ts`
+  invariants shown live so tuning can't end in a red build) and prints its
+  `file://` URL for scuq to open. Its "copy tuned specs" block pastes back
+  into the table.
 - **Client cache vs server**: IndexedDB caches (space keys, identities,
   attachments) can mask or mimic server bugs — distinguish stale client state
   from real server holes before "fixing" the server.
