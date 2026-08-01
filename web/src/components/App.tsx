@@ -169,7 +169,7 @@ import {
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
-import { hasUnread, initialState, selectChatPrefs, selectParkingLotPrefs, selectRosterPrefs, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow } from "../state/types";
+import { hasUnread, initialState, selectChatPrefs, selectJoinMuted, selectParkingLotPrefs, selectRosterPrefs, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow } from "../state/types";
 import { selectGiphyPref } from "../giphy/giphy";
 import {
   selectLinkPreviewPref,
@@ -2667,6 +2667,23 @@ export function App() {
     });
     return () => setMicPrefsPublisher(null);
   }, [state.wsState]);
+
+  // 66-1: seed a browser that has never been used for voice from the account's
+  // join default. Gated on prefsLoaded -- seeding writes this machine's state
+  // and is one-shot, so doing it from the empty pre-load prefs would lock in
+  // the fallback and ignore the setting that arrives a moment later.
+  useEffect(() => {
+    if (!state.prefsLoaded) return;
+    voiceSession.applyAccountJoinDefault(selectJoinMuted(state.prefs));
+  }, [state.prefsLoaded, state.prefs.voice]);
+
+  const sendJoinMutedPref = useCallback((joinMuted: boolean) => {
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    // `voice` has one key, so writing the whole object is the same thing as
+    // patching it -- the server's shallow JSONB merge replaces it wholesale.
+    c.send(TypePrefsSet, { patch: { voice: { joinMuted } } });
+  }, []);
 
   // Phase 9.6c: keep the presence subscription synchronized with the
   // accepted-friends list. Whenever friends change (after a
@@ -5369,7 +5386,13 @@ export function App() {
         />
       )}
 
-      {micSettingsOpen && <MicSettingsDialog onClose={() => setMicSettingsOpen(false)} />}
+      {micSettingsOpen && (
+        <MicSettingsDialog
+          onClose={() => setMicSettingsOpen(false)}
+          joinMuted={selectJoinMuted(state.prefs)}
+          onJoinMutedChange={sendJoinMutedPref}
+        />
+      )}
     </div>
   );
 }

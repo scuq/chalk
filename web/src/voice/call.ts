@@ -215,6 +215,10 @@ export interface VoiceCallOptions {
   crypto: VoiceEnvelopeCrypto;
   /** Ed25519 identity private key (phase 22) -- signs DTLS fingerprints. */
   ed25519Private: CryptoKey;
+  /** 66-2: whether to open the camera at all for this join. False leaves the
+   * device untouched (indicator dark); the camera button then acquires one
+   * mid-call through enableCameraMidCall. */
+  startWithVideo: boolean;
   callbacks: VoiceCallCallbacks;
 }
 
@@ -518,12 +522,17 @@ export class VoiceCall {
    * join captures local media, enters the room, and offers to every existing
    * participant from the ack roster.
    *
-   * 30-5h: a single join model -- always acquire the camera up front but
-   * start it DISABLED (camera off by default). Because the video track
-   * already exists in the published stream, the panel's cam toggle is
-   * instant (track.enabled flip, no renegotiation). If the camera is denied
-   * or absent we degrade to audio-only; the toggle then reports "no camera"
-   * (mid-call camera add still needs renegotiation, which lands in 30-7).
+   * 30-5h: with the camera ON, it is acquired up front, so the panel's cam
+   * toggle is an instant track.enabled flip rather than a renegotiation. If it
+   * is denied or absent we degrade to audio-only.
+   *
+   * 66-2: with the camera OFF, it is not opened at all. It used to be acquired
+   * up front regardless and merely left disabled -- nothing was published, but
+   * the camera indicator lit up on every join, which is indistinguishable from
+   * being on film for anyone who trusts the light more than our UI. Turning it
+   * on mid-call now costs one renegotiation (enableCameraMidCall) and, the
+   * first time, a camera permission prompt of its own. That is the price of
+   * "off" meaning the device is not open.
    */
   async join(): Promise<void> {
     if (this.joined || this.closed) return;
@@ -545,22 +554,32 @@ export class VoiceCall {
       this.o.callbacks.onError("chosen microphone not found — using the system default");
     }
     const audio = micConstraints(resolvedMic);
-    const video = cameraConstraints(this.devicePrefs);
     let captured: MediaStream;
-    try {
-      captured = await navigator.mediaDevices.getUserMedia({ audio, video });
-      this.hasVideo = captured.getVideoTracks().length > 0;
-    } catch (err) {
-      // Camera denied/absent but the mic may be fine: degrade to audio-only
-      // rather than failing the join (design §8 permission handling). A bare
-      // mic-denial still aborts.
+    if (this.o.startWithVideo) {
+      const video = cameraConstraints(this.devicePrefs);
+      try {
+        captured = await navigator.mediaDevices.getUserMedia({ audio, video });
+        this.hasVideo = captured.getVideoTracks().length > 0;
+      } catch (err) {
+        // Camera denied/absent but the mic may be fine: degrade to audio-only
+        // rather than failing the join (design §8 permission handling). A bare
+        // mic-denial still aborts.
+        try {
+          captured = await navigator.mediaDevices.getUserMedia({ audio });
+          this.hasVideo = false;
+          this.o.callbacks.onError(describeMediaError("camera", err) + " — joined audio-only");
+        } catch (err2) {
+          throw new Error(describeMediaError("microphone", err2));
+        }
+      }
+    } else {
+      // 66-2: camera off means the camera is never opened.
       try {
         captured = await navigator.mediaDevices.getUserMedia({ audio });
-        this.hasVideo = false;
-        this.o.callbacks.onError(describeMediaError("camera", err) + " — joined audio-only");
-      } catch (err2) {
-        throw new Error(describeMediaError("microphone", err2));
+      } catch (err) {
+        throw new Error(describeMediaError("microphone", err));
       }
+      this.hasVideo = false;
     }
 
     // Each graph takes ownership of its half of the capture. If either cannot
@@ -589,8 +608,10 @@ export class VoiceCall {
       this.micChain ? this.micChain.track : micStream.getAudioTracks()[0],
       ...(this.cameraChain ? [this.cameraChain.track] : cameraTracks),
     ]);
-    // Camera OFF by default: disable the published track so nothing is sent,
-    // and park the graph so nothing is drawn, until the user toggles it on.
+    // Every join starts with the video track disabled and the graph parked,
+    // even when a camera was acquired: the session enables it once the join is
+    // through, so a failed join never publishes a frame. With 66-2's audio-only
+    // join there is simply nothing here to disable.
     this.videoEnabled = false;
     for (const t of this.localStream.getVideoTracks()) t.enabled = false;
     this.cameraChain?.setActive(false);

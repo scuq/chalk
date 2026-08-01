@@ -594,7 +594,14 @@ function PreviewSurface({ stream }: { stream: MediaStream }) {
   );
 }
 
-export function MicSettings() {
+interface MicSettingsProps {
+  /** 66-1: account-wide, unlike everything else on this panel -- see the
+   * checkbox's own note. */
+  joinMuted: boolean;
+  onJoinMutedChange: (joinMuted: boolean) => void;
+}
+
+export function MicSettings({ joinMuted, onJoinMutedChange }: MicSettingsProps) {
   const [mic, setMic] = useMicPrefs();
   const [dev, setDev] = useDevicePrefs();
   const devices = useMediaDevices();
@@ -628,6 +635,30 @@ export function MicSettings() {
         // that has not been given permission yet reports one anonymous entry.
         alwaysShow
       />
+
+      {/* 66-1: the one account-wide setting on this panel, and only a default
+          for machines that have none of their own. The mute button in the
+          footer stays the live control, and once it has been pressed on a
+          machine that machine keeps its own answer -- which is why the note
+          spells out that this is about new browsers, not about this one. */}
+      <div class="chalk-profile-field">
+        <label class="chalk-profile-checkbox-label">
+          <input
+            type="checkbox"
+            checked={joinMuted}
+            onChange={(e) => onJoinMutedChange((e.target as HTMLInputElement).checked)}
+            data-testid="voice-join-muted"
+          />
+          <span>
+            start muted on a new device{" "}
+            <span class="chalk-profile-theme-desc">
+              (a browser you have not used voice on yet begins muted, so you
+              never land in a room live by accident. follows your account; this
+              machine keeps whatever the mute button is set to)
+            </span>
+          </span>
+        </label>
+      </div>
 
       <DeviceSelect
         id="camera-device"

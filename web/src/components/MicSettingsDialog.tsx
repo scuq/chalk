@@ -15,9 +15,12 @@ import { MicSettings } from "./MicSettings";
 
 interface Props {
   onClose: () => void;
+  /** 66-1: the account-wide join default, from prefs.voice. */
+  joinMuted: boolean;
+  onJoinMutedChange: (joinMuted: boolean) => void;
 }
 
-export function MicSettingsDialog({ onClose }: Props) {
+export function MicSettingsDialog({ onClose, joinMuted, onJoinMutedChange }: Props) {
   // Escape to close, like every other modal here. MicSettings' own key capture
   // stops propagation while rebinding, so this cannot steal that keystroke.
   useEffect(() => {
@@ -52,7 +55,7 @@ export function MicSettingsDialog({ onClose }: Props) {
           </button>
         </header>
         <div class="chalk-modal-body">
-          <MicSettings />
+          <MicSettings joinMuted={joinMuted} onJoinMutedChange={onJoinMutedChange} />
         </div>
       </div>
     </div>

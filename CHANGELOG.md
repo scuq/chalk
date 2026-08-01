@@ -10,6 +10,25 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- A browser you have never used voice on now starts muted, instead of
+  joining your first room with a live microphone. Voice & video has a
+  "start muted on a new device" setting that follows your account, so a new
+  machine, a private window or a cleared profile all behave the same way. On
+  a machine you have already used, the mute button stays in charge —
+  whatever you last set it to is what you join with, as before.
+
+### Fixed
+- Joining a voice room with your camera switched off still opened the
+  camera: nothing was ever sent, but the browser's camera indicator lit up
+  for the whole call, which is impossible to tell apart from actually being
+  on film. With the camera off it is now not opened at all, and the
+  indicator stays dark. Switching the camera on during a call asks for
+  camera permission at that moment the first time, and takes a second to
+  reach the others.
+
 ## v0.5.3 — 1 August 2026 — Honest unread and a wider back swipe
 
 ### Fixed

@@ -411,7 +411,24 @@ export interface UserPrefs {
   // 57-2: display-only -- hide received preview cards (render just the
   // text). Independent of the consent pref above.
   linkpreviewHideCards?: boolean;
+  // 66-1: how a browser that has never been used for voice starts out.
+  voice?: VoicePrefs;
   // [extend with more keys in future phases]
+}
+
+// 66-1: the account-wide voice default. Only a DEFAULT: the live mute state
+// stays per-device (voice/session.ts), because whether your mic is hot right
+// now is a fact about the room you are sitting in. This is what a machine with
+// no answer of its own uses -- a new browser, a wiped profile, a private
+// window -- so "muted" does not have to be re-set on every one of them.
+export interface VoicePrefs {
+  joinMuted?: boolean; // default true
+}
+
+/** selectJoinMuted resolves the 66-1 default. Absent = muted: joining a room
+ * with a hot mic you did not ask for is the worse failure. */
+export function selectJoinMuted(prefs: UserPrefs | undefined): boolean {
+  return prefs?.voice?.joinMuted !== false;
 }
 
 // 57-2: link-preview whitelist overrides as stored (sparse).

@@ -113,7 +113,14 @@ export function readRejoinHint(): RejoinHint | null {
 //
 // Per-device localStorage rather than server prefs: "is my mic hot right now"
 // is a property of the machine you are sitting at, and a mute set on the laptop
-// in the office has no business unmuting the desktop at home.
+// in the office has no business unmuting the desktop at home. localStorage is
+// also the only store that can answer before the socket is up, which is exactly
+// when join() needs it.
+//
+// 66-1: a machine that has NEVER been used for voice has no such property yet,
+// and it used to start with a hot microphone. It now seeds from the account's
+// join default (see applyAccountJoinDefault) -- and until that arrives, from
+// muted, which is the safe side to be wrong on.
 
 const GLOBAL_VOICE_LS_KEY = "chalk-voice-global";
 
@@ -124,7 +131,17 @@ export interface GlobalVoiceState {
   camOn: boolean;
 }
 
-const DEFAULT_GLOBAL_VOICE: GlobalVoiceState = { muted: false, deafened: false, camOn: false };
+const DEFAULT_GLOBAL_VOICE: GlobalVoiceState = { muted: true, deafened: false, camOn: false };
+
+/** Whether this browser has a voice state of its own yet. A stored entry means
+ * the user has touched the controls here, which outranks any account default. */
+function hasStoredGlobalVoice(): boolean {
+  try {
+    return localStorage.getItem(GLOBAL_VOICE_LS_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
 
 function loadGlobalVoice(): GlobalVoiceState {
   try {
@@ -315,6 +332,21 @@ class VoiceSessionImpl {
     this.set(patch);
   }
 
+  /**
+   * applyAccountJoinDefault (66-1) seeds this browser's mute state from the
+   * account setting, and only ever the first time: once this machine has a
+   * stored state, the local controls own it, so a mute set here is not undone
+   * by another device and the account setting is not fighting the footer.
+   *
+   * Called with every prefs load and push. After the first one it is a no-op,
+   * because seeding writes the entry it then sees.
+   */
+  applyAccountJoinDefault(muted: boolean): void {
+    if (hasStoredGlobalVoice()) return;
+    this.call?.setMuted(muted);
+    this.setGlobal({ muted });
+  }
+
   private set(patch: Partial<VoiceSessionSnap>): void {
     this.s = { ...this.s, ...patch };
     for (const fn of this.listeners) {
@@ -373,6 +405,9 @@ class VoiceSessionImpl {
         },
         crypto: crypto_,
         ed25519Private: ident.ed25519Private,
+        // 66-2: camera off = the device is not opened, so the browser's camera
+        // indicator stays dark. The mid-call add covers turning it on later.
+        startWithVideo: this.global.camOn,
         callbacks: {
           onPeerStream: (key, userID, deviceID, stream) =>
             this.set({
