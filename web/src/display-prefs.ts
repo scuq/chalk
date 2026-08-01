@@ -6,11 +6,14 @@
 // So these live in localStorage, keyed per browser, and never leave the
 // device.
 //
-// Both knobs are applied as inline custom properties on <html>:
+// Every knob is applied as an inline custom property on <html>:
 //
-//   --chalk-font        the family stack (an alias into --chalk-font-*)
-//   --chalk-font-scale  a multiplier every font-size in theme.css runs
-//                       through, so one value resizes the whole UI
+//   --chalk-font            the family stack (an alias into --chalk-font-*)
+//   --chalk-font-scale      a multiplier every font-size in theme.css runs
+//                           through, so one value resizes the whole UI
+//   --chalk-scrollbar-width thin, or none to hide the bars entirely
+//   --chalk-scroll-lane     the message pane's right padding, which only
+//                           exists to keep the scrollbar off the text
 //
 // Inline styles outrank the :root and [data-theme=...] blocks, so the
 // device preference wins over whatever the active theme sets.
@@ -22,9 +25,14 @@ export type FontChoice = "mono" | "sans" | "serif";
 export interface DisplayPrefs {
   font: FontChoice;
   scale: number;
+  hideScrollbars: boolean;
 }
 
-export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = { font: "mono", scale: 1 };
+export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
+  font: "mono",
+  scale: 1,
+  hideScrollbars: false,
+};
 
 const STORAGE_KEY = "chalk.display.v1";
 
@@ -63,7 +71,11 @@ export function normalizeDisplayPrefs(raw: unknown): DisplayPrefs {
   const scale = Number.isFinite(n)
     ? Math.min(MAX_SCALE, Math.max(MIN_SCALE, n))
     : DEFAULT_DISPLAY_PREFS.scale;
-  return { font, scale };
+  const hideScrollbars =
+    typeof o.hideScrollbars === "boolean"
+      ? o.hideScrollbars
+      : DEFAULT_DISPLAY_PREFS.hideScrollbars;
+  return { font, scale, hideScrollbars };
 }
 
 // The subset of HTMLElement applyDisplayPrefs needs, so the unit tests
@@ -77,6 +89,10 @@ export function applyDisplayPrefs(prefs: DisplayPrefs, target?: StyleTarget): vo
   if (!el) return;
   el.style.setProperty("--chalk-font", `var(--chalk-font-${prefs.font})`);
   el.style.setProperty("--chalk-font-scale", String(prefs.scale));
+  el.style.setProperty("--chalk-scrollbar-width", prefs.hideScrollbars ? "none" : "thin");
+  // The lane goes with the bar: 8px of dead space on the right of the feed
+  // reads as a misalignment once there's no scrollbar standing in it.
+  el.style.setProperty("--chalk-scroll-lane", prefs.hideScrollbars ? "0px" : "var(--chalk-s2)");
 }
 
 export function loadDisplayPrefs(): DisplayPrefs {

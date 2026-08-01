@@ -92,7 +92,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     id: "appearance",
     tab: "appearance",
     title: "appearance",
-    keywords: ["theme", "font", "text size", "scale", "dark", "light"],
+    keywords: ["theme", "font", "text size", "scale", "dark", "light", "scrollbar"],
   },
   {
     id: "chat",

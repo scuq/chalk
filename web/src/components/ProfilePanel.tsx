@@ -613,9 +613,24 @@ export function ProfilePanel({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={display.hideScrollbars}
+                    onChange={(e) =>
+                      setDisplay({ hideScrollbars: (e.target as HTMLInputElement).checked })
+                    }
+                    data-testid="display-hide-scrollbars"
+                  />
+                  <span>hide scrollbars</span>
+                </label>
                 <p class="chalk-profile-hint">
-                  font and text size are stored on this device only, so your
-                  phone and your desktop can differ.
+                  with the bars hidden the wheel, trackpad and keyboard still
+                  scroll. font, text size and this are stored on this device
+                  only, so your phone and your desktop can differ.
                 </p>
               </div>
             </section>

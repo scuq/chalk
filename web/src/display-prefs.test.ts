@@ -29,9 +29,10 @@ function styleStub(): StyleTarget & { props: Record<string, string> } {
 }
 
 test("normalize keeps a valid pref untouched", () => {
-  assert.deepEqual(normalizeDisplayPrefs({ font: "serif", scale: 1.1 }), {
+  assert.deepEqual(normalizeDisplayPrefs({ font: "serif", scale: 1.1, hideScrollbars: true }), {
     font: "serif",
     scale: 1.1,
+    hideScrollbars: true,
   });
 });
 
@@ -45,11 +46,17 @@ test("normalize keeps the good half of a partially bad pref", () => {
   assert.deepEqual(normalizeDisplayPrefs({ font: "sans", scale: NaN }), {
     font: "sans",
     scale: DEFAULT_DISPLAY_PREFS.scale,
+    hideScrollbars: DEFAULT_DISPLAY_PREFS.hideScrollbars,
   });
   assert.deepEqual(normalizeDisplayPrefs({ font: "wingdings", scale: 1.25 }), {
     font: DEFAULT_DISPLAY_PREFS.font,
     scale: 1.25,
+    hideScrollbars: DEFAULT_DISPLAY_PREFS.hideScrollbars,
   });
+  assert.equal(
+    normalizeDisplayPrefs({ font: "mono", scale: 1, hideScrollbars: "yes" }).hideScrollbars,
+    DEFAULT_DISPLAY_PREFS.hideScrollbars,
+  );
 });
 
 test("normalize clamps rather than rejects out-of-range scales", () => {
@@ -68,19 +75,30 @@ test("every offered scale step survives normalization unchanged", () => {
   }
 });
 
-test("apply writes the two custom properties theme.css reads", () => {
+test("apply writes the custom properties theme.css reads", () => {
   const el = styleStub();
-  applyDisplayPrefs({ font: "sans", scale: 1.25 }, el);
+  applyDisplayPrefs({ font: "sans", scale: 1.25, hideScrollbars: false }, el);
   assert.deepEqual(el.props, {
     "--chalk-font": "var(--chalk-font-sans)",
     "--chalk-font-scale": "1.25",
+    "--chalk-scrollbar-width": "thin",
+    "--chalk-scroll-lane": "var(--chalk-s2)",
   });
+});
+
+// Hiding the bars must also close the lane they stood in, or the feed keeps
+// a strip of dead space on its right edge with nothing in it.
+test("hiding scrollbars removes both the bar and its lane", () => {
+  const el = styleStub();
+  applyDisplayPrefs({ font: "mono", scale: 1, hideScrollbars: true }, el);
+  assert.equal(el.props["--chalk-scrollbar-width"], "none");
+  assert.equal(el.props["--chalk-scroll-lane"], "0px");
 });
 
 test("apply names a family alias for every offered font", () => {
   for (const font of ["mono", "sans", "serif"] as const) {
     const el = styleStub();
-    applyDisplayPrefs({ font, scale: 1 }, el);
+    applyDisplayPrefs({ font, scale: 1, hideScrollbars: false }, el);
     assert.equal(el.props["--chalk-font"], `var(--chalk-font-${font})`);
   }
 });

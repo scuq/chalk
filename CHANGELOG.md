@@ -12,6 +12,11 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- Appearance settings can hide scrollbars entirely, per device. The wheel,
+  trackpad and keyboard scroll as before; the bars just stop being drawn and
+  the message pane reclaims the strip they sat in.
+
 ### Changed
 - Scrollbars now follow the active theme — a slim green thumb on a
   transparent track instead of the browser's grey bar — and the message pane
