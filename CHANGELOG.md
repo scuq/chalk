@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.5.3 — 1 August 2026 — Honest unread and a wider back swipe
 
 ### Fixed
 - The swipe-right gesture back to the conversation list couldn't be
