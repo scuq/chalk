@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.5.7 — 1 August 2026 — Four fonts, tamed scrollbars and a boss key
 
 ### Added
 - Three more typefaces ship with chalk — JetBrains Mono, Fira Code and
