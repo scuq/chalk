@@ -10,6 +10,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- Pictures in messages older than a day showed as an empty row — just the
+  sender and time, no image — when the message came from scrolling back
+  through history (or was simply the latest message in a quiet channel).
+  Images now load with the message no matter how old it is.
+
 ## v0.5.5 — 1 August 2026 — Tidier settings and shorter links
 
 ### Added

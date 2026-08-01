@@ -399,6 +399,46 @@ func (s *Store) ListAttachmentRefsForMessage(ctx context.Context, messageID uuid
 	return scanAttachmentListRows(rows)
 }
 
+// ListAttachmentRefsForMessages is the batch form of
+// ListAttachmentRefsForMessage: one round trip for a whole history page
+// instead of one probe per message. Rows are grouped by message id, oldest
+// first within each message. Message ids the caller may not read must be
+// filtered out before calling (fetch_history has already enforced channel
+// membership).
+//
+// Returns an empty map when messageIDs is empty rather than issuing a query
+// with an empty ANY(), which would scan pointlessly.
+func (s *Store) ListAttachmentRefsForMessages(
+	ctx context.Context,
+	messageIDs []uuid.UUID,
+) (map[uuid.UUID][]Attachment, error) {
+	out := make(map[uuid.UUID][]Attachment)
+	if len(messageIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.Pool.Query(ctx,
+		`SELECT `+attachmentListColumns+`
+		   FROM attachments a
+		  WHERE a.message_id = ANY($1) AND a.status = 'complete'
+		  ORDER BY a.created_at ASC`,
+		messageIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	list, err := scanAttachmentListRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	for _, a := range list {
+		if a.MessageID == nil {
+			continue
+		}
+		out[*a.MessageID] = append(out[*a.MessageID], a)
+	}
+	return out, nil
+}
+
 // LinkAttachmentsToMessage stamps message_id/message_ts onto the given
 // attachment ids, inside the caller's send transaction. An id is linked only if
 // it is complete, in channelID, not already linked, and owned by ownerUserID's

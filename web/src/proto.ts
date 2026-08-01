@@ -117,10 +117,10 @@ export interface MessagePayload {
   // and needs no bulk sync frame.
   thread_last_read_seq?: number;
   thread_involved?: boolean;
-  // att-2: attachments linked to this message, populated on the live push.
-  // Empty for the common attachment-less message and for history fetches
-  // (those backfill via GET /api/attachments). Go marshals the []byte
-  // enc_meta/enc_preview as standard base64 strings.
+  // att-2: attachments linked to this message, populated on the live push,
+  // history pages and thread fetches alike. Empty for the common
+  // attachment-less message. Go marshals the []byte enc_meta/enc_preview as
+  // standard base64 strings.
   attachments?: AttachmentRefWire[];
   // Echoes back SendPayload.client_msg_id on the live push of a freshly-sent
   // message, so the ORIGINATING client can match this to its optimistic row

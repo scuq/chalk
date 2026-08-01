@@ -399,8 +399,8 @@ function wireToMessage(w: MessagePayload): Message {
     deleted: w.deleted || undefined,
     deletedBy: w.deleted_by || undefined,
     deletedAt: w.deleted_at ? new Date(w.deleted_at) : undefined,
-    // att-2: attachments carried on the live push (server populates them there;
-    // history fetches backfill via the window list query). Undefined when none.
+    // att-2: attachments carried on the live push and on history pages.
+    // Undefined when none.
     attachments:
       w.attachments && w.attachments.length > 0
         ? w.attachments.map(wireRefToRef)
@@ -844,11 +844,11 @@ export function App() {
     void ensureKeyFor(cid);
   }, [state.activeChannelID, state.wsState, state.channels, ccReady, ensureKeyFor]);
 
-  // att-2: backfill attachment refs for the active channel. History fetches
-  // don't carry attachments (live pushes do), so once history is loaded we pull
-  // the recent attachments via the window list query and merge them onto the
-  // matching messages by id. Re-runs when history (re)loads. Bounded server-side
-  // by CHALK_ATTACH_FETCH_WINDOW_HOURS.
+  // att-2: backfill attachment refs for the active channel via the window list
+  // query, merged onto matching messages by id. History pages now carry their
+  // refs server-side (which is what fixed images older than the window never
+  // rendering), so this is a redundant backstop -- candidate for removal along
+  // with GET /api/attachments and CHALK_ATTACH_FETCH_WINDOW_HOURS.
   useEffect(() => {
     const cid = state.activeChannelID;
     if (!cid || !ccReady || !state.historyLoaded[cid]) return;

@@ -2230,6 +2230,21 @@ func (h *WSHandler) handleFetchHistory(
 		return
 	}
 
+	// att-2 parity with the live push and fetch_thread: refs ride on the page
+	// itself, one batched query for the lot. The client's windowed backfetch
+	// (GET /api/attachments) only reaches CHALK_ATTACH_FETCH_WINDOW_HOURS back,
+	// so without this, images on older history rows never rendered at all. A
+	// refs failure degrades to a page without attachments rather than no page.
+	msgIDs := make([]uuid.UUID, 0, len(msgs))
+	for _, m := range msgs {
+		msgIDs = append(msgIDs, m.ID)
+	}
+	refsByMsg, aerr := h.store.ListAttachmentRefsForMessages(ctx, msgIDs)
+	if aerr != nil {
+		h.logger.Printf("fetch_history attachment refs %s: %v", channelID, aerr)
+		refsByMsg = nil
+	}
+
 	out := make([]proto.MessagePayload, 0, len(msgs))
 	for _, m := range msgs {
 		senderStr := ""
@@ -2259,6 +2274,17 @@ func (h *WSHandler) handleFetchHistory(
 		}
 		bodyStr := string(m.Body)
 		deletedBy, deletedAt := tombstoneOf(m)
+		var attachRefs []proto.AttachmentRef
+		for _, a := range refsByMsg[m.ID] {
+			attachRefs = append(attachRefs, proto.AttachmentRef{
+				ID:         a.ID.String(),
+				ByteLen:    a.ByteLen,
+				KeyVersion: a.KeyVersion,
+				EncMeta:    a.EncMeta,
+				EncPreview: a.EncPreview,
+				PreviewLen: a.PreviewLen,
+			})
+		}
 		out = append(out, proto.MessagePayload{
 			ID:                    m.ID.String(),
 			ChannelID:             m.ChannelID.String(),
@@ -2275,6 +2301,7 @@ func (h *WSHandler) handleFetchHistory(
 			LastReplyBody:         string(m.LastReplyBody),
 			LastReplyKeyVersion:   m.LastReplyKeyVersion,
 			KeyVersion:            m.KeyVersion,
+			Attachments:           attachRefs,
 			Deleted:               m.DeletedAt != nil,
 			DeletedBy:             deletedBy,
 			DeletedAt:             deletedAt,

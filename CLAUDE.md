@@ -188,6 +188,11 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
     weakness the mic had before 63-3 (Brave re-randomizes deviceIds per
     session; late-plugged devices unmatched). Fix the same way: persist the
     label, resolve via `voice/device-resolve.ts` at capture time.
+  - The client's windowed attachment backfill (App.tsx `listAttachments`
+    effect, `GET /api/attachments`, `CHALK_ATTACH_FETCH_WINDOW_HOURS`) is
+    redundant since fetch_history started carrying attachment refs on the
+    page itself; drop the effect, the endpoint, the
+    `ListAttachmentsForChannelWindow` query and the env knob together.
   - `docker/Dockerfile`'s frontend stage runs `npm run build` without
     `NODE_ENV=production`, so released images ship unminified bundles with
     inline sourcemaps. Costlier since 52-2 (the MediaPipe chunk is 153 KB
