@@ -1,20 +1,28 @@
 // chalk-web -- the one owner of document.title.
 //
 // Two things want to write the title: the unread badge count ("(3)
-// chalk", 50-7) and the attention blink that alternates while something
+// chalk", 50-7) and the attention blink that runs while something
 // noteworthy waits in a background tab. Two independent writers would
 // fight -- the blink's restore would stomp a count that changed
 // mid-blink -- so both go through this controller and every write renders
 // the whole state.
+//
+// The blink marker swaps ends rather than switching on and off: a dot
+// travelling across the name catches the eye in a crowded tab strip in a
+// way a dot flashing in one spot does not. The count yields for the
+// duration and comes back when the blink stops.
 //
 // The blink stops the moment the tab is actually looked at (visibility
 // or focus), which is also why it never starts while the window is
 // visible and focused: with no transition left to happen, nothing would
 // ever clear it.
 
+export type BlinkPhase = "off" | "left" | "right";
+
 // The pure half: what should the title say right now?
-export function titleFor(input: { base: string; count: number; blinkOn: boolean }): string {
-  if (input.blinkOn) return `● ${input.base}`;
+export function titleFor(input: { base: string; count: number; blink: BlinkPhase }): string {
+  if (input.blink === "left") return `● ${input.base}`;
+  if (input.blink === "right") return `${input.base} ●`;
   return input.count > 0 ? `(${input.count}) ${input.base}` : input.base;
 }
 
@@ -73,7 +81,7 @@ export class TitleController {
     document.title = titleFor({
       base: this.base,
       count: this.count,
-      blinkOn: this.blinking && this.phase,
+      blink: this.blinking ? (this.phase ? "left" : "right") : "off",
     });
   }
 }

@@ -30,6 +30,13 @@ The engineering-level history (which slice shipped what) lives in
   off individually under "chalk's own noises" in notification settings, where
   the play button previews them.
 
+### Changed
+- The marker that appears in a backgrounded tab's title when something needs
+  you now travels from one end of the name to the other instead of blinking
+  in place — easier to catch out of the corner of your eye in a crowded tab
+  strip or a long window list. While it is travelling the unread count steps
+  aside, and returns as soon as you look at the tab.
+
 ## v0.5.7 — 1 August 2026 — Four fonts, tamed scrollbars and a boss key
 
 ### Added
