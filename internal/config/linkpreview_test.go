@@ -16,6 +16,7 @@ func TestLinkPreviewDefaults(t *testing.T) {
 	want := []string{
 		"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
 		"store.steampowered.com", "steamcommunity.com",
+		"twitch.tv", "amazon.at", "amazon.de", "amazon.com",
 	}
 	if !slices.Equal(l.Domains, want) {
 		t.Fatalf("Domains = %v, want %v", l.Domains, want)

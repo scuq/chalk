@@ -38,7 +38,9 @@ type LinkPreviewConfig struct {
 	TimeoutSeconds int
 }
 
-// defaultLinkPreviewDomains is the whitelist chalk ships: YouTube and Steam.
+// defaultLinkPreviewDomains is the whitelist chalk ships: YouTube, Steam,
+// Twitch and the Amazon storefronts people here actually paste. An entry
+// matches itself and subdomains on the client, so bare domains cover www.
 var defaultLinkPreviewDomains = []string{
 	"youtube.com",
 	"www.youtube.com",
@@ -46,6 +48,10 @@ var defaultLinkPreviewDomains = []string{
 	"youtu.be",
 	"store.steampowered.com",
 	"steamcommunity.com",
+	"twitch.tv",
+	"amazon.at",
+	"amazon.de",
+	"amazon.com",
 }
 
 const defaultLinkPreviewTimeoutSeconds = 8

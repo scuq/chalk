@@ -19,6 +19,12 @@ The engineering-level history (which slice shipped what) lives in
   "copy link address" still copies the real URL. Prefer raw URLs? Switch it
   off under profile → chat.
 
+### Changed
+- Pasting a Twitch or Amazon (amazon.at / amazon.de / amazon.com) link now
+  offers a preview card, like YouTube and Steam links already did. As
+  always, only the sender's chalk fetches the page, previews are opt-in,
+  and you can add or remove sites yourself under profile → link previews.
+
 ### Fixed
 - On iPhones, swiping back to the conversation list did nothing when the
   swipe started on a picture: the browser began dragging the picture
