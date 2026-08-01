@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.5.6 — 1 August 2026 — Steady settings and a pinned channel bar
 
 ### Changed
 - The channel name bar now stays pinned to the top of the message pane on
