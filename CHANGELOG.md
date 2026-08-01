@@ -10,15 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
-
-### Changed
-- Every chalk sound now has the grain of real chalk. Where they used to be
-  smooth little swishes, each one now rasps the way a stick of chalk actually
-  does — a fine, irregular crumble as it drags — and opens with the light tick
-  of the chalk touching down. They stay in the same warm range as before,
-  well clear of the screech; they just sound like chalk on a board rather than
-  like a filtered hiss.
+## v0.5.8 — 2 August 2026 — Sounds with real chalk grain, and calls that announce themselves
 
 ### Added
 - Calls now make a sound: one when you connect, one when you leave, and a
@@ -31,6 +23,12 @@ The engineering-level history (which slice shipped what) lives in
   the play button previews them.
 
 ### Changed
+- Every chalk sound now has the grain of real chalk. Where they used to be
+  smooth little swishes, each one now rasps the way a stick of chalk actually
+  does — a fine, irregular crumble as it drags — and opens with the light tick
+  of the chalk touching down. They stay in the same warm range as before,
+  well clear of the screech; they just sound like chalk on a board rather than
+  like a filtered hiss.
 - The marker that appears in a backgrounded tab's title when something needs
   you now travels from one end of the name to the other instead of blinking
   in place — easier to catch out of the corner of your eye in a crowded tab
