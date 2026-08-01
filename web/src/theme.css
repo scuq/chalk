@@ -1044,6 +1044,16 @@ html, body {
   cursor: zoom-out;
 }
 
+/* 64-9: iOS lets a finger pick up and drag an <img>, and that native drag
+   steals the touch (touchcancel) mid-gesture -- a swipe-back that started
+   on a picture navigated nowhere. Feed media is not draggable. */
+.chalk-attachment-img,
+.chalk-attachment-lightbox-img,
+.chalk-giphy-img,
+.chalk-linkpreview-thumb {
+  -webkit-user-drag: none;
+}
+
 /* Lightbox: click an image to view it at original size on a dark backdrop. */
 .chalk-attachment-lightbox {
   position: fixed;

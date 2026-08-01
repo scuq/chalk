@@ -33,6 +33,7 @@ export function GiphyView({ render, onRequestEnableGiphy }: Props) {
           src={render.url}
           alt="Giphy GIF"
           loading="lazy"
+          draggable={false}
           onError={() => setFailed(true)}
         />
         <span class="chalk-giphy-tag" aria-hidden="true">via Giphy</span>

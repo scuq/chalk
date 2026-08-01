@@ -103,7 +103,9 @@ export function LinkPreviewView({ payload, channelID, attachments, controller }:
         rel="noopener noreferrer"
         data-testid="message-linkpreview"
       >
-        {thumbURL && <img class="chalk-linkpreview-thumb" src={thumbURL} alt="" />}
+        {thumbURL && (
+          <img class="chalk-linkpreview-thumb" src={thumbURL} alt="" draggable={false} />
+        )}
         <span class="chalk-linkpreview-text">
           {payload.site_name !== "" && (
             <span class="chalk-linkpreview-site">{payload.site_name}</span>

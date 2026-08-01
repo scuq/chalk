@@ -10,6 +10,16 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- On iPhones, swiping back to the conversation list did nothing when the
+  swipe started on a picture: the browser began dragging the picture
+  instead, and a stray tap could leave you on the black full-screen image
+  view with no obvious way out. Pictures no longer drag, so the swipe works
+  on them like anywhere else — and the full-screen view itself now closes
+  with the same swipe-right (a tap still closes it too).
+
 ## v0.5.4 — 1 August 2026 — Off stays off, and tiles you can read
 
 ### Added

@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { AttachmentController } from "../attachments/pipeline";
 import { type AttachmentMeta, type AttachmentRef, humanSize } from "../attachments/types";
+import { swipeCancelled, swipeTriggered, type SwipeStart } from "../chat/swipe-back";
 
 interface Props {
   channelID: string;
@@ -37,6 +38,8 @@ export function AttachmentView({ channelID, att, controller }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Track object URLs so we always revoke exactly what we created.
   const urlsRef = useRef<string[]>([]);
+  // 64-9: an armed swipe-right on the open lightbox; null between touches.
+  const lightboxSwipeRef = useRef<SwipeStart | null>(null);
 
   const trackURL = (url: string): string => {
     urlsRef.current.push(url);
@@ -233,6 +236,9 @@ export function AttachmentView({ channelID, att, controller }: Props) {
             // anything -- max-width already caps at the natural width.
             style={imageBox}
             onClick={() => setExpanded(true)}
+            // 64-9: with the CSS -webkit-user-drag opt-out, keeps a drag
+            // that starts on the picture from stealing the swipe-back touch.
+            draggable={false}
             data-testid="attachment-img"
           />
         ) : (
@@ -249,12 +255,45 @@ export function AttachmentView({ channelID, att, controller }: Props) {
             aria-modal="true"
             aria-label={meta.name}
             onClick={() => setExpanded(false)}
+            /* 64-9: swipe right closes the lightbox -- the same "back"
+               gesture as the conversation, one level at a time. The overlay
+               owns its touches (stopPropagation), so the app-level swipe
+               can't switch the screen under a modal. */
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              lightboxSwipeRef.current = null;
+              if (e.touches.length !== 1) return;
+              const t = e.touches[0];
+              lightboxSwipeRef.current = { x: t.clientX, y: t.clientY };
+            }}
+            onTouchMove={(e) => {
+              e.stopPropagation();
+              const start = lightboxSwipeRef.current;
+              if (!start) return;
+              const t = e.touches[0];
+              if (swipeCancelled(start, t.clientX, t.clientY)) {
+                lightboxSwipeRef.current = null;
+                return;
+              }
+              if (!swipeTriggered(start, t.clientX, t.clientY, window.innerWidth)) return;
+              lightboxSwipeRef.current = null;
+              setExpanded(false);
+            }}
+            onTouchEnd={(e) => {
+              e.stopPropagation();
+              lightboxSwipeRef.current = null;
+            }}
+            onTouchCancel={(e) => {
+              e.stopPropagation();
+              lightboxSwipeRef.current = null;
+            }}
             data-testid="attachment-lightbox"
           >
             <img
               class="chalk-attachment-lightbox-img"
               src={fullURL ?? shownURL}
               alt={meta.name}
+              draggable={false}
             />
             <div class="chalk-attachment-lightbox-caption">
               {meta.name} ({humanSize(meta.size)}) — click anywhere or press Esc to close
