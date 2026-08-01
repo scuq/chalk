@@ -169,7 +169,15 @@ Six parameters carry the whole design, in `web/src/notify/synth.ts`:
 
 The source is **pink** noise, not white: friction energy falls off with
 frequency, and a flat source under bands this wide piles up at the top of the
-passband — the one direction this pack must not go.
+passband — the one direction this pack must not go. It is normalized to
+white's RMS rather than to a peak of 1, since pink is much peakier and
+peak-normalizing would make the colour change a volume change as well.
+
+That tilt costs the bright categories energy and hands it to the dark ones, so
+the `gain` column was re-derived after the change by rendering each sound
+offline and matching its RMS back to the pre-grain pack. A gain is therefore a
+trim against the measured output of its own band, not a number to compare
+across rows.
 
 Two traps the tests hold shut. The grain modulator is **random, not an LFO** —
 a periodic one at these rates has a pitch you can hum, which is a buzz, and

@@ -61,6 +61,17 @@
 // These numbers were tuned by ear against the bench that
 // `node tools/sound-bench.mjs` builds; treat the table as a recording of
 // that session, not as arithmetic. Changing one means listening again.
+//
+// One exception, and it is why `gain` is no longer readable by eye. Adding
+// the grain and swapping white for pink changed every category's output
+// level, and by different amounts -- pink tilts down 3 dB per octave, so
+// the bright categories lost energy the dark ones gained. The gain column
+// was then re-derived by rendering each sound offline and matching its RMS
+// back to what the pre-grain pack produced, which lands the whole family
+// within about a decibel of the mix it was originally tuned to. So a gain
+// here is a trim against the measured output of its own band, not a
+// loudness you can compare across rows: `error` at 0.35 is not quieter
+// than `message` at 0.39, it just sits where pink is generous.
 
 import type { SoundCategory } from "./types";
 
@@ -116,6 +127,12 @@ export const GRAIN_REF_HZ = 50;
 // "make this one shorter" edit falls into.
 export const MIN_SLIPS_PER_STROKE = 3;
 
+// RMS of the uniform white noise the pack used before pink, and the level
+// the pink source is normalized to. Uniform noise on [-1, 1] has an RMS of
+// 1/sqrt(3); matching it is what keeps the source swap from also being a
+// volume change.
+export const WHITE_RMS = 1 / Math.sqrt(3);
+
 // A hard ceiling on resonance. Above roughly this the band stops colouring
 // the noise and starts ringing at its centre, which is precisely the peep
 // this pack is not. Enforced by the tests.
@@ -141,11 +158,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 1.1,
     sweep: 1.5,
     lowpassHz: 3000,
-    body: 0.16,
+    body: 0.11,
     grainHz: 60,
     grain: 0.4,
-    tick: 0.12,
-    gain: 0.85,
+    tick: 0.1,
+    gain: 0.84,
   },
   // The same gesture, lower and broader: unmistakably personal, warmer.
   dm: {
@@ -155,11 +172,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 1.05,
     sweep: 1.4,
     lowpassHz: 2700,
-    body: 0.2,
+    body: 0.14,
     grainHz: 52,
     grain: 0.42,
-    tick: 0.11,
-    gain: 0.85,
+    tick: 0.09,
+    gain: 0.73,
   },
   // Two close strokes for a lesser event -- present, not demanding.
   thread_reply: {
@@ -169,11 +186,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 1.05,
     sweep: 1.25,
     lowpassHz: 2600,
-    body: 0.16,
+    body: 0.11,
     grainHz: 58,
     grain: 0.38,
-    tick: 0.1,
-    gain: 0.72,
+    tick: 0.08,
+    gain: 0.59,
   },
   // One short swish. This is the category that can fire all day, so it is
   // the shortest and quietest thing here by a clear margin.
@@ -184,11 +201,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 0.95,
     sweep: 1.35,
     lowpassHz: 2300,
-    body: 0.18,
+    body: 0.13,
     grainHz: 70,
     grain: 0.34,
-    tick: 0.09,
-    gain: 0.58,
+    tick: 0.07,
+    gain: 0.39,
   },
   // A rising pair with a wide interval -- an invitation, not an alarm.
   // Sits between dm and mention in brightness: a call starting is worth
@@ -200,11 +217,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 1.05,
     sweep: 1.45,
     lowpassHz: 2800,
-    body: 0.2,
+    body: 0.14,
     grainHz: 50,
     grain: 0.42,
-    tick: 0.12,
-    gain: 0.78,
+    tick: 0.1,
+    gain: 0.68,
   },
   // A door opening: one warm low stroke, then a brighter one -- you've
   // been let in somewhere new.
@@ -215,11 +232,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 1,
     sweep: 1.4,
     lowpassHz: 2500,
-    body: 0.24,
+    body: 0.17,
     grainHz: 46,
     grain: 0.44,
-    tick: 0.12,
-    gain: 0.7,
+    tick: 0.1,
+    gain: 0.53,
   },
   // Personal like the dm stroke but narrower in travel: someone is at
   // the door rather than already talking to you.
@@ -230,11 +247,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 1.05,
     sweep: 1.3,
     lowpassHz: 2600,
-    body: 0.18,
+    body: 0.13,
     grainHz: 55,
     grain: 0.4,
-    tick: 0.11,
-    gain: 0.72,
+    tick: 0.09,
+    gain: 0.59,
   },
   // Flat and even, two strokes at almost the same height: a notice being
   // pinned to the board, deliberately without urgency in either
@@ -246,11 +263,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 0.95,
     sweep: 1.2,
     lowpassHz: 2300,
-    body: 0.22,
+    body: 0.16,
     grainHz: 48,
     grain: 0.4,
-    tick: 0.1,
-    gain: 0.64,
+    tick: 0.08,
+    gain: 0.44,
   },
   // Soft and low-contrast; a friend appearing is information, not a
   // summons.
@@ -261,11 +278,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 0.9,
     sweep: 1.3,
     lowpassHz: 2200,
-    body: 0.18,
+    body: 0.13,
     grainHz: 56,
     grain: 0.36,
-    tick: 0.08,
-    gain: 0.52,
+    tick: 0.06,
+    gain: 0.37,
   },
   // 71-1, the call roster. Four sounds that come in two mirrored pairs:
   // the room's own arrivals and departures, told apart by direction, and
@@ -282,11 +299,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 1,
     sweep: 1.45,
     lowpassHz: 2200,
-    body: 0.3,
+    body: 0.21,
     grainHz: 44,
     grain: 0.46,
-    tick: 0.13,
-    gain: 0.7,
+    tick: 0.1,
+    gain: 0.48,
   },
   // The same two strokes walked backwards. It falls, but it stays as warm
   // and as wide as the arrival: leaving a room you chose to leave is not
@@ -298,11 +315,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 1,
     sweep: 0.7,
     lowpassHz: 2200,
-    body: 0.3,
+    body: 0.21,
     grainHz: 44,
     grain: 0.44,
-    tick: 0.1,
-    gain: 0.66,
+    tick: 0.08,
+    gain: 0.38,
   },
   // One short stroke, brighter and much lighter than your own arrival:
   // somebody else is at the board. Quiet on purpose -- in a room of eight
@@ -314,11 +331,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 1.1,
     sweep: 1.5,
     lowpassHz: 2600,
-    body: 0.12,
+    body: 0.09,
     grainHz: 68,
     grain: 0.36,
-    tick: 0.1,
-    gain: 0.5,
+    tick: 0.08,
+    gain: 0.39,
   },
   // Its mirror, from the same place on the board: same brightness, same
   // length, opposite direction. Hearing which of the two it was is this
@@ -330,11 +347,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 1.1,
     sweep: 0.66,
     lowpassHz: 2600,
-    body: 0.14,
+    body: 0.1,
     grainHz: 68,
     grain: 0.36,
-    tick: 0.08,
-    gain: 0.48,
+    tick: 0.06,
+    gain: 0.31,
   },
   // The board is back.
   connect: {
@@ -344,11 +361,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 1,
     sweep: 1.4,
     lowpassHz: 2400,
-    body: 0.22,
+    body: 0.16,
     grainHz: 52,
     grain: 0.4,
-    tick: 0.11,
-    gain: 0.66,
+    tick: 0.09,
+    gain: 0.46,
   },
   // Deliberately not a chalk stroke: an eraser sweep. The widest, dullest,
   // longest thing in the pack, and the only one that falls hard. Losing
@@ -361,11 +378,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 0.5,
     sweep: 0.55,
     lowpassHz: 1500,
-    body: 0.38,
+    body: 0.27,
     grainHz: 26,
     grain: 0.5,
     tick: 0,
-    gain: 0.66,
+    gain: 0.41,
   },
   // Barely there. You asked for confirmation, not for an announcement.
   send_confirm: {
@@ -375,11 +392,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 1.2,
     sweep: 1.3,
     lowpassHz: 2900,
-    body: 0.09,
+    body: 0.06,
     grainHz: 80,
     grain: 0.28,
-    tick: 0.07,
-    gain: 0.36,
+    tick: 0.06,
+    gain: 0.32,
   },
   // Dark and heavy -- chalk dragged hard, low on the board, falling away.
   // The darkest thing in the pack, and still warm: an error is not a
@@ -391,11 +408,11 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     q: 0.85,
     sweep: 0.6,
     lowpassHz: 1250,
-    body: 0.36,
+    body: 0.26,
     grainHz: 30,
     grain: 0.5,
-    tick: 0.14,
-    gain: 0.75,
+    tick: 0.11,
+    gain: 0.35,
   },
 };
 
@@ -406,9 +423,15 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
 // frequency, so a flat source under one of these wide bands piles up at
 // the top of the passband and reads thin and hissy. Kellett's economy
 // filter -- six one-poles summed, the standard cheap approximation, and
-// well inside what a 100 ms stroke can show. Normalized rather than
-// scaled by a magic constant, since the filter's peak depends on the
-// random draw.
+// well inside what a 100 ms stroke can show.
+//
+// Normalized to WHITE_RMS, not to a peak of 1. Pink is much peakier than
+// white, so peak-normalizing throws away a third of the level -- and the
+// buffer is not the output: every stroke that reads it is scaled by a
+// gain below 1 and then narrowed by a bandpass, which leaves the actual
+// output an order of magnitude below clipping. Matching the energy of the
+// white source this replaced is what keeps the change to a change of
+// *colour* rather than a change of volume.
 function makeNoiseBuffer(ctx: AudioContext): AudioBuffer {
   const frames = Math.floor(ctx.sampleRate);
   const buf = ctx.createBuffer(1, frames, ctx.sampleRate);
@@ -420,7 +443,7 @@ function makeNoiseBuffer(ctx: AudioContext): AudioBuffer {
   let b4 = 0;
   let b5 = 0;
   let b6 = 0;
-  let peak = 0;
+  let sum = 0;
   for (let i = 0; i < frames; i++) {
     const w = Math.random() * 2 - 1;
     b0 = 0.99886 * b0 + w * 0.0555179;
@@ -432,9 +455,13 @@ function makeNoiseBuffer(ctx: AudioContext): AudioBuffer {
     const pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362;
     b6 = w * 0.115926;
     data[i] = pink;
-    if (Math.abs(pink) > peak) peak = Math.abs(pink);
+    sum += pink * pink;
   }
-  if (peak > 0) for (let i = 0; i < frames; i++) data[i] /= peak;
+  const rms = Math.sqrt(sum / frames);
+  if (rms > 0) {
+    const k = WHITE_RMS / rms;
+    for (let i = 0; i < frames; i++) data[i] *= k;
+  }
   return buf;
 }
 

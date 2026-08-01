@@ -165,7 +165,7 @@
         const frames = Math.floor(ctx.sampleRate);
         const buf = ctx.createBuffer(1, frames, ctx.sampleRate);
         const d = buf.getChannelData(0);
-        let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, peak = 0;
+        let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, sum = 0;
         for (let i = 0; i < frames; i++) {
           const w = Math.random() * 2 - 1;
           if (!pink) { d[i] = w; continue; }
@@ -178,9 +178,13 @@
           const v = b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362;
           b6 = w * 0.115926;
           d[i] = v;
-          if (Math.abs(v) > peak) peak = Math.abs(v);
+          sum += v * v;
         }
-        if (pink && peak > 0) for (let i = 0; i < frames; i++) d[i] /= peak;
+        // Matched to white's RMS, not peak-normalized — see makeNoiseBuffer.
+        if (pink && sum > 0) {
+          const k = PACK.WHITE_RMS / Math.sqrt(sum / frames);
+          for (let i = 0; i < frames; i++) d[i] *= k;
+        }
         return buf;
       }
 

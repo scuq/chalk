@@ -44,7 +44,7 @@ const mod = (name) => pathToFileURL(join(NOTIFY, name)).pathname;
 writeFileSync(
   entry,
   [
-    `export { SOUND_SPECS, ATTACK_MS, RELEASE_MS, MAX_Q, HIGHPASS_HZ, SCREECH_FLOOR_HZ, TICK_MS, GRAIN_REF_HZ, MIN_SLIPS_PER_STROKE } from ${JSON.stringify(mod("synth.ts"))};`,
+    `export { SOUND_SPECS, ATTACK_MS, RELEASE_MS, MAX_Q, HIGHPASS_HZ, SCREECH_FLOOR_HZ, TICK_MS, GRAIN_REF_HZ, MIN_SLIPS_PER_STROKE, WHITE_RMS } from ${JSON.stringify(mod("synth.ts"))};`,
     `export { SOUND_CATEGORIES, MACHINE_CATEGORIES, CALL_CATEGORIES, CATEGORY_LABELS } from ${JSON.stringify(mod("types.ts"))};`,
     `export { NOTIFY_EVENT_TYPES } from ${JSON.stringify(mod("rules.ts"))};`,
   ].join("\n"),
@@ -75,6 +75,7 @@ const pack = {
   TICK_MS: p.TICK_MS,
   GRAIN_REF_HZ: p.GRAIN_REF_HZ,
   MIN_SLIPS_PER_STROKE: p.MIN_SLIPS_PER_STROKE,
+  WHITE_RMS: p.WHITE_RMS,
   // The page's layout, matching how the settings UI groups the same sounds.
   groups: [
     { title: "notification events — routed by the rules engine", categories: p.NOTIFY_EVENT_TYPES },
