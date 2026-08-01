@@ -12,6 +12,13 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- Long web addresses in messages now show as a compact `[link to
+  example.com]` label instead of filling the line with tracking gibberish.
+  The link still opens the full address, hovering shows it, and right-click →
+  "copy link address" still copies the real URL. Prefer raw URLs? Switch it
+  off under profile → chat.
+
 ### Fixed
 - On iPhones, swiping back to the conversation list did nothing when the
   swipe started on a picture: the browser began dragging the picture

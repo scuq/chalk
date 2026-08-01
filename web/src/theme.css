@@ -5406,6 +5406,15 @@ body.chalk-resizing .chalk-sidebar-resizer {
   outline: 1px solid var(--chalk-fg-bright);
   outline-offset: 1px;
 }
+/* 67-1: a long URL collapsed to a "link to <host>" label. Brackets mark it
+   as chrome, not typed text; pseudo-elements so selecting the line never
+   copies them. */
+.chalk-body-link--label::before {
+  content: "[";
+}
+.chalk-body-link--label::after {
+  content: "]";
+}
 
 /* Live occupant sublist under a voice channel. Indented past the glyph
    column so names align with the channel name above. */
