@@ -58,7 +58,9 @@ function trimTrailing(raw: string): string {
  *  rejects the malformed leftovers it can still match ("https://", a URL
  *  with no host). The raw text becomes the href rather than URL.href, so
  *  what the user clicks is exactly what they see -- no silent normalising
- *  of a link someone is reading off the screen. */
+ *  of a link someone is reading off the screen. (The renderer may swap the
+ *  visible text for a "link to <host>" label; the href and hover title
+ *  always keep the raw text.) */
 export function linkHref(raw: string): string | null {
   try {
     const u = new URL(raw);
@@ -67,6 +69,29 @@ export function linkHref(raw: string): string | null {
     return raw;
   } catch {
     return null;
+  }
+}
+
+// Anchor text longer than this renders as a "link to <host>" label.
+// 72 chars: a full line; anything longer is already wrapping.
+export const LINK_LABEL_THRESHOLD = 72;
+
+/** Display text for a link anchor: the raw text when short enough, else
+ *  "link to <host>". Display-only -- the href and hover title keep the full
+ *  URL, and the native right-click menu still copies the real address.
+ *
+ *  The host is URL.hostname as-is: punycode stays punycode (the homograph-
+ *  safe reading), userinfo tricks like "https://good.example@evil.example/"
+ *  label the real host, and ports drop. Only a leading "www." is cosmetic
+ *  enough to strip. */
+export function linkDisplayText(text: string): string {
+  if (text.length <= LINK_LABEL_THRESHOLD) return text;
+  try {
+    let host = new URL(text).hostname;
+    if (host.startsWith("www.")) host = host.slice(4);
+    return `link to ${host}`;
+  } catch {
+    return text;
   }
 }
 

@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { findLinks, linkHref, splitBodyParts } from "./links.ts";
+import {
+  findLinks,
+  linkDisplayText,
+  linkHref,
+  LINK_LABEL_THRESHOLD,
+  splitBodyParts,
+} from "./links.ts";
 
 const known = new Set(["alice", "bob"]);
 
@@ -115,6 +121,49 @@ test("a body that is only a link is one part", () => {
   const parts = splitBodyParts("https://example.com", known);
   assert.equal(parts.length, 1);
   assert.equal(parts[0].href, "https://example.com");
+});
+
+// A URL padded to just over the label threshold.
+const long = (base: string) => base + "x".repeat(LINK_LABEL_THRESHOLD + 1 - base.length);
+
+test("linkDisplayText leaves short urls and non-urls alone", () => {
+  assert.equal(linkDisplayText("https://example.com/docs"), "https://example.com/docs");
+  assert.equal(linkDisplayText(""), "");
+});
+
+test("linkDisplayText labels only past the threshold", () => {
+  const base = "https://example.com/";
+  const atLimit = base + "x".repeat(LINK_LABEL_THRESHOLD - base.length);
+  assert.equal(atLimit.length, LINK_LABEL_THRESHOLD);
+  assert.equal(linkDisplayText(atLimit), atLimit);
+  assert.equal(linkDisplayText(atLimit + "x"), "link to example.com");
+});
+
+test("linkDisplayText strips a leading www. and only that", () => {
+  assert.equal(linkDisplayText(long("https://www.amazon.de/dp/")), "link to amazon.de");
+  assert.equal(linkDisplayText(long("https://wwwx.example/")), "link to wwwx.example");
+});
+
+test("linkDisplayText keeps punycode hosts as-is", () => {
+  // Showing the punycode form is deliberate: no homograph prettifying.
+  assert.equal(linkDisplayText(long("https://xn--mnchen-3ya.de/")), "link to xn--mnchen-3ya.de");
+});
+
+test("linkDisplayText drops the port", () => {
+  assert.equal(linkDisplayText(long("https://example.com:8443/")), "link to example.com");
+});
+
+test("linkDisplayText labels the real host, not spoofed userinfo", () => {
+  assert.equal(linkDisplayText(long("https://amazon.de@evil.example/")), "link to evil.example");
+});
+
+test("linkDisplayText handles an ip host", () => {
+  assert.equal(linkDisplayText(long("http://192.168.0.1/")), "link to 192.168.0.1");
+});
+
+test("linkDisplayText returns unparseable input unchanged", () => {
+  const junk = "x".repeat(LINK_LABEL_THRESHOLD + 10);
+  assert.equal(linkDisplayText(junk), junk);
 });
 
 test("splitBodyParts falls back to plain mention splitting with no links", () => {

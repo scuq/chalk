@@ -356,6 +356,9 @@ export interface ChatPrefs {
   // this client neither sends pings nor renders anyone else's, so you can't
   // watch without being watched.
   typingIndicators?: boolean;
+  // 67-1: render long pasted URLs as a "[link to host]" label. Default ON.
+  // Display-only -- the href underneath is always the full raw URL.
+  shortenLinks?: boolean;
 }
 
 // 53-1: the parking lot's own settings. Account-synced rather than
@@ -482,6 +485,8 @@ export interface ResolvedChatPrefs {
   sidebarWidth: number;
   // 43-4: defaulted to true.
   typingIndicators: boolean;
+  // 67-1: defaulted to true.
+  shortenLinks: boolean;
 }
 
 // selectChatPrefs takes the (possibly sparse) prefs.chat and fills in
@@ -509,6 +514,7 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
         ? SIDEBAR_WIDTH_DEFAULT
         : clampSidebarWidth(c.sidebarWidth),
     typingIndicators: c.typingIndicators ?? true,
+    shortenLinks: c.shortenLinks ?? true,
   };
 }
 

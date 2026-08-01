@@ -104,6 +104,8 @@ interface Props {
     sidebarWidth: number;
     // 43-8:
     typingIndicators: boolean;
+    // 67-1:
+    shortenLinks: boolean;
   };
   onSetChatPref?: <
     K extends
@@ -115,7 +117,8 @@ interface Props {
       | "composerToolStyle"
       | "emoticons"
       | "sidebarWidth"
-      | "typingIndicators",
+      | "typingIndicators"
+      | "shortenLinks",
   >(
     key: K,
     value: K extends "timestampFormat"
@@ -760,6 +763,28 @@ export function ProfilePanel({
                 <p class="chalk-profile-hint">
                   works both ways: turn it off and you stop seeing "alice is
                   typing...", and nobody sees it about you either.
+                </p>
+              </div>
+              {/* 67-1: long URLs collapse to a host label. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={chatPrefs.shortenLinks}
+                    onChange={(e) =>
+                      onSetChatPref(
+                        "shortenLinks",
+                        (e.target as HTMLInputElement).checked,
+                      )
+                    }
+                    data-testid="chat-shorten-links"
+                  />
+                  <span>shorten long links</span>
+                </label>
+                <p class="chalk-profile-hint">
+                  a very long url shows as [link to example.com] instead of
+                  the full address. hovering shows the real target, and
+                  right-click still copies the full link.
                 </p>
               </div>
               {onSetUserColors && (

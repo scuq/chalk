@@ -10,7 +10,7 @@ import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
 import { decideLinkPreviewRender } from "../linkpreview/linkpreview";
 import { DEFAULT_SELF_HUE, nickTintStyle, resolveNickHue } from "../chat/nickcolor";
-import { splitBodyParts } from "../chat/links";
+import { linkDisplayText, splitBodyParts } from "../chat/links";
 import { fmtRelative } from "../chat/reltime";
 import { lazyComponent } from "./LazyComponent";
 // Lazy: Giphy render path is opt-in; keep it out of the initial bundle.
@@ -31,21 +31,27 @@ function MessageBody({
   body,
   known,
   ownHandle,
+  shortenLinks,
 }: {
   body: string;
   known: Set<string>;
   ownHandle?: string | null;
+  shortenLinks?: boolean;
 }) {
   const segments = splitBodyParts(body, known);
   if (segments.length === 1 && !segments[0].handle && !segments[0].href) return <>{body}</>;
   const me = ownHandle ? ownHandle.toLowerCase() : null;
   return (
     <>
-      {segments.map((seg, i) =>
-        seg.href ? (
+      {segments.map((seg, i) => {
+        // 67-1: a long URL's visible text collapses to "link to <host>";
+        // href and title keep the full address, so hover and the native
+        // "copy link address" stay honest.
+        const label = shortenLinks && seg.href ? linkDisplayText(seg.text) : seg.text;
+        return seg.href ? (
           <a
             key={i}
-            class="chalk-body-link"
+            class={"chalk-body-link" + (label !== seg.text ? " chalk-body-link--label" : "")}
             href={seg.href}
             target="_blank"
             // noopener is what matters: the destination is a page someone
@@ -57,7 +63,7 @@ function MessageBody({
             title={seg.href}
             data-testid="body-link"
           >
-            {seg.text}
+            {label}
           </a>
         ) : seg.handle ? (
           <span
@@ -70,8 +76,8 @@ function MessageBody({
           </span>
         ) : (
           seg.text
-        )
-      )}
+        );
+      })}
     </>
   );
 }
@@ -183,6 +189,8 @@ interface Props {
     userColorsEnabled: boolean;
     selfColorHue: number;
     userHues: Record<string, number>;
+    // 67-1: long URLs render as "[link to host]" labels.
+    shortenLinks: boolean;
   };
   // Phase 9.7e: is the active channel a DM? Used to filter scoped color rules.
   isDM?: boolean;
@@ -616,6 +624,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     userColorsEnabled: true,
     selfColorHue: DEFAULT_SELF_HUE,
     userHues: {} as Record<string, number>,
+    shortenLinks: true,
   };
   const now = new Date();
 
@@ -923,6 +932,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                   body={displayBody}
                   known={knownHandles}
                   ownHandle={ownHandle}
+                  shortenLinks={display_.shortenLinks}
                 />
               )}
               {/* 37-3: only one version of a message is ever stored, so
