@@ -28,6 +28,7 @@ import { titleController } from "../notify/title";
 import { actionsFor, resolvePriority, type RulesConfig } from "../notify/rules";
 import { loadRulesConfig, subscribeRulesConfig } from "../notify/rules-store";
 import { RulesSync } from "../notify/rules-sync";
+import { PeerAudioSync } from "../voice/peer-audio-sync"; // 66-3
 import { loadSoundPrefs, subscribeSoundPrefs } from "../notify/prefs";
 import {
   channelEventNotifies,
@@ -756,6 +757,47 @@ export function App() {
     if (!rulesSyncReady || !state.prefsLoaded) return;
     void rulesSyncRef.current?.applyRemote(state.prefs.notify_rules_enc);
   }, [rulesSyncReady, state.prefsLoaded, state.prefs.notify_rules_enc]);
+
+  // 66-3: the same two effects for the per-peer "mute for me" list. Separate
+  // instances rather than one combined sync: two independent blobs under two
+  // independent keys, so a corrupt one cannot take the other down with it.
+  const peerAudioSyncRef = useRef<PeerAudioSync | null>(null);
+  const [peerAudioSyncReady, setPeerAudioSyncReady] = useState(false);
+  useEffect(() => {
+    if (!ccReady) return;
+    const uid = state.user?.id;
+    if (!uid || peerAudioSyncRef.current) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const id = await loadIdentity(uid);
+        if (!id || cancelled) return;
+        const sync = new PeerAudioSync();
+        await sync.start(id.x25519Private, {
+          send: (patch) => {
+            const c = clientRef.current;
+            if (c && c.isOpen()) c.send(TypePrefsSet, { patch });
+          },
+        });
+        if (cancelled) {
+          sync.stop();
+          return;
+        }
+        peerAudioSyncRef.current = sync;
+        setPeerAudioSyncReady(true);
+      } catch (err) {
+        console.error("peer-audio-sync: start failed:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ccReady, state.user?.id]);
+
+  useEffect(() => {
+    if (!peerAudioSyncReady || !state.prefsLoaded) return;
+    void peerAudioSyncRef.current?.applyRemote(state.prefs.voice_peer_audio_enc);
+  }, [peerAudioSyncReady, state.prefsLoaded, state.prefs.voice_peer_audio_enc]);
 
   // Phase 23d: ensure we hold a channel's key -- fetch+unwrap, or
   // creator-bootstrap a keyless channel, then auto-rewrap for members who lack

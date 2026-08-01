@@ -29,28 +29,26 @@ import { VoiceCall, type VoiceDiagnostics, type ScreenShareMode } from "./call";
 import { subscribeMicPrefs } from "./mic-prefs";
 import { subscribeNetPrefs } from "./net-prefs";
 import { subscribeDevicePrefs } from "./device-prefs";
+import {
+  isDefaultPeerAudioPref,
+  loadPeerAudioStore,
+  normalizePeerAudioPref,
+  savePeerAudioStore,
+  subscribePeerAudioStore,
+  type PeerAudioPref,
+  type PeerAudioStore,
+} from "./peer-audio-store";
 export type { ScreenShareMode } from "./call";
 
 // ---- per-peer local audio prefs (Addendum A: A1 + the element-volume
 // ---- subset of A4) ---------------------------------------------------------
 //
-// Receive-side only: local mute and 0..1 volume applied to OUR playback of a
-// peer. Never touches the wire -- the peer's uplink and everyone else's ears
-// are unchanged, and nothing is broadcast (unlike self-mute, which rides
-// voice_state for the roster). Persisted per CHANNEL per USER in
-// localStorage (design A1: the driving case is "my partner sits beside me
-// in this room" -- a room-scoped preference that must survive rejoins).
-// Volume above 100% (boost) needs the Web Audio gain graph -- that is the
-// vv-5 audio-engine slice, not this one.
+// The store itself is ./peer-audio-store (66-3, where the reasoning lives);
+// what stays here is the live snapshot for the room we are in. Volume above
+// 100% (boost) needs the Web Audio gain graph -- that is the vv-5 audio-engine
+// slice, not this one.
 
-export interface PeerAudioPref {
-  /** Local mute (A1). Independent of volume so unmute restores the level. */
-  muted: boolean;
-  /** Playback volume 0..1 (A4 subset; HTMLMediaElement.volume ceiling). */
-  volume: number;
-}
-
-const PEER_AUDIO_LS_KEY = "chalk-voice-peer-audio";
+export type { PeerAudioPref } from "./peer-audio-store";
 
 // ---- refresh rejoin (30-5h) -------------------------------------------------
 //
@@ -163,35 +161,6 @@ function saveGlobalVoice(g: GlobalVoiceState): void {
   } catch {
     /* quota/private-mode: the state holds for this session only */
   }
-}
-
-type PeerAudioStore = Record<string, Record<string, PeerAudioPref>>; // channel -> user -> pref
-
-function loadPeerAudioStore(): PeerAudioStore {
-  try {
-    const raw = localStorage.getItem(PEER_AUDIO_LS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as PeerAudioStore;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function savePeerAudioStore(s: PeerAudioStore): void {
-  try {
-    localStorage.setItem(PEER_AUDIO_LS_KEY, JSON.stringify(s));
-  } catch {
-    /* quota/private-mode: prefs simply won't persist */
-  }
-}
-
-function normalizePref(p: Partial<PeerAudioPref> | undefined): PeerAudioPref {
-  const vol = typeof p?.volume === "number" ? p.volume : 1;
-  return {
-    muted: !!p?.muted,
-    volume: Math.min(1, Math.max(0, vol)),
-  };
 }
 
 export interface SessionRemoteTile {
@@ -308,6 +277,21 @@ class VoiceSessionImpl {
     // 44-2: the footer cluster shows this while idle, and join() joins into it.
     this.global = loadGlobalVoice();
     this.s = { ...this.s, ...this.global };
+    // 66-3: the per-peer list can now change under us -- another tab, or this
+    // account's other machine via the sync. Re-read the room we are in so the
+    // dock's sliders and the sinks follow it mid-call.
+    subscribePeerAudioStore((store) => this.adoptPeerAudio(store));
+  }
+
+  /** Fold the stored list for the current room into the snapshot. Skipped when
+   * nothing changed: our own edits come back through this listener, and a new
+   * object every time would re-render every tile for no reason. */
+  private adoptPeerAudio(store: PeerAudioStore): void {
+    const cid = this.s.channelID;
+    if (cid === null) return;
+    const room = store[cid] ?? {};
+    if (JSON.stringify(room) === JSON.stringify(this.s.peerAudio)) return;
+    this.set({ peerAudio: room });
   }
 
   // ---- store surface -------------------------------------------------------
@@ -387,7 +371,7 @@ class VoiceSessionImpl {
       peerAudio: Object.fromEntries(
         Object.entries(loadPeerAudioStore()[a.channelID] ?? {}).map(([u, p]) => [
           u,
-          normalizePref(p),
+          normalizePeerAudioPref(p),
         ]),
       ),
     });
@@ -781,7 +765,7 @@ class VoiceSessionImpl {
   // ---- per-peer local audio (A1 + A4 subset) -------------------------------
 
   peerAudioFor(userID: string): PeerAudioPref {
-    return normalizePref(this.s.peerAudio[userID]);
+    return normalizePeerAudioPref(this.s.peerAudio[userID]);
   }
 
   /** A1: locally silence one participant. Persisted per channel. */
@@ -802,12 +786,12 @@ class VoiceSessionImpl {
     fn: (p: PeerAudioPref) => PeerAudioPref,
   ): void {
     const cid = this.s.channelID;
-    const next = fn(normalizePref(this.s.peerAudio[userID]));
+    const next = fn(normalizePeerAudioPref(this.s.peerAudio[userID]));
     this.set({ peerAudio: { ...this.s.peerAudio, [userID]: next } });
     if (cid !== null) {
       const store = loadPeerAudioStore();
       const room = { ...(store[cid] ?? {}) };
-      if (!next.muted && next.volume === 1) {
+      if (isDefaultPeerAudioPref(next)) {
         // Defaults need no row -- keep the store tidy.
         delete room[userID];
       } else {

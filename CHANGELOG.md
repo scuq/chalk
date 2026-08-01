@@ -19,6 +19,12 @@ The engineering-level history (which slice shipped what) lives in
   machine, a private window or a cleared profile all behave the same way. On
   a machine you have already used, the mute button stays in charge —
   whatever you last set it to is what you join with, as before.
+- "Mute for me" and the per-person volume sliders in a voice room now
+  follow your account instead of living on one browser. Silence someone on
+  the laptop and they stay silenced on the desktop, on a new device, and
+  after a reinstall — and a change made in one place reaches a call already
+  running elsewhere. The list is encrypted on your device before it is
+  stored, so the server never learns who you have silenced.
 
 ### Fixed
 - Joining a voice room with your camera switched off still opened the

@@ -395,6 +395,10 @@ export interface UserPrefs {
   // 50-6: the notification rules blob -- AES-256-GCM ciphertext, base64.
   // The server never sees inside it; see notify/rules-sync.ts.
   notify_rules_enc?: string;
+  // 66-3: the per-peer "mute for me" list, sealed the same way and for the
+  // same reason -- it names who you silenced, and where. See
+  // voice/peer-audio-sync.ts.
+  voice_peer_audio_enc?: string;
   // 53-1: the parking lot's title + whether its row shows.
   parkingLot?: ParkingLotPrefs;
   // 54-3: roster display prefs (channel grouping).
