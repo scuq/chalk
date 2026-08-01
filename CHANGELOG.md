@@ -10,6 +10,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- Scrollbars now follow the active theme — a slim green thumb on a
+  transparent track instead of the browser's grey bar — and the message pane
+  keeps a small lane for it, so it no longer sits flush against the text or
+  crowds the search button in the channel bar.
+
 ## v0.5.6 — 1 August 2026 — Steady settings and a pinned channel bar
 
 ### Changed

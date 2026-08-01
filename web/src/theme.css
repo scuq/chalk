@@ -134,6 +134,17 @@ html, body {
   color: var(--chalk-bg);
 }
 
+/* Scrollbars. Both properties inherit, so this one rule themes every
+   scroller in the app and follows whichever theme is active. The track is
+   transparent on purpose: a platform-grey strip down the edge of the feed
+   was the one piece of chrome that never matched the terminal look, and
+   with only a thumb showing the bar also stops crowding the widgets pinned
+   to the right of a pane (the channel header's search button). */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--chalk-fg-muted) transparent;
+}
+
 /* The no-JavaScript notice. Lives here rather than in a style attribute on
    index.html because style-src is strict; hardcoded rather than themed
    because the themes are applied by the script that did not run. */
@@ -227,7 +238,11 @@ html, body {
   /* 30-5j: allow the grid item to shrink below its content height so the
      message list scrolls and the footer composer stays on-screen. */
   min-height: 0;
-  padding: var(--chalk-s4) 0;
+  /* The right padding is the scrollbar's lane: the pane is the app's tallest
+     scroller, so without it the thumb sits flush against the feed and against
+     the search button in the pinned header. Mobile drops it again -- touch
+     scrollbars are overlays that fade out. */
+  padding: var(--chalk-s4) var(--chalk-s2) var(--chalk-s4) 0;
 }
 
 /* 44-1: the footer carries the two-column alignment the composer used to do
