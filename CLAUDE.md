@@ -73,12 +73,25 @@ node build.mjs
 # notification sounds (from the repo root)
 node tools/sound-bench.mjs         # regenerate + open tools/sound-bench.html
 
+# finding code (from the repo root)
+tools/where.sh -c parking          # which layers does a feature touch?
+tools/where.sh publish_channel_key # hits grouped by layer, with enclosing symbol
+
 # database (dev)
 sudo docker exec -i chalk-dev-pg psql -U chalk -d chalk
 ```
 
 Run the full verify chain (build, vet, tests, tsc, client tests, bundle)
 before declaring any change done.
+
+Start feature work and bug hunts with `tools/where.sh`, not a bare grep.
+chalk's features cut vertically — schema → wire frame → ws handler → store →
+client proto → reducer → component — and the script runs that sweep in one
+pass, groups the hits in that order, and tags each one with its enclosing
+`func`/`const`/`case`. `-c` gives the layer map alone, which is usually enough
+to tell whether a bug is server-side or client-side before opening anything.
+It is a locator, not an index: it shells out to ripgrep every time (the whole
+repo greps in ~6 ms), so it can never go stale.
 
 ## Working agreements
 
