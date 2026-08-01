@@ -23,6 +23,11 @@ The engineering-level history (which slice shipped what) lives in
   keeps a small lane for it, so it no longer sits flush against the text or
   crowds the search button in the channel bar.
 
+### Fixed
+- The composer's keyboard shortcut sheet no longer renders as a narrow
+  column with every description broken across several lines in Safari on
+  desktop.
+
 ## v0.5.6 — 1 August 2026 — Steady settings and a pinned channel bar
 
 ### Changed
