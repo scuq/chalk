@@ -168,7 +168,9 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   `docs/PHASE-55-HISTORY.md`), composer @mention autocomplete (56-1), link
   previews (57, plan in `docs/PHASE-57-LINKPREVIEW.md`: sender-built,
   E2E-embedded, opt-in, SSRF-guarded server fetcher).
-- Next candidates, none started: the SFU seam (voice design Slice I) for
+- Next candidates, none started: web push notifications (phase 65, full
+  plan in `docs/PHASE-65-PUSH.md`: hand-rolled `internal/webpush`, DMs-only
+  default, content-free payloads); the SFU seam (voice design Slice I) for
   rooms too large for a mesh; governance `set_config` proposals.
 - Deferred cleanup, all verified still open:
   - `RegisterFromInviteScreen` still registers passkey-first
