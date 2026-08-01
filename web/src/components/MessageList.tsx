@@ -434,8 +434,20 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     const el = rootRef.current;
     if (ephemeral || !el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
-      if (anchorRef.current === null) return;
-      scrollToAnchor(anchorRef.current, dividerRef.current, endRef.current);
+      if (anchorRef.current !== null) {
+        scrollToAnchor(anchorRef.current, dividerRef.current, endRef.current);
+        return;
+      }
+      // 64-7: anchor released (the user touched) but the reader is still at
+      // the bottom. WebKit has no scroll anchoring, so rows above the
+      // viewport growing late -- an attachment meta decrypting into its
+      // sized image box, a giphy embed materializing -- push the newest
+      // messages away WITHOUT firing a scroll event; pinnedRef therefore
+      // still honestly says "following the feed", and following means
+      // staying at the end through that growth.
+      if (pinnedRef.current) {
+        scrollToAnchor("end", dividerRef.current, endRef.current);
+      }
     });
     ro.observe(el);
     return () => ro.disconnect();

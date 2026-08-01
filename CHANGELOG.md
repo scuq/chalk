@@ -10,6 +10,25 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- The swipe-right gesture back to the conversation list couldn't be
+  triggered when the swipe started near the right edge of the screen: it
+  demanded more travel than the remaining screen width allowed, so the
+  finger ran off the glass first. The required distance now shrinks to fit
+  the room the finger actually has (with a floor, so a tap that wobbles
+  sideways still never navigates).
+- In conversations with images, the view could end up stuck above the
+  newest messages and scrolling down never quite reached them: pictures
+  finishing their decryption above the view silently pushed the feed down
+  under the reader. When you're at the bottom of a conversation, the view
+  now stays on the newest message through that late growth.
+- On the phone conversation list, messages arriving in the conversation you
+  last had open were silently marked read — no unread badge on its row, and
+  no "new messages" divider when you went back in. They now stay unread
+  until you actually open the conversation.
+
 ## v0.5.2 — 1 August 2026 — The back swipe that works
 
 ### Changed

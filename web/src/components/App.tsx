@@ -3485,11 +3485,12 @@ export function App() {
   //
   // Either opens the existing DM with this friend, or creates one
   // on the fly. The reducer's dm_pending_set + channel_added wiring
-  // takes care of auto-activating the channel once it lands. Returns
-  // whether a DM was activated synchronously (64-1: the Zuckermode friends
-  // list flips to the chat screen right away in that case; the pending
-  // path flips via the dm_pending effect once the channel lands).
-  const handleFriendClickInRoster = (friendUserID: string): boolean => {
+  // takes care of auto-activating the channel once it lands. Returns the
+  // channel id when a DM was activated synchronously, null otherwise (64-1:
+  // the Zuckermode friends list flips to the chat screen right away in that
+  // case; the pending path flips via the dm_pending effect once the channel
+  // lands).
+  const handleFriendClickInRoster = (friendUserID: string): string | null => {
     // 1. Existing DM? Activate it directly.
     const ownID = state.user?.id ?? state.me?.userID ?? null;
     if (ownID) {
@@ -3500,7 +3501,7 @@ export function App() {
         const otherID = ch.memberIDs.find((m) => m !== ownID);
         if (otherID === friendUserID) {
           dispatch({ kind: "set_active_channel", channelID: ch.id });
-          return true;
+          return ch.id;
         }
       }
     }
@@ -3514,14 +3515,14 @@ export function App() {
     // channels to render as "@handle" from the members list), so
     // we just need something stable and non-empty.
     const c = clientRef.current;
-    if (!c || !c.isOpen()) return false;
+    if (!c || !c.isOpen()) return null;
     const friend = state.friends.find((f) => f.userID === friendUserID);
     const dmName = friend && friend.handle
       ? "dm-" + friend.handle
       : "dm-" + friendUserID.slice(-8);
     dispatch({ kind: "dm_pending_set", userID: friendUserID });
     onCreateChannel(dmName, true, [friendUserID], false);
-    return false;
+    return null;
   };
 
   // ---- Phase 09d-2d: backfill `me` after URL-driven registration ---
@@ -3854,9 +3855,14 @@ export function App() {
   // keeps this device's view identical to what the others are told.
   // 53-1: parked is the same argument as a hidden tab -- the channel is still
   // the active one, but nobody is reading it, so its dot stays.
+  // 64-8: so is Zuckermode's list screen. The last-open channel stays active
+  // underneath it, and without this gate every message that arrived while
+  // the user sat on the list was silently marked read -- no badge on its
+  // row, no divider on re-entry.
   useEffect(() => {
     const cid = state.activeChannelID;
     if (!cid || !tabVisible || state.parked) return;
+    if (zuckerActive && zuckerScreen === "list") return;
     const c = clientRef.current;
     if (!c || !c.isOpen()) return;
     const u = state.unread[cid];
@@ -3867,7 +3873,7 @@ export function App() {
     if ((markReadSentRef.current.get(cid) ?? 0) >= u.lastSeq) return;
     markReadSentRef.current.set(cid, u.lastSeq);
     c.send<MarkReadPayload>(TypeMarkRead, { channel_id: cid, seq: u.lastSeq });
-  }, [state.activeChannelID, state.unread, state.wsState, tabVisible, state.parked]);
+  }, [state.activeChannelID, state.unread, state.wsState, tabVisible, state.parked, zuckerActive, zuckerScreen]);
 
   // 42-4: looking at a THREAD marks it read, durably. Same discipline as the
   // channel effect above: gated on tab visibility so a background tab can't
@@ -4568,7 +4574,7 @@ export function App() {
             zuckerSwipeRef.current = null;
             return;
           }
-          if (!swipeTriggered(start, t.clientX, t.clientY)) return;
+          if (!swipeTriggered(start, t.clientX, t.clientY, window.innerWidth)) return;
           zuckerSwipeRef.current = null;
           // Same exit as the parked screen's back button: un-park so the
           // state doesn't linger invisibly behind the list.
@@ -4595,13 +4601,23 @@ export function App() {
             threadsUnread={threadsNeedingYou}
             onSelect={(id) => {
               dispatch({ kind: "set_active_channel", channelID: id });
+              // 64-8: re-entering the channel that is still active is a
+              // reducer no-op, so the frozen unread window would predate
+              // everything that accrued on the list screen. Re-freeze it so
+              // the divider reflects what is actually unread now.
+              dispatch({ kind: "unread_mark_refresh", channelID: id });
               setZuckerScreen("chat");
             }}
             onFriendSelect={(userID) => {
               // An existing DM activates synchronously -- flip to it now. A
               // freshly created one flips via the dm_pending effect above
               // once the channel lands.
-              if (handleFriendClickInRoster(userID)) setZuckerScreen("chat");
+              const dmID = handleFriendClickInRoster(userID);
+              if (dmID) {
+                // 64-8: same re-freeze as onSelect, same no-op reason.
+                dispatch({ kind: "unread_mark_refresh", channelID: dmID });
+                setZuckerScreen("chat");
+              }
             }}
             onPark={() => {
               dispatch({ kind: "set_parked", parked: true });

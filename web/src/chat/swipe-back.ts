@@ -15,16 +15,37 @@
 
 export const SWIPE_TRIGGER_PX = 64;
 export const SWIPE_CANCEL_PX = 32;
+// 64-6: a swipe starting near the right screen edge has less than
+// SWIPE_TRIGGER_PX of glass left to travel -- the finger runs off the
+// digitizer and the fixed threshold is unreachable, which made the gesture
+// dead in roughly the rightmost sixth of the screen. Scale the trigger to
+// the runway that actually exists, with a floor so an edge tap that wobbles
+// a few pixels can never navigate.
+export const SWIPE_TRIGGER_MIN_PX = 24;
+// Only this fraction of the runway must be covered: the last touchmove
+// arrives a little before the physical edge, so demanding the full runway
+// would keep the trigger unreachable in exactly the zone this exists for.
+const RUNWAY_FRACTION = 0.6;
 
 export interface SwipeStart {
   x: number;
   y: number;
 }
 
-export function swipeTriggered(start: SwipeStart, x: number, y: number): boolean {
+export function swipeTriggered(
+  start: SwipeStart,
+  x: number,
+  y: number,
+  viewportWidth: number,
+): boolean {
   const dx = x - start.x;
   const dy = Math.abs(y - start.y);
-  return dx >= SWIPE_TRIGGER_PX && dx >= dy * 2;
+  const runway = viewportWidth - start.x;
+  const trigger = Math.max(
+    SWIPE_TRIGGER_MIN_PX,
+    Math.min(SWIPE_TRIGGER_PX, runway * RUNWAY_FRACTION),
+  );
+  return dx >= trigger && dx >= dy * 2;
 }
 
 export function swipeCancelled(start: SwipeStart, x: number, y: number): boolean {
