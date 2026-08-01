@@ -1602,6 +1602,18 @@ body.chalk-resizing .chalk-sidebar-resizer {
   flex-direction: column;
 }
 
+/* 70-2: tabbed settings modals (profile, voice & video). A fixed height,
+   so switching tabs changes the content but never the frame — without it
+   the modal resizes to each tab's content and jumps around the centered
+   backdrop. The body soaks up the slack so short tabs keep the footer
+   pinned to the bottom. */
+.chalk-modal--settings {
+  height: min(42rem, 90vh);
+}
+.chalk-modal--settings .chalk-modal-body {
+  flex: 1 1 auto;
+}
+
 /* Sibling of .chalk-modal for panels that size themselves (friends,
    members, governance). It carries the SURFACE -- background, border,
    scroll containment -- and leaves width/height to the panel class.
@@ -2343,10 +2355,12 @@ body.chalk-resizing .chalk-sidebar-resizer {
 
 .chalk-profile-tabs {
   display: flex;
+  /* 70-2: wrap rather than scroll — a pill that has scrolled off the edge
+     is a section that doesn't exist, which is exactly wrong on a phone. */
+  flex-wrap: wrap;
   gap: var(--chalk-s2);
   padding: var(--chalk-s2) var(--chalk-s4);
   border-bottom: 1px solid var(--chalk-border);
-  overflow-x: auto;
   flex-shrink: 0;
 }
 
@@ -7932,6 +7946,12 @@ body.chalk-resizing .chalk-sidebar-resizer {
     max-height: 88dvh;
   }
 
+  /* 70-2: same steady frame as on desktop — the tabbed settings modals
+     fill the same box whichever tab is open. */
+  .chalk-modal--settings {
+    height: 88dvh;
+  }
+
   .chalk-modal-body {
     padding: var(--chalk-s3);
   }
@@ -7941,15 +7961,15 @@ body.chalk-resizing .chalk-sidebar-resizer {
     height: 32px;
   }
 
-  /* 68-2: the settings tab pills scroll sideways rather than wrap; five
-     of them roughly fit 360px at the tighter padding. */
+  /* 70-2: the tab pills wrap into rows (base rule) and grow to finger
+     size — every section reachable without a sideways scroll nobody
+     could see. */
   .chalk-profile-tabs {
     padding: var(--chalk-s2) var(--chalk-s3);
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
   }
-  .chalk-profile-tabs::-webkit-scrollbar {
-    display: none;
+  .chalk-profile-tab-btn {
+    padding: var(--chalk-s2) var(--chalk-s3);
+    min-height: 36px;
   }
   .chalk-profile-filter {
     padding: var(--chalk-s2) var(--chalk-s3) 0 var(--chalk-s3);

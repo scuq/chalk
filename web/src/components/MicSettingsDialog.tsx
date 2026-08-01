@@ -10,8 +10,8 @@
 // The level meter needs the user watching it, and it cannot compete for
 // attention with a theme picker.
 
-import { useEffect } from "preact/hooks";
-import { MicSettings } from "./MicSettings";
+import { useEffect, useState } from "preact/hooks";
+import { MIC_TABS, MicSettings, type MicTab } from "./MicSettings";
 import type { VoicePrefs } from "../state/types";
 
 interface Props {
@@ -23,6 +23,11 @@ interface Props {
 }
 
 export function MicSettingsDialog({ onClose, voicePrefs, onVoicePrefsChange }: Props) {
+  // 70-2: which tab is open. Audio first, because "nobody can hear me" is
+  // what this dialog is reached for mid-call. Ephemeral, like the profile
+  // panel's: the dialog unmounts on close, so it resets for free.
+  const [tab, setTab] = useState<MicTab>("audio");
+
   // Escape to close, like every other modal here. MicSettings' own key capture
   // stops propagation while rebinding, so this cannot steal that keystroke.
   useEffect(() => {
@@ -38,8 +43,10 @@ export function MicSettingsDialog({ onClose, voicePrefs, onVoicePrefsChange }: P
 
   return (
     <div class="chalk-modal-backdrop" onClick={onClose} data-testid="mic-settings-modal">
+      {/* 70-2: --settings pins the modal to one height so switching tabs
+          never resizes or re-centers it. */}
       <div
-        class="chalk-modal"
+        class="chalk-modal chalk-modal--settings"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-labelledby="mic-settings-title"
@@ -56,8 +63,28 @@ export function MicSettingsDialog({ onClose, voicePrefs, onVoicePrefsChange }: P
             ×
           </button>
         </header>
+        <nav
+          class="chalk-profile-tabs"
+          role="tablist"
+          aria-label="voice and video sections"
+          data-testid="mic-settings-tabs"
+        >
+          {MIC_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              class={`chalk-profile-tab-btn${tab === t.id ? " chalk-profile-tab-btn--active" : ""}`}
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              data-testid={`mic-tab-${t.id}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
         <div class="chalk-modal-body">
-          <MicSettings voicePrefs={voicePrefs} onVoicePrefsChange={onVoicePrefsChange} />
+          <MicSettings tab={tab} voicePrefs={voicePrefs} onVoicePrefsChange={onVoicePrefsChange} />
         </div>
       </div>
     </div>

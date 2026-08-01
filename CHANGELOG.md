@@ -16,8 +16,16 @@ The engineering-level history (which slice shipped what) lives in
 - The channel name bar now stays pinned to the top of the message pane on
   desktop while you scroll back, as it already did on phones — you always
   see which room you're reading, and the search button stays in reach.
+- The voice & video settings window is organized into tabs — audio, camera,
+  calls — instead of one long scroll.
 
 ### Fixed
+- The profile window changed size and jumped around as you clicked through
+  its tabs. Both it and the voice & video window now keep one steady frame
+  whichever tab is open.
+- On phones the profile window's tabs ran off the right edge and had to be
+  scrolled sideways to find. Tabs now wrap into rows, all visible, with
+  bigger touch targets.
 - On phones there was no visible version number and no way to reach the
   changelog — the version badge next to the logo only shows on wide screens.
   The profile window now carries the version at the bottom of every tab, and

@@ -595,14 +595,26 @@ function PreviewSurface({ stream }: { stream: MediaStream }) {
   );
 }
 
+// 70-2: the dialog grew the profile panel's tab treatment -- one long scroll
+// became three groups. The open tab lives in MicSettingsDialog so the nav can
+// sit pinned under the header, outside the scrolling body.
+export type MicTab = "audio" | "camera" | "calls";
+
+export const MIC_TABS: { id: MicTab; label: string }[] = [
+  { id: "audio", label: "audio" },
+  { id: "camera", label: "camera" },
+  { id: "calls", label: "calls" },
+];
+
 interface MicSettingsProps {
+  tab: MicTab;
   /** 66-1/66-5: account-wide, unlike everything else on this panel -- see the
    * checkboxes' own notes. */
   voicePrefs: VoicePrefs;
   onVoicePrefsChange: (patch: Partial<VoicePrefs>) => void;
 }
 
-export function MicSettings({ voicePrefs, onVoicePrefsChange }: MicSettingsProps) {
+export function MicSettings({ tab, voicePrefs, onVoicePrefsChange }: MicSettingsProps) {
   const [mic, setMic] = useMicPrefs();
   const [dev, setDev] = useDevicePrefs();
   const devices = useMediaDevices();
@@ -615,291 +627,302 @@ export function MicSettings({ voicePrefs, onVoicePrefsChange }: MicSettingsProps
 
   return (
     <section class="chalk-profile-microphone" data-testid="mic-settings">
-      <DeviceSelect
-        id="mic-device"
-        label="input device"
-        fallbackName="microphone"
-        devices={devices.audioinput}
-        // 63-3: a stale id (Brave re-randomizes them per session) shows as the
-        // device it re-resolves to by label -- the one a capture would open.
-        value={resolveDeviceId(mic.deviceId, mic.deviceLabel, devices.audioinput) || mic.deviceId}
-        // The label rides along so future sessions can re-resolve the id.
-        onChange={(deviceId) =>
-          setMic({
-            deviceId,
-            deviceLabel: devices.audioinput.find((d) => d.deviceId === deviceId)?.label ?? "",
-          })
-        }
-        testId="mic-device"
-        // The one picker that shows even with a single microphone: it is the
-        // first thing anyone looks for when nobody can hear them, and a browser
-        // that has not been given permission yet reports one anonymous entry.
-        alwaysShow
-      />
-
-      {/* 66-1: the one account-wide setting on this panel, and only a default
-          for machines that have none of their own. The mute button in the
-          footer stays the live control, and once it has been pressed on a
-          machine that machine keeps its own answer -- which is why the note
-          spells out that this is about new browsers, not about this one. */}
-      <div class="chalk-profile-field">
-        <label class="chalk-profile-checkbox-label">
-          <input
-            type="checkbox"
-            checked={voicePrefs.joinMuted !== false}
-            onChange={(e) =>
-              onVoicePrefsChange({ joinMuted: (e.target as HTMLInputElement).checked })
+      {tab === "audio" && (
+        <>
+          <DeviceSelect
+            id="mic-device"
+            label="input device"
+            fallbackName="microphone"
+            devices={devices.audioinput}
+            // 63-3: a stale id (Brave re-randomizes them per session) shows as the
+            // device it re-resolves to by label -- the one a capture would open.
+            value={resolveDeviceId(mic.deviceId, mic.deviceLabel, devices.audioinput) || mic.deviceId}
+            // The label rides along so future sessions can re-resolve the id.
+            onChange={(deviceId) =>
+              setMic({
+                deviceId,
+                deviceLabel: devices.audioinput.find((d) => d.deviceId === deviceId)?.label ?? "",
+              })
             }
-            data-testid="voice-join-muted"
+            testId="mic-device"
+            // The one picker that shows even with a single microphone: it is the
+            // first thing anyone looks for when nobody can hear them, and a browser
+            // that has not been given permission yet reports one anonymous entry.
+            alwaysShow
           />
-          <span>
-            start muted on a new device{" "}
-            <span class="chalk-profile-theme-desc">
-              (a browser you have not used voice on yet begins muted, so you
-              never land in a room live by accident. follows your account; this
-              machine keeps whatever the mute button is set to)
-            </span>
-          </span>
-        </label>
-      </div>
 
-      <DeviceSelect
-        id="camera-device"
-        label="camera"
-        fallbackName="camera"
-        devices={devices.videoinput}
-        value={dev.cameraId}
-        onChange={(cameraId) => setDev({ cameraId })}
-        testId="camera-device"
-      />
-
-      {/* 52-1: sits under the camera picker because it is a property of the
-          picture, not of the call. Per-machine, like the camera itself. */}
-      <div class="chalk-profile-field">
-        <label class="chalk-profile-checkbox-label">
-          <input
-            type="checkbox"
-            checked={dev.backgroundBlur}
-            onChange={(e) =>
-              setDev({ backgroundBlur: (e.target as HTMLInputElement).checked })
-            }
-            data-testid="camera-background-blur"
-          />
-          <span>
-            blur my background{" "}
-            <span class="chalk-profile-theme-desc">
-              (hides the room behind you while your camera is on. takes effect
-              immediately, mid-call and all)
-            </span>
-          </span>
-        </label>
-      </div>
-
-      <CameraPreview dev={dev} />
-
-      {/* Firefox does not list output devices and Safari cannot route to one,
-          so on those this is absent rather than a control that does nothing. */}
-      {canChooseOutput() && (
-        <DeviceSelect
-          id="output-device"
-          label="output device"
-          fallbackName="speakers"
-          devices={devices.audiooutput}
-          value={dev.outputId}
-          onChange={(outputId) => setDev({ outputId })}
-          testId="output-device"
-        />
-      )}
-
-      <div class="chalk-profile-field">
-        <label class="chalk-profile-label" for="mic-gain">
-          input volume{" "}
-          <span class="chalk-profile-theme-desc">({Math.round(mic.gain * 100)}%)</span>
-        </label>
-        <input
-          id="mic-gain"
-          type="range"
-          class="chalk-profile-range"
-          min={MIN_GAIN}
-          max={MAX_GAIN}
-          step={0.05}
-          value={mic.gain}
-          // onInput, so the meter moves under your finger rather than jumping
-          // when you let go. It used to be onChange because every pixel of the
-          // drag was a write plus a fan-out to the other tabs and the server;
-          // 44-8 coalesces the upload in mic-prefs, so live tracking is cheap.
-          onInput={(e) => setMic({ gain: Number((e.target as HTMLInputElement).value) })}
-          data-testid="mic-gain"
-        />
-      </div>
-
-      <MicMeter mic={mic} setMic={setMic} />
-
-      {/* 44-7: a dropdown, not four stacked cards. The four modes are mutually
-          exclusive one-liners, and as cards they took more of the dialog than
-          the level meter -- which is the thing you actually came here to
-          watch. The chosen mode's explanation sits under the select, so
-          nothing is lost by collapsing them. */}
-      <div class="chalk-profile-field">
-        <label class="chalk-profile-label" for="mic-mode">
-          when to transmit
-        </label>
-        <select
-          id="mic-mode"
-          class="chalk-profile-select"
-          value={mic.mode}
-          onChange={(e) => {
-            const v = (e.target as HTMLSelectElement).value;
-            if (isTransmitMode(v)) setMic({ mode: v });
-          }}
-          data-testid="mic-mode"
-        >
-          {TRANSMIT_MODES.map((m) => (
-            <option value={m} key={m}>
-              {TRANSMIT_LABELS[m].label}
-            </option>
-          ))}
-        </select>
-        <p class="chalk-profile-hint">{TRANSMIT_LABELS[mic.mode].desc}</p>
-      </div>
-
-      {mic.mode === "vad" && (
-        <p class="chalk-profile-hint">
-          press test and talk normally, then drag the two marks on the meter above: the bright one
-          just under where your voice sits, the dim one just over where the quiet room sits. the gap
-          between them is what stops the mic flickering on a pause. arrow keys nudge a mark once it
-          has focus.
-        </p>
-      )}
-
-      {(mic.mode === "vad" || mic.mode === "ptt") && (
-        <div class="chalk-profile-field">
-          <label class="chalk-profile-label" for="mic-hold">
-            keep sending for{" "}
-            <span class="chalk-profile-theme-desc">
-              ({Math.round(mic.holdMs)} ms after you stop)
-            </span>
-          </label>
-          <input
-            id="mic-hold"
-            type="range"
-            class="chalk-profile-range"
-            min={0}
-            max={MAX_HOLD_MS}
-            step={50}
-            value={mic.holdMs}
-            onInput={(e) => setMic({ holdMs: Number((e.target as HTMLInputElement).value) })}
-            data-testid="mic-hold"
-          />
-        </div>
-      )}
-
-      <div class="chalk-profile-field">
-        <label class="chalk-profile-label">keys</label>
-        <div class="chalk-profile-sound-list">
-          {(mic.mode === "ptt" || mic.mode === "ptm") && (
-            <KeyBind
-              label={mic.mode === "ptt" ? "hold to talk" : "hold to mute"}
-              value={mic.keyTalk}
-              onChange={(code) => setMic({ keyTalk: code })}
-              testId="mic-key-talk"
+          {/* Firefox does not list output devices and Safari cannot route to one,
+              so on those this is absent rather than a control that does nothing. */}
+          {canChooseOutput() && (
+            <DeviceSelect
+              id="output-device"
+              label="output device"
+              fallbackName="speakers"
+              devices={devices.audiooutput}
+              value={dev.outputId}
+              onChange={(outputId) => setDev({ outputId })}
+              testId="output-device"
             />
           )}
-          <KeyBind
-            label="mute / unmute"
-            value={mic.keyMute}
-            onChange={(code) => setMic({ keyMute: code })}
-            testId="mic-key-mute"
-          />
-          <KeyBind
-            label="deafen"
-            value={mic.keyDeafen}
-            onChange={(code) => setMic({ keyDeafen: code })}
-            testId="mic-key-deafen"
-          />
-        </div>
-        <p class="chalk-profile-hint">
-          keys only work while a chalk tab is in front — a web page can't take a key from the rest
-          of your system, so push to talk won't reach you inside a fullscreen game.
-        </p>
-      </div>
 
-      <div class="chalk-profile-field">
-        <label class="chalk-profile-checkbox-label">
-          <input
-            type="checkbox"
-            checked={mic.echoCancellation}
-            onChange={(e) => setMic({ echoCancellation: (e.target as HTMLInputElement).checked })}
-            data-testid="mic-echo-cancellation"
-          />
-          <span>
-            echo cancellation{" "}
-            <span class="chalk-profile-theme-desc">
-              (stops others hearing themselves back — leave on unless you wear headphones)
-            </span>
-          </span>
-        </label>
-      </div>
+          <div class="chalk-profile-field">
+            <label class="chalk-profile-label" for="mic-gain">
+              input volume{" "}
+              <span class="chalk-profile-theme-desc">({Math.round(mic.gain * 100)}%)</span>
+            </label>
+            <input
+              id="mic-gain"
+              type="range"
+              class="chalk-profile-range"
+              min={MIN_GAIN}
+              max={MAX_GAIN}
+              step={0.05}
+              value={mic.gain}
+              // onInput, so the meter moves under your finger rather than jumping
+              // when you let go. It used to be onChange because every pixel of the
+              // drag was a write plus a fan-out to the other tabs and the server;
+              // 44-8 coalesces the upload in mic-prefs, so live tracking is cheap.
+              onInput={(e) => setMic({ gain: Number((e.target as HTMLInputElement).value) })}
+              data-testid="mic-gain"
+            />
+          </div>
 
-      <div class="chalk-profile-field">
-        <label class="chalk-profile-checkbox-label">
-          <input
-            type="checkbox"
-            checked={mic.noiseSuppression}
-            onChange={(e) => setMic({ noiseSuppression: (e.target as HTMLInputElement).checked })}
-            data-testid="mic-noise-suppression"
-          />
-          <span>
-            noise suppression{" "}
-            <span class="chalk-profile-theme-desc">
-              (your browser's — it learns steady sounds like fans and hum, so it barely touches
-              keyboards and door slams. for those, use "when i speak" above)
-            </span>
-          </span>
-        </label>
-      </div>
+          <MicMeter mic={mic} setMic={setMic} />
 
-      <div class="chalk-profile-field">
-        <label class="chalk-profile-checkbox-label">
-          <input
-            type="checkbox"
-            checked={mic.autoGainControl}
-            onChange={(e) => setMic({ autoGainControl: (e.target as HTMLInputElement).checked })}
-            data-testid="mic-auto-gain"
-          />
-          <span>
-            automatic gain control{" "}
-            <span class="chalk-profile-theme-desc">
-              (off by default: it fills your pauses by winding the mic up until the room is as loud
-              as you were, and it moves the floor the marks above are set against)
-            </span>
-          </span>
-        </label>
-      </div>
+          {/* 44-7: a dropdown, not four stacked cards. The four modes are mutually
+              exclusive one-liners, and as cards they took more of the dialog than
+              the level meter -- which is the thing you actually came here to
+              watch. The chosen mode's explanation sits under the select, so
+              nothing is lost by collapsing them. */}
+          <div class="chalk-profile-field">
+            <label class="chalk-profile-label" for="mic-mode">
+              when to transmit
+            </label>
+            <select
+              id="mic-mode"
+              class="chalk-profile-select"
+              value={mic.mode}
+              onChange={(e) => {
+                const v = (e.target as HTMLSelectElement).value;
+                if (isTransmitMode(v)) setMic({ mode: v });
+              }}
+              data-testid="mic-mode"
+            >
+              {TRANSMIT_MODES.map((m) => (
+                <option value={m} key={m}>
+                  {TRANSMIT_LABELS[m].label}
+                </option>
+              ))}
+            </select>
+            <p class="chalk-profile-hint">{TRANSMIT_LABELS[mic.mode].desc}</p>
+          </div>
 
-      {/* 66-5: a call display option rather than a capture one, so it sits at
-          the end, after everything that shapes how you sound. */}
-      <div class="chalk-profile-field">
-        <label class="chalk-profile-checkbox-label">
-          <input
-            type="checkbox"
-            checked={!!voicePrefs.showLatency}
-            onChange={(e) =>
-              onVoicePrefsChange({ showLatency: (e.target as HTMLInputElement).checked })
-            }
-            data-testid="voice-show-latency"
+          {mic.mode === "vad" && (
+            <p class="chalk-profile-hint">
+              press test and talk normally, then drag the two marks on the meter above: the bright one
+              just under where your voice sits, the dim one just over where the quiet room sits. the gap
+              between them is what stops the mic flickering on a pause. arrow keys nudge a mark once it
+              has focus.
+            </p>
+          )}
+
+          {(mic.mode === "vad" || mic.mode === "ptt") && (
+            <div class="chalk-profile-field">
+              <label class="chalk-profile-label" for="mic-hold">
+                keep sending for{" "}
+                <span class="chalk-profile-theme-desc">
+                  ({Math.round(mic.holdMs)} ms after you stop)
+                </span>
+              </label>
+              <input
+                id="mic-hold"
+                type="range"
+                class="chalk-profile-range"
+                min={0}
+                max={MAX_HOLD_MS}
+                step={50}
+                value={mic.holdMs}
+                onInput={(e) => setMic({ holdMs: Number((e.target as HTMLInputElement).value) })}
+                data-testid="mic-hold"
+              />
+            </div>
+          )}
+
+          <div class="chalk-profile-field">
+            <label class="chalk-profile-checkbox-label">
+              <input
+                type="checkbox"
+                checked={mic.echoCancellation}
+                onChange={(e) => setMic({ echoCancellation: (e.target as HTMLInputElement).checked })}
+                data-testid="mic-echo-cancellation"
+              />
+              <span>
+                echo cancellation{" "}
+                <span class="chalk-profile-theme-desc">
+                  (stops others hearing themselves back — leave on unless you wear headphones)
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <div class="chalk-profile-field">
+            <label class="chalk-profile-checkbox-label">
+              <input
+                type="checkbox"
+                checked={mic.noiseSuppression}
+                onChange={(e) => setMic({ noiseSuppression: (e.target as HTMLInputElement).checked })}
+                data-testid="mic-noise-suppression"
+              />
+              <span>
+                noise suppression{" "}
+                <span class="chalk-profile-theme-desc">
+                  (your browser's — it learns steady sounds like fans and hum, so it barely touches
+                  keyboards and door slams. for those, use "when i speak" above)
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <div class="chalk-profile-field">
+            <label class="chalk-profile-checkbox-label">
+              <input
+                type="checkbox"
+                checked={mic.autoGainControl}
+                onChange={(e) => setMic({ autoGainControl: (e.target as HTMLInputElement).checked })}
+                data-testid="mic-auto-gain"
+              />
+              <span>
+                automatic gain control{" "}
+                <span class="chalk-profile-theme-desc">
+                  (off by default: it fills your pauses by winding the mic up until the room is as loud
+                  as you were, and it moves the floor the marks above are set against)
+                </span>
+              </span>
+            </label>
+          </div>
+        </>
+      )}
+
+      {tab === "camera" && (
+        <>
+          <DeviceSelect
+            id="camera-device"
+            label="camera"
+            fallbackName="camera"
+            devices={devices.videoinput}
+            value={dev.cameraId}
+            onChange={(cameraId) => setDev({ cameraId })}
+            testId="camera-device"
           />
-          <span>
-            show latency on video tiles{" "}
-            <span class="chalk-profile-theme-desc">
-              (the round trip to each person, in milliseconds, in the corner of
-              their tile. under ~150 ms feels immediate; over ~300 ms is where
-              people start talking over each other. the same number the debug
-              drawer reports, without opening it)
-            </span>
-          </span>
-        </label>
-      </div>
+
+          {/* 52-1: sits under the camera picker because it is a property of the
+              picture, not of the call. Per-machine, like the camera itself. */}
+          <div class="chalk-profile-field">
+            <label class="chalk-profile-checkbox-label">
+              <input
+                type="checkbox"
+                checked={dev.backgroundBlur}
+                onChange={(e) =>
+                  setDev({ backgroundBlur: (e.target as HTMLInputElement).checked })
+                }
+                data-testid="camera-background-blur"
+              />
+              <span>
+                blur my background{" "}
+                <span class="chalk-profile-theme-desc">
+                  (hides the room behind you while your camera is on. takes effect
+                  immediately, mid-call and all)
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <CameraPreview dev={dev} />
+        </>
+      )}
+
+      {tab === "calls" && (
+        <>
+          {/* 66-1: the one account-wide setting on this panel, and only a default
+              for machines that have none of their own. The mute button in the
+              footer stays the live control, and once it has been pressed on a
+              machine that machine keeps its own answer -- which is why the note
+              spells out that this is about new browsers, not about this one. */}
+          <div class="chalk-profile-field">
+            <label class="chalk-profile-checkbox-label">
+              <input
+                type="checkbox"
+                checked={voicePrefs.joinMuted !== false}
+                onChange={(e) =>
+                  onVoicePrefsChange({ joinMuted: (e.target as HTMLInputElement).checked })
+                }
+                data-testid="voice-join-muted"
+              />
+              <span>
+                start muted on a new device{" "}
+                <span class="chalk-profile-theme-desc">
+                  (a browser you have not used voice on yet begins muted, so you
+                  never land in a room live by accident. follows your account; this
+                  machine keeps whatever the mute button is set to)
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <div class="chalk-profile-field">
+            <label class="chalk-profile-label">keys</label>
+            <div class="chalk-profile-sound-list">
+              {(mic.mode === "ptt" || mic.mode === "ptm") && (
+                <KeyBind
+                  label={mic.mode === "ptt" ? "hold to talk" : "hold to mute"}
+                  value={mic.keyTalk}
+                  onChange={(code) => setMic({ keyTalk: code })}
+                  testId="mic-key-talk"
+                />
+              )}
+              <KeyBind
+                label="mute / unmute"
+                value={mic.keyMute}
+                onChange={(code) => setMic({ keyMute: code })}
+                testId="mic-key-mute"
+              />
+              <KeyBind
+                label="deafen"
+                value={mic.keyDeafen}
+                onChange={(code) => setMic({ keyDeafen: code })}
+                testId="mic-key-deafen"
+              />
+            </div>
+            <p class="chalk-profile-hint">
+              keys only work while a chalk tab is in front — a web page can't take a key from the rest
+              of your system, so push to talk won't reach you inside a fullscreen game.
+            </p>
+          </div>
+
+          {/* 66-5: a call display option rather than a capture one. */}
+          <div class="chalk-profile-field">
+            <label class="chalk-profile-checkbox-label">
+              <input
+                type="checkbox"
+                checked={!!voicePrefs.showLatency}
+                onChange={(e) =>
+                  onVoicePrefsChange({ showLatency: (e.target as HTMLInputElement).checked })
+                }
+                data-testid="voice-show-latency"
+              />
+              <span>
+                show latency on video tiles{" "}
+                <span class="chalk-profile-theme-desc">
+                  (the round trip to each person, in milliseconds, in the corner of
+                  their tile. under ~150 ms feels immediate; over ~300 ms is where
+                  people start talking over each other. the same number the debug
+                  drawer reports, without opening it)
+                </span>
+              </span>
+            </label>
+          </div>
+        </>
+      )}
 
       <p class="chalk-profile-hint">
         {unlabeled ? "press test once to let the browser name your devices. " : ""}

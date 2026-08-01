@@ -425,7 +425,9 @@ export function ProfilePanel({
       }}
       data-testid="profile-panel-backdrop"
     >
-      <div class="chalk-modal" data-testid="profile-panel" role="dialog" aria-label="profile">
+      {/* 70-2: --settings pins the modal to one height so switching tabs
+          never resizes or re-centers it. */}
+      <div class="chalk-modal chalk-modal--settings" data-testid="profile-panel" role="dialog" aria-label="profile">
         <header class="chalk-modal-header">
           <h2>profile</h2>
           <div class="chalk-modal-header-actions">
