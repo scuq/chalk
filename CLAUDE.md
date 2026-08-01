@@ -100,6 +100,20 @@ the whole chain; a literal grep for it never reaches `internal/server/` or
 `internal/friends/` at all. Pass `-l` for a literal match; a pattern containing
 regex characters is used as written.
 
+Topics are tagged, and the tags already exist: 646 phase comments (`// 54-2:`)
+across 123 files. `docs/tags.md` is the legend mapping topics to those phase
+numbers and to the paths they live in — `tools/where.sh -g roster` searches
+both at once, `-g` alone lists every tag. This finds code whose *name* never
+mentions the topic: `-g camera-bg` works even though that string appears
+nowhere in the source, because phase 52 is tagged throughout it.
+
+Keep the legend current as part of normal work: when a phase touches a topic
+already listed, add its number to that line; when a new topic gets its own
+phase, add a line. If a search turns up a file that clearly belongs to a topic
+whose paths do not cover it, widen the paths on that line. A tag whose phases
+have drifted is worse than a missing one, so correct entries in place rather
+than adding a second. `-g` warns when a listed path no longer exists.
+
 It needs ripgrep, and exits with `where.sh: needs ripgrep` when it is missing.
 That is not something to work around with `grep -r` — ask scuq to install it
 (`sudo apt install ripgrep` on this Debian box) and carry on once it is there.

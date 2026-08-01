@@ -12,7 +12,8 @@ set -uo pipefail
 
 usage() {
 	cat >&2 <<'EOF'
-usage: tools/where.sh [-c] [-t] [-l] [-n N] <pattern>
+usage: tools/where.sh [-c] [-t] [-l] [-g] [-n N] <pattern|#tag>
+       tools/where.sh -g                    # list every tag
 
 Case-insensitive ripgrep across the repo, grouped by layer in request-path
 order, each hit annotated with its enclosing symbol.
@@ -22,13 +23,19 @@ at every layer boundary: friend_request also finds TypeFriendRequest,
 handleFriendRequest and friendRequest. A pattern containing regex characters is
 used as written.
 
+With -g the pattern is a topic from docs/tags.md, which maps topics to the
+phase numbers already tagged throughout the source (// 54-2:) and to the paths
+the topic lives in.
+
   -c     per-layer counts only (a map before you commit to reading)
   -t     include tests (excluded by default)
   -l     literal: skip the naming-convention expansion
+  -g     resolve the pattern as a #tag from docs/tags.md
   -n N   max hits shown per layer (default 40, 0 = unlimited)
 
 examples:
   tools/where.sh friend_request      # the whole chain, both sides of the wire
+  tools/where.sh -g threads          # a topic, across every phase that built it
   tools/where.sh -c parking          # which layers does the parking lot touch?
   tools/where.sh -t 'space ?key'     # regex, tests included
 EOF
@@ -39,20 +46,58 @@ per_layer=40
 show_tests=0
 counts_only=0
 literal=0
+tag_mode=0
 
-while getopts ':ctln:h' opt; do
+while getopts ':ctlgn:h' opt; do
 	case "$opt" in
 	c) counts_only=1 ;;
 	t) show_tests=1 ;;
 	l) literal=1 ;;
+	g) tag_mode=1 ;;
 	n) per_layer="$OPTARG" ;;
 	*) usage ;;
 	esac
 done
 shift $((OPTIND - 1))
+
+command -v rg >/dev/null || { echo "where.sh: needs ripgrep" >&2; exit 1; }
+cd "$(dirname "$0")/.." || exit 1
+tags=docs/tags.md
+
+# `-g` with no tag just lists the legend.
+if [ "$tag_mode" -eq 1 ] && [ $# -eq 0 ]; then
+	rg -N --color never '^#[a-z][a-z0-9-]* ' "$tags"
+	exit 0
+fi
+
 [ $# -eq 1 ] || usage
 pattern="$1"
 query="$pattern"
+homes=""
+
+# A tag resolves through docs/tags.md into the phase numbers that built the
+# topic plus the paths it lives in. Phase comments (`// 54-2:`) are the tagging
+# that already exists in the source; the legend is only what maps them to a
+# name, so this searches those tags and the topic's own name together.
+if [ "$tag_mode" -eq 1 ]; then
+	line=$(rg -N --color never "^#${pattern#\#} " "$tags") || {
+		echo "where.sh: no such tag '#${pattern#\#}' in $tags (-g lists them)" >&2
+		exit 1
+	}
+	phases=""
+	for field in ${line#* }; do
+		case "$field" in
+		[0-9]*) phases="${phases:+$phases|}$field" ;;
+		-) ;;
+		*) homes="$homes $field"
+		   [ -e "$field" ] || echo "where.sh: $tags lists a path that is gone: $field" >&2 ;;
+		esac
+	done
+	pattern="${pattern#\#}"
+	literal=1
+	query="${pattern}"
+	[ -n "$phases" ] && query="(${pattern}|(^|[^0-9])($phases)-[0-9]{1,2}:)"
+fi
 
 # Split an identifier into words and rejoin them with an optional separator, so
 # one query spans every convention chalk renames through: friend_request,
@@ -66,9 +111,6 @@ if [ "$literal" -eq 0 ] && [[ "$pattern" =~ ^[A-Za-z0-9_-]+$ ]]; then
 		sed -E 's/^ +//; s/ +$//; s/ +/[_-]?/g')
 fi
 
-command -v rg >/dev/null || { echo "where.sh: needs ripgrep" >&2; exit 1; }
-cd "$(dirname "$0")/.." || exit 1
-
 if [ -t 1 ]; then
 	bold=$'\033[1m'; dim=$'\033[2m'; cyan=$'\033[36m'; off=$'\033[0m'
 else
@@ -81,14 +123,20 @@ expansion_note() {
 	[ "$query" != "$pattern" ] && printf '%s  (as /%s/i)%s' "$dim" "$query" "$off"
 }
 
+# Where a topic lives, printed even when the search comes back thin — "no hits"
+# and "no such code" are different answers, and the paths tell them apart.
+homes_note() {
+	[ -n "$homes" ] && printf '%slives in:%s%s\n' "$dim" "$homes" "$off"
+}
+
 hits=$(mktemp) || exit 1
 annot=$(mktemp) || exit 1
 trap 'rm -f "$hits" "$annot"' EXIT
 
-# Excludes itself: the usage examples above would otherwise be a standing hit
-# for whatever feature names they mention.
+# Excludes itself and the legend: both name every feature they describe, so
+# both would be a standing hit for any search.
 rg -n -i --no-heading --color never --field-match-separator $'\t' \
-	--glob '!tools/where.sh' -e "$query" >"$hits"
+	--glob '!tools/where.sh' --glob "!$tags" -e "$query" >"$hits"
 if [ ! -s "$hits" ]; then
 	echo "no hits for ${bold}${pattern}${off}" >&2
 	exit 1
@@ -165,7 +213,9 @@ if [ ! -s "$layered" ]; then
 fi
 
 if [ "$counts_only" -eq 1 ]; then
-	printf '%s%s%s%s\n\n' "$bold" "layer map for: $pattern" "$off" "$(expansion_note)"
+	printf '%s%s%s%s\n' "$bold" "layer map for: $pattern" "$off" "$(expansion_note)"
+	homes_note
+	echo
 	awk -F'\t' '{ n[$1]++; files[$1 FS $2] = 1 }
 		END {
 			for (k in files) { split(k, a, FS); f[a[1]]++ }
@@ -176,6 +226,7 @@ if [ "$counts_only" -eq 1 ]; then
 fi
 
 printf '%s%s%s%s\n' "$bold" "where: $pattern" "$off" "$(expansion_note)"
+homes_note
 
 sort -t$'\t' -k1,1 -k2,2 -k3,3n "$layered" |
 	awk -F'\t' '{ print > ("'"$annot"'." $1) }'
