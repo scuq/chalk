@@ -1441,9 +1441,26 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-channel-header {
   display: flex;
   align-items: baseline;
-  padding: 0 0 var(--chalk-s3) 0;
+  padding: var(--chalk-s4) 0 var(--chalk-s3) 0;
   border-bottom: 1px solid var(--chalk-border);
   margin-bottom: var(--chalk-s3);
+  /* Pin the room name to the top of the feed while it scrolls. The
+     negative top swallows the header's own padding-top when stuck, so
+     the bar sits flush with the top of the pane and no sliver of feed
+     shows above it; the negative margin-top cancels that padding in
+     the resting layout (it overlaps .chalk-main's top padding), so
+     nothing moves until you scroll. The mobile layout re-aims these
+     offsets at its smaller pane padding (below). */
+  position: sticky;
+  top: calc(-1 * var(--chalk-s4));
+  margin-top: calc(-1 * var(--chalk-s4));
+  background: var(--chalk-bg);
+  /* margin-bottom is transparent, so while pinned a clipped line of
+     feed text showed through the gap under the border. The offset
+     shadow paints that exact strip in the background color; it must
+     match margin-bottom (the mobile override re-aims both). */
+  box-shadow: 0 var(--chalk-s3) var(--chalk-bg);
+  z-index: 5;
 }
 
 .chalk-channel-header-name {
@@ -7750,16 +7767,15 @@ body.chalk-resizing .chalk-sidebar-resizer {
     gap: var(--chalk-s1);
     padding-bottom: var(--chalk-s2);
     margin-bottom: var(--chalk-s2);
-    /* Pin the room name to the top of the feed. On desktop the roster
-       always says where you are; on a phone the header is the ONLY
-       indicator, and it used to scroll away with the messages. The
-       negative top swallows .chalk-main's own top padding (compensated
-       by padding-top) so no sliver of feed shows above the pinned bar. */
-    position: sticky;
+    /* Pinning itself comes from the base rule; only the offsets change
+       because .chalk-main's padding is s2 here, not s4. margin-top
+       stays 0: on a phone the extra resting space above the bar is the
+       shipped look, and the swallowed pane padding keeps the stuck bar
+       flush anyway. */
     top: calc(-1 * var(--chalk-s2));
     padding-top: var(--chalk-s2);
-    background: var(--chalk-bg);
-    z-index: 5;
+    margin-top: 0;
+    box-shadow: 0 var(--chalk-s2) var(--chalk-bg);
   }
 
   .chalk-channel-header-name {

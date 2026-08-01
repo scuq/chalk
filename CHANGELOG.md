@@ -12,7 +12,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Changed
+- The channel name bar now stays pinned to the top of the message pane on
+  desktop while you scroll back, as it already did on phones — you always
+  see which room you're reading, and the search button stays in reach.
+
 ### Fixed
+- On phones, a clipped line of message text could show through the thin gap
+  just below the pinned channel bar while scrolling. The gap is solid now.
 - Pictures in messages older than a day showed as an empty row — just the
   sender and time, no image — when the message came from scrolling back
   through history (or was simply the latest message in a quiet channel).
