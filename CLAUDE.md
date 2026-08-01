@@ -100,6 +100,10 @@ the whole chain; a literal grep for it never reaches `internal/server/` or
 `internal/friends/` at all. Pass `-l` for a literal match; a pattern containing
 regex characters is used as written.
 
+It needs ripgrep, and exits with `where.sh: needs ripgrep` when it is missing.
+That is not something to work around with `grep -r` — ask scuq to install it
+(`sudo apt install ripgrep` on this Debian box) and carry on once it is there.
+
 ## Working agreements
 
 - **NEVER commit or push.** Propose the `git add` file list and a
