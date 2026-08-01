@@ -141,6 +141,16 @@ That is not something to work around with `grep -r` — ask scuq to install it
   legend is the only thing that makes the phase comments findable by topic, and
   it stays true only if it moves with the code. Correct a drifted entry in
   place; never add a second line for a topic that already has one.
+- **Probes belong in the test suite.** To find out how code behaves, add or
+  extend a `*.test.ts` beside it and run `node test.mjs`, or a `_test.go` and
+  `go test ./internal/...` — both are permitted, so neither prompts. Do not
+  pipe a throwaway script into `node`: a heredoc write plus an arbitrary
+  `node <path>` run is precisely what the permission prompts exist to catch,
+  it cannot be allowlisted without granting blanket execution, and the answer
+  evaporates instead of becoming regression cover. `--experimental-strip-types`
+  is specifically what `web/test.mjs` exists to avoid — read its header before
+  reaching for it. Check for an existing test file first; the behaviour in
+  question is often already asserted.
 - Ask before adding dependencies (Go modules or npm packages).
 - Style: direct, concise, no filler. Explain what changed and why in a few
   lines, then the verify commands.
