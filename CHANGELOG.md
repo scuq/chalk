@@ -12,6 +12,13 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- Optional latency readout on the video tiles: each person's round trip in
+  milliseconds, in the corner of their tile, amber past 150 ms and red past
+  300 ms — so "why do we keep talking over each other" has an answer you can
+  point at. Off by default; switch it on in voice & video. The number used
+  to be reachable only through the debug drawer.
+
 ### Changed
 - A browser you have never used voice on now starts muted, instead of
   joining your first room with a live microphone. Voice & video has a
@@ -27,6 +34,13 @@ The engineering-level history (which slice shipped what) lives in
   stored, so the server never learns who you have silenced.
 
 ### Fixed
+- The controls on a video tile — "mute for me", the volume slider, the
+  pop-out button — were too small to read comfortably, and on the light
+  themes they were drawn in dark text on the tile's black strip, which made
+  them close to invisible. They are larger now and always light against that
+  strip whichever theme you use, and the volume slider has a track and handle
+  worth aiming at. On the small strip tiles the button reads "mute" instead
+  of "mute for me" so the words still fit.
 - Joining a voice room with your camera switched off still opened the
   camera: nothing was ever sent, but the browser's camera indicator lit up
   for the whole call, which is impossible to tell apart from actually being

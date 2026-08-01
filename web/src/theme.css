@@ -5804,23 +5804,67 @@ body.chalk-resizing .chalk-sidebar-resizer {
   right: 4px;
 }
 
+/* 66-5: round trip to this peer, top-LEFT so it never collides with the
+   speaking dot. Its own scrim rather than the label's, and fixed light text
+   for the same reason (see the label block below): it sits on video, whose
+   brightness has nothing to do with the theme. */
+.chalk-voice-rtt {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  padding: 1px 5px;
+  font-size: calc(11px * var(--chalk-font-scale));
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.88);
+  background: rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.chalk-voice-peer--strip .chalk-voice-rtt {
+  font-size: calc(10px * var(--chalk-font-scale));
+  top: 3px;
+  left: 3px;
+}
+
+/* Amber, then red. Both are picked to carry on video rather than taken from
+   the theme, which has no idea what is behind them. */
+.chalk-voice-rtt--warn {
+  color: #ffc24d;
+}
+
+.chalk-voice-rtt--bad {
+  color: #ff7a70;
+}
+
+/* 66-4: everything in this label sits on a fixed black scrim over video, on
+   every theme -- so it cannot follow --chalk-fg, which is DARK on the light
+   themes and left the controls unreadable there. These four are the on-video
+   palette, and every child below uses them instead of the theme's foreground
+   vars -- including the alert and warn hues, whose theme versions are dark
+   enough on a light theme to disappear against black. */
 .chalk-voice-peer-label {
+  --voice-on-video: rgba(255, 255, 255, 0.94);
+  --voice-on-video-dim: rgba(255, 255, 255, 0.72);
+  --voice-on-video-line: rgba(255, 255, 255, 0.45);
+  --voice-on-video-alert: #ff7a70;
+  --voice-on-video-warn: #ffc24d;
+
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  font-size: calc(11px * var(--chalk-font-scale));
-  background: rgba(0, 0, 0, 0.65);
-  color: var(--chalk-fg);
+  gap: 5px;
+  padding: 3px 6px;
+  font-size: calc(12px * var(--chalk-font-scale));
+  background: rgba(0, 0, 0, 0.72);
+  color: var(--voice-on-video);
 }
 
 .chalk-voice-peer--strip .chalk-voice-peer-label {
-  font-size: calc(10px * var(--chalk-font-scale));
-  padding: 1px 4px;
+  font-size: calc(11px * var(--chalk-font-scale));
+  padding: 2px 4px;
 }
 
 .chalk-voice-peer-name {
@@ -5832,17 +5876,17 @@ body.chalk-resizing .chalk-sidebar-resizer {
 /* Single-letter state flags (m/c/s) -- terminal-terse; title expands. */
 .chalk-voice-peer-flag {
   flex: 0 0 auto;
-  border: 1px solid var(--chalk-border);
-  padding: 0 3px;
-  font-size: calc(9px * var(--chalk-font-scale));
+  border: 1px solid var(--voice-on-video-line);
+  padding: 0 4px;
+  font-size: calc(10px * var(--chalk-font-scale));
   text-transform: uppercase;
-  color: var(--chalk-fg-dim);
+  color: var(--voice-on-video-dim);
 }
 
 .chalk-voice-peer-conn {
   margin-left: auto;
-  font-size: calc(10px * var(--chalk-font-scale));
-  color: var(--chalk-warn);
+  font-size: calc(11px * var(--chalk-font-scale));
+  color: var(--voice-on-video-warn);
 }
 
 /* ---- 30-5e: per-peer local audio controls (A1 + A4 subset) -------------- */
@@ -5850,8 +5894,8 @@ body.chalk-resizing .chalk-sidebar-resizer {
 /* Local-mute badge: uppercase M in error color -- YOUR state about them,
    distinct from the lowercase m/c/s flags that mirror THEIR broadcast state. */
 .chalk-voice-peer-flag--local {
-  color: var(--chalk-error);
-  border-color: var(--chalk-error);
+  color: var(--voice-on-video-alert);
+  border-color: var(--voice-on-video-alert);
 }
 
 .chalk-voice-peer-audio {
@@ -5871,27 +5915,29 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-voice-popout {
   flex: 0 0 auto;
   background: transparent;
-  border: 1px dotted var(--chalk-border);
-  color: var(--chalk-fg-dim);
+  border: 1px dotted var(--voice-on-video-line);
+  color: var(--voice-on-video-dim);
   font: inherit;
-  font-size: calc(9px * var(--chalk-font-scale));
+  font-size: calc(11px * var(--chalk-font-scale));
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 0 4px;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
   cursor: pointer;
 }
 
 .chalk-voice-popout:hover {
-  color: var(--chalk-fg-bright);
-  border-color: var(--chalk-fg-dim);
+  color: var(--voice-on-video);
+  border-color: var(--voice-on-video);
 }
 
 /* 47-4: this tile already has a window open -- solid outline, so a glance at
-   the strip says which of several are out. */
+   the strip says which of several are out. 66-4: the outline IS the signal,
+   so it carries the state in full brightness rather than in --chalk-accent,
+   which is a dark green on the light themes and vanished against the scrim. */
 .chalk-voice-popout--on {
   border-style: solid;
-  border-color: var(--chalk-accent);
-  color: var(--chalk-accent);
+  border-color: var(--voice-on-video);
+  color: var(--voice-on-video);
 }
 
 /* 45-5: the in-app expanded view (Firefox/Safari, or a refused PiP request).
@@ -5938,35 +5984,43 @@ body.chalk-resizing .chalk-sidebar-resizer {
   color: var(--chalk-fg-bright);
 }
 
+/* 66-4: this is the control people actually reach for mid-call ("mute for
+   me"), and at 9px dim-on-black it was a guess on every theme and unreadable
+   on the light ones. Same weight as the other in-label controls, just legible:
+   11px, real padding, on-video colours. */
 .chalk-voice-localmute {
+  flex: 0 0 auto;
+  white-space: nowrap;
   background: transparent;
-  border: 1px dotted var(--chalk-border);
-  color: var(--chalk-fg-dim);
+  border: 1px dotted var(--voice-on-video-line);
+  color: var(--voice-on-video-dim);
   font: inherit;
-  font-size: calc(9px * var(--chalk-font-scale));
+  font-size: calc(11px * var(--chalk-font-scale));
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 0 4px;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
   cursor: pointer;
 }
 
 .chalk-voice-localmute:hover {
-  color: var(--chalk-fg);
-  border-color: var(--chalk-fg-dim);
+  color: var(--voice-on-video);
+  border-color: var(--voice-on-video);
 }
 
 .chalk-voice-localmute--on {
-  color: var(--chalk-error);
-  border-color: var(--chalk-error);
+  color: var(--voice-on-video-alert);
+  border-color: var(--voice-on-video-alert);
 }
 
-/* Minimal range styling on the theme: a thin track, square thumb. */
+/* Minimal range styling on the theme: a thin track, square thumb. 66-4 gave
+   the track and thumb enough body to see and to hit -- a 2px hairline with an
+   8px thumb was a dexterity test on a tile that is 148px wide. */
 .chalk-voice-volume {
   -webkit-appearance: none;
   appearance: none;
-  width: 90px;
-  height: 2px;
-  background: var(--chalk-border);
+  width: 96px;
+  height: 4px;
+  background: var(--voice-on-video-line);
   outline: none;
   cursor: pointer;
 }
@@ -5974,16 +6028,16 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-voice-volume::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 8px;
-  height: 12px;
-  background: var(--chalk-fg);
+  width: 10px;
+  height: 16px;
+  background: var(--voice-on-video);
   border: none;
 }
 
 .chalk-voice-volume::-moz-range-thumb {
-  width: 8px;
-  height: 12px;
-  background: var(--chalk-fg);
+  width: 10px;
+  height: 16px;
+  background: var(--voice-on-video);
   border: none;
   border-radius: 0;
 }

@@ -31,6 +31,7 @@ import {
   useMediaDevices,
   type DevicePrefs,
 } from "../voice/device-prefs";
+import type { VoicePrefs } from "../state/types";
 import { CameraChain } from "../voice/camera-chain";
 import { applyBlurTo } from "../voice/camera-blur";
 import { previewSource } from "../voice/camera-effects";
@@ -595,13 +596,13 @@ function PreviewSurface({ stream }: { stream: MediaStream }) {
 }
 
 interface MicSettingsProps {
-  /** 66-1: account-wide, unlike everything else on this panel -- see the
-   * checkbox's own note. */
-  joinMuted: boolean;
-  onJoinMutedChange: (joinMuted: boolean) => void;
+  /** 66-1/66-5: account-wide, unlike everything else on this panel -- see the
+   * checkboxes' own notes. */
+  voicePrefs: VoicePrefs;
+  onVoicePrefsChange: (patch: Partial<VoicePrefs>) => void;
 }
 
-export function MicSettings({ joinMuted, onJoinMutedChange }: MicSettingsProps) {
+export function MicSettings({ voicePrefs, onVoicePrefsChange }: MicSettingsProps) {
   const [mic, setMic] = useMicPrefs();
   const [dev, setDev] = useDevicePrefs();
   const devices = useMediaDevices();
@@ -645,8 +646,10 @@ export function MicSettings({ joinMuted, onJoinMutedChange }: MicSettingsProps) 
         <label class="chalk-profile-checkbox-label">
           <input
             type="checkbox"
-            checked={joinMuted}
-            onChange={(e) => onJoinMutedChange((e.target as HTMLInputElement).checked)}
+            checked={voicePrefs.joinMuted !== false}
+            onChange={(e) =>
+              onVoicePrefsChange({ joinMuted: (e.target as HTMLInputElement).checked })
+            }
             data-testid="voice-join-muted"
           />
           <span>
@@ -869,6 +872,30 @@ export function MicSettings({ joinMuted, onJoinMutedChange }: MicSettingsProps) 
             <span class="chalk-profile-theme-desc">
               (off by default: it fills your pauses by winding the mic up until the room is as loud
               as you were, and it moves the floor the marks above are set against)
+            </span>
+          </span>
+        </label>
+      </div>
+
+      {/* 66-5: a call display option rather than a capture one, so it sits at
+          the end, after everything that shapes how you sound. */}
+      <div class="chalk-profile-field">
+        <label class="chalk-profile-checkbox-label">
+          <input
+            type="checkbox"
+            checked={!!voicePrefs.showLatency}
+            onChange={(e) =>
+              onVoicePrefsChange({ showLatency: (e.target as HTMLInputElement).checked })
+            }
+            data-testid="voice-show-latency"
+          />
+          <span>
+            show latency on video tiles{" "}
+            <span class="chalk-profile-theme-desc">
+              (the round trip to each person, in milliseconds, in the corner of
+              their tile. under ~150 ms feels immediate; over ~300 ms is where
+              people start talking over each other. the same number the debug
+              drawer reports, without opening it)
             </span>
           </span>
         </label>

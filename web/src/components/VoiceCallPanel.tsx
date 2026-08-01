@@ -64,6 +64,8 @@ interface Props {
   roster: VoiceParticipant[];
   /** Composer-style gate: signaling needs the channel space key. */
   keyReady: boolean;
+  /** 66-5: round-trip time in the corner of each remote tile (prefs.voice). */
+  showLatency: boolean;
 }
 
 /**
@@ -84,6 +86,18 @@ function describeJoinError(raw: string): string {
   return raw;
 }
 
+// 66-5: where a round trip stops being invisible and where it starts costing
+// you the conversation. Round numbers on purpose -- the badge is a traffic
+// light, not a measurement, and the debug drawer is there for the real figure.
+const RTT_WARN_MS = 150;
+const RTT_BAD_MS = 300;
+
+function rttSeverityClass(ms: number): string {
+  if (ms >= RTT_BAD_MS) return " chalk-voice-rtt--bad";
+  if (ms >= RTT_WARN_MS) return " chalk-voice-rtt--warn";
+  return "";
+}
+
 function fmtDuration(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600);
@@ -102,6 +116,7 @@ export function VoiceCallPanel({
   cc,
   roster,
   keyReady,
+  showLatency,
 }: Props) {
   const snap = useVoiceSession();
   // 30-5 stage focus: null = automatic; a key = user-pinned. View-local --
@@ -148,8 +163,13 @@ export function VoiceCallPanel({
   // Debug drawer poll: the 30-4c diagnostics blob (per-peer selected-pair
   // stats + the event ring) refreshed while open. Passive getStats reads
   // only (the Addendum D rule: nothing in-call may compete with media).
+  //
+  // 66-5: the latency overlay reads the same blob on the same timer -- one
+  // poll, whichever of the two wants it. The rest of the blob (a bounded
+  // event ring, a handful of numbers) costs nothing next to the getStats
+  // call both need anyway.
   useEffect(() => {
-    if (!debugOpen || !hereInCall) return;
+    if ((!debugOpen && !showLatency) || !hereInCall) return;
     let live = true;
     const poll = () => {
       void voiceSession.diagnostics().then((d) => {
@@ -162,7 +182,19 @@ export function VoiceCallPanel({
       live = false;
       window.clearInterval(id);
     };
-  }, [debugOpen, hereInCall]);
+  }, [debugOpen, showLatency, hereInCall]);
+
+  // 66-5: peer key -> last measured round trip. Absent while the first poll is
+  // in flight, and for a peer whose pair has no rtt yet -- the badge is simply
+  // not drawn, which is more honest than a zero.
+  const rttByKey = useMemo(() => {
+    const out: Record<string, number> = {};
+    if (!showLatency) return out;
+    for (const p of diag?.peers ?? []) {
+      if (typeof p.pair?.rttMs === "number") out[p.key] = p.pair.rttMs;
+    }
+    return out;
+  }, [showLatency, diag]);
 
   const join = () =>
     void voiceSession.join({
@@ -435,6 +467,7 @@ export function VoiceCallPanel({
                     tile={t}
                     grid
                     label={handleFor(t.userID)}
+                    rttMs={rttByKey[t.key]}
                     onClick={() => setPinnedKey(t.key)}
                     onPopOut={t.hasLiveVideo ? () => popOut(t) : undefined}
                     poppedOut={popped.includes(t.key)}
@@ -459,6 +492,7 @@ export function VoiceCallPanel({
                     <StagePeer
                       tile={focused}
                       label={handleFor(focused.userID)}
+                      rttMs={rttByKey[focused.key]}
                       big
                       onClick={() => setPinnedKey(null)}
                       onPopOut={focused.hasLiveVideo ? () => popOut(focused) : undefined}
@@ -476,6 +510,7 @@ export function VoiceCallPanel({
                         key={t.key}
                         tile={t}
                         label={handleFor(t.userID)}
+                        rttMs={rttByKey[t.key]}
                         onClick={() => setPinnedKey(t.key)}
                         onPopOut={t.hasLiveVideo ? () => popOut(t) : undefined}
                         poppedOut={popped.includes(t.key)}
@@ -732,6 +767,7 @@ function StagePeer({
   label,
   big,
   grid,
+  rttMs,
   onClick,
   onPopOut,
   poppedOut,
@@ -742,6 +778,8 @@ function StagePeer({
   tile: StageTile;
   label: string;
   big?: boolean;
+  /** 66-5: last measured round trip to this peer, when the overlay is on. */
+  rttMs?: number;
   /** 63-1: equal-size grid tile (group calls); clicking pins to spotlight. */
   grid?: boolean;
   onClick?: () => void;
@@ -808,6 +846,24 @@ function StagePeer({
           data-testid="voice-speaking"
           title={tile.isSelf ? "your mic is live" : "receiving audio"}
         />
+      )}
+      {/* 66-5: the round trip to this person, opposite the speaking dot. Self
+          has no round trip to itself, and a screen tile shares its owner's
+          connection -- the number belongs on the camera tile, once. */}
+      {rttMs !== undefined && !tile.isSelf && (
+        <span
+          class={"chalk-voice-rtt" + rttSeverityClass(rttMs)}
+          data-testid="voice-tile-rtt"
+          title={`round trip to ${label}: ${rttMs} ms${
+            rttMs >= RTT_BAD_MS
+              ? " — high enough to talk over each other"
+              : rttMs >= RTT_WARN_MS
+                ? " — noticeable"
+                : ""
+          }`}
+        >
+          {rttMs} ms
+        </span>
       )}
       <div class="chalk-voice-peer-label">
         <span class="chalk-voice-peer-name">{shownLabel}</span>
@@ -877,9 +933,17 @@ function StagePeer({
               }
               data-testid="voice-screen-hide"
             >
+              {/* 66-4: the words got legible, so the 148px strip tile can no
+                  longer carry "hide for me" beside a name. Same split the
+                  popout button makes: the phrase where there is room, the
+                  verb alone where there isn't -- the title says the rest. */}
               {snap.screenHidden[tile.userID + ":" + tile.deviceID]
-                ? "show for me"
-                : "hide for me"}
+                ? big || grid
+                  ? "show for me"
+                  : "show"
+                : big || grid
+                  ? "hide for me"
+                  : "hide"}
             </button>
           </span>
         )}
@@ -921,7 +985,13 @@ function StagePeer({
               }
               data-testid="voice-peer-localmute"
             >
-              {pref?.muted ? "unmute for me" : "mute for me"}
+              {pref?.muted
+                ? big || grid
+                  ? "unmute for me"
+                  : "unmute"
+                : big || grid
+                  ? "mute for me"
+                  : "mute"}
             </button>
           </span>
         )}

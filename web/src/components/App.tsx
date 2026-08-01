@@ -170,7 +170,7 @@ import {
 } from "../proto";
 import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
-import { hasUnread, initialState, selectChatPrefs, selectJoinMuted, selectParkingLotPrefs, selectRosterPrefs, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow } from "../state/types";
+import { hasUnread, initialState, selectChatPrefs, selectJoinMuted, selectParkingLotPrefs, selectRosterPrefs, selectVoicePrefs, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow, type VoicePrefs } from "../state/types";
 import { selectGiphyPref } from "../giphy/giphy";
 import {
   selectLinkPreviewPref,
@@ -2719,12 +2719,15 @@ export function App() {
     voiceSession.applyAccountJoinDefault(selectJoinMuted(state.prefs));
   }, [state.prefsLoaded, state.prefs.voice]);
 
-  const sendJoinMutedPref = useCallback((joinMuted: boolean) => {
+  // The server's JSONB merge is shallow, so `voice` has to go up whole: read
+  // the current object and write the patch over it, the way the chat prefs do.
+  const voicePrefs = selectVoicePrefs(state.prefs);
+  const voicePrefsRef = useRef(voicePrefs);
+  voicePrefsRef.current = voicePrefs;
+  const sendVoicePrefs = useCallback((patch: Partial<VoicePrefs>) => {
     const c = clientRef.current;
     if (!c || !c.isOpen()) return;
-    // `voice` has one key, so writing the whole object is the same thing as
-    // patching it -- the server's shallow JSONB merge replaces it wholesale.
-    c.send(TypePrefsSet, { patch: { voice: { joinMuted } } });
+    c.send(TypePrefsSet, { patch: { voice: { ...voicePrefsRef.current, ...patch } } });
   }, []);
 
   // Phase 9.6c: keep the presence subscription synchronized with the
@@ -4799,6 +4802,7 @@ export function App() {
                 cc={ccRef}
                 roster={state.voiceRosters[activeChannel.id] ?? []}
                 keyReady={keyStatus[activeChannel.id] === "ready"}
+                showLatency={!!voicePrefs.showLatency}
               />
             )}
             <MessageList
@@ -5431,8 +5435,8 @@ export function App() {
       {micSettingsOpen && (
         <MicSettingsDialog
           onClose={() => setMicSettingsOpen(false)}
-          joinMuted={selectJoinMuted(state.prefs)}
-          onJoinMutedChange={sendJoinMutedPref}
+          voicePrefs={voicePrefs}
+          onVoicePrefsChange={sendVoicePrefs}
         />
       )}
     </div>

@@ -427,12 +427,20 @@ export interface UserPrefs {
 // window -- so "muted" does not have to be re-set on every one of them.
 export interface VoicePrefs {
   joinMuted?: boolean; // default true
+  /** 66-5: round-trip time on each remote tile, off by default -- it is a
+   * number most calls never need, and a permanent one is a permanent worry. */
+  showLatency?: boolean;
 }
 
 /** selectJoinMuted resolves the 66-1 default. Absent = muted: joining a room
  * with a hot mic you did not ask for is the worse failure. */
 export function selectJoinMuted(prefs: UserPrefs | undefined): boolean {
   return prefs?.voice?.joinMuted !== false;
+}
+
+/** selectVoicePrefs: the sparse blob as stored, for the settings panel. */
+export function selectVoicePrefs(prefs: UserPrefs | undefined): VoicePrefs {
+  return prefs?.voice ?? {};
 }
 
 // 57-2: link-preview whitelist overrides as stored (sparse).
