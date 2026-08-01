@@ -5,7 +5,8 @@
 <h1 align="center">chalk</h1>
 
 A self-hosted, end-to-end-encrypted group chat: one Go binary, Postgres, and a
-browser client. Matrix-green-on-black by default (seven themes, Hack font),
+browser client. Matrix-green-on-black by default (thirteen themes, four
+bundled monospace fonts),
 Slack-style threading, Discord-style voice/video rooms.
 
 Accounts are password + TOTP; passkeys are an optional convenience on top,
@@ -35,8 +36,9 @@ never a bypass of the second factor.
 - **Accounts** — password + mandatory TOTP, optional passkeys, two separate
   24-word phrases (one resets your login, one is your encryption identity),
   and multi-device onboarding by re-entering the encryption phrase.
-- **Client** — desktop and mobile layouts, installable as a PWA, seven themes,
-  per-device font and text-size settings, per-user nick colours.
+- **Client** — desktop and mobile layouts, installable as a PWA, thirteen
+  themes, per-device font and text-size settings (Hack, JetBrains Mono, Fira
+  Code and Cascadia Code all bundled), per-user nick colours.
 - **Ops** — `chalkctl` deploys and updates a whole host from cosign-verified
   container images.
 

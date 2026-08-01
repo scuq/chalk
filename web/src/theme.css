@@ -5,8 +5,8 @@
  * themes (a "dim" or "high-contrast" variant) can override by setting
  * data-theme="dim" on <html>. Phase 07 ships only the default theme.
  *
- * Hack is bundled as woff2 in fonts/ so the page renders the right
- * glyphs with no network and no third-party font CDN.
+ * Four monospace families are bundled as woff2 in fonts/ so the page
+ * renders the right glyphs with no network and no third-party font CDN.
  *
  * No CSS framework -- the whole sheet is ~6 KB after minify.
  */
@@ -17,6 +17,24 @@
  *  Vera License. Full text: web/fonts/HACK-LICENSE.txt.
  *  Marked as a legal comment so the notice survives minification and
  *  ships with the bundle that carries the font bytes.
+ */
+
+/*! JetBrains Mono v2.304 -- https://github.com/JetBrains/JetBrainsMono
+ *  Copyright 2020 The JetBrains Mono Project Authors.
+ *  SIL Open Font License 1.1. Full text:
+ *  web/fonts/JETBRAINS-MONO-LICENSE.txt.
+ */
+
+/*! Fira Code v6.2 -- https://github.com/tonsky/FiraCode
+ *  Copyright 2014 The Fira Code Project Authors.
+ *  SIL Open Font License 1.1. Full text:
+ *  web/fonts/FIRA-CODE-LICENSE.txt.
+ */
+
+/*! Cascadia Code v2407.24 -- https://github.com/microsoft/cascadia-code
+ *  Copyright 2019-present Microsoft Corporation, with Reserved Font Name
+ *  Cascadia Code. SIL Open Font License 1.1. Full text:
+ *  web/fonts/CASCADIA-CODE-LICENSE.txt.
  */
 
 /* Relative urls so esbuild's file loader hashes the woff2 into dist/.
@@ -51,6 +69,81 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/jetbrains-mono-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/jetbrains-mono-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/jetbrains-mono-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/jetbrains-mono-bolditalic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Fira Code has no italic upstream -- the family is designed without
+   one -- so the browser obliques the regular and bold faces instead. */
+@font-face {
+  font-family: "Fira Code";
+  src: url("../fonts/fira-code-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Fira Code";
+  src: url("../fonts/fira-code-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Cascadia Code";
+  src: url("../fonts/cascadia-code-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cascadia Code";
+  src: url("../fonts/cascadia-code-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cascadia Code";
+  src: url("../fonts/cascadia-code-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cascadia Code";
+  src: url("../fonts/cascadia-code-bolditalic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
 :root {
   /* Palette -- matrix green tuned just a hair off pure #00FF41 so it
      isn't retina-vibrating on OLED. */
@@ -79,9 +172,18 @@
      per-device display prefs write as inline styles on <html> (see
      src/display-prefs.ts); everything below derives from them, so a
      scale change resizes the whole UI in one repaint. The values here
-     are the defaults for a device that has never set a preference. */
-  --chalk-font-mono: "Hack", ui-monospace, "Cascadia Code", "JetBrains Mono",
-                     "SF Mono", Consolas, "Roboto Mono", monospace;
+     are the defaults for a device that has never set a preference.
+
+     Every bundled family falls through the Hack stack, so a face that
+     fails to load still lands on a monospace. The system names in that
+     stack deliberately exclude Cascadia Code and JetBrains Mono: those
+     names now resolve to our own @font-face rules, and listing them as
+     fallbacks would quietly hand a Hack reader a different face. */
+  --chalk-font-mono: "Hack", ui-monospace, "SF Mono", Consolas,
+                     "Roboto Mono", monospace;
+  --chalk-font-jetbrains: "JetBrains Mono", var(--chalk-font-mono);
+  --chalk-font-fira: "Fira Code", var(--chalk-font-mono);
+  --chalk-font-cascadia: "Cascadia Code", var(--chalk-font-mono);
   --chalk-font-sans: system-ui, -apple-system, "Segoe UI", Roboto,
                      "Helvetica Neue", Arial, sans-serif;
   --chalk-font-serif: ui-serif, Georgia, Cambria, "Times New Roman", serif;
@@ -3554,6 +3656,15 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 .chalk-profile-font-sample--mono {
   font-family: var(--chalk-font-mono);
+}
+.chalk-profile-font-sample--jetbrains {
+  font-family: var(--chalk-font-jetbrains);
+}
+.chalk-profile-font-sample--fira {
+  font-family: var(--chalk-font-fira);
+}
+.chalk-profile-font-sample--cascadia {
+  font-family: var(--chalk-font-cascadia);
 }
 .chalk-profile-font-sample--sans {
   font-family: var(--chalk-font-sans);

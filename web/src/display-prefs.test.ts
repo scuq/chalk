@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import {
   applyDisplayPrefs,
   DEFAULT_DISPLAY_PREFS,
+  FONT_CHOICES,
   MAX_SCALE,
   MIN_SCALE,
   normalizeDisplayPrefs,
@@ -96,9 +97,17 @@ test("hiding scrollbars removes both the bar and its lane", () => {
 });
 
 test("apply names a family alias for every offered font", () => {
-  for (const font of ["mono", "sans", "serif"] as const) {
+  for (const { value } of FONT_CHOICES) {
     const el = styleStub();
-    applyDisplayPrefs({ font, scale: 1, hideScrollbars: false }, el);
-    assert.equal(el.props["--chalk-font"], `var(--chalk-font-${font})`);
+    applyDisplayPrefs({ font: value, scale: 1, hideScrollbars: false }, el);
+    assert.equal(el.props["--chalk-font"], `var(--chalk-font-${value})`);
+  }
+});
+
+// A font the picker offers but normalize rejects would look like the
+// setting silently refusing to stick.
+test("every offered font survives normalization unchanged", () => {
+  for (const { value } of FONT_CHOICES) {
+    assert.equal(normalizeDisplayPrefs({ font: value, scale: 1 }).font, value);
   }
 });

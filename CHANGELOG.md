@@ -13,6 +13,11 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- Three more typefaces ship with chalk — JetBrains Mono, Fira Code and
+  Cascadia Code — pickable in appearance settings alongside Hack. All three
+  are ligature fonts, so arrows and comparison operators render fused. Like
+  the existing font setting the choice is per device, and like Hack they come
+  with chalk itself: nothing is ever fetched from a font CDN.
 - Pressing F9 anywhere in chalk drops you straight onto the parking lot —
   messages, the composer and any open side panel go away in one keystroke,
   even mid-sentence. Pressing it again does not bring the conversation back;

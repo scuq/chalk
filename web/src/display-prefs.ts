@@ -20,7 +20,10 @@
 
 import { useCallback, useEffect, useState } from "preact/hooks";
 
-export type FontChoice = "mono" | "sans" | "serif";
+// "mono" is Hack, and stays spelled that way: devices have been storing
+// it since 34-1, and renaming the value would silently reset everyone's
+// font. Only its label changed once it stopped being the only monospace.
+export type FontChoice = "mono" | "jetbrains" | "fira" | "cascadia" | "sans" | "serif";
 
 export interface DisplayPrefs {
   font: FontChoice;
@@ -42,8 +45,13 @@ const STORAGE_KEY = "chalk.display.v1";
 export const MIN_SCALE = 0.8;
 export const MAX_SCALE = 1.5;
 
+// Each value needs a matching --chalk-font-<value> stack in theme.css;
+// theme-fonts.test.ts holds the two files to that.
 export const FONT_CHOICES: { value: FontChoice; label: string; desc: string }[] = [
-  { value: "mono", label: "mono", desc: "Hack, bundled" },
+  { value: "mono", label: "hack", desc: "bundled, default" },
+  { value: "jetbrains", label: "jetbrains mono", desc: "bundled, ligatures" },
+  { value: "fira", label: "fira code", desc: "bundled, ligatures" },
+  { value: "cascadia", label: "cascadia code", desc: "bundled, ligatures" },
   { value: "sans", label: "sans", desc: "system UI face" },
   { value: "serif", label: "serif", desc: "system serif" },
 ];
@@ -57,7 +65,7 @@ export const SCALE_STEPS: { value: number; label: string }[] = [
 ];
 
 function isFontChoice(v: unknown): v is FontChoice {
-  return v === "mono" || v === "sans" || v === "serif";
+  return FONT_CHOICES.some((f) => f.value === v);
 }
 
 // normalizeDisplayPrefs turns anything at all into usable prefs: an
