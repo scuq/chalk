@@ -1,29 +1,17 @@
-// ProfilePanel: in-chat modal for managing the user's own profile.
-// Phase 09c-2.
+// ProfilePanel: in-chat modal for managing the user's own profile and
+// settings. Started as three sections (phase 09c-2); by phase 68 it holds
+// sixteen, organized into tabs (settings-nav.ts maps section -> tab) with
+// a filter input that searches every section's keywords across all tabs.
 //
-// Three sections:
+// Each section's JSX lives here, gated twice: show(<id>) for tab/filter
+// visibility, and the section's own optional callback props (a section
+// whose callbacks the parent didn't wire never renders at all).
 //
-//   1. Identity (read-only): username, display name, email,
-//      session expiry.
-//
-//   2. Change email: form for starting the email-change flow.
-//      On submit, the server sends a verify link to the new
-//      address and a notification to the old. The user must click
-//      the link in the new inbox to finalize. After submit, this
-//      panel shows a "verification email sent" summary until
-//      dismissed or the panel is closed.
-//
-//   3. Rotate recovery code: button that calls /api/auth/recovery/
-//      regenerate, displays the new 24-word phrase in a confirm-
-//      and-continue gate (RecoveryScreen intent="regenerated").
-//      A user might do this if they suspect their old phrase
-//      was compromised, or just for periodic hygiene.
-//
-// All three live in the same modal. Section 3 is heavy enough that
-// when active it takes over the modal body (the identity + change-
-// email sections fade out, the recovery view fades in). A back
-// button returns to the main panel without rotating, in case the
-// user clicked it by accident.
+// One sub-view takes over the whole modal: rotate recovery code (calls
+// /api/auth/recovery/regenerate, shows the new 24-word phrase in a
+// confirm-and-continue gate, RecoveryScreen intent="regenerated"). The
+// takeover early-returns before the main view, so tab and filter state
+// survive the round-trip.
 
 import { hexFromHue, hueFromHex, nickTintStyle } from "../chat/nickcolor";
 import {
@@ -54,6 +42,13 @@ import { notifySounds } from "../notify";
 import { useSoundPrefs } from "../notify/prefs";
 import { CATEGORY_LABELS, MACHINE_CATEGORIES } from "../notify/types";
 import { useIdlePrefs } from "../presence/idle-prefs";
+import {
+  SECTION_TAB,
+  SETTINGS_TABS,
+  matchSections,
+  type SectionId,
+  type SettingsTab,
+} from "../settings-nav";
 import {
   systemIdlePermission,
   systemIdleSupported,
@@ -212,6 +207,12 @@ export function ProfilePanel({
   serverVersion,
   serverCommit,
 }: Props) {
+  // 68-2/68-3: which settings tab is open, and the filter query. Ephemeral
+  // view state — the panel unmounts on close, so both reset for free. A
+  // non-empty filter overrides the tab and searches every section.
+  const [activeTab, setActiveTab] = useState<SettingsTab>("account");
+  const [filterQuery, setFilterQuery] = useState("");
+
   // Local UI state: are we in the rotate-recovery sub-view?
   // Local because no other component cares.
   const [rotateView, setRotateView] = useState<"idle" | "loading" | "showing" | "error">("idle");
@@ -409,6 +410,13 @@ export function ProfilePanel({
     ? friendlyEmailChangeError(emailChange.errorCode, emailChange.errorMessage)
     : null;
 
+  // 68-2/68-3: null means "not filtering" — show the active tab. Filtering
+  // shows matching sections from every tab; show() composes with each
+  // section's existing prop gates, it never replaces them.
+  const matched = matchSections(filterQuery);
+  const show = (id: SectionId) =>
+    matched ? matched.has(id) : SECTION_TAB[id] === activeTab;
+
   return (
     <div
       class="chalk-modal-backdrop"
@@ -446,131 +454,172 @@ export function ProfilePanel({
           </div>
         </header>
 
+        <div class="chalk-profile-filter">
+          <input
+            class="chalk-profile-filter-input"
+            type="search"
+            placeholder="filter settings…"
+            aria-label="filter settings"
+            value={filterQuery}
+            onInput={(e) => setFilterQuery((e.target as HTMLInputElement).value)}
+            data-testid="profile-filter-input"
+          />
+        </div>
+
+        <nav class="chalk-profile-tabs" role="tablist" aria-label="settings sections" data-testid="profile-tabs">
+          {SETTINGS_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              class={`chalk-profile-tab-btn${!matched && activeTab === t.id ? " chalk-profile-tab-btn--active" : ""}`}
+              aria-selected={!matched && activeTab === t.id}
+              onClick={() => {
+                setFilterQuery("");
+                setActiveTab(t.id);
+              }}
+              data-testid={`profile-tab-${t.id}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+
         <div class="chalk-modal-body">
+          {matched && matched.size === 0 && (
+            <p class="chalk-profile-filter-empty" data-testid="profile-filter-empty">
+              no settings match
+            </p>
+          )}
+
           {/* Identity section */}
-          <section class="chalk-profile-identity">
-            <h3>identity</h3>
-            <dl class="chalk-profile-fields">
-              <dt>username</dt>
-              <dd data-testid="profile-username">@{me.username}</dd>
+          {show("identity") && (
+            <section class="chalk-profile-identity">
+              <h3>identity</h3>
+              <dl class="chalk-profile-fields">
+                <dt>username</dt>
+                <dd data-testid="profile-username">@{me.username}</dd>
 
-              <dt>display name</dt>
-              <dd>{me.displayName || <em>(none set)</em>}</dd>
+                <dt>display name</dt>
+                <dd>{me.displayName || <em>(none set)</em>}</dd>
 
-              <dt>email</dt>
-              <dd data-testid="profile-email">{me.email}</dd>
+                <dt>email</dt>
+                <dd data-testid="profile-email">{me.email}</dd>
 
-              <dt>role</dt>
-              <dd>{me.role}</dd>
+                <dt>role</dt>
+                <dd>{me.role}</dd>
 
-              <dt>session</dt>
-              <dd>expires {formatTimestamp(me.sessionExpiresAt)}</dd>
-            </dl>
-          </section>
+                <dt>session</dt>
+                <dd>expires {formatTimestamp(me.sessionExpiresAt)}</dd>
+              </dl>
+            </section>
+          )}
 
-          <section class="chalk-profile-appearance">
-            <h3>appearance</h3>
-            {onSetTheme && (
+          {show("appearance") && (
+            <section class="chalk-profile-appearance">
+              <h3>appearance</h3>
+              {onSetTheme && (
+                <div class="chalk-profile-field">
+                  <label class="chalk-profile-label" for="theme-picker">theme</label>
+                  <div class="chalk-profile-theme-picker" id="theme-picker" role="radiogroup" aria-label="theme">
+                    {(["green", "light", "snazzy-light", "warmwhite", "vscode-light", "cyberpunk", "solarized-dark", "tokyo-night", "lcars", "blade-runner", "azeroth", "darkord", "exchalk"] as const).map((t) => (
+                      <label
+                        key={t}
+                        class={`chalk-profile-theme-option ${(theme ?? "green") === t ? "chalk-profile-theme-option--active" : ""}`}
+                      >
+                        <input
+                          type="radio"
+                          name="theme"
+                          value={t}
+                          checked={(theme ?? "green") === t}
+                          onChange={() => onSetTheme(t)}
+                          data-testid={`theme-option-${t}`}
+                        />
+                        <span class="chalk-profile-theme-swatch">
+                          <span class={`chalk-profile-theme-swatch-preview chalk-profile-theme-swatch-preview--${t}`} aria-hidden="true" />
+                          <span class="chalk-profile-theme-name">{t}</span>
+                          <span class="chalk-profile-theme-desc">
+                            {
+                              t === "green" ? "default terminal" :
+                              t === "light" ? "warm cream" :
+                              t === "snazzy-light" ? "cool white, magenta accent" :
+                              t === "warmwhite" ? "dark rail, warm white page" :
+                              t === "vscode-light" ? "vs code light, editor white" :
+                              t === "cyberpunk" ? "neon violet-black" :
+                              t === "solarized-dark" ? "solarized dark" :
+                              t === "tokyo-night" ? "tokyo night blue" :
+                              t === "lcars" ? "starship okudagram" :
+                              t === "blade-runner" ? "neon scarlet, smog black" :
+                              t === "azeroth" ? "gold on forest green" :
+                              t === "darkord" ? "blurple on deep grey" :
+                              "true black, sky-blue links"
+                            }
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <p class="chalk-profile-hint">
+                    the theme follows you across devices.
+                  </p>
+                </div>
+              )}
+
               <div class="chalk-profile-field">
-                <label class="chalk-profile-label" for="theme-picker">theme</label>
-                <div class="chalk-profile-theme-picker" id="theme-picker" role="radiogroup" aria-label="theme">
-                  {(["green", "light", "snazzy-light", "warmwhite", "vscode-light", "cyberpunk", "solarized-dark", "tokyo-night", "lcars", "blade-runner", "azeroth", "darkord", "exchalk"] as const).map((t) => (
+                <label class="chalk-profile-label" for="font-picker">font</label>
+                <div class="chalk-profile-theme-picker" id="font-picker" role="radiogroup" aria-label="font">
+                  {FONT_CHOICES.map((f) => (
                     <label
-                      key={t}
-                      class={`chalk-profile-theme-option ${(theme ?? "green") === t ? "chalk-profile-theme-option--active" : ""}`}
+                      key={f.value}
+                      class={`chalk-profile-theme-option ${display.font === f.value ? "chalk-profile-theme-option--active" : ""}`}
                     >
                       <input
                         type="radio"
-                        name="theme"
-                        value={t}
-                        checked={(theme ?? "green") === t}
-                        onChange={() => onSetTheme(t)}
-                        data-testid={`theme-option-${t}`}
+                        name="display-font"
+                        value={f.value}
+                        checked={display.font === f.value}
+                        onChange={() => setDisplay({ font: f.value })}
+                        data-testid={`font-option-${f.value}`}
                       />
                       <span class="chalk-profile-theme-swatch">
-                        <span class={`chalk-profile-theme-swatch-preview chalk-profile-theme-swatch-preview--${t}`} aria-hidden="true" />
-                        <span class="chalk-profile-theme-name">{t}</span>
-                        <span class="chalk-profile-theme-desc">
-                          {
-                            t === "green" ? "default terminal" :
-                            t === "light" ? "warm cream" :
-                            t === "snazzy-light" ? "cool white, magenta accent" :
-                            t === "warmwhite" ? "dark rail, warm white page" :
-                            t === "vscode-light" ? "vs code light, editor white" :
-                            t === "cyberpunk" ? "neon violet-black" :
-                            t === "solarized-dark" ? "solarized dark" :
-                            t === "tokyo-night" ? "tokyo night blue" :
-                            t === "lcars" ? "starship okudagram" :
-                            t === "blade-runner" ? "neon scarlet, smog black" :
-                            t === "azeroth" ? "gold on forest green" :
-                            t === "darkord" ? "blurple on deep grey" :
-                            "true black, sky-blue links"
-                          }
+                        <span
+                          class={`chalk-profile-font-sample chalk-profile-font-sample--${f.value}`}
+                          aria-hidden="true"
+                        >
+                          Ag
                         </span>
+                        <span class="chalk-profile-theme-name">{f.label}</span>
+                        <span class="chalk-profile-theme-desc">{f.desc}</span>
                       </span>
                     </label>
                   ))}
                 </div>
+              </div>
+
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-label" for="font-size">text size</label>
+                <select
+                  id="font-size"
+                  class="chalk-profile-select"
+                  value={String(display.scale)}
+                  onChange={(e) => setDisplay({ scale: Number((e.target as HTMLSelectElement).value) })}
+                  data-testid="display-font-scale"
+                >
+                  {SCALE_STEPS.map((s) => (
+                    <option key={s.value} value={String(s.value)}>
+                      {s.label} ({Math.round(s.value * 100)}%)
+                    </option>
+                  ))}
+                </select>
                 <p class="chalk-profile-hint">
-                  the theme follows you across devices.
+                  font and text size are stored on this device only, so your
+                  phone and your desktop can differ.
                 </p>
               </div>
-            )}
+            </section>
+          )}
 
-            <div class="chalk-profile-field">
-              <label class="chalk-profile-label" for="font-picker">font</label>
-              <div class="chalk-profile-theme-picker" id="font-picker" role="radiogroup" aria-label="font">
-                {FONT_CHOICES.map((f) => (
-                  <label
-                    key={f.value}
-                    class={`chalk-profile-theme-option ${display.font === f.value ? "chalk-profile-theme-option--active" : ""}`}
-                  >
-                    <input
-                      type="radio"
-                      name="display-font"
-                      value={f.value}
-                      checked={display.font === f.value}
-                      onChange={() => setDisplay({ font: f.value })}
-                      data-testid={`font-option-${f.value}`}
-                    />
-                    <span class="chalk-profile-theme-swatch">
-                      <span
-                        class={`chalk-profile-font-sample chalk-profile-font-sample--${f.value}`}
-                        aria-hidden="true"
-                      >
-                        Ag
-                      </span>
-                      <span class="chalk-profile-theme-name">{f.label}</span>
-                      <span class="chalk-profile-theme-desc">{f.desc}</span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div class="chalk-profile-field">
-              <label class="chalk-profile-label" for="font-size">text size</label>
-              <select
-                id="font-size"
-                class="chalk-profile-select"
-                value={String(display.scale)}
-                onChange={(e) => setDisplay({ scale: Number((e.target as HTMLSelectElement).value) })}
-                data-testid="display-font-scale"
-              >
-                {SCALE_STEPS.map((s) => (
-                  <option key={s.value} value={String(s.value)}>
-                    {s.label} ({Math.round(s.value * 100)}%)
-                  </option>
-                ))}
-              </select>
-              <p class="chalk-profile-hint">
-                font and text size are stored on this device only, so your
-                phone and your desktop can differ.
-              </p>
-            </div>
-          </section>
-
-          {onSetChatPref && chatPrefs && (
+          {show("chat") && onSetChatPref && chatPrefs && (
             <section class="chalk-profile-chat">
               <h3>chat</h3>
               <div class="chalk-profile-field">
@@ -872,7 +921,7 @@ export function ProfilePanel({
 
           {/* 54-3: channel grouping. Off renders the sidebar's channel list
               flat, exactly as before phase 54. */}
-          {rosterGroupingEnabled !== undefined && onSetRosterGrouping && (
+          {show("roster") && rosterGroupingEnabled !== undefined && onSetRosterGrouping && (
             <section class="chalk-profile-roster" data-testid="roster-settings">
               <h3>channel list</h3>
               <div class="chalk-profile-field">
@@ -927,7 +976,7 @@ export function ProfilePanel({
           {/* 53-1: the parking lot. Both settings are account-level: the title
               is a personal label and hiding the row is a decision about your
               chalk, so they follow you to your other devices. */}
-          {parkingLot && onSetParkingLot && (
+          {show("parking") && parkingLot && onSetParkingLot && (
             <section class="chalk-profile-parking" data-testid="parking-settings">
               <h3>parking lot</h3>
               <p class="chalk-profile-hint">
@@ -985,130 +1034,132 @@ export function ProfilePanel({
               localStorage through useSoundPrefs directly rather than taking
               props -- nothing here goes near the server. Every control is a
               chalk stroke you can hear before you commit to it. */}
-          <section class="chalk-profile-notifications" data-testid="notify-settings">
-            <h3>notifications</h3>
+          {show("notifications") && (
+            <section class="chalk-profile-notifications" data-testid="notify-settings">
+              <h3>notifications</h3>
 
-            <div class="chalk-profile-field">
-              <label class="chalk-profile-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={sound.master}
-                  onChange={(e) => setSound({ master: (e.target as HTMLInputElement).checked })}
-                  data-testid="notify-sounds-master"
-                />
-                <span>play sounds</span>
-              </label>
-            </div>
-
-            <div class="chalk-profile-field">
-              <label class="chalk-profile-label" for="notify-volume">
-                volume{" "}
-                <span class="chalk-profile-theme-desc">({Math.round(sound.volume * 100)}%)</span>
-              </label>
-              <input
-                id="notify-volume"
-                type="range"
-                class="chalk-profile-range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={sound.volume}
-                disabled={!sound.master}
-                // onChange, not onInput: a range fires input on every pixel
-                // of the drag, and each one is a write plus a fan-out to the
-                // other tabs on this device.
-                onChange={(e) => setSound({ volume: Number((e.target as HTMLInputElement).value) })}
-                data-testid="notify-volume"
-              />
-            </div>
-
-            <div class="chalk-profile-field">
-              <label class="chalk-profile-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={sound.dnd}
-                  disabled={!sound.master}
-                  onChange={(e) => setSound({ dnd: (e.target as HTMLInputElement).checked })}
-                  data-testid="notify-dnd"
-                />
-                <span>
-                  do not disturb{" "}
-                  <span class="chalk-profile-theme-desc">(silence everything, keep the badges)</span>
-                </span>
-              </label>
-            </div>
-
-            {/* 50-4: everything about people -- which events matter, who is
-                loud, what a priority does -- lives in the rules panel. */}
-            {onOpenNotificationRules && (
               <div class="chalk-profile-field">
-                <button
-                  type="button"
-                  class="chalk-notify-permission-btn"
-                  data-testid="open-notify-rules"
-                  onClick={onOpenNotificationRules}
-                >
-                  notification rules…
-                </button>
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={sound.master}
+                    onChange={(e) => setSound({ master: (e.target as HTMLInputElement).checked })}
+                    data-testid="notify-sounds-master"
+                  />
+                  <span>play sounds</span>
+                </label>
+              </div>
+
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-label" for="notify-volume">
+                  volume{" "}
+                  <span class="chalk-profile-theme-desc">({Math.round(sound.volume * 100)}%)</span>
+                </label>
+                <input
+                  id="notify-volume"
+                  type="range"
+                  class="chalk-profile-range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={sound.volume}
+                  disabled={!sound.master}
+                  // onChange, not onInput: a range fires input on every pixel
+                  // of the drag, and each one is a write plus a fan-out to the
+                  // other tabs on this device.
+                  onChange={(e) => setSound({ volume: Number((e.target as HTMLInputElement).value) })}
+                  data-testid="notify-volume"
+                />
+              </div>
+
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={sound.dnd}
+                    disabled={!sound.master}
+                    onChange={(e) => setSound({ dnd: (e.target as HTMLInputElement).checked })}
+                    data-testid="notify-dnd"
+                  />
+                  <span>
+                    do not disturb{" "}
+                    <span class="chalk-profile-theme-desc">(silence everything, keep the badges)</span>
+                  </span>
+                </label>
+              </div>
+
+              {/* 50-4: everything about people -- which events matter, who is
+                  loud, what a priority does -- lives in the rules panel. */}
+              {onOpenNotificationRules && (
+                <div class="chalk-profile-field">
+                  <button
+                    type="button"
+                    class="chalk-notify-permission-btn"
+                    data-testid="open-notify-rules"
+                    onClick={onOpenNotificationRules}
+                  >
+                    notification rules…
+                  </button>
+                  <p class="chalk-profile-hint">
+                    priorities, per-person and per-channel rules, desktop banners.
+                  </p>
+                </div>
+              )}
+
+              {/* 50-2: only the machine noises live here now. What the chat
+                  and event notifications do is the rules engine's business,
+                  configured in the notification rules panel. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-label">chalk's own noises</label>
+                <div class="chalk-profile-sound-list">
+                  {MACHINE_CATEGORIES.map((c) => (
+                    <div class="chalk-profile-sound-row" key={c}>
+                      <label class="chalk-profile-checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={sound.categories[c]}
+                          disabled={!sound.master}
+                          onChange={(e) =>
+                            setSoundCategory(c, (e.target as HTMLInputElement).checked)
+                          }
+                          data-testid={`notify-category-${c}`}
+                        />
+                        <span>
+                          {CATEGORY_LABELS[c].label}
+                          {CATEGORY_LABELS[c].desc && (
+                            <span class="chalk-profile-theme-desc"> — {CATEGORY_LABELS[c].desc}</span>
+                          )}
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        class="chalk-profile-sound-preview"
+                        // Deliberately not disabled with the master switch:
+                        // hearing one is how you decide whether to turn the
+                        // whole thing back on.
+                        onClick={() => notifySounds().preview(c)}
+                        aria-label={`play the ${CATEGORY_LABELS[c].label} sound`}
+                        data-testid={`notify-preview-${c}`}
+                      >
+                        play
+                      </button>
+                    </div>
+                  ))}
+                </div>
                 <p class="chalk-profile-hint">
-                  priorities, per-person and per-channel rules, desktop banners.
+                  these settings stay on this device — your phone and your desktop can disagree.
+                  chalk keeps quiet for whatever channel you're already reading.
                 </p>
               </div>
-            )}
-
-            {/* 50-2: only the machine noises live here now. What the chat
-                and event notifications do is the rules engine's business,
-                configured in the notification rules panel. */}
-            <div class="chalk-profile-field">
-              <label class="chalk-profile-label">chalk's own noises</label>
-              <div class="chalk-profile-sound-list">
-                {MACHINE_CATEGORIES.map((c) => (
-                  <div class="chalk-profile-sound-row" key={c}>
-                    <label class="chalk-profile-checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={sound.categories[c]}
-                        disabled={!sound.master}
-                        onChange={(e) =>
-                          setSoundCategory(c, (e.target as HTMLInputElement).checked)
-                        }
-                        data-testid={`notify-category-${c}`}
-                      />
-                      <span>
-                        {CATEGORY_LABELS[c].label}
-                        {CATEGORY_LABELS[c].desc && (
-                          <span class="chalk-profile-theme-desc"> — {CATEGORY_LABELS[c].desc}</span>
-                        )}
-                      </span>
-                    </label>
-                    <button
-                      type="button"
-                      class="chalk-profile-sound-preview"
-                      // Deliberately not disabled with the master switch:
-                      // hearing one is how you decide whether to turn the
-                      // whole thing back on.
-                      onClick={() => notifySounds().preview(c)}
-                      aria-label={`play the ${CATEGORY_LABELS[c].label} sound`}
-                      data-testid={`notify-preview-${c}`}
-                    >
-                      play
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <p class="chalk-profile-hint">
-                these settings stay on this device — your phone and your desktop can disagree.
-                chalk keeps quiet for whatever channel you're already reading.
-              </p>
-            </div>
-          </section>
+            </section>
+          )}
 
           {/* 45-4: away detection. Only rendered where the browser actually
               has the API -- Firefox and Safari have both declined to implement
               it, and a switch that cannot do anything is worse than no switch.
               Per-device for the same reason the sounds are: the permission
               belongs to this browser and cannot follow you to your phone. */}
-          {systemIdleSupported() && (
+          {show("away") && systemIdleSupported() && (
             <section class="chalk-profile-notifications" data-testid="idle-settings">
               <h3>away detection</h3>
               <div class="chalk-profile-field">
@@ -1151,7 +1202,7 @@ export function ProfilePanel({
           {/* 44-3: the mic settings live in their own dialog now, opened from
               the ⚙ in the footer's voice cluster. This is the signpost for
               anyone who comes here looking for them. */}
-          {onOpenMicSettings && (
+          {show("voice") && onOpenMicSettings && (
             <section class="chalk-profile-microphone-link">
               <h3>voice &amp; video</h3>
               <div class="chalk-profile-field">
@@ -1172,7 +1223,7 @@ export function ProfilePanel({
           )}
 
           {/* att-2: storage -- clear the cached attachment ciphertext. */}
-          {onClearImageCache && (
+          {show("storage") && onClearImageCache && (
             <section class="chalk-profile-storage">
               <h3>storage</h3>
               <div class="chalk-profile-field">
@@ -1201,7 +1252,7 @@ export function ProfilePanel({
           {/* att-4b: Giphy consent. Enabling routes through the app-level
               consent modal (onRequestEnableGiphy) so the privacy tradeoff is
               explained first; disabling is direct. Per-device, default off. */}
-          {onSetGiphyPref && (
+          {show("giphy") && onSetGiphyPref && (
             <section class="chalk-profile-storage" data-testid="giphy-settings">
               <h3>giphy</h3>
               <div class="chalk-profile-field">
@@ -1238,7 +1289,7 @@ export function ProfilePanel({
               editor shapes the compose-side whitelist only -- received
               cards render regardless (they cost no fetches), unless the
               separate hide toggle is on. */}
-          {onSetLinkPreviewPref && (
+          {show("linkpreviews") && onSetLinkPreviewPref && (
             <section class="chalk-profile-storage" data-testid="linkpreview-settings">
               <h3>link previews</h3>
               <div class="chalk-profile-field">
@@ -1289,233 +1340,241 @@ export function ProfilePanel({
           )}
 
           {/* Email change section */}
-          <section class="chalk-profile-email-change">
-            <h3>change email</h3>
-            {emailChange.pendingSummary ? (
-              <div class="chalk-profile-pending" data-testid="profile-email-pending">
-                <p>
-                  we sent a verification email to{" "}
-                  <strong>{emailChange.pendingSummary.newEmail}</strong>.
-                </p>
-                <p class="chalk-auth-subtitle">
-                  click the link in that email to complete the change.
-                  it expires on {formatTimestamp(emailChange.pendingSummary.expiresAt)}.
-                </p>
-                <p class="chalk-auth-subtitle">
-                  we also notified your current email address as a
-                  security heads-up.
-                </p>
-                <button
-                  type="button"
-                  class="chalk-button chalk-button--secondary"
-                  onClick={onEmailChangeDismiss}
-                  data-testid="profile-email-pending-dismiss"
-                >
-                  ok
-                </button>
-              </div>
-            ) : (
-              <form
-                class="chalk-auth-form"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (submitEmailDisabled) return;
-                  onEmailChangeSubmit();
-                }}
-                data-testid="profile-email-form"
-              >
-                {emailBannerError && (
-                  <div class="chalk-auth-error" data-testid="profile-email-error">
-                    {emailBannerError}
-                  </div>
-                )}
-                <div class="chalk-field">
-                  <label class="chalk-field-label" for="profile-email-new">
-                    new email
-                  </label>
-                  <input
-                    id="profile-email-new"
-                    class="chalk-field-input"
-                    type="email"
-                    autoComplete="email"
-                    autoCapitalize="none"
-                    required
-                    value={emailChange.draft}
-                    disabled={emailChange.busy}
-                    onInput={(e) => onEmailChangeDraft((e.target as HTMLInputElement).value)}
-                    data-testid="profile-email-input"
-                  />
-                  <span class="chalk-field-hint">
-                    a verification link will be sent to this address;
-                    the change isn't final until you click it
-                  </span>
+          {show("email") && (
+            <section class="chalk-profile-email-change">
+              <h3>change email</h3>
+              {emailChange.pendingSummary ? (
+                <div class="chalk-profile-pending" data-testid="profile-email-pending">
+                  <p>
+                    we sent a verification email to{" "}
+                    <strong>{emailChange.pendingSummary.newEmail}</strong>.
+                  </p>
+                  <p class="chalk-auth-subtitle">
+                    click the link in that email to complete the change.
+                    it expires on {formatTimestamp(emailChange.pendingSummary.expiresAt)}.
+                  </p>
+                  <p class="chalk-auth-subtitle">
+                    we also notified your current email address as a
+                    security heads-up.
+                  </p>
+                  <button
+                    type="button"
+                    class="chalk-button chalk-button--secondary"
+                    onClick={onEmailChangeDismiss}
+                    data-testid="profile-email-pending-dismiss"
+                  >
+                    ok
+                  </button>
                 </div>
-                <button
-                  type="submit"
-                  class="chalk-button chalk-button--primary"
-                  disabled={submitEmailDisabled}
-                  data-testid="profile-email-submit"
+              ) : (
+                <form
+                  class="chalk-auth-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (submitEmailDisabled) return;
+                    onEmailChangeSubmit();
+                  }}
+                  data-testid="profile-email-form"
                 >
-                  {emailChange.busy ? "sending..." : "send verification email"}
-                </button>
-              </form>
-            )}
-          </section>
+                  {emailBannerError && (
+                    <div class="chalk-auth-error" data-testid="profile-email-error">
+                      {emailBannerError}
+                    </div>
+                  )}
+                  <div class="chalk-field">
+                    <label class="chalk-field-label" for="profile-email-new">
+                      new email
+                    </label>
+                    <input
+                      id="profile-email-new"
+                      class="chalk-field-input"
+                      type="email"
+                      autoComplete="email"
+                      autoCapitalize="none"
+                      required
+                      value={emailChange.draft}
+                      disabled={emailChange.busy}
+                      onInput={(e) => onEmailChangeDraft((e.target as HTMLInputElement).value)}
+                      data-testid="profile-email-input"
+                    />
+                    <span class="chalk-field-hint">
+                      a verification link will be sent to this address;
+                      the change isn't final until you click it
+                    </span>
+                  </div>
+                  <button
+                    type="submit"
+                    class="chalk-button chalk-button--primary"
+                    disabled={submitEmailDisabled}
+                    data-testid="profile-email-submit"
+                  >
+                    {emailChange.busy ? "sending..." : "send verification email"}
+                  </button>
+                </form>
+              )}
+            </section>
+          )}
 
           {/* Rotate recovery section */}
-          <section class="chalk-profile-rotate">
-            <h3>recovery code</h3>
-            <p class="chalk-auth-subtitle">
-              if you suspect your recovery phrase has been seen by
-              someone else, you can rotate it now. doing so consumes
-              the existing phrase; you'll be shown a fresh one
-              immediately.
-            </p>
-            {rotateView === "error" && (
-              <div class="chalk-auth-error" data-testid="profile-rotate-error">
-                {rotateError}
-              </div>
-            )}
-            <button
-              type="button"
-              class="chalk-button chalk-button--secondary"
-              onClick={startRotate}
-              disabled={rotateView === "loading"}
-              data-testid="profile-rotate-button"
-            >
-              {rotateView === "loading" ? "rotating..." : "rotate recovery code"}
-            </button>
-          </section>
+          {show("recovery") && (
+            <section class="chalk-profile-rotate">
+              <h3>recovery code</h3>
+              <p class="chalk-auth-subtitle">
+                if you suspect your recovery phrase has been seen by
+                someone else, you can rotate it now. doing so consumes
+                the existing phrase; you'll be shown a fresh one
+                immediately.
+              </p>
+              {rotateView === "error" && (
+                <div class="chalk-auth-error" data-testid="profile-rotate-error">
+                  {rotateError}
+                </div>
+              )}
+              <button
+                type="button"
+                class="chalk-button chalk-button--secondary"
+                onClick={startRotate}
+                disabled={rotateView === "loading"}
+                data-testid="profile-rotate-button"
+              >
+                {rotateView === "loading" ? "rotating..." : "rotate recovery code"}
+              </button>
+            </section>
+          )}
 
           {/* md-4-2: passkeys. Account access is per-device; add a passkey
               on each device you use so you don't have to fall back to the
               one-time recovery code. Distinct from the 24-word decryption
               phrase, which is client-only and unlocks message history. */}
           {/* 31-8: password / two-factor / phrase-link management. */}
-          <SecurityPanel username={me.username} />
+          {show("security") && <SecurityPanel username={me.username} />}
 
-          <section class="chalk-profile-passkeys" data-testid="profile-passkeys">
-            <h3>passkeys</h3>
-            <p class="chalk-auth-subtitle">
-              passkeys are how you sign in to this account. add one on each
-              device you use, so you don't have to fall back to your recovery
-              code. this is account sign-in only — it's separate from your
-              24-word decryption phrase, which unlocks your message history.
-            </p>
-            {passkeysError && (
-              <div class="chalk-auth-error" data-testid="passkeys-load-error">{passkeysError}</div>
-            )}
-            {passkeys === null ? (
-              <p class="chalk-profile-hint">loading…</p>
-            ) : passkeys.length === 0 ? (
-              <p class="chalk-profile-hint" data-testid="passkeys-empty">
-                no passkeys on this account yet.
+          {show("passkeys") && (
+            <section class="chalk-profile-passkeys" data-testid="profile-passkeys">
+              <h3>passkeys</h3>
+              <p class="chalk-auth-subtitle">
+                passkeys are how you sign in to this account. add one on each
+                device you use, so you don't have to fall back to your recovery
+                code. this is account sign-in only — it's separate from your
+                24-word decryption phrase, which unlocks your message history.
               </p>
-            ) : (
-              <ul class="chalk-profile-passkey-list" data-testid="passkey-list" style={{ listStyle: "none", padding: 0, margin: "0 0 0.75rem 0" }}>
-                {passkeys.map((pk) => (
-                  <li key={pk.id} class="chalk-profile-passkey" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.5rem", padding: "0.35rem 0", borderBottom: "1px solid var(--chalk-border, rgba(255,255,255,0.08))" }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div>{pk.name || "unnamed passkey"}</div>
-                      <div class="chalk-profile-hint" style={{ marginTop: 0 }}>
-                        added {formatMillis(pk.createdAt)}
-                        {pk.lastUsedAt ? ` · last used ${formatMillis(pk.lastUsedAt)}` : " · never used"}
+              {passkeysError && (
+                <div class="chalk-auth-error" data-testid="passkeys-load-error">{passkeysError}</div>
+              )}
+              {passkeys === null ? (
+                <p class="chalk-profile-hint">loading…</p>
+              ) : passkeys.length === 0 ? (
+                <p class="chalk-profile-hint" data-testid="passkeys-empty">
+                  no passkeys on this account yet.
+                </p>
+              ) : (
+                <ul class="chalk-profile-passkey-list" data-testid="passkey-list" style={{ listStyle: "none", padding: 0, margin: "0 0 0.75rem 0" }}>
+                  {passkeys.map((pk) => (
+                    <li key={pk.id} class="chalk-profile-passkey" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "0.5rem", padding: "0.35rem 0", borderBottom: "1px solid var(--chalk-border, rgba(255,255,255,0.08))" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div>{pk.name || "unnamed passkey"}</div>
+                        <div class="chalk-profile-hint" style={{ marginTop: 0 }}>
+                          added {formatMillis(pk.createdAt)}
+                          {pk.lastUsedAt ? ` · last used ${formatMillis(pk.lastUsedAt)}` : " · never used"}
+                        </div>
                       </div>
-                    </div>
-                    {passkeys.length > 1 && (
-                      confirmDeleteId === pk.id ? (
-                        <div style={{ display: "flex", gap: "0.35rem", flexShrink: 0 }}>
-                          <button
-                            type="button"
-                            class="chalk-button chalk-button--danger"
-                            onClick={() => onDeletePasskey(pk.id)}
-                            disabled={deletingId === pk.id}
-                            data-testid={`passkey-confirm-delete-${pk.id}`}
-                          >
-                            {deletingId === pk.id ? "removing…" : "confirm"}
-                          </button>
+                      {passkeys.length > 1 && (
+                        confirmDeleteId === pk.id ? (
+                          <div style={{ display: "flex", gap: "0.35rem", flexShrink: 0 }}>
+                            <button
+                              type="button"
+                              class="chalk-button chalk-button--danger"
+                              onClick={() => onDeletePasskey(pk.id)}
+                              disabled={deletingId === pk.id}
+                              data-testid={`passkey-confirm-delete-${pk.id}`}
+                            >
+                              {deletingId === pk.id ? "removing…" : "confirm"}
+                            </button>
+                            <button
+                              type="button"
+                              class="chalk-button chalk-button--secondary"
+                              onClick={() => setConfirmDeleteId(null)}
+                              disabled={deletingId === pk.id}
+                              data-testid={`passkey-cancel-delete-${pk.id}`}
+                            >
+                              cancel
+                            </button>
+                          </div>
+                        ) : (
                           <button
                             type="button"
                             class="chalk-button chalk-button--secondary"
-                            onClick={() => setConfirmDeleteId(null)}
-                            disabled={deletingId === pk.id}
-                            data-testid={`passkey-cancel-delete-${pk.id}`}
+                            style={{ flexShrink: 0 }}
+                            onClick={() => {
+                              setDeleteError("");
+                              setConfirmDeleteId(pk.id);
+                            }}
+                            data-testid={`passkey-remove-${pk.id}`}
                           >
-                            cancel
+                            remove
                           </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          class="chalk-button chalk-button--secondary"
-                          style={{ flexShrink: 0 }}
-                          onClick={() => {
-                            setDeleteError("");
-                            setConfirmDeleteId(pk.id);
-                          }}
-                          data-testid={`passkey-remove-${pk.id}`}
-                        >
-                          remove
-                        </button>
-                      )
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {deleteError && (
-              <div class="chalk-auth-error" data-testid="delete-passkey-error">{deleteError}</div>
-            )}
-            {addError && (
-              <div class="chalk-auth-error" data-testid="add-passkey-error">{addError}</div>
-            )}
-            <div class="chalk-profile-field">
-              <label class="chalk-profile-label" for="new-passkey-name">name (optional)</label>
-              <input
-                id="new-passkey-name"
-                class="chalk-field-input"
-                type="text"
-                maxLength={64}
-                placeholder="e.g. work laptop"
-                autoComplete="off"
-                value={newPasskeyName}
-                onInput={(e) => setNewPasskeyName((e.target as HTMLInputElement).value)}
+                        )
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {deleteError && (
+                <div class="chalk-auth-error" data-testid="delete-passkey-error">{deleteError}</div>
+              )}
+              {addError && (
+                <div class="chalk-auth-error" data-testid="add-passkey-error">{addError}</div>
+              )}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-label" for="new-passkey-name">name (optional)</label>
+                <input
+                  id="new-passkey-name"
+                  class="chalk-field-input"
+                  type="text"
+                  maxLength={64}
+                  placeholder="e.g. work laptop"
+                  autoComplete="off"
+                  value={newPasskeyName}
+                  onInput={(e) => setNewPasskeyName((e.target as HTMLInputElement).value)}
+                  disabled={addState === "running"}
+                  data-testid="new-passkey-name"
+                />
+              </div>
+              <button
+                type="button"
+                class="chalk-button chalk-button--secondary"
+                onClick={onAddPasskey}
                 disabled={addState === "running"}
-                data-testid="new-passkey-name"
-              />
-            </div>
-            <button
-              type="button"
-              class="chalk-button chalk-button--secondary"
-              onClick={onAddPasskey}
-              disabled={addState === "running"}
-              data-testid="add-passkey-button"
-            >
-              {addState === "running" ? "follow your browser's prompt…" : "add a passkey to this device"}
-            </button>
-          </section>
+                data-testid="add-passkey-button"
+              >
+                {addState === "running" ? "follow your browser's prompt…" : "add a passkey to this device"}
+              </button>
+            </section>
+          )}
 
           {/* 39-1: which build you're on, and what changed in it. */}
-          <section class="chalk-profile-about">
-            <h3>about</h3>
-            <dl class="chalk-profile-fields">
-              <dt>version</dt>
-              <dd>
-                <VersionLink
-                  version={serverVersion}
-                  commit={serverCommit}
-                  variant="row"
-                  testID="profile-version"
-                />
-                {serverCommit && serverCommit !== "unknown" && (
-                  <span class="chalk-profile-theme-desc"> ({serverCommit})</span>
-                )}
-              </dd>
-            </dl>
-            <p class="chalk-profile-hint">
-              opens the changelog for this build on github.
-            </p>
-          </section>
+          {show("about") && (
+            <section class="chalk-profile-about">
+              <h3>about</h3>
+              <dl class="chalk-profile-fields">
+                <dt>version</dt>
+                <dd>
+                  <VersionLink
+                    version={serverVersion}
+                    commit={serverCommit}
+                    variant="row"
+                    testID="profile-version"
+                  />
+                  {serverCommit && serverCommit !== "unknown" && (
+                    <span class="chalk-profile-theme-desc"> ({serverCommit})</span>
+                  )}
+                </dd>
+              </dl>
+              <p class="chalk-profile-hint">
+                opens the changelog for this build on github.
+              </p>
+            </section>
+          )}
         </div>
       </div>
     </div>

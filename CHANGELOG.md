@@ -13,6 +13,9 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- The profile window has a filter box: type "volume" or "passkey" and only
+  the matching settings show, whichever tab they live on. Clearing it (or
+  tapping a tab) brings the tabs back.
 - Long web addresses in messages now show as a compact `[link to
   example.com]` label instead of filling the line with tracking gibberish.
   The link still opens the full address, hovering shows it, and right-click →
@@ -20,6 +23,8 @@ The engineering-level history (which slice shipped what) lives in
   off under profile → chat.
 
 ### Changed
+- The profile window's settings are now grouped into five tabs — account,
+  appearance, chat, notifications, media — instead of one long scroll.
 - Pasting a Twitch or Amazon (amazon.at / amazon.de / amazon.com) link now
   offers a preview card, like YouTube and Steam links already did. As
   always, only the sender's chalk fetches the page, previews are opt-in,

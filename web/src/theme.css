@@ -2282,6 +2282,80 @@ body.chalk-resizing .chalk-sidebar-resizer {
   gap: var(--chalk-s2);
 }
 
+/* ---- Phase 68: profile settings tabs + filter ----------------------- */
+/* Both sit between the modal header and the body so they don't scroll
+   away with the body (the body is the modal's scroll surface). */
+
+.chalk-profile-filter {
+  padding: var(--chalk-s2) var(--chalk-s4) 0 var(--chalk-s4);
+  flex-shrink: 0;
+}
+
+.chalk-profile-filter-input {
+  width: 100%;
+  background: var(--chalk-bg-elev, #14201a);
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg);
+  padding: 0.3rem 0.5rem;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  box-sizing: border-box;
+}
+.chalk-profile-filter-input:focus {
+  outline: none;
+  border-color: var(--chalk-fg-bright);
+}
+.chalk-profile-filter-input::placeholder {
+  color: var(--chalk-fg-dim);
+  font-style: italic;
+}
+
+.chalk-profile-filter-empty {
+  color: var(--chalk-fg-dim);
+  font-style: italic;
+  margin: 0;
+  padding: var(--chalk-s4) 0;
+}
+
+.chalk-profile-tabs {
+  display: flex;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2) var(--chalk-s4);
+  border-bottom: 1px solid var(--chalk-border);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.chalk-profile-tab-btn {
+  background: transparent;
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  font-family: var(--chalk-font);
+  font-size: var(--chalk-size-small);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.chalk-profile-tab-btn:hover {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg-dim);
+}
+
+.chalk-profile-tab-btn--active {
+  color: var(--chalk-bg);
+  background: var(--chalk-fg);
+  border-color: var(--chalk-fg);
+}
+
+.chalk-profile-tab-btn--active:hover {
+  color: var(--chalk-bg);
+  background: var(--chalk-fg-bright);
+  border-color: var(--chalk-fg-bright);
+}
+
 /* Inline dismiss-link inside an error banner (used by InvitesPanel
    row-level revoke error). */
 .chalk-auth-error .chalk-auth-link {
@@ -7842,6 +7916,20 @@ body.chalk-resizing .chalk-sidebar-resizer {
   .chalk-modal-close {
     width: 32px;
     height: 32px;
+  }
+
+  /* 68-2: the settings tab pills scroll sideways rather than wrap; five
+     of them roughly fit 360px at the tighter padding. */
+  .chalk-profile-tabs {
+    padding: var(--chalk-s2) var(--chalk-s3);
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .chalk-profile-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .chalk-profile-filter {
+    padding: var(--chalk-s2) var(--chalk-s3) 0 var(--chalk-s3);
   }
 
   /* -- 62-6: Zuckermode ---------------------------------------------- */
