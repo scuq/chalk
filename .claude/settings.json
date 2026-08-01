@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build ./...)",
+      "Bash(go vet ./...)",
+      "Bash(go test ./...)",
+      "Bash(go test ./internal/*)",
+      "Bash(go test ./test/*)",
+      "Bash(go env *)",
+      "Bash(go version)",
+      "Bash(gofmt -l .)",
+      "Bash(gofmt -l internal/*)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(node test.mjs *)",
+      "Bash(node build.mjs *)",
+      "Bash(node tools/sound-bench.mjs)",
+      "Bash(./tools/where.sh *)"
+    ]
+  }
+}
