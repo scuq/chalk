@@ -75,7 +75,7 @@ node tools/sound-bench.mjs         # regenerate + open tools/sound-bench.html
 
 # finding code (from the repo root)
 tools/where.sh -c parking          # which layers does a feature touch?
-tools/where.sh publish_channel_key # hits grouped by layer, with enclosing symbol
+tools/where.sh friend_request      # the chain, both sides of the wire
 
 # database (dev)
 sudo docker exec -i chalk-dev-pg psql -U chalk -d chalk
@@ -92,6 +92,13 @@ pass, groups the hits in that order, and tags each one with its enclosing
 to tell whether a bug is server-side or client-side before opening anything.
 It is a locator, not an index: it shells out to ripgrep every time (the whole
 repo greps in ~6 ms), so it can never go stale.
+
+It also matches a plain identifier across naming conventions, which matters
+because chalk renames at every hop: `friend_request` → `TypeFriendRequest` →
+`handleFriendRequest` → `friends.Request`. Seeding with the wire string finds
+the whole chain; a literal grep for it never reaches `internal/server/` or
+`internal/friends/` at all. Pass `-l` for a literal match; a pattern containing
+regex characters is used as written.
 
 ## Working agreements
 

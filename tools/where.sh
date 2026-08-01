@@ -12,17 +12,23 @@ set -uo pipefail
 
 usage() {
 	cat >&2 <<'EOF'
-usage: tools/where.sh [-c] [-t] [-n N] <pattern>
+usage: tools/where.sh [-c] [-t] [-l] [-n N] <pattern>
 
 Case-insensitive ripgrep across the repo, grouped by layer in request-path
 order, each hit annotated with its enclosing symbol.
 
+A plain identifier is matched across naming conventions, because chalk renames
+at every layer boundary: friend_request also finds TypeFriendRequest,
+handleFriendRequest and friendRequest. A pattern containing regex characters is
+used as written.
+
   -c     per-layer counts only (a map before you commit to reading)
   -t     include tests (excluded by default)
+  -l     literal: skip the naming-convention expansion
   -n N   max hits shown per layer (default 40, 0 = unlimited)
 
 examples:
-  tools/where.sh thread_reply        # where does one wire frame live?
+  tools/where.sh friend_request      # the whole chain, both sides of the wire
   tools/where.sh -c parking          # which layers does the parking lot touch?
   tools/where.sh -t 'space ?key'     # regex, tests included
 EOF
@@ -32,11 +38,13 @@ EOF
 per_layer=40
 show_tests=0
 counts_only=0
+literal=0
 
-while getopts ':ctn:h' opt; do
+while getopts ':ctln:h' opt; do
 	case "$opt" in
 	c) counts_only=1 ;;
 	t) show_tests=1 ;;
+	l) literal=1 ;;
 	n) per_layer="$OPTARG" ;;
 	*) usage ;;
 	esac
@@ -44,6 +52,19 @@ done
 shift $((OPTIND - 1))
 [ $# -eq 1 ] || usage
 pattern="$1"
+query="$pattern"
+
+# Split an identifier into words and rejoin them with an optional separator, so
+# one query spans every convention chalk renames through: friend_request,
+# friendRequest, FriendRequest, FRIEND_REQUEST, and handleFriendRequest (rg runs
+# case-insensitive, so only the separator has to vary). Anything holding regex
+# characters is left alone — it was written as a regex on purpose.
+if [ "$literal" -eq 0 ] && [[ "$pattern" =~ ^[A-Za-z0-9_-]+$ ]]; then
+	query=$(printf '%s\n' "$pattern" |
+		sed -E 's/([a-z0-9])([A-Z])/\1 \2/g; s/[_-]+/ /g' |
+		tr '[:upper:]' '[:lower:]' |
+		sed -E 's/^ +//; s/ +$//; s/ +/[_-]?/g')
+fi
 
 command -v rg >/dev/null || { echo "where.sh: needs ripgrep" >&2; exit 1; }
 cd "$(dirname "$0")/.." || exit 1
@@ -54,6 +75,12 @@ else
 	bold=''; dim=''; cyan=''; off=''
 fi
 
+# Never let the expansion be invisible — an unexpected hit should be explainable
+# from the header alone.
+expansion_note() {
+	[ "$query" != "$pattern" ] && printf '%s  (as /%s/i)%s' "$dim" "$query" "$off"
+}
+
 hits=$(mktemp) || exit 1
 annot=$(mktemp) || exit 1
 trap 'rm -f "$hits" "$annot"' EXIT
@@ -61,7 +88,7 @@ trap 'rm -f "$hits" "$annot"' EXIT
 # Excludes itself: the usage examples above would otherwise be a standing hit
 # for whatever feature names they mention.
 rg -n -i --no-heading --color never --field-match-separator $'\t' \
-	--glob '!tools/where.sh' -e "$pattern" >"$hits"
+	--glob '!tools/where.sh' -e "$query" >"$hits"
 if [ ! -s "$hits" ]; then
 	echo "no hits for ${bold}${pattern}${off}" >&2
 	exit 1
@@ -105,19 +132,24 @@ annotate_file() {
 	{
 		if ($0 ~ /^(func |(export )?(default )?(async )?function |(export )?(async )?const [A-Za-z_$]+ *[:=]|(export )?(class|interface|type) |[A-Z]+ (TABLE|INDEX|TYPE|FUNCTION))/ ||
 		    $0 ~ /^[ \t]*case [^ ]/ ||
+		    $0 ~ /^[ \t]+[A-Za-z_$][A-Za-z0-9_$]* +=/ ||
 		    $0 ~ /^[ \t]{1,4}(async )?[A-Za-z_$]+\(.*\)[ ]*\{/) {
 			sym = trim($0)
 			symline = FNR
+			# A switch arm is a few dozen lines; a function can be hundreds. Let
+			# a case label go stale far sooner than a declaration, or every hit
+			# in the back half of App.tsx inherits some long-closed arm.
+			reach = ($0 ~ /^[ \t]*case [^ ]/) ? 80 : 250
 		}
-		# A backscan is a locator, not a parser: past a few hundred lines the
-		# nearest declaration is as likely to be a closed scope as an enclosing
-		# one (App.tsx is one 5000-line function). Files with no declarations at
-		# all — SQL, markdown — never had a symbol to give. Both fall back to the
+		# A backscan is a locator, not a parser: out past its reach the nearest
+		# declaration is as likely to be a closed scope as an enclosing one
+		# (App.tsx is one 5000-line function). Files with no declarations at all
+		# — SQL, markdown — never had a symbol to give. Both fall back to the
 		# matched line itself, which beats a bare line number either way.
 		if (FNR in want) {
-			if (symline == FNR)              print FNR, sym
-			else if (symline && FNR - symline <= 250) print FNR, sym " :" symline
-			else                             print FNR, trim($0)
+			if (symline == FNR)                        print FNR, sym
+			else if (symline && FNR - symline <= reach) print FNR, sym " :" symline
+			else                                       print FNR, trim($0)
 		}
 	}' "$lines" "$file" 2>/dev/null
 }
@@ -133,7 +165,7 @@ if [ ! -s "$layered" ]; then
 fi
 
 if [ "$counts_only" -eq 1 ]; then
-	printf '%s%s%s\n\n' "$bold" "layer map for: $pattern" "$off"
+	printf '%s%s%s%s\n\n' "$bold" "layer map for: $pattern" "$off" "$(expansion_note)"
 	awk -F'\t' '{ n[$1]++; files[$1 FS $2] = 1 }
 		END {
 			for (k in files) { split(k, a, FS); f[a[1]]++ }
@@ -143,7 +175,7 @@ if [ "$counts_only" -eq 1 ]; then
 	exit 0
 fi
 
-printf '%s%s%s\n' "$bold" "where: $pattern" "$off"
+printf '%s%s%s%s\n' "$bold" "where: $pattern" "$off" "$(expansion_note)"
 
 sort -t$'\t' -k1,1 -k2,2 -k3,3n "$layered" |
 	awk -F'\t' '{ print > ("'"$annot"'." $1) }'
