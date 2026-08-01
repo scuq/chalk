@@ -70,6 +70,18 @@ DND, 2 s global / 5 s per-category rate floors, audio-unlock. The per-category
 pref check now applies only to machine noises — a muted event type never
 reaches the gate.
 
+**Call sounds** (71-1) — `call_join`, `call_leave`, `peer_join`,
+`peer_leave`, fired by `voice/session.ts` through `NotifySounds.playCall`.
+Machine noises, but the only ones that default **on**: they can't fire
+outside a call, and inside one they are the only thing that says who came
+and went. Two departures from the ordinary path, both because a call has no
+surface you could be "already watching" — `playCall` passes
+`isRelevantSurfaceOpen: false` (hearing that someone arrived is the point
+even while you look at their tile), and they use a 400 ms floor against
+themselves instead of the shared 2 s / 5 s ones, which they neither read
+nor spend. Peer sounds follow the *tile*, not the roster: what you hear is
+what appears on the stage, including a peer whose connection failed.
+
 **OS banners** (`banners.ts` + `decideBanner`) — page-context `Notification`
 with the decrypted sender/preview, rendered locally by the OS; nothing leaves
 the device. No rate limit and no unlock: collapse is the OS `tag` mechanism
@@ -110,11 +122,11 @@ not hiding what's waiting.
 Two stores, split on purpose:
 
 - **Device-local** (`chalk.notify.v2` in localStorage): master, volume, DND,
-  and the machine-noise toggles (`presence`, `connect`, `disconnect`,
-  `send_confirm`, `error` — sounds about chalk itself; no rule should ever
-  banner them). Volume is a property of the machine; the phone and the desk
-  can disagree. v1 entries are still read; normalize dropping their chat
-  categories *is* the migration.
+  and the machine-noise toggles (`presence`, the four call sounds,
+  `connect`, `disconnect`, `send_confirm`, `error` — sounds about chalk
+  itself; no rule should ever banner them). Volume is a property of the
+  machine; the phone and the desk can disagree. v1 entries are still read;
+  normalize dropping their chat categories *is* the migration.
 - **Synced, encrypted** (`chalk.notify.rules.v1` locally, mirrored to the
   server): the rules and profiles. They name the people and channels you've
   singled out — exactly what `user_preferences` (plaintext JSONB the server
@@ -160,6 +172,13 @@ stroke count instead.
 
 Two-tone categories are two separate strokes, not a glide. Direction carries
 meaning: **rising = something arrived for you, falling = something went wrong.**
+
+The call sounds are two mirrored pairs, held to that by the tests: yours
+(`call_join` / `call_leave`) is a warm two-stroke pair with real mass
+behind it, everyone else's (`peer_join` / `peer_leave`) is one short, light
+stroke from a fixed place on the board. Within each pair only the direction
+changes, so coming and going are told apart the way this pack tells
+anything apart.
 
 `disconnect` deliberately breaks the pattern — it is an eraser sweep, the
 widest, dullest, longest and heaviest thing in the pack. Losing the connection

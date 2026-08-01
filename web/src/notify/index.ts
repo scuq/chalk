@@ -15,10 +15,10 @@ import { decideSound, type GateVerdict } from "./gate";
 import { loadSoundPrefs, subscribeSoundPrefs } from "./prefs";
 import { SoundPlayer } from "./synth";
 import { loadDevicePrefs, subscribeDevicePrefs } from "../voice/device-prefs";
-import type { SoundCategory, SoundPrefs } from "./types";
+import { isCallCategory, type CallCategory, type SoundCategory, type SoundPrefs } from "./types";
 
 export * from "./types";
-export { decideSound, MIN_GAP_ANY_MS, MIN_GAP_CATEGORY_MS } from "./gate";
+export { decideSound, MIN_GAP_ANY_MS, MIN_GAP_CALL_MS, MIN_GAP_CATEGORY_MS } from "./gate";
 export { loadSoundPrefs, saveSoundPrefs, normalizeSoundPrefs, useSoundPrefs } from "./prefs";
 export { SOUND_SPECS, type StrokeSpec } from "./synth";
 
@@ -79,10 +79,27 @@ export class NotifySounds {
     });
     if (verdict !== "play") return verdict;
 
-    this.lastAnyAt = now;
+    // 71-1: a call sound spends none of the shared budget -- someone
+    // walking into the room must not silence the mention that lands a
+    // second later.
+    if (!isCallCategory(category)) this.lastAnyAt = now;
     this.lastByCategory[category] = now;
     this.player.play(category);
     return verdict;
+  }
+
+  // playCall is the voice session's path in. It fills the context in
+  // rather than asking for it, because there is nothing to fill: a call
+  // has no surface you could be "already watching" -- the stage and the
+  // dock both show it, and hearing who just arrived is the point even when
+  // you are looking straight at their tile. Everything else still applies,
+  // so the master switch, the per-category toggle and DND all silence it.
+  playCall(category: CallCategory): GateVerdict {
+    return this.play(category, {
+      tabVisible: false,
+      userIdle: false,
+      isRelevantSurfaceOpen: false,
+    });
   }
 
   // preview plays a category on demand from the settings UI. It skips the

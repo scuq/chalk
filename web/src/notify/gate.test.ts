@@ -11,6 +11,7 @@ import {
   decideBanner,
   decideSound,
   MIN_GAP_ANY_MS,
+  MIN_GAP_CALL_MS,
   MIN_GAP_CATEGORY_MS,
   type BannerGateInput,
   type GateInput,
@@ -164,6 +165,45 @@ test("the same category is held back longer than the global floor", () => {
     ),
     "play",
   );
+});
+
+// Rule 3, the call exception (71-1).
+test("a call sound ignores the shared floor, and never spends it", () => {
+  const now = 1_000_000;
+  // Your own join a heartbeat ago, then someone walks in: under the shared
+  // floor this second sound would be dropped, which is the bug this
+  // exemption exists for.
+  assert.equal(
+    decideSound(
+      input({
+        now,
+        category: "peer_join",
+        lastAnyAt: now - 1,
+        lastByCategory: { call_join: now - 1 },
+      }),
+    ),
+    "play",
+  );
+  // And the shared floor is unaffected in the other direction: whether a
+  // call sound played is recorded by NotifySounds, not read from here.
+  assert.equal(
+    decideSound(input({ now, category: "mention", lastByCategory: { peer_join: now - 1 } })),
+    "play",
+  );
+});
+
+test("the call floor still collapses a burst of the same event", () => {
+  const now = 1_000_000;
+  const at = (ago: number) => ({
+    now,
+    category: "peer_join" as const,
+    lastByCategory: { peer_join: now - ago },
+  });
+  assert.equal(decideSound(input(at(MIN_GAP_CALL_MS - 1))), "rate_category");
+  assert.equal(decideSound(input(at(MIN_GAP_CALL_MS))), "play");
+  // Four people arriving together is one stroke, not four -- but arriving
+  // and leaving are separate categories, so they never mask each other.
+  assert.equal(decideSound(input({ ...at(0), category: "peer_leave" })), "play");
 });
 
 test("the per-category floor releases exactly on time", () => {

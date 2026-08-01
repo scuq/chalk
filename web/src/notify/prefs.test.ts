@@ -48,6 +48,16 @@ test("normalize defaults to silent machinery, audible errors", () => {
   }
 });
 
+test("the call sounds are the machine noises that default on", () => {
+  // 71-1. They can only fire while you are in a call, so they can't
+  // chatter at an idle tab -- and inside one they are the only thing that
+  // says someone arrived while you were looking elsewhere.
+  const p = normalizeSoundPrefs({});
+  for (const c of ["call_join", "call_leave", "peer_join", "peer_leave"] as const) {
+    assert.equal(p.categories[c], true, `${c} should be audible out of the box`);
+  }
+});
+
 test("normalize keeps the good half of a partially bad pref", () => {
   const p = normalizeSoundPrefs({ master: true, volume: "loud", dnd: 1 });
   assert.equal(p.master, true);

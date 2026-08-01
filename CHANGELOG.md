@@ -10,6 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- Calls now make a sound: one when you connect, one when you leave, and a
+  shorter one each time somebody else joins or leaves the room you're in.
+  Yours is a warm two-stroke chalk mark, theirs a single light one, and each
+  pair rises on the way in and falls on the way out — so you can tell who it
+  was about without looking. Like every chalk sound they are generated on the
+  device, not sample files. All four are on out of the box and can be turned
+  off individually under "chalk's own noises" in notification settings, where
+  the play button previews them.
+
 ## v0.5.7 — 1 August 2026 — Four fonts, tamed scrollbars and a boss key
 
 ### Added

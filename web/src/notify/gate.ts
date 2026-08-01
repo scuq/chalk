@@ -10,7 +10,7 @@
 // The rules are docs/notification-sounds.md "Suppression rules", plus the
 // two pref checks that precede them.
 
-import { isMachineCategory, type SoundCategory, type SoundPrefs } from "./types";
+import { isCallCategory, isMachineCategory, type SoundCategory, type SoundPrefs } from "./types";
 
 // Rate limits. Two of them, because one isn't enough: the global floor
 // stops a busy channel turning into a rattle, and the per-category floor
@@ -19,6 +19,14 @@ import { isMachineCategory, type SoundCategory, type SoundPrefs } from "./types"
 // everything else.
 export const MIN_GAP_ANY_MS = 2000;
 export const MIN_GAP_CATEGORY_MS = 5000;
+
+// 71-1: the call roster gets its own, much shorter floor and spends none
+// of the shared budget. Two people arriving inside the same two seconds is
+// an ordinary start to a meeting rather than a rattle, and under the
+// floors above the second of them -- and your own join a moment before --
+// would simply be dropped. Still long enough that a peer flapping through
+// a reconnect can't stutter.
+export const MIN_GAP_CALL_MS = 400;
 
 export interface GateInput {
   category: SoundCategory;
@@ -77,11 +85,19 @@ export function decideSound(input: GateInput): GateVerdict {
   // Rule 2.
   if (prefs.dnd) return "dnd";
 
-  // Rule 3.
-  const any = input.lastAnyAt;
-  if (any !== undefined && input.now - any < MIN_GAP_ANY_MS) return "rate_any";
-  const last = input.lastByCategory[category];
-  if (last !== undefined && input.now - last < MIN_GAP_CATEGORY_MS) return "rate_category";
+  // Rule 3. Call sounds are rate-limited against themselves only -- in
+  // both directions: they don't consume the shared budget (NotifySounds
+  // doesn't record one for them) and they don't read it, so a peer
+  // arriving neither silences nor is silenced by the chat.
+  if (isCallCategory(category)) {
+    const lastCall = input.lastByCategory[category];
+    if (lastCall !== undefined && input.now - lastCall < MIN_GAP_CALL_MS) return "rate_category";
+  } else {
+    const any = input.lastAnyAt;
+    if (any !== undefined && input.now - any < MIN_GAP_ANY_MS) return "rate_any";
+    const last = input.lastByCategory[category];
+    if (last !== undefined && input.now - last < MIN_GAP_CATEGORY_MS) return "rate_category";
+  }
 
   // Rule 4. Last, so that a locked context still consumes no budget and
   // the first sound after the user clicks is immediate.

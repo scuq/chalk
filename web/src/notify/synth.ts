@@ -199,6 +199,63 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     body: 0.18,
     gain: 0.52,
   },
+  // 71-1, the call roster. Four sounds that come in two mirrored pairs:
+  // the room's own arrivals and departures, told apart by direction, and
+  // yours told apart from everyone else's by size.
+  //
+  // Stepping into the room: two warm strokes rising, with more mass behind
+  // them than anything here that isn't the eraser. This is the only one of
+  // the four that happens *to* you rather than around you, so it is the
+  // biggest.
+  call_join: {
+    centers: [360, 560],
+    strokeMs: 110,
+    gapMs: 40,
+    q: 1,
+    sweep: 1.45,
+    lowpassHz: 2200,
+    body: 0.3,
+    gain: 0.7,
+  },
+  // The same two strokes walked backwards. It falls, but it stays as warm
+  // and as wide as the arrival: leaving a room you chose to leave is not
+  // an error, and it must not sound like one.
+  call_leave: {
+    centers: [560, 360],
+    strokeMs: 105,
+    gapMs: 40,
+    q: 1,
+    sweep: 0.7,
+    lowpassHz: 2200,
+    body: 0.3,
+    gain: 0.66,
+  },
+  // One short stroke, brighter and much lighter than your own arrival:
+  // somebody else is at the board. Quiet on purpose -- in a room of eight
+  // this fires eight times.
+  peer_join: {
+    centers: [640],
+    strokeMs: 80,
+    gapMs: 0,
+    q: 1.1,
+    sweep: 1.5,
+    lowpassHz: 2600,
+    body: 0.12,
+    gain: 0.5,
+  },
+  // Its mirror, from the same place on the board: same brightness, same
+  // length, opposite direction. Hearing which of the two it was is this
+  // pair's entire job, and direction is how this pack says it.
+  peer_leave: {
+    centers: [640],
+    strokeMs: 80,
+    gapMs: 0,
+    q: 1.1,
+    sweep: 0.66,
+    lowpassHz: 2600,
+    body: 0.14,
+    gain: 0.48,
+  },
   // The board is back.
   connect: {
     centers: [440, 600],

@@ -24,14 +24,37 @@
 
 import { EVENT_TYPE_LABELS, NOTIFY_EVENT_TYPES, type NotifyEventType } from "./rules";
 
-export type MachineCategory = "presence" | "connect" | "disconnect" | "send_confirm" | "error";
+// 71-1: the four sounds a call makes about itself -- you arriving and
+// leaving, and anyone else doing the same while you're in the room. They
+// are machine noises (nobody wrote anything; no rule should route them to
+// a banner) but they are the one group that is exempt from the shared rate
+// floors -- see MIN_GAP_CALL_MS in gate.ts.
+export type CallCategory = "call_join" | "call_leave" | "peer_join" | "peer_leave";
+
+export type MachineCategory =
+  | "presence"
+  | "connect"
+  | "disconnect"
+  | "send_confirm"
+  | "error"
+  | CallCategory;
 
 // Everything the synth can play: the rules-routed event types plus the
 // machine noises.
 export type SoundCategory = NotifyEventType | MachineCategory;
 
+export const CALL_CATEGORIES: CallCategory[] = [
+  "call_join",
+  "call_leave",
+  "peer_join",
+  "peer_leave",
+];
+
+// Grouped by what they are about: people first (presence, then the call
+// roster), then chalk's own plumbing.
 export const MACHINE_CATEGORIES: MachineCategory[] = [
   "presence",
+  ...CALL_CATEGORIES,
   "connect",
   "disconnect",
   "send_confirm",
@@ -46,9 +69,17 @@ export function isMachineCategory(c: SoundCategory): c is MachineCategory {
   return (MACHINE_CATEGORIES as string[]).includes(c);
 }
 
+export function isCallCategory(c: SoundCategory): c is CallCategory {
+  return (CALL_CATEGORIES as string[]).includes(c);
+}
+
 export const CATEGORY_LABELS: Record<SoundCategory, { label: string; desc: string }> = {
   ...EVENT_TYPE_LABELS,
   presence: { label: "friend comes online", desc: "" },
+  call_join: { label: "you join a call", desc: "you're connected, the mic is live" },
+  call_leave: { label: "you leave a call", desc: "" },
+  peer_join: { label: "someone joins your call", desc: "" },
+  peer_leave: { label: "someone leaves your call", desc: "" },
   connect: { label: "connected", desc: "your own connection came back" },
   disconnect: { label: "disconnected", desc: "your own connection dropped" },
   send_confirm: { label: "send confirmed", desc: "the server took your message" },
@@ -70,8 +101,18 @@ export const MAX_VOLUME = 1;
 // The machine noises stay off except errors. They report on chalk itself
 // rather than on anything a person did, and a flapping connection would
 // otherwise chatter away on its own.
+//
+// The call sounds are the exception, and default on. They can only fire
+// while you are actually in a call, so they cannot chatter in the
+// background -- and inside a call they are the only thing that tells you
+// someone arrived while you were looking at another tab, which is the
+// whole reason to have them.
 export const DEFAULT_CATEGORIES: Record<MachineCategory, boolean> = {
   presence: false,
+  call_join: true,
+  call_leave: true,
+  peer_join: true,
+  peer_leave: true,
   connect: false,
   disconnect: false,
   send_confirm: false,

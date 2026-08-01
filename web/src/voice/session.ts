@@ -24,6 +24,7 @@ import type { Frame } from "../proto";
 import type { WSClient } from "../ws-client";
 import type { ChannelCrypto } from "../crypto/channel-crypto";
 import { loadIdentity } from "../crypto/idb";
+import { notifySounds } from "../notify";
 import { voiceBus } from "./bus";
 import { VoiceCall, type VoiceDiagnostics, type ScreenShareMode } from "./call";
 import { subscribeMicPrefs } from "./mic-prefs";
@@ -393,7 +394,15 @@ class VoiceSessionImpl {
         // indicator stays dark. The mid-call add covers turning it on later.
         startWithVideo: this.global.camOn,
         callbacks: {
-          onPeerStream: (key, userID, deviceID, stream) =>
+          onPeerStream: (key, userID, deviceID, stream) => {
+            // 71-1: the arrival sound follows the TILE, so what you hear is
+            // exactly what appears on the stage. The camera/mic stream is
+            // the moment a participant becomes real -- a peer who joined
+            // muted with the camera off still publishes a (disabled) audio
+            // track, so this fires for them too. Later streams from the
+            // same peer (a screen share, a renegotiation) find the tile
+            // already there and stay quiet.
+            if (!this.s.tiles[key]) notifySounds().playCall("peer_join");
             this.set({
               tiles: {
                 ...this.s.tiles,
@@ -407,9 +416,14 @@ class VoiceSessionImpl {
                   screenStream: this.s.tiles[key]?.screenStream ?? null,
                 },
               },
-            }),
+            });
+          },
           onPeerGone: (key) => {
-            const { [key]: _gone, ...rest } = this.s.tiles;
+            const { [key]: gone, ...rest } = this.s.tiles;
+            // Same rule in reverse: the tile going away is the departure.
+            // This also covers a peer whose connection failed -- their tile
+            // disappears either way, so the sound must not disagree with it.
+            if (gone) notifySounds().playCall("peer_leave");
             this.set({ tiles: rest });
           },
           onPeerState: (key, state) => {
@@ -496,6 +510,9 @@ class VoiceSessionImpl {
         deafened: g.deafened,
         joinedAt: Date.now(),
       });
+      // 71-1: you're in. Deliberately after the snapshot flip, so the sound
+      // and the dock appearing are the same moment.
+      notifySounds().playCall("call_join");
       // 30-5h: remember the room so a page reload can offer a one-click
       // rejoin. Cleared on user-initiated leave, kept across refresh.
       saveRejoinHint({ channelID: a.channelID, channelName: a.channelName });
@@ -568,7 +585,15 @@ class VoiceSessionImpl {
     });
     // Only meaningful while deafened, which now outlives the call.
     if (!this.global.deafened) this.mutedBeforeDeafen = false;
-    if (call) await call.leave();
+    if (call) {
+      // 71-1: only when there was a live call -- leave() is idempotent and
+      // is also the logout and teardown path. Before the await, so the
+      // sound doesn't wait for the peer connections to tear down. This
+      // fires for a dropped connection too (handleWsDown leaves the room),
+      // which is exactly when you want to be told.
+      notifySounds().playCall("call_leave");
+      await call.leave();
+    }
   }
 
   // ---- app-level lifecycle edges ------------------------------------------

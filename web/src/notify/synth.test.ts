@@ -113,6 +113,27 @@ test("rising means for-you, falling means something-went-wrong", () => {
   }
 });
 
+test("the call sounds are two mirrored pairs", () => {
+  // 71-1. Coming and going are told apart by direction alone, so a pair
+  // that drifted to the same sign would leave the two indistinguishable --
+  // and yours has to stay bigger than everyone else's, or you can't tell
+  // your own arrival from the fourth person walking in.
+  for (const [inb, out] of [
+    ["call_join", "call_leave"],
+    ["peer_join", "peer_leave"],
+  ] as const) {
+    assert.ok(SOUND_SPECS[inb].sweep > 1, `${inb} should sweep up`);
+    assert.ok(SOUND_SPECS[out].sweep < 1, `${out} should sweep down`);
+  }
+  assert.ok(SOUND_SPECS.call_join.body > SOUND_SPECS.peer_join.body);
+  assert.ok(SOUND_SPECS.call_join.gain > SOUND_SPECS.peer_join.gain);
+  assert.ok(SOUND_SPECS.peer_join.strokeMs < SOUND_SPECS.call_join.strokeMs);
+  // The two peer sounds have to sit in the same place on the board, or
+  // brightness starts carrying meaning the pack never assigned it.
+  assert.deepEqual(SOUND_SPECS.peer_join.centers, SOUND_SPECS.peer_leave.centers);
+  assert.equal(SOUND_SPECS.peer_join.lowpassHz, SOUND_SPECS.peer_leave.lowpassHz);
+});
+
 test("the categories that fire most often are the quietest", () => {
   // "every message" can fire all day in a busy channel, and a send
   // confirmation fires on every single thing you type. Neither may be as
