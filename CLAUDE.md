@@ -100,19 +100,16 @@ the whole chain; a literal grep for it never reaches `internal/server/` or
 `internal/friends/` at all. Pass `-l` for a literal match; a pattern containing
 regex characters is used as written.
 
-Topics are tagged, and the tags already exist: 646 phase comments (`// 54-2:`)
-across 123 files. `docs/tags.md` is the legend mapping topics to those phase
+Topics are tagged, and the tags already exist: ~650 phase comments (`// 54-2:`)
+across ~120 files. `docs/tags.md` is the legend mapping topics to those phase
 numbers and to the paths they live in — `tools/where.sh -g roster` searches
 both at once, `-g` alone lists every tag. This finds code whose *name* never
 mentions the topic: `-g camera-bg` works even though that string appears
 nowhere in the source, because phase 52 is tagged throughout it.
 
-Keep the legend current as part of normal work: when a phase touches a topic
-already listed, add its number to that line; when a new topic gets its own
-phase, add a line. If a search turns up a file that clearly belongs to a topic
-whose paths do not cover it, widen the paths on that line. A tag whose phases
-have drifted is worse than a missing one, so correct entries in place rather
-than adding a second. `-g` warns when a listed path no longer exists.
+A tag whose phases have drifted is worse than a missing one, so `-g` warns when
+a listed path no longer exists. Keeping the legend current is a working
+agreement below, not an optional tidy-up.
 
 It needs ripgrep, and exits with `where.sh: needs ripgrep` when it is missing.
 That is not something to work around with `grep -r` — ask scuq to install it
@@ -137,6 +134,13 @@ That is not something to work around with `grep -r` — ask scuq to install it
   like. Sections in an `## Unreleased` block: `### Added`, `### Changed`,
   `### Fixed`. Never invent a version heading; scuq cuts releases by tagging,
   and `## Unreleased` gets renamed then.
+- **Tags with the phase.** A new phase number gets a line in `docs/tags.md`, or
+  its number appended to the topic already listed there, in the same change set
+  — and the file goes in the proposed `git add` list. Same whenever a search
+  shows a topic living somewhere its paths do not cover: widen that line. The
+  legend is the only thing that makes the phase comments findable by topic, and
+  it stays true only if it moves with the code. Correct a drifted entry in
+  place; never add a second line for a topic that already has one.
 - Ask before adding dependencies (Go modules or npm packages).
 - Style: direct, concise, no filler. Explain what changed and why in a few
   lines, then the verify commands.
