@@ -112,6 +112,7 @@
         <span class="g">attack <input id="attack" type="range" min="5" max="120" step="1" /><b id="attack-v"></b></span>
         <span class="g">release <input id="release" type="range" min="20" max="400" step="5" /><b id="release-v"></b></span>
         <span class="g">highpass <input id="highpass" type="range" min="40" max="400" step="5" /><b id="highpass-v"></b></span>
+        <span class="g"><label><input id="pink" type="checkbox" checked /> pink noise</label></span>
         <span class="g"><label><input id="auto" type="checkbox" checked /> replay on change</label></span>
       </div>
     </header>
@@ -147,12 +148,56 @@
         attack: PACK.ATTACK_MS,
         release: PACK.RELEASE_MS,
         highpass: PACK.HIGHPASS_HZ,
+        // Pink is what's committed. The toggle is here because switching
+        // the source re-tilts every sound in the pack, so it's a decision
+        // that has to be made by ear against the whole family.
+        pink: true,
       };
 
       // ---- audio: a faithful port of SoundPlayer.stroke ---------------------
       let ctx = null;
       let master = null;
       let noise = null;
+      let noiseWhite = null;
+      let grainBuf = null;
+
+      function makeNoise(pink) {
+        const frames = Math.floor(ctx.sampleRate);
+        const buf = ctx.createBuffer(1, frames, ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, peak = 0;
+        for (let i = 0; i < frames; i++) {
+          const w = Math.random() * 2 - 1;
+          if (!pink) { d[i] = w; continue; }
+          b0 = 0.99886 * b0 + w * 0.0555179;
+          b1 = 0.99332 * b1 + w * 0.0750759;
+          b2 = 0.969 * b2 + w * 0.153852;
+          b3 = 0.8665 * b3 + w * 0.3104856;
+          b4 = 0.55 * b4 + w * 0.5329522;
+          b5 = -0.7616 * b5 - w * 0.016898;
+          const v = b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362;
+          b6 = w * 0.115926;
+          d[i] = v;
+          if (Math.abs(v) > peak) peak = Math.abs(v);
+        }
+        if (pink && peak > 0) for (let i = 0; i < frames; i++) d[i] /= peak;
+        return buf;
+      }
+
+      function makeGrain() {
+        const frames = Math.floor(ctx.sampleRate * 2);
+        const hold = Math.max(1, Math.floor(ctx.sampleRate / PACK.GRAIN_REF_HZ));
+        const buf = ctx.createBuffer(1, frames, ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        let from = Math.random();
+        let to = Math.random();
+        for (let i = 0; i < frames; i++) {
+          const step = i % hold;
+          if (step === 0 && i > 0) { from = to; to = Math.random(); }
+          d[i] = from + (to - from) * (step / hold);
+        }
+        return buf;
+      }
 
       function unlock() {
         if (ctx) return;
@@ -160,17 +205,19 @@
         master = ctx.createGain();
         master.gain.value = globals.volume;
         master.connect(ctx.destination);
-        const frames = Math.floor(ctx.sampleRate);
-        noise = ctx.createBuffer(1, frames, ctx.sampleRate);
-        const data = noise.getChannelData(0);
-        for (let i = 0; i < frames; i++) data[i] = Math.random() * 2 - 1;
+        noise = makeNoise(true);
+        noiseWhite = makeNoise(false);
+        grainBuf = makeGrain();
         setStatus("audio unlocked");
       }
+
+      const source = () => (globals.pink ? noise : noiseWhite);
 
       function stroke(spec, center, at) {
         const dur = spec.strokeMs / 1000;
         const attack = globals.attack / 1000;
         const release = globals.release / 1000;
+        const noise = source();
 
         const env = ctx.createGain();
         env.gain.setValueAtTime(0, at);
@@ -179,10 +226,43 @@
         env.gain.linearRampToValueAtTime(0, at + dur + release);
         env.connect(master);
 
+        const rasp = ctx.createGain();
+        rasp.gain.value = spec.grain > 0 ? 1 - spec.grain : 1;
+        rasp.connect(env);
+        if (spec.grain > 0) {
+          const depth = ctx.createGain();
+          depth.gain.value = spec.grain;
+          depth.connect(rasp.gain);
+          const g = ctx.createBufferSource();
+          g.buffer = grainBuf;
+          g.playbackRate.value = spec.grainHz / PACK.GRAIN_REF_HZ;
+          g.connect(depth);
+          const eats = (dur + release) * g.playbackRate.value;
+          g.start(at, Math.random() * Math.max(0, grainBuf.duration - eats));
+          g.stop(at + dur + release);
+        }
+
         const lp = ctx.createBiquadFilter();
         lp.type = "lowpass";
         lp.frequency.value = spec.lowpassHz;
-        lp.connect(env);
+        lp.connect(rasp);
+
+        if (spec.tick > 0) {
+          const tickEnv = ctx.createGain();
+          tickEnv.gain.setValueAtTime(0, at);
+          tickEnv.gain.linearRampToValueAtTime(spec.gain * spec.tick, at + 0.001);
+          tickEnv.gain.linearRampToValueAtTime(0, at + PACK.TICK_MS / 1000);
+          tickEnv.connect(master);
+          const tickLp = ctx.createBiquadFilter();
+          tickLp.type = "lowpass";
+          tickLp.frequency.value = spec.lowpassHz;
+          tickLp.connect(tickEnv);
+          const tickSrc = ctx.createBufferSource();
+          tickSrc.buffer = noise;
+          tickSrc.connect(tickLp);
+          tickSrc.start(at, Math.random() * Math.max(0, noise.duration - 0.05), PACK.TICK_MS / 1000);
+          tickSrc.stop(at + PACK.TICK_MS / 1000);
+        }
 
         const hp = ctx.createBiquadFilter();
         hp.type = "highpass";
@@ -252,15 +332,24 @@
         if (top >= SCREECH_FLOOR_HZ) out.push(`sweeps up to ${Math.round(top)}Hz, into the screech band`);
         if (top >= s.lowpassHz) out.push(`sweeps to ${Math.round(top)}Hz, past its own ${s.lowpassHz}Hz ceiling`);
         for (const f of s.centers) if (f < 100 || f > 2000) out.push(`centre ${f}Hz is outside the pack's range`);
+        if (s.grain <= 0) out.push("no grain — smooth noise is a vent, not chalk");
+        if (s.grain > 0.8) out.push(`grain ${s.grain} guts the stroke into separate scratches`);
+        if (s.grainHz < 20 || s.grainHz > 100) out.push(`rasp ${s.grainHz}Hz is outside 20–100`);
+        const slips = (s.strokeMs / 1000) * s.grainHz;
+        if (slips < PACK.MIN_SLIPS_PER_STROKE)
+          out.push(`only ${slips.toFixed(1)} slips in ${s.strokeMs}ms — that reads as a wobble, not a rasp`);
+        if (s.tick > 0.35) out.push(`tick ${s.tick} is loud enough to be its own event`);
 
         // Cross-category rules, reported on the category that can fix them.
         const d = specs.disconnect;
         if (c === "disconnect") {
+          if (d.tick !== 0) out.push("an eraser is not set down like a piece of chalk — tick must be 0");
           for (const o of PACK.order) {
             if (o === "disconnect") continue;
             if (d.q >= specs[o].q) out.push(`the eraser must be wider than ${o} (Q ${d.q} vs ${specs[o].q})`);
             if (d.strokeMs < specs[o].strokeMs) out.push(`the eraser must be at least as long as ${o}`);
             if (d.body < specs[o].body) out.push(`the eraser must have at least as much mass as ${o}`);
+            if (d.grainHz > specs[o].grainHz) out.push(`the eraser's crumble must be coarser than ${o}`);
           }
         }
         const rising = ["mention", "dm", "thread_reply", "presence", "connect", "call_join", "peer_join"];
@@ -286,6 +375,9 @@
         ["c1", "2nd", 100, 2000, 5],
         ["strokeMs", "length", 40, 260, 5],
         ["gapMs", "gap", 0, 120, 5],
+        ["grainHz", "rasp", 20, 100, 1],
+        ["grain", "depth", 0, 0.8, 0.01],
+        ["tick", "tick", 0, 0.35, 0.01],
         ["q", "width", 0.3, 1.6, 0.05],
         ["sweep", "sweep", 0.4, 2, 0.01],
         ["lowpassHz", "ceiling", 800, 5000, 25],
@@ -427,6 +519,10 @@
         };
       }
 
+      document.getElementById("pink").onchange = (e) => {
+        globals.pink = e.target.checked;
+        setStatus(globals.pink ? "pink noise (committed)" : "white noise");
+      };
       document.getElementById("play-all").onclick = playAll;
       document.getElementById("reset-all").onclick = () => {
         for (const c of PACK.order) specs[c] = structuredClone(ORIGINAL[c]);
@@ -443,6 +539,7 @@
         if (globals.attack !== PACK.ATTACK_MS) gChanged.push(`ATTACK_MS = ${globals.attack}`);
         if (globals.release !== PACK.RELEASE_MS) gChanged.push(`RELEASE_MS = ${globals.release}`);
         if (globals.highpass !== PACK.HIGHPASS_HZ) gChanged.push(`HIGHPASS_HZ = ${globals.highpass}`);
+        if (!globals.pink) gChanged.push("source = WHITE noise (committed is pink)");
         if (gChanged.length) lines.push("// globals", ...gChanged, "");
         const dirty = PACK.order.filter(changed);
         lines.push(dirty.length ? `// ${dirty.length} category/categories retuned` : "// nothing changed");
@@ -451,7 +548,8 @@
           lines.push(
             `${c}: { centers: [${s.centers.map(num).join(", ")}], strokeMs: ${num(s.strokeMs)}, ` +
               `gapMs: ${num(s.gapMs)}, q: ${num(s.q)}, sweep: ${num(s.sweep)}, ` +
-              `lowpassHz: ${num(s.lowpassHz)}, body: ${num(s.body)}, gain: ${num(s.gain)} },`,
+              `lowpassHz: ${num(s.lowpassHz)}, body: ${num(s.body)}, grainHz: ${num(s.grainHz)}, ` +
+              `grain: ${num(s.grain)}, tick: ${num(s.tick)}, gain: ${num(s.gain)} },`,
           );
         }
         const bad = PACK.order.flatMap((c) => warnings(c).map((w) => `// WARNING ${c}: ${w}`));

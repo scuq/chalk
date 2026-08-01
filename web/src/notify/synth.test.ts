@@ -11,7 +11,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { HIGHPASS_HZ, MAX_Q, SCREECH_FLOOR_HZ, SOUND_SPECS } from "./synth.ts";
+import {
+  HIGHPASS_HZ,
+  MAX_Q,
+  MIN_SLIPS_PER_STROKE,
+  SCREECH_FLOOR_HZ,
+  SOUND_SPECS,
+} from "./synth.ts";
 import { SOUND_CATEGORIES } from "./types.ts";
 
 test("every category has a spec", () => {
@@ -82,6 +88,31 @@ test("a swept band never climbs into the screech", () => {
     const top = Math.max(...s.centers) * Math.max(1, s.sweep);
     assert.ok(top < SCREECH_FLOOR_HZ, `${c} sweeps up to ${top}Hz, into the screech band`);
     assert.ok(top < s.lowpassHz, `${c} sweeps to ${top}Hz, past its own ${s.lowpassHz}Hz ceiling`);
+  }
+});
+
+test("every stroke rasps, at a rate that is a rasp and not a wobble", () => {
+  // The stick-slip grain. Two ways to get this wrong: a rate outside the
+  // range where friction reads as texture, and -- the subtle one -- a
+  // stroke too short to fit enough slips in, where the modulation is heard
+  // as a single dip rather than as grain.
+  for (const c of SOUND_CATEGORIES) {
+    const s = SOUND_SPECS[c];
+    assert.ok(s.grain > 0, `${c} has no grain -- smooth noise is a vent, not chalk`);
+    assert.ok(s.grain <= 0.8, `${c} grain of ${s.grain} guts the stroke into separate scratches`);
+    assert.ok(s.grainHz >= 20 && s.grainHz <= 100, `${c} grain rate ${s.grainHz}Hz is outside 20-100`);
+    const slips = (s.strokeMs / 1000) * s.grainHz;
+    assert.ok(
+      slips >= MIN_SLIPS_PER_STROKE,
+      `${c} fits only ${slips.toFixed(1)} slips in ${s.strokeMs}ms -- that is a wobble`,
+    );
+  }
+});
+
+test("the contact tick opens a stroke without becoming one", () => {
+  for (const c of SOUND_CATEGORIES) {
+    const { tick } = SOUND_SPECS[c];
+    assert.ok(tick >= 0 && tick <= 0.35, `${c} tick of ${tick} is loud enough to be its own event`);
   }
 });
 
@@ -159,5 +190,10 @@ test("disconnect is an eraser, not a chalk stroke", () => {
   assert.ok(
     strokes.every((s) => eraser.body >= s.body),
     "the eraser must have the most mass behind it",
+  );
+  assert.equal(eraser.tick, 0, "an eraser is not set down like a piece of chalk");
+  assert.ok(
+    strokes.every((s) => eraser.grainHz <= s.grainHz),
+    "the eraser's crumble must be the coarsest thing in the pack",
   );
 });

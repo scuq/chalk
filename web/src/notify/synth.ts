@@ -9,8 +9,11 @@
 //   |\____                 __---____
 //   struck, decays         contact, drag, lift
 //
-// Four things make the difference between the two chalk sounds, the warm
-// line and the sound that empties a room:
+// Real chalk is not smooth friction. It advances in thousands of tiny
+// slips -- grip, release, grip -- and that is what "dry and powdery"
+// means: a fine irregular rasp, plus a light tick where the chalk first
+// touches down. Six things make the difference between the two chalk
+// sounds, the warm line and the sound that empties a room:
 //
 //   lowpassHz  the nails-on-a-blackboard screech is stick-slip resonance
 //              at roughly 2-8 kHz. Keeping the ceiling well under that is
@@ -26,6 +29,20 @@
 //              a board.
 //   body       a big piece of chalk has mass -- a quiet layer an octave
 //              down, wide and dull, is what supplies it.
+//   grain      the stick-slip rasp, as an irregular amplitude wobble
+//              somewhere between 20 and 100 Hz. Smooth noise is a hiss
+//              from a vent; grained noise is a solid dragging across a
+//              rough surface. The modulator is random rather than an LFO
+//              on purpose -- a periodic one has a rate you can hum, which
+//              is a buzz, and this pack does not do pitch.
+//   tick       the light contact transient where the chalk lands. A few
+//              milliseconds, under the same ceiling as everything else.
+//              It is what makes a stroke start rather than fade in.
+//
+// The source is pink noise, not white. Friction noise falls off with
+// frequency, and a flat source under a wide band puts most of its energy
+// at the top of the passband, which is the direction nothing here wants
+// to go.
 //
 // The envelope is attack, drag, lift. Not an exponential decay: that's a
 // struck bell, and this is a drawn line.
@@ -41,9 +58,9 @@
 // Direction carries the meaning: rising = something arrived for you,
 // falling = something went wrong.
 //
-// These numbers were tuned by ear against the audition harness; treat the
-// table as a recording of that session, not as arithmetic. Changing one
-// means listening again.
+// These numbers were tuned by ear against the bench that
+// `node tools/sound-bench.mjs` builds; treat the table as a recording of
+// that session, not as arithmetic. Changing one means listening again.
 
 import type { SoundCategory } from "./types";
 
@@ -63,6 +80,15 @@ export interface StrokeSpec {
   lowpassHz: number;
   // Gain of the octave-down layer, 0..1. This is "how big the chalk is".
   body: number;
+  // Rate of the stick-slip rasp, Hz -- how fine the grain is. Low is a
+  // coarse crumble, high is a fine dusty hiss.
+  grainHz: number;
+  // How deep the rasp cuts, 0..1. 0 is smooth friction (a vent), and
+  // anything near 1 guts the stroke into separate scratches.
+  grain: number;
+  // Level of the contact tick, 0..1, relative to the stroke it opens.
+  // 0 for anything that isn't set down on a board.
+  tick: number;
   // Per-category trim, so the ones that fire often sit back in the mix.
   gain: number;
 }
@@ -74,6 +100,21 @@ export interface StrokeSpec {
 // the pack feel soft rather than clipped.
 export const ATTACK_MS = 30;
 export const RELEASE_MS = 95;
+
+// The contact tick's length. Long enough to be a tick rather than a
+// digital edge, short enough that it lands as an onset instead of as a
+// note of its own.
+export const TICK_MS = 5;
+
+// The grain modulator is generated once at this rate and shifted per
+// stroke with playbackRate, so one buffer serves every category.
+export const GRAIN_REF_HZ = 50;
+
+// A stroke needs at least this many slip events to read as texture. Below
+// it the modulation is heard as one dip in the middle of the stroke --
+// a wobble, not a rasp. Enforced by the tests, because it is the trap a
+// "make this one shorter" edit falls into.
+export const MIN_SLIPS_PER_STROKE = 3;
 
 // A hard ceiling on resonance. Above roughly this the band stops colouring
 // the noise and starts ringing at its centre, which is precisely the peep
@@ -101,6 +142,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 1.5,
     lowpassHz: 3000,
     body: 0.16,
+    grainHz: 60,
+    grain: 0.4,
+    tick: 0.12,
     gain: 0.85,
   },
   // The same gesture, lower and broader: unmistakably personal, warmer.
@@ -112,6 +156,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 1.4,
     lowpassHz: 2700,
     body: 0.2,
+    grainHz: 52,
+    grain: 0.42,
+    tick: 0.11,
     gain: 0.85,
   },
   // Two close strokes for a lesser event -- present, not demanding.
@@ -123,6 +170,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 1.25,
     lowpassHz: 2600,
     body: 0.16,
+    grainHz: 58,
+    grain: 0.38,
+    tick: 0.1,
     gain: 0.72,
   },
   // One short swish. This is the category that can fire all day, so it is
@@ -135,6 +185,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 1.35,
     lowpassHz: 2300,
     body: 0.18,
+    grainHz: 70,
+    grain: 0.34,
+    tick: 0.09,
     gain: 0.58,
   },
   // A rising pair with a wide interval -- an invitation, not an alarm.
@@ -148,6 +201,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 1.45,
     lowpassHz: 2800,
     body: 0.2,
+    grainHz: 50,
+    grain: 0.42,
+    tick: 0.12,
     gain: 0.78,
   },
   // A door opening: one warm low stroke, then a brighter one -- you've
@@ -160,6 +216,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 1.4,
     lowpassHz: 2500,
     body: 0.24,
+    grainHz: 46,
+    grain: 0.44,
+    tick: 0.12,
     gain: 0.7,
   },
   // Personal like the dm stroke but narrower in travel: someone is at
@@ -172,6 +231,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 1.3,
     lowpassHz: 2600,
     body: 0.18,
+    grainHz: 55,
+    grain: 0.4,
+    tick: 0.11,
     gain: 0.72,
   },
   // Flat and even, two strokes at almost the same height: a notice being
@@ -185,6 +247,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 1.2,
     lowpassHz: 2300,
     body: 0.22,
+    grainHz: 48,
+    grain: 0.4,
+    tick: 0.1,
     gain: 0.64,
   },
   // Soft and low-contrast; a friend appearing is information, not a
@@ -197,6 +262,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 1.3,
     lowpassHz: 2200,
     body: 0.18,
+    grainHz: 56,
+    grain: 0.36,
+    tick: 0.08,
     gain: 0.52,
   },
   // 71-1, the call roster. Four sounds that come in two mirrored pairs:
@@ -215,6 +283,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 1.45,
     lowpassHz: 2200,
     body: 0.3,
+    grainHz: 44,
+    grain: 0.46,
+    tick: 0.13,
     gain: 0.7,
   },
   // The same two strokes walked backwards. It falls, but it stays as warm
@@ -228,6 +299,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 0.7,
     lowpassHz: 2200,
     body: 0.3,
+    grainHz: 44,
+    grain: 0.44,
+    tick: 0.1,
     gain: 0.66,
   },
   // One short stroke, brighter and much lighter than your own arrival:
@@ -241,6 +315,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 1.5,
     lowpassHz: 2600,
     body: 0.12,
+    grainHz: 68,
+    grain: 0.36,
+    tick: 0.1,
     gain: 0.5,
   },
   // Its mirror, from the same place on the board: same brightness, same
@@ -254,6 +331,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 0.66,
     lowpassHz: 2600,
     body: 0.14,
+    grainHz: 68,
+    grain: 0.36,
+    tick: 0.08,
     gain: 0.48,
   },
   // The board is back.
@@ -265,6 +345,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 1.4,
     lowpassHz: 2400,
     body: 0.22,
+    grainHz: 52,
+    grain: 0.4,
+    tick: 0.11,
     gain: 0.66,
   },
   // Deliberately not a chalk stroke: an eraser sweep. The widest, dullest,
@@ -279,6 +362,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 0.55,
     lowpassHz: 1500,
     body: 0.38,
+    grainHz: 26,
+    grain: 0.5,
+    tick: 0,
     gain: 0.66,
   },
   // Barely there. You asked for confirmation, not for an announcement.
@@ -290,6 +376,9 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 1.3,
     lowpassHz: 2900,
     body: 0.09,
+    grainHz: 80,
+    grain: 0.28,
+    tick: 0.07,
     gain: 0.36,
   },
   // Dark and heavy -- chalk dragged hard, low on the board, falling away.
@@ -303,17 +392,77 @@ export const SOUND_SPECS: Record<SoundCategory, StrokeSpec> = {
     sweep: 0.6,
     lowpassHz: 1250,
     body: 0.36,
+    grainHz: 30,
+    grain: 0.5,
+    tick: 0.14,
     gain: 0.75,
   },
 };
 
-// A second of white noise, generated once and reused. AudioBufferSource
+// A second of pink noise, generated once and reused. AudioBufferSource
 // nodes are single-use; the buffer behind them is not.
+//
+// Pink rather than white because friction is: energy falls off with
+// frequency, so a flat source under one of these wide bands piles up at
+// the top of the passband and reads thin and hissy. Kellett's economy
+// filter -- six one-poles summed, the standard cheap approximation, and
+// well inside what a 100 ms stroke can show. Normalized rather than
+// scaled by a magic constant, since the filter's peak depends on the
+// random draw.
 function makeNoiseBuffer(ctx: AudioContext): AudioBuffer {
   const frames = Math.floor(ctx.sampleRate);
   const buf = ctx.createBuffer(1, frames, ctx.sampleRate);
   const data = buf.getChannelData(0);
-  for (let i = 0; i < frames; i++) data[i] = Math.random() * 2 - 1;
+  let b0 = 0;
+  let b1 = 0;
+  let b2 = 0;
+  let b3 = 0;
+  let b4 = 0;
+  let b5 = 0;
+  let b6 = 0;
+  let peak = 0;
+  for (let i = 0; i < frames; i++) {
+    const w = Math.random() * 2 - 1;
+    b0 = 0.99886 * b0 + w * 0.0555179;
+    b1 = 0.99332 * b1 + w * 0.0750759;
+    b2 = 0.969 * b2 + w * 0.153852;
+    b3 = 0.8665 * b3 + w * 0.3104856;
+    b4 = 0.55 * b4 + w * 0.5329522;
+    b5 = -0.7616 * b5 - w * 0.016898;
+    const pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362;
+    b6 = w * 0.115926;
+    data[i] = pink;
+    if (Math.abs(pink) > peak) peak = Math.abs(pink);
+  }
+  if (peak > 0) for (let i = 0; i < frames; i++) data[i] /= peak;
+  return buf;
+}
+
+// The stick-slip modulator: two seconds of random values in 0..1, held for
+// one GRAIN_REF_HZ period each and joined by straight lines.
+//
+// Random and not an LFO, because a periodic modulator at 20-100 Hz has a
+// rate you can hear as a pitch -- that is a buzz, and the one thing this
+// pack refuses to do is have a pitch. Interpolated and not stepped,
+// because a hard step in a gain is a click.
+//
+// Two seconds rather than one: a stroke played at up to 2x playbackRate
+// eats twice its own length of this buffer.
+function makeGrainBuffer(ctx: AudioContext): AudioBuffer {
+  const frames = Math.floor(ctx.sampleRate * 2);
+  const hold = Math.max(1, Math.floor(ctx.sampleRate / GRAIN_REF_HZ));
+  const buf = ctx.createBuffer(1, frames, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  let from = Math.random();
+  let to = Math.random();
+  for (let i = 0; i < frames; i++) {
+    const step = i % hold;
+    if (step === 0 && i > 0) {
+      from = to;
+      to = Math.random();
+    }
+    data[i] = from + (to - from) * (step / hold);
+  }
   return buf;
 }
 
@@ -324,6 +473,7 @@ export class SoundPlayer {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
+  private grain: AudioBuffer | null = null;
   private volume: number;
   /** "" = the system default output. See setOutput. */
   private outputId = "";
@@ -380,6 +530,7 @@ export class SoundPlayer {
       this.master.gain.value = this.volume;
       this.master.connect(this.ctx.destination);
       this.noise = makeNoiseBuffer(this.ctx);
+      this.grain = makeGrainBuffer(this.ctx);
       void this.applyOutput();
     }
     if (this.ctx.state !== "running") {
@@ -396,23 +547,26 @@ export class SoundPlayer {
     const ctx = this.ctx;
     const master = this.master;
     const noise = this.noise;
-    if (!ctx || !master || !noise || ctx.state !== "running") return;
+    const grain = this.grain;
+    if (!ctx || !master || !noise || !grain || ctx.state !== "running") return;
 
     const spec = SOUND_SPECS[category];
     let at = ctx.currentTime;
     for (const center of spec.centers) {
-      this.stroke(ctx, master, noise, spec, center, at);
+      this.stroke(ctx, master, noise, grain, spec, center, at);
       at += (spec.strokeMs + spec.gapMs) / 1000;
     }
   }
 
   // One stroke: noise through a wide bandpass that travels while it
-  // sounds, plus a quieter octave-down band for mass, sharing one
+  // sounds, rasped by the grain modulator, plus a quieter octave-down band
+  // for mass and a tick where the chalk lands. All but the tick share one
   // envelope.
   private stroke(
     ctx: AudioContext,
     master: GainNode,
     noise: AudioBuffer,
+    grainBuf: AudioBuffer,
     spec: StrokeSpec,
     center: number,
     at: number,
@@ -431,10 +585,52 @@ export class SoundPlayer {
     env.gain.linearRampToValueAtTime(0, at + dur + release);
     env.connect(master);
 
+    // The rasp. Sits between the filters and the envelope so it grains the
+    // stroke without touching its shape: gain rides between 1 - grain and
+    // 1, driven by the random modulator rather than by an oscillator.
+    const rasp = ctx.createGain();
+    rasp.gain.value = spec.grain > 0 ? 1 - spec.grain : 1;
+    rasp.connect(env);
+    if (spec.grain > 0) {
+      const depth = ctx.createGain();
+      depth.gain.value = spec.grain;
+      depth.connect(rasp.gain);
+      const grainSrc = ctx.createBufferSource();
+      grainSrc.buffer = grainBuf;
+      grainSrc.playbackRate.value = spec.grainHz / GRAIN_REF_HZ;
+      grainSrc.connect(depth);
+      // Playing faster eats proportionally more buffer, so the random
+      // start has to leave room for what this rate will consume.
+      const eats = (dur + release) * grainSrc.playbackRate.value;
+      grainSrc.start(at, Math.random() * Math.max(0, grainBuf.duration - eats));
+      grainSrc.stop(at + dur + release);
+    }
+
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.value = spec.lowpassHz;
-    lp.connect(env);
+    lp.connect(rasp);
+
+    if (spec.tick > 0) {
+      // Contact. Its own envelope and its own ceiling, because the stroke's
+      // envelope is still at zero here -- the attack ramp is what the tick
+      // exists to give an edge to, so it cannot ride inside it. Ungrained:
+      // five milliseconds is one slip, not a texture.
+      const tickEnv = ctx.createGain();
+      tickEnv.gain.setValueAtTime(0, at);
+      tickEnv.gain.linearRampToValueAtTime(spec.gain * spec.tick, at + 0.001);
+      tickEnv.gain.linearRampToValueAtTime(0, at + TICK_MS / 1000);
+      tickEnv.connect(master);
+      const tickLp = ctx.createBiquadFilter();
+      tickLp.type = "lowpass";
+      tickLp.frequency.value = spec.lowpassHz;
+      tickLp.connect(tickEnv);
+      const tickSrc = ctx.createBufferSource();
+      tickSrc.buffer = noise;
+      tickSrc.connect(tickLp);
+      tickSrc.start(at, Math.random() * Math.max(0, noise.duration - 0.05), TICK_MS / 1000);
+      tickSrc.stop(at + TICK_MS / 1000);
+    }
 
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";

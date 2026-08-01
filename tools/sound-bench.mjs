@@ -44,7 +44,7 @@ const mod = (name) => pathToFileURL(join(NOTIFY, name)).pathname;
 writeFileSync(
   entry,
   [
-    `export { SOUND_SPECS, ATTACK_MS, RELEASE_MS, MAX_Q, HIGHPASS_HZ, SCREECH_FLOOR_HZ } from ${JSON.stringify(mod("synth.ts"))};`,
+    `export { SOUND_SPECS, ATTACK_MS, RELEASE_MS, MAX_Q, HIGHPASS_HZ, SCREECH_FLOOR_HZ, TICK_MS, GRAIN_REF_HZ, MIN_SLIPS_PER_STROKE } from ${JSON.stringify(mod("synth.ts"))};`,
     `export { SOUND_CATEGORIES, MACHINE_CATEGORIES, CALL_CATEGORIES, CATEGORY_LABELS } from ${JSON.stringify(mod("types.ts"))};`,
     `export { NOTIFY_EVENT_TYPES } from ${JSON.stringify(mod("rules.ts"))};`,
   ].join("\n"),
@@ -72,6 +72,9 @@ const pack = {
   MAX_Q: p.MAX_Q,
   HIGHPASS_HZ: p.HIGHPASS_HZ,
   SCREECH_FLOOR_HZ: p.SCREECH_FLOOR_HZ,
+  TICK_MS: p.TICK_MS,
+  GRAIN_REF_HZ: p.GRAIN_REF_HZ,
+  MIN_SLIPS_PER_STROKE: p.MIN_SLIPS_PER_STROKE,
   // The page's layout, matching how the settings UI groups the same sounds.
   groups: [
     { title: "notification events — routed by the rules engine", categories: p.NOTIFY_EVENT_TYPES },
@@ -79,6 +82,18 @@ const pack = {
     { title: "chalk's own noises", categories: p.MACHINE_CATEGORIES.filter((c) => !isCall.has(c)) },
   ],
 };
+
+// A constant added to synth.ts but not re-exported above arrives here as
+// undefined, which the page turns into NaN in an AudioParam (a thrown error
+// mid-stroke) or into a comparison that is quietly always false (an invariant
+// that stops warning). Neither is visible without listening, so fail here.
+for (const [k, v] of Object.entries(pack)) {
+  if (typeof v === "object") continue;
+  if (!Number.isFinite(v)) {
+    console.error(`${k} came out as ${v} — is it exported from synth.ts and re-exported above?`);
+    process.exit(1);
+  }
+}
 
 const html = readFileSync(join(HERE, "sound-bench.tmpl.html"), "utf8").replace(
   "__PACK_JSON__",

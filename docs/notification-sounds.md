@@ -156,7 +156,7 @@ means broadband noise shaped by what you take out of it.
   struck, decays         contact, drag, lift
 ```
 
-Four parameters carry the whole design, in `web/src/notify/synth.ts`:
+Six parameters carry the whole design, in `web/src/notify/synth.ts`:
 
 | | |
 |---|---|
@@ -164,6 +164,20 @@ Four parameters carry the whole design, in `web/src/notify/synth.ts`:
 | `q` | Bandpass width. Narrow bands make noise ring at their centre and the stroke becomes a beep; everything stays wide. Capped at `MAX_Q`. |
 | `sweep` | How far the band travels while the stroke sounds. The movement is what makes it a swish rather than a hiss — a sweep of 1 is a bug. |
 | `body` | A quieter layer an octave down, following the same sweep. This is how big the piece of chalk is. |
+| `grainHz` / `grain` | The stick-slip rasp: chalk advances in thousands of tiny slips, and that irregular 20–100 Hz amplitude wobble is the difference between a solid dragging over a rough surface and air coming out of a vent. Rate and depth. |
+| `tick` | The light contact transient where the chalk lands, `TICK_MS` long and under the same ceiling as the stroke. It gives a stroke a beginning instead of a fade-in. |
+
+The source is **pink** noise, not white: friction energy falls off with
+frequency, and a flat source under bands this wide piles up at the top of the
+passband — the one direction this pack must not go.
+
+Two traps the tests hold shut. The grain modulator is **random, not an LFO** —
+a periodic one at these rates has a pitch you can hum, which is a buzz, and
+this pack does not do pitch — and it is interpolated rather than stepped,
+because a hard step in a gain is a click. And a stroke must fit at least
+`MIN_SLIPS_PER_STROKE` slips, or the modulation lands as one dip in the middle
+rather than as texture; that is the trap a "make this one shorter" edit falls
+into.
 
 There are **no oscillators anywhere in the pack**. An early version put a quiet
 sine under the noise so each category had a nameable pitch; it made everything

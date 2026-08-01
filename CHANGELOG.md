@@ -12,6 +12,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Changed
+- Every chalk sound now has the grain of real chalk. Where they used to be
+  smooth little swishes, each one now rasps the way a stick of chalk actually
+  does — a fine, irregular crumble as it drags — and opens with the light tick
+  of the chalk touching down. They stay in the same warm range as before,
+  well clear of the screech; they just sound like chalk on a board rather than
+  like a filtered hiss.
+
 ### Added
 - Calls now make a sound: one when you connect, one when you leave, and a
   shorter one each time somebody else joins or leaves the room you're in.
