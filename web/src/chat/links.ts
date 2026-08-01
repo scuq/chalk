@@ -72,13 +72,22 @@ export function linkHref(raw: string): string | null {
   }
 }
 
-// Anchor text longer than this renders as a "link to <host>" label.
+// Anchor text longer than this renders as a host + path label.
 // 72 chars: a full line; anything longer is already wrapping.
 export const LINK_LABEL_THRESHOLD = 72;
 
+// The label itself is at most this many chars of host + path (plus a
+// trailing ellipsis when anything was dropped).
+export const LINK_LABEL_MAX = 60;
+
 /** Display text for a link anchor: the raw text when short enough, else
- *  "link to <host>". Display-only -- the href and hover title keep the full
- *  URL, and the native right-click menu still copies the real address.
+ *  "host/start-of-path…". Display-only -- the href and hover title keep the
+ *  full URL, and the native right-click menu still copies the real address.
+ *
+ *  The query and fragment always go (that is where the tracking junk
+ *  lives); the path is shown from the start, undecoded, and clipped to
+ *  LINK_LABEL_MAX. The ellipsis appears exactly when the label omits
+ *  something beyond scheme/www/port.
  *
  *  The host is URL.hostname as-is: punycode stays punycode (the homograph-
  *  safe reading), userinfo tricks like "https://good.example@evil.example/"
@@ -87,9 +96,17 @@ export const LINK_LABEL_THRESHOLD = 72;
 export function linkDisplayText(text: string): string {
   if (text.length <= LINK_LABEL_THRESHOLD) return text;
   try {
-    let host = new URL(text).hostname;
+    const u = new URL(text);
+    let host = u.hostname;
     if (host.startsWith("www.")) host = host.slice(4);
-    return `link to ${host}`;
+    const path = u.pathname === "/" ? "" : u.pathname;
+    let label = host + path;
+    let dropped = u.search !== "" || u.hash !== "";
+    if (label.length > LINK_LABEL_MAX) {
+      label = label.slice(0, LINK_LABEL_MAX);
+      dropped = true;
+    }
+    return dropped ? label + "…" : label;
   } catch {
     return text;
   }

@@ -4,6 +4,7 @@ import {
   findLinks,
   linkDisplayText,
   linkHref,
+  LINK_LABEL_MAX,
   LINK_LABEL_THRESHOLD,
   splitBodyParts,
 } from "./links.ts";
@@ -123,8 +124,10 @@ test("a body that is only a link is one part", () => {
   assert.equal(parts[0].href, "https://example.com");
 });
 
-// A URL padded to just over the label threshold.
-const long = (base: string) => base + "x".repeat(LINK_LABEL_THRESHOLD + 1 - base.length);
+// A URL pushed just over the label threshold by query junk, so the
+// host/path expectation stays readable in each test.
+const long = (base: string) =>
+  base + (base.includes("?") ? "&" : "?") + "t=" + "x".repeat(LINK_LABEL_THRESHOLD + 1 - base.length);
 
 test("linkDisplayText leaves short urls and non-urls alone", () => {
   assert.equal(linkDisplayText("https://example.com/docs"), "https://example.com/docs");
@@ -132,33 +135,65 @@ test("linkDisplayText leaves short urls and non-urls alone", () => {
 });
 
 test("linkDisplayText labels only past the threshold", () => {
-  const base = "https://example.com/";
+  const base = "https://example.com/a?q=";
   const atLimit = base + "x".repeat(LINK_LABEL_THRESHOLD - base.length);
   assert.equal(atLimit.length, LINK_LABEL_THRESHOLD);
   assert.equal(linkDisplayText(atLimit), atLimit);
-  assert.equal(linkDisplayText(atLimit + "x"), "link to example.com");
+  assert.equal(linkDisplayText(atLimit + "x"), "example.com/a…");
+});
+
+test("linkDisplayText keeps the start of the path, drops query and fragment", () => {
+  assert.equal(linkDisplayText(long("https://amazon.de/dp/B09DG3S8M9")), "amazon.de/dp/B09DG3S8M9…");
+  assert.equal(
+    linkDisplayText("https://example.com/watch#" + "x".repeat(LINK_LABEL_THRESHOLD)),
+    "example.com/watch…",
+  );
+});
+
+test("linkDisplayText clips a long path at LINK_LABEL_MAX", () => {
+  const url = "https://example.com/" + "a".repeat(100);
+  const label = linkDisplayText(url);
+  assert.equal(label, ("example.com/" + "a".repeat(100)).slice(0, LINK_LABEL_MAX) + "…");
+  assert.equal(label.length, LINK_LABEL_MAX + 1);
+});
+
+test("linkDisplayText shows no ellipsis when nothing meaningful is omitted", () => {
+  // Only reachable with a port: dropping scheme+port is what gets a
+  // 73-char URL down to a 60-char host+path with no query to lose.
+  const path = "/" + "a".repeat(48);
+  const url = "https://example.com:8443" + path;
+  assert.ok(url.length > LINK_LABEL_THRESHOLD);
+  assert.equal(linkDisplayText(url), "example.com" + path);
+});
+
+test("linkDisplayText collapses a bare / path to the host alone", () => {
+  assert.equal(linkDisplayText(long("https://example.com/")), "example.com…");
 });
 
 test("linkDisplayText strips a leading www. and only that", () => {
-  assert.equal(linkDisplayText(long("https://www.amazon.de/dp/")), "link to amazon.de");
-  assert.equal(linkDisplayText(long("https://wwwx.example/")), "link to wwwx.example");
+  assert.equal(linkDisplayText(long("https://www.amazon.de/dp/x")), "amazon.de/dp/x…");
+  assert.equal(linkDisplayText(long("https://wwwx.example/a")), "wwwx.example/a…");
 });
 
 test("linkDisplayText keeps punycode hosts as-is", () => {
   // Showing the punycode form is deliberate: no homograph prettifying.
-  assert.equal(linkDisplayText(long("https://xn--mnchen-3ya.de/")), "link to xn--mnchen-3ya.de");
+  assert.equal(linkDisplayText(long("https://xn--mnchen-3ya.de/x")), "xn--mnchen-3ya.de/x…");
 });
 
 test("linkDisplayText drops the port", () => {
-  assert.equal(linkDisplayText(long("https://example.com:8443/")), "link to example.com");
+  assert.equal(linkDisplayText(long("https://example.com:8443/x")), "example.com/x…");
 });
 
 test("linkDisplayText labels the real host, not spoofed userinfo", () => {
-  assert.equal(linkDisplayText(long("https://amazon.de@evil.example/")), "link to evil.example");
+  assert.equal(linkDisplayText(long("https://amazon.de@evil.example/x")), "evil.example/x…");
 });
 
 test("linkDisplayText handles an ip host", () => {
-  assert.equal(linkDisplayText(long("http://192.168.0.1/")), "link to 192.168.0.1");
+  assert.equal(linkDisplayText(long("http://192.168.0.1/x")), "192.168.0.1/x…");
+});
+
+test("linkDisplayText keeps the path undecoded", () => {
+  assert.equal(linkDisplayText(long("https://example.com/a%20b%2Fc")), "example.com/a%20b%2Fc…");
 });
 
 test("linkDisplayText returns unparseable input unchanged", () => {

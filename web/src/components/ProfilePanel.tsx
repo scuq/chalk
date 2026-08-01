@@ -831,9 +831,10 @@ export function ProfilePanel({
                   <span>shorten long links</span>
                 </label>
                 <p class="chalk-profile-hint">
-                  a very long url shows as [link to example.com] instead of
-                  the full address. hovering shows the real target, and
-                  right-click still copies the full link.
+                  a very long url shows as [example.com/where-it-points…] —
+                  trimmed to its start, tracking junk dropped. hovering shows
+                  the real target, and right-click still copies the full
+                  link.
                 </p>
               </div>
               {onSetUserColors && (

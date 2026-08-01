@@ -16,9 +16,10 @@ The engineering-level history (which slice shipped what) lives in
 - The profile window has a filter box: type "volume" or "passkey" and only
   the matching settings show, whichever tab they live on. Clearing it (or
   tapping a tab) brings the tabs back.
-- Long web addresses in messages now show as a compact `[link to
-  example.com]` label instead of filling the line with tracking gibberish.
-  The link still opens the full address, hovering shows it, and right-click →
+- Long web addresses in messages now show as a compact
+  `[example.com/where-it-points…]` label — the start of the address, with
+  the tracking gibberish dropped — instead of filling the line. The link
+  still opens the full address, hovering shows it, and right-click →
   "copy link address" still copies the real URL. Prefer raw URLs? Switch it
   off under profile → chat.
 
