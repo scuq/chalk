@@ -18,6 +18,10 @@ The engineering-level history (which slice shipped what) lives in
   see which room you're reading, and the search button stays in reach.
 
 ### Fixed
+- On phones there was no visible version number and no way to reach the
+  changelog — the version badge next to the logo only shows on wide screens.
+  The profile window now carries the version at the bottom of every tab, and
+  tapping it opens the changelog, on any screen size.
 - On phones, a clipped line of message text could show through the thin gap
   just below the pinned channel bar while scrolling. The gap is solid now.
 - Pictures in messages older than a day showed as an empty row — just the

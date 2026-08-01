@@ -1,8 +1,9 @@
 // 39-1: the running build, as a link to the changelog that describes it.
 //
-// Rendered twice: as a badge beside the wordmark in the header, and as a row
-// in the profile panel's "about" section (the header badge is hidden on
-// mobile, where the header has no room to spare).
+// Rendered three times: as a badge beside the wordmark in the header (hidden
+// on mobile, where the header has no room to spare), as a row in the profile
+// panel's "about" section, and in the profile panel's footer — the one spot
+// visible on every tab and every viewport.
 
 import { changelogURL, versionLabel, versionTitle } from "../version";
 

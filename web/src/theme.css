@@ -1715,6 +1715,13 @@ body.chalk-resizing .chalk-sidebar-resizer {
   border-top: 1px solid var(--chalk-border);
 }
 
+/* Metadata variant: the profile panel's always-visible version row. A
+   colophon, not an action row — centered and small. */
+.chalk-modal-footer--about {
+  justify-content: center;
+  font-size: var(--chalk-size-small);
+}
+
 .chalk-modal-error {
   color: #ff5555;
   font-size: var(--chalk-size-small);

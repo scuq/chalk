@@ -1577,6 +1577,18 @@ export function ProfilePanel({
             </section>
           )}
         </div>
+
+        {/* The header's version badge is hidden on mobile, so this footer is
+            a phone's only glanceable version. Outside the tab/filter gating:
+            visible whichever tab or filter is active. */}
+        <footer class="chalk-modal-footer chalk-modal-footer--about">
+          <VersionLink
+            version={serverVersion}
+            commit={serverCommit}
+            variant="row"
+            testID="profile-footer-version"
+          />
+        </footer>
       </div>
     </div>
   );
