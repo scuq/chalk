@@ -593,13 +593,17 @@ export function reducer(state: AppState, action: Action): AppState {
       };
 
     // 53-1: parking closes the thread panel with the same argument the pane
-    // itself is closed with -- it renders messages, so it cannot survive.
+    // itself is closed with -- it renders messages, so it cannot survive. The
+    // side panel goes for the same reason: search, the thread inbox and
+    // notifications all put message text on screen, and parking around them
+    // would hide the conversation while leaving quotes of it in view.
     case "set_parked":
       if (state.parked === action.parked) return state;
       return {
         ...state,
         parked: action.parked,
         openThread: action.parked ? null : state.openThread,
+        openPanel: action.parked ? null : state.openPanel,
       };
 
     case "unread_mark_refresh":

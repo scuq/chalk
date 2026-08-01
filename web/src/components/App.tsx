@@ -254,6 +254,7 @@ import { voiceBus } from "../voice/bus";
 import { voiceSession } from "../voice/session";
 import { applyRemoteMicPrefs, setMicPrefsPublisher } from "../voice/mic-prefs"; // 44-4
 import { installVoiceHotkeys } from "../voice/hotkeys";
+import { installParkingHotkey } from "../parking-hotkey";
 import { installIdleWatch, type IdleWatch } from "../presence/idle";
 import { useIdlePrefs } from "../presence/idle-prefs";
 import {
@@ -2919,6 +2920,19 @@ export function App() {
   // session ignores mute/deafen outside a call.
   useEffect(() => installVoiceHotkeys(), []);
 
+  // 53-3: everything parking has to do to the shell, in one place, so the
+  // sidebar row and the boss key cannot drift apart. The reducer takes care of
+  // the panes that render messages; what is left is the navigation around them
+  // -- an open drawer, or Zuckermode sitting on the conversation list.
+  const park = useCallback(() => {
+    setNavOpen(false);
+    setZuckerScreen("chat");
+    dispatch({ kind: "set_parked", parked: true });
+  }, []);
+
+  // 53-3: F9 parks from anywhere, including mid-sentence in the composer.
+  useEffect(() => installParkingHotkey(park), [park]);
+
   // 33-3: read by mention detection inside handleFrame (see unreadRef).
   tabVisibleRef.current = tabVisible;
 
@@ -4561,10 +4575,7 @@ export function App() {
           // itself is a state change, no server round-trip involved.
           parkingName={parking.hidden ? null : parking.name}
           parked={state.parked}
-          onPark={() => {
-            setNavOpen(false);
-            dispatch({ kind: "set_parked", parked: true });
-          }}
+          onPark={park}
           // 49-6: the thread inbox lives with the other unread dots now. On
           // mobile the sidebar is a drawer, so opening the panel closes it.
           onOpenThreads={() => {
@@ -4681,10 +4692,7 @@ export function App() {
                 setZuckerScreen("chat");
               }
             }}
-            onPark={() => {
-              dispatch({ kind: "set_parked", parked: true });
-              setZuckerScreen("chat");
-            }}
+            onPark={park}
             onOpenThreads={() => dispatch({ kind: "open_panel", panel: "threads" })}
             onAddFriend={() => {
               dispatch({ kind: "friends_panel_tab_change", tab: "add" });

@@ -13,6 +13,11 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- Pressing F9 anywhere in chalk drops you straight onto the parking lot —
+  messages, the composer and any open side panel go away in one keystroke,
+  even mid-sentence. Pressing it again does not bring the conversation back;
+  you return by picking a channel, so a panicked second tap can't undo the
+  first. Like the voice keys, it only works while a chalk tab is in front.
 - Appearance settings can hide scrollbars entirely, per device. The wheel,
   trackpad and keyboard scroll as before; the bars just stop being drawn and
   the message pane reclaims the strip they sat in.

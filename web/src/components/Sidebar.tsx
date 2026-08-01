@@ -17,6 +17,7 @@ import {
 } from "../chat/nickcolor";
 import { PrioritySelect } from "./PrioritySelect";
 import { filterRoster, showRosterFilter } from "../chat/roster-filter";
+import { PARKING_HOTKEY_LABEL } from "../parking-hotkey";
 import {
   DEFAULT_GROUP,
   canonicalizeGroup,
@@ -620,8 +621,8 @@ export function Sidebar({
             data-testid="sidebar-parking"
             data-active={parked ? "true" : "false"}
             onClick={onPark}
-            title={`${parkingName} — hide the conversation`}
-            aria-label={`${parkingName} — hide the conversation`}
+            title={`${parkingName} — hide the conversation (${PARKING_HOTKEY_LABEL})`}
+            aria-label={`${parkingName} — hide the conversation (${PARKING_HOTKEY_LABEL})`}
             aria-pressed={parked}
           >
             <span class="chalk-sidebar-parking-glyph">

@@ -42,6 +42,22 @@ test("parking keeps the active channel and closes the thread panel", () => {
   assert.equal(s.openThread, null);
 });
 
+test("parking closes the side panel, which can be showing message text", () => {
+  const s = reducer(baseState({ openPanel: "search" }), {
+    kind: "set_parked",
+    parked: true,
+  });
+  assert.equal(s.openPanel, null);
+});
+
+test("leaving the parking lot does not re-open what parking closed", () => {
+  const s = reducer(baseState({ parked: true, openPanel: null }), {
+    kind: "set_parked",
+    parked: false,
+  });
+  assert.equal(s.openPanel, null);
+});
+
 test("parking twice is a no-op", () => {
   const parked = baseState({ parked: true });
   assert.equal(reducer(parked, { kind: "set_parked", parked: true }), parked);

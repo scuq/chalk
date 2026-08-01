@@ -14,6 +14,8 @@
 // people on (Ctrl+E for emoji, Ctrl+G for GIFs) plus a shifted F for "file",
 // which avoids the browser's own Ctrl+F.
 
+import { PARKING_HOTKEY_LABEL } from "../parking-hotkey";
+
 export type ComposerAction = "emoji" | "gif" | "file";
 
 interface Shortcut {
@@ -85,5 +87,8 @@ export function composerHelp(mac: boolean): HelpRow[] {
     { keys: shortcutLabel("gif", mac), what: "GIF picker" },
     { keys: shortcutLabel("file", mac), what: "attach a file" },
     { keys: `${mod(mac)}+v`, what: "paste a screenshot" },
+    // Not a composer key, but this sheet is the only place anyone goes looking
+    // for one, and the boss key fires mid-sentence -- so it belongs here.
+    { keys: PARKING_HOTKEY_LABEL, what: "hide the conversation" },
   ];
 }

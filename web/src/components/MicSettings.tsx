@@ -24,6 +24,7 @@ import { describeMediaError } from "../voice/call";
 import { voiceSession } from "../voice/session";
 import { TRANSMIT_LABELS, TRANSMIT_MODES, isTransmitMode } from "../voice/vad";
 import { isTypingTarget, keyLabel } from "../voice/hotkeys";
+import { PARKING_HOTKEY_CODE, PARKING_HOTKEY_LABEL } from "../parking-hotkey";
 import { METER_FLOOR_DB, dbLabel, meterPos, meterRms, rmsToDb } from "../voice/meter-scale";
 import {
   canChooseOutput,
@@ -65,13 +66,22 @@ function KeyBind({
   testId: string;
 }) {
   const [capturing, setCapturing] = useState(false);
+  const [reserved, setReserved] = useState(false);
 
   useEffect(() => {
     if (!capturing) return;
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      // 53-3: the boss key is not up for grabs. Bound here it would park the
+      // app every time you toggled your mic, and the whole point of it is that
+      // it never fires by accident.
+      if (e.code === PARKING_HOTKEY_CODE) {
+        setReserved(true);
+        return;
+      }
       setCapturing(false);
+      setReserved(false);
       // Escape backs out; backspace/delete unbinds. Neither is a plausible
       // voice key, and without them there is no way to undo a bind.
       if (e.code === "Escape") return;
@@ -87,11 +97,18 @@ function KeyBind({
       <button
         type="button"
         class={`chalk-profile-sound-preview${capturing ? " is-capturing" : ""}`}
-        onClick={() => setCapturing((c) => !c)}
+        onClick={() => {
+          setReserved(false);
+          setCapturing((c) => !c);
+        }}
         aria-label={`${label}: ${capturing ? "press a key" : keyLabel(value)}`}
         data-testid={testId}
       >
-        {capturing ? "press a key…" : keyLabel(value)}
+        {capturing
+          ? reserved
+            ? `${PARKING_HOTKEY_LABEL} is taken — press another key`
+            : "press a key…"
+          : keyLabel(value)}
       </button>
     </div>
   );
