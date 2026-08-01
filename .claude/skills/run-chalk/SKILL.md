@@ -87,6 +87,10 @@ authenticated page object; testids for the main surfaces are in the
 `--friend` branch (drawer `nav-toggle`, `sidebar-new`, `composer-input`,
 `message-menu` via touch long-press…), more in `test/e2e/*.spec.ts`.
 
+`readme-shots.mjs` (same dir) regenerates the `docs/screenshots/` set used
+by the README — two users, a staged conversation, reaction + thread, desktop
++ mobile shots. Its header says how to re-run it (fresh handles needed).
+
 ## Run (human path)
 
 Same launch line, then open `http://localhost:8443/` in a browser and

@@ -1,4 +1,8 @@
-# chalk
+<p align="center">
+  <img src="web/icons/logo.svg" width="140" alt="chalk logo">
+</p>
+
+<h1 align="center">chalk</h1>
 
 A self-hosted, end-to-end-encrypted group chat: one Go binary, Postgres, and a
 browser client. Matrix-green-on-black by default (seven themes, Hack font),
@@ -35,6 +39,16 @@ never a bypass of the second factor.
   per-device font and text-size settings, per-user nick colours.
 - **Ops** — `chalkctl` deploys and updates a whole host from cosign-verified
   container images.
+
+## Screenshots
+
+The default theme (six more in settings), on a dev instance:
+
+![A channel in the desktop layout: sidebar with friends and channels, a conversation with reactions, an @mention and a thread indicator](docs/screenshots/chat-desktop.png)
+
+![The same channel with the thread panel open on the right, showing two replies and their own composer](docs/screenshots/chat-thread.png)
+
+<img src="docs/screenshots/chat-mobile.png" width="360" alt="The mobile layout: the same conversation with the new-messages divider and a highlighted @mention">
 
 ## Quick start (development)
 
