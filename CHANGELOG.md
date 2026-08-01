@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.5.4 — 1 August 2026 — Off stays off, and tiles you can read
 
 ### Added
 - Optional latency readout on the video tiles: each person's round trip in
