@@ -39,6 +39,21 @@ Mentions cannot trigger pushes: mention detection is client-side inside the
 ciphertext, invisible to the server by design (see the migrations/0043
 header). This is a feature of the E2E model, not an oversight.
 
+**What the relays still learn.** Content is hidden completely; metadata only
+partly. Unavoidable: the endpoint (Apple minted it, so it knows the device),
+the **timing** of every send — a timestamped "this person is being messaged
+now", and by far the largest leak — chalkd's source IP, and the VAPID public
+key + `sub`, both stable, which cluster every device on an instance as one
+deployment with one contact address. Reduced deliberately: `Topic` is a
+constant, not a per-channel value, and payloads are padded to a fixed length
+(both below), so neither carries a per-channel or per-sender fingerprint.
+Not attempted: timing defence. Decoy pushes are foreclosed by the very rule
+in Risks 1 — a cover push showing no notification is a silent push, and ~3
+revoke the subscription — and batching real pushes into fixed intervals
+trades away the latency that makes push worth having. Accepted for v1: an
+observer at Apple learns *when* a chalk user is contacted, never by whom or
+about what.
+
 **Future, not foreclosed:** SW-side decryption for real message previews is
 mechanically possible — space keys sit in IndexedDB as raw bytes readable
 from SW scope (`web/src/crypto/idb.ts`) — but v1 doesn't attempt it
@@ -67,6 +82,10 @@ SW decryptor would need.
 - **Payload:** `{v, kind, channel_id, message_id, sender_handle,
   channel_name, is_dm, unread}`. Notification title `@handle` (DM) /
   `@handle in #channel`, static body ("New message"), no message text ever.
+  **Padded to a fixed plaintext length** before encryption (RFC 8188's
+  padding delimiter, which aes128gcm already carries) so ciphertext size is
+  constant — unpadded, the length varies with handle and channel-name length
+  and weakly fingerprints the sender to the relay.
 - **Badge:** payload carries the server-computed unread total (one aggregate
   over channel_members ⋈ channel_seq ⋈ channel_reads, capped at 99;
   precedent internal/store/channels.go:297-312); the SW calls
@@ -80,8 +99,16 @@ SW decryptor would need.
   push a duplicate — pin with a test, single-instance dev never surfaces
   it). Hands off to an async dispatcher (buffered chan + small worker pool +
   per-(user,channel) ~60 s cooldown) so relay latency never blocks WS
-  fan-out. Headers: `Topic` = base64url(channel UUID) (22 chars, relay
-  collapses undelivered same-topic pushes), `TTL` 24 h, `Urgency: normal`.
+  fan-out. Headers: `Topic` = the constant `"chalk"`, `TTL` 24 h,
+  `Urgency: normal` — all three identical on every push, so the header set
+  carries nothing. `Topic` is unencrypted, so a per-channel value (the
+  obvious base64url(channel UUID)) would hand the relay a stable
+  pseudonymous channel identifier, correlatable across every member's
+  device. A constant also collapses harder: the relay replaces undelivered
+  same-topic pushes, so a whole offline backlog becomes one notification
+  instead of one per channel. Accepted cost — after a long offline stretch
+  the lock screen shows only the most recent sender; the badge total is
+  still right.
 - **Subscriptions:** `push_subscriptions(id, user_id, device_id, endpoint
   TEXT UNIQUE, p256dh, auth, scope CHECK (scope IN ('dms','all')),
   created_at, last_used_at)`. Upsert on endpoint (tolerates `chalk.deviceId`
@@ -100,7 +127,12 @@ SW decryptor would need.
   `internal/webpush`; extract a shared package only if a third user appears.
 - **VAPID config:** `internal/config/push.go` sub-config module (pattern:
   linkpreview.go): `CHALK_PUSH_ENABLED`, `CHALK_VAPID_PUBLIC_KEY`,
-  `CHALK_VAPID_PRIVATE_KEY`. chalkctl generates on init, preserves on
+  `CHALK_VAPID_PRIVATE_KEY`, `CHALK_VAPID_SUBJECT`. The subject is the JWT's
+  `sub` claim and must be a `mailto:` or `https:` contact URL — Apple
+  rejects tokens without a valid one (`BadJwtToken`), so it is not optional
+  on iOS. Unlike the keypair it cannot be generated: it is the operator's
+  own contact, so chalkctl prompts on init and defaults to
+  `https://<instance domain>`. chalkctl generates on init, preserves on
   `--force`, backfills on `update` — the `ensureTOTPEncKey` pattern
   (internal/chalkctl/secret.go:35) — plus a `{{- if}}`-gated block in
   `templates/chalk.env.tmpl`. Nil dispatcher when keys are absent
@@ -128,8 +160,8 @@ SW decryptor would need.
 | Slice | What | Files | ~LOC |
 |---|---|---|---|
 | 65-1 | Migration `0050_push_subscriptions.sql` + `internal/store/push.go` (upsert w/ cap-8 eviction, deletes, `ListPushSubscriptionsForUsers(userIDs, isDM)` scope filter in SQL) + tests | migrations/, internal/store/ | 280 |
-| 65-2 | `internal/webpush`: RFC 8291 aes128gcm encrypt, RFC 8292 VAPID ES256 JWT, https-only sender with IP vet, Topic/TTL/Urgency, typed ErrGone; tests incl. the Appendix A vector byte-exact | internal/webpush/ (new) | 450 |
-| 65-3 | Config + chalkctl: `internal/config/push.go`, VAPID keygen/preserve/backfill, env template, `push_enabled` + `vapid_public_key` in /api/auth/config | internal/config/, internal/chalkctl/, internal/auth/ | 290 |
+| 65-2 | `internal/webpush`: RFC 8291 aes128gcm encrypt w/ fixed-length padding, RFC 8292 VAPID ES256 JWT (`aud` = origin of *this* endpoint, computed per-send, not a fixed value and not chalk's own origin — a cached token is reusable only across subscriptions sharing a host), https-only sender with IP vet, Topic/TTL/Urgency, typed ErrGone; tests incl. the Appendix A vector byte-exact and constant ciphertext length across differing handles | internal/webpush/ (new) | 450 |
+| 65-3 | Config + chalkctl: `internal/config/push.go`, VAPID keygen/preserve/backfill + `CHALK_VAPID_SUBJECT` (prompt on init, domain-derived default, preserved like the keys), env template, `push_enabled` + `vapid_public_key` in /api/auth/config | internal/config/, internal/chalkctl/, internal/auth/ | 290 |
 | 65-4 | HTTP subscribe/unsubscribe API + validation (https endpoint, key lengths) + httptest coverage | internal/server/push_http.go | 220 |
 | 65-5 | Dispatcher + send hook: payload builder (the plaintext choke point), recipient selection via presence, encrypt/send/prune, cooldown; InstanceID-guarded hook in handleMessageEvent; tests against an httptest fake relay | internal/server/push_dispatch.go, cmd/chalkd/ | 340 |
 | 65-6 | `web/src/sw.ts` + second esbuild invocation → unhashed dist/sw.js + spa.go no-cache special case | web/src/, web/build.mjs, internal/server/spa.go | 165 |
@@ -165,8 +197,9 @@ Requires real hardware:
   simulator support): add to Home Screen → grant permission via the panel
   (user gesture inside the installed app) → force-close → DM from another
   account → lock-screen notification + icon badge → tap opens chalk. Also:
-  Topic collapse (3 fast sends while the phone is offline → 1
-  notification), subscription survives relaunch.
+  Topic collapse (3 fast sends while the phone is offline → 1 notification;
+  with the constant topic this must hold across *different* channels too,
+  badge still showing the full count), subscription survives relaunch.
 - Android Chrome: same flow, one pass.
 
 ## Risks
