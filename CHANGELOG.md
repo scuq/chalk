@@ -10,6 +10,23 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- Your server can now be backed up and moved to another machine. One command
+  writes a single password-protected file holding the whole database — every
+  message, channel, attachment and account — plus the one server key without
+  which nobody's authenticator app would work again. On the new machine you
+  set the server up as normal, so it gets its own certificates and you can see
+  it working before any of your data is at stake, then point the restore at
+  that file. It tells you where the backup came from and asks you to confirm
+  before it writes anything, and if anything goes wrong mid-way the existing
+  data is left exactly as it was. Everyone stays signed in and keeps their
+  history; only passkeys need re-adding, and only if the address changed.
+  Taking a backup does not interrupt anyone using the server.
+
+---
+
 ## v0.5.8 — 2 August 2026 — Sounds with real chalk grain, and calls that announce themselves
 
 ### Added

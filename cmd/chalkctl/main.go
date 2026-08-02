@@ -5,7 +5,7 @@
 // (ops-3+ops-7): it verifies the signed image, pulls + digest-pins it,
 // renders the embedded Quadlet units / Caddyfile / env from flags, and brings
 // the rootful-podman stack up behind Caddy (HTTP-01). Other bodies
-// (update/rollback/backup/logs) arrive in later ops slices.
+// (rollback/logs) arrive in later ops slices.
 //
 // chalkctl versions INDEPENDENTLY of chalkd: its ldflags stamp
 // version.Binary="chalkctl".
@@ -58,7 +58,11 @@ func run(args []string) error {
 		return runReconfigureTurn(args[1:])
 	case "update":
 		return runUpdate(args[1:])
-	case "self-update", "rollback", "backup", "logs":
+	case "backup":
+		return runBackup(args[1:])
+	case "restore":
+		return runRestore(args[1:])
+	case "self-update", "rollback", "logs":
 		return fmt.Errorf("%q is not implemented yet in this build (arrives in a later ops slice)", cmd)
 	default:
 		return fmt.Errorf("unknown command %q (try `chalkctl help`)", cmd)
@@ -333,6 +337,84 @@ func runUpdate(args []string) error {
 	})
 }
 
+// runBackup writes an encrypted archive of the database + env + config.
+func runBackup(args []string) error {
+	fs := flag.NewFlagSet("backup", flag.ContinueOnError)
+	var (
+		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file")
+		statePath  = fs.String("state", chalkctl.DefaultStatePath, "state file path")
+		out        = fs.String("out", "", "archive path (default: "+chalkctl.DefaultBackupDir+"/chalk-<domain>-<ts>.chalkbak)")
+		pwFile     = fs.String("password-file", "", "read the archive password from this file (default: $"+chalkctl.BackupPasswordEnv+", else prompt)")
+	)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := chalkctl.LoadConfigFile(chalkctl.DefaultConfig(), *configPath)
+	if err != nil {
+		return err
+	}
+	// Fail on the things we can know before asking for a password twice.
+	if err := chalkctl.RequireRoot(); err != nil {
+		return err
+	}
+	pw, err := chalkctl.ResolveBackupPassword(*pwFile, true)
+	if err != nil {
+		return err
+	}
+	return chalkctl.Backup(chalkctl.BackupOptions{
+		Cfg:        cfg,
+		Password:   pw,
+		OutPath:    *out,
+		StatePath:  *statePath,
+		ConfigPath: *configPath,
+	})
+}
+
+// runRestore loads an archive into an already-initialized host.
+func runRestore(args []string) error {
+	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
+	var (
+		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file")
+		statePath  = fs.String("state", chalkctl.DefaultStatePath, "state file path")
+		pwFile     = fs.String("password-file", "", "read the archive password from this file (default: $"+chalkctl.BackupPasswordEnv+", else prompt)")
+		assume     = fs.Bool("yes", false, "skip the confirmation prompt (non-interactive)")
+		skipHealth = fs.Bool("skip-health", false, "skip the post-restore health check")
+	)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: chalkctl restore <archive> [flags]")
+	}
+	cfg, err := chalkctl.LoadConfigFile(chalkctl.DefaultConfig(), *configPath)
+	if err != nil {
+		return err
+	}
+	if err := chalkctl.RequireRoot(); err != nil {
+		return err
+	}
+	if _, err := os.Stat(fs.Arg(0)); err != nil {
+		return err
+	}
+	pw, err := chalkctl.ResolveBackupPassword(*pwFile, false)
+	if err != nil {
+		return err
+	}
+	var confirm func(string) bool
+	if *assume {
+		confirm = func(string) bool { return true }
+	}
+	return chalkctl.Restore(chalkctl.RestoreOptions{
+		Cfg:        cfg,
+		Path:       fs.Arg(0),
+		Password:   pw,
+		StatePath:  *statePath,
+		ConfigPath: *configPath,
+		Confirm:    confirm,
+		SkipHealth: *skipHealth,
+	})
+}
+
 func repoFromImage(image string) string {
 	parts := splitSlash(image)
 	if len(parts) >= 2 {
@@ -369,9 +451,10 @@ Commands:
   images       show version/revision/created for chalk, postgres, coturn images
   reconfigure-turn  re-render coturn config+unit and restart coturn only
   update       update the chalk app to a release (verify, swap, health-check, rollback)
+  backup       write an encrypted archive of the database + env + config
+  restore      load such an archive into this (already initialized) host
   self-update  update the chalkctl binary itself
-  rollback     restore the previous chalk image
-  backup       take a database backup now
+  rollback     re-pin the previous chalk image
   logs         tail the stack's logs
   version      print version and exit
 
@@ -399,6 +482,26 @@ init flags:
   --no-start                 write units without starting
   --config <path>            config file (flags override it)
 
-Only init/version/help are wired in this build.
+backup flags:
+  --out <path>               archive destination
+  --password-file <path>     password source (default: $CHALK_BACKUP_PASSWORD,
+                             else an interactive prompt)
+
+restore flags:
+  chalkctl restore <archive> [flags]
+  --password-file <path>     password source (as above)
+  --yes                      skip the confirmation prompt
+  --skip-health              skip the post-restore health check
+
+Moving a deployment to a new host:
+  old host:  chalkctl backup --out /root/chalk.chalkbak
+  copy the archive across (scp), then on the new host:
+  new host:  chalkctl init --domain <same-or-new> --rootful \
+                 --admin-username <name> --admin-email <addr>
+             chalkctl restore /root/chalk.chalkbak
+  init issues the certificates and proves the stack healthy; restore then
+  replaces the database and carries over CHALK_TOTP_ENC_KEY, without which
+  every account's second factor would be unreadable. Keep the domain the
+  same to keep existing passkeys working.
 `)
 }

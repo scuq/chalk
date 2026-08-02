@@ -127,9 +127,62 @@ new joins use the new secret immediately.
 
 ## Backups
 
-- **Postgres**: standard `pg_dump` or your managed service's snapshot
-- **Blob volume**: rsync / object-storage replication
+```bash
+chalkctl backup                       # -> /var/lib/chalk/backups/chalk-<domain>-<ts>.chalkbak
+chalkctl backup --out /root/chalk.chalkbak
+```
+
+The archive is one password-encrypted file (Argon2id + AES-256-GCM, framed so
+neither end has to hold the database in memory) containing:
+
+- the **database** — every message, channel, membership, device and attachment.
+  Attachment ciphertext is a `bytea` column, not a file, so the dump is the
+  whole story; the `chalk-blobs` volume is unused.
+- **chalk.env** — because `CHALK_TOTP_ENC_KEY` is the key the database's TOTP
+  secrets are encrypted under. A database restored without it locks every
+  account out at the second factor.
+- **chalkctl.conf** — so a restore can report which knobs the old host had set.
+
+Caddy's certificate volume is deliberately left out: a new host issues its own.
+
+The password is supplied by `--password-file`, `$CHALK_BACKUP_PASSWORD`, or an
+interactive prompt (asked twice). There is no recovery path if it is lost.
+The stack keeps serving throughout — `pg_dump` reads a consistent snapshot.
+
 - **Recovery codes**: stored only as Argon2id hashes; no backup needed (and no way to recover them if lost)
+
+## Moving to a new host
+
+```bash
+# old host
+chalkctl backup --out /root/chalk.chalkbak
+scp /root/chalk.chalkbak newhost:/root/
+
+# new host: a normal fresh init first, so Caddy issues real certificates and
+# the stack is proven healthy before any data is at stake
+chalkctl init --domain chat.example.org --rootful \
+    --admin-username <name> --admin-email <addr>
+chalkctl restore /root/chalk.chalkbak
+```
+
+`restore` requires an initialized host and never touches the units, the
+Caddyfile or the image pin. It replaces exactly two things: the contents of the
+database, and `CHALK_TOTP_ENC_KEY` in the env file. Everything else init
+generated stays — the new host's Postgres password, its TURN secret and its
+`CHALK_RP_ID` all belong to the host actually serving.
+
+It streams the archive in one pass: the manifest comes first, so you see the
+source domain, version and backup date and confirm by typing the domain before
+anything is written. The load runs as a single transaction, so a restore either
+lands completely or leaves the database as it was. After it, `restore` prints
+the deployment knobs the old host had that this one does not — adopting them
+means re-running `chalkctl init --force` with the matching flags.
+
+**Keep the domain the same** if you can. Passkeys are bound to the RP ID, which
+is the domain, so a rename invalidates them; everyone can still sign in with
+password + TOTP and enrol a new passkey. Sessions, identities and message
+history are unaffected either way. If the domain does change, DNS has to point
+at the new host before `init`, or HTTP-01 cannot issue.
 
 ## Upgrades
 

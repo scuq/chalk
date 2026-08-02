@@ -1,8 +1,10 @@
 package chalkctl
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -76,6 +78,34 @@ func (p *Podman) repoDigest(ref string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no sha256 in RepoDigests for %s", ref)
+}
+
+// ExecOut runs a command inside a running container, streaming its stdout to
+// w. Unlike run it does not buffer -- a pg_dump of a chat server with inline
+// attachments is far too large to hold in memory. stderr is captured so a
+// failure still reports why.
+func (p *Podman) ExecOut(w io.Writer, container string, args ...string) error {
+	cmd := exec.Command(p.bin(), append([]string{"exec", container}, args...)...)
+	var errBuf bytes.Buffer
+	cmd.Stdout = w
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("podman exec %s %s: %w\n%s", container, strings.Join(args, " "), err, strings.TrimSpace(errBuf.String()))
+	}
+	return nil
+}
+
+// ExecIn runs a command inside a running container, streaming r to its stdin.
+func (p *Podman) ExecIn(r io.Reader, container string, args ...string) error {
+	cmd := exec.Command(p.bin(), append([]string{"exec", "-i", container}, args...)...)
+	var errBuf bytes.Buffer
+	cmd.Stdin = r
+	cmd.Stderr = &errBuf
+	cmd.Stdout = &errBuf
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("podman exec %s %s: %w\n%s", container, strings.Join(args, " "), err, strings.TrimSpace(errBuf.String()))
+	}
+	return nil
 }
 
 // Systemctl runs a systemctl command (rootful: system scope).
