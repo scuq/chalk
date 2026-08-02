@@ -14,7 +14,8 @@
       "Bash(node test.mjs *)",
       "Bash(node build.mjs *)",
       "Bash(node tools/sound-bench.mjs)",
-      "Bash(./tools/where.sh *)"
+      "Bash(./tools/where.sh *)",
+      "Bash(rg *)"
     ]
   }
 }

@@ -159,6 +159,18 @@ That is not something to work around with `grep -r` — ask scuq to install it
   is specifically what `web/test.mjs` exists to avoid — read its header before
   reaching for it. Check for an existing test file first; the behaviour in
   question is often already asserted.
+- **Read and search with the dedicated tools, not shell text-slicing.** To read
+  a known range, use the file-read tool with an offset and a line count — not
+  `sed -n '150,215p'`, `head`, or `cat`. It returns numbered lines, it does not
+  prompt, and an edit needs the file read first anyway, so `sed` reads it twice.
+  When `tools/where.sh` is the wrong shape for the question — one literal string
+  in one known file — call `rg` directly: `grep -r` walks `node_modules/` and
+  `web/dist/`, and a `web/src/**/*.ts` glob silently matches a single directory
+  level unless the shell has `globstar` on. Issue independent lookups as
+  separate parallel tool calls instead of chaining them with `;` and `echo
+  "=== ... ==="` separators — chained one-liners run serially, each unique
+  string misses the allowlist and prompts, and parallel results come back
+  labelled already.
 - Ask before adding dependencies (Go modules or npm packages).
 - Style: direct, concise, no filler. Explain what changed and why in a few
   lines, then the verify commands.
