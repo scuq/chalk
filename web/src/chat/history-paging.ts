@@ -29,3 +29,18 @@ export function nextEmptyStreak(prev: number, headsAdded: number): number {
 export function autoPagingAllowed(emptyStreak: number): boolean {
   return emptyStreak < AUTO_PAGE_EMPTY_LIMIT;
 }
+
+// Landing auto-fill budget. When the read cursor sits below every loaded
+// message -- a channel never opened on this account, or an unread run longer
+// than one page -- the divider is the feed's first row, so landing on it
+// leaves the sentinel in view. Filling the page above is what the reader
+// wants (the first unread with some context over it), but the next page
+// leaves the divider on the first row again, and the fill would walk to the
+// beginning of the channel hands-free. This bounds it; past the budget the
+// manual "load older" button takes over, exactly as the empty-streak damping
+// hands over.
+export const LANDING_PAGE_LIMIT = 4;
+
+export function landingFillAllowed(pagesFetched: number): boolean {
+  return pagesFetched < LANDING_PAGE_LIMIT;
+}
