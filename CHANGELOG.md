@@ -10,6 +10,24 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- Anyone running a server can now ask it how it is doing. A single command
+  reports how big the database is, how much of it is being served from memory,
+  how it has grown month by month, and — more usefully — the things that
+  explain a server that feels slow: work left half-finished by a connection
+  that walked away, tables being read from end to end because a lookup has no
+  shortcut, space taken up by rows that were deleted but never cleared out.
+  It reads only the running totals the database already keeps for itself, so
+  it costs nothing to ask and is safe on a busy server. Adding `--sample 30s`
+  watches for half a minute and reports what is happening right now rather
+  than since the server started. Finding out which individual queries are
+  slowest is available too, but has to be switched on when setting the server
+  up, because measuring that costs a little on every query.
+
+---
+
 ## v0.5.9 — 2 August 2026 — Take your server with you, and a maintenance page while you do
 
 ### Added

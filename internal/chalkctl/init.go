@@ -238,6 +238,8 @@ func Init(o InitOptions) error {
 		// is in progress. `chalkctl maint off` is what ends it.
 		Maintenance:        prev.Maintenance,
 		MaintenanceMessage: prev.MaintenanceMessage,
+
+		PgStatStatements: cfg.PgStatStatements,
 	}
 	if prev.Maintenance {
 		o.logf("maintenance mode is ON and stays on (chalkctl maint off to end it)")
@@ -346,6 +348,17 @@ func Init(o InitOptions) error {
 			o.logf("starting %s", svc)
 			if _, err := Systemctl("start", svc); err != nil {
 				return fmt.Errorf("start %s (check `journalctl -u %s`): %w", svc, svc, err)
+			}
+		}
+		// The unit's shared_preload_libraries loads the library; the extension
+		// still has to be created once in the database before its view exists.
+		// Non-fatal: a stack that is up but missing an optional diagnostic is
+		// not a failed deployment.
+		if cfg.PgStatStatements {
+			if err := enablePgStatStatements(o.Podman); err != nil {
+				fmt.Fprintf(o.Out, "  WARNING: could not create the pg_stat_statements extension: %v\n", err)
+			} else {
+				o.logf("pg_stat_statements enabled (per-query timings in `chalkctl metrics`)")
 			}
 		}
 	}

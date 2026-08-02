@@ -15,6 +15,13 @@ Network=chalk.network
 # write to an anonymous volume instead -> data loss / init failure. Do NOT set
 # PGDATA; the image default is correct.
 Volume=chalk-pgdata.volume:/var/lib/postgresql
+{{- if .PgStatStatements }}
+# 73-2: per-query timings for `chalkctl metrics` (opt-in: --pg-stat-statements).
+# shared_preload_libraries is why this needs a restart to take effect, and why
+# it is not on by default -- it adds a small cost to EVERY statement. track=top
+# records only statements the client issued, not the ones inside PL/pgSQL.
+Exec=postgres -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=top -c pg_stat_statements.max=1000
+{{- end }}
 EnvironmentFile=/etc/chalk/chalk.env
 Environment=POSTGRES_DB=chalk
 Environment=POSTGRES_USER=chalk

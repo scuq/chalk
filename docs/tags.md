@@ -47,7 +47,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #servernotice   46        web/src/state/ web/src/components/
 #governance     -         internal/store/governance.go internal/server/governance_ws.go
 #attachments    -         web/src/attachments/ internal/store/
-#chalkctl       72        internal/chalkctl/ cmd/chalkctl/ test/integration/backup_restore_test.go
+#chalkctl       72 73     internal/chalkctl/ cmd/chalkctl/ test/integration/backup_restore_test.go
 
 ## Phases with no topic yet
 

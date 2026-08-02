@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/scuq/chalk/internal/chalkctl"
 	"github.com/scuq/chalk/internal/version"
@@ -64,6 +65,8 @@ func run(args []string) error {
 		return runRestore(args[1:])
 	case "maint":
 		return runMaint(args[1:])
+	case "metrics":
+		return runMetrics(args[1:])
 	case "self-update", "rollback", "logs":
 		return fmt.Errorf("%q is not implemented yet in this build (arrives in a later ops slice)", cmd)
 	default:
@@ -101,6 +104,7 @@ func runInit(args []string) error {
 		lpEnabled   = fs.Bool("linkpreview", true, "enable link previews (sender-side page fetch)")
 		lpDomains   = fs.String("linkpreview-domains", "", "CHALK_LINKPREVIEW_DOMAINS whitelist override, comma-separated (default: YouTube + Steam)")
 		threadWin   = fs.Int("thread-active-window-hours", 0, "CHALK_THREAD_ACTIVE_WINDOW_HOURS thread-inbox recency (0 = chalkd default of 48)")
+		pgStats     = fs.Bool("pg-stat-statements", false, "collect per-query timings for `chalkctl metrics` (small always-on cost)")
 		turnVerbose = fs.Bool("turn-verbose", true, "coturn --verbose logging (default on)")
 		publicIP    = fs.String("public-ip", "", "coturn listening/relay/external IPv4 (default: detect)")
 	)
@@ -164,6 +168,9 @@ func runInit(args []string) error {
 	}
 	if set["thread-active-window-hours"] {
 		cfg.ThreadActiveWindowHours = *threadWin
+	}
+	if set["pg-stat-statements"] {
+		cfg.PgStatStatements = *pgStats
 	}
 	if set["turn-verbose"] {
 		cfg.TurnVerbose = *turnVerbose
@@ -481,6 +488,26 @@ func runMaint(args []string) error {
 	})
 }
 
+// runMetrics prints what Postgres already knows about its own performance.
+func runMetrics(args []string) error {
+	fs := flag.NewFlagSet("metrics", flag.ContinueOnError)
+	var (
+		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file")
+		sample     = fs.Duration("sample", 0, "take a second reading after this long and report rates (e.g. 30s)")
+	)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *sample < 0 || (*sample > 0 && *sample < time.Second) {
+		return fmt.Errorf("--sample must be at least 1s")
+	}
+	cfg, err := chalkctl.LoadConfigFile(chalkctl.DefaultConfig(), *configPath)
+	if err != nil {
+		return err
+	}
+	return chalkctl.Metrics(chalkctl.MetricsOptions{Cfg: cfg, Sample: *sample})
+}
+
 func repoFromImage(image string) string {
 	parts := splitSlash(image)
 	if len(parts) >= 2 {
@@ -520,6 +547,7 @@ Commands:
   backup       write an encrypted archive of the database + env + config
   restore      load such an archive into this (already initialized) host
   maint        on|off|status -- serve a maintenance notice instead of the app
+  metrics      what postgres knows about its own performance (read-only)
   self-update  update the chalkctl binary itself
   rollback     re-pin the previous chalk image
   logs         tail the stack's logs
@@ -559,6 +587,14 @@ restore flags:
   --password-file <path>     password source (as above)
   --yes                      skip the confirmation prompt
   --skip-health              skip the post-restore health check
+
+metrics flags:
+  --sample <dur>             take a second reading after this long and report
+                             rates (e.g. --sample 30s); without it, counters
+                             are cumulative since the last stats reset
+  Reads only postgres' in-memory statistics views: no counting, no table
+  scans, safe on a busy host. Per-query timings need --pg-stat-statements
+  at init time.
 
 maint flags:
   chalkctl maint on|off|status

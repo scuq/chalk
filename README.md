@@ -89,6 +89,7 @@ chalkctl up        # start the stack; `down` stops it
 chalkctl backup    # encrypted archive of the database + env + config
 chalkctl restore   # load such an archive into an initialized host
 chalkctl maint     # on|off|status — serve a notice instead of the app
+chalkctl metrics   # what postgres knows about its own performance
 chalkctl images    # version/revision/created for each image in the stack
 chalkctl reconfigure-turn   # re-render + restart coturn only
 ```
@@ -147,6 +148,26 @@ invalidates them — everyone can still sign in with password + TOTP and enrol a
 new passkey. Sessions, identities and message history survive either way. If
 the domain does change, point DNS at the new host before `init`, or Caddy
 cannot issue a certificate.
+
+### Metrics
+
+```sh
+chalkctl metrics              # sizes, cache hit ratio, growth, bloat, bad plans
+chalkctl metrics --sample 30s # two readings, reported as rates
+```
+
+Reads only Postgres' in-memory statistics views, so it costs no table I/O and
+is safe on a busy host — no `count(*)`, no `pgstattuple`, no summing attachment
+bytes. Row counts are planner estimates and attachment volume comes from
+partition sizes, which is also why growth-per-month is free: `messages` and
+`attachments` are partitioned monthly, so the partition sizes *are* the curve.
+
+It surfaces the things that explain a slow server: cache hit ratio, anything
+sitting idle-in-transaction (which blocks autovacuum database-wide), tables
+being read start-to-finish, dead rows autovacuum has not reclaimed, indexes
+never read, and checkpoints forced by WAL volume. Per-query timings are opt-in
+via `chalkctl init --force --pg-stat-statements`, since collecting them costs a
+little on every statement.
 
 ### Maintenance mode
 

@@ -189,10 +189,7 @@ func Restore(o RestoreOptions) error {
 	if _, err := Systemctl("start", "chalk-postgres.service"); err != nil {
 		return fmt.Errorf("start chalk-postgres: %w", err)
 	}
-	// systemd calls the unit started once the container is up, which is before
-	// Postgres accepts connections. Wait for the server itself, or the load
-	// fails on a race that a second attempt would have won.
-	if err := o.waitForPostgres(30 * time.Second); err != nil {
+	if err := waitForPostgres(o.Podman, 30*time.Second); err != nil {
 		_, _ = Systemctl("start", "chalkd.service")
 		return err
 	}
@@ -252,11 +249,15 @@ func (o *RestoreOptions) describe(mf Manifest) {
 	}
 }
 
-func (o *RestoreOptions) waitForPostgres(timeout time.Duration) error {
+// waitForPostgres polls until the server accepts connections. systemd calls a
+// container unit started as soon as the container is up, which is well before
+// Postgres is listening -- without this the next command loses a race it would
+// have won on a retry.
+func waitForPostgres(p *Podman, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	var last error
 	for time.Now().Before(deadline) {
-		if last = o.Podman.ExecIn(strings.NewReader(""), pgContainer,
+		if last = p.ExecIn(strings.NewReader(""), pgContainer,
 			"pg_isready", "-U", "chalk", "-d", "chalk"); last == nil {
 			return nil
 		}

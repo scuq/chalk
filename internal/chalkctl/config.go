@@ -72,6 +72,10 @@ type Config struct {
 	// built-in YouTube + Steam list).
 	LinkPreviewEnabled bool   // CHALK_LINKPREVIEW_ENABLED
 	LinkPreviewDomains string // CHALK_LINKPREVIEW_DOMAINS
+
+	// 73-2: load pg_stat_statements into Postgres (per-query timings for
+	// `chalkctl metrics`). Costs a little on every statement, so it is opt-in.
+	PgStatStatements bool
 }
 
 // DefaultConfig returns the baseline before file/flag overlays.
@@ -184,6 +188,12 @@ func LoadConfigFile(cfg Config, path string) (Config, error) {
 			cfg.LinkPreviewEnabled = b
 		case "LINKPREVIEW_DOMAINS":
 			cfg.LinkPreviewDomains = v
+		case "PG_STAT_STATEMENTS":
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: PG_STAT_STATEMENTS not a bool: %q", path, line, v)
+			}
+			cfg.PgStatStatements = b
 		case "THREAD_ACTIVE_WINDOW_HOURS":
 			n, err := strconv.Atoi(v)
 			if err != nil {
@@ -233,6 +243,7 @@ func (c Config) Save(path string) error {
 	if c.LinkPreviewDomains != "" {
 		fmt.Fprintf(&b, "LINKPREVIEW_DOMAINS=%s\n", c.LinkPreviewDomains)
 	}
+	fmt.Fprintf(&b, "PG_STAT_STATEMENTS=%t\n", c.PgStatStatements)
 	// GIPHY_API_KEY is intentionally NOT written here: this config file is
 	// 0644, and the key belongs only in the 0600 env file. It is supplied
 	// per-init via --giphy-api-key when needed.

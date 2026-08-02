@@ -44,6 +44,10 @@ type InitParams struct {
 	// by the time it gets here (see Maint).
 	Maintenance        bool
 	MaintenanceMessage string
+
+	// 73-2: load pg_stat_statements into Postgres so `chalkctl metrics` can
+	// report per-query timings. Off unless the operator asks for it.
+	PgStatStatements bool
 }
 
 // renderTemplate loads templates/<name>.tmpl from the embedded FS and renders

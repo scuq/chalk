@@ -151,6 +151,58 @@ The stack keeps serving throughout — `pg_dump` reads a consistent snapshot.
 
 - **Recovery codes**: stored only as Argon2id hashes; no backup needed (and no way to recover them if lost)
 
+## Metrics
+
+```bash
+chalkctl metrics              # point-in-time: sizes, ratios, growth, bloat
+chalkctl metrics --sample 30s # two readings, reported as rates
+```
+
+Everything comes out of Postgres' cumulative statistics views, which are
+in-memory counters the server maintains whether anyone reads them or not.
+Reading them costs a catalog lookup and no table I/O, so this is safe to run on
+a busy host.
+
+The exclusions are the point, and a test enforces them:
+
+- **No `count(*)`.** Row counts come from `n_live_tup`, the planner's estimate.
+  Counting twenty million messages to print one number would make this command
+  the most expensive thing on the box.
+- **No `pgstattuple` / `pg_buffercache`.** Both give better bloat and cache
+  figures by reading every page of the table.
+- **No `sum(octet_length(ciphertext))`.** Attachment volume comes from the
+  partition's on-disk size instead.
+
+What it reports, roughly in the order a slow server gets explained: database
+size and cache hit ratio; connections, the longest transaction, and anything
+idle-in-transaction (which blocks autovacuum database-wide); checkpoints forced
+by WAL volume rather than the clock; tables being read start-to-finish
+(the missing-index signal, with small tables excluded because scanning them is
+the correct plan); dead rows autovacuum has not reclaimed; indexes never read;
+growth per month; and the largest tables.
+
+Growth per month is free: `messages` and `attachments` are partitioned monthly,
+so the partition sizes *are* the growth curve — no history to store.
+
+Counters are cumulative since the last stats reset, which answers "how big" but
+not "how busy". `--sample 30s` takes two readings and subtracts them, which is
+what you want while a problem is actually happening.
+
+### Per-query timings
+
+Which *statements* dominate total time needs `pg_stat_statements`, which is
+off by default because it adds a small cost to every statement executed:
+
+```bash
+chalkctl init --force --pg-stat-statements   # restarts postgres
+```
+
+It goes on the Postgres container's command line as `shared_preload_libraries`,
+which is why it needs a restart, and `init` creates the extension once the
+server is back up. `chalkctl metrics` then grows a "queries by total time"
+section. Turn it off again with `--pg-stat-statements=false` and another
+`--force`.
+
 ## Maintenance mode
 
 ```bash
