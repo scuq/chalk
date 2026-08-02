@@ -159,6 +159,13 @@ That is not something to work around with `grep -r` — ask scuq to install it
   is specifically what `web/test.mjs` exists to avoid — read its header before
   reaching for it. Check for an existing test file first; the behaviour in
   question is often already asserted.
+  The exception is UI probes, which need a browser and a running stack and so
+  cannot be a `*.test.ts`: write those to
+  `.claude/skills/run-chalk/probes/ui.mjs` (allowlisted, gitignored, rewritten
+  per investigation) and run them from the repo root with no `cd`, no `rm` and
+  no pipe — the probe cleans `/tmp/chalk-probe/` itself and prints its own
+  summary. A probe worth a second run gets a topic name, a commit beside
+  `readme-shots.mjs`, and its own allowlist entry.
 - **Read and search with the dedicated tools, not shell text-slicing.** To read
   a known range, use the file-read tool with an offset and a line count — not
   `sed -n '150,215p'`, `head`, or `cat`. It returns numbered lines, it does not

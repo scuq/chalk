@@ -69,6 +69,9 @@ web/.test-build/
 .claude/
 !.claude/
 !.claude/skills/
+# Throwaway UI probes (see CLAUDE.md). !.claude/skills/ above un-ignores this
+# subtree, so without this rule every scratch probe shows up in git status.
+.claude/skills/run-chalk/probes/
 
 node
 
