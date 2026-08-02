@@ -137,7 +137,15 @@ func Status(o LifecycleOptions) error {
 	fmt.Fprintf(o.Out, "digest:   %s\n", st.CurrentDigest)
 	fmt.Fprintf(o.Out, "channel:  %s\n", st.Channel)
 	if !st.UpdatedAt.IsZero() {
-		fmt.Fprintf(o.Out, "since:    %s\n", st.UpdatedAt.Format("2006-01-02 15:04:05 MST"))
+		// "updated", not "since": this stamps every state write, including a
+		// maintenance toggle, so reading it as "deployed since" would be wrong
+		// exactly when someone is mid-incident and least able to spot it.
+		fmt.Fprintf(o.Out, "updated:  %s\n", st.UpdatedAt.Format("2006-01-02 15:04:05 MST"))
+	}
+	// Only when on: an "off" line every time would train the eye to skip it,
+	// and this is the one piece of state that explains a site full of 503s.
+	if st.Maintenance {
+		fmt.Fprintf(o.Out, "MAINTENANCE MODE IS ON -- Caddy serves the notice, not chalk (chalkctl maint off)\n")
 	}
 	fmt.Fprintln(o.Out, "services:")
 	for _, svc := range o.services() {

@@ -16,6 +16,13 @@ type State struct {
 	CurrentDigest  string    `json:"current_digest"`  // sha256:...
 	PreviousDigest string    `json:"previous_digest,omitempty"`
 	UpdatedAt      time.Time `json:"updated_at"`
+
+	// 72-5: maintenance mode is deployment state, not operator config -- it
+	// says what the Caddyfile currently serves. Kept here so `status` can
+	// report it and `init --force` can re-render without silently dropping
+	// it (you are in maintenance precisely because work is in progress).
+	Maintenance        bool   `json:"maintenance,omitempty"`
+	MaintenanceMessage string `json:"maintenance_message,omitempty"`
 }
 
 // LoadState reads state; a missing file yields a zero State and ok=false so

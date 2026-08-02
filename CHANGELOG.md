@@ -24,6 +24,13 @@ The engineering-level history (which slice shipped what) lives in
   data is left exactly as it was. Everyone stays signed in and keeps their
   history; only passkeys need re-adding, and only if the address changed.
   Taking a backup does not interrupt anyone using the server.
+- Servers can now be put into maintenance mode while work is going on. Instead
+  of the browser error people used to get when the server was taken down, the
+  site shows a proper "chalk is under maintenance" page, with whatever note the
+  person running the server wants on it — when it will be back, for instance.
+  The address keeps working throughout, so nothing has to be re-trusted or
+  re-issued when it comes back, and turning it off puts everyone straight back
+  into chalk.
 
 ---
 

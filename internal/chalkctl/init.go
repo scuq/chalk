@@ -90,7 +90,7 @@ func Init(o InitOptions) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	_, initialized, err := LoadState(o.StatePath)
+	prev, initialized, err := LoadState(o.StatePath)
 	if err != nil {
 		return err
 	}
@@ -232,6 +232,15 @@ func Init(o InitOptions) error {
 		ThreadActiveWindowHours: cfg.ThreadActiveWindowHours,
 		LinkPreviewEnabled:      cfg.LinkPreviewEnabled,
 		LinkPreviewDomains:      cfg.LinkPreviewDomains,
+
+		// A re-apply during a maintenance window must not quietly put the
+		// site back in front of users -- you are in maintenance because work
+		// is in progress. `chalkctl maint off` is what ends it.
+		Maintenance:        prev.Maintenance,
+		MaintenanceMessage: prev.MaintenanceMessage,
+	}
+	if prev.Maintenance {
+		o.logf("maintenance mode is ON and stays on (chalkctl maint off to end it)")
 	}
 
 	ts := time.Now().UTC().Format("20060102-150405")
@@ -346,9 +355,11 @@ func Init(o InitOptions) error {
 		return err
 	}
 	st := State{
-		Channel:        cfg.Channel,
-		CurrentVersion: o.Version,
-		CurrentDigest:  digest,
+		Channel:            cfg.Channel,
+		CurrentVersion:     o.Version,
+		CurrentDigest:      digest,
+		Maintenance:        prev.Maintenance,
+		MaintenanceMessage: prev.MaintenanceMessage,
 	}
 	if err := st.Save(o.StatePath); err != nil {
 		return err

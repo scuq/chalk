@@ -2,6 +2,46 @@
 # re-run chalkctl to regenerate. Stock Caddy: no tls block => HTTP-01.
 {{ .Domain }} {
 	encode zstd gzip
+{{- if .Maintenance }}
+
+	# Maintenance mode (`chalkctl maint on`). chalkd is not proxied; every
+	# request gets the notice below with 503 + Retry-After, which is what
+	# tells browsers and crawlers this is temporary. Caddy stays up, so the
+	# certificate keeps renewing while the app is down.
+	#
+	# /healthz is the ONE exception, and it must stay one: `chalkctl update`
+	# and `chalkctl restore` poll it to decide whether the app came back, and
+	# both would roll back against a maintenance page. It is the same endpoint
+	# they reach normally -- maintenance hides the app, not its pulse.
+	@health path /healthz
+	handle @health {
+		reverse_proxy chalkd:8443
+	}
+
+	handle {
+		header Retry-After "300"
+		header Content-Type "text/html; charset=utf-8"
+		# Styles are inline ATTRIBUTES on purpose: a <style> block needs
+		# braces, and Caddy reads braces in a respond body as placeholders.
+		respond `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chalk -- under maintenance</title>
+</head>
+<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#00ff41;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;line-height:1.7">
+<main style="max-width:32rem;padding:2rem">
+<p style="margin:0 0 2rem;color:#338050">chalk:~$ maintenance --in-progress</p>
+<h1 style="font-size:14px;font-weight:700;margin:0 0 1rem;color:#5cffb1">chalk is under maintenance</h1>
+<p style="margin:0 0 1rem">{{ .MaintenanceMessage }}</p>
+<p style="margin:0;color:#338050">this page does not refresh itself -- reload in a few minutes.</p>
+</main>
+</body>
+</html>
+` 503
+	}
+{{- else }}
 	reverse_proxy chalkd:8443 {
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
@@ -9,4 +49,5 @@
 	handle_errors {
 		respond "chalk is taking a moment, try again" 503
 	}
+{{- end }}
 }

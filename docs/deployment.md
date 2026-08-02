@@ -151,10 +151,39 @@ The stack keeps serving throughout — `pg_dump` reads a consistent snapshot.
 
 - **Recovery codes**: stored only as Argon2id hashes; no backup needed (and no way to recover them if lost)
 
+## Maintenance mode
+
+```bash
+chalkctl maint on --message "moving to a new server, back by 14:00 UTC"
+chalkctl maint status
+chalkctl maint off
+```
+
+Re-renders **only** the Caddyfile so Caddy answers every request itself with a
+503 notice and `Retry-After`, then reloads Caddy in place (no dropped
+connections; it falls back to restarting `chalk-caddy` if the reload fails).
+Nothing else moves — not the units, the image pin, chalkd, or the database.
+Caddy stays up, so the certificate keeps renewing while the app is down.
+
+Without it, stopping chalkd leaves everyone on a bare Caddy 502.
+
+Two deliberate exceptions to "Caddy answers everything":
+
+- **`/healthz` still proxies to chalkd.** `update` and `restore` poll it to
+  decide whether the app came back; if maintenance swallowed it they would
+  health-check the notice and roll back a healthy deployment.
+- **`init --force` preserves the mode.** You are in maintenance because work is
+  in progress; a re-apply must not silently put the site back in front of
+  users. `chalkctl status` prints a line whenever it is on, and only then.
+
+The `--message` is a single line, HTML-escaped before it reaches the page (a
+backtick is rejected outright — it would terminate the Caddyfile string).
+
 ## Moving to a new host
 
 ```bash
 # old host
+chalkctl maint on --message "moving to a new server, back by 14:00 UTC"
 chalkctl backup --out /root/chalk.chalkbak
 scp /root/chalk.chalkbak newhost:/root/
 
@@ -177,6 +206,9 @@ anything is written. The load runs as a single transaction, so a restore either
 lands completely or leaves the database as it was. After it, `restore` prints
 the deployment knobs the old host had that this one does not — adopting them
 means re-running `chalkctl init --force` with the matching flags.
+
+Once the new host is serving, `chalkctl maint off` on it (and point DNS across
+if the domain moved). The old host can then be torn down.
 
 **Keep the domain the same** if you can. Passkeys are bound to the RP ID, which
 is the domain, so a rename invalidates them; everyone can still sign in with

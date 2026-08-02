@@ -38,6 +38,12 @@ type InitParams struct {
 	ThreadActiveWindowHours int    // 0 = omit (chalkd default of 48h)
 	LinkPreviewEnabled      bool   // false = write CHALK_LINKPREVIEW_ENABLED=false
 	LinkPreviewDomains      string // "" = omit (chalkd's built-in whitelist)
+
+	// 72-5: maintenance mode. Caddyfile-only -- when set, Caddy serves the
+	// notice instead of proxying chalkd. The message is already HTML-escaped
+	// by the time it gets here (see Maint).
+	Maintenance        bool
+	MaintenanceMessage string
 }
 
 // renderTemplate loads templates/<name>.tmpl from the embedded FS and renders

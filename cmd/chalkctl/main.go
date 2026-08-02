@@ -62,6 +62,8 @@ func run(args []string) error {
 		return runBackup(args[1:])
 	case "restore":
 		return runRestore(args[1:])
+	case "maint":
+		return runMaint(args[1:])
 	case "self-update", "rollback", "logs":
 		return fmt.Errorf("%q is not implemented yet in this build (arrives in a later ops slice)", cmd)
 	default:
@@ -337,6 +339,28 @@ func runUpdate(args []string) error {
 	})
 }
 
+// parsePositional parses a flag set whose flags may appear BEFORE or AFTER the
+// positional arguments, returning the positionals in order.
+//
+// Go's flag package stops parsing at the first non-flag token, so
+// `chalkctl restore backup.chalkbak --yes` would otherwise leave --yes unset
+// without saying so -- and the natural `chalkctl maint on --message "..."`
+// would put the site into maintenance with the wrong notice on it.
+func parsePositional(fs *flag.FlagSet, args []string) ([]string, error) {
+	var positional []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		rest := fs.Args()
+		if len(rest) == 0 {
+			return positional, nil
+		}
+		positional = append(positional, rest[0])
+		args = rest[1:]
+	}
+}
+
 // runBackup writes an encrypted archive of the database + env + config.
 func runBackup(args []string) error {
 	fs := flag.NewFlagSet("backup", flag.ContinueOnError)
@@ -380,12 +404,14 @@ func runRestore(args []string) error {
 		assume     = fs.Bool("yes", false, "skip the confirmation prompt (non-interactive)")
 		skipHealth = fs.Bool("skip-health", false, "skip the post-restore health check")
 	)
-	if err := fs.Parse(args); err != nil {
+	rest, err := parsePositional(fs, args)
+	if err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+	if len(rest) != 1 {
 		return fmt.Errorf("usage: chalkctl restore <archive> [flags]")
 	}
+	archive := rest[0]
 	cfg, err := chalkctl.LoadConfigFile(chalkctl.DefaultConfig(), *configPath)
 	if err != nil {
 		return err
@@ -393,7 +419,7 @@ func runRestore(args []string) error {
 	if err := chalkctl.RequireRoot(); err != nil {
 		return err
 	}
-	if _, err := os.Stat(fs.Arg(0)); err != nil {
+	if _, err := os.Stat(archive); err != nil {
 		return err
 	}
 	pw, err := chalkctl.ResolveBackupPassword(*pwFile, false)
@@ -406,12 +432,52 @@ func runRestore(args []string) error {
 	}
 	return chalkctl.Restore(chalkctl.RestoreOptions{
 		Cfg:        cfg,
-		Path:       fs.Arg(0),
+		Path:       archive,
 		Password:   pw,
 		StatePath:  *statePath,
 		ConfigPath: *configPath,
 		Confirm:    confirm,
 		SkipHealth: *skipHealth,
+	})
+}
+
+// runMaint switches the maintenance notice on or off (or reports it).
+func runMaint(args []string) error {
+	fs := flag.NewFlagSet("maint", flag.ContinueOnError)
+	var (
+		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file")
+		statePath  = fs.String("state", chalkctl.DefaultStatePath, "state file path")
+		message    = fs.String("message", "", "notice shown to visitors (default: a generic one)")
+	)
+	rest, err := parsePositional(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) > 1 {
+		return fmt.Errorf("usage: chalkctl maint on|off|status [--message \"...\"]")
+	}
+	mode := ""
+	if len(rest) == 1 {
+		mode = rest[0]
+	}
+	if mode == "" || mode == "status" {
+		return chalkctl.MaintStatus(*statePath, os.Stdout)
+	}
+	if mode != "on" && mode != "off" {
+		return fmt.Errorf("usage: chalkctl maint on|off|status [--message \"...\"]")
+	}
+	if mode == "off" && *message != "" {
+		return fmt.Errorf("--message only applies to `maint on`")
+	}
+	cfg, cerr := chalkctl.LoadConfigFile(chalkctl.DefaultConfig(), *configPath)
+	if cerr != nil {
+		return cerr
+	}
+	return chalkctl.Maint(chalkctl.MaintOptions{
+		Cfg:       cfg,
+		On:        mode == "on",
+		Message:   *message,
+		StatePath: *statePath,
 	})
 }
 
@@ -453,6 +519,7 @@ Commands:
   update       update the chalk app to a release (verify, swap, health-check, rollback)
   backup       write an encrypted archive of the database + env + config
   restore      load such an archive into this (already initialized) host
+  maint        on|off|status -- serve a maintenance notice instead of the app
   self-update  update the chalkctl binary itself
   rollback     re-pin the previous chalk image
   logs         tail the stack's logs
@@ -493,8 +560,15 @@ restore flags:
   --yes                      skip the confirmation prompt
   --skip-health              skip the post-restore health check
 
+maint flags:
+  chalkctl maint on|off|status
+  --message "..."            the notice visitors see (single line)
+  Re-renders only the Caddyfile and reloads Caddy: the certificate keeps
+  renewing, /healthz still reaches chalkd, and nothing else is touched.
+
 Moving a deployment to a new host:
-  old host:  chalkctl backup --out /root/chalk.chalkbak
+  old host:  chalkctl maint on --message "moving to a new server, back by 14:00"
+             chalkctl backup --out /root/chalk.chalkbak
   copy the archive across (scp), then on the new host:
   new host:  chalkctl init --domain <same-or-new> --rootful \
                  --admin-username <name> --admin-email <addr>
