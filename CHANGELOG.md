@@ -13,6 +13,14 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Fixed
+- The conversation list no longer previews an out-of-date message. A row could
+  keep showing the message before the newest one — including one you had just
+  sent yourself — until you reloaded the page. Sending, reading history and
+  receiving now all keep the list current.
+- The thread list no longer loses the message text it had already shown. Rows
+  went back to blank placeholder lines after the list refreshed itself, and
+  once that happened they stayed blank for the rest of the session. Threads
+  that appear later, or whose newest reply changes, now fill in too.
 - Opening a channel with a lot of unread messages no longer throws you to the
   newest message a moment after landing. The view used to settle on the "new
   messages" line, then jump to the bottom as soon as older history filled in

@@ -4240,38 +4240,57 @@ export function App() {
   // members, which across forty channels would be a request and write storm to
   // render forty one-line previews.
   //
-  // Bounded three ways: only channels present in the inbox, at most
-  // KEY_WARM_CONCURRENCY in flight, and once per channel per session.
+  // Bounded three ways: only channels with a row still awaiting plaintext, at
+  // most KEY_WARM_CONCURRENCY in flight, and one KEY warm per channel per
+  // session.
+  //
+  // 42-9: the pass is driven by the ROWS, not by which channels have been
+  // warmed. That distinction is load-bearing: rows arrive as ciphertext every
+  // time, and refetches are routine (opening the panel, reading a thread, a
+  // reply to a thread we hold no row for). Gating on the channel left every
+  // row a later refetch delivered -- a new thread, a thread whose newest reply
+  // moved -- on its skeleton for the rest of the session, because the channel
+  // it belongs to had been warmed an hour earlier.
   useEffect(() => {
     if (state.openPanel !== "threads") return;
     const cc = ccRef.current;
     if (!cc) return;
 
     const rows = [...state.threadInboxActive, ...state.threadInboxAgedUnread];
-    const pending = Array.from(new Set(rows.map((r) => r.channelID))).filter(
-      (cid) => !inboxWarmedRef.current.has(cid),
+    // A tombstoned preview needs no key: the row renders from the flag.
+    const needsPreview = (r: ThreadInboxRow): boolean =>
+      (r.headBody === undefined && r.headDeleted !== true) ||
+      (r.lastReplyBody === undefined && r.lastReplyDeleted !== true);
+    const pending = Array.from(
+      new Set(rows.filter(needsPreview).map((r) => r.channelID)),
     );
     if (pending.length === 0) return;
-    for (const cid of pending) inboxWarmedRef.current.add(cid);
 
     let cancelled = false;
     const KEY_WARM_CONCURRENCY = 4;
-    // 48-5: the upfront add above keeps overlapping runs from double-warming,
-    // but "warmed" must only stick once a channel's previews actually made it
-    // to a dispatch. This run's channels that never got there -- cancelled
+    // 48-5: "warmed" must only stick once a channel's previews actually made
+    // it to a dispatch. This run's channels that never got there -- cancelled
     // mid-flight by an effect re-run (panel-open refetch ack, "load more",
     // the 30s stale refetch) or failed outright -- get their mark rolled
     // back so a later run retries them instead of leaving the rows on the
     // skeleton forever.
     const completed = new Set<string>();
+    const warmedHere = new Set<string>();
 
     const decryptChannel = async (channelID: string) => {
       try {
-        await cc.warmChannelKey(channelID);
+        // The wrap fetch is the expensive half and keeps its once-per-channel
+        // bound; decrypting rows against a key we already hold is cheap, and
+        // is what has to run again whenever a refetch brings fresh ciphertext.
+        if (!inboxWarmedRef.current.has(channelID)) {
+          inboxWarmedRef.current.add(channelID);
+          warmedHere.add(channelID);
+          await cc.warmChannelKey(channelID);
+        }
         if (cancelled) return;
         const previews: Record<string, { headBody?: string; lastReplyBody?: string }> = {};
         for (const r of rows) {
-          if (r.channelID !== channelID) continue;
+          if (r.channelID !== channelID || !needsPreview(r)) continue;
           const cipher = inboxCipherRef.current.get(r.threadID);
           if (!cipher) continue;
           // Tombstones short-circuit exactly as decryptAll does: an empty body
@@ -4314,7 +4333,9 @@ export function App() {
 
     return () => {
       cancelled = true;
-      for (const cid of pending) {
+      // Only this run's own marks: a channel warmed by an earlier run that
+      // finished is still warm, whatever happens to this one.
+      for (const cid of warmedHere) {
         if (!completed.has(cid)) inboxWarmedRef.current.delete(cid);
       }
     };

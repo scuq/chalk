@@ -655,6 +655,26 @@ export function reducer(state: AppState, action: Action): AppState {
           ...next,
           messages: { ...next.messages, [action.channelID]: nextChannel },
         };
+        // 62-8: the optimistic row's seq was a guess (highest LOADED seq + 1),
+        // and a guess made before this channel's history landed lands below the
+        // real one -- which is exactly when bumpActivity refuses it and the
+        // conversation list keeps previewing the message before yours. This ack
+        // carries the seq the server actually assigned; the body is already
+        // decrypted on this device, and no echo is coming to correct it later.
+        const sent = nextChannel.find((x) => x.id === action.id);
+        if (sent) {
+          next = {
+            ...next,
+            activity: bumpActivity(next.activity, action.channelID, {
+              msgID: action.id,
+              ts: action.ts.getTime(),
+              seq: action.seq,
+              senderUserID: sent.senderUserID || null,
+              preview: previewText(sent.body),
+              deleted: false,
+            }),
+          };
+        }
       }
       // A reply's optimistic row is cached in its thread list too; reconcile
       // there as well so an open thread panel doesn't keep the stale copy.
@@ -727,7 +747,16 @@ export function reducer(state: AppState, action: Action): AppState {
       // Dedup by id in case the message also arrived via fetch_history
       // and as a live push.
       if (existing.some((x) => x.id === m.id)) {
-        return state;
+        // 62-8: the message itself is a no-op, but the channel's newest-message
+        // pointer can still be behind it -- a push that lost the race with the
+        // history fetch used to be dropped here, leaving the conversation list
+        // previewing the message before it until the next reconnect. Both bumps
+        // are monotonic, so applying them here can only move the pointer
+        // forward.
+        if (nextUnread === state.unread && nextActivity === state.activity) {
+          return state;
+        }
+        return { ...state, unread: nextUnread, activity: nextActivity };
       }
       const merged = [...existing, m].sort((a, b) => a.seq - b.seq);
       // ---- channel cache (Phase 10d) ----
@@ -1091,9 +1120,33 @@ export function reducer(state: AppState, action: Action): AppState {
         }
       }
 
+      // 62-8: history is the third path that can know a channel's newest
+      // message, and it was the one that never told the conversation list. It
+      // matters twice: a live push that raced this fetch is deduped by id and
+      // brings no pointer of its own, and the 23g key-ready refetch is what
+      // re-decrypts a body that first landed as the "key not available"
+      // placeholder -- which the row would otherwise preview forever.
+      //
+      // STRICTLY newer only. At equal seq the pointer already holds a preview
+      // from the live path, and a history row whose key has not settled would
+      // replace good text with a placeholder.
+      let nextActivity = state.activity;
+      const newest = merged[merged.length - 1];
+      if (newest && newest.seq > (state.activity[action.channelID]?.seq ?? 0)) {
+        nextActivity = bumpActivity(state.activity, action.channelID, {
+          msgID: newest.id,
+          ts: newest.ts.getTime(),
+          seq: newest.seq,
+          senderUserID: newest.senderUserID ?? null,
+          preview: newest.deleted ? DELETED_PREVIEW : previewText(newest.body),
+          deleted: newest.deleted ?? false,
+        });
+      }
+
       return {
         ...state,
         messages: { ...state.messages, [action.channelID]: merged },
+        activity: nextActivity,
         historyLoaded: { ...state.historyLoaded, [action.channelID]: true },
         // 55-1: raise-only. A later full page (e.g. the key-ready refetch of
         // the newest 50) must not clear what a short page already proved.
@@ -2107,17 +2160,43 @@ export function reducer(state: AppState, action: Action): AppState {
     // ---- 42-7: the thread inbox ---------------------------------------
 
     case "thread_inbox_loaded": {
+      // 42-9: rows arrive from the server as metadata plus CIPHERTEXT, so a
+      // refetch carries no decrypted previews -- and a refetch is routine
+      // (opening the panel, reading a thread, a reply to a thread we hold no
+      // row for).
+      // Dropping the plaintext we already have would put every row back on its
+      // skeleton and wait for a decrypt pass to run again, so previews the
+      // pointers say are still current are carried across.
+      const held = new Map<string, ThreadInboxRow>();
+      for (const r of [...state.threadInboxActive, ...state.threadInboxAgedUnread]) {
+        held.set(r.threadID, r);
+      }
+      const keepPreviews = (row: ThreadInboxRow): ThreadInboxRow => {
+        const prev = held.get(row.threadID);
+        if (!prev) return row;
+        // Seq equality is the test: a newer reply (or a newly edited head)
+        // arrives with a different pointer, and its stale plaintext must not
+        // outlive it.
+        const lastReplyBody =
+          row.lastReplyBody ??
+          (prev.lastReplySeq === row.lastReplySeq ? prev.lastReplyBody : undefined);
+        const headBody =
+          row.headBody ?? (prev.headSeq === row.headSeq ? prev.headBody : undefined);
+        if (lastReplyBody === row.lastReplyBody && headBody === row.headBody) return row;
+        return { ...row, lastReplyBody, headBody };
+      };
       // Appending pages the active list; the aged list is first-page-only and
       // is always replaced wholesale (there is nothing to page through).
+      const incomingActive = action.active.map(keepPreviews);
       const active = action.append
-        ? dedupeThreadRows([...state.threadInboxActive, ...action.active])
-        : dedupeThreadRows(action.active);
+        ? dedupeThreadRows([...state.threadInboxActive, ...incomingActive])
+        : dedupeThreadRows(incomingActive);
       return {
         ...state,
         threadInboxActive: active,
         threadInboxAgedUnread: action.append
           ? state.threadInboxAgedUnread
-          : dedupeThreadRows(action.agedUnread),
+          : dedupeThreadRows(action.agedUnread.map(keepPreviews)),
         threadInboxLoaded: true,
         threadInboxHasMoreActive: action.hasMoreActive,
         threadInboxUnreadTotal: action.unreadTotal,

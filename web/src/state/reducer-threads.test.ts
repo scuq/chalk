@@ -289,6 +289,76 @@ test("a preview dispatch that changes nothing keeps state identity", () => {
   assert.equal(s, before);
 });
 
+// A refetch is routine -- opening the panel, reading any thread, a reply to a
+// thread we hold no row for -- and the rows it brings back are ciphertext. The
+// panel showed every row's skeleton again after each one, and the decrypt pass
+// (bounded to once per channel per session) never ran a second time to fill
+// them, so the previews stayed gone for the rest of the session.
+test("a refetch keeps the previews its rows already decrypted", () => {
+  const s = reducer(
+    loaded({
+      threadInboxActive: [
+        inboxRow({ headBody: "the head", lastReplyBody: "the reply" }),
+      ],
+    }),
+    {
+      kind: "thread_inbox_loaded",
+      active: [inboxRow()],
+      agedUnread: [],
+      unreadTotal: 1,
+      hasMoreActive: false,
+      windowHours: 48,
+      append: false,
+    },
+  );
+  assert.equal(s.threadInboxActive[0].headBody, "the head");
+  assert.equal(s.threadInboxActive[0].lastReplyBody, "the reply");
+});
+
+test("a refetch drops a preview the pointer has moved past", () => {
+  const s = reducer(
+    loaded({
+      threadInboxActive: [
+        inboxRow({ headBody: "the head", lastReplyBody: "the old reply" }),
+      ],
+    }),
+    {
+      kind: "thread_inbox_loaded",
+      active: [inboxRow({ lastReplySeq: 6 })],
+      agedUnread: [],
+      unreadTotal: 1,
+      hasMoreActive: false,
+      windowHours: 48,
+      append: false,
+    },
+  );
+  assert.equal(s.threadInboxActive[0].headBody, "the head", "the head did not move");
+  assert.equal(
+    s.threadInboxActive[0].lastReplyBody,
+    undefined,
+    "a newer reply kept the old plaintext",
+  );
+});
+
+test("the aged half carries its previews across a refetch too", () => {
+  const s = reducer(
+    loaded({
+      threadInboxActive: [],
+      threadInboxAgedUnread: [inboxRow({ lastReplyBody: "old but unread" })],
+    }),
+    {
+      kind: "thread_inbox_loaded",
+      active: [],
+      agedUnread: [inboxRow()],
+      unreadTotal: 1,
+      hasMoreActive: false,
+      windowHours: 48,
+      append: false,
+    },
+  );
+  assert.equal(s.threadInboxAgedUnread[0].lastReplyBody, "old but unread");
+});
+
 test("open_thread_from_inbox switches channel AND leaves the thread open", () => {
   // The regression this action exists to prevent: set_active_channel nulls
   // openThread, so doing this in two dispatches works only by ordering luck.

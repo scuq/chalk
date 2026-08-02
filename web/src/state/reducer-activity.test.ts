@@ -209,6 +209,131 @@ test("channel_removed and voice_purged drop the activity entry", () => {
   assert.equal(purged.activity[CH], undefined);
 });
 
+// ---- the three paths that used to know a newer message and not say so ----
+
+test("history carries the pointer forward when it holds a newer message", () => {
+  // The key-ready refetch (23g) is the common case: it re-decrypts bodies that
+  // first rendered as the "key not available" placeholder, and the conversation
+  // list used to keep previewing whatever it had from before.
+  let s = reducer(baseState(), { kind: "channels_loaded", channels: [seeded()] });
+  s = reducer(s, {
+    kind: "history_loaded",
+    channelID: CH,
+    messages: [
+      msg({ id: "m5", seq: 5, ts: new Date(5000), body: "older" }),
+      msg({ id: "m7", seq: 7, ts: new Date(7000), body: "newest of the page" }),
+    ],
+  });
+  assert.equal(s.activity[CH].seq, 7);
+  assert.equal(s.activity[CH].msgID, "m7");
+  assert.equal(s.activity[CH].preview, "newest of the page");
+});
+
+test("an older history page cannot rewind the pointer", () => {
+  let s = reducer(baseState(), { kind: "channels_loaded", channels: [seeded()] });
+  s = reducer(s, {
+    kind: "history_loaded",
+    channelID: CH,
+    messages: [msg({ id: "m2", seq: 2, ts: new Date(2000), body: "scrollback" })],
+  });
+  assert.equal(s.activity[CH].seq, 5);
+  assert.equal(s.activity[CH].preview, null);
+});
+
+test("history at the pointer's own seq leaves a live preview alone", () => {
+  // Strictly-newer only: at equal seq the live path already supplied the
+  // plaintext, and a history row whose key has not settled would replace it
+  // with a placeholder.
+  let s = reducer(baseState(), {
+    kind: "message",
+    message: msg({ id: "m6", seq: 6, ts: new Date(6000), body: "live and readable" }),
+  });
+  s = reducer(s, {
+    kind: "history_loaded",
+    channelID: CH,
+    messages: [msg({ id: "m6", seq: 6, ts: new Date(6000), body: "[unreadable]" })],
+  });
+  assert.equal(s.activity[CH].preview, "live and readable");
+});
+
+test("a push the history fetch beat to the message still moves the pointer", () => {
+  // Deduped by id, so the message itself is a no-op -- but the push is the one
+  // carrying the decrypted body, and dropping it whole left the list showing
+  // the message before it.
+  let s = reducer(baseState(), { kind: "channels_loaded", channels: [seeded()] });
+  s = reducer(s, {
+    kind: "history_loaded",
+    channelID: CH,
+    messages: [msg({ id: "m6", seq: 6, ts: new Date(6000), body: "[unreadable]" })],
+  });
+  s = reducer(s, {
+    kind: "message",
+    message: msg({ id: "m6", seq: 6, ts: new Date(6000), body: "fresh words" }),
+  });
+  assert.equal(s.activity[CH].preview, "fresh words");
+});
+
+test("send_ack puts our own message on the pointer at the seq the server gave it", () => {
+  // The optimistic row's seq is a guess -- highest LOADED seq + 1 -- so sending
+  // in a channel whose history has not arrived guesses 1, far below the real
+  // one, and bumpActivity rightly refuses it. No echo comes back to the sender,
+  // so without the ack the list keeps previewing the message before yours.
+  let s = reducer(baseState(), { kind: "channels_loaded", channels: [seeded()] });
+  s = reducer(s, {
+    kind: "message",
+    message: msg({
+      id: "local-1",
+      seq: 1,
+      ts: new Date(9000),
+      sender: "dev-me",
+      senderUserID: ME,
+      body: "mine, sent blind",
+      clientMsgID: "local-1",
+    }),
+  });
+  assert.equal(s.activity[CH].seq, 5, "the guess is below the listing's pointer");
+  s = reducer(s, {
+    kind: "send_ack",
+    channelID: CH,
+    clientMsgID: "local-1",
+    id: "m6",
+    seq: 6,
+    ts: new Date(9000),
+  });
+  assert.equal(s.activity[CH].seq, 6);
+  assert.equal(s.activity[CH].msgID, "m6");
+  assert.equal(s.activity[CH].senderUserID, ME);
+  assert.equal(s.activity[CH].preview, "mine, sent blind");
+});
+
+test("send_ack cannot rewind the pointer past a message that landed after it", () => {
+  let s = reducer(baseState(), {
+    kind: "message",
+    message: msg({
+      id: "local-1",
+      seq: 1,
+      sender: "dev-me",
+      senderUserID: ME,
+      body: "mine",
+      clientMsgID: "local-1",
+    }),
+  });
+  s = reducer(s, {
+    kind: "message",
+    message: msg({ id: "m9", seq: 9, ts: new Date(9000), body: "theirs, newer" }),
+  });
+  s = reducer(s, {
+    kind: "send_ack",
+    channelID: CH,
+    clientMsgID: "local-1",
+    id: "m2",
+    seq: 2,
+    ts: new Date(2000),
+  });
+  assert.equal(s.activity[CH].seq, 9);
+  assert.equal(s.activity[CH].preview, "theirs, newer");
+});
+
 test("channel_preview lands only while its seq still matches", () => {
   let s = reducer(baseState(), { kind: "channels_loaded", channels: [seeded()] });
   s = reducer(s, { kind: "channel_preview", channelID: CH, seq: 5, preview: "decrypted" });
