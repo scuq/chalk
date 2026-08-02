@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.5.9 — 2 August 2026 — Take your server with you, and a maintenance page while you do
 
 ### Added
 - Your server can now be backed up and moved to another machine. One command

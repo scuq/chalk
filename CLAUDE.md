@@ -134,6 +134,14 @@ That is not something to work around with `grep -r` — ask scuq to install it
   like. Sections in an `## Unreleased` block: `### Added`, `### Changed`,
   `### Fixed`. Never invent a version heading; scuq cuts releases by tagging,
   and `## Unreleased` gets renamed then.
+- **Release version follows `CHANGELOG.md`.** Cutting a release means renaming
+  `## Unreleased` to `## vX.Y.Z — <D Month YYYY> — <theme>`; in the same change
+  set, update "Latest release" under *Current state / open items* below to that
+  version. The topmost `## vX.Y.Z` heading in `CHANGELOG.md` is the source of
+  truth and this file only points at it — nothing else in the repo carries a
+  version number, since it is stamped from the git tag through ldflags
+  (`Makefile` `VERSION`, set by `.github/workflows/release.yml`). A stale
+  pointer is worse than none, because it still reads as current.
 - **Tags with the phase.** A new phase number gets a line in `docs/tags.md`, or
   its number appended to the topic already listed there, in the same change set
   — and the file goes in the proposed `git add` list. Same whenever a search
@@ -220,7 +228,8 @@ That is not something to work around with `grep -r` — ask scuq to install it
 ## Current state / open items
 
 Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
-(user-facing). Latest release: v0.4.10. Only what is NOT done belongs here.
+(user-facing). Latest release: v0.5.9 — keep this in step with the topmost
+`## vX.Y.Z` heading in `CHANGELOG.md`. Only what is NOT done belongs here.
 
 - Phases through 57-4 are committed. Complete arcs: auth v2 (31), voice/video
   (30-1 … 30-8 plus the 41/44/47/48 mic, device and call-UI work), governance
