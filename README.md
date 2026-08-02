@@ -39,8 +39,9 @@ never a bypass of the second factor.
 - **Client** — desktop and mobile layouts, installable as a PWA, thirteen
   themes, per-device font and text-size settings (Hack, JetBrains Mono, Fira
   Code and Cascadia Code all bundled), per-user nick colours.
-- **Ops** — `chalkctl` deploys and updates a whole host from cosign-verified
-  container images.
+- **Ops** — `chalkctl` deploys, updates, backs up and migrates a whole host
+  from cosign-verified container images, with a maintenance page for when the
+  app is down on purpose.
 
 ## Screenshots
 
@@ -84,11 +85,82 @@ whole chalk host:
 chalkctl init      # verify + pin the image, render config, bring everything up
 chalkctl status    # deployed version, digest, service states
 chalkctl update    # verify, swap, health-check, roll back on failure
+chalkctl up        # start the stack; `down` stops it
+chalkctl backup    # encrypted archive of the database + env + config
+chalkctl restore   # load such an archive into an initialized host
+chalkctl maint     # on|off|status — serve a notice instead of the app
+chalkctl images    # version/revision/created for each image in the stack
+chalkctl reconfigure-turn   # re-render + restart coturn only
 ```
 
 It renders podman Quadlet units for chalkd, Postgres and coturn, sets up Caddy
 for TLS, verifies GHCR pulls with cosign, and installs a weekly update timer.
 See [docs/deployment.md](docs/deployment.md).
+
+### Backups
+
+```sh
+chalkctl backup --out /root/chalk.chalkbak
+```
+
+One password-encrypted file (Argon2id + AES-256-GCM) holding the database —
+every message, channel, membership, device and attachment, since attachment
+ciphertext is a database column rather than a file — plus `chalk.env` and
+`chalkctl.conf`. The env file matters as much as the dump: `CHALK_TOTP_ENC_KEY`
+is what the stored TOTP secrets are encrypted under, and a database restored
+without it locks every account out at the second factor.
+
+The password comes from `--password-file`, `$CHALK_BACKUP_PASSWORD` or a
+prompt, and there is no recovery path if it is lost. Nobody is interrupted
+while a backup runs: `pg_dump` reads a consistent snapshot. Every Postgres
+command runs inside the container, so the host needs no `psql`.
+
+### Moving to a new host
+
+```sh
+# old host
+chalkctl maint on --message "moving to a new server, back by 14:00 UTC"
+chalkctl backup --out /root/chalk.chalkbak
+scp /root/chalk.chalkbak newhost:/root/
+
+# new host — a normal fresh init first, so Caddy issues real certificates
+# and the stack is proven healthy before any data is at stake
+chalkctl init --domain chat.example.org --rootful \
+    --admin-username <name> --admin-email <addr>
+chalkctl restore /root/chalk.chalkbak
+chalkctl maint off
+```
+
+`restore` requires an initialized host and never touches the units, the
+Caddyfile or the image pin. It replaces exactly two things: the contents of the
+database, and `CHALK_TOTP_ENC_KEY` in the env file. Everything else `init`
+generated stays, because it belongs to the host actually serving — its Postgres
+password, its TURN secret, its WebAuthn RP ID.
+
+It streams the archive in one pass, showing the source domain, version and
+backup date and asking you to confirm before anything is written, and the load
+runs as a single transaction: a restore either lands completely or leaves the
+database as it was.
+
+**Keep the domain the same** if you can. Passkeys are bound to it, so a rename
+invalidates them — everyone can still sign in with password + TOTP and enrol a
+new passkey. Sessions, identities and message history survive either way. If
+the domain does change, point DNS at the new host before `init`, or Caddy
+cannot issue a certificate.
+
+### Maintenance mode
+
+```sh
+chalkctl maint on --message "back by 14:00 UTC"
+chalkctl maint off
+```
+
+Re-renders only the Caddyfile so Caddy answers every request itself with a 503
+notice, then reloads it in place. Caddy stays up, so the certificate keeps
+renewing while the app is down — without this, stopping chalkd leaves everyone
+on a bare 502. `/healthz` still reaches chalkd, so `update` and `restore` can
+tell a healthy app from a hidden one, and `init --force` preserves the mode
+rather than putting the site back in front of users mid-repair.
 
 ## Architecture
 
