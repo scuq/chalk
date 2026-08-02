@@ -16,7 +16,12 @@ const GiphyPicker = lazyComponent(() =>
 const EmojiPicker = lazyComponent(() =>
   import("./EmojiPicker").then((m) => m.EmojiPicker)
 );
+// 74-2: lazy for the same reason -- most sends carry no snippet.
+const CodeModal = lazyComponent(() =>
+  import("./CodeModal").then((m) => m.CodeModal)
+);
 import { encodeGiphyBody } from "../giphy/giphy";
+import { type CodePayload, codeLineCount, encodeCodeBody } from "../code/code";
 import {
   type LinkPreviewPayload,
   type LinkPreviewPref,
@@ -197,6 +202,27 @@ function IconGif() {
   );
 }
 
+// 74-2: the angle brackets every editor uses for "code". No slash between
+// them -- at 14px the third stroke turns the glyph into a smudge.
+function IconCode() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 6l-6 6 6 6" />
+      <path d="M16 6l6 6-6 6" />
+    </svg>
+  );
+}
+
 export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast, focusKey, onTyping, mentionHandles, linkPreviewEnabled, linkPreviewPref, linkPreviewDomains, onRequestEnableLinkPreview }: Props) {
   const icons = toolStyle === "icons";
   const emoticonsOn = emoticons !== false;
@@ -211,6 +237,10 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   const [emojiOpen, setEmojiOpen] = useState(false);
   // 42-1: the shortcut cheat sheet behind the "?" button.
   const [helpOpen, setHelpOpen] = useState(false);
+  // 74-2: the CODE modal, and the snippet it has staged for the next send.
+  // Staged rather than sent on its own, so a snippet can carry a caption.
+  const [codeOpen, setCodeOpen] = useState(false);
+  const [stagedCode, setStagedCode] = useState<CodePayload | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const helpRef = useRef<HTMLDivElement | null>(null);
   // 42-1: the last emoticon we swapped for an emoji, so an immediate
@@ -282,7 +312,10 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   // timer on every frame.
   const domainsKey = (linkPreviewDomains ?? []).join(",");
   useEffect(() => {
-    if (!linkPreviewEnabled || editing) {
+    // 74-2: both riders are a sentinel PREFIX on the body, so only one can be
+    // outermost. A staged snippet wins -- it was an explicit action, where the
+    // preview merely noticed a URL.
+    if (!linkPreviewEnabled || editing || stagedCode) {
       clearPreviewCard();
       return;
     }
@@ -341,7 +374,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     // prevents re-fetching the URL already on screen; the card's own state
     // changes must not re-arm the debounce timer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, linkPreviewEnabled, linkPreviewPref, domainsKey, editing]);
+  }, [draft, linkPreviewEnabled, linkPreviewPref, domainsKey, editing, stagedCode]);
 
   const effectiveDisabled =
     disabledReason !== null && disabledReason !== undefined
@@ -532,12 +565,22 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     setCaretSoon(r.caret);
   };
 
-  // 42-1: the three tool buttons, reachable from the keyboard as well as the
-  // rail. Kept as one function so a shortcut and a click cannot diverge.
-  const openTool = (action: "emoji" | "gif" | "file") => {
+  // 42-1: the tool buttons, reachable from the keyboard as well as the rail.
+  // Kept as one function so a shortcut and a click cannot diverge.
+  //
+  // 74-2: "code" is click-only -- every ctrl/meta combo that reads as "code"
+  // is already spoken for by the browser (ctrl+c copies, ctrl+shift+c is the
+  // element inspector, ctrl+shift+k is Firefox's console). It is a parameter
+  // here rather than a ComposerAction so the shortcut table stays honest.
+  const openTool = (action: "emoji" | "gif" | "file" | "code") => {
     if (effectiveDisabled || sending) return;
     if (action === "emoji") {
       setEmojiOpen(true);
+      return;
+    }
+    if (action === "code") {
+      if (editing) return;
+      setCodeOpen(true);
       return;
     }
     if (action === "file") {
@@ -584,19 +627,27 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
       return;
     }
 
-    if (!body && pending.length === 0) return;
+    // 74-2: a staged snippet is content in its own right, so it can be sent
+    // with no caption and no attachments.
+    if (!body && pending.length === 0 && !stagedCode) return;
     if (body.length > MAX_LEN) return;
 
     // 57-3: a ready preview card rides along -- the payload is folded into
     // the body (encrypted like any other text) and the thumbnail becomes a
     // leading attachment the renderer recognizes by filename convention. The
     // MAX_LEN check above ran on the TYPED text; the marker + payload are
-    // wire framing, not the user "typing more".
+    // wire framing, not the user "typing more". 74-2: a staged snippet folds
+    // in the same way, and the two are mutually exclusive -- the effect above
+    // clears the preview card while a snippet is staged, so at most one of
+    // these branches can be live.
     let sendText = body;
     let items = pending;
+    const snippet = stagedCode;
     const card = previewCard;
     const cardActive = card !== null && card.state === "ready";
-    if (card !== null && card.state === "ready") {
+    if (snippet !== null) {
+      sendText = encodeCodeBody(snippet, body);
+    } else if (card !== null && card.state === "ready") {
       sendText = encodeLinkPreviewBody(card.payload, body);
       if (card.thumb) {
         const mime = card.thumb.blob.type;
@@ -605,6 +656,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
       }
     }
     const sentPreview = () => {
+      if (snippet !== null) setStagedCode(null);
       if (!cardActive) return;
       previewDismissed.current.clear();
       clearPreviewCard();
@@ -850,16 +902,21 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
 
   const canSend = editing
     ? !effectiveDisabled && !sending && draft.trim().length > 0
-    : !effectiveDisabled && !sending && (draft.trim().length > 0 || pending.length > 0);
+    : !effectiveDisabled &&
+      !sending &&
+      (draft.trim().length > 0 || pending.length > 0 || stagedCode !== null);
   // In edit mode the composer is replacing one message's text, so the
-  // attachment and GIF affordances are hidden rather than disabled: they'd
-  // imply you can add a file to an existing message, which you can't.
-  const showTools = !editing && (enableAttachments || giphyEnabled);
+  // attachment, GIF and code affordances are hidden rather than disabled:
+  // they'd imply you can add a file to an existing message, which you can't.
+  //
+  // 74-2: CODE needs no server support and no consent, so it is the one tool
+  // every composer has -- which is why these two no longer gate on the
+  // per-caller flags.
+  const showTools = !editing;
   // 44-5: the tool block sits immediately left of the input. It used to live
   // in the roster's column, which put the buttons a screen-width away from
-  // the field they act on. A caller that passes neither attachments nor
-  // giphy still gets a plain stacked box.
-  const railed = enableAttachments || giphyEnabled;
+  // the field they act on.
+  const railed = true;
   const mac = isMacPlatform();
 
   return (
@@ -887,6 +944,23 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
         onClose={() => setEmojiOpen(false)}
         onPick={(char) => insertEmoji(char)}
       />
+      {/* 74-2: the code modal stages a snippet for the next send rather than
+          sending it, so a caption can go with it. `initial` makes reopening
+          it an edit of what is already staged. */}
+      {codeOpen && (
+        <CodeModal
+          initial={stagedCode ?? undefined}
+          onClose={() => {
+            setCodeOpen(false);
+            textareaRef.current?.focus();
+          }}
+          onInsert={(payload) => {
+            setStagedCode(payload);
+            setCodeOpen(false);
+            textareaRef.current?.focus();
+          }}
+        />
+      )}
       {enableAttachments && (
         <input
           ref={fileInputRef}
@@ -984,6 +1058,40 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
             </button>
           </div>
         )}
+        {/* 74-2: the staged snippet. Clicking the body reopens the modal to
+            edit it; the ✕ drops it. Deliberately shaped like the link-preview
+            card above -- both are "this rides the next send". */}
+        {stagedCode && !editing && (
+          <div class="chalk-composer-code" data-testid="composer-code-staged">
+            <button
+              type="button"
+              class="chalk-composer-code-open"
+              onClick={() => setCodeOpen(true)}
+              title="edit this snippet"
+              data-testid="composer-code-edit"
+            >
+              <span class="chalk-composer-code-label">
+                {stagedCode.lang === "" ? "code" : stagedCode.lang}
+              </span>
+              <span class="chalk-composer-code-lines">
+                {codeLineCount(stagedCode.code)} lines
+              </span>
+            </button>
+            <button
+              type="button"
+              class="chalk-composer-code-dismiss"
+              onClick={() => {
+                setStagedCode(null);
+                textareaRef.current?.focus();
+              }}
+              title="drop this snippet"
+              aria-label="drop this snippet"
+              data-testid="composer-code-dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {enableAttachments && !editing && pending.length > 0 && (
           <div class="chalk-composer-tray" data-testid="composer-tray">
             {pending.map((p) => {
@@ -1061,7 +1169,10 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
               block is rendered (empty) during an edit to hold its width, so
               the field does not slide sideways mid-edit. The old per-button
               classes are kept alongside chalk-composer-tool so the existing
-              hover/disabled rules still apply. */}
+              hover/disabled rules still apply.
+              74-2: still four cells -- CODE took the "?" one, and the sheet
+              moved down beside the send button. Keeping it 2x2 is what keeps
+              the rail the same height as the two-row input. */}
           {railed && (
             <div
               class={`chalk-composer-rail ${icons ? "chalk-composer-rail--icons" : "chalk-composer-rail--text"}`}
@@ -1106,39 +1217,18 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
                   >
                     {icons ? "🙂" : "EMOJI"}
                   </button>
-                  <div class="chalk-composer-help" ref={helpRef}>
-                    <button
-                      type="button"
-                      class="chalk-composer-tool chalk-composer-help-toggle"
-                      onClick={() => setHelpOpen((v) => !v)}
-                      title="keyboard shortcuts"
-                      aria-label="keyboard shortcuts"
-                      aria-expanded={helpOpen}
-                      data-testid="composer-help-toggle"
-                    >
-                      ?
-                    </button>
-                    {helpOpen && (
-                      <div
-                        class="chalk-composer-help-sheet"
-                        role="dialog"
-                        aria-label="composer keyboard shortcuts"
-                        data-testid="composer-help-sheet"
-                      >
-                        <div class="chalk-composer-help-title">shortcuts</div>
-                        <dl class="chalk-composer-help-list">
-                          {composerHelp(mac).map((row) => (
-                            <div class="chalk-composer-help-row" key={row.keys}>
-                              <dt>
-                                <kbd>{row.keys}</kbd>
-                              </dt>
-                              <dd>{row.what}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      </div>
-                    )}
-                  </div>
+                  {/* 74-2: no shortcut in the title -- see openTool. */}
+                  <button
+                    type="button"
+                    class="chalk-composer-tool chalk-composer-code"
+                    onClick={() => openTool("code")}
+                    disabled={effectiveDisabled || sending}
+                    title="paste code"
+                    aria-label="paste code"
+                    data-testid="composer-code"
+                  >
+                    {icons ? <IconCode /> : "CODE"}
+                  </button>
                 </div>
               )}
             </div>
@@ -1160,6 +1250,45 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
             data-testid="composer-input"
             aria-label="message"
           />
+          {/* 74-2: the shortcut sheet moved out of the tool block so CODE
+              could have its cell and the block stay a 2x2 -- the rail's height
+              is what matches the two-row input, and a fifth cell broke it. It
+              sits by the send button now, and unlike before it is reachable
+              during an edit, where the sheet's escape/cursor-up rows are
+              exactly what a reader wants. */}
+          <div class="chalk-composer-help" ref={helpRef}>
+            <button
+              type="button"
+              class="chalk-composer-tool chalk-composer-help-toggle"
+              onClick={() => setHelpOpen((v) => !v)}
+              title="keyboard shortcuts"
+              aria-label="keyboard shortcuts"
+              aria-expanded={helpOpen}
+              data-testid="composer-help-toggle"
+            >
+              ?
+            </button>
+            {helpOpen && (
+              <div
+                class="chalk-composer-help-sheet"
+                role="dialog"
+                aria-label="composer keyboard shortcuts"
+                data-testid="composer-help-sheet"
+              >
+                <div class="chalk-composer-help-title">shortcuts</div>
+                <dl class="chalk-composer-help-list">
+                  {composerHelp(mac).map((row) => (
+                    <div class="chalk-composer-help-row" key={row.keys}>
+                      <dt>
+                        <kbd>{row.keys}</kbd>
+                      </dt>
+                      <dd>{row.what}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             class="chalk-composer-send"

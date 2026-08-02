@@ -9,6 +9,8 @@ import { AttachmentView } from "./AttachmentView";
 import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
 import { decideLinkPreviewRender } from "../linkpreview/linkpreview";
+import { decideCodeRender } from "../code/code";
+import { clipboardText } from "../chat/bodytext";
 import { DEFAULT_SELF_HUE, nickTintStyle, resolveNickHue } from "../chat/nickcolor";
 import { linkDisplayText, splitBodyParts } from "../chat/links";
 import { fmtRelative } from "../chat/reltime";
@@ -20,6 +22,10 @@ const GiphyView = lazyComponent(() =>
 // Lazy for the same reason: most feeds have no preview cards on screen.
 const LinkPreviewView = lazyComponent(() =>
   import("./LinkPreviewView").then((m) => m.LinkPreviewView)
+);
+// 74-3: same again -- most feeds have no snippets on screen.
+const CodeBlockView = lazyComponent(() =>
+  import("./CodeBlockView").then((m) => m.CodeBlockView)
 );
 
 // 33-3 / 41-4: render a body with member mentions highlighted and http(s)
@@ -100,8 +106,14 @@ function isTypingTarget(t: EventTarget | null): boolean {
 function wantsNativeContextMenu(target: EventTarget | null, row: HTMLElement): boolean {
   const el = target as HTMLElement | null;
   // Links, images and the media wrappers: "copy link address" and "save image
-  // as" have no equivalent in our menu, and never will.
-  if (el?.closest?.("a[href], img, .chalk-message-attachments, .chalk-message-giphy")) {
+  // as" have no equivalent in our menu, and never will. 74-3: a code card is
+  // here for the same reason -- selecting part of a snippet and copying it is
+  // the whole point, and the row menu's "copy" takes the entire message.
+  if (
+    el?.closest?.(
+      "a[href], img, .chalk-message-attachments, .chalk-message-giphy, .chalk-message-code",
+    )
+  ) {
     return true;
   }
   const sel = typeof window !== "undefined" ? window.getSelection() : null;
@@ -799,15 +811,27 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
         // plain image attachment via the normal row below. A corrupt or
         // hostile payload degrades to mode "text" -- the raw body renders
         // as-is and nothing else happens.
-        const lp = m.deleted ? null : decideLinkPreviewRender(m.body, linkPreviewHide ?? false);
+        // 74-3: a code-marked body splits the same way -- caption plus a card
+        // that breaks out below. Checked first because only one sentinel can
+        // be the body's prefix, so a match here settles the row.
+        const cr = m.deleted ? null : decideCodeRender(m.body);
+        const codeBlock = cr !== null && cr.mode === "code" ? cr : null;
+        const lp =
+          m.deleted || codeBlock
+            ? null
+            : decideLinkPreviewRender(m.body, linkPreviewHide ?? false);
         const lpPreview = lp !== null && lp.mode === "preview" ? lp : null;
-        const displayBody = lp !== null && lp.mode !== "text" ? lp.text : m.body;
+        const displayBody = codeBlock
+          ? codeBlock.text
+          : lp !== null && lp.mode !== "text"
+          ? lp.text
+          : m.body;
         // giphy-layout: a giphy-marked body renders as a gated GIF that
         // BREAKS OUT to the row's left edge (grid-column 1/-1), exactly
         // like an attachment image -- not inline in the narrow body
         // column. Non-giphy bodies render as plain text in the body span.
         const gr =
-          m.deleted || (lp !== null && lp.mode !== "text")
+          m.deleted || codeBlock !== null || (lp !== null && lp.mode !== "text")
             ? null
             : decideGiphyRender(m.body, giphyPref ?? "unset");
         const isGiphy = gr !== null && gr.mode !== "text";
@@ -974,6 +998,14 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                 <GiphyView render={gr} onRequestEnableGiphy={onRequestEnableGiphy} />
               </div>
             )}
+            {/* 74-3: the code card. Unlike the preview card it claims none of
+                the row's attachments -- a snippet and a file are independent
+                things to send -- so the generic block below still renders. */}
+            {codeBlock && (
+              <div class="chalk-message-code" data-testid="message-code-wrap">
+                <CodeBlockView payload={codeBlock.payload} />
+              </div>
+            )}
             {/* 57-4: the preview card. It owns ALL of the row's attachments
                 (thumb inside the card, the rest as a normal row), so the
                 generic attachments block below is suppressed for it. */}
@@ -1126,7 +1158,10 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                   onOpenThread?.(m.id, m.threadID ?? m.id);
                   break;
                 case "copy":
-                  navigator.clipboard?.writeText(m.body).catch(() => {});
+                  // 74-4: through clipboardText -- the raw body of a snippet,
+                  // preview or gif message is sentinel framing plus payload
+                  // JSON, which is not what anyone means by "copy".
+                  navigator.clipboard?.writeText(clipboardText(m.body)).catch(() => {});
                   break;
                 case "edit":
                   onEditMessage?.(m);

@@ -183,6 +183,7 @@ import { Sidebar, ChannelGlyph } from "./Sidebar";
 // 62-6: Zuckermode -- the phone's unified conversation list.
 import { ZuckerList } from "./ZuckerList";
 import { buildConversationList, buildFriendList, previewText } from "../chat/zucker";
+import { messageText } from "../chat/bodytext";
 // 64-3/64-4/64-10: swipe right = back, on every screen that has a "back".
 import { useSwipeBack } from "../chat/use-swipe-back";
 import { MessageList } from "./MessageList";
@@ -1835,7 +1836,9 @@ export function App() {
     const ch = channelsRef.current[channelID];
     if (!ch || ch.isDM) return;
     if (channelID === activeChannelRef.current && tabVisibleRef.current) return;
-    if (!mentionsHandle(body, me.handle)) return;
+    // 74-4: the caption, not the raw body -- an @handle inside a pasted
+    // snippet or a preview's payload is not somebody addressing you.
+    if (!mentionsHandle(messageText(body), me.handle)) return;
     dispatch({ kind: "mention_set", channelID });
   }
 
@@ -1851,7 +1854,7 @@ export function App() {
     const me = userRef.current;
     if (!me?.handle) return;
     if (senderUserID === me.id) return;
-    if (!mentionsHandle(body, me.handle)) return;
+    if (!mentionsHandle(messageText(body), me.handle)) return; // 74-4: as above
     dispatch({ kind: "thread_mention_set", threadID });
   }
 
@@ -1874,7 +1877,10 @@ export function App() {
     const ch = channelsRef.current[m.channelID];
     if (!ch) return;
     const category = categoryForMessage(
-      { senderUserID: m.senderUserID, body, parentID: m.parentID },
+      // 74-4: classify.ts reads the body only to test for a mention, so it
+      // gets the caption -- an @handle inside pasted code must not promote a
+      // plain message to the mention sound.
+      { senderUserID: m.senderUserID, body: messageText(body), parentID: m.parentID },
       { id: me.id, handle: me.handle },
       { isDM: !!ch.isDM, threadInvolvesViewer: threadInvolvesMe(m, me.id) },
       mentionsHandle,
@@ -1888,8 +1894,10 @@ export function App() {
       isDM: !!ch.isDM,
       senderHandle: ch.members.find((mem) => mem.userID === m.senderUserID)?.handle,
       channelName: ch.name || undefined,
-      // Decrypted on this device; the banner sink renders it locally.
-      preview: body || undefined,
+      // Decrypted on this device; the banner sink renders it locally. 74-4:
+      // through previewText, or a snippet or preview message would put its
+      // sentinel and payload JSON in the notification banner.
+      preview: previewText(body) || undefined,
     });
   }
 

@@ -8,6 +8,7 @@
 import { PLACEHOLDER_PLAINTEXT_BLOCKED } from "../crypto/channel-crypto";
 import { parseGiphyBody } from "../giphy/giphy";
 import { parseLinkPreviewBody } from "../linkpreview/linkpreview";
+import { parseCodeBody } from "../code/code";
 import { isUndecryptableBody } from "./search";
 import {
   countsAsUnread,
@@ -16,6 +17,9 @@ import {
 } from "../state/types";
 
 export const DELETED_PREVIEW = "[message deleted]";
+// 74-4: what an uncaptioned snippet previews as, in the same bracketed shape
+// the attachment and gif placeholders already use.
+const CODE_PREVIEW = "[code]";
 
 // Previews are one line of state, not a transcript: collapse whitespace and
 // cap well past what any row can render, so a pasted wall of text doesn't
@@ -24,9 +28,9 @@ const PREVIEW_MAX = 200;
 
 // previewText renders a decrypted body as the one-liner a conversation row
 // shows. Sentinel bodies are parsed rather than shown raw (a giphy body is
-// sentinel+URL, a link-preview body embeds payload JSON before the user's
-// text); decrypt-failure placeholders pass through as-is -- they are the
-// honest answer. An empty body after all that is an attachment-only send.
+// sentinel+URL, link-preview and code bodies embed payload JSON before the
+// user's text); decrypt-failure placeholders pass through as-is -- they are
+// the honest answer. An empty body after all that is an attachment-only send.
 export function previewText(body: string): string {
   if (body === DELETED_PREVIEW) return DELETED_PREVIEW;
   if (body === PLACEHOLDER_PLAINTEXT_BLOCKED || isUndecryptableBody(body)) {
@@ -34,6 +38,13 @@ export function previewText(body: string): string {
   }
   const giphy = parseGiphyBody(body);
   if (giphy) return "[gif]";
+  const code = parseCodeBody(body);
+  if (code) {
+    // The caption if there is one -- it is what the sender wrote. A bare
+    // snippet gets a placeholder rather than its first line, which on a
+    // one-line row would usually just be an import or a brace.
+    return code.text.trim() !== "" ? squash(code.text) : CODE_PREVIEW;
+  }
   const lp = parseLinkPreviewBody(body);
   if (lp) {
     const text = lp.text.trim() !== "" ? lp.text : lp.preview.title;

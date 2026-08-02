@@ -35,6 +35,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #history        55        internal/store/ web/src/chat/ web/src/components/MessageList.tsx
 #mentions       56        web/src/chat/ web/src/components/Composer.tsx
 #linkpreview    57 67     internal/linkpreview/ web/src/linkpreview/
+#code           74        web/src/code/ web/src/chat/bodytext.ts web/src/components/CodeModal.tsx web/src/components/CodeBlockView.tsx
 #search         61        web/src/chat/ web/src/components/
 #reactions      37        web/src/chat/ web/src/state/
 #typing         43        internal/server/ web/src/state/

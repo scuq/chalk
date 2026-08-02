@@ -12,7 +12,20 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- You can share code without it falling apart. A new CODE button beside emoji,
+  file and GIF opens a box to paste a snippet into; it arrives as a block that
+  keeps its indentation and line breaks, stays in a fixed-width font whatever
+  font you've chosen for the rest of chalk, and scrolls sideways rather than
+  wrapping long lines into nonsense. You can label it with a language, write a
+  message to go with it, and anyone reading can copy the whole thing back out
+  with one click — without the surrounding chatter. Long snippets fold up so
+  they don't bury the conversation. Searching finds text inside a pasted
+  snippet, not just the message around it.
+
 ### Changed
+- The keyboard-shortcuts "?" moved from the button block to sit beside the send
+  button, and it's now available while you're editing a message too.
 - On phones, the swipe back to your conversation list now follows your finger.
   The conversation slides with the touch and settles when you let go, instead
   of the screen changing the instant you crossed some invisible distance — and
@@ -20,6 +33,11 @@ The engineering-level history (which slice shipped what) lives in
   navigating. A quick flick works as well as a long drag.
 
 ### Fixed
+- Copying a GIF or a link-preview message now copies something useful. "copy"
+  on those rows used to hand you a line of internal gibberish instead of the
+  link or the text you wrote.
+- Desktop notifications for a GIF or link-preview message no longer show that
+  same gibberish in the banner.
 - You can now swipe your way out of a thread on a phone. An open thread covers
   the whole screen, including the back button, so the small × in its corner was
   the only way out and swiping did nothing. Swiping right leaves the thread, and

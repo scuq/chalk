@@ -13,6 +13,7 @@ import {
 } from "../crypto/channel-crypto";
 import { parseGiphyBody } from "../giphy/giphy";
 import { parseLinkPreviewBody } from "../linkpreview/linkpreview";
+import { parseCodeBody } from "../code/code";
 
 // decryptAll (App.tsx) has its own placeholders outside ChannelCrypto: the
 // deleted-message tombstone and the "crypto not built yet" variant (note the
@@ -74,6 +75,12 @@ export function searchableText(body: string): string | null {
   }
   const giphy = parseGiphyBody(body);
   if (giphy) return giphy.url;
+  // 74-4: the snippet is searchable along with its caption -- "which channel
+  // was that retry loop pasted in" is exactly the question search is for.
+  const code = parseCodeBody(body);
+  if (code) {
+    return [code.text, code.payload.code].filter((s) => s !== "").join(" ");
+  }
   const lp = parseLinkPreviewBody(body);
   if (lp) {
     const p = lp.preview;

@@ -1022,6 +1022,122 @@ html {
   color: var(--chalk-fg-bright);
 }
 
+/* -- 74-2: the staged code snippet --------------------------------- */
+/* Same chip shape as the link-preview card above -- both mean "this rides
+   the next send" -- with the accent rule the received card also carries, so
+   the two read as the same object before and after sending. */
+.chalk-composer-code {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-left: 2px solid var(--chalk-accent);
+  border-radius: var(--chalk-radius);
+  font-size: var(--chalk-size-small);
+  min-width: 0;
+}
+.chalk-composer-code-open {
+  display: flex;
+  align-items: baseline;
+  gap: var(--chalk-s2);
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+.chalk-composer-code-label {
+  color: var(--chalk-fg-bright);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.chalk-composer-code-lines {
+  color: var(--chalk-fg-muted);
+}
+.chalk-composer-code-open:hover .chalk-composer-code-label {
+  text-decoration: underline;
+}
+.chalk-composer-code-dismiss {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0 0.2em;
+  line-height: 1;
+}
+.chalk-composer-code-dismiss:hover {
+  color: var(--chalk-fg-bright);
+}
+
+/* -- 74-2: the paste-code modal ------------------------------------ */
+/* The width override lives with the other .chalk-modal variants further
+   down -- same specificity as .chalk-modal, so it only wins after it. */
+.chalk-code-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+/* wrap="off" on the element plus overflow here: the box shows the snippet's
+   real line structure, horizontally scrolled, exactly as the card will. */
+.chalk-code-modal-input {
+  width: 100%;
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s2);
+  /* Not `inherit`: the UI font is a per-device pref and can be sans or
+     serif, which would misalign the very thing being pasted. */
+  font-family: var(--chalk-font-mono);
+  font-size: var(--chalk-size-small);
+  line-height: 1.4;
+  tab-size: 4;
+  white-space: pre;
+  overflow: auto;
+  resize: vertical;
+}
+.chalk-code-modal-input:focus {
+  outline: 1px solid var(--chalk-fg);
+  outline-offset: -1px;
+  background: var(--chalk-bg-elev-2);
+}
+.chalk-code-modal-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--chalk-s3);
+  font-size: var(--chalk-size-small);
+}
+.chalk-code-modal-lang {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  color: var(--chalk-fg-dim);
+}
+.chalk-code-modal-lang select {
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: 2px var(--chalk-s2);
+  font-family: inherit;
+  font-size: inherit;
+}
+.chalk-code-modal-count {
+  color: var(--chalk-fg-muted);
+}
+.chalk-code-modal-count--over {
+  color: var(--chalk-error);
+}
+
 /* -- 57-4: received link-preview card ------------------------------ */
 /* Breaks out below the body like an attachment. The whole card is one
    anchor to the real destination; the host line at the bottom is the
@@ -1082,6 +1198,93 @@ html {
 }
 .chalk-linkpreview-card:hover .chalk-linkpreview-title {
   text-decoration: underline;
+}
+
+/* -- 74-3: received code card -------------------------------------- */
+/* Breaks out below the body like the other rich blocks. The grid-column
+   here is the base; the alignment rules further down move it to the body
+   column and handle the compact / no-time / mobile variants, same as for
+   giphy and attachments. */
+.chalk-message-code {
+  grid-column: 1 / -1;
+  margin-top: var(--chalk-s1);
+  min-width: 0;
+}
+.chalk-codecard {
+  max-width: 44rem;
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-left: 2px solid var(--chalk-accent);
+  border-radius: var(--chalk-radius);
+  min-width: 0;
+  overflow: hidden;
+}
+.chalk-codecard-head {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  border-bottom: 1px solid var(--chalk-border);
+  font-size: var(--chalk-size-small);
+}
+.chalk-codecard-lang {
+  color: var(--chalk-fg-bright);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.chalk-codecard-lines {
+  color: var(--chalk-fg-muted);
+}
+.chalk-codecard-copy {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  color: var(--chalk-fg-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1;
+  padding: 2px var(--chalk-s2);
+}
+.chalk-codecard-copy:hover {
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg-bright);
+}
+/* The snippet itself. Two things it must NOT inherit: the UI font (a
+   per-device pref, which can be sans or serif and would misalign every
+   column the sender lined up), and .chalk-message-body's pre-wrap (code
+   that rewraps at the card's width is not the code that was pasted). It
+   scrolls sideways inside the card instead, so the page never does. */
+.chalk-codecard-body {
+  margin: 0;
+  padding: var(--chalk-s2);
+  font-family: var(--chalk-font-mono);
+  font-size: var(--chalk-size-small);
+  line-height: 1.4;
+  tab-size: 4;
+  white-space: pre;
+  overflow-x: auto;
+}
+.chalk-codecard-body--clipped {
+  max-height: 21em;
+  overflow-y: hidden;
+}
+.chalk-codecard-expand {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  padding: var(--chalk-s1);
+  text-align: center;
+}
+.chalk-codecard-expand:hover {
+  color: var(--chalk-fg-bright);
 }
 
 /* -- 57-4: settings domain editor ---------------------------------- */
@@ -1784,6 +1987,13 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 .chalk-modal--settings .chalk-modal-body {
   flex: 1 1 auto;
+}
+
+/* 74-2: the paste-code modal is wider than the 500px default -- a snippet
+   that has to wrap in the box it was pasted into gives no sense of how the
+   card will read. Roughly the card's own width, so the two agree. */
+.chalk-modal--code {
+  max-width: 46rem;
 }
 
 /* Sibling of .chalk-modal for panels that size themselves (friends,
@@ -6626,10 +6836,13 @@ body.chalk-resizing .chalk-sidebar-resizer {
   padding: 0;
   text-align: center;
 }
+/* 74-2: anchored to the right edge now that the "?" sits beside the send
+   button rather than in the tool block -- opening leftward from there would
+   run the sheet off the screen. */
 .chalk-composer-help-sheet {
   position: absolute;
   bottom: calc(100% + var(--chalk-s2));
-  left: 0;
+  right: 0;
   z-index: 40;
   width: max-content;
   max-width: min(320px, calc(100vw - 2 * var(--chalk-s4)));
@@ -7543,9 +7756,12 @@ body.chalk-resizing .chalk-sidebar-resizer {
   align-self: baseline;
 }
 
-/* (2) media starts at the body column instead of the row's left edge. */
+/* (2) media starts at the body column instead of the row's left edge.
+   74-3: the code card joins the group -- every kind of message content
+   shares one left edge, which is the whole point of these rules. */
 .chalk-message-giphy,
-.chalk-message-attachments {
+.chalk-message-attachments,
+.chalk-message-code {
   grid-column: 3 / -1;
 }
 /* Phase 9.7m: the media sits on grid row 2 (row 1 holds time + sender),
@@ -7555,11 +7771,13 @@ body.chalk-resizing .chalk-sidebar-resizer {
    Only when the body span renders nothing -- on a captioned image the
    same pull-up painted the image over the caption's line. */
 .chalk-message--no-body .chalk-message-giphy,
-.chalk-message--no-body .chalk-message-attachments {
+.chalk-message--no-body .chalk-message-attachments,
+.chalk-message--no-body .chalk-message-code {
   margin-top: -1.4em;
 }
 .chalk-message--no-time .chalk-message-giphy,
-.chalk-message--no-time .chalk-message-attachments {
+.chalk-message--no-time .chalk-message-attachments,
+.chalk-message--no-time .chalk-message-code {
   grid-column: 2 / -1;
 }
 
@@ -8010,10 +8228,13 @@ body.chalk-resizing .chalk-sidebar-resizer {
   .chalk-message-body,
   .chalk-message-giphy,
   .chalk-message-attachments,
+  .chalk-message-code,
   .chalk-message--no-time .chalk-message-giphy,
   .chalk-message--no-time .chalk-message-attachments,
+  .chalk-message--no-time .chalk-message-code,
   .chalk-message--no-body .chalk-message-giphy,
-  .chalk-message--no-body .chalk-message-attachments {
+  .chalk-message--no-body .chalk-message-attachments,
+  .chalk-message--no-body .chalk-message-code {
     grid-column: 1 / -1;
     /* Desktop pulls media up beside the sender; here the meta line is a
        row of its own, so media starts where the body would. */
