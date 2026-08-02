@@ -41,7 +41,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #presence       34        internal/presence/ internal/server/
 #spacekeys      25 38     web/src/crypto/ internal/store/
 #deletion       35        web/src/chat/ web/src/components/
-#mobile         64        web/src/mobile.ts web/src/chat/ web/src/components/
+#mobile         64        web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/components/ web/src/theme.css
 #settings       68 70     web/src/settings-nav.ts web/src/components/ProfilePanel.tsx
 #version        39        internal/version/ web/src/version.ts
 #servernotice   46        web/src/state/ web/src/components/

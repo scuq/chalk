@@ -15,10 +15,10 @@
 // pure rendering + object-URL lifecycle. No node test (DOM/observer heavy); the
 // pipeline/controller it drives are covered by the round-trip tests.
 
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { AttachmentController } from "../attachments/pipeline";
 import { type AttachmentMeta, type AttachmentRef, humanSize } from "../attachments/types";
-import { swipeCancelled, swipeTriggered, type SwipeStart } from "../chat/swipe-back";
+import { useSwipeBack } from "../chat/use-swipe-back";
 
 interface Props {
   channelID: string;
@@ -38,8 +38,14 @@ export function AttachmentView({ channelID, att, controller }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Track object URLs so we always revoke exactly what we created.
   const urlsRef = useRef<string[]>([]);
-  // 64-9: an armed swipe-right on the open lightbox; null between touches.
-  const lightboxSwipeRef = useRef<SwipeStart | null>(null);
+  // 64-9: swipe right closes the lightbox -- the same "back" gesture as the
+  // conversation, one level at a time. The overlay owns its touches
+  // (stopPropagation), so the app-level swipe can't switch the screen out
+  // from under a modal.
+  const closeLightbox = useCallback(() => setExpanded(false), []);
+  const lightboxSwipe = useSwipeBack(expanded, closeLightbox, {
+    stopPropagation: true,
+  });
 
   const trackURL = (url: string): string => {
     urlsRef.current.push(url);
@@ -250,43 +256,20 @@ export function AttachmentView({ channelID, att, controller }: Props) {
         )}
         {expanded && shownURL && (
           <div
-            class="chalk-attachment-lightbox"
+            class={`chalk-attachment-lightbox${lightboxSwipe.offset !== null ? " chalk-swipe-x" : ""}${lightboxSwipe.settling ? " chalk-swipe-x--settling" : ""}`}
+            style={
+              lightboxSwipe.offset !== null
+                ? `--chalk-swipe-x:${lightboxSwipe.offset}px`
+                : undefined
+            }
             role="dialog"
             aria-modal="true"
             aria-label={meta.name}
-            onClick={() => setExpanded(false)}
-            /* 64-9: swipe right closes the lightbox -- the same "back"
-               gesture as the conversation, one level at a time. The overlay
-               owns its touches (stopPropagation), so the app-level swipe
-               can't switch the screen under a modal. */
-            onTouchStart={(e) => {
-              e.stopPropagation();
-              lightboxSwipeRef.current = null;
-              if (e.touches.length !== 1) return;
-              const t = e.touches[0];
-              lightboxSwipeRef.current = { x: t.clientX, y: t.clientY };
-            }}
-            onTouchMove={(e) => {
-              e.stopPropagation();
-              const start = lightboxSwipeRef.current;
-              if (!start) return;
-              const t = e.touches[0];
-              if (swipeCancelled(start, t.clientX, t.clientY)) {
-                lightboxSwipeRef.current = null;
-                return;
-              }
-              if (!swipeTriggered(start, t.clientX, t.clientY, window.innerWidth)) return;
-              lightboxSwipeRef.current = null;
-              setExpanded(false);
-            }}
-            onTouchEnd={(e) => {
-              e.stopPropagation();
-              lightboxSwipeRef.current = null;
-            }}
-            onTouchCancel={(e) => {
-              e.stopPropagation();
-              lightboxSwipeRef.current = null;
-            }}
+            onClick={closeLightbox}
+            onTouchStart={lightboxSwipe.onTouchStart}
+            onTouchMove={lightboxSwipe.onTouchMove}
+            onTouchEnd={lightboxSwipe.onTouchEnd}
+            onTouchCancel={lightboxSwipe.onTouchCancel}
             data-testid="attachment-lightbox"
           >
             <img

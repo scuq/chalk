@@ -12,7 +12,22 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Changed
+- On phones, the swipe back to your conversation list now follows your finger.
+  The conversation slides with the touch and settles when you let go, instead
+  of the screen changing the instant you crossed some invisible distance — and
+  a swipe you think better of halfway puts everything back rather than
+  navigating. A quick flick works as well as a long drag.
+
 ### Fixed
+- You can now swipe your way out of a thread on a phone. An open thread covers
+  the whole screen, including the back button, so the small × in its corner was
+  the only way out and swiping did nothing. Swiping right leaves the thread, and
+  swiping again leaves the conversation. The list of active threads closes the
+  same way.
+- The back swipe no longer fights the browser's own. Swiping right in a
+  conversation could drag the whole page sideways a short distance and snap back
+  instead of going back, and which of the two gestures won was unpredictable.
 - The conversation list no longer previews an out-of-date message. A row could
   keep showing the message before the newest one — including one you had just
   sent yourself — until you reloaded the page. Sending, reading history and

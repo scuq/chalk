@@ -27,6 +27,21 @@ export const SWIPE_TRIGGER_MIN_PX = 24;
 // would keep the trigger unreachable in exactly the zone this exists for.
 const RUNWAY_FRACTION = 0.6;
 
+// 64-12: the surface now follows the finger instead of jumping at the
+// trigger, and the decision moved to the release. Two consequences for the
+// rules here.
+//
+// First, tracking cannot start on the first pixel: a tap and the opening
+// frames of a scroll both move sideways a little, and translating the whole
+// screen for them would make the app twitch constantly. The gesture becomes
+// visible only once the finger has said which way it is going.
+export const SWIPE_ARM_PX = 12;
+// Second, a fast flick is as decisive as a long drag and covers far less
+// glass -- committing on distance alone would demand a stroke nobody has a
+// reason to make. Speed counts, but only for a gesture that still travelled
+// far enough not to be a tap (SWIPE_TRIGGER_MIN_PX).
+export const SWIPE_FLICK_PX_PER_MS = 0.5;
+
 export interface SwipeStart {
   x: number;
   y: number;
@@ -52,4 +67,34 @@ export function swipeCancelled(start: SwipeStart, x: number, y: number): boolean
   const dx = x - start.x;
   const dy = Math.abs(y - start.y);
   return dy >= SWIPE_CANCEL_PX && dy > dx;
+}
+
+// 64-12: has the finger committed to a rightward gesture? Same horizontal
+// dominance the trigger demands, at the much shorter arming distance --
+// past this point the surface starts moving with the touch.
+export function swipeArmed(start: SwipeStart, x: number, y: number): boolean {
+  const dx = x - start.x;
+  const dy = Math.abs(y - start.y);
+  return dx >= SWIPE_ARM_PX && dx >= dy * 2;
+}
+
+// How far the surface sits from its resting place. One-to-one with the
+// finger and never leftward: the gesture only goes back.
+export function swipeOffset(start: SwipeStart, x: number): number {
+  return Math.max(0, x - start.x);
+}
+
+// The release decision: far enough, or fast enough.
+export function swipeCommits(
+  start: SwipeStart,
+  x: number,
+  y: number,
+  viewportWidth: number,
+  elapsedMs: number,
+): boolean {
+  if (swipeTriggered(start, x, y, viewportWidth)) return true;
+  const dx = x - start.x;
+  const dy = Math.abs(y - start.y);
+  if (dx < SWIPE_TRIGGER_MIN_PX || dx < dy * 2) return false;
+  return elapsedMs > 0 && dx / elapsedMs >= SWIPE_FLICK_PX_PER_MS;
 }

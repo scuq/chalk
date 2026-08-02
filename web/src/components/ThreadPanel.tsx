@@ -23,6 +23,8 @@ import type { GiphyPref } from "../giphy/giphy";
 import type { LinkPreviewPref } from "../linkpreview/linkpreview";
 import { MessageList } from "./MessageList";
 import { Composer, type SendOptions } from "./Composer";
+import { useIsMobile } from "../mobile";
+import { useSwipeBack } from "../chat/use-swipe-back";
 
 interface Props {
   // The thread head. Already in the channel cache; the panel\'s caller
@@ -151,8 +153,24 @@ export function ThreadPanel({
   onClose,
   onSend,
 }: Props) {
+  // 64-10: on a phone this panel is position:fixed over the whole screen --
+  // it covers the header's back button as well as the conversation, so the
+  // close button used to be the only way out of a thread. Swipe right closes
+  // it, one level at a time, like every other screen. Desktop keeps it as a
+  // column, where there is nothing to swipe away from.
+  const isMobile = useIsMobile();
+  const swipe = useSwipeBack(isMobile, onClose);
+
   return (
-    <aside class="chalk-thread-panel" data-testid="thread-panel">
+    <aside
+      class={`chalk-thread-panel${swipe.offset !== null ? " chalk-swipe-x" : ""}${swipe.settling ? " chalk-swipe-x--settling" : ""}`}
+      style={swipe.offset !== null ? `--chalk-swipe-x:${swipe.offset}px` : undefined}
+      onTouchStart={swipe.onTouchStart}
+      onTouchMove={swipe.onTouchMove}
+      onTouchEnd={swipe.onTouchEnd}
+      onTouchCancel={swipe.onTouchCancel}
+      data-testid="thread-panel"
+    >
       <header class="chalk-thread-panel-header">
         <span
           class={`chalk-thread-panel-title${title ? " chalk-thread-panel-title--head" : ""}`}

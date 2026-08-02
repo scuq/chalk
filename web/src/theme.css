@@ -223,6 +223,14 @@ html, body {
   /* Prevent iOS double-tap zoom on the composer button without
      disabling pinch-zoom on text. */
   touch-action: manipulation;
+  /* 64-11: the app's own swipe-right-back and the browser's swipe-to-go-back
+     are the same gesture. Nothing in the app scrolls sideways, so the
+     horizontal part of every back swipe reached the viewport and the browser
+     took it: the whole page dragged a short distance, hit the end of the
+     history it does not have, and sprang back -- and whichever of the two
+     claimed the touch first was a coin toss. This is the switch that turns
+     the browser's half off. */
+  overscroll-behavior-x: none;
   /* iOS Safari inflates text it deems too small ("font boosting"),
      most visibly on rotation to landscape. The UI sets its own sizes
      deliberately; pinch-zoom and the 16px control floor below remain
@@ -376,6 +384,41 @@ html {
 .chalk-footer-left,
 .chalk-footer-main {
   min-width: 0;
+}
+
+/* -- 64-12: the back gesture, while the finger is on it ---------------
+   The surface follows the touch one-to-one and settles on release. Two
+   rules about when the transform exists at all:
+
+   Only mid-gesture. A transform -- even translateX(0) -- makes an element
+   the containing block for its position:fixed descendants, which would move
+   the message menu and the lightbox off the viewport anchors they are
+   positioned against. So the classes come and go with the drag, and a
+   resting surface has no transform property at all.
+
+   Only settling animates. During the drag the transition is off, or the
+   surface would lag a finger it is supposed to be stuck to. 160ms ease-out
+   matches the roster drawer -- the one other thing on a phone that slides. */
+.chalk-swipe-x {
+  transform: translateX(var(--chalk-swipe-x, 0px));
+}
+
+.chalk-swipe-x--settling {
+  transition: transform 160ms ease-out;
+}
+
+/* The conversation and the composer are separate children of the shell
+   grid, so the shell carries the offset and moves both. The header stays:
+   it is the same header on the list screen, and pinning it gives the
+   sliding pane something to slide against. */
+.chalk-app--swiping .chalk-main,
+.chalk-app--swiping .chalk-footer-main {
+  transform: translateX(var(--chalk-swipe-x, 0px));
+}
+
+.chalk-app--swiping-settle .chalk-main,
+.chalk-app--swiping-settle .chalk-footer-main {
+  transition: transform 160ms ease-out;
 }
 
 /* 43-6: "alice is typing...". The row is reserved whether or not anyone is

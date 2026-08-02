@@ -183,8 +183,8 @@ import { Sidebar, ChannelGlyph } from "./Sidebar";
 // 62-6: Zuckermode -- the phone's unified conversation list.
 import { ZuckerList } from "./ZuckerList";
 import { buildConversationList, buildFriendList, previewText } from "../chat/zucker";
-// 64-3/64-4: swipe right in a conversation = the Zuckermode back button.
-import { swipeCancelled, swipeTriggered, type SwipeStart } from "../chat/swipe-back";
+// 64-3/64-4/64-10: swipe right = back, on every screen that has a "back".
+import { useSwipeBack } from "../chat/use-swipe-back";
 import { MessageList } from "./MessageList";
 import { ConfirmModal } from "./ConfirmModal";
 import { Composer } from "./Composer";
@@ -557,9 +557,19 @@ export function App() {
     () => (zuckerActive ? buildFriendList(state.friends, state.presence) : []),
     [zuckerActive, state.friends, state.presence],
   );
-  // 64-3: an armed edge swipe on the chat screen; null between touches.
-  // A ref, not state -- coordinates during a drag must not cause renders.
-  const zuckerSwipeRef = useRef<SwipeStart | null>(null);
+  // 64-3/64-12: swipe right in a conversation = the Zuckermode back button.
+  // The conversation and the composer travel with the finger together; the
+  // header stays put because it is the same header on both screens.
+  const backToList = useCallback(() => {
+    // Un-park on the way out: the list is the home screen here, so "parked"
+    // would otherwise linger invisibly behind it.
+    if (state.parked) dispatch({ kind: "set_parked", parked: false });
+    setZuckerScreen("list");
+  }, [state.parked]);
+  const chatSwipe = useSwipeBack(
+    zuckerActive && zuckerScreen === "chat",
+    backToList,
+  );
 
   // 33-4: sidebar width. The committed value lives in prefs (so it follows
   // the user to their other devices); sidebarDrag holds the in-flight width
@@ -4432,12 +4442,24 @@ export function App() {
     ? selectChatPrefs(state.prefs).selfColorHue
     : null;
 
+  // 64-12: the back gesture moves the conversation and the composer, which
+  // are separate grid children -- so the offset rides on the shell and the
+  // rule inside applies it to both. The classes gate the transform: without
+  // them a resting translateX(0) would turn .chalk-main into a containing
+  // block for the message menu it holds.
+  const shellStyle = [
+    // 33-4: drives the sidebar grid column. Omitted on mobile, where the
+    // sidebar is a drawer sized by its own rule.
+    isMobile ? null : `--chalk-sidebar-w:${sidebarWidth}px`,
+    chatSwipe.offset !== null ? `--chalk-swipe-x:${chatSwipe.offset}px` : null,
+  ]
+    .filter(Boolean)
+    .join(";");
+
   return (
     <div
-      class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${isMobile ? "chalk-app--mobile" : ""} ${navOpen && !zuckerActive ? "chalk-app--nav-open" : ""} ${zuckerActive ? "chalk-app--zucker" : ""} ${zuckerActive && zuckerScreen === "list" ? "chalk-app--zucker-list" : ""}`}
-      // 33-4: drives the sidebar grid column. Omitted on mobile, where the
-      // sidebar is a drawer sized by its own rule.
-      style={isMobile ? undefined : `--chalk-sidebar-w:${sidebarWidth}px`}
+      class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${isMobile ? "chalk-app--mobile" : ""} ${navOpen && !zuckerActive ? "chalk-app--nav-open" : ""} ${zuckerActive ? "chalk-app--zucker" : ""} ${zuckerActive && zuckerScreen === "list" ? "chalk-app--zucker-list" : ""} ${chatSwipe.offset !== null ? "chalk-app--swiping" : ""} ${chatSwipe.settling ? "chalk-app--swiping-settle" : ""}`}
+      style={shellStyle || undefined}
     >
       <header class="chalk-header">
         <div class="chalk-header-left">
@@ -4637,50 +4659,14 @@ export function App() {
               : "")
         }
         /* 64-3/64-4: swipe right anywhere in the conversation does what the
-           header's back button does (the left screen edge is unusable --
-           iOS keeps it for its own history gesture). Only the chat screen
-           arms it; triggering mid-drag (not on release) makes the
-           navigation feel immediate. */
-        onTouchStart={(e) => {
-          zuckerSwipeRef.current = null;
-          if (!zuckerActive || zuckerScreen !== "chat") return;
-          if (e.touches.length !== 1) return;
-          // A touch on something horizontally pannable or draggable -- a
-          // scrolling code block, the voice volume slider -- is for that
-          // element, not for navigating back.
-          let el = e.target as HTMLElement | null;
-          while (el && el !== e.currentTarget) {
-            const tag = el.tagName;
-            if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-            if (el.scrollWidth > el.clientWidth + 1) return;
-            el = el.parentElement;
-          }
-          const t = e.touches[0];
-          zuckerSwipeRef.current = { x: t.clientX, y: t.clientY };
-        }}
-        onTouchMove={(e) => {
-          const start = zuckerSwipeRef.current;
-          if (!start) return;
-          const t = e.touches[0];
-          // A touch that turned into a vertical scroll stays dead until the
-          // finger lifts -- it must not fire on the way through a diagonal.
-          if (swipeCancelled(start, t.clientX, t.clientY)) {
-            zuckerSwipeRef.current = null;
-            return;
-          }
-          if (!swipeTriggered(start, t.clientX, t.clientY, window.innerWidth)) return;
-          zuckerSwipeRef.current = null;
-          // Same exit as the parked screen's back button: un-park so the
-          // state doesn't linger invisibly behind the list.
-          if (state.parked) dispatch({ kind: "set_parked", parked: false });
-          setZuckerScreen("list");
-        }}
-        onTouchEnd={() => {
-          zuckerSwipeRef.current = null;
-        }}
-        onTouchCancel={() => {
-          zuckerSwipeRef.current = null;
-        }}
+           header's back button does. The left screen edge is unusable --
+           iOS keeps it for its own history gesture -- so the gesture arms
+           across the whole pane; the rules in swipe-back.ts are what keep
+           an ordinary scroll from navigating. */
+        onTouchStart={chatSwipe.onTouchStart}
+        onTouchMove={chatSwipe.onTouchMove}
+        onTouchEnd={chatSwipe.onTouchEnd}
+        onTouchCancel={chatSwipe.onTouchCancel}
       >
         {/* 62-6: Zuckermode's list screen replaces the conversation
             entirely; everything below stays mounted-but-hidden logic-free

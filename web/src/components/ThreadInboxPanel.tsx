@@ -49,6 +49,8 @@ import {
 } from "../chat/threadinbox";
 import { fmtRelative } from "../chat/reltime";
 import { threadTitle } from "../chat/threadtitle";
+import { useIsMobile } from "../mobile";
+import { useSwipeBack } from "../chat/use-swipe-back";
 
 interface Props {
   active: ThreadInboxRow[];
@@ -165,6 +167,12 @@ export function ThreadInboxPanel({
 
   const filtering = terms.length > 0;
 
+  // 64-10: on a phone the card fills the screen, so it is a place you are
+  // rather than something floating over one -- swipe right leaves it, same
+  // as everywhere else. The gesture never arms on the filter field.
+  const isMobile = useIsMobile();
+  const swipe = useSwipeBack(isMobile, onClose);
+
   const renderRow = (r: ThreadInboxRow) => {
     const mentioned = mentions[r.threadID] === true;
     const lines = threadLines[r.threadID] ?? [];
@@ -248,10 +256,15 @@ export function ThreadInboxPanel({
   return (
     <div class="chalk-modal-backdrop" role="presentation" onClick={onClose}>
       <div
-        class="chalk-modal-card chalk-threadinbox-panel"
+        class={`chalk-modal-card chalk-threadinbox-panel${swipe.offset !== null ? " chalk-swipe-x" : ""}${swipe.settling ? " chalk-swipe-x--settling" : ""}`}
+        style={swipe.offset !== null ? `--chalk-swipe-x:${swipe.offset}px` : undefined}
         role="dialog"
         aria-label="threads with new replies"
         onClick={(e) => e.stopPropagation()}
+        onTouchStart={swipe.onTouchStart}
+        onTouchMove={swipe.onTouchMove}
+        onTouchEnd={swipe.onTouchEnd}
+        onTouchCancel={swipe.onTouchCancel}
       >
         <div class="chalk-threadinbox-header">
           <div class="chalk-threadinbox-title">
