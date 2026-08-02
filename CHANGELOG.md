@@ -12,6 +12,17 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- Messages can show italics, bold and code, if you want them to. Turn on nano
+  markdown in settings under chat, and asterisks and backticks in the messages
+  you receive render as emphasis and fixed-width code instead of showing as
+  characters. It is your setting and nobody else's: what you type is never
+  touched — the composer doesn't rewrite anything and doesn't preview anything
+  — and the people you write to see the plain characters unless they have
+  turned it on for themselves. Three markers and nothing more: no headings,
+  lists, quotes or link syntax. Copying a message still gives you exactly what
+  was typed.
+
 ### Changed
 - The keyboard shortcuts are in settings now, under chat → keyboard shortcuts,
   instead of behind a "?" beside the send button. The composer was running out

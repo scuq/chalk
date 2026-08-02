@@ -113,6 +113,10 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       "emoji",
       "typing",
       "shorten links",
+      "nano markdown",
+      "bold",
+      "italic",
+      "inline code",
     ],
   },
   {

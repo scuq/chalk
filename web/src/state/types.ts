@@ -359,6 +359,11 @@ export interface ChatPrefs {
   // 67-1: render long pasted URLs as a "[link to host]" label. Default ON.
   // Display-only -- the href underneath is always the full raw URL.
   shortenLinks?: boolean;
+  // 77-2: render `code`, **bold** and *italic* in messages. Default OFF, and
+  // receive-side only -- the composer never rewrites or previews anything, so
+  // the literal characters always go over the wire and everyone else reads
+  // them as typed unless they turn this on too.
+  nanoMarkdown?: boolean;
 }
 
 // 53-1: the parking lot's own settings. Account-synced rather than
@@ -487,6 +492,8 @@ export interface ResolvedChatPrefs {
   typingIndicators: boolean;
   // 67-1: defaulted to true.
   shortenLinks: boolean;
+  // 77-2: defaulted to false -- it is opt-in.
+  nanoMarkdown: boolean;
 }
 
 // selectChatPrefs takes the (possibly sparse) prefs.chat and fills in
@@ -515,6 +522,7 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
         : clampSidebarWidth(c.sidebarWidth),
     typingIndicators: c.typingIndicators ?? true,
     shortenLinks: c.shortenLinks ?? true,
+    nanoMarkdown: c.nanoMarkdown ?? false,
   };
 }
 

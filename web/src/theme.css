@@ -5988,6 +5988,31 @@ body.chalk-resizing .chalk-sidebar-resizer {
   content: "]";
 }
 
+/* 77-3: nano markdown. Three inline marks and no block-level rules, because
+   there is no block-level markdown -- inline code, bold and italic is the
+   whole feature.
+
+   The tint is what carries inline code, not the face: --chalk-font defaults
+   to the mono stack, so for most readers a monospace <code> would look
+   identical to the text around it. Naming the stack still matters for anyone
+   who picked a sans or serif in display prefs -- same reasoning as
+   .chalk-codecard-body. */
+.chalk-body-code {
+  font-family: var(--chalk-font-mono);
+  font-size: 0.95em;
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: 0 3px;
+  overflow-wrap: anywhere;
+}
+.chalk-body-strong {
+  font-weight: 700;
+}
+.chalk-body-em {
+  font-style: italic;
+}
+
 /* Live occupant sublist under a voice channel. Indented past the glyph
    column so names align with the channel name above. */
 .chalk-sidebar-occupants {

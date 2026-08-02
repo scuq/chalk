@@ -102,6 +102,8 @@ interface Props {
     typingIndicators: boolean;
     // 67-1:
     shortenLinks: boolean;
+    // 77-2:
+    nanoMarkdown: boolean;
   };
   onSetChatPref?: <
     K extends
@@ -114,7 +116,8 @@ interface Props {
       | "emoticons"
       | "sidebarWidth"
       | "typingIndicators"
-      | "shortenLinks",
+      | "shortenLinks"
+      | "nanoMarkdown",
   >(
     key: K,
     value: K extends "timestampFormat"
@@ -853,6 +856,31 @@ export function ProfilePanel({
                   trimmed to its start, tracking junk dropped. hovering shows
                   the real target, and right-click still copies the full
                   link.
+                </p>
+              </div>
+              {/* 77-2: nano markdown, receive-side only. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={chatPrefs.nanoMarkdown}
+                    onChange={(e) =>
+                      onSetChatPref(
+                        "nanoMarkdown",
+                        (e.target as HTMLInputElement).checked,
+                      )
+                    }
+                    data-testid="chat-nano-markdown"
+                  />
+                  <span>nano markdown</span>
+                </label>
+                <p class="chalk-profile-hint">
+                  *asterisks* become italic, **two** become bold, and
+                  `backticks` become fixed-width code. three markers, nothing
+                  else — no headings, lists or link syntax. this only changes
+                  what you read: your own typing is never altered, and the
+                  people you write to see the plain characters unless they
+                  turn this on too.
                 </p>
               </div>
               {onSetUserColors && (

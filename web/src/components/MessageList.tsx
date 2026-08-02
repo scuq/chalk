@@ -1,4 +1,4 @@
-import { Fragment } from "preact";
+import { Fragment, type ComponentChildren } from "preact";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import {
   autoPagingAllowed,
@@ -19,6 +19,7 @@ import { decideCodeRender } from "../code/code";
 import { clipboardText } from "../chat/bodytext";
 import { DEFAULT_SELF_HUE, nickTintStyle, resolveNickHue } from "../chat/nickcolor";
 import { linkDisplayText, splitBodyParts } from "../chat/links";
+import { splitBodyNano, type NanoPart } from "../chat/nanomd";
 import { fmtRelative } from "../chat/reltime";
 import { lazyComponent } from "./LazyComponent";
 // Lazy: Giphy render path is opt-in; keep it out of the initial bundle.
@@ -39,19 +40,38 @@ const CodeBlockView = lazyComponent(() =>
 // link tokens; the text of all three goes in as text nodes, and a link's href
 // is restricted to http/https by chat/links.ts, so this adds no
 // HTML-injection surface over rendering the raw body.
+//
+// 77-3: with nano markdown on, the split also carries three inline marks, and
+// the same guarantee holds. chat/nanomd.ts only ever *drops* delimiter
+// characters and hands back substrings; the <code>/<strong>/<em> around a
+// piece are elements this function creates, never markup parsed out of a
+// message.
+const marked = (seg: NanoPart) => !!(seg.code || seg.bold || seg.italic);
+
 function MessageBody({
   body,
   known,
   ownHandle,
   shortenLinks,
+  nanoMarkdown,
 }: {
   body: string;
   known: Set<string>;
   ownHandle?: string | null;
   shortenLinks?: boolean;
+  nanoMarkdown?: boolean;
 }) {
-  const segments = splitBodyParts(body, known);
-  if (segments.length === 1 && !segments[0].handle && !segments[0].href) return <>{body}</>;
+  const segments: NanoPart[] = nanoMarkdown
+    ? splitBodyNano(body, known)
+    : splitBodyParts(body, known);
+  if (
+    segments.length === 1 &&
+    !segments[0].handle &&
+    !segments[0].href &&
+    !marked(segments[0])
+  ) {
+    return <>{body}</>;
+  }
   const me = ownHandle ? ownHandle.toLowerCase() : null;
   return (
     <>
@@ -60,7 +80,7 @@ function MessageBody({
         // href and title keep the full address, so hover and the native
         // "copy link address" stay honest.
         const label = shortenLinks && seg.href ? linkDisplayText(seg.text) : seg.text;
-        return seg.href ? (
+        const node = seg.href ? (
           <a
             key={i}
             class={"chalk-body-link" + (label !== seg.text ? " chalk-body-link--label" : "")}
@@ -89,6 +109,12 @@ function MessageBody({
         ) : (
           seg.text
         );
+        if (!marked(seg)) return node;
+        let out: ComponentChildren = node;
+        if (seg.code) out = <code class="chalk-body-code">{out}</code>;
+        if (seg.bold) out = <strong class="chalk-body-strong">{out}</strong>;
+        if (seg.italic) out = <em class="chalk-body-em">{out}</em>;
+        return <Fragment key={i}>{out}</Fragment>;
       })}
     </>
   );
@@ -217,6 +243,8 @@ interface Props {
     userHues: Record<string, number>;
     // 67-1: long URLs render as "[link to host]" labels.
     shortenLinks: boolean;
+    // 77-3: render `code`, **bold** and *italic*. Opt-in, per reader.
+    nanoMarkdown: boolean;
   };
   // Phase 9.7e: is the active channel a DM? Used to filter scoped color rules.
   isDM?: boolean;
@@ -680,6 +708,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     selfColorHue: DEFAULT_SELF_HUE,
     userHues: {} as Record<string, number>,
     shortenLinks: true,
+    nanoMarkdown: false,
   };
   const now = new Date();
 
@@ -999,6 +1028,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                   known={knownHandles}
                   ownHandle={ownHandle}
                   shortenLinks={display_.shortenLinks}
+                  nanoMarkdown={display_.nanoMarkdown}
                 />
               )}
               {/* 37-3: only one version of a message is ever stored, so
