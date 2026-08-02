@@ -27,6 +27,7 @@ export type SectionId =
   | "appearance"
   | "chat"
   | "roster"
+  | "shortcuts"
   | "parking"
   | "notifications"
   | "away"
@@ -119,6 +120,19 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     tab: "chat",
     title: "channel list",
     keywords: ["grouping", "groups", "zuckermode", "channels"],
+  },
+  {
+    id: "shortcuts",
+    tab: "chat",
+    title: "keyboard shortcuts",
+    keywords: [
+      "keyboard",
+      "shortcuts",
+      "keys",
+      "hotkeys",
+      "keybindings",
+      "cheat sheet",
+    ],
   },
   {
     id: "parking",

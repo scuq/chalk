@@ -28,7 +28,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #voice          30 41 44 63 66 70 71  internal/turncred/ web/src/voice/ web/src/components/VoiceCallPanel.tsx
 #camera-bg      52        web/src/voice/ web/src/components/
 #threads        42 45 47 49  web/src/chat/threadinbox.ts web/src/chat/ web/src/components/
-#unread         33 62     web/src/chat/ web/src/state/ web/src/components/MessageList.tsx web/src/components/ZuckerList.tsx
+#unread         33 62 76  web/src/chat/ web/src/state/ web/src/components/MessageList.tsx web/src/components/ZuckerList.tsx
 #notify         40 50 71  web/src/notify/
 #parking        53        web/src/parking.ts web/src/components/
 #roster         54        web/src/chat/ web/src/components/Sidebar.tsx
@@ -42,8 +42,8 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #presence       34        internal/presence/ internal/server/
 #spacekeys      25 38     web/src/crypto/ internal/store/
 #deletion       35        web/src/chat/ web/src/components/
-#mobile         64        web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/components/ web/src/theme.css
-#settings       68 70     web/src/settings-nav.ts web/src/components/ProfilePanel.tsx
+#mobile         64 76     web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/components/ web/src/theme.css
+#settings       68 70 76  web/src/settings-nav.ts web/src/components/ProfilePanel.tsx
 #version        39        internal/version/ web/src/version.ts
 #servernotice   46        web/src/state/ web/src/components/
 #governance     -         internal/store/governance.go internal/server/governance_ws.go
@@ -56,4 +56,4 @@ Phase numbers that appear in the source but are not claimed above. Left here
 rather than guessed at, so the legend stays trustworthy; move one into a tag
 line when its topic is clear.
 
-    (none — 25 through 75 are all claimed)
+    (none — 25 through 76 are all claimed)

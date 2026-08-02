@@ -109,25 +109,24 @@ export function useSwipeBack(
       }
       if (!enabled) return;
       if (e.touches.length !== 1) return;
-      // A touch on something horizontally pannable or draggable -- a
-      // scrolling strip, a slider -- is for that element, not for
-      // navigating back. Text fields keep their own selection gestures.
+      // A touch on something the element itself will consume -- a strip
+      // panned back from its left edge, a slider -- is for that element, not
+      // for navigating back. Text fields keep their own selection gestures.
       //
-      // Overflowing is not the same as pannable. Every clipped single-line
-      // label in the app -- a thread's header title, a conversation preview,
-      // anything with text-overflow: ellipsis -- overflows horizontally as
-      // soon as its text is long enough, and testing width alone would
-      // silently kill the gesture wherever a long one happened to sit. The
-      // element has to actually scroll, not merely not fit.
+      // 76-2: the test is scrollLeft, not "can this scroll at all". Being
+      // scrollable is not the same as having somewhere to go: a code card's
+      // snippet (.chalk-codecard-body, overflow-x: auto) overflows whenever
+      // the code is wider than the phone, so the old test killed the gesture
+      // over every code message even though the card sat at its left edge
+      // with nothing to pan. Back is a rightward swipe, which can only
+      // scroll an element leftward, so a scrollLeft of 0 leaves the gesture
+      // free -- the same rule the platform's own edge-back follows.
       const root = e.currentTarget as HTMLElement | null;
       let el = e.target as HTMLElement | null;
       while (el && el !== root) {
         const tag = el.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-        if (el.scrollWidth > el.clientWidth + 1) {
-          const overflowX = getComputedStyle(el).overflowX;
-          if (overflowX === "auto" || overflowX === "scroll") return;
-        }
+        if (el.scrollLeft > 0) return;
         el = el.parentElement;
       }
       const t = e.touches[0];

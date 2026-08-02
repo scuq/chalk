@@ -44,3 +44,18 @@ export const LANDING_PAGE_LIMIT = 4;
 export function landingFillAllowed(pagesFetched: number): boolean {
   return pagesFetched < LANDING_PAGE_LIMIT;
 }
+
+// 76-3: the divider only earns a scroll when the unread run is taller than
+// the screen. Coming back from a phone's conversation list re-freezes the
+// unread window every time, so a couple of new messages -- which are on
+// screen anyway from the bottom -- were enough to land the reader mid-feed
+// with the newest message hidden below the fold.
+//
+// The slack keeps the divider clear of the pinned channel header instead of
+// flush against the top of the scrollport, where it would sit underneath it.
+export const UNREAD_FIT_SLACK_PX = 48;
+
+export function unreadRunFits(runPx: number, viewportPx: number): boolean {
+  if (viewportPx <= 0) return false;
+  return runPx + UNREAD_FIT_SLACK_PX <= viewportPx;
+}

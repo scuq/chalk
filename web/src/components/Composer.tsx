@@ -36,7 +36,6 @@ import {
 import { insertAtCursor } from "../emoji/emoji";
 import { replaceEmoticonBefore } from "../emoji/emoticons";
 import {
-  composerHelp,
   isMacPlatform,
   matchComposerShortcut,
   shortcutLabel,
@@ -235,14 +234,11 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   // Phase 9.7g: emoji picker open state. The textarea ref lets us splice the
   // pick in at the caret and restore focus, rather than appending.
   const [emojiOpen, setEmojiOpen] = useState(false);
-  // 42-1: the shortcut cheat sheet behind the "?" button.
-  const [helpOpen, setHelpOpen] = useState(false);
   // 74-2: the CODE modal, and the snippet it has staged for the next send.
   // Staged rather than sent on its own, so a snippet can carry a caption.
   const [codeOpen, setCodeOpen] = useState(false);
   const [stagedCode, setStagedCode] = useState<CodePayload | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const helpRef = useRef<HTMLDivElement | null>(null);
   // 42-1: the last emoticon we swapped for an emoji, so an immediate
   // Backspace can put the typed characters back. Cleared by any other edit.
   const undoEmoticon = useRef<{ caret: number; text: string; emoji: string } | null>(null);
@@ -254,25 +250,6 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   const [mentionSel, setMentionSel] = useState(0);
   const mentionDismissed = useRef<number | null>(null);
 
-  // 42-1: the help sheet is a popover, so it closes the way popovers do --
-  // Escape or a click anywhere else. Without this it would sit over the
-  // message list until you found the "?" again.
-  useEffect(() => {
-    if (!helpOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      const el = helpRef.current;
-      if (el && e.target instanceof Node && !el.contains(e.target)) setHelpOpen(false);
-    };
-    const onEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setHelpOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onEscape);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onEscape);
-    };
-  }, [helpOpen]);
   // att-3: per-item upload fraction (0..1) while sending.
   const [progress, setProgress] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -825,13 +802,6 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
       void submit();
       return;
     }
-    // 42-1: with the help sheet open, Escape closes that first -- dismissing a
-    // popover should not also throw away the edit behind it.
-    if (e.key === "Escape" && helpOpen) {
-      e.preventDefault();
-      setHelpOpen(false);
-      return;
-    }
     // Phase 37-3: Escape leaves edit mode. Only when editing -- otherwise
     // Escape belongs to whatever else is listening (pickers, panels).
     if (e.key === "Escape" && editing) {
@@ -1250,45 +1220,10 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
             data-testid="composer-input"
             aria-label="message"
           />
-          {/* 74-2: the shortcut sheet moved out of the tool block so CODE
-              could have its cell and the block stay a 2x2 -- the rail's height
-              is what matches the two-row input, and a fifth cell broke it. It
-              sits by the send button now, and unlike before it is reachable
-              during an edit, where the sheet's escape/cursor-up rows are
-              exactly what a reader wants. */}
-          <div class="chalk-composer-help" ref={helpRef}>
-            <button
-              type="button"
-              class="chalk-composer-tool chalk-composer-help-toggle"
-              onClick={() => setHelpOpen((v) => !v)}
-              title="keyboard shortcuts"
-              aria-label="keyboard shortcuts"
-              aria-expanded={helpOpen}
-              data-testid="composer-help-toggle"
-            >
-              ?
-            </button>
-            {helpOpen && (
-              <div
-                class="chalk-composer-help-sheet"
-                role="dialog"
-                aria-label="composer keyboard shortcuts"
-                data-testid="composer-help-sheet"
-              >
-                <div class="chalk-composer-help-title">shortcuts</div>
-                <dl class="chalk-composer-help-list">
-                  {composerHelp(mac).map((row) => (
-                    <div class="chalk-composer-help-row" key={row.keys}>
-                      <dt>
-                        <kbd>{row.keys}</kbd>
-                      </dt>
-                      <dd>{row.what}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
-            )}
-          </div>
+          {/* 76-1: the shortcut sheet used to live here, behind a "?" beside
+              send. On a phone that cell was width the composer did not have,
+              and a cheat sheet is something you read once -- so it is a
+              settings section now (ProfilePanel, "keyboard shortcuts"). */}
           <button
             type="button"
             class="chalk-composer-send"

@@ -3948,6 +3948,33 @@ body.chalk-resizing .chalk-sidebar-resizer {
   font-style: italic;
 }
 
+/* 76-1: the keyboard cheat sheet. Two columns as a grid rather than a
+   per-row flex box, so the descriptions line up down the list; the rows are
+   display: contents so the <dt>/<dd> pairs land in the grid's tracks. */
+.chalk-profile-keys {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--chalk-s1) var(--chalk-s3);
+  margin: var(--chalk-s2) 0 0;
+  font-size: var(--chalk-size-small);
+}
+.chalk-profile-keys-row {
+  display: contents;
+}
+.chalk-profile-keys-row dt,
+.chalk-profile-keys-row dd {
+  margin: 0;
+}
+.chalk-profile-keys-row dd {
+  color: var(--chalk-fg-dim);
+}
+.chalk-profile-keys kbd {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--chalk-fg-bright);
+  white-space: nowrap;
+}
+
 /* ============================================================
    Phase 9.7c: cyberpunk theme
    ============================================================
@@ -6867,66 +6894,9 @@ body.chalk-resizing .chalk-sidebar-resizer {
   cursor: not-allowed;
 }
 
-/* 42-1: the shortcut cheat sheet. Anchored to the "?" button and opening
-   upward, because the composer is at the bottom of the viewport. */
-.chalk-composer-help {
-  position: relative;
-  display: inline-flex;
-}
-.chalk-composer-help-toggle {
-  width: 22px;
-  padding: 0;
-  text-align: center;
-}
-/* 74-2: anchored to the right edge now that the "?" sits beside the send
-   button rather than in the tool block -- opening leftward from there would
-   run the sheet off the screen. */
-.chalk-composer-help-sheet {
-  position: absolute;
-  bottom: calc(100% + var(--chalk-s2));
-  right: 0;
-  z-index: 40;
-  width: max-content;
-  max-width: min(320px, calc(100vw - 2 * var(--chalk-s4)));
-  padding: var(--chalk-s2) var(--chalk-s3);
-  background: var(--chalk-bg-elev);
-  border: 1px solid var(--chalk-border);
-  border-radius: var(--chalk-radius);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-  font-size: var(--chalk-size-small);
-}
-.chalk-composer-help-title {
-  color: var(--chalk-fg-dim);
-  letter-spacing: 0.06em;
-  margin-bottom: var(--chalk-s2);
-}
-/* Two columns so the descriptions line up, as a grid rather than a per-row
-   flex box: the sheet is sized by its own content (width: max-content), and
-   Safari ignores a flex item's flex-basis when measuring that, which collapsed
-   the sheet to the key column and wrapped every description. Grid track sizing
-   it measures correctly. */
-.chalk-composer-help-list {
-  display: grid;
-  grid-template-columns: auto auto;
-  gap: var(--chalk-s1) var(--chalk-s3);
-  margin: 0;
-}
-.chalk-composer-help-row {
-  display: contents;
-}
-.chalk-composer-help-row dt,
-.chalk-composer-help-row dd {
-  margin: 0;
-}
-.chalk-composer-help-row dd {
-  color: var(--chalk-fg-dim);
-}
-.chalk-composer-help-sheet kbd {
-  font-family: inherit;
-  font-size: inherit;
-  color: var(--chalk-fg-bright);
-  white-space: nowrap;
-}
+/* 76-1: the cheat sheet is a settings section now -- see .chalk-profile-keys.
+   The composer's "?" and its popover are gone; on a phone the button was
+   width the composer could not spare. */
 
 /* Header left cluster: brand, plus the nav toggle on mobile. */
 .chalk-header-left {
@@ -8341,19 +8311,6 @@ body.chalk-resizing .chalk-sidebar-resizer {
 
   .chalk-composer-input {
     min-height: 72px;
-  }
-
-  /* Opening upward from a rail at the very bottom of the screen would put the
-     sheet behind the field, so pin it to the viewport instead. */
-  .chalk-composer-help-sheet {
-    position: fixed;
-    left: var(--chalk-s4);
-    right: var(--chalk-s4);
-    bottom: auto;
-    top: 50%;
-    transform: translateY(-50%);
-    width: auto;
-    max-width: none;
   }
 
   /* -- thread panel: full screen instead of a third column ----------- */

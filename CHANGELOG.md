@@ -10,6 +10,28 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- The keyboard shortcuts are in settings now, under chat → keyboard shortcuts,
+  instead of behind a "?" beside the send button. The composer was running out
+  of room on a phone, and a cheat sheet is something you read once rather than
+  a button you need next to what you're typing.
+- Opening a conversation with a handful of new messages puts you at the newest
+  one, with the "new messages" line still on screen above it. Before, any
+  unread message at all parked you at that line with the newest message hidden
+  below the fold — which on a phone happened nearly every time you came back
+  from the conversation list. A run of new messages taller than the screen
+  still lands you at the line, where you would otherwise have to scroll up to
+  find what you missed.
+
+### Fixed
+- Swiping back to the conversation list works when your finger starts on a
+  code block. A code card scrolls sideways, so any touch that landed on one
+  was treated as panning the snippet — even when it was already at its left
+  edge with nothing to pan, which left the gesture dead over every code
+  message.
+
 ## v0.6.1 — 2 August 2026 — Paste code, see who reacted, and a swipe that follows your finger
 
 ### Added

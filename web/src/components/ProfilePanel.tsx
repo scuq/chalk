@@ -38,6 +38,7 @@ import {
   PARKING_LOT_NAME_MAX,
   parkingLotName,
 } from "../parking";
+import { composerHelp, isMacPlatform } from "../chat/composer-keys";
 import { notifySounds } from "../notify";
 import { useSoundPrefs } from "../notify/prefs";
 import { CATEGORY_LABELS, MACHINE_CATEGORIES } from "../notify/types";
@@ -988,6 +989,29 @@ export function ProfilePanel({
                   </label>
                 </div>
               )}
+            </section>
+          )}
+
+          {/* 76-1: the cheat sheet the composer's "?" used to hold. Same
+              composerHelp() rows, so the two can't drift; the keys are the
+              same on every device, so there is nothing to store. */}
+          {show("shortcuts") && (
+            <section class="chalk-profile-shortcuts" data-testid="shortcuts-settings">
+              <h3>keyboard shortcuts</h3>
+              <p class="chalk-profile-hint">
+                What the composer listens for while you type. Nothing here is
+                configurable yet.
+              </p>
+              <dl class="chalk-profile-keys" data-testid="shortcuts-list">
+                {composerHelp(isMacPlatform()).map((row) => (
+                  <div class="chalk-profile-keys-row" key={row.keys}>
+                    <dt>
+                      <kbd>{row.keys}</kbd>
+                    </dt>
+                    <dd>{row.what}</dd>
+                  </div>
+                ))}
+              </dl>
             </section>
           )}
 

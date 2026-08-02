@@ -6,9 +6,11 @@ import {
   HISTORY_PAGE_SIZE,
   LANDING_PAGE_LIMIT,
   autoPagingAllowed,
+  UNREAD_FIT_SLACK_PX,
   landingFillAllowed,
   nextEmptyStreak,
   pageMarksComplete,
+  unreadRunFits,
 } from "./history-paging";
 
 test("a short page marks the channel complete, a full one doesn't", () => {
@@ -44,4 +46,24 @@ test("the landing budget is smaller than a channel but bigger than a page", () =
   // older than the whole channel cannot pull the reader to its beginning.
   assert.ok(LANDING_PAGE_LIMIT >= 2);
   assert.ok(LANDING_PAGE_LIMIT * HISTORY_PAGE_SIZE <= 500);
+});
+
+test("a short unread run is read from the bottom, a tall one is not", () => {
+  assert.equal(unreadRunFits(100, 600), true);
+  assert.equal(unreadRunFits(900, 600), false);
+});
+
+test("the fit leaves the divider clear of the pinned header", () => {
+  const viewport = 600;
+  assert.equal(unreadRunFits(viewport - UNREAD_FIT_SLACK_PX, viewport), true);
+  assert.equal(unreadRunFits(viewport - UNREAD_FIT_SLACK_PX + 1, viewport), false);
+  // Exactly filling the viewport is not a fit: the divider would land under
+  // the header rather than above the first unread message.
+  assert.equal(unreadRunFits(viewport, viewport), false);
+});
+
+test("an unmeasurable viewport never counts as a fit", () => {
+  // No scroller (tests, jsdom) must not silently turn every landing into
+  // "jump to the newest message" and throw the divider away.
+  assert.equal(unreadRunFits(0, 0), false);
 });

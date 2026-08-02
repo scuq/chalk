@@ -1,6 +1,11 @@
 import { Fragment } from "preact";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { autoPagingAllowed, landingFillAllowed, nextEmptyStreak } from "../chat/history-paging";
+import {
+  autoPagingAllowed,
+  landingFillAllowed,
+  nextEmptyStreak,
+  unreadRunFits,
+} from "../chat/history-paging";
 import type { Message, ReactionSet } from "../state/types";
 import { buildMessageMenu, type MessageMenuItem } from "../chat/message-menu";
 import { LONG_PRESS_MS, pressWandered } from "../chat/press";
@@ -147,14 +152,32 @@ function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
 // taken over and nothing should move the view but the user.
 type Anchor = "divider" | "end" | null;
 
+// 76-3: where a held "divider" anchor actually puts the view. The divider
+// only wins when the unread run is taller than the screen; a short run is
+// visible from the bottom anyway, and scrolling up to its head would hide the
+// newest message for no gain. Resolved on every application rather than once
+// at landing, because the run's height is not final until its images have
+// decrypted into their boxes -- a run measured while three attachments are
+// still one-line "decrypting…" strips looks short and then is not.
+function dividerEarnsTheScroll(
+  divider: HTMLElement,
+  end: HTMLElement | null,
+  scroller: HTMLElement | null,
+): boolean {
+  if (!end || !scroller) return true;
+  const run = end.getBoundingClientRect().bottom - divider.getBoundingClientRect().top;
+  return !unreadRunFits(run, scroller.clientHeight);
+}
+
 function scrollToAnchor(
   anchor: Anchor,
   divider: HTMLElement | null,
   end: HTMLElement | null,
+  scroller: HTMLElement | null,
 ) {
-  if (anchor === "divider" && divider) {
+  if (anchor === "divider" && divider && dividerEarnsTheScroll(divider, end, scroller)) {
     divider.scrollIntoView({ behavior: "auto", block: "start" });
-  } else if (anchor === "end" && end) {
+  } else if (anchor !== null && end) {
     end.scrollIntoView({ behavior: "auto", block: "end" });
   }
 }
@@ -446,7 +469,12 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     if (ephemeral || !el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
       if (anchorRef.current !== null) {
-        scrollToAnchor(anchorRef.current, dividerRef.current, endRef.current);
+        scrollToAnchor(
+          anchorRef.current,
+          dividerRef.current,
+          endRef.current,
+          scrollParentOf(el),
+        );
         return;
       }
       // 64-7: anchor released (the user touched) but the reader is still at
@@ -457,7 +485,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
       // still honestly says "following the feed", and following means
       // staying at the end through that growth.
       if (pinnedRef.current) {
-        scrollToAnchor("end", dividerRef.current, endRef.current);
+        scrollToAnchor("end", dividerRef.current, endRef.current, scrollParentOf(el));
       }
     });
     ro.observe(el);
@@ -477,9 +505,10 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
   // Scroll behaviour, in two modes.
   //
   // On arrival (first commit for this channelID that has messages) we land
-  // once: on the divider if there is one, otherwise at the newest message.
-  // The landing is instant rather than smooth -- animating a jump the user
-  // didn't ask for just makes the view feel like it's still settling.
+  // once: on the divider if there is one and the unread run is too tall to
+  // read from the bottom, otherwise at the newest message. The landing is
+  // instant rather than smooth -- animating a jump the user didn't ask for
+  // just makes the view feel like it's still settling.
   //
   // After that, any new message pins the view to the bottom as before.
   useEffect(() => {
@@ -489,10 +518,13 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
       // Landing mid-history means not pinned. Set it here rather than
       // waiting for the scroll event, so a message arriving in the same
       // tick can't win the race and yank us to the bottom.
-      const landOnDivider = dividerIndex >= 0 && dividerRef.current !== null;
+      const scroller = scrollParentOf(rootRef.current);
+      const divider = dividerIndex >= 0 ? dividerRef.current : null;
+      const landOnDivider =
+        divider !== null && dividerEarnsTheScroll(divider, endRef.current, scroller);
       pinnedRef.current = !landOnDivider;
-      anchorRef.current = landOnDivider ? "divider" : "end";
-      scrollToAnchor(anchorRef.current, dividerRef.current, endRef.current);
+      anchorRef.current = divider !== null ? "divider" : "end";
+      scrollToAnchor(anchorRef.current, dividerRef.current, endRef.current, scroller);
       return;
     }
     // A held divider anchor outranks pinnedRef. The reader was put

@@ -9,9 +9,10 @@
 // below keep ordinary scrolling from navigating: triggering takes decisive
 // rightward travel with clear horizontal dominance, and once vertical
 // motion dominates the touch is dead for good -- a scroll that drifts
-// sideways must not fire on the way through. Touches on horizontally
-// pannable or draggable elements (code blocks, sliders) never arm at all;
-// that check needs the DOM, so it lives with the listeners in App.
+// sideways must not fire on the way through. A touch on an element that has
+// somewhere to pan (a strip already scrolled off its left edge, a slider)
+// never arms at all; that check needs the DOM, so it lives in
+// use-swipe-back.ts with the listeners.
 
 export const SWIPE_TRIGGER_PX = 64;
 export const SWIPE_CANCEL_PX = 32;
