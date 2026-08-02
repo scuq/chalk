@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.6.1 — 2 August 2026 — Paste code, see who reacted, and a swipe that follows your finger
 
 ### Added
 - You can now see who sent a reaction. Hover a reaction under a message and a
