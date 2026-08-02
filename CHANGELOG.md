@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.6.0 — 2 August 2026 — Ask the server how it's doing
 
 ### Added
 - Anyone running a server can now ask it how it is doing. A single command
