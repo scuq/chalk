@@ -61,6 +61,17 @@ test("one star is italic, two bold, three both", () => {
   assert.deepEqual(m("***a***"), ["bi"]);
 });
 
+test("a span covers as many words as it likes, up to the line end", () => {
+  // The whole-word rule is about where a run starts and ends, not how much
+  // it wraps: only the inner edges have to hug a non-space.
+  assert.deepEqual(m("**two whole words**"), ["b"]);
+  assert.deepEqual(t("**two whole words**"), ["two whole words"]);
+  assert.deepEqual(m("*a whole sentence, with punctuation*"), ["i"]);
+  assert.deepEqual(m("`ls -la /some/path`"), ["c"]);
+  assert.deepEqual(t("say **that again** please"), ["say ", "that again", " please"]);
+  assert.deepEqual(m("say **that again** please"), ["-", "b", "-"]);
+});
+
 test("emphasis nests, and code nests inside it", () => {
   assert.deepEqual(t("**a *b* c**"), ["a ", "b", " c"]);
   assert.deepEqual(m("**a *b* c**"), ["b", "bi", "b"]);

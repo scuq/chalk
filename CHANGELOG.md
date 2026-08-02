@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.6.2 — 3 August 2026 — Nano markdown, shortcuts in settings, and a saner landing spot
 
 ### Added
 - Messages can show italics, bold and code, if you want them to. Turn on nano
