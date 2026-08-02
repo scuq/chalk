@@ -68,6 +68,43 @@ export function toggle(current: readonly string[], emoji: string): string[] {
     : [...current, emoji];
 }
 
+/** How many names the "who reacted" card lists before summarising the rest. */
+export const REACTOR_LIST_MAX = 12;
+
+export interface ReactorList {
+  names: string[];
+  /** Reactors beyond REACTOR_LIST_MAX, summarised rather than listed. */
+  more: number;
+}
+
+/**
+ * 75-1: the names behind one chip, for the card that says who reacted.
+ *
+ * An id with no handle falls back to its last 8 characters rather than to a
+ * word like "someone": a member who has left the channel is not in the roster,
+ * and two of them must not read as the same person.
+ */
+export function reactorList(
+  userIDs: readonly string[],
+  handleOf: (userID: string) => string | undefined,
+  selfUserID: string | null | undefined,
+): ReactorList {
+  const names = userIDs
+    .slice(0, REACTOR_LIST_MAX)
+    .map((u) =>
+      selfUserID && u === selfUserID ? "you" : handleOf(u) || u.slice(-8),
+    );
+  return { names, more: Math.max(0, userIDs.length - names.length) };
+}
+
+/** One-line form for the chip's aria-label: "alice, bob and you". */
+export function reactorSummary(list: ReactorList): string {
+  const parts = list.more > 0 ? [...list.names, `${list.more} more`] : list.names;
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0]!;
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
 /** The viewer's own current set for a message, or [] if they haven't reacted. */
 export function ownSet(
   sets: readonly ReactionSet[],

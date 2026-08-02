@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aggregate, toggle, ownSet, type ReactionSet } from "./reactions";
+import {
+  aggregate,
+  toggle,
+  ownSet,
+  reactorList,
+  reactorSummary,
+  REACTOR_LIST_MAX,
+  type ReactionSet,
+} from "./reactions";
 
 const ME = "user-me";
 const A = "user-a";
@@ -73,4 +81,44 @@ test("ownSet finds your set, or nothing", () => {
   assert.deepEqual(ownSet(sets, ME), ["👍"]);
   assert.deepEqual(ownSet(sets, "nobody"), []);
   assert.deepEqual(ownSet(sets, null), []);
+});
+
+const handles = new Map([[A, "alice"], [B, "bob"]]);
+const handleOf = (u: string) => handles.get(u);
+
+test("reactor names resolve you, the roster, then the bare id", () => {
+  // "user-nobody" is not in the channel roster -- someone who has left. Its
+  // tail still distinguishes it from the next departed member.
+  const out = reactorList([A, ME, "user-nobody"], handleOf, ME);
+  assert.deepEqual(out.names, ["alice", "you", "r-nobody"]);
+  assert.equal(out.more, 0);
+});
+
+test("with no session nobody is you", () => {
+  assert.deepEqual(reactorList([A, ME], handleOf, null).names, ["alice", "user-me"]);
+});
+
+test("a long reactor list is capped and the rest counted", () => {
+  const ids = Array.from({ length: REACTOR_LIST_MAX + 4 }, (_, i) => `user-${i}`);
+  const out = reactorList(ids, handleOf, null);
+  assert.equal(out.names.length, REACTOR_LIST_MAX);
+  assert.equal(out.more, 4);
+});
+
+test("no reactors lists nothing", () => {
+  assert.deepEqual(reactorList([], handleOf, ME), { names: [], more: 0 });
+  assert.equal(reactorSummary({ names: [], more: 0 }), "");
+});
+
+test("the summary joins with a final 'and', and folds the overflow in", () => {
+  assert.equal(reactorSummary({ names: ["alice"], more: 0 }), "alice");
+  assert.equal(reactorSummary({ names: ["alice", "you"], more: 0 }), "alice and you");
+  assert.equal(
+    reactorSummary({ names: ["alice", "bob", "you"], more: 0 }),
+    "alice, bob and you",
+  );
+  assert.equal(
+    reactorSummary({ names: ["alice", "bob"], more: 3 }),
+    "alice, bob and 3 more",
+  );
 });

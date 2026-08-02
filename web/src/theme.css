@@ -4691,6 +4691,48 @@ body.chalk-resizing .chalk-sidebar-resizer {
   font-variant-numeric: tabular-nums;
 }
 
+/* 75-1: the card naming who sent one reaction, opened by hover, keyboard
+   focus, or a press on touch.
+
+   pointer-events:none because it is informational and never interactive --
+   and because without it the card would land under the pointer that opened
+   it, take the hover, fire mouseleave on the chip, close, and reopen.
+
+   z-index 66 sits just above the message menu (65): a menu can be open while
+   the pointer wanders down onto a chip, and the card is the thing being
+   pointed at. */
+.chalk-reaction-who {
+  position: fixed;
+  z-index: 66;
+  pointer-events: none;
+  max-width: 32ch;
+  padding: var(--chalk-s1) var(--chalk-s2);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  font-size: var(--chalk-size-small);
+  line-height: 1.5;
+  color: var(--chalk-fg);
+}
+.chalk-reaction-who-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 3px;
+  margin-bottom: 3px;
+  border-bottom: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-dim);
+}
+.chalk-reaction-who-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chalk-reaction-who-more {
+  color: var(--chalk-fg-dim);
+}
+
 /* 37-3: the "(edited)" marker trailing an edited body. Deliberately quiet --
    it is a footnote about the message, not part of it. */
 .chalk-message-edited {

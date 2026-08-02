@@ -2,9 +2,10 @@ import { Fragment } from "preact";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { autoPagingAllowed, landingFillAllowed, nextEmptyStreak } from "../chat/history-paging";
 import type { Message, ReactionSet } from "../state/types";
-import { aggregate } from "../chat/reactions";
 import { buildMessageMenu, type MessageMenuItem } from "../chat/message-menu";
+import { LONG_PRESS_MS, pressWandered } from "../chat/press";
 import { MessageMenu } from "./MessageMenu";
+import { ReactionBar } from "./ReactionBar";
 import { AttachmentView } from "./AttachmentView";
 import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
@@ -122,16 +123,6 @@ function wantsNativeContextMenu(target: EventTarget | null, row: HTMLElement): b
   // page must not disable the menu here.
   return sel.anchorNode !== null && row.contains(sel.anchorNode);
 }
-
-// How long a touch has to rest on a row before it counts as a press. Matches
-// the roster's colour menu.
-const LONG_PRESS_MS = 500;
-// ...and how far it may wander first. A finger is never perfectly still, so
-// cancelling on any movement at all would make the press unreliable; this is
-// wide enough to survive a resting hand and narrow enough that a scroll or a
-// drag never opens a menu. (The roster's rows are short enough to rely on
-// pointercancel alone; a message row is tall enough to drag inside.)
-const LONG_PRESS_SLOP_PX = 10;
 
 // 33-4: how close to the bottom still counts as "following the feed". One
 // message row of slack, so a partly-scrolled last line doesn't unpin you.
@@ -886,9 +877,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
             onPointerMove={(e) => {
               const o = pressOrigin.current;
               if (!o) return;
-              if (Math.hypot(e.clientX - o.x, e.clientY - o.y) > LONG_PRESS_SLOP_PX) {
-                cancelLongPress();
-              }
+              if (pressWandered(o, { x: e.clientX, y: e.clientY })) cancelLongPress();
             }}
             onPointerUp={cancelLongPress}
             onPointerLeave={cancelLongPress}
@@ -1035,7 +1024,8 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
               </div>
             )}
           </div>
-          {/* 37-5: reaction chips. Suppressed on tombstoned rows (the server
+          {/* 37-5: reaction chips (ReactionBar.tsx, which also owns the 75-1
+              "who reacted" card). Suppressed on tombstoned rows (the server
               scrubs reactions with the body), and rendered only when there is
               something to show -- an always-present empty bar would add a row
               of dead space to every message in the feed. Adding the FIRST
@@ -1043,31 +1033,14 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
           {!m.deleted && onToggleReaction && (() => {
             const sets = reactions?.[m.id];
             if (!sets || sets.length === 0) return null;
-            const tallies = aggregate(sets, ownUserID);
-            if (tallies.length === 0) return null;
             return (
-              <div class="chalk-message-reactions" data-testid={`message-reactions-${m.id}`}>
-                {tallies.map((t) => (
-                  <button
-                    key={t.emoji}
-                    type="button"
-                    class={`chalk-reaction ${t.mine ? "chalk-reaction--mine" : ""}`}
-                    onClick={() => onToggleReaction(m, t.emoji)}
-                    title={t.userIDs
-                      .map((u) =>
-                        ownUserID && u === ownUserID
-                          ? "you"
-                          : handleByUser.get(u) ?? "someone",
-                      )
-                      .join(", ")}
-                    aria-pressed={t.mine}
-                    data-testid={`reaction-${m.id}-${t.emoji}`}
-                  >
-                    <span class="chalk-reaction-emoji" aria-hidden="true">{t.emoji}</span>
-                    <span class="chalk-reaction-count">{t.count}</span>
-                  </button>
-                ))}
-              </div>
+              <ReactionBar
+                message={m}
+                sets={sets}
+                ownUserID={ownUserID}
+                handleByUser={handleByUser}
+                onToggle={onToggleReaction}
+              />
             );
           })()}
           {/* Phase 10b: thread indicator. Only rendered for messages

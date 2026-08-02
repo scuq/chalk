@@ -13,6 +13,9 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- You can now see who sent a reaction. Hover a reaction under a message and a
+  card lists the people behind it; on a phone, press and hold the reaction for
+  the same list. Tabbing to a reaction shows it too.
 - You can share code without it falling apart. A new CODE button beside emoji,
   file and GIF opens a box to paste a snippet into; it arrives as a block that
   keeps its indentation and line breaks, stays in a fixed-width font whatever

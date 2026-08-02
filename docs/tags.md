@@ -37,12 +37,12 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #linkpreview    57 67     internal/linkpreview/ web/src/linkpreview/
 #code           74        web/src/code/ web/src/chat/bodytext.ts web/src/components/CodeModal.tsx web/src/components/CodeBlockView.tsx
 #search         61        web/src/chat/ web/src/components/
-#reactions      37        web/src/chat/ web/src/state/
+#reactions      37 75     web/src/chat/reactions.ts web/src/chat/press.ts web/src/state/ web/src/components/ReactionBar.tsx
 #typing         43        internal/server/ web/src/state/
 #presence       34        internal/presence/ internal/server/
 #spacekeys      25 38     web/src/crypto/ internal/store/
 #deletion       35        web/src/chat/ web/src/components/
-#mobile         64        web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/components/ web/src/theme.css
+#mobile         64        web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/components/ web/src/theme.css
 #settings       68 70     web/src/settings-nav.ts web/src/components/ProfilePanel.tsx
 #version        39        internal/version/ web/src/version.ts
 #servernotice   46        web/src/state/ web/src/components/
@@ -56,4 +56,4 @@ Phase numbers that appear in the source but are not claimed above. Left here
 rather than guessed at, so the legend stays trustworthy; move one into a tag
 line when its topic is clear.
 
-    (none — 25 through 71 are all claimed)
+    (none — 25 through 75 are all claimed)
