@@ -79,6 +79,11 @@ const DefaultCeremonyTTL = 5 * time.Minute
 // digit concurrent registrations) any value in 10s..1min is fine.
 const DefaultJanitorInterval = 30 * time.Second
 
+// maxCeremonyEntries caps concurrent in-flight ceremonies (81-4). Far above
+// any honest burst on a friends-scale server, and low enough that a flood of
+// abandoned begin calls cannot grow the map without bound.
+const maxCeremonyEntries = 4096
+
 // CeremonyCache is a goroutine-safe, TTL-bounded cache of in-flight
 // WebAuthn ceremonies. Keyed by challenge string.
 //
@@ -115,14 +120,27 @@ func NewCeremonyCache(ttl time.Duration) *CeremonyCache {
 // — challenges are 32-byte cryptographic randoms from go-webauthn —
 // but we don't rely on that). The entry's ExpiresAt is set from
 // the cache's TTL relative to now.
-func (c *CeremonyCache) Put(challenge string, entry CeremonyEntry) {
+//
+// Returns false when the cache is at capacity (81-4). The register and
+// authenticate begin endpoints are anonymous, so without a ceiling a caller
+// that starts ceremonies and never finishes them grows this map at will; the
+// janitor only reclaims them once their TTL passes. An inline prune runs
+// first, so a full cache means genuinely-live ceremonies, not stale ones.
+func (c *CeremonyCache) Put(challenge string, entry CeremonyEntry) bool {
 	if challenge == "" {
-		return
+		return false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if len(c.entries) >= maxCeremonyEntries {
+		c.pruneLocked()
+		if len(c.entries) >= maxCeremonyEntries {
+			return false
+		}
+	}
 	entry.ExpiresAt = c.now().Add(c.ttl)
 	c.entries[challenge] = entry
+	return true
 }
 
 // Take fetches and removes the entry for challenge. One-shot semantics:
@@ -160,6 +178,11 @@ func (c *CeremonyCache) Len() int {
 func (c *CeremonyCache) Prune() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.pruneLocked()
+}
+
+// pruneLocked is Prune's body; the caller holds the write lock.
+func (c *CeremonyCache) pruneLocked() int {
 	now := c.now()
 	removed := 0
 	for k, v := range c.entries {

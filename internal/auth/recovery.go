@@ -167,6 +167,17 @@ const (
 	argonSaltLen = 16
 )
 
+// argonSlots bounds how many recovery hashes run at once (81-4). Each holds
+// 64 MiB for the duration, so without a ceiling enough concurrent anonymous
+// attempts exhaust the box's memory rather than merely its CPU. Two is a
+// worst case of 128 MiB; the per-IP limit in anon_limit.go is what keeps the
+// queue behind it short, and blocking here is the point -- work waits instead
+// of piling up.
+var argonSlots = make(chan struct{}, 2)
+
+func acquireArgon() { argonSlots <- struct{}{} }
+func releaseArgon() { <-argonSlots }
+
 // HashRecoveryWords argon2id-hashes the space-joined recovery phrase
 // and returns salt || hash (48 bytes total: 16 salt + 32 hash). Caller
 // stores the result in recovery_codes.hash; verification reads it
@@ -183,7 +194,9 @@ func HashRecoveryWords(words []string) ([]byte, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return nil, fmt.Errorf("recovery salt: %w", err)
 	}
+	acquireArgon()
 	hash := argon2.IDKey([]byte(phrase), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	releaseArgon()
 	out := make([]byte, 0, argonSaltLen+argonKeyLen)
 	out = append(out, salt...)
 	out = append(out, hash...)
@@ -211,7 +224,9 @@ func VerifyRecoveryCodeHash(storedSaltHash []byte, words []string) error {
 	salt := storedSaltHash[:argonSaltLen]
 	want := storedSaltHash[argonSaltLen:]
 	phrase := strings.Join(words, " ")
+	acquireArgon()
 	got := argon2.IDKey([]byte(phrase), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	releaseArgon()
 	if subtle.ConstantTimeCompare(got, want) != 1 {
 		return errors.New("recovery: phrase does not match")
 	}

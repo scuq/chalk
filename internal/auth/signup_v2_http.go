@@ -53,6 +53,14 @@ import (
 // for a user who also reads the instructions.
 const signupV2TTL = 15 * time.Minute
 
+// signupV2MaxEntries caps concurrent in-flight signups (81-4). chalk servers
+// are friends-scale, so this is orders of magnitude above any honest burst
+// and still small enough to be irrelevant to memory.
+const signupV2MaxEntries = 512
+
+// ErrSignupCapacity is returned by SignupV2Cache.Put when the cache is full.
+var ErrSignupCapacity = errors.New("auth: too many pending signups")
+
 // pendingSignup is one in-flight v2 signup. The TOTP secret is held in
 // PLAINTEXT here -- in process memory only, never persisted; the DB write at
 // finish time stores the encrypted form.
@@ -89,6 +97,10 @@ func NewSignupV2Cache() *SignupV2Cache {
 }
 
 // Put stores a pending signup under a fresh random token and returns it.
+// Returns ErrSignupCapacity when the cache is full: with open registration an
+// anonymous caller drives insertions directly, and entries live for 15
+// minutes, so a cap is the only thing standing between a signup flood and
+// the server's memory (81-4).
 func (c *SignupV2Cache) Put(p pendingSignup) (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
@@ -102,6 +114,9 @@ func (c *SignupV2Cache) Put(p pendingSignup) (string, error) {
 		if now.After(v.ExpiresAt) {
 			delete(c.entries, k)
 		}
+	}
+	if len(c.entries) >= signupV2MaxEntries {
+		return "", ErrSignupCapacity
 	}
 	p.ExpiresAt = now.Add(signupV2TTL)
 	c.entries[token] = p
@@ -308,6 +323,11 @@ func (d *HTTPDeps) handleSignupV2Begin(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := d.SignupV2.Put(pend)
 	if err != nil {
+		if errors.Is(err, ErrSignupCapacity) {
+			writeError(w, http.StatusTooManyRequests, "rate_limited",
+				"too many attempts; try again in a minute")
+			return
+		}
 		d.Logger.Printf("signup/v2/begin: cache put: %v", err)
 		writeError(w, http.StatusInternalServerError, "signup_cache_failed", "internal error")
 		return

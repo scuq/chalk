@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -151,6 +152,40 @@ func TestEmptyKeyRejected(t *testing.T) {
 	if c.Len() != 0 {
 		t.Errorf("Put('') stored an entry; Len = %d", c.Len())
 	}
+}
+
+// 81-4: register/begin and authenticate/begin are anonymous, so a caller that
+// starts ceremonies and never finishes them controls how fast this map grows.
+// The cap has to hold, and an expired backlog has to make room again -- a cap
+// that stayed full once reached would lock out honest sign-ins.
+func TestPutRefusesAtCapacity(t *testing.T) {
+	clock := newFakeNow(time.Unix(1000, 0))
+	c := newTestCache(t, time.Minute, clock)
+
+	for i := 0; i < maxCeremonyEntries; i++ {
+		if !c.Put(challengeKey(i), sampleEntry()) {
+			t.Fatalf("Put %d refused below capacity", i)
+		}
+	}
+	if c.Put("one-too-many", sampleEntry()) {
+		t.Error("Put succeeded past the cap")
+	}
+	if c.Len() != maxCeremonyEntries {
+		t.Errorf("Len = %d, want %d", c.Len(), maxCeremonyEntries)
+	}
+
+	// Once the backlog ages out, the inline prune inside Put reclaims it.
+	clock.advance(2 * time.Minute)
+	if !c.Put("after-expiry", sampleEntry()) {
+		t.Error("Put refused after the cached ceremonies expired")
+	}
+	if c.Len() != 1 {
+		t.Errorf("Len after the reclaiming Put = %d, want 1", c.Len())
+	}
+}
+
+func challengeKey(i int) string {
+	return "ch-" + strconv.Itoa(i)
 }
 
 func TestConcurrentPutTake(t *testing.T) {
