@@ -175,6 +175,7 @@ func TestRenderAllTemplates(t *testing.T) {
 		Version: "v0.1.0", Digest: "sha256:deadbeef",
 		PostgresTag: "18-alpine", CaddyTag: "2-alpine",
 		VoiceEnabled: true, PGPassword: "PGSECRET", TurnSecret: "TURNSECRET",
+		PGAppPassword: "APPSECRET", PGGuestPassword: "GUESTSECRET",
 		TOTPEncKey: "TOTPKEYX", AdminBootstrapToken: "ADMINBOOTX",
 		ChalkctlPath:  "/usr/local/bin/chalkctl",
 		AdminUsername: "admin", AdminEmail: "admin@example.org", OpenRegistration: true,
@@ -212,11 +213,19 @@ func TestRenderAllTemplates(t *testing.T) {
 		!strings.Contains(string(env), "CHALK_ADMIN_BOOTSTRAP_TOKEN=ADMINBOOTX") {
 		t.Error("env file missing secrets")
 	}
-	// DB URL must be a LITERAL in the env file (password inlined), never a
+	// DB URLs must be LITERALS in the env file (password inlined), never a
 	// ${...} cross-reference -- systemd expands Environment= before
-	// EnvironmentFile= loads, so cross-refs collapse to empty.
-	if !strings.Contains(string(env), "CHALK_DB_URL=postgres://chalk:PGSECRET@postgres:5432/chalk") {
-		t.Error("env file must carry a literal CHALK_DB_URL with the password inlined")
+	// EnvironmentFile= loads, so cross-refs collapse to empty. 80-1: chalkd
+	// connects as chalk_app; the guest pool as chalk_guest.
+	if !strings.Contains(string(env), "CHALK_DB_URL=postgres://chalk_app:APPSECRET@postgres:5432/chalk") {
+		t.Error("env file must carry a literal chalk_app CHALK_DB_URL with the password inlined")
+	}
+	if !strings.Contains(string(env), "CHALK_DB_URL_GUEST=postgres://chalk_guest:GUESTSECRET@postgres:5432/chalk") {
+		t.Error("env file must carry a literal chalk_guest CHALK_DB_URL_GUEST")
+	}
+	if !strings.Contains(string(env), "CHALK_PG_APP_PASSWORD=APPSECRET") ||
+		!strings.Contains(string(env), "CHALK_PG_GUEST_PASSWORD=GUESTSECRET") {
+		t.Error("env file must persist the role passwords (preserved on --force)")
 	}
 	if strings.Contains(string(chalkd), "${CHALK_PG_PASSWORD}") ||
 		strings.Contains(string(chalkd), "${CHALK_TURN_SECRET}") {

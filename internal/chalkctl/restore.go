@@ -194,6 +194,15 @@ func Restore(o RestoreOptions) error {
 		return err
 	}
 
+	// 80-1: roles live in the cluster, not the database, so the dump does not
+	// carry them -- but it DOES carry grants and RLS policies that name them.
+	// Assert chalk_app/chalk_guest (and their env keys) before the load, or a
+	// post-phase-80 dump fails on its first GRANT.
+	if _, _, err := ensureDBRolesEnv(o.EnvPath, o.Podman, o.Out); err != nil {
+		_, _ = Systemctl("start", "chalkd.service")
+		return err
+	}
+
 	if err := o.loadDump(tr); err != nil {
 		// Leave the operator with a running app rather than a stopped one;
 		// the load ran in one transaction, so the database is as it was.

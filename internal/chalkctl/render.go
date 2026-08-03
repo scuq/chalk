@@ -23,6 +23,8 @@ type InitParams struct {
 	TurnMaxPort         int    // coturn UDP relay range, high
 	VoiceEnabled        bool
 	PGPassword          string // secret -> env file only
+	PGAppPassword       string // secret -> env file only (80-1: chalk_app role)
+	PGGuestPassword     string // secret -> env file only (80-1: chalk_guest role)
 	TurnSecret          string // secret -> env file only (voice)
 	TOTPEncKey          string // secret -> env file only (auth v2 TOTP at-rest key)
 	AdminBootstrapToken string // secret -> env file only (one-shot admin claim)

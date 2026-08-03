@@ -141,7 +141,7 @@ func Init(o InitOptions) error {
 	//   - --force WITHOUT --drop-db: PRESERVE the existing secrets from the
 	//     current env file, or the running DB (with its old password) would
 	//     reject the newly-generated one.
-	var pg, turn, totp, adminBoot string
+	var pg, appPw, guestPw, turn, totp, adminBoot string
 	preserve := o.Force && initialized && !o.DropDB
 	if preserve {
 		existing, rerr := readEnvSecrets(o.EnvPath)
@@ -149,12 +149,30 @@ func Init(o InitOptions) error {
 			return fmt.Errorf("--force without --drop-db needs the existing secrets, but %s could not be read (%w); re-run with --drop-db to regenerate", o.EnvPath, rerr)
 		}
 		pg = existing["CHALK_PG_PASSWORD"]
+		appPw = existing["CHALK_PG_APP_PASSWORD"]
+		guestPw = existing["CHALK_PG_GUEST_PASSWORD"]
 		turn = existing["CHALK_TURN_SECRET"]
 		totp = existing["CHALK_TOTP_ENC_KEY"]
 		if pg == "" {
 			return fmt.Errorf("--force: no CHALK_PG_PASSWORD found in %s to preserve; use --drop-db to regenerate", o.EnvPath)
 		}
 		o.logf("preserving existing DB/TURN secrets")
+		// 80-1: deployments initialized before phase 80 have no role
+		// passwords. Generate them on upgrade; ensureDBRoles below asserts
+		// them in Postgres, so a fresh pair is always safe. PRESENT
+		// passwords are preserved.
+		if appPw == "" {
+			if appPw, err = genSecret(24); err != nil {
+				return err
+			}
+			o.logf("generating CHALK_PG_APP_PASSWORD (phase 80 upgrade)")
+		}
+		if guestPw == "" {
+			if guestPw, err = genSecret(24); err != nil {
+				return err
+			}
+			o.logf("generating CHALK_PG_GUEST_PASSWORD (phase 80 upgrade)")
+		}
 		// 31-10: deployments initialized before auth v2 have no TOTP key.
 		// Generate one on upgrade -- safe, because no TOTP secrets can
 		// exist yet without it. A PRESENT key is always preserved.
@@ -172,6 +190,12 @@ func Init(o InitOptions) error {
 		}
 	} else {
 		if pg, err = genSecret(24); err != nil {
+			return err
+		}
+		if appPw, err = genSecret(24); err != nil {
+			return err
+		}
+		if guestPw, err = genSecret(24); err != nil {
 			return err
 		}
 		if cfg.VoiceEnabled {
@@ -218,6 +242,8 @@ func Init(o InitOptions) error {
 		TurnMaxPort:         TurnMaxPort,
 		VoiceEnabled:        cfg.VoiceEnabled,
 		PGPassword:          pg,
+		PGAppPassword:       appPw,
+		PGGuestPassword:     guestPw,
 		TurnSecret:          turn,
 		TOTPEncKey:          totp,
 		AdminBootstrapToken: adminBoot,
@@ -334,10 +360,21 @@ func Init(o InitOptions) error {
 	}
 	if o.NoStart {
 		o.logf("--no-start: units written but not started")
+		o.logf("note: the chalk_app/chalk_guest DB roles are created on start; run `chalkctl update` (or init --force) after bringing the stack up")
 	} else {
 		// Start in dependency order; each .container becomes <name>.service.
+		// Postgres comes up first and gets the chalk_app/chalk_guest roles
+		// (80-1) before chalkd -- whose CHALK_DB_URL connects as chalk_app --
+		// is started.
+		o.logf("starting chalk-postgres.service")
+		if _, err := Systemctl("start", "chalk-postgres.service"); err != nil {
+			return fmt.Errorf("start chalk-postgres.service (check `journalctl -u chalk-postgres`): %w", err)
+		}
+		o.logf("creating database roles (chalk_app, chalk_guest)")
+		if err := ensureDBRoles(o.Podman, appPw, guestPw); err != nil {
+			return err
+		}
 		order := []string{
-			"chalk-postgres.service",
 			"chalkd.service",
 			"chalk-caddy.service",
 		}

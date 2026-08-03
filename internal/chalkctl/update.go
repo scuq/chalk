@@ -109,6 +109,15 @@ func Update(o UpdateOptions) error {
 	if _, err := ensureTOTPEncKey(o.EnvPath, o.Out); err != nil {
 		return fmt.Errorf("ensure CHALK_TOTP_ENC_KEY: %w", err)
 	}
+	// 80-1: phase 80 upgrade path. chalkd >= v0.7 connects as chalk_app and
+	// needs chalk_guest for the ephemeral-guest pool. Backfill the env keys
+	// and assert the roles in the running Postgres BEFORE the swap, so both
+	// the new binary and a health-failure rollback boot against roles that
+	// exist. Existing passwords are preserved; the repointed CHALK_DB_URL
+	// keeps its host/db/options.
+	if _, _, err := ensureDBRolesEnv(o.EnvPath, o.Podman, o.Out); err != nil {
+		return fmt.Errorf("ensure db roles: %w", err)
+	}
 
 	oldDigest := st.CurrentDigest
 	if err := repinChalkdImage(o.Cfg.Image, newDigest); err != nil {
