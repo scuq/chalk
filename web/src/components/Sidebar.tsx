@@ -28,6 +28,8 @@ import {
   saveCollapsedGroups,
 } from "../chat/channel-groups";
 import type { RosterGroup } from "../chat/channel-groups";
+import { splitHidden } from "../chat/channel-hide";
+import type { HideMode, HiddenChannel } from "../chat/channel-hide";
 import { withChannelRule, withUserRule } from "../notify/rules";
 import { useRulesConfig } from "../notify/rules-store";
 import { countsAsUnread, hasUnread } from "../state/types";
@@ -167,6 +169,13 @@ interface Props {
   // unaffected; the menu row only renders when the setter is provided.
   groupOverrides?: Record<string, string>;
   onSetChannelGroup?: (channelID: string, group: string | null) => void;
+  // 78-2: channels this user has taken off the roster (resolved prefs), and
+  // the setter behind the context menu's visibility row -- null shows the
+  // channel again. Hidden channels are still live: they keep their unread
+  // and still notify, they are just held behind the "hidden" row at the
+  // bottom of the list. Optional, same as the group pair above.
+  hiddenChannels?: Record<string, HiddenChannel>;
+  onSetChannelHidden?: (channelID: string, mode: HideMode | null) => void;
   // 53-1: the parking lot. A pseudo-channel that shows nothing -- one click
   // and the conversation pane is a logo. null hides the row (the setting), and
   // parked highlights it the way an open channel is highlighted.
@@ -327,6 +336,8 @@ export function Sidebar({
   groupingEnabled = true,
   groupOverrides,
   onSetChannelGroup,
+  hiddenChannels,
+  onSetChannelHidden,
   parkingName,
   parked = false,
   onPark,
@@ -338,7 +349,19 @@ export function Sidebar({
   // Separate state -- each input appears only when its own list is long.
   const [channelFilter, setChannelFilter] = useState("");
 
-  const groupChannels = channels.filter((ch) => !ch.isDM);
+  // 78-2: hidden channels come off the roster before anything else looks at
+  // it -- the count, the filter threshold, the groups. They are held in
+  // hiddenList and reachable through the "hidden" row under the list. The
+  // watermark reads live unread state, not the summary's seed (33-1), which
+  // is only as fresh as the frame that delivered the channel.
+  const lastSeqOf = (ch: ChannelSummary) => unread[ch.id]?.lastSeq ?? ch.lastSeq;
+  const hiddenEntries = hiddenChannels ?? {};
+  const { visible: groupChannels, hidden: hiddenList } = splitHidden(
+    channels.filter((ch) => !ch.isDM),
+    hiddenEntries,
+    lastSeqOf,
+  );
+  const [showHidden, setShowHidden] = useState(false);
   // 53-1: the active channel is still pointed at while parked, but it isn't on
   // screen -- so no row claims to be the one you are reading.
   const activeRow = parked ? null : activeID;
@@ -470,9 +493,29 @@ export function Sidebar({
   // The channels <ul> renders one flat row list either way: headers
   // interleaved with the visible channels when grouped, just the filtered
   // channels when not. Keeps the (large) channel-row JSX single-sourced.
+  // 54-3/78-2: rolled-up unread over a set of channels that isn't currently
+  // rendering its own rows -- a folded group, or the hidden shelf. Same
+  // countsAsUnread call the rows themselves make, so putting channels out of
+  // sight can never become an accidental mute. Mention variant wins.
+  const rollUp = (list: ChannelSummary[]) => {
+    let anyUnread = false;
+    let mention = false;
+    for (const ch of list) {
+      const u = unread[ch.id];
+      const roster = ch.channelType === "voice" ? (voiceRosters[ch.id] ?? []) : [];
+      const inRoom = !!ownUserID && roster.some((p) => p.userID === ownUserID);
+      if (countsAsUnread(u, ch.channelType, inRoom)) {
+        anyUnread = true;
+        if (u.mention) mention = true;
+      }
+    }
+    return { anyUnread, mention };
+  };
+
   type RosterRow =
     | { kind: "header"; group: RosterGroup }
-    | { kind: "channel"; ch: ChannelSummary };
+    | { kind: "hidden-header" }
+    | { kind: "channel"; ch: ChannelSummary; hidden?: boolean };
   const rosterRows: RosterRow[] = groupedView
     ? channelGroups.flatMap((g): RosterRow[] => [
         { kind: "header", group: g },
@@ -481,6 +524,19 @@ export function Sidebar({
           : g.channels.map((ch): RosterRow => ({ kind: "channel", ch }))),
       ])
     : visibleChannels.map((ch): RosterRow => ({ kind: "channel", ch }));
+  // 78-2: the hidden shelf, always last and never grouped -- what is on it
+  // is a flat "these are put away", not part of the roster's shape.
+  // Revealing it is component state, not a pref: a peek that followed you to
+  // another machine (or survived a reload) would quietly stop meaning
+  // hidden.
+  if (hiddenList.length > 0) {
+    rosterRows.push({ kind: "hidden-header" });
+    if (showHidden) {
+      for (const ch of filterRoster(hiddenList, channelFilter, (c) => c.name)) {
+        rosterRows.push({ kind: "channel", ch, hidden: true });
+      }
+    }
+  }
 
   return (
     <div class="chalk-sidebar-inner" data-testid="sidebar">
@@ -695,32 +751,51 @@ export function Sidebar({
           class="chalk-sidebar-list chalk-sidebar-list--channels"
           data-testid="sidebar-list"
         >
-          {groupChannels.length === 0 && (
+          {groupChannels.length === 0 && hiddenList.length === 0 && (
             <li class="chalk-sidebar-empty">no channels yet</li>
           )}
           {groupChannels.length > 0 && visibleChannels.length === 0 && (
             <li class="chalk-sidebar-empty">no matches</li>
           )}
           {rosterRows.map((row) => {
+            if (row.kind === "hidden-header") {
+              // The shelf always carries its roll-up dot, folded or not:
+              // hiding is not muting, and a hidden channel that needs you
+              // has to be able to say so from behind the row.
+              const roll = rollUp(hiddenList);
+              return (
+                <li key="hidden-shelf" class="chalk-sidebar-group">
+                  <button
+                    type="button"
+                    class="chalk-sidebar-group-header"
+                    data-testid="sidebar-hidden-toggle"
+                    data-open={showHidden ? "true" : "false"}
+                    aria-expanded={showHidden}
+                    onClick={() => setShowHidden((v) => !v)}
+                    title={
+                      showHidden
+                        ? "stop showing hidden channels"
+                        : "show hidden channels"
+                    }
+                  >
+                    <span class="chalk-sidebar-group-arrow" aria-hidden="true">
+                      {showHidden ? "▾" : "▸"}
+                    </span>
+                    <span class="chalk-sidebar-group-name">hidden</span>
+                    <span class="chalk-sidebar-count">({hiddenList.length})</span>
+                    {roll.anyUnread && <UnreadDot mention={roll.mention} />}
+                  </button>
+                </li>
+              );
+            }
             if (row.kind === "header") {
               const g = row.group;
               const isCollapsed = collapsedGroups.has(g.key);
-              // Rolled-up dot, only while folded: same countsAsUnread call
-              // the rows themselves make, so folding a group can't become
-              // an accidental mute. Mention variant wins.
-              let rollUnread = false;
-              let rollMention = false;
-              if (isCollapsed) {
-                for (const ch of g.channels) {
-                  const u = unread[ch.id];
-                  const r = ch.channelType === "voice" ? (voiceRosters[ch.id] ?? []) : [];
-                  const inR = !!ownUserID && r.some((p) => p.userID === ownUserID);
-                  if (countsAsUnread(u, ch.channelType, inR)) {
-                    rollUnread = true;
-                    if (u.mention) rollMention = true;
-                  }
-                }
-              }
+              // Rolled-up dot, only while folded -- expanded, the rows carry
+              // their own.
+              const roll = isCollapsed
+                ? rollUp(g.channels)
+                : { anyUnread: false, mention: false };
               return (
                 <li key={"group:" + g.key} class="chalk-sidebar-group">
                   <button
@@ -738,7 +813,7 @@ export function Sidebar({
                     </span>
                     <span class="chalk-sidebar-group-name">{g.name}</span>
                     <span class="chalk-sidebar-count">({g.channels.length})</span>
-                    {rollUnread && <UnreadDot mention={rollMention} />}
+                    {roll.anyUnread && <UnreadDot mention={roll.mention} />}
                   </button>
                 </li>
               );
@@ -756,9 +831,10 @@ export function Sidebar({
             return (
               <li
                 key={ch.id}
-                class={`chalk-sidebar-item ${isVoice ? "chalk-sidebar-item--voicech" : ""} ${ch.id === activeRow ? "chalk-sidebar-item--active" : ""} ${showUnread ? "chalk-sidebar-item--unread" : ""}`}
+                class={`chalk-sidebar-item ${isVoice ? "chalk-sidebar-item--voicech" : ""} ${ch.id === activeRow ? "chalk-sidebar-item--active" : ""} ${showUnread ? "chalk-sidebar-item--unread" : ""} ${row.hidden ? "chalk-sidebar-item--hidden" : ""}`}
                 data-testid="sidebar-item"
                 data-channel-id={ch.id}
+                data-hidden={row.hidden ? "true" : "false"}
                 data-channel-type={isVoice ? "voice" : "text"}
                 data-active={ch.id === activeRow ? "true" : "false"}
                 onClick={(e) => {
@@ -1002,6 +1078,65 @@ export function Sidebar({
                     <option key={g} value={g} />
                   ))}
                 </datalist>
+              </div>
+            );
+          })()}
+          {/* 78-2: take the channel off the roster. Two ways out of a list
+              that has grown past what you read: "hide" until you ask for it
+              back, and "till new" -- a watermark, so the channel returns by
+              itself the next time someone posts. Neither is a mute: the
+              notifications row above is where that lives. */}
+          {onSetChannelHidden && (() => {
+            const entry = hiddenEntries[channelMenu.channelID];
+            const hiddenNow = entry !== undefined;
+            return (
+              <div class="chalk-nick-menu-row">
+                <span class="chalk-nick-menu-label">roster</span>
+                {hiddenNow ? (
+                  <button
+                    type="button"
+                    class="chalk-nick-menu-btn"
+                    data-testid="channel-menu-show"
+                    title={
+                      entry.mode === "always"
+                        ? "hidden — put it back on the roster"
+                        : "hidden until a new message — put it back now"
+                    }
+                    onClick={() => {
+                      onSetChannelHidden(channelMenu.channelID, null);
+                      setChannelMenu(null);
+                    }}
+                  >
+                    show
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      class="chalk-nick-menu-btn"
+                      data-testid="channel-menu-hide"
+                      title="hide until you show it again"
+                      onClick={() => {
+                        onSetChannelHidden(channelMenu.channelID, "always");
+                        setChannelMenu(null);
+                      }}
+                    >
+                      hide
+                    </button>
+                    <button
+                      type="button"
+                      class="chalk-nick-menu-btn"
+                      data-testid="channel-menu-hide-until"
+                      title="hide until a new message arrives"
+                      onClick={() => {
+                        onSetChannelHidden(channelMenu.channelID, "untilNew");
+                        setChannelMenu(null);
+                      }}
+                    >
+                      till new
+                    </button>
+                  </>
+                )}
               </div>
             );
           })()}

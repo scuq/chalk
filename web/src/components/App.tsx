@@ -236,6 +236,7 @@ const EmojiPicker = lazyComponent(() =>
 );
 import { CreateChannelModal } from "./CreateChannelModal";
 import { DEFAULT_GROUP, knownGroups } from "../chat/channel-groups";
+import { pruneHidden, splitHidden } from "../chat/channel-hide";
 import { HISTORY_PAGE_SIZE, pageMarksComplete } from "../chat/history-paging";
 // 61-3: the full-history search crawl.
 import {
@@ -527,6 +528,13 @@ export function App() {
     for (const f of state.friends) if (f.handle) m[f.userID] = f.handle;
     return m;
   }, [state.channels, state.friends]);
+  // 78-2: a channel's newest seq as it stands now. The summary's lastSeq is
+  // only the seed the delivering frame carried (33-1); state.unread is what
+  // is live. The hide watermark and the roster split both read it.
+  const lastSeqOfChannel = useCallback(
+    (ch: { id: string; lastSeq: number }) => state.unread[ch.id]?.lastSeq ?? ch.lastSeq,
+    [state.unread],
+  );
   const zuckerRows = useMemo(() => {
     if (!zuckerActive) return [];
     return buildConversationList(
@@ -552,6 +560,18 @@ export function App() {
     zuckerVoiceRoomID,
     zuckerHandles,
   ]);
+  // 78-3: the conversation list honours the same hidden channels the
+  // sidebar does -- the two views must not disagree about what your roster
+  // is. Hiding is done from the sidebar's channel menu; here the hidden ones
+  // sit behind the list's own "hidden" row.
+  const zuckerSplit = useMemo(() => {
+    const hidden = selectRosterPrefs(state.prefs).hidden;
+    return splitHidden(
+      zuckerRows,
+      hidden,
+      (row) => state.unread[row.id]?.lastSeq ?? state.channels[row.id]?.lastSeq ?? 0,
+    );
+  }, [zuckerRows, state.prefs, state.unread, state.channels]);
   // 64-1: the friends sublist behind the pinned row -- full roster with
   // presence, online first.
   const zuckerFriends = useMemo(
@@ -4590,6 +4610,32 @@ export function App() {
             else next[channelID] = group;
             c.send(TypePrefsSet, { patch: { roster: { ...current, groupOverrides: next } } });
           }}
+          // 78-2: hiding a channel. Same shape as the group override above:
+          // per-user, prefs-synced, and rebuilt on every write so entries for
+          // channels you have left -- and watermarks a message has already
+          // passed -- don't pile up.
+          hiddenChannels={selectRosterPrefs(state.prefs).hidden}
+          onSetChannelHidden={(channelID, mode) => {
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            const current = selectRosterPrefs(state.prefs);
+            const next = pruneHidden(
+              current.hidden,
+              Object.values(state.channels),
+              lastSeqOfChannel,
+            );
+            if (mode === null) {
+              delete next[channelID];
+            } else if (mode === "always") {
+              next[channelID] = { mode: "always" };
+            } else {
+              const ch = state.channels[channelID];
+              // The watermark is the newest message as of right now; the
+              // channel returns as soon as something lands past it.
+              next[channelID] = { mode: "untilNew", seq: ch ? lastSeqOfChannel(ch) : 0 };
+            }
+            c.send(TypePrefsSet, { patch: { roster: { ...current, hidden: next } } });
+          }}
           activeID={state.activeChannelID}
           ownUserID={state.user?.id ?? null}
           presence={state.presence}
@@ -4682,7 +4728,8 @@ export function App() {
             (the footer hides its composer the parked way). */}
         {zuckerActive && zuckerScreen === "list" ? (
           <ZuckerList
-            rows={zuckerRows}
+            rows={zuckerSplit.visible}
+            hiddenRows={zuckerSplit.hidden}
             presence={state.presence}
             friends={zuckerFriends}
             parkingName={parking.hidden ? null : parking.name}

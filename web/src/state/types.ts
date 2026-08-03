@@ -8,6 +8,7 @@
 // added (e.g. ChannelSummary's createdAt as Date, Message's ts as Date).
 
 import { DEFAULT_SELF_HUE, clampHue } from "../chat/nickcolor";
+import { normalizeHidden, type HiddenChannel } from "../chat/channel-hide";
 import { SIDEBAR_WIDTH_DEFAULT, clampSidebarWidth } from "../chat/sidebar-width";
 import { parkingLotName } from "../parking";
 import type { ConnectionState } from "../ws-client";
@@ -463,6 +464,9 @@ export interface LinkPreviewDomainPrefs {
 export interface RosterPrefs {
   groupingEnabled?: boolean;
   groupOverrides?: Record<string, string>;
+  // 78-1: channels this user has taken off their roster, by channel id.
+  // Typed loosely as stored; normalizeHidden owns what a valid entry is.
+  hidden?: Record<string, { mode?: string; seq?: number }>;
   // 62-5: "zucker" swaps the phone's drawer navigation for one WhatsApp-
   // style conversation list (Zuckermode). Synced account-wide but consumed
   // only on mobile -- the chat.sidebarWidth precedent: desktop ignores it.
@@ -538,6 +542,9 @@ export interface ResolvedRosterPrefs {
   groupOverrides: Record<string, string>;
   // 62-5: anything but the exact string "zucker" resolves to classic.
   viewMode: "classic" | "zucker";
+  // 78-1: channel id -> hide entry, junk dropped. Whether an entry actually
+  // hides the channel depends on live unread state -- see isHidden.
+  hidden: Record<string, HiddenChannel>;
 }
 
 export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterPrefs {
@@ -554,6 +561,7 @@ export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterP
     groupingEnabled: r.groupingEnabled ?? true,
     groupOverrides: overrides,
     viewMode: r.viewMode === "zucker" ? "zucker" : "classic",
+    hidden: normalizeHidden(r.hidden),
   };
 }
 

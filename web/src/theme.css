@@ -3565,6 +3565,29 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 
 /* ============================================================
+   Phase 78-2: hidden channels
+   ============================================================ */
+
+/* A revealed hidden channel is a peek at something you put away, so it
+   reads quieter than the roster proper -- but not so quiet it looks
+   disabled, since clicking it still opens the channel. Its unread dot
+   keeps full strength: hiding is not muting. */
+.chalk-sidebar-item--hidden .chalk-sidebar-item-name,
+.chalk-sidebar-item--hidden .chalk-chglyph {
+  opacity: 0.55;
+}
+.chalk-sidebar-item--hidden:hover .chalk-sidebar-item-name,
+.chalk-sidebar-item--hidden:hover .chalk-chglyph {
+  opacity: 1;
+}
+
+/* 78-3: the same peek in the Zuckermode list. */
+.chalk-zucker-row--hidden .chalk-zucker-row-main,
+.chalk-zucker-row--hidden .chalk-zucker-row-badge {
+  opacity: 0.55;
+}
+
+/* ============================================================
    Phase 9.6c: presence dots
    ============================================================ */
 

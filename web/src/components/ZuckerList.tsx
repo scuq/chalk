@@ -19,6 +19,10 @@ import { ChannelGlyph, presenceClass, presenceLabel } from "./Sidebar";
 
 interface Props {
   rows: ZuckerRow[];
+  // 78-3: conversations this user has hidden from their roster (the sidebar
+  // menu is where that happens). Held behind a "hidden" row under the list
+  // so the two views agree about what the roster looks like.
+  hiddenRows?: ZuckerRow[];
   presence: PresenceMap;
   friends: ZuckerFriend[];
   // null hides the row (prefs.parkingLot.hidden), mirroring the sidebar.
@@ -34,6 +38,7 @@ interface Props {
 
 export function ZuckerList({
   rows,
+  hiddenRows = [],
   presence,
   friends,
   parkingName,
@@ -59,9 +64,67 @@ export function ZuckerList({
   }, [filterOpen]);
   const visibleRows = filterRoster(rows, filter, (r) => r.name);
   const onlineCount = friends.filter((f) => f.presence === "online").length;
+  // 78-3: the hidden shelf. Open state is component state, like the
+  // sidebar's: a peek, not a setting.
+  const [hiddenOpen, setHiddenOpen] = useState(false);
+  const shownHidden = filterRoster(hiddenRows, filter, (r) => r.name);
+  const hiddenUnread = hiddenRows.some((r) => r.unread);
+  const hiddenMention = hiddenRows.some((r) => r.unread && r.mention);
   // One clock per render, the MessageList precedent: a list of relative
   // times must agree with itself.
   const now = new Date();
+
+  const conversationRow = (r: ZuckerRow, hidden: boolean) => (
+    <li key={r.id}>
+      <button
+        type="button"
+        class={`chalk-zucker-row ${hidden ? "chalk-zucker-row--hidden" : ""}`}
+        onClick={() => onSelect(r.id)}
+        data-testid="zucker-row"
+        data-channel-id={r.id}
+        data-hidden={hidden ? "true" : "false"}
+      >
+        <span class="chalk-zucker-row-badge">
+          {r.isDM ? (
+            <span
+              class={`chalk-presence-dot ${presenceClass(
+                r.otherUserID !== null ? presence[r.otherUserID] : undefined,
+              )}`}
+              title={presenceLabel(
+                r.otherUserID !== null ? presence[r.otherUserID] : undefined,
+              )}
+            />
+          ) : (
+            <ChannelGlyph type={r.isVoice ? "voice" : "text"} />
+          )}
+        </span>
+        <span class="chalk-zucker-row-main">
+          <span class="chalk-zucker-row-top">
+            <span class="chalk-zucker-row-name">{r.name}</span>
+            <span class="chalk-zucker-row-when">
+              {fmtRelative(new Date(r.when), now)}
+            </span>
+          </span>
+          <span class="chalk-zucker-row-preview">
+            {r.preview !== null ? (
+              <>
+                {r.previewSender !== null && (
+                  <span class="chalk-zucker-row-sender">{r.previewSender}: </span>
+                )}
+                {r.preview}
+              </>
+            ) : (
+              <span class="chalk-zucker-row-empty">
+                {r.isVoice ? "voice room" : "no messages yet"}
+              </span>
+            )}
+          </span>
+        </span>
+        {r.unread && <UnreadDot mention={r.mention} />}
+      </button>
+    </li>
+  );
+
   return (
     <div class="chalk-zucker" data-testid="zucker-list">
       <div class="chalk-zucker-head">
@@ -179,56 +242,32 @@ export function ZuckerList({
         {rows.length > 0 && visibleRows.length === 0 && (
           <li class="chalk-zucker-friends-empty">no matches</li>
         )}
-        {visibleRows.map((r) => (
-          <li key={r.id}>
-            <button
-              type="button"
-              class="chalk-zucker-row"
-              onClick={() => onSelect(r.id)}
-              data-testid="zucker-row"
-              data-channel-id={r.id}
-            >
-              <span class="chalk-zucker-row-badge">
-                {r.isDM ? (
-                  <span
-                    class={`chalk-presence-dot ${presenceClass(
-                      r.otherUserID !== null ? presence[r.otherUserID] : undefined,
-                    )}`}
-                    title={presenceLabel(
-                      r.otherUserID !== null ? presence[r.otherUserID] : undefined,
-                    )}
-                  />
-                ) : (
-                  <ChannelGlyph type={r.isVoice ? "voice" : "text"} />
-                )}
-              </span>
-              <span class="chalk-zucker-row-main">
-                <span class="chalk-zucker-row-top">
-                  <span class="chalk-zucker-row-name">{r.name}</span>
-                  <span class="chalk-zucker-row-when">
-                    {fmtRelative(new Date(r.when), now)}
-                  </span>
-                </span>
-                <span class="chalk-zucker-row-preview">
-                  {r.preview !== null ? (
-                    <>
-                      {r.previewSender !== null && (
-                        <span class="chalk-zucker-row-sender">{r.previewSender}: </span>
-                      )}
-                      {r.preview}
-                    </>
-                  ) : (
-                    <span class="chalk-zucker-row-empty">
-                      {r.isVoice ? "voice room" : "no messages yet"}
-                    </span>
-                  )}
-                </span>
-              </span>
-              {r.unread && <UnreadDot mention={r.mention} />}
-            </button>
-          </li>
-        ))}
+        {visibleRows.map((r) => conversationRow(r, false))}
       </ul>
+
+      {hiddenRows.length > 0 && (
+        <>
+          <button
+            type="button"
+            class="chalk-zucker-pinned"
+            onClick={() => setHiddenOpen(!hiddenOpen)}
+            aria-expanded={hiddenOpen}
+            data-testid="zucker-hidden-toggle"
+            data-open={hiddenOpen ? "true" : "false"}
+          >
+            <span>{hiddenOpen ? "▾" : "▸"} hidden</span>
+            <span class="chalk-zucker-pinned-note">{hiddenRows.length}</span>
+            {/* Hiding is not muting: a hidden conversation that needs you
+                still says so from behind the row. */}
+            {hiddenUnread && <UnreadDot mention={hiddenMention} />}
+          </button>
+          {hiddenOpen && (
+            <ul class="chalk-zucker-rows" data-testid="zucker-hidden-rows">
+              {shownHidden.map((r) => conversationRow(r, true))}
+            </ul>
+          )}
+        </>
+      )}
     </div>
   );
 }

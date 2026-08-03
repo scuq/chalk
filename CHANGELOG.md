@@ -12,6 +12,20 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- Channels can be hidden from your list. Right-click a channel (long-press on
+  a touchscreen) and pick "hide" to put it away until you ask for it back, or
+  "till new" to put it away until somebody posts in it again — the channel
+  comes back on its own the moment a new message lands. A "hidden" row appears
+  under the channel list with a count; open it to see what you have put away,
+  jump into any of them, or show one again from the same menu. Hiding is only
+  about your own list: nobody else's changes, you stay in the channel, and it
+  still notifies you exactly as before — if you want a channel quiet, that is
+  what its notification setting is for. A hidden channel with something unread
+  shows a dot on the "hidden" row, so putting one away can't silently swallow a
+  mention. Your hidden channels follow you to your other devices, and the phone
+  conversation list honours them too.
+
 ### Fixed
 - Swiping back to the conversation list on a phone could leave the screen
   stuck: the conversation slid part-way off and stopped there, showing a mostly

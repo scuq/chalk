@@ -31,7 +31,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #unread         33 62 76  web/src/chat/ web/src/state/ web/src/components/MessageList.tsx web/src/components/ZuckerList.tsx
 #notify         40 50 71  web/src/notify/
 #parking        53        web/src/parking.ts web/src/components/
-#roster         54        web/src/chat/ web/src/components/Sidebar.tsx
+#roster         54 78     web/src/chat/ web/src/components/Sidebar.tsx web/src/components/ZuckerList.tsx
 #history        55        internal/store/ web/src/chat/ web/src/components/MessageList.tsx
 #mentions       56        web/src/chat/ web/src/components/Composer.tsx
 #linkpreview    57 67     internal/linkpreview/ web/src/linkpreview/
