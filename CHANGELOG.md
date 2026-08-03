@@ -10,6 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- Opening a conversation with a few unread messages and a photo among them
+  could throw you off the newest message a moment after it appeared: the view
+  jumped up to the top of the picture, leaving the latest messages below the
+  fold. It was easiest to hit on a phone, going back and forth between
+  conversations. Chalk now settles where to put you when the conversation
+  opens, and a picture finishing loading no longer moves you.
+
+---
+
 ## v0.6.4 — 3 August 2026 — Where you left off
 
 ### Fixed

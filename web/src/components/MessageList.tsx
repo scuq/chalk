@@ -179,13 +179,16 @@ function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
 // taken over and nothing should move the view but the user.
 type Anchor = "divider" | "end" | null;
 
-// 76-3: where a held "divider" anchor actually puts the view. The divider
-// only wins when the unread run is taller than the screen; a short run is
-// visible from the bottom anyway, and scrolling up to its head would hide the
-// newest message for no gain. Resolved on every application rather than once
-// at landing, because the run's height is not final until its images have
-// decrypted into their boxes -- a run measured while three attachments are
-// still one-line "decrypting…" strips looks short and then is not.
+// 76-3: does the divider deserve the view at all? Only when the unread run is
+// taller than the screen; a short run is visible from the bottom anyway, and
+// scrolling up to its head would hide the newest message for no gain.
+//
+// 79-2: asked once, at landing, and the answer is then kept. It used to be
+// re-asked on every application of the anchor, on the grounds that a run
+// measured while its attachments are still one-line "decrypting…" strips looks
+// short and then is not -- so re-asking would let a genuinely tall run claim
+// the scroll once its real heights were known. What that actually did is at
+// the landing effect below.
 function dividerEarnsTheScroll(
   divider: HTMLElement,
   end: HTMLElement | null,
@@ -225,13 +228,16 @@ function scrollToDivider(divider: HTMLElement, scroller: HTMLElement | null) {
   scroller.scrollTop += dividerScrollDelta(offset, pinnedTopInset(scroller));
 }
 
+// 79-2: applying the anchor is now only ever "put the view back where the
+// landing chose", with no judgement left in it -- which target it is was
+// settled at landing.
 function scrollToAnchor(
   anchor: Anchor,
   divider: HTMLElement | null,
   end: HTMLElement | null,
   scroller: HTMLElement | null,
 ) {
-  if (anchor === "divider" && divider && dividerEarnsTheScroll(divider, end, scroller)) {
+  if (anchor === "divider" && divider) {
     scrollToDivider(divider, scroller);
   } else if (anchor !== null && end) {
     end.scrollIntoView({ behavior: "auto", block: "end" });
@@ -581,7 +587,18 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
       const landOnDivider =
         divider !== null && dividerEarnsTheScroll(divider, endRef.current, scroller);
       pinnedRef.current = !landOnDivider;
-      anchorRef.current = divider !== null ? "divider" : "end";
+      // 79-2: hold the target the landing actually used, not "divider
+      // whenever one exists". A divider that did not earn the scroll left the
+      // anchor claiming the divider anyway, and every later application
+      // re-asked whether it had earned it by now -- so an unread run of three
+      // messages built around one photo, ~200px tall while the photo was a
+      // "decrypting…" strip and ~650px once it wasn't, changed its mind a
+      // frame after landing and dragged the reader from the newest message up
+      // to the top of the picture. A reader who is already reading must not be
+      // scrolled by an image finishing. The cost is landing at the bottom of a
+      // run that turns out to be taller than the screen, which still leaves
+      // the newest message in view and the divider a scroll away.
+      anchorRef.current = landOnDivider ? "divider" : "end";
       scrollToAnchor(anchorRef.current, dividerRef.current, endRef.current, scroller);
       return;
     }
