@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.6.3 — 3 August 2026 — Hidden channels
 
 ### Added
 - Channels can be hidden from your list. Right-click a channel (long-press on
