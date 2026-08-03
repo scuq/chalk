@@ -353,16 +353,33 @@ export class ChannelCrypto {
   }
 
   /**
-   * exportKeyForMint hands the guest-invite mint path (80-12) the channel's
-   * CURRENT space key so it can be wrapped to a derived guest identity.
-   * Returns null when we don't hold the key yet -- the mint UI must refuse
-   * rather than issue a link to a room the guest could never decrypt (the
-   * ordering trap: ensureChannelKey is lazy and creator-only).
+   * wrapKeyForGuest seals the channel's CURRENT space key to a derived guest
+   * identity and SIGNS it (82-7), returning the wrap plus everything the mint
+   * frame and the link need. Returns null when we don't hold the key yet --
+   * the mint UI must refuse rather than issue a link to a room the guest could
+   * never decrypt (the ordering trap: ensureChannelKey is lazy and
+   * creator-only).
+   *
+   * Replaces 80-12's exportKeyForMint, which handed the raw space key to a
+   * component to wrap. Keeping the key inside this module is the point: the
+   * signing identity is here, and a caller that receives plaintext key material
+   * is a caller that can wrap it any way it likes -- including unsigned.
    */
-  async exportKeyForMint(channelID: string): Promise<{ key: Uint8Array; version: number } | null> {
+  async wrapKeyForGuest(
+    channelID: string,
+    guestUserID: string,
+    guestX25519Pub: Uint8Array,
+  ): Promise<{ wrap: WrappedKey; version: number; ownerEd25519Pub: Uint8Array } | null> {
     const version = this.currentVersion(channelID);
     const key = await this.getKey(channelID, version);
-    return key ? { key, version } : null;
+    if (!key) return null;
+    const wrap = await wrapSpaceKey(
+      key,
+      guestX25519Pub,
+      { channelID, keyVersion: version, recipientID: guestUserID },
+      this.signer,
+    );
+    return { wrap, version, ownerEd25519Pub: this.identity.ed25519Public };
   }
 
   /**

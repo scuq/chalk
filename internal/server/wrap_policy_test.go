@@ -43,3 +43,27 @@ func TestCheckWrapPublish(t *testing.T) {
 		})
 	}
 }
+
+// 82-7: the guest-invite mint shares this policy with publish_channel_key, so
+// the two paths cannot drift into disagreeing about what "signed" means. The
+// mint handler itself needs a database; this is the rule it applies.
+func TestCheckWrapSuite(t *testing.T) {
+	cases := []struct {
+		suite       int
+		sigRequired bool
+		wantErr     bool
+	}{
+		{1, false, false}, // migration window: unsigned guest links still mintable
+		{2, false, false},
+		{2, true, false},
+		{1, true, true}, // enforcement on: no new unsigned guest links
+		{0, true, true},
+	}
+	for _, tc := range cases {
+		err := checkWrapSuite(tc.suite, tc.sigRequired)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("checkWrapSuite(%d, required=%v) = %v, wantErr=%v",
+				tc.suite, tc.sigRequired, err, tc.wantErr)
+		}
+	}
+}

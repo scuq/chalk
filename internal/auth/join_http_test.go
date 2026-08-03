@@ -47,6 +47,7 @@ func (f *fakeJoinStore) RedeemEphemeralInvite(_ context.Context, in store.Redeem
 		DisplayName:      in.DisplayName,
 		ChannelID:        inv.ChannelID,
 		ChannelName:      "quick call",
+		OwnerUserID:      inv.CreatedBy, // 82-7
 		ChannelExpiresAt: time.Now().Add(time.Hour),
 		KeyVersion:       1,
 		WrapSuite:        1,
@@ -109,6 +110,7 @@ func newFakeWithKey(t *testing.T) (*fakeJoinStore, ed25519.PrivateKey) {
 		string(lookup): {
 			Lookup:      lookup,
 			ChannelID:   uuid.New(),
+			CreatedBy:   uuid.New(), // 82-7: the minter, echoed as owner_user_id
 			GuestUserID: uuid.New(),
 			Ed25519Pub:  pub,
 			ExpiresAt:   time.Now().Add(time.Hour),
@@ -169,6 +171,12 @@ func TestJoinRedeemHappyPathAndReplay(t *testing.T) {
 	}
 	if body["channel_name"] != "quick call" || body["wrap_blob"] == "" {
 		t.Errorf("redeem body: %v", body)
+	}
+	// 82-7: the minter's id rides the response so the guest can verify the
+	// wrap's signature under it (against the key from the link fragment).
+	lookup, _ := hexDecode(knownHex)
+	if got := body["owner_user_id"]; got != f.invites[string(lookup)].CreatedBy.String() {
+		t.Errorf("owner_user_id = %v, want the invite's created_by", got)
 	}
 	var cookie *http.Cookie
 	for _, c := range resp.Cookies() {

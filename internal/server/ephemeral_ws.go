@@ -154,6 +154,13 @@ func (h *WSHandler) handleEphemeralInviteMint(
 	if err == nil && p.WrapSuite < 1 {
 		err = errors.New("wrap_suite must be >= 1")
 	}
+	// 82-7: the mint path joins the enforcement flag now that the mint client
+	// signs guest wraps and the link carries the anchor to verify them.
+	// Already-parked suite-1 invites still REDEEM -- their links were issued
+	// under the old contract, and the redeem copy is not a new wrap.
+	if err == nil {
+		err = checkWrapSuite(p.WrapSuite, h.cfg.WrapSigRequired)
+	}
 	if err == nil && len(p.Label) > 80 {
 		err = errors.New("label too long (max 80)")
 	}

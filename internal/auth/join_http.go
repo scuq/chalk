@@ -211,10 +211,15 @@ type joinRedeemRequest struct {
 }
 
 type joinRedeemResponse struct {
-	GuestUserID      string `json:"guest_user_id"`
-	DisplayName      string `json:"display_name"`
-	ChannelID        string `json:"channel_id"`
-	ChannelName      string `json:"channel_name"`
+	GuestUserID string `json:"guest_user_id"`
+	DisplayName string `json:"display_name"`
+	ChannelID   string `json:"channel_id"`
+	ChannelName string `json:"channel_name"`
+	// 82-7: who minted the invite. The guest verifies the wrap's Ed25519
+	// signature under this id, against the owner PUBLIC KEY carried in the
+	// link fragment (never seen by this server). The id is bound inside the
+	// signed message, so lying here fails verification instead of succeeding.
+	OwnerUserID      string `json:"owner_user_id"`
 	ChannelExpiresAt int64  `json:"channel_expires_at"` // unix-millis
 	KeyVersion       int    `json:"key_version"`
 	WrapSuite        int    `json:"wrap_suite"`
@@ -318,6 +323,7 @@ func (d *HTTPDeps) handleJoinRedeem(w http.ResponseWriter, r *http.Request) {
 		DisplayName:      redeemed.DisplayName,
 		ChannelID:        redeemed.ChannelID.String(),
 		ChannelName:      redeemed.ChannelName,
+		OwnerUserID:      redeemed.OwnerUserID.String(),
 		ChannelExpiresAt: redeemed.ChannelExpiresAt.UnixMilli(),
 		KeyVersion:       redeemed.KeyVersion,
 		WrapSuite:        redeemed.WrapSuite,

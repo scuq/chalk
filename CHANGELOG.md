@@ -52,6 +52,11 @@ The engineering-level history (which slice shipped what) lives in
 - The server now also refuses oversized key blobs, keys parked at implausible
   future versions, and one member silently replacing another member's stored
   key copy — tightening what a compromised account can do quietly.
+- Guest room links now prove who issued them. The link carries a small extra
+  piece so the guest's browser can check that the room key really came from the
+  person who created the link, instead of trusting whatever the server hands
+  back. Links are a little longer as a result. Links you created before this
+  update keep working until they expire.
 
 ### Added
 - **Temporary voice rooms with guest links.** A voice channel can now be

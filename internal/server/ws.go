@@ -3055,7 +3055,21 @@ func checkWrapPublish(wrapSuite, blobLen, keyVersion, currentVersion int, sigReq
 	if keyVersion > currentVersion+1 {
 		return fmt.Errorf("key_version %d is beyond the channel's next rotation (current %d)", keyVersion, currentVersion)
 	}
-	if sigRequired && wrapSuite < 2 {
+	return checkWrapSuite(wrapSuite, sigRequired)
+}
+
+// checkWrapSuite is the signed-wrap policy on its own, shared by
+// publish_channel_key and (since 82-7) the guest-invite mint. One function so
+// the two paths cannot drift into disagreeing about what "signed" means.
+//
+// minSignedWrapSuite is 2 rather than a "> 1" test because the question is
+// "does this suite authenticate its producer?", and the answer is a property
+// of the suite registry (docs/design/crypto-agility.md), not of the ordering
+// of the ids.
+const minSignedWrapSuite = 2
+
+func checkWrapSuite(wrapSuite int, sigRequired bool) error {
+	if sigRequired && wrapSuite < minSignedWrapSuite {
 		return errors.New("this server requires signed key wraps (wrap_suite >= 2)")
 	}
 	return nil

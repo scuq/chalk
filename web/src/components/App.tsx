@@ -179,7 +179,6 @@ import {
 } from "../proto";
 import { mintGuestLink, buildJoinURL, hexToBytes as guestHexToBytes, bytesToBase64 as guestB64 } from "../crypto/guest-link";
 import { countdownTickMs } from "../chat/countdown";
-import { wrapSpaceKeyUnsigned } from "../crypto/spacekey";
 import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
 import { hasUnread, initialState, selectChatPrefs, selectJoinMuted, selectParkingLotPrefs, selectRosterPrefs, selectVoicePrefs, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow, type VoicePrefs } from "../state/types";
@@ -3584,21 +3583,16 @@ export function App() {
     const cc = ccRef.current;
     const channelID = state.activeChannelID;
     if (!c || !c.isOpen() || !cc || !channelID) throw new Error("not connected");
-    const exported = await cc.exportKeyForMint(channelID);
-    if (!exported) {
-      throw new Error("this room's key isn't ready yet — wait a moment and try again");
-    }
     const m = await mintGuestLink();
     const guestID = crypto.randomUUID();
-    // Deliberately UNSIGNED, and the only such wrap chalk still produces
-    // (82-5). A guest's JoinScreen has no identity to anchor a signature
-    // against until 82-7 puts the owner's Ed25519 key in the link fragment;
-    // signing now would only make every existing link undecryptable.
-    const wrap = await wrapSpaceKeyUnsigned(exported.key, m.identity.x25519Public, {
-      channelID,
-      keyVersion: exported.version,
-      recipientID: guestID,
-    });
+    // 82-7: the wrap is signed by this user, and the link fragment carries the
+    // public half so the guest can check it. The space key never leaves
+    // ChannelCrypto -- a caller holding plaintext key material is a caller who
+    // could wrap it unsigned.
+    const minted = await cc.wrapKeyForGuest(channelID, guestID, m.identity.x25519Public);
+    if (!minted) {
+      throw new Error("this room's key isn't ready yet — wait a moment and try again");
+    }
     const ack = await c.request<EphemeralInviteMintPayload, EphemeralInviteMintAckPayload>(
       TypeEphemeralInviteMint,
       {
@@ -3608,13 +3602,16 @@ export function App() {
         x25519_pub: guestB64(m.identity.x25519Public),
         ed25519_pub: guestB64(m.identity.ed25519Public),
         self_sig: guestB64(m.identity.selfSig),
-        key_version: exported.version,
-        wrap_suite: wrap.suite,
-        wrap_blob: guestB64(wrap.blob),
+        key_version: minted.version,
+        wrap_suite: minted.wrap.suite,
+        wrap_blob: guestB64(minted.wrap.blob),
         label: label || undefined,
       },
     );
-    return { url: buildJoinURL(location.origin, m), expiresAt: ack.expires_at };
+    return {
+      url: buildJoinURL(location.origin, m, minted.ownerEd25519Pub),
+      expiresAt: ack.expires_at,
+    };
   };
 
   const revokeGuestInvite = async (lookup: string) => {

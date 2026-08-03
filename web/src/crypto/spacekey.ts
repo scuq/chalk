@@ -49,9 +49,9 @@
 // suite authenticates differently (an ML-DSA signature is ~2.4-4.6 KB).
 //
 // 82-5: suite 2 is now CURRENT_WRAP_SUITE, so every wrap chalk produces for a
-// member is signed. Suite 1 stays registered forever -- existing channels are
-// full of it and it must keep opening -- and stays producible through the one
-// explicitly-named exception, wrapSpaceKeyUnsigned, for the guest mint.
+// member is signed. 82-7 signed the guest-invite mint too, so NOTHING produces
+// suite 1 any more. It stays registered forever regardless -- existing channels
+// and outstanding guest links are full of it and it must keep opening.
 //
 // Random 96-bit nonces; explicit chalk HKDF salt/info. All native WebCrypto.
 // wrap/unwrap/decrypt return null (never throw) on any failure; the SIGNING
@@ -218,11 +218,11 @@ export async function wrapSpaceKey(
  * wrapSpaceKeyUnsigned produces a suite-1 wrap explicitly, whatever the current
  * suite is.
  *
- * It is named for what it gives up because it is a deliberate exception, not a
- * default: the ONLY caller is the guest-invite mint, whose recipient runs
- * JoinScreen with no identity to anchor a signature against until 82-7 carries
- * the owner's Ed25519 key in the link fragment. Everything else must use
- * wrapSpaceKey.
+ * Since 82-7 it has NO production caller -- the guest mint, its last one, signs
+ * now that the link fragment carries the owner's key. It stays because suite-1
+ * *opening* must work forever (old channel rows, outstanding guest links), and
+ * the tests that prove that need a way to produce the artifact under test.
+ * Named for what it gives up so that it cannot be reached for by accident.
  */
 export async function wrapSpaceKeyUnsigned(
   spaceKey: Uint8Array,

@@ -21,10 +21,10 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import {
   deriveGuestLink,
   parseJoinFragment,
+  openGuestWrap,
   bytesToBase64,
   type GuestLinkMaterial,
 } from "../crypto/guest-link";
-import { unwrapSpaceKey } from "../crypto/spacekey";
 import { GuestRoom, type GuestContext } from "./GuestRoom";
 
 interface RedeemResponse {
@@ -36,13 +36,16 @@ interface RedeemResponse {
   key_version: number;
   wrap_suite: number;
   wrap_blob: string; // b64 std
+  owner_user_id: string; // 82-7: who minted the invite; bound in the signature
   session_expires_at: number;
 }
 
+// 82-7: ownerKey is the trust anchor from the fragment -- null for a pre-82-7
+// link, which openGuestWrap treats as "this wrap must be the unsigned kind".
 type Stage =
   | { kind: "bad_link"; why: string }
-  | { kind: "name"; material: GuestLinkMaterial; lookupHex: string }
-  | { kind: "joining"; material: GuestLinkMaterial; lookupHex: string }
+  | { kind: "name"; material: GuestLinkMaterial; lookupHex: string; ownerKey: Uint8Array | null }
+  | { kind: "joining"; material: GuestLinkMaterial; lookupHex: string; ownerKey: Uint8Array | null }
   | { kind: "room"; ctx: GuestContext }
   | { kind: "gone"; why: string };
 
@@ -66,7 +69,7 @@ export function JoinScreen() {
   }, []);
 
   useEffect(() => {
-    const secret = parseJoinFragment(window.location.hash);
+    const frag = parseJoinFragment(window.location.hash);
     // Strip the fragment BEFORE any async work; the path (lookup) stays so
     // a reload can say "link already used here" instead of 404ing.
     window.history.replaceState({}, "", window.location.pathname);
@@ -74,34 +77,43 @@ export function JoinScreen() {
       setStage({ kind: "bad_link", why: "this join link is malformed." });
       return;
     }
-    if (!secret) {
+    if (!frag) {
       setStage({
         kind: "bad_link",
         why: "this join link is incomplete — the part after # is missing. Ask for the link again and open it exactly as sent.",
       });
       return;
     }
-    void deriveGuestLink(secret).then(
+    void deriveGuestLink(frag.secret).then(
       (material) => {
         if (material.lookupHex !== pathLookup) {
           setStage({ kind: "bad_link", why: "this join link is corrupted (its two halves do not match)." });
           return;
         }
-        setStage({ kind: "name", material, lookupHex: material.lookupHex });
+        setStage({
+          kind: "name",
+          material,
+          lookupHex: material.lookupHex,
+          ownerKey: frag.ownerEd25519Pub,
+        });
       },
       () => setStage({ kind: "bad_link", why: "this join link could not be read." }),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const join = async (material: GuestLinkMaterial, lookupHex: string) => {
+  const join = async (
+    material: GuestLinkMaterial,
+    lookupHex: string,
+    ownerKey: Uint8Array | null,
+  ) => {
     const displayName = name.trim();
     if (displayName.length < 1 || displayName.length > 32) {
       setError("pick a name between 1 and 32 characters");
       return;
     }
     setError(null);
-    setStage({ kind: "joining", material, lookupHex });
+    setStage({ kind: "joining", material, lookupHex, ownerKey });
     try {
       const chResp = await fetch(`/api/join/${lookupHex}`);
       if (!chResp.ok) throw new Error(chResp.status === 404 ? "this server has no guest access." : "could not reach the server.");
@@ -127,15 +139,22 @@ export function JoinScreen() {
       }
       const r = (await redeemResp.json()) as RedeemResponse;
 
-      const spaceKey = await unwrapSpaceKey(
+      // 82-7: verify-then-open. The owner key came in the fragment (which the
+      // server never saw); r.owner_user_id is the server's claim about whose
+      // key that is, and it is bound inside the signature, so a mislabelled
+      // owner fails here rather than passing.
+      const spaceKey = await openGuestWrap(
         { suite: r.wrap_suite, blob: b64ToBytes(r.wrap_blob) },
         material.identity.x25519Private,
-        r.channel_id,
-        r.key_version,
-        r.guest_user_id,
+        { channelID: r.channel_id, keyVersion: r.key_version, recipientID: r.guest_user_id },
+        r.owner_user_id,
+        ownerKey,
       );
       if (!spaceKey) {
-        setStage({ kind: "gone", why: "this link cannot decrypt the room (it may have been re-keyed). Ask for a new one." });
+        setStage({
+          kind: "gone",
+          why: "this link cannot open the room securely — its key could not be verified. Ask for a new link.",
+        });
         return;
       }
       setStage({
@@ -153,7 +172,7 @@ export function JoinScreen() {
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "joining failed — try again.");
-      setStage({ kind: "name", material, lookupHex });
+      setStage({ kind: "name", material, lookupHex, ownerKey });
     }
   };
 
@@ -198,7 +217,7 @@ export function JoinScreen() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (!joining) void join(stage.material, stage.lookupHex);
+            if (!joining) void join(stage.material, stage.lookupHex, stage.ownerKey);
           }}
         >
           <label class="chalk-field">

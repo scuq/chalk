@@ -78,10 +78,12 @@ No format change, no migration of existing data required to *read* it.
   moment a suite authenticates differently anyway.
 - `MSG_SUITE_AESGCM = 1`: AES-256-GCM (current).
 
-Suite 1 is still *produced* in exactly one place, `wrapSpaceKeyUnsigned`, for
-the guest-invite mint: a guest's browser has no identity to anchor a signature
-against until phase 82-7. It is named for what it gives up so that it cannot
-be reached for by accident.
+Since 82-7 nothing produces suite 1 any more — the guest mint signs too, with
+the guest's anchor carried in the link fragment. `wrapSpaceKeyUnsigned` remains
+exported for the tests that exercise suite-1 *opening*, which must keep working
+forever: links and channel rows written under suite 1 are still out there, and
+"never drop a suite" is the whole contract. It is named for what it gives up so
+it cannot be reached for by accident.
 
 AADs bind the suite + slot so nothing can be relocated/reinterpreted by the
 (untrusted) server:

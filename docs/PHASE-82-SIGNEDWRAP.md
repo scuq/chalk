@@ -4,10 +4,10 @@ Closing audit finding **C-01 (Critical)**: channel-key wraps are encrypted *to* 
 recipient but signed by nobody, so a malicious server can substitute a space key
 it knows. Planned against v0.6.4, after phase 81.
 
-**Status: in progress.** Slices 82-1 … 82-6 are implemented; 82-7 … 82-8 are
-not. C-01 is closed **on deployments that have flipped the enforcement flag**
-— see *Where this actually stands* below, which is deliberately placed before
-the design so it cannot be skimmed past.
+**Status: in progress.** Slices 82-1 … 82-7 are implemented; 82-8 (UI + doc
+closeout) is not. C-01 is closed **on deployments that have flipped the
+enforcement flag** — see *Where this actually stands* below, which is
+deliberately placed before the design so it cannot be skimmed past.
 
 ---
 
@@ -22,7 +22,7 @@ the design so it cannot be skimmed past.
 | Closed **when the operator flips `CHALK_WRAP_SIG_REQUIRED`** | Unsigned wraps entirely: the server refuses them on publish, the client refuses them on read (latched per session — a later welcome cannot relax it). An un-swept member shows `waiting` and recovers via a holder's re-share. |
 | **Still open by default** | On a deployment with the flag off (the shipped default), an unsigned wrap on a channel that has never yielded a signed one is still accepted — the migration window, which the sweep drains and the flag ends. |
 | Still open | Membership is server-asserted, so a server that can add a member it controls can still get a key it knows distributed. Phase 83. |
-| Still open | Guest wraps (the ephemeral mint) are unsigned and deliberately exempt from the flag until 82-7 gives the guest an anchor to verify against. |
+| Closed by 82-7 | Guest wraps. The link fragment now carries the owner's Ed25519 public key, the mint signs, and the guest verifies — anchored on the one value the server never sees. Links minted before 82-7 keep working, unsigned, until they expire (hours). |
 
 The migration story, in one line: **ship 82-6, let the sweep run, flip
 `CHALK_WRAP_SIG_REQUIRED=true`, and C-01 is closed for member wraps.** The
@@ -289,6 +289,48 @@ server did not report (pre-82-6 server) is left alone: unknown must not be
 treated as worse. No new frame, no scheduler, no background job — healing
 rides the code path that already runs on every channel open and re-share.
 
+### The guest path — 82-7
+
+A guest is the hardest case in the phase, because every anchor the rest of the
+design leans on is missing: no account, no pinned peers, no IndexedDB history,
+nothing but a URL. Phase 80's derived identity already stopped the server
+*reading* the room (it cannot produce the guest's private key), but it left
+substitution wide open: the server holds the guest's X25519 **public** key from
+the mint frame, so it can seal a key of its own into a flawless suite-1 wrap
+and hand that back at redemption. The guest joins a room the server can read,
+believing it joined the owner's.
+
+The anchor has to be something the server never sees, and there is exactly one
+such thing: **the fragment**. So it grew a second value —
+
+```
+#<base64url( secret(32) || ownerEd25519Pub(32) )>     ~96 -> ~140 chars
+```
+
+and the governing rule became **the fragment decides what the wrap must be**:
+
+| fragment | required wrap |
+|---|---|
+| carries an owner key (82-7+) | suite 2, signed by that key, as `owner_user_id` |
+| carries none (pre-82-7) | suite 1, unsigned |
+
+Both directions matter. Downward, a server cannot strip the signature off a
+current link — the guest expects one. Upward, it cannot bolt a signature onto a
+legacy link to look trustworthy — the guest has nothing to check it against and
+refuses rather than guessing. `owner_user_id` comes from the server, but it is
+bound *inside* the signed message, so mislabelling the owner produces a
+verification failure instead of an acceptance.
+
+The mint gate joins the enforcement flag here: with `CHALK_WRAP_SIG_REQUIRED`
+on, no new unsigned guest links can be created. Already-parked suite-1 invites
+still **redeem** — their links were issued under the old contract, the redeem
+copy is not a new wrap, and they die on their own within hours anyway.
+
+`exportKeyForMint` was **replaced** by `wrapKeyForGuest`, which does the sealing
+and signing inside `ChannelCrypto` and returns only the finished wrap. The old
+shape handed a component the raw space key; a caller holding plaintext key
+material is a caller that can wrap it any way it likes, including unsigned.
+
 ### Chokepoint — the bypass is now a compile error
 
 `keys: Map<string, Uint8Array>` became `Map<string, HeldKey>` with provenance a
@@ -387,6 +429,26 @@ now does both. Worth recording because the same shape will bite anything else
 that tests trust: **the fixture's "fresh device" was only ever half of one**, and
 the half that was missing is the half 82-2 added.
 
+### Two of 82-7's guards survive their own mutation, and that is fine
+
+Mutation-testing `openGuestWrap` produced a surprise: removing its
+suite-downgrade check changed **nothing** — every test still passed. Same for
+removing the refusal of a signature on an anchorless link.
+
+The reason is that `unwrapSpaceKey` and `unwrapSpaceKeySigned` each refuse the
+*other's* suite already, by construction of the registry. So the explicit
+guards are belt-and-braces; what actually carries the defence is **which
+primitive gets called**, which the fragment decides. Mutating *that* — forcing
+the unsigned path, i.e. reverting to pre-82-7 behaviour — killed two tests,
+including the substituted-wrap one.
+
+The guards were kept, collapsed into a single `requiredSuite` line so the
+policy is legible in one place rather than implied by two call sites, with a
+comment saying plainly that the teeth are elsewhere. Recorded because the naive
+reading of a green mutation run is "this check is dead code, delete it", and
+the correct reading here is "this check is redundant *today*, and states a rule
+the primitives happen to also enforce."
+
 ### Accepted risk: mixed-version bootstrap divergence
 
 Refusing a *different* unsigned read-back means two of a user's own devices
@@ -413,7 +475,7 @@ correctly and convergence is restored.
 | 82-4 | **done** | `openWrap` policy, self-signed read-back, warm path offline, hostile-server tests. |
 | 82-5 | **done** | `CURRENT_WRAP_SUITE = 2` so every producer signs; `wrapSpaceKey` dispatches on it and `wrapSpaceKeyUnsigned` is the one named exception (guest mint); the never-replace and ratchet rules in `adopt()`; `channelHasSignedKey`; `describeSuites().keyAuth` + its tooltip row. 6 tests. |
 | 82-6 | **done** | `wrap_suites` on the recipients ack; self-healing re-wrap sweep in `rewrapForMissing` (own slot included); `CHALK_WRAP_SIG_REQUIRED` through config → `welcome.wrap_sig_required` → chalkctl (generated, preserved, backfilled `false` on update); server refuses suite-1 writes when required (`checkWrapPublish`); `PutChannelKey` guarded overwrite (recipient-or-upgrade); `key_version ≤ current+1`; `maxWrapBlobBytes` on `publish_channel_key`; client latches the flag per session. |
-| 82-7 | todo | Guest path: owner Ed25519 key in the link fragment (~96 → ~140 chars), `owner_user_id` in the redeem response, signed mint, `JoinScreen` verification. |
+| 82-7 | **done** | Guest path: owner Ed25519 key in the link fragment (~96 → ~140 chars), `owner_user_id` through `RedeemedGuest` → the redeem response, `openGuestWrap`'s fragment-decides-the-suite rule, `wrapKeyForGuest` replacing `exportKeyForMint`, `JoinScreen` verify-then-open, mint gated by `checkWrapSuite`. 11 tests. |
 | 82-8 | todo | Members-panel badges, the identity-changed wall, key provenance line, visible `member_added`; `threat-model.md`, `crypto-agility.md` suite-2 registry entry, CHANGELOG. |
 
 ### The 82-6 server rule: recipient-or-upgrade, silently
@@ -450,7 +512,14 @@ Rejected because it gives one wrap suite **two different AAD constructions**
 depending on the recipient's type, and "a signature that is verified
 inconsistently" is the precise failure the audit named. Uniformity is worth the
 44 characters. Recorded because it is a genuinely good idea that someone will
-re-propose.
+re-propose. 82-7 shipped the fragment-key form as planned; the 44 characters
+cost ~140 chars of link, which stays inside every sane URL limit.
+
+**Versioning the fragment with a leading byte.** The obvious way to extend it,
+and rejected: the two forms are already distinguished by *length* (32 vs 64),
+which is unambiguous, needs no parsing state, and — the deciding point — keeps
+every pre-82-7 link byte-identical rather than orphaning them. A version byte
+would have made old links unparseable for a gain of nothing.
 
 ## Verification
 
@@ -459,25 +528,29 @@ go build ./... && go vet ./... && go test ./... && gofmt -l .   # gofmt empty
 cd web && npx tsc --noEmit && node test.mjs && node build.mjs
 ```
 
-Client suite at 82-6: **1106 tests, 0 failures** (1058 before the phase).
+Client suite at 82-7: **1115 tests, 0 failures** (1058 before the phase).
 
-Every 82-5 and 82-6 defence was mutation-tested, per the lesson above — the
-ratchet, the never-replace rule, the suite flip, the flag refusal and the
-sweep were each reverted in turn and the tests that should fail did, and only
-those. The server-side policy (`checkWrapPublish`) is a pure function tested
-without a database; the guarded upsert's `WHERE` clause is exercised only
-against a real Postgres and is covered by the flag-on end-to-end check below.
+Every 82-5 … 82-7 defence was mutation-tested, per the lesson above — the
+ratchet, the never-replace rule, the suite flip, the flag refusal, the sweep
+and the guest fragment rule were each reverted in turn and the tests that
+should fail did, and only those (see the note above on the two 82-7 guards
+that survive their own mutation, and why). The server-side policy
+(`checkWrapPublish` / `checkWrapSuite`) is a pure function tested without a
+database; the guarded upsert's `WHERE` clause is exercised only against a real
+Postgres and is covered by the flag-on end-to-end check below.
 
 DB-backed Go tests need a fixture database via `bootstrap/phase-03-postgres.sh`,
 not the ad-hoc dev DB — see the note in `docs/PHASE-81-SECAUDIT.md`.
 
 The end-to-end check runs via the `run-chalk` skill: two users in a channel
-exchanging messages, a guest link minted and redeemed, then
+exchanging messages, a guest link minted and redeemed (the link is now ~140
+chars — check it survives the copy button and a paste into the composer), then
 `CHALK_WRAP_SIG_REQUIRED=true` with an un-swept member showing `waiting` and
-recovering via "re-share". It exercises the real Postgres upsert guard, which
-no unit test reaches. The members-panel provenance and pin badges join the
-checklist when 82-8 ships them. **Not yet run for 82-5/82-6** — worth doing
-before cutting a release that contains them.
+recovering via "re-share", and a fresh guest link minted and redeemed under the
+flag. It exercises the real Postgres upsert guard, which no unit test reaches.
+The members-panel provenance and pin badges join the checklist when 82-8 ships
+them. **Not yet run for 82-5 … 82-7** — worth doing before cutting a release
+that contains them.
 
 ## Out of scope
 

@@ -67,10 +67,16 @@ type RedeemInput struct {
 // RedeemedGuest is everything the guest client needs to boot: its identity,
 // the room, its parked space-key wrap, and the session.
 type RedeemedGuest struct {
-	UserID           uuid.UUID
-	DisplayName      string
-	ChannelID        uuid.UUID
-	ChannelName      string
+	UserID      uuid.UUID
+	DisplayName string
+	ChannelID   uuid.UUID
+	ChannelName string
+	// OwnerUserID is who minted the invite (82-7) -- the user id the guest's
+	// client verifies the wrap's signature under. The signature binds this id,
+	// so a server that mislabels the owner produces a verification failure
+	// rather than an acceptance; the KEY the guest trusts arrives in the link
+	// fragment, which this server never sees.
+	OwnerUserID      uuid.UUID
 	ChannelExpiresAt time.Time
 	KeyVersion       int
 	WrapSuite        int
@@ -98,11 +104,11 @@ func (s *Store) RedeemEphemeralInvite(ctx context.Context, in RedeemInput) (Rede
 	err := s.withTx(ctx, func(tx pgx.Tx) error {
 		var inv EphemeralInvite
 		qerr := tx.QueryRow(ctx,
-			`SELECT channel_id, guest_user_id, x25519_pub, ed25519_pub, self_sig,
+			`SELECT channel_id, created_by, guest_user_id, x25519_pub, ed25519_pub, self_sig,
 			        key_version, wrap_suite, wrap_blob, expires_at, redeemed_at, revoked_at
 			   FROM ephemeral_invites WHERE lookup = $1 FOR UPDATE`,
 			in.Lookup,
-		).Scan(&inv.ChannelID, &inv.GuestUserID, &inv.X25519Pub, &inv.Ed25519Pub, &inv.SelfSig,
+		).Scan(&inv.ChannelID, &inv.CreatedBy, &inv.GuestUserID, &inv.X25519Pub, &inv.Ed25519Pub, &inv.SelfSig,
 			&inv.KeyVersion, &inv.WrapSuite, &inv.WrapBlob, &inv.ExpiresAt, &inv.RedeemedAt, &inv.RevokedAt)
 		if errors.Is(qerr, pgx.ErrNoRows) {
 			return ErrNotFound
@@ -222,11 +228,13 @@ func (s *Store) RedeemEphemeralInvite(ctx context.Context, in RedeemInput) (Rede
 		}
 
 		out = RedeemedGuest{
-			FirstJoin:        !exists,
-			UserID:           inv.GuestUserID,
-			DisplayName:      displayName,
-			ChannelID:        inv.ChannelID,
-			ChannelName:      chName,
+			FirstJoin:   !exists,
+			UserID:      inv.GuestUserID,
+			DisplayName: displayName,
+			ChannelID:   inv.ChannelID,
+			ChannelName: chName,
+			OwnerUserID: inv.CreatedBy, // 82-7
+
 			ChannelExpiresAt: *chExpires,
 			KeyVersion:       inv.KeyVersion,
 			WrapSuite:        inv.WrapSuite,
