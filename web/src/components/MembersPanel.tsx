@@ -66,6 +66,9 @@ interface Props {
   onRotate: () => void;
   onRefresh: () => void;
   onClose: () => void;
+  // 80-12: opens the guest-link modal. Present only for the creator of an
+  // ephemeral voice room; absent hides the button entirely.
+  onOpenGuestInvites?: () => void;
 }
 
 function verifyBadgeText(s: MemberVerifyState): string {
@@ -102,6 +105,7 @@ export function MembersPanel({
   onRotate,
   onRefresh,
   onClose,
+  onOpenGuestInvites,
 }: Props) {
   // which member's verify view is open (null = the list)
   const [selected, setSelected] = useState<string | null>(null);
@@ -277,6 +281,20 @@ export function MembersPanel({
                     );
                   })}
                 </ul>
+              )}
+              {/* 80-12: guest links, creator-only on ephemeral rooms (the
+                  prop is simply absent otherwise). */}
+              {onOpenGuestInvites && (
+                <div class="chalk-members-add">
+                  <button
+                    type="button"
+                    class="chalk-members-add-toggle"
+                    data-testid="members-guest-invites"
+                    onClick={onOpenGuestInvites}
+                  >
+                    ⚷ guest links
+                  </button>
+                </div>
               )}
               {!isDM && (
                 <div class="chalk-members-add">

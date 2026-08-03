@@ -86,6 +86,9 @@ export interface AuthConfig {
   // overrides (prefs.linkpreviewDomains) are separate SPA-side concerns.
   linkpreview_enabled: boolean;
   linkpreview_domains: string[];
+  // 80-12: whether ephemeral voice channels (guest magic links) are on.
+  // Absent from older servers -> false.
+  ephemeral_enabled?: boolean;
 }
 
 // RegistrationForm is the SPA-side draft state of the registration

@@ -334,6 +334,9 @@ type configResponse struct {
 	// consent pref, which is a SPA-only concern.
 	LinkPreviewEnabled bool     `json:"linkpreview_enabled"`
 	LinkPreviewDomains []string `json:"linkpreview_domains"`
+	// 80-12: whether ephemeral voice channels (guest magic links) are on.
+	// Gates the create-modal TTL option and the invite UI.
+	EphemeralEnabled bool `json:"ephemeral_enabled"`
 }
 
 // ---- handlers ----------------------------------------------------------
@@ -354,6 +357,7 @@ func (d *HTTPDeps) handleConfig(w http.ResponseWriter, r *http.Request) {
 
 		LinkPreviewEnabled: d.LinkPreview != nil,
 		LinkPreviewDomains: d.LinkPreviewDomains,
+		EphemeralEnabled:   d.EphemeralEnabled,
 	})
 }
 

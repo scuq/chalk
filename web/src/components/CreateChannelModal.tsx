@@ -25,18 +25,34 @@ interface Props {
   // of these (any casing) reuses it instead of minting a near-duplicate.
   knownGroups: string[];
   onClose: () => void;
+  // 80-12: server feature flag for ephemeral channels; hides the TTL option
+  // when the server would refuse it.
+  ephemeralEnabled: boolean;
   // 30-4: voice=true creates a Discord-style voice room (channel_type=
   // 'voice'). isDM is always passed false: 1:1 channels are opened from the
   // friends roster (which activates the existing DM), not created here. The
   // param is kept so the App-level wire mapping stays unchanged.
   // 54-2: group is the canonicalized grouping suggestion, never empty.
-  onSubmit: (name: string, isDM: boolean, memberIDs: string[], voice: boolean, group: string) => void;
+  // 80-12: ttlSecs > 0 makes the voice room ephemeral (0 = permanent).
+  onSubmit: (name: string, isDM: boolean, memberIDs: string[], voice: boolean, group: string, ttlSecs: number) => void;
 }
 
-export function CreateChannelModal({ friends, loading, voiceEnabled, knownGroups, onClose, onSubmit }: Props) {
+// 80-12: the ephemeral lifetime choices. The server clamps to its own cap
+// (default one month), so the menu only offers values under it.
+const TTL_CHOICES: Array<{ label: string; secs: number }> = [
+  { label: "never (permanent)", secs: 0 },
+  { label: "1 hour", secs: 3600 },
+  { label: "4 hours", secs: 4 * 3600 },
+  { label: "24 hours", secs: 24 * 3600 },
+  { label: "7 days", secs: 7 * 24 * 3600 },
+  { label: "30 days", secs: 30 * 24 * 3600 },
+];
+
+export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEnabled, knownGroups, onClose, onSubmit }: Props) {
   const [name, setName] = useState("");
   const [group, setGroup] = useState(""); // 54-2; empty -> DEFAULT_GROUP
   const [voice, setVoice] = useState(false); // 30-4
+  const [ttlSecs, setTtlSecs] = useState(0); // 80-12; 0 = permanent
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
@@ -74,7 +90,8 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, knownGroups
     // is_dm is always false here: a 1:1 is created by clicking a friend in
     // the roster (which opens the EXISTING DM), never from this modal. A
     // second DM between the same pair would strand the first one's history.
-    onSubmit(trimmed, false, Array.from(selected), voice, canonicalizeGroup(group, knownGroups));
+    onSubmit(trimmed, false, Array.from(selected), voice, canonicalizeGroup(group, knownGroups),
+      voice ? ttlSecs : 0);
   };
 
   return (
@@ -145,6 +162,33 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, knownGroups
                 onChange={(e) => setVoice((e.target as HTMLInputElement).checked)}
               />
               <span>voice channel (live audio/video room)</span>
+            </label>
+          )}
+
+          {/* 80-12: only a voice room can be ephemeral (guests join a call,
+              not an archive), so the lifetime picker appears with the voice
+              checkbox and resets to permanent when it's unchecked. */}
+          {voiceEnabled && ephemeralEnabled && voice && (
+            <label class="chalk-field">
+              <span class="chalk-field-label">disappears after</span>
+              <select
+                class="chalk-field-input"
+                data-testid="create-modal-ttl"
+                value={String(ttlSecs)}
+                onChange={(e) => setTtlSecs(Number((e.target as HTMLSelectElement).value))}
+              >
+                {TTL_CHOICES.map((c) => (
+                  <option key={c.secs} value={String(c.secs)}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              {ttlSecs > 0 && (
+                <div class="chalk-field-hint">
+                  the room, its messages and its guest links are destroyed when
+                  the timer runs out — for everyone, permanently.
+                </div>
+              )}
             </label>
           )}
 

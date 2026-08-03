@@ -258,6 +258,19 @@ export class ChannelCrypto {
     return true;
   }
 
+  /**
+   * exportKeyForMint hands the guest-invite mint path (80-12) the channel's
+   * CURRENT space key so it can be wrapped to a derived guest identity.
+   * Returns null when we don't hold the key yet -- the mint UI must refuse
+   * rather than issue a link to a room the guest could never decrypt (the
+   * ordering trap: ensureChannelKey is lazy and creator-only).
+   */
+  async exportKeyForMint(channelID: string): Promise<{ key: Uint8Array; version: number } | null> {
+    const version = this.currentVersion(channelID);
+    const key = await this.getKey(channelID, version);
+    return key ? { key, version } : null;
+  }
+
   private remember(channelID: string, v: number, key: Uint8Array): void {
     this.keys.set(this.memKey(channelID, v), key);
     this.encrypted.add(channelID);

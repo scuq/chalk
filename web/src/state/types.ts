@@ -170,6 +170,9 @@ export interface ChannelSummary {
   lastMsgSeq?: number;
   lastMsgSender?: string; // user id; absent when the sender was purged
   lastMsgDeleted?: boolean;
+  // 80-12: when an ephemeral channel self-destructs (unix-millis). Absent =
+  // permanent. Gates the guest-invite UI; the countdown renders from it (80-14).
+  expiresAt?: number;
 }
 
 // 62-3: per-channel newest-message activity, the unified conversation

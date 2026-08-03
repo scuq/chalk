@@ -269,6 +269,14 @@ export interface FriendListAckPayload {
 
 export const TypeCreateChannel = "create_channel";
 export const TypeCreateChannelAck = "create_channel_ack";
+
+// 80-12: ephemeral guest invites (owner-only; docs/PHASE-80-EPHEMERAL.md).
+export const TypeEphemeralInviteMint = "ephemeral_invite_mint";
+export const TypeEphemeralInviteMintAck = "ephemeral_invite_mint_ack";
+export const TypeEphemeralInviteList = "ephemeral_invite_list";
+export const TypeEphemeralInviteListAck = "ephemeral_invite_list_ack";
+export const TypeEphemeralInviteRevoke = "ephemeral_invite_revoke";
+export const TypeEphemeralInviteRevokeAck = "ephemeral_invite_revoke_ack";
 export const TypeListChannels = "list_channels";
 export const TypeListChannelsAck = "list_channels_ack";
 export const TypeFetchHistory = "fetch_history";
@@ -330,6 +338,59 @@ export interface CreateChannelPayload {
 
 export interface CreateChannelAckPayload {
   channel: ChannelSummaryWire;
+}
+
+// 80-12: ephemeral guest invite payloads. All byte fields base64 (std); the
+// link secret itself never appears on any of these -- the server only holds
+// material that is useless without it.
+export interface EphemeralInviteMintPayload {
+  channel_id: string;
+  lookup: string; // b64, 16 bytes
+  guest_user_id: string;
+  x25519_pub: string; // b64, 32 bytes
+  ed25519_pub: string; // b64, 32 bytes
+  self_sig: string; // b64, 64 bytes
+  key_version: number;
+  wrap_suite: number;
+  wrap_blob: string; // b64
+  label?: string;
+  ttl_secs?: number; // 0/omitted = server max (capped at 24 h)
+}
+
+export interface EphemeralInviteMintAckPayload {
+  channel_id: string;
+  lookup: string;
+  expires_at: number; // unix-millis, after clamping
+}
+
+export interface EphemeralInviteListPayload {
+  channel_id: string;
+}
+
+export interface EphemeralInviteInfoWire {
+  lookup: string; // b64
+  guest_user_id: string;
+  label?: string;
+  created_at: number;
+  expires_at: number;
+  redeemed_at?: number;
+  revoked_at?: number;
+}
+
+export interface EphemeralInviteListAckPayload {
+  channel_id: string;
+  invites: EphemeralInviteInfoWire[];
+  max_guests: number;
+}
+
+export interface EphemeralInviteRevokePayload {
+  channel_id: string;
+  lookup: string;
+}
+
+export interface EphemeralInviteRevokeAckPayload {
+  channel_id: string;
+  lookup: string;
 }
 
 export interface ListChannelsPayload {}

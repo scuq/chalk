@@ -167,7 +167,18 @@ import {
   TypeServerNotice, // 46-1: the server is going down
   NoticeRestarting,
   type ServerNoticePayload,
+  // 80-12: guest magic links (ephemeral rooms, owner-only).
+  TypeEphemeralInviteMint,
+  TypeEphemeralInviteList,
+  TypeEphemeralInviteRevoke,
+  type EphemeralInviteMintPayload,
+  type EphemeralInviteMintAckPayload,
+  type EphemeralInviteListPayload,
+  type EphemeralInviteListAckPayload,
+  type EphemeralInviteRevokePayload,
 } from "../proto";
+import { mintGuestLink, buildJoinURL, hexToBytes as guestHexToBytes, bytesToBase64 as guestB64 } from "../crypto/guest-link";
+import { wrapSpaceKey } from "../crypto/spacekey";
 import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
 import { hasUnread, initialState, selectChatPrefs, selectJoinMuted, selectParkingLotPrefs, selectRosterPrefs, selectVoicePrefs, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow, type VoicePrefs } from "../state/types";
@@ -212,6 +223,10 @@ const FriendsPanel = lazyComponent(() =>
 );
 const MembersPanel = lazyComponent(() =>
   import("./MembersPanel").then((m) => m.MembersPanel)
+);
+// 80-12: guest magic links for ephemeral rooms; creator-only, rarely open.
+const EphemeralInviteModal = lazyComponent(() =>
+  import("./EphemeralInviteModal").then((m) => m.EphemeralInviteModal)
 );
 const GovernancePanel = lazyComponent(() =>
   import("./GovernancePanel").then((m) => m.GovernancePanel)
@@ -348,6 +363,7 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
     lastMsgSeq: w.last_msg_seq,
     lastMsgSender: w.last_msg_sender_user_id,
     lastMsgDeleted: w.last_msg_deleted,
+    expiresAt: w.expires_at, // 80-12
   };
 }
 
@@ -458,6 +474,8 @@ export function App() {
   // ChannelCrypto when the panel opens; not reducer-owned.
   const [memberRecipients, setMemberRecipients] = useState<Set<string>>(new Set());
   const [membersLoading, setMembersLoading] = useState(false);
+  // 80-12: the guest-link modal (creator of an ephemeral room only).
+  const [guestInvitesOpen, setGuestInvitesOpen] = useState(false);
   // Phase 24b: per-member verification info for the members panel. App stores
   // digestHex + generation (needed to persist a verification) alongside the
   // panel-facing { state, words, numeric }.
@@ -3466,7 +3484,7 @@ export function App() {
     return true;
   };
 
-  const onCreateChannel = (name: string, isDM: boolean, memberIDs: string[], voice: boolean, group?: string) => {
+  const onCreateChannel = (name: string, isDM: boolean, memberIDs: string[], voice: boolean, group?: string, ttlSecs?: number) => {
     const c = clientRef.current;
     if (!c || !c.isOpen()) return;
     const payload: CreateChannelPayload = {
@@ -3477,10 +3495,78 @@ export function App() {
     // 30-4: only stamp channel_type when it's a voice room -- omitting it
     // keeps the payload byte-compatible with older servers for text channels.
     if (voice) payload.channel_type = "voice";
+    // 80-12: an ephemeral room. Voice-only by the modal's construction; the
+    // server clamps the TTL to its cap and answers with the absolute expiry.
+    if (voice && ttlSecs && ttlSecs > 0) payload.ttl_secs = ttlSecs;
     // 54-2: same rule for the group -- omit the default so the payload is
     // unchanged for callers that don't group (the DM path passes nothing).
     if (group && group !== DEFAULT_GROUP) payload.group_name = group;
     c.send(TypeCreateChannel, payload, "create-" + Date.now());
+  };
+
+  // ---- 80-12: guest magic links (ephemeral rooms) ----------------------
+  //
+  // The modal is dumb; these callbacks own the frames and the crypto. The
+  // mint derives everything from a fresh secret (crypto/guest-link.ts),
+  // wraps the CURRENT space key to the derived guest identity under a
+  // reserved uuid, parks the public halves on the server, and hands back
+  // the one-time URL. exportKeyForMint returning null is the ordering
+  // trap: no link may exist before the room's key does.
+  const listGuestInvites = async () => {
+    const c = clientRef.current;
+    const channelID = state.activeChannelID;
+    if (!c || !c.isOpen() || !channelID) throw new Error("not connected");
+    const ack = await c.request<EphemeralInviteListPayload, EphemeralInviteListAckPayload>(
+      TypeEphemeralInviteList,
+      { channel_id: channelID },
+    );
+    return { invites: ack.invites ?? [], maxGuests: ack.max_guests ?? 0 };
+  };
+
+  const mintGuestInvite = async (label: string) => {
+    const c = clientRef.current;
+    const cc = ccRef.current;
+    const channelID = state.activeChannelID;
+    if (!c || !c.isOpen() || !cc || !channelID) throw new Error("not connected");
+    const exported = await cc.exportKeyForMint(channelID);
+    if (!exported) {
+      throw new Error("this room's key isn't ready yet — wait a moment and try again");
+    }
+    const m = await mintGuestLink();
+    const guestID = crypto.randomUUID();
+    const wrap = await wrapSpaceKey(
+      exported.key,
+      m.identity.x25519Public,
+      channelID,
+      exported.version,
+      guestID,
+    );
+    const ack = await c.request<EphemeralInviteMintPayload, EphemeralInviteMintAckPayload>(
+      TypeEphemeralInviteMint,
+      {
+        channel_id: channelID,
+        lookup: guestB64(guestHexToBytes(m.lookupHex)),
+        guest_user_id: guestID,
+        x25519_pub: guestB64(m.identity.x25519Public),
+        ed25519_pub: guestB64(m.identity.ed25519Public),
+        self_sig: guestB64(m.identity.selfSig),
+        key_version: exported.version,
+        wrap_suite: wrap.suite,
+        wrap_blob: guestB64(wrap.blob),
+        label: label || undefined,
+      },
+    );
+    return { url: buildJoinURL(location.origin, m), expiresAt: ack.expires_at };
+  };
+
+  const revokeGuestInvite = async (lookup: string) => {
+    const c = clientRef.current;
+    const channelID = state.activeChannelID;
+    if (!c || !c.isOpen() || !channelID) throw new Error("not connected");
+    await c.request<EphemeralInviteRevokePayload>(TypeEphemeralInviteRevoke, {
+      channel_id: channelID,
+      lookup,
+    });
   };
 
   // --- Render ----------------------------------------------------------
@@ -5117,6 +5203,7 @@ export function App() {
           friends={state.friends}
           loading={!state.friendsLoaded}
           voiceEnabled={state.voiceEnabled}
+          ephemeralEnabled={state.authConfig?.ephemeral_enabled ?? false}
           knownGroups={knownGroups(
             Object.values(state.channels),
             selectRosterPrefs(state.prefs).groupOverrides
@@ -5372,6 +5459,21 @@ export function App() {
             void refreshVerification();
           }}
           onClose={() => dispatch({ kind: "close_panel" })}
+          onOpenGuestInvites={
+            activeChannel.expiresAt != null &&
+            activeChannel.createdBy === (state.user?.id ?? "")
+              ? () => setGuestInvitesOpen(true)
+              : undefined
+          }
+        />
+      )}
+      {guestInvitesOpen && activeChannel && (
+        <EphemeralInviteModal
+          channelName={displayName(activeChannel, state.user?.id ?? null)}
+          listInvites={listGuestInvites}
+          mintInvite={mintGuestInvite}
+          revokeInvite={revokeGuestInvite}
+          onClose={() => setGuestInvitesOpen(false)}
         />
       )}
       {state.openPanel === "governance" && activeChannel && !activeChannel.isDM && (
