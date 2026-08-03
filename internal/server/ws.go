@@ -595,6 +595,14 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 		case proto.TypeFetchReactions:
 			h.handleFetchReactions(ctx, c, conn, f)
 
+		// 80-7: ephemeral guest invites (owner-only).
+		case proto.TypeEphemeralInviteMint:
+			h.handleEphemeralInviteMint(ctx, c, conn, f)
+		case proto.TypeEphemeralInviteList:
+			h.handleEphemeralInviteList(ctx, c, conn, f)
+		case proto.TypeEphemeralInviteRevoke:
+			h.handleEphemeralInviteRevoke(ctx, c, conn, f)
+
 		// gov-1b-1: governance mode + proposal lifecycle.
 		case proto.TypeGovSetMode:
 			h.handleGovSetMode(ctx, c, conn, f)
