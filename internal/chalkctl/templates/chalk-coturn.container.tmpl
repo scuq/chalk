@@ -24,6 +24,19 @@
 # diagnosable: --include-reason-string puts the actual reason in the STUN error
 # response instead of the bare phrase, and --log-binding re-enables binding
 # logging, which verbose mode suppresses by default.
+#
+# 80-10 PEER FENCE: without --denied-peer-ip, TURN relays to ANY address a
+# credential holder names -- including 10.0.0.0/8 and the rest of the
+# operator's private network, a port-scan and SSRF pivot. Phase 80 hands
+# credentials to strangers holding a guest link, which is what makes the
+# default unacceptable. Every private/special IPv4 range is denied;
+# --allowed-peer-ip pins the relay's own public address back open (relayed
+# candidates of OTHER call members live on it, and allowed beats denied), so
+# relay<->relay traffic keeps flowing. --no-multicast-peers closes the
+# multicast ranges a denied-list can miss. --total-quota bounds simultaneous
+# allocations server-wide and --max-bps (bytes/s, ~10 Mbit/s) bounds one
+# allocation's bandwidth; --user-quota would be decorative here, because the
+# REST username embeds a rotating expiry and resets it on every mint.
 [Unit]
 Description=chalk coturn
 Wants=network-online.target
@@ -33,7 +46,7 @@ After=network-online.target
 ContainerName=coturn
 Image=docker.io/coturn/coturn:{{ .CoturnTag }}
 Network=host
-Exec=-n --log-file=stdout --simple-log --new-log-timestamp --listening-port=3478 --min-port={{ .TurnMinPort }} --max-port={{ .TurnMaxPort }} --realm=chalk --listening-ip={{ .PublicIP }} --relay-ip={{ .PublicIP }} --external-ip={{ .PublicIP }} --use-auth-secret --static-auth-secret={{ .TurnSecret }} --fingerprint --no-cli --no-tls --no-dtls{{ if .TurnVerbose }} --verbose --include-reason-string --log-binding{{ end }}
+Exec=-n --log-file=stdout --simple-log --new-log-timestamp --listening-port=3478 --min-port={{ .TurnMinPort }} --max-port={{ .TurnMaxPort }} --realm=chalk --listening-ip={{ .PublicIP }} --relay-ip={{ .PublicIP }} --external-ip={{ .PublicIP }} --use-auth-secret --static-auth-secret={{ .TurnSecret }} --fingerprint --no-cli --no-tls --no-dtls --no-multicast-peers --denied-peer-ip=0.0.0.0-0.255.255.255 --denied-peer-ip=10.0.0.0-10.255.255.255 --denied-peer-ip=100.64.0.0-100.127.255.255 --denied-peer-ip=127.0.0.0-127.255.255.255 --denied-peer-ip=169.254.0.0-169.254.255.255 --denied-peer-ip=172.16.0.0-172.31.255.255 --denied-peer-ip=192.0.0.0-192.0.0.255 --denied-peer-ip=192.0.2.0-192.0.2.255 --denied-peer-ip=192.168.0.0-192.168.255.255 --denied-peer-ip=198.18.0.0-198.19.255.255 --denied-peer-ip=224.0.0.0-255.255.255.255 --allowed-peer-ip={{ .PublicIP }} --total-quota=64 --max-bps=1250000{{ if .TurnVerbose }} --verbose --include-reason-string --log-binding{{ end }}
 
 [Service]
 Restart=always

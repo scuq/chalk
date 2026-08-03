@@ -533,6 +533,12 @@ type Conn struct {
 	IsGuest        bool
 	GuestChannelID uuid.UUID
 
+	// 80-10: when the session that authorized this connection expires.
+	// TURN credentials minted on voice_join are clamped to it, so a
+	// credential can never outlive the session that earned it. Zero when
+	// no session backed the conn (store-less tests).
+	SessionExpiresAt time.Time
+
 	// presenceMu guards claimedPresence, which the presence heartbeat
 	// goroutine reads while the read loop writes it.
 	presenceMu      sync.Mutex

@@ -618,6 +618,7 @@ var coturnBoolFlags = map[string]bool{
 	"--simple-log": true, "--new-log-timestamp": true, "--use-auth-secret": true,
 	"--fingerprint": true, "--no-cli": true, "--no-tls": true, "--no-dtls": true,
 	"--verbose": true, "--include-reason-string": true, "--log-binding": true,
+	"--no-multicast-peers": true,
 }
 
 func coturnExecLine(t *testing.T, p InitParams) string {
@@ -640,6 +641,31 @@ func coturnParams(verbose bool) InitParams {
 		CoturnTag: "4.14.0-r0-alpine", TurnSecret: "TURNSECRET",
 		PublicIP: "203.0.113.7", TurnMinPort: TurnMinPort, TurnMaxPort: TurnMaxPort,
 		TurnVerbose: verbose,
+	}
+}
+
+// TestCoturnPeerFence (80-10): the relay must refuse private/special peer
+// ranges (any credential holder could otherwise port-scan the operator's
+// network through it), keep its own public address open for relay<->relay
+// traffic, and carry the server-wide quota + per-allocation bandwidth caps.
+func TestCoturnPeerFence(t *testing.T) {
+	exec := coturnExecLine(t, coturnParams(false))
+	for _, want := range []string{
+		"--no-multicast-peers",
+		"--denied-peer-ip=10.0.0.0-10.255.255.255",
+		"--denied-peer-ip=127.0.0.0-127.255.255.255",
+		"--denied-peer-ip=169.254.0.0-169.254.255.255",
+		"--denied-peer-ip=172.16.0.0-172.31.255.255",
+		"--denied-peer-ip=192.168.0.0-192.168.255.255",
+		"--denied-peer-ip=100.64.0.0-100.127.255.255",
+		"--denied-peer-ip=224.0.0.0-255.255.255.255",
+		"--allowed-peer-ip=203.0.113.7",
+		"--total-quota=64",
+		"--max-bps=1250000",
+	} {
+		if !strings.Contains(exec, want) {
+			t.Errorf("coturn Exec missing %q", want)
+		}
 	}
 }
 

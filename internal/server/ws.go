@@ -320,6 +320,9 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cancel()
 	})
 	conn.DeviceType = string(deviceType)
+	if sessionUser != nil {
+		conn.SessionExpiresAt = sessionUser.Session.ExpiresAt // 80-10: TURN clamp input
+	}
 	if isGuest {
 		conn.IsGuest = true
 		conn.GuestChannelID = sessionUser.GuestChannelID

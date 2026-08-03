@@ -52,6 +52,29 @@ func voiceConnID(instanceID, connID string) string {
 	return instanceID + ":" + connID
 }
 
+// clampTurnTTL bounds a TURN credential's life (80-10): never past the
+// session that earned it, never past an ephemeral channel's expiry. The
+// 30-second floor keeps a nearly-expired room's join from minting an
+// already-dead credential mid-handshake; the room's teardown kicks the call
+// moments later anyway.
+func clampTurnTTL(base time.Duration, now, sessionExpiry time.Time, channelExpiry *time.Time) time.Duration {
+	ttl := base
+	if !sessionExpiry.IsZero() {
+		if until := sessionExpiry.Sub(now); until < ttl {
+			ttl = until
+		}
+	}
+	if channelExpiry != nil {
+		if until := channelExpiry.Sub(now); until < ttl {
+			ttl = until
+		}
+	}
+	if ttl < 30*time.Second {
+		ttl = 30 * time.Second
+	}
+	return ttl
+}
+
 // voiceCallerFor resolves the calling (user, device) or writes the error and
 // returns ok=false. Shared preamble of all five voice handlers.
 func (h *WSHandler) voiceCallerFor(
@@ -181,10 +204,22 @@ func (h *WSHandler) handleVoiceJoin(
 	if len(h.cfg.Voice.TurnURLs) == 0 {
 		h.logger.Printf("voice: join without TURN configured (STUN-only degraded mode)")
 	}
+	// 80-10: clamp the credential's life to the session and (for ephemeral
+	// rooms) the channel. CHALK_TURN_TTL_SECS used to be minted blind, so a
+	// credential could outlive both the session that earned it and the room
+	// it was for. The channel-expiry read is best-effort: a lookup failure
+	// falls back to the configured TTL rather than failing the join.
+	now := time.Now().UTC()
+	turnTTL := h.cfg.Voice.TurnTTL
+	if ch, cerr := h.store.GetChannel(ctx, channelID); cerr == nil && ch.ExpiresAt != nil {
+		turnTTL = clampTurnTTL(turnTTL, now, conn.SessionExpiresAt, ch.ExpiresAt)
+	} else {
+		turnTTL = clampTurnTTL(turnTTL, now, conn.SessionExpiresAt, nil)
+	}
 	ice := turncred.ICEServers(
 		h.cfg.Voice.StunURLs, h.cfg.Voice.TurnURLs,
 		h.cfg.Voice.TurnSecret, userID.String(),
-		h.cfg.Voice.TurnTTL, time.Now().UTC(),
+		turnTTL, now,
 	)
 	iceView := make([]proto.ICEServer, 0, len(ice))
 	for _, s := range ice {
