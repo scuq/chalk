@@ -72,11 +72,12 @@ All flags are also available as `CHALK_*` env vars (e.g. `--listen` ↔ `CHALK_L
 | | `CHALK_VOICE_AUDIO_KBPS` | `64` | per-peer voice reserve |
 | | `CHALK_VOICE_MIN_VIDEO_KBPS` | `300` | per-copy floor before video is unsustainable |
 | `--db-url-guest` | `CHALK_DB_URL_GUEST` | | phase 80: the `chalk_guest` pool; empty disables guest joins |
-| | `CHALK_EPHEMERAL_ENABLED` | `true` | phase 80: ephemeral voice channels + guest links |
+| | `CHALK_EPHEMERAL_ENABLED` | `false` | phase 80: ephemeral voice channels + guest links. Off unless asked for since 81-3; `chalkctl` writes your choice explicitly either way |
 | | `CHALK_EPHEMERAL_MAX_TTL_HOURS` | `720` | cap on a room's lifetime (1 month) |
 | | `CHALK_EPHEMERAL_INVITE_MAX_TTL_HOURS` | `24` | cap on a link's lifetime; values above 24 refuse to boot |
 | | `CHALK_EPHEMERAL_MAX_GUESTS` | `8` | invite links per room (revoking frees a slot) |
-| | `CHALK_TRUSTED_PROXY` | | CIDR list or `private`; X-Forwarded-For is honored only from these peers (set to `private` behind chalkctl's Caddy so per-IP rate limits see real clients) |
+| | `CHALK_TRUSTED_PROXY` | | CIDR list or `private`; X-Forwarded-For is honored only from these peers (set to `private` behind chalkctl's Caddy so per-IP rate limits see real clients). `chalkctl` generates this since 81-3 |
+| | `CHALK_AUTH_DECOY_KEY` | | 32 bytes, standard base64. Keys the fake KDF params served for unknown usernames; unset means a per-process key, so decoys shift on restart while real accounts' params don't — which is itself the tell. `chalkctl` generates this since 81-3 |
 
 ## Voice (TURN relay)
 

@@ -141,7 +141,7 @@ func Init(o InitOptions) error {
 	//   - --force WITHOUT --drop-db: PRESERVE the existing secrets from the
 	//     current env file, or the running DB (with its old password) would
 	//     reject the newly-generated one.
-	var pg, appPw, guestPw, turn, totp, adminBoot string
+	var pg, appPw, guestPw, turn, totp, decoy, adminBoot string
 	preserve := o.Force && initialized && !o.DropDB
 	if preserve {
 		existing, rerr := readEnvSecrets(o.EnvPath)
@@ -182,6 +182,16 @@ func Init(o InitOptions) error {
 			}
 			o.logf("generating CHALK_TOTP_ENC_KEY (auth v2 upgrade)")
 		}
+		// 81-3: deployments initialized before this have no decoy key and were
+		// randomizing it per process. A fresh one is safe -- decoy salts are
+		// fake by construction, so nothing depends on their old values.
+		decoy = existing["CHALK_AUTH_DECOY_KEY"]
+		if decoy == "" {
+			if decoy, err = genDecoyKey(); err != nil {
+				return err
+			}
+			o.logf("generating CHALK_AUTH_DECOY_KEY (stable prelogin decoys)")
+		}
 		adminBoot = existing["CHALK_ADMIN_BOOTSTRAP_TOKEN"]
 		if adminBoot == "" {
 			if adminBoot, err = genSecret(24); err != nil {
@@ -204,6 +214,9 @@ func Init(o InitOptions) error {
 			}
 		}
 		if totp, err = genTOTPEncKey(); err != nil {
+			return err
+		}
+		if decoy, err = genDecoyKey(); err != nil {
 			return err
 		}
 		if adminBoot, err = genSecret(24); err != nil {
@@ -246,6 +259,7 @@ func Init(o InitOptions) error {
 		PGGuestPassword:     guestPw,
 		TurnSecret:          turn,
 		TOTPEncKey:          totp,
+		AuthDecoyKey:        decoy,
 		AdminBootstrapToken: adminBoot,
 		ChalkctlPath:        self,
 

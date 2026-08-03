@@ -27,6 +27,7 @@ type InitParams struct {
 	PGGuestPassword     string // secret -> env file only (80-1: chalk_guest role)
 	TurnSecret          string // secret -> env file only (voice)
 	TOTPEncKey          string // secret -> env file only (auth v2 TOTP at-rest key)
+	AuthDecoyKey        string // secret -> env file only (81-3: stable prelogin decoys)
 	AdminBootstrapToken string // secret -> env file only (one-shot admin claim)
 	ChalkctlPath        string // absolute path to this binary (update timer)
 
@@ -41,8 +42,9 @@ type InitParams struct {
 	LinkPreviewEnabled      bool   // false = write CHALK_LINKPREVIEW_ENABLED=false
 	LinkPreviewDomains      string // "" = omit (chalkd's built-in whitelist)
 
-	// 80-5: ephemeral voice channels. Enabled=false writes the off switch;
-	// the 0-valued knobs are omitted (chalkd defaults).
+	// 80-5: ephemeral voice channels. 81-3 writes Enabled either way (the
+	// server default is now off); the 0-valued knobs are omitted (chalkd
+	// defaults).
 	EphemeralEnabled     bool
 	EphemeralMaxTTLHours int
 	EphemeralInviteHours int

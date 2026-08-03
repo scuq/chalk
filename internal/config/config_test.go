@@ -128,11 +128,30 @@ func TestEphemeralConfig(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	e := c.Ephemeral
-	if !e.Enabled || e.MaxTTLHours != 720 || e.InviteMaxTTLHours != 24 || e.MaxGuests != 8 {
+	// 81-3: off unless asked for. Whoever holds a magic link IS the guest, so
+	// a deployment that never configured the feature must not have it live.
+	if e.Enabled || e.MaxTTLHours != 720 || e.InviteMaxTTLHours != 24 || e.MaxGuests != 8 {
 		t.Fatalf("defaults: %+v", e)
 	}
 	if c.DBURLGuest != "" {
 		t.Fatalf("DBURLGuest default should be empty, got %q", c.DBURLGuest)
+	}
+
+	t.Setenv("CHALK_EPHEMERAL_ENABLED", "true")
+	t.Setenv("CHALK_EPHEMERAL_MAX_TTL_HOURS", "96")
+	t.Setenv("CHALK_EPHEMERAL_INVITE_MAX_TTL_HOURS", "12")
+	t.Setenv("CHALK_EPHEMERAL_MAX_GUESTS", "3")
+	t.Setenv("CHALK_DB_URL_GUEST", "postgres://chalk_guest:pw@localhost/chalk")
+	c, err = Load(nil)
+	if err != nil {
+		t.Fatalf("Load with env: %v", err)
+	}
+	e = c.Ephemeral
+	if !e.Enabled || e.MaxTTLHours != 96 || e.InviteMaxTTLHours != 12 || e.MaxGuests != 3 {
+		t.Fatalf("env overlay (on): %+v", e)
+	}
+	if c.DBURLGuest != "postgres://chalk_guest:pw@localhost/chalk" {
+		t.Fatalf("DBURLGuest: %q", c.DBURLGuest)
 	}
 
 	t.Setenv("CHALK_EPHEMERAL_ENABLED", "false")
@@ -146,14 +165,14 @@ func TestEphemeralConfig(t *testing.T) {
 	}
 	e = c.Ephemeral
 	if e.Enabled || e.MaxTTLHours != 96 || e.InviteMaxTTLHours != 12 || e.MaxGuests != 3 {
-		t.Fatalf("env overlay: %+v", e)
-	}
-	if c.DBURLGuest != "postgres://chalk_guest:pw@localhost/chalk" {
-		t.Fatalf("DBURLGuest: %q", c.DBURLGuest)
+		t.Fatalf("env overlay (off): %+v", e)
 	}
 }
 
 func TestEphemeralInviteTTLHardCap(t *testing.T) {
+	// The feature has to be switched on for the cap to bite at all (81-3:
+	// off is the default now).
+	t.Setenv("CHALK_EPHEMERAL_ENABLED", "true")
 	t.Setenv("CHALK_EPHEMERAL_INVITE_MAX_TTL_HOURS", "25")
 	if _, err := Load(nil); err == nil {
 		t.Fatal("invite TTL above 24 h must refuse to load")

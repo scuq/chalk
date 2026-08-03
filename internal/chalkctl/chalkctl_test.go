@@ -1,6 +1,7 @@
 package chalkctl
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -401,17 +402,90 @@ func TestEnvOptionalKnobs(t *testing.T) {
 	}
 }
 
-// TestEnvEphemeral (80-5): the CHALK_EPHEMERAL_* lines appear only when the
-// operator diverges from chalkd's defaults (enabled; 720/24/8 knobs).
+// 81-3: the stock deployment has to carry the trusted-proxy setting and a
+// stable decoy key, or chalkd's per-IP rate limits collapse into a single
+// bucket behind Caddy and its unknown-username decoys change on every restart.
+func TestEnvPhase81Settings(t *testing.T) {
+	p := InitParams{
+		Domain: "x.example.org", PGPassword: "PG",
+		AdminUsername: "a", AdminEmail: "a@x.org",
+		AuthDecoyKey: "DECOYKEYX",
+	}
+	env, err := renderTemplate("chalk.env", p)
+	if err != nil {
+		t.Fatalf("renderTemplate: %v", err)
+	}
+	for _, want := range []string{
+		"CHALK_TRUSTED_PROXY=private",
+		"CHALK_AUTH_DECOY_KEY=DECOYKEYX",
+	} {
+		if !strings.Contains(string(env), want) {
+			t.Errorf("env missing %q:\n%s", want, env)
+		}
+	}
+}
+
+// TestEnsurePhase81EnvBackfill covers the upgrade path: an env file written
+// before 81-3 gains the three settings, and a second run is a no-op -- a
+// backfill that rewrote a present value would rotate the decoy key on every
+// update and could flip a deliberate ephemeral choice.
+func TestEnsurePhase81EnvBackfill(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "chalk.env")
+	if err := os.WriteFile(path, []byte("CHALK_PG_PASSWORD=pw\n"), 0o600); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	var log bytes.Buffer
+	if err := ensurePhase81Env(path, &log); err != nil {
+		t.Fatalf("ensurePhase81Env: %v", err)
+	}
+	env := readEnvOrFail(t, path)
+	if env["CHALK_TRUSTED_PROXY"] != "private" {
+		t.Errorf("CHALK_TRUSTED_PROXY = %q, want private", env["CHALK_TRUSTED_PROXY"])
+	}
+	if len(env["CHALK_AUTH_DECOY_KEY"]) < 40 { // 32 bytes -> 44 chars of std base64
+		t.Errorf("CHALK_AUTH_DECOY_KEY = %q, want a 32-byte base64 key", env["CHALK_AUTH_DECOY_KEY"])
+	}
+	// Existing deployments relied on the old default-on; the backfill has to
+	// pin that or the update would silently kill their guest links.
+	if env["CHALK_EPHEMERAL_ENABLED"] != "true" {
+		t.Errorf("CHALK_EPHEMERAL_ENABLED = %q, want true", env["CHALK_EPHEMERAL_ENABLED"])
+	}
+
+	before := env["CHALK_AUTH_DECOY_KEY"]
+	if err := ensurePhase81Env(path, &log); err != nil {
+		t.Fatalf("second ensurePhase81Env: %v", err)
+	}
+	if after := readEnvOrFail(t, path)["CHALK_AUTH_DECOY_KEY"]; after != before {
+		t.Error("re-running the backfill rotated the decoy key; it must be a no-op")
+	}
+}
+
+// TestEnvEphemeral (80-5): the CHALK_EPHEMERAL_* knob lines appear only when
+// the operator diverges from chalkd's defaults. 81-3: the switch itself is
+// always written.
 func TestEnvEphemeral(t *testing.T) {
 	base := InitParams{
 		Domain: "x.example.org", PGPassword: "PG", VoiceEnabled: true, TurnSecret: "T",
 		AdminUsername: "a", AdminEmail: "a@x.org",
 		EphemeralEnabled: true,
 	}
+	// 81-3: the switch is written either way. chalkd's default is off, so
+	// omitting the line for an enabled deployment would turn guest rooms off
+	// behind the operator's back; only the tuning knobs are still omitted.
 	env, _ := renderTemplate("chalk.env", base)
-	if strings.Contains(string(env), "CHALK_EPHEMERAL") {
-		t.Errorf("defaults must render no CHALK_EPHEMERAL_* lines:\n%s", env)
+	if !strings.Contains(string(env), "CHALK_EPHEMERAL_ENABLED=true") {
+		t.Errorf("enabled feature must write CHALK_EPHEMERAL_ENABLED=true:\n%s", env)
+	}
+	for _, knob := range []string{
+		"CHALK_EPHEMERAL_MAX_TTL_HOURS",
+		"CHALK_EPHEMERAL_INVITE_MAX_TTL_HOURS",
+		"CHALK_EPHEMERAL_MAX_GUESTS",
+	} {
+		if strings.Contains(string(env), knob) {
+			t.Errorf("unset knob %s must be omitted:\n%s", knob, env)
+		}
 	}
 
 	off := base
@@ -434,9 +508,6 @@ func TestEnvEphemeral(t *testing.T) {
 		if !strings.Contains(string(env3), want) {
 			t.Errorf("env missing %q when set", want)
 		}
-	}
-	if strings.Contains(string(env3), "CHALK_EPHEMERAL_ENABLED") {
-		t.Error("enabled default must not render the switch line")
 	}
 }
 

@@ -30,32 +30,87 @@ func genTOTPEncKey() (string, error) {
 	return base64.StdEncoding.EncodeToString(buf), nil
 }
 
-// ensureTOTPEncKey backfills CHALK_TOTP_ENC_KEY into an existing env file if
-// (and only if) it is absent -- the upgrade path for deployments initialized
-// before auth v2. A PRESENT key is never touched: regenerating it would make
-// every stored TOTP secret undecryptable. Returns whether a key was added.
-func ensureTOTPEncKey(envPath string, log io.Writer) (bool, error) {
+// genDecoyKey returns a fresh CHALK_AUTH_DECOY_KEY value: 32 bytes of CSPRNG
+// entropy, STANDARD base64 (chalkd decodes it with base64.StdEncoding and
+// wants at least 32 bytes -- internal/auth/password.go).
+//
+// 81-3: without it chalkd randomizes the key per process, so the fake KDF
+// params it hands back for unknown usernames change on every restart while
+// real ones stay put -- which is exactly the tell the decoys exist to hide.
+func genDecoyKey() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate decoy key: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// appendEnvVar adds key=value to an existing env file if (and only if) the key
+// is absent, under the given comment header. A PRESENT value is never touched
+// -- that is the whole contract these backfills rest on. Returns whether the
+// line was added.
+func appendEnvVar(envPath, key, value, comment string, log io.Writer) (bool, error) {
 	existing, err := readEnvSecrets(envPath)
 	if err != nil {
 		return false, fmt.Errorf("read %s: %w", envPath, err)
 	}
-	if existing["CHALK_TOTP_ENC_KEY"] != "" {
+	if existing[key] != "" {
 		return false, nil
-	}
-	key, err := genTOTPEncKey()
-	if err != nil {
-		return false, err
 	}
 	f, err := os.OpenFile(envPath, os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return false, fmt.Errorf("open %s for append: %w", envPath, err)
 	}
 	defer f.Close()
-	if _, err := fmt.Fprintf(f,
-		"\n# --- auth v2 (backfilled by chalkctl; TOTP secrets encrypted at rest) ---\nCHALK_TOTP_ENC_KEY=%s\n",
-		key); err != nil {
+	if _, err := fmt.Fprintf(f, "\n# --- %s ---\n%s=%s\n", comment, key, value); err != nil {
 		return false, fmt.Errorf("append to %s: %w", envPath, err)
 	}
-	fmt.Fprintf(log, "  backfilled CHALK_TOTP_ENC_KEY into %s (auth v2)\n", envPath)
+	fmt.Fprintf(log, "  backfilled %s into %s\n", key, envPath)
 	return true, nil
+}
+
+// ensureTOTPEncKey backfills CHALK_TOTP_ENC_KEY into an existing env file if
+// (and only if) it is absent -- the upgrade path for deployments initialized
+// before auth v2. A PRESENT key is never touched: regenerating it would make
+// every stored TOTP secret undecryptable. Returns whether a key was added.
+func ensureTOTPEncKey(envPath string, log io.Writer) (bool, error) {
+	key, err := genTOTPEncKey()
+	if err != nil {
+		return false, err
+	}
+	return appendEnvVar(envPath, "CHALK_TOTP_ENC_KEY", key,
+		"auth v2 (backfilled by chalkctl; TOTP secrets encrypted at rest)", log)
+}
+
+// ensurePhase81Env backfills the 81-3 settings into an existing env file.
+//
+// CHALK_TRUSTED_PROXY: without it chalkd sees every request as coming from the
+// Caddy container, so the per-IP rate limits share one bucket for the whole
+// internet and session rows record the proxy's address instead of the client's.
+//
+// CHALK_AUTH_DECOY_KEY: see genDecoyKey. Backfilling shifts the decoy salts
+// once, which is harmless -- they are fake by construction.
+//
+// CHALK_EPHEMERAL_ENABLED: the code default flipped to false in 81-3, so a
+// deployment that relied on the old default-on has to be told explicitly, or
+// its guest links would stop working on the next update.
+func ensurePhase81Env(envPath string, log io.Writer) error {
+	if _, err := appendEnvVar(envPath, "CHALK_TRUSTED_PROXY", "private",
+		"trusted proxy (chalkctl's Caddy; makes per-IP rate limits see real clients)",
+		log); err != nil {
+		return err
+	}
+	key, err := genDecoyKey()
+	if err != nil {
+		return err
+	}
+	if _, err := appendEnvVar(envPath, "CHALK_AUTH_DECOY_KEY", key,
+		"stable decoy KDF params for unknown usernames (backfilled by chalkctl)",
+		log); err != nil {
+		return err
+	}
+	_, err = appendEnvVar(envPath, "CHALK_EPHEMERAL_ENABLED", "true",
+		"guest voice rooms (pinned by chalkctl; the server default is now off)",
+		log)
+	return err
 }

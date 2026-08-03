@@ -5,7 +5,11 @@ package config
 // applyEnv(), fenced by Validate(). Config embeds it as Config.Ephemeral.
 //
 //	Enabled           feature switch: create/mint/redeem all answer disabled
-//	                  when off. CHALK_EPHEMERAL_ENABLED, default true.
+//	                  when off. CHALK_EPHEMERAL_ENABLED, default FALSE since
+//	                  81-3 -- whoever holds a magic link IS the guest, so a
+//	                  deployment that never asked for that should not get it
+//	                  by default. chalkctl writes the value either way, so a
+//	                  deployment that DID ask keeps it across the change.
 //	MaxTTLHours       cap on a channel's lifetime, chosen at creation.
 //	                  CHALK_EPHEMERAL_MAX_TTL_HOURS, default 720 (1 month).
 //	InviteMaxTTLHours cap on a magic link's lifetime. Hard-capped at 24:
@@ -40,7 +44,7 @@ const inviteTTLHardCapHours = 24
 
 func defaultEphemeralConfig() EphemeralConfig {
 	return EphemeralConfig{
-		Enabled:           true,
+		Enabled:           false,
 		MaxTTLHours:       720,
 		InviteMaxTTLHours: inviteTTLHardCapHours,
 		MaxGuests:         8,

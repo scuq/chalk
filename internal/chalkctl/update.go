@@ -118,6 +118,12 @@ func Update(o UpdateOptions) error {
 	if _, _, err := ensureDBRolesEnv(o.EnvPath, o.Podman, o.Out); err != nil {
 		return fmt.Errorf("ensure db roles: %w", err)
 	}
+	// 81-3: trusted proxy, stable decoy key, and a pinned ephemeral flag --
+	// the last because the server default flipped to off, so a deployment
+	// that relied on default-on has to say so explicitly.
+	if err := ensurePhase81Env(o.EnvPath, o.Out); err != nil {
+		return fmt.Errorf("ensure phase 81 env: %w", err)
+	}
 
 	oldDigest := st.CurrentDigest
 	if err := repinChalkdImage(o.Cfg.Image, newDigest); err != nil {
