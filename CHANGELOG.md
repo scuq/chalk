@@ -12,6 +12,28 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Changed
+- Changing your password now signs out your other devices, and resetting your
+  password with the recovery phrase signs out everything — so if someone had
+  quietly gotten into your account, changing your credentials actually locks
+  them out. Previously their session kept working.
+- Rotating your recovery phrase, replacing your authenticator app, and adding
+  or removing a passkey now ask for your password and a current two-factor
+  code first. Being signed in used to be enough, which meant anyone who got
+  hold of a signed-in browser could quietly take the account over and lock
+  you out of it.
+- Servers set up with `chalkctl` now see visitors' real addresses rather than
+  their own web proxy, so limits meant to stop one abusive client no longer
+  affect everyone at once, and the sessions list shows where you signed in
+  from. Existing servers get this on their next update.
+- Guest voice rooms are now off unless the server is set up to allow them.
+  Servers configured with `chalkctl` keep whatever they had.
+- Sign-in, sign-up and recovery attempts are now rate-limited per address, so
+  a script hammering the server gets told to slow down instead of tying it up
+  for everyone. Normal use stays well inside the limit.
+- A signed-in session now expires at most 90 days after you signed in, no
+  matter how actively it is used. Signing in again is all it takes.
+
 ### Added
 - **Temporary voice rooms with guest links.** A voice channel can now be
   created with a lifespan (an hour up to a month). Its creator can hand out

@@ -7,7 +7,8 @@
 //	  atomically installs the new proof/salt/params AND the password seed
 //	  wrap the client re-sealed under the new password's KEK (the client
 //	  unwrapped the entropy with the old KEK first, so E2E is preserved and
-//	  the server never sees plaintext entropy).
+//	  the server never sees plaintext entropy). 81-1: every session except
+//	  the caller's is revoked in the same transaction.
 //
 //	POST /api/auth/recovery/reset-auth
 //	  {username, words|phrase, auth_proof_b64, salt_b64, kdf_alg,
@@ -17,7 +18,8 @@
 //	  Verifies + consumes the recovery code exactly like /api/auth/recovery,
 //	  installs the new password, optionally clears TOTP (lost-authenticator
 //	  case: reset_totp=true forces re-enrollment via the minted session),
-//	  deletes the now-stale password seed wraps, mints a session, and
+//	  deletes the now-stale password seed wraps, revokes every existing
+//	  session (81-1), mints a fresh one, and
 //	  returns FRESH recovery words (the old code is consumed; the store
 //	  contract requires immediately installing a new one). The client must
 //	  afterwards re-create the password seed wrap from the ENCRYPTION
@@ -33,9 +35,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/scuq/chalk/internal/store"
@@ -130,13 +130,30 @@ func (d *HTTPDeps) handleChangePassword(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
+	// 81-1: the caller's own session survives (it just proved the current
+	// password); every other session is revoked in the same transaction.
+	// Re-read the token from the request rather than trusting
+	// su.Session.Token to be populated.
+	keepToken, err := SessionTokenFromRequest(r)
+	if err != nil {
+		keepToken = nil // revoke everything rather than fail the change
+	}
+
 	if err := d.Store.ChangePasswordAuth(r.Context(), su.UserID,
 		proofHash, salt, req.KDFAlg, req.KDFMemKiB, req.KDFIters, req.KDFPar,
-		req.Generation, req.WrapSuite, wrap,
+		req.Generation, req.WrapSuite, wrap, keepToken,
 	); err != nil {
 		d.Logger.Printf("password/change: %v", err)
 		writeError(w, http.StatusInternalServerError, "change_failed", "internal error")
 		return
+	}
+	// Drop live WS connections so revoked sessions can't keep an already-
+	// open socket. The hub tracks conns per user, so this also drops the
+	// caller's own socket; the SPA reconnects against its still-valid
+	// session.
+	if d.Kicker != nil {
+		d.Kicker.CloseConnsForUser(su.UserID.String(),
+			errors.New("password changed"))
 	}
 	writeJSON(w, http.StatusOK, changePasswordResponse{Changed: true})
 }
@@ -162,6 +179,10 @@ type resetAuthResponse struct {
 // verifyResetTOTP checks the live second factor on a recovery-driven reset.
 // Accounts without a confirmed TOTP secret pass through. Writes the error
 // response itself and returns false on failure.
+//
+// The code check itself is verifyLiveTOTP (stepup.go); only the empty-code
+// prompt differs here, because this is the one caller that can offer "reset
+// two-factor instead" as a way forward.
 func (d *HTTPDeps) verifyResetTOTP(w http.ResponseWriter, r *http.Request, userID uuid.UUID, code string) bool {
 	if code == "" {
 		ua, err := d.Store.GetUserAuth(r.Context(), userID)
@@ -180,41 +201,7 @@ func (d *HTTPDeps) verifyResetTOTP(w http.ResponseWriter, r *http.Request, userI
 		}
 		return true
 	}
-
-	now := time.Now()
-	skew := TOTPSkew()
-	res, lockedUntil, err := d.Store.VerifyConsumeTOTP(r.Context(), userID, now,
-		TOTPMaxFailures(), TOTPLockout(),
-		func(secretEnc []byte, lastStep int64) (int64, bool) {
-			secret, derr := DecryptTOTPSecret(secretEnc)
-			if derr != nil {
-				d.Logger.Printf("recovery/reset-auth: decrypt totp secret: %v", derr)
-				return 0, false
-			}
-			return ValidateTOTP(secret, code, now, skew)
-		})
-	if err != nil {
-		d.Logger.Printf("recovery/reset-auth: VerifyConsumeTOTP: %v", err)
-		writeError(w, http.StatusInternalServerError, "verify_failed", "internal error")
-		return false
-	}
-	switch res {
-	case store.TOTPNotEnrolled, store.TOTPSuccess:
-		return true
-	case store.TOTPLocked:
-		retry := int(time.Until(lockedUntil).Seconds())
-		if retry < 1 {
-			retry = 1
-		}
-		w.Header().Set("Retry-After", strconv.Itoa(retry))
-		writeError(w, http.StatusTooManyRequests, "totp_locked",
-			"too many incorrect codes; try again later")
-		return false
-	default:
-		writeError(w, http.StatusUnauthorized, "invalid_totp",
-			"incorrect authentication code")
-		return false
-	}
+	return d.verifyLiveTOTP(w, r, "recovery/reset-auth", userID, code)
 }
 
 func (d *HTTPDeps) handleRecoveryResetAuth(w http.ResponseWriter, r *http.Request) {
@@ -310,6 +297,13 @@ func (d *HTTPDeps) handleRecoveryResetAuth(w http.ResponseWriter, r *http.Reques
 		d.Logger.Printf("recovery/reset-auth: ResetAuthViaRecovery: %v", err)
 		writeError(w, http.StatusInternalServerError, "reset_failed", "internal error")
 		return
+	}
+	// 81-1: ResetAuthViaRecovery revoked every session in its transaction;
+	// close the matching live WS connections too. The fresh session for
+	// this caller is minted below.
+	if d.Kicker != nil {
+		d.Kicker.CloseConnsForUser(user.ID.String(),
+			errors.New("credentials reset via recovery"))
 	}
 
 	// Fresh recovery words: the old code is consumed and the store contract

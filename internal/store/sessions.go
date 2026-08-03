@@ -40,6 +40,11 @@ type Session struct {
 // place to read it from.
 const SessionTTL = 30 * 24 * time.Hour
 
+// SessionMaxLifetime caps a session at 90 days from creation no matter
+// how active it is (81-1). Without a ceiling, the sliding TTL lets a
+// stolen session live forever as long as the thief keeps using it.
+const SessionMaxLifetime = 90 * 24 * time.Hour
+
 // NewSessionToken returns 32 cryptographically random bytes suitable
 // for use as a session token. Reads from crypto/rand; returns an
 // error only if the OS RNG fails, which should never happen in
@@ -104,9 +109,10 @@ func (s *Store) CreateSession(
 }
 
 // GetSession returns the session bound to the given raw token. Returns
-// ErrNotFound for unknown tokens AND for sessions whose expires_at is
-// in the past. The two cases are deliberately merged: callers should
-// treat both as "no valid session."
+// ErrNotFound for unknown tokens, for sessions whose expires_at is in
+// the past, and for sessions older than SessionMaxLifetime. The cases
+// are deliberately merged: callers should treat all of them as "no
+// valid session."
 //
 // This method does NOT bump last_used_at; callers do that explicitly
 // via TouchSession when they've confirmed they want to extend the
@@ -115,13 +121,17 @@ func (s *Store) GetSession(ctx context.Context, token []byte) (Session, error) {
 	var sess Session
 	var ipStr *string
 	var userAgent *string
+	// Intervals go through make_interval() as microseconds; see the
+	// comment in TouchSession for why.
+	maxMicros := SessionMaxLifetime / time.Microsecond
 	err := s.Pool.QueryRow(ctx,
 		`SELECT token, user_id, created_at, last_used_at, expires_at,
 		        user_agent, host(ip_address)
 		   FROM sessions
 		  WHERE token = $1
-		    AND expires_at > now()`,
-		token,
+		    AND expires_at > now()
+		    AND created_at > now() - make_interval(secs := $2::double precision / 1e6)`,
+		token, int64(maxMicros),
 	).Scan(
 		&sess.Token,
 		&sess.UserID,
@@ -157,13 +167,21 @@ func (s *Store) TouchSession(ctx context.Context, token []byte) error {
 	// the most precise unit make_interval() accepts and easily
 	// represents our 30-day TTL.
 	micros := SessionTTL / time.Microsecond
+	maxMicros := SessionMaxLifetime / time.Microsecond
+	// LEAST caps the slide at created_at + SessionMaxLifetime, and the
+	// created_at guard stops an over-age session from being touched at
+	// all (it reads as gone, same as expired).
 	tag, err := s.Pool.Exec(ctx,
 		`UPDATE sessions
 		    SET last_used_at = now(),
-		        expires_at   = now() + make_interval(secs := $1::double precision / 1e6)
-		  WHERE token = $2
-		    AND expires_at > now()`,
+		        expires_at   = LEAST(
+		            now() + make_interval(secs := $1::double precision / 1e6),
+		            created_at + make_interval(secs := $2::double precision / 1e6))
+		  WHERE token = $3
+		    AND expires_at > now()
+		    AND created_at > now() - make_interval(secs := $2::double precision / 1e6)`,
 		int64(micros),
+		int64(maxMicros),
 		token,
 	)
 	if err != nil {
@@ -204,11 +222,17 @@ func (s *Store) DeleteAllSessionsForUser(ctx context.Context, userID uuid.UUID) 
 }
 
 // DeleteExpiredSessions removes sessions whose expires_at is in the
-// past. Run periodically by a janitor. Returns the count deleted so
-// the janitor can log it.
+// past or whose age exceeds SessionMaxLifetime (rows from before the
+// cap existed can carry an expires_at past their ceiling). Run
+// periodically by a janitor. Returns the count deleted so the janitor
+// can log it.
 func (s *Store) DeleteExpiredSessions(ctx context.Context) (int64, error) {
+	maxMicros := SessionMaxLifetime / time.Microsecond
 	tag, err := s.Pool.Exec(ctx,
-		`DELETE FROM sessions WHERE expires_at <= now()`,
+		`DELETE FROM sessions
+		  WHERE expires_at <= now()
+		     OR created_at <= now() - make_interval(secs := $1::double precision / 1e6)`,
+		int64(maxMicros),
 	)
 	if err != nil {
 		return 0, fmt.Errorf("delete expired sessions: %w", err)

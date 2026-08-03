@@ -6,6 +6,7 @@ import (
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -44,7 +45,7 @@ func TestRecoveryResetRequiresLiveTOTP(t *testing.T) {
 		dropResetUser(t, c, pool)
 	})
 
-	srv := startResetTestServer(t, st)
+	srv, _ := startResetTestServer(t, st)
 	words, secret := signupResetUser(t, srv.URL)
 
 	// ---- no code: refused, and the phrase survives ----------------------
@@ -102,7 +103,7 @@ func TestRecoveryResetClearsTOTPWhenAuthenticatorLost(t *testing.T) {
 		dropResetUser(t, c, pool)
 	})
 
-	srv := startResetTestServer(t, st)
+	srv, _ := startResetTestServer(t, st)
 	words, _ := signupResetUser(t, srv.URL)
 
 	res := postReset(t, srv.URL, resetReq{words: words, resetTOTP: true})
@@ -141,6 +142,52 @@ func TestRecoveryResetClearsTOTPWhenAuthenticatorLost(t *testing.T) {
 	}
 }
 
+// TestRecoveryResetRevokesSessions pins 81-1: recovery is the "I may be
+// compromised" path, so a session that predates the reset -- the thief's --
+// must not survive it, and its live WS connections must be kicked.
+func TestRecoveryResetRevokesSessions(t *testing.T) {
+	pool, st := openClaimTestDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	dropResetUser(t, ctx, pool)
+	t.Cleanup(func() {
+		c, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		dropResetUser(t, c, pool)
+	})
+
+	srv, kicker := startResetTestServer(t, st)
+	words, _ := signupResetUser(t, srv.URL)
+
+	user, err := st.GetUserByUsername(ctx, resetTestUser)
+	if err != nil {
+		t.Fatalf("GetUserByUsername: %v", err)
+	}
+	stolen, err := st.CreateSession(ctx, user.ID, "thief", nil)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	res := postReset(t, srv.URL, resetReq{words: words, resetTOTP: true})
+	if res.status != http.StatusOK {
+		t.Fatalf("reset = %d (%s: %s), want 200", res.status, res.code, res.message)
+	}
+
+	if _, err := st.GetSession(ctx, stolen.Token); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("pre-reset session survived the recovery reset: got %v, want ErrNotFound", err)
+	}
+	kicked := false
+	for _, call := range kicker.calls {
+		if call.userID == user.ID.String() {
+			kicked = true
+		}
+	}
+	if !kicked {
+		t.Error("recovery reset did not kick the user's WS connections")
+	}
+}
+
 // TestRecoveryLoginRefusedForEnrolledAccounts pins the retired path: under the
 // hard cutover the phrase alone no longer mints a session.
 func TestRecoveryLoginRefusedForEnrolledAccounts(t *testing.T) {
@@ -155,7 +202,7 @@ func TestRecoveryLoginRefusedForEnrolledAccounts(t *testing.T) {
 		dropResetUser(t, c, pool)
 	})
 
-	srv := startResetTestServer(t, st)
+	srv, _ := startResetTestServer(t, st)
 	words, _ := signupResetUser(t, srv.URL)
 
 	body, _ := json.Marshal(map[string]any{
@@ -187,7 +234,7 @@ func dropResetUser(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	}
 }
 
-func startResetTestServer(t *testing.T, st *store.Store) *httptest.Server {
+func startResetTestServer(t *testing.T, st *store.Store) (*httptest.Server, *mockKicker) {
 	t.Helper()
 	t.Setenv("CHALK_DEV", "1")
 	t.Setenv("CHALK_OPEN_REGISTRATION", "1")
@@ -204,10 +251,12 @@ func startResetTestServer(t *testing.T, st *store.Store) *httptest.Server {
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
+	kicker := &mockKicker{}
 	deps := &auth.HTTPDeps{
 		Service: svc,
 		Cache:   auth.NewCeremonyCache(time.Minute),
 		Store:   st,
+		Kicker:  kicker,
 	}
 	mux := http.NewServeMux()
 	if err := deps.MountRegistration(mux); err != nil {
@@ -216,7 +265,7 @@ func startResetTestServer(t *testing.T, st *store.Store) *httptest.Server {
 	srv.Config.Handler = mux
 	srv.Start()
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, kicker
 }
 
 // signupResetUser drives the two-leg auth-v2 signup and returns the account's

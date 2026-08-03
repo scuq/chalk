@@ -104,6 +104,11 @@ func (s *Store) PromotePendingTOTP(ctx context.Context, userID uuid.UUID) error 
 // KDF params) and replaces the password-method identity seed wrap with one
 // the client re-sealed under the NEW password's KEK. The caller has already
 // verified the CURRENT password. Generation tags the wrap row.
+//
+// 81-1: every OTHER session is revoked in the same transaction -- a stolen
+// session must not survive the password change that was made to evict it.
+// keepToken is the caller's own session (it just proved the current
+// password); pass nil to revoke everything.
 func (s *Store) ChangePasswordAuth(
 	ctx context.Context,
 	userID uuid.UUID,
@@ -113,6 +118,7 @@ func (s *Store) ChangePasswordAuth(
 	generation int,
 	wrapSuite int16,
 	wrapBlob []byte,
+	keepToken []byte,
 ) error {
 	if len(proofHash) == 0 || len(salt) == 0 {
 		return fmt.Errorf("ChangePasswordAuth: proof and salt required")
@@ -150,6 +156,19 @@ func (s *Store) ChangePasswordAuth(
 		); err != nil {
 			return fmt.Errorf("replace password seed wrap: %w", err)
 		}
+		if len(keepToken) > 0 {
+			_, err = tx.Exec(ctx,
+				`DELETE FROM sessions WHERE user_id = $1 AND token <> $2`,
+				userID, keepToken,
+			)
+		} else {
+			_, err = tx.Exec(ctx,
+				`DELETE FROM sessions WHERE user_id = $1`, userID,
+			)
+		}
+		if err != nil {
+			return fmt.Errorf("revoke other sessions: %w", err)
+		}
 		return nil
 	})
 }
@@ -159,6 +178,10 @@ func (s *Store) ChangePasswordAuth(
 // and deletes ALL password-method seed wraps: they were sealed under the old
 // password's KEK and are unopenable garbage now. The client re-creates the
 // wrap from the encryption phrase after logging in.
+//
+// 81-1: every existing session is revoked in the same transaction. Recovery
+// is the "I may be compromised" path, so nothing pre-existing survives; the
+// handler mints the caller a fresh session after this commits.
 func (s *Store) ResetAuthViaRecovery(
 	ctx context.Context,
 	userID uuid.UUID,
@@ -213,6 +236,11 @@ func (s *Store) ResetAuthViaRecovery(
 			userID,
 		); err != nil {
 			return fmt.Errorf("delete stale password wraps: %w", err)
+		}
+		if _, err := tx.Exec(ctx,
+			`DELETE FROM sessions WHERE user_id = $1`, userID,
+		); err != nil {
+			return fmt.Errorf("revoke sessions: %w", err)
 		}
 		return nil
 	})
