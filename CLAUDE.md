@@ -265,15 +265,17 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   previews (57, plan in `docs/PHASE-57-LINKPREVIEW.md`: sender-built,
   E2E-embedded, opt-in, SSRF-guarded server fetcher), the security-audit
   remediation (81, record in `docs/PHASE-81-SECAUDIT.md`).
-- **Open security gaps, both confirmed by the phase-81 audit and deliberately
-  deferred** (`docs/PHASE-81-SECAUDIT.md` has the full analysis; the rewritten
-  `docs/threat-model.md` states them as unmet guarantees):
-  - **Channel-key wraps are unsigned.** Producing a wrap needs only the
-    recipient's public X25519 key, which the server holds, and `unwrapV1`
-    accepts anything that decrypts. At bootstrap the creator adopts the
-    server's read-back value and redistributes it, so a malicious server can
-    pick a key it knows for the whole channel. Fix = signed wrap envelope +
-    authenticated channel-state transcript.
+- **Open security gaps, both confirmed by the phase-81 audit** (analysis in
+  `docs/PHASE-81-SECAUDIT.md`; `docs/threat-model.md` states them as unmet
+  guarantees):
+  - **Channel-key wraps are unsigned — phase 82 IN PROGRESS, plan and findings
+    in `docs/PHASE-82-SIGNEDWRAP.md`.** Slices 82-1 … 82-4 are implemented: wrap
+    suite 2 (Ed25519 signature inside the opaque blob), TOFU identity pinning
+    in `web/src/crypto/trust.ts`, provenance-tracked key adoption, and the
+    `openWrap` policy — which already closes substitution at the bootstrap
+    read-back, the audit's worst case. **Not yet closed:** an unsigned suite-1
+    wrap on the ordinary fetch path is still accepted until 82-6 ships the
+    `CHALK_WRAP_SIG_REQUIRED` flag. Do not describe C-01 as fixed before then.
   - **Messages carry no sender signature.** The AEAD associated data is only
     suite/channel/key-version, so sender, message ID and timestamp are
     unauthenticated server-supplied metadata and any key holder can be
