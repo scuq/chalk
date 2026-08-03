@@ -67,6 +67,8 @@ func run(args []string) error {
 		return runMaint(args[1:])
 	case "metrics":
 		return runMetrics(args[1:])
+	case "ephemeral":
+		return runEphemeral(args[1:])
 	case "self-update", "rollback", "logs":
 		return fmt.Errorf("%q is not implemented yet in this build (arrives in a later ops slice)", cmd)
 	default:
@@ -505,6 +507,52 @@ func runMaint(args []string) error {
 }
 
 // runMetrics prints what Postgres already knows about its own performance.
+// runEphemeral: operator surface for guest voice rooms (80-11).
+func runEphemeral(args []string) error {
+	fs := flag.NewFlagSet("ephemeral", flag.ContinueOnError)
+	var (
+		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file")
+		envPath    = fs.String("env", chalkctl.DefaultEnvPath, "env file path")
+		channel    = fs.String("channel", "", "purge only this channel id")
+		assume     = fs.Bool("yes", false, "skip the purge confirmation prompt (non-interactive)")
+	)
+	rest, err := parsePositional(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return fmt.Errorf("usage: chalkctl ephemeral list|purge|disable [--channel <id>] [--yes]")
+	}
+	if err := chalkctl.RequireRoot(); err != nil {
+		return err
+	}
+	cfg, err := chalkctl.LoadConfigFile(chalkctl.DefaultConfig(), *configPath)
+	if err != nil {
+		return err
+	}
+	opts := chalkctl.EphemeralOptions{
+		Cfg:        cfg,
+		EnvPath:    *envPath,
+		ConfigPath: *configPath,
+	}
+	if *assume {
+		opts.Confirm = func(string) bool { return true }
+	}
+	switch rest[0] {
+	case "list":
+		return chalkctl.EphemeralList(opts)
+	case "purge":
+		return chalkctl.EphemeralPurge(opts, *channel)
+	case "disable":
+		if *channel != "" {
+			return fmt.Errorf("--channel only applies to `ephemeral purge`")
+		}
+		return chalkctl.EphemeralDisable(opts)
+	default:
+		return fmt.Errorf("usage: chalkctl ephemeral list|purge|disable [--channel <id>] [--yes]")
+	}
+}
+
 func runMetrics(args []string) error {
 	fs := flag.NewFlagSet("metrics", flag.ContinueOnError)
 	var (
@@ -564,6 +612,7 @@ Commands:
   restore      load such an archive into this (already initialized) host
   maint        on|off|status -- serve a maintenance notice instead of the app
   metrics      what postgres knows about its own performance (read-only)
+  ephemeral    list | purge [--channel <id>] | disable -- guest voice rooms
   self-update  update the chalkctl binary itself
   rollback     re-pin the previous chalk image
   logs         tail the stack's logs
