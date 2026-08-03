@@ -209,11 +209,41 @@ export async function clearIdentity(userID: string): Promise<void> {
 // cached space keys; the 24-word phrase remains the root that gates deriving
 // the identity needed to unwrap them in the first place.
 
+/**
+ * KeyProvenance records HOW a held space key came to be trusted (82-3).
+ *
+ * Persisting it, rather than keeping it in memory, is what lets a device
+ * enforce two rules across reloads: a slot that has ever held a signed key
+ * never accepts an unsigned one again, and an adopted slot is never quietly
+ * replaced. Without it the soft-acceptance window would be a permanent hole
+ * rather than something that ratchets shut.
+ *
+ *   self_minted   we generated it (bootstrap or rotation) -- nothing to trust
+ *   signed        opened from a suite-2 wrap signed by a key we trust
+ *   unsigned      opened from a suite-1 wrap; provenance unknown by construction
+ *   guest_link    guest room, anchored on the owner key carried in the link
+ *   legacy_cache  cached before 82; already on this device, origin unrecorded
+ */
+export type KeyProvenance =
+  | { kind: "self_minted" }
+  | { kind: "signed"; signerUserID: string; trust: "self" | "pinned" | "manually_verified" }
+  | { kind: "unsigned" }
+  | { kind: "guest_link" }
+  | { kind: "legacy_cache" };
+
 interface SpaceKeyRecord {
   cacheKey: string; // "channelID:keyVersion"
   channelID: string;
   keyVersion: number;
   key: Uint8Array; // raw 32-byte space key
+  provenance?: KeyProvenance; // absent in pre-82 records -> legacy_cache
+  adoptedAt?: number; // epoch ms
+}
+
+/** A cached space key together with how it was trusted. */
+export interface HeldSpaceKey {
+  key: Uint8Array;
+  provenance: KeyProvenance;
 }
 
 function spaceCacheKey(channelID: string, keyVersion: number): string {
@@ -221,12 +251,19 @@ function spaceCacheKey(channelID: string, keyVersion: number): string {
 }
 
 /** saveSpaceKey caches the unwrapped space key for a channel + version. */
-export async function saveSpaceKey(channelID: string, keyVersion: number, key: Uint8Array): Promise<void> {
+export async function saveSpaceKey(
+  channelID: string,
+  keyVersion: number,
+  key: Uint8Array,
+  provenance: KeyProvenance,
+): Promise<void> {
   const record: SpaceKeyRecord = {
     cacheKey: spaceCacheKey(channelID, keyVersion),
     channelID,
     keyVersion,
     key,
+    provenance,
+    adoptedAt: Date.now(),
   };
   const db = await openDB();
   try {
@@ -236,8 +273,14 @@ export async function saveSpaceKey(channelID: string, keyVersion: number, key: U
   }
 }
 
-/** loadSpaceKey returns the cached space key, or null if not cached. */
-export async function loadSpaceKey(channelID: string, keyVersion: number): Promise<Uint8Array | null> {
+/**
+ * loadSpaceKey returns the cached space key and its provenance, or null.
+ *
+ * A record written before 82 has no provenance. It is reported as
+ * `legacy_cache` rather than refused: the key is already on this device, and
+ * refusing it would lock every existing user out of their own history.
+ */
+export async function loadSpaceKey(channelID: string, keyVersion: number): Promise<HeldSpaceKey | null> {
   const db = await openDB();
   let rec: SpaceKeyRecord | undefined;
   try {
@@ -251,7 +294,7 @@ export async function loadSpaceKey(channelID: string, keyVersion: number): Promi
     db.close();
   }
   if (!rec || !(rec.key instanceof Uint8Array) || rec.key.length !== 32) return null;
-  return rec.key;
+  return { key: rec.key, provenance: rec.provenance ?? { kind: "legacy_cache" } };
 }
 
 /** clearSpaceKeys removes every cached space key (e.g. on logout-and-forget). */

@@ -122,13 +122,57 @@ test("fetchChannelKeyRecipients returns [] when none exist", async () => {
 
 // ---- idb space-key cache (fake-indexeddb) ----
 
-test("space-key cache: save then load round-trips raw bytes", async () => {
+test("space-key cache: save then load round-trips raw bytes and provenance", async () => {
   await clearSpaceKeys();
   const sk = generateSpaceKey();
-  await saveSpaceKey(CH, VER, sk);
+  await saveSpaceKey(CH, VER, sk, { kind: "self_minted" });
   const got = await loadSpaceKey(CH, VER);
   assert.notEqual(got, null);
-  assert.equal(bytesToHex(got!), bytesToHex(sk));
+  assert.equal(bytesToHex(got!.key), bytesToHex(sk));
+  assert.deepEqual(got!.provenance, { kind: "self_minted" });
+});
+
+test("space-key cache: a signed provenance keeps its signer attribution", async () => {
+  await clearSpaceKeys();
+  const sk = generateSpaceKey();
+  const prov = { kind: "signed", signerUserID: "bob", trust: "manually_verified" } as const;
+  await saveSpaceKey(CH, VER, sk, prov);
+  assert.deepEqual((await loadSpaceKey(CH, VER))!.provenance, prov);
+});
+
+// 82-3: pre-82 records have no provenance field. They must still load -- the
+// key is already on this device, and refusing it would lock existing users out
+// of their own history -- but they must be MARKED, so the ratchet in 82-5 can
+// tell "trusted at the time" from "origin never recorded".
+test("space-key cache: a record without provenance loads as legacy_cache", async () => {
+  await clearSpaceKeys();
+  const sk = generateSpaceKey();
+  await saveSpaceKey(CH, VER, sk, { kind: "self_minted" });
+  // Strip the field the way a pre-82 write would have left it.
+  await new Promise<void>((resolve, reject) => {
+    const req = indexedDB.open("chalk");
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      const store = db.transaction("space_keys", "readwrite").objectStore("space_keys");
+      const get = store.get(`${CH}:${VER}`);
+      get.onsuccess = () => {
+        const rec = get.result as Record<string, unknown>;
+        delete rec.provenance;
+        delete rec.adoptedAt;
+        const put = store.put(rec);
+        put.onsuccess = () => {
+          db.close();
+          resolve();
+        };
+        put.onerror = () => reject(put.error);
+      };
+      get.onerror = () => reject(get.error);
+    };
+  });
+  const got = await loadSpaceKey(CH, VER);
+  assert.equal(bytesToHex(got!.key), bytesToHex(sk));
+  assert.deepEqual(got!.provenance, { kind: "legacy_cache" });
 });
 
 test("space-key cache: miss returns null; versions are independent", async () => {
@@ -136,16 +180,16 @@ test("space-key cache: miss returns null; versions are independent", async () =>
   assert.equal(await loadSpaceKey(CH, 99), null);
   const v1 = generateSpaceKey();
   const v2 = generateSpaceKey();
-  await saveSpaceKey(CH, 1, v1);
-  await saveSpaceKey(CH, 2, v2);
-  assert.equal(bytesToHex((await loadSpaceKey(CH, 1))!), bytesToHex(v1));
-  assert.equal(bytesToHex((await loadSpaceKey(CH, 2))!), bytesToHex(v2));
+  await saveSpaceKey(CH, 1, v1, { kind: "self_minted" });
+  await saveSpaceKey(CH, 2, v2, { kind: "self_minted" });
+  assert.equal(bytesToHex((await loadSpaceKey(CH, 1))!.key), bytesToHex(v1));
+  assert.equal(bytesToHex((await loadSpaceKey(CH, 2))!.key), bytesToHex(v2));
   assert.notEqual(bytesToHex(v1), bytesToHex(v2));
 });
 
 test("space-key cache: clear removes everything", async () => {
   const sk = generateSpaceKey();
-  await saveSpaceKey(CH, VER, sk);
+  await saveSpaceKey(CH, VER, sk, { kind: "self_minted" });
   await clearSpaceKeys();
   assert.equal(await loadSpaceKey(CH, VER), null);
 });

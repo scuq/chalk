@@ -757,7 +757,16 @@ export function App() {
         }
         ccRef.current = new ChannelCrypto(
           { request: (t, p) => clientRef.current!.request(t, p) },
-          { userID: uid, x25519Private: id.x25519Private, x25519Public: id.x25519Public },
+          {
+            userID: uid,
+            x25519Private: id.x25519Private,
+            x25519Public: id.x25519Public,
+            // 82-3: the Ed25519 pair signs outgoing wraps and recognises wraps
+            // made by this user's other devices. Both come from the identity
+            // record that was already loaded here.
+            ed25519Private: id.ed25519Private,
+            ed25519Public: id.ed25519Public,
+          },
         );
         // att-2: bind the receive-side attachment pipeline to this crypto.
         attControllerRef.current = makeAttachmentController(ccRef.current);
@@ -4446,7 +4455,7 @@ export function App() {
         if (!inboxWarmedRef.current.has(channelID)) {
           inboxWarmedRef.current.add(channelID);
           warmedHere.add(channelID);
-          await cc.warmChannelKey(channelID);
+          await cc.warmChannelKey(channelID, state.channels[channelID]?.memberIDs ?? []);
         }
         if (cancelled) return;
         const previews: Record<string, { headBody?: string; lastReplyBody?: string }> = {};
@@ -4541,7 +4550,7 @@ export function App() {
         if (cipher.deleted) {
           plain = "[message deleted]";
         } else {
-          await cc.warmChannelKey(channelID);
+          await cc.warmChannelKey(channelID, state.channels[channelID]?.memberIDs ?? []);
           if (cancelled) return;
           plain = await cc.decryptForChannel(channelID, cipher.keyVersion, cipher.body);
         }

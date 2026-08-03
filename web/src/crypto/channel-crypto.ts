@@ -25,8 +25,13 @@ import {
   generateSpaceKey,
   wrapSpaceKey,
   unwrapSpaceKey,
+  unwrapSpaceKeySigned,
+  wrapSignerKey,
   encryptMessage,
   decryptMessage,
+  WRAP_SUITE_X25519_AESGCM_ED25519,
+  type WrappedKey,
+  type WrapSlot,
 } from "./spacekey";
 import {
   publishChannelKey,
@@ -34,16 +39,25 @@ import {
   fetchChannelKeyRecipients,
 } from "./spacekey-sync";
 import { fetchIdentity } from "./identity-sync";
-import { loadSpaceKey, saveSpaceKey } from "./idb";
+import { fetchTrustedIdentity, resolveSigner } from "./trust";
+import { loadSpaceKey, saveSpaceKey, type KeyProvenance } from "./idb";
+
+export type { KeyProvenance };
 
 /** The current channel key version. Bumped to a per-channel value in phase 25. */
 export const CURRENT_KEY_VERSION = 1;
 
-/** Minimal identity this module needs: own user id + X25519 keypair. */
+/**
+ * Minimal identity this module needs: own user id, X25519 keypair for
+ * wrapping, and (82-3) the Ed25519 pair used to sign wraps and to recognise
+ * wraps produced by this user's other devices.
+ */
 export interface ChannelCryptoIdentity {
   userID: string;
   x25519Private: CryptoKey; // usable for deriveBits (unwrap)
   x25519Public: Uint8Array;
+  ed25519Private: CryptoKey; // non-extractable, sign-only
+  ed25519Public: Uint8Array;
 }
 
 /** request() surface (WSClient) used for the channel-key + identity frames. */
@@ -86,11 +100,36 @@ export const PLACEHOLDER_NO_KEY = "[encrypted message \u2014 key not available y
 export const PLACEHOLDER_FAILED = "[could not decrypt this message]";
 export const PLACEHOLDER_PLAINTEXT_BLOCKED = "[blocked: unencrypted message]";
 
+/** A space key held in memory, together with how it came to be trusted. */
+interface HeldKey {
+  key: Uint8Array;
+  prov: KeyProvenance;
+}
+
+// The two provenances that need no per-call detail. `UNSIGNED` marks a key
+// opened from a suite-1 wrap: correct today, and the thing 82-4/82-5 replace
+// with a signed, attributed adoption.
+const SELF_MINTED: KeyProvenance = { kind: "self_minted" };
+const UNSIGNED: KeyProvenance = { kind: "unsigned" };
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 export class ChannelCrypto {
   private readonly transport: CryptoTransport;
   private readonly identity: ChannelCryptoIdentity;
-  // in-memory unwrapped keys, "channelID:version" -> 32 bytes
-  private readonly keys = new Map<string, Uint8Array>();
+  // in-memory unwrapped keys, "channelID:version" -> key + provenance.
+  //
+  // 82-3: the value carries provenance so that adopting a key without saying
+  // where it came from does not compile. That is the point: rotateChannelKey
+  // used to write this map directly and bypass remember() entirely, and a
+  // comment asking future edits not to do that again would not have held.
+  private readonly keys = new Map<string, HeldKey>();
   // channels known to have a key (so a missing in-memory key => "waiting")
   private readonly encrypted = new Set<string>();
   // Phase 23g (deferred decrypt): channels whose ensureChannelKey has completed
@@ -246,9 +285,11 @@ export class ChannelCrypto {
       this.identity.userID,
     );
     await publishChannelKey(this.transport, channelID, newVersion, this.identity.userID, selfWrap);
-    await saveSpaceKey(channelID, newVersion, sk);
-    this.keys.set(this.memKey(channelID, newVersion), sk);
-    this.encrypted.add(channelID);
+    // 82-3: goes through remember() like every other adoption. It used to
+    // write this.keys directly, which is how it escaped the one chokepoint the
+    // module has.
+    await saveSpaceKey(channelID, newVersion, sk, SELF_MINTED);
+    this.remember(channelID, newVersion, sk, SELF_MINTED);
 
     // wrap the new key for every other current member
     await this.rewrapForMissing(channelID, members, sk, newVersion);
@@ -271,22 +312,108 @@ export class ChannelCrypto {
     return key ? { key, version } : null;
   }
 
-  private remember(channelID: string, v: number, key: Uint8Array): void {
-    this.keys.set(this.memKey(channelID, v), key);
+  /**
+   * openWrap is the single decision point for "may this wrap be opened, and on
+   * what basis?" -- 82-4. Returns the key with the provenance that justified
+   * it, or null to refuse.
+   *
+   * The governing rule, applied here and relied on by every caller:
+   *
+   *     An INVALID signature is always fatal.
+   *     A MISSING signature is a legacy wrap, governed by the soft window.
+   *
+   * `candidates` are the user ids that could legitimately have signed -- the
+   * channel's members. Membership is server-asserted, so this is not a
+   * cryptographic guarantee; see the phase doc for exactly what that costs.
+   *
+   * `allowNetwork` is false on the unattended warm path, which sweeps dozens of
+   * channels with no user gesture and must not turn into a burst of identity
+   * fetches. There it can only accept signers this device has already pinned.
+   */
+  private async openWrap(
+    wrap: WrappedKey,
+    channelID: string,
+    v: number,
+    candidates: string[],
+    allowNetwork: boolean,
+  ): Promise<{ key: Uint8Array; prov: KeyProvenance } | null> {
+    const slot: WrapSlot = { channelID, keyVersion: v, recipientID: this.identity.userID };
+
+    if (wrap.suite !== WRAP_SUITE_X25519_AESGCM_ED25519) {
+      // Legacy unsigned wrap. Accepting it is what the 82-6 enforcement flag
+      // will withdraw; until then it is the only thing existing channels have.
+      const key = await unwrapSpaceKey(wrap, this.identity.x25519Private, channelID, v, this.identity.userID);
+      return key ? { key, prov: UNSIGNED } : null;
+    }
+
+    const signerPub = wrapSignerKey(wrap);
+    if (!signerPub) return null;
+
+    // Signed by us -- another of this user's devices. Identity is per-user, so
+    // this is certainty rather than trust, and it needs no lookup at all. This
+    // is the case that makes the bootstrap read-back exact.
+    if (bytesEqual(signerPub, this.identity.ed25519Public)) {
+      const key = await unwrapSpaceKeySigned(
+        wrap,
+        this.identity.x25519Private,
+        slot,
+        this.identity.userID,
+        signerPub,
+      );
+      return key ? { key, prov: { kind: "signed", signerUserID: this.identity.userID, trust: "self" } } : null;
+    }
+
+    // Signed by someone else: only a peer this device has already pinned can
+    // be resolved. Note the user id we verify with is OUR belief about whose
+    // key this is, not a claim carried in the blob -- so a wrap signed while
+    // claiming a different id fails verification rather than being accepted.
+    let owner = await resolveSigner(signerPub, candidates);
+    if (!owner && allowNetwork) {
+      for (const id of candidates) {
+        if (id === this.identity.userID) continue;
+        await fetchTrustedIdentity(this.transport, id); // pins on first sight
+      }
+      owner = await resolveSigner(signerPub, candidates);
+    }
+    if (!owner) return null;
+
+    const key = await unwrapSpaceKeySigned(
+      wrap,
+      this.identity.x25519Private,
+      slot,
+      owner.userID,
+      signerPub,
+    );
+    return key ? { key, prov: { kind: "signed", signerUserID: owner.userID, trust: owner.pin } } : null;
+  }
+
+  /**
+   * remember is the ONLY way a key enters this module's memory. Provenance is a
+   * required argument so that a caller must state what it is trusting.
+   */
+  private remember(channelID: string, v: number, key: Uint8Array, prov: KeyProvenance): void {
+    this.keys.set(this.memKey(channelID, v), { key, prov });
     this.encrypted.add(channelID);
     this.wakeKeyWaiters(channelID); // a deferred decrypt can now proceed
   }
 
-  // get the key from memory, then the idb cache (populating memory).
+  // get the key from memory, then the idb cache (populating memory). The idb
+  // record carries its own provenance forward rather than having one invented
+  // for it here.
   private async getKey(channelID: string, v: number): Promise<Uint8Array | null> {
-    const inMem = this.keys.get(this.memKey(channelID, v));
-    if (inMem) return inMem;
+    const held = this.heldKey(channelID, v);
+    if (held) return held.key;
     const cached = await loadSpaceKey(channelID, v);
     if (cached) {
-      this.remember(channelID, v, cached);
-      return cached;
+      this.remember(channelID, v, cached.key, cached.provenance);
+      return cached.key;
     }
     return null;
+  }
+
+  /** heldKey returns the in-memory entry (key + provenance) for a slot. */
+  private heldKey(channelID: string, v: number): HeldKey | undefined {
+    return this.keys.get(this.memKey(channelID, v));
   }
 
   /**
@@ -329,8 +456,12 @@ export class ChannelCrypto {
    * Deliberately does NOT report a ChannelKeyStatus: status gates the COMPOSER,
    * and warming a channel to read one line must never claim we are ready to
    * send in it.
+   *
+   * 82-4: `members` names who may legitimately have signed the wrap. An empty
+   * list means only this user's own devices qualify -- correct-but-strict, so
+   * callers that have the roster to hand should pass it.
    */
-  async warmChannelKey(channelID: string): Promise<void> {
+  async warmChannelKey(channelID: string, members: string[] = []): Promise<void> {
     try {
       const v = this.currentVersion(channelID);
       if (await this.getKey(channelID, v)) return;
@@ -341,19 +472,16 @@ export class ChannelCrypto {
         this.encrypted.add(channelID);
         return;
       }
-      const sk = await unwrapSpaceKey(
-        wrap,
-        this.identity.x25519Private,
-        channelID,
-        v,
-        this.identity.userID,
-      );
-      if (!sk) {
+      // 82-4: no network. A warm that cannot resolve the signer from existing
+      // pins leaves the channel unwarmed (it already renders a placeholder);
+      // the next deliberate open resolves it properly.
+      const opened = await this.openWrap(wrap, channelID, v, members, false);
+      if (!opened) {
         this.encrypted.add(channelID);
         return;
       }
-      await saveSpaceKey(channelID, v, sk);
-      this.remember(channelID, v, sk);
+      await saveSpaceKey(channelID, v, opened.key, opened.prov);
+      this.remember(channelID, v, opened.key, opened.prov);
     } catch {
       // A warm is best-effort: a preview that cannot be decrypted renders a
       // placeholder, which is strictly better than a panel that never fills.
@@ -382,11 +510,11 @@ export class ChannelCrypto {
     // try to fetch + unwrap our own wrap
     const wrap = await fetchChannelKey(this.transport, channelID, v);
     if (wrap) {
-      const sk = await unwrapSpaceKey(wrap, this.identity.x25519Private, channelID, v, this.identity.userID);
-      if (sk) {
-        await saveSpaceKey(channelID, v, sk);
-        this.remember(channelID, v, sk);
-        await this.rewrapForMissing(channelID, members, sk);
+      const opened = await this.openWrap(wrap, channelID, v, members, true);
+      if (opened) {
+        await saveSpaceKey(channelID, v, opened.key, opened.prov);
+        this.remember(channelID, v, opened.key, opened.prov);
+        await this.rewrapForMissing(channelID, members, opened.key);
         return "ready";
       }
       // a wrap exists for us but won't open (corrupt / wrong identity): the
@@ -409,17 +537,50 @@ export class ChannelCrypto {
       const selfWrap = await wrapSpaceKey(sk, this.identity.x25519Public, channelID, v, this.identity.userID);
       await publishChannelKey(this.transport, channelID, v, this.identity.userID, selfWrap);
 
-      // read-back reconcile: if a concurrent bootstrap (our other device) won
+      // Read-back reconcile: if a concurrent bootstrap (our OTHER DEVICE) won
       // the upsert on our channel_keys row, adopt that key instead of ours so
       // both devices converge before wrapping for anyone else.
+      //
+      // 82-4: this is the audit's worst case (C-01). The creator used to adopt
+      // whatever decrypted here and then hand it to the whole channel via
+      // rewrapForMissing -- so one substituted frame compromised the channel
+      // with the legitimate creator as the distributor.
+      //
+      // The fix is exact rather than heuristic. fetch_channel_key only ever
+      // returns the CALLER's own row, and this branch is reached only when no
+      // recipient holds a key at all, so the sole legitimate writer is another
+      // device of this same user -- which signs with this same per-user
+      // Ed25519 key. Anything else is an attack or a bug.
       let finalSk = sk;
+      let finalProv: KeyProvenance = SELF_MINTED;
       const readback = await fetchChannelKey(this.transport, channelID, v);
       if (readback) {
-        const rsk = await unwrapSpaceKey(readback, this.identity.x25519Private, channelID, v, this.identity.userID);
-        if (rsk) finalSk = rsk;
+        const rb = await this.openWrap(readback, channelID, v, [this.identity.userID], false);
+        if (rb && rb.prov.kind === "signed" && rb.prov.trust === "self") {
+          // Our other device. Adopting identical bytes is not an adoption at
+          // all, so it keeps self-minted provenance.
+          finalSk = rb.key;
+          finalProv = bytesEqual(rb.key, sk) ? SELF_MINTED : rb.prov;
+        } else if (rb && rb.prov.kind === "unsigned") {
+          // Legacy: an older device of ours wrote an unsigned wrap. Byte-equal
+          // means nothing was substituted; a DIFFERENT key from an unsigned
+          // read-back is precisely the C-01 shape, so refuse it and keep ours.
+          if (bytesEqual(rb.key, sk)) finalProv = SELF_MINTED;
+        } else if (readback.suite === WRAP_SUITE_X25519_AESGCM_ED25519) {
+          // A signature was offered and it is not ours. Fail loudly and do NOT
+          // distribute: publishing nothing further is what stops the creator
+          // becoming the attacker's delivery mechanism.
+          console.error(
+            "channel-crypto: bootstrap read-back for",
+            channelID,
+            "was signed by another identity -- refusing to adopt or redistribute it.",
+          );
+          this.encrypted.add(channelID);
+          return "waiting";
+        }
       }
-      await saveSpaceKey(channelID, v, finalSk);
-      this.remember(channelID, v, finalSk);
+      await saveSpaceKey(channelID, v, finalSk, finalProv);
+      this.remember(channelID, v, finalSk, finalProv);
       await this.rewrapForMissing(channelID, members, finalSk);
       return "ready";
     }
