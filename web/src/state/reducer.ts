@@ -375,10 +375,26 @@ export function reducer(state: AppState, action: Action): AppState {
         memberIDs: [...ch.memberIDs, action.userID],
         members: [...ch.members, { userID: action.userID, handle: action.handle }],
       };
+      // 82-8: record the join so the channel can SAY it happened. Roster
+      // growth is how a server that can assert membership gets a key holder to
+      // hand it the channel key; the least the client can do is not hide it.
+      const priorJoins = state.recentJoins[action.channelID] ?? [];
       return {
         ...state,
+        recentJoins: {
+          ...state.recentJoins,
+          [action.channelID]: [...priorJoins, { userID: action.userID, handle: action.handle }],
+        },
         channels: { ...state.channels, [action.channelID]: nextCh },
       };
+    }
+
+    // 82-8: the user has seen who joined; drop the notice for that channel.
+    case "joins_dismissed": {
+      if (!state.recentJoins[action.channelID]) return state;
+      const next = { ...state.recentJoins };
+      delete next[action.channelID];
+      return { ...state, recentJoins: next };
     }
 
     case "channel_member_removed": {

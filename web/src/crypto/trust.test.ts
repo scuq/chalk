@@ -13,6 +13,7 @@ import {
   fetchTrustedIdentity,
   resolveSigner,
   markManuallyVerified,
+  memberTrust,
   trusted,
 } from "./trust";
 import { loadVerification, saveVerification, clearVerification } from "./idb";
@@ -238,4 +239,77 @@ test("markManuallyVerified upgrades a tofu pin and never downgrades", async () =
   const { pin, write } = pinStateFor(rec!, "grace", k, 1, 9999);
   assert.equal(pin, "manually_verified");
   assert.equal(write, null);
+});
+
+// ---- 82-8: the badge the panel actually shows ----------------------------
+//
+// The regression this function exists for: a TOFU record carries digestHex "",
+// and feeding that to verificationState() reads as "changed". From 82-2 until
+// 82-8 every peer therefore showed "key changed" the first time you opened the
+// members panel -- the loudest badge in the product, shown by default, which
+// is how a real one gets ignored.
+
+const DIGEST = "aabbcc";
+
+function rec(over: Partial<VerificationRecord> = {}): VerificationRecord {
+  return {
+    peerUserID: "bob",
+    digestHex: DIGEST,
+    generation: 1,
+    verifiedAt: 1000,
+    ed25519PubB64: b64(keyFrom(1)),
+    source: "manual",
+    pinnedAt: 1000,
+    ...over,
+  };
+}
+
+test("a TOFU pin reads as pinned, NOT as changed", () => {
+  // Exactly what fetchTrustedIdentity writes on first sight.
+  const tofu = rec({ digestHex: "", verifiedAt: 0, source: "tofu" });
+  assert.equal(memberTrust("first_seen", DIGEST, tofu), "pinned");
+  assert.equal(memberTrust("pinned", DIGEST, tofu), "pinned");
+});
+
+test("an out-of-band verification whose digest still matches reads verified", () => {
+  assert.equal(memberTrust("manually_verified", DIGEST, rec()), "verified");
+});
+
+test("a verified peer whose digest moved reads changed", () => {
+  assert.equal(memberTrust("manually_verified", "ffffff", rec()), "changed");
+});
+
+test("a repudiated pin outranks the digest comparison", () => {
+  // The digest would say "verified"; the pin says "not who you pinned", which
+  // is the graver claim and must win.
+  assert.equal(memberTrust("changed", DIGEST, rec()), "changed");
+  assert.equal(memberTrust("changed", DIGEST, null), "changed");
+});
+
+test("no record at all reads unverified", () => {
+  assert.equal(memberTrust("first_seen", DIGEST, null), "unverified");
+});
+
+// End-to-end against the real store: pin a peer, then ask what the panel would
+// show. This is the path that was broken, so it is worth asserting whole.
+test("first sight of a peer shows pinned, not changed", async () => {
+  await clearVerification("carol");
+  const id = await deriveIdentity(new Uint8Array(64).fill(7));
+  const ws: IdentityTransport = {
+    async request() {
+      return {
+        found: true,
+        user_id: "carol",
+        generation: 1,
+        x25519_pub: b64(id.x25519Public),
+        ed25519_pub: b64(id.ed25519Public),
+        self_sig: b64(id.selfSig),
+      } as never;
+    },
+  };
+  const seen = await fetchTrustedIdentity(ws, "carol");
+  assert.ok(seen);
+  assert.equal(seen!.pin, "first_seen");
+  const stored = await loadVerification("carol");
+  assert.equal(memberTrust(seen!.pin, DIGEST, stored), "pinned");
 });

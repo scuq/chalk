@@ -57,6 +57,19 @@ The engineering-level history (which slice shipped what) lives in
   person who created the link, instead of trusting whatever the server hands
   back. Links are a little longer as a result. Links you created before this
   update keep working until they expire.
+- The members list now says where a conversation's key came from — who signed
+  it, and whether that person's identity has been checked in person. Members
+  you've seen before but never verified read "recognised" rather than
+  "unverified", because your app does recognise them; it just hasn't had the
+  in-person confirmation.
+- When someone's identity key stops matching the one your app remembers, the
+  members list now says so up front instead of only marking a small badge. It
+  explains both reasons that happens — they reinstalled chalk, or something is
+  interfering — because you can't tell which without checking with them
+  directly.
+- You now get a note above the composer when someone joins a conversation
+  you're in. Whoever joins can read everything from that point on, so it's
+  worth seeing rather than only appearing in the members list.
 
 ### Added
 - **Temporary voice rooms with guest links.** A voice channel can now be
@@ -73,6 +86,11 @@ The engineering-level history (which slice shipped what) lives in
   addresses — a hardening that applies to regular calls too.
 
 ### Fixed
+- The members list showed "key changed" for every member the first time you
+  opened it, even when nothing had changed. That's the warning that matters
+  most, so having it appear by default made it meaningless; it now appears only
+  when someone's identity key really is different from the one your app
+  remembers.
 - Opening a conversation with a few unread messages and a photo among them
   could throw you off the newest message a moment after it appeared: the view
   jumped up to the top of the picture, leaving the latest messages below the

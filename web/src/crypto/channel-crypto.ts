@@ -587,6 +587,21 @@ export class ChannelCrypto {
   }
 
   /**
+   * keyProvenance reports how this device came to trust the channel's current
+   * key, or null when it holds none (82-8, for the members panel's provenance
+   * line). Read-only and offline: it answers from what is already held, and
+   * never fetches -- a UI question must not be able to move the trust state it
+   * is asking about.
+   */
+  async keyProvenance(channelID: string): Promise<KeyProvenance | null> {
+    const v = this.currentVersion(channelID);
+    const held = this.heldKey(channelID, v);
+    if (held) return held.prov;
+    const cached = await loadSpaceKey(channelID, v);
+    return cached ? cached.provenance : null;
+  }
+
+  /**
    * ensureChannelKey is called when a channel becomes active. It makes us hold
    * the channel's key if possible (fetch+unwrap our wrap, or bootstrap if we're
    * the creator and none exists), then auto-rewraps for any members who lack

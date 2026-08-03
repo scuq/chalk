@@ -4,10 +4,11 @@ Closing audit finding **C-01 (Critical)**: channel-key wraps are encrypted *to* 
 recipient but signed by nobody, so a malicious server can substitute a space key
 it knows. Planned against v0.6.4, after phase 81.
 
-**Status: in progress.** Slices 82-1 … 82-7 are implemented; 82-8 (UI + doc
-closeout) is not. C-01 is closed **on deployments that have flipped the
-enforcement flag** — see *Where this actually stands* below, which is
-deliberately placed before the design so it cannot be skimmed past.
+**Status: complete (82-1 … 82-8).** C-01 is closed **on deployments that have
+flipped the enforcement flag** — see *Where this actually stands* below, which
+is deliberately placed before the design so it cannot be skimmed past. The
+end-to-end run against a live stack is the one outstanding item; see
+*Verification*.
 
 ---
 
@@ -331,6 +332,38 @@ and signing inside `ChannelCrypto` and returns only the finished wrap. The old
 shape handed a component the raw space key; a caller holding plaintext key
 material is a caller that can wrap it any way it likes, including unsigned.
 
+### What the user is told — 82-8
+
+Five slices of cryptography are worth nothing a user can act on unless the
+client says what it knows. The rule for every string in this slice: **describe
+what this device knows, never how safe it feels.** "signed by alice" is a fact;
+"secure" would be a promise the client is not in a position to make, because it
+knows whether it *recognised* alice's key, not whether the key is really hers.
+
+- **Badges** gained a fifth state. "recognised" (TOFU) sits between
+  "unverified" and "verified" — a real fact, and not a check. Naming it
+  "pinned" was rejected: a user should not need the word to read the badge.
+- **The identity-changed wall.** A repudiated pin is the gravest thing the
+  panel can report, so it stops being a badge halfway down a list and becomes a
+  block at the top, in the error colour, naming who and offering the check. Its
+  wording gives both explanations honestly — *this is what a reinstall looks
+  like, and it is what a tampered server looks like* — because a warning that
+  cries attack at every reinstall is one users learn to click past.
+- **The key-provenance line** answers "where did this device's copy of the key
+  come from?" from the provenance 82-3 recorded and 82-5 persisted. The two
+  unproven origins (`unsigned`, `legacy_cache`) are the only ones flagged.
+- **The join notice.** Membership is server-asserted and any key holder
+  auto-reshares to whoever appears in the roster, so a server that adds a
+  principal it controls is *handed the key by a legitimate member's client*.
+  Phase 82 cannot close that — signing a wrap says who sent a key, not who
+  deserved one — so 82-8 does the one thing available: denies it silence. It
+  names everyone who joined; "and 3 others" is precisely the summarisation that
+  would let one unexpected member hide behind two expected ones.
+
+Deliberately **not** a synthetic message in the feed: that would need a seq,
+which means colliding with the real sequence space, persisting, and counting as
+unread — a lot of blast radius for a notice about something that just happened.
+
 ### Chokepoint — the bypass is now a compile error
 
 `keys: Map<string, Uint8Array>` became `Map<string, HeldKey>` with provenance a
@@ -449,6 +482,31 @@ reading of a green mutation run is "this check is dead code, delete it", and
 the correct reading here is "this check is redundant *today*, and states a rule
 the primitives happen to also enforce."
 
+### 82-2 shipped a bug that only the UI slice could see
+
+Six slices later, 82-8 went to add a "recognised" badge for TOFU-pinned peers
+and found the panel was already saying something — the wrong thing. A TOFU pin
+is written with `digestHex: ""` (nothing was compared out of band), and
+`App.tsx` fed that straight to `verificationState()`, which reads `"" !== <the
+current digest>` as **changed**.
+
+So from 82-2 until 82-8, opening the members panel showed **"key changed"** for
+every peer, on first sight, always. The loudest badge in the product, as the
+default state. That is worse than showing nothing: it is how a user learns that
+the alarm means nothing.
+
+Two things it says about the phase. First, `pinStateFor` was thoroughly unit-
+tested and every test passed — the bug lived in the *seam* between two
+correct functions, in a component with no test. Second, nobody looked: six
+slices of crypto work went by without opening the panel they were all
+ultimately for.
+
+The fix is `memberTrust(pin, currentDigestHex, stored)` in `trust.ts` — one
+pure function that owns the combination, tested including the exact TOFU record
+`fetchTrustedIdentity` writes, and mutation-tested by reintroducing the bug.
+The rule it encodes: a repudiated pin outranks the digest comparison, and an
+empty stored digest means *never compared*, not *mismatched*.
+
 ### Accepted risk: mixed-version bootstrap divergence
 
 Refusing a *different* unsigned read-back means two of a user's own devices
@@ -476,7 +534,7 @@ correctly and convergence is restored.
 | 82-5 | **done** | `CURRENT_WRAP_SUITE = 2` so every producer signs; `wrapSpaceKey` dispatches on it and `wrapSpaceKeyUnsigned` is the one named exception (guest mint); the never-replace and ratchet rules in `adopt()`; `channelHasSignedKey`; `describeSuites().keyAuth` + its tooltip row. 6 tests. |
 | 82-6 | **done** | `wrap_suites` on the recipients ack; self-healing re-wrap sweep in `rewrapForMissing` (own slot included); `CHALK_WRAP_SIG_REQUIRED` through config → `welcome.wrap_sig_required` → chalkctl (generated, preserved, backfilled `false` on update); server refuses suite-1 writes when required (`checkWrapPublish`); `PutChannelKey` guarded overwrite (recipient-or-upgrade); `key_version ≤ current+1`; `maxWrapBlobBytes` on `publish_channel_key`; client latches the flag per session. |
 | 82-7 | **done** | Guest path: owner Ed25519 key in the link fragment (~96 → ~140 chars), `owner_user_id` through `RedeemedGuest` → the redeem response, `openGuestWrap`'s fragment-decides-the-suite rule, `wrapKeyForGuest` replacing `exportKeyForMint`, `JoinScreen` verify-then-open, mint gated by `checkWrapSuite`. 11 tests. |
-| 82-8 | todo | Members-panel badges, the identity-changed wall, key provenance line, visible `member_added`; `threat-model.md`, `crypto-agility.md` suite-2 registry entry, CHANGELOG. |
+| 82-8 | **done** | `memberTrust` (and the first-sight badge bug it fixes), the identity-changed wall, `describeKeyProvenance` + the panel's provenance line, `JoinNotice` for visible `member_added`; `threat-model.md` rewritten. `crypto-agility.md`'s suite-2 entry landed early, in 82-5. 12 tests. |
 
 ### The 82-6 server rule: recipient-or-upgrade, silently
 
@@ -528,13 +586,13 @@ go build ./... && go vet ./... && go test ./... && gofmt -l .   # gofmt empty
 cd web && npx tsc --noEmit && node test.mjs && node build.mjs
 ```
 
-Client suite at 82-7: **1115 tests, 0 failures** (1058 before the phase).
+Client suite at 82-8: **1132 tests, 0 failures** (1058 before the phase).
 
-Every 82-5 … 82-7 defence was mutation-tested, per the lesson above — the
-ratchet, the never-replace rule, the suite flip, the flag refusal, the sweep
-and the guest fragment rule were each reverted in turn and the tests that
-should fail did, and only those (see the note above on the two 82-7 guards
-that survive their own mutation, and why). The server-side policy
+Every 82-5 … 82-8 defence was mutation-tested, per the lesson above — the
+ratchet, the never-replace rule, the suite flip, the flag refusal, the sweep,
+the guest fragment rule and the badge fix were each reverted in turn and the
+tests that should fail did, and only those (see the note above on the two 82-7
+guards that survive their own mutation, and why). The server-side policy
 (`checkWrapPublish` / `checkWrapSuite`) is a pure function tested without a
 database; the guarded upsert's `WHERE` clause is exercised only against a real
 Postgres and is covered by the flag-on end-to-end check below.
@@ -542,15 +600,20 @@ Postgres and is covered by the flag-on end-to-end check below.
 DB-backed Go tests need a fixture database via `bootstrap/phase-03-postgres.sh`,
 not the ad-hoc dev DB — see the note in `docs/PHASE-81-SECAUDIT.md`.
 
-The end-to-end check runs via the `run-chalk` skill: two users in a channel
-exchanging messages, a guest link minted and redeemed (the link is now ~140
-chars — check it survives the copy button and a paste into the composer), then
-`CHALK_WRAP_SIG_REQUIRED=true` with an un-swept member showing `waiting` and
-recovering via "re-share", and a fresh guest link minted and redeemed under the
-flag. It exercises the real Postgres upsert guard, which no unit test reaches.
-The members-panel provenance and pin badges join the checklist when 82-8 ships
-them. **Not yet run for 82-5 … 82-7** — worth doing before cutting a release
-that contains them.
+**Outstanding: the end-to-end run.** Everything above is unit-tested; the
+phase has not been driven against a live stack. Via the `run-chalk` skill:
+
+1. two users in a channel exchanging messages;
+2. the members panel — badges read "recognised" on first sight (**not** "key
+   changed"), and the provenance line names the signer;
+3. a guest link minted and redeemed — the link is now ~140 chars, so check it
+   survives the copy button and a paste into the composer;
+4. add a member, and confirm the join notice says so above the composer;
+5. `CHALK_WRAP_SIG_REQUIRED=true`: an un-swept member shows `waiting` and
+   recovers via "re-share"; a fresh guest link still mints and redeems.
+
+Step 5 is the only exercise of the real Postgres upsert guard, which no unit
+test reaches. Worth doing before cutting a release that contains this phase.
 
 ## Out of scope
 

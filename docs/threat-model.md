@@ -5,7 +5,7 @@ intended guarantees are **not yet met**. Every claim below is meant to be
 checkable against the code; where a guarantee is aspirational it says so
 rather than rounding up.
 
-Last reviewed: phase 81 (security-audit remediation).
+Last reviewed: phase 82 (signed channel-key wraps).
 
 ## What is actually built
 
@@ -23,35 +23,62 @@ Last reviewed: phase 81 (security-audit remediation).
 - **Transport** is TLS 1.3; the SPA is served with a restrictive CSP
   (`default-src 'self'`, `object-src 'none'`, `frame-ancestors 'none'`).
 
-## Guarantees NOT met today
+## Guarantees not met, or not met unconditionally
 
-These are intended properties of the design that the current implementation
-does not deliver. They are listed first because a threat model that buries
-its gaps is worse than none.
+Intended properties the current implementation does not deliver outright.
+Listed first, because a threat model that buries its gaps is worse than none.
+One of them is now met *provided the operator has turned a setting on*, which
+is written as such rather than rounded up to "fixed".
 
-### Confidentiality against a malicious server — **NOT met**
+### Confidentiality against a malicious server — **conditionally met (phase 82)**
 
-A channel key is encrypted *to* each recipient but is **not signed by
-anyone**. Anyone who can write the `channel_keys` row — which includes the
-server itself — can construct a valid-looking wrap around a key of their own
-choosing, because producing a wrap needs only the recipient's public key, and
-the server stores those.
+This was the phase-81 audit's C-01 and the gravest gap in the design. Phase 82
+(`docs/PHASE-82-SIGNEDWRAP.md`) closed it, but **the last step is the
+operator's**, so the honest answer depends on one setting.
 
-The sharpest instance is channel bootstrap: the creator publishes its own
-wrap, reads it back, and adopts whatever decrypts
-(`web/src/crypto/channel-crypto.ts`). A server that answers that read-back
-with its own wrap gets its chosen key adopted *and then redistributed to the
-whole channel by the legitimate creator*. Key rotation and first-unwrap on a
-recovered device have the same weakness in weaker form.
+What phase 82 built:
 
-Picture-word verification (below) checks *identity* keys. It does not cover
-the provenance of a channel-key wrap, and nothing in the client consults a
-peer's verification state before accepting one.
+- **Signed wraps** (suite 2). Every channel-key wrap chalk produces carries an
+  Ed25519 signature over the sealed bytes *and* the slot — channel, key
+  version, recipient, signer — under the canonical `chalk-wrap-sig.v1`
+  encoding. Verify-then-decrypt, so a forged wrap never reaches the X25519
+  private key.
+- **An identity anchor.** A signature is only worth the answer to "which key is
+  Bob's?", and before phase 82 that answer came from the server. Trust-on-
+  first-use pinning (`web/src/crypto/trust.ts`) commits the server to its first
+  answer about a peer, and the picture-word check (below) is now the *same*
+  record at a higher assurance level rather than a parallel universe the crypto
+  path could not read.
+- **Downgrade resistance.** Once a device has opened one signed wrap for a
+  channel, an unsigned one is refused for that channel at any key version; a
+  filled key slot is never silently replaced; and the server refuses one member
+  overwriting another's wrap slot except as a suite upgrade.
+- **Guest links** carry the owner's public key in the URL fragment — the one
+  value the server never sees — and the guest verifies against it.
 
-**Until this is fixed, do not rely on chalk to keep message content from the
-server operator.** The fix is a signed key-distribution protocol: a canonical
-wrap envelope signed by the sender's Ed25519 identity key, binding channel,
-key version, recipient, and wrap bytes, verified before the key is persisted.
+**The condition.** Existing channels were full of unsigned wraps, so refusing
+them outright would have locked users out of their own history. Instead a
+self-healing sweep re-signs wraps as channels get used, and
+`CHALK_WRAP_SIG_REQUIRED` (default **false**) is what finally withdraws
+acceptance of unsigned ones. With the flag off, a server that reaches a channel
+before any current-build member has opened it can still substitute a key.
+
+> **For operators: turn `CHALK_WRAP_SIG_REQUIRED` on once your users have been
+> on a current build for a while.** Until you do, this guarantee is not met on
+> your deployment.
+
+**What remains unmet even with the flag on.** Channel membership is asserted by
+the server and signed by nobody, and any key holder auto-reshares the key to
+whoever appears in the roster. A server that adds a principal it controls is
+therefore handed the key by a legitimate member's client. Signing a wrap proves
+who *sent* a key, not who *deserved* one. The client makes this visible rather
+than silent (a join notice, and a per-key provenance line in the members
+panel); the fix is phase 83's authenticated channel-state transcript.
+
+TOFU's own limit is also worth stating plainly: a server that lies from the
+*very first* fetch of a peer gets its key pinned, and only the out-of-band
+picture-word comparison ever detects that. What pinning closes is every *later*
+substitution.
 
 ### Sender authenticity — **NOT met**
 
@@ -72,7 +99,9 @@ Two consequences:
 
 The fix is a signed message envelope binding the sender's identity and the
 server-supplied metadata to the ciphertext, covering edits, reactions, and
-attachment references as well.
+attachment references as well. This is phase 83, and the expensive half of it
+— the identity anchor a signature would be checked against — was already paid
+for by phase 82.
 
 ## Adversaries chalk does defend against
 
@@ -80,8 +109,8 @@ attachment references as well.
 
 All traffic is TLS 1.3. Message-layer encryption sits inside it, so breaking
 TLS does not by itself yield message bodies — subject to the malicious-server
-gap above, since a TLS-breaking active attacker in the server's position
-inherits the same unsigned-wrap opportunity.
+section above, since a TLS-breaking active attacker occupies the server's
+position and inherits whatever that position can still do on your deployment.
 
 ### A server reading message content *by accident*
 
@@ -123,13 +152,21 @@ also expire 90 days after sign-in regardless of activity.
 
 ### Identity-key substitution
 
-A malicious server can hand you a wrong *identity* public key for a peer. The
-defense is **picture-word verification** (phase 24): an out-of-band check
-that both sides see the same identity fingerprint.
+Two defences, at two assurance levels, sharing one record since phase 82:
 
-Its limits, stated plainly: it is optional, it is advisory (the client does
-not refuse to talk to an unverified peer), and — per the first section — it
-does not protect channel-key distribution.
+- **Trust-on-first-use pinning.** The first time this device resolves a peer's
+  identity key it pins it. A later change is surfaced as "key changed" in the
+  members panel, behind a wall that says what it means, and the crypto path
+  refuses to adopt key material signed by a repudiated pin. This is automatic
+  and needs no user action.
+- **Picture-word verification** (phase 24): an out-of-band comparison that both
+  sides see the same fingerprint. Since 82-2 this upgrades the same pin rather
+  than living in a parallel store the crypto path could not read.
+
+Limits, stated plainly: TOFU cannot detect a server that lies from the very
+first fetch of a peer — only the out-of-band check does that. Verification
+remains optional and advisory for *conversation*: chalk will not stop you
+talking to an unverified peer. It is no longer advisory for *key adoption*.
 
 ### Online guessing and resource exhaustion
 
@@ -149,10 +186,13 @@ proxy and the limits collapse into one shared bucket.
 An attacker with live access to your unlocked device reads everything you
 read. No E2E system defends against this.
 
-### Malicious server, for content — see above
+### Malicious server, for membership — see above
 
-Listed here as well so it is not missed: this is currently an *undefended*
-adversary, not a defended one.
+Listed here as well so it is not missed. Channel *content* is defended once
+`CHALK_WRAP_SIG_REQUIRED` is on; channel *membership* is not defended at all
+yet, and a server that adds a principal it controls will be handed the key by
+a member's client. The client makes that visible, which is not the same as
+preventing it. Phase 83.
 
 ### Traffic analysis
 
@@ -167,10 +207,12 @@ problem (Cloudflare or similar).
 ### Compelled access to the server
 
 A subpoena yields metadata, ciphertext, wrapped keys, and credential hashes —
-not plaintext message bodies. But an operator who is compelled to *act*, as
-opposed to hand over data, can exploit the unsigned-wrap gap to obtain
-subsequent plaintext. Treat legal compulsion as covered only once that gap is
-closed.
+not plaintext message bodies. An operator compelled to *act*, as opposed to
+hand over data, is the malicious-server case above: with
+`CHALK_WRAP_SIG_REQUIRED` on they cannot substitute a channel key, but they can
+still add a principal to a channel and be handed the key by a member's client,
+because membership is not yet authenticated (phase 83). Treat legal compulsion
+as covered for *past* messages and not yet for *future* ones.
 
 ### Guest links
 

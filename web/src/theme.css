@@ -5303,6 +5303,85 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-verify-badge--unverified { color: var(--chalk-fg-dim, #5a8a5a); }
 .chalk-verify-badge--changed { color: var(--chalk-warn, #ffcc66); }
 .chalk-verify-badge--none { color: var(--chalk-fg-muted, #6a7a6a); }
+/* 82-8: TOFU -- this device recognises the key but nobody compared it. Sits
+   between unverified and verified deliberately: it is a real fact, and it is
+   not a check. */
+.chalk-verify-badge--pinned { color: var(--chalk-fg, #c8ffc8); opacity: 0.75; }
+
+/* -- 82-8: the identity-changed wall ------------------------------------
+   A repudiated identity pin is the gravest thing this panel can report, so it
+   is the one place that uses the error colour and a filled block rather than a
+   badge. It sits above the list, not inside it. */
+.chalk-identity-wall {
+  margin: 0.6rem 1rem 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--chalk-error, #ff4d4d);
+  border-left-width: 3px;
+  background: color-mix(in srgb, var(--chalk-error, #ff4d4d) 8%, transparent);
+}
+.chalk-identity-wall-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--chalk-error, #ff4d4d);
+  margin-bottom: 0.3rem;
+}
+.chalk-identity-wall-body {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--chalk-fg, #c8ffc8);
+}
+.chalk-identity-wall-who {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+}
+.chalk-identity-wall-link {
+  font-family: inherit;
+  font-size: 0.75rem;
+  background: transparent;
+  border: 1px solid var(--chalk-error, #ff4d4d);
+  color: var(--chalk-error, #ff4d4d);
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.chalk-identity-wall-link:hover { color: var(--chalk-fg, #c8ffc8); }
+
+/* -- 82-8: "who just joined" notice, above the composer ------------------
+   Membership is server-asserted and a key holder auto-reshares to whoever
+   appears in the roster, so a silent roster is a silent key handover. Styled
+   as a notice, not an alarm: joining is usually legitimate. */
+.chalk-join-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  border-left: 2px solid var(--chalk-warn, #ffcc66);
+  background: color-mix(in srgb, var(--chalk-warn, #ffcc66) 7%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.chalk-join-notice-text { flex: 1; color: var(--chalk-fg, #c8ffc8); }
+.chalk-join-notice-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--chalk-fg-muted, #6a7a6a);
+  font-family: inherit;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.15rem;
+}
+.chalk-join-notice-dismiss:hover { color: var(--chalk-fg, #c8ffc8); }
+
+/* -- 82-8: key provenance line ------------------------------------------ */
+.chalk-members-provenance {
+  font-size: 0.75rem;
+  color: var(--chalk-fg-muted, #6a7a6a);
+  margin-bottom: 0.4rem;
+}
+.chalk-members-provenance--weak { color: var(--chalk-warn, #ffcc66); }
 
 .chalk-members-back {
   background: transparent;

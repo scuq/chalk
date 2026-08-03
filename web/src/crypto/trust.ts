@@ -159,6 +159,46 @@ export async function resolveSigner(
 }
 
 /**
+ * MemberTrust is what the members panel shows for one peer. Five states, not
+ * three, because 82-2 gave the client a fourth thing to know and the old
+ * vocabulary could not say it:
+ *
+ *   no_identity  the peer has published nothing to trust
+ *   unverified   no pin at all -- we have never successfully seen this peer
+ *   pinned       TOFU: we recognise this key, but nobody compared it in person
+ *   verified     compared out of band, and the safety number still matches
+ *   changed      the pin was repudiated, or a verified digest no longer matches
+ */
+export type MemberTrust = "no_identity" | "unverified" | "pinned" | "verified" | "changed";
+
+/**
+ * memberTrust combines the PIN state (whose key is this?) with the DIGEST
+ * comparison (is this the number the user compared?) into the one label the
+ * panel shows.
+ *
+ * It exists because doing this inline got it wrong. A TOFU record carries
+ * `digestHex: ""` -- nothing was compared out of band -- and feeding that
+ * straight to verificationState() reads "" !== <current digest> as **changed**,
+ * so from 82-2 until this slice every peer showed "key changed" on first sight.
+ * "Key changed" is the loudest badge in the product; making it the default was
+ * both alarming and, worse, the thing that would train a user to ignore it.
+ *
+ * The rule: a repudiated pin outranks everything (it says "not who you
+ * pinned", which is strictly graver than "not what you compared"); an empty
+ * stored digest means never-compared, never mismatched.
+ */
+export function memberTrust(
+  pin: PinState,
+  currentDigestHex: string,
+  stored: VerificationRecord | null,
+): MemberTrust {
+  if (pin === "changed") return "changed";
+  if (!stored) return "unverified";
+  if (!stored.digestHex) return "pinned"; // TOFU only; nothing was compared
+  return stored.digestHex === currentDigestHex ? "verified" : "changed";
+}
+
+/**
  * markManuallyVerified upgrades a peer's record after an out-of-band picture-word
  * comparison. Never downgrades: a manual pin stays manual.
  */

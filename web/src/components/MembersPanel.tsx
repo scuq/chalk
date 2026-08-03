@@ -9,24 +9,38 @@
 //   * "has key" -- a wrapped channel key exists for that member.
 //   * "waiting" -- no wrap exists for them yet.
 //
-// VERIFICATION (per member; 24b): a badge shows whether you've verified this
-// member's identity out of band -- unverified / verified / changed (their key
-// differs from what you verified) / no identity (they haven't published one).
+// VERIFICATION (per member; 24b, extended 82-8): a badge shows this device's
+// standing with that member's identity key --
+//
+//   no identity  they haven't published one
+//   unverified   no pin at all
+//   recognised   TOFU: this key is the one we saw before, uncompared (82-2)
+//   verified     you compared the safety number out of band
+//   changed      the pin was repudiated, or a verified digest no longer matches
+//
 // Click a member to open the verify view: a single shared safety number (8
 // words by default, a 60-digit numeric on toggle) that BOTH of you compute
 // identically. Compare it over a trusted channel (in person, a call); if it
 // matches, mark verified (with an explicit confirm). A "changed" member must
-// be re-verified.
+// be re-verified, and 82-8 says so in a wall above the list rather than only
+// in a badge -- it is the gravest thing this panel can report.
+//
+// 82-8 also adds the key-provenance line: where THIS device's copy of the
+// channel key came from, recorded at adoption by crypto/channel-crypto.ts.
 //
 // Presentational: App owns the crypto, fetches recipients + computes each
-// member's safety number / verification state, and passes them in.
+// member's safety number / trust state / key provenance, and passes them in.
 
 import { useEffect, useState } from "preact/hooks";
 import { nickTintStyle } from "../chat/nickcolor";
 import type { ChannelMember, Friend } from "../state/types";
-import type { VerificationState } from "../crypto/safety-number";
+import type { MemberTrust } from "../crypto/trust";
+import type { KeyProvenanceLine } from "../chat/keyprovenance";
 
-export type MemberVerifyState = VerificationState | "no_identity";
+// 82-8: the panel's badge vocabulary is now the crypto path's own
+// (crypto/trust.ts), rather than a UI-local one that could only say three
+// things. The alias stays so the many call sites read unchanged.
+export type MemberVerifyState = MemberTrust;
 
 export interface MemberVerifyInfo {
   state: MemberVerifyState;
@@ -61,6 +75,9 @@ interface Props {
   // per-member verification (keyed by userID); 24b
   verification: Record<string, MemberVerifyInfo>;
   verificationLoading: boolean;
+  // 82-8: where this device's copy of the channel key came from. null when we
+  // hold no key (the footer already says so).
+  keyProvenance: KeyProvenanceLine | null;
   onMarkVerified: (userID: string) => void;
   onReshare: () => void;
   onRotate: () => void;
@@ -76,7 +93,36 @@ function verifyBadgeText(s: MemberVerifyState): string {
     case "verified": return "verified";
     case "changed": return "key changed";
     case "no_identity": return "no identity";
+    // 82-8: "recognised" rather than "pinned" -- the user does not have to
+    // know what a pin is to read it, and it says the honest thing: this device
+    // has seen this key before, which is not the same as having checked it.
+    case "pinned": return "recognised";
     default: return "unverified";
+  }
+}
+
+function verifyBadgeClass(s: MemberVerifyState): string {
+  switch (s) {
+    case "verified": return "verified";
+    case "changed": return "changed";
+    case "no_identity": return "none";
+    case "pinned": return "pinned";
+    default: return "unverified";
+  }
+}
+
+function verifyBadgeTitle(s: MemberVerifyState): string {
+  switch (s) {
+    case "verified":
+      return "you compared this member's safety number out of band";
+    case "changed":
+      return "this member's identity key is not the one this device saw before -- do not trust it until you have compared the new safety number in person";
+    case "no_identity":
+      return "this member hasn't published an identity yet";
+    case "pinned":
+      return "this device has seen this key before and it hasn't changed, but nobody has compared it in person";
+    default:
+      return "view safety number / verify identity";
   }
 }
 
@@ -100,6 +146,7 @@ export function MembersPanel({
   selfHue,
   verification,
   verificationLoading,
+  keyProvenance,
   onMarkVerified,
   onReshare,
   onRotate,
@@ -134,6 +181,10 @@ export function MembersPanel({
 
   const sorted = [...members].sort((a, b) => a.handle.localeCompare(b.handle));
   const waitingCount = members.filter((m) => !recipients.has(m.userID)).length;
+  // 82-8: the identity-changed wall. A repudiated pin is the one thing in this
+  // panel that means "something is actively wrong", so it gets said at the top
+  // in words rather than left to a badge halfway down a list.
+  const changed = sorted.filter((m) => verification[m.userID]?.state === "changed");
 
   const selectedMember = selected ? members.find((m) => m.userID === selected) : undefined;
   const selectedInfo = selected ? verification[selected] : undefined;
@@ -201,6 +252,32 @@ export function MembersPanel({
           />
         ) : (
           <>
+            {changed.length > 0 && !verificationLoading && (
+              <div class="chalk-identity-wall" role="alert" data-testid="identity-wall">
+                <div class="chalk-identity-wall-title">identity changed</div>
+                <div class="chalk-identity-wall-body">
+                  {changed.length === 1
+                    ? `${changed[0].handle}'s identity key is not the one this device saw before.`
+                    : `${changed.length} members' identity keys are not the ones this device saw before.`}{" "}
+                  That happens when someone reinstalls chalk — and it is also what
+                  a tampered server looks like. Messages stay encrypted either
+                  way, but until you compare the new safety number with them in
+                  person or on a call, you can't tell which it is.
+                </div>
+                <div class="chalk-identity-wall-who">
+                  {changed.map((m) => (
+                    <button
+                      key={m.userID}
+                      type="button"
+                      class="chalk-identity-wall-link"
+                      onClick={() => setSelected(m.userID)}
+                    >
+                      check {m.handle}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div class="chalk-members-body">
               {loading ? (
                 <div class="chalk-members-empty">checking key status...</div>
@@ -231,19 +308,10 @@ export function MembersPanel({
                           {!isYou && (
                             <button
                               type="button"
-                              class={
-                                "chalk-verify-badge chalk-verify-badge--" +
-                                (vstate === "verified"
-                                  ? "verified"
-                                  : vstate === "changed"
-                                    ? "changed"
-                                    : vstate === "no_identity"
-                                      ? "none"
-                                      : "unverified")
-                              }
+                              class={"chalk-verify-badge chalk-verify-badge--" + verifyBadgeClass(vstate)}
                               onClick={() => setSelected(m.userID)}
                               disabled={vstate === "no_identity" || verificationLoading}
-                              title="view safety number / verify identity"
+                              title={verifyBadgeTitle(vstate)}
                             >
                               {verificationLoading ? "..." : verifyBadgeText(vstate)}
                             </button>
@@ -334,6 +402,18 @@ export function MembersPanel({
             </div>
 
             <div class="chalk-members-footer">
+              {keyProvenance && (
+                <div
+                  class={
+                    "chalk-members-provenance" +
+                    (keyProvenance.weak ? " chalk-members-provenance--weak" : "")
+                  }
+                  data-testid="key-provenance"
+                  title={keyProvenance.title}
+                >
+                  this channel's key: {keyProvenance.text}
+                </div>
+              )}
               {weHoldKey ? (
                 waitingCount > 0 ? (
                   <button

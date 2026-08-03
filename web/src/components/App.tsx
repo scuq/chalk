@@ -201,6 +201,7 @@ import { MessageList } from "./MessageList";
 import { ConfirmModal } from "./ConfirmModal";
 import { Composer } from "./Composer";
 import { TypingLine } from "./TypingLine";
+import { JoinNotice } from "./JoinNotice"; // 82-8
 // Phase 11c-2 PR 4: member-management modal.
 import { ThreadPanel } from "./ThreadPanel";
 // Phase 9.6d: heavy panels are lazy-loaded so the initial bundle
@@ -286,17 +287,15 @@ import { cryptoSupported } from "../crypto/support";
 import { MigrationScreen } from "../auth/MigrationScreen"; // 31-9
 import { loadIdentity, loadVerification } from "../crypto/idb";
 import { type IdentityTransport } from "../crypto/identity-sync";
-import { fetchTrustedIdentity, markManuallyVerified } from "../crypto/trust"; // 82-2
-import {
-  computeSafetyNumber,
-  verificationState,
-  digestToHex,
-} from "../crypto/safety-number";
+import { fetchTrustedIdentity, markManuallyVerified, memberTrust } from "../crypto/trust"; // 82-2, 82-8
+import { computeSafetyNumber, digestToHex } from "../crypto/safety-number";
 import type { MemberVerifyInfo } from "./MembersPanel";
+import { describeKeyProvenance } from "../chat/keyprovenance"; // 82-8
 import { commitRotation, removeMember, addMember, deleteMessage, editMessage } from "../crypto/spacekey-sync";
 import {
   ChannelCrypto,
   type ChannelKeyStatus,
+  type KeyProvenance,
 } from "../crypto/channel-crypto";
 // att-2: attachment pipeline (send-side upload + receive-side controller),
 // the transport list query for history backfill, and the ciphertext cache
@@ -491,6 +490,8 @@ export function App() {
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [resharing, setResharing] = useState(false);
   const [rotating, setRotating] = useState(false);
+  // 82-8: provenance of THIS device's copy of the active channel's key.
+  const [keyProv, setKeyProv] = useState<KeyProvenance | null>(null);
 
   // Mobile: below the phone breakpoint the roster stops being a column and
   // becomes a drawer over the message list. Desktop never reads navOpen, but
@@ -975,6 +976,9 @@ export function App() {
     try {
       const recips = await ccRef.current.keyRecipients(cid);
       setMemberRecipients(recips);
+      // 82-8: where our own copy of the key came from, for the panel's
+      // provenance line. Offline; it reads what adoption already recorded.
+      setKeyProv(await ccRef.current.keyProvenance(cid));
     } catch (err) {
       console.error("keyRecipients failed:", err);
     } finally {
@@ -1024,9 +1028,10 @@ export function App() {
         const sn = await computeSafetyNumber(me.ed25519Public, peer.ed25519Public);
         const stored = await loadVerification(m.userID);
         out[m.userID] = {
-          // A repudiated pin outranks the digest comparison: the digest only
-          // says "not what you verified", the pin says "not who you pinned".
-          state: seen.pin === "changed" ? "changed" : verificationState(sn.digest, stored),
+          // 82-8: memberTrust, not verificationState, because a TOFU record
+          // has an empty digest and the old call read that as "changed" --
+          // which showed "key changed" for every peer on first sight.
+          state: memberTrust(seen.pin, digestToHex(sn.digest), stored),
           words: sn.words,
           numeric: sn.numeric,
           digestHex: digestToHex(sn.digest),
@@ -5198,6 +5203,14 @@ export function App() {
           class={`chalk-footer-main ${state.parked || (zuckerActive && zuckerScreen === "list") ? "chalk-footer-main--parked" : ""}`}
           data-testid="footer-main"
         >
+          {state.activeChannelID && (
+            <JoinNotice
+              joins={state.recentJoins[state.activeChannelID] ?? []}
+              onDismiss={() =>
+                dispatch({ kind: "joins_dismissed", channelID: state.activeChannelID! })
+              }
+            />
+          )}
           <TypingLine
             channelID={state.activeChannelID}
             members={activeChannel?.members}
@@ -5508,6 +5521,9 @@ export function App() {
           selfHue={ownNickHue}
           verification={memberVerify}
           verificationLoading={verifyLoading}
+          keyProvenance={describeKeyProvenance(keyProv, (id) =>
+            activeChannel.members.find((m) => m.userID === id)?.handle ?? null,
+          )}
           onMarkVerified={onMarkVerified}
           onReshare={onReshareKey}
           onRotate={onRotateKey}

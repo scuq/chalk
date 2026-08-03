@@ -251,7 +251,7 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
 (user-facing). Latest release: v0.6.4 — keep this in step with the topmost
 `## vX.Y.Z` heading in `CHANGELOG.md`. Only what is NOT done belongs here.
 
-- Phases through 81-6 are committed; `docs/phase-log.md` has the full history,
+- Phase 82 is the newest work; `docs/phase-log.md` has the full history,
   and the arcs named here are a sample, not the whole list. Among the complete
   ones: auth v2 (31), voice/video
   (30-1 … 30-8 plus the 41/44/47/48 mic, device and call-UI work), governance
@@ -264,30 +264,32 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   `docs/PHASE-55-HISTORY.md`), composer @mention autocomplete (56-1), link
   previews (57, plan in `docs/PHASE-57-LINKPREVIEW.md`: sender-built,
   E2E-embedded, opt-in, SSRF-guarded server fetcher), the security-audit
-  remediation (81, record in `docs/PHASE-81-SECAUDIT.md`).
-- **Open security gaps, both confirmed by the phase-81 audit** (analysis in
-  `docs/PHASE-81-SECAUDIT.md`; `docs/threat-model.md` states them as unmet
-  guarantees):
-  - **Channel-key wraps — phase 82 IN PROGRESS, plan and findings in
-    `docs/PHASE-82-SIGNEDWRAP.md`.** Slices 82-1 … 82-7 are implemented: wrap
-    suite 2 (Ed25519 signature inside the opaque blob), TOFU identity pinning
-    in `web/src/crypto/trust.ts`, provenance-tracked key adoption, the
-    `openWrap` policy, 82-5's producer flip plus the never-replace and
-    downgrade-ratchet rules in `adopt()`, 82-6's self-healing re-wrap sweep,
-    guarded server upsert, and `CHALK_WRAP_SIG_REQUIRED` enforcement flag
-    (config → welcome → chalkctl; default **false**), and 82-7's guest-path
-    anchoring (owner Ed25519 key in the link fragment, `openGuestWrap`'s
-    fragment-decides-the-suite rule). C-01 is closed **only on deployments
-    that flip the flag** after the sweep has re-signed their wraps — do not
-    describe it as fixed unconditionally. Remaining: 82-8 (members-panel
-    badges, identity-changed wall, threat-model closeout). The flag-on
-    end-to-end run via `run-chalk` has not been done for 82-5 … 82-7.
+  remediation (81, record in `docs/PHASE-81-SECAUDIT.md`), signed channel-key
+  wraps (82, record in `docs/PHASE-82-SIGNEDWRAP.md`).
+- **Phase 82 (signed channel-key wraps) is COMPLETE** — 82-1 … 82-8, record in
+  `docs/PHASE-82-SIGNEDWRAP.md`. It closes the phase-81 audit's C-01, but
+  **conditionally**: `CHALK_WRAP_SIG_REQUIRED` defaults to false, and until an
+  operator flips it (after the self-healing sweep has re-signed their wraps) a
+  server can still substitute a key on a channel no current-build member has
+  opened. Never describe C-01 as fixed unconditionally.
+  - Two follow-ups are still open: the **end-to-end run against a live stack**
+    (checklist at the end of the phase doc — the only exercise of the real
+    Postgres upsert guard, and worth doing before a release carries this), and
+    the guest path's remaining exposure: links minted before 82-7 stay unsigned
+    until they expire.
+- **Open security gap, confirmed by the phase-81 audit** (analysis in
+  `docs/PHASE-81-SECAUDIT.md`; `docs/threat-model.md` states it as an unmet
+  guarantee):
   - **Messages carry no sender signature.** The AEAD associated data is only
     suite/channel/key-version, so sender, message ID and timestamp are
     unauthenticated server-supplied metadata and any key holder can be
     impersonated. Fix = signed message envelope, extended to edits, reactions
-    and attachment refs.
-  - Both should copy `web/src/voice/signal-crypto.ts`, which already does
+    and attachment refs. Phase 83, together with the **authenticated
+    channel-state transcript**: membership is still server-asserted, so a
+    server that adds a principal it controls gets the key handed to it by a
+    member's auto-reshare. 82-8 makes that visible (the join notice) but
+    cannot prevent it. Both share the identity anchor phase 82 already paid
+    for, and should copy `web/src/voice/signal-crypto.ts`, which already does
     canonical-encode → Ed25519 sign → fail-closed verify correctly.
 - Next candidates, none started: web push notifications (phase 65, full
   plan in `docs/PHASE-65-PUSH.md`: hand-rolled `internal/webpush`, DMs-only

@@ -637,6 +637,17 @@ export interface AppState {
   // for the session. false until the welcome frame says otherwise.
   wrapSigRequired: boolean;
 
+  // 82-8: who has joined each channel during this session, until dismissed.
+  //
+  // Membership is asserted by the SERVER (phase 83 is what makes it
+  // authenticated), and a key holder auto-reshares the channel key to whoever
+  // appears in the roster. So a server that adds a principal it controls gets
+  // the key handed to it -- by a legitimate member, automatically. The client
+  // cannot prevent that yet; what it can do is refuse to let it happen
+  // SILENTLY. Session-scoped and local: this is a "look what just happened",
+  // not an audit log.
+  recentJoins: Record<string, Array<{ userID: string; handle: string }>>;
+
   // 39-1: the build we're talking to (welcome.server_version/_commit), shown
   // as the header version badge. Empty until the welcome frame lands.
   serverVersion: string;
@@ -929,6 +940,7 @@ export const initialState: AppState = {
   voiceRosters: {},
   voiceEnabled: false,
   wrapSigRequired: false,
+  recentJoins: {},
   serverVersion: "",
   serverCommit: "",
   serverBuildAtLoad: null,
@@ -1037,6 +1049,8 @@ export type Action =
   | { kind: "channel_rotation_pending_set"; channelID: string; pending: boolean }
   // Phase 11c-2 PR 4: optimistic local updates on add/remove member.
   | { kind: "channel_member_added"; channelID: string; userID: string; handle: string }
+  // 82-8: dismiss the "who joined" notice for one channel.
+  | { kind: "joins_dismissed"; channelID: string }
   | { kind: "channel_member_removed"; channelID: string; userID: string }
   | { kind: "set_active_channel"; channelID: string | null }
   // 53-1: park (hide the conversation pane) or leave the parking lot. Picking
