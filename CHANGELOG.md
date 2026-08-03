@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.6.4 — 3 August 2026 — Where you left off
 
 ### Fixed
 - Opening a conversation with a lot of unread messages — or coming back to one
