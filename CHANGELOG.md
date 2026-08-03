@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.7.0 — 4 August 2026 — Signed keys and guest rooms
 
 ### Changed
 - Changing your password now signs out your other devices, and resetting your

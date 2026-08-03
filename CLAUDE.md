@@ -248,7 +248,7 @@ That is not something to work around with `grep -r` — ask scuq to install it
 ## Current state / open items
 
 Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
-(user-facing). Latest release: v0.6.4 — keep this in step with the topmost
+(user-facing). Latest release: v0.7.0 — keep this in step with the topmost
 `## vX.Y.Z` heading in `CHANGELOG.md`. Only what is NOT done belongs here.
 
 - Phase 82 is the newest work; `docs/phase-log.md` has the full history,
