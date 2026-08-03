@@ -21,9 +21,10 @@ import (
 	"github.com/scuq/chalk/internal/store"
 )
 
-// maxWrapBlobBytes bounds the parked space-key wrap. Suite 1 is 92 bytes; 4
-// KiB leaves room for a future PQ suite (ML-KEM ~1 KB) without letting the
-// column become a blob store.
+// maxWrapBlobBytes bounds a space-key wrap blob -- since 82-6 on BOTH paths
+// that store one (the ephemeral mint here and publish_channel_key in ws.go).
+// Suite 1 is 92 bytes, suite 2 is 188; 4 KiB leaves room for a future PQ
+// suite (ML-KEM ~1 KB) without letting the column become a blob store.
 const maxWrapBlobBytes = 4096
 
 // requireEphemeralOwner resolves the caller, the channel, and the owner role

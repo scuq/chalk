@@ -268,16 +268,19 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
 - **Open security gaps, both confirmed by the phase-81 audit** (analysis in
   `docs/PHASE-81-SECAUDIT.md`; `docs/threat-model.md` states them as unmet
   guarantees):
-  - **Channel-key wraps are unsigned — phase 82 IN PROGRESS, plan and findings
-    in `docs/PHASE-82-SIGNEDWRAP.md`.** Slices 82-1 … 82-5 are implemented: wrap
+  - **Channel-key wraps — phase 82 IN PROGRESS, plan and findings in
+    `docs/PHASE-82-SIGNEDWRAP.md`.** Slices 82-1 … 82-6 are implemented: wrap
     suite 2 (Ed25519 signature inside the opaque blob), TOFU identity pinning
     in `web/src/crypto/trust.ts`, provenance-tracked key adoption, the
-    `openWrap` policy — which closes substitution at the bootstrap read-back,
-    the audit's worst case — and 82-5's producer flip plus the never-replace and
-    downgrade-ratchet rules in `adopt()`. **Not yet closed:** an unsigned suite-1
-    wrap is still accepted on a channel that has never yielded a signed one,
-    until 82-6 ships the self-healing re-wrap sweep and the
-    `CHALK_WRAP_SIG_REQUIRED` flag. Do not describe C-01 as fixed before then.
+    `openWrap` policy, 82-5's producer flip plus the never-replace and
+    downgrade-ratchet rules in `adopt()`, and 82-6's self-healing re-wrap
+    sweep, guarded server upsert, and `CHALK_WRAP_SIG_REQUIRED` enforcement
+    flag (config → welcome → chalkctl; default **false**). C-01 is closed
+    **only on deployments that flip the flag** after the sweep has re-signed
+    their wraps — do not describe it as fixed unconditionally. Remaining:
+    82-7 (guest-path anchoring; guest wraps are still unsigned and exempt
+    from the flag) and 82-8 (UI badges + doc closeout). The flag-on
+    end-to-end run via `run-chalk` has not been done yet.
   - **Messages carry no sender signature.** The AEAD associated data is only
     suite/channel/key-version, so sender, message ID and timestamp are
     unauthenticated server-supplied metadata and any key holder can be

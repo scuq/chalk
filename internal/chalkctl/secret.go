@@ -114,3 +114,18 @@ func ensurePhase81Env(envPath string, log io.Writer) error {
 		log)
 	return err
 }
+
+// ensurePhase82Env backfills CHALK_WRAP_SIG_REQUIRED=false into an existing
+// env file (82-6). false is the value the server would assume anyway; writing
+// it makes the enforcement knob VISIBLE to the operator, and pins today's
+// behaviour against any future change of the chalkd default -- flipping a
+// deployed server to enforcement must always be the operator's explicit act,
+// because doing it before the self-healing sweep has re-signed the existing
+// wraps locks members out of their channels. A present value, either way, is
+// never touched.
+func ensurePhase82Env(envPath string, log io.Writer) error {
+	_, err := appendEnvVar(envPath, "CHALK_WRAP_SIG_REQUIRED", "false",
+		"signed channel-key wraps (backfilled by chalkctl; flip to true after the re-sign sweep, see docs/PHASE-82-SIGNEDWRAP.md)",
+		log)
+	return err
+}

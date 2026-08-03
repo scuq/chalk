@@ -945,10 +945,17 @@ type FetchChannelKeyRecipientsPayload struct {
 
 // FetchChannelKeyRecipientsAckPayload lists the user_ids that already hold a
 // wrap. The server reports only WHO has a key, never the keys themselves.
+//
+// 82-6: WrapSuites maps each recipient to the wrap suite their stored wrap was
+// produced under, so a key holder can spot members still sitting on a legacy
+// unsigned (suite-1) wrap and re-wrap them signed -- the self-healing sweep.
+// A recipient absent from the map (older server) is treated as suite unknown,
+// which the sweep leaves alone.
 type FetchChannelKeyRecipientsAckPayload struct {
-	ChannelID  string   `json:"channel_id"`
-	KeyVersion int      `json:"key_version"`
-	Recipients []string `json:"recipients"`
+	ChannelID  string         `json:"channel_id"`
+	KeyVersion int            `json:"key_version"`
+	Recipients []string       `json:"recipients"`
+	WrapSuites map[string]int `json:"wrap_suites,omitempty"`
 }
 
 // PublishIdentityPayload uploads the caller's own identity public keys.

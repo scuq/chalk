@@ -85,6 +85,12 @@ type Config struct {
 	EphemeralMaxTTLHours int  // CHALK_EPHEMERAL_MAX_TTL_HOURS
 	EphemeralInviteHours int  // CHALK_EPHEMERAL_INVITE_MAX_TTL_HOURS
 	EphemeralMaxGuests   int  // CHALK_EPHEMERAL_MAX_GUESTS
+
+	// 82-6: refuse unsigned channel-key wraps. Defaults false -- the operator
+	// flips it once the self-healing sweep has upgraded the wraps in the wild
+	// (docs/PHASE-82-SIGNEDWRAP.md), and flipping early strands members whose
+	// wrap has not been re-signed yet.
+	WrapSigRequired bool // CHALK_WRAP_SIG_REQUIRED
 }
 
 // DefaultConfig returns the baseline before file/flag overlays.
@@ -216,6 +222,12 @@ func LoadConfigFile(cfg Config, path string) (Config, error) {
 				return cfg, fmt.Errorf("%s:%d: EPHEMERAL_ENABLED not a bool: %q", path, line, v)
 			}
 			cfg.EphemeralEnabled = b
+		case "WRAP_SIG_REQUIRED":
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: WRAP_SIG_REQUIRED not a bool: %q", path, line, v)
+			}
+			cfg.WrapSigRequired = b
 		case "EPHEMERAL_MAX_TTL_HOURS":
 			n, err := strconv.Atoi(v)
 			if err != nil {
@@ -279,6 +291,7 @@ func (c Config) Save(path string) error {
 	}
 	fmt.Fprintf(&b, "PG_STAT_STATEMENTS=%t\n", c.PgStatStatements)
 	fmt.Fprintf(&b, "EPHEMERAL_ENABLED=%t\n", c.EphemeralEnabled)
+	fmt.Fprintf(&b, "WRAP_SIG_REQUIRED=%t\n", c.WrapSigRequired)
 	if c.EphemeralMaxTTLHours > 0 {
 		fmt.Fprintf(&b, "EPHEMERAL_MAX_TTL_HOURS=%d\n", c.EphemeralMaxTTLHours)
 	}

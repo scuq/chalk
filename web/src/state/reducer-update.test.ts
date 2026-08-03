@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { reducer } from "./reducer.ts";
 import { initialState, type Action, type AppState } from "./types.ts";
 
-function welcome(version?: string, commit?: string): Action {
+function welcome(version?: string, commit?: string, wrapSigRequired = false): Action {
   return {
     kind: "welcome",
     userID: "user-1",
@@ -20,6 +20,7 @@ function welcome(version?: string, commit?: string): Action {
     handle: "me",
     channels: [],
     voiceEnabled: false,
+    wrapSigRequired, // 82-6
     serverVersion: version,
     serverCommit: commit,
   };
@@ -124,4 +125,14 @@ test("a disconnect keeps the baseline and the pill", () => {
   s = reducer(s, { kind: "ws_state", state: "closed", detail: "1006" });
   assert.equal(s.updateAvailable, true);
   assert.equal(s.serverBuildAtLoad, "v0.3.46@abc1234");
+});
+
+// 82-6: the signed-wrap policy latches across welcomes. A reconnect's welcome
+// arrives over the very channel the policy defends against, so "the server
+// says it's optional again" must not reopen the window mid-session.
+test("wrap_sig_required latches across reconnect welcomes", () => {
+  const on = reducer(initialState, welcome(undefined, undefined, true));
+  assert.equal(on.wrapSigRequired, true);
+  const relaxed = reducer(on, welcome()); // wrapSigRequired: false
+  assert.equal(relaxed.wrapSigRequired, true, "a later welcome must not relax the policy");
 });

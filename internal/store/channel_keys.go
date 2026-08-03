@@ -33,12 +33,28 @@ type ChannelKey struct {
 	CreatedAt   time.Time
 }
 
-// PutChannelKey stores (or replaces) the wrapped space key for one member at
-// one key_version. Idempotent per (channel_id, key_version, recipient_id):
-// re-wrapping the same slot overwrites in place. The caller must already
-// have authorized that both the wrapping user and RecipientID are members of
-// the channel (enforced at the handler layer).
-func (s *Store) PutChannelKey(ctx context.Context, k ChannelKey) error {
+// PutChannelKey stores the wrapped space key for one member at one
+// key_version. The caller must already have authorized that both the wrapping
+// user (callerID) and RecipientID are members of the channel (enforced at the
+// handler layer).
+//
+// 82-6: the upsert used to be an unbounded DO UPDATE, which let ANY member
+// silently overwrite any other member's wrap slot at any key version. A filled
+// slot is now overwritten only when
+//
+//   - the caller is the recipient (re-wrapping one's OWN slot -- the bootstrap
+//     read-back convergence between a user's devices), or
+//   - the new wrap's suite is strictly higher than the stored one (the
+//     self-healing sweep upgrading a legacy unsigned wrap to a signed one).
+//
+// Anything else is a silent no-op rather than an error, deliberately: two
+// holders auto-rewrapping the same missing member race here, and the loser's
+// write is an equal-suite overwrite carrying the same key -- refusing it loses
+// nothing, while erroring would make a benign race look like a failure. The
+// server cannot tell those writes from hostile ones (it cannot open the blobs);
+// what it CAN do is make "quietly replace an existing wrap" impossible, which
+// is the store-side echo of the client's never-replace rule.
+func (s *Store) PutChannelKey(ctx context.Context, k ChannelKey, callerID uuid.UUID) error {
 	if len(k.Blob) == 0 {
 		return fmt.Errorf("PutChannelKey: wrap blob is empty")
 	}
@@ -55,8 +71,10 @@ func (s *Store) PutChannelKey(ctx context.Context, k ChannelKey) error {
 		 VALUES ($1, $2, $3, $4, $5, now())
 		 ON CONFLICT (channel_id, key_version, recipient_id) DO UPDATE
 		   SET wrap_suite = EXCLUDED.wrap_suite,
-		       wrap_blob  = EXCLUDED.wrap_blob`,
-		k.ChannelID, ver, k.RecipientID, k.WrapSuite, k.Blob,
+		       wrap_blob  = EXCLUDED.wrap_blob
+		 WHERE channel_keys.recipient_id = $6
+		    OR EXCLUDED.wrap_suite > channel_keys.wrap_suite`,
+		k.ChannelID, ver, k.RecipientID, k.WrapSuite, k.Blob, callerID,
 	)
 	if err != nil {
 		return fmt.Errorf("put channel key: %w", err)
@@ -87,17 +105,28 @@ func (s *Store) GetChannelKey(ctx context.Context, channelID uuid.UUID, keyVersi
 	return k, nil
 }
 
-// ListChannelKeyRecipients returns the user_ids that already have a wrapped
-// key for (channelID, keyVersion). The "online-member auto-rewrap" flow
-// diffs this against ListMembersForChannel to find who still needs the key,
-// then wraps it for them. This is the dedicated query that drives key
-// distribution; the server only reports who has a wrap, never the keys.
-func (s *Store) ListChannelKeyRecipients(ctx context.Context, channelID uuid.UUID, keyVersion int) ([]uuid.UUID, error) {
+// ChannelKeyRecipient is one member's standing in a channel's key
+// distribution: they hold a wrap, produced under WrapSuite. 82-6 added the
+// suite so holders can see WHICH members still sit on a legacy unsigned wrap
+// and heal them -- the suite of a wrap was never secret (the recipient reads
+// it off their own row), only unreported.
+type ChannelKeyRecipient struct {
+	RecipientID uuid.UUID
+	WrapSuite   int
+}
+
+// ListChannelKeyRecipients returns who already has a wrapped key for
+// (channelID, keyVersion), and under which wrap suite. The "online-member
+// auto-rewrap" flow diffs this against ListMembersForChannel to find who
+// still needs the key (or still needs it re-wrapped under a better suite),
+// then wraps it for them. The server only reports who has a wrap and how it
+// is framed, never the keys.
+func (s *Store) ListChannelKeyRecipients(ctx context.Context, channelID uuid.UUID, keyVersion int) ([]ChannelKeyRecipient, error) {
 	if keyVersion < 1 {
 		keyVersion = 1
 	}
 	rows, err := s.Pool.Query(ctx,
-		`SELECT recipient_id FROM channel_keys
+		`SELECT recipient_id, wrap_suite FROM channel_keys
 		  WHERE channel_id = $1 AND key_version = $2`,
 		channelID, keyVersion,
 	)
@@ -106,13 +135,13 @@ func (s *Store) ListChannelKeyRecipients(ctx context.Context, channelID uuid.UUI
 	}
 	defer rows.Close()
 
-	var out []uuid.UUID
+	var out []ChannelKeyRecipient
 	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
+		var r ChannelKeyRecipient
+		if err := rows.Scan(&r.RecipientID, &r.WrapSuite); err != nil {
 			return nil, fmt.Errorf("scan channel_keys recipient: %w", err)
 		}
-		out = append(out, id)
+		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("rows.Err channel_keys recipients: %w", err)

@@ -44,11 +44,15 @@ function makeFakeServer() {
       }
       if (type === "fetch_channel_key_recipients") {
         const recips: string[] = [];
-        for (const k of table.keys()) {
+        const suites: Record<string, number> = {};
+        for (const [k, row] of table) {
           const [c, v, r] = k.split(":");
-          if (c === payload.channel_id && Number(v) === payload.key_version) recips.push(r);
+          if (c === payload.channel_id && Number(v) === payload.key_version) {
+            recips.push(r);
+            suites[r] = row.suite; // 82-6
+          }
         }
-        return { channel_id: payload.channel_id, key_version: payload.key_version, recipients: recips };
+        return { channel_id: payload.channel_id, key_version: payload.key_version, recipients: recips, wrap_suites: suites };
       }
       throw new Error("unexpected type " + type);
     },
@@ -107,17 +111,36 @@ test("fetchChannelKeyRecipients lists who has a wrap; diff finds who's missing",
   await publishChannelKey(ws, CH, VER, "bob", await wrapSpaceKeyUnsigned(sk, bob.pub, { channelID: CH, keyVersion: VER, recipientID: "bob" }));
 
   const have = await fetchChannelKeyRecipients(ws, CH, VER);
-  assert.deepEqual(new Set(have), new Set(["me", "bob"]));
+  assert.deepEqual(new Set(have.ids), new Set(["me", "bob"]));
+  // 82-6: the ack also says under which suite each wrap was produced.
+  assert.equal(have.suites.get("me"), 1);
+  assert.equal(have.suites.get("bob"), 1);
 
   // Diff against a member list to find who still needs the key.
   const members = ["me", "bob", "carol"];
-  const missing = members.filter((m) => !have.includes(m));
+  const missing = members.filter((m) => !have.ids.includes(m));
   assert.deepEqual(missing, ["carol"]);
 });
 
-test("fetchChannelKeyRecipients returns [] when none exist", async () => {
+test("fetchChannelKeyRecipients returns empty when none exist", async () => {
   const { ws } = makeFakeServer();
-  assert.deepEqual(await fetchChannelKeyRecipients(ws, CH, VER), []);
+  const have = await fetchChannelKeyRecipients(ws, CH, VER);
+  assert.deepEqual(have.ids, []);
+  assert.equal(have.suites.size, 0);
+});
+
+// A pre-82-6 server reports only ids. The suites map must come back EMPTY --
+// not zero-filled -- so the self-healing sweep treats those wraps as unknown
+// rather than "upgrading" blind.
+test("fetchChannelKeyRecipients tolerates a server without wrap_suites", async () => {
+  const ws: ChannelKeyTransport = {
+    async request() {
+      return { channel_id: CH, key_version: VER, recipients: ["me", "bob"] } as never;
+    },
+  };
+  const have = await fetchChannelKeyRecipients(ws, CH, VER);
+  assert.deepEqual(have.ids, ["me", "bob"]);
+  assert.equal(have.suites.size, 0);
 });
 
 // ---- idb space-key cache (fake-indexeddb) ----

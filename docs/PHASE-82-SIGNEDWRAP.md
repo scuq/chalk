@@ -4,9 +4,10 @@ Closing audit finding **C-01 (Critical)**: channel-key wraps are encrypted *to* 
 recipient but signed by nobody, so a malicious server can substitute a space key
 it knows. Planned against v0.6.4, after phase 81.
 
-**Status: in progress.** Slices 82-1 … 82-5 are implemented; 82-6 … 82-8 are
-not. C-01 is **not yet closed** — see *Where this actually stands* below, which
-is deliberately placed before the design so it cannot be skimmed past.
+**Status: in progress.** Slices 82-1 … 82-6 are implemented; 82-7 … 82-8 are
+not. C-01 is closed **on deployments that have flipped the enforcement flag**
+— see *Where this actually stands* below, which is deliberately placed before
+the design so it cannot be skimmed past.
 
 ---
 
@@ -17,13 +18,16 @@ is deliberately placed before the design so it cannot be skimmed past.
 | Closed today | Substitution at the **bootstrap read-back**, for both signed and unsigned wraps. This is the audit's worst case — the one where the legitimate creator redistributes the attacker's key to the whole channel. |
 | Closed today | Any suite-2 wrap signed by an identity this device has not pinned. |
 | Closed by 82-5 | Every wrap chalk produces for a member is now signed, so on any channel where the members run current builds, one signed adoption **ratchets** the channel: an unsigned wrap for it is refused thereafter, at any key version. |
-| **Still open** | A **suite-1** (unsigned) wrap on a channel that has never yielded a signed one is still accepted. By design: existing channels contain nothing else, and until 82-6's self-healing sweep re-wraps them there is nothing better to accept. 82-6's enforcement flag is what withdraws it. |
+| Closed by 82-6 | Silent overwrite of another member's wrap slot (the store's guarded upsert), wraps parked at arbitrary future key versions, and unbounded wrap blobs. The **self-healing sweep** upgrades legacy unsigned wraps to signed ones as channels get used — no member action needed. |
+| Closed **when the operator flips `CHALK_WRAP_SIG_REQUIRED`** | Unsigned wraps entirely: the server refuses them on publish, the client refuses them on read (latched per session — a later welcome cannot relax it). An un-swept member shows `waiting` and recovers via a holder's re-share. |
+| **Still open by default** | On a deployment with the flag off (the shipped default), an unsigned wrap on a channel that has never yielded a signed one is still accepted — the migration window, which the sweep drains and the flag ends. |
 | Still open | Membership is server-asserted, so a server that can add a member it controls can still get a key it knows distributed. Phase 83. |
+| Still open | Guest wraps (the ephemeral mint) are unsigned and deliberately exempt from the flag until 82-7 gives the guest an anchor to verify against. |
 
-Nothing here should be described as "C-01 fixed" until 82-6 lands and the
-enforcement flag is on. Note what the ratchet does and does not do: it makes the
-soft window **close by itself** as channels get touched by current builds, but
-it cannot open it for a channel nobody has re-wrapped yet.
+The migration story, in one line: **ship 82-6, let the sweep run, flip
+`CHALK_WRAP_SIG_REQUIRED=true`, and C-01 is closed for member wraps.** The
+flag defaults false because flipping it before the sweep has re-signed a
+channel's wraps strands every member still on an unsigned one.
 
 ---
 
@@ -260,6 +264,31 @@ existing channel rather than only for new ones — though 82-6's self-healing
 sweep is what will actually exercise it, since today `getKey()` returns before
 the wrap is ever fetched.
 
+### Enforcement — 82-6
+
+`CHALK_WRAP_SIG_REQUIRED` has two halves, and only one of them is a defence
+against the audit's adversary. The **client-side** half (welcome →
+`wrap_sig_required` → `openWrap` refuses unsigned wraps) is the security
+boundary: the attacker is the server, and a hostile server was never going to
+refuse its own injected wraps. The **server-side** half (`checkWrapPublish`
+refuses suite-1 publishes) matters on *honest* deployments — it stops old
+clients quietly re-seeding unsigned wraps after the operator has flipped the
+flag, so the sweep's work cannot be undone by one stale build.
+
+The client **latches** the flag per session. It arrives over the very channel
+the policy defends against, so "the server says it's optional again" on a
+reconnect is precisely the downgrade the flag exists to refuse. An operator
+rollback still works — the next page load starts a fresh session.
+
+**The self-healing sweep** is `rewrapForMissing` grown a second duty: the
+recipients ack now reports each holder's wrap *suite*, and any member sitting
+on a lower suite than the one this client produces gets re-wrapped — including
+**our own slot**, which the missing-only pass never touched and which is what
+arms the 82-5 ratchet on this user's other devices. A member whose suite the
+server did not report (pre-82-6 server) is left alone: unknown must not be
+treated as worse. No new frame, no scheduler, no background job — healing
+rides the code path that already runs on every channel open and re-share.
+
 ### Chokepoint — the bypass is now a compile error
 
 `keys: Map<string, Uint8Array>` became `Map<string, HeldKey>` with provenance a
@@ -383,18 +412,31 @@ correctly and convergence is restored.
 | 82-3 | **done** | `HeldKey` + required provenance, `rotateChannelKey` bypass removed, provenance persisted, Ed25519 threaded into `ChannelCryptoIdentity`. |
 | 82-4 | **done** | `openWrap` policy, self-signed read-back, warm path offline, hostile-server tests. |
 | 82-5 | **done** | `CURRENT_WRAP_SUITE = 2` so every producer signs; `wrapSpaceKey` dispatches on it and `wrapSpaceKeyUnsigned` is the one named exception (guest mint); the never-replace and ratchet rules in `adopt()`; `channelHasSignedKey`; `describeSuites().keyAuth` + its tooltip row. 6 tests. |
-| 82-6 | todo | `wrap_suites` on the recipients ack; self-healing re-wrap sweep; `CHALK_WRAP_SIG_REQUIRED` through config → `welcome` → chalkctl; server refuses suite-1 writes when required; `PutChannelKey` overwrite + `key_version` bounds; blob cap on `publish_channel_key`. |
+| 82-6 | **done** | `wrap_suites` on the recipients ack; self-healing re-wrap sweep in `rewrapForMissing` (own slot included); `CHALK_WRAP_SIG_REQUIRED` through config → `welcome.wrap_sig_required` → chalkctl (generated, preserved, backfilled `false` on update); server refuses suite-1 writes when required (`checkWrapPublish`); `PutChannelKey` guarded overwrite (recipient-or-upgrade); `key_version ≤ current+1`; `maxWrapBlobBytes` on `publish_channel_key`; client latches the flag per session. |
 | 82-7 | todo | Guest path: owner Ed25519 key in the link fragment (~96 → ~140 chars), `owner_user_id` in the redeem response, signed mint, `JoinScreen` verification. |
 | 82-8 | todo | Members-panel badges, the identity-changed wall, key provenance line, visible `member_added`; `threat-model.md`, `crypto-agility.md` suite-2 registry entry, CHANGELOG. |
 
-### Server work still outstanding (82-6)
+### The 82-6 server rule: recipient-or-upgrade, silently
 
-`PutChannelKey` uses an unbounded `ON CONFLICT DO UPDATE`, so **any member can
-silently overwrite any other member's wrap slot at any key version**. Verified
-there are only two writers — `ws.go` via `PutChannelKey`, and the guest redeem
-which uses `DO NOTHING` — and no governance or admin path, so restricting
-overwrite to the recipient breaks nothing honest. `publish_channel_key` also has
-no blob length cap today (`maxWrapBlobBytes` exists only on the ephemeral path).
+`PutChannelKey` used an unbounded `ON CONFLICT DO UPDATE`, so **any member
+could silently overwrite any other member's wrap slot at any key version**.
+Verified there are only two writers — `ws.go` via `PutChannelKey`, and the
+guest redeem which uses `DO NOTHING` — and no governance or admin path.
+
+The plan said "restrict overwrite to the recipient", and that turned out to be
+**half wrong**: the self-healing sweep is a *non-recipient* upgrading someone
+else's suite-1 slot to suite 2, which a recipient-only rule would forbid. The
+shipped rule is therefore **recipient-or-upgrade**: a filled slot is
+overwritten only by its own recipient or by a wrap under a strictly higher
+suite. A refused overwrite is a silent no-op, not an error — two holders
+auto-rewrapping the same missing member race benignly, the loser's write
+carries the same key, and erroring would make that race look like a failure.
+
+What a hostile *member* can still do: overwrite a suite-1 slot once with a
+junk suite-2 blob (a one-shot DoS; the victim's client refuses it and shows
+`waiting`, recoverable by re-share). They could always do at least this; the
+rule removes the *repeatable, silent* version. The server still cannot tell a
+good wrap from a bad one — it enforces shape, not truth.
 
 ## Rejected alternatives
 
@@ -417,19 +459,25 @@ go build ./... && go vet ./... && go test ./... && gofmt -l .   # gofmt empty
 cd web && npx tsc --noEmit && node test.mjs && node build.mjs
 ```
 
-Client suite at 82-5: **1099 tests, 0 failures** (1058 before the phase).
+Client suite at 82-6: **1106 tests, 0 failures** (1058 before the phase).
 
-Every 82-5 defence was mutation-tested, per the lesson above — the ratchet, the
-never-replace rule and the suite flip were each reverted in turn and the tests
-that should fail did, and only those.
+Every 82-5 and 82-6 defence was mutation-tested, per the lesson above — the
+ratchet, the never-replace rule, the suite flip, the flag refusal and the
+sweep were each reverted in turn and the tests that should fail did, and only
+those. The server-side policy (`checkWrapPublish`) is a pure function tested
+without a database; the guarded upsert's `WHERE` clause is exercised only
+against a real Postgres and is covered by the flag-on end-to-end check below.
 
 DB-backed Go tests need a fixture database via `bootstrap/phase-03-postgres.sh`,
 not the ad-hoc dev DB — see the note in `docs/PHASE-81-SECAUDIT.md`.
 
-When 82-5 onward land, the end-to-end check is via the `run-chalk` skill: two
-users in a channel exchanging messages, the members panel showing provenance and
-pin badges, a guest link minted and redeemed, then `CHALK_WRAP_SIG_REQUIRED=true`
-with an un-swept member showing `waiting` and recovering via "re-share".
+The end-to-end check runs via the `run-chalk` skill: two users in a channel
+exchanging messages, a guest link minted and redeemed, then
+`CHALK_WRAP_SIG_REQUIRED=true` with an un-swept member showing `waiting` and
+recovering via "re-share". It exercises the real Postgres upsert guard, which
+no unit test reaches. The members-panel provenance and pin badges join the
+checklist when 82-8 ships them. **Not yet run for 82-5/82-6** — worth doing
+before cutting a release that contains them.
 
 ## Out of scope
 

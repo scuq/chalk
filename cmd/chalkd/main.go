@@ -265,6 +265,11 @@ func run(args []string) error {
 	} else {
 		log.Printf("ephemeral: disabled (CHALK_EPHEMERAL_ENABLED=false)")
 	}
+	// 82-6: signed-wrap enforcement.
+	wsCfg.WrapSigRequired = cfg.WrapSigRequired
+	if cfg.WrapSigRequired {
+		log.Printf("channel keys: signed wraps REQUIRED (CHALK_WRAP_SIG_REQUIRED=true); unsigned publishes refused")
+	}
 	// 30-2: voice signaling knobs.
 	wsCfg.Voice = server.VoiceWSConfig{
 		Enabled:         cfg.Voice.Enabled,

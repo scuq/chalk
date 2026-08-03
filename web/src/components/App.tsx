@@ -780,6 +780,15 @@ export function App() {
     };
   }, [identityGate, state.user?.id]);
 
+  // 82-6: hand the server's signed-wrap policy to the crypto. An effect on
+  // both inputs because the races run both ways: the welcome can land before
+  // the identity gate builds ChannelCrypto, and a reconnect can deliver a new
+  // welcome after it. The setter latches, so replays and reorderings can only
+  // tighten.
+  useEffect(() => {
+    if (ccReady && state.wrapSigRequired) ccRef.current?.setWrapSigRequired(true);
+  }, [ccReady, state.wrapSigRequired]);
+
   // 50-6: cross-device sync of the notification rules, encrypted under a
   // key derived from the identity (rules-sync.ts). Started once the
   // identity is usable; until then the local cache serves.
@@ -1718,6 +1727,7 @@ export function App() {
           handle: w.handle ?? "",
           channels: w.channels,
           voiceEnabled: !!w.voice_enabled, // 30-6
+          wrapSigRequired: !!w.wrap_sig_required, // 82-6
           serverVersion: w.server_version, // 39-1
           serverCommit: w.server_commit,
         }),

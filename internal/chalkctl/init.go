@@ -276,6 +276,7 @@ func Init(o InitOptions) error {
 		EphemeralMaxTTLHours:    cfg.EphemeralMaxTTLHours,
 		EphemeralInviteHours:    cfg.EphemeralInviteHours,
 		EphemeralMaxGuests:      cfg.EphemeralMaxGuests,
+		WrapSigRequired:         cfg.WrapSigRequired, // 82-6
 
 		// A re-apply during a maintenance window must not quietly put the
 		// site back in front of users -- you are in maintenance because work

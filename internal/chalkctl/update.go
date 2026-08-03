@@ -124,6 +124,10 @@ func Update(o UpdateOptions) error {
 	if err := ensurePhase81Env(o.EnvPath, o.Out); err != nil {
 		return fmt.Errorf("ensure phase 81 env: %w", err)
 	}
+	// 82-6: make the signed-wrap enforcement knob visible (pinned false).
+	if err := ensurePhase82Env(o.EnvPath, o.Out); err != nil {
+		return fmt.Errorf("ensure phase 82 env: %w", err)
+	}
 
 	oldDigest := st.CurrentDigest
 	if err := repinChalkdImage(o.Cfg.Image, newDigest); err != nil {

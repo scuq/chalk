@@ -173,6 +173,9 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         voiceEnabled: action.voiceEnabled, // 30-6
+        // 82-6: latch, never relax -- the welcome arrives over the channel the
+        // policy defends against, so a later "false" must not reopen the window.
+        wrapSigRequired: state.wrapSigRequired || action.wrapSigRequired,
         serverVersion: action.serverVersion ?? "", // 39-1
         serverCommit: action.serverCommit ?? "",
         serverBuildAtLoad: baseline, // 46-2

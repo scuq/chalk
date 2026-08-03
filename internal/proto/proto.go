@@ -149,6 +149,12 @@ type WelcomePayload struct {
 	// tree). Both are already public in the image's OCI labels.
 	ServerVersion string `json:"server_version,omitempty"`
 	ServerCommit  string `json:"server_commit,omitempty"`
+	// 82-6: mirrors CHALK_WRAP_SIG_REQUIRED. When true the client must refuse
+	// unsigned (suite-1) channel-key wraps on the read path; the server is
+	// already refusing them on publish. Delivered here for the same reason as
+	// VoiceEnabled: the client needs the policy before its first key fetch,
+	// not after a doomed round-trip.
+	WrapSigRequired bool `json:"wrap_sig_required,omitempty"`
 }
 
 // SendPayload is a plaintext message in phase 04. From phase 10 onwards the

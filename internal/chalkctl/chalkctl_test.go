@@ -511,6 +511,58 @@ func TestEnvEphemeral(t *testing.T) {
 	}
 }
 
+// TestEnvWrapSigRequired (82-6): the enforcement knob is written either way --
+// the migration story is "operator flips it when the sweep is done", and a
+// knob that has to be discovered in docs first never gets flipped.
+func TestEnvWrapSigRequired(t *testing.T) {
+	base := InitParams{
+		Domain: "x.example.org", PGPassword: "PG",
+		AdminUsername: "a", AdminEmail: "a@x.org",
+	}
+	env, _ := renderTemplate("chalk.env", base)
+	if !strings.Contains(string(env), "CHALK_WRAP_SIG_REQUIRED=false") {
+		t.Errorf("default must write CHALK_WRAP_SIG_REQUIRED=false:\n%s", env)
+	}
+
+	on := base
+	on.WrapSigRequired = true
+	env2, _ := renderTemplate("chalk.env", on)
+	if !strings.Contains(string(env2), "CHALK_WRAP_SIG_REQUIRED=true") {
+		t.Error("enforcement on must write CHALK_WRAP_SIG_REQUIRED=true")
+	}
+}
+
+// TestEnsurePhase82EnvBackfill: pre-82-6 env files gain the (false) knob on
+// update; a present value -- notably an operator's deliberate `true` -- is
+// never touched, because rewriting it would re-open the enforcement window
+// behind their back.
+func TestEnsurePhase82EnvBackfill(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "chalk.env")
+	if err := os.WriteFile(path, []byte("CHALK_PG_PASSWORD=pw\n"), 0o600); err != nil {
+		t.Fatalf("write env: %v", err)
+	}
+
+	var log bytes.Buffer
+	if err := ensurePhase82Env(path, &log); err != nil {
+		t.Fatalf("ensurePhase82Env: %v", err)
+	}
+	if got := readEnvOrFail(t, path)["CHALK_WRAP_SIG_REQUIRED"]; got != "false" {
+		t.Errorf("CHALK_WRAP_SIG_REQUIRED = %q, want false", got)
+	}
+
+	// An operator who has flipped to enforcement must stay there.
+	if err := os.WriteFile(path, []byte("CHALK_WRAP_SIG_REQUIRED=true\n"), 0o600); err != nil {
+		t.Fatalf("rewrite env: %v", err)
+	}
+	if err := ensurePhase82Env(path, &log); err != nil {
+		t.Fatalf("second ensurePhase82Env: %v", err)
+	}
+	if got := readEnvOrFail(t, path)["CHALK_WRAP_SIG_REQUIRED"]; got != "true" {
+		t.Errorf("backfill overwrote a present value: got %q, want true", got)
+	}
+}
+
 // TestValidateEphemeralInviteCap (80-5): chalkctl refuses an invite TTL above
 // the 24 h hard cap before the stack is half up (chalkd would refuse to boot).
 func TestValidateEphemeralInviteCap(t *testing.T) {

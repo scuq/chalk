@@ -50,6 +50,12 @@ type InitParams struct {
 	EphemeralInviteHours int
 	EphemeralMaxGuests   int
 
+	// 82-6: signed-wrap enforcement. Written either way, like Ephemeral's
+	// Enabled: the knob must be VISIBLE in the env file, because the whole
+	// migration story is "operator flips it when the sweep is done" -- a knob
+	// that has to be discovered in docs first never gets flipped.
+	WrapSigRequired bool
+
 	// 72-5: maintenance mode. Caddyfile-only -- when set, Caddy serves the
 	// notice instead of proxying chalkd. The message is already HTML-escaped
 	// by the time it gets here (see Maint).

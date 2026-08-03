@@ -25,6 +25,7 @@ import {
   generateSpaceKey,
   wrapSpaceKey,
   unwrapSpaceKey,
+  CURRENT_WRAP_SUITE,
   unwrapSpaceKeySigned,
   wrapSignerKey,
   encryptMessage,
@@ -38,6 +39,7 @@ import {
   publishChannelKey,
   fetchChannelKey,
   fetchChannelKeyRecipients,
+  type ChannelKeyRecipients,
 } from "./spacekey-sync";
 import { fetchIdentity } from "./identity-sync";
 import { fetchTrustedIdentity, resolveSigner } from "./trust";
@@ -183,6 +185,10 @@ export class ChannelCrypto {
   private readonly signedChannels = new Map<string, boolean>();
   // The identity every wrap this client produces is signed under.
   private readonly signer: WrapSigner;
+  // 82-6: server policy from welcome.wrap_sig_required. When true, an unsigned
+  // wrap is refused on the read path everywhere, not just on ratcheted
+  // channels -- the soft window is over.
+  private wrapSigRequired = false;
 
   constructor(
     transport: CryptoTransport,
@@ -197,6 +203,17 @@ export class ChannelCrypto {
       ed25519Private: identity.ed25519Private,
       ed25519Public: identity.ed25519Public,
     };
+  }
+
+  /**
+   * setWrapSigRequired records the server's enforcement policy
+   * (welcome.wrap_sig_required). Latching -- once required, a later welcome
+   * cannot relax it for this session: the flag arrives over the same channel
+   * an attacker controls, so "the server says it's optional again" is exactly
+   * the downgrade the flag exists to refuse.
+   */
+  setWrapSigRequired(required: boolean): void {
+    if (required) this.wrapSigRequired = true;
   }
 
   // wake every decrypt waiting on this channel (key state just settled).
@@ -266,9 +283,8 @@ export class ChannelCrypto {
    */
   async keyRecipients(channelID: string): Promise<Set<string>> {
     try {
-      return new Set(
-        await fetchChannelKeyRecipients(this.transport, channelID, this.currentVersion(channelID)),
-      );
+      const have = await fetchChannelKeyRecipients(this.transport, channelID, this.currentVersion(channelID));
+      return new Set(have.ids);
     } catch {
       return new Set();
     }
@@ -377,8 +393,19 @@ export class ChannelCrypto {
     const slot: WrapSlot = { channelID, keyVersion: v, recipientID: this.identity.userID };
 
     if (wrap.suite !== WRAP_SUITE_X25519_AESGCM_ED25519) {
-      // Legacy unsigned wrap. Accepting it is what the 82-6 enforcement flag
-      // will withdraw; until then it is the only thing existing channels have.
+      // Legacy unsigned wrap. Accepting it is the soft window, and the 82-6
+      // enforcement flag is what withdraws it: when the operator has flipped
+      // CHALK_WRAP_SIG_REQUIRED, an unsigned wrap is refused here outright --
+      // the caller reports "waiting" and the member recovers via a re-share,
+      // which produces a signed wrap.
+      if (this.wrapSigRequired) {
+        console.error(
+          "channel-crypto: refusing an unsigned wrap for",
+          channelID,
+          "-- this server requires signed key wraps.",
+        );
+        return null;
+      }
       const key = await unwrapSpaceKey(wrap, this.identity.x25519Private, channelID, v, this.identity.userID);
       return key ? { key, prov: UNSIGNED } : null;
     }
@@ -647,7 +674,7 @@ export class ChannelCrypto {
 
     // no wrap for us. does any key exist at all?
     const recipients = await fetchChannelKeyRecipients(this.transport, channelID, v);
-    if (recipients.length > 0) {
+    if (recipients.ids.length > 0) {
       // key exists, just not wrapped for us yet -> a holder will wrap it.
       this.encrypted.add(channelID);
       return "waiting";
@@ -722,8 +749,18 @@ export class ChannelCrypto {
 
   /**
    * rewrapForMissing wraps the (already-held) space key for every member who
-   * doesn't yet have a wrap. Safe for any holder to run: all holders share the
-   * same key, so concurrent rewraps converge on identical material.
+   * doesn't yet have a wrap -- and, since 82-6, RE-wraps every member whose
+   * stored wrap sits on a lower suite than the one this client produces: the
+   * self-healing sweep. Safe for any holder to run: all holders share the
+   * same key, so concurrent rewraps converge on identical material, and the
+   * server's guarded upsert only accepts the overwrite because it is a suite
+   * upgrade.
+   *
+   * The sweep includes our OWN slot, which the missing-only pass never touches
+   * (we obviously hold the key). Healing it is what arms the 82-5 ratchet on
+   * this user's other devices: their next fetch opens a signed wrap instead of
+   * the legacy one. A member whose suite the server did not report (pre-82-6
+   * server) is left alone -- "unknown" must not be treated as "worse".
    */
   private async rewrapForMissing(
     channelID: string,
@@ -732,20 +769,26 @@ export class ChannelCrypto {
     version?: number,
   ): Promise<void> {
     const v = version ?? this.currentVersion(channelID);
-    let have: Set<string>;
+    let have: ChannelKeyRecipients;
     try {
-      have = new Set(await fetchChannelKeyRecipients(this.transport, channelID, v));
+      have = await fetchChannelKeyRecipients(this.transport, channelID, v);
     } catch {
       return; // best-effort; a later open retries
     }
+    const held = new Set(have.ids);
     for (const m of members) {
-      if (m === this.identity.userID || have.has(m)) continue;
+      const suite = have.suites.get(m);
+      if (held.has(m) && !(typeof suite === "number" && suite < CURRENT_WRAP_SUITE)) continue;
       try {
-        const peer = await fetchIdentity(this.transport, m);
-        if (!peer) continue; // peer hasn't published an identity yet; rewrap later
+        // Our own slot needs no identity fetch; peers are resolved as before.
+        const recipientPub =
+          m === this.identity.userID
+            ? this.identity.x25519Public
+            : (await fetchIdentity(this.transport, m))?.x25519Public;
+        if (!recipientPub) continue; // peer hasn't published an identity yet; rewrap later
         const wrap = await wrapSpaceKey(
           sk,
-          peer.x25519Public,
+          recipientPub,
           { channelID, keyVersion: v, recipientID: m },
           this.signer,
         );

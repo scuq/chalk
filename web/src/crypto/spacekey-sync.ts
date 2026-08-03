@@ -12,8 +12,9 @@
 //     the {suite, blob} to hand to unwrapSpaceKey, or null if no wrap exists
 //     yet (we must wait for an online member to wrap it for us).
 //   * fetchChannelKeyRecipients -- list the member ids that already hold a
-//     wrap for (channel, key_version). The caller diffs this against the
-//     channel member list to find who still needs the key.
+//     wrap for (channel, key_version), and under which wrap suite (82-6).
+//     The caller diffs this against the channel member list to find who
+//     still needs the key -- or whose wrap needs upgrading to a signed one.
 //
 // The server is a blind relay: these move opaque suite-tagged blobs; no key
 // material is exposed to it. byte<->base64 is std (matches base64.StdEncoding).
@@ -65,6 +66,18 @@ interface FetchChannelKeyRecipientsAck {
   channel_id: string;
   key_version: number;
   recipients: string[];
+  wrap_suites?: Record<string, number>; // 82-6; absent on older servers
+}
+
+/**
+ * ChannelKeyRecipients is who already holds a wrap for a slot, and under which
+ * wrap suite each one was produced (82-6). A recipient missing from `suites`
+ * came from a pre-82-6 server that reports only ids -- suite unknown, which
+ * the self-healing sweep must leave alone rather than "upgrade" blind.
+ */
+export interface ChannelKeyRecipients {
+  ids: string[];
+  suites: Map<string, number>;
 }
 
 /**
@@ -115,19 +128,26 @@ export async function fetchChannelKey(
 }
 
 /**
- * fetchChannelKeyRecipients returns the member ids that already hold a wrap
- * for (channelID, keyVersion). Empty array if none / on a missing field.
+ * fetchChannelKeyRecipients returns who already holds a wrap for
+ * (channelID, keyVersion) and under which suite. Empty if none / on a
+ * missing field.
  */
 export async function fetchChannelKeyRecipients(
   ws: ChannelKeyTransport,
   channelID: string,
   keyVersion: number,
-): Promise<string[]> {
+): Promise<ChannelKeyRecipients> {
   const ack = await ws.request<FetchChannelKeyRecipientsPayload, FetchChannelKeyRecipientsAck>(
     TYPE_FETCH_CHANNEL_KEY_RECIPIENTS,
     { channel_id: channelID, key_version: keyVersion },
   );
-  return Array.isArray(ack.recipients) ? ack.recipients : [];
+  const ids = Array.isArray(ack.recipients) ? ack.recipients : [];
+  const suites = new Map<string, number>();
+  for (const id of ids) {
+    const s = ack.wrap_suites?.[id];
+    if (typeof s === "number" && s >= 1) suites.set(id, s);
+  }
+  return { ids, suites };
 }
 
 // ---- base64 (standard, with padding -- matches Go's base64.StdEncoding) ----

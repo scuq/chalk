@@ -103,6 +103,21 @@ type Config struct {
 	// resolution for diagnostic logging at startup.
 	OpenRegistration bool
 
+	// WrapSigRequired, when true, makes the server refuse suite-1 (unsigned)
+	// channel-key wraps on publish_channel_key, and tells clients via the
+	// welcome frame to refuse them on the read path too (82-6). Off by
+	// default: existing channels hold nothing but unsigned wraps until the
+	// self-healing sweep has re-wrapped them, and flipping this early strands
+	// any member whose wrap has not been upgraded yet.
+	//
+	// The guest-invite path (ephemeral_invite_mint / redeem) is deliberately
+	// NOT gated: guest wraps stay unsigned until 82-7 gives the guest an
+	// anchor to verify against, and refusing them here would kill every
+	// guest link outright rather than harden anything.
+	//
+	// CHALK_WRAP_SIG_REQUIRED, default false.
+	WrapSigRequired bool
+
 	// Governance holds the server-wide DEFAULTS for per-channel governance
 	// config (gov-1a). A channel snapshots these into its own columns at
 	// creation; changing an env var therefore only affects channels created
@@ -260,6 +275,8 @@ func Load(args []string) (Config, error) {
 		"admin display name on first run (CHALK_ADMIN_DISPLAY_NAME)")
 	fs.BoolVar(&c.OpenRegistration, "open-registration", c.OpenRegistration,
 		"allow registration without an invite token (CHALK_OPEN_REGISTRATION)")
+	fs.BoolVar(&c.WrapSigRequired, "wrap-sig-required", c.WrapSigRequired,
+		"refuse unsigned channel-key wraps (CHALK_WRAP_SIG_REQUIRED)")
 
 	showVersion := fs.Bool("version", false, "print version and exit")
 	fs.Usage = func() {
@@ -321,6 +338,10 @@ func (c *Config) applyEnv() {
 	// Phase 09b sub-step 3: open-registration flag.
 	if v := os.Getenv("CHALK_OPEN_REGISTRATION"); v != "" {
 		c.OpenRegistration = parseBool(v)
+	}
+	// 82-6: signed-wrap enforcement flag.
+	if v := os.Getenv("CHALK_WRAP_SIG_REQUIRED"); v != "" {
+		c.WrapSigRequired = parseBool(v)
 	}
 
 	// gov-1a: governance defaults (spec H14). String mode + int knobs.

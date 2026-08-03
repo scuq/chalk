@@ -632,6 +632,11 @@ export interface AppState {
   // roster seeding. false until the welcome frame says otherwise.
   voiceEnabled: boolean;
 
+  // 82-6: whether the server requires signed channel-key wraps
+  // (welcome.wrap_sig_required). Handed to ChannelCrypto, which latches it
+  // for the session. false until the welcome frame says otherwise.
+  wrapSigRequired: boolean;
+
   // 39-1: the build we're talking to (welcome.server_version/_commit), shown
   // as the header version badge. Empty until the welcome frame lands.
   serverVersion: string;
@@ -923,6 +928,7 @@ export const initialState: AppState = {
   proposals: {},
   voiceRosters: {},
   voiceEnabled: false,
+  wrapSigRequired: false,
   serverVersion: "",
   serverCommit: "",
   serverBuildAtLoad: null,
@@ -1007,6 +1013,7 @@ export type Action =
       handle: string;
       channels: string[];
       voiceEnabled: boolean;
+      wrapSigRequired: boolean; // 82-6
       // 39-1: absent on older servers, hence optional.
       serverVersion?: string;
       serverCommit?: string;

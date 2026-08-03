@@ -184,3 +184,34 @@ func TestEphemeralInviteTTLHardCap(t *testing.T) {
 		t.Fatalf("disabled feature must ignore the knob: %v", err)
 	}
 }
+
+// 82-6: CHALK_WRAP_SIG_REQUIRED -- default off (the soft window for legacy
+// unsigned wraps), env turns it on, flag overrides env per the standard
+// precedence.
+func TestWrapSigRequired(t *testing.T) {
+	t.Setenv("CHALK_WRAP_SIG_REQUIRED", "")
+	c, err := Load([]string{"--db-url", "postgres://x"})
+	if err != nil {
+		t.Fatalf("Load default: %v", err)
+	}
+	if c.WrapSigRequired {
+		t.Errorf("default WrapSigRequired = true, want false")
+	}
+
+	t.Setenv("CHALK_WRAP_SIG_REQUIRED", "true")
+	c, err = Load([]string{"--db-url", "postgres://x"})
+	if err != nil {
+		t.Fatalf("Load env=true: %v", err)
+	}
+	if !c.WrapSigRequired {
+		t.Errorf("env=true: WrapSigRequired = false, want true")
+	}
+
+	c, err = Load([]string{"--db-url", "postgres://x", "--wrap-sig-required=false"})
+	if err != nil {
+		t.Fatalf("Load flag override: %v", err)
+	}
+	if c.WrapSigRequired {
+		t.Errorf("flag=false should override env=true; got WrapSigRequired=true")
+	}
+}

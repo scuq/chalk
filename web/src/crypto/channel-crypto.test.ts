@@ -47,11 +47,15 @@ function makeServer() {
           }
           case "fetch_channel_key_recipients": {
             const out: string[] = [];
-            for (const k of channelKeys.keys()) {
+            const suites: Record<string, number> = {};
+            for (const [k, row] of channelKeys) {
               const [c, v, r] = k.split(":");
-              if (c === p.channel_id && Number(v) === p.key_version) out.push(r);
+              if (c === p.channel_id && Number(v) === p.key_version) {
+                out.push(r);
+                suites[r] = row.suite; // 82-6
+              }
             }
-            return { channel_id: p.channel_id, key_version: p.key_version, recipients: out };
+            return { channel_id: p.channel_id, key_version: p.key_version, recipients: out, wrap_suites: suites };
           }
         }
         throw new Error("unexpected " + type);
@@ -889,4 +893,150 @@ test("ratchet: a channel that has only ever been unsigned still accepts unsigned
   bob.setCurrentKeyVersion(CH, 2);
   assert.equal(await bob.ensureChannelKey(CH, members, "alice"), "ready");
   assert.equal((await loadSpaceKey(CH, 2))!.provenance.kind, "unsigned");
+});
+
+// ---- 82-6: the self-healing sweep and the enforcement flag ---------------
+//
+// The sweep is what closes the soft window CHANNEL BY CHANNEL: any holder who
+// opens a channel re-wraps every member still sitting on a legacy unsigned
+// wrap, so the population of unsigned wraps shrinks to zero ahead of the
+// operator flipping CHALK_WRAP_SIG_REQUIRED. The flag is what then refuses
+// whatever the sweep never reached.
+
+test("sweep: a holder heals legacy unsigned wraps to signed, own slot included", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  const bob = await makeUser(server, "bob");
+  const members = ["alice", "bob"];
+
+  // A pre-82 channel: suite-1 wraps for both members, nothing else.
+  const legacyKey = generateSpaceKey();
+  for (const [m, pub] of [
+    ["alice", base64ToBytes(server.identities.get("alice")!.x)],
+    ["bob", base64ToBytes(server.identities.get("bob")!.x)],
+  ] as Array<[string, Uint8Array]>) {
+    const w = await wrapSpaceKeyUnsigned(legacyKey, pub, { channelID: CH, keyVersion: 1, recipientID: m });
+    server.channelKeys.set(`${CH}:1:${m}`, { suite: w.suite, blobB64: bytesToBase64(w.blob) });
+  }
+
+  // Alice opens the channel: unwraps her legacy wrap (soft window), then the
+  // sweep re-wraps BOTH slots signed -- hers is what arms the ratchet on her
+  // other devices, Bob's is what upgrades him without any action of his own.
+  assert.equal(await alice.ensureChannelKey(CH, members, "alice"), "ready");
+  assert.equal(server.channelKeys.get(`${CH}:1:alice`)!.suite, 2, "own slot must be healed");
+  assert.equal(server.channelKeys.get(`${CH}:1:bob`)!.suite, 2, "peer slot must be healed");
+
+  // Bob, on a fresh device, now opens a SIGNED wrap attributed to Alice.
+  await freshDevice();
+  assert.equal(await bob.ensureChannelKey(CH, members, "alice"), "ready");
+  assert.deepEqual((await loadSpaceKey(CH, 1))!.provenance, {
+    kind: "signed",
+    signerUserID: "alice",
+    trust: "pinned",
+  });
+});
+
+test("sweep: an unknown suite (pre-82-6 server) is left alone", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  const members = ["alice", "bob"];
+
+  const legacyKey = generateSpaceKey();
+  const w = await wrapSpaceKeyUnsigned(
+    legacyKey,
+    base64ToBytes(server.identities.get("alice")!.x),
+    { channelID: CH, keyVersion: 1, recipientID: "alice" },
+  );
+  server.channelKeys.set(`${CH}:1:alice`, { suite: w.suite, blobB64: bytesToBase64(w.blob) });
+
+  // An older server: recipients only, no wrap_suites field.
+  const inner = (alice as unknown as { transport: CryptoTransport }).transport;
+  const oldServer: CryptoTransport = {
+    async request(type, payload) {
+      const res = (await inner.request(type, payload)) as Record<string, unknown>;
+      if (type === "fetch_channel_key_recipients") delete res.wrap_suites;
+      return res as never;
+    },
+  };
+  const dev = new ChannelCrypto(oldServer, (alice as unknown as { identity: ChannelCryptoIdentity }).identity, {
+    keyWaitMs: 50,
+  });
+
+  assert.equal(await dev.ensureChannelKey(CH, members, "alice"), "ready");
+  // Unknown must not be treated as worse: the slot is NOT republished.
+  assert.equal(server.channelKeys.get(`${CH}:1:alice`)!.suite, 1);
+});
+
+test("flag: an unsigned wrap is refused when the server requires signatures", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  const bob = await makeUser(server, "bob");
+  const members = ["alice", "bob"];
+
+  // Bob's wrap is unsigned -- the un-swept-member case the flag exists for.
+  const legacyKey = generateSpaceKey();
+  const w = await wrapSpaceKeyUnsigned(
+    legacyKey,
+    base64ToBytes(server.identities.get("bob")!.x),
+    { channelID: CH, keyVersion: 1, recipientID: "bob" },
+  );
+  server.channelKeys.set(`${CH}:1:bob`, { suite: w.suite, blobB64: bytesToBase64(w.blob) });
+
+  bob.setWrapSigRequired(true);
+  assert.equal(await bob.ensureChannelKey(CH, members, "alice"), "waiting");
+  assert.equal(bob.hasKey(CH), false);
+  assert.equal(await loadSpaceKey(CH, 1), null, "a refused wrap must not be cached");
+  void alice; // present so the roster names a real, published member
+});
+
+// The recovery path deserves its own test with a genuinely shared key.
+test("flag: re-share by a holder recovers a member stuck on an unsigned wrap", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  const bob = await makeUser(server, "bob");
+  const members = ["alice", "bob"];
+
+  // Alice bootstraps (signed all around), then bob's slot is REPLACED by an
+  // unsigned wrap of the same key -- the shape of an un-swept legacy member.
+  await alice.ensureChannelKey(CH, members, "alice");
+  const realKey = (await loadSpaceKey(CH, 1))!.key;
+  const unsigned = await wrapSpaceKeyUnsigned(
+    realKey,
+    base64ToBytes(server.identities.get("bob")!.x),
+    { channelID: CH, keyVersion: 1, recipientID: "bob" },
+  );
+  server.channelKeys.set(`${CH}:1:bob`, { suite: unsigned.suite, blobB64: bytesToBase64(unsigned.blob) });
+
+  await freshDevice();
+  bob.setWrapSigRequired(true);
+  assert.equal(await bob.ensureChannelKey(CH, members, "alice"), "waiting");
+
+  // Alice re-shares: the sweep sees bob on suite 1 and upgrades him.
+  assert.equal(await alice.reshareKey(CH, members), true);
+  assert.equal(server.channelKeys.get(`${CH}:1:bob`)!.suite, 2);
+
+  assert.equal(await bob.ensureChannelKey(CH, members, "alice"), "ready");
+});
+
+test("flag: latches -- a later welcome cannot relax it", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const bob = await makeUser(server, "bob");
+  const members = ["alice", "bob"];
+
+  const legacyKey = generateSpaceKey();
+  const w = await wrapSpaceKeyUnsigned(
+    legacyKey,
+    base64ToBytes(server.identities.get("bob")!.x),
+    { channelID: CH, keyVersion: 1, recipientID: "bob" },
+  );
+  server.channelKeys.set(`${CH}:1:bob`, { suite: w.suite, blobB64: bytesToBase64(w.blob) });
+
+  bob.setWrapSigRequired(true);
+  bob.setWrapSigRequired(false); // a reconnect "relaxing" the policy
+  assert.equal(await bob.ensureChannelKey(CH, members, "alice"), "waiting");
 });

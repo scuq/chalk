@@ -47,6 +47,10 @@ export interface WelcomePayload {
   // case the badge reads "dev" and links at main.
   server_version?: string;
   server_commit?: string;
+  // 82-6: server policy (CHALK_WRAP_SIG_REQUIRED). When true, unsigned
+  // channel-key wraps must be refused on read. Absent from older servers ->
+  // the soft window stays open (the safe-for-continuity default).
+  wrap_sig_required?: boolean;
 }
 
 export interface SendPayload {

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -55,6 +56,12 @@ type WSConfig struct {
 	// 80-6: ephemeral voice channel knobs (CHALK_EPHEMERAL_*), populated in
 	// cmd/chalkd from config.EphemeralConfig. Zero-value = feature disabled.
 	Ephemeral EphemeralWSConfig
+
+	// 82-6: refuse unsigned (suite-1) wraps on publish_channel_key and tell
+	// clients (welcome.wrap_sig_required) to refuse them on read. Populated in
+	// cmd/chalkd from config.WrapSigRequired; zero-value = legacy wraps
+	// accepted (the soft window).
+	WrapSigRequired bool
 }
 
 // EphemeralWSConfig carries the phase-80 knobs the WS handlers enforce:
@@ -418,6 +425,8 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// 30-6: tell the SPA whether voice is live on this server.
 	welcomePayload.VoiceEnabled = h.cfg.Voice.Enabled
+	// 82-6: whether unsigned channel-key wraps must be refused on read.
+	welcomePayload.WrapSigRequired = h.cfg.WrapSigRequired
 	// 39-1: what build is serving this session, for the header version badge.
 	welcomePayload.ServerVersion = version.Version
 	welcomePayload.ServerCommit = version.Commit
@@ -3021,6 +3030,37 @@ func (h *WSHandler) handleFetchIdentity(
 	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
 }
 
+// checkWrapPublish is the pure policy half of handlePublishChannelKey (82-6),
+// split out so it can be tested without a database. It bounds what a member
+// may deposit; who may deposit it stays with the membership checks in the
+// handler, and what may OVERWRITE an existing row stays in the store's guarded
+// upsert.
+//
+//   - The blob cap closes the unbounded-storage hole: publish_channel_key had
+//     no length limit while the ephemeral mint path capped the very same kind
+//     of blob at maxWrapBlobBytes. Same artifact, same bound.
+//   - The version bound stops a member parking wraps at arbitrary future
+//     versions. current+1 is legitimate -- rotation uploads its wraps BEFORE
+//     committing the bump -- anything beyond it corresponds to no rotation
+//     that could ever commit next.
+//   - The suite floor is the CHALK_WRAP_SIG_REQUIRED enforcement: when the
+//     operator flips it, unsigned (suite-1) wraps stop being writable. The
+//     server cannot verify the signature inside a suite-2 blob (it is the
+//     party the signature defends against); refusing the unsigned FORM is
+//     exactly the part a blind relay can do honestly.
+func checkWrapPublish(wrapSuite, blobLen, keyVersion, currentVersion int, sigRequired bool) error {
+	if blobLen > maxWrapBlobBytes {
+		return fmt.Errorf("wrap blob exceeds %d bytes", maxWrapBlobBytes)
+	}
+	if keyVersion > currentVersion+1 {
+		return fmt.Errorf("key_version %d is beyond the channel's next rotation (current %d)", keyVersion, currentVersion)
+	}
+	if sigRequired && wrapSuite < 2 {
+		return errors.New("this server requires signed key wraps (wrap_suite >= 2)")
+	}
+	return nil
+}
+
 // handlePublishChannelKey stores one member's wrapped space key for a
 // channel + key_version. Authz: the caller must be a member of the channel,
 // and so must the recipient. The server never sees the plaintext key -- it
@@ -3093,13 +3133,22 @@ func (h *WSHandler) handlePublishChannelKey(
 	if ver < 1 {
 		ver = 1
 	}
+	curVer, err := h.store.CurrentKeyVersion(ctx, channelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "current key version: "+err.Error())
+		return
+	}
+	if err := checkWrapPublish(p.WrapSuite, len(blob), ver, curVer, h.cfg.WrapSigRequired); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
 	if err := h.store.PutChannelKey(ctx, store.ChannelKey{
 		ChannelID:   channelID,
 		KeyVersion:  ver,
 		RecipientID: recipientID,
 		WrapSuite:   p.WrapSuite,
 		Blob:        blob,
-	}); err != nil {
+	}, callerID); err != nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "store channel key: "+err.Error())
 		return
 	}
@@ -3242,19 +3291,23 @@ func (h *WSHandler) handleFetchChannelKeyRecipients(
 	if ver < 1 {
 		ver = 1
 	}
-	ids, err := h.store.ListChannelKeyRecipients(ctx, channelID, ver)
+	held, err := h.store.ListChannelKeyRecipients(ctx, channelID, ver)
 	if err != nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "list recipients: "+err.Error())
 		return
 	}
-	recips := make([]string, 0, len(ids))
-	for _, id := range ids {
-		recips = append(recips, id.String())
+	recips := make([]string, 0, len(held))
+	suites := make(map[string]int, len(held))
+	for _, r := range held {
+		id := r.RecipientID.String()
+		recips = append(recips, id)
+		suites[id] = r.WrapSuite
 	}
 	ack, _ := proto.NewFrame(proto.TypeFetchChannelKeyRecipientsAck, f.Ref, proto.FetchChannelKeyRecipientsAckPayload{
 		ChannelID:  p.ChannelID,
 		KeyVersion: ver,
 		Recipients: recips,
+		WrapSuites: suites,
 	})
 	data, _ := json.Marshal(ack)
 	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)

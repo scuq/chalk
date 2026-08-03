@@ -39,8 +39,19 @@ The engineering-level history (which slice shipped what) lives in
   had been tampered with could have slipped in a key it could read. Once a
   conversation has received one signed key, your app will not accept an
   unsigned one for it again. The lock in the channel header shows this under
-  "wrap signature". Existing conversations keep working and pick this up as
-  their keys are next shared.
+  "wrap signature". Existing conversations keep working and upgrade themselves:
+  whenever someone who holds a conversation's key opens it, their app quietly
+  re-issues any old unsigned copies as signed ones, so the switchover needs no
+  action from anyone.
+- Server operators get a new setting, `CHALK_WRAP_SIG_REQUIRED` (written into
+  the config by `chalkctl`, off by default). Turning it on ends the transition:
+  unsigned conversation keys are then refused outright, on the server and in
+  the app. Flip it once your users' apps have been updated for a while — a
+  member whose key copy was never upgraded will see "waiting" until someone
+  re-shares the key with them.
+- The server now also refuses oversized key blobs, keys parked at implausible
+  future versions, and one member silently replacing another member's stored
+  key copy — tightening what a compromised account can do quietly.
 
 ### Added
 - **Temporary voice rooms with guest links.** A voice channel can now be
