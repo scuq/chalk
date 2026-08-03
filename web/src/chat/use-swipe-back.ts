@@ -95,6 +95,33 @@ export function useSwipeBack(
     [clearTimer],
   );
 
+  // 64-13: the release can go missing entirely. Touch events after touchstart
+  // are delivered to the element the finger landed on, so when a re-render
+  // removes that element mid-drag -- an attachment strip swapping in its
+  // decrypted image, a message row replaced while channels are being switched
+  // -- the browser stops delivering that touch point at all: no touchend, no
+  // touchcancel, not even at the window. Nothing below ever runs again, and the
+  // surface stays parked wherever the finger left it with the conversation
+  // translated off the screen. That state is a trap, not just a glitch: the
+  // blank strip it leaves behind is outside the pane, so swiping there reaches
+  // no listener and there is no way back. A second finger landing mid-drag ends
+  // the same way -- the gesture disarms below, and the release it needed to
+  // snap back never comes.
+  //
+  // A new touch means the old gesture is over, whatever became of it, so put
+  // the surface back. Not while settling: that animation is already on its way
+  // somewhere and may still owe the caller its onBack.
+  const parked = offset !== null && !settling;
+  useEffect(() => {
+    if (!parked || typeof document === "undefined") return;
+    const rescue = () => settle(0);
+    // Capture, so this lands before the pane's own touchstart below decides
+    // what the touch is: starting a fresh gesture there cuts this animation
+    // short, which is what keeps the two from fighting.
+    document.addEventListener("touchstart", rescue, true);
+    return () => document.removeEventListener("touchstart", rescue, true);
+  }, [parked, settle]);
+
   const onTouchStart = useCallback(
     (e: TouchEvent) => {
       if (stopPropagation) e.stopPropagation();

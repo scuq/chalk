@@ -10,6 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- Swiping back to the conversation list on a phone could leave the screen
+  stuck: the conversation slid part-way off and stopped there, showing a mostly
+  blank page that swiping again did nothing to fix. It happened when something
+  redrew under your finger mid-swipe — a picture finishing loading, a message
+  arriving — which made the phone drop the rest of the gesture. Touching the
+  screen now always brings the conversation back.
+
+---
+
 ## v0.6.2 — 3 August 2026 — Nano markdown, shortcuts in settings, and a saner landing spot
 
 ### Added
