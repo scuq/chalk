@@ -14,9 +14,12 @@ never a bypass of the second factor.
 
 > **Crypto status.** chalk is **end-to-end encrypted**. Messages, edits,
 > reactions and attachments are encrypted client-side under per-channel space
-> keys (identity-wrapped, native WebCrypto, AES-256-GCM); the server is a blind
-> relay that stores only ciphertext. See [docs/threat-model.md](docs/threat-model.md)
-> for the guarantees and the metadata the server still sees.
+> keys (identity-wrapped, native WebCrypto, AES-256-GCM); the server stores
+> only ciphertext. Two intended guarantees are **not met yet**: channel-key
+> wraps are not signed, so a *malicious* server can still substitute a key it
+> knows, and messages carry no sender signature. See
+> [docs/threat-model.md](docs/threat-model.md) for what holds today, what
+> doesn't, and the metadata the server sees regardless.
 
 ## What's in it
 
