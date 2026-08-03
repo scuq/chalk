@@ -206,8 +206,9 @@ That is not something to work around with `grep -r` — ask scuq to install it
 - **Client cache vs server**: IndexedDB caches (space keys, identities,
   attachments) can mask or mimic server bugs — distinguish stale client state
   from real server holes before "fixing" the server.
-- **npm audit**: the 1 moderate esbuild dev-server advisory is known and
-  accepted. Never run `npm audit fix --force`.
+- **npm audit**: clean in both `web/` and `test/e2e/` as of 81-5, which
+  retired the long-accepted esbuild dev-server advisory by bumping to 0.25.
+  Keep it that way; never run `npm audit fix --force`.
 - **Env config**: everything is `CHALK_*` env vars, deployed via
   `internal/chalkctl/templates/chalk.env.tmpl`. A new server env var is not
   done until chalkctl generates/preserves it (see `CHALK_TOTP_ENC_KEY` /
