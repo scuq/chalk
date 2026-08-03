@@ -29,11 +29,17 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// PurgeChannelStats reports what a purge removed, for the operator log.
+// PurgeChannelStats reports what a purge removed -- counts for the operator
+// log, and the membership snapshot (captured before the delete) for the
+// 80-14 aftermath: real members get the channel_event{kind:"deleted"} push,
+// guest connections get closed outright (their world ended).
 type PurgeChannelStats struct {
 	Messages    int64
 	Attachments int64
 	Guests      int64
+	// MemberIDs are the REAL members at purge time; GuestIDs the guests.
+	MemberIDs []uuid.UUID
+	GuestIDs  []uuid.UUID
 }
 
 // PurgeChannel hard-deletes a channel and everything it held, in one
@@ -89,14 +95,36 @@ func (s *Store) PurgeChannel(ctx context.Context, channelID uuid.UUID) (PurgeCha
 		}
 		st.Messages = tag.RowsAffected()
 
-		// Counted before the channel row goes -- the delete below takes the
-		// guest users rows with it via users.guest_channel_id CASCADE.
-		if derr := tx.QueryRow(ctx,
-			`SELECT count(*) FROM users WHERE guest_channel_id = $1`,
-			channelID,
-		).Scan(&st.Guests); derr != nil {
-			return fmt.Errorf("count guests: %w", derr)
+		// Snapshot the roster before the channel row goes -- the delete
+		// below takes memberships (and the guest users rows, via
+		// users.guest_channel_id CASCADE) with it.
+		rows, derr := tx.Query(ctx,
+			`SELECT cm.user_id, u.guest_channel_id IS NOT NULL
+			   FROM channel_members cm
+			   JOIN users u ON u.id = cm.user_id
+			  WHERE cm.channel_id = $1`,
+			channelID)
+		if derr != nil {
+			return fmt.Errorf("snapshot members: %w", derr)
 		}
+		for rows.Next() {
+			var uid uuid.UUID
+			var isGuest bool
+			if err := rows.Scan(&uid, &isGuest); err != nil {
+				rows.Close()
+				return fmt.Errorf("snapshot members: %w", err)
+			}
+			if isGuest {
+				st.GuestIDs = append(st.GuestIDs, uid)
+			} else {
+				st.MemberIDs = append(st.MemberIDs, uid)
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("snapshot members: %w", err)
+		}
+		st.Guests = int64(len(st.GuestIDs))
 
 		if _, derr := tx.Exec(ctx,
 			`DELETE FROM channels WHERE id = $1`, channelID); derr != nil {

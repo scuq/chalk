@@ -178,6 +178,7 @@ import {
   type EphemeralInviteRevokePayload,
 } from "../proto";
 import { mintGuestLink, buildJoinURL, hexToBytes as guestHexToBytes, bytesToBase64 as guestB64 } from "../crypto/guest-link";
+import { countdownTickMs } from "../chat/countdown";
 import { wrapSpaceKey } from "../crypto/spacekey";
 import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
@@ -476,6 +477,9 @@ export function App() {
   const [membersLoading, setMembersLoading] = useState(false);
   // 80-12: the guest-link modal (creator of an ephemeral room only).
   const [guestInvitesOpen, setGuestInvitesOpen] = useState(false);
+  // 80-14: THE countdown tick for ephemeral rooms. One timer for the whole
+  // app; the badge components render from this value.
+  const [countdownNow, setCountdownNow] = useState(() => Date.now());
   // Phase 24b: per-member verification info for the members panel. App stores
   // digestHex + generation (needed to persist a verification) alongside the
   // panel-facing { state, words, numeric }.
@@ -2505,7 +2509,11 @@ export function App() {
         }
         // Phase 11c-7: a member (possibly us) was removed from a
         // channel. If it's us, drop the channel from the sidebar live.
-        if (p.kind === "removed" && p.channel) {
+        // 80-14: "deleted" is an ephemeral room reaching its expiry (or an
+        // operator purge). Same teardown as being removed -- the row leaves
+        // the roster, and the channels-effect makes the voice session leave
+        // if this was its room.
+        if ((p.kind === "removed" || p.kind === "deleted") && p.channel) {
           const cid = p.channel.id;
           dispatch({ kind: "channel_removed", channelID: cid });
           typingStore.clearChannel(cid);
@@ -3503,6 +3511,25 @@ export function App() {
     if (group && group !== DEFAULT_GROUP) payload.group_name = group;
     c.send(TypeCreateChannel, payload, "create-" + Date.now());
   };
+
+  // 80-14: arm the countdown only while an ephemeral room exists, at 1 Hz
+  // inside its last hour and minutely beyond -- a self-re-arming timeout,
+  // never a per-row interval (which would re-render the roster every second
+  // for permanent channels too).
+  useEffect(() => {
+    const expiries = Object.values(state.channels)
+      .map((c) => c.expiresAt)
+      .filter((n): n is number => n != null);
+    if (expiries.length === 0) return;
+    const soonest = Math.min(...expiries);
+    let t = 0;
+    const arm = () => {
+      setCountdownNow(Date.now());
+      t = window.setTimeout(arm, countdownTickMs(soonest - Date.now()));
+    };
+    arm();
+    return () => window.clearTimeout(t);
+  }, [state.channels]);
 
   // ---- 80-12: guest magic links (ephemeral rooms) ----------------------
   //
@@ -4743,6 +4770,7 @@ export function App() {
             setNavOpen(false);
             handleFriendClickInRoster(friendUserID);
           }}
+          countdownNow={countdownNow}
           onCreateClick={() => {
             setNavOpen(false);
             dispatch({ kind: "open_create_modal" });
@@ -4847,6 +4875,7 @@ export function App() {
               dispatch({ kind: "open_panel", panel: "friends" });
             }}
             onCreateChannel={() => dispatch({ kind: "open_create_modal" })}
+            countdownNow={countdownNow}
           />
         ) : /* 53-1: the parking lot wins over whatever channel is still
             selected. Nothing about that channel is unloaded -- messages, the

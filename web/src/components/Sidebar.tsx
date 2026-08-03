@@ -18,6 +18,7 @@ import {
 import { PrioritySelect } from "./PrioritySelect";
 import { filterRoster, showRosterFilter } from "../chat/roster-filter";
 import { PARKING_HOTKEY_LABEL } from "../parking-hotkey";
+import { formatCountdown, countdownUrgent } from "../chat/countdown";
 import {
   DEFAULT_GROUP,
   canonicalizeGroup,
@@ -142,6 +143,9 @@ interface Props {
   unread: Record<string, ChannelUnread>;
   onSelect: (channelID: string) => void;
   onFriendClick: (friendUserID: string) => void;
+  // 80-14: the App's countdown tick (unix-millis). Present only while an
+  // ephemeral channel exists; the expiry badge renders from it.
+  countdownNow?: number;
   // Phase 9.7f: nick colors. hueForHandle resolves the color a handle
   // currently renders in (explicit pick or auto hash), or null for none --
   // including when the master switch is off, so callers can tint on its
@@ -327,6 +331,7 @@ export function Sidebar({
   unread,
   onSelect,
   onFriendClick,
+  countdownNow,
   nickColorsEnabled,
   hueForHandle,
   selfHue,
@@ -880,6 +885,20 @@ export function Sidebar({
                     <ChannelGlyph type={isVoice ? "voice" : "text"} />
                   </span>
                   <span class="chalk-sidebar-item-name">{ch.name}</span>
+                  {/* 80-14: the ephemeral room's remaining life. Urgency is
+                      a class, never an inline style (CSP style-src 'self'). */}
+                  {ch.expiresAt != null && countdownNow != null && (
+                    <span
+                      class={
+                        "chalk-expiry-badge" +
+                        (countdownUrgent(ch.expiresAt - countdownNow) ? " chalk-expiry-badge--urgent" : "")
+                      }
+                      data-testid="sidebar-expiry"
+                      title="this room and everything in it disappear when the timer runs out"
+                    >
+                      {formatCountdown(ch.expiresAt - countdownNow)}
+                    </span>
+                  )}
                   {isVoice && roster.length > 0 && (
                     <span
                       class="chalk-sidebar-voicecount"

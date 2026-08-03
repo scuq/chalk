@@ -9457,3 +9457,18 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-guest-composer .chalk-field-input {
   flex: 1;
 }
+
+/* 80-14: ephemeral-room expiry badge (sidebar + conversation list). Urgency
+   is a class -- CSP forbids inline styles -- and flips in the last 5 min. */
+.chalk-expiry-badge {
+  font-size: 0.85em;
+  color: var(--chalk-warn);
+  border: 1px solid var(--chalk-warn);
+  border-radius: 3px;
+  padding: 0 var(--chalk-s1);
+  flex-shrink: 0;
+}
+.chalk-expiry-badge--urgent {
+  color: var(--chalk-error, #f33);
+  border-color: var(--chalk-error, #f33);
+}

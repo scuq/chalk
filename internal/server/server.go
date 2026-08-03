@@ -314,13 +314,33 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	// 80-4: ephemeral channel expiry janitor. Hard-deletes channels whose
 	// expires_at has passed, guests and all. Minutely: the client shows a
-	// live countdown, so expiry should not lag it by an hour. onPurged stays
-	// nil until 80-14 wires the channel_event push + live-call kick.
+	// live countdown, so expiry should not lag it by an hour.
+	//
+	// 80-14: the aftermath. Real members get channel_event{kind:"deleted"}
+	// (the client folds it into the "removed" teardown: roster row gone,
+	// voice session leaves if it was in that room). Guest connections are
+	// CLOSED outright -- their session, membership and user row died with
+	// the channel, and without the kick a guest would sit in a live call
+	// whose room no longer exists (SweepVoiceOrphans only catches crashed
+	// conns, not live ones).
 	if s.store != nil {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			s.store.EphemeralJanitorLoop(bgCtx, time.Minute, nil, s.logger.Printf)
+			onPurged := func(channelID uuid.UUID, stats store.PurgeChannelStats) {
+				if s.wsh != nil {
+					summary := proto.ChannelSummary{ID: channelID.String()}
+					for _, m := range stats.MemberIDs {
+						if err := s.wsh.publishChannelEvent(bgCtx, m, channelID, "deleted", summary); err != nil {
+							s.logger.Printf("ephemeral janitor: deleted push to %s: %v", m, err)
+						}
+					}
+				}
+				for _, g := range stats.GuestIDs {
+					s.hub.CloseConnsForUser(g.String(), errRoomExpired)
+				}
+			}
+			s.store.EphemeralJanitorLoop(bgCtx, time.Minute, onPurged, s.logger.Printf)
 		}()
 	}
 

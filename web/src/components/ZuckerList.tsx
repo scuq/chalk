@@ -14,6 +14,7 @@ import type { ZuckerFriend, ZuckerRow } from "../chat/zucker";
 import type { PresenceMap } from "../state/types";
 import { filterRoster } from "../chat/roster-filter";
 import { fmtRelative } from "../chat/reltime";
+import { formatCountdown, countdownUrgent } from "../chat/countdown";
 import { UnreadDot } from "./UnreadDot";
 import { ChannelGlyph, presenceClass, presenceLabel } from "./Sidebar";
 
@@ -34,6 +35,8 @@ interface Props {
   onOpenThreads: () => void;
   onAddFriend: () => void;
   onCreateChannel: () => void;
+  // 80-14: the App's countdown tick, for ephemeral rooms' expiry badges.
+  countdownNow?: number;
 }
 
 export function ZuckerList({
@@ -49,6 +52,7 @@ export function ZuckerList({
   onOpenThreads,
   onAddFriend,
   onCreateChannel,
+  countdownNow,
 }: Props) {
   const [friendsOpen, setFriendsOpen] = useState(false);
   // 64-2/64-5: quick filter over the conversation rows, same match rule as
@@ -101,6 +105,17 @@ export function ZuckerList({
         <span class="chalk-zucker-row-main">
           <span class="chalk-zucker-row-top">
             <span class="chalk-zucker-row-name">{r.name}</span>
+            {r.expiresAt != null && countdownNow != null && (
+              <span
+                class={
+                  "chalk-expiry-badge" +
+                  (countdownUrgent(r.expiresAt - countdownNow) ? " chalk-expiry-badge--urgent" : "")
+                }
+                data-testid="zucker-expiry"
+              >
+                {formatCountdown(r.expiresAt - countdownNow)}
+              </span>
+            )}
             <span class="chalk-zucker-row-when">
               {fmtRelative(new Date(r.when), now)}
             </span>

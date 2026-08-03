@@ -314,8 +314,12 @@ func (s *Store) ListDirectoryUsers(ctx context.Context, exclude uuid.UUID) ([]Di
 // so this method returns the same strings DisplayNamesByID would. The
 // wire rename to display_name will switch callers over to the new
 // accessor in a later sub-step; both exist now.
+// 80-14: guests are the exception -- their handle is a synthetic guest_<hex>
+// tag that satisfies the users contract but must never be shown; the typed
+// display_name is their name everywhere.
 func (s *Store) HandlesByID(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
-	return s.namesByIDFromColumn(ctx, ids, "handle::text")
+	return s.namesByIDFromColumn(ctx, ids,
+		"CASE WHEN guest_channel_id IS NOT NULL THEN display_name ELSE handle::text END")
 }
 
 // DisplayNamesByID is the phase 09b name for HandlesByID. Returns the

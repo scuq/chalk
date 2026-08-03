@@ -20,6 +20,11 @@ import (
 	"errors"
 )
 
+// errRoomExpired is the goodbye reason for guest connections whose room the
+// expiry janitor just purged (80-14). The guest client matches on the text
+// to show its "this room has ended" screen.
+var errRoomExpired = errors.New("room expired")
+
 // CloseConnsForUser closes every WS connection bound to userID. The
 // reason is propagated to each Conn.Close so the websocket goodbye
 // frame carries it. Callers should pass a descriptive error (e.g.

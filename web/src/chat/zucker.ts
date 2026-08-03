@@ -65,6 +65,9 @@ export interface ZuckerChannel {
   channelType: string;
   createdAt: Date;
   memberIDs?: string[];
+  // 80-14: unix-millis when an ephemeral room self-destructs; undefined for
+  // permanent channels.
+  expiresAt?: number;
 }
 
 // One conversation row, ready to render.
@@ -84,6 +87,8 @@ export interface ZuckerRow {
   mention: boolean;
   // The DM counterpart's user id, for the presence dot. Null for channels.
   otherUserID: string | null;
+  // 80-14: expiry passthrough for the countdown badge.
+  expiresAt?: number;
 }
 
 // 64-1: the pinned friends sublist -- every friend with their presence,
@@ -168,6 +173,7 @@ export function buildConversationList(
       unread: showUnread,
       mention: showUnread && (u?.mention ?? false),
       otherUserID,
+      expiresAt: ch.expiresAt,
     });
   }
   // Newest first; id tie-break keeps the order stable when timestamps
