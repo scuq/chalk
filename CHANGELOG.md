@@ -12,6 +12,20 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **Temporary voice rooms with guest links.** A voice channel can now be
+  created with a lifespan (an hour up to a month). Its creator can hand out
+  one-off links that let people *without a chalk account* join the call and
+  its scratchpad — they click the link, pick a name, and they're in. Guests
+  see and reach only that one room; when the timer runs out, the room and
+  everything said in it are permanently deleted for everyone, and the links
+  die with it. Links are shown once at creation, work for at most 24 hours,
+  can be revoked, and a countdown on the room shows how long it has left.
+  Whoever holds a link can join as that guest, so share links like keys.
+- Server operators get `chalkctl ephemeral` to list, destroy, or disable
+  guest rooms, and the media relay no longer forwards to private network
+  addresses — a hardening that applies to regular calls too.
+
 ### Fixed
 - Opening a conversation with a few unread messages and a photo among them
   could throw you off the newest message a moment after it appeared: the view

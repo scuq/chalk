@@ -71,6 +71,12 @@ All flags are also available as `CHALK_*` env vars (e.g. `--listen` ↔ `CHALK_L
 | | `CHALK_VOICE_UPLINK_HEADROOM` | `0.85` | fraction of measured uplink the planner spends |
 | | `CHALK_VOICE_AUDIO_KBPS` | `64` | per-peer voice reserve |
 | | `CHALK_VOICE_MIN_VIDEO_KBPS` | `300` | per-copy floor before video is unsustainable |
+| `--db-url-guest` | `CHALK_DB_URL_GUEST` | | phase 80: the `chalk_guest` pool; empty disables guest joins |
+| | `CHALK_EPHEMERAL_ENABLED` | `true` | phase 80: ephemeral voice channels + guest links |
+| | `CHALK_EPHEMERAL_MAX_TTL_HOURS` | `720` | cap on a room's lifetime (1 month) |
+| | `CHALK_EPHEMERAL_INVITE_MAX_TTL_HOURS` | `24` | cap on a link's lifetime; values above 24 refuse to boot |
+| | `CHALK_EPHEMERAL_MAX_GUESTS` | `8` | invite links per room (revoking frees a slot) |
+| | `CHALK_TRUSTED_PROXY` | | CIDR list or `private`; X-Forwarded-For is honored only from these peers (set to `private` behind chalkctl's Caddy so per-IP rate limits see real clients) |
 
 ## Voice (TURN relay)
 
@@ -124,6 +130,49 @@ data volume on renewal — a renewal hook outside this compose file's scope.
 **Secret rotation**: change `CHALK_TURN_SECRET`, restart coturn and chalkd.
 In-flight calls survive until their minted credentials expire (default 1h);
 new joins use the new secret immediately.
+
+## Ephemeral voice channels (guest links)
+
+Phase 80 (plan: `docs/PHASE-80-EPHEMERAL.md`): a voice channel can be created
+with an expiry, and its creator can mint **magic links** that let people
+without an account join the call and its scratchpad. When the room expires,
+everything it held — messages, guest accounts, links — is hard-deleted.
+
+**Database roles.** The feature's security boundary is PostgreSQL: chalkd's
+normal pool connects as `chalk_app` (non-superuser) and connections serving a
+guest as `chalk_guest`, which is fenced by `FORCE ROW LEVEL SECURITY` to its
+one channel and has *no grant at all* on sessions, auth, friendships or
+attachments. `chalkctl init` creates both roles; **`chalkctl update` backfills
+them automatically** on an existing deployment (new `chalk.env` keys:
+`CHALK_PG_APP_PASSWORD`, `CHALK_PG_GUEST_PASSWORD`, `CHALK_DB_URL_GUEST`, and
+`CHALK_DB_URL` repointed at `chalk_app`). `chalkctl restore` re-asserts the
+roles before loading a dump — they live in the cluster, not the database.
+
+**The link.** `https://<domain>/join/<lookup>#<secret>` — the fragment never
+reaches the server, and everything the guest is (its keys, its space-key
+wrap) is derived from it client-side. Whoever holds the link IS the guest,
+which is why links are capped at 24 h. Links are minted from the room's
+members panel (creator only), shown exactly once, and revocable.
+
+**coturn peer fence.** Since guests get TURN credentials, the coturn unit now
+denies relaying to private/special address ranges (`--denied-peer-ip`,
+`--no-multicast-peers`) and carries `--total-quota` / `--max-bps`. Existing
+deployments pick this up via `chalkctl reconfigure-turn` (or `init --force`);
+verify with `systemctl cat chalk-coturn` and a real call — a malformed coturn
+flag is silent.
+
+**Operations:**
+
+```bash
+chalkctl ephemeral list                    # rooms, guests, links, calls
+chalkctl ephemeral purge --channel <id>    # destroy one room now (confirmed)
+chalkctl ephemeral purge                   # destroy every ephemeral room
+chalkctl ephemeral disable                 # feature off + all links revoked
+```
+
+Purge works by expiring the room; chalkd's minutely janitor performs the
+hard delete (one audited deletion path) and pushes the removal to connected
+clients, kicking any guests still in the call.
 
 ## Backups
 

@@ -2,8 +2,9 @@
 
 Temporary, expiring voice rooms that people **without a chalk account** can join
 from a one-off link, with the guest fence enforced by PostgreSQL rather than by
-application discipline. Planned against v0.6.4. **Not started** — this document
-is the plan.
+application discipline. Planned against v0.6.4. **Implemented** (80-1 … 80-15);
+this document is the plan it was built from. Where the build deviated, the
+as-built section at the end is authoritative.
 
 ## The problem
 
@@ -397,3 +398,46 @@ device per guest; recovering an ephemeral channel after expiry.
 - `docker/Dockerfile` ships unminified bundles (existing CLAUDE.md open item). A
   guest lands cold with no cache, so this phase makes that user-visible for the
   first time.
+
+## As built (deviations from the plan above)
+
+Recorded during implementation; each was a deliberate call, not drift.
+
+- **`chalk_app` is a non-superuser MEMBER of `chalk`** (`GRANT chalk TO
+  chalk_app`), not a role with enumerated grants. chalkd does runtime DDL
+  (the daily partition-maintenance loop) and boot-time migrations, both of
+  which need owner rights; membership provides them while SUPERUSER — an
+  attribute, never inherited — is gone from the session. One `CHALK_DB_URL`
+  for chalkd, no separate migrate URL. The security boundary is unchanged:
+  `chalk_guest` has no membership.
+- **Guest voice-occupancy frames reuse the app handlers** (join/leave/roster/
+  state/signal) instead of running under `chalk_guest`: locking reads
+  (`SELECT ... FOR UPDATE`) require UPDATE-policy rows, which the fence
+  deliberately fails closed on, and the join/purge channel-row lock must be
+  one lock. Those handlers take only server-derived parameters and are
+  membership-checked; everything guest-typed (messages, reads, identity/key
+  fetches, listing) runs under `chalk_guest` via `store.Guest`.
+- **The guest client is a separate tree** (`/join` mounts JoinScreen/GuestRoom
+  from index.tsx), not the App in a guest mode — it reuses WSClient,
+  spacekey and VoiceCall directly. The App's session/identity boot never
+  runs for guests.
+- **`chalkctl ephemeral purge` expires rather than deletes**: it revokes the
+  room's links and sets `expires_at = now()`; chalkd's minutely janitor
+  performs the hard delete. One deletion path, one audit trail, and the
+  80-14 push + guest kick come for free.
+- Guest sessions use their own cookie (`chalk_guest_session`, SameSite=Lax
+  per the open decision) so a member clicking a join link keeps their real
+  session. The REST allowlist for guests is `/ws` only.
+- `CHALK_TRUSTED_PROXY` (the owed decision) landed as a CIDR list or the
+  value `private`; when the peer matches, the LAST X-Forwarded-For entry
+  wins.
+- The shared-table fence additionally covers `channel_activity` and
+  `voice_signal_spool`, which the plan's grant list missed but the real
+  query paths need; the `users` column grant includes `handle` (name
+  resolution selects it), with guests' display names substituted at the
+  `HandlesByID` chokepoint.
+- Ephemeral env knobs carry explicit units: `CHALK_EPHEMERAL_MAX_TTL_HOURS`,
+  `CHALK_EPHEMERAL_INVITE_MAX_TTL_HOURS`.
+- The join challenge carries a nonce (`nonce || ts || HMAC`), found by test:
+  deterministic per-second challenges collided with the replay set when two
+  redemptions raced in the same second.
