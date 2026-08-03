@@ -28,19 +28,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
-	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	chalk "github.com/scuq/chalk"
-	"github.com/scuq/chalk/internal/migrate"
 )
 
 const grantsProbeDB = "chalk_grants_probe"
@@ -98,61 +92,14 @@ func guestSelect(table string) string {
 
 func setupGrantsDB(t *testing.T) (owner *pgxpool.Pool, guest *Guest) {
 	t.Helper()
-	src := os.Getenv("CHALK_TEST_PGURL")
-	if src == "" {
-		t.Skip("CHALK_TEST_PGURL not set; grant-matrix test needs a live Postgres")
-	}
 	ctx := context.Background()
-
-	u, err := url.Parse(src)
-	if err != nil {
-		t.Fatalf("parse CHALK_TEST_PGURL: %v", err)
-	}
-	admin := *u
-	admin.Path = "/postgres"
-	adminConn, err := pgx.Connect(ctx, admin.String())
-	if err != nil {
-		t.Fatalf("connect admin: %v", err)
-	}
-	if _, err := adminConn.Exec(ctx, "DROP DATABASE IF EXISTS "+grantsProbeDB); err != nil {
-		t.Fatalf("drop probe db: %v", err)
-	}
-	if _, err := adminConn.Exec(ctx, "CREATE DATABASE "+grantsProbeDB); err != nil {
-		t.Fatalf("create probe db: %v", err)
-	}
-	t.Cleanup(func() {
-		_, _ = adminConn.Exec(context.Background(), "DROP DATABASE IF EXISTS "+grantsProbeDB+" WITH (FORCE)")
-		_ = adminConn.Close(context.Background())
-	})
-
-	probe := *u
-	probe.Path = "/" + grantsProbeDB
-	owner, err = pgxpool.New(ctx, probe.String())
-	if err != nil {
-		t.Fatalf("connect probe db: %v", err)
-	}
-	t.Cleanup(owner.Close)
-
-	migs, err := migrate.Load(chalk.Migrations, chalk.MigrationsDir)
-	if err != nil {
-		t.Fatalf("load migrations: %v", err)
-	}
-	if _, err := migrate.Run(ctx, owner, migs, func(string, ...any) {}); err != nil {
-		t.Fatalf("apply migrations: %v", err)
-	}
-	// The messages/attachments partitions the seed rows below land in.
-	s := &Store{Pool: owner}
-	if err := s.EnsureMessagePartitions(ctx, time.Now().UTC()); err != nil {
-		t.Fatalf("ensure partitions: %v", err)
-	}
-
+	owner = openProbeDB(t, grantsProbeDB)
 	seed(t, owner)
 
 	// The guest pool: same database, every connection dropped to chalk_guest.
-	gcfg, err := pgxpool.ParseConfig(probe.String())
-	if err != nil {
-		t.Fatalf("parse guest cfg: %v", err)
-	}
+	// Privilege checks and RLS use the CURRENT role, so SET ROLE is
+	// equivalent to a chalk_guest login without mutating cluster roles.
+	gcfg := owner.Config().Copy()
 	gcfg.AfterConnect = func(ctx context.Context, c *pgx.Conn) error {
 		_, err := c.Exec(ctx, "SET ROLE chalk_guest")
 		return err

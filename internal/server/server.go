@@ -306,6 +306,18 @@ func (s *Server) Serve(ctx context.Context) error {
 		}()
 	}
 
+	// 80-4: ephemeral channel expiry janitor. Hard-deletes channels whose
+	// expires_at has passed, guests and all. Minutely: the client shows a
+	// live countdown, so expiry should not lag it by an hour. onPurged stays
+	// nil until 80-14 wires the channel_event push + live-call kick.
+	if s.store != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.store.EphemeralJanitorLoop(bgCtx, time.Minute, nil, s.logger.Printf)
+		}()
+	}
+
 	// gov-1b-2: governance expiry sweeper. Resolves proposals whose voting
 	// window closed without an early lock.
 	if s.store != nil && s.wsh != nil {
