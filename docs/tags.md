@@ -51,7 +51,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #attachments    -         web/src/attachments/ internal/store/
 #chalkctl       72 73     internal/chalkctl/ cmd/chalkctl/ test/integration/backup_restore_test.go
 #ephemeral      80        internal/chalkctl/ migrations/ internal/store/ internal/server/ internal/auth/ internal/proto/ internal/config/ web/src/crypto/ web/src/components/ web/src/chat/
-#hardening      81        internal/auth/ internal/ratelimit/ internal/store/ internal/chalkctl/ docs/threat-model.md
+#hardening      81        internal/auth/ internal/ratelimit/ internal/store/ internal/chalkctl/ docs/threat-model.md docs/PHASE-81-SECAUDIT.md
 
 ## Phases with no topic yet
 

@@ -251,7 +251,9 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
 (user-facing). Latest release: v0.6.4 — keep this in step with the topmost
 `## vX.Y.Z` heading in `CHANGELOG.md`. Only what is NOT done belongs here.
 
-- Phases through 57-4 are committed. Complete arcs: auth v2 (31), voice/video
+- Phases through 81-6 are committed; `docs/phase-log.md` has the full history,
+  and the arcs named here are a sample, not the whole list. Among the complete
+  ones: auth v2 (31), voice/video
   (30-1 … 30-8 plus the 41/44/47/48 mic, device and call-UI work), governance
   (gov-1/gov-2, panel included), attachments, multi-device, unread + read
   cursors (33), threads and the thread inbox (42/47/49), notifications
@@ -261,7 +263,24 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   `docs/PHASE-54-ROSTER.md`), main-feed scrollback paging (55, plan in
   `docs/PHASE-55-HISTORY.md`), composer @mention autocomplete (56-1), link
   previews (57, plan in `docs/PHASE-57-LINKPREVIEW.md`: sender-built,
-  E2E-embedded, opt-in, SSRF-guarded server fetcher).
+  E2E-embedded, opt-in, SSRF-guarded server fetcher), the security-audit
+  remediation (81, record in `docs/PHASE-81-SECAUDIT.md`).
+- **Open security gaps, both confirmed by the phase-81 audit and deliberately
+  deferred** (`docs/PHASE-81-SECAUDIT.md` has the full analysis; the rewritten
+  `docs/threat-model.md` states them as unmet guarantees):
+  - **Channel-key wraps are unsigned.** Producing a wrap needs only the
+    recipient's public X25519 key, which the server holds, and `unwrapV1`
+    accepts anything that decrypts. At bootstrap the creator adopts the
+    server's read-back value and redistributes it, so a malicious server can
+    pick a key it knows for the whole channel. Fix = signed wrap envelope +
+    authenticated channel-state transcript.
+  - **Messages carry no sender signature.** The AEAD associated data is only
+    suite/channel/key-version, so sender, message ID and timestamp are
+    unauthenticated server-supplied metadata and any key holder can be
+    impersonated. Fix = signed message envelope, extended to edits, reactions
+    and attachment refs.
+  - Both should copy `web/src/voice/signal-crypto.ts`, which already does
+    canonical-encode → Ed25519 sign → fail-closed verify correctly.
 - Next candidates, none started: web push notifications (phase 65, full
   plan in `docs/PHASE-65-PUSH.md`: hand-rolled `internal/webpush`, DMs-only
   default, content-free payloads); the SFU seam (voice design Slice I) for
