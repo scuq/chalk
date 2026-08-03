@@ -19,6 +19,7 @@ import (
 	"github.com/scuq/chalk/internal/giphy"
 	"github.com/scuq/chalk/internal/linkpreview"
 	"github.com/scuq/chalk/internal/mail"
+	"github.com/scuq/chalk/internal/ratelimit"
 	"github.com/scuq/chalk/internal/store"
 )
 
@@ -147,7 +148,7 @@ type HTTPDeps struct {
 	// the fetcher's SSRF guards are the security boundary).
 	LinkPreview        *linkpreview.Client
 	LinkPreviewDomains []string
-	linkPreviewLimiter *linkpreview.RateLimiter
+	linkPreviewLimiter *ratelimit.RateLimiter
 
 	// 31-2: pending-2FA token cache bridging the password/passkey first
 	// factor to the mandatory TOTP step. Lazily defaulted in
@@ -158,6 +159,14 @@ type HTTPDeps struct {
 	// 31-6a: in-flight v2 signups (password+TOTP-first). Lazily
 	// defaulted in MountRegistration when nil.
 	SignupV2 *SignupV2Cache
+
+	// 80-8: guest magic-link redemption (join_http.go). EphemeralEnabled
+	// mirrors CHALK_EPHEMERAL_ENABLED; when false the /api/join endpoints
+	// answer 404 as if they did not exist. JoinStore overrides the store the
+	// join endpoints use (tests); nil means d.Store.
+	EphemeralEnabled bool
+	JoinStore        joinStoreAPI
+	join             joinState
 }
 
 // MountRegistration registers the auth HTTP endpoints on mux.
@@ -231,6 +240,9 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	// 31-9: hard-cutover migration endpoints.
 	mux.HandleFunc("POST /api/auth/migration/password", RequireSession(d.Store, d.handleMigrationPassword))
 	mux.HandleFunc("POST /api/auth/migration/complete", RequireSession(d.Store, d.handleMigrationComplete))
+	// 80-8: guest magic-link challenge + redemption (anonymous, rate-limited).
+	mux.HandleFunc("GET /api/join/{lookup}", d.handleJoinChallenge)
+	mux.HandleFunc("POST /api/join/{lookup}", d.handleJoinRedeem)
 	// Phase 09c-1: invites + email change.
 	mux.HandleFunc("POST /api/invites", d.handleCreateInvite)
 	mux.HandleFunc("GET /api/invites/mine", d.handleListMyInvites)

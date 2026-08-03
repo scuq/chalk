@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/scuq/chalk/internal/linkpreview"
+	"github.com/scuq/chalk/internal/ratelimit"
 )
 
 // linkPreviewRateLimit bounds preview fetches per user per minute so an
@@ -44,7 +45,7 @@ func (d *HTTPDeps) MountLinkPreview(mux *http.ServeMux) error {
 		d.Logger = log.Default()
 	}
 	if d.linkPreviewLimiter == nil {
-		d.linkPreviewLimiter = linkpreview.NewRateLimiter(linkPreviewRateLimit, linkPreviewRateWindow)
+		d.linkPreviewLimiter = ratelimit.New(linkPreviewRateLimit, linkPreviewRateWindow)
 	}
 	mux.HandleFunc("GET /api/linkpreview", RequireSession(d.Store, d.handleLinkPreview))
 	mux.HandleFunc("GET /api/linkpreview/image", RequireSession(d.Store, d.handleLinkPreviewImage))

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -278,31 +279,75 @@ func UserAgentFromRequest(r *http.Request) string {
 	return ua
 }
 
-// IPFromRequest extracts the client IP. Honors X-Forwarded-For when
-// chalkd is behind a trusted proxy; otherwise uses RemoteAddr.
+// IPFromRequest extracts the client IP. Honors X-Forwarded-For when the
+// PEER is a trusted proxy; otherwise uses RemoteAddr.
 //
-// We don't have a config flag yet for "trust X-Forwarded-For" —
-// in dev mode (CHALK_DEV) we trust it (Parallels VM scenario);
-// in production we'd want explicit allowlist of proxy IPs. For
-// now, dev-permissive is fine because the only use is the
-// sessions panel UI (phase 09c).
+// 80-8: behind chalkctl's Caddy every request used to resolve to the proxy
+// container's address, which turned the join endpoints' per-IP rate limit
+// into one bucket for the entire internet. CHALK_TRUSTED_PROXY names the
+// proxies chalkd may believe: a comma-separated CIDR list, or the value
+// "private" (loopback + RFC1918 + ULA -- the right answer for the stock
+// deployment, where Caddy shares a container network with chalkd). When the
+// peer matches, the LAST X-Forwarded-For entry wins: that is the one the
+// trusted proxy itself appended; anything left of it is client-supplied and
+// forgeable. Unset keeps the old behavior (dev mode trusts XFF, production
+// trusts nothing).
 func IPFromRequest(r *http.Request) net.IP {
-	if IsDevMode() {
+	peer := remoteIP(r)
+	trustXFF := IsDevMode()
+	if !trustXFF && peer != nil {
+		trustXFF = trustedProxy(peer)
+	}
+	if trustXFF {
 		if xf := r.Header.Get("X-Forwarded-For"); xf != "" {
-			// XFF is a comma-separated list; the leftmost is
-			// the originating client (closest to original
-			// request).
-			if i := strings.IndexByte(xf, ','); i > 0 {
-				xf = xf[:i]
+			parts := strings.Split(xf, ",")
+			// Dev keeps the historical leftmost read (no proxy chain to
+			// trust); a configured proxy reads its own appended entry.
+			pick := parts[0]
+			if !IsDevMode() {
+				pick = parts[len(parts)-1]
 			}
-			if ip := net.ParseIP(strings.TrimSpace(xf)); ip != nil {
+			if ip := net.ParseIP(strings.TrimSpace(pick)); ip != nil {
 				return ip
 			}
 		}
 	}
+	return peer
+}
+
+func remoteIP(r *http.Request) net.IP {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return nil
 	}
 	return net.ParseIP(host)
+}
+
+// trustedProxy reports whether ip is inside CHALK_TRUSTED_PROXY. The env var
+// is parsed on every call -- it is two requests per join, not a hot path,
+// and re-reading keeps tests and reconfiguration simple.
+func trustedProxy(ip net.IP) bool {
+	v := strings.TrimSpace(os.Getenv("CHALK_TRUSTED_PROXY"))
+	if v == "" {
+		return false
+	}
+	if v == "private" {
+		return ip.IsLoopback() || ip.IsPrivate()
+	}
+	for _, part := range strings.Split(v, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if _, cidr, err := net.ParseCIDR(part); err == nil {
+			if cidr.Contains(ip) {
+				return true
+			}
+			continue
+		}
+		if pip := net.ParseIP(part); pip != nil && pip.Equal(ip) {
+			return true
+		}
+	}
+	return false
 }

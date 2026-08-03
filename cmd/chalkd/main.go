@@ -232,6 +232,9 @@ func run(args []string) error {
 		// 30-8: uplink probe endpoint policy.
 		NetprobeEnabled:  cfg.Voice.Enabled && cfg.Voice.ProbeEnabled,
 		NetprobeMaxBytes: cfg.Voice.ProbeBytes,
+
+		// 80-8: guest magic-link redemption endpoints.
+		EphemeralEnabled: cfg.Ephemeral.Enabled,
 	}
 	log.Printf("auth: rp_id=%q rp_name=%q rp_origins=%v open_registration=%v dev=%v",
 		authCfg.RPID, authCfg.RPDisplayName, authCfg.RPOrigins,

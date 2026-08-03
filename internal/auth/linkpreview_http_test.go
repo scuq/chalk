@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/scuq/chalk/internal/linkpreview"
+	"github.com/scuq/chalk/internal/ratelimit"
 )
 
 // lpDeps builds HTTPDeps with the given preview client and a fresh limiter,
@@ -20,7 +21,7 @@ func lpDeps(client *linkpreview.Client, limit int) *HTTPDeps {
 	return &HTTPDeps{
 		Logger:             log.Default(),
 		LinkPreview:        client,
-		linkPreviewLimiter: linkpreview.NewRateLimiter(limit, time.Minute),
+		linkPreviewLimiter: ratelimit.New(limit, time.Minute),
 	}
 }
 
