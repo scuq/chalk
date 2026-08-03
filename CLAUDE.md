@@ -269,12 +269,14 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   `docs/PHASE-81-SECAUDIT.md`; `docs/threat-model.md` states them as unmet
   guarantees):
   - **Channel-key wraps are unsigned — phase 82 IN PROGRESS, plan and findings
-    in `docs/PHASE-82-SIGNEDWRAP.md`.** Slices 82-1 … 82-4 are implemented: wrap
+    in `docs/PHASE-82-SIGNEDWRAP.md`.** Slices 82-1 … 82-5 are implemented: wrap
     suite 2 (Ed25519 signature inside the opaque blob), TOFU identity pinning
-    in `web/src/crypto/trust.ts`, provenance-tracked key adoption, and the
-    `openWrap` policy — which already closes substitution at the bootstrap
-    read-back, the audit's worst case. **Not yet closed:** an unsigned suite-1
-    wrap on the ordinary fetch path is still accepted until 82-6 ships the
+    in `web/src/crypto/trust.ts`, provenance-tracked key adoption, the
+    `openWrap` policy — which closes substitution at the bootstrap read-back,
+    the audit's worst case — and 82-5's producer flip plus the never-replace and
+    downgrade-ratchet rules in `adopt()`. **Not yet closed:** an unsigned suite-1
+    wrap is still accepted on a channel that has never yielded a signed one,
+    until 82-6 ships the self-healing re-wrap sweep and the
     `CHALK_WRAP_SIG_REQUIRED` flag. Do not describe C-01 as fixed before then.
   - **Messages carry no sender signature.** The AEAD associated data is only
     suite/channel/key-version, so sender, message ID and timestamp are

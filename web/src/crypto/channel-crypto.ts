@@ -32,6 +32,7 @@ import {
   WRAP_SUITE_X25519_AESGCM_ED25519,
   type WrappedKey,
   type WrapSlot,
+  type WrapSigner,
 } from "./spacekey";
 import {
   publishChannelKey,
@@ -40,7 +41,7 @@ import {
 } from "./spacekey-sync";
 import { fetchIdentity } from "./identity-sync";
 import { fetchTrustedIdentity, resolveSigner } from "./trust";
-import { loadSpaceKey, saveSpaceKey, type KeyProvenance } from "./idb";
+import { loadSpaceKey, saveSpaceKey, channelHasSignedKey, type KeyProvenance } from "./idb";
 
 export type { KeyProvenance };
 
@@ -107,10 +108,39 @@ interface HeldKey {
 }
 
 // The two provenances that need no per-call detail. `UNSIGNED` marks a key
-// opened from a suite-1 wrap: correct today, and the thing 82-4/82-5 replace
-// with a signed, attributed adoption.
+// opened from a suite-1 wrap -- legacy material only, since 82-5: every wrap
+// this client produces is signed.
 const SELF_MINTED: KeyProvenance = { kind: "self_minted" };
 const UNSIGNED: KeyProvenance = { kind: "unsigned" };
+
+/**
+ * unattributed reports whether a provenance leaves the producer of the key
+ * unknown. These are what the 82-5 ratchet withdraws once a channel has yielded
+ * a signed wrap. Note `self_minted` is NOT one of them: our own material needs
+ * no attribution, and treating it as a downgrade would break rotation.
+ */
+function unattributed(p: KeyProvenance): boolean {
+  return p.kind === "unsigned" || p.kind === "legacy_cache";
+}
+
+/**
+ * provenanceRank orders provenances by how strongly they attribute a key, for
+ * the "same bytes, better story" upgrade in adopt(). Only the ORDER matters.
+ */
+function provenanceRank(p: KeyProvenance): number {
+  switch (p.kind) {
+    case "legacy_cache":
+      return 0;
+    case "unsigned":
+      return 1;
+    case "guest_link":
+      return 2;
+    case "signed":
+      return p.trust === "pinned" ? 3 : 4; // manually_verified / self
+    case "self_minted":
+      return 5; // ours; nothing to trust
+  }
+}
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
@@ -148,6 +178,11 @@ export class ChannelCrypto {
   // defaults to CURRENT_KEY_VERSION (1). OLD messages still decrypt under the
   // version stamped on them (decryptForChannel), independent of this map.
   private readonly currentVersions = new Map<string, number>();
+  // 82-5: channels this device has ever opened a SIGNED wrap for, memoized from
+  // the key cache so the ratchet costs one read per channel per session.
+  private readonly signedChannels = new Map<string, boolean>();
+  // The identity every wrap this client produces is signed under.
+  private readonly signer: WrapSigner;
 
   constructor(
     transport: CryptoTransport,
@@ -157,6 +192,11 @@ export class ChannelCrypto {
     this.transport = transport;
     this.identity = identity;
     this.keyWaitMs = opts.keyWaitMs ?? 8000;
+    this.signer = {
+      userID: identity.userID,
+      ed25519Private: identity.ed25519Private,
+      ed25519Public: identity.ed25519Public,
+    };
   }
 
   // wake every decrypt waiting on this channel (key state just settled).
@@ -280,16 +320,13 @@ export class ChannelCrypto {
     const selfWrap = await wrapSpaceKey(
       sk,
       this.identity.x25519Public,
-      channelID,
-      newVersion,
-      this.identity.userID,
+      { channelID, keyVersion: newVersion, recipientID: this.identity.userID },
+      this.signer,
     );
     await publishChannelKey(this.transport, channelID, newVersion, this.identity.userID, selfWrap);
-    // 82-3: goes through remember() like every other adoption. It used to
-    // write this.keys directly, which is how it escaped the one chokepoint the
-    // module has.
-    await saveSpaceKey(channelID, newVersion, sk, SELF_MINTED);
-    this.remember(channelID, newVersion, sk, SELF_MINTED);
+    // 82-3: goes through adopt() like every other adoption. It used to write
+    // this.keys directly, which is how it escaped the module's one chokepoint.
+    if (!(await this.adopt(channelID, newVersion, sk, SELF_MINTED))) return false;
 
     // wrap the new key for every other current member
     await this.rewrapForMissing(channelID, members, sk, newVersion);
@@ -388,6 +425,95 @@ export class ChannelCrypto {
   }
 
   /**
+   * adopt is the ONLY way a key is taken into durable use, and the one place
+   * the two standing rules of 82-5 are applied. Returns false when the material
+   * was refused -- callers then report "waiting" rather than pretending to hold
+   * a key.
+   *
+   * NEVER-REPLACE. A (channel, version) slot names one key for all time: every
+   * holder wraps the same bytes, and genuinely new material gets a new version.
+   * So a wrap that opens to DIFFERENT bytes than the slot already holds is not
+   * a fresher answer, it is a second answer -- which only an attacker or a bug
+   * produces. The held key stays.
+   *
+   * DOWNGRADE RATCHET. Once this device has opened a signed wrap for a channel,
+   * an unsigned wrap for that channel is refused at ANY version, including
+   * versions minted later. Per-CHANNEL rather than per-slot is the entire
+   * point: never-replace already covers a slot that has been filled, so a server
+   * stripping signatures would simply wait for a rotation and answer the fresh
+   * slot in suite 1. Provenance is persisted precisely so this survives reload.
+   */
+  private async adopt(
+    channelID: string,
+    v: number,
+    key: Uint8Array,
+    prov: KeyProvenance,
+  ): Promise<boolean> {
+    const existing = await this.existingKey(channelID, v);
+    if (existing) {
+      if (!bytesEqual(existing.key, key)) {
+        console.error(
+          "channel-crypto: refusing a second, different key for",
+          channelID,
+          `v${v}`,
+          "-- a filled key slot is never replaced.",
+        );
+        return false;
+      }
+      // Same bytes, so this is not an adoption at all. Keep the better-attested
+      // account of where they came from: an existing channel's legacy key being
+      // re-offered as signed is what arms the ratchet for it.
+      const upgrade = provenanceRank(prov) > provenanceRank(existing.prov);
+      const best = upgrade ? prov : existing.prov;
+      if (upgrade) await saveSpaceKey(channelID, v, key, best);
+      this.remember(channelID, v, key, best);
+      if (best.kind === "signed") this.signedChannels.set(channelID, true);
+      return true;
+    }
+
+    if (unattributed(prov) && (await this.channelIsSigned(channelID))) {
+      console.error(
+        "channel-crypto: refusing an unsigned key for",
+        channelID,
+        "-- this device has already accepted a signed one for this channel.",
+      );
+      return false;
+    }
+
+    await saveSpaceKey(channelID, v, key, prov);
+    this.remember(channelID, v, key, prov);
+    if (prov.kind === "signed") this.signedChannels.set(channelID, true);
+    return true;
+  }
+
+  // Whether this device has ever opened a signed wrap for the channel, from the
+  // session memo or the persisted cache. A cache read failure cannot prove the
+  // channel was ever signed, so it does not engage the ratchet -- and is not
+  // memoized, so the next adoption asks again rather than inheriting the doubt.
+  private async channelIsSigned(channelID: string): Promise<boolean> {
+    const memo = this.signedChannels.get(channelID);
+    if (memo !== undefined) return memo;
+    let signed: boolean;
+    try {
+      signed = await channelHasSignedKey(channelID);
+    } catch {
+      return false;
+    }
+    this.signedChannels.set(channelID, signed);
+    return signed;
+  }
+
+  // The key already recorded for a slot, from memory or the cache. Distinct
+  // from getKey(): this must NOT populate memory, because it runs inside the
+  // decision about whether the incoming material may be trusted at all.
+  private async existingKey(channelID: string, v: number): Promise<HeldKey | null> {
+    const held = this.heldKey(channelID, v);
+    if (held) return held;
+    const cached = await loadSpaceKey(channelID, v);
+    return cached ? { key: cached.key, prov: cached.provenance } : null;
+  }
+
+  /**
    * remember is the ONLY way a key enters this module's memory. Provenance is a
    * required argument so that a caller must state what it is trusting.
    */
@@ -476,12 +602,10 @@ export class ChannelCrypto {
       // pins leaves the channel unwarmed (it already renders a placeholder);
       // the next deliberate open resolves it properly.
       const opened = await this.openWrap(wrap, channelID, v, members, false);
-      if (!opened) {
+      if (!opened || !(await this.adopt(channelID, v, opened.key, opened.prov))) {
         this.encrypted.add(channelID);
         return;
       }
-      await saveSpaceKey(channelID, v, opened.key, opened.prov);
-      this.remember(channelID, v, opened.key, opened.prov);
     } catch {
       // A warm is best-effort: a preview that cannot be decrypted renders a
       // placeholder, which is strictly better than a panel that never fills.
@@ -511,14 +635,12 @@ export class ChannelCrypto {
     const wrap = await fetchChannelKey(this.transport, channelID, v);
     if (wrap) {
       const opened = await this.openWrap(wrap, channelID, v, members, true);
-      if (opened) {
-        await saveSpaceKey(channelID, v, opened.key, opened.prov);
-        this.remember(channelID, v, opened.key, opened.prov);
+      if (opened && (await this.adopt(channelID, v, opened.key, opened.prov))) {
         await this.rewrapForMissing(channelID, members, opened.key);
         return "ready";
       }
-      // a wrap exists for us but won't open (corrupt / wrong identity): the
-      // channel is encrypted but we can't use it -> waiting.
+      // a wrap exists for us but won't open (corrupt / wrong identity) or was
+      // refused: the channel is encrypted but we can't use it -> waiting.
       this.encrypted.add(channelID);
       return "waiting";
     }
@@ -534,7 +656,12 @@ export class ChannelCrypto {
     // no key anywhere. Bootstrap iff we are the channel creator (race-free).
     if (this.identity.userID === createdBy) {
       const sk = generateSpaceKey();
-      const selfWrap = await wrapSpaceKey(sk, this.identity.x25519Public, channelID, v, this.identity.userID);
+      const selfWrap = await wrapSpaceKey(
+        sk,
+        this.identity.x25519Public,
+        { channelID, keyVersion: v, recipientID: this.identity.userID },
+        this.signer,
+      );
       await publishChannelKey(this.transport, channelID, v, this.identity.userID, selfWrap);
 
       // Read-back reconcile: if a concurrent bootstrap (our OTHER DEVICE) won
@@ -579,8 +706,10 @@ export class ChannelCrypto {
           return "waiting";
         }
       }
-      await saveSpaceKey(channelID, v, finalSk, finalProv);
-      this.remember(channelID, v, finalSk, finalProv);
+      if (!(await this.adopt(channelID, v, finalSk, finalProv))) {
+        this.encrypted.add(channelID);
+        return "waiting";
+      }
       await this.rewrapForMissing(channelID, members, finalSk);
       return "ready";
     }
@@ -614,7 +743,12 @@ export class ChannelCrypto {
       try {
         const peer = await fetchIdentity(this.transport, m);
         if (!peer) continue; // peer hasn't published an identity yet; rewrap later
-        const wrap = await wrapSpaceKey(sk, peer.x25519Public, channelID, v, m);
+        const wrap = await wrapSpaceKey(
+          sk,
+          peer.x25519Public,
+          { channelID, keyVersion: v, recipientID: m },
+          this.signer,
+        );
         await publishChannelKey(this.transport, channelID, v, m, wrap);
       } catch {
         // skip this member; a later open / channel event retries

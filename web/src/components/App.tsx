@@ -179,7 +179,7 @@ import {
 } from "../proto";
 import { mintGuestLink, buildJoinURL, hexToBytes as guestHexToBytes, bytesToBase64 as guestB64 } from "../crypto/guest-link";
 import { countdownTickMs } from "../chat/countdown";
-import { wrapSpaceKey } from "../crypto/spacekey";
+import { wrapSpaceKeyUnsigned } from "../crypto/spacekey";
 import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
 import { reducer } from "../state/reducer";
 import { hasUnread, initialState, selectChatPrefs, selectJoinMuted, selectParkingLotPrefs, selectRosterPrefs, selectVoicePrefs, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow, type VoicePrefs } from "../state/types";
@@ -3580,13 +3580,15 @@ export function App() {
     }
     const m = await mintGuestLink();
     const guestID = crypto.randomUUID();
-    const wrap = await wrapSpaceKey(
-      exported.key,
-      m.identity.x25519Public,
+    // Deliberately UNSIGNED, and the only such wrap chalk still produces
+    // (82-5). A guest's JoinScreen has no identity to anchor a signature
+    // against until 82-7 puts the owner's Ed25519 key in the link fragment;
+    // signing now would only make every existing link undecryptable.
+    const wrap = await wrapSpaceKeyUnsigned(exported.key, m.identity.x25519Public, {
       channelID,
-      exported.version,
-      guestID,
-    );
+      keyVersion: exported.version,
+      recipientID: guestID,
+    });
     const ack = await c.request<EphemeralInviteMintPayload, EphemeralInviteMintAckPayload>(
       TypeEphemeralInviteMint,
       {

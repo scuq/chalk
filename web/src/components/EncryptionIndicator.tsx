@@ -72,6 +72,10 @@ export function EncryptionIndicator({
           <span class="chalk-enc-pop-v">{suites.keyExchange}</span>
         </span>
         <span class="chalk-enc-pop-row">
+          <span class="chalk-enc-pop-k">wrap signature</span>
+          <span class="chalk-enc-pop-v">{suites.keyAuth}</span>
+        </span>
+        <span class="chalk-enc-pop-row">
           <span class="chalk-enc-pop-k">channel key</span>
           <span class="chalk-enc-pop-v">
             {suites.keyBits}-bit &middot; v{CURRENT_KEY_VERSION}

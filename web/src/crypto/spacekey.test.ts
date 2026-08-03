@@ -11,11 +11,13 @@ import { strict as assert } from "node:assert";
 import {
   generateSpaceKey,
   wrapSpaceKey,
+  wrapSpaceKeyUnsigned,
   unwrapSpaceKey,
   wrapSpaceKeySigned,
   unwrapSpaceKeySigned,
   wrapSignerKey,
   canonicalWrapMessage,
+  describeSuites,
   encryptMessage,
   decryptMessage,
   WRAP_SUITE_X25519_AESGCM,
@@ -39,6 +41,7 @@ async function makeRecipient(): Promise<{ priv: CryptoKey; pub: Uint8Array }> {
 const CH = "11111111-2222-3333-4444-555555555555";
 const VER = 1;
 const RID = "user-bob";
+const SLOT: WrapSlot = { channelID: CH, keyVersion: VER, recipientID: RID };
 
 test("generateSpaceKey returns 32 random bytes; two differ", () => {
   const a = generateSpaceKey();
@@ -47,19 +50,18 @@ test("generateSpaceKey returns 32 random bytes; two differ", () => {
   assert.notEqual(bytesToHex(a), bytesToHex(b));
 });
 
-test("wrap returns the current wrap suite + a 92-byte suite-1 blob", async () => {
+test("the unsigned producer returns suite 1 + a 92-byte blob", async () => {
   const sk = generateSpaceKey();
   const bob = await makeRecipient();
-  const w = await wrapSpaceKey(sk, bob.pub, CH, VER, RID);
+  const w = await wrapSpaceKeyUnsigned(sk, bob.pub, SLOT);
   assert.equal(w.suite, WRAP_SUITE_X25519_AESGCM);
-  assert.equal(w.suite, CURRENT_WRAP_SUITE);
   assert.equal(w.blob.length, 32 + 12 + 48); // ephPub + nonce + wrapped
 });
 
 test("wrap -> unwrap recovers the exact space key", async () => {
   const sk = generateSpaceKey();
   const bob = await makeRecipient();
-  const w = await wrapSpaceKey(sk, bob.pub, CH, VER, RID);
+  const w = await wrapSpaceKeyUnsigned(sk, bob.pub, SLOT);
   const got = await unwrapSpaceKey(w, bob.priv, CH, VER, RID);
   assert.notEqual(got, null);
   assert.equal(bytesToHex(got!), bytesToHex(sk));
@@ -68,7 +70,7 @@ test("wrap -> unwrap recovers the exact space key", async () => {
 test("unwrap rejects an unknown/retired wrap suite", async () => {
   const sk = generateSpaceKey();
   const bob = await makeRecipient();
-  const w = await wrapSpaceKey(sk, bob.pub, CH, VER, RID);
+  const w = await wrapSpaceKeyUnsigned(sk, bob.pub, SLOT);
   const got = await unwrapSpaceKey({ suite: 99, blob: w.blob }, bob.priv, CH, VER, RID);
   assert.equal(got, null);
 });
@@ -76,7 +78,7 @@ test("unwrap rejects an unknown/retired wrap suite", async () => {
 test("unwrap rejects a wrong slot (channel / version / recipient bound in AAD)", async () => {
   const sk = generateSpaceKey();
   const bob = await makeRecipient();
-  const w = await wrapSpaceKey(sk, bob.pub, CH, VER, RID);
+  const w = await wrapSpaceKeyUnsigned(sk, bob.pub, SLOT);
   assert.equal(await unwrapSpaceKey(w, bob.priv, "other-channel", VER, RID), null);
   assert.equal(await unwrapSpaceKey(w, bob.priv, CH, 2, RID), null);
   assert.equal(await unwrapSpaceKey(w, bob.priv, CH, VER, "user-eve"), null);
@@ -86,7 +88,7 @@ test("unwrap with the wrong private key returns null", async () => {
   const sk = generateSpaceKey();
   const bob = await makeRecipient();
   const eve = await makeRecipient();
-  const w = await wrapSpaceKey(sk, bob.pub, CH, VER, RID);
+  const w = await wrapSpaceKeyUnsigned(sk, bob.pub, SLOT);
   assert.equal(await unwrapSpaceKey(w, eve.priv, CH, VER, RID), null);
 });
 
@@ -154,7 +156,7 @@ test("end-to-end: wrap to member, member unwraps, then decrypts a message", asyn
   const sk = generateSpaceKey();
   const bob = await makeRecipient();
   const body = await encryptMessage(sk, CH, VER, new TextEncoder().encode("welcome Bob"));
-  const w = await wrapSpaceKey(sk, bob.pub, CH, VER, "bob");
+  const w = await wrapSpaceKeyUnsigned(sk, bob.pub, { channelID: CH, keyVersion: VER, recipientID: "bob" });
   const bobKey = await unwrapSpaceKey(w, bob.priv, CH, VER, "bob");
   assert.notEqual(bobKey, null);
   const dec = await decryptMessage(bobKey!, CH, VER, body);
@@ -173,8 +175,6 @@ async function makeSigner(): Promise<{ priv: CryptoKey; pub: Uint8Array; userID:
   const pub = new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey));
   return { priv: kp.privateKey, pub, userID: "user-alice" };
 }
-
-const SLOT: WrapSlot = { channelID: CH, keyVersion: VER, recipientID: RID };
 
 test("signed wrap is suite 2 and 188 bytes (sealed 92 + ed pub 32 + sig 64)", async () => {
   const sk = generateSpaceKey();
@@ -309,7 +309,7 @@ test("suites cannot be spliced in either direction", async () => {
 
   // suite-1 blob with a signature stapled on, presented as suite 2: sealed
   // under the s1 AAD, so it fails even though the signature is over its bytes.
-  const plain = await wrapSpaceKey(sk, bob.pub, CH, VER, RID);
+  const plain = await wrapSpaceKeyUnsigned(sk, bob.pub, SLOT);
   const msg = canonicalWrapMessage(WRAP_SUITE_X25519_AESGCM_ED25519, SLOT, alice.userID, plain.blob);
   const sig = new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, alice.priv, msg));
   const spliced = new Uint8Array(188);
@@ -353,14 +353,14 @@ test("signed unwrap fails closed on malformed input and never throws", async () 
   assert.equal(await unwrapSpaceKeySigned(w, bob.priv, SLOT, alice.userID, new Uint8Array(31)), null);
 
   // Suite 1 through the signed path.
-  const plain = await wrapSpaceKey(sk, bob.pub, CH, VER, RID);
+  const plain = await wrapSpaceKeyUnsigned(sk, bob.pub, SLOT);
   assert.equal(await unwrapSpaceKeySigned(plain, bob.priv, SLOT, alice.userID, alice.pub), null);
 });
 
 test("wrapSignerKey returns null for unsigned or malformed wraps", async () => {
   const sk = generateSpaceKey();
   const bob = await makeRecipient();
-  const plain = await wrapSpaceKey(sk, bob.pub, CH, VER, RID);
+  const plain = await wrapSpaceKeyUnsigned(sk, bob.pub, SLOT);
   assert.equal(wrapSignerKey(plain), null);
   assert.equal(wrapSignerKey({ suite: WRAP_SUITE_X25519_AESGCM_ED25519, blob: new Uint8Array(92) }), null);
 });
@@ -381,4 +381,46 @@ test("signing refuses degenerate input (throws, unlike verification)", async () 
   for (const [name, fn] of bad) {
     await assert.rejects(fn, `${name} should throw`);
   }
+});
+
+// ---- 82-5: suite 2 is what the producer emits ---------------------------
+//
+// These assert the FLIP itself rather than the crypto, which the 82-1 block
+// above already covers. The whole point of the phase is that the wraps chalk
+// actually writes are signed, so "the signed path works" is not the claim that
+// needs a test -- "the signed path is the one taken" is.
+
+test("the current producer emits a signed suite-2 wrap", async () => {
+  const sk = generateSpaceKey();
+  const bob = await makeRecipient();
+  const alice = await makeSigner();
+  const w = await wrapSpaceKey(sk, bob.pub, SLOT, {
+    userID: alice.userID,
+    ed25519Private: alice.priv,
+    ed25519Public: alice.pub,
+  });
+  assert.equal(w.suite, CURRENT_WRAP_SUITE);
+  assert.equal(w.suite, WRAP_SUITE_X25519_AESGCM_ED25519);
+  assert.equal(bytesToHex(wrapSignerKey(w)!), bytesToHex(alice.pub));
+
+  // And it is a real signature over a real seal, not just the right shape.
+  const got = await unwrapSpaceKeySigned(w, bob.priv, SLOT, alice.userID, alice.pub);
+  assert.equal(bytesToHex(got!), bytesToHex(sk));
+});
+
+test("describeSuites reports the wrap signature, and cannot drift from the suite", () => {
+  const d = describeSuites();
+  assert.equal(d.wrapSuite, CURRENT_WRAP_SUITE);
+  assert.equal(d.msgSuite, CURRENT_MSG_SUITE);
+  assert.equal(d.keyBits, 256);
+  // The tooltip is a security claim shown to users: it must say "signed" only
+  // while the producer signs. Keyed off the constant, so flipping back would
+  // fail here rather than leave a false lock in the UI.
+  assert.equal(
+    d.keyAuth,
+    CURRENT_WRAP_SUITE === WRAP_SUITE_X25519_AESGCM_ED25519 ? "Ed25519" : "none",
+  );
+  assert.notEqual(d.cipher, "unknown");
+  assert.notEqual(d.keyExchange, "unknown");
+  assert.notEqual(d.keyAuth, "unknown");
 });

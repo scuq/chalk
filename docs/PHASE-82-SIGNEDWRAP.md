@@ -4,7 +4,7 @@ Closing audit finding **C-01 (Critical)**: channel-key wraps are encrypted *to* 
 recipient but signed by nobody, so a malicious server can substitute a space key
 it knows. Planned against v0.6.4, after phase 81.
 
-**Status: in progress.** Slices 82-1 … 82-4 are implemented; 82-5 … 82-8 are
+**Status: in progress.** Slices 82-1 … 82-5 are implemented; 82-6 … 82-8 are
 not. C-01 is **not yet closed** — see *Where this actually stands* below, which
 is deliberately placed before the design so it cannot be skimmed past.
 
@@ -16,11 +16,14 @@ is deliberately placed before the design so it cannot be skimmed past.
 |---|---|
 | Closed today | Substitution at the **bootstrap read-back**, for both signed and unsigned wraps. This is the audit's worst case — the one where the legitimate creator redistributes the attacker's key to the whole channel. |
 | Closed today | Any suite-2 wrap signed by an identity this device has not pinned. |
-| **Still open** | A **suite-1** (unsigned) wrap arriving on the ordinary fetch path is still accepted. By design: existing channels contain nothing else. 82-6's enforcement flag is what withdraws it. |
+| Closed by 82-5 | Every wrap chalk produces for a member is now signed, so on any channel where the members run current builds, one signed adoption **ratchets** the channel: an unsigned wrap for it is refused thereafter, at any key version. |
+| **Still open** | A **suite-1** (unsigned) wrap on a channel that has never yielded a signed one is still accepted. By design: existing channels contain nothing else, and until 82-6's self-healing sweep re-wraps them there is nothing better to accept. 82-6's enforcement flag is what withdraws it. |
 | Still open | Membership is server-asserted, so a server that can add a member it controls can still get a key it knows distributed. Phase 83. |
 
 Nothing here should be described as "C-01 fixed" until 82-6 lands and the
-enforcement flag is on.
+enforcement flag is on. Note what the ratchet does and does not do: it makes the
+soft window **close by itself** as channels get touched by current builds, but
+it cannot open it for a channel nobody has re-wrapped yet.
 
 ---
 
@@ -215,6 +218,48 @@ already-pinned signers, writes no pins, and fetches nothing. A test asserts it
 issues **zero** `fetch_identity` frames. Non-resolution leaves the channel
 unwarmed, which already renders a placeholder.
 
+### The two standing rules — 82-5
+
+Signing wraps only helps while a signature cannot be routed *around*, and there
+are exactly two ways around one. Both are enforced in `adopt()`, which since
+82-5 is the only way key material from outside this device enters the cache.
+
+**Never-replace.** A `(channel, version)` slot names one key for all time —
+every holder wraps the same bytes, and genuinely new material gets a new
+version. So a wrap opening to *different* bytes than the slot already holds is
+not a fresher answer, it is a second answer. Refused; the held key stays.
+
+Honest scope: on the ordinary path `getKey()` already short-circuits a filled
+slot before any fetch, so this rule's live effect is narrow — it serialises two
+opens of the same channel in flight, and it is a backstop for any future
+"refresh the key" path that skips that short-circuit. It is an invariant, not a
+hot-path defence, and the test drives it through the racing-opens case because
+that is the one that actually reaches it.
+
+**Downgrade ratchet.** Once this device has opened one *signed* wrap for a
+channel, an unsigned wrap for that channel is refused — at any version,
+including versions minted later.
+
+Per-**channel** rather than per-slot is the whole point. Never-replace already
+covers a slot that has been answered, so a server stripping signatures would
+simply wait for a rotation and answer the *fresh* slot in suite 1, where nothing
+contradicts it. Making the rule per-slot would leave that door open and look
+like it had closed it.
+
+`self_minted` is deliberately **not** treated as unattributed: our own material
+needs no attribution, and counting it would break rotation from a device whose
+build predates this phase. Only `unsigned` and `legacy_cache` trip the ratchet.
+
+Provenance is persisted (82-3) precisely so this survives a reload;
+`channelHasSignedKey` reads it back by primary-key *prefix* (`"channelID:"`),
+which needs no index and therefore still no `DB_VERSION` bump.
+
+There is also a small **provenance upgrade**: re-offering the same bytes with a
+better-attested story rewrites the record. That is what arms the ratchet for an
+existing channel rather than only for new ones — though 82-6's self-healing
+sweep is what will actually exercise it, since today `getKey()` returns before
+the wrap is ever fetched.
+
 ### Chokepoint — the bypass is now a compile error
 
 `keys: Map<string, Uint8Array>` became `Map<string, HeldKey>` with provenance a
@@ -223,9 +268,9 @@ type-checks. That is enforcement by `tsc`, not by a comment asking future edits
 to behave — and the compiler immediately found the `rotateChannelKey` bypass
 that had been writing the map directly.
 
-`SpaceKeyRecord` persists provenance and `adoptedAt`, which is what will let
-82-6 implement the ratchet (a slot that has held a signed key never accepts an
-unsigned one again) and never-replace. Pre-82 records load as `legacy_cache` —
+`SpaceKeyRecord` persists provenance and `adoptedAt`, which is what let 82-5
+implement the ratchet and never-replace across reloads. Pre-82 records load as
+`legacy_cache` —
 accepted, because refusing would lock every existing user out of their own
 history, but marked.
 
@@ -286,6 +331,33 @@ freshly minted one lets it keep `self_minted` provenance, which makes the
 provenance record honest — and it was a failing provenance assertion that
 surfaced this, not analysis.
 
+### The unsigned producer had to survive, and had to be named for it
+
+Flipping `CURRENT_WRAP_SUITE` to 2 cannot mean "suite 1 is unreachable": the
+guest-invite mint still needs it, because a guest's `JoinScreen` has no identity
+to anchor a signature against until 82-7 puts the owner's key in the link
+fragment. Signing it now would only make every outstanding invite undecryptable.
+
+So `wrapSpaceKey` became the dispatcher (taking a `WrapSigner`, *required* even
+under an unsigned suite, so that flipping the pointer is a one-line change and
+never a caller migration), and the suite-1 producer survives beside it as
+`wrapSpaceKeyUnsigned`. The name is the safeguard — an exported bypass that
+cannot be called by accident, and one `rg` finds every use of.
+
+### The pin store leaked between tests, and only signing revealed it
+
+Making wraps signed turned four unrelated `channel-crypto.test.ts` tests red.
+Not a regression: every test there derives *fresh* identities but reuses the ids
+`"alice"`/`"bob"`, while `fake-indexeddb` is one database for the whole process.
+Opening a signed wrap pins its signer, so the first test to pin `"alice"` left a
+pin naming a key no later test's Alice has — which `trust.ts` correctly reads as
+a substitution and refuses.
+
+Tests reset the key cache (`clearSpaceKeys`) but never the pins. `freshDevice()`
+now does both. Worth recording because the same shape will bite anything else
+that tests trust: **the fixture's "fresh device" was only ever half of one**, and
+the half that was missing is the half 82-2 added.
+
 ### Accepted risk: mixed-version bootstrap divergence
 
 Refusing a *different* unsigned read-back means two of a user's own devices
@@ -310,7 +382,7 @@ correctly and convergence is restored.
 | 82-2 | **done** | `trust.ts`: TOFU pinning, `resolveSigner`, `markManuallyVerified`; `fetchIdentity` id-echo fix; members panel wired through it. 12 tests. |
 | 82-3 | **done** | `HeldKey` + required provenance, `rotateChannelKey` bypass removed, provenance persisted, Ed25519 threaded into `ChannelCryptoIdentity`. |
 | 82-4 | **done** | `openWrap` policy, self-signed read-back, warm path offline, hostile-server tests. |
-| 82-5 | todo | Flip `CURRENT_WRAP_SUITE = 2` so every producer signs; the ratchet and never-replace rules; `describeSuites()` (it drives a shipped tooltip). |
+| 82-5 | **done** | `CURRENT_WRAP_SUITE = 2` so every producer signs; `wrapSpaceKey` dispatches on it and `wrapSpaceKeyUnsigned` is the one named exception (guest mint); the never-replace and ratchet rules in `adopt()`; `channelHasSignedKey`; `describeSuites().keyAuth` + its tooltip row. 6 tests. |
 | 82-6 | todo | `wrap_suites` on the recipients ack; self-healing re-wrap sweep; `CHALK_WRAP_SIG_REQUIRED` through config → `welcome` → chalkctl; server refuses suite-1 writes when required; `PutChannelKey` overwrite + `key_version` bounds; blob cap on `publish_channel_key`. |
 | 82-7 | todo | Guest path: owner Ed25519 key in the link fragment (~96 → ~140 chars), `owner_user_id` in the redeem response, signed mint, `JoinScreen` verification. |
 | 82-8 | todo | Members-panel badges, the identity-changed wall, key provenance line, visible `member_added`; `threat-model.md`, `crypto-agility.md` suite-2 registry entry, CHANGELOG. |
@@ -345,7 +417,11 @@ go build ./... && go vet ./... && go test ./... && gofmt -l .   # gofmt empty
 cd web && npx tsc --noEmit && node test.mjs && node build.mjs
 ```
 
-Client suite at 82-4: **1093 tests, 0 failures** (1058 before the phase).
+Client suite at 82-5: **1099 tests, 0 failures** (1058 before the phase).
+
+Every 82-5 defence was mutation-tested, per the lesson above — the ratchet, the
+never-replace rule and the suite flip were each reverted in turn and the tests
+that should fail did, and only those.
 
 DB-backed Go tests need a fixture database via `bootstrap/phase-03-postgres.sh`,
 not the ad-hoc dev DB — see the note in `docs/PHASE-81-SECAUDIT.md`.

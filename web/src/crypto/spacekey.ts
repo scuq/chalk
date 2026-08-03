@@ -48,6 +48,11 @@
 // change. A fixed `wrap_sig` column would also be the wrong shape the moment a
 // suite authenticates differently (an ML-DSA signature is ~2.4-4.6 KB).
 //
+// 82-5: suite 2 is now CURRENT_WRAP_SUITE, so every wrap chalk produces for a
+// member is signed. Suite 1 stays registered forever -- existing channels are
+// full of it and it must keep opening -- and stays producible through the one
+// explicitly-named exception, wrapSpaceKeyUnsigned, for the guest mint.
+//
 // Random 96-bit nonces; explicit chalk HKDF salt/info. All native WebCrypto.
 // wrap/unwrap/decrypt return null (never throw) on any failure; the SIGNING
 // entry point throws on degenerate input, mirroring voice/signal-crypto.ts.
@@ -66,7 +71,7 @@ export const MSG_SUITE_AESGCM = 1;
  * compiler -- which is exactly backwards for a registry whose whole job is to
  * keep handling suites it no longer produces.
  */
-export const CURRENT_WRAP_SUITE: number = WRAP_SUITE_X25519_AESGCM;
+export const CURRENT_WRAP_SUITE: number = WRAP_SUITE_X25519_AESGCM_ED25519;
 export const CURRENT_MSG_SUITE: number = MSG_SUITE_AESGCM;
 
 /**
@@ -77,6 +82,7 @@ export const CURRENT_MSG_SUITE: number = MSG_SUITE_AESGCM;
 export interface SuiteDescription {
   cipher: string; // message cipher
   keyExchange: string; // how the space key is wrapped to a member
+  keyAuth: string; // what proves WHO produced that wrap
   keyBits: number; // symmetric space-key length
   wrapSuite: number;
   msgSuite: number;
@@ -92,18 +98,25 @@ export function describeSuites(): SuiteDescription {
       cipher = "AES-256-GCM";
       break;
   }
+  // Key exchange and key AUTHENTICATION are reported separately because they
+  // are separate properties: suite 2 changes only the second, and folding both
+  // into one line is how a UI ends up implying the wrong one improved.
   let keyExchange = "unknown";
+  let keyAuth = "unknown";
   switch (CURRENT_WRAP_SUITE) {
     case WRAP_SUITE_X25519_AESGCM:
       keyExchange = "X25519 ECDH + HKDF-SHA256";
+      keyAuth = "none";
       break;
     case WRAP_SUITE_X25519_AESGCM_ED25519:
-      keyExchange = "X25519 ECDH + HKDF-SHA256, Ed25519-signed";
+      keyExchange = "X25519 ECDH + HKDF-SHA256";
+      keyAuth = "Ed25519";
       break;
   }
   return {
     cipher,
     keyExchange,
+    keyAuth,
     keyBits: SPACE_KEY_BYTES * 8, // 256
     wrapSuite: CURRENT_WRAP_SUITE,
     msgSuite: CURRENT_MSG_SUITE,
@@ -147,27 +160,87 @@ export function generateSpaceKey(): Uint8Array {
 // ---- wrap / unwrap (dispatched by wrap suite) ---------------------------
 
 /**
+ * WrapSlot is the (channel, version, recipient) address a wrap is valid for.
+ * Bound into both the AAD and the signature, so a wrap cannot be relocated to
+ * another channel, another key version, or another member.
+ */
+export interface WrapSlot {
+  channelID: string;
+  keyVersion: number;
+  recipientID: string;
+}
+
+/**
+ * WrapSigner is the identity a wrap is produced under.
+ *
+ * wrapSpaceKey requires it even while the current suite is unsigned. That is
+ * deliberate: it means bumping CURRENT_WRAP_SUITE to a signing suite is a
+ * one-line change here rather than a migration of every caller, and a producer
+ * with no signing material to hand cannot come into existence in between.
+ */
+export interface WrapSigner {
+  userID: string;
+  ed25519Private: CryptoKey; // non-extractable, sign-only
+  ed25519Public: Uint8Array;
+}
+
+/**
  * wrapSpaceKey seals the space key to a member's X25519 public key under the
  * current wrap suite. Returns { suite, blob } to store in channel_keys.
+ *
+ * This is THE producer: every wrap chalk writes for a member comes through
+ * here, so what the current suite is decides what the whole system emits.
  */
 export async function wrapSpaceKey(
   spaceKey: Uint8Array,
   recipientX25519Pub: Uint8Array,
-  channelID: string,
-  keyVersion: number,
-  recipientID: string,
+  slot: WrapSlot,
+  signer: WrapSigner,
+): Promise<WrappedKey> {
+  switch (CURRENT_WRAP_SUITE) {
+    case WRAP_SUITE_X25519_AESGCM:
+      return wrapSpaceKeyUnsigned(spaceKey, recipientX25519Pub, slot);
+    case WRAP_SUITE_X25519_AESGCM_ED25519:
+      return wrapSpaceKeySigned(
+        spaceKey,
+        recipientX25519Pub,
+        slot,
+        signer.userID,
+        signer.ed25519Private,
+        signer.ed25519Public,
+      );
+    default:
+      throw new Error(`spacekey: unknown current wrap suite ${CURRENT_WRAP_SUITE}`);
+  }
+}
+
+/**
+ * wrapSpaceKeyUnsigned produces a suite-1 wrap explicitly, whatever the current
+ * suite is.
+ *
+ * It is named for what it gives up because it is a deliberate exception, not a
+ * default: the ONLY caller is the guest-invite mint, whose recipient runs
+ * JoinScreen with no identity to anchor a signature against until 82-7 carries
+ * the owner's Ed25519 key in the link fragment. Everything else must use
+ * wrapSpaceKey.
+ */
+export async function wrapSpaceKeyUnsigned(
+  spaceKey: Uint8Array,
+  recipientX25519Pub: Uint8Array,
+  slot: WrapSlot,
 ): Promise<WrappedKey> {
   if (spaceKey.length !== SPACE_KEY_BYTES) {
     throw new Error(`spacekey: space key must be ${SPACE_KEY_BYTES} bytes`);
   }
-  switch (CURRENT_WRAP_SUITE) {
-    case WRAP_SUITE_X25519_AESGCM: {
-      const blob = await wrapV1(spaceKey, recipientX25519Pub, channelID, keyVersion, recipientID);
-      return { suite: WRAP_SUITE_X25519_AESGCM, blob };
-    }
-    default:
-      throw new Error(`spacekey: unknown current wrap suite ${CURRENT_WRAP_SUITE}`);
-  }
+  const blob = await sealBox(
+    spaceKey,
+    recipientX25519Pub,
+    WRAP_SUITE_X25519_AESGCM,
+    slot.channelID,
+    slot.keyVersion,
+    slot.recipientID,
+  );
+  return { suite: WRAP_SUITE_X25519_AESGCM, blob };
 }
 
 /**
@@ -197,17 +270,6 @@ export async function unwrapSpaceKey(
 }
 
 // ---- signed wraps (suite 2) ---------------------------------------------
-
-/**
- * WrapSlot is the (channel, version, recipient) address a wrap is valid for.
- * Bound into both the AAD and the signature, so a wrap cannot be relocated to
- * another channel, another key version, or another member.
- */
-export interface WrapSlot {
-  channelID: string;
-  keyVersion: number;
-  recipientID: string;
-}
 
 const WRAP_SIG_DOMAIN = utf8("chalk-wrap-sig.v1");
 
@@ -469,16 +531,6 @@ async function openBox(
   } catch {
     return null;
   }
-}
-
-function wrapV1(
-  spaceKey: Uint8Array,
-  recipientX25519Pub: Uint8Array,
-  channelID: string,
-  keyVersion: number,
-  recipientID: string,
-): Promise<Uint8Array> {
-  return sealBox(spaceKey, recipientX25519Pub, WRAP_SUITE_X25519_AESGCM, channelID, keyVersion, recipientID);
 }
 
 function unwrapV1(

@@ -12,8 +12,8 @@ import { strict as assert } from "node:assert";
 import { ChannelCrypto, type CryptoTransport, type ChannelCryptoIdentity, CURRENT_KEY_VERSION } from "./channel-crypto";
 import { deriveIdentityFromMnemonic } from "./identity";
 import { generateMnemonic } from "./bip39";
-import { clearSpaceKeys, loadSpaceKey } from "./idb";
-import { generateSpaceKey, wrapSpaceKey, wrapSpaceKeySigned, decryptMessage } from "./spacekey";
+import { clearSpaceKeys, clearVerification, loadSpaceKey } from "./idb";
+import { generateSpaceKey, wrapSpaceKeyUnsigned, wrapSpaceKeySigned, decryptMessage } from "./spacekey";
 
 // A fake server: channel_keys table + identity_keys table, speaking the same
 // frames as internal/server/ws.go. The "caller" identity is set per ChannelCrypto
@@ -90,6 +90,21 @@ async function makeUser(server: ReturnType<typeof makeServer>, userID: string) {
   return new ChannelCrypto(transport, identity, { keyWaitMs: 50 });
 }
 
+// A device with nothing remembered: no cached space keys AND no identity pins.
+//
+// Both halves are needed since 82-5, and the second is easy to forget. Every
+// test here derives FRESH identities but reuses the ids "alice"/"bob"/"carol",
+// while fake-indexeddb is one database for the whole process. Now that wraps
+// are signed, opening one pins its signer -- so a pin left by an earlier test
+// names a DIFFERENT key under the same id, which trust.ts correctly reads as a
+// substitution and refuses. Real devices have neither problem (user ids are
+// uuids, and each device has its own store), so this is fixture hygiene, not a
+// behaviour under test.
+async function freshDevice(): Promise<void> {
+  await clearSpaceKeys();
+  for (const id of ["alice", "bob", "carol"]) await clearVerification(id);
+}
+
 function bytesToBase64(b: Uint8Array): string {
   let s = ""; for (const x of b) s += String.fromCharCode(x); return btoa(s);
 }
@@ -104,7 +119,7 @@ function base64ToBytes(b64: string): Uint8Array {
 const CH = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
 test("creator bootstraps a keyless channel -> ready, and can encrypt", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
 
@@ -117,7 +132,7 @@ test("creator bootstraps a keyless channel -> ready, and can encrypt", async () 
 });
 
 test("non-creator on a keyless channel is blocked (waiting), never plaintext", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const bob = await makeUser(server, "bob");
   // channel created by alice; bob opens first, no key exists yet. Fail-closed:
@@ -129,7 +144,7 @@ test("non-creator on a keyless channel is blocked (waiting), never plaintext", a
 });
 
 test("end-to-end: Alice (creator) bootstraps + rewraps for Bob; Bob unwraps + decrypts", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   const bob = await makeUser(server, "bob");
@@ -147,7 +162,7 @@ test("end-to-end: Alice (creator) bootstraps + rewraps for Bob; Bob unwraps + de
 
   // Bob is a different browser: clear the shared test cache so he must
   // genuinely fetch + unwrap his own wrap (not read Alice's cached key).
-  await clearSpaceKeys();
+  await freshDevice();
 
   // Bob opens: Alice already wrapped the key for him, so he's ready.
   const bStatus = await bob.ensureChannelKey(CH, members, "alice");
@@ -160,7 +175,7 @@ test("end-to-end: Alice (creator) bootstraps + rewraps for Bob; Bob unwraps + de
 });
 
 test("waiting: encrypted channel, member opens before being wrapped for -> waiting, send blocked", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   // Carol exists but is NOT yet a member when Alice bootstraps, so Alice
@@ -171,7 +186,7 @@ test("waiting: encrypted channel, member opens before being wrapped for -> waiti
 
   // The idb space-key cache is per-browser; Alice and Carol are different
   // browsers, so clear the shared test cache to isolate Carol's view.
-  await clearSpaceKeys();
+  await freshDevice();
 
   // Carol is later added; she opens but Alice hasn't rewrapped for her yet.
   const cStatus = await carol.ensureChannelKey(CH, ["alice", "carol"], "alice");
@@ -181,7 +196,7 @@ test("waiting: encrypted channel, member opens before being wrapped for -> waiti
 });
 
 test("deferred decrypt: a message arriving before the key resolves once the key lands", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   const bob = await makeUser(server, "bob");
@@ -194,7 +209,7 @@ test("deferred decrypt: a message arriving before the key resolves once the key 
   const body = enc.kind === "encrypted" ? enc.body : "";
   const kv = enc.kind === "encrypted" ? enc.keyVersion : 0;
 
-  await clearSpaceKeys(); // Bob is a different browser
+  await freshDevice(); // Bob is a different browser
 
   // Bob starts decrypting BEFORE he has the key (channel not settled yet);
   // the decrypt should defer, not immediately placeholder.
@@ -207,7 +222,7 @@ test("deferred decrypt: a message arriving before the key resolves once the key 
 });
 
 test("settled keyless channel returns the placeholder promptly (no long wait)", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const bob = await makeUser(server, "bob");
   // Bob opens a keyless channel he didn't create -> settles as "waiting".
@@ -228,7 +243,7 @@ test("decryptForChannel blocks a null/0 keyVersion body (never shows plaintext)"
 });
 
 test("decryptForChannel returns a placeholder when the key isn't available", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const bob = await makeUser(server, "bob");
   // a key_version>=1 body but Bob holds no key for this channel
@@ -237,7 +252,7 @@ test("decryptForChannel returns a placeholder when the key isn't available", asy
 });
 
 test("idempotent open: ensureChannelKey twice stays ready and doesn't double-mint", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   await alice.ensureChannelKey(CH, ["alice"], "alice");
@@ -248,7 +263,7 @@ test("idempotent open: ensureChannelKey twice stays ready and doesn't double-min
 });
 
 test("keyRecipients reflects who has a wrap; reshareKey wraps the missing", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   const carol = await makeUser(server, "carol");
@@ -271,13 +286,13 @@ test("keyRecipients reflects who has a wrap; reshareKey wraps the missing", asyn
   assert.equal(recips.has("carol"), true);
 
   // And Carol can now actually unwrap + the key works end to end.
-  await clearSpaceKeys();
+  await freshDevice();
   const cStatus = await carol.ensureChannelKey(CH, members, "alice");
   assert.equal(cStatus, "ready");
 });
 
 test("reshareKey returns false when we don't hold the key", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const bob = await makeUser(server, "bob");
   // Bob never bootstrapped/received the key -> cannot re-share.
@@ -288,7 +303,7 @@ test("reshareKey returns false when we don't hold the key", async () => {
 // ---- phase 25: key rotation ----
 
 test("rotation: creator mints v2, both members encrypt/decrypt under it", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   const bob = await makeUser(server, "bob");
@@ -319,7 +334,7 @@ test("rotation: creator mints v2, both members encrypt/decrypt under it", async 
 // self-minted key is recorded as self-minted, not as something adopted from
 // the wire.
 test("rotation records self-minted provenance (it no longer bypasses remember)", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   const members = ["alice"];
@@ -344,8 +359,11 @@ test("rotation records self-minted provenance (it no longer bypasses remember)",
 // user's cached key and returns "ready" without ever fetching a wrap. Clearing
 // the cache between the two is what forces the wrap to actually be fetched and
 // opened -- without it, this test would pass while exercising nothing.
-test("a key adopted from the wire is recorded as unsigned, not self-minted", async () => {
-  await clearSpaceKeys();
+// 82-5 changed this test's answer, which is the point of the slice: the wrap
+// Alice's rewrap path really produces is signed, so what Bob records is WHO
+// gave him the key -- not "unsigned", as it was through 82-4.
+test("a key adopted from the wire records the member who signed it", async () => {
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   const bob = await makeUser(server, "bob");
@@ -353,15 +371,24 @@ test("a key adopted from the wire is recorded as unsigned, not self-minted", asy
 
   await alice.ensureChannelKey(CH, members, "alice"); // alice mints + rewraps for bob
   assert.deepEqual((await loadSpaceKey(CH, 1))!.provenance, { kind: "self_minted" });
+  assert.equal(
+    server.channelKeys.get(`${CH}:1:bob`)!.suite,
+    2,
+    "the rewrap path must publish a signed wrap, not a suite-1 one",
+  );
 
-  await clearSpaceKeys(); // bob is a different device: empty cache
+  await freshDevice(); // bob is a different device: empty cache, no pins
   const status = await bob.ensureChannelKey(CH, members, "alice");
   assert.equal(status, "ready", "bob must open alice's wrap, not read a shared cache");
-  assert.deepEqual((await loadSpaceKey(CH, 1))!.provenance, { kind: "unsigned" });
+  assert.deepEqual((await loadSpaceKey(CH, 1))!.provenance, {
+    kind: "signed",
+    signerUserID: "alice",
+    trust: "pinned", // first sight of Alice on this device -> TOFU
+  });
 });
 
 test("rotation: messages under the OLD version still decrypt after rotating", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   const bob = await makeUser(server, "bob");
@@ -382,7 +409,7 @@ test("rotation: messages under the OLD version still decrypt after rotating", as
 });
 
 test("rotation: a removed member has no wrap at the new version", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   await makeUser(server, "bob");
@@ -401,7 +428,7 @@ test("rotation: a removed member has no wrap at the new version", async () => {
 });
 
 test("rotation: rejects a non-forward version", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   await alice.ensureChannelKey(CH, ["alice"], "alice");
@@ -411,7 +438,7 @@ test("rotation: rejects a non-forward version", async () => {
 });
 
 test("setCurrentKeyVersion is monotonic (never moves backwards)", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   assert.equal(alice.currentVersion(CH), CURRENT_KEY_VERSION);
@@ -454,7 +481,7 @@ async function signedWrapFor(
 // rewrapForMissing. Injecting on the SECOND fetch_channel_key is what lands on
 // the read-back specifically (the first is the "do I already have one?" probe).
 test("hostile: a substituted READ-BACK during bootstrap is refused and not redistributed", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   const attacker = await deriveIdentityFromMnemonic(await generateMnemonic());
@@ -507,7 +534,7 @@ test("hostile: a substituted READ-BACK during bootstrap is refused and not redis
 });
 
 test("hostile: a substituted wrap found on the initial fetch is refused", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   const aliceID = await deriveIdentityFromMnemonic(await generateMnemonic()); // the attacker
@@ -542,7 +569,7 @@ test("hostile: a substituted wrap found on the initial fetch is refused", async 
 });
 
 test("hostile: a peer wrap signed by an unpinned identity is refused", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const bob = await makeUser(server, "bob");
   const stranger = await deriveIdentityFromMnemonic(await generateMnemonic());
@@ -566,7 +593,7 @@ test("hostile: a peer wrap signed by an unpinned identity is refused", async () 
 });
 
 test("a wrap signed by a genuine member IS accepted, and records who signed it", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   const bob = await makeUser(server, "bob");
@@ -592,7 +619,7 @@ test("a wrap signed by a genuine member IS accepted, and records who signed it",
   assert.equal(bytesToBase64(aliceSigner.ed25519Public), aliceIdent.e);
   server.channelKeys.set(`${CH}:1:bob`, { suite: wrap.suite, blobB64: bytesToBase64(wrap.blob) });
 
-  await clearSpaceKeys(); // bob is a different device
+  await freshDevice(); // bob is a different device
   const status = await bob.ensureChannelKey(CH, members, "alice");
   assert.equal(status, "ready");
 
@@ -605,7 +632,7 @@ test("a wrap signed by a genuine member IS accepted, and records who signed it",
 });
 
 test("warm does not reach for the network to resolve a signer", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   const bob = await makeUser(server, "bob");
@@ -626,7 +653,7 @@ test("warm does not reach for the network to resolve a signer", async () => {
 
   // Count identity fetches during the warm. Bob has never pinned Alice, so the
   // warm cannot resolve her -- and must accept that rather than go looking.
-  await clearSpaceKeys();
+  await freshDevice();
   let identityFetches = 0;
   const counting: CryptoTransport = {
     request: (type, payload) => {
@@ -653,7 +680,7 @@ test("warm does not reach for the network to resolve a signer", async () => {
 // a read-back carrying a DIFFERENT key than the one just minted did not come
 // from this user's other device doing the same thing, so it is refused.
 test("hostile: an UNSIGNED read-back carrying a different key is refused (C-01)", async () => {
-  await clearSpaceKeys();
+  await freshDevice();
   const server = makeServer();
   const alice = await makeUser(server, "alice");
   await makeUser(server, "bob"); // so alice has someone real to rewrap for
@@ -663,7 +690,11 @@ test("hostile: an UNSIGNED read-back carrying a different key is refused (C-01)"
   const serverKey = generateSpaceKey();
   // A plain suite-1 wrap. The server needs only Alice's PUBLIC key to make it,
   // and it opens perfectly under her private key.
-  const forged = await wrapSpaceKey(serverKey, alicePub, CH, 1, "alice");
+  const forged = await wrapSpaceKeyUnsigned(serverKey, alicePub, {
+    channelID: CH,
+    keyVersion: 1,
+    recipientID: "alice",
+  });
 
   const inner = (alice as unknown as { transport: CryptoTransport }).transport;
   let fetches = 0;
@@ -704,4 +735,158 @@ test("hostile: an UNSIGNED read-back carrying a different key is refused (C-01)"
   // And Bob was wrapped for -- with Alice's real key, not the server's.
   const bobRow = server.channelKeys.get(`${CH}:1:bob`);
   assert.notEqual(bobRow, undefined, "alice still distributes her own key");
+});
+
+// ---- 82-5: the two standing rules ---------------------------------------
+//
+// Both live in adopt(). They exist because signing wraps only helps while a
+// signature cannot be routed around, and there are two ways around one:
+// overwrite a slot that was already answered, or wait for a version whose slot
+// is empty and answer THAT one in the old, unsigned suite.
+
+test("never-replace: a second, different key for an answered slot is refused", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  const bob = await makeUser(server, "bob");
+  const members = ["alice", "bob"];
+
+  await alice.ensureChannelKey(CH, members, "alice"); // real key, wrapped for bob
+  const realKey = (await loadSpaceKey(CH, 1))!.key;
+
+  // A second wrap for the SAME slot carrying different key material, signed by
+  // Alice just as validly. Nothing about it is detectable as forged -- the only
+  // thing wrong with it is that the slot already has an answer.
+  const aliceSigner = (alice as unknown as { identity: ChannelCryptoIdentity }).identity;
+  const second = await signedWrapFor(
+    generateSpaceKey(),
+    base64ToBytes(server.identities.get("bob")!.x),
+    { channelID: CH, keyVersion: 1, recipientID: "bob" },
+    "alice",
+    aliceSigner,
+  );
+
+  await freshDevice(); // bob's device
+
+  // Two opens of one channel in flight -- a channel switch racing a
+  // key_available event. The second fetch is slow, so it lands after the first
+  // has adopted, which is how a filled slot comes to be offered a second answer.
+  const innerT = (bob as unknown as { transport: CryptoTransport }).transport;
+  let fetches = 0;
+  const racing: CryptoTransport = {
+    async request(type, payload) {
+      if (type === "fetch_channel_key" && ++fetches === 2) {
+        await new Promise((r) => setTimeout(r, 25));
+        return {
+          found: true, channel_id: CH, key_version: 1,
+          wrap_suite: second.suite, blob: bytesToBase64(second.blob),
+        } as never;
+      }
+      return innerT.request(type, payload);
+    },
+  };
+  const dev = new ChannelCrypto(
+    racing,
+    (bob as unknown as { identity: ChannelCryptoIdentity }).identity,
+    { keyWaitMs: 50 },
+  );
+
+  const [first, late] = await Promise.all([
+    dev.ensureChannelKey(CH, members, "alice"),
+    dev.ensureChannelKey(CH, members, "alice"),
+  ]);
+  assert.equal(first, "ready");
+  assert.equal(late, "waiting", "the late arrival must not be adopted over the held key");
+  assert.equal(
+    bytesToBase64((await loadSpaceKey(CH, 1))!.key),
+    bytesToBase64(realKey),
+    "the key the channel actually uses must be the one already agreed",
+  );
+});
+
+test("ratchet: once a channel has yielded a signed key, an unsigned one is refused", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  const bob = await makeUser(server, "bob");
+  const members = ["alice", "bob"];
+
+  await alice.ensureChannelKey(CH, members, "alice");
+  await freshDevice(); // bob's device
+  await bob.ensureChannelKey(CH, members, "alice");
+  assert.equal((await loadSpaceKey(CH, 1))!.provenance.kind, "signed");
+
+  // Alice "rotates". The server cannot sign as Alice, so it does the only thing
+  // left: answers the fresh v2 slot in suite 1, which 82-5 still accepts for
+  // channels that have never seen better.
+  const serverKey = generateSpaceKey();
+  const forged = await wrapSpaceKeyUnsigned(serverKey, base64ToBytes(server.identities.get("bob")!.x), {
+    channelID: CH,
+    keyVersion: 2,
+    recipientID: "bob",
+  });
+  server.channelKeys.set(`${CH}:2:bob`, { suite: forged.suite, blobB64: bytesToBase64(forged.blob) });
+
+  bob.setCurrentKeyVersion(CH, 2);
+  const status = await bob.ensureChannelKey(CH, members, "alice");
+  assert.equal(status, "waiting", "a downgrade to unsigned must not be accepted");
+  assert.equal(bob.hasKey(CH, 2), false);
+  assert.equal(await loadSpaceKey(CH, 2), null, "and must not be cached either");
+});
+
+test("ratchet: survives a reload -- it is read from the key cache, not memory", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const alice = await makeUser(server, "alice");
+  const bob = await makeUser(server, "bob");
+  const members = ["alice", "bob"];
+
+  await alice.ensureChannelKey(CH, members, "alice");
+  await freshDevice();
+  await bob.ensureChannelKey(CH, members, "alice"); // signed adoption at v1
+
+  const forged = await wrapSpaceKeyUnsigned(generateSpaceKey(), base64ToBytes(server.identities.get("bob")!.x), {
+    channelID: CH,
+    keyVersion: 2,
+    recipientID: "bob",
+  });
+  server.channelKeys.set(`${CH}:2:bob`, { suite: forged.suite, blobB64: bytesToBase64(forged.blob) });
+
+  // A new instance on the same device: nothing remembered in memory, so the
+  // only thing that can still say "this channel has been signed for" is the
+  // provenance persisted alongside the v1 key.
+  const reloaded = new ChannelCrypto(
+    (bob as unknown as { transport: CryptoTransport }).transport,
+    (bob as unknown as { identity: ChannelCryptoIdentity }).identity,
+    { keyWaitMs: 50 },
+  );
+  reloaded.setCurrentKeyVersion(CH, 2);
+  assert.equal(await reloaded.ensureChannelKey(CH, members, "alice"), "waiting");
+  assert.equal(await loadSpaceKey(CH, 2), null);
+});
+
+// The control the two tests above need: without it, "refuse every unsigned
+// wrap" would pass them both, and that is a different (82-6) rule which would
+// lock every existing channel out of its own key.
+test("ratchet: a channel that has only ever been unsigned still accepts unsigned", async () => {
+  await freshDevice();
+  const server = makeServer();
+  await makeUser(server, "alice"); // published so the rewrap sweep has a real peer
+  const bob = await makeUser(server, "bob");
+  const members = ["alice", "bob"];
+
+  const bobPub = base64ToBytes(server.identities.get("bob")!.x);
+  const legacyKey = generateSpaceKey();
+  for (const v of [1, 2]) {
+    const w = await wrapSpaceKeyUnsigned(legacyKey, bobPub, { channelID: CH, keyVersion: v, recipientID: "bob" });
+    server.channelKeys.set(`${CH}:${v}:bob`, { suite: w.suite, blobB64: bytesToBase64(w.blob) });
+  }
+
+  await freshDevice();
+  assert.equal(await bob.ensureChannelKey(CH, members, "alice"), "ready");
+  assert.equal((await loadSpaceKey(CH, 1))!.provenance.kind, "unsigned");
+
+  bob.setCurrentKeyVersion(CH, 2);
+  assert.equal(await bob.ensureChannelKey(CH, members, "alice"), "ready");
+  assert.equal((await loadSpaceKey(CH, 2))!.provenance.kind, "unsigned");
 });

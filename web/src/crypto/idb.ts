@@ -213,10 +213,10 @@ export async function clearIdentity(userID: string): Promise<void> {
  * KeyProvenance records HOW a held space key came to be trusted (82-3).
  *
  * Persisting it, rather than keeping it in memory, is what lets a device
- * enforce two rules across reloads: a slot that has ever held a signed key
- * never accepts an unsigned one again, and an adopted slot is never quietly
- * replaced. Without it the soft-acceptance window would be a permanent hole
- * rather than something that ratchets shut.
+ * enforce the two 82-5 rules across reloads: a CHANNEL that has ever yielded a
+ * signed key never accepts an unsigned one again, and an answered slot is never
+ * quietly replaced. Without it the soft-acceptance window would be a permanent
+ * hole rather than something that ratchets shut.
  *
  *   self_minted   we generated it (bootstrap or rotation) -- nothing to trust
  *   signed        opened from a suite-2 wrap signed by a key we trust
@@ -295,6 +295,35 @@ export async function loadSpaceKey(channelID: string, keyVersion: number): Promi
   }
   if (!rec || !(rec.key instanceof Uint8Array) || rec.key.length !== 32) return null;
   return { key: rec.key, provenance: rec.provenance ?? { kind: "legacy_cache" } };
+}
+
+/**
+ * channelHasSignedKey reports whether ANY key version cached for this channel
+ * was adopted from a wrap whose signature verified.
+ *
+ * This is the durable half of the 82-5 downgrade ratchet: once a channel has
+ * produced one signed wrap, an unsigned one for it is a downgrade, and a rule
+ * that forgot this on reload would be no rule at all.
+ *
+ * Reads by primary-key PREFIX rather than through an index -- records are keyed
+ * "channelID:keyVersion" and a channel id is a uuid, so it contains no ':' and
+ * the range is exact. That keeps DB_VERSION where it is, and with it the
+ * upgrade-blocked-tab hazard that an index would have reintroduced.
+ */
+export async function channelHasSignedKey(channelID: string): Promise<boolean> {
+  const db = await openDB();
+  let recs: SpaceKeyRecord[];
+  try {
+    recs = await tx<SpaceKeyRecord[]>(
+      db,
+      "readonly",
+      (s) => s.getAll(IDBKeyRange.bound(`${channelID}:`, `${channelID}:\uffff`)),
+      SPACE_KEY_STORE,
+    );
+  } finally {
+    db.close();
+  }
+  return (recs ?? []).some((r) => r.provenance?.kind === "signed");
 }
 
 /** clearSpaceKeys removes every cached space key (e.g. on logout-and-forget). */

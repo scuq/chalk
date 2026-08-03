@@ -33,6 +33,14 @@ The engineering-level history (which slice shipped what) lives in
   for everyone. Normal use stays well inside the limit.
 - A signed-in session now expires at most 90 days after you signed in, no
   matter how actively it is used. Signing in again is all it takes.
+- The key that encrypts a conversation now carries a signature from the person
+  who handed it to you, and your app checks it. Before, it could only tell that
+  a key had been sealed for you — not who sealed it, which meant a server that
+  had been tampered with could have slipped in a key it could read. Once a
+  conversation has received one signed key, your app will not accept an
+  unsigned one for it again. The lock in the channel header shows this under
+  "wrap signature". Existing conversations keep working and pick this up as
+  their keys are next shared.
 
 ### Added
 - **Temporary voice rooms with guest links.** A voice channel can now be

@@ -60,12 +60,28 @@ Three properties together guarantee lossless migration.
 Adding a suite later = add a constant, a `case`, and a `v_` implementation.
 No format change, no migration of existing data required to *read* it.
 
-## Suite 1 (today)
+## The registered suites
 
 - `WRAP_SUITE_X25519_AESGCM = 1`: ephemeral-static sealed box —
   X25519 ECDH → HKDF-SHA256 → AES-256-GCM. Blob =
   `ephemeralPub(32) || nonce(12) || wrapped(48)`.
-- `MSG_SUITE_AESGCM = 1`: AES-256-GCM.
+- `WRAP_SUITE_X25519_AESGCM_ED25519 = 2` **(current since 82-5)**: suite 1
+  plus the wrapper's Ed25519 identity signature over the sealed bytes and the
+  slot. Blob = `<suite-1 blob>(92) || signerEd25519Pub(32) || sig(64)` = 188,
+  so the leading 92 bytes are a byte-identical suite-1 sealed box and the
+  primitive is shared rather than restated. The signed message is
+  `chalk-wrap-sig.v1` (see `docs/PHASE-82-SIGNEDWRAP.md`).
+
+  This is the worked example of the contract above: the signature went in the
+  opaque blob, so suite 2 needed no migration, no wire change and no server
+  change — and a fixed `wrap_sig` column would have been the wrong shape the
+  moment a suite authenticates differently anyway.
+- `MSG_SUITE_AESGCM = 1`: AES-256-GCM (current).
+
+Suite 1 is still *produced* in exactly one place, `wrapSpaceKeyUnsigned`, for
+the guest-invite mint: a guest's browser has no identity to anchor a signature
+against until phase 82-7. It is named for what it gives up so that it cannot
+be reached for by accident.
 
 AADs bind the suite + slot so nothing can be relocated/reinterpreted by the
 (untrusted) server:

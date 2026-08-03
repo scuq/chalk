@@ -14,7 +14,7 @@ import {
   bytesToBase64url,
   GUEST_SECRET_BYTES,
 } from "./guest-link";
-import { generateSpaceKey, wrapSpaceKey, unwrapSpaceKey } from "./spacekey";
+import { generateSpaceKey, wrapSpaceKeyUnsigned, unwrapSpaceKey } from "./spacekey";
 import { verifyIdentitySelfSig } from "./identity";
 
 const SECRET_A = new Uint8Array(32).map((_, i) => i);
@@ -55,7 +55,7 @@ test("a creator-made wrap opens with the guest-derived key", async () => {
   const spaceKey = generateSpaceKey();
   const channelID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
   const guestID = "33333333-3333-3333-3333-333333333333";
-  const wrap = await wrapSpaceKey(spaceKey, creatorSide.identity.x25519Public, channelID, 1, guestID);
+  const wrap = await wrapSpaceKeyUnsigned(spaceKey, creatorSide.identity.x25519Public, { channelID, keyVersion: 1, recipientID: guestID });
 
   // Guest side: re-derive from the fragment alone and unwrap.
   const guestSide = await deriveGuestLink(new Uint8Array(SECRET_A));

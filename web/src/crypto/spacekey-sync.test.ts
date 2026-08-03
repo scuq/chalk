@@ -16,7 +16,7 @@ import {
   fetchChannelKeyRecipients,
   type ChannelKeyTransport,
 } from "./spacekey-sync";
-import { generateSpaceKey, wrapSpaceKey, unwrapSpaceKey, type WrappedKey } from "./spacekey";
+import { generateSpaceKey, wrapSpaceKeyUnsigned, unwrapSpaceKey, type WrappedKey } from "./spacekey";
 import { saveSpaceKey, loadSpaceKey, clearSpaceKeys } from "./idb";
 
 function bytesToHex(b: Uint8Array): string {
@@ -69,7 +69,7 @@ test("publish then fetch round-trips a wrap through the transport, unwraps corre
   const { ws } = makeFakeServer();
   const sk = generateSpaceKey();
   const me = await makeRecipient();
-  const wrap = await wrapSpaceKey(sk, me.pub, CH, VER, "me");
+  const wrap = await wrapSpaceKeyUnsigned(sk, me.pub, { channelID: CH, keyVersion: VER, recipientID: "me" });
 
   await publishChannelKey(ws, CH, VER, "me", wrap);
   const got = await fetchChannelKey(ws, CH, VER);
@@ -103,8 +103,8 @@ test("fetchChannelKeyRecipients lists who has a wrap; diff finds who's missing",
   const sk = generateSpaceKey();
   const me = await makeRecipient();
   const bob = await makeRecipient();
-  await publishChannelKey(ws, CH, VER, "me", await wrapSpaceKey(sk, me.pub, CH, VER, "me"));
-  await publishChannelKey(ws, CH, VER, "bob", await wrapSpaceKey(sk, bob.pub, CH, VER, "bob"));
+  await publishChannelKey(ws, CH, VER, "me", await wrapSpaceKeyUnsigned(sk, me.pub, { channelID: CH, keyVersion: VER, recipientID: "me" }));
+  await publishChannelKey(ws, CH, VER, "bob", await wrapSpaceKeyUnsigned(sk, bob.pub, { channelID: CH, keyVersion: VER, recipientID: "bob" }));
 
   const have = await fetchChannelKeyRecipients(ws, CH, VER);
   assert.deepEqual(new Set(have), new Set(["me", "bob"]));
