@@ -108,6 +108,9 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
   // Populated by the reset; the phrase is shown once and never again.
   const [newWords, setNewWords] = useState<string[]>([]);
   const [userID, setUserID] = useState("");
+  // 81-2: the new password's proof, carried from the reset to the TOTP
+  // re-enrollment that follows it in this same screen's flow.
+  const [resetProof, setResetProof] = useState("");
 
   // TOTP re-enrollment (step 3).
   const [provisioningURI, setProvisioningURI] = useState("");
@@ -138,10 +141,11 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
     try {
       const salt = newAuthSalt();
       const { authProof, kek } = await deriveAuth(newPw, { ...DEFAULT_KDF, salt });
+      const authProofB64 = toB64(authProof);
       const result = await resetAuthViaRecovery({
         username: username.trim().toLowerCase(),
         words,
-        auth_proof_b64: toB64(authProof),
+        auth_proof_b64: authProofB64,
         salt_b64: toB64(salt),
         kdf_alg: DEFAULT_KDF.alg,
         kdf_mem_kib: DEFAULT_KDF.memKiB,
@@ -153,6 +157,10 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
       // The password is live now; hold the KEK for the seed-wrap re-upload at
       // the identity gate. Clear the credentials we no longer need.
       setKEK(kek);
+      // 81-2: the TOTP re-enrollment two screens on is step-up gated. The
+      // password is live as of this call, so keep its proof for that hop
+      // rather than asking the user to retype what they just set.
+      setResetProof(authProofB64);
       setPhrase("");
       setNewPw("");
       setConfirmPw("");
@@ -186,7 +194,7 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
     setErr("");
     setBusy(true);
     try {
-      const res = await totpEnroll();
+      const res = await totpEnroll({ auth_proof_b64: resetProof });
       setProvisioningURI(res.provisioning_uri);
       setSecretB32(res.secret_b32);
     } catch (e) {

@@ -6,6 +6,7 @@
 //   POST /api/auth/totp/confirm      promote the staged secret (live code)
 
 import { SignupApiError } from "../auth/signup-v2-api";
+import type { StepUpProof } from "./stepup";
 
 async function parse<T>(resp: Response): Promise<T> {
   let body: unknown = null;
@@ -49,10 +50,17 @@ export interface TOTPEnrollResult {
   secret_b32: string;
 }
 
-export async function totpEnroll(): Promise<TOTPEnrollResult> {
+// totpEnroll stages a fresh secret. 81-2: REPLACING a confirmed
+// authenticator takes a step-up proof; initial enrollment (no confirmed
+// secret yet) passes the password alone, and the migration wizard has
+// neither, so the proof is optional here and the server decides.
+export async function totpEnroll(stepUp?: StepUpProof): Promise<TOTPEnrollResult> {
   const resp = await fetch("/api/auth/totp/enroll", {
     method: "POST",
     credentials: "same-origin",
+    ...(stepUp
+      ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(stepUp) }
+      : {}),
   });
   return parse<TOTPEnrollResult>(resp);
 }

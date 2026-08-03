@@ -7964,6 +7964,18 @@ body.chalk-resizing .chalk-sidebar-resizer {
   font-size: var(--chalk-size-small);
 }
 
+/* 81-2: the confirm-it's-you form. Set apart from the section around it so
+   it reads as a gate rather than as more of the same settings. */
+.chalk-stepup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s3);
+  background: var(--chalk-bg-elev);
+}
+
 .chalk-auth-input {
   display: block;
   width: 100%;

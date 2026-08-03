@@ -8,28 +8,38 @@
 // The add-passkey endpoints (md-4-1) are session-gated, and the recovery
 // ceremony already set the chalk_session cookie, so the ceremony works
 // here before the WS opens. Reuses the md-4-2 client primitives.
+//
+// 81-2: enrolling a credential is step-up gated, so the offer now opens on a
+// confirm-it's-you form. The user set that password moments ago on the reset
+// screen; their authenticator is enrolled by the time they reach this screen
+// either way, so a live code is needed regardless and there is nothing worth
+// carrying over from the previous step.
 
 import { useState } from "preact/hooks";
 
 import { addPasskeyBegin, addPasskeyFinish, ApiError } from "./api";
+import type { StepUpProof } from "./stepup";
+import { StepUpPrompt } from "../components/StepUpPrompt";
 import { performRegistration, WebAuthnError } from "../webauthn";
 
 interface Props {
+  // The account's username, for the prelogin the step-up proof needs.
+  username: string;
   // Signaled when the user has either enrolled a passkey or chosen to
   // skip; the reducer then flips authStage to "authed".
   onDone: () => void;
 }
 
-export function AddPasskeyAfterRecoveryScreen({ onDone }: Props) {
-  const [phase, setPhase] = useState<"offer" | "running" | "added">("offer");
+export function AddPasskeyAfterRecoveryScreen({ username, onDone }: Props) {
+  const [phase, setPhase] = useState<"offer" | "confirm" | "running" | "added">("offer");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
 
-  const onAdd = async () => {
+  const onAdd = async (stepUp: StepUpProof) => {
     setError("");
     setPhase("running");
     try {
-      const options = await addPasskeyBegin();
+      const options = await addPasskeyBegin(stepUp);
       const att = await performRegistration(options);
       await addPasskeyFinish(att, name.trim());
       setPhase("added");
@@ -52,7 +62,7 @@ export function AddPasskeyAfterRecoveryScreen({ onDone }: Props) {
         console.error("add passkey after recovery failed:", e);
         setError("couldn't add a passkey; see browser console.");
       }
-      setPhase("offer");
+      setPhase("confirm");
     }
   };
 
@@ -111,14 +121,24 @@ export function AddPasskeyAfterRecoveryScreen({ onDone }: Props) {
             data-testid="recovery-passkey-name"
           />
         </div>
-        <button
-          class="chalk-button chalk-button--primary"
-          onClick={onAdd}
-          disabled={phase === "running"}
-          data-testid="recovery-passkey-add"
-        >
-          {phase === "running" ? "follow your browser's prompt…" : "add a passkey to this device"}
-        </button>
+        {phase === "offer" ? (
+          <button
+            class="chalk-button chalk-button--primary"
+            onClick={() => { setError(""); setPhase("confirm"); }}
+            data-testid="recovery-passkey-add"
+          >
+            add a passkey to this device
+          </button>
+        ) : (
+          <StepUpPrompt
+            username={username}
+            action="add a passkey"
+            busy={phase === "running"}
+            onConfirm={onAdd}
+            onCancel={() => setPhase("offer")}
+            testid="recovery-passkey-stepup"
+          />
+        )}
         <button
           class="chalk-button chalk-button--secondary"
           onClick={onDone}

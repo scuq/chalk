@@ -39,6 +39,8 @@ import { cleanEnteredPhrase } from "../crypto/identity-setup";
 import { prelogin, fetchSeedWraps } from "../auth/login-v2-api";
 import { putSeedWrap, SignupApiError } from "../auth/signup-v2-api";
 import { changePassword, totpEnroll, totpConfirm } from "../auth/security-api";
+import type { StepUpProof } from "../auth/stepup";
+import { StepUpPrompt } from "./StepUpPrompt";
 
 interface Props {
   username: string;
@@ -177,11 +179,13 @@ export function SecurityPanel({ username }: Props) {
 
   // ---- totp reset ---------------------------------------------------------
 
-  const onStartTOTPReset = async () => {
+  // 81-2: replacing a confirmed authenticator is step-up gated, so the reset
+  // opens on a proof form instead of staging a secret straight away.
+  const onStartTOTPReset = async (stepUp: StepUpProof) => {
     setErr("");
     setBusy(true);
     try {
-      const res = await totpEnroll();
+      const res = await totpEnroll(stepUp);
       setProvisioningURI(res.provisioning_uri);
       setSecretB32(res.secret_b32);
       setCode("");
@@ -257,7 +261,7 @@ export function SecurityPanel({ username }: Props) {
             change password
           </button>
           {" · "}
-          <button class="chalk-auth-link" type="button" onClick={() => { open("totp"); void onStartTOTPReset(); }}>
+          <button class="chalk-auth-link" type="button" onClick={() => open("totp")}>
             reset two-factor
           </button>
           {" · "}
@@ -315,7 +319,18 @@ export function SecurityPanel({ username }: Props) {
         </div>
       )}
 
-      {view === "totp" && (
+      {view === "totp" && !secretB32 && (
+        <StepUpPrompt
+          username={username}
+          action="replace your authenticator"
+          busy={busy}
+          onConfirm={onStartTOTPReset}
+          onCancel={() => open("idle")}
+          testid="security-totp-stepup"
+        />
+      )}
+
+      {view === "totp" && secretB32 && (
         <div data-testid="security-totp">
           <p class="chalk-auth-subtitle">
             Scan the new code with your authenticator, then confirm with one

@@ -138,7 +138,23 @@ func (d *HTTPDeps) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleTOTPEnroll stages a fresh (inactive) TOTP secret for the session user.
+//
+// 81-2: REPLACING a confirmed authenticator takes the current password plus a
+// live code from the old one. Initial enrollment (no confirmed secret yet --
+// the migration wizard, or re-enrollment after a recovery reset cleared TOTP)
+// passes straight through; requireStepUp makes that distinction.
 func (d *HTTPDeps) handleTOTPEnroll(w http.ResponseWriter, r *http.Request, su *SessionUser) {
+	var stepUp stepUpFields
+	if r.ContentLength > 0 {
+		if err := decodeJSON(r, &stepUp); err != nil {
+			writeError(w, http.StatusBadRequest, "bad_json", err.Error())
+			return
+		}
+	}
+	if !d.requireStepUp(w, r, "totp/enroll", su.UserID, stepUp) {
+		return
+	}
+
 	secret, err := GenerateTOTPSecret()
 	if err != nil {
 		d.Logger.Printf("totp/enroll: generate: %v", err)

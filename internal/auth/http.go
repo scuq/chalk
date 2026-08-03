@@ -150,6 +150,11 @@ type HTTPDeps struct {
 	LinkPreviewDomains []string
 	linkPreviewLimiter *ratelimit.RateLimiter
 
+	// 81-4: per-IP budgets for the anonymous auth surface. Built lazily in
+	// MountRegistration; see anon_limit.go.
+	anonLimiter     *ratelimit.RateLimiter
+	recoveryLimiter *ratelimit.RateLimiter
+
 	// 31-2: pending-2FA token cache bridging the password/passkey first
 	// factor to the mandatory TOTP step. Lazily defaulted in
 	// MountRegistration when nil, so existing wiring and tests need no
@@ -204,16 +209,20 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	if d.Logger == nil {
 		d.Logger = log.Default()
 	}
-	mux.HandleFunc("POST /api/auth/register/begin", d.handleRegisterBegin)
-	mux.HandleFunc("POST /api/auth/register/finish", d.handleRegisterFinish)
+	// 81-4: everything reachable without a session goes through a per-IP
+	// budget (anon_limit.go). Session-gated routes are left alone -- the
+	// session itself is the bound there.
+	d.initAnonLimiters()
+	mux.HandleFunc("POST /api/auth/register/begin", d.limitAnon(d.handleRegisterBegin))
+	mux.HandleFunc("POST /api/auth/register/finish", d.limitAnon(d.handleRegisterFinish))
 	mux.HandleFunc("GET /api/auth/config", d.handleConfig)
 	// Sub-step 5: login + identity + logout endpoints.
-	mux.HandleFunc("POST /api/auth/authenticate/begin", d.handleAuthenticateBegin)
-	mux.HandleFunc("POST /api/auth/authenticate/finish", d.handleAuthenticateFinish)
+	mux.HandleFunc("POST /api/auth/authenticate/begin", d.limitAnon(d.handleAuthenticateBegin))
+	mux.HandleFunc("POST /api/auth/authenticate/finish", d.limitAnon(d.handleAuthenticateFinish))
 	mux.HandleFunc("POST /api/auth/logout", d.handleLogout)
 	mux.HandleFunc("GET /api/auth/me", d.handleMe)
 	// Sub-step 6: recovery login + forced regenerate.
-	mux.HandleFunc("POST /api/auth/recovery", d.handleRecovery)
+	mux.HandleFunc("POST /api/auth/recovery", d.limitRecovery(d.handleRecovery))
 	mux.HandleFunc("POST /api/auth/recovery/regenerate", d.handleRecoveryRegenerate)
 	// 31-2: password login (first factor) + prelogin KDF-params fetch.
 	// TOTP (31-3) is mandatory; login/password issues only a totp_pending
@@ -221,23 +230,23 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	if d.PendingTOTP == nil {
 		d.PendingTOTP = NewPendingTOTPCache(0)
 	}
-	mux.HandleFunc("POST /api/auth/login/prelogin", d.handlePrelogin)
-	mux.HandleFunc("POST /api/auth/login/password", d.handleLoginPassword)
+	mux.HandleFunc("POST /api/auth/login/prelogin", d.limitAnon(d.handlePrelogin))
+	mux.HandleFunc("POST /api/auth/login/password", d.limitAnon(d.handleLoginPassword))
 	// 31-3: TOTP second factor (mints the session) + session-gated
 	// enroll/confirm.
-	mux.HandleFunc("POST /api/auth/login/totp", d.handleLoginTOTP)
+	mux.HandleFunc("POST /api/auth/login/totp", d.limitAnon(d.handleLoginTOTP))
 	mux.HandleFunc("POST /api/auth/totp/enroll", RequireSession(d.Store, d.handleTOTPEnroll))
 	mux.HandleFunc("POST /api/auth/totp/confirm", RequireSession(d.Store, d.handleTOTPConfirm))
 	// 31-4: password change (session) + recovery-gated auth reset.
 	mux.HandleFunc("POST /api/auth/password/change", RequireSession(d.Store, d.handleChangePassword))
-	mux.HandleFunc("POST /api/auth/recovery/reset-auth", d.handleRecoveryResetAuth)
+	mux.HandleFunc("POST /api/auth/recovery/reset-auth", d.limitRecovery(d.handleRecoveryResetAuth))
 	// 31-6a: v2 signup (password+TOTP first; passkey optional later) +
 	// password-wrapped encryption-entropy upload/fetch.
 	if d.SignupV2 == nil {
 		d.SignupV2 = NewSignupV2Cache()
 	}
-	mux.HandleFunc("POST /api/auth/register/v2/begin", d.handleSignupV2Begin)
-	mux.HandleFunc("POST /api/auth/register/v2/finish", d.handleSignupV2Finish)
+	mux.HandleFunc("POST /api/auth/register/v2/begin", d.limitAnon(d.handleSignupV2Begin))
+	mux.HandleFunc("POST /api/auth/register/v2/finish", d.limitAnon(d.handleSignupV2Finish))
 	// 31-11: does this ?admin_token= URL still claim anything, and for
 	// which username? Lets the SPA open the wizard prefilled.
 	mux.HandleFunc("POST /api/auth/admin-claim/probe", d.handleAdminClaimProbe)
@@ -496,11 +505,15 @@ func (d *HTTPDeps) handleRegisterBegin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d.Cache.Put(sess.Challenge, CeremonyEntry{
+	if !d.Cache.Put(sess.Challenge, CeremonyEntry{
 		Kind:        KindRegistration,
 		Session:     *sess,
 		PendingUser: pending,
-	})
+	}) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited",
+			"too many attempts; try again in a minute")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, registerBeginResponse{Options: options})
 }
@@ -810,7 +823,7 @@ func (d *HTTPDeps) handleAuthenticateBegin(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Stash the pending user (existing UUID, not a fresh one).
-	d.Cache.Put(sess.Challenge, CeremonyEntry{
+	if !d.Cache.Put(sess.Challenge, CeremonyEntry{
 		Kind:    KindLogin,
 		Session: *sess,
 		PendingUser: PendingUser{
@@ -819,7 +832,11 @@ func (d *HTTPDeps) handleAuthenticateBegin(w http.ResponseWriter, r *http.Reques
 			DisplayName: user.DisplayName,
 			Email:       user.Email,
 		},
-	})
+	}) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited",
+			"too many attempts; try again in a minute")
+		return
+	}
 	writeJSON(w, http.StatusOK, authBeginResponse{Options: options})
 }
 
@@ -1399,12 +1416,31 @@ type regenerateResponse struct {
 // for that). For 09b-6 it's primarily driven by the post-recovery
 // forced-regenerate step.
 //
+// 81-2: the session alone is not enough. Replacing the phrase invalidates
+// the owner's copy, so it takes the current password plus a live code --
+// see stepup.go for why.
+//
 // Error codes:
+//   - invalid_credentials / totp_required / invalid_totp → step-up failed
 //   - gen_failed     → CSPRNG failure
 //   - hash_failed    → argon2id failure
 //   - persist_failed → DB write failed
 func (d *HTTPDeps) handleRecoveryRegenerate(w http.ResponseWriter, r *http.Request) {
 	RequireSession(d.Store, func(w http.ResponseWriter, r *http.Request, su *SessionUser) {
+		var req stepUpFields
+		// The body is optional only for accounts with nothing to prove;
+		// requireStepUp makes that call, so an absent body decodes to zero
+		// values rather than failing here.
+		if r.ContentLength > 0 {
+			if err := decodeJSON(r, &req); err != nil {
+				writeError(w, http.StatusBadRequest, "bad_json", err.Error())
+				return
+			}
+		}
+		if !d.requireStepUp(w, r, "recovery/regenerate", su.UserID, req) {
+			return
+		}
+
 		words, err := GenerateRecoveryWords()
 		if err != nil {
 			d.Logger.Printf("recovery/regenerate: GenerateRecoveryWords: %v", err)

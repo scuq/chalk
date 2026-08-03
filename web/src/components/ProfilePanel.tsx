@@ -56,6 +56,8 @@ import {
   type SystemIdlePermission,
 } from "../presence/system-idle";
 import { SecurityPanel } from "./SecurityPanel"; // 31-8
+import { StepUpPrompt } from "./StepUpPrompt"; // 81-2
+import type { StepUpProof } from "../auth/stepup";
 import { VersionLink } from "./VersionLink"; // 39-1
 import { performRegistration, WebAuthnError } from "../webauthn";
 import { RecoveryScreen } from "../auth/RecoveryScreen";
@@ -219,9 +221,14 @@ export function ProfilePanel({
 
   // Local UI state: are we in the rotate-recovery sub-view?
   // Local because no other component cares.
-  const [rotateView, setRotateView] = useState<"idle" | "loading" | "showing" | "error">("idle");
+  const [rotateView, setRotateView] = useState<"idle" | "confirm" | "loading" | "showing" | "error">("idle");
   const [rotatedWords, setRotatedWords] = useState<string[] | null>(null);
   const [rotateError, setRotateError] = useState<string>("");
+  // 81-2: the passkey actions are step-up gated too. `pendingPasskey` names
+  // what the confirmation, once given, should go on to do.
+  const [pendingPasskey, setPendingPasskey] = useState<
+    { kind: "add" } | { kind: "delete"; id: string } | null
+  >(null);
   // att-2: transient "cleared" confirmation for the image cache control.
   const [imageCacheCleared, setImageCacheCleared] = useState(false);
 
@@ -299,11 +306,12 @@ export function ProfilePanel({
     };
   }, []);
 
-  const onAddPasskey = async () => {
+  const onAddPasskey = async (stepUp: StepUpProof) => {
     setAddError("");
     setAddState("running");
+    setPendingPasskey(null);
     try {
-      const options = await addPasskeyBegin();
+      const options = await addPasskeyBegin(stepUp);
       const att = await performRegistration(options);
       const created = await addPasskeyFinish(att, newPasskeyName.trim());
       setPasskeys((prev) => (prev ? [...prev, created] : [created]));
@@ -328,11 +336,12 @@ export function ProfilePanel({
     }
   };
 
-  const onDeletePasskey = async (id: string) => {
+  const onDeletePasskey = async (id: string, stepUp: StepUpProof) => {
     setDeleteError("");
     setDeletingId(id);
+    setPendingPasskey(null);
     try {
-      await deletePasskey(id);
+      await deletePasskey(id, stepUp);
       setPasskeys((prev) => (prev ? prev.filter((p) => p.id !== id) : prev));
       setConfirmDeleteId(null);
     } catch (e) {
@@ -359,11 +368,11 @@ export function ProfilePanel({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose, rotateView]);
 
-  const startRotate = async () => {
+  const startRotate = async (stepUp: StepUpProof) => {
     setRotateView("loading");
     setRotateError("");
     try {
-      const words = await regenerateRecovery();
+      const words = await regenerateRecovery(stepUp);
       if (words.length !== 24) {
         setRotateView("error");
         setRotateError(`server returned ${words.length} words; expected 24`);
@@ -1500,15 +1509,25 @@ export function ProfilePanel({
                   {rotateError}
                 </div>
               )}
-              <button
-                type="button"
-                class="chalk-button chalk-button--secondary"
-                onClick={startRotate}
-                disabled={rotateView === "loading"}
-                data-testid="profile-rotate-button"
-              >
-                {rotateView === "loading" ? "rotating..." : "rotate recovery code"}
-              </button>
+              {rotateView === "confirm" ? (
+                <StepUpPrompt
+                  username={me.username}
+                  action="rotate your recovery phrase"
+                  onConfirm={startRotate}
+                  onCancel={() => setRotateView("idle")}
+                  testid="profile-rotate-stepup"
+                />
+              ) : (
+                <button
+                  type="button"
+                  class="chalk-button chalk-button--secondary"
+                  onClick={() => { setRotateError(""); setRotateView("confirm"); }}
+                  disabled={rotateView === "loading"}
+                  data-testid="profile-rotate-button"
+                >
+                  {rotateView === "loading" ? "rotating..." : "rotate recovery code"}
+                </button>
+              )}
             </section>
           )}
 
@@ -1550,26 +1569,16 @@ export function ProfilePanel({
                       </div>
                       {passkeys.length > 1 && (
                         confirmDeleteId === pk.id ? (
-                          <div style={{ display: "flex", gap: "0.35rem", flexShrink: 0 }}>
-                            <button
-                              type="button"
-                              class="chalk-button chalk-button--danger"
-                              onClick={() => onDeletePasskey(pk.id)}
-                              disabled={deletingId === pk.id}
-                              data-testid={`passkey-confirm-delete-${pk.id}`}
-                            >
-                              {deletingId === pk.id ? "removing…" : "confirm"}
-                            </button>
-                            <button
-                              type="button"
-                              class="chalk-button chalk-button--secondary"
-                              onClick={() => setConfirmDeleteId(null)}
-                              disabled={deletingId === pk.id}
-                              data-testid={`passkey-cancel-delete-${pk.id}`}
-                            >
-                              cancel
-                            </button>
-                          </div>
+                          // 81-2: removing a sign-in credential is step-up
+                          // gated, so the confirmation IS the proof form.
+                          <StepUpPrompt
+                            username={me.username}
+                            action="remove this passkey"
+                            busy={deletingId === pk.id}
+                            onConfirm={(proof) => onDeletePasskey(pk.id, proof)}
+                            onCancel={() => setConfirmDeleteId(null)}
+                            testid={`passkey-delete-stepup-${pk.id}`}
+                          />
                         ) : (
                           <button
                             type="button"
@@ -1610,15 +1619,26 @@ export function ProfilePanel({
                   data-testid="new-passkey-name"
                 />
               </div>
-              <button
-                type="button"
-                class="chalk-button chalk-button--secondary"
-                onClick={onAddPasskey}
-                disabled={addState === "running"}
-                data-testid="add-passkey-button"
-              >
-                {addState === "running" ? "follow your browser's prompt…" : "add a passkey to this device"}
-              </button>
+              {pendingPasskey?.kind === "add" ? (
+                <StepUpPrompt
+                  username={me.username}
+                  action="add a passkey"
+                  busy={addState === "running"}
+                  onConfirm={onAddPasskey}
+                  onCancel={() => setPendingPasskey(null)}
+                  testid="add-passkey-stepup"
+                />
+              ) : (
+                <button
+                  type="button"
+                  class="chalk-button chalk-button--secondary"
+                  onClick={() => { setAddError(""); setPendingPasskey({ kind: "add" }); }}
+                  disabled={addState === "running"}
+                  data-testid="add-passkey-button"
+                >
+                  {addState === "running" ? "follow your browser's prompt…" : "add a passkey to this device"}
+                </button>
+              )}
             </section>
           )}
 

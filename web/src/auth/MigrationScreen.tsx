@@ -77,15 +77,19 @@ export function MigrationScreen({ onDone }: Props) {
     try {
       const salt = newAuthSalt();
       const { authProof } = await deriveAuth(password, { ...DEFAULT_KDF, salt });
+      const authProofB64 = toB64(authProof);
       await migrationPassword({
-        auth_proof_b64: toB64(authProof),
+        auth_proof_b64: authProofB64,
         salt_b64: toB64(salt),
         kdf_alg: DEFAULT_KDF.alg,
         kdf_mem_kib: DEFAULT_KDF.memKiB,
         kdf_iters: DEFAULT_KDF.iters,
         kdf_par: DEFAULT_KDF.par,
       });
-      const res = await totpEnroll();
+      // 81-2: enroll is step-up gated. This is initial enrollment (no
+      // confirmed secret yet) so no code is asked for, but the password
+      // proof still has to travel -- and it is right here in hand.
+      const res = await totpEnroll({ auth_proof_b64: authProofB64 });
       setProvisioningURI(res.provisioning_uri);
       setSecretB32(res.secret_b32);
       setStep("totp");

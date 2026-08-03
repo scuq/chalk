@@ -297,6 +297,7 @@ export function AuthGate({
     // skippable.
     return (
       <AddPasskeyAfterRecoveryScreen
+        username={me?.username ?? ""}
         onDone={() => dispatch({ kind: "auth_passkey_offer_done" })}
       />
     );

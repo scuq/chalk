@@ -22,6 +22,9 @@
 //     bound to the session user's ID at begin time and re-checked at
 //     finish time (a ceremony begun by user A cannot be completed by
 //     a session authenticated as user B).
+//   - 81-2: add/begin and delete additionally require step-up (current
+//     password + live TOTP), because enrolling or revoking a credential
+//     changes who can get back in. See stepup.go.
 //   - The user's existing credentials are passed to BeginRegistration
 //     as the exclude list, so the same authenticator cannot be
 //     double-enrolled.
@@ -105,7 +108,22 @@ func sanitizePasskeyName(raw string) string {
 // WebAuthn exclude list so the same authenticator is not enrolled
 // twice. The pending ceremony is cached under its challenge, tagged
 // IsAddPasskey and bound to the session user's ID.
+//
+// 81-2: step-up gated. An attacker-enrolled passkey is a durable second way
+// in, so adding one takes the current password plus a live code. Only begin
+// is gated; finish consumes the one-shot ceremony this call minted.
 func (d *HTTPDeps) handleAddPasskeyBegin(w http.ResponseWriter, r *http.Request, su *SessionUser) {
+	var stepUp stepUpFields
+	if r.ContentLength > 0 {
+		if err := decodeJSON(r, &stepUp); err != nil {
+			writeError(w, http.StatusBadRequest, "bad_json", err.Error())
+			return
+		}
+	}
+	if !d.requireStepUp(w, r, "passkeys/add/begin", su.UserID, stepUp) {
+		return
+	}
+
 	passkeys, err := d.Store.GetPasskeysForUser(r.Context(), su.UserID)
 	if err != nil {
 		d.Logger.Printf("passkeys/add/begin: list passkeys: %v", err)
@@ -131,7 +149,7 @@ func (d *HTTPDeps) handleAddPasskeyBegin(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	d.Cache.Put(sess.Challenge, CeremonyEntry{
+	if !d.Cache.Put(sess.Challenge, CeremonyEntry{
 		Kind:    KindRegistration,
 		Session: *sess,
 		PendingUser: PendingUser{
@@ -140,7 +158,11 @@ func (d *HTTPDeps) handleAddPasskeyBegin(w http.ResponseWriter, r *http.Request,
 			DisplayName:  su.DisplayName,
 			IsAddPasskey: true,
 		},
-	})
+	}) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited",
+			"too many attempts; try again in a minute")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, registerBeginResponse{Options: options})
 }
@@ -250,6 +272,9 @@ func (d *HTTPDeps) handleListPasskeys(w http.ResponseWriter, r *http.Request, su
 // passkey is protected: deleting it would strand the account on
 // recovery-code-only, so it is refused (409 last_passkey) until another
 // passkey is enrolled.
+//
+// 81-2: step-up gated alongside add -- revoking the owner's own device is
+// half of a takeover, and the DELETE carries the proof in its body.
 func (d *HTTPDeps) handleDeletePasskey(w http.ResponseWriter, r *http.Request, su *SessionUser) {
 	idParam := r.PathValue("id")
 	if idParam == "" {
@@ -259,6 +284,16 @@ func (d *HTTPDeps) handleDeletePasskey(w http.ResponseWriter, r *http.Request, s
 	credID, err := base64.RawURLEncoding.DecodeString(idParam)
 	if err != nil || len(credID) == 0 {
 		writeError(w, http.StatusBadRequest, "bad_id", "malformed passkey id")
+		return
+	}
+	var stepUp stepUpFields
+	if r.ContentLength > 0 {
+		if derr := decodeJSON(r, &stepUp); derr != nil {
+			writeError(w, http.StatusBadRequest, "bad_json", derr.Error())
+			return
+		}
+	}
+	if !d.requireStepUp(w, r, "passkeys/delete", su.UserID, stepUp) {
 		return
 	}
 

@@ -30,6 +30,7 @@ import type {
   AssertionResponseJSON,
 } from "../webauthn";
 import type { AuthConfig, LoginResult, MeResponse, RegistrationResult } from "./types";
+import type { StepUpProof } from "./stepup";
 
 // ApiError represents a structured server error. The code field is
 // stable (see internal/auth/http.go); the message is human-readable.
@@ -292,10 +293,16 @@ export async function logout(): Promise<void> {
 // recovery now goes through /api/auth/recovery/reset-auth
 // (recovery-reset-api.ts), which resets the password instead of merely
 // signing in.
-export async function regenerateRecovery(): Promise<string[]> {
+//
+// 81-2: takes a step-up proof (current password + live code). Replacing the
+// phrase invalidates the copy the owner wrote down, so a session alone is
+// not enough.
+export async function regenerateRecovery(stepUp: StepUpProof): Promise<string[]> {
   const resp = await fetch("/api/auth/recovery/regenerate", {
     method: "POST",
     credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(stepUp),
   });
   interface RegResponse {
     recovery_words: string[];
@@ -540,12 +547,17 @@ export async function listPasskeys(): Promise<PasskeyInfo[]> {
 }
 
 // addPasskeyBegin starts an add-passkey ceremony for the current
-// session and returns the WebAuthn creation options. Requires a
-// session; the body is empty (the user is identified by the cookie).
-export async function addPasskeyBegin(): Promise<CredentialCreationOptionsJSON> {
+// session and returns the WebAuthn creation options. The user is
+// identified by the cookie; 81-2 adds the step-up proof, because an
+// attacker-enrolled passkey is a durable second way in.
+export async function addPasskeyBegin(
+  stepUp: StepUpProof,
+): Promise<CredentialCreationOptionsJSON> {
   const resp = await fetch("/api/auth/passkeys/add/begin", {
     method: "POST",
     credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(stepUp),
   });
   interface BeginResponse {
     options: CredentialCreationOptionsJSON;
@@ -594,10 +606,12 @@ export async function addPasskeyFinish(
 //   - passkey_not_found (404)
 //   - last_passkey      (409)
 //   - delete_failed     (500)
-export async function deletePasskey(id: string): Promise<void> {
+export async function deletePasskey(id: string, stepUp: StepUpProof): Promise<void> {
   const resp = await fetch(`/api/auth/passkeys/${encodeURIComponent(id)}`, {
     method: "DELETE",
     credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(stepUp),
   });
   if (resp.status === 204) {
     await resp.body?.cancel();
