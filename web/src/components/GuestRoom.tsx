@@ -154,9 +154,13 @@ export function GuestRoom({ ctx }: { ctx: GuestContext }) {
       deviceType: "desktop",
       onState: (s, detail) => {
         setConn(s);
-        // The server closes guest conns with a policy reason when the room
-        // or session is gone; treat any terminal close after expiry as gone.
-        if (s === "closed" && detail && /expired|session|guests/.test(detail)) {
+        // Two terminal shapes: the expiry janitor's kick closes with
+        // "room expired" (normal close, reason carried in detail), and a
+        // reconnect after the session died fails the handshake with a
+        // policy close ("session expired" / "guests unavailable"), which
+        // WSClient surfaces as state "error" and stops retrying.
+        if ((s === "closed" || s === "error") && detail &&
+            /room expired|session expired|no session|guests/.test(detail)) {
           setRoomGone(true);
         }
       },
@@ -219,6 +223,15 @@ export function GuestRoom({ ctx }: { ctx: GuestContext }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Terminal: stop the reconnect loop and drop the call once the room is
+  // known gone -- there is nothing to reconnect to.
+  useEffect(() => {
+    if (!roomGone) return;
+    void callRef.current?.leave();
+    callRef.current = null;
+    clientRef.current?.stop();
+  }, [roomGone]);
 
   // Pin the scratchpad to the newest message.
   useEffect(() => {

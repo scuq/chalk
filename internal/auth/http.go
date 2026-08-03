@@ -167,6 +167,12 @@ type HTTPDeps struct {
 	EphemeralEnabled bool
 	JoinStore        joinStoreAPI
 	join             joinState
+
+	// OnGuestJoined is called after a FIRST redemption materializes a guest,
+	// so the server can push member_added to the room's members (their
+	// clients otherwise show the guest's messages under a UUID stub until
+	// reconnect). Wired in cmd/chalkd like Kicker; may be nil in tests.
+	OnGuestJoined func(channelID, guestID uuid.UUID)
 }
 
 // MountRegistration registers the auth HTTP endpoints on mux.

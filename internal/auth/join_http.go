@@ -309,6 +309,9 @@ func (d *HTTPDeps) handleJoinRedeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if redeemed.FirstJoin && d.OnGuestJoined != nil {
+		d.OnGuestJoined(redeemed.ChannelID, redeemed.UserID)
+	}
 	SetGuestSessionCookie(w, redeemed.SessionToken, redeemed.SessionExpiresAt)
 	writeJSON(w, http.StatusOK, joinRedeemResponse{
 		GuestUserID:      redeemed.UserID.String(),

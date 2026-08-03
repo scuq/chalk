@@ -214,7 +214,9 @@ export class WSClient {
       this.setState("error", `closed (code=${e.code}, reason=${e.reason || "policy"})`);
       return;
     }
-    this.setState("closed", `closed (code=${e.code})`);
+    // 80-13: carry the server's goodbye text. The guest room matches on it
+    // ("room expired") to show its terminal screen instead of reconnecting.
+    this.setState("closed", `closed (code=${e.code}${e.reason ? `, reason=${e.reason}` : ""})`);
     if (wasOpen) {
       // Drop straight back to initial backoff so a brief glitch
       // doesn't make us slow to come back.

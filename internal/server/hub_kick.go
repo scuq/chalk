@@ -17,7 +17,11 @@ package server
 // teardown path.
 
 import (
+	"context"
 	"errors"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 // errRoomExpired is the goodbye reason for guest connections whose room the
@@ -54,4 +58,36 @@ func (h *Hub) CloseConnsForUser(userID string, reason error) {
 // duplicating Server.hub via a separate option. Read-only accessor.
 func (s *Server) Hub() *Hub {
 	return s.hub
+}
+
+// NotifyGuestJoined pushes channel_event{kind:"member_added"} to a room's
+// members after a guest's FIRST redemption (80-14 aftermath of the 80-8
+// join): without it, members' clients show the guest's messages under a
+// UUID stub until their next reconnect. Wired into auth.HTTPDeps like
+// Kicker. Best-effort: failures are logged, the redemption stands.
+func (s *Server) NotifyGuestJoined(channelID, guestID uuid.UUID) {
+	if s.wsh == nil || s.store == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ch, err := s.store.GetChannel(ctx, channelID)
+	if err != nil {
+		s.logger.Printf("guest joined push: load channel: %v", err)
+		return
+	}
+	members, err := s.store.ListMembersForChannel(ctx, channelID)
+	if err != nil {
+		s.logger.Printf("guest joined push: list members: %v", err)
+		return
+	}
+	summary := s.wsh.channelEventSummary(ctx, ch, members)
+	for _, m := range members {
+		if m == guestID {
+			continue
+		}
+		if err := s.wsh.publishChannelEvent(ctx, m, channelID, "member_added", summary); err != nil {
+			s.logger.Printf("guest joined push to %s: %v", m, err)
+		}
+	}
 }

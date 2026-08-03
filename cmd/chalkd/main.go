@@ -332,6 +332,10 @@ func run(args []string) error {
 	// read d.Kicker at request time so this late assignment is
 	// safe (no requests are served yet).
 	authDeps.Kicker = srv.Hub()
+	// 80-14: first guest redemption pushes member_added to the room, so
+	// members see the guest's name immediately. Same late-assignment
+	// pattern as Kicker (no requests served yet).
+	authDeps.OnGuestJoined = srv.NotifyGuestJoined
 
 	if cfg.PrintListen {
 		fmt.Printf("listening on %s\n", srv.Addr())

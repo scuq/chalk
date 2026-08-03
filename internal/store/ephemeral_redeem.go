@@ -77,6 +77,11 @@ type RedeemedGuest struct {
 	WrapBlob         []byte
 	SessionToken     []byte
 	SessionExpiresAt time.Time
+	// FirstJoin is true when this redemption materialized the guest (vs a
+	// link reuse). The join endpoint pushes member_added to the room's
+	// members exactly once, on first join -- without it their clients show
+	// the guest's messages under a UUID stub until the next reconnect.
+	FirstJoin bool
 }
 
 // RedeemEphemeralInvite materializes the guest (first use) or refreshes its
@@ -217,6 +222,7 @@ func (s *Store) RedeemEphemeralInvite(ctx context.Context, in RedeemInput) (Rede
 		}
 
 		out = RedeemedGuest{
+			FirstJoin:        !exists,
 			UserID:           inv.GuestUserID,
 			DisplayName:      displayName,
 			ChannelID:        inv.ChannelID,
