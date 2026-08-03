@@ -100,12 +100,34 @@ function digestToNumeric(digest: Uint8Array): string {
 
 export type VerificationState = "unverified" | "verified" | "changed";
 
-/** A stored verification record (local-only; see idb.ts). */
+/**
+ * A stored verification record (local-only; see idb.ts).
+ *
+ * 82-2: this doubles as the identity PIN. The fields below the line are
+ * optional so records written before 82 stay meaningful, and so adding them
+ * needs no IndexedDB version bump.
+ *
+ * Why pin `ed25519PubB64` and not `digestHex` for the crypto path: the digest
+ * is a function of BOTH peers' keys, so if the local user's own identity ever
+ * changes, every peer's digest changes with it and everyone reads "changed" at
+ * once. The raw key is a property of the peer alone. The UI keeps using the
+ * digest, because that is what the user actually compared out of band.
+ */
 export interface VerificationRecord {
   peerUserID: string;
   digestHex: string; // the digest that was verified
   generation: number; // the peer's identity generation at verification
   verifiedAt: number; // epoch ms
+
+  /** The pinned raw Ed25519 public key, base64. Absent in pre-82 records. */
+  ed25519PubB64?: string;
+  /**
+   * How the pin was established. Absent means "manual": before 82 the only
+   * writer was the picture-word button.
+   */
+  source?: "tofu" | "manual";
+  /** When the pin was first recorded, epoch ms. */
+  pinnedAt?: number;
 }
 
 export function digestToHex(digest: Uint8Array): string {

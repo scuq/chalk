@@ -285,8 +285,9 @@ import { IdentitySetupScreen } from "../auth/IdentitySetupScreen";
 import { UnsupportedBrowserScreen } from "../auth/UnsupportedBrowserScreen";
 import { cryptoSupported } from "../crypto/support";
 import { MigrationScreen } from "../auth/MigrationScreen"; // 31-9
-import { loadIdentity, loadVerification, saveVerification } from "../crypto/idb";
-import { fetchIdentity, type IdentityTransport } from "../crypto/identity-sync";
+import { loadIdentity, loadVerification } from "../crypto/idb";
+import { type IdentityTransport } from "../crypto/identity-sync";
+import { fetchTrustedIdentity, markManuallyVerified } from "../crypto/trust"; // 82-2
 import {
   computeSafetyNumber,
   verificationState,
@@ -484,7 +485,9 @@ export function App() {
   // digestHex + generation (needed to persist a verification) alongside the
   // panel-facing { state, words, numeric }.
   const [memberVerify, setMemberVerify] = useState<
-    Record<string, MemberVerifyInfo & { digestHex?: string; generation?: number }>
+    // 82-2: edPub rides along so marking a peer verified can pin the actual
+    // key, not just the digest of it.
+    Record<string, MemberVerifyInfo & { digestHex?: string; generation?: number; edPub?: Uint8Array }>
   >({});
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [resharing, setResharing] = useState(false);
@@ -987,23 +990,31 @@ export function App() {
       };
       const out: Record<
         string,
-        MemberVerifyInfo & { digestHex?: string; generation?: number }
+        MemberVerifyInfo & { digestHex?: string; generation?: number; edPub?: Uint8Array }
       > = {};
       for (const m of ch.members ?? []) {
         if (m.userID === myID) continue;
-        const peer = await fetchIdentity(transport, m.userID);
-        if (!peer) {
+        // 82-2: opening this panel is a deliberate act, so it is the right
+        // moment to establish a TOFU pin. fetchTrustedIdentity writes it on
+        // first sight and reports "changed" if the server has since swapped
+        // the key out from under an existing one.
+        const seen = await fetchTrustedIdentity(transport, m.userID);
+        if (!seen) {
           out[m.userID] = { state: "no_identity" };
           continue;
         }
+        const peer = seen.identity;
         const sn = await computeSafetyNumber(me.ed25519Public, peer.ed25519Public);
         const stored = await loadVerification(m.userID);
         out[m.userID] = {
-          state: verificationState(sn.digest, stored),
+          // A repudiated pin outranks the digest comparison: the digest only
+          // says "not what you verified", the pin says "not who you pinned".
+          state: seen.pin === "changed" ? "changed" : verificationState(sn.digest, stored),
           words: sn.words,
           numeric: sn.numeric,
           digestHex: digestToHex(sn.digest),
           generation: peer.generation,
+          edPub: peer.ed25519Public,
         };
       }
       setMemberVerify(out);
@@ -1022,14 +1033,13 @@ export function App() {
   const onMarkVerified = useCallback(
     async (userID: string) => {
       const v = memberVerify[userID];
-      if (!v || !v.digestHex || v.generation == null) return;
+      if (!v || !v.digestHex || v.generation == null || !v.edPub) return;
       try {
-        await saveVerification({
-          peerUserID: userID,
-          digestHex: v.digestHex,
-          generation: v.generation,
-          verifiedAt: Date.now(),
-        });
+        // 82-2: this both records the out-of-band comparison AND pins the key,
+        // so an in-person check is a strictly stronger version of the same
+        // record TOFU writes -- not a parallel one that the crypto path can't
+        // see. Accepting here is also how a user resolves a "changed" peer.
+        await markManuallyVerified(userID, v.edPub, v.digestHex, v.generation);
         setMemberVerify((prev) => ({
           ...prev,
           [userID]: { ...prev[userID], state: "verified" },

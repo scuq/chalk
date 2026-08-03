@@ -85,6 +85,13 @@ export async function publishIdentity(
  * identity yet OR the returned keys fail verification (malformed, or a
  * server substitution attempt). Callers MUST treat null as "cannot use
  * this peer's keys" -- never fall back to unverified material.
+ *
+ * 82-2: BE CLEAR ABOUT WHAT THE SELF-SIGNATURE PROVES. It proves the X25519 and
+ * Ed25519 keys in this blob belong together. It does NOT prove they are the
+ * peer's: nothing signs the user id, so anyone -- including the server -- can
+ * mint a consistent identity and claim it is Bob's. Callers that need the
+ * ownership question answered must go through trust.ts, which anchors it on a
+ * pin or an out-of-band comparison. This function is a decoder, not an oracle.
  */
 export async function fetchIdentity(
   ws: IdentityTransport,
@@ -112,7 +119,10 @@ export async function fetchIdentity(
     return null;
   }
   return {
-    userID: ack.user_id,
+    // 82-2: the id we ASKED for, not ack.user_id. The echo is server-controlled
+    // and nothing signs it, so trusting it let a caller believe it had resolved
+    // Bob when it had resolved whatever the server felt like returning.
+    userID,
     generation: ack.generation ?? 1,
     x25519Public,
     ed25519Public,
