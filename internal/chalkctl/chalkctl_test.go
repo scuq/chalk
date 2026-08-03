@@ -86,6 +86,10 @@ func TestSaveRoundTrip(t *testing.T) {
 	in.TurnVerbose = false
 	in.LinkPreviewEnabled = false
 	in.LinkPreviewDomains = "youtube.com,example.com"
+	in.EphemeralEnabled = false
+	in.EphemeralMaxTTLHours = 96
+	in.EphemeralInviteHours = 12
+	in.EphemeralMaxGuests = 3
 	if err := in.Save(p); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +102,11 @@ func TestSaveRoundTrip(t *testing.T) {
 		out.VoiceMaxParticipants != in.VoiceMaxParticipants ||
 		out.CoturnTag != in.CoturnTag || out.TurnVerbose != in.TurnVerbose ||
 		out.LinkPreviewEnabled != in.LinkPreviewEnabled ||
-		out.LinkPreviewDomains != in.LinkPreviewDomains {
+		out.LinkPreviewDomains != in.LinkPreviewDomains ||
+		out.EphemeralEnabled != in.EphemeralEnabled ||
+		out.EphemeralMaxTTLHours != in.EphemeralMaxTTLHours ||
+		out.EphemeralInviteHours != in.EphemeralInviteHours ||
+		out.EphemeralMaxGuests != in.EphemeralMaxGuests {
 		t.Errorf("round trip mismatch: %+v vs %+v", in, out)
 	}
 }
@@ -390,6 +398,63 @@ func TestEnvOptionalKnobs(t *testing.T) {
 		if !strings.Contains(string(env2), want) {
 			t.Errorf("env missing %q when set", want)
 		}
+	}
+}
+
+// TestEnvEphemeral (80-5): the CHALK_EPHEMERAL_* lines appear only when the
+// operator diverges from chalkd's defaults (enabled; 720/24/8 knobs).
+func TestEnvEphemeral(t *testing.T) {
+	base := InitParams{
+		Domain: "x.example.org", PGPassword: "PG", VoiceEnabled: true, TurnSecret: "T",
+		AdminUsername: "a", AdminEmail: "a@x.org",
+		EphemeralEnabled: true,
+	}
+	env, _ := renderTemplate("chalk.env", base)
+	if strings.Contains(string(env), "CHALK_EPHEMERAL") {
+		t.Errorf("defaults must render no CHALK_EPHEMERAL_* lines:\n%s", env)
+	}
+
+	off := base
+	off.EphemeralEnabled = false
+	env2, _ := renderTemplate("chalk.env", off)
+	if !strings.Contains(string(env2), "CHALK_EPHEMERAL_ENABLED=false") {
+		t.Error("disabled feature must write CHALK_EPHEMERAL_ENABLED=false")
+	}
+
+	tuned := base
+	tuned.EphemeralMaxTTLHours = 96
+	tuned.EphemeralInviteHours = 12
+	tuned.EphemeralMaxGuests = 3
+	env3, _ := renderTemplate("chalk.env", tuned)
+	for _, want := range []string{
+		"CHALK_EPHEMERAL_MAX_TTL_HOURS=96",
+		"CHALK_EPHEMERAL_INVITE_MAX_TTL_HOURS=12",
+		"CHALK_EPHEMERAL_MAX_GUESTS=3",
+	} {
+		if !strings.Contains(string(env3), want) {
+			t.Errorf("env missing %q when set", want)
+		}
+	}
+	if strings.Contains(string(env3), "CHALK_EPHEMERAL_ENABLED") {
+		t.Error("enabled default must not render the switch line")
+	}
+}
+
+// TestValidateEphemeralInviteCap (80-5): chalkctl refuses an invite TTL above
+// the 24 h hard cap before the stack is half up (chalkd would refuse to boot).
+func TestValidateEphemeralInviteCap(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Domain = "x.example.org"
+	cfg.Rootful = true
+	cfg.AdminUsername = "a"
+	cfg.AdminEmail = "a@x.org"
+	cfg.EphemeralInviteHours = 25
+	if err := cfg.Validate(); err == nil {
+		t.Error("invite TTL above 24 h must fail validation")
+	}
+	cfg.EphemeralInviteHours = 24
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("invite TTL of 24 h must validate: %v", err)
 	}
 }
 

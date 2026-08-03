@@ -258,6 +258,10 @@ func Init(o InitOptions) error {
 		ThreadActiveWindowHours: cfg.ThreadActiveWindowHours,
 		LinkPreviewEnabled:      cfg.LinkPreviewEnabled,
 		LinkPreviewDomains:      cfg.LinkPreviewDomains,
+		EphemeralEnabled:        cfg.EphemeralEnabled,
+		EphemeralMaxTTLHours:    cfg.EphemeralMaxTTLHours,
+		EphemeralInviteHours:    cfg.EphemeralInviteHours,
+		EphemeralMaxGuests:      cfg.EphemeralMaxGuests,
 
 		// A re-apply during a maintenance window must not quietly put the
 		// site back in front of users -- you are in maintenance because work

@@ -120,3 +120,48 @@ func TestValidateBadListen(t *testing.T) {
 		t.Fatal("expected error for malformed listen")
 	}
 }
+
+// 80-5: ephemeral knobs -- defaults, env overlay, and the 24 h invite hard cap.
+func TestEphemeralConfig(t *testing.T) {
+	c, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	e := c.Ephemeral
+	if !e.Enabled || e.MaxTTLHours != 720 || e.InviteMaxTTLHours != 24 || e.MaxGuests != 8 {
+		t.Fatalf("defaults: %+v", e)
+	}
+	if c.DBURLGuest != "" {
+		t.Fatalf("DBURLGuest default should be empty, got %q", c.DBURLGuest)
+	}
+
+	t.Setenv("CHALK_EPHEMERAL_ENABLED", "false")
+	t.Setenv("CHALK_EPHEMERAL_MAX_TTL_HOURS", "96")
+	t.Setenv("CHALK_EPHEMERAL_INVITE_MAX_TTL_HOURS", "12")
+	t.Setenv("CHALK_EPHEMERAL_MAX_GUESTS", "3")
+	t.Setenv("CHALK_DB_URL_GUEST", "postgres://chalk_guest:pw@localhost/chalk")
+	c, err = Load(nil)
+	if err != nil {
+		t.Fatalf("Load with env: %v", err)
+	}
+	e = c.Ephemeral
+	if e.Enabled || e.MaxTTLHours != 96 || e.InviteMaxTTLHours != 12 || e.MaxGuests != 3 {
+		t.Fatalf("env overlay: %+v", e)
+	}
+	if c.DBURLGuest != "postgres://chalk_guest:pw@localhost/chalk" {
+		t.Fatalf("DBURLGuest: %q", c.DBURLGuest)
+	}
+}
+
+func TestEphemeralInviteTTLHardCap(t *testing.T) {
+	t.Setenv("CHALK_EPHEMERAL_INVITE_MAX_TTL_HOURS", "25")
+	if _, err := Load(nil); err == nil {
+		t.Fatal("invite TTL above 24 h must refuse to load")
+	}
+	// The cap is only enforced while the feature is on: a disabled feature
+	// with a stale bad knob must not brick the boot.
+	t.Setenv("CHALK_EPHEMERAL_ENABLED", "false")
+	if _, err := Load(nil); err != nil {
+		t.Fatalf("disabled feature must ignore the knob: %v", err)
+	}
+}

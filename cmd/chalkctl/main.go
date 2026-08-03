@@ -105,6 +105,10 @@ func runInit(args []string) error {
 		lpDomains   = fs.String("linkpreview-domains", "", "CHALK_LINKPREVIEW_DOMAINS whitelist override, comma-separated (default: YouTube + Steam)")
 		threadWin   = fs.Int("thread-active-window-hours", 0, "CHALK_THREAD_ACTIVE_WINDOW_HOURS thread-inbox recency (0 = chalkd default of 48)")
 		pgStats     = fs.Bool("pg-stat-statements", false, "collect per-query timings for `chalkctl metrics` (small always-on cost)")
+		ephEnabled  = fs.Bool("ephemeral", true, "enable ephemeral voice channels with guest magic links")
+		ephMaxTTL   = fs.Int("ephemeral-max-ttl-hours", 0, "CHALK_EPHEMERAL_MAX_TTL_HOURS channel lifetime cap (0 = chalkd default of 720)")
+		ephInvTTL   = fs.Int("ephemeral-invite-ttl-hours", 0, "CHALK_EPHEMERAL_INVITE_MAX_TTL_HOURS invite cap, at most 24 (0 = chalkd default of 24)")
+		ephGuests   = fs.Int("ephemeral-max-guests", 0, "CHALK_EPHEMERAL_MAX_GUESTS invites per channel (0 = chalkd default of 8)")
 		turnVerbose = fs.Bool("turn-verbose", true, "coturn --verbose logging (default on)")
 		publicIP    = fs.String("public-ip", "", "coturn listening/relay/external IPv4 (default: detect)")
 	)
@@ -171,6 +175,18 @@ func runInit(args []string) error {
 	}
 	if set["pg-stat-statements"] {
 		cfg.PgStatStatements = *pgStats
+	}
+	if set["ephemeral"] {
+		cfg.EphemeralEnabled = *ephEnabled
+	}
+	if set["ephemeral-max-ttl-hours"] {
+		cfg.EphemeralMaxTTLHours = *ephMaxTTL
+	}
+	if set["ephemeral-invite-ttl-hours"] {
+		cfg.EphemeralInviteHours = *ephInvTTL
+	}
+	if set["ephemeral-max-guests"] {
+		cfg.EphemeralMaxGuests = *ephGuests
 	}
 	if set["turn-verbose"] {
 		cfg.TurnVerbose = *turnVerbose
@@ -567,6 +583,11 @@ init flags:
   --giphy-api-key <key>      enable the GIF picker (optional)
   --linkpreview[=false]      enable link previews (default on)
   --linkpreview-domains <l>  preview whitelist override, comma-separated
+  --ephemeral[=false]        enable ephemeral voice channels (default on)
+  --ephemeral-max-ttl-hours  channel lifetime cap (0 = chalkd default of 720)
+  --ephemeral-invite-ttl-hours
+                             invite link cap, at most 24 (0 = chalkd default of 24)
+  --ephemeral-max-guests     invites per channel (0 = chalkd default of 8)
                              (default: YouTube + Steam)
   --turn-verbose[=false]     coturn verbose logging (default on)
   --open-registration[=false] let anyone register (default on; tighten later)

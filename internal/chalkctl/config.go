@@ -76,6 +76,15 @@ type Config struct {
 	// 73-2: load pg_stat_statements into Postgres (per-query timings for
 	// `chalkctl metrics`). Costs a little on every statement, so it is opt-in.
 	PgStatStatements bool
+
+	// 80-5: ephemeral voice channels with guest magic links. Enabled defaults
+	// true (chalkd's own default); the hour/count knobs are 0 = chalkd's
+	// defaults (720 h channel cap, 24 h invite cap, 8 guests). chalkd refuses
+	// an invite TTL above 24 h outright.
+	EphemeralEnabled     bool // CHALK_EPHEMERAL_ENABLED
+	EphemeralMaxTTLHours int  // CHALK_EPHEMERAL_MAX_TTL_HOURS
+	EphemeralInviteHours int  // CHALK_EPHEMERAL_INVITE_MAX_TTL_HOURS
+	EphemeralMaxGuests   int  // CHALK_EPHEMERAL_MAX_GUESTS
 }
 
 // DefaultConfig returns the baseline before file/flag overlays.
@@ -92,6 +101,7 @@ func DefaultConfig() Config {
 		OpenRegistration: true, // bootstrap: let friends register; tighten later
 
 		LinkPreviewEnabled: true,
+		EphemeralEnabled:   true,
 	}
 }
 
@@ -200,6 +210,30 @@ func LoadConfigFile(cfg Config, path string) (Config, error) {
 				return cfg, fmt.Errorf("%s:%d: THREAD_ACTIVE_WINDOW_HOURS not an int: %q", path, line, v)
 			}
 			cfg.ThreadActiveWindowHours = n
+		case "EPHEMERAL_ENABLED":
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: EPHEMERAL_ENABLED not a bool: %q", path, line, v)
+			}
+			cfg.EphemeralEnabled = b
+		case "EPHEMERAL_MAX_TTL_HOURS":
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: EPHEMERAL_MAX_TTL_HOURS not an int: %q", path, line, v)
+			}
+			cfg.EphemeralMaxTTLHours = n
+		case "EPHEMERAL_INVITE_MAX_TTL_HOURS":
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: EPHEMERAL_INVITE_MAX_TTL_HOURS not an int: %q", path, line, v)
+			}
+			cfg.EphemeralInviteHours = n
+		case "EPHEMERAL_MAX_GUESTS":
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: EPHEMERAL_MAX_GUESTS not an int: %q", path, line, v)
+			}
+			cfg.EphemeralMaxGuests = n
 		default:
 			fmt.Fprintf(os.Stderr, "chalkctl: ignoring unknown config key %q (%s:%d)\n", k, path, line)
 		}
@@ -244,6 +278,16 @@ func (c Config) Save(path string) error {
 		fmt.Fprintf(&b, "LINKPREVIEW_DOMAINS=%s\n", c.LinkPreviewDomains)
 	}
 	fmt.Fprintf(&b, "PG_STAT_STATEMENTS=%t\n", c.PgStatStatements)
+	fmt.Fprintf(&b, "EPHEMERAL_ENABLED=%t\n", c.EphemeralEnabled)
+	if c.EphemeralMaxTTLHours > 0 {
+		fmt.Fprintf(&b, "EPHEMERAL_MAX_TTL_HOURS=%d\n", c.EphemeralMaxTTLHours)
+	}
+	if c.EphemeralInviteHours > 0 {
+		fmt.Fprintf(&b, "EPHEMERAL_INVITE_MAX_TTL_HOURS=%d\n", c.EphemeralInviteHours)
+	}
+	if c.EphemeralMaxGuests > 0 {
+		fmt.Fprintf(&b, "EPHEMERAL_MAX_GUESTS=%d\n", c.EphemeralMaxGuests)
+	}
 	// GIPHY_API_KEY is intentionally NOT written here: this config file is
 	// 0644, and the key belongs only in the 0600 env file. It is supplied
 	// per-init via --giphy-api-key when needed.
@@ -272,6 +316,14 @@ func (c Config) Validate() error {
 	}
 	if c.Image == "" || c.PostgresTag == "" || c.CaddyTag == "" || c.CoturnTag == "" {
 		return fmt.Errorf("image and image tags must be non-empty")
+	}
+	// 80-5: chalkd refuses to boot on an invite TTL above 24 h; catch it here
+	// so init fails before the stack is half up.
+	if c.EphemeralInviteHours > 24 {
+		return fmt.Errorf("ephemeral invite TTL is hard-capped at 24 hours (got %d): a magic link is a bearer credential", c.EphemeralInviteHours)
+	}
+	if c.EphemeralInviteHours < 0 || c.EphemeralMaxTTLHours < 0 || c.EphemeralMaxGuests < 0 {
+		return fmt.Errorf("ephemeral knobs must be >= 0 (0 = chalkd default)")
 	}
 	// Empty is fine here: init detects it. A bad value is not, and catching it
 	// now beats a coturn that refuses to start after the stack is half up.

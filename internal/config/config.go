@@ -18,6 +18,13 @@ type Config struct {
 	Listen string
 	DBURL  string
 
+	// DBURLGuest is the chalk_guest connection string (CHALK_DB_URL_GUEST),
+	// the RLS-fenced pool that serves ephemeral guests (80-5). Optional: when
+	// empty the ephemeral feature is off regardless of Ephemeral.Enabled, so
+	// a deployment that has not run `chalkctl update` simply lacks the
+	// feature instead of failing to boot.
+	DBURLGuest string
+
 	TLSMode          string
 	TLSCertFile      string
 	TLSKeyFile       string
@@ -122,6 +129,10 @@ type Config struct {
 	// 42-5: thread inbox knobs (CHALK_THREAD_*). See ThreadsConfig in
 	// threads.go.
 	Threads ThreadsConfig
+
+	// 80-5: ephemeral voice channel knobs (CHALK_EPHEMERAL_*). See
+	// EphemeralConfig in ephemeral.go.
+	Ephemeral EphemeralConfig
 }
 
 // GovernanceDefaults are the server-wide default governance parameters,
@@ -205,6 +216,9 @@ func Default() Config {
 
 		// 42-5: thread inbox.
 		Threads: defaultThreadsConfig(),
+
+		// 80-5: ephemeral voice channels.
+		Ephemeral: defaultEphemeralConfig(),
 	}
 }
 
@@ -215,6 +229,8 @@ func Load(args []string) (Config, error) {
 	fs := flag.NewFlagSet("chalkd", flag.ContinueOnError)
 	fs.StringVar(&c.Listen, "listen", c.Listen, "address to listen on (host:port; port may be 0 for random)")
 	fs.StringVar(&c.DBURL, "db-url", c.DBURL, "postgres connection string (CHALK_DB_URL)")
+	fs.StringVar(&c.DBURLGuest, "db-url-guest", c.DBURLGuest,
+		"chalk_guest postgres connection string for ephemeral guests (CHALK_DB_URL_GUEST); empty disables the feature")
 	fs.StringVar(&c.TLSMode, "tls-mode", c.TLSMode, "tls mode: off|selfsigned|file|autocert")
 	fs.StringVar(&c.TLSCertFile, "tls-cert", c.TLSCertFile, "path to TLS certificate")
 	fs.StringVar(&c.TLSKeyFile, "tls-key", c.TLSKeyFile, "path to TLS private key")
@@ -272,6 +288,7 @@ func (c *Config) applyEnv() {
 	}{
 		{&c.Listen, "CHALK_LISTEN"},
 		{&c.DBURL, "CHALK_DB_URL"},
+		{&c.DBURLGuest, "CHALK_DB_URL_GUEST"},
 		{&c.TLSMode, "CHALK_TLS_MODE"},
 		{&c.TLSCertFile, "CHALK_TLS_CERT"},
 		{&c.TLSKeyFile, "CHALK_TLS_KEY"},
@@ -342,6 +359,20 @@ func (c *Config) applyEnv() {
 
 	// 42-5: thread inbox from CHALK_THREAD_* env vars.
 	c.Threads.applyEnv()
+
+	// 80-5: ephemeral channels from CHALK_EPHEMERAL_* env vars.
+	c.Ephemeral.applyEnv()
+}
+
+// envBool reads a boolean env var. Returns (false, false) when unset so
+// callers keep their existing default -- needed where the default is true
+// and only an explicit value may flip it.
+func envBool(key string) (bool, bool) {
+	v := os.Getenv(key)
+	if v == "" {
+		return false, false
+	}
+	return parseBool(v), true
 }
 
 // envInt reads an integer env var. Returns (0, false) when unset or
@@ -474,6 +505,11 @@ func (c Config) Validate() error {
 
 	// 42-5: thread inbox.
 	if err := c.Threads.Validate(); err != nil {
+		return err
+	}
+
+	// 80-5: ephemeral voice channels.
+	if err := c.Ephemeral.Validate(); err != nil {
 		return err
 	}
 

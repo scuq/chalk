@@ -41,6 +41,13 @@ type InitParams struct {
 	LinkPreviewEnabled      bool   // false = write CHALK_LINKPREVIEW_ENABLED=false
 	LinkPreviewDomains      string // "" = omit (chalkd's built-in whitelist)
 
+	// 80-5: ephemeral voice channels. Enabled=false writes the off switch;
+	// the 0-valued knobs are omitted (chalkd defaults).
+	EphemeralEnabled     bool
+	EphemeralMaxTTLHours int
+	EphemeralInviteHours int
+	EphemeralMaxGuests   int
+
 	// 72-5: maintenance mode. Caddyfile-only -- when set, Caddy serves the
 	// notice instead of proxying chalkd. The message is already HTML-escaped
 	// by the time it gets here (see Maint).
