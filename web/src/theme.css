@@ -9379,3 +9379,81 @@ body.chalk-resizing .chalk-sidebar-resizer {
 .chalk-footer-main--parked {
   display: none;
 }
+
+/* ---- 80-13: the guest room (/join) -------------------------------------
+   The guest's whole chalk: header, call strip, scratchpad, composer. One
+   column, full height, reusing the app's tokens so it matches both themes. */
+.chalk-guest {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--chalk-s3);
+  gap: var(--chalk-s3);
+}
+.chalk-guest-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--chalk-s3);
+  border-bottom: 1px solid var(--chalk-fg-dim);
+  padding-bottom: var(--chalk-s2);
+}
+.chalk-guest-title {
+  font-weight: 700;
+  font-size: 1.1em;
+}
+.chalk-guest-expiry {
+  color: var(--chalk-warn, #c90);
+}
+.chalk-guest-conn {
+  margin-left: auto;
+  color: var(--chalk-fg-dim);
+}
+.chalk-guest-call {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+.chalk-guest-call-controls {
+  display: flex;
+  gap: var(--chalk-s2);
+}
+.chalk-guest-peers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--chalk-s2);
+}
+.chalk-guest-peer-video {
+  max-width: 320px;
+  width: 100%;
+  background: var(--chalk-bg-elev);
+}
+.chalk-guest-scratch {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--chalk-fg-dim);
+  padding: var(--chalk-s2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s1);
+}
+.chalk-guest-msg {
+  display: flex;
+  gap: var(--chalk-s2);
+  align-items: baseline;
+}
+.chalk-guest-msg-sender {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.chalk-guest-msg-text {
+  overflow-wrap: anywhere;
+}
+.chalk-guest-composer {
+  display: flex;
+  gap: var(--chalk-s2);
+}
+.chalk-guest-composer .chalk-field-input {
+  flex: 1;
+}

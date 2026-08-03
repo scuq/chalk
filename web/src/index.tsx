@@ -1,5 +1,6 @@
 import { render } from "preact";
 import { App } from "./components/App";
+import { JoinScreen } from "./components/JoinScreen";
 import { applyDisplayPrefs, loadDisplayPrefs } from "./display-prefs";
 
 // The HTML scaffolds the page with a #root element and links to
@@ -17,4 +18,11 @@ if (!root) {
   // someone breaks the template, fail loudly rather than silently.
   throw new Error("chalk: #root element missing from page");
 }
-render(<App />, root);
+// 80-13: /join/<lookup> is the guest's front door and mounts a separate,
+// deliberately tiny tree -- the App's session/identity boot never runs for
+// guests, so a guest cannot wander into member surfaces by construction.
+if (window.location.pathname.startsWith("/join/")) {
+  render(<JoinScreen />, root);
+} else {
+  render(<App />, root);
+}
