@@ -266,12 +266,13 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   E2E-embedded, opt-in, SSRF-guarded server fetcher), the security-audit
   remediation (81, record in `docs/PHASE-81-SECAUDIT.md`), signed channel-key
   wraps (82, record in `docs/PHASE-82-SIGNEDWRAP.md`).
-- **Phase 82 (signed channel-key wraps) is COMPLETE** — 82-1 … 82-8, record in
+- **Phase 82 (signed channel-key wraps) is COMPLETE** — 82-1 … 82-9, record in
   `docs/PHASE-82-SIGNEDWRAP.md`. It closes the phase-81 audit's C-01, but
   **conditionally**: `CHALK_WRAP_SIG_REQUIRED` defaults to false, and until an
   operator flips it (after the self-healing sweep has re-signed their wraps) a
   server can still substitute a key on a channel no current-build member has
-  opened. Never describe C-01 as fixed unconditionally.
+  opened. Never describe C-01 as fixed unconditionally. `chalkctl wrapsig
+  status` is what says whether a deployment is ready to flip.
   - Two follow-ups are still open: the **end-to-end run against a live stack**
     (checklist at the end of the phase doc — the only exercise of the real
     Postgres upsert guard, and worth doing before a release carries this), and

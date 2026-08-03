@@ -46,9 +46,11 @@ The engineering-level history (which slice shipped what) lives in
 - Server operators get a new setting, `CHALK_WRAP_SIG_REQUIRED` (written into
   the config by `chalkctl`, off by default). Turning it on ends the transition:
   unsigned conversation keys are then refused outright, on the server and in
-  the app. Flip it once your users' apps have been updated for a while — a
-  member whose key copy was never upgraded will see "waiting" until someone
-  re-shares the key with them.
+  the app. `chalkctl wrapsig` tells you when it's safe to do that — it reports
+  how many conversation keys have been re-issued as signed, names the people
+  still on an old one, and `chalkctl wrapsig enable` refuses to switch over
+  while anyone would be locked out. `chalkctl wrapsig disable` turns it back
+  off if you need to.
 - The server now also refuses oversized key blobs, keys parked at implausible
   future versions, and one member silently replacing another member's stored
   key copy — tightening what a compromised account can do quietly.

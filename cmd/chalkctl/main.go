@@ -69,6 +69,8 @@ func run(args []string) error {
 		return runMetrics(args[1:])
 	case "ephemeral":
 		return runEphemeral(args[1:])
+	case "wrapsig":
+		return runWrapSig(args[1:])
 	case "self-update", "rollback", "logs":
 		return fmt.Errorf("%q is not implemented yet in this build (arrives in a later ops slice)", cmd)
 	default:
@@ -553,6 +555,44 @@ func runEphemeral(args []string) error {
 	}
 }
 
+// runWrapSig: the operator surface for signed channel keys (82-9). `status`
+// answers "has the self-healing sweep finished, i.e. can I turn enforcement on
+// without stranding anyone?"; `enable`/`disable` flip the flag and restart.
+func runWrapSig(args []string) error {
+	fs := flag.NewFlagSet("wrapsig", flag.ContinueOnError)
+	var (
+		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file")
+		envPath    = fs.String("env", chalkctl.DefaultEnvPath, "env file path")
+		force      = fs.Bool("force", false, "with `enable`: turn enforcement on even though members would be blocked")
+	)
+	rest, err := parsePositional(fs, args)
+	if err != nil {
+		return err
+	}
+	// Bare `chalkctl wrapsig` is the read-only question, which is the one an
+	// operator asks repeatedly while waiting for the sweep to drain.
+	sub := "status"
+	if len(rest) == 1 {
+		sub = rest[0]
+	} else if len(rest) > 1 {
+		return fmt.Errorf("usage: chalkctl wrapsig [status|enable|disable] [--force]")
+	}
+	if err := chalkctl.RequireRoot(); err != nil {
+		return err
+	}
+	opts := chalkctl.WrapSigOptions{EnvPath: *envPath, ConfigPath: *configPath}
+	switch sub {
+	case "status":
+		return chalkctl.WrapSigStatus(opts)
+	case "enable":
+		return chalkctl.WrapSigEnable(opts, *force)
+	case "disable":
+		return chalkctl.WrapSigDisable(opts)
+	default:
+		return fmt.Errorf("usage: chalkctl wrapsig [status|enable|disable] [--force]")
+	}
+}
+
 func runMetrics(args []string) error {
 	fs := flag.NewFlagSet("metrics", flag.ContinueOnError)
 	var (
@@ -613,6 +653,7 @@ Commands:
   maint        on|off|status -- serve a maintenance notice instead of the app
   metrics      what postgres knows about its own performance (read-only)
   ephemeral    list | purge [--channel <id>] | disable -- guest voice rooms
+  wrapsig      status | enable [--force] | disable -- require signed channel keys
   self-update  update the chalkctl binary itself
   rollback     re-pin the previous chalk image
   logs         tail the stack's logs

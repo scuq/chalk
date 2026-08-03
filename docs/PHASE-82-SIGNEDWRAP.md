@@ -4,7 +4,7 @@ Closing audit finding **C-01 (Critical)**: channel-key wraps are encrypted *to* 
 recipient but signed by nobody, so a malicious server can substitute a space key
 it knows. Planned against v0.6.4, after phase 81.
 
-**Status: complete (82-1 … 82-8).** C-01 is closed **on deployments that have
+**Status: complete (82-1 … 82-9).** C-01 is closed **on deployments that have
 flipped the enforcement flag** — see *Where this actually stands* below, which
 is deliberately placed before the design so it cannot be skimmed past. The
 end-to-end run against a live stack is the one outstanding item; see
@@ -20,15 +20,16 @@ end-to-end run against a live stack is the one outstanding item; see
 | Closed today | Any suite-2 wrap signed by an identity this device has not pinned. |
 | Closed by 82-5 | Every wrap chalk produces for a member is now signed, so on any channel where the members run current builds, one signed adoption **ratchets** the channel: an unsigned wrap for it is refused thereafter, at any key version. |
 | Closed by 82-6 | Silent overwrite of another member's wrap slot (the store's guarded upsert), wraps parked at arbitrary future key versions, and unbounded wrap blobs. The **self-healing sweep** upgrades legacy unsigned wraps to signed ones as channels get used — no member action needed. |
+| Closed by 82-7 | Guest wraps. The link fragment now carries the owner's Ed25519 public key, the mint signs, and the guest verifies — anchored on the one value the server never sees. Links minted before 82-7 keep working, unsigned, until they expire (hours). |
 | Closed **when the operator flips `CHALK_WRAP_SIG_REQUIRED`** | Unsigned wraps entirely: the server refuses them on publish, the client refuses them on read (latched per session — a later welcome cannot relax it). An un-swept member shows `waiting` and recovers via a holder's re-share. |
 | **Still open by default** | On a deployment with the flag off (the shipped default), an unsigned wrap on a channel that has never yielded a signed one is still accepted — the migration window, which the sweep drains and the flag ends. |
 | Still open | Membership is server-asserted, so a server that can add a member it controls can still get a key it knows distributed. Phase 83. |
-| Closed by 82-7 | Guest wraps. The link fragment now carries the owner's Ed25519 public key, the mint signs, and the guest verifies — anchored on the one value the server never sees. Links minted before 82-7 keep working, unsigned, until they expire (hours). |
 
-The migration story, in one line: **ship 82-6, let the sweep run, flip
-`CHALK_WRAP_SIG_REQUIRED=true`, and C-01 is closed for member wraps.** The
+The migration story, in one line: **ship it, let the sweep run, wait for
+`chalkctl wrapsig status` to say READY, then `chalkctl wrapsig enable`.** The
 flag defaults false because flipping it before the sweep has re-signed a
-channel's wraps strands every member still on an unsigned one.
+channel's wraps strands every member still on an unsigned one — which is
+exactly what 82-9's readiness check exists to stop you doing blind.
 
 ---
 
@@ -364,6 +365,46 @@ Deliberately **not** a synthetic message in the feed: that would need a seq,
 which means colliding with the real sequence space, persisting, and counting as
 unread — a lot of blast radius for a notice about something that just happened.
 
+### Knowing when to flip the flag — 82-9
+
+The migration plan ends with "flip `CHALK_WRAP_SIG_REQUIRED` once the sweep has
+drained", and 82-6 shipped it with no way to know when that is. An operator
+staring at a config file cannot see whether one straggler would be locked out,
+and the failure mode of guessing is that a real person cannot read their
+channel. `chalkctl wrapsig status` answers it:
+
+```
+CHALK_WRAP_SIG_REQUIRED is currently false
+
+channel keys at current versions: 38 of 41 signed, across 9 channel(s)
+
+NOT READY: 3 wrap(s) are still unsigned.
+These members would be blocked ('waiting') until a key holder re-shares:
+  #standup                     2/5 unsigned  dave, erin
+  #random                      1/4 unsigned  dave
+```
+
+The server cannot verify a signature — it is the party signatures defend
+against — but `wrap_suite` is a plain column, and "which slots are still suite
+1" *is* the readiness question. `enable` refuses to run while anyone would be
+stranded (`--force` overrides, and says so), and `disable` exists because a flag
+whose failure mode is locking users out needs its way back to be one command
+rather than an env-file edit remembered under pressure.
+
+Two scoping decisions do the real work, and both are asserted by tests because
+getting either wrong yields a command that says "not ready" forever — which an
+operator learns to ignore:
+
+- **Current key versions only.** Clients never re-fetch an old version's wrap
+  (`decryptForChannel` reads the local cache and nothing else), so an unsigned
+  wrap at an old version can block nobody.
+- **Live channels only.** Expired ephemeral rooms are pending hard-deletion by
+  the janitor; letting a dead guest room hold the verdict red would block the
+  operator on something about to cease existing.
+
+Outstanding **guest links** are reported but explicitly do not gate: redeeming
+an already-parked invite is not flag-gated, and the links expire within hours.
+
 ### Chokepoint — the bypass is now a compile error
 
 `keys: Map<string, Uint8Array>` became `Map<string, HeldKey>` with provenance a
@@ -535,6 +576,7 @@ correctly and convergence is restored.
 | 82-6 | **done** | `wrap_suites` on the recipients ack; self-healing re-wrap sweep in `rewrapForMissing` (own slot included); `CHALK_WRAP_SIG_REQUIRED` through config → `welcome.wrap_sig_required` → chalkctl (generated, preserved, backfilled `false` on update); server refuses suite-1 writes when required (`checkWrapPublish`); `PutChannelKey` guarded overwrite (recipient-or-upgrade); `key_version ≤ current+1`; `maxWrapBlobBytes` on `publish_channel_key`; client latches the flag per session. |
 | 82-7 | **done** | Guest path: owner Ed25519 key in the link fragment (~96 → ~140 chars), `owner_user_id` through `RedeemedGuest` → the redeem response, `openGuestWrap`'s fragment-decides-the-suite rule, `wrapKeyForGuest` replacing `exportKeyForMint`, `JoinScreen` verify-then-open, mint gated by `checkWrapSuite`. 11 tests. |
 | 82-8 | **done** | `memberTrust` (and the first-sight badge bug it fixes), the identity-changed wall, `describeKeyProvenance` + the panel's provenance line, `JoinNotice` for visible `member_added`; `threat-model.md` rewritten. `crypto-agility.md`'s suite-2 entry landed early, in 82-5. 12 tests. |
+| 82-9 | **done** | `chalkctl wrapsig status\|enable\|disable` — the operator's answer to "has the sweep finished?", read from `channel_keys.wrap_suite`. 4 tests. |
 
 ### The 82-6 server rule: recipient-or-upgrade, silently
 
@@ -609,11 +651,14 @@ phase has not been driven against a live stack. Via the `run-chalk` skill:
 3. a guest link minted and redeemed — the link is now ~140 chars, so check it
    survives the copy button and a paste into the composer;
 4. add a member, and confirm the join notice says so above the composer;
-5. `CHALK_WRAP_SIG_REQUIRED=true`: an un-swept member shows `waiting` and
-   recovers via "re-share"; a fresh guest link still mints and redeems.
+5. `chalkctl wrapsig status` — READY before the flip, and NOT READY (naming
+   the right member) if one is deliberately left un-swept;
+6. `chalkctl wrapsig enable`: an un-swept member shows `waiting` and recovers
+   via "re-share"; a fresh guest link still mints and redeems; then
+   `chalkctl wrapsig disable` restores them.
 
-Step 5 is the only exercise of the real Postgres upsert guard, which no unit
-test reaches. Worth doing before cutting a release that contains this phase.
+Steps 5-6 are the only exercise of the real Postgres upsert guard and of
+`wrapsig`'s SQL, neither of which any unit test reaches. Worth doing before cutting a release that contains this phase.
 
 ## Out of scope
 

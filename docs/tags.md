@@ -49,7 +49,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #servernotice   46        web/src/state/ web/src/components/
 #governance     -         internal/store/governance.go internal/server/governance_ws.go
 #attachments    -         web/src/attachments/ internal/store/
-#chalkctl       72 73     internal/chalkctl/ cmd/chalkctl/ test/integration/backup_restore_test.go
+#chalkctl       72 73 82  internal/chalkctl/ cmd/chalkctl/ test/integration/backup_restore_test.go
 #ephemeral      80        internal/chalkctl/ migrations/ internal/store/ internal/server/ internal/auth/ internal/proto/ internal/config/ web/src/crypto/ web/src/components/ web/src/chat/
 #hardening      81        internal/auth/ internal/ratelimit/ internal/store/ internal/chalkctl/ docs/threat-model.md docs/PHASE-81-SECAUDIT.md
 #signedwrap     82        web/src/crypto/ web/src/components/ web/src/chat/keyprovenance.ts web/src/state/ internal/proto/ internal/server/ internal/store/ internal/config/ internal/chalkctl/ internal/auth/join_http.go docs/PHASE-82-SIGNEDWRAP.md docs/design/crypto-agility.md docs/threat-model.md
