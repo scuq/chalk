@@ -50,7 +50,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #governance     -         internal/store/governance.go internal/server/governance_ws.go
 #attachments    -         web/src/attachments/ internal/store/
 #chalkctl       72 73     internal/chalkctl/ cmd/chalkctl/ test/integration/backup_restore_test.go
-#ephemeral      80        internal/chalkctl/
+#ephemeral      80        internal/chalkctl/ migrations/
 
 ## Phases with no topic yet
 
