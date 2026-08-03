@@ -246,6 +246,22 @@ func run(args []string) error {
 	wsCfg.AttachMaxPerMessage = cfg.Attachments.MaxPerMessage
 	// 42-5: thread inbox recency window.
 	wsCfg.ThreadActiveWindow = cfg.Threads.ActiveWindow()
+	// 80-6: ephemeral voice channels. The feature additionally needs the
+	// chalk_guest pool (CHALK_DB_URL_GUEST) for the join path; creating
+	// rooms and minting links only needs these knobs.
+	wsCfg.Ephemeral = server.EphemeralWSConfig{
+		Enabled:      cfg.Ephemeral.Enabled,
+		MaxTTL:       cfg.Ephemeral.MaxTTL(),
+		InviteMaxTTL: cfg.Ephemeral.InviteMaxTTL(),
+		MaxGuests:    cfg.Ephemeral.MaxGuests,
+	}
+	if cfg.Ephemeral.Enabled {
+		log.Printf("ephemeral: enabled max_ttl=%s invite_max_ttl=%s max_guests=%d guest_pool=%v",
+			cfg.Ephemeral.MaxTTL(), cfg.Ephemeral.InviteMaxTTL(), cfg.Ephemeral.MaxGuests,
+			cfg.DBURLGuest != "")
+	} else {
+		log.Printf("ephemeral: disabled (CHALK_EPHEMERAL_ENABLED=false)")
+	}
 	// 30-2: voice signaling knobs.
 	wsCfg.Voice = server.VoiceWSConfig{
 		Enabled:         cfg.Voice.Enabled,

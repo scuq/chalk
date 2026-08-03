@@ -296,6 +296,8 @@ export interface ChannelSummaryWire {
   governance_mode?: string; // gov-2; "dictator" | "democratic"; absent -> "dictator"
   channel_type?: string; // 30-4; "text" | "voice"; absent from older servers -> "text"
   group_name?: string; // 54-2; creator's grouping suggestion; absent -> "General"
+  // 80-6: when the channel self-destructs, unix-millis. Absent -> permanent.
+  expires_at?: number;
   last_seq?: number; // 33-1; highest seq in the channel; absent from older servers -> 0
   last_read_seq?: number; // 33-1; this user's read cursor; absent -> 0
   // 62-2: newest-message activity (Zuckermode). last_msg_body is ciphertext
@@ -319,6 +321,11 @@ export interface CreateChannelPayload {
   channel_type?: string;
   // 54-2: roster-grouping suggestion. Omitted -> "General" server-side.
   group_name?: string;
+  // 80-6: > 0 makes the channel ephemeral -- destroyed (contents and guests
+  // included) this many seconds after creation. Voice-only, no DM. The
+  // server clamps to its CHALK_EPHEMERAL_MAX_TTL_HOURS cap and answers with
+  // the resulting absolute expires_at in the summary.
+  ttl_secs?: number;
 }
 
 export interface CreateChannelAckPayload {

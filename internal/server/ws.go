@@ -51,6 +51,20 @@ type WSConfig struct {
 	// here rather than left at zero, because a zero window would silently mean
 	// "nothing is ever active".
 	ThreadActiveWindow time.Duration
+
+	// 80-6: ephemeral voice channel knobs (CHALK_EPHEMERAL_*), populated in
+	// cmd/chalkd from config.EphemeralConfig. Zero-value = feature disabled.
+	Ephemeral EphemeralWSConfig
+}
+
+// EphemeralWSConfig carries the phase-80 knobs the WS handlers enforce:
+// create clamps a requested TTL to MaxTTL (80-6); invite minting caps link
+// life at InviteMaxTTL and the per-channel guest count at MaxGuests (80-7).
+type EphemeralWSConfig struct {
+	Enabled      bool
+	MaxTTL       time.Duration
+	InviteMaxTTL time.Duration
+	MaxGuests    int
 }
 
 // DefaultWSConfig returns production defaults.
@@ -1871,6 +1885,11 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 		LastSeq:           c.LastSeq,
 		LastReadSeq:       c.LastReadSeq,
 	}
+	// 80-6: expiry rides every summary so clients can render the countdown
+	// from any path that delivers the channel (create ack, listing, push).
+	if c.ExpiresAt != nil {
+		s.ExpiresAt = c.ExpiresAt.UnixMilli()
+	}
 	// 62-2: activity fields only when the listing query found a newest
 	// message (seq starts at 1, so 0 means "no activity row"). The body
 	// join can still come back NULL if the message's partition was
@@ -2002,6 +2021,38 @@ func (h *WSHandler) handleCreateChannel(
 		return
 	}
 
+	// 80-6: ephemeral request. Voice-only, no DM, TTL clamped to the
+	// operator's cap (a floor of one minute keeps a typo'd ttl_secs=1 from
+	// minting a room the janitor reaps mid-create). The absolute expiry is
+	// computed HERE, from server time -- the client only ever sends a
+	// relative TTL.
+	var expiresAt *time.Time
+	if p.TTLSecs < 0 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "ttl_secs must be >= 0")
+		return
+	}
+	if p.TTLSecs > 0 {
+		if !h.cfg.Ephemeral.Enabled {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel,
+				"ephemeral channels are disabled on this server")
+			return
+		}
+		if p.ChannelType != "voice" || p.IsDM {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel,
+				"an ephemeral channel must be a voice channel (and not a DM)")
+			return
+		}
+		ttl := time.Duration(p.TTLSecs) * time.Second
+		if ttl < time.Minute {
+			ttl = time.Minute
+		}
+		if max := h.cfg.Ephemeral.MaxTTL; max > 0 && ttl > max {
+			ttl = max
+		}
+		t := time.Now().UTC().Add(ttl)
+		expiresAt = &t
+	}
+
 	// Build the member list and create.
 	others := make([]uuid.UUID, 0, len(memberSet))
 	for m := range memberSet {
@@ -2041,6 +2092,7 @@ func (h *WSHandler) handleCreateChannel(
 		MemberIDs:   others,
 		ChannelType: p.ChannelType,
 		GroupName:   p.GroupName,
+		ExpiresAt:   expiresAt,
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrDMCardinality) {

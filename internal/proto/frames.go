@@ -294,6 +294,10 @@ type ChannelSummary struct {
 	// GroupName is the creator's roster-grouping suggestion (54-2). Absent
 	// from older servers -> treat as "General".
 	GroupName string `json:"group_name,omitempty"`
+	// ExpiresAt (unix-millis) is when an ephemeral channel is destroyed
+	// (80-6). Absent/0 = permanent. The client renders the countdown from
+	// this; the server's janitor is what actually enforces it.
+	ExpiresAt int64 `json:"expires_at,omitempty"`
 	// LastSeq is the highest seq assigned in the channel, 0 when empty.
 	// LastReadSeq is the recipient's read cursor (33-1). The client shows an
 	// unread indicator when LastSeq > LastReadSeq, without fetching history.
@@ -346,6 +350,13 @@ type CreateChannelPayload struct {
 	// means 'General'. Trimmed; ≤80 chars like Name. Set once at creation --
 	// per-user regrouping is a client prefs concern, not a server mutation.
 	GroupName string `json:"group_name,omitempty"`
+	// TTLSecs, when > 0, makes the channel EPHEMERAL (80-6): it is destroyed,
+	// contents and guests included, TTLSecs after creation. Relative rather
+	// than an absolute timestamp so client clock skew cannot shorten (or
+	// stretch) a room's life. Requires channel_type='voice', no DM; the
+	// server clamps it to CHALK_EPHEMERAL_MAX_TTL_HOURS and forces
+	// governance to 'dictator'.
+	TTLSecs int64 `json:"ttl_secs,omitempty"`
 }
 
 // CreateChannelAckPayload includes the full ChannelSummary so the client
