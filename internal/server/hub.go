@@ -526,6 +526,13 @@ type Conn struct {
 	// missing while this connection was still live.
 	DeviceType string
 
+	// 80-9: guest connections. IsGuest routes every inbound frame through
+	// the guest dispatch (default-deny allowlist, chalk_guest data path);
+	// GuestChannelID is the one channel the guest exists for, taken from
+	// the resolved ephemeral session -- never from client input.
+	IsGuest        bool
+	GuestChannelID uuid.UUID
+
 	// presenceMu guards claimedPresence, which the presence heartbeat
 	// goroutine reads while the read loop writes it.
 	presenceMu      sync.Mutex

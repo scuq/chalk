@@ -286,6 +286,7 @@ func (s *Store) ListDirectoryUsers(ctx context.Context, exclude uuid.UUID) ([]Di
 		  WHERE id <> $1
 		    AND blocked_at IS NULL
 		    AND deleted_at IS NULL
+		    AND guest_channel_id IS NULL
 		  ORDER BY username`, exclude)
 	if err != nil {
 		return nil, fmt.Errorf("list directory users: %w", err)

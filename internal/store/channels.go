@@ -99,6 +99,10 @@ var ErrDMCardinality = errors.New("DM must have exactly 2 members")
 // {'text','voice'} (30-1).
 var ErrBadChannelType = errors.New("channel_type must be 'text' or 'voice'")
 
+// ErrGuestImmutable is returned when a membership change targets an
+// ephemeral guest (80-9): guests live and die with their one channel.
+var ErrGuestImmutable = errors.New("ephemeral guests cannot be added to channels")
+
 // --- CreateChannel ---------------------------------------------------------
 
 // CreateChannelInput is everything we need to create a channel in one
@@ -805,6 +809,23 @@ func (s *Store) AddMember(ctx context.Context, channelID, userID uuid.UUID) erro
 		}
 		if isDM {
 			return ErrDMNoAdd
+		}
+		// 80-9: a guest's ONLY membership is the one its redemption
+		// materialized. Adding it anywhere else would leak it out of its
+		// fence -- and the 0050 FK cycle (users.guest_channel_id CASCADE vs
+		// channels.created_by SET NULL) stays harmless only while guests
+		// never gain footholds in other channels.
+		var isGuest bool
+		if err := tx.QueryRow(ctx,
+			`SELECT guest_channel_id IS NOT NULL FROM users WHERE id = $1`, userID,
+		).Scan(&isGuest); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if isGuest {
+			return ErrGuestImmutable
 		}
 		var exists bool
 		if err := tx.QueryRow(ctx,

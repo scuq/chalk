@@ -42,6 +42,11 @@ type Options struct {
 	// shrink these for faster sweeps.
 	PresenceLoopConfig *presence.LoopConfig
 
+	// 80-9: the chalk_guest pool (CHALK_DB_URL_GUEST). Nil disables guest
+	// WS connections entirely -- the ephemeral feature's join endpoint may
+	// mint sessions, but a session without this pool cannot connect.
+	GuestStore *store.Guest
+
 	// Phase 07: SPA hosting. If WebFS is non-nil, the server mounts
 	// the SPA at "/" by serving WebFS rooted at WebDir (typically
 	// "web", with dist/ inside). If WebFS is nil, "/" is unhandled
@@ -156,7 +161,8 @@ func NewServer(opts Options) (*Server, error) {
 		s.publishPrefsChangeFn, // Phase 9.7a
 		s.pubsub,               // phase 08: listener for per-channel subscribe
 	)
-	s.wsh = wsh // gov-1b-2: retained for the governance sweeper
+	s.wsh = wsh                      // gov-1b-2: retained for the governance sweeper
+	wsh.guestStore = opts.GuestStore // 80-9: nil = guest connections refused
 	mux.Handle("GET /ws", wsh)
 
 	// Phase 09b sub-step 3: registration endpoints. Mounted before

@@ -128,6 +128,11 @@ type WSHandler struct {
 	// resolved, to collapse concurrent dispatch of the same proposal. Keyed
 	// by uuid.UUID. Zero-value ready.
 	resolving sync.Map
+
+	// 80-9: the chalk_guest pool for guest connections' data path (nil when
+	// CHALK_DB_URL_GUEST is unset -- guest WS connections are then refused
+	// at the handshake). Set by the Server after construction.
+	guestStore *store.Guest
 }
 
 // NewWSHandler constructs a handler. Phase 06 adds the presence/friends
@@ -226,11 +231,33 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		sessionUser = su
 	}
 
+	// 80-9: guest connections. The session resolved from the guest cookie;
+	// everything below that touches app tables on the guest's behalf is
+	// swapped for the chalk_guest path, and presence/status bookkeeping --
+	// surfaces guests do not have -- is skipped.
+	isGuest := sessionUser != nil && sessionUser.IsGuest
+	if isGuest {
+		if h.guestStore == nil {
+			h.logger.Printf("ws guest reject: no guest store (CHALK_DB_URL_GUEST unset)")
+			_ = c.Close(websocket.StatusPolicyViolation, "guests unavailable")
+			return
+		}
+		// The device row is created AS the guest: RLS pins user_id, so a
+		// guest presenting a real user's device id gets "unavailable", not
+		// a rebind.
+		if err := h.guestStore.EnsureDevice(ctx, sessionUser.UserID,
+			sessionUser.GuestChannelID, deviceID, hello.DeviceType); err != nil {
+			h.logger.Printf("ws guest ensure device: %v", err)
+			_ = c.Close(websocket.StatusPolicyViolation, "device unavailable")
+			return
+		}
+	}
+
 	// Phase 09b sub-step 6: strict gate. Every WS connection is
 	// bound to the session-resolved user; there's no legacy fallback
 	// anymore. The ensureDeviceForTesting shim that tied unknown
 	// devices to alice was removed in this sub-step.
-	if h.store != nil && sessionUser != nil {
+	if h.store != nil && sessionUser != nil && !isGuest {
 		if err := ensureDeviceForUser(ctx, h.store, deviceID, sessionUser.UserID); err != nil {
 			h.logger.Printf("ensure device: %v", err)
 			_ = c.Close(websocket.StatusInternalError, "ensure device failed")
@@ -293,6 +320,10 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cancel()
 	})
 	conn.DeviceType = string(deviceType)
+	if isGuest {
+		conn.IsGuest = true
+		conn.GuestChannelID = sessionUser.GuestChannelID
+	}
 	defer conn.MarkDone()
 
 	h.hub.Register(conn)
@@ -318,7 +349,21 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// still send to the default channel via the fallback path.
 	subsEntry := h.withSubs(conn)
 	channelIDs := []string{}
-	if connUserUUID != uuid.Nil && h.store != nil && h.listener != nil {
+	if isGuest && h.listener != nil {
+		// A guest subscribes to exactly its one channel's topic -- the id
+		// comes from the session, no listing query needed.
+		topic := pubsub.ChannelTopic(conn.GuestChannelID)
+		subCtx, subCancel := context.WithTimeout(ctx, 2*time.Second)
+		if err := h.listener.Subscribe(subCtx, topic); err != nil {
+			h.logger.Printf("guest subscribe %s: %v", topic, err)
+		} else {
+			subsEntry.mu.Lock()
+			subsEntry.topics = append(subsEntry.topics, topic)
+			subsEntry.mu.Unlock()
+			channelIDs = append(channelIDs, conn.GuestChannelID.String())
+		}
+		subCancel()
+	} else if connUserUUID != uuid.Nil && h.store != nil && h.listener != nil {
 		channels, err := h.store.ListChannelsForUser(ctx, connUserUUID)
 		if err != nil {
 			h.logger.Printf("list channels on hello: %v", err)
@@ -349,7 +394,9 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// "you". Lookup failure is non-fatal; handle stays empty and the
 	// SPA falls back to "you".
 	var handle string
-	if connUserUUID != uuid.Nil && h.store != nil {
+	if isGuest {
+		handle = sessionUser.DisplayName // guests are their typed name, never guest_<hex>
+	} else if connUserUUID != uuid.Nil && h.store != nil {
 		hLookup, err := h.store.HandlesByID(ctx, []uuid.UUID{connUserUUID})
 		if err != nil {
 			h.logger.Printf("welcome handle lookup: %v", err)
@@ -392,9 +439,10 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Presence: register the device, start the heartbeat, ensure the
-	// transition publishes if state changed.
+	// transition publishes if state changed. Guests have no presence
+	// surface at all (device_presence is not even granted to their role).
 	var presenceCleanup func()
-	if h.presence != nil {
+	if h.presence != nil && !isGuest {
 		userID := h.lookupUserForDevice(ctx, deviceID)
 		if userID != uuid.Nil {
 			err := h.presence.SetDevicePresence(ctx, presence.DevicePresence{
@@ -503,6 +551,13 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 		var f proto.Frame
 		if err := json.Unmarshal(data, &f); err != nil {
 			h.sendError(ctx, c, "", proto.ErrCodeBadFrame, "invalid json")
+			continue
+		}
+		// 80-9: guest connections never reach the app switch below. Their
+		// dispatch is a default-deny allowlist (guest_ws.go) whose data
+		// path runs as chalk_guest.
+		if conn.IsGuest {
+			h.dispatchGuestFrame(ctx, c, conn, f)
 			continue
 		}
 		switch f.Type {
@@ -2935,7 +2990,9 @@ func (h *WSHandler) handleFetchIdentity(
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "user_id not a UUID")
 		return
 	}
-	k, err := h.store.GetActiveIdentityKey(ctx, targetID)
+	// 80-9: Any = also serve ephemeral guests' identities, so a real member
+	// can verify a guest's DTLS fingerprint on the shared call.
+	k, err := h.store.GetActiveIdentityKeyAny(ctx, targetID)
 	if errors.Is(err, store.ErrNotFound) {
 		ack, _ := proto.NewFrame(proto.TypeFetchIdentityAck, f.Ref, proto.FetchIdentityAckPayload{
 			Found:  false,

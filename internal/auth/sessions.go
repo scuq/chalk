@@ -58,6 +58,14 @@ type SessionUser struct {
 	Email       string
 	Role        string
 	Session     store.Session // copy of the session row, without the raw token
+
+	// 80-9: ephemeral guest identity. IsGuest is true when the request was
+	// authorized by a chalk_guest_session cookie (ephemeral_sessions);
+	// GuestChannelID is then the ONE channel the guest exists for. Every
+	// consumer that must not serve guests checks this flag -- and the WS
+	// layer routes guest connections onto the restricted store.
+	IsGuest        bool
+	GuestChannelID uuid.UUID
 }
 
 // MintSession creates a new session row for userID, sets the Set-
@@ -171,6 +179,18 @@ func ResolveSession(
 	r *http.Request,
 ) (*SessionUser, error) {
 	token, err := SessionTokenFromRequest(r)
+	if errors.Is(err, ErrNoSession) {
+		// 80-9: no real session -- maybe a guest one. Guests resolve ONLY on
+		// the allowlisted paths below; everywhere else a guest cookie is as
+		// good as no cookie, so every session-gated surface in the codebase
+		// is closed to guests without each handler having to know they
+		// exist. The real cookie always wins when both are present (a
+		// member who clicked a join link stays themselves).
+		if gu, gerr := resolveGuestSession(ctx, st, r); gerr == nil {
+			return gu, nil
+		}
+		return nil, err
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +233,51 @@ func ResolveSession(
 	}, nil
 }
 
+// guestPathAllowed is the REST allowlist for guest sessions: the WS upgrade
+// and nothing else (fail closed; a later slice opens a specific endpoint by
+// adding it HERE, deliberately in one greppable place). Every other path
+// treats a guest cookie as no session at all.
+func guestPathAllowed(path string) bool {
+	return path == "/ws"
+}
+
+// resolveGuestSession reads the chalk_guest_session cookie and resolves it
+// against ephemeral_sessions, but only for allowlisted paths.
+func resolveGuestSession(ctx context.Context, st *store.Store, r *http.Request) (*SessionUser, error) {
+	if !guestPathAllowed(r.URL.Path) {
+		return nil, ErrNoSession
+	}
+	c, err := r.Cookie(GuestCookieName)
+	if err != nil {
+		return nil, ErrNoSession
+	}
+	token, err := base64.RawURLEncoding.DecodeString(c.Value)
+	if err != nil || len(token) != 32 {
+		return nil, ErrInvalidSession
+	}
+	es, err := st.GetEphemeralSession(ctx, token)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, ErrInvalidSession
+		}
+		return nil, fmt.Errorf("get ephemeral session: %w", err)
+	}
+	_ = st.TouchEphemeralSession(ctx, token) // best-effort, like TouchSession
+	return &SessionUser{
+		UserID:      es.UserID,
+		Username:    es.Handle,
+		DisplayName: es.DisplayName,
+		Role:        "guest",
+		Session: store.Session{
+			UserID:    es.UserID,
+			CreatedAt: es.CreatedAt,
+			ExpiresAt: es.ExpiresAt,
+		},
+		IsGuest:        true,
+		GuestChannelID: es.GuestChannelID,
+	}, nil
+}
+
 // RequireSession is a middleware-style wrapper. Resolves the session
 // from the request; on success calls next with the SessionUser
 // attached to the context; on failure writes a 401 JSON error and
@@ -243,11 +308,23 @@ func RequireSession(
 			return
 		}
 
+		// 80-9: belt-and-braces guest fence. resolveGuestSession only ever
+		// yields a guest on the allowlist (which RequireSession-gated paths
+		// are never on), so this cannot fire today -- but a future widening
+		// of the allowlist must not silently open every session-gated
+		// endpoint with it.
+		if su.IsGuest {
+			writeError(w, http.StatusForbidden,
+				"guest_forbidden", "guests cannot use this endpoint")
+			return
+		}
 		// 31-9: hard-cutover gate. Un-enrolled users may only reach the
 		// enrollment allowlist; everything else 409s so the SPA routes
 		// them into the migration wizard. ErrNotFound = no user_auth row
 		// = not enrolled. Lookup errors fail open (log only): the gate is
 		// a UX fence, not the security boundary -- the session itself is.
+		// Guests are structurally exempt (no user_auth row, no enrollment)
+		// but never reach here anyway (fence above).
 		if AuthV2Required() && !enrollmentExempt(r.URL.Path) {
 			ua, uerr := st.GetUserAuth(r.Context(), su.UserID)
 			enrolled := uerr == nil && ua.AuthV2Enrolled

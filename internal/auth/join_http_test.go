@@ -284,3 +284,19 @@ func TestJoinDisabledIs404(t *testing.T) {
 		t.Errorf("disabled POST: %d, want 404", resp.StatusCode)
 	}
 }
+
+// 80-9: the REST fence for guest sessions is a single allowlist; everything
+// else must treat a guest cookie as no session.
+func TestGuestPathAllowlist(t *testing.T) {
+	if !guestPathAllowed("/ws") {
+		t.Error("/ws must accept guest sessions (the WS upgrade is the guest's whole surface)")
+	}
+	for _, path := range []string{
+		"/api/auth/me", "/api/auth/logout", "/api/attachments",
+		"/api/users/directory", "/api/invites", "/", "/api/join/x",
+	} {
+		if guestPathAllowed(path) {
+			t.Errorf("%s must not resolve guest sessions", path)
+		}
+	}
+}

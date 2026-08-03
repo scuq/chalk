@@ -289,9 +289,23 @@ func run(args []string) error {
 			cfg.Voice.MaxParticipants, cfg.Voice.ForceRelay,
 			len(cfg.Voice.TurnURLList()), len(cfg.Voice.StunURLList()), cfg.Voice.TurnTTL())
 	}
+	// 80-9: the chalk_guest pool. Optional: without it the ephemeral join
+	// endpoints still answer, but guest WS connections are refused -- a
+	// pre-phase-80 env simply lacks the feature.
+	var guestStore *store.Guest
+	if cfg.Ephemeral.Enabled && cfg.DBURLGuest != "" {
+		guestStore, err = store.OpenGuest(connectCtx, cfg.DBURLGuest)
+		if err != nil {
+			return fmt.Errorf("connect guest db: %w", err)
+		}
+		defer guestStore.Close()
+		log.Printf("connected guest pool (chalk_guest)")
+	}
+
 	srv, err := server.NewServer(server.Options{
 		Listen:             cfg.Listen,
 		Store:              st,
+		GuestStore:         guestStore,
 		Hub:                server.NewHub(),
 		WSConfig:           wsCfg,
 		InstanceID:         cfg.InstanceID,
@@ -353,6 +367,15 @@ func run(args []string) error {
 				}
 				if n > 0 {
 					log.Printf("session janitor: deleted %d expired session(s)", n)
+				}
+				// 80-9: guest sessions that expired while their room lives on.
+				gn, gerr := st.DeleteExpiredEphemeralSessions(ctx)
+				if gerr != nil {
+					log.Printf("session janitor: %v", gerr)
+					continue
+				}
+				if gn > 0 {
+					log.Printf("session janitor: deleted %d expired guest session(s)", gn)
 				}
 			}
 		}

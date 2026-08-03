@@ -97,3 +97,27 @@ func (s *Store) GetActiveIdentityKey(ctx context.Context, userID uuid.UUID) (Ide
 	}
 	return k, nil
 }
+
+// GetActiveIdentityKeyAny is GetActiveIdentityKey with an ephemeral-guest
+// fallback (80-9): a real member verifying a GUEST's DTLS fingerprint needs
+// the guest's keys, which live in ephemeral_identity_keys. Guests never
+// rotate, so the fallback reports generation 1.
+func (s *Store) GetActiveIdentityKeyAny(ctx context.Context, userID uuid.UUID) (IdentityKey, error) {
+	k, err := s.GetActiveIdentityKey(ctx, userID)
+	if !errors.Is(err, ErrNotFound) {
+		return k, err
+	}
+	err = s.Pool.QueryRow(ctx,
+		`SELECT user_id, x25519_pub, ed25519_pub, self_sig, created_at
+		   FROM ephemeral_identity_keys WHERE user_id = $1`,
+		userID,
+	).Scan(&k.UserID, &k.X25519Pub, &k.Ed25519Pub, &k.SelfSig, &k.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return IdentityKey{}, ErrNotFound
+	}
+	if err != nil {
+		return IdentityKey{}, fmt.Errorf("get ephemeral identity key: %w", err)
+	}
+	k.Generation = 1
+	return k, nil
+}
