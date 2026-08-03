@@ -10,6 +10,19 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- Opening a conversation with a lot of unread messages — or coming back to one
+  after your phone put the app to sleep — put you on the first message you had
+  not read, but tucked the "new messages" line underneath the channel name bar
+  at the top, where you could not see it. With no marker in view and the newest
+  message still below the fold, it looked like the app had scrolled somewhere
+  at random instead of to where you left off. The line now lands just under the
+  bar, where it can be read.
+
+---
+
 ## v0.6.3 — 3 August 2026 — Hidden channels
 
 ### Added

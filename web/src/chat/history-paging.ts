@@ -51,11 +51,38 @@ export function landingFillAllowed(pagesFetched: number): boolean {
 // screen anyway from the bottom -- were enough to land the reader mid-feed
 // with the newest message hidden below the fold.
 //
-// The slack keeps the divider clear of the pinned channel header instead of
-// flush against the top of the scrollport, where it would sit underneath it.
+// The slack is what keeps a run that is only just too tall from earning a
+// scroll for the sake of a line or two.
 export const UNREAD_FIT_SLACK_PX = 48;
 
 export function unreadRunFits(runPx: number, viewportPx: number): boolean {
   if (viewportPx <= 0) return false;
   return runPx + UNREAD_FIT_SLACK_PX <= viewportPx;
+}
+
+// 79-1: breathing room between the pinned header and the divider it lands
+// under. This used to be the divider's `scroll-margin-top` in theme.css, back
+// when the landing scrolled it flush to the top of the scrollport.
+export const DIVIDER_HEADER_GAP_PX = 12;
+
+// 79-1: how far to move the scroller so the divider lands BELOW the pinned
+// channel header rather than behind it.
+//
+// The header is `position: sticky` INSIDE the feed's scroller (theme.css), so
+// the top of the scrollport and the first row the reader can actually see are
+// not the same place. Scrolling the divider flush to the top -- which is what
+// `scrollIntoView({block: "start"})` does -- tucked it, and its "new messages"
+// label, under the bar: the reader landed on the right message with no marker
+// and the newest message below the fold, which reads as "it scrolled somewhere
+// random" rather than "here is where you left off".
+//
+// dividerOffset is the divider's top relative to the scrollport's top;
+// pinnedInset is the measured height of whatever is pinned over it (0 where
+// nothing is, e.g. the thread panel). The result is a delta to add to
+// scrollTop; the browser clamps it to the scrollable range.
+export function dividerScrollDelta(
+  dividerOffset: number,
+  pinnedInset: number,
+): number {
+  return dividerOffset - pinnedInset - DIVIDER_HEADER_GAP_PX;
 }

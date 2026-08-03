@@ -28,7 +28,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #voice          30 41 44 63 66 70 71  internal/turncred/ web/src/voice/ web/src/components/VoiceCallPanel.tsx
 #camera-bg      52        web/src/voice/ web/src/components/
 #threads        42 45 47 49  web/src/chat/threadinbox.ts web/src/chat/ web/src/components/
-#unread         33 62 76  web/src/chat/ web/src/state/ web/src/components/MessageList.tsx web/src/components/ZuckerList.tsx
+#unread         33 62 76 79  web/src/chat/ web/src/state/ web/src/components/MessageList.tsx web/src/components/ZuckerList.tsx web/src/theme.css
 #notify         40 50 71  web/src/notify/
 #parking        53        web/src/parking.ts web/src/components/
 #roster         54 78     web/src/chat/ web/src/components/Sidebar.tsx web/src/components/ZuckerList.tsx

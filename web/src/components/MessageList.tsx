@@ -2,6 +2,7 @@ import { Fragment, type ComponentChildren } from "preact";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import {
   autoPagingAllowed,
+  dividerScrollDelta,
   landingFillAllowed,
   nextEmptyStreak,
   unreadRunFits,
@@ -195,6 +196,35 @@ function dividerEarnsTheScroll(
   return !unreadRunFits(run, scroller.clientHeight);
 }
 
+// 79-1: how much of the scrollport's top edge is painted over by something
+// pinned to it -- the channel header, which is `position: sticky` inside this
+// very scroller. Measured rather than hard-coded: the bar is a different
+// height on a phone than on a desktop, and the thread panel and the voice
+// scratchpad have no pinned header at all, which is what the 0 covers.
+function pinnedTopInset(scroller: HTMLElement | null): number {
+  if (!scroller || typeof window === "undefined") return 0;
+  let inset = 0;
+  for (const child of Array.from(scroller.children)) {
+    const el = child as HTMLElement;
+    if (window.getComputedStyle(el).position !== "sticky") continue;
+    inset = Math.max(inset, el.getBoundingClientRect().height);
+  }
+  return inset;
+}
+
+// 79-1: land the divider clear of the pinned header. scrollIntoView can only
+// aim at the top of the scrollport, and that is behind the bar -- see
+// dividerScrollDelta -- so the offset is applied by hand instead.
+function scrollToDivider(divider: HTMLElement, scroller: HTMLElement | null) {
+  if (!scroller) {
+    divider.scrollIntoView({ behavior: "auto", block: "start" });
+    return;
+  }
+  const offset =
+    divider.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+  scroller.scrollTop += dividerScrollDelta(offset, pinnedTopInset(scroller));
+}
+
 function scrollToAnchor(
   anchor: Anchor,
   divider: HTMLElement | null,
@@ -202,7 +232,7 @@ function scrollToAnchor(
   scroller: HTMLElement | null,
 ) {
   if (anchor === "divider" && divider && dividerEarnsTheScroll(divider, end, scroller)) {
-    divider.scrollIntoView({ behavior: "auto", block: "start" });
+    scrollToDivider(divider, scroller);
   } else if (anchor !== null && end) {
     end.scrollIntoView({ behavior: "auto", block: "end" });
   }
@@ -491,7 +521,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
   // fix for late-loading media: every image that resolves fires this, and
   // the view is put back where the landing meant to leave it.
   //
-  // scrollIntoView changes scrollTop, not layout, so this can't feed itself.
+  // Scrolling changes scrollTop, not layout, so this can't feed itself.
   useEffect(() => {
     const el = rootRef.current;
     if (ephemeral || !el || typeof ResizeObserver === "undefined") return;

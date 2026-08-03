@@ -1625,9 +1625,11 @@ body.chalk-resizing .chalk-sidebar-resizer {
   align-items: center;
   gap: var(--chalk-s2);
   margin: var(--chalk-s1) 0;
-  /* Scroll target: landing puts this at the top of the viewport, and a
-     little padding above keeps it off the very edge. */
-  scroll-margin-top: var(--chalk-s3);
+  /* 79-1: the landing scroll positions this by hand rather than through
+     scrollIntoView, because the offset it needs is the height of the sticky
+     channel header above it -- see dividerScrollDelta in chat/history-paging.ts.
+     A scroll-margin-top here would be dead weight, and a second number to keep
+     in step with that one. */
   user-select: none;
 }
 

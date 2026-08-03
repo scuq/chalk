@@ -7,6 +7,8 @@ import {
   LANDING_PAGE_LIMIT,
   autoPagingAllowed,
   UNREAD_FIT_SLACK_PX,
+  DIVIDER_HEADER_GAP_PX,
+  dividerScrollDelta,
   landingFillAllowed,
   nextEmptyStreak,
   pageMarksComplete,
@@ -66,4 +68,27 @@ test("an unmeasurable viewport never counts as a fit", () => {
   // No scroller (tests, jsdom) must not silently turn every landing into
   // "jump to the newest message" and throw the divider away.
   assert.equal(unreadRunFits(0, 0), false);
+});
+
+test("the divider lands below the pinned header, not behind it", () => {
+  // A divider 900px down the scroller, under a 50px sticky channel header:
+  // the scroll has to stop short of putting it at the top of the scrollport,
+  // or the bar paints over it and the "new messages" label is never seen.
+  const delta = dividerScrollDelta(900, 50);
+  assert.equal(delta, 900 - 50 - DIVIDER_HEADER_GAP_PX);
+  // The divider ends up this far below the header's bottom edge.
+  assert.equal(900 - delta - 50, DIVIDER_HEADER_GAP_PX);
+});
+
+test("the gap alone applies where nothing is pinned", () => {
+  // The thread panel and the voice scratchpad have no sticky header; the
+  // divider still wants a little air above it.
+  assert.equal(dividerScrollDelta(900, 0), 900 - DIVIDER_HEADER_GAP_PX);
+});
+
+test("a header taller than the divider's offset scrolls backwards, not to it", () => {
+  // The divider is already above the header's bottom edge, so reaching it
+  // means scrolling UP. A clamp to >= 0 here would leave it behind the bar,
+  // which is the bug this rule exists to prevent.
+  assert.ok(dividerScrollDelta(20, 50) < 0);
 });
