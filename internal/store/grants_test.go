@@ -1,6 +1,6 @@
 package store
 
-// 80-3: THE security test for the guest fence (docs/PHASE-80-EPHEMERAL.md).
+// 80-3: THE security test for the guest fence (docs/phases/PHASE-80-EPHEMERAL.md).
 //
 // It builds a scratch database, applies every migration, and then checks the
 // chalk_guest role against reality:

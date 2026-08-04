@@ -1,6 +1,6 @@
 package store
 
-// 80-8: guest materialization (docs/PHASE-80-EPHEMERAL.md §"The guest row is
+// 80-8: guest materialization (docs/phases/PHASE-80-EPHEMERAL.md §"The guest row is
 // materialized lazily"). One chalk_app transaction turns a parked invite into
 // a full principal: users row (under the RESERVED uuid the wrap's AAD is
 // bound to), ephemeral_guests, channel_members, ephemeral_identity_keys and

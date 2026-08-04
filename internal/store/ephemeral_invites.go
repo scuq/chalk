@@ -1,6 +1,6 @@
 package store
 
-// 80-7: ephemeral guest invites (docs/PHASE-80-EPHEMERAL.md). One row per
+// 80-7: ephemeral guest invites (docs/phases/PHASE-80-EPHEMERAL.md). One row per
 // magic link, holding the public material the creator derived from the link
 // secret. Rows live until the channel is purged -- an EXPIRED invite may
 // still name a live guest (via ephemeral_guests.invite_lookup), so nothing

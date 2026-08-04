@@ -1,4 +1,4 @@
-// JoinScreen (80-13): the guest's front door, docs/PHASE-80-EPHEMERAL.md.
+// JoinScreen (80-13): the guest's front door, docs/phases/PHASE-80-EPHEMERAL.md.
 //
 // Mounted by index.tsx for /join/<lookup> paths INSTEAD of the App -- a
 // guest never touches the session/identity machinery real users boot

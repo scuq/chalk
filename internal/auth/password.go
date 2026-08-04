@@ -1,7 +1,7 @@
 // chalk -- phase31-slice31-2 password auth helpers.
 //
 // Server-side half of password authentication. The password itself and the
-// key-wrapping KEK never reach the server (see docs/PHASE-31-AUTHV2.md):
+// key-wrapping KEK never reach the server (see docs/phases/PHASE-31-AUTHV2.md):
 // the client derives authProof = HKDF(Argon2id(password, salt), "chalk/auth")
 // and sends only authProof. The server stores SHA-256(authProof) in
 // user_auth.auth_proof_hash and constant-time compares on login.

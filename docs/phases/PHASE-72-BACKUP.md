@@ -4,7 +4,7 @@
 changelog; the design notes are as-built, not a contemporaneous plan.
 
 **Status:** shipped, v0.5.9. Operator documentation in
-[deployment.md](deployment.md).
+[deployment.md](../deployment.md).
 **Tag:** `#chalkctl` → `tools/where.sh -g chalkctl`
 
 ## Why

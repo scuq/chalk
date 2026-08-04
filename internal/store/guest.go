@@ -11,7 +11,7 @@ import (
 )
 
 // 80-3: Guest is the data layer for connections serving an ephemeral guest
-// (docs/PHASE-80-EPHEMERAL.md). It is a SEPARATE TYPE holding only the
+// (docs/phases/PHASE-80-EPHEMERAL.md). It is a SEPARATE TYPE holding only the
 // restricted chalk_guest pool, on purpose: the guest path cannot reach for a
 // privileged *Store method by mistake -- that is a compile error, not a
 // runtime one -- and a *Guest method cannot forget the SET LOCALs, because

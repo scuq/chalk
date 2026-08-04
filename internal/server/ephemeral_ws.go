@@ -1,6 +1,6 @@
 package server
 
-// 80-7: ephemeral guest-invite frames (docs/PHASE-80-EPHEMERAL.md §"The magic
+// 80-7: ephemeral guest-invite frames (docs/phases/PHASE-80-EPHEMERAL.md §"The magic
 // link"). Mint parks client-derived public material; list and revoke manage
 // the lifecycle. All three are OWNER-only -- the room's creator hands out its
 // keys -- and all three refuse on a permanent channel, so this surface simply

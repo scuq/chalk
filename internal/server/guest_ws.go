@@ -1,6 +1,6 @@
 package server
 
-// 80-9: the guest WS path (docs/PHASE-80-EPHEMERAL.md §"The guest fence").
+// 80-9: the guest WS path (docs/phases/PHASE-80-EPHEMERAL.md §"The guest fence").
 //
 // A guest connection is dispatched HERE, never into the app switch, and the
 // allowlist below is DEFAULT-DENY: a frame type without an entry answers

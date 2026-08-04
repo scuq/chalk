@@ -88,7 +88,7 @@ type Config struct {
 
 	// 82-6: refuse unsigned channel-key wraps. Defaults false -- the operator
 	// flips it once the self-healing sweep has upgraded the wraps in the wild
-	// (docs/PHASE-82-SIGNEDWRAP.md), and flipping early strands members whose
+	// (docs/phases/PHASE-82-SIGNEDWRAP.md), and flipping early strands members whose
 	// wrap has not been re-signed yet.
 	WrapSigRequired bool // CHALK_WRAP_SIG_REQUIRED
 }

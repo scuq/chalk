@@ -3,8 +3,8 @@
 // Data layer for auth v2 (password + mandatory TOTP), the password/passkey-
 // wrapped identity entropy that lets a new device unlock keys without
 // re-typing the 24-word phrase, and one-time backup codes. See
-// docs/PHASE-31-AUTHV2.md for the design; migration 0040_auth_v2.sql for the
-// schema.
+// docs/phases/PHASE-31-AUTHV2.md for the design; migration
+// 0040_auth_v2.sql for the schema.
 //
 // The server is a blind relay for key material: identity_seed_wrap blobs are
 // OPAQUE (client-encrypted), and this layer never interprets them. TOTP

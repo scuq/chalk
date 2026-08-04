@@ -2,7 +2,7 @@
 
 *Backfilled record.* Written after the fact from the commit history and the
 changelog. The tuning rationale — why each number in `SOUND_SPECS` is what it is
-— lives in [notification-sounds.md](notification-sounds.md) and in the source
+— lives in [notification-sounds.md](../notification-sounds.md) and in the source
 comments, which are the authority.
 
 **Status:** shipped, v0.3.40. Extended by 50 (rules engine) and 71 (call sounds,

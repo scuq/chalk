@@ -374,7 +374,7 @@ interface Props {
   // id in response.
   flashMessageID?: string | null;
   onFlashDone?: () => void;
-  // 55-1: scroll-up pagination (docs/PHASE-55-HISTORY.md). onLoadOlder asks
+  // 55-1: scroll-up pagination (docs/phases/PHASE-55-HISTORY.md). onLoadOlder asks
   // the caller for the page before the oldest loaded row; historyComplete
   // says the channel's beginning is loaded; oldestSeq is the oldest loaded
   // seq from the UNFILTERED list -- it moves on every landed page, even one

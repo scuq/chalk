@@ -1,5 +1,5 @@
 // Package linkpreview is chalkd's server-side page fetcher for sender-built
-// link previews (phase 57, docs/PHASE-57-LINKPREVIEW.md).
+// link previews (phase 57, docs/phases/PHASE-57-LINKPREVIEW.md).
 //
 // Privacy model: the SENDER's client asks chalkd to fetch a page they are
 // about to link, chalkd returns OpenGraph metadata (and, separately, the

@@ -70,7 +70,7 @@ No format change, no migration of existing data required to *read* it.
   slot. Blob = `<suite-1 blob>(92) || signerEd25519Pub(32) || sig(64)` = 188,
   so the leading 92 bytes are a byte-identical suite-1 sealed box and the
   primitive is shared rather than restated. The signed message is
-  `chalk-wrap-sig.v1` (see `docs/PHASE-82-SIGNEDWRAP.md`).
+  `chalk-wrap-sig.v1` (see `docs/phases/PHASE-82-SIGNEDWRAP.md`).
 
   This is the worked example of the contract above: the signature went in the
   opaque blob, so suite 2 needed no migration, no wire change and no server

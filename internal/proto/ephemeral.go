@@ -1,6 +1,6 @@
 package proto
 
-// 80-7: ephemeral guest-invite frames (docs/PHASE-80-EPHEMERAL.md).
+// 80-7: ephemeral guest-invite frames (docs/phases/PHASE-80-EPHEMERAL.md).
 //
 // A magic link is minted CLIENT-side: the creator generates the secret,
 // derives the lookup, the guest's identity keys and the space-key wrap from

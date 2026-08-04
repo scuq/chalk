@@ -4,7 +4,7 @@
 -- device unlock keys WITHOUT re-typing the 24-word phrase.
 --
 -- KEY-MODEL NOTE (corrects the envelope model the phase-31 spec started from;
--- the as-built model is docs/PHASE-31-AUTHV2.md):
+-- the as-built model is docs/phases/PHASE-31-AUTHV2.md):
 -- Chalk derives identity keys CLIENT-SIDE from the 24-word BIP-39 phrase
 -- (256-bit entropy -> PBKDF2 seed -> HKDF -> X25519/Ed25519). The server
 -- holds only PUBLIC halves and OPAQUE space-key wraps; it has never held any
@@ -25,7 +25,7 @@
 -- a password-derived key; a leak PLUS a weak password becomes an offline
 -- attack that can recover the identity. Mitigation: the >=20-char full-
 -- composition password policy (client-enforced -- see the "why" in
--- docs/PHASE-31-AUTHV2.md) plus the
+-- docs/phases/PHASE-31-AUTHV2.md) plus the
 -- Argon2id cost floor enforced below. This is the standard password-unlock
 -- E2E trade (cf. Bitwarden) and the price of password-based cross-device
 -- unlock.

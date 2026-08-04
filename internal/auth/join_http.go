@@ -1,6 +1,6 @@
 package auth
 
-// 80-8: guest magic-link redemption (docs/PHASE-80-EPHEMERAL.md §"The magic
+// 80-8: guest magic-link redemption (docs/phases/PHASE-80-EPHEMERAL.md §"The magic
 // link"). Two endpoints, both anonymous and per-IP rate-limited:
 //
 //	GET  /api/join/{lookup} → a stateless HMAC challenge

@@ -274,7 +274,7 @@ export interface FriendListAckPayload {
 export const TypeCreateChannel = "create_channel";
 export const TypeCreateChannelAck = "create_channel_ack";
 
-// 80-12: ephemeral guest invites (owner-only; docs/PHASE-80-EPHEMERAL.md).
+// 80-12: ephemeral guest invites (owner-only; docs/phases/PHASE-80-EPHEMERAL.md).
 export const TypeEphemeralInviteMint = "ephemeral_invite_mint";
 export const TypeEphemeralInviteMintAck = "ephemeral_invite_mint_ack";
 export const TypeEphemeralInviteList = "ephemeral_invite_list";

@@ -1,5 +1,5 @@
 // 55-1: main-feed scrollback paging. Pure so the sizing and damping rules
-// can be tested without a DOM. See docs/PHASE-55-HISTORY.md.
+// can be tested without a DOM. See docs/phases/PHASE-55-HISTORY.md.
 
 // Every main-feed fetch_history uses this limit. It has to be ONE shared
 // constant: the ack doesn't echo the limit, so "did we reach the beginning?"

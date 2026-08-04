@@ -9,7 +9,7 @@ import (
 )
 
 // LinkPreviewConfig holds the server-side link-preview fetcher settings
-// (phase 57, docs/PHASE-57-LINKPREVIEW.md).
+// (phase 57, docs/phases/PHASE-57-LINKPREVIEW.md).
 //
 // The fetcher lets the SENDER's client ask chalkd for a page's OpenGraph
 // metadata; the resulting preview travels inside the E2E-encrypted body, so

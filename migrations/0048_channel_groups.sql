@@ -5,7 +5,7 @@
 -- channel renders under is a per-user choice (prefs.roster.groupOverrides,
 -- resolved client-side), and keeping the server value immutable means nobody
 -- can reshuffle another user's roster after the fact. The server stores a
--- hint; the client owns the view. See docs/PHASE-54-ROSTER.md.
+-- hint; the client owns the view. See docs/phases/PHASE-54-ROSTER.md.
 --
 -- Plaintext by design: same privacy class as channels.name, which the server
 -- already holds in the clear. Existing channels (and DMs, which are never

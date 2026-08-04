@@ -2,7 +2,7 @@
 
 *Backfilled record.* Written after the fact from the commit history, the
 changelog and the design spec. The full contemporaneous design lives in
-[design/chalk-phase-30-voice-video-design.md](design/chalk-phase-30-voice-video-design.md)
+[design/chalk-phase-30-voice-video-design.md](../design/chalk-phase-30-voice-video-design.md)
 including Addenda A (audio), B (screen/game share), C (parity scorecard) and
 D (bandwidth probe + downscaler) — this file is the slice index and the
 as-built summary.

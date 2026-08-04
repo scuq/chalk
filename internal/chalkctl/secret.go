@@ -125,7 +125,7 @@ func ensurePhase81Env(envPath string, log io.Writer) error {
 // never touched.
 func ensurePhase82Env(envPath string, log io.Writer) error {
 	_, err := appendEnvVar(envPath, "CHALK_WRAP_SIG_REQUIRED", "false",
-		"signed channel-key wraps (backfilled by chalkctl; flip to true after the re-sign sweep, see docs/PHASE-82-SIGNEDWRAP.md)",
+		"signed channel-key wraps (backfilled by chalkctl; flip to true after the re-sign sweep, see docs/phases/PHASE-82-SIGNEDWRAP.md)",
 		log)
 	return err
 }

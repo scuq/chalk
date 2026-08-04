@@ -150,7 +150,7 @@ That is not something to work around with `grep -r` — ask scuq to install it
   it stays true only if it moves with the code. Correct a drifted entry in
   place; never add a second line for a topic that already has one.
 - **A phase doc with the phase.** A new phase number also gets its own
-  `docs/PHASE-<N>-<TOPIC>.md` — created with the first slice, not after the
+  `docs/phases/PHASE-<N>-<TOPIC>.md` — created with the first slice, not after the
   last — and the file goes in the proposed `git add` list. Name the topic in
   caps, one word (`PHASE-82-SIGNEDWRAP.md`, `PHASE-84-PINBACKUP.md`). It
   carries what the code cannot: the problem the phase exists to solve, the
@@ -274,20 +274,20 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   scratchpad (45), camera background effects (52), the parking lot
   (53-1 … 53-5: the lot, its settings, the F9 boss key, the way back off it,
   and the privacy screen), roster filter + channel groups (54, plan in
-  `docs/PHASE-54-ROSTER.md`), main-feed scrollback paging (55, plan in
-  `docs/PHASE-55-HISTORY.md`), composer @mention autocomplete (56-1), link
-  previews (57, plan in `docs/PHASE-57-LINKPREVIEW.md`: sender-built,
+  `docs/phases/PHASE-54-ROSTER.md`), main-feed scrollback paging (55, plan in
+  `docs/phases/PHASE-55-HISTORY.md`), composer @mention autocomplete (56-1), link
+  previews (57, plan in `docs/phases/PHASE-57-LINKPREVIEW.md`: sender-built,
   E2E-embedded, opt-in, SSRF-guarded server fetcher), the security-audit
-  remediation (81, record in `docs/PHASE-81-SECAUDIT.md`), signed channel-key
-  wraps (82, record in `docs/PHASE-82-SIGNEDWRAP.md`), the identity-pin backup
-  (84, record in `docs/PHASE-84-PINBACKUP.md`), operational logging (85-1 …
-  85-4, record in `docs/PHASE-85-OPLOG.md`: security events, the opt-in
+  remediation (81, record in `docs/phases/PHASE-81-SECAUDIT.md`), signed channel-key
+  wraps (82, record in `docs/phases/PHASE-82-SIGNEDWRAP.md`), the identity-pin backup
+  (84, record in `docs/phases/PHASE-84-PINBACKUP.md`), operational logging (85-1 …
+  85-4, record in `docs/phases/PHASE-85-OPLOG.md`: security events, the opt-in
   connection snapshot, slow requests, and Caddy's access log; chalkd's knobs
   are `CHALK_OPLOG_*`, documented in `internal/config/oplog.go`). Phase 85's
   open items are the live-stack run of the connection snapshot and the missing
   off switch for the Caddy access log — both listed at the end of its record.
 - **Phase 82 (signed channel-key wraps) is COMPLETE** — 82-1 … 82-9, record in
-  `docs/PHASE-82-SIGNEDWRAP.md`. It closes the phase-81 audit's C-01, but
+  `docs/phases/PHASE-82-SIGNEDWRAP.md`. It closes the phase-81 audit's C-01, but
   **conditionally**: `CHALK_WRAP_SIG_REQUIRED` defaults to false, and until an
   operator flips it (after the self-healing sweep has re-signed their wraps) a
   server can still substitute a key on a channel no current-build member has
@@ -299,7 +299,7 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
     the guest path's remaining exposure: links minted before 82-7 stay unsigned
     until they expire.
 - **Open security gap, confirmed by the phase-81 audit** (analysis in
-  `docs/PHASE-81-SECAUDIT.md`; `docs/threat-model.md` states it as an unmet
+  `docs/phases/PHASE-81-SECAUDIT.md`; `docs/threat-model.md` states it as an unmet
   guarantee):
   - **Messages carry no sender signature.** The AEAD associated data is only
     suite/channel/key-version, so sender, message ID and timestamp are
@@ -313,7 +313,7 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
     for, and should copy `web/src/voice/signal-crypto.ts`, which already does
     canonical-encode → Ed25519 sign → fail-closed verify correctly.
 - Next candidates, none started: web push notifications (phase 65, full
-  plan in `docs/PHASE-65-PUSH.md`: hand-rolled `internal/webpush`, DMs-only
+  plan in `docs/phases/PHASE-65-PUSH.md`: hand-rolled `internal/webpush`, DMs-only
   default, content-free payloads); the SFU seam (voice design Slice I) for
   rooms too large for a mesh; governance `set_config` proposals.
 - Deferred cleanup, all verified still open:

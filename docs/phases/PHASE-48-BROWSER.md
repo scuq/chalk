@@ -4,7 +4,7 @@
 changelog; the design notes are as-built, not a contemporaneous plan.
 
 **Status:** shipped, v0.3.52 / v0.3.53. See also
-[browser-support.md](browser-support.md).
+[browser-support.md](../browser-support.md).
 **Tag:** `#browser` → `tools/where.sh -g browser`
 
 ## Why

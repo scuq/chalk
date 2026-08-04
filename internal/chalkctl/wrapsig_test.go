@@ -6,7 +6,7 @@ package chalkctl
 // without a database. What is NOT covered here is the SQL itself, which needs
 // a live Postgres -- the queries are asserted for shape (see
 // TestWrapSigQueriesScopeToLiveCurrentVersions) and exercised for real by the
-// end-to-end run in docs/PHASE-82-SIGNEDWRAP.md.
+// end-to-end run in docs/phases/PHASE-82-SIGNEDWRAP.md.
 
 import (
 	"bytes"

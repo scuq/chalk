@@ -33,7 +33,7 @@ is written as such rather than rounded up to "fixed".
 ### Confidentiality against a malicious server — **conditionally met (phase 82)**
 
 This was the phase-81 audit's C-01 and the gravest gap in the design. Phase 82
-(`docs/PHASE-82-SIGNEDWRAP.md`) closed it, but **the last step is the
+(`docs/phases/PHASE-82-SIGNEDWRAP.md`) closed it, but **the last step is the
 operator's**, so the honest answer depends on one setting.
 
 What phase 82 built:

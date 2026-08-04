@@ -9,7 +9,7 @@
 -- allowlist -- a handler bug on the guest path hits `permission denied`, not
 -- another user's data.
 --
--- Roles (see docs/PHASE-80-EPHEMERAL.md):
+-- Roles (see docs/phases/PHASE-80-EPHEMERAL.md):
 --   chalk        owner (container-bootstrap superuser); migrations in dev
 --   chalk_app    chalkd's normal pool; non-superuser member of chalk, so it
 --                holds owner rights for migrations + partition DDL without

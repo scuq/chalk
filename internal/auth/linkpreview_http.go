@@ -36,7 +36,7 @@ const (
 // it is about to send, embeds the result in the E2E-encrypted body, and
 // recipients render without any network fetch. The linked site sees only
 // chalkd's IP; chalkd sees the URL and the requesting user, never the
-// channel. See docs/PHASE-57-LINKPREVIEW.md.
+// channel. See docs/phases/PHASE-57-LINKPREVIEW.md.
 func (d *HTTPDeps) MountLinkPreview(mux *http.ServeMux) error {
 	if d.Store == nil {
 		return fmt.Errorf("auth: MountLinkPreview requires Store")

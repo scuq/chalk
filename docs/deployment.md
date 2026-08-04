@@ -134,7 +134,7 @@ new joins use the new secret immediately.
 
 ## Ephemeral voice channels (guest links)
 
-Phase 80 (plan: `docs/PHASE-80-EPHEMERAL.md`): a voice channel can be created
+Phase 80 (plan: `docs/phases/PHASE-80-EPHEMERAL.md`): a voice channel can be created
 with an expiry, and its creator can mint **magic links** that let people
 without an account join the call and its scratchpad. When the room expires,
 everything it held — messages, guest accounts, links — is hard-deleted.

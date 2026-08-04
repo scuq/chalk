@@ -1,4 +1,4 @@
-// chalk -- guest magic-link derivation (80-12, docs/PHASE-80-EPHEMERAL.md).
+// chalk -- guest magic-link derivation (80-12, docs/phases/PHASE-80-EPHEMERAL.md).
 //
 // A magic link is  https://host/join/<lookup-hex>#<secret-b64url>  and the
 // SECRET IS THE WHOLE IDENTITY: everything else is derived from it, by the

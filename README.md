@@ -237,7 +237,7 @@ full reasoning, threat model, and recovery design live in
 - [docs/browser-support.md](docs/browser-support.md) — supported engines + minimum versions
 - [docs/deployment.md](docs/deployment.md) — running it in production with `chalkctl`
 - [docs/theming.md](docs/theming.md), [docs/notification-sounds.md](docs/notification-sounds.md) — client customization
-- [docs/PHASE-31-AUTHV2.md](docs/PHASE-31-AUTHV2.md) — the password + TOTP auth design, as built
+- [docs/phases/PHASE-31-AUTHV2.md](docs/phases/PHASE-31-AUTHV2.md) — the password + TOTP auth design, as built
 - [docs/design/](docs/design/) — design specs (multi-device, attachments, the phase-30 voice/video plan, crypto agility)
 - [docs/phase-log.md](docs/phase-log.md) — the build history (what shipped, when) and roadmap
 

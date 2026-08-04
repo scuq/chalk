@@ -4,7 +4,7 @@ What each bootstrap phase delivers and what it tests. Kept in sync with `bootstr
 
 Phases 00–30 are recorded in full below, in the shape the bootstrap phases were
 written in. From 31 on, each phase has its own record under
-`docs/PHASE-<N>-<TOPIC>.md` — see the index immediately below — and the
+`docs/phases/PHASE-<N>-<TOPIC>.md` — see the index immediately below — and the
 [31 and after](#31-and-after) section is the chronological summary that ties
 them together. `CHANGELOG.md` is the user-facing view of the same history.
 
@@ -16,62 +16,62 @@ as-built rather than a contemporaneous plan.
 
 | Phase | Topic | Record |
 | --- | --- | --- |
-| 30 | voice and video | [PHASE-30-VOICE.md](PHASE-30-VOICE.md) *(backfilled; spec in [design/](design/chalk-phase-30-voice-video-design.md))* |
-| 31 | auth v2 — password + TOTP | [PHASE-31-AUTHV2.md](PHASE-31-AUTHV2.md) |
-| 32 | mobile layout | [PHASE-32-MOBILE.md](PHASE-32-MOBILE.md) *(backfilled)* |
-| 33 | unread tracking, read cursors | [PHASE-33-UNREAD.md](PHASE-33-UNREAD.md) *(backfilled)* |
-| 34 | presence correctness | [PHASE-34-PRESENCE.md](PHASE-34-PRESENCE.md) *(backfilled)* |
-| 35 | message deletion | [PHASE-35-DELETION.md](PHASE-35-DELETION.md) *(backfilled)* |
-| 36 | branding, installable app | [PHASE-36-PWA.md](PHASE-36-PWA.md) *(backfilled)* |
-| 37 | edit and react | [PHASE-37-EDITREACT.md](PHASE-37-EDITREACT.md) *(backfilled)* |
-| 38 | channel-key delivery | [PHASE-38-KEYDELIVERY.md](PHASE-38-KEYDELIVERY.md) *(backfilled)* |
-| 39 | version badge | [PHASE-39-VERSION.md](PHASE-39-VERSION.md) *(backfilled)* |
-| 40 | notification sounds | [PHASE-40-SOUNDS.md](PHASE-40-SOUNDS.md) *(backfilled)* |
-| 41 | microphone settings, row menu | [PHASE-41-MICROPHONE.md](PHASE-41-MICROPHONE.md) *(backfilled)* |
-| 42 | thread read state, thread inbox | [PHASE-42-THREADS.md](PHASE-42-THREADS.md) *(backfilled)* |
-| 43 | typing indicators | [PHASE-43-TYPING.md](PHASE-43-TYPING.md) *(backfilled)* |
-| 44 | global voice panel, device pickers | [PHASE-44-VOICEPANEL.md](PHASE-44-VOICEPANEL.md) *(backfilled)* |
-| 45 | voice scratchpad, away detection | [PHASE-45-SCRATCHPAD.md](PHASE-45-SCRATCHPAD.md) *(backfilled)* |
-| 46 | server-update notice | [PHASE-46-UPDATENOTICE.md](PHASE-46-UPDATENOTICE.md) *(backfilled)* |
-| 47 | thread filtering, tile pop-outs, colours | [PHASE-47-THREADINBOX.md](PHASE-47-THREADINBOX.md) *(backfilled)* |
-| 48 | browser reality (storage, IME, curves) | [PHASE-48-BROWSER.md](PHASE-48-BROWSER.md) *(backfilled)* |
-| 49 | thread titles, jump-to-origin | [PHASE-49-THREADTITLES.md](PHASE-49-THREADTITLES.md) *(backfilled)* |
-| 50 | notification rules | [PHASE-50-NOTIFYRULES.md](PHASE-50-NOTIFYRULES.md) *(backfilled)* |
-| 51 | CSP and security headers | [PHASE-51-CSP.md](PHASE-51-CSP.md) *(backfilled)* |
-| 52 | camera background effects | [PHASE-52-CAMERABG.md](PHASE-52-CAMERABG.md) *(backfilled)* |
-| 53 | the parking lot | [PHASE-53-PARKING.md](PHASE-53-PARKING.md) *(backfilled)* |
-| 54 | roster filter, channel groups | [PHASE-54-ROSTER.md](PHASE-54-ROSTER.md) |
-| 55 | main-feed scrollback paging | [PHASE-55-HISTORY.md](PHASE-55-HISTORY.md) |
-| 56 | @mention autocomplete | [PHASE-56-MENTIONS.md](PHASE-56-MENTIONS.md) *(backfilled)* |
-| 57 | link previews | [PHASE-57-LINKPREVIEW.md](PHASE-57-LINKPREVIEW.md) |
-| 58 | edit any recent message | [PHASE-58-EDITWINDOW.md](PHASE-58-EDITWINDOW.md) *(backfilled)* |
-| 59 | user directory, one-click add | [PHASE-59-FRIENDS.md](PHASE-59-FRIENDS.md) *(backfilled)* |
-| 60 | 16px control floor, pinned header | [PHASE-60-MOBILEFIT.md](PHASE-60-MOBILEFIT.md) *(backfilled)* |
-| 61 | message search | [PHASE-61-SEARCH.md](PHASE-61-SEARCH.md) |
-| 62 | zuckermode conversation list | [PHASE-62-ZUCKER.md](PHASE-62-ZUCKER.md) *(backfilled)* |
-| 63 | call grid, speaking dot, mic by label | [PHASE-63-CALLTILES.md](PHASE-63-CALLTILES.md) *(backfilled)* |
-| 64 | the back swipe | [PHASE-64-SWIPEBACK.md](PHASE-64-SWIPEBACK.md) *(backfilled)* |
-| 65 | web push — **planned, not started** | [PHASE-65-PUSH.md](PHASE-65-PUSH.md) |
-| 66 | call preferences that follow the account | [PHASE-66-CALLPREFS.md](PHASE-66-CALLPREFS.md) *(backfilled)* |
-| 67 | link labels | [PHASE-67-LINKLABELS.md](PHASE-67-LINKLABELS.md) *(backfilled)* |
-| 68 | settings tabs, cross-tab filter | [PHASE-68-SETTINGSTABS.md](PHASE-68-SETTINGSTABS.md) *(backfilled)* |
-| 69 | attachment refs on history, pinned header | [PHASE-69-PINNEDHEADER.md](PHASE-69-PINNEDHEADER.md) *(backfilled)* |
-| 70 | fonts, scrollbars, steady settings | [PHASE-70-APPEARANCE.md](PHASE-70-APPEARANCE.md) *(backfilled)* |
-| 71 | call sounds, chalk-stroke grain | [PHASE-71-CALLSOUNDS.md](PHASE-71-CALLSOUNDS.md) *(backfilled)* |
-| 72 | chalkctl backup/restore, maintenance | [PHASE-72-BACKUP.md](PHASE-72-BACKUP.md) *(backfilled)* |
-| 73 | chalkctl metrics | [PHASE-73-METRICS.md](PHASE-73-METRICS.md) *(backfilled)* |
-| 74 | code blocks | [PHASE-74-CODEBLOCKS.md](PHASE-74-CODEBLOCKS.md) *(backfilled)* |
-| 75 | who sent a reaction | [PHASE-75-REACTORS.md](PHASE-75-REACTORS.md) *(backfilled)* |
-| 76 | shortcuts to settings, landing fixes | [PHASE-76-SHORTCUTS.md](PHASE-76-SHORTCUTS.md) *(backfilled)* |
-| 77 | nano markdown | [PHASE-77-NANOMD.md](PHASE-77-NANOMD.md) *(backfilled)* |
-| 78 | hidden channels | [PHASE-78-HIDECHANNELS.md](PHASE-78-HIDECHANNELS.md) *(backfilled)* |
-| 79 | the landing target | [PHASE-79-LANDING.md](PHASE-79-LANDING.md) *(backfilled)* |
-| 80 | ephemeral voice rooms, guest links | [PHASE-80-EPHEMERAL.md](PHASE-80-EPHEMERAL.md) |
-| 81 | security audit and remediation | [PHASE-81-SECAUDIT.md](PHASE-81-SECAUDIT.md) |
-| 82 | signed channel-key wraps | [PHASE-82-SIGNEDWRAP.md](PHASE-82-SIGNEDWRAP.md) |
-| 83 | signed message envelope — **planned, not started** | scoped in [PHASE-81-SECAUDIT.md](PHASE-81-SECAUDIT.md) and [threat-model.md](threat-model.md) |
-| 84 | identity-pin backup | [PHASE-84-PINBACKUP.md](PHASE-84-PINBACKUP.md) |
-| 85 | operational logging | [PHASE-85-OPLOG.md](PHASE-85-OPLOG.md) |
+| 30 | voice and video | [PHASE-30-VOICE.md](phases/PHASE-30-VOICE.md) *(backfilled; spec in [design/](design/chalk-phase-30-voice-video-design.md))* |
+| 31 | auth v2 — password + TOTP | [PHASE-31-AUTHV2.md](phases/PHASE-31-AUTHV2.md) |
+| 32 | mobile layout | [PHASE-32-MOBILE.md](phases/PHASE-32-MOBILE.md) *(backfilled)* |
+| 33 | unread tracking, read cursors | [PHASE-33-UNREAD.md](phases/PHASE-33-UNREAD.md) *(backfilled)* |
+| 34 | presence correctness | [PHASE-34-PRESENCE.md](phases/PHASE-34-PRESENCE.md) *(backfilled)* |
+| 35 | message deletion | [PHASE-35-DELETION.md](phases/PHASE-35-DELETION.md) *(backfilled)* |
+| 36 | branding, installable app | [PHASE-36-PWA.md](phases/PHASE-36-PWA.md) *(backfilled)* |
+| 37 | edit and react | [PHASE-37-EDITREACT.md](phases/PHASE-37-EDITREACT.md) *(backfilled)* |
+| 38 | channel-key delivery | [PHASE-38-KEYDELIVERY.md](phases/PHASE-38-KEYDELIVERY.md) *(backfilled)* |
+| 39 | version badge | [PHASE-39-VERSION.md](phases/PHASE-39-VERSION.md) *(backfilled)* |
+| 40 | notification sounds | [PHASE-40-SOUNDS.md](phases/PHASE-40-SOUNDS.md) *(backfilled)* |
+| 41 | microphone settings, row menu | [PHASE-41-MICROPHONE.md](phases/PHASE-41-MICROPHONE.md) *(backfilled)* |
+| 42 | thread read state, thread inbox | [PHASE-42-THREADS.md](phases/PHASE-42-THREADS.md) *(backfilled)* |
+| 43 | typing indicators | [PHASE-43-TYPING.md](phases/PHASE-43-TYPING.md) *(backfilled)* |
+| 44 | global voice panel, device pickers | [PHASE-44-VOICEPANEL.md](phases/PHASE-44-VOICEPANEL.md) *(backfilled)* |
+| 45 | voice scratchpad, away detection | [PHASE-45-SCRATCHPAD.md](phases/PHASE-45-SCRATCHPAD.md) *(backfilled)* |
+| 46 | server-update notice | [PHASE-46-UPDATENOTICE.md](phases/PHASE-46-UPDATENOTICE.md) *(backfilled)* |
+| 47 | thread filtering, tile pop-outs, colours | [PHASE-47-THREADINBOX.md](phases/PHASE-47-THREADINBOX.md) *(backfilled)* |
+| 48 | browser reality (storage, IME, curves) | [PHASE-48-BROWSER.md](phases/PHASE-48-BROWSER.md) *(backfilled)* |
+| 49 | thread titles, jump-to-origin | [PHASE-49-THREADTITLES.md](phases/PHASE-49-THREADTITLES.md) *(backfilled)* |
+| 50 | notification rules | [PHASE-50-NOTIFYRULES.md](phases/PHASE-50-NOTIFYRULES.md) *(backfilled)* |
+| 51 | CSP and security headers | [PHASE-51-CSP.md](phases/PHASE-51-CSP.md) *(backfilled)* |
+| 52 | camera background effects | [PHASE-52-CAMERABG.md](phases/PHASE-52-CAMERABG.md) *(backfilled)* |
+| 53 | the parking lot | [PHASE-53-PARKING.md](phases/PHASE-53-PARKING.md) *(backfilled)* |
+| 54 | roster filter, channel groups | [PHASE-54-ROSTER.md](phases/PHASE-54-ROSTER.md) |
+| 55 | main-feed scrollback paging | [PHASE-55-HISTORY.md](phases/PHASE-55-HISTORY.md) |
+| 56 | @mention autocomplete | [PHASE-56-MENTIONS.md](phases/PHASE-56-MENTIONS.md) *(backfilled)* |
+| 57 | link previews | [PHASE-57-LINKPREVIEW.md](phases/PHASE-57-LINKPREVIEW.md) |
+| 58 | edit any recent message | [PHASE-58-EDITWINDOW.md](phases/PHASE-58-EDITWINDOW.md) *(backfilled)* |
+| 59 | user directory, one-click add | [PHASE-59-FRIENDS.md](phases/PHASE-59-FRIENDS.md) *(backfilled)* |
+| 60 | 16px control floor, pinned header | [PHASE-60-MOBILEFIT.md](phases/PHASE-60-MOBILEFIT.md) *(backfilled)* |
+| 61 | message search | [PHASE-61-SEARCH.md](phases/PHASE-61-SEARCH.md) |
+| 62 | zuckermode conversation list | [PHASE-62-ZUCKER.md](phases/PHASE-62-ZUCKER.md) *(backfilled)* |
+| 63 | call grid, speaking dot, mic by label | [PHASE-63-CALLTILES.md](phases/PHASE-63-CALLTILES.md) *(backfilled)* |
+| 64 | the back swipe | [PHASE-64-SWIPEBACK.md](phases/PHASE-64-SWIPEBACK.md) *(backfilled)* |
+| 65 | web push — **planned, not started** | [PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md) |
+| 66 | call preferences that follow the account | [PHASE-66-CALLPREFS.md](phases/PHASE-66-CALLPREFS.md) *(backfilled)* |
+| 67 | link labels | [PHASE-67-LINKLABELS.md](phases/PHASE-67-LINKLABELS.md) *(backfilled)* |
+| 68 | settings tabs, cross-tab filter | [PHASE-68-SETTINGSTABS.md](phases/PHASE-68-SETTINGSTABS.md) *(backfilled)* |
+| 69 | attachment refs on history, pinned header | [PHASE-69-PINNEDHEADER.md](phases/PHASE-69-PINNEDHEADER.md) *(backfilled)* |
+| 70 | fonts, scrollbars, steady settings | [PHASE-70-APPEARANCE.md](phases/PHASE-70-APPEARANCE.md) *(backfilled)* |
+| 71 | call sounds, chalk-stroke grain | [PHASE-71-CALLSOUNDS.md](phases/PHASE-71-CALLSOUNDS.md) *(backfilled)* |
+| 72 | chalkctl backup/restore, maintenance | [PHASE-72-BACKUP.md](phases/PHASE-72-BACKUP.md) *(backfilled)* |
+| 73 | chalkctl metrics | [PHASE-73-METRICS.md](phases/PHASE-73-METRICS.md) *(backfilled)* |
+| 74 | code blocks | [PHASE-74-CODEBLOCKS.md](phases/PHASE-74-CODEBLOCKS.md) *(backfilled)* |
+| 75 | who sent a reaction | [PHASE-75-REACTORS.md](phases/PHASE-75-REACTORS.md) *(backfilled)* |
+| 76 | shortcuts to settings, landing fixes | [PHASE-76-SHORTCUTS.md](phases/PHASE-76-SHORTCUTS.md) *(backfilled)* |
+| 77 | nano markdown | [PHASE-77-NANOMD.md](phases/PHASE-77-NANOMD.md) *(backfilled)* |
+| 78 | hidden channels | [PHASE-78-HIDECHANNELS.md](phases/PHASE-78-HIDECHANNELS.md) *(backfilled)* |
+| 79 | the landing target | [PHASE-79-LANDING.md](phases/PHASE-79-LANDING.md) *(backfilled)* |
+| 80 | ephemeral voice rooms, guest links | [PHASE-80-EPHEMERAL.md](phases/PHASE-80-EPHEMERAL.md) |
+| 81 | security audit and remediation | [PHASE-81-SECAUDIT.md](phases/PHASE-81-SECAUDIT.md) |
+| 82 | signed channel-key wraps | [PHASE-82-SIGNEDWRAP.md](phases/PHASE-82-SIGNEDWRAP.md) |
+| 83 | signed message envelope — **planned, not started** | scoped in [PHASE-81-SECAUDIT.md](phases/PHASE-81-SECAUDIT.md) and [threat-model.md](threat-model.md) |
+| 84 | identity-pin backup | [PHASE-84-PINBACKUP.md](phases/PHASE-84-PINBACKUP.md) |
+| 85 | operational logging | [PHASE-85-OPLOG.md](phases/PHASE-85-OPLOG.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
@@ -589,7 +589,7 @@ carried it. The per-phase docs hold the design and the slice lists.
 leaving the browser) + mandatory TOTP on every path including passkeys; two
 separate 24-word phrases (recovery vs encryption); hard cutover behind
 `CHALK_AUTH_V2_REQUIRED` with a migration wizard; one-shot admin bootstrap
-token; recovery as *reset*, not login. Recorded in `docs/PHASE-31-AUTHV2.md`,
+token; recovery as *reset*, not login. Recorded in `docs/phases/PHASE-31-AUTHV2.md`,
 which consolidates the seven-file spec that preceded it.
 
 **32–36 — the app becomes usable outside a desktop tab (v0.3.20 – v0.3.29).**

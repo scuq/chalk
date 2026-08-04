@@ -1,7 +1,7 @@
 package store
 
 // 80-4: hard deletion of a whole channel, and the janitor that applies it to
-// expired ephemeral channels (docs/PHASE-80-EPHEMERAL.md).
+// expired ephemeral channels (docs/phases/PHASE-80-EPHEMERAL.md).
 //
 // Cascade cannot do this: messages is partitioned and its channel linkage is
 // application-enforced (0003), and attachments declares channel_id with no FK

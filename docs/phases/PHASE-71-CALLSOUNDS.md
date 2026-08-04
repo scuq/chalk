@@ -3,7 +3,7 @@
 *Backfilled record.* Written after the fact from the commit history and the
 changelog. The authority on the numbers is `SOUND_SPECS` in
 `web/src/notify/synth.ts` and its comments; see also
-[notification-sounds.md](notification-sounds.md).
+[notification-sounds.md](../notification-sounds.md).
 
 **Status:** shipped, v0.5.8.
 **Tags:** `#notify`, `#voice` → `tools/where.sh -g notify`

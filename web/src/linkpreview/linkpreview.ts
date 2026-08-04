@@ -1,4 +1,4 @@
-// 57-2: link-preview support (client core). See docs/PHASE-57-LINKPREVIEW.md.
+// 57-2: link-preview support (client core). See docs/phases/PHASE-57-LINKPREVIEW.md.
 //
 // chalk's privacy model for previews is the reverse of Giphy's: the SENDER
 // builds the preview (their client asks their own chalkd to fetch the page)
