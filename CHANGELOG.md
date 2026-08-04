@@ -10,6 +10,26 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- A setting to hide the rest of chalk while you are parked, not just the
+  conversation. With it on, the channel list, your friends, your own name and
+  the call bar are blurred out, the browser tab stops showing how many messages
+  are waiting, and notification sounds go quiet until you come back. Off by
+  default — chalk always starts parked, and a blurred window on every reload
+  would be a strange greeting. It lives with the other parking-lot settings.
+
+### Changed
+- F9 now brings you back as well as hiding you. Pressing it a second time
+  returns to exactly what you were reading — the same channel, the thread you
+  had open, the panel that was up beside it — instead of leaving you to find
+  your way back through the channel list. A press in the first moment after
+  parking is ignored, so hitting the key twice in a panic cannot un-hide what
+  the first press just hid.
+
+---
+
 ## v0.7.1 — 4 August 2026 — Verification backup and server logs
 
 ### Added

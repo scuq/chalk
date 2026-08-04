@@ -156,7 +156,18 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     id: "parking",
     tab: "chat",
     title: "parking lot",
-    keywords: ["parking", "lot", "scratchpad"],
+    keywords: [
+      "parking",
+      "lot",
+      "scratchpad",
+      // 53-4/53-5: what someone reaching for this actually calls it.
+      "boss key",
+      "f9",
+      "hide",
+      "blur",
+      "privacy",
+      "shoulder",
+    ],
   },
   {
     id: "notifications",

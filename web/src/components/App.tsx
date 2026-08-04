@@ -1595,6 +1595,15 @@ export function App() {
   // and would otherwise close over the first render's value.
   const parkedRef = useRef(state.parked);
   parkedRef.current = state.parked;
+  // 53-1: the parking lot's title, whether its row is shown, and (53-5) whether
+  // parking also covers the rest of the app. Read this high up because the tab
+  // badge and the notification bus below both need to know.
+  const parking = selectParkingLotPrefs(state.prefs);
+  // 53-5: the privacy screen is a property of being parked -- with nothing
+  // hidden there is nothing to cover.
+  const screened = state.parked && parking.screen;
+  const screenedRef = useRef(screened);
+  screenedRef.current = screened;
   // 43-6: whether this viewer takes part in typing indicators at all. Read
   // inside handleFrame, so it goes through a ref for the same stale-closure
   // reason as userRef above -- without it the store would keep filling, and
@@ -1731,10 +1740,13 @@ export function App() {
         isRelevantSurfaceOpen:
           !parkedRef.current && !!ev.channelID && ev.channelID === activeChannelRef.current,
       };
-      if (actions.sound) notifyRef.current?.play(ev.type, moment);
+      // 53-5: with the privacy screen on, a chime is one more thing that says
+      // "this window is a chat client and something just arrived in it" to the
+      // person standing behind you. Without it, sounds still fire while parked:
+      // a noise tells YOU something arrived without saying what.
+      if (actions.sound && !screenedRef.current) notifyRef.current?.play(ev.type, moment);
       // 53-1: an OS banner carries the message text, so it would put on the
-      // screen exactly what parking took off it. Sounds still fire -- a noise
-      // tells you something arrived without saying what.
+      // screen exactly what parking took off it.
       if (actions.banner && !parkedRef.current) notifyBanners().show(ev, moment);
       // blink() itself declines while the window is visible and focused.
       if (actions.blink && !dnd) titleController().blink();
@@ -2998,12 +3010,18 @@ export function App() {
         return (state.voiceRosters[cid] ?? []).some((p) => p.userID === ownID);
       }),
     );
-    const n = badgeCount({
-      unread: unreadForBadge,
-      dmChannelIDs,
-      threadInboxUnreadTotal: threadsNeedingYou,
-      pendingIncomingCount: state.pendingIncoming.length,
-    });
+    // 53-5: the tab strip and the taskbar are outside the window, so parking
+    // never reached them. With the privacy screen on they report nothing --
+    // "(3) chalk" in a screen share says both what this window is and that
+    // three people are waiting in it.
+    const n = screened
+      ? 0
+      : badgeCount({
+          unread: unreadForBadge,
+          dmChannelIDs,
+          threadInboxUnreadTotal: threadsNeedingYou,
+          pendingIncomingCount: state.pendingIncoming.length,
+        });
     titleController().setCount(n);
     const nav = navigator as Navigator & {
       setAppBadge?: (n?: number) => Promise<void>;
@@ -3022,6 +3040,7 @@ export function App() {
     state.user?.id,
     threadsNeedingYou,
     state.pendingIncoming,
+    screened,
   ]);
 
   // 40-4: your own connection coming and going. Both off by default.
@@ -3087,8 +3106,17 @@ export function App() {
     dispatch({ kind: "set_parked", parked: true });
   }, []);
 
-  // 53-3: F9 parks from anywhere, including mid-sentence in the composer.
-  useEffect(() => installParkingHotkey(park), [park]);
+  // 53-4: and the way back. Nothing the shell did on the way in needs undoing
+  // -- the drawer is closed and Zuckermode is on its chat screen, which is
+  // where the restored conversation belongs -- so this is the panes alone.
+  const unpark = useCallback(() => dispatch({ kind: "unpark" }), []);
+
+  // 53-3/53-4: F9 parks from anywhere, including mid-sentence in the composer,
+  // and brings the conversation back once its double-tap guard has passed.
+  useEffect(
+    () => installParkingHotkey({ isParked: () => parkedRef.current, park, unpark }),
+    [park, unpark],
+  );
 
   // 33-3: read by mention detection inside handleFrame (see unreadRef).
   tabVisibleRef.current = tabVisible;
@@ -4009,9 +4037,6 @@ export function App() {
     ? state.channels[state.activeChannelID]
     : null;
 
-  // 53-1: the parking lot's title + whether its row is shown.
-  const parking = selectParkingLotPrefs(state.prefs);
-
   // 42-8: lookup maps for the inbox panel, built once here rather than scanned
   // per row -- the same discipline MessageList's handleByUser follows. The inbox
   // spans channels, so it cannot reuse the active channel's roster. 61-2: the
@@ -4692,7 +4717,11 @@ export function App() {
 
   return (
     <div
-      class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${isMobile ? "chalk-app--mobile" : ""} ${navOpen && !zuckerActive ? "chalk-app--nav-open" : ""} ${zuckerActive ? "chalk-app--zucker" : ""} ${zuckerActive && zuckerScreen === "list" ? "chalk-app--zucker-list" : ""} ${chatSwipe.offset !== null ? "chalk-app--swiping" : ""} ${chatSwipe.settling ? "chalk-app--swiping-settle" : ""}`}
+      /* 53-5: chalk-app--screened blurs every direct child except the parked
+         pane itself -- see theme.css. The class is all this side of it: what
+         gets covered is a CSS question, and answering it there is what makes a
+         surface added later covered by default rather than by remembering. */
+      class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${isMobile ? "chalk-app--mobile" : ""} ${navOpen && !zuckerActive ? "chalk-app--nav-open" : ""} ${zuckerActive ? "chalk-app--zucker" : ""} ${zuckerActive && zuckerScreen === "list" ? "chalk-app--zucker-list" : ""} ${chatSwipe.offset !== null ? "chalk-app--swiping" : ""} ${chatSwipe.settling ? "chalk-app--swiping-settle" : ""} ${screened ? "chalk-app--screened" : ""}`}
       style={shellStyle || undefined}
     >
       <header class="chalk-header">

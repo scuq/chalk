@@ -269,7 +269,8 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   cursors (33), threads and the thread inbox (42/47/49), notifications
   (40/50), mobile layout (32), CSP + security headers (51-1), the voice
   scratchpad (45), camera background effects (52), the parking lot
-  (53-1/53-2), roster filter + channel groups (54, plan in
+  (53-1 … 53-5: the lot, its settings, the F9 boss key, the way back off it,
+  and the privacy screen), roster filter + channel groups (54, plan in
   `docs/PHASE-54-ROSTER.md`), main-feed scrollback paging (55, plan in
   `docs/PHASE-55-HISTORY.md`), composer @mention autocomplete (56-1), link
   previews (57, plan in `docs/PHASE-57-LINKPREVIEW.md`: sender-built,

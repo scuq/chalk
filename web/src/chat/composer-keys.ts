@@ -89,6 +89,6 @@ export function composerHelp(mac: boolean): HelpRow[] {
     { keys: `${mod(mac)}+v`, what: "paste a screenshot" },
     // Not a composer key, but this sheet is the only place anyone goes looking
     // for one, and the boss key fires mid-sentence -- so it belongs here.
-    { keys: PARKING_HOTKEY_LABEL, what: "hide the conversation" },
+    { keys: PARKING_HOTKEY_LABEL, what: "hide the conversation (again to come back)" },
   ];
 }

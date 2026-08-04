@@ -9483,6 +9483,30 @@ body.chalk-resizing .chalk-sidebar-resizer {
   display: none;
 }
 
+/* 53-5: the privacy screen. Parking empties the conversation; this covers
+   what is standing around it -- the roster with its names and unread counts,
+   the header with your handle in it, the call bar, whatever modal was open.
+
+   Stated as "every direct child except the parked pane" rather than as a list
+   of the surfaces that leak, so a pane added in some later phase is covered
+   the day it lands instead of the day somebody remembers this rule. The pane
+   is excluded because a filter cannot be undone further down the tree -- it
+   has to be the siblings that blur, never a shared ancestor.
+
+   Deliberately NOT pointer-events: none. Clicking a blurred channel row picks
+   that channel, which un-parks, which is the way back that has always been
+   there -- and on a phone there is no F9, so making the chrome inert would be
+   a locked room. (One consequence of filter: fixed-position descendants, such
+   as the roster's nick menu, are positioned against the blurred element while
+   it is on. They are blurred too, so it does not show.) */
+.chalk-app--screened > *:not(.chalk-main) {
+  filter: blur(8px);
+  /* Nothing here is meant to be read, so nothing here is meant to be
+     selected -- a drag across the fog would otherwise put the names on the
+     clipboard and highlight them legibly on the way. */
+  user-select: none;
+}
+
 /* ---- 80-13: the guest room (/join) -------------------------------------
    The guest's whole chalk: header, call strip, scratchpad, composer. One
    column, full height, reusing the app's tokens so it matches both themes. */

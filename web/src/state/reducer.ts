@@ -608,6 +608,10 @@ export function reducer(state: AppState, action: Action): AppState {
         activeChannelID: action.channelID,
         openThread: null,
         parked: false,
+        // 53-4: you navigated, so the screen parking remembered is not where
+        // you are any more. Dropping it here is what keeps a later F9 from
+        // restoring a thread belonging to the channel you just left.
+        parkedReturn: null,
         unreadMarks: markForChannel(state.unread, action.channelID),
       };
 
@@ -623,7 +627,37 @@ export function reducer(state: AppState, action: Action): AppState {
         parked: action.parked,
         openThread: action.parked ? null : state.openThread,
         openPanel: action.parked ? null : state.openPanel,
+        // 53-4: parking is the only thing that records a way back, and only
+        // "unpark" spends it. Every other exit from the lot -- Zuckermode's
+        // back button, a channel click -- clears it on the way out.
+        parkedReturn: action.parked
+          ? { openThread: state.openThread, openPanel: state.openPanel }
+          : null,
       };
+
+    // 53-4: the way back off the parking lot. The channel was never let go of,
+    // so this is the thread and the side panel returning to it -- and the
+    // unread window re-frozen first, for the same reason coming back to a
+    // hidden tab re-freezes it (33-4): parked meant nothing was being read, and
+    // the mark_read effect fires as soon as this render commits.
+    case "unpark": {
+      if (!state.parked) return state;
+      const back = state.parkedReturn;
+      // A thread whose channel went away while you were parked has nothing to
+      // render; the panel names are inert, so they need no such check.
+      const openThread =
+        back?.openThread && state.channels[back.openThread.channelID]
+          ? back.openThread
+          : null;
+      return {
+        ...state,
+        parked: false,
+        openThread,
+        openPanel: back?.openPanel ?? null,
+        parkedReturn: null,
+        unreadMarks: markForChannel(state.unread, state.activeChannelID),
+      };
+    }
 
     case "unread_mark_refresh":
       return {
@@ -2271,6 +2305,8 @@ export function reducer(state: AppState, action: Action): AppState {
         openThread: { channelID: action.channelID, threadID: action.threadID },
         // 53-1: opening a thread is asking to read it.
         parked: false,
+        // 53-4: and it is a navigation, so the remembered screen goes with it.
+        parkedReturn: null,
         // Same freeze the channel switch does, so the "new messages" divider
         // behaves as it would have on a normal channel open.
         unreadMarks: markForChannel(state.unread, action.channelID),

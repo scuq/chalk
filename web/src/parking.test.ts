@@ -36,18 +36,20 @@ test("selectParkingLotPrefs defaults to a visible, default-named row", () => {
   assert.deepEqual(selectParkingLotPrefs(undefined), {
     name: PARKING_LOT_DEFAULT_NAME,
     hidden: false,
+    screen: false,
   });
   assert.deepEqual(selectParkingLotPrefs({}), {
     name: PARKING_LOT_DEFAULT_NAME,
     hidden: false,
+    screen: false,
   });
 });
 
 test("selectParkingLotPrefs reads a stored name and hide flag", () => {
-  assert.deepEqual(selectParkingLotPrefs({ parkingLot: { name: " away ", hidden: true } }), {
-    name: "away",
-    hidden: true,
-  });
+  assert.deepEqual(
+    selectParkingLotPrefs({ parkingLot: { name: " away ", hidden: true, screen: true } }),
+    { name: "away", hidden: true, screen: true },
+  );
 });
 
 test("only a literal true hides the row", () => {
@@ -57,4 +59,17 @@ test("only a literal true hides the row", () => {
       false,
     );
   }
+});
+
+// 53-5: same rule for the privacy screen, and for the same reason -- junk in
+// the prefs blob must resolve to the quiet default, not to a blurred window
+// nobody asked for.
+test("the privacy screen is off unless it was literally turned on", () => {
+  for (const v of ["true", 1, null, undefined, {}]) {
+    assert.equal(
+      selectParkingLotPrefs({ parkingLot: { screen: v as unknown as boolean } }).screen,
+      false,
+    );
+  }
+  assert.equal(selectParkingLotPrefs({ parkingLot: { screen: true } }).screen, true);
 });

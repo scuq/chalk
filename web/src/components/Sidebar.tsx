@@ -673,7 +673,9 @@ export function Sidebar({
         </ul>
       </div>
 
-      {/* ---- parking lot (53-1) ---- */}
+      {/* ---- parking lot (53-1) ----
+           53-4: the row itself still only parks -- a double-click on it must
+           not undo itself -- but the key it names does both ways now. */}
       {parkingName && onPark && (
         <div class="chalk-sidebar-section chalk-sidebar-section--parking">
           <button
@@ -682,8 +684,8 @@ export function Sidebar({
             data-testid="sidebar-parking"
             data-active={parked ? "true" : "false"}
             onClick={onPark}
-            title={`${parkingName} — hide the conversation (${PARKING_HOTKEY_LABEL})`}
-            aria-label={`${parkingName} — hide the conversation (${PARKING_HOTKEY_LABEL})`}
+            title={`${parkingName} — hide the conversation (${PARKING_HOTKEY_LABEL}, again to come back)`}
+            aria-label={`${parkingName} — hide the conversation (${PARKING_HOTKEY_LABEL}, again to come back)`}
             aria-pressed={parked}
           >
             <span class="chalk-sidebar-parking-glyph">

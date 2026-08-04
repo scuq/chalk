@@ -39,6 +39,7 @@ import {
   PARKING_LOT_NAME_MAX,
   parkingLotName,
 } from "../parking";
+import { PARKING_HOTKEY_LABEL } from "../parking-hotkey";
 import { composerHelp, isMacPlatform } from "../chat/composer-keys";
 import { notifySounds } from "../notify";
 import { useSoundPrefs } from "../notify/prefs";
@@ -169,8 +170,9 @@ interface Props {
   onOpenMicSettings?: () => void;
   // 53-1: the parking lot's title and whether its row shows at all. Account
   // prefs, so both travel with you; sent whole, like the chat block.
-  parkingLot?: { name: string; hidden: boolean };
-  onSetParkingLot?: (next: { name: string; hidden: boolean }) => void;
+  // 53-5: `screen` also covers the rest of the app while parked.
+  parkingLot?: { name: string; hidden: boolean; screen: boolean };
+  onSetParkingLot?: (next: { name: string; hidden: boolean; screen: boolean }) => void;
   // 54-3: whether the sidebar groups channels under their group names.
   // Account pref, so the roster reads the same on every device.
   rosterGroupingEnabled?: boolean;
@@ -251,7 +253,7 @@ export function ProfilePanel({
     // the box rather than only in the sidebar.
     const name = parkingLotName(parkingDraft);
     setParkingDraft(name);
-    if (name !== parkingLot.name) onSetParkingLot({ name, hidden: parkingLot.hidden });
+    if (name !== parkingLot.name) onSetParkingLot({ ...parkingLot, name });
   };
 
   // Font family + size. Device-local, so unlike theme these aren't
@@ -1065,11 +1067,13 @@ export function ProfilePanel({
             <section class="chalk-profile-parking" data-testid="parking-settings">
               <h3>parking lot</h3>
               <p class="chalk-profile-hint">
-                A row in the sidebar that holds nothing. Click it when someone
-                walks up behind you: the conversation is replaced by the chalk
-                mark, and chalk stays connected — calls keep running, nothing
-                is marked read, and no notification pops up with the text in
-                it. Pick any channel to come back.
+                A row in the sidebar that holds nothing. Click it — or press{" "}
+                {PARKING_HOTKEY_LABEL} — when someone walks up behind you: the
+                conversation is replaced by the chalk mark, and chalk stays
+                connected — calls keep running, nothing is marked read, and no
+                notification pops up with the text in it. {PARKING_HOTKEY_LABEL}{" "}
+                again brings back what you were reading, thread and panel
+                included; picking any channel works too.
               </p>
               <div class="chalk-profile-field">
                 <label class="chalk-profile-label" for="parking-name">
@@ -1098,7 +1102,7 @@ export function ProfilePanel({
                     checked={!parkingLot.hidden}
                     onChange={(e) =>
                       onSetParkingLot({
-                        name: parkingLot.name,
+                        ...parkingLot,
                         hidden: !(e.target as HTMLInputElement).checked,
                       })
                     }
@@ -1107,7 +1111,35 @@ export function ProfilePanel({
                   <span>
                     show it in the sidebar{" "}
                     <span class="chalk-profile-theme-desc">
-                      (off hides the row; this setting is the way back)
+                      (off hides the row; {PARKING_HOTKEY_LABEL} still parks and
+                      unparks)
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              {/* 53-5: the privacy screen. Off by default -- every session
+                  starts parked, so on by default would blur the window on
+                  every reload. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={parkingLot.screen}
+                    onChange={(e) =>
+                      onSetParkingLot({
+                        ...parkingLot,
+                        screen: (e.target as HTMLInputElement).checked,
+                      })
+                    }
+                    data-testid="parking-screen"
+                  />
+                  <span>
+                    hide the rest of chalk too{" "}
+                    <span class="chalk-profile-theme-desc">
+                      (blurs the channel list, your friends, your own name and
+                      the call bar while parked; the tab stops showing an unread
+                      count and notification sounds go quiet)
                     </span>
                   </span>
                 </label>

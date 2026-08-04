@@ -381,6 +381,15 @@ export interface ParkingLotPrefs {
   // Drops the row from the sidebar entirely. Parking stays reachable through
   // the setting itself, which is the only way back if you hide it while parked.
   hidden?: boolean;
+  // 53-5: while parked, cover everything the parking lot leaves standing --
+  // the roster, the header and your own handle in it, the call bar, whatever
+  // modal was open -- and drop the two things that leak with the window out of
+  // view: the tab's unread count and the notification sounds.
+  //
+  // Off by default, and not because it is a lesser setting: every session
+  // starts parked, so on by default would greet every reload with a blurred
+  // window and no obvious reason for it.
+  screen?: boolean;
 }
 
 export interface UserPrefs {
@@ -576,6 +585,7 @@ export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterP
 export interface ResolvedParkingLotPrefs {
   name: string;
   hidden: boolean;
+  screen: boolean;
 }
 
 export function selectParkingLotPrefs(
@@ -585,7 +595,15 @@ export function selectParkingLotPrefs(
   return {
     name: parkingLotName(p.name),
     hidden: p.hidden === true,
+    screen: p.screen === true,
   };
+}
+
+// 53-4: the screen parking hid, kept for the way back. Indexed off AppState so
+// it cannot drift from the fields it restores.
+export interface ParkedReturn {
+  openThread: AppState["openThread"];
+  openPanel: AppState["openPanel"];
 }
 
 export interface AppState {
@@ -714,6 +732,13 @@ export interface AppState {
   // about. What parking does change is that nothing is being read, so the
   // mark-read effect and the notification banners both stand down.
   parked: boolean;
+
+  // 53-4: what parking took off the screen, so the way back can put it there
+  // again -- the channel is still pointed at, but the thread and the side panel
+  // were closed. Null unless parked, and dropped the moment a navigation makes
+  // it stale (picking a channel, opening a thread from the inbox), so "unpark"
+  // can never restore a view of somewhere you have since left.
+  parkedReturn: ParkedReturn | null;
 
   // Phase 10c: thread message caches.
   //   threadMessages[threadID] is the list of replies for that thread,
@@ -975,6 +1000,8 @@ export const initialState: AppState = {
   // 53-1: every session starts parked -- the parking lot is the startup
   // screen, so a reload or restart never opens a conversation on its own.
   parked: true,
+  // 53-4: nothing was open before that, so there is nothing to go back to.
+  parkedReturn: null,
 
   // Phase 10c:
   threadMessages: {},
@@ -1060,6 +1087,10 @@ export type Action =
   // 53-1: park (hide the conversation pane) or leave the parking lot. Picking
   // any channel or thread unparks on its own; this action is the row itself.
   | { kind: "set_parked"; parked: boolean }
+  // 53-4: leave the parking lot and put back what parking closed. Distinct from
+  // set_parked{parked:false}, which only clears the screen state -- the restore
+  // belongs to the boss key, not to every other path out of the lot.
+  | { kind: "unpark" }
   // ---- Phase 33: unread + mentions ------------------------------------
   // read_state: the server-synced cursor moved (mark_read ack, or a push
   // from another of this user's devices). Monotonic; clears the mention
