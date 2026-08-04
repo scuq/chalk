@@ -327,6 +327,12 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cancel()
 	})
 	conn.DeviceType = string(deviceType)
+	// 85-2: recorded for the connection snapshot only. Resolved the same way
+	// the rate limiters resolve it, so a deployment behind chalkctl's Caddy
+	// logs the client rather than the proxy.
+	if ip := auth.IPFromRequest(r); ip != nil {
+		conn.RemoteIP = ip.String()
+	}
 	if sessionUser != nil {
 		conn.SessionExpiresAt = sessionUser.Session.ExpiresAt // 80-10: TURN clamp input
 	}
@@ -414,6 +420,9 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			handle = hLookup[connUserUUID]
 		}
 	}
+	// 85-2: reuse the handle the welcome frame already needed, so the
+	// snapshot can name this connection without a lookup of its own.
+	conn.Username = handle
 	// Phase 09b sub-step 5: populate the extended welcome payload
 	// from the resolved session. The pre-09b "handle" field is kept
 	// (lowercase username) for transitional SPAs.
@@ -517,7 +526,7 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	doneW := make(chan struct{})
 	go func() { defer close(doneR); h.readLoop(ctx, c, conn) }()
 	go func() { defer close(doneW); h.writeLoop(ctx, c, conn) }()
-	go h.pingLoop(ctx, c)
+	go h.pingLoop(ctx, c, conn)
 
 	select {
 	case <-doneR:
@@ -1030,7 +1039,7 @@ func (h *WSHandler) writeLoop(ctx context.Context, c *websocket.Conn, conn *Conn
 	}
 }
 
-func (h *WSHandler) pingLoop(ctx context.Context, c *websocket.Conn) {
+func (h *WSHandler) pingLoop(ctx context.Context, c *websocket.Conn, conn *Conn) {
 	t := time.NewTicker(h.cfg.PingInterval)
 	defer t.Stop()
 	for {
@@ -1039,12 +1048,16 @@ func (h *WSHandler) pingLoop(ctx context.Context, c *websocket.Conn) {
 			return
 		case <-t.C:
 			pingCtx, cancel := context.WithTimeout(ctx, h.cfg.PingTimeout)
+			start := time.Now()
 			err := c.Ping(pingCtx)
 			cancel()
 			if err != nil {
 				_ = c.Close(StatusPingTimeout, "ping timeout")
 				return
 			}
+			// 85-2: Ping blocks until the pong comes back, so the keepalive
+			// this loop already sends is also a free round-trip measurement.
+			conn.SetRTT(time.Since(start))
 		}
 	}
 }

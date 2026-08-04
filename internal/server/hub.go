@@ -25,6 +25,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -520,6 +521,19 @@ type Conn struct {
 	DeviceID string
 	UserID   string
 
+	// 85-2: diagnostics for the periodic connection snapshot. RemoteIP is
+	// the client address as auth.IPFromRequest resolved it (the real client
+	// behind a trusted proxy, not the proxy); Username is the handle looked
+	// up once at hello time, so a snapshot never costs a query. Both are
+	// written before Register and only read afterwards.
+	RemoteIP string
+	Username string
+
+	// rttNanos is the last WebSocket ping round-trip. The ping loop already
+	// waits for the pong, so measuring it adds no frames and no work -- one
+	// atomic store per ping interval, one atomic load per snapshot.
+	rttNanos atomic.Int64
+
 	// DeviceType is the device class the client declared in its hello
 	// ("phone", "tablet", "desktop" or "browser-unknown"). Presence
 	// bookkeeping needs it to re-create a device_presence row that went
@@ -586,6 +600,13 @@ func NewConn(id, deviceID, userID string, closeFn func(error)) *Conn {
 		CreatedAt: time.Now(),
 	}
 }
+
+// SetRTT records the round-trip of the ping that just completed (85-2).
+func (c *Conn) SetRTT(d time.Duration) { c.rttNanos.Store(int64(d)) }
+
+// RTT returns the last measured ping round-trip, or 0 if this connection has
+// not been pinged yet (it is younger than one ping interval).
+func (c *Conn) RTT() time.Duration { return time.Duration(c.rttNanos.Load()) }
 
 // SetClaimedPresence records the last presence state this connection asked
 // for. Read back when a lost device_presence row has to be re-created, so

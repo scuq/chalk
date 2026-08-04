@@ -71,6 +71,12 @@ type Options struct {
 	// att-1: how long a still-'uploading' attachment row may linger before
 	// the orphan janitor prunes it. 0 falls back to 24h in NewServer.
 	AttachOrphanTTL time.Duration
+
+	// 85-2/85-3: operational logging, from config.Oplog. SnapshotInterval 0
+	// disables the periodic connection snapshot (the default -- see
+	// config.OplogConfig); SlowRequest 0 disables the slow-request line.
+	SnapshotInterval time.Duration
+	SlowRequest      time.Duration
 }
 
 // Server wraps the http.Server, hub, pubsub listener, presence/friends
@@ -98,6 +104,9 @@ type Server struct {
 
 	// att-1: orphan-upload janitor TTL (see Options.AttachOrphanTTL).
 	attachOrphanTTL time.Duration
+
+	// 85-2: connection-snapshot interval; 0 means the loop never starts.
+	snapshotInterval time.Duration
 }
 
 // NewServer constructs and binds (but does not yet serve) a Server.
@@ -135,7 +144,8 @@ func NewServer(opts Options) (*Server, error) {
 		loopCfg:    loopCfg,
 		served:     make(chan struct{}),
 
-		attachOrphanTTL: opts.AttachOrphanTTL,
+		attachOrphanTTL:  opts.AttachOrphanTTL,
+		snapshotInterval: opts.SnapshotInterval,
 	}
 	if s.attachOrphanTTL <= 0 {
 		s.attachOrphanTTL = 24 * time.Hour
@@ -223,7 +233,8 @@ func NewServer(opts Options) (*Server, error) {
 	}
 
 	s.http = &http.Server{
-		Handler:           mux,
+		// 85-3: a no-op wrapper when the threshold is 0.
+		Handler:           slowRequestLogger(mux, opts.SlowRequest, s.logger),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	return s, nil
@@ -341,6 +352,16 @@ func (s *Server) Serve(ctx context.Context) error {
 				}
 			}
 			s.store.EphemeralJanitorLoop(bgCtx, time.Minute, onPurged, s.logger.Printf)
+		}()
+	}
+
+	// 85-2: periodic connection snapshot. Opt-in; see config.OplogConfig for
+	// why it is off by default.
+	if s.snapshotInterval > 0 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.snapshotLoop(bgCtx, s.snapshotInterval)
 		}()
 	}
 
