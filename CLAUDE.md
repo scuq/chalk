@@ -314,8 +314,12 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
     canonical-encode → Ed25519 sign → fail-closed verify correctly.
 - Next candidates, none started: web push notifications (phase 65, full
   plan in `docs/phases/PHASE-65-PUSH.md`: hand-rolled `internal/webpush`, DMs-only
-  default, content-free payloads); the SFU seam (voice design Slice I) for
-  rooms too large for a mesh; governance `set_config` proposals.
+  default, content-free payloads); ties (phase 86, full plan in
+  `docs/phases/PHASE-86-TIES.md`: say "this answers that" across an interleaved
+  channel without quoting — a sealed per-user side record on the reactions
+  pattern, drawn as a gutter mark plus a hover connector); the SFU seam (voice
+  design Slice I) for rooms too large for a mesh; governance `set_config`
+  proposals.
 - Deferred cleanup, all verified still open:
   - `RegisterFromInviteScreen` still registers passkey-first
     (`navigator.credentials.create()`), out of step with the auth-v2 password

@@ -28,6 +28,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #voice          30 41 44 45 63 66 70 71  internal/turncred/ web/src/voice/ web/src/components/VoiceCallPanel.tsx docs/phases/PHASE-30-VOICE.md docs/phases/PHASE-41-MICROPHONE.md docs/phases/PHASE-44-VOICEPANEL.md docs/phases/PHASE-63-CALLTILES.md docs/phases/PHASE-66-CALLPREFS.md docs/design/chalk-phase-30-voice-video-design.md
 #camera-bg      52        web/src/voice/ web/src/components/ docs/phases/PHASE-52-CAMERABG.md
 #threads        42 45 47 49  web/src/chat/threadinbox.ts web/src/chat/ web/src/components/ docs/phases/PHASE-42-THREADS.md docs/phases/PHASE-47-THREADINBOX.md docs/phases/PHASE-49-THREADTITLES.md
+#ties           -         docs/phases/PHASE-86-TIES.md
 #unread         33 62 76 79  web/src/chat/ web/src/state/ web/src/components/MessageList.tsx web/src/components/ZuckerList.tsx web/src/theme.css docs/phases/PHASE-33-UNREAD.md docs/phases/PHASE-79-LANDING.md
 #notify         40 50 71  web/src/notify/ docs/notification-sounds.md docs/phases/PHASE-40-SOUNDS.md docs/phases/PHASE-50-NOTIFYRULES.md docs/phases/PHASE-71-CALLSOUNDS.md
 #push           -         docs/phases/PHASE-65-PUSH.md

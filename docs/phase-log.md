@@ -77,6 +77,7 @@ as-built rather than a contemporaneous plan.
 | 83 | signed message envelope — **planned, not started** | scoped in [PHASE-81-SECAUDIT.md](phases/PHASE-81-SECAUDIT.md) and [threat-model.md](threat-model.md) |
 | 84 | identity-pin backup | [PHASE-84-PINBACKUP.md](phases/PHASE-84-PINBACKUP.md) |
 | 85 | operational logging | [PHASE-85-OPLOG.md](phases/PHASE-85-OPLOG.md) |
+| 86 | ties: answering without quoting — **planned, not started** | [PHASE-86-TIES.md](phases/PHASE-86-TIES.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
