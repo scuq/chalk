@@ -10,6 +10,13 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- `chalkctl wrapsig status` failed with a database error instead of reporting
+  readiness, so there was no way to tell whether a server could safely require
+  signed conversation keys.
+
 ## v0.7.0 — 4 August 2026 — Signed keys and guest rooms
 
 ### Changed

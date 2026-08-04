@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -84,6 +85,58 @@ func TestWrapSigQueriesScopeToLiveCurrentVersions(t *testing.T) {
 			t.Errorf("%s query must count suite < 2 as unsigned:\n%s", q.name, q.sql)
 		}
 	}
+}
+
+// Every table alias a query dereferences must be one it actually declares.
+// `go build` proves nothing about SQL, and the lagging query shipped selecting
+// u.handle with no users join -- valid Go, "missing FROM-clause entry for
+// table u" the first time an operator ran it against a real deployment.
+func TestWrapSigQueriesDeclareEveryAlias(t *testing.T) {
+	for _, q := range []struct{ name, sql string }{
+		{"totals", qWrapSigTotals},
+		{"lagging", qWrapSigLagging},
+		{"invites", qWrapSigInvites},
+	} {
+		if bad := undeclaredAliases(q.sql); len(bad) > 0 {
+			t.Errorf("%s query references alias(es) %v it never joins:\n%s", q.name, bad, q.sql)
+		}
+	}
+
+	// The query as it shipped, so the check above cannot quietly stop checking.
+	broken := `SELECT array_agg(u.handle) FROM channels c
+	  JOIN channel_keys k ON k.channel_id = c.id;`
+	if bad := undeclaredAliases(broken); len(bad) != 1 || bad[0] != "u" {
+		t.Errorf("undeclaredAliases missed the shipped bug: got %v, want [u]", bad)
+	}
+}
+
+var (
+	sqlDeclaredAlias = regexp.MustCompile(`(?i)(?:FROM|JOIN)\s+(\w+)\s+(?:AS\s+)?(\w+)`)
+	sqlUsedAlias     = regexp.MustCompile(`\b(\w+)\.\w+`)
+	// The subquery wrappers close with `) t` / `) r`, declared by no FROM/JOIN.
+	sqlClosingAlias = regexp.MustCompile(`\)\s*(\w+)\s*;?\s*$`)
+)
+
+func undeclaredAliases(sql string) []string {
+	have := map[string]bool{}
+	for _, m := range sqlDeclaredAlias.FindAllStringSubmatch(sql, -1) {
+		have[strings.ToLower(m[2])] = true
+	}
+	for _, line := range strings.Split(sql, "\n") {
+		if m := sqlClosingAlias.FindStringSubmatch(line); m != nil {
+			have[strings.ToLower(m[1])] = true
+		}
+	}
+	var bad []string
+	seen := map[string]bool{}
+	for _, m := range sqlUsedAlias.FindAllStringSubmatch(sql, -1) {
+		alias := strings.ToLower(m[1])
+		if !have[alias] && !seen[alias] {
+			seen[alias] = true
+			bad = append(bad, alias)
+		}
+	}
+	return bad
 }
 
 func TestCurrentWrapSigSetting(t *testing.T) {

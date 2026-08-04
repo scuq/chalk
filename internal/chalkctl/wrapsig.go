@@ -81,28 +81,34 @@ type wrapSigTotals struct {
 // Expired channels are excluded everywhere below: chalkd's janitor hard-deletes
 // them within the minute, so letting a dead guest room report "not ready"
 // would block the operator on something that is about to cease to exist.
-const wrapSigLiveChannels = `
+const wrapSigLiveFrom = `
 	  FROM channels c
 	  JOIN channel_keys k
-	    ON k.channel_id = c.id AND k.key_version = c.current_key_version
-	 WHERE c.expires_at IS NULL OR c.expires_at > now()`
+	    ON k.channel_id = c.id AND k.key_version = c.current_key_version`
+
+const wrapSigLiveWhere = `
+	 WHERE (c.expires_at IS NULL OR c.expires_at > now())`
 
 const qWrapSigTotals = `SELECT row_to_json(t) FROM (
 	SELECT count(*) FILTER (WHERE k.wrap_suite < 2)::int AS unsigned_wraps,
 	       count(*)::int                                 AS total_wraps,
 	       count(DISTINCT c.id)::int                     AS channels` +
-	wrapSigLiveChannels + `) t;`
+	wrapSigLiveFrom + wrapSigLiveWhere + `) t;`
 
+// The members column names who the lagging wraps belong to, so the users join
+// is part of the lagging query and not of the shared FROM clause above.
 const qWrapSigLagging = `SELECT coalesce(json_agg(row_to_json(t) ORDER BY t.name), '[]'::json) FROM (
 	SELECT c.id::text AS channel_id,
 	       c.name     AS name,
 	       count(*) FILTER (WHERE k.wrap_suite < 2)::int AS unsigned_wraps,
 	       count(*)::int                                 AS total_wraps,
 	       coalesce(
-	         array_agg(u.handle ORDER BY u.handle) FILTER (WHERE k.wrap_suite < 2),
+	         array_agg(u.handle::text ORDER BY u.handle) FILTER (WHERE k.wrap_suite < 2),
 	         '{}'
 	       ) AS members` +
-	wrapSigLiveChannels + `
+	wrapSigLiveFrom + `
+	  JOIN users u ON u.id = k.recipient_id` +
+	wrapSigLiveWhere + `
 	 GROUP BY c.id, c.name
 	HAVING count(*) FILTER (WHERE k.wrap_suite < 2) > 0
 ) t;`
