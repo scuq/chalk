@@ -332,7 +332,11 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   default, content-free payloads); ties (phase 86, full plan in
   `docs/phases/PHASE-86-TIES.md`: say "this answers that" across an interleaved
   channel without quoting — a sealed per-user side record on the reactions
-  pattern, drawn as a gutter mark plus a hover connector); the SFU seam (voice
+  pattern, drawn as a gutter mark plus a hover connector); message reminders
+  (phase 87, full plan in `docs/phases/PHASE-87-REMINDERS.md`: bring one message
+  back later — 1h/24h/weekend/custom from the row menu, a badged Reminders entry
+  above the parking lot, the whole set in a sealed prefs blob so the server never
+  learns a reminder exists, and no server code at all); the SFU seam (voice
   design Slice I) for rooms too large for a mesh; governance `set_config`
   proposals.
 - Deferred cleanup, all verified still open:
