@@ -75,6 +75,26 @@ func TestCaddyfileMaintenanceKeepsHealthzReachable(t *testing.T) {
 	}
 }
 
+// 85-4: the access log is site-level, so it has to survive the mode switch --
+// a maintenance window is exactly when the operator wants to see what is still
+// arriving. Placement above the switch is what guarantees it.
+func TestCaddyfileLogsBothModes(t *testing.T) {
+	for _, maintenance := range []bool{false, true} {
+		got := renderCaddyfile(t, maintenance, "back by 14:00 UTC")
+		block := strings.Index(got, "\tlog {")
+		if block < 0 {
+			t.Fatalf("maintenance=%v: no access-log block:\n%s", maintenance, got)
+		}
+		if !strings.Contains(got[block:], "output stderr") || !strings.Contains(got[block:], "format json") {
+			t.Errorf("maintenance=%v: the log block must be JSON on stderr (journald):\n%s", maintenance, got)
+		}
+		// log_credentials would put session cookies in the journal.
+		if regexp.MustCompile(`(?m)^\s*log_credentials`).MatchString(got) {
+			t.Errorf("maintenance=%v: log_credentials un-redacts Cookie and Authorization:\n%s", maintenance, got)
+		}
+	}
+}
+
 // Caddy reads braces in a respond body as placeholders, which is why the page
 // styles every element inline instead of carrying a <style> block.
 func TestCaddyfileNoticeHasNoCSSBraces(t *testing.T) {
@@ -250,6 +270,25 @@ func TestCaddyfileMaintenanceServesTheNotice(t *testing.T) {
 	}
 	if hresp.StatusCode != http.StatusBadGateway {
 		t.Logf("/healthz returned %d (chalkd is absent here; only the notice would be wrong)", hresp.StatusCode)
+	}
+
+	// 85-4: piggybacks on the container already running rather than starting a
+	// second one. Rendering the log block proves nothing about whether Caddy
+	// writes anything; only a real request through a real Caddy does.
+	var logs string
+	for i := 0; i < 40; i++ {
+		out, err := exec.Command("docker", "logs", id).CombinedOutput()
+		if err == nil && strings.Contains(string(out), `"msg":"handled request"`) {
+			logs = string(out)
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	if logs == "" {
+		t.Fatal("two requests produced no access-log entry; the log block is not in effect")
+	}
+	if !strings.Contains(logs, `"uri":"/healthz"`) {
+		t.Errorf("the /healthz request was not logged:\n%s", logs)
 	}
 }
 

@@ -2,6 +2,23 @@
 # re-run chalkctl to regenerate. Stock Caddy: no tls block => HTTP-01.
 {{ .Domain }} {
 	encode zstd gzip
+
+	# 85-4: access log for every request. Caddy logs its own errors without
+	# being asked but nothing per-request, which left chalkd as the only record
+	# of who reached the site -- and chalkd never sees a request Caddy answered
+	# itself: redirects, ACME traffic, the notice served below, anything
+	# rejected before the proxy. It sits above the mode switch so both modes
+	# log.
+	#
+	# stderr is what podman hands to journald, so this lands in `journalctl -u
+	# chalk-caddy` with the rest of the stack and inherits journald's retention
+	# instead of growing a file nobody rotates. Caddy redacts Cookie, Set-Cookie
+	# and Authorization headers unless a global option turns that off -- leave
+	# it alone.
+	log {
+		output stderr
+		format json
+	}
 {{- if .Maintenance }}
 
 	# Maintenance mode (`chalkctl maint on`). chalkd is not proxied; every

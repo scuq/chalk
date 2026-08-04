@@ -4,6 +4,15 @@
 chalk.example.org {
     encode zstd gzip
 
+    # Access log for every request, JSON on stderr -- `docker compose logs
+    # caddy`. Without this Caddy logs only its own errors, and requests it
+    # answers itself (redirects, ACME, anything rejected before the proxy)
+    # never reach chalkd's log at all.
+    log {
+        output stderr
+        format json
+    }
+
     # WebSocket upgrade plus sticky sessions hashed by client IP.
     # The cookie-based hash policy keeps a given browser pinned to one chalkd
     # instance, which keeps in-memory hub state coherent for that session.

@@ -34,6 +34,13 @@ The engineering-level history (which slice shipped what) lives in
 - Requests the server takes an unusually long time to answer are now logged
   with how long they took. Threshold is `CHALK_OPLOG_SLOW_REQUEST`, two seconds
   by default; a healthy server prints nothing.
+- Deployments now keep a full web access log — every request that reaches the
+  site, including the ones the app never sees, such as redirects, certificate
+  traffic and anything turned away at the door. Read it with `journalctl -u
+  chalk-caddy`. Session cookies and authorization headers are left out, but the
+  log does record which address asked for what and when, so set how long your
+  server keeps its logs deliberately. Servers set up before this pick it up on
+  the next `chalkctl init --force`.
 
 ### Fixed
 - Opening a channel or a thread stopped a few pixels short of the newest

@@ -253,6 +253,48 @@ server is back up. `chalkctl metrics` then grows a "queries by total time"
 section. Turn it off again with `--pg-stat-statements=false` and another
 `--force`.
 
+## Logs
+
+Every container logs to stdout/stderr, which podman hands to journald:
+
+```bash
+journalctl -u chalk-caddy -f          # HTTP access log + TLS/ACME
+journalctl -u chalkd -f               # app log, security events, slow requests
+journalctl -u chalk-postgres -u chalk-coturn
+```
+
+Caddy writes a **JSON access log for every request** (85-4), in normal and
+maintenance mode alike: client IP, method, host, URI, status, duration, bytes
+and request headers. It is the only record of requests chalkd never sees —
+redirects, ACME traffic, the maintenance notice, anything rejected at the edge.
+Cookie, Set-Cookie and Authorization headers are redacted by Caddy; do not add
+its `log_credentials` global option, which un-redacts them.
+
+Two consequences worth knowing:
+
+- **It is a standing record of who connected from where**, at request
+  granularity. chalk encrypts what people say, not the fact that they showed
+  up. Journald retention is the retention (`SystemMaxUse` / `MaxRetentionSec`
+  in `journald.conf`) — set it deliberately rather than inheriting whatever the
+  host defaults to.
+- Under a flood, journald's own rate limiting (`RateLimitIntervalSec` /
+  `RateLimitBurst`) drops messages rather than blocking Caddy, so the log is
+  not evidence-grade during an incident.
+
+An existing deployment gets it when the Caddyfile is next regenerated, which
+`chalkctl update` does **not** do — run `chalkctl init --force` (or toggle
+maintenance mode) to pick it up.
+
+There is no knob for it yet. Dropping the `log` block from
+`/etc/chalk/caddy/Caddyfile` and reloading (`sudo podman exec caddy caddy
+reload --config /etc/caddy/Caddyfile`) turns it off until the next thing that
+regenerates that file — `chalkctl maint on`/`off` and `chalkctl init --force`
+both write it back.
+
+The app's own operational logging (security events, the connection snapshot,
+slow requests) is separate and knob-controlled: see `CHALK_OPLOG_*` in
+`internal/config/oplog.go`.
+
 ## Maintenance mode
 
 ```bash
