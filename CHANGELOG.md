@@ -22,6 +22,9 @@ The engineering-level history (which slice shipped what) lives in
   two of your devices disagree about someone's key.
 
 ### Fixed
+- Opening a channel or a thread stopped a few pixels short of the newest
+  message, so the feed could always be nudged down a little further. It now
+  lands flush against the end.
 - `chalkctl wrapsig status` failed with a database error instead of reporting
   readiness, so there was no way to tell whether a server could safely require
   signed conversation keys.

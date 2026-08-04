@@ -228,6 +228,28 @@ function scrollToDivider(divider: HTMLElement, scroller: HTMLElement | null) {
   scroller.scrollTop += dividerScrollDelta(offset, pinnedTopInset(scroller));
 }
 
+// 85-1: land flush against the end of the feed. `scrollIntoView({block:
+// "end"})` on the end sentinel aims the sentinel's own bottom edge at the
+// bottom of the scrollport, which leaves the scroller's padding-bottom (16px
+// in the main feed, 8px in the thread panel) below the fold -- so opening a
+// channel stopped a few pixels short of the newest message and could still be
+// nudged down. Driving scrollTop past the range and letting the browser clamp
+// lands on the true end, padding included.
+//
+// The sentinel is still the fallback for anything with no scrolling ancestor
+// (jsdom, and the ephemeral scratchpad's fixed frame).
+function scrollToEnd(
+  end: HTMLElement | null,
+  scroller: HTMLElement | null,
+  behavior: ScrollBehavior,
+) {
+  if (scroller) {
+    scroller.scrollTo({ top: scroller.scrollHeight, behavior });
+    return;
+  }
+  end?.scrollIntoView({ behavior, block: "end" });
+}
+
 // 79-2: applying the anchor is now only ever "put the view back where the
 // landing chose", with no judgement left in it -- which target it is was
 // settled at landing.
@@ -239,8 +261,8 @@ function scrollToAnchor(
 ) {
   if (anchor === "divider" && divider) {
     scrollToDivider(divider, scroller);
-  } else if (anchor !== null && end) {
-    end.scrollIntoView({ behavior: "auto", block: "end" });
+  } else if (anchor !== null) {
+    scrollToEnd(end, scroller, "auto");
   }
 }
 
@@ -613,7 +635,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     // Re-arm the anchor: we're following the feed, so keep following it
     // while this message's images resolve.
     anchorRef.current = "end";
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    scrollToEnd(endRef.current, scrollParentOf(rootRef.current), "smooth");
   }, [messages.length, channelID, dividerIndex, ephemeral]);
 
   // 49-1: "show message" -- scroll the flash target into view once it
