@@ -10,6 +10,15 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- Opening a channel or a thread could still leave the feed a little short of
+  the newest message when something around it settled a moment after it opened
+  — a picture in the message a thread hangs off, or the box you type in growing
+  to fit a preview. The view now follows the end of the feed through that too,
+  instead of staying where the end used to be.
+
 ## v0.7.1 — 4 August 2026 — Verification backup and server logs
 
 ### Added

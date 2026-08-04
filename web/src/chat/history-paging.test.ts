@@ -8,6 +8,7 @@ import {
   autoPagingAllowed,
   UNREAD_FIT_SLACK_PX,
   DIVIDER_HEADER_GAP_PX,
+  anchorWatchTargets,
   dividerScrollDelta,
   landingFillAllowed,
   nextEmptyStreak,
@@ -84,6 +85,40 @@ test("the gap alone applies where nothing is pinned", () => {
   // The thread panel and the voice scratchpad have no sticky header; the
   // divider still wants a little air above it.
   assert.equal(dividerScrollDelta(900, 0), 900 - DIVIDER_HEADER_GAP_PX);
+});
+
+test("the held landing watches the scrollport, not just the feed", () => {
+  // The main feed: the sticky channel header is a sibling of the feed inside
+  // the scroller, and the scroller's own height is what the composer shortens
+  // from below. Watching the feed alone missed both.
+  const feed = "feed";
+  const header = "header";
+  const scroller = "scroller";
+  const targets = anchorWatchTargets(feed, scroller, [header, feed]);
+  assert.ok(targets.includes(scroller));
+  assert.ok(targets.includes(header));
+  assert.ok(targets.includes(feed));
+});
+
+test("the thread panel's parent head is watched too", () => {
+  // The head is a second message list in the same scroller -- and the one
+  // usually carrying the photo, so its late growth is what shoved the replies
+  // down after the landing had already run.
+  const replies = "replies";
+  const targets = anchorWatchTargets(replies, "body", ["parent-head", "divider", replies]);
+  assert.ok(targets.includes("parent-head"));
+});
+
+test("every box is watched once", () => {
+  // The feed is normally among the scroller's children; the caller does real
+  // work per target, so it must not appear twice.
+  const targets = anchorWatchTargets("feed", "scroller", ["header", "feed"]);
+  assert.deepEqual(targets, ["feed", "scroller", "header"]);
+});
+
+test("nothing scrolls, nothing else to watch", () => {
+  // jsdom and the ephemeral scratchpad have no scrolling ancestor.
+  assert.deepEqual(anchorWatchTargets("feed", null, []), ["feed"]);
 });
 
 test("a header taller than the divider's offset scrolls backwards, not to it", () => {
