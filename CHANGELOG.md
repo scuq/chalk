@@ -12,6 +12,15 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- The people you have verified — and the keys your app recognises for everyone
+  else — are now backed up, encrypted with your identity, which the server has
+  no key for. A new browser or a cleared profile used to meet everyone as a
+  stranger, which is exactly when a swapped key goes unnoticed; now unlocking
+  your encryption phrase brings them back. Verifying someone on your phone also
+  reaches your other devices. Settings shows what is backed up, and tells you if
+  two of your devices disagree about someone's key.
+
 ### Fixed
 - `chalkctl wrapsig status` failed with a database error instead of reporting
   readiness, so there was no way to tell whether a server could safely require

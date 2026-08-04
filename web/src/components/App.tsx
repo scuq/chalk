@@ -285,7 +285,14 @@ import { IdentitySetupScreen } from "../auth/IdentitySetupScreen";
 import { UnsupportedBrowserScreen } from "../auth/UnsupportedBrowserScreen";
 import { cryptoSupported } from "../crypto/support";
 import { MigrationScreen } from "../auth/MigrationScreen"; // 31-9
-import { loadIdentity, loadVerification } from "../crypto/idb";
+import {
+  listVerifications,
+  loadIdentity,
+  loadVerification,
+  saveVerification,
+  subscribeVerifications,
+} from "../crypto/idb";
+import { PinSync, type PinSyncStatus } from "../crypto/pin-sync"; // 84-2
 import { type IdentityTransport } from "../crypto/identity-sync";
 import { fetchTrustedIdentity, markManuallyVerified, memberTrust } from "../crypto/trust"; // 82-2, 82-8
 import { computeSafetyNumber, digestToHex } from "../crypto/safety-number";
@@ -873,6 +880,59 @@ export function App() {
     if (!peerAudioSyncReady || !state.prefsLoaded) return;
     void peerAudioSyncRef.current?.applyRemote(state.prefs.voice_peer_audio_enc);
   }, [peerAudioSyncReady, state.prefsLoaded, state.prefs.voice_peer_audio_enc]);
+
+  // 84-2: and again for the identity pins. Same two effects, same sealed-blob
+  // transport -- but this one merges rather than overwrites, because a device
+  // that just lost its IndexedDB holds no pins and must not publish that over
+  // the set the other devices depend on. See crypto/pin-sync.ts.
+  const pinSyncRef = useRef<PinSync | null>(null);
+  const [pinSyncReady, setPinSyncReady] = useState(false);
+  const [pinStatus, setPinStatus] = useState<PinSyncStatus | null>(null);
+  useEffect(() => {
+    if (!ccReady) return;
+    const uid = state.user?.id;
+    if (!uid || pinSyncRef.current) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const id = await loadIdentity(uid);
+        if (!id || cancelled) return;
+        const sync = new PinSync();
+        await sync.start(
+          id.x25519Private,
+          id.ed25519Public,
+          {
+            send: (patch) => {
+              const c = clientRef.current;
+              if (c && c.isOpen()) c.send(TypePrefsSet, { patch });
+            },
+          },
+          {
+            list: listVerifications,
+            save: saveVerification,
+            subscribe: subscribeVerifications,
+          },
+          setPinStatus,
+        );
+        if (cancelled) {
+          sync.stop();
+          return;
+        }
+        pinSyncRef.current = sync;
+        setPinSyncReady(true);
+      } catch (err) {
+        console.error("pin-sync: start failed:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ccReady, state.user?.id]);
+
+  useEffect(() => {
+    if (!pinSyncReady || !state.prefsLoaded) return;
+    void pinSyncRef.current?.applyRemote(state.prefs.identity_pins_enc);
+  }, [pinSyncReady, state.prefsLoaded, state.prefs.identity_pins_enc]);
 
   // Phase 23d: ensure we hold a channel's key -- fetch+unwrap, or
   // creator-bootstrap a keyless channel, then auto-rewrap for members who lack
@@ -5653,6 +5713,7 @@ export function App() {
             });
           }}
           onClearImageCache={() => clearAttachmentCache()}
+          pinStatus={pinStatus}
           giphyPref={selectGiphyPref(state.prefs)}
           onSetGiphyPref={sendGiphyPref}
           onRequestEnableGiphy={() => setGiphyConsentOpen(true)}

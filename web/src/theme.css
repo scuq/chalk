@@ -3973,6 +3973,18 @@ body.chalk-resizing .chalk-sidebar-resizer {
   font-style: italic;
 }
 
+/* 84-3: a hint that needs answering rather than reading -- currently only the
+   pin backup's "your devices disagree about someone's key". Dimmed italic
+   would bury exactly the line that must not be missed. */
+.chalk-profile-warn {
+  margin-top: var(--chalk-s1);
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--chalk-warn);
+  color: var(--chalk-warn);
+  font-size: var(--chalk-size-small);
+  line-height: 1.4;
+}
+
 /* 76-1: the keyboard cheat sheet. Two columns as a grid rather than a
    per-row flex box, so the descriptions line up down the list; the rows are
    display: contents so the <dt>/<dd> pairs land in the grid's tracks. */

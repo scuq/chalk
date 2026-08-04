@@ -67,7 +67,7 @@ gofmt -l .                         # must be empty before commit
 # client (from web/)
 npm install
 npx tsc --noEmit
-node test.mjs                      # node:test suite; currently 951 tests, 0 fail
+node test.mjs                      # node:test suite; currently 1161 tests, 0 fail
 node build.mjs
 
 # notification sounds (from the repo root)
@@ -251,7 +251,7 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
 (user-facing). Latest release: v0.7.0 — keep this in step with the topmost
 `## vX.Y.Z` heading in `CHANGELOG.md`. Only what is NOT done belongs here.
 
-- Phase 82 is the newest work; `docs/phase-log.md` has the full history,
+- Phase 84 is the newest work; `docs/phase-log.md` has the full history,
   and the arcs named here are a sample, not the whole list. Among the complete
   ones: auth v2 (31), voice/video
   (30-1 … 30-8 plus the 41/44/47/48 mic, device and call-UI work), governance
@@ -265,7 +265,8 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   previews (57, plan in `docs/PHASE-57-LINKPREVIEW.md`: sender-built,
   E2E-embedded, opt-in, SSRF-guarded server fetcher), the security-audit
   remediation (81, record in `docs/PHASE-81-SECAUDIT.md`), signed channel-key
-  wraps (82, record in `docs/PHASE-82-SIGNEDWRAP.md`).
+  wraps (82, record in `docs/PHASE-82-SIGNEDWRAP.md`), the identity-pin backup
+  (84, record in `docs/PHASE-84-PINBACKUP.md`).
 - **Phase 82 (signed channel-key wraps) is COMPLETE** — 82-1 … 82-9, record in
   `docs/PHASE-82-SIGNEDWRAP.md`. It closes the phase-81 audit's C-01, but
   **conditionally**: `CHALK_WRAP_SIG_REQUIRED` defaults to false, and until an

@@ -411,6 +411,10 @@ export interface UserPrefs {
   // same reason -- it names who you silenced, and where. See
   // voice/peer-audio-sync.ts.
   voice_peer_audio_enc?: string;
+  // 84-2: the identity pins, sealed the same way. Ciphertext because it is the
+  // device's own trust ledger, and the server is the party it defends against.
+  // See crypto/pin-backup.ts.
+  identity_pins_enc?: string;
   // 53-1: the parking lot's title + whether its row shows.
   parkingLot?: ParkingLotPrefs;
   // 54-3: roster display prefs (channel grouping).

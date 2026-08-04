@@ -336,21 +336,52 @@ export async function clearSpaceKeys(): Promise<void> {
   }
 }
 
-// ---- safety-number verification records (phase 24, local-only) -------
+// ---- safety-number verification records (phase 24) -------------------
 //
 // A user's decision that they compared a peer's safety number out of band and
-// it matched. Stored LOCAL-ONLY: the server can neither read nor forge it,
-// which is the whole point of out-of-band verification. Keyed by peer userID;
+// it matched, plus (82-2) the TOFU pin of the key itself. Keyed by peer userID;
 // pins the verified digest + the peer's generation so any later key change is
 // detected (the digest will differ -> status "changed").
+//
+// This store is the device's own trust ledger and the server is never told what
+// is in it. 84-2 backs it up ACROSS the user's devices, but only as ciphertext
+// the server has no key for (crypto/pin-backup.ts) -- the property that matters
+// is unchanged: the server can neither read a verification nor forge one.
 
 import type { VerificationRecord } from "./safety-number";
+
+// Every writer goes through saveVerification, which makes it the one place the
+// backup can learn that something needs uploading -- including the TOFU pins
+// written deep in the crypto path, with no user gesture behind them.
+const verificationListeners = new Set<() => void>();
+
+/** subscribeVerifications fires after any write to the store. */
+export function subscribeVerifications(fn: () => void): () => void {
+  verificationListeners.add(fn);
+  return () => verificationListeners.delete(fn);
+}
 
 /** saveVerification records that the peer's current safety number was verified. */
 export async function saveVerification(record: VerificationRecord): Promise<void> {
   const db = await openDB();
   try {
     await tx(db, "readwrite", (s) => s.put(record), VERIFICATION_STORE);
+  } finally {
+    db.close();
+  }
+  for (const fn of verificationListeners) fn();
+}
+
+/** listVerifications returns every record this device holds. */
+export async function listVerifications(): Promise<VerificationRecord[]> {
+  const db = await openDB();
+  try {
+    return await tx<VerificationRecord[]>(
+      db,
+      "readonly",
+      (s) => s.getAll(),
+      VERIFICATION_STORE,
+    );
   } finally {
     db.close();
   }

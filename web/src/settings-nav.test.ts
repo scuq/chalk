@@ -43,8 +43,8 @@ test("no match yields an empty set, not null", () => {
   assert.equal(hits.size, 0);
 });
 
-test("registry: 17 unique sections, valid tabs, keywords present", () => {
-  assert.equal(SETTINGS_SECTIONS.length, 17);
+test("registry: 18 unique sections, valid tabs, keywords present", () => {
+  assert.equal(SETTINGS_SECTIONS.length, 18);
   const ids = new Set(SETTINGS_SECTIONS.map((s) => s.id));
   assert.equal(ids.size, SETTINGS_SECTIONS.length);
   const tabs = new Set(SETTINGS_TABS.map((t) => t.id));

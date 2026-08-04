@@ -168,6 +168,26 @@ first fetch of a peer — only the out-of-band check does that. Verification
 remains optional and advisory for *conversation*: chalk will not stop you
 talking to an unverified peer. It is no longer advisory for *key adoption*.
 
+Both records survive the loss of a browser profile since phase 84: the pin set
+is backed up through user prefs as AES-256-GCM ciphertext under a key derived
+from the identity's X25519 scalar, so a new device restores its pins instead of
+meeting every peer as a stranger — which is the one state in which a
+substitution is adopted in silence. The server holds the blob and can neither
+read a pin nor forge one; a tampered blob fails its tag and is discarded. What
+it *can* do is withhold the blob or serve an older one, and neither gains it
+anything: the merge only ever adds a record or strengthens the evidence behind
+one, so a stale copy cannot delete a pin or downgrade it, and a withheld one
+leaves the device where it would have been with no backup at all.
+
+The merge deliberately refuses the obvious rule. If a device that pinned a
+substituted key on first sight could overwrite a device holding the real one,
+the backup would launder the attack into the machine that was about to catch
+it. So a plain sighting never overturns another: same key merges, an
+out-of-band comparison wins, and between two uncompared sightings the earlier
+one stands. A peer who genuinely reinstalled therefore reads as "key changed"
+until someone compares the new number out of band — an alarm rather than a
+silent adoption, and one comparison settles it for every device at once.
+
 ### Online guessing and resource exhaustion
 
 Anonymous auth endpoints carry per-IP rate limits, with a much tighter budget

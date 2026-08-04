@@ -22,6 +22,7 @@ import {
 import { useEffect, useState } from "preact/hooks";
 import type { EmailChangeState, MeResponse } from "../auth/types";
 import type { LinkPreviewDomainPrefs } from "../state/types";
+import type { PinSyncStatus } from "../crypto/pin-sync"; // 84-3
 import { normalizeDomainInput } from "../linkpreview/linkpreview";
 import {
   regenerateRecovery,
@@ -137,6 +138,10 @@ interface Props {
   // att-2: clear the cached attachment ciphertext (the "clear cached images"
   // guardrail). Optional -- only rendered when the parent wires it.
   onClearImageCache?: () => void | Promise<void>;
+  // 84-3: how the identity-pin backup is doing. Absent until the sync has
+  // started (it needs the unlocked identity), which the section says plainly
+  // rather than pretending to a count it does not have.
+  pinStatus?: PinSyncStatus | null;
   // att-4b: Giphy consent (tri-state). giphyPref is the current resolved
   // value; onSetGiphyPref sets it directly (used for the "disable" path);
   // onRequestEnableGiphy opens the app-level consent modal (the "enable"
@@ -185,6 +190,7 @@ export function ProfilePanel({
   onSetChatPref,
   onSetUserColors,
   onClearImageCache,
+  pinStatus,
   giphyPref,
   onSetGiphyPref,
   onRequestEnableGiphy,
@@ -1638,6 +1644,64 @@ export function ProfilePanel({
                 >
                   {addState === "running" ? "follow your browser's prompt…" : "add a passkey to this device"}
                 </button>
+              )}
+            </section>
+          )}
+
+          {/* 84-3: the pin backup, in the terms the user meets it in -- the
+              badges in the members list. What it is FOR is the wiped-profile
+              case, so the copy leads with that rather than with the sync. */}
+          {show("pins") && (
+            <section class="chalk-profile-pins" data-testid="pin-backup">
+              <h3>verified identities</h3>
+              <dl class="chalk-profile-fields">
+                <dt>backed up</dt>
+                <dd data-testid="pin-backup-count">
+                  {pinStatus
+                    ? pinStatus.backedUp === pinStatus.held
+                      ? `${pinStatus.held} ${pinStatus.held === 1 ? "person" : "people"}`
+                      : `${pinStatus.backedUp} of ${pinStatus.held}`
+                    : "not started"}
+                </dd>
+                {pinStatus?.syncedAt != null && (
+                  <>
+                    <dt>last updated</dt>
+                    <dd>{formatTimestamp(new Date(pinStatus.syncedAt).toISOString())}</dd>
+                  </>
+                )}
+                {pinStatus != null && pinStatus.restored > 0 && (
+                  <>
+                    <dt>restored here</dt>
+                    <dd data-testid="pin-backup-restored">
+                      {pinStatus.restored} this session
+                    </dd>
+                  </>
+                )}
+              </dl>
+              <p class="chalk-profile-hint">
+                the key your app recognises for each person — and every safety
+                number you compared in person — is kept on the server, encrypted
+                with your identity, which the server has no key for. a new
+                browser or a cleared profile gets them back when you unlock your
+                encryption phrase, so people you already trusted don't come back
+                as strangers.
+              </p>
+              {pinStatus != null && pinStatus.backedUp < pinStatus.held && (
+                <p class="chalk-profile-hint" data-testid="pin-backup-full">
+                  the backup is full, so {pinStatus.held - pinStatus.backedUp}{" "}
+                  of these are on this device only. everyone you verified in
+                  person is kept first.
+                </p>
+              )}
+              {pinStatus != null && pinStatus.conflicts.length > 0 && (
+                <p class="chalk-profile-warn" data-testid="pin-backup-conflicts">
+                  {pinStatus.conflicts.length === 1
+                    ? "one person's key"
+                    : `${pinStatus.conflicts.length} people's keys`}{" "}
+                  differ between your devices. this device keeps what it saw
+                  first — open the members list in a shared channel and compare
+                  the safety number to settle it.
+                </p>
               )}
             </section>
           )}

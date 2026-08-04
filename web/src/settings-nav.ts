@@ -23,6 +23,7 @@ export type SectionId =
   | "recovery"
   | "security"
   | "passkeys"
+  | "pins"
   | "about"
   | "appearance"
   | "chat"
@@ -82,6 +83,19 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     tab: "account",
     title: "passkeys",
     keywords: ["passkey", "webauthn", "security key", "fingerprint"],
+  },
+  {
+    id: "pins",
+    tab: "account",
+    title: "verified identities",
+    keywords: [
+      "pins",
+      "verified",
+      "safety number",
+      "trust",
+      "backup",
+      "recognised",
+    ],
   },
   {
     id: "about",
