@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.7.1 — 4 August 2026 — Verification backup and server logs
 
 ### Added
 - The people you have verified — and the keys your app recognises for everyone
