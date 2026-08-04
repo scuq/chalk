@@ -110,7 +110,12 @@ test gate each:
 
 - **00–02** — scaffolding, the Go skeleton (`cmd/chalkd`, `internal/version`,
   `internal/config`), and the container story (multi-stage build, distroless
-  final, dev/test/prod compose stacks).
+  final, dev/test/prod compose stacks). The phase log credits 01 with a
+  `/version` endpoint; there has never been one. chalkd serves exactly three
+  top-level routes — `GET /`, `GET /healthz`, `GET /ws` — and `/version` falls
+  through to the SPA. The build version reaches the client on the welcome
+  frame instead, which is what phase 39's badge and phase 46's reload pill
+  read.
 - **03** — Postgres: pgx pool, embedded migration runner, the first schema
   (users, devices, channels, messages), and `chalkd --migrate-only` — added
   here because the harness needed a way to apply migrations before each phase's
