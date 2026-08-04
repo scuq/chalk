@@ -3,7 +3,11 @@
 What each bootstrap phase delivers and what it tests. Kept in sync with `bootstrap/`, `README.md`, and `CHANGELOG.md`.
 
 Phases 00–30 are recorded in full below, in the shape the bootstrap phases were
-written in. From 31 on, each phase has its own record under
+written in — which is a **plan** shape, and four of those entries never came
+true. [phases/PHASE-00-29-FOUNDATION.md](phases/PHASE-00-29-FOUNDATION.md) is
+the as-built pass over the same ground, checked against the code; where the two
+disagree it wins, and the entries it corrects carry a note. From 31 on, each
+phase has its own record under
 `docs/phases/PHASE-<N>-<TOPIC>.md` — see the index immediately below — and the
 [31 and after](#31-and-after) section is the chronological summary that ties
 them together. `CHANGELOG.md` is the user-facing view of the same history.
@@ -16,6 +20,7 @@ as-built rather than a contemporaneous plan.
 
 | Phase | Topic | Record |
 | --- | --- | --- |
+| 00–29 | foundation, the MLS detour, the encryption rebuild | [phases/PHASE-00-29-FOUNDATION.md](phases/PHASE-00-29-FOUNDATION.md) *(backfilled; corrects the plan entries below)* |
 | 30 | voice and video | [PHASE-30-VOICE.md](phases/PHASE-30-VOICE.md) *(backfilled; spec in [design/](design/chalk-phase-30-voice-video-design.md))* |
 | 31 | auth v2 — password + TOTP | [PHASE-31-AUTHV2.md](phases/PHASE-31-AUTHV2.md) |
 | 32 | mobile layout | [PHASE-32-MOBILE.md](phases/PHASE-32-MOBILE.md) *(backfilled)* |
@@ -388,7 +393,13 @@ several hotfixes during stabilization.
 - Multi-device per user — phase 11d (extensively designed; not yet implemented)
 - Forward secrecy via periodic key rotation — phase 11e or later
 
-## 11c — channel encryption 🔮
+## 11c — channel encryption ✅ then removed
+
+> **Correction.** The plan below is what was written; 11c then *shipped*, across
+> 11c-1 … 11c-10 (buffered Welcomes with TTL eviction, catch-up-on-reconnect,
+> member-management UI, split-brain guards, orphaned-KeyPackage sweep), and was
+> removed wholesale by phase 21 along with the rest of MLS. See
+> [phases/PHASE-00-29-FOUNDATION.md](phases/PHASE-00-29-FOUNDATION.md).
 
 **Planned**
 - Extend MLS from DMs to multi-member channels
@@ -421,7 +432,11 @@ documents in `docs/design/`:
 - 20 integration scenarios (IT1–IT20)
 - 6 end-to-end scenarios
 
-## 12 — lifecycle 🔮
+## 12 — lifecycle 🔮 (still open)
+
+> **Correction.** Never built. No `deactivate_account` / `delete_account` /
+> `reactivate_account` frames exist; phase 06's lifecycle schema is still
+> read-only.
 
 **Will deliver**
 - Wire frames + handlers for `deactivate_account`, `delete_account`, `reactivate_account`
@@ -434,7 +449,11 @@ documents in `docs/design/`:
 - Reactivate restores prior friendships
 - Delete is cascading and irreversible
 
-## 13 — blobs 🔮
+## 13 — blobs 🔮 (superseded)
+
+> **Correction.** Superseded by the attachments arc (att-1 … att-4, migration
+> 0037), which solved this differently: a partitioned table, chunked HTTP
+> transfer off the WS, and encrypted metadata as well as encrypted blobs.
 
 **Will deliver**
 - `blobs` table, blob upload endpoint with token auth
@@ -447,7 +466,11 @@ documents in `docs/design/`:
 - Server bytes ≠ uploaded bytes (encrypted)
 - GC removes unreferenced blobs after TTL
 
-## 14 — hardening 🔮
+## 14 — hardening 🔮 (partly, elsewhere)
+
+> **Correction.** Rate limiting arrived in phase 81 (`internal/ratelimit`), and
+> server metrics became `chalkctl metrics` in phase 73, reading Postgres' own
+> statistics views. There is no `/metrics` endpoint and no Prometheus.
 
 **Will deliver**
 - Per-connection rate limit (`golang.org/x/time/rate`)
@@ -462,7 +485,11 @@ documents in `docs/design/`:
 - Oversized payload rejected
 - `/metrics` exposes request counts and ws connections
 
-## 15 — cross-browser 🔮
+## 15 — cross-browser 🔮 (partly)
+
+> **Correction.** `test/e2e/` exists with a Playwright config and five specs
+> (smoke, channels, multitab, admin, mobile); the full engine × viewport matrix
+> was never stood up. `docs/browser-support.md` carries the support statement.
 
 **Will deliver**
 - `test/e2e/` Playwright config

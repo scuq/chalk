@@ -43,7 +43,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #reactions      37 58 75  web/src/chat/reactions.ts web/src/chat/press.ts web/src/chat/editpolicy.ts web/src/state/ web/src/components/ReactionBar.tsx docs/phases/PHASE-37-EDITREACT.md docs/phases/PHASE-58-EDITWINDOW.md docs/phases/PHASE-75-REACTORS.md
 #typing         43        internal/server/ web/src/state/ docs/phases/PHASE-43-TYPING.md
 #presence       34 45 60  internal/presence/ internal/server/ docs/phases/PHASE-34-PRESENCE.md docs/phases/PHASE-45-SCRATCHPAD.md
-#spacekeys      25 38     web/src/crypto/ internal/store/ docs/phases/PHASE-38-KEYDELIVERY.md
+#spacekeys      25 38     web/src/crypto/ internal/store/ docs/phases/PHASE-38-KEYDELIVERY.md docs/phases/PHASE-00-29-FOUNDATION.md
 #deletion       35        web/src/chat/ web/src/components/ docs/phases/PHASE-35-DELETION.md
 #mobile         32 60 64 76  web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/components/ web/src/theme.css docs/phases/PHASE-32-MOBILE.md docs/phases/PHASE-60-MOBILEFIT.md docs/phases/PHASE-64-SWIPEBACK.md
 #settings       68 70 76  web/src/settings-nav.ts web/src/components/ProfilePanel.tsx docs/phases/PHASE-68-SETTINGSTABS.md docs/phases/PHASE-70-APPEARANCE.md docs/phases/PHASE-76-SHORTCUTS.md
@@ -51,8 +51,8 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #servernotice   46        web/src/state/ web/src/components/ docs/phases/PHASE-46-UPDATENOTICE.md
 #pwa            36        web/manifest.json web/icons/ web/build.mjs docs/phases/PHASE-36-PWA.md
 #csp            51        internal/server/server.go internal/server/spa_test.go docs/phases/PHASE-51-CSP.md
-#governance     -         internal/store/governance.go internal/server/governance_ws.go
-#attachments    69        web/src/attachments/ internal/store/ docs/design/chalk-attachments-design-spec.md docs/phases/PHASE-69-PINNEDHEADER.md
+#governance     -         internal/store/governance.go internal/server/governance_ws.go docs/phases/PHASE-00-29-FOUNDATION.md
+#attachments    69        web/src/attachments/ internal/store/ docs/design/chalk-attachments-design-spec.md docs/phases/PHASE-69-PINNEDHEADER.md docs/phases/PHASE-00-29-FOUNDATION.md
 #chalkctl       72 73 82  internal/chalkctl/ cmd/chalkctl/ test/integration/backup_restore_test.go docs/deployment.md docs/phases/PHASE-72-BACKUP.md docs/phases/PHASE-73-METRICS.md
 #ephemeral      80        internal/chalkctl/ migrations/ internal/store/ internal/server/ internal/auth/ internal/proto/ internal/config/ web/src/crypto/ web/src/components/ web/src/chat/
 #hardening      81        internal/auth/ internal/ratelimit/ internal/store/ internal/chalkctl/ docs/threat-model.md docs/phases/PHASE-81-SECAUDIT.md
@@ -74,3 +74,8 @@ rather than guessed at, so the legend stays trustworthy; move one into a tag
 line when its topic is clear.
 
     (none — 25 through 85 are all claimed)
+
+Phases below 25 predate the tagging convention and carry no `// NN-n:` comments
+to find. They are recorded in `docs/phases/PHASE-00-29-FOUNDATION.md` instead —
+the bootstrap, the 09 auth arc, the MLS detour that shipped and was removed, and
+the 22–25 encryption rebuild everything since sits on.
