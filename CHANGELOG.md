@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.7.2 — 4 August 2026 — Parking-lot privacy screen
 
 ### Added
 - A setting to hide the rest of chalk while you are parked, not just the
