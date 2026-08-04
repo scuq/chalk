@@ -12,6 +12,12 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **Two Catppuccin themes.** The theme picker now has "catppuccin-mocha", the
+  pastel dark flavor with its mauve accent, and "catppuccin-latte", the light
+  one. Both are the published palettes, with a few tones nudged darker or
+  lighter where the originals were too faint to read as chat text.
+
 ### Fixed
 - Reading back through a conversation while its photos were still loading no
   longer throws you backwards. A picture above you finishing its decrypt used

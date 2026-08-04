@@ -1,60 +1,85 @@
 # Theming
 
-chalk's UI is themed entirely via CSS custom properties. Three layers cascade:
+chalk's UI is themed entirely via CSS custom properties, all of them in
+`web/src/theme.css`. Two layers cascade:
 
 ```
-:root              ← default theme (Matrix green-on-black)
-[data-theme="X"]   ← built-in alternate themes (light, solarized, amber, ...)
-:root              ← user overrides injected at runtime from settings
+:root                ← the default theme (matrix green-on-black)
+[data-theme="X"]     ← every other built-in theme
 ```
 
-Because the user-override `<style>` is appended last to `<head>`, it wins.
+The chosen theme is a synced user pref (`UserPrefs.theme`), applied by setting
+`data-theme` on `<html>`; the default theme is what shows when no attribute is
+set. Per-device display prefs (font family, font scale, scrollbars) are a
+separate mechanism and win over both layers, because they are written as inline
+styles on the same element — see `web/src/display-prefs.ts`.
 
-## Token categories
+## Tokens
 
-- **Color — surfaces**: `--c-bg`, `--c-bg-elev-1`, `--c-bg-elev-2`, `--c-bg-input`, `--c-overlay`
-- **Color — foreground**: `--c-fg`, `--c-fg-dim`, `--c-fg-muted`, `--c-fg-faint`, `--c-fg-inverse`
-- **Color — semantic**: `--c-accent`, `--c-link`, `--c-warn`, `--c-error`, `--c-ok`
-- **Color — chat**: `--c-self`, `--c-other`, `--c-system`, `--c-mention`, `--c-thread-line`, `--c-selection-bg`, `--c-selection-fg`, `--c-cursor`
-- **Color — borders**: `--c-border`, `--c-border-strong`, `--c-focus-ring`
-- **Typography**: `--font-mono`, `--font-ui`, `--font-size-base`, `--font-size-sm`, `--font-size-lg`, `--line-height`, `--letter-spacing`
-- **Spacing**: `--sp-0` … `--sp-6`
-- **Radius**: `--radius-sm`, `--radius-md`, `--radius-lg`
-- **Motion**: `--motion-fast`, `--motion-base`, `--motion-slow`, `--easing`
-- **Effects**: `--shadow-1`, `--shadow-glow`
-- **Layout**: `--sidebar-w`, `--thread-w`, `--composer-min-h`, `--composer-max-h`
-- **Semantic aliases**: `--c-board` (alias for `--c-bg`), `--c-chalk` (alias for `--c-fg`), `--c-chalk-dim` (alias for `--c-fg-dim`)
+A theme block redeclares the eleven palette tokens and nothing else:
+
+| Token | Role |
+|---|---|
+| `--chalk-bg` | the page ground |
+| `--chalk-bg-elev`, `--chalk-bg-elev-2` | two elevation steps: panels and inputs, then hover rows, badges and code blocks |
+| `--chalk-fg` | body text |
+| `--chalk-fg-dim` | secondary text — timestamps, hints |
+| `--chalk-fg-bright` | emphasis — titles, active states |
+| `--chalk-fg-muted` | placeholders and disabled text |
+| `--chalk-border` | rules and edges |
+| `--chalk-accent` | links, focus rings, selected states |
+| `--chalk-warn`, `--chalk-error` | the two signal colors |
+
+Plus `color-scheme`, so form controls and scrollbars follow.
+
+The rest of the token set is theme-independent and lives on `:root`:
+type (`--chalk-font-*`, `--chalk-font-scale`, `--chalk-size-*`), spacing
+(`--chalk-s1` … `--chalk-s6`), `--chalk-radius`, and the presence colors
+(`--chalk-presence-*`), which are a fixed status signal — "online" means the
+same green in every theme, so a theme block must not override them. Nick colors
+are per-user hues with theme-supplied saturation and lightness
+(`--nick-s` / `--nick-l`); see `web/src/chat/nickcolor.ts`.
 
 ## Built-in themes
 
-| Theme | Vibe |
-|---|---|
-| (default) | Matrix — bright green on pure black, sharp corners, glow on focus |
-| `light` | Accessible light theme, soft radii |
-| `solarized-dark` | Solarized base16 |
-| `amber` | Retro amber terminal |
+Light: `light` (warm cream), `snazzy-light`, `warmwhite` (dark rail beside a
+paper page), `vscode-light`, `catppuccin-latte`.
 
-Switch via `<html data-theme="...">`. The default theme is applied when no `data-theme` is set.
+Dark: the default matrix green, `cyberpunk`, `solarized-dark`, `tokyo-night`,
+`lcars`, `blade-runner`, `azeroth`, `darkord`, `exchalk`, `catppuccin-mocha`.
 
-## User overrides
+Two of them bend more than color, which is what makes them read as themselves:
+`lcars` takes pill radii and uppercase tracked headers, and `warmwhite`
+re-declares the palette scoped to `.chalk-sidebar` so the whole subtree
+re-tints from one block.
 
-Each user can override any token from settings. The override map is stored as part of the encrypted settings blob (server doesn't see it) and synced across the user's devices.
+## Contrast policy
 
-```js
-applyUserOverrides({
-  "--c-fg":  "#ff00aa",
-  "--font-mono": "Fira Code",
-  "--radius-md": "8px"
-});
-```
-
-Internally this writes a `<style id="user-overrides">:root { ... }</style>` element appended last to `<head>`. The settings UI lets users edit the most impactful tokens (8 default-visible, full set behind an "advanced" disclosure).
+Published palettes are tuned for syntax on an editor ground, not for UI text,
+and most of them land somewhere under 4.5:1 on at least one tier. The house
+rule is to keep the hue and move the lightness, and to say so in the comment
+above the block: body, dim and emphasis clear 4.5:1 on `--chalk-bg`, the muted
+tier and the signal colors clear 3:1, and nothing drops below 3:1 on
+`--chalk-bg-elev-2`. `web/src/theme-palette.test.ts` enforces exactly that, and
+also holds the picker and the stylesheet to the same theme names.
 
 ## Adding a built-in theme
 
-1. Add a `[data-theme="yourname"] { --c-bg: ...; ... }` block in `web/themes.css`
-2. Override only the tokens you need; the rest cascade from the default
-3. Add an entry to the theme picker in `web/settings.js`
+1. A `[data-theme="yourname"] { ... }` block in `web/src/theme.css` declaring
+   all eleven tokens plus `color-scheme` — not a partial override, so nothing
+   silently inherits the green theme
+2. A comment above it saying where the palette came from and which tones were
+   moved to clear the floors above
+3. A `.chalk-profile-theme-swatch-preview--yourname` gradient for the picker
+   swatch, hard-coded hex so the preview shows its own theme whichever one is
+   active
+4. The name and a one-line description in the picker array in
+   `web/src/components/ProfilePanel.tsx`, and in the `UserPrefs.theme` comment
+   in `web/src/state/types.ts`
+5. A light theme also wants the modal shadow and softened backdrop the other
+   light themes carry, and a place in the `--nick-s` / `--nick-l` selector list
+   at the bottom of the sheet
+6. `node test.mjs` — the palette test will tell you which tone is short
 
 ## Bundled fonts
 

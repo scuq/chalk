@@ -7576,6 +7576,110 @@ body.chalk-resizing .chalk-sidebar-resizer {
 }
 
 /* ============================================================
+   catppuccin-mocha: the pastel dark flavor
+   ============================================================
+   Base is the ground, Surface0 and Surface1 are the two
+   elevation steps, Text is the body -- the mapping the palette
+   publishes for its own ports. Mauve is Catppuccin's default
+   accent and keeps that job here; emphasis goes to Rosewater
+   instead, so a title reads brighter than the accent rather
+   than competing with it.
+
+   Two tones moved one rung up the palette's own ladder rather
+   than being recolored: Subtext0 and Overlay1 clear chalk's
+   floors on Base but not on Surface1, which is a real text
+   ground here (hover rows, code blocks). Subtext1 and Overlay2
+   clear both.
+   ============================================================ */
+
+[data-theme="catppuccin-mocha"] {
+  --chalk-bg:           #1e1e2e;
+  --chalk-bg-elev:      #313244;
+  --chalk-bg-elev-2:    #45475a;
+  --chalk-fg:           #cdd6f4;
+  --chalk-fg-dim:       #bac2de;
+  --chalk-fg-bright:    #f5e0dc;
+  --chalk-fg-muted:     #9399b2;
+  --chalk-border:       #45475a;
+  --chalk-accent:       #cba6f7;
+  --chalk-warn:         #f9e2af;
+  --chalk-error:        #f38ba8;
+
+  color-scheme: dark;
+}
+
+[data-theme="catppuccin-mocha"] .chalk-sidebar-item--active {
+  background: rgba(203, 166, 247, 0.14);
+}
+
+.chalk-profile-theme-swatch-preview--catppuccin-mocha {
+  background: linear-gradient(135deg,
+    #1e1e2e 0%, #1e1e2e 50%,
+    #cba6f7 50%, #cba6f7 100%);
+}
+
+/* ============================================================
+   catppuccin-latte: the pastel light flavor
+   ============================================================
+   The light flavor inverts the ladder -- Base is the page and
+   Mantle/Crust are the shades under it, which is the direction
+   chalk's other light themes already go -- and Surface0 draws
+   the borders.
+
+   Latte is tuned for syntax on an editor ground, so several of
+   its tones land between 2.3:1 and 4.3:1 as UI text on #eff1f5.
+   Four contrast fixes, the usual policy of keeping the hue and
+   moving the lightness: Subtext0 (4.3) gives way to Subtext1
+   and Overlay1 (2.8) to Overlay2, both still palette tones; the
+   yellow (2.3) is darkened outright, the same treatment the
+   other light themes' ambers got; and the blue drops one step
+   from #1e66f5, which is a hair short at 4.3 as link text.
+   ============================================================ */
+
+[data-theme="catppuccin-latte"] {
+  --chalk-bg:           #eff1f5;
+  --chalk-bg-elev:      #e6e9ef;
+  --chalk-bg-elev-2:    #dce0e8;
+  --chalk-fg:           #4c4f69;
+  --chalk-fg-dim:       #5c5f77;
+  /* On a light ground "bright" means the flavor's signature
+     purple, not a lighter tone -- Latte has nothing darker than
+     its own Text to emphasize with. */
+  --chalk-fg-bright:    #8839ef;
+  --chalk-fg-muted:     #7c7f93;
+  --chalk-border:       #ccd0da;
+  --chalk-accent:       #1b60ea;
+  --chalk-warn:         #8f5607;
+  --chalk-error:        #d20f39;
+
+  color-scheme: light;
+}
+
+/* Same as the other light themes: a flat pale ground needs a real
+   shadow to separate floating surfaces, and the default 70% black
+   scrim stains rather than dims. */
+[data-theme="catppuccin-latte"] .chalk-modal,
+[data-theme="catppuccin-latte"] .chalk-modal-card,
+[data-theme="catppuccin-latte"] .chalk-presence-menu,
+[data-theme="catppuccin-latte"] .chalk-status-menu {
+  box-shadow: 0 4px 16px rgba(76, 79, 105, 0.16);
+}
+
+[data-theme="catppuccin-latte"] .chalk-modal-backdrop {
+  background: rgba(76, 79, 105, 0.42);
+}
+
+[data-theme="catppuccin-latte"] .chalk-sidebar-item--active {
+  background: rgba(27, 96, 234, 0.12);
+}
+
+.chalk-profile-theme-swatch-preview--catppuccin-latte {
+  background: linear-gradient(135deg,
+    #eff1f5 0%, #eff1f5 50%,
+    #8839ef 50%, #8839ef 100%);
+}
+
+/* ============================================================
    Phase 9.7f: per-user nick colors
    ============================================================
    A name's HUE is per-user; saturation and lightness come from the
@@ -7603,7 +7707,8 @@ body.chalk-resizing .chalk-sidebar-resizer {
 [data-theme="light"],
 [data-theme="snazzy-light"],
 [data-theme="warmwhite"],
-[data-theme="vscode-light"] {
+[data-theme="vscode-light"],
+[data-theme="catppuccin-latte"] {
   --nick-s: 68%;
   --nick-l: 32%;
 }
