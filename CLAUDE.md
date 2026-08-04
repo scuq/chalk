@@ -67,7 +67,7 @@ gofmt -l .                         # must be empty before commit
 # client (from web/)
 npm install
 npx tsc --noEmit
-node test.mjs                      # node:test suite; currently 1161 tests, 0 fail
+node test.mjs                      # node:test suite; currently 1175 tests, 0 fail
 node build.mjs
 
 # notification sounds (from the repo root)
@@ -323,8 +323,6 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   - `auth_backup_code` is dormant: migration 0040 creates it and
     `store/auth_v2.go` has `ReplaceBackupCodes` / `ConsumeBackupCode` /
     `CountUnusedBackupCodes`, with no caller anywhere. Drop table + funcs.
-  - `docs/phase-31/PHASE-31-ADDENDUM-B-ENVELOPE.md` needs the correction noted
-    during phase 31.
   - The threads dot's server total is only re-synced on a debounced refetch;
     threads whose inbox rows this client doesn't hold still lag until then
     (`threadsNeedingYouCount` corrects only held rows).

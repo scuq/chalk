@@ -1,6 +1,7 @@
 // chalk -- phase31-slice31-9 auth-v2 cutover: migration endpoints + gate.
 //
-// The hard-cutover machinery (Addendum C). When CHALK_AUTH_V2_REQUIRED is on
+// The hard-cutover machinery (docs/PHASE-31-AUTHV2.md). When
+// CHALK_AUTH_V2_REQUIRED is on
 // (the default), a session belonging to a user who has NOT enrolled in
 // auth v2 (password + confirmed TOTP) is rejected with 409
 // auth_v2_enrollment_required on every session-gated endpoint EXCEPT the

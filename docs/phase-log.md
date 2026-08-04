@@ -17,7 +17,7 @@ as-built rather than a contemporaneous plan.
 | Phase | Topic | Record |
 | --- | --- | --- |
 | 30 | voice and video | [PHASE-30-VOICE.md](PHASE-30-VOICE.md) *(backfilled; spec in [design/](design/chalk-phase-30-voice-video-design.md))* |
-| 31 | auth v2 — password + TOTP | [phase-31/PHASE-31-INDEX.md](phase-31/PHASE-31-INDEX.md) |
+| 31 | auth v2 — password + TOTP | [PHASE-31-AUTHV2.md](PHASE-31-AUTHV2.md) |
 | 32 | mobile layout | [PHASE-32-MOBILE.md](PHASE-32-MOBILE.md) *(backfilled)* |
 | 33 | unread tracking, read cursors | [PHASE-33-UNREAD.md](PHASE-33-UNREAD.md) *(backfilled)* |
 | 34 | presence correctness | [PHASE-34-PRESENCE.md](PHASE-34-PRESENCE.md) *(backfilled)* |
@@ -589,7 +589,8 @@ carried it. The per-phase docs hold the design and the slice lists.
 leaving the browser) + mandatory TOTP on every path including passkeys; two
 separate 24-word phrases (recovery vs encryption); hard cutover behind
 `CHALK_AUTH_V2_REQUIRED` with a migration wizard; one-shot admin bootstrap
-token; recovery as *reset*, not login. Seven documents under `docs/phase-31/`.
+token; recovery as *reset*, not login. Recorded in `docs/PHASE-31-AUTHV2.md`,
+which consolidates the seven-file spec that preceded it.
 
 **32–36 — the app becomes usable outside a desktop tab (v0.3.20 – v0.3.29).**
 Mobile layout (32), unread tracking with cross-device read cursors and

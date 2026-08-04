@@ -22,7 +22,7 @@ extend an existing one when a later phase touches the same topic. A tag whose
 phases have drifted is worse than a missing tag, so correct it in place rather
 than adding a second entry. `-g` warns when a listed path no longer exists.
 
-#auth           31        internal/auth/ web/src/auth/ docs/phase-31/
+#auth           31        internal/auth/ web/src/auth/ web/src/crypto/authkdf.ts docs/PHASE-31-AUTHV2.md
 #browser        48        web/src/webauthn.ts web/src/crypto/ docs/browser-support.md docs/PHASE-48-BROWSER.md
 #friends        59        internal/friends/ web/src/components/ docs/PHASE-59-FRIENDS.md
 #voice          30 41 44 45 63 66 70 71  internal/turncred/ web/src/voice/ web/src/components/VoiceCallPanel.tsx docs/PHASE-30-VOICE.md docs/PHASE-41-MICROPHONE.md docs/PHASE-44-VOICEPANEL.md docs/PHASE-63-CALLTILES.md docs/PHASE-66-CALLPREFS.md docs/design/chalk-phase-30-voice-video-design.md

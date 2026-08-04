@@ -1,6 +1,6 @@
 // chalk-web -- phase31-slice31-5 client auth crypto core.
 //
-// The client-side half of password auth (docs/phase-31 Addendum D). The
+// The client-side half of password auth (docs/PHASE-31-AUTHV2.md). The
 // password NEVER leaves this module's outputs in recoverable form:
 //
 //   master       = Argon2id(password, salt, params)          [hash-wasm]
@@ -16,7 +16,7 @@
 // Also here: the mandatory password policy (>= 20 chars; upper, lower, digit,
 // special) and a small dependency-free strength estimate for the meter. The
 // policy is enforced HERE because the server structurally cannot see the
-// password (Addendum D s4).
+// password (docs/PHASE-31-AUTHV2.md, "Password policy is client-side").
 
 import { argon2id } from "hash-wasm";
 
