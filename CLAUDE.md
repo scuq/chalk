@@ -162,6 +162,21 @@ That is not something to work around with `grep -r` — ask scuq to install it
   ships — that index is how a phase number is turned back into its record.
   Phases 30–79 were backfilled after the fact and say so in their header; a
   backfilled record is as-built, not a contemporaneous plan.
+- **Check the planned phases before opening a new one.** Some phase docs are
+  designs with no code behind them — they say **planned, not started** in the
+  index at the top of `docs/phase-log.md`, and say it again in their own
+  header where they have a doc of their own (65 web push and 86 ties do; 83's
+  signed message envelope is scoped inside the phase-81 record instead). Read
+  that index and the *Next candidates* bullet below **before** proposing a
+  phase number or designing a feature. Three things follow: a new idea is often
+  an existing plan, and belongs in that doc rather than in a parallel number; a
+  planned number is claimed, so the next free number is past it, never one of
+  them; and building one means flipping its status header
+  and dropping *planned, not started* from its index row in the same change set
+  — a doc that still claims to be unbuilt is exactly as misleading as a stale
+  version pointer. The same applies when a plan turns out to be wrong: correct
+  or retire the doc, do not leave it standing beside the code that contradicts
+  it.
 - **Probes belong in the test suite.** To find out how code behaves, add or
   extend a `*.test.ts` beside it and run `node test.mjs`, or a `_test.go` and
   `go test ./internal/...` — both are permitted, so neither prompts. Do not
