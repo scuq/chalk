@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preac
 import {
   autoPagingAllowed,
   dividerScrollDelta,
+  keepDrift,
   landingFillAllowed,
   nextEmptyStreak,
   unreadRunFits,
@@ -266,6 +267,51 @@ function scrollToAnchor(
   }
 }
 
+// 79-4: the row the reader is holding, and where it sat in the scrollport when
+// they last scrolled. This is what a reader who has taken over gets instead of
+// an anchor: the feed's scroller sets `overflow-anchor: none` (theme.css) so
+// the pager can be the only corrector of a prepend, which also means nothing
+// at all corrects for an attachment ABOVE the reader resolving from its
+// "decrypting…" strip into a full-size box. Their rows are shoved down and the
+// view is left sitting on the picture that grew.
+interface KeepAnchor {
+  row: HTMLElement;
+  offset: number;
+}
+
+// Which row is that? The one under the top edge of the scrollport, found by
+// hit test rather than by measuring every row -- this runs on scroll.
+function topRowAnchor(
+  root: HTMLElement | null,
+  scroller: HTMLElement | null,
+): KeepAnchor | null {
+  if (!root || !scroller || typeof document === "undefined") return null;
+  const box = scroller.getBoundingClientRect();
+  // Probe below whatever is pinned over that edge: the sticky channel header
+  // is not what the reader is reading.
+  const hit = document.elementFromPoint(
+    box.left + box.width / 2,
+    box.top + pinnedTopInset(scroller) + 1,
+  );
+  const row = hit ? hit.closest<HTMLElement>("[data-message-id]") : null;
+  // A modal or a row menu over the feed swallows the probe; so does a gap
+  // between rows. No row means no correction, which is what the feed did
+  // before this existed.
+  if (!row || !root.contains(row)) return null;
+  return { row, offset: row.getBoundingClientRect().top - box.top };
+}
+
+// Put the held row back where it was. A no-op when it hasn't moved, which is
+// what keeps this from fighting the pager's own restoration: by the time the
+// resize is delivered that correction has already landed and the drift is 0.
+function restoreKeep(keep: KeepAnchor | null, scroller: HTMLElement | null) {
+  if (!keep || !scroller || !keep.row.isConnected) return;
+  const offset =
+    keep.row.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+  const drift = keepDrift(keep.offset, offset);
+  if (drift !== 0) scroller.scrollTop += drift;
+}
+
 interface Props {
   messages: Message[];
   // 33-4: the channel these messages belong to. Identity, not data -- a
@@ -433,6 +479,10 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
   // left parked at whichever image grew. Holding the anchor until the user
   // takes over is what makes the landing survive that.
   const anchorRef = useRef<Anchor>(null);
+  // 79-4: what holds the view once the anchor is released and the reader is
+  // somewhere other than the bottom -- the row they are reading from, and its
+  // offset in the scrollport. See KeepAnchor.
+  const keepRef = useRef<KeepAnchor | null>(null);
   // 41-3: the open row menu -- which message, and where the pointer was.
   // Coordinates are viewport-relative because the menu is position:fixed. The
   // message is held by id, not by value: a reaction or an edit landing while
@@ -517,8 +567,15 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     if (ephemeral) return; // 45-3: nothing scrolls, nothing to follow
     const sc = scrollParentOf(rootRef.current);
     if (!sc) return;
+    // A record from the channel we just left would be a row that is no longer
+    // in the document -- harmless, but never let it outlive the navigation.
+    keepRef.current = null;
     const onScroll = () => {
       pinnedRef.current = isNearBottom(sc);
+      // 79-4: remember where the reader put themselves, so late growth above
+      // them can be undone. Nothing to hold while pinned: the bottom is its
+      // own anchor, and the branch below follows it.
+      keepRef.current = pinnedRef.current ? null : topRowAnchor(rootRef.current, sc);
     };
     // Release the anchor on a real user gesture, not on scroll events --
     // our own programmatic scrolls fire those too, and couldn't be told
@@ -572,7 +629,11 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
       // staying at the end through that growth.
       if (pinnedRef.current) {
         scrollToAnchor("end", dividerRef.current, endRef.current, scrollParentOf(el));
+        return;
       }
+      // 79-4: anchor released AND parked mid-feed -- the reader is reading.
+      // The third state, and until now the one with no corrector at all.
+      restoreKeep(keepRef.current, scrollParentOf(el));
     });
     ro.observe(el);
     return () => ro.disconnect();

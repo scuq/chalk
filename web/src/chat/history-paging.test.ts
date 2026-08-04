@@ -9,6 +9,8 @@ import {
   UNREAD_FIT_SLACK_PX,
   DIVIDER_HEADER_GAP_PX,
   dividerScrollDelta,
+  KEEP_DRIFT_MIN_PX,
+  keepDrift,
   landingFillAllowed,
   nextEmptyStreak,
   pageMarksComplete,
@@ -91,4 +93,26 @@ test("a header taller than the divider's offset scrolls backwards, not to it", (
   // means scrolling UP. A clamp to >= 0 here would leave it behind the bar,
   // which is the bug this rule exists to prevent.
   assert.ok(dividerScrollDelta(20, 50) < 0);
+});
+
+test("a row shoved down by growth above it drags the scroller after it", () => {
+  // The reader was holding a row 300px into the scrollport. An attachment
+  // above them decrypted into a 420px box, so the row is now at 720.
+  assert.equal(keepDrift(300, 720), 420);
+});
+
+test("growth below the held row moves nothing", () => {
+  assert.equal(keepDrift(300, 300), 0);
+});
+
+test("a shrink above the held row is corrected the same way", () => {
+  // A link preview that fails to render collapses; the row rises, and holding
+  // it means scrolling back up by as much.
+  assert.equal(keepDrift(300, 120), -180);
+});
+
+test("sub-pixel drift is not worth a scroll", () => {
+  assert.equal(keepDrift(300, 300.5), 0);
+  assert.equal(keepDrift(300, 300 + KEEP_DRIFT_MIN_PX - 0.01), 0);
+  assert.equal(keepDrift(300, 300 + KEEP_DRIFT_MIN_PX), KEEP_DRIFT_MIN_PX);
 });

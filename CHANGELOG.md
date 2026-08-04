@@ -10,6 +10,16 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- Reading back through a conversation while its photos were still loading no
+  longer throws you backwards. A picture above you finishing its decrypt used
+  to push everything down under you, leaving the view sitting on that picture
+  instead of on the line you were reading; the feed now stays put through it.
+
+---
+
 ## v0.7.2 — 4 August 2026 — Parking-lot privacy screen
 
 ### Added

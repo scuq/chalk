@@ -86,3 +86,21 @@ export function dividerScrollDelta(
 ): number {
   return dividerOffset - pinnedInset - DIVIDER_HEADER_GAP_PX;
 }
+
+// 79-4: sub-pixel layout puts the same row a fraction of a pixel from where it
+// was measured. Correcting that on every resize is churn the reader can't see.
+export const KEEP_DRIFT_MIN_PX = 2;
+
+// 79-4: how far to move the scroller to put the row the reader is holding back
+// where it was. `recorded` is the offset the row had from the top of the
+// scrollport when the reader last scrolled, `current` is where it is now; the
+// difference is what late growth ABOVE it (an attachment resolving from its
+// "decrypting…" strip to a full-size box) pushed it by. Positive means the row
+// moved down and the scroller has to follow it.
+//
+// Growth BELOW the held row leaves it alone and yields 0, which is why this is
+// the whole rule: it does not need to know where the growth happened.
+export function keepDrift(recorded: number, current: number): number {
+  const drift = current - recorded;
+  return Math.abs(drift) < KEEP_DRIFT_MIN_PX ? 0 : drift;
+}
