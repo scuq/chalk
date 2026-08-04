@@ -26,10 +26,8 @@ const MigrationsDir = "migrations"
 //
 // For "go build" without a prior `npm run build`, this embed pattern
 // will fail with "pattern web/dist/*: no matching files found".
-// `bootstrap/phase-07-frontend-shell.sh` runs the npm build before
-// `go build` to satisfy this; CI and the Dockerfile follow the same
-// pattern. Local dev: run `cd web && npm run build` once before
-// `go build`.
+// CI and the Dockerfile run the npm build before `go build` to satisfy
+// this. Local dev: run `cd web && npm run build` once before `go build`.
 //
 //go:embed all:web/dist
 var Web embed.FS

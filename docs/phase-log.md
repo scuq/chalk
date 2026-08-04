@@ -1,6 +1,6 @@
 # Phase Log
 
-What each bootstrap phase delivers and what it tests. Kept in sync with `bootstrap/`, `README.md`, and `CHANGELOG.md`.
+What each bootstrap phase delivers and what it tests. Kept in sync with `README.md` and `CHANGELOG.md`.
 
 Phases 00–30 are recorded in full below, in the shape the bootstrap phases were
 written in — which is a **plan** shape, and four of those entries never came
@@ -696,9 +696,10 @@ authority on what is open; this log only records what shipped.
 
 ## Phase numbering note
 
-The 09+ ordering above differs from the original `bootstrap/`
-scaffold's stub names. See `CHANGELOG.md` "Phase numbering note"
-section for the canonical mapping. Short version: 09 stayed as auth
+The 09+ ordering above differs from the original bootstrap scaffold's
+stub names. `phases/PHASE-00-29-FOUNDATION.md` decodes the old scheme
+slot by slot; `CHANGELOG.md` has the same mapping for readers. Short
+version: 09 stayed as auth
 (shipped as 09a–d); "10 MLS" was folded into the 11-series (11a
 foundation, 11b DMs, 11c channels, 11d multi-device); subsequent
 phases shifted up by one slot.

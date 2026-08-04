@@ -1,12 +1,7 @@
 // Package integration runs Go tests against a real Postgres instance.
-// The bootstrap harness stands up an ephemeral container, applies migrations,
-// seeds users, and exports CHALK_TEST_PGURL into the test environment.
 //
-// To run these locally:
-//
-//	bootstrap/phase-03-postgres.sh
-//
-// or, if you have a PG already wired up:
+// To run these locally, bring up the dev stack (`make dev`) or point at any
+// Postgres with the migrations applied, then seed fixtures/users.sql:
 //
 //	CHALK_TEST_PGURL=postgres://chalk:chalk@127.0.0.1:5432/chalk?sslmode=disable \
 //	  go test ./test/integration/...

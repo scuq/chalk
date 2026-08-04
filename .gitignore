@@ -20,9 +20,6 @@ playwright/.cache/
 .env.local
 *.local
 
-# Bootstrap markers (committed selectively, see .gitattributes)
-# .bootstrap/*.done is tracked by git so collaborators see project state
-
 # IDE
 .idea/
 .vscode/
@@ -37,19 +34,9 @@ Thumbs.db
 # Local data dirs (only relevant outside of containers)
 /var/
 
-# Bootstrap markers
-.bootstrap/*
-!.bootstrap/*.done
-
 # Backup files from in-place patch scripts
 *.bak-*
 *.pre-*
-
-# Local one-off directory dumps
-/tree.txt.bootstrap/
-
-# bootstrap idempotency markers (per-developer state)
-.bootstrap/*.done
 
 # esbuild transpile cache for the test runner
 web/.test-build/

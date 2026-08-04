@@ -10,7 +10,7 @@ import (
 	"github.com/scuq/chalk/internal/store"
 )
 
-// Canonical fixture UUIDs (must match bootstrap/fixtures/users.sql).
+// Canonical fixture UUIDs (must match fixtures/users.sql).
 // UUIDs must be exactly 8-4-4-4-12 hex digits (0-9, a-f). The recognizable
 // suffix in each last segment encodes the user's name for readability.
 var (

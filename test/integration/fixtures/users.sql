@@ -1,5 +1,6 @@
--- bootstrap/fixtures/users.sql
--- Three canonical test users with deterministic UUIDs.
+-- test/integration/fixtures/users.sql
+-- Three canonical test users with deterministic UUIDs. The UUIDs are
+-- hardcoded in store_test.go and must stay in step with this file.
 -- Idempotent: safe to run repeatedly.
 --
 -- UUIDs must be exactly 8-4-4-4-12 hex digits (0-9, a-f). The values below

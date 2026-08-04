@@ -313,8 +313,9 @@ New regression cover, all of it added with the fix it covers:
 against the ad-hoc dev database — 63 tests fail in fixture cleanup with
 `DM channel must have exactly 2 members` from orphaned DM channels left by UI
 probes. This is pre-existing and unrelated to phase 81 (the failing set is
-identical with the phase's changes stashed). Use `bootstrap/phase-03-postgres.sh`
-for a clean fixture database.
+identical with the phase's changes stashed). Use a clean database seeded from
+`test/integration/fixtures/users.sql` rather than a dev DB that probes have
+written to.
 
 ## Follow-ups this surfaced (not phase 81)
 

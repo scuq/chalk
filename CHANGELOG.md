@@ -1652,7 +1652,9 @@ The condensed story. The full slice-by-slice record is in
 ## Phase numbering note
 
 Phase numbers in the commit log and [docs/phase-log.md](docs/phase-log.md)
-differ from the original `bootstrap/` scaffold's stub names. The canonical
+differ from the original bootstrap scaffold's stub names (the scaffold itself is
+gone; [docs/phases/PHASE-00-29-FOUNDATION.md](docs/phases/PHASE-00-29-FOUNDATION.md)
+decodes it). The canonical
 mapping: **09** auth (shipped as 09a–09d); **10** skipped (the original "MLS"
 phase folded into the 11-series); **11a** CoreCrypto foundation and **11b** MLS
 DMs (both later removed in the 21-series rip-out); **21** MLS removal; **22–25**

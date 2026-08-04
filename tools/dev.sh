@@ -127,8 +127,8 @@ log "applying migrations"
 # pre-seeded fixture UUIDs aren't loggable into anyway. Users register
 # via the SPA's signup flow; friendships are made via the in-SPA
 # friend-request UI. The historical fixtures live in
-# bootstrap/fixtures/users.sql if you ever want to revive them, but
-# they're not part of the make-dev path anymore.
+# test/integration/fixtures/users.sql if you ever want to revive them,
+# but they're not part of the make-dev path anymore.
 
 # ---- 6. Run chalkd in foreground ----------------------------------------
 

@@ -27,6 +27,80 @@ Anyone reading the log alone would conclude chalk has account-deletion frames
 and a Prometheus endpoint, and does not have channel encryption. None of that
 is true.
 
+## How it was built: the bootstrap harness
+
+Phases 00–08 were not written by hand into a repo — they were **executed**. A
+`bootstrap/` directory held one shell script per phase, and each script:
+
+1. wrote its files (`write_file_if_absent` for idempotency, `write_file_force`
+   to overwrite),
+2. stood up an **ephemeral Postgres in Docker**, applied migrations through
+   `chalkd --migrate-only`, and seeded fixture users,
+3. ran its own tests — `go vet`, unit tests, a real chalkd started in the
+   background, integration tests, then SIGTERM and a clean-exit check,
+4. committed on success (`git_commit_phase`) and wrote a
+   `.bootstrap/phase-NN.done` marker.
+
+`run-all.sh` resumed from the markers, with `--only`, `--from`, `--force` and
+`--dry-run`. A ~950-line library sat behind it: `common.sh` (logging, markers,
+file and git helpers), `checks.sh` (host environment), `postgres.sh` (ephemeral
+PG lifecycle, exporting `CHALK_TEST_PGURL`), `testing.sh`, `server.sh`,
+`frontend.sh` and `browsers.sh`.
+
+This explains two things that look strange in the history: the early commits
+whose messages are just a timestamp and a file count are `git_commit_phase`
+output, and several phases' tests are described in terms of **two chalkd
+instances against one Postgres** — that was the harness proving cross-instance
+fan-out, with presence loop intervals shortened through env vars so the janitor
+reaped within seconds of a test.
+
+The directory was removed once it stopped describing the project (see
+[the harness is gone](#the-harness-is-gone) at the end).
+
+### Canonical fixture users
+
+The harness seeded the same three users for every phase test, with deterministic
+UUIDs that encode the name in the last segment — they are still hardcoded in
+`test/integration/store_test.go`:
+
+| handle | UUID |
+| --- | --- |
+| alice | `00000000-0000-0000-0000-00000000a11c` |
+| bob | `00000000-0000-0000-0000-000000000b0b` |
+| carol | `00000000-0000-0000-0000-0000000ca201` |
+
+From 11a two more existed, having already completed KeyPackage publishing —
+which is why the MLS notes talk about **alice2** and **bob2** rather than alice
+and bob:
+
+| handle | UUID |
+| --- | --- |
+| alice2 | `00000000-0000-0000-0000-00000000a112` |
+| bob2 | `00000000-0000-0000-0000-000000000b02` |
+
+Fixture emails use the `.invalid` TLD (RFC 6761 reserved) so dev data can never
+collide with a real address, and carry `email_verified_at` so the dev login
+bypass can mint sessions without a verification ceremony.
+
+### The old phase numbering, decoded
+
+From 09 onward phases stopped being shell scripts and arrived as patches with
+their own validators, and the numbering was rearranged. The stub scripts left
+behind in `bootstrap/` are the clearest surviving record of the **original**
+scheme:
+
+| Original | Became |
+| --- | --- |
+| 09 — blobs (`phase-09-blobs.sh`) | 09 is **auth**; blobs slid to 13 and were then superseded by attachments |
+| 10 — MLS (`phase-10-mls.sh`) | folded into the **11-series** (11a foundation, 11b DMs, 11c channels, 11d multi-device) |
+| 11 — friending (`phase-11-friending.sh`) | already delivered by phase **06** |
+| 12 — hardening (`phase-12-hardening.sh`) | renumbered to 14; never shipped under either number |
+| 13 — cross-browser (`phase-13-cross-browser.sh`) | renumbered to 15; partially shipped |
+
+All five were stubs that were never implemented. `phase-11-friending.sh` is the
+tell that the rearrangement happened early: friend requests shipped in phase 06,
+so the slot was already spent when the renumbering landed.
+
 ## The eras
 
 ### 00–08 — the bootstrap (migrations 0001–0010)
@@ -38,7 +112,9 @@ test gate each:
   `internal/config`), and the container story (multi-stage build, distroless
   final, dev/test/prod compose stacks).
 - **03** — Postgres: pgx pool, embedded migration runner, the first schema
-  (users, devices, channels, messages).
+  (users, devices, channels, messages), and `chalkd --migrate-only` — added
+  here because the harness needed a way to apply migrations before each phase's
+  tests, and idempotency (re-run, verify all skipped) was part of the gate.
 - **04** — the WebSocket relay: `internal/server/ws.go`, a hub keyed by device,
   ping/pong, and wire protocol v0 (`hello` / `welcome` / `send` / `message`),
   plaintext.
@@ -177,7 +253,7 @@ the code:
 | 11d | designed | Correct — designed only; docs pruned in 21 |
 | 12 — lifecycle | will deliver deactivate/delete/reactivate | **Never built.** No such frames exist. Phase 06's lifecycle schema is still read-only |
 | 13 — blobs | will deliver a blobs table and upload endpoint | **Superseded** by the attachments arc (att-1 … att-4, migration 0037), which solved it differently |
-| 14 — hardening | rate limits, quotas, `/metrics` | **Partly, elsewhere.** Rate limiting arrived in phase 81 (`internal/ratelimit`); server metrics became `chalkctl metrics` in 73, reading Postgres' own statistics views. There is no `/metrics` endpoint and no Prometheus |
+| 14 — hardening | rate limits, quotas, `/metrics`, `--migrate-only` | **Partly, elsewhere.** Rate limiting arrived in phase 81 (`internal/ratelimit`); server metrics became `chalkctl metrics` in 73, reading Postgres' own statistics views. There is no `/metrics` endpoint and no Prometheus. `--migrate-only` was never 14's to deliver — it shipped in **03**, because the bootstrap harness needed it to apply migrations before every phase test |
 | 15 — cross-browser | Playwright matrix | **Partly.** `test/e2e/` exists with a Playwright config and five specs (smoke, channels, multitab, admin, mobile); the full engine × viewport matrix was never stood up. `docs/browser-support.md` carries the support statement |
 
 ## Migration map
@@ -206,6 +282,32 @@ The fastest way to date any pre-30 change:
 MIT → **GPL-3.0-or-later** at 11a (forced by `@wireapp/core-crypto`) →
 **BSD-3-Clause** after 21 removed it. Commits keep the terms they were made
 under.
+
+## The harness is gone
+
+`bootstrap/` and its `.bootstrap/*.done` markers were removed once this record
+existed, because the harness had stopped describing the project:
+
+- Its newest script was `phase-13-cross-browser.sh` under the **pre-renumbering**
+  scheme — the scaffold's idea of "latest" was roughly 70 phases behind.
+- `phase-10-mls.sh` would have built the MLS stack that phase 21 deleted.
+- `run-all.sh --force` on today's repo would try to re-add phase-00 files and
+  commit them. The safe modes were the ones that did nothing.
+- The `.done` markers were tracked "so collaborators see project state", and the
+  state they reported was phase 13.
+
+What it still carried has been preserved rather than dropped:
+
+- **The fixture users** moved to `test/integration/fixtures/users.sql`, beside
+  the tests whose hardcoded UUIDs must match them.
+- **How to get a database for the DB-backed Go tests** is `make dev` (or any
+  Postgres) plus `CHALK_TEST_PGURL`; the integration suite skips when that is
+  unset, so `go test ./...` on a fresh checkout still does the right thing. The
+  old instruction to run `bootstrap/phase-03-postgres.sh` is gone from
+  `test/integration/helper_test.go` and from the phase-81 and phase-82 records.
+- **The build ritual and the numbering decoder** are the two sections above.
+
+`git log -- bootstrap/` reaches the scripts if they are ever wanted.
 
 ## Notes
 

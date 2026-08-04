@@ -639,8 +639,9 @@ guards that survive their own mutation, and why). The server-side policy
 database; the guarded upsert's `WHERE` clause is exercised only against a real
 Postgres and is covered by the flag-on end-to-end check below.
 
-DB-backed Go tests need a fixture database via `bootstrap/phase-03-postgres.sh`,
-not the ad-hoc dev DB — see the note in `docs/phases/PHASE-81-SECAUDIT.md`.
+DB-backed Go tests need a clean fixture database (seeded from
+`test/integration/fixtures/users.sql`), not the ad-hoc dev DB — see the note in
+`docs/phases/PHASE-81-SECAUDIT.md`.
 
 **Outstanding: the end-to-end run.** Everything above is unit-tested; the
 phase has not been driven against a live stack. Via the `run-chalk` skill:

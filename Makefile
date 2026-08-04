@@ -1,7 +1,6 @@
 # chalk -- Makefile
 #
-# Primary developer entry point. Phase scripts in bootstrap/ do the project
-# extension; this Makefile drives day-to-day build/run/test.
+# Primary developer entry point: day-to-day build/run/test.
 
 SHELL          := /usr/bin/env bash
 .SHELLFLAGS    := -eu -o pipefail -c
@@ -73,10 +72,6 @@ docker-down: ## docker compose down
 .PHONY: docker-logs
 docker-logs: ## Tail container logs
 	docker compose -f docker/docker-compose.yml logs -f --tail=100
-
-.PHONY: bootstrap
-bootstrap: ## Run all phases (idempotent)
-	bootstrap/run-all.sh
 
 .PHONY: dev
 dev: ## Bring up a full local stack (Postgres + chalkd + SPA) in foreground
