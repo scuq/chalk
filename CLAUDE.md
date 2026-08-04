@@ -276,9 +276,12 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   E2E-embedded, opt-in, SSRF-guarded server fetcher), the security-audit
   remediation (81, record in `docs/PHASE-81-SECAUDIT.md`), signed channel-key
   wraps (82, record in `docs/PHASE-82-SIGNEDWRAP.md`), the identity-pin backup
-  (84, record in `docs/PHASE-84-PINBACKUP.md`), operational logging (85:
-  security events, the opt-in connection snapshot, slow requests; knobs are
-  `CHALK_OPLOG_*`, documented in `internal/config/oplog.go`).
+  (84, record in `docs/PHASE-84-PINBACKUP.md`), operational logging (85-1 …
+  85-4, record in `docs/PHASE-85-OPLOG.md`: security events, the opt-in
+  connection snapshot, slow requests, and Caddy's access log; chalkd's knobs
+  are `CHALK_OPLOG_*`, documented in `internal/config/oplog.go`). Phase 85's
+  open items are the live-stack run of the connection snapshot and the missing
+  off switch for the Caddy access log — both listed at the end of its record.
 - **Phase 82 (signed channel-key wraps) is COMPLETE** — 82-1 … 82-9, record in
   `docs/PHASE-82-SIGNEDWRAP.md`. It closes the phase-81 audit's C-01, but
   **conditionally**: `CHALK_WRAP_SIG_REQUIRED` defaults to false, and until an

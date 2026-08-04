@@ -53,7 +53,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #ephemeral      80        internal/chalkctl/ migrations/ internal/store/ internal/server/ internal/auth/ internal/proto/ internal/config/ web/src/crypto/ web/src/components/ web/src/chat/
 #hardening      81        internal/auth/ internal/ratelimit/ internal/store/ internal/chalkctl/ docs/threat-model.md docs/PHASE-81-SECAUDIT.md
 #signedwrap     82        web/src/crypto/ web/src/components/ web/src/chat/keyprovenance.ts web/src/state/ internal/proto/ internal/server/ internal/store/ internal/config/ internal/chalkctl/ internal/auth/join_http.go docs/PHASE-82-SIGNEDWRAP.md docs/design/crypto-agility.md docs/threat-model.md
-#oplog          85        internal/config/oplog.go internal/server/oplog.go internal/auth/security_log.go internal/chalkctl/secret.go internal/chalkctl/templates/Caddyfile.tmpl cmd/chalkd/main.go docs/deployment.md
+#oplog          85        internal/config/oplog.go internal/server/oplog.go internal/auth/security_log.go internal/chalkctl/secret.go internal/chalkctl/templates/Caddyfile.tmpl cmd/chalkd/main.go docs/deployment.md docs/PHASE-85-OPLOG.md
 #pinbackup      84        web/src/crypto/pin-backup.ts web/src/crypto/pin-sync.ts web/src/crypto/idb.ts web/src/components/ProfilePanel.tsx web/src/components/App.tsx web/src/settings-nav.ts web/src/state/types.ts docs/PHASE-84-PINBACKUP.md docs/threat-model.md
 
 ## Phases with no topic yet
