@@ -157,8 +157,11 @@ That is not something to work around with `grep -r` — ask scuq to install it
   design and what was rejected, the slice list with what each one lands, and
   any manual checklist a slice leaves open. Keep it current as slices land —
   a plan that stopped matching the code is worse than no plan. Then point at
-  it from *Current state / open items* below while the phase is open, and
-  from `docs/phase-log.md` once it ships.
+  it from *Current state / open items* below while the phase is open, and add
+  its row to the phase-doc index at the top of `docs/phase-log.md` once it
+  ships — that index is how a phase number is turned back into its record.
+  Phases 30–79 were backfilled after the fact and say so in their header; a
+  backfilled record is as-built, not a contemporaneous plan.
 - **Probes belong in the test suite.** To find out how code behaves, add or
   extend a `*.test.ts` beside it and run `node test.mjs`, or a `_test.go` and
   `go test ./internal/...` — both are permitted, so neither prompts. Do not

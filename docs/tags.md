@@ -22,39 +22,50 @@ extend an existing one when a later phase touches the same topic. A tag whose
 phases have drifted is worse than a missing tag, so correct it in place rather
 than adding a second entry. `-g` warns when a listed path no longer exists.
 
-#auth           31        internal/auth/ web/src/auth/
-#browser        48        web/src/webauthn.ts web/src/crypto/ docs/browser-support.md
-#friends        59        internal/friends/ web/src/components/
-#voice          30 41 44 63 66 70 71  internal/turncred/ web/src/voice/ web/src/components/VoiceCallPanel.tsx
-#camera-bg      52        web/src/voice/ web/src/components/
-#threads        42 45 47 49  web/src/chat/threadinbox.ts web/src/chat/ web/src/components/
-#unread         33 62 76 79  web/src/chat/ web/src/state/ web/src/components/MessageList.tsx web/src/components/ZuckerList.tsx web/src/theme.css
-#notify         40 50 71  web/src/notify/
-#parking        53        web/src/parking.ts web/src/parking-hotkey.ts web/src/state/ web/src/components/
-#roster         54 78     web/src/chat/ web/src/components/Sidebar.tsx web/src/components/ZuckerList.tsx
-#history        55        internal/store/ web/src/chat/ web/src/components/MessageList.tsx
-#mentions       56        web/src/chat/ web/src/components/Composer.tsx
-#linkpreview    57 67     internal/linkpreview/ web/src/linkpreview/
-#code           74        web/src/code/ web/src/chat/bodytext.ts web/src/components/CodeModal.tsx web/src/components/CodeBlockView.tsx
-#nanomd         77        web/src/chat/nanomd.ts web/src/components/MessageList.tsx web/src/theme.css
-#search         61        web/src/chat/ web/src/components/
-#reactions      37 75     web/src/chat/reactions.ts web/src/chat/press.ts web/src/state/ web/src/components/ReactionBar.tsx
-#typing         43        internal/server/ web/src/state/
-#presence       34        internal/presence/ internal/server/
-#spacekeys      25 38     web/src/crypto/ internal/store/
-#deletion       35        web/src/chat/ web/src/components/
-#mobile         64 76     web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/components/ web/src/theme.css
-#settings       68 70 76  web/src/settings-nav.ts web/src/components/ProfilePanel.tsx
-#version        39        internal/version/ web/src/version.ts
-#servernotice   46        web/src/state/ web/src/components/
+#auth           31        internal/auth/ web/src/auth/ docs/phase-31/
+#browser        48        web/src/webauthn.ts web/src/crypto/ docs/browser-support.md docs/PHASE-48-BROWSER.md
+#friends        59        internal/friends/ web/src/components/ docs/PHASE-59-FRIENDS.md
+#voice          30 41 44 45 63 66 70 71  internal/turncred/ web/src/voice/ web/src/components/VoiceCallPanel.tsx docs/PHASE-30-VOICE.md docs/PHASE-41-MICROPHONE.md docs/PHASE-44-VOICEPANEL.md docs/PHASE-63-CALLTILES.md docs/PHASE-66-CALLPREFS.md docs/design/chalk-phase-30-voice-video-design.md
+#camera-bg      52        web/src/voice/ web/src/components/ docs/PHASE-52-CAMERABG.md
+#threads        42 45 47 49  web/src/chat/threadinbox.ts web/src/chat/ web/src/components/ docs/PHASE-42-THREADS.md docs/PHASE-47-THREADINBOX.md docs/PHASE-49-THREADTITLES.md
+#unread         33 62 76 79  web/src/chat/ web/src/state/ web/src/components/MessageList.tsx web/src/components/ZuckerList.tsx web/src/theme.css docs/PHASE-33-UNREAD.md docs/PHASE-79-LANDING.md
+#notify         40 50 71  web/src/notify/ docs/notification-sounds.md docs/PHASE-40-SOUNDS.md docs/PHASE-50-NOTIFYRULES.md docs/PHASE-71-CALLSOUNDS.md
+#push           -         docs/PHASE-65-PUSH.md
+#parking        53        web/src/parking.ts web/src/parking-hotkey.ts web/src/state/ web/src/components/ docs/PHASE-53-PARKING.md
+#roster         54 78     web/src/chat/ web/src/components/Sidebar.tsx web/src/components/ZuckerList.tsx docs/PHASE-54-ROSTER.md docs/PHASE-78-HIDECHANNELS.md
+#zucker         62 64     web/src/chat/zucker.ts web/src/components/ZuckerList.tsx docs/PHASE-62-ZUCKER.md
+#history        55 69 79  internal/store/ web/src/chat/ web/src/components/MessageList.tsx docs/PHASE-55-HISTORY.md docs/PHASE-69-PINNEDHEADER.md docs/PHASE-79-LANDING.md
+#mentions       56        web/src/chat/ web/src/components/Composer.tsx docs/PHASE-56-MENTIONS.md
+#linkpreview    57 67     internal/linkpreview/ web/src/linkpreview/ web/src/chat/links.ts docs/PHASE-57-LINKPREVIEW.md docs/PHASE-67-LINKLABELS.md
+#code           74        web/src/code/ web/src/chat/bodytext.ts web/src/components/CodeModal.tsx web/src/components/CodeBlockView.tsx docs/PHASE-74-CODEBLOCKS.md
+#nanomd         77        web/src/chat/nanomd.ts web/src/components/MessageList.tsx web/src/theme.css docs/PHASE-77-NANOMD.md
+#search         61        web/src/chat/ web/src/components/ docs/PHASE-61-SEARCH.md
+#reactions      37 58 75  web/src/chat/reactions.ts web/src/chat/press.ts web/src/chat/editpolicy.ts web/src/state/ web/src/components/ReactionBar.tsx docs/PHASE-37-EDITREACT.md docs/PHASE-58-EDITWINDOW.md docs/PHASE-75-REACTORS.md
+#typing         43        internal/server/ web/src/state/ docs/PHASE-43-TYPING.md
+#presence       34 45 60  internal/presence/ internal/server/ docs/PHASE-34-PRESENCE.md docs/PHASE-45-SCRATCHPAD.md
+#spacekeys      25 38     web/src/crypto/ internal/store/ docs/PHASE-38-KEYDELIVERY.md
+#deletion       35        web/src/chat/ web/src/components/ docs/PHASE-35-DELETION.md
+#mobile         32 60 64 76  web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/components/ web/src/theme.css docs/PHASE-32-MOBILE.md docs/PHASE-60-MOBILEFIT.md docs/PHASE-64-SWIPEBACK.md
+#settings       68 70 76  web/src/settings-nav.ts web/src/components/ProfilePanel.tsx docs/PHASE-68-SETTINGSTABS.md docs/PHASE-70-APPEARANCE.md docs/PHASE-76-SHORTCUTS.md
+#version        39        internal/version/ web/src/version.ts docs/PHASE-39-VERSION.md
+#servernotice   46        web/src/state/ web/src/components/ docs/PHASE-46-UPDATENOTICE.md
+#pwa            36        web/manifest.json web/icons/ web/build.mjs docs/PHASE-36-PWA.md
+#csp            51        internal/server/server.go internal/server/spa_test.go docs/PHASE-51-CSP.md
 #governance     -         internal/store/governance.go internal/server/governance_ws.go
-#attachments    -         web/src/attachments/ internal/store/
-#chalkctl       72 73 82  internal/chalkctl/ cmd/chalkctl/ test/integration/backup_restore_test.go
+#attachments    69        web/src/attachments/ internal/store/ docs/design/chalk-attachments-design-spec.md docs/PHASE-69-PINNEDHEADER.md
+#chalkctl       72 73 82  internal/chalkctl/ cmd/chalkctl/ test/integration/backup_restore_test.go docs/deployment.md docs/PHASE-72-BACKUP.md docs/PHASE-73-METRICS.md
 #ephemeral      80        internal/chalkctl/ migrations/ internal/store/ internal/server/ internal/auth/ internal/proto/ internal/config/ web/src/crypto/ web/src/components/ web/src/chat/
 #hardening      81        internal/auth/ internal/ratelimit/ internal/store/ internal/chalkctl/ docs/threat-model.md docs/PHASE-81-SECAUDIT.md
 #signedwrap     82        web/src/crypto/ web/src/components/ web/src/chat/keyprovenance.ts web/src/state/ internal/proto/ internal/server/ internal/store/ internal/config/ internal/chalkctl/ internal/auth/join_http.go docs/PHASE-82-SIGNEDWRAP.md docs/design/crypto-agility.md docs/threat-model.md
 #oplog          85        internal/config/oplog.go internal/server/oplog.go internal/auth/security_log.go internal/chalkctl/secret.go internal/chalkctl/templates/Caddyfile.tmpl cmd/chalkd/main.go docs/deployment.md docs/PHASE-85-OPLOG.md
 #pinbackup      84        web/src/crypto/pin-backup.ts web/src/crypto/pin-sync.ts web/src/crypto/idb.ts web/src/components/ProfilePanel.tsx web/src/components/App.tsx web/src/settings-nav.ts web/src/state/types.ts docs/PHASE-84-PINBACKUP.md docs/threat-model.md
+
+## Phase docs
+
+Every phase number also has a record under `docs/PHASE-<N>-<TOPIC>.md` — why the
+phase exists, what each slice landed, and what it left open. `docs/phase-log.md`
+indexes them all in one table. The tag lines above list a topic's phase docs
+among its paths, so `-g` reaches them too.
 
 ## Phases with no topic yet
 
@@ -62,4 +73,4 @@ Phase numbers that appear in the source but are not claimed above. Left here
 rather than guessed at, so the legend stays trustworthy; move one into a tag
 line when its topic is clear.
 
-    (none — 25 through 77 are all claimed)
+    (none — 25 through 85 are all claimed)
