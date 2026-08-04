@@ -189,6 +189,8 @@ func (d *HTTPDeps) handleJoinChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 	d.join.init()
 	if ip := IPFromRequest(r); ip != nil && !d.join.limiter.Allow(ip.String()) {
+		d.secLogThrottled("ratelimit|join|"+ip.String(),
+			"rate_limited bucket=join ip=%s path=%s", ip, r.URL.Path)
 		writeError(w, http.StatusTooManyRequests, "rate_limited", "slow down")
 		return
 	}
@@ -235,6 +237,8 @@ func (d *HTTPDeps) handleJoinRedeem(w http.ResponseWriter, r *http.Request) {
 	}
 	d.join.init()
 	if ip := IPFromRequest(r); ip != nil && !d.join.limiter.Allow(ip.String()) {
+		d.secLogThrottled("ratelimit|join|"+ip.String(),
+			"rate_limited bucket=join ip=%s path=%s", ip, r.URL.Path)
 		writeError(w, http.StatusTooManyRequests, "rate_limited", "slow down")
 		return
 	}

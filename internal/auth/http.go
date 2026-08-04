@@ -155,6 +155,13 @@ type HTTPDeps struct {
 	anonLimiter     *ratelimit.RateLimiter
 	recoveryLimiter *ratelimit.RateLimiter
 
+	// 85-1: whether to log security events (lockouts, rate-limit denials,
+	// login outcomes). Mirrors CHALK_OPLOG_SECURITY, plumbed in by cmd/chalkd.
+	// secLogLimiter throttles the events whose rate an attacker controls; see
+	// security_log.go.
+	SecurityLog   bool
+	secLogLimiter *ratelimit.RateLimiter
+
 	// 31-2: pending-2FA token cache bridging the password/passkey first
 	// factor to the mandatory TOTP step. Lazily defaulted in
 	// MountRegistration when nil, so existing wiring and tests need no

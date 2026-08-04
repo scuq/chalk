@@ -154,12 +154,17 @@ func (d *HTTPDeps) handleLoginPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 85-1: an attempt against a moderated account is rare and interesting --
+	// either the person has not been told, or someone is probing an account
+	// the operator already acted on. Logged unthrottled.
 	if deleted {
+		d.secLog("login_deleted_account username=%q ip=%s", username, clientIPString(r))
 		writeError(w, http.StatusGone, "user_deleted",
 			"this account has been deleted")
 		return
 	}
 	if blocked {
+		d.secLog("login_blocked_account username=%q ip=%s", username, clientIPString(r))
 		writeError(w, http.StatusForbidden, "user_blocked",
 			"this account has been blocked by an administrator")
 		return
@@ -168,6 +173,17 @@ func (d *HTTPDeps) handleLoginPassword(w http.ResponseWriter, r *http.Request) {
 	// Constant-time verify. VerifyAuthProof handles a nil/short storedHash
 	// (unknown user / not enrolled) by returning false after a dummy compare.
 	if !VerifyAuthProof(storedHash, authProof) {
+		// Throttled by address, not by username: a spray across many
+		// usernames from one host is one attacker and should read as one
+		// line, while the same username failing from a second address is a
+		// separate fact worth its own.
+		//
+		// The username is logged as typed. It is not a secret -- the caller
+		// supplied it -- and without it the line cannot distinguish a person
+		// fumbling their own password from an enumeration sweep.
+		ip := clientIPString(r)
+		d.secLogThrottled("login_fail|"+ip,
+			"login_failed username=%q ip=%s", username, ip)
 		writeError(w, http.StatusUnauthorized, "invalid_credentials",
 			"incorrect username or password")
 		return

@@ -235,6 +235,9 @@ func run(args []string) error {
 
 		// 80-8: guest magic-link redemption endpoints.
 		EphemeralEnabled: cfg.Ephemeral.Enabled,
+
+		// 85-1: security-event logging (lockouts, rate limits, login outcomes).
+		SecurityLog: cfg.Oplog.SecurityEvents,
 	}
 	log.Printf("auth: rp_id=%q rp_name=%q rp_origins=%v open_registration=%v dev=%v",
 		authCfg.RPID, authCfg.RPDisplayName, authCfg.RPOrigins,
@@ -270,6 +273,19 @@ func run(args []string) error {
 	if cfg.WrapSigRequired {
 		log.Printf("channel keys: signed wraps REQUIRED (CHALK_WRAP_SIG_REQUIRED=true); unsigned publishes refused")
 	}
+	// 85-1: say what the logging will do, so an operator reading a quiet log
+	// can tell "nothing happened" from "nothing is being recorded".
+	snapshot := "off"
+	if cfg.Oplog.SnapshotInterval > 0 {
+		snapshot = cfg.Oplog.SnapshotInterval.String()
+	}
+	slow := "off"
+	if cfg.Oplog.SlowRequest > 0 {
+		slow = cfg.Oplog.SlowRequest.String()
+	}
+	log.Printf("oplog: security_events=%v conn_snapshot=%s slow_request=%s",
+		cfg.Oplog.SecurityEvents, snapshot, slow)
+
 	// 30-2: voice signaling knobs.
 	wsCfg.Voice = server.VoiceWSConfig{
 		Enabled:         cfg.Voice.Enabled,
@@ -327,6 +343,9 @@ func run(args []string) error {
 		Auth: authDeps,
 		// att-1: orphan-upload janitor TTL.
 		AttachOrphanTTL: cfg.Attachments.OrphanTTL(),
+		// 85-2/85-3: operational logging.
+		SnapshotInterval: cfg.Oplog.SnapshotInterval,
+		SlowRequest:      cfg.Oplog.SlowRequest,
 	})
 	if err != nil {
 		return fmt.Errorf("server: %w", err)

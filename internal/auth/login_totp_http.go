@@ -88,6 +88,10 @@ func (d *HTTPDeps) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 85-1: the whole point of a lockout is that it happens to someone who is
+	// not watching the server. Each outcome below leaves a trace.
+	ip := clientIPString(r)
+
 	switch res {
 	case store.TOTPNotEnrolled:
 		writeError(w, http.StatusConflict, "totp_enrollment_required",
@@ -98,16 +102,32 @@ func (d *HTTPDeps) handleLoginTOTP(w http.ResponseWriter, r *http.Request) {
 		if retry < 1 {
 			retry = 1
 		}
+		// Throttled: every attempt during the lockout window lands here, and
+		// that window is minutes long by design.
+		d.secLogThrottled("totp_locked|"+pend.UserID.String(),
+			"totp_locked user=%s ip=%s retry_after=%ds", pend.UserID, ip, retry)
 		w.Header().Set("Retry-After", strconv.Itoa(retry))
 		writeError(w, http.StatusTooManyRequests, "totp_locked",
 			"too many incorrect codes; try again later")
 		return
 	case store.TOTPBadCode:
+		// A non-zero lockedUntil on a bad code means this attempt is the one
+		// that armed the lockout. That fires once per CHALK_TOTP_MAX_FAILURES,
+		// so it logs unthrottled -- it is the event an operator is looking for
+		// when a user says they cannot get in.
+		if !lockedUntil.IsZero() {
+			d.secLog("totp_lockout_armed user=%s ip=%s until=%s",
+				pend.UserID, ip, lockedUntil.UTC().Format(time.RFC3339))
+		} else {
+			d.secLogThrottled("totp_bad|"+pend.UserID.String(),
+				"totp_failed user=%s ip=%s", pend.UserID, ip)
+		}
 		writeError(w, http.StatusUnauthorized, "invalid_totp",
 			"incorrect authentication code")
 		return
 	case store.TOTPSuccess:
 		_, _ = d.PendingTOTP.Take(token)
+		d.secLog("login_ok user=%s ip=%s method=%s", pend.UserID, ip, pend.Method)
 
 		sess, err := MintSession(r.Context(), d.Store, w,
 			pend.UserID, UserAgentFromRequest(r), IPFromRequest(r))

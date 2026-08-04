@@ -148,6 +148,10 @@ type Config struct {
 	// 80-5: ephemeral voice channel knobs (CHALK_EPHEMERAL_*). See
 	// EphemeralConfig in ephemeral.go.
 	Ephemeral EphemeralConfig
+
+	// 85-1: operational logging knobs (CHALK_OPLOG_*). See OplogConfig in
+	// oplog.go.
+	Oplog OplogConfig
 }
 
 // GovernanceDefaults are the server-wide default governance parameters,
@@ -234,6 +238,9 @@ func Default() Config {
 
 		// 80-5: ephemeral voice channels.
 		Ephemeral: defaultEphemeralConfig(),
+
+		// 85-1: operational logging.
+		Oplog: defaultOplogConfig(),
 	}
 }
 
@@ -383,6 +390,9 @@ func (c *Config) applyEnv() {
 
 	// 80-5: ephemeral channels from CHALK_EPHEMERAL_* env vars.
 	c.Ephemeral.applyEnv()
+
+	// 85-1: operational logging from CHALK_OPLOG_* env vars.
+	c.Oplog.applyEnv()
 }
 
 // envBool reads a boolean env var. Returns (false, false) when unset so
@@ -531,6 +541,11 @@ func (c Config) Validate() error {
 
 	// 80-5: ephemeral voice channels.
 	if err := c.Ephemeral.Validate(); err != nil {
+		return err
+	}
+
+	// 85-1: operational logging.
+	if err := c.Oplog.Validate(); err != nil {
 		return err
 	}
 

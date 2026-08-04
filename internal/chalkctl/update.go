@@ -128,6 +128,10 @@ func Update(o UpdateOptions) error {
 	if err := ensurePhase82Env(o.EnvPath, o.Out); err != nil {
 		return fmt.Errorf("ensure phase 82 env: %w", err)
 	}
+	// 85-1: surface the operational-logging knobs, snapshot pinned off.
+	if err := ensurePhase85Env(o.EnvPath, o.Out); err != nil {
+		return fmt.Errorf("ensure phase 85 env: %w", err)
+	}
 
 	oldDigest := st.CurrentDigest
 	if err := repinChalkdImage(o.Cfg.Image, newDigest); err != nil {

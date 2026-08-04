@@ -52,27 +52,37 @@ func (d *HTTPDeps) initAnonLimiters() {
 	if d.recoveryLimiter == nil {
 		d.recoveryLimiter = ratelimit.New(recoveryRateLimit, recoveryRateWindow)
 	}
+	// 85-1: the throttle in front of the denial log, built here so no
+	// request path can find it nil.
+	d.initSecurityLog()
 }
 
 // limitAnon wraps an anonymous handler in the general per-IP budget.
 func (d *HTTPDeps) limitAnon(h http.HandlerFunc) http.HandlerFunc {
-	return d.limitBy(func() *ratelimit.RateLimiter { return d.anonLimiter }, h)
+	return d.limitBy("anon", func() *ratelimit.RateLimiter { return d.anonLimiter }, h)
 }
 
 // limitRecovery wraps the Argon2-heavy recovery handlers in their own budget.
 func (d *HTTPDeps) limitRecovery(h http.HandlerFunc) http.HandlerFunc {
-	return d.limitBy(func() *ratelimit.RateLimiter { return d.recoveryLimiter }, h)
+	return d.limitBy("recovery", func() *ratelimit.RateLimiter { return d.recoveryLimiter }, h)
 }
 
 // limitBy is the shared gate. The limiter is resolved per request rather than
 // captured, so mounting order and lazy init cannot leave a nil behind.
-func (d *HTTPDeps) limitBy(pick func() *ratelimit.RateLimiter, h http.HandlerFunc) http.HandlerFunc {
+//
+// 85-1: a denial logs, throttled per (bucket, IP). Silent throttling is the
+// hardest kind of production problem to diagnose -- the caller sees a 429 the
+// response body deliberately makes uninformative, and until now the server
+// kept no record at all that it had ever said no.
+func (d *HTTPDeps) limitBy(bucket string, pick func() *ratelimit.RateLimiter, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		lim := pick()
 		if lim != nil {
 			// A nil IP means the peer address was unparseable; there is no
 			// key to charge, so let it through rather than block everyone.
 			if ip := IPFromRequest(r); ip != nil && !lim.Allow(ip.String()) {
+				d.secLogThrottled("ratelimit|"+bucket+"|"+ip.String(),
+					"rate_limited bucket=%s ip=%s path=%s", bucket, ip, r.URL.Path)
 				writeError(w, http.StatusTooManyRequests, "rate_limited",
 					"too many attempts; try again in a minute")
 				return

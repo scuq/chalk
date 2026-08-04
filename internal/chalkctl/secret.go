@@ -129,3 +129,29 @@ func ensurePhase82Env(envPath string, log io.Writer) error {
 		log)
 	return err
 }
+
+// ensurePhase85Env backfills the operational-logging knobs into an existing env
+// file. All three are written with the value chalkd would have assumed anyway;
+// the point is to put them in front of the operator, because a knob nobody
+// knows about is a knob nobody turns on.
+//
+// CHALK_OPLOG_SNAPSHOT_INTERVAL is backfilled as an explicit 0 rather than
+// left empty. Empty reads as absent to appendEnvVar, so an empty backfill
+// would append the same line on every update; 0 says the same thing and says
+// it once.
+func ensurePhase85Env(envPath string, log io.Writer) error {
+	if _, err := appendEnvVar(envPath, "CHALK_OPLOG_SECURITY", "true",
+		"log security events: lockouts, rate-limit denials, login outcomes (backfilled by chalkctl)",
+		log); err != nil {
+		return err
+	}
+	if _, err := appendEnvVar(envPath, "CHALK_OPLOG_SNAPSHOT_INTERVAL", "0",
+		"periodic log of who is connected and from which address; 0 = off, set e.g. 5m to enable (backfilled by chalkctl)",
+		log); err != nil {
+		return err
+	}
+	_, err := appendEnvVar(envPath, "CHALK_OPLOG_SLOW_REQUEST", "2s",
+		"log HTTP requests slower than this; 0 = off (backfilled by chalkctl)",
+		log)
+	return err
+}
