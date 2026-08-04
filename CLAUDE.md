@@ -338,7 +338,11 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   above the parking lot, the whole set in a sealed prefs blob so the server never
   learns a reminder exists, and no server code at all); the SFU seam (voice
   design Slice I) for rooms too large for a mesh; governance `set_config`
-  proposals.
+  proposals. Federation is **not** a candidate — phase 88
+  (`docs/phases/PHASE-88-FEDERATION.md`) is a declined design, not a plan
+  awaiting a builder, gated on 83 if it is ever reconsidered; read it before
+  re-proposing the idea, since it also records what already works across
+  deployments without any of it.
 - Deferred cleanup, all verified still open:
   - `RegisterFromInviteScreen` still registers passkey-first
     (`navigator.credentials.create()`), out of step with the auth-v2 password

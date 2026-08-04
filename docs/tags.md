@@ -30,6 +30,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #threads        42 45 47 49  web/src/chat/threadinbox.ts web/src/chat/ web/src/components/ docs/phases/PHASE-42-THREADS.md docs/phases/PHASE-47-THREADINBOX.md docs/phases/PHASE-49-THREADTITLES.md
 #ties           -         docs/phases/PHASE-86-TIES.md
 #reminders      -         docs/phases/PHASE-87-REMINDERS.md
+#federation     -         docs/phases/PHASE-88-FEDERATION.md docs/threat-model.md
 #unread         33 62 76 79  web/src/chat/ web/src/state/ web/src/components/MessageList.tsx web/src/components/ZuckerList.tsx web/src/theme.css docs/phases/PHASE-33-UNREAD.md docs/phases/PHASE-79-LANDING.md
 #notify         40 50 71  web/src/notify/ docs/notification-sounds.md docs/phases/PHASE-40-SOUNDS.md docs/phases/PHASE-50-NOTIFYRULES.md docs/phases/PHASE-71-CALLSOUNDS.md
 #push           -         docs/phases/PHASE-65-PUSH.md

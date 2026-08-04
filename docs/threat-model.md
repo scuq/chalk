@@ -248,7 +248,11 @@ canonical origin.
 
 ## Out of scope
 
-- Federation (server-to-server, à la Matrix)
+- Federation (server-to-server, à la Matrix) — considered and declined, and
+  gated on phase 83 if it is ever reconsidered: membership and sender
+  attribution are server-asserted today, so federating multiplies that trust
+  across servers the operator does not run. Reasoning, and what *does* work
+  across deployments, in [phases/PHASE-88-FEDERATION.md](phases/PHASE-88-FEDERATION.md).
 - Anonymity (no Tor integration, no IP hiding)
 - Anti-spam beyond rate limits
 - Forward secrecy and post-quantum security — explicit non-goals of the
