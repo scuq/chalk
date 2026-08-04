@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.7.3 — 5 August 2026 — Catppuccin themes
 
 ### Added
 - **Two Catppuccin themes.** The theme picker now has "catppuccin-mocha", the
