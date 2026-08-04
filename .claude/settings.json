@@ -22,6 +22,7 @@
       "Bash(node .claude/skills/run-chalk/driver.mjs *)",
       "Bash(node .claude/skills/run-chalk/readme-shots.mjs)",
       "Bash(node .claude/skills/run-chalk/unread-landing.mjs)",
+      "Bash(node .claude/skills/run-chalk/parking-privacy.mjs)",
       "Bash(rm -rf /tmp/chalk-*)",
       "Read(//tmp/chalk-driver/**)",
       "Read(//tmp/chalk-probe/**)"

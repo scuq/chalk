@@ -114,11 +114,20 @@ prompt back. Hence the conventions:
   registers a user on load, not a module.
 
 A probe worth keeping earns a topic name, a commit beside `readme-shots.mjs`,
-and its own entry in `.claude/settings.json`.
+and its own entry in `.claude/settings.json`. `probes/` itself stays
+gitignored — it is one scratch slot, rewritten per investigation, so anything
+committed from it would describe whatever question came last.
 
-`readme-shots.mjs` (same dir) regenerates the `docs/screenshots/` set used
-by the README — two users, a staged conversation, reaction + thread, desktop
-+ mobile shots. Its header says how to re-run it (fresh handles needed).
+## Kept scripts (same dir, all committed)
+
+| script | what it holds |
+|---|---|
+| `readme-shots.mjs` | regenerates `docs/screenshots/` for the README — two users, a staged conversation, reaction + thread, desktop + mobile. Header says how to re-run it (fresh handles needed) |
+| `unread-landing.mjs` | the 79-2 repro: where opening a channel puts the view, across a real attachment decrypt on a phone-shaped viewport |
+| `parking-privacy.mjs` | 53-4/53-5: asks the computed style whether the privacy screen blurs every shell child except the parked pane, and whether F9's guard and the way back behave. 15 checks |
+
+Each exists because the assertion needs a real browser and `web/test.mjs` has
+no DOM; the pure halves live in `*.test.ts` beside the source.
 
 ## Run (human path)
 
