@@ -20,6 +20,20 @@ The engineering-level history (which slice shipped what) lives in
   your encryption phrase brings them back. Verifying someone on your phone also
   reaches your other devices. Settings shows what is backed up, and tells you if
   two of your devices disagree about someone's key.
+- The server now records what happens to sign-ins: an account being locked out
+  after too many wrong codes, a login refused for coming in too fast, failed
+  and successful sign-ins, and attempts on accounts that have been blocked or
+  deleted — each with the address it came from. Repeated attempts from one
+  address collapse to a single line, so a flood cannot bury the log or fill a
+  disk. Set `CHALK_OPLOG_SECURITY=false` to turn it off.
+- The server can log who is connected on a timer: names, devices, addresses,
+  how long they have been online and their connection round-trip, plus database
+  health. This is off unless you set `CHALK_OPLOG_SNAPSHOT_INTERVAL` (say
+  `5m`), because chalk encrypts what people say but a standing record of who
+  was online from where is not something anyone should get by accident.
+- Requests the server takes an unusually long time to answer are now logged
+  with how long they took. Threshold is `CHALK_OPLOG_SLOW_REQUEST`, two seconds
+  by default; a healthy server prints nothing.
 
 ### Fixed
 - `chalkctl wrapsig status` failed with a database error instead of reporting

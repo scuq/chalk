@@ -149,6 +149,16 @@ That is not something to work around with `grep -r` — ask scuq to install it
   legend is the only thing that makes the phase comments findable by topic, and
   it stays true only if it moves with the code. Correct a drifted entry in
   place; never add a second line for a topic that already has one.
+- **A phase doc with the phase.** A new phase number also gets its own
+  `docs/PHASE-<N>-<TOPIC>.md` — created with the first slice, not after the
+  last — and the file goes in the proposed `git add` list. Name the topic in
+  caps, one word (`PHASE-82-SIGNEDWRAP.md`, `PHASE-84-PINBACKUP.md`). It
+  carries what the code cannot: the problem the phase exists to solve, the
+  design and what was rejected, the slice list with what each one lands, and
+  any manual checklist a slice leaves open. Keep it current as slices land —
+  a plan that stopped matching the code is worse than no plan. Then point at
+  it from *Current state / open items* below while the phase is open, and
+  from `docs/phase-log.md` once it ships.
 - **Probes belong in the test suite.** To find out how code behaves, add or
   extend a `*.test.ts` beside it and run `node test.mjs`, or a `_test.go` and
   `go test ./internal/...` — both are permitted, so neither prompts. Do not
@@ -251,7 +261,7 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
 (user-facing). Latest release: v0.7.0 — keep this in step with the topmost
 `## vX.Y.Z` heading in `CHANGELOG.md`. Only what is NOT done belongs here.
 
-- Phase 84 is the newest work; `docs/phase-log.md` has the full history,
+- Phase 85 is the newest work; `docs/phase-log.md` has the full history,
   and the arcs named here are a sample, not the whole list. Among the complete
   ones: auth v2 (31), voice/video
   (30-1 … 30-8 plus the 41/44/47/48 mic, device and call-UI work), governance
@@ -266,7 +276,9 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   E2E-embedded, opt-in, SSRF-guarded server fetcher), the security-audit
   remediation (81, record in `docs/PHASE-81-SECAUDIT.md`), signed channel-key
   wraps (82, record in `docs/PHASE-82-SIGNEDWRAP.md`), the identity-pin backup
-  (84, record in `docs/PHASE-84-PINBACKUP.md`).
+  (84, record in `docs/PHASE-84-PINBACKUP.md`), operational logging (85:
+  security events, the opt-in connection snapshot, slow requests; knobs are
+  `CHALK_OPLOG_*`, documented in `internal/config/oplog.go`).
 - **Phase 82 (signed channel-key wraps) is COMPLETE** — 82-1 … 82-9, record in
   `docs/PHASE-82-SIGNEDWRAP.md`. It closes the phase-81 audit's C-01, but
   **conditionally**: `CHALK_WRAP_SIG_REQUIRED` defaults to false, and until an
