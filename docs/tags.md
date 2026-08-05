@@ -53,7 +53,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #themes         -         web/src/theme.css web/src/theme-palette.test.ts web/src/components/ProfilePanel.tsx web/src/chat/nickcolor.ts docs/theming.md
 #version        39        internal/version/ web/src/version.ts docs/phases/PHASE-39-VERSION.md
 #servernotice   46        web/src/state/ web/src/components/ docs/phases/PHASE-46-UPDATENOTICE.md
-#pwa            36        web/manifest.json web/icons/ web/build.mjs docs/phases/PHASE-36-PWA.md
+#pwa            36        web/manifest.json web/icons/ web/build.mjs web/src/theme.css docs/phases/PHASE-36-PWA.md
 #csp            51        internal/server/server.go internal/server/spa_test.go docs/phases/PHASE-51-CSP.md
 #governance     -         internal/store/governance.go internal/server/governance_ws.go docs/phases/PHASE-00-29-FOUNDATION.md
 #attachments    69        web/src/attachments/ internal/store/ docs/design/chalk-attachments-design-spec.md docs/phases/PHASE-69-PINNEDHEADER.md docs/phases/PHASE-00-29-FOUNDATION.md

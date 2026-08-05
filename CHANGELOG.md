@@ -10,6 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **The installed app uses its own title bar.** With chalk installed as an app,
+  the window's title bar is now chalk's own header — the presence pill and
+  account menu sit up there beside the window buttons, instead of below a
+  browser title bar that only said "chalk". That gives the conversation back the
+  height of a whole row. Where the browser doesn't offer this, or if you turn it
+  off from the app menu, the window looks exactly as it did before.
+
+---
+
 ## v0.7.3 — 5 August 2026 — Catppuccin themes
 
 ### Added

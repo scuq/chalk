@@ -9704,3 +9704,71 @@ body.chalk-resizing .chalk-sidebar-resizer {
   color: var(--chalk-error, #f33);
   border-color: var(--chalk-error, #f33);
 }
+
+/* 36-3: window controls overlay -- chalk's own header drawn into the title bar
+   of the installed app, instead of sitting below the browser's.
+
+   Deliberately CSS-only. The display-mode query goes false the moment the user
+   turns the overlay off from the app menu, so the fallback needs no JS;
+   navigator.windowControlsOverlay and its geometrychange event are only worth
+   reaching for when script needs the geometry, and nothing here does.
+
+   Last in the file on purpose, since it has to win over the mobile block -- and
+   guarded on min-width for the same reason, so that block still wins where it
+   should. The overlay only exists in an installed desktop window, so the guard
+   costs nothing. */
+@media (display-mode: window-controls-overlay) and (min-width: 768px) {
+  /* The header leaves the centred column and spans the window. env(titlebar-*)
+     is measured from the window edge, while .chalk-app is max-width:1100px and
+     centred -- so on a wide monitor the column starts well right of the macOS
+     traffic lights (applying the inset there would indent the logo for no
+     reason) and on a narrow one it collides with them. No padding expression is
+     right in both cases while the header stays inside that box, so it comes
+     out of it. Content below stays centred. */
+  .chalk-header {
+    position: fixed;
+    top: env(titlebar-area-y, 0);
+    left: env(titlebar-area-x, 0);
+    width: env(titlebar-area-width, 100%);
+    height: env(titlebar-area-height, auto);
+    /* The strip is ~30-38px, well under the 16/12 the header normally has, so
+       the vertical padding goes and the baseline alignment becomes centring. */
+    align-items: center;
+    padding: 0 var(--chalk-s3);
+    /* Above the sidebar's sticky bits (45) and below the modal layer (100). */
+    z-index: 50;
+    background: var(--chalk-bg);
+    /* Drag the window by the strip. Without this the window cannot be moved at
+       all -- and the failure is invisible in a screenshot. */
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+
+  /* The other half of that: anything clickable has to opt back out, or it stops
+     responding. Matching elements and roles rather than classes so a new button
+     or menu in the header is covered the day it lands.
+
+     The [role=menu] arm covers the dropdown panels themselves, not just their
+     items -- both the account and presence menus hang out of the strip, and
+     without it a drag on the padding between items would move the window. */
+  .chalk-header button,
+  .chalk-header a,
+  .chalk-header [role="menu"] {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+
+  /* .chalk-app pins itself to 100dvh, and with the header out of flow its auto
+     grid row collapses to zero. This puts back exactly the strip height, so the
+     reclaimed space is the old header's -- box-sizing:border-box (the global
+     reset) keeps it inside the viewport rather than adding to it. */
+  .chalk-app {
+    padding-top: env(titlebar-area-height, 0);
+  }
+
+  /* Same trim the mobile block makes for the same reason: the strip has no room
+     for it, and the profile panel's about section carries the version anyway. */
+  .chalk-version--badge {
+    display: none;
+  }
+}
