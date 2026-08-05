@@ -3,7 +3,7 @@
 *Backfilled record.* Written after the fact from the commit history and the
 changelog; the design notes are as-built, not a contemporaneous plan.
 
-**Status:** shipped, v0.3.46 (45-1…45-2), v0.4.3 (45-3…45-4).
+**Status:** shipped, v0.3.46 (45-1…45-2), v0.4.3 (45-3…45-4), 45-6 unreleased.
 **Tags:** `#voice`, `#unread`, `#threads` → `tools/where.sh -g voice`
 
 ## Why
@@ -40,6 +40,8 @@ reconnect and refuse to clear.
   the server's total.
 - **45-5** — away detection following activity and focus, with optional
   system-wide idle on Chromium.
+- **45-6** — the system-idle threshold raised off the API's 60s floor to 10
+  minutes.
 
 ## Where it lives
 
@@ -50,6 +52,17 @@ reconnect and refuse to clear.
 
 ## Notes
 
-The away *thresholds* were relaxed twice afterwards — 47-7 (all three windows)
-and 60-1 (unfocused 5 → 10 minutes) — because reading a long thread or sitting
-in a call should not read as away.
+The away *thresholds* were relaxed three times afterwards — 47-7 (all three
+in-page windows), 60-1 (unfocused 5 → 10 minutes) and 45-6 (system idle 1 → 10
+minutes) — because reading a long thread or sitting in a call should not read as
+away.
+
+45-6 is the one that had been hiding in plain sight: the in-page windows were
+tuned repeatedly while `IdleDetector` ran at 60s, the API's *floor*, mistaken in
+a comment for a fixed value. Anyone on Chromium who granted the permission — the
+setting is on by default, so that is the intended configuration — got the
+one-minute rule regardless of everything 47-7 and 60-1 had relaxed, because a
+true `systemIdle` outranks all three windows. Damping this signal means raising
+that threshold, never adding a second timeout on top of it in `decideIdle`:
+`systemIdle === false` is load-bearing there, since it is what suppresses the
+in-page windows for someone who is at their machine but not touching chalk.

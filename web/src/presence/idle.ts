@@ -90,8 +90,10 @@ export function decideIdle(i: IdleInput): IdleVerdict {
   //    period: nobody reads chalk through a lock screen.
   if (i.screenLocked === true) return { idle: true, reason: "screen_locked" };
 
-  // 2. The API's own threshold is already at least 60s of no input anywhere,
-  //    so there is nothing left for us to wait out.
+  // 2. The API's own threshold (system-idle.ts THRESHOLD_MS) has already
+  //    elapsed with no input anywhere, so there is nothing left to wait out --
+  //    damping this signal means raising that threshold, not adding a second
+  //    timeout on top of it here.
   if (i.systemIdle === true) return { idle: true, reason: "system_idle" };
 
   // 3. Today's rule, kept intact for the hidden case.

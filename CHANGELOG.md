@@ -10,6 +10,19 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **Away no longer arrives after a single quiet minute.** Where chalk can watch
+  system-wide idleness — Chrome, with the permission granted, which is how away
+  detection is meant to run — a minute of not touching the keyboard or mouse was
+  enough to show you as away to everyone, in the middle of reading a long thread
+  or listening on a call. It now takes ten minutes of no activity anywhere on
+  the machine. Coming back clears it instantly as before, and a locked screen
+  still shows you away straight away.
+
+---
+
 ## v0.7.4 — 6 August 2026 — App title bar and staying caught up
 
 ### Changed

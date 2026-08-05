@@ -2,8 +2,9 @@
 //
 // This is the only web API that can see input the page did not receive, and it
 // is the reason chalk can tell "reading a long thread" from "gone for coffee".
-// It reports two independent facts: userState, which goes "idle" after at least
-// 60s of no input to ANY application, and screenState, which reports the lock.
+// It reports two independent facts: userState, which goes "idle" after a
+// threshold of no input to ANY application (see THRESHOLD_MS), and screenState,
+// which reports the lock.
 //
 // Availability is the catch, and it is not going to improve: Chromium has
 // shipped it since 94, while both Mozilla and WebKit have filed negative
@@ -27,8 +28,23 @@ interface IdleDetectorCtor {
   requestPermission(): Promise<PermissionState>;
 }
 
-/** The API's floor. start() throws RangeError below it, so it is not a knob. */
-const THRESHOLD_MS = 60_000;
+/**
+ * How long the OS has to see no input anywhere before this reports idle.
+ *
+ * 60s is the API's *floor* -- start() throws RangeError below it -- not its
+ * value, and running at the floor is what made away arrive far too fast: one
+ * minute without touching anything and the dot flipped, while the in-page rules
+ * next door wait two minutes for a hidden tab and ten for an unfocused one. The
+ * system signal is the strongest evidence of absence chalk has, but a minute of
+ * it is evidence of reading, not of leaving.
+ *
+ * Matched to IDLE_AFTER_UNFOCUSED_MS so both paths agree on how long is long
+ * enough. Nothing else needs damping alongside it: the return edge is instant
+ * (userState goes active on the first input anywhere), and a locked screen
+ * still reports immediately through screenState, which is the one signal that
+ * deserves no grace at all.
+ */
+const THRESHOLD_MS = 600_000;
 
 export interface SystemIdleState {
   idle: boolean;

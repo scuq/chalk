@@ -67,7 +67,7 @@ gofmt -l .                         # must be empty before commit
 # client (from web/)
 npm install
 npx tsc --noEmit
-node test.mjs                      # node:test suite; currently 1175 tests, 0 fail
+node test.mjs                      # node:test suite; currently 1207 tests, 0 fail
 node build.mjs
 
 # notification sounds (from the repo root)
