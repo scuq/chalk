@@ -1706,6 +1706,12 @@ export function App() {
   // sentinel can't stack requests. Cleared by the fetch_history ack.
   const olderInFlightRef = useRef<Set<string>>(new Set());
 
+  // 42-10: threads with a fetch_thread in flight. Same split as
+  // historyRequestedRef above -- this tracks the REQUEST, state.threadLoaded
+  // tracks the ACK -- which is what lets the thread be re-fetched on every
+  // open, reconnect and resume without stacking duplicate frames.
+  const threadFetchInFlightRef = useRef<Set<string>>(new Set());
+
   // Track which channels we've subscribe_channeled. Avoids duplicate
   // sends on idempotent channel_event delivery.
   const subscribeSentRef = useRef<Set<string>>(new Set());
@@ -2088,6 +2094,10 @@ export function App() {
       case TypeFetchThreadAck: {
         // Phase 10c: server returned the replies for a thread.
         const p = f.payload as FetchThreadAckPayload;
+        // 42-10: the request is finished when the frame lands, not when the
+        // bodies finish decrypting -- clearing inside the .then would leave a
+        // window where an already-answered thread still reads as in flight.
+        threadFetchInFlightRef.current.delete(p.thread_id);
         void decryptAll((p.messages ?? []).map(wireToMessage)).then((msgs) => {
           msgs.sort((a, b) => a.seq - b.seq);
           dispatch({ kind: "thread_loaded", threadID: p.thread_id, messages: msgs });
@@ -2838,6 +2848,15 @@ export function App() {
     historyRequestedRef.current = new Set();
     markReadSentRef.current = new Map(); // 33-1
     markThreadReadSentRef.current = new Map(); // 42-4
+    // 42-10: a fetch_thread lost to the dropped socket is never acked, and its
+    // error would come back as a generic sendError on f.Ref carrying no thread
+    // id -- so without this the entry wedges that thread shut for the session.
+    //
+    // ORDER MATTERS: this effect is declared before the thread-fetch effect
+    // below, so on a wsState change React runs this reset first and the set is
+    // empty when the refetch fires. Moving either past the other silently
+    // breaks the reconnect refetch.
+    threadFetchInFlightRef.current = new Set();
   }, [state.wsState, state.user?.id]);
 
   // Phase 9.7b: apply the user's selected theme to the document root.
@@ -4152,19 +4171,39 @@ export function App() {
     dispatch({ kind: "auth_logged_out" });
   };
 
-  // Phase 10c: when a thread is opened, fetch its replies if we
-  // don't have them cached yet. The "open_thread" action sets
-  // openThread synchronously; this effect picks it up and sends
-  // fetch_thread. The ack arrives as a separate frame handled in
-  // the main WS receive loop.
+  // Phase 10c: when a thread is opened, fetch its replies. The "open_thread"
+  // action sets openThread synchronously; this effect picks it up and sends
+  // fetch_thread. The ack arrives as a separate frame handled in the main WS
+  // receive loop.
+  //
+  // 42-10: it fires on every open, on reconnect, and on returning to the tab,
+  // not just the first open. It used to be gated on state.threadLoaded, which
+  // is never cleared, so a thread was fetched once per session and thereafter
+  // only grew by live pushes -- and a phone that backgrounds the tab kills the
+  // socket, so replies that land in that window are never pushed either. The
+  // panel stayed frozen while the feed's "N replies" line, refreshed by the
+  // reconnect history page, went on showing a newer reply than the panel held.
+  //
+  // Cheap by the same argument the thread inbox makes for refetching on every
+  // panel open (below): one <=50-row frame per user gesture, no timer, no poll.
+  //
+  // No loading flash: threadLoaded stays true across the round trip and
+  // "thread_loaded" merges by id rather than replacing, so the replies already
+  // on screen stay there while the answer is in flight.
   useEffect(() => {
-    if (!state.openThread) return;
+    if (!state.openThread || !tabVisible) return;
     const { channelID, threadID } = state.openThread;
-    if (state.threadLoaded[threadID]) return;
     const c = clientRef.current;
     if (!c || !c.isOpen()) return;
+    if (threadFetchInFlightRef.current.has(threadID)) return;
+    threadFetchInFlightRef.current.add(threadID);
     c.send(TypeFetchThread, { channel_id: channelID, thread_id: threadID });
-  }, [state.openThread?.threadID, state.openThread?.channelID, state.threadLoaded]);
+  }, [
+    state.openThread?.threadID,
+    state.openThread?.channelID,
+    state.wsState,
+    tabVisible,
+  ]);
 
   // 42-4: threadSeen is no longer loaded from or written to localStorage. It
   // hydrates from history rows (each head carries this viewer's cursor) and

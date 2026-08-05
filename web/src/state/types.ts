@@ -744,10 +744,18 @@ export interface AppState {
   //   threadMessages[threadID] is the list of replies for that thread,
   //   in seq order (oldest first). The thread head itself is NOT here;
   //   the panel reads it from the channel cache.
-  //   threadLoaded[threadID] is true once fetch_thread_ack arrived for
-  //   that thread; the panel uses it to distinguish "loading" from
-  //   "empty thread" (latter shouldn't happen but the rendering is
+  //   threadLoaded[threadID] is true once a fetch_thread_ack has EVER
+  //   arrived for that thread; the panel uses it to distinguish "loading"
+  //   from "empty thread" (latter shouldn't happen but the rendering is
   //   robust either way).
+  //
+  // 42-10: threadLoaded is not a fetch guard. It used to be one, which is
+  // what made a thread's replies a once-per-session fetch -- a reply that
+  // landed while the socket was down was never pushed and never re-fetched,
+  // so the panel stayed frozen for the rest of the session. The guard is now
+  // threadFetchInFlightRef in App.tsx, which tracks the REQUEST; this tracks
+  // the ACK, and staying true across a refetch is exactly what keeps the
+  // replies on screen instead of flashing the loading placeholder.
   threadMessages: Record<string, Message[]>;
   threadLoaded: Record<string, boolean>;
 
