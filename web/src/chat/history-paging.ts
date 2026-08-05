@@ -104,3 +104,32 @@ export function keepDrift(recorded: number, current: number): number {
   const drift = current - recorded;
   return Math.abs(drift) < KEEP_DRIFT_MIN_PX ? 0 : drift;
 }
+
+// 79-5: which boxes the held landing has to be re-applied for.
+//
+// The landing is kept alive by a ResizeObserver, and it used to watch only the
+// message list's own root -- so it saw a message row growing (an image
+// resolving) and nothing else. But where "the end of the feed" is depends on
+// the whole scrollport:
+//
+//   * the scrollport's own height -- the composer growing underneath it (a
+//     wrapped draft, a link preview card with a thumbnail, attachment chips)
+//     makes it shorter without touching the feed at all;
+//   * everything else laid out inside it -- the sticky channel header, and in
+//     the thread panel the parent head, which is a SECOND message list in the
+//     same scroller and is usually the message carrying the photo.
+//
+// Either of those moving after the landing left the feed short by exactly that
+// much, permanently: no resize of the observed root, so nothing put it back.
+//
+// Takes the children as an array rather than reaching into the DOM so the rule
+// itself can be tested. The feed is normally one of them; deduplicated because
+// the caller does real work per target.
+export function anchorWatchTargets<T>(
+  feed: T,
+  scroller: T | null,
+  scrollerChildren: readonly T[],
+): T[] {
+  if (!scroller) return [feed];
+  return [...new Set<T>([feed, scroller, ...scrollerChildren])];
+}

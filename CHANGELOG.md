@@ -28,6 +28,11 @@ The engineering-level history (which slice shipped what) lives in
   until you reloaded chalk. Threads now re-read their replies each time you open
   one, when the connection comes back, and when you return to chalk from another
   app.
+- Opening a channel or a thread could still leave the feed a little short of
+  the newest message when something around it settled a moment after it opened
+  — a picture in the message a thread hangs off, or the box you type in growing
+  to fit a preview. The view now follows the end of the feed through that too,
+  instead of staying where the end used to be.
 
 ---
 

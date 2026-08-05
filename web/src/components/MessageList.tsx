@@ -1,6 +1,7 @@
 import { Fragment, type ComponentChildren } from "preact";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import {
+  anchorWatchTargets,
   autoPagingAllowed,
   dividerScrollDelta,
   keepDrift,
@@ -606,6 +607,9 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
   // fix for late-loading media: every image that resolves fires this, and
   // the view is put back where the landing meant to leave it.
   //
+  // 79-5: watching the whole scrollport, not just our own rows -- see
+  // anchorWatchTargets for what the extra boxes are and what they broke.
+  //
   // Scrolling changes scrollTop, not layout, so this can't feed itself.
   useEffect(() => {
     const el = rootRef.current;
@@ -635,7 +639,16 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
       // The third state, and until now the one with no corrector at all.
       restoreKeep(keepRef.current, scrollParentOf(el));
     });
-    ro.observe(el);
+    const scroller = scrollParentOf(el);
+    const targets = anchorWatchTargets(
+      el,
+      scroller,
+      scroller ? (Array.from(scroller.children) as HTMLElement[]) : [],
+    );
+    // border-box, because what moves the end of the feed is the space a box
+    // occupies, not the space inside it: a header that gains padding pushes
+    // the feed down just as surely as one that gains a line of text.
+    for (const t of targets) ro.observe(t, { box: "border-box" });
     return () => ro.disconnect();
   }, [channelID, messages.length > 0, ephemeral]);
 
