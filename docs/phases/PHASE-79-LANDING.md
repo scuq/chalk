@@ -3,8 +3,8 @@
 *Backfilled record.* Written after the fact from the commit history and the
 changelog; the design notes are as-built, not a contemporaneous plan.
 
-**Status:** shipped, v0.6.4 (79-1), v0.7.0 (79-2), v0.7.1 (79-3); 79-4, 79-5
-unreleased.
+**Status:** shipped, v0.6.4 (79-1), v0.7.0 (79-2), v0.7.1 (79-3),
+v0.7.4 (79-4, 79-5).
 **Tags:** `#unread`, `#history` → `tools/where.sh -g unread`
 
 ## Why

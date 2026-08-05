@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.7.4 — 6 August 2026 — App title bar and staying caught up
 
 ### Changed
 - **The installed app uses its own title bar.** With chalk installed as an app,

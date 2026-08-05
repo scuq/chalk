@@ -4,7 +4,8 @@
 changelog; the design notes are as-built, not a contemporaneous plan.
 
 **Status:** shipped, v0.3.45. Extended by 45-3/45-4 (the threads dot), 47
-(filter, fade), 48-5, 49 (titles), 62-8, and 42-10 (the pane refetches).
+(filter, fade), 48-5, 49 (titles), 62-8, and 42-10 (the pane refetches,
+v0.7.4).
 **Tag:** `#threads` → `tools/where.sh -g threads`
 
 ## Why
