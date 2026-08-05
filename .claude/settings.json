@@ -23,9 +23,11 @@
       "Bash(node .claude/skills/run-chalk/readme-shots.mjs)",
       "Bash(node .claude/skills/run-chalk/unread-landing.mjs)",
       "Bash(node .claude/skills/run-chalk/parking-privacy.mjs)",
+      "Bash(node .claude/skills/run-chalk/thread-refresh.mjs)",
       "Bash(rm -rf /tmp/chalk-*)",
       "Read(//tmp/chalk-driver/**)",
-      "Read(//tmp/chalk-probe/**)"
+      "Read(//tmp/chalk-probe/**)",
+      "Read(//tmp/chalk-threadrefresh/**)"
     ]
   }
 }

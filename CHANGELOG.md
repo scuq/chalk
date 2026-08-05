@@ -10,6 +10,19 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- Reopening a thread now shows the replies you missed. On a phone especially, a
+  thread you had opened earlier could stay frozen on an old set of replies — the
+  conversation itself showed a newer reply under the message, and the thread's
+  own "new" dot still cleared when you opened it, but the replies never appeared
+  until you reloaded chalk. Threads now re-read their replies each time you open
+  one, when the connection comes back, and when you return to chalk from another
+  app.
+
+---
+
 ## v0.7.3 — 5 August 2026 — Catppuccin themes
 
 ### Added

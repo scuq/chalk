@@ -125,6 +125,7 @@ committed from it would describe whatever question came last.
 | `readme-shots.mjs` | regenerates `docs/screenshots/` for the README — two users, a staged conversation, reaction + thread, desktop + mobile. Header says how to re-run it (fresh handles needed) |
 | `unread-landing.mjs` | the 79-2 repro: where opening a channel puts the view, across a real attachment decrypt on a phone-shaped viewport |
 | `parking-privacy.mjs` | 53-4/53-5: asks the computed style whether the privacy screen blurs every shell child except the parked pane, and whether F9's guard and the way back behave. 15 checks |
+| `thread-refresh.mjs` | 42-10: cuts A's websocket, has B reply in a thread, and asks whether the pane catches up — reopened and left open, desktop and mobile. Its header carries the finding that makes it work: `setOffline()` does not touch an established WebSocket, so it takes `routeWebSocket` to stage this at all. 8 checks |
 
 Each exists because the assertion needs a real browser and `web/test.mjs` has
 no DOM; the pure halves live in `*.test.ts` beside the source.

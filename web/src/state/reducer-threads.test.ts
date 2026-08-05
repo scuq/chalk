@@ -379,3 +379,96 @@ test("thread_mention_set is idempotent", () => {
   s = reducer(s, { kind: "thread_mention_set", threadID: HEAD });
   assert.equal(s, before);
 });
+
+// ---- 42-10: a refetch is additive ---------------------------------------
+//
+// The panel now re-sends fetch_thread on every open, on reconnect and on
+// returning to the tab, so a second ack for a thread that already has replies
+// is the normal case rather than a race. These pin the properties that make
+// that safe -- if thread_loaded ever went back to replacing, the refetch would
+// turn a dropped reply into a lost one.
+
+function reply(over: Partial<Message> = {}): Message {
+  return msg({
+    id: "reply-1",
+    seq: 2,
+    parentID: HEAD,
+    threadID: HEAD,
+    body: "first",
+    ...over,
+  });
+}
+
+test("a second thread_loaded keeps replies the first one delivered", () => {
+  // The server caps a thread page at 50 rows, so a refetch of a long thread
+  // answers with the NEWEST replies -- the older ones are absent from the ack,
+  // not deleted.
+  let s = reducer(baseState(), {
+    kind: "thread_loaded",
+    threadID: HEAD,
+    messages: [reply({ id: "old", seq: 2 }), reply({ id: "mid", seq: 3 })],
+  });
+  s = reducer(s, {
+    kind: "thread_loaded",
+    threadID: HEAD,
+    messages: [reply({ id: "mid", seq: 3 }), reply({ id: "new", seq: 4 })],
+  });
+  assert.deepEqual(
+    s.threadMessages[HEAD].map((m) => m.id),
+    ["old", "mid", "new"],
+    "the refetch dropped replies it did not carry",
+  );
+});
+
+test("a refetch never empties the panel or clears its loaded flag", () => {
+  // This is the "no loading flash" property: ThreadPanel renders "loading
+  // replies…" on !loaded and the empty state on zero replies, so a refetch
+  // that cleared either would blank a thread the user is reading.
+  let s = reducer(baseState(), {
+    kind: "thread_loaded",
+    threadID: HEAD,
+    messages: [reply()],
+  });
+  s = reducer(s, { kind: "thread_loaded", threadID: HEAD, messages: [reply()] });
+  assert.equal(s.threadLoaded[HEAD], true);
+  assert.equal(s.threadMessages[HEAD].length, 1);
+});
+
+test("the refetched row wins on an id collision, and order holds", () => {
+  // An edit or a delete that landed while this client was away arrives as the
+  // same id with a different body; the server's copy is the current one.
+  let s = reducer(baseState(), {
+    kind: "thread_loaded",
+    threadID: HEAD,
+    messages: [reply({ id: "a", seq: 3, body: "before" })],
+  });
+  s = reducer(s, {
+    kind: "thread_loaded",
+    threadID: HEAD,
+    messages: [
+      reply({ id: "b", seq: 2, body: "older" }),
+      reply({ id: "a", seq: 3, body: "after" }),
+    ],
+  });
+  assert.deepEqual(
+    s.threadMessages[HEAD].map((m) => [m.id, m.body]),
+    [
+      ["b", "older"],
+      ["a", "after"],
+    ],
+  );
+});
+
+test("refetching one thread leaves another's replies alone", () => {
+  let s = reducer(baseState(), {
+    kind: "thread_loaded",
+    threadID: "other",
+    messages: [reply({ id: "other-1", threadID: "other", parentID: "other" })],
+  });
+  s = reducer(s, { kind: "thread_loaded", threadID: HEAD, messages: [reply()] });
+  assert.deepEqual(
+    s.threadMessages["other"].map((m) => m.id),
+    ["other-1"],
+  );
+  assert.equal(s.threadLoaded["other"], true);
+});
