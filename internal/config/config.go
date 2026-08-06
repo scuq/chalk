@@ -105,17 +105,26 @@ type Config struct {
 
 	// WrapSigRequired, when true, makes the server refuse suite-1 (unsigned)
 	// channel-key wraps on publish_channel_key, and tells clients via the
-	// welcome frame to refuse them on the read path too (82-6). Off by
-	// default: existing channels hold nothing but unsigned wraps until the
-	// self-healing sweep has re-wrapped them, and flipping this early strands
-	// any member whose wrap has not been upgraded yet.
+	// welcome frame to refuse them on the read path too (82-6).
+	//
+	// CHALK_WRAP_SIG_REQUIRED, default **true** since 82-10. It shipped off
+	// through phase 82 because an existing deployment holds nothing but
+	// unsigned wraps until the self-healing sweep has re-wrapped them, and
+	// flipping it early strands any member whose wrap has not been upgraded.
+	// That reasoning covers the upgrade, not the default: a deployment nobody
+	// configures is a fresh one with no legacy wraps to strand, and leaving it
+	// unprotected until an operator acts is how C-01 stayed open in practice.
+	//
+	// chalkctl deployments are unaffected either way -- their env file has
+	// carried an explicit value since 82-6, and `chalkctl update` preserves
+	// it. The migration path is unchanged: `chalkctl wrapsig status` until it
+	// says READY, then `chalkctl wrapsig enable`. A hand-rolled deployment
+	// that needs the soft window sets CHALK_WRAP_SIG_REQUIRED=false itself.
 	//
 	// The guest-invite path (ephemeral_invite_mint / redeem) is deliberately
 	// NOT gated: guest wraps stay unsigned until 82-7 gives the guest an
 	// anchor to verify against, and refusing them here would kill every
 	// guest link outright rather than harden anything.
-	//
-	// CHALK_WRAP_SIG_REQUIRED, default false.
 	WrapSigRequired bool
 
 	// Governance holds the server-wide DEFAULTS for per-channel governance
@@ -200,6 +209,10 @@ func Default() Config {
 		LogFormat:        "console",
 		ShutdownGrace:    20 * time.Second,
 		PrintListen:      true,
+
+		// 82-10: fail closed. See the field's comment for why this is safe to
+		// default on and what an operator mid-migration has to do about it.
+		WrapSigRequired: true,
 
 		// Phase 09b defaults.
 		RPID:   "localhost",

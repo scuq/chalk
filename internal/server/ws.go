@@ -59,7 +59,10 @@ type WSConfig struct {
 
 	// 82-6: refuse unsigned (suite-1) wraps on publish_channel_key and tell
 	// clients (welcome.wrap_sig_required) to refuse them on read. Populated in
-	// cmd/chalkd from config.WrapSigRequired; zero-value = legacy wraps
+	// cmd/chalkd from config.WrapSigRequired. Zero-value here is permissive,
+	// so a Hub built without going through cmd/chalkd (tests, embeds) accepts
+	// legacy wraps; the shipped default is true since 82-10 and arrives via
+	// config.Default(). See internal/config/config.go for why.
 	// accepted (the soft window).
 	WrapSigRequired bool
 }

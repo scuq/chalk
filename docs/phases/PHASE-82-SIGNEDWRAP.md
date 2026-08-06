@@ -4,10 +4,11 @@ Closing audit finding **C-01 (Critical)**: channel-key wraps are encrypted *to* 
 recipient but signed by nobody, so a malicious server can substitute a space key
 it knows. Planned against v0.6.4, after phase 81.
 
-**Status: complete (82-1 … 82-9).** C-01 is closed **on deployments that have
-flipped the enforcement flag** — see *Where this actually stands* below, which
-is deliberately placed before the design so it cannot be skimmed past. The
-end-to-end run against a live stack is the one outstanding item; see
+**Status: complete (82-1 … 82-10).** C-01 is closed **on deployments running
+with enforcement on** — which since 82-10 is every new one, and every upgraded
+one whose operator has run `chalkctl wrapsig enable`. See *Where this actually
+stands* below, deliberately placed before the design so it cannot be skimmed
+past. The end-to-end run against a live stack is the one outstanding item; see
 *Verification*.
 
 ---
@@ -21,15 +22,18 @@ end-to-end run against a live stack is the one outstanding item; see
 | Closed by 82-5 | Every wrap chalk produces for a member is now signed, so on any channel where the members run current builds, one signed adoption **ratchets** the channel: an unsigned wrap for it is refused thereafter, at any key version. |
 | Closed by 82-6 | Silent overwrite of another member's wrap slot (the store's guarded upsert), wraps parked at arbitrary future key versions, and unbounded wrap blobs. The **self-healing sweep** upgrades legacy unsigned wraps to signed ones as channels get used — no member action needed. |
 | Closed by 82-7 | Guest wraps. The link fragment now carries the owner's Ed25519 public key, the mint signs, and the guest verifies — anchored on the one value the server never sees. Links minted before 82-7 keep working, unsigned, until they expire (hours). |
-| Closed **when the operator flips `CHALK_WRAP_SIG_REQUIRED`** | Unsigned wraps entirely: the server refuses them on publish, the client refuses them on read (latched per session — a later welcome cannot relax it). An un-swept member shows `waiting` and recovers via a holder's re-share. |
-| **Still open by default** | On a deployment with the flag off (the shipped default), an unsigned wrap on a channel that has never yielded a signed one is still accepted — the migration window, which the sweep drains and the flag ends. |
+| Closed by `CHALK_WRAP_SIG_REQUIRED` | Unsigned wraps entirely: the server refuses them on publish, the client refuses them on read (latched per session — a later welcome cannot relax it). An un-swept member shows `waiting` and recovers via a holder's re-share. |
+| Closed by 82-10 **on new deployments** | The flag now defaults to **true**, so a server nobody configured fails closed. A fresh deployment has no legacy wraps to strand, and the previous default left the guarantee unmet until someone acted. |
+| **Still open on an upgraded deployment** | `chalkctl update` preserves the existing `false`, so a pre-82 deployment keeps the migration window until its operator runs `chalkctl wrapsig enable`. While it is open, an unsigned wrap on a channel that has never yielded a signed one is still accepted. |
 | Still open | Membership is server-asserted, so a server that can add a member it controls can still get a key it knows distributed. Phase 83. |
 
 The migration story, in one line: **ship it, let the sweep run, wait for
-`chalkctl wrapsig status` to say READY, then `chalkctl wrapsig enable`.** The
-flag defaults false because flipping it before the sweep has re-signed a
-channel's wraps strands every member still on an unsigned one — which is
-exactly what 82-9's readiness check exists to stop you doing blind.
+`chalkctl wrapsig status` to say READY, then `chalkctl wrapsig enable`.** That
+is unchanged by 82-10, which moved only the *default* — flipping an existing
+deployment before the sweep has re-signed a channel's wraps still strands every
+member on an unsigned one, which is exactly what 82-9's readiness check exists
+to stop you doing blind. What 82-10 changes is who has to act: nobody, on a
+deployment with no history to protect.
 
 ---
 
@@ -577,6 +581,7 @@ correctly and convergence is restored.
 | 82-7 | **done** | Guest path: owner Ed25519 key in the link fragment (~96 → ~140 chars), `owner_user_id` through `RedeemedGuest` → the redeem response, `openGuestWrap`'s fragment-decides-the-suite rule, `wrapKeyForGuest` replacing `exportKeyForMint`, `JoinScreen` verify-then-open, mint gated by `checkWrapSuite`. 11 tests. |
 | 82-8 | **done** | `memberTrust` (and the first-sight badge bug it fixes), the identity-changed wall, `describeKeyProvenance` + the panel's provenance line, `JoinNotice` for visible `member_added`; `threat-model.md` rewritten. `crypto-agility.md`'s suite-2 entry landed early, in 82-5. 12 tests. |
 | 82-9 | **done** | `chalkctl wrapsig status\|enable\|disable` — the operator's answer to "has the sweep finished?", read from `channel_keys.wrap_suite`. 4 tests. |
+| 82-10 | **done** | Enforcement on by default: `config.Default()` and `chalkctl`'s `DefaultConfig()` both set it, so a fresh deployment and an unconfigured hand-rolled one fail closed. `ensurePhase82Env` still backfills `false` on `update` — an existing deployment keeps its migration window until `chalkctl wrapsig enable`. chalkd now also logs the OFF state, which is the one worth noticing. Prompted by the 2026-08-05 audit follow-up, item 3. |
 
 ### The 82-6 server rule: recipient-or-upgrade, silently
 

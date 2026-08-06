@@ -59,13 +59,20 @@ What phase 82 built:
 **The condition.** Existing channels were full of unsigned wraps, so refusing
 them outright would have locked users out of their own history. Instead a
 self-healing sweep re-signs wraps as channels get used, and
-`CHALK_WRAP_SIG_REQUIRED` (default **false**) is what finally withdraws
-acceptance of unsigned ones. With the flag off, a server that reaches a channel
-before any current-build member has opened it can still substitute a key.
+`CHALK_WRAP_SIG_REQUIRED` is what finally withdraws acceptance of unsigned ones.
+With the flag off, a server that reaches a channel before any current-build
+member has opened it can still substitute a key.
 
-> **For operators: turn `CHALK_WRAP_SIG_REQUIRED` on once your users have been
-> on a current build for a while.** Until you do, this guarantee is not met on
-> your deployment.
+Since 82-10 the flag defaults to **true**, so a new deployment meets this
+guarantee out of the box — it has no legacy wraps to strand. The condition now
+applies only to a deployment that predates phase 82:
+
+> **For operators upgrading an existing deployment:** `chalkctl update` leaves
+> your current setting alone, which for almost everyone is `false`. Run
+> `chalkctl wrapsig status` until it reports READY — that means the sweep has
+> re-signed every member's wraps — then `chalkctl wrapsig enable`. **Until you
+> do, this guarantee is not met on your deployment.** `chalkctl wrapsig disable`
+> puts it back if someone is stranded.
 
 **What remains unmet even with the flag on.** Channel membership is asserted by
 the server and signed by nobody, and any key holder auto-reshares the key to

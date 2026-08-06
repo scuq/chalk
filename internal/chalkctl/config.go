@@ -108,6 +108,12 @@ func DefaultConfig() Config {
 
 		LinkPreviewEnabled: true,
 		EphemeralEnabled:   true,
+
+		// 82-10: `chalkctl init` is a brand-new deployment with no channels
+		// and therefore no legacy unsigned wraps -- enforcement is safe by
+		// construction there. `chalkctl update` does NOT flip an existing
+		// deployment; see ensurePhase82Env in secret.go.
+		WrapSigRequired: true,
 	}
 }
 

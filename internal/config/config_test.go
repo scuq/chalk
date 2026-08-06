@@ -185,33 +185,35 @@ func TestEphemeralInviteTTLHardCap(t *testing.T) {
 	}
 }
 
-// 82-6: CHALK_WRAP_SIG_REQUIRED -- default off (the soft window for legacy
-// unsigned wraps), env turns it on, flag overrides env per the standard
-// precedence.
+// CHALK_WRAP_SIG_REQUIRED -- default ON since 82-10 (a deployment nobody
+// configures is a fresh one, with no legacy unsigned wraps to strand), env
+// turns it off, flag overrides env per the standard precedence.
 func TestWrapSigRequired(t *testing.T) {
 	t.Setenv("CHALK_WRAP_SIG_REQUIRED", "")
 	c, err := Load([]string{"--db-url", "postgres://x"})
 	if err != nil {
 		t.Fatalf("Load default: %v", err)
 	}
-	if c.WrapSigRequired {
-		t.Errorf("default WrapSigRequired = true, want false")
+	if !c.WrapSigRequired {
+		t.Errorf("default WrapSigRequired = false, want true -- an unconfigured" +
+			" server must fail closed on unsigned channel-key wraps")
 	}
 
-	t.Setenv("CHALK_WRAP_SIG_REQUIRED", "true")
+	t.Setenv("CHALK_WRAP_SIG_REQUIRED", "false")
 	c, err = Load([]string{"--db-url", "postgres://x"})
 	if err != nil {
-		t.Fatalf("Load env=true: %v", err)
+		t.Fatalf("Load env=false: %v", err)
 	}
-	if !c.WrapSigRequired {
-		t.Errorf("env=true: WrapSigRequired = false, want true")
+	if c.WrapSigRequired {
+		t.Errorf("env=false: WrapSigRequired = true, want false -- an operator" +
+			" mid-migration must be able to keep the soft window open")
 	}
 
-	c, err = Load([]string{"--db-url", "postgres://x", "--wrap-sig-required=false"})
+	c, err = Load([]string{"--db-url", "postgres://x", "--wrap-sig-required=true"})
 	if err != nil {
 		t.Fatalf("Load flag override: %v", err)
 	}
-	if c.WrapSigRequired {
-		t.Errorf("flag=false should override env=true; got WrapSigRequired=true")
+	if !c.WrapSigRequired {
+		t.Errorf("flag=true should override env=false; got WrapSigRequired=false")
 	}
 }

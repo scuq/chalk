@@ -268,10 +268,14 @@ func run(args []string) error {
 	} else {
 		log.Printf("ephemeral: disabled (CHALK_EPHEMERAL_ENABLED=false)")
 	}
-	// 82-6: signed-wrap enforcement.
+	// 82-6: signed-wrap enforcement. 82-10 made it the default, so the OFF
+	// case is now the one worth saying out loud -- it is the weaker setting,
+	// and an operator reading a quiet log should not have to infer it.
 	wsCfg.WrapSigRequired = cfg.WrapSigRequired
 	if cfg.WrapSigRequired {
 		log.Printf("channel keys: signed wraps REQUIRED (CHALK_WRAP_SIG_REQUIRED=true); unsigned publishes refused")
+	} else {
+		log.Printf("channel keys: signed wraps NOT required (CHALK_WRAP_SIG_REQUIRED=false); a substituted key on a channel no current-build member has opened is still accepted -- run `chalkctl wrapsig status`")
 	}
 	// 85-1: say what the logging will do, so an operator reading a quiet log
 	// can tell "nothing happened" from "nothing is being recorded".

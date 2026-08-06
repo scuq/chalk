@@ -514,6 +514,9 @@ func TestEnvEphemeral(t *testing.T) {
 // TestEnvWrapSigRequired (82-6): the enforcement knob is written either way --
 // the migration story is "operator flips it when the sweep is done", and a
 // knob that has to be discovered in docs first never gets flipped.
+//
+// 82-10 adds the half that matters most: a fresh `chalkctl init` must land on
+// enforcement. It has no channels yet, so there is nothing to strand.
 func TestEnvWrapSigRequired(t *testing.T) {
 	base := InitParams{
 		Domain: "x.example.org", PGPassword: "PG",
@@ -521,7 +524,7 @@ func TestEnvWrapSigRequired(t *testing.T) {
 	}
 	env, _ := renderTemplate("chalk.env", base)
 	if !strings.Contains(string(env), "CHALK_WRAP_SIG_REQUIRED=false") {
-		t.Errorf("default must write CHALK_WRAP_SIG_REQUIRED=false:\n%s", env)
+		t.Errorf("the template must write the knob explicitly either way:\n%s", env)
 	}
 
 	on := base
@@ -530,12 +533,23 @@ func TestEnvWrapSigRequired(t *testing.T) {
 	if !strings.Contains(string(env2), "CHALK_WRAP_SIG_REQUIRED=true") {
 		t.Error("enforcement on must write CHALK_WRAP_SIG_REQUIRED=true")
 	}
+
+	if !DefaultConfig().WrapSigRequired {
+		t.Error("a new deployment must default to enforcement; it has no legacy" +
+			" unsigned wraps, so nothing is stranded by it")
+	}
 }
 
 // TestEnsurePhase82EnvBackfill: pre-82-6 env files gain the (false) knob on
 // update; a present value -- notably an operator's deliberate `true` -- is
 // never touched, because rewriting it would re-open the enforcement window
 // behind their back.
+//
+// The backfilled value stays FALSE even though 82-10 made true the default for
+// new deployments: an `update` runs against channels already full of unsigned
+// wraps, and flipping those to enforcement without the sweep is exactly the
+// lockout the soft window exists to avoid. If this assertion is ever "fixed"
+// to true, upgrading a live deployment starts locking members out.
 func TestEnsurePhase82EnvBackfill(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "chalk.env")
