@@ -14,6 +14,24 @@
 #
 # The image job and the binary job run in parallel; the release job waits for
 # both and publishes one Release carrying the image reference + the binaries.
+#
+# Second trigger: workflow_dispatch, for when GitHub drops the tag-push event
+# (it did for v0.7.5 -- the ref arrived, the workflow was active and unchanged,
+# and no run was ever created). Without a manual entry point the only remedy
+# was deleting and re-pushing a tag that had already been released.
+#
+#   gh workflow run release.yml --ref vX.Y.Z
+#
+# **Run it at the TAG, never at a branch.** cosign's keyless certificate
+# records the ref the run started from, and `chalkctl`'s verifier pins that to
+# `@refs/tags/` (internal/chalkctl/verify.go). A run dispatched from main would
+# sign as `@refs/heads/main` and produce an image every deployed server refuses
+# to install. The guard below fails such a run before it can publish anything,
+# rather than leaving that to be discovered on a server weeks later.
+#
+# One consequence: a tag cut BEFORE this trigger existed cannot be dispatched,
+# because GitHub reads the workflow file from the ref you run it at. Those still
+# need the delete-and-re-push remedy.
 
 name: release
 
@@ -21,6 +39,7 @@ on:
   push:
     tags:
       - "v*"           # v1.2.3
+  workflow_dispatch:   # run at a v* tag; see the header
 
 permissions:
   contents: write      # create the Release + upload assets
@@ -44,6 +63,16 @@ jobs:
       - name: Derive metadata
         id: meta
         run: |
+          set -euo pipefail
+          # Fail closed on a dispatch started from a branch: GITHUB_REF_NAME
+          # would be `main`, which would tag the image `main`, move `:stable`
+          # onto it, and sign under `@refs/heads/main` -- an identity
+          # chalkctl's verifier rejects, so every server would refuse the
+          # update. Cheaper to stop here than to find out there.
+          case "${GITHUB_REF}" in
+            refs/tags/v[0-9]*) ;;
+            *) echo "::error::release must run at a v* tag, not ${GITHUB_REF}. Use: gh workflow run release.yml --ref vX.Y.Z"; exit 1 ;;
+          esac
           VER="${GITHUB_REF_NAME}"                       # e.g. v1.2.3
           echo "version=${VER}"          >> "$GITHUB_OUTPUT"
           echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
@@ -92,6 +121,11 @@ jobs:
 
   # ---- chalkctl manager binary --------------------------------------------
   binaries:
+    # Same tag-only rule as `image` -- see its Derive-metadata step for why.
+    # Skipped rather than failed: `image` runs in parallel and already fails
+    # the run with the explanation, and skipping keeps this job from spending a
+    # cosign sign-blob on an identity nothing would accept.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

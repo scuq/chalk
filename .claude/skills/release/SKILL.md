@@ -70,3 +70,24 @@ scuq runs them. That applies to `git add`, `commit`, `tag` and both pushes.
    workflow, which builds the cosign-signed multi-arch image and the `chalkctl`
    binaries. Deployed servers pick it up on their weekly update timer or a
    manual `chalkctl update`.
+
+8. **If no run appears within a minute**, GitHub dropped the tag-push event —
+   it did for v0.7.5, with the ref on the remote and the workflow active and
+   unchanged. Check with `gh run list --workflow=release --limit 3`, then start
+   it by hand **at the tag**:
+
+   ```bash
+   gh workflow run release.yml --ref vX.Y.Z
+   ```
+
+   Never `--ref main`. cosign's keyless certificate records the ref the run
+   started from, and `chalkctl`'s verifier pins that to `@refs/tags/`
+   (`internal/chalkctl/verify.go`), so a run started from a branch signs an
+   image every deployed server refuses to install. The workflow fails such a
+   run before it publishes anything, but the rule is worth knowing rather than
+   discovering.
+
+   Tags cut before this trigger existed (v0.7.5 and earlier) cannot be
+   dispatched — GitHub reads the workflow file from the ref you run it at, and
+   theirs has no `workflow_dispatch`. For those, delete and re-push the tag:
+   `git push origin :refs/tags/vX.Y.Z && git push origin vX.Y.Z`.
