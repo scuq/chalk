@@ -80,6 +80,7 @@ as-built rather than a contemporaneous plan.
 | 86 | ties: answering without quoting — **planned, not started** | [PHASE-86-TIES.md](phases/PHASE-86-TIES.md) |
 | 87 | message reminders — **planned, not started** | [PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md) |
 | 88 | federation — **considered and declined** | [PHASE-88-FEDERATION.md](phases/PHASE-88-FEDERATION.md) |
+| 89 | the friend-request hint | [PHASE-89-REQUESTHINT.md](phases/PHASE-89-REQUESTHINT.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

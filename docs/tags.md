@@ -24,7 +24,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 
 #auth           31        internal/auth/ web/src/auth/ web/src/crypto/authkdf.ts docs/phases/PHASE-31-AUTHV2.md
 #browser        48        web/src/webauthn.ts web/src/crypto/ docs/browser-support.md docs/phases/PHASE-48-BROWSER.md
-#friends        59        internal/friends/ web/src/components/ docs/phases/PHASE-59-FRIENDS.md
+#friends        59 89     internal/friends/ web/src/components/ web/src/components/StatusBar.tsx docs/phases/PHASE-59-FRIENDS.md docs/phases/PHASE-89-REQUESTHINT.md
 #voice          30 41 44 45 63 66 70 71  internal/turncred/ web/src/voice/ web/src/components/VoiceCallPanel.tsx docs/phases/PHASE-30-VOICE.md docs/phases/PHASE-41-MICROPHONE.md docs/phases/PHASE-44-VOICEPANEL.md docs/phases/PHASE-63-CALLTILES.md docs/phases/PHASE-66-CALLPREFS.md docs/design/chalk-phase-30-voice-video-design.md
 #camera-bg      52        web/src/voice/ web/src/components/ docs/phases/PHASE-52-CAMERABG.md
 #threads        42 45 47 49  web/src/chat/threadinbox.ts web/src/chat/ web/src/components/ docs/phases/PHASE-42-THREADS.md docs/phases/PHASE-47-THREADINBOX.md docs/phases/PHASE-49-THREADTITLES.md

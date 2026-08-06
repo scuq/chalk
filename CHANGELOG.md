@@ -12,6 +12,15 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Fixed
+- **A number in the tab title with nothing on screen to explain it.** Friend
+  requests you had never opened counted toward the unread badge, but the only
+  place they appeared was two clicks inside the friends panel — so the count
+  stuck there through logging out, logging back in, and reinstalling the app,
+  with no dot or row anywhere pointing at it. The waiting count now sits on the
+  "you" menu itself and again on its friends entry, and opening friends takes
+  you straight to the requests instead of to the add form.
+
 ### Changed
 - **Away no longer arrives after a single quiet minute.** Where chalk can watch
   system-wide idleness — Chrome, with the permission granted, which is how away

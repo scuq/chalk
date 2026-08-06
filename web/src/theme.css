@@ -2466,6 +2466,15 @@ body.chalk-resizing .chalk-sidebar-resizer {
   border-color: var(--chalk-fg-muted);
 }
 
+/* 89-1: waiting friend requests, on the "you" trigger and on the friends item
+   inside it. Shares .chalk-friends-badge's look (see the friends panel) so the
+   count a user follows from the tab title through the menu into the panel is
+   visibly the same count the whole way; only the spacing is local. */
+.chalk-status-menu-badge {
+  display: inline-block;
+  margin-left: var(--chalk-s1);
+}
+
 .chalk-status-menu-popover {
   position: absolute;
   top: calc(100% + var(--chalk-s1));
@@ -3237,7 +3246,8 @@ body.chalk-resizing .chalk-sidebar-resizer {
   border-bottom-color: var(--chalk-accent, #6effa1);
 }
 
-.chalk-friends-badge {
+.chalk-friends-badge,
+.chalk-status-menu-badge {
   background: var(--chalk-accent, #6effa1);
   color: var(--chalk-bg, #0a120a);
   border-radius: 9999px;

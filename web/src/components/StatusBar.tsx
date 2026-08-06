@@ -29,6 +29,11 @@ interface Props {
   // Phase 9.6a: friends panel entry point. When provided,
   // a "friends" item appears in the user menu.
   onOpenFriends?: () => void;
+  // 89-1: how many friend requests are waiting on an answer. They count
+  // toward the tab-title badge (badge.ts) but used to live two clicks deep
+  // in the friends panel, so "(2) chalk" pointed at nothing on screen. The
+  // same number here is what closes that gap -- see PHASE-89-REQUESTHINT.md.
+  pendingFriendCount?: number;
   // phase 09d-2b: admin moderation panel entry. Only shown when
   // me.role === "admin".
   onOpenAdmin?: () => void;
@@ -55,7 +60,7 @@ const labels: Record<ConnectionState, string> = {
   error: "error",
 };
 
-export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenFriends, onOpenAdmin, updateAvailable = false, onReload, onDismissUpdate, serverRestarting = false, presenceMode, effectivePresence, onPresenceModeChange }: Props) {
+export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenFriends, onOpenAdmin, pendingFriendCount = 0, updateAvailable = false, onReload, onDismissUpdate, serverRestarting = false, presenceMode, effectivePresence, onPresenceModeChange }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   // Phase 9.6j: presence picker.
@@ -107,6 +112,13 @@ export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, on
   const titleAttr = me?.userID ?? user?.id ?? undefined;
   // Only enable the menu when we have a session AND are connected.
   const menuEnabled = !!me && state === "open";
+  // 89-1: a COUNT, not a dot. Every other unread marker in chalk is a dot
+  // because "something new there" is the whole message, but this one exists
+  // to explain the number in the tab title -- and a dot cannot say which
+  // part of "(2)" it accounts for. Gated on menuEnabled: a hint you cannot
+  // click through is just a nag.
+  const showPending = menuEnabled && pendingFriendCount > 0;
+  const pendingLabel = `${pendingFriendCount} friend request${pendingFriendCount === 1 ? "" : "s"} waiting`;
 
   return (
     <div class="chalk-status" data-state={state} data-testid="status-bar">
@@ -222,9 +234,18 @@ export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, on
               aria-haspopup="menu"
               onClick={() => setMenuOpen((v) => !v)}
               data-testid="status-user-menu-trigger"
-              title={titleAttr}
+              title={showPending ? pendingLabel : titleAttr}
             >
               you ({displayName ?? "—"}) ▾
+              {showPending && (
+                <span
+                  class="chalk-status-menu-badge"
+                  data-testid="status-user-menu-pending"
+                  aria-label={pendingLabel}
+                >
+                  {pendingFriendCount}
+                </span>
+              )}
             </button>
           ) : (
             <span class="chalk-status-user" data-testid="status-user">
@@ -279,6 +300,15 @@ export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, on
                   data-testid="status-user-menu-friends"
                 >
                   friends
+                  {showPending && (
+                    <span
+                      class="chalk-status-menu-badge"
+                      data-testid="status-user-menu-friends-pending"
+                      aria-label={pendingLabel}
+                    >
+                      {pendingFriendCount}
+                    </span>
+                  )}
                 </button>
               )}
               {onOpenAdmin && me?.role === "admin" && (

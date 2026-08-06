@@ -4796,8 +4796,15 @@ export function App() {
           onOpenInvites={() => dispatch({ kind: "open_panel", panel: "invites" })}
         onOpenFriends={() => {
           dispatch({ kind: "open_panel", panel: "friends" });
+          // 89-1: arriving on "add" when requests are waiting is what let two
+          // of them sit unanswered behind the tab badge. Land on the tab that
+          // holds the thing the badge is counting.
+          if (state.pendingIncoming.length > 0) {
+            dispatch({ kind: "friends_panel_tab_change", tab: "pending" });
+          }
           handleFriendsRefresh();
         }}
+          pendingFriendCount={state.pendingIncoming.length}
           onOpenProfile={() => dispatch({ kind: "open_panel", panel: "profile" })}
           onOpenAdmin={() => {
             window.history.pushState({}, "", "/admin");
