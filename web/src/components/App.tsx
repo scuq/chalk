@@ -268,6 +268,7 @@ import { VoiceDock } from "./VoiceDock";
 import { VoiceControls } from "./VoiceControls"; // 44-2
 import { MicSettingsDialog } from "./MicSettingsDialog"; // 44-3
 import { SidebarResizer } from "./SidebarResizer";
+import { ComposerResizer } from "./ComposerResizer";
 import { voiceBus } from "../voice/bus";
 import { voiceSession } from "../voice/session";
 import { applyRemoteMicPrefs, setMicPrefsPublisher } from "../voice/mic-prefs"; // 44-4
@@ -643,6 +644,23 @@ export function App() {
       c.send(TypePrefsSet, { patch: { chat: { ...current, sidebarWidth: w } } });
     },
     [prefSidebarWidth, state.prefs],
+  );
+  // 91-1: composer height, the same shape as the sidebar width above --
+  // committed value in prefs, in-flight value in local state so the footer
+  // tracks the pointer without a prefs write per frame. 0 means auto.
+  const [composerDrag, setComposerDrag] = useState<number | null>(null);
+  const prefComposerHeight = selectChatPrefs(state.prefs).composerHeight;
+  const composerHeight = composerDrag ?? prefComposerHeight;
+  const commitComposerHeight = useCallback(
+    (h: number) => {
+      setComposerDrag(null);
+      if (h === prefComposerHeight) return;
+      const c = clientRef.current;
+      if (!c || !c.isOpen()) return;
+      const current = state.prefs?.chat ?? {};
+      c.send(TypePrefsSet, { patch: { chat: { ...current, composerHeight: h } } });
+    },
+    [prefComposerHeight, state.prefs],
   );
   useEffect(() => {
     if (!isMobile) setNavOpen(false);
@@ -5321,7 +5339,23 @@ export function App() {
         );
       })()}
 
-      <footer class="chalk-footer">
+      {/* 91-1: the height rides on the footer rather than the shell so only
+          this composer inherits it -- the thread panel's field is its own
+          size. Omitted on mobile, where the footer stacks and the divider
+          carries no handle. */}
+      <footer
+        class="chalk-footer"
+        style={
+          !isMobile && composerHeight > 0 ? `--chalk-composer-h:${composerHeight}px` : undefined
+        }
+      >
+        {!isMobile && (
+          <ComposerResizer
+            height={composerHeight}
+            onPreview={setComposerDrag}
+            onCommit={commitComposerHeight}
+          />
+        )}
         {/* 44-2: the roster-width column the composer's tool rail used to
             occupy. Voice controls live here now -- always visible, so mute and
             camera are set before you join rather than after. */}

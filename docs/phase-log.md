@@ -81,6 +81,8 @@ as-built rather than a contemporaneous plan.
 | 87 | message reminders — **planned, not started** | [PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md) |
 | 88 | federation — **considered and declined** | [PHASE-88-FEDERATION.md](phases/PHASE-88-FEDERATION.md) |
 | 89 | the friend-request hint | [PHASE-89-REQUESTHINT.md](phases/PHASE-89-REQUESTHINT.md) |
+| 90 | a local idle agent — **planned, not started** | [PHASE-90-IDLEEXT.md](phases/PHASE-90-IDLEEXT.md) |
+| 91 | resizing the message box | [PHASE-91-COMPOSERSIZE.md](phases/PHASE-91-COMPOSERSIZE.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

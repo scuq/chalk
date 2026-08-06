@@ -279,7 +279,7 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
 (user-facing). Latest release: v0.7.4 — keep this in step with the topmost
 `## vX.Y.Z` heading in `CHANGELOG.md`. Only what is NOT done belongs here.
 
-- Phase 85 is the newest work; `docs/phase-log.md` has the full history,
+- Phase 91 is the newest work; `docs/phase-log.md` has the full history,
   and the arcs named here are a sample, not the whole list. Among the complete
   ones: auth v2 (31), voice/video
   (30-1 … 30-8 plus the 41/44/47/48 mic, device and call-UI work), governance

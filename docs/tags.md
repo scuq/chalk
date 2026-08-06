@@ -39,6 +39,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #zucker         62 64     web/src/chat/zucker.ts web/src/components/ZuckerList.tsx docs/phases/PHASE-62-ZUCKER.md
 #history        55 69 79  internal/store/ web/src/chat/ web/src/components/MessageList.tsx docs/phases/PHASE-55-HISTORY.md docs/phases/PHASE-69-PINNEDHEADER.md docs/phases/PHASE-79-LANDING.md
 #mentions       56        web/src/chat/ web/src/components/Composer.tsx docs/phases/PHASE-56-MENTIONS.md
+#composer       91        web/src/chat/composer-height.ts web/src/components/ComposerResizer.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-91-COMPOSERSIZE.md
 #linkpreview    57 67     internal/linkpreview/ web/src/linkpreview/ web/src/chat/links.ts docs/phases/PHASE-57-LINKPREVIEW.md docs/phases/PHASE-67-LINKLABELS.md
 #code           74        web/src/code/ web/src/chat/bodytext.ts web/src/components/CodeModal.tsx web/src/components/CodeBlockView.tsx docs/phases/PHASE-74-CODEBLOCKS.md
 #nanomd         77        web/src/chat/nanomd.ts web/src/components/MessageList.tsx web/src/theme.css docs/phases/PHASE-77-NANOMD.md
@@ -77,7 +78,7 @@ Phase numbers that appear in the source but are not claimed above. Left here
 rather than guessed at, so the legend stays trustworthy; move one into a tag
 line when its topic is clear.
 
-    (none — 25 through 85 are all claimed)
+    (none — 25 through 91 are all claimed)
 
 Phases below 25 predate the tagging convention and carry no `// NN-n:` comments
 to find. They are recorded in `docs/phases/PHASE-00-29-FOUNDATION.md` instead —

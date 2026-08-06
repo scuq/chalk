@@ -10,6 +10,7 @@
 import { DEFAULT_SELF_HUE, clampHue } from "../chat/nickcolor";
 import { normalizeHidden, type HiddenChannel } from "../chat/channel-hide";
 import { SIDEBAR_WIDTH_DEFAULT, clampSidebarWidth } from "../chat/sidebar-width";
+import { clampComposerHeight } from "../chat/composer-height";
 import { parkingLotName } from "../parking";
 import type { ConnectionState } from "../ws-client";
 import type { AttachmentRef } from "../attachments/types";
@@ -356,6 +357,10 @@ export interface ChatPrefs {
   // [SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX] on both write and read. Ignored
   // on mobile, where the sidebar is a drawer with its own sizing.
   sidebarWidth?: number;
+  // 91-1: composer height in px, set by dragging the divider above it. 0 (and
+  // absent) mean auto -- the two rows the field has always been. Clamped on
+  // both write and read. Ignored on mobile, where the footer stacks.
+  composerHeight?: number;
   // 43-4: "X is typing" indicators. Default ON, and reciprocal -- off means
   // this client neither sends pings nor renders anyone else's, so you can't
   // watch without being watched.
@@ -508,6 +513,8 @@ export interface ResolvedChatPrefs {
   emoticons: boolean;
   // 33-4: defaulted + clamped.
   sidebarWidth: number;
+  // 91-1: defaulted to auto (0) + clamped.
+  composerHeight: number;
   // 43-4: defaulted to true.
   typingIndicators: boolean;
   // 67-1: defaulted to true.
@@ -540,6 +547,7 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
       c.sidebarWidth === undefined
         ? SIDEBAR_WIDTH_DEFAULT
         : clampSidebarWidth(c.sidebarWidth),
+    composerHeight: clampComposerHeight(c.composerHeight),
     typingIndicators: c.typingIndicators ?? true,
     shortenLinks: c.shortenLinks ?? true,
     nanoMarkdown: c.nanoMarkdown ?? false,

@@ -12,6 +12,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **Drag the line above the message box to make it bigger.** The box could
+  always be resized by its bottom-right corner, but that grip is easy to miss
+  and the size it set was forgotten on the next reload. The divider between the
+  conversation and what you are typing is now a handle: drag it up for a taller
+  box, down for a shorter one, double-click it to go back to normal. The size
+  you pick is remembered and follows you to your other devices.
+
 ### Fixed
 - **A number in the tab title with nothing on screen to explain it.** Friend
   requests you had never opened counted toward the unread badge, but the only
