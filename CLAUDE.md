@@ -67,7 +67,7 @@ gofmt -l .                         # must be empty before commit
 # client (from web/)
 npm install
 npx tsc --noEmit
-node test.mjs                      # node:test suite; currently 1207 tests, 0 fail
+node test.mjs                      # node:test suite; currently 1238 tests, 0 fail
 node build.mjs
 
 # notification sounds (from the repo root)
@@ -267,11 +267,16 @@ That is not something to work around with `grep -r` — ask scuq to install it
 - Recovery = **reset**, not login (31-13): the phrase sets a new password via
   `/api/auth/recovery/reset-auth`, plus a live `totp_code` — or `reset_totp`
   when the authenticator is what was lost, which clears TOTP for re-enrollment
-  through the minted session. Phrase-alone `/api/auth/recovery` is 409
-  `auth_reset_required` for enrolled accounts (it bypassed the second factor
-  and left the user unable to change the password they'd forgotten). The reset
-  purges the password seed wraps; only the identity gate's
+  through the minted session. Phrase-alone `/api/auth/recovery` was **deleted**
+  in 81-7 (it bypassed the second factor, left the user unable to change the
+  password they'd forgotten, and its 409 told a stranger the account existed).
+  The reset purges the password seed wraps; only the identity gate's
   `maybeUploadSeedWrap` re-creates them from the encryption phrase.
+- Reset failures before the phrase verifies are one answer, `recovery_failed`
+  (81-7): unknown user, no code on file, spent code and wrong phrase are
+  indistinguishable in body, status and work. What the phrase *proves* is the
+  fence — everything after it (`code_used`, `user_blocked`, the TOTP gate) can
+  be specific, because only the account's owner gets that far.
 
 ## Current state / open items
 
@@ -301,32 +306,39 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   are `CHALK_OPLOG_*`, documented in `internal/config/oplog.go`). Phase 85's
   open items are the live-stack run of the connection snapshot and the missing
   off switch for the Caddy access log — both listed at the end of its record.
-- **Phase 82 (signed channel-key wraps) is COMPLETE** — 82-1 … 82-9, record in
+- **Phase 82 (signed channel-key wraps) is COMPLETE** — 82-1 … 82-10, record in
   `docs/phases/PHASE-82-SIGNEDWRAP.md`. It closes the phase-81 audit's C-01, but
-  **conditionally**: `CHALK_WRAP_SIG_REQUIRED` defaults to false, and until an
-  operator flips it (after the self-healing sweep has re-signed their wraps) a
-  server can still substitute a key on a channel no current-build member has
-  opened. Never describe C-01 as fixed unconditionally. `chalkctl wrapsig
-  status` is what says whether a deployment is ready to flip.
+  **conditionally**: C-01 is closed only where `CHALK_WRAP_SIG_REQUIRED` is on.
+  Since 82-10 it defaults to **true**, so new deployments are covered — but
+  `chalkctl update` preserves an existing `false`, so a deployment that predates
+  phase 82 keeps the migration window until its operator runs `chalkctl wrapsig
+  enable` (after `chalkctl wrapsig status` says READY). Until then a server can
+  still substitute a key on a channel no current-build member has opened. Never
+  describe C-01 as fixed unconditionally.
   - Two follow-ups are still open: the **end-to-end run against a live stack**
     (checklist at the end of the phase doc — the only exercise of the real
     Postgres upsert guard, and worth doing before a release carries this), and
     the guest path's remaining exposure: links minted before 82-7 stay unsigned
     until they expire.
-- **Open security gap, confirmed by the phase-81 audit** (analysis in
-  `docs/phases/PHASE-81-SECAUDIT.md`; `docs/threat-model.md` states it as an unmet
-  guarantee):
+- **Open security gap, confirmed by the phase-81 audit and reconfirmed by its
+  2026-08-05 follow-up** — the whole design now lives in
+  `docs/phases/PHASE-83-MSGSIG.md` (**planned, not started**);
+  `docs/threat-model.md` states both halves as unmet guarantees:
   - **Messages carry no sender signature.** The AEAD associated data is only
     suite/channel/key-version, so sender, message ID and timestamp are
     unauthenticated server-supplied metadata and any key holder can be
     impersonated. Fix = signed message envelope, extended to edits, reactions
-    and attachment refs. Phase 83, together with the **authenticated
-    channel-state transcript**: membership is still server-asserted, so a
-    server that adds a principal it controls gets the key handed to it by a
-    member's auto-reshare. 82-8 makes that visible (the join notice) but
-    cannot prevent it. Both share the identity anchor phase 82 already paid
-    for, and should copy `web/src/voice/signal-crypto.ts`, which already does
-    canonical-encode → Ed25519 sign → fail-closed verify correctly.
+    and attachment refs. Phase 83 half A, whose central constraint is that the
+    server mints message id *and* ts, so a send-time signature cannot cover
+    them.
+  - **Membership is server-asserted**, so a server that adds a principal it
+    controls gets the key handed to it by a member's auto-reshare. 82-8 makes
+    that visible (the join notice) but cannot prevent it. Phase 83 half B, the
+    authenticated channel-state transcript.
+  - Both share the identity anchor phase 82 already paid for, and should copy
+    `web/src/voice/signal-crypto.ts`, which already does canonical-encode →
+    Ed25519 sign → fail-closed verify correctly. The audit asks for an
+    independent protocol review before this ships.
 - Next candidates, none started: web push notifications (phase 65, full
   plan in `docs/phases/PHASE-65-PUSH.md`: hand-rolled `internal/webpush`, DMs-only
   default, content-free payloads); ties (phase 86, full plan in

@@ -5,22 +5,8 @@
 //   POST /api/auth/totp/enroll       stage a fresh TOTP secret (QR + b32)
 //   POST /api/auth/totp/confirm      promote the staged secret (live code)
 
-import { SignupApiError } from "../auth/signup-v2-api";
+import { parseAuthResponse } from "../auth/signup-v2-api";
 import type { StepUpProof } from "./stepup";
-
-async function parse<T>(resp: Response): Promise<T> {
-  let body: unknown = null;
-  try {
-    body = await resp.json();
-  } catch {
-    /* fall through */
-  }
-  if (!resp.ok) {
-    const b = (body ?? {}) as { code?: string; message?: string };
-    throw new SignupApiError(resp.status, b.code ?? "http_error", b.message ?? `HTTP ${resp.status}`);
-  }
-  return body as T;
-}
 
 export interface ChangePasswordInput {
   current_auth_proof_b64: string;
@@ -42,7 +28,7 @@ export async function changePassword(input: ChangePasswordInput): Promise<void> 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  await parse<{ changed: boolean }>(resp);
+  await parseAuthResponse<{ changed: boolean }>(resp);
 }
 
 export interface TOTPEnrollResult {
@@ -62,7 +48,7 @@ export async function totpEnroll(stepUp?: StepUpProof): Promise<TOTPEnrollResult
       ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(stepUp) }
       : {}),
   });
-  return parse<TOTPEnrollResult>(resp);
+  return parseAuthResponse<TOTPEnrollResult>(resp);
 }
 
 export async function totpConfirm(code: string): Promise<void> {
@@ -72,5 +58,5 @@ export async function totpConfirm(code: string): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code }),
   });
-  await parse<{ confirmed: boolean }>(resp);
+  await parseAuthResponse<{ confirmed: boolean }>(resp);
 }

@@ -198,7 +198,6 @@ type HTTPDeps struct {
 //	POST /api/auth/authenticate/finish       → FinishLogin
 //	POST /api/auth/logout                    → DeleteSession + clear cookie
 //	GET  /api/auth/me                        → identity from session cookie
-//	POST /api/auth/recovery                  → recovery-code login
 //	POST /api/auth/recovery/regenerate       → rotate recovery code
 //	POST /api/invites                        → create invite (session)
 //	GET  /api/invites/mine                   → list my invites (session)
@@ -228,8 +227,9 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	mux.HandleFunc("POST /api/auth/authenticate/finish", d.limitAnon(d.handleAuthenticateFinish))
 	mux.HandleFunc("POST /api/auth/logout", d.handleLogout)
 	mux.HandleFunc("GET /api/auth/me", d.handleMe)
-	// Sub-step 6: recovery login + forced regenerate.
-	mux.HandleFunc("POST /api/auth/recovery", d.limitRecovery(d.handleRecovery))
+	// Sub-step 6: forced regenerate. The phrase-alone login that used to sit
+	// beside it (POST /api/auth/recovery) was removed in 81-7 -- see
+	// reset_http.go for the path that replaced it.
 	mux.HandleFunc("POST /api/auth/recovery/regenerate", d.handleRecoveryRegenerate)
 	// 31-2: password login (first factor) + prelogin KDF-params fetch.
 	// TOTP (31-3) is mandatory; login/password issues only a totp_pending
@@ -1220,194 +1220,6 @@ func decodeJSON(r *http.Request, v any) error {
 	return nil
 }
 
-// ---- recovery (sub-step 6) -------------------------------------------
-
-// recoveryRequest is the SPA's input at /api/auth/recovery. Username
-// + the 24-word phrase as either a single space-separated string or
-// an array of 24 strings. We accept both shapes; SPA can choose.
-type recoveryRequest struct {
-	Username string   `json:"username"`
-	Words    []string `json:"words"`
-	// Phrase is a convenience alternative when the SPA wants to send
-	// raw user input as one string. Either Words or Phrase MUST be
-	// provided; the handler normalizes whichever is non-empty.
-	Phrase string `json:"phrase,omitempty"`
-}
-
-// recoveryResponse is the response on success. The cookie is set via
-// Set-Cookie; the body carries identity + the regenerate_required
-// flag which the SPA uses to force a regenerate step before chat.
-type recoveryResponse struct {
-	UserID             string    `json:"user_id"`
-	Username           string    `json:"username"`
-	DisplayName        string    `json:"display_name"`
-	Role               string    `json:"role"`
-	SessionExpiresAt   time.Time `json:"session_expires_at"`
-	RegenerateRequired bool      `json:"regenerate_required"`
-}
-
-// handleRecovery validates a 24-word recovery phrase against the
-// stored argon2id hash, marks the code as used, mints a session, and
-// returns identity + regenerate_required=true. The SPA MUST drive
-// the user through /api/auth/recovery/regenerate before letting them
-// into chat; until they do, they have no valid recovery code on file
-// (the one they just used is consumed).
-//
-// Error codes:
-//   - bad_request        → malformed JSON or missing username/words
-//   - bad_username       → username shape invalid
-//   - unknown_user       → no such user (NOTE: timing-equivalent to
-//     wrong words; we don't disclose existence
-//     via differential timing)
-//   - no_recovery        → user has no recovery code on file (e.g.
-//     old account from before 09b)
-//   - code_used          → the user's stored code was already
-//     consumed; they need to regenerate
-//   - invalid_words      → 24 words submitted but they don't match
-//     the hash
-//   - mark_used_failed   → bookkeeping error after successful verify
-//   - session_mint_failed → cookie/session row create failed
-func (d *HTTPDeps) handleRecovery(w http.ResponseWriter, r *http.Request) {
-	var req recoveryRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "bad_json", err.Error())
-		return
-	}
-	username := strings.TrimSpace(strings.ToLower(req.Username))
-	if !IsValidUsername(username) {
-		writeError(w, http.StatusBadRequest, "bad_username",
-			"username must match ^[a-z0-9_]{3,32}$")
-		return
-	}
-
-	// Accept either Words[] or a phrase string; normalize to []string.
-	var words []string
-	if len(req.Words) > 0 {
-		words = NormalizeRecoveryWords(strings.Join(req.Words, " "))
-	} else {
-		words = NormalizeRecoveryWords(req.Phrase)
-	}
-	if err := VerifyRecoveryWords(words); err != nil {
-		// Shape failure (wrong count, bad characters). User-facing.
-		writeError(w, http.StatusBadRequest, "invalid_words", err.Error())
-		return
-	}
-
-	// Look up user. We do this BEFORE checking the recovery code so
-	// the no-such-user path has similar timing to the wrong-words
-	// path (both run argon2id verify either way, since unknown_user
-	// also runs the hash compare against a dummy hash). For simplicity
-	// here we just return unknown_user early — the security gain from
-	// dummy-hash equality is marginal compared to argon2id's natural
-	// jitter and the fact that the SPA only allows one attempt at a
-	// time.
-	user, err := d.Store.GetUserByUsername(r.Context(), username)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			writeError(w, http.StatusUnauthorized, "unknown_user",
-				"that account doesn't exist, or has no recovery code")
-			return
-		}
-		d.Logger.Printf("recovery: GetUserByUsername: %v", err)
-		writeError(w, http.StatusInternalServerError, "lookup_failed",
-			"could not look up user")
-		return
-	}
-
-	// Phase 09d-1: same block/deleted gate as login. Recovery is a
-	// fallback path but it must not bypass moderation; otherwise a
-	// blocked user could just regenerate their recovery code and
-	// sneak back in.
-	if !user.DeletedAt.IsZero() {
-		writeError(w, http.StatusGone, "user_deleted",
-			"this account has been deleted")
-		return
-	}
-	if !user.BlockedAt.IsZero() {
-		writeError(w, http.StatusForbidden, "user_blocked",
-			"this account has been blocked by an administrator")
-		return
-	}
-
-	// 31-13: under the hard cutover the phrase alone no longer mints a
-	// session -- that would sidestep the mandatory second factor and drop
-	// the user into a shell where the lost password can't be replaced.
-	// Enrolled accounts recover through /api/auth/recovery/reset-auth, which
-	// sets a new password and re-proves (or re-enrolls) TOTP. Un-enrolled
-	// pre-cutover accounts keep this path as their way back in.
-	if AuthV2Required() {
-		if ua, uerr := d.Store.GetUserAuth(r.Context(), user.ID); uerr == nil && ua.AuthV2Enrolled {
-			writeError(w, http.StatusConflict, "auth_reset_required",
-				"use the account reset flow: your recovery phrase sets a new password")
-			return
-		}
-	}
-
-	rec, err := d.Store.GetRecoveryCode(r.Context(), user.ID)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			// User exists but has no recovery code row. Shouldn't happen
-			// for users registered via 09b but possible for legacy
-			// accounts. We use unknown_user to avoid revealing whether
-			// the username exists.
-			writeError(w, http.StatusUnauthorized, "unknown_user",
-				"that account doesn't exist, or has no recovery code")
-			return
-		}
-		d.Logger.Printf("recovery: GetRecoveryCode: %v", err)
-		writeError(w, http.StatusInternalServerError, "lookup_failed",
-			"could not look up recovery code")
-		return
-	}
-	if rec.HasBeenUsed() {
-		writeError(w, http.StatusUnauthorized, "code_used",
-			"that recovery code was already used; regenerate via your"+
-				" account settings, or contact the admin if locked out")
-		return
-	}
-
-	// argon2id verify. Constant-time inside the helper.
-	if err := VerifyRecoveryCodeHash(rec.Hash, words); err != nil {
-		// All verify failures map to invalid_words (don't leak which
-		// part of the hash format mismatched).
-		writeError(w, http.StatusUnauthorized, "invalid_words",
-			"the recovery words don't match this account")
-		return
-	}
-
-	// Mark the code as used. If this fails after verify succeeds we'd
-	// be in a wedge state (user thinks they're recovered but the code
-	// is still valid for another attempt). Treat as a hard error.
-	if err := d.Store.MarkRecoveryCodeUsed(r.Context(), user.ID); err != nil {
-		d.Logger.Printf("recovery: MarkRecoveryCodeUsed: %v", err)
-		writeError(w, http.StatusInternalServerError, "mark_used_failed",
-			"could not mark recovery code as used")
-		return
-	}
-
-	// Mint a session and set the cookie.
-	sess, err := MintSession(r.Context(), d.Store, w,
-		user.ID,
-		UserAgentFromRequest(r),
-		IPFromRequest(r),
-	)
-	if err != nil {
-		d.Logger.Printf("recovery: MintSession: %v", err)
-		writeError(w, http.StatusInternalServerError, "session_mint_failed",
-			"could not create session")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, recoveryResponse{
-		UserID:             user.ID.String(),
-		Username:           user.Username,
-		DisplayName:        user.DisplayName,
-		Role:               user.Role,
-		SessionExpiresAt:   sess.ExpiresAt,
-		RegenerateRequired: true,
-	})
-}
-
 // regenerateResponse is what /api/auth/recovery/regenerate returns.
 // recovery_words MUST be displayed once and never persisted by the SPA.
 type regenerateResponse struct {
@@ -1468,6 +1280,8 @@ func (d *HTTPDeps) handleRecoveryRegenerate(w http.ResponseWriter, r *http.Reque
 				"could not persist new recovery code")
 			return
 		}
+		d.revokeOtherSessions(r, "recovery/regenerate", su.UserID,
+			"recovery phrase replaced")
 		writeJSON(w, http.StatusOK, regenerateResponse{
 			RecoveryWords: words,
 		})

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
@@ -213,5 +214,38 @@ func TestBitStreamRoundTrip(t *testing.T) {
 			t.Errorf("group %d: wrote %d, read %d", i, v, got)
 		}
 		offset += 11
+	}
+}
+
+// TestDecoyRecoveryHashStableAndDistinct pins the 81-7 decoy: the reset
+// handler hands it to VerifyRecoveryCodeHash in place of a real row, so it
+// has to be the right shape, deterministic per username, and never openable.
+func TestDecoyRecoveryHashStableAndDistinct(t *testing.T) {
+	a := decoyRecoveryHash("alice")
+	if len(a) != argonSaltLen+argonKeyLen {
+		t.Fatalf("decoy hash is %d bytes, want %d -- VerifyRecoveryCodeHash"+
+			" rejects any other length before it does any work",
+			len(a), argonSaltLen+argonKeyLen)
+	}
+	if !bytes.Equal(a, decoyRecoveryHash("alice")) {
+		t.Error("decoy not stable for the same username")
+	}
+	if bytes.Equal(a, decoyRecoveryHash("bob")) {
+		t.Error("decoys collide across usernames")
+	}
+	if !bytes.Equal(a, decoyRecoveryHash("  Alice ")) {
+		t.Error("decoy not normalised over case/whitespace")
+	}
+	// Salt and hash halves must not be the same 32 bytes truncated.
+	if bytes.Equal(a[:argonSaltLen], a[argonSaltLen:argonSaltLen+argonSaltLen]) {
+		t.Error("decoy salt and hash derive from the same stream")
+	}
+
+	words, err := GenerateRecoveryWords()
+	if err != nil {
+		t.Fatalf("GenerateRecoveryWords: %v", err)
+	}
+	if err := VerifyRecoveryCodeHash(a, words); err == nil {
+		t.Error("a real phrase verified against the decoy hash")
 	}
 }

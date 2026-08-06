@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -177,6 +178,40 @@ var argonSlots = make(chan struct{}, 2)
 
 func acquireArgon() { argonSlots <- struct{}{} }
 func releaseArgon() { <-argonSlots }
+
+// decoyRecoveryHash returns a deterministic stand-in for the stored
+// salt||hash of a username that has no account, or an account with no
+// recovery code on file. 81-7: the reset handler feeds it to
+// VerifyRecoveryCodeHash exactly as it would a real row, so every
+// account-dependent way of failing costs the same Argon2 pass and queues on
+// the same semaphore. Returning early instead -- which is what the handler
+// used to do -- made "no such user" answer in under a millisecond while a
+// wrong phrase took 64 MiB of work, and that difference is the account
+// enumeration oracle L-01 reported.
+//
+// It is derived, never the Argon2 output of any phrase, so verification
+// against it always fails. Two labels rather than one because salt and hash
+// are independent inputs to the comparison and a single stream would make
+// them a function of each other.
+//
+// Sibling of DecoyKDFParams (password.go), which does the same job for
+// prelogin; both share decoyHMACKey, so CHALK_AUTH_DECOY_KEY keeps the
+// answers stable across restarts. It lives here rather than beside its
+// sibling because its length is argonSaltLen+argonKeyLen -- whoever changes
+// those constants must see this.
+func decoyRecoveryHash(username string) []byte {
+	name := strings.ToLower(strings.TrimSpace(username))
+	part := func(label string) []byte {
+		mac := hmac.New(sha256.New, decoyHMACKey())
+		mac.Write([]byte(label))
+		mac.Write([]byte(name))
+		return mac.Sum(nil)
+	}
+	out := make([]byte, 0, argonSaltLen+argonKeyLen)
+	out = append(out, part("chalk/decoy-recovery-salt/v1|")[:argonSaltLen]...)
+	out = append(out, part("chalk/decoy-recovery-hash/v1|")[:argonKeyLen]...)
+	return out
+}
 
 // HashRecoveryWords argon2id-hashes the space-joined recovery phrase
 // and returns salt || hash (48 bytes total: 16 salt + 32 hash). Caller

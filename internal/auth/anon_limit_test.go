@@ -95,7 +95,7 @@ func TestPreloginIsRateLimited(t *testing.T) {
 // Argon2-heavy paths: they must throttle well before the general one would.
 func TestRecoveryHasATighterBudget(t *testing.T) {
 	srv := startAnonServer(t)
-	url := srv.URL + "/api/auth/recovery"
+	url := srv.URL + "/api/auth/recovery/reset-auth"
 
 	attempts := 0
 	for i := 0; i < 30; i++ {

@@ -6,15 +6,20 @@ from — the work is done (81-1 … 81-6) and this is the record: what was
 claimed, what was true, what was fixed, and what is deliberately still open.
 
 **Audit.** Codex gpt-5.6-sol (high), 2026-08-03, against `401eda4` on `main`
-(phase 80-16). Overall risk rated *Critical*. Twelve findings: 1 critical,
+(phase 80-16). Overall risk rated *Critical*. Eleven findings: 1 critical,
 4 high, 4 medium, 2 low.
 
-**Scope of the remediation.** Ten of the twelve are fixed. The two
+**Scope of the remediation.** Nine of the eleven are fixed. The two
 cryptographic findings (C-01, H-01) are **confirmed and deliberately
 deferred** — they need a signed key-distribution and message-envelope
 protocol, not a patch, and that is its own phase. `docs/threat-model.md` was
 rewritten to say so rather than continuing to claim a guarantee chalk does
 not deliver.
+
+A follow-up review a fortnight later re-assessed all eleven against the
+phase-81 and phase-82 code. See *Follow-up review* at the end of this
+document for what it accepted, what it did not, and which slices closed the
+rest.
 
 ## Every finding was verified against the code first
 
@@ -33,7 +38,7 @@ did not.
 | M-02 | Medium | Confirmed | Fixed in 81-3 |
 | M-03 | Medium | Confirmed | Fixed in 81-5 |
 | M-04 | Medium | Confirmed but **not reachable** | Bumped anyway in 81-5 |
-| L-01 | Low | Confirmed | Fixed in 81-3 |
+| L-01 | Low | Confirmed | Half in 81-3, closed in 81-7 |
 | L-02 | Low | Confirmed, understated | Fixed in 81-6 |
 
 ### Where the audit was wrong
@@ -288,6 +293,98 @@ Ed25519 keys with the X25519 self-signature checked locally. A
 `chalk-wrap-sig.v1` and `chalk-msg-sig.v1` are near-copies of a pattern this
 codebase has already got right once.
 
+### 81-7 — Recovery answers with one voice (L-01, the other half)
+
+81-3 gave unknown usernames a *stable* decoy salt. It did nothing about the
+half of L-01 that says the recovery endpoints answer differently depending on
+whether the account exists, and the follow-up review correctly reported the
+finding as still partial.
+
+The ladder had ten outcomes. Four of them — no such user, no recovery row, a
+spent code, the wrong words — differed in code, in status, and by two orders of
+magnitude in work: the first three returned after one indexed lookup while only
+the last paid a 64 MiB Argon2 pass. The comment in the handler described a
+dummy-hash compare that would have equalised them and then explicitly declined
+to do one.
+
+**`POST /api/auth/recovery` was deleted rather than normalised.** Nothing
+called it: grep across `web/src`, `test/` and `internal/chalkctl` finds only
+`/recovery/reset-auth` and `/recovery/regenerate`. Under the hard cutover its
+only remaining behaviour for an enrolled account was a 409 `auth_reset_required`
+— which is the single most useful bit an enumerator can get, since it confirms
+both that the username exists and that it is enrolled. Deleting it halved the
+work and removed the disclosure instead of arguing about it.
+
+**The rule for what remains**, and the one worth remembering: *before the phrase
+verifies, say exactly one thing; after it verifies, be as helpful as possible.*
+A caller who produced a matching 24-word phrase has proved ownership, so
+nothing disclosed past that point is an oracle — and everything before it is.
+
+So `/reset-auth` resolves the stored hash *or* `decoyRecoveryHash(username)`
+(`recovery.go`, sibling of `DecoyKDFParams`, same `decoyHMACKey`), then verifies
+unconditionally. All four pre-verify failures now cost one identical Argon2
+pass through the same two-slot semaphore and answer with identical bytes:
+401 `recovery_failed`. The shape/checksum failure keeps its own code, renamed
+`invalid_words` → **`bad_phrase`**, which makes the invariant legible: a 4xx
+that is not `recovery_failed` depends only on what the caller typed.
+
+`code_used`, `user_deleted` (410) and `user_blocked` (403) **moved to after the
+verify**. They leaked existence before it — 403/410 came back only for a
+username that exists — and collapsing them would have been a real regression
+for a blocked user hunting for a typo they will never find. They also sit ahead
+of `MarkRecoveryCodeUsed`, so a moderated account's phrase is refused *and
+survives*, which is better than the old order. The distinctions that left the
+response moved into the security log, where the operator diagnosing a
+locked-out user can still read them (`reason=unknown_user|no_code|used|mismatch`,
+throttled by IP like `login_failed`).
+
+Two DB lookups against one is *not* equalised. Next to a 64 MiB pass behind a
+semaphore and a 5/min limiter the gap is unmeasurable, and a throwaway SELECT
+to burn time is cargo cult. The handler says so, so the next auditor does not
+re-raise it.
+
+**What this slice also found: the client was never reading the error body.**
+`writeError` emits `{"error":{"code","message"}}` and is the only error writer
+in `internal/auth`. Five client helpers read a *flat* `{code, message}` instead,
+so every 4xx across the auth surface arrived as `http_error` / `"HTTP 401"` and
+every screen that branched on a code was silently dead — `PasswordLoginScreen`,
+`MigrationScreen`, `SecurityPanel`, `SignupWizardScreen` and the whole of the
+recovery reset's message map. One exported `parseAuthResponse` now, imported by
+the other four. Not routed through `api.ts`'s `parseResponse`, which decodes the
+same shape but throws `ApiError` while every consumer branches on
+`SignupApiError`.
+
+Worth flagging at review: this makes previously-dead branches live across four
+screens. That is the point, and it deserves a look with the app running.
+
+### 81-8 — A factor change signs the other devices out (H-03 residual)
+
+81-1 revoked sessions on password change and recovery reset. The four rotations
+behind step-up did not, which the follow-up listed as outstanding: a user who
+replaces their authenticator *because* they suspect a thief left the thief
+signed in.
+
+`DeleteSessionsForUserExcept` (`internal/store/sessions.go`) factors out the
+keep-caller revoke `ChangePasswordAuth` had inline — that one stays inline
+because it must commit inside the credential transaction; here the rotation is
+already committed, so a separate statement is correct. `revokeOtherSessions`
+(`stepup.go`) wraps it with the WS kick, and is best-effort by design: the
+change has landed, and failing the request afterwards would tell the user it
+had not.
+
+Applied uniformly to recovery-phrase rotation, passkey add, passkey delete and
+TOTP **replacement** — every one already gated on the current password plus a
+live code, so "a factor changed, so other devices sign in again" is a rule a
+user can predict. Predictability is worth more here than saving a phone
+re-login after adding a passkey.
+
+The one carve-out is the same line `requireStepUp` already draws: **initial**
+TOTP enrollment does not revoke. Gaining a first second factor is not the
+"someone is in my account" action, and it happens mid-wizard or through the
+session a recovery reset just minted — revoking there is a lockout dressed as
+hardening. `handleTOTPConfirm` reads `TOTPConfirmed()` *before* the promotion,
+because afterwards the distinction is gone.
+
 ## Verification
 
 Everything below is green at `fc8b2a1` (81-6):
@@ -308,6 +405,9 @@ New regression cover, all of it added with the fix it covers:
 | Step-up | `internal/auth/stepup_test.go` (4), `web/src/auth/stepup.test.ts` (2) |
 | chalkctl env wiring | `TestEnvPhase81Settings`, `TestEnsurePhase81EnvBackfill` |
 | Rate limits & caps | `internal/auth/anon_limit_test.go` (2), `TestRateLimiterEvictsIdleKeys`, `TestPutRefusesAtCapacity`, `TestSignupV2CachePutRefusesAtCapacity` |
+| Recovery indistinguishability (81-7) | `TestRecoveryResetResponsesAreIndistinguishable` (compares raw bytes), `TestRecoveryResetSpentPhraseNeedsTheRightWords`, `TestRecoveryResetTellsAModeratedOwner` (also asserts the phrase survives), `TestRecoveryResetUnknownUserStillHashes` (a lower bound, never an equality), `TestRecoveryResetRejectsBadPhraseShape`, `TestDecoyRecoveryHashStableAndDistinct` |
+| Client error decoding (81-7) | `web/src/auth/signup-v2-api.test.ts` (4), `web/src/auth/recovery-reset-api.test.ts` (6) |
+| Session revocation on rotation (81-8) | `TestFactorChangesSignOtherDevicesOut`, `TestInitialTOTPEnrollmentKeepsOtherSessions` |
 
 **Known environmental issue:** the `test/integration` package cannot run
 against the ad-hoc dev database — 63 tests fail in fixture cleanup with
@@ -334,3 +434,51 @@ written to.
   `docker/Dockerfile` (a pre-existing item in CLAUDE.md's deferred list).
   Unminified bundles with inline sourcemaps are not a vulnerability, but they
   are a much larger attack-surface-reading convenience than they need to be.
+
+## Follow-up review — 2026-08-05
+
+The same reviewer re-assessed all eleven findings against `21fe79d` (v0.7.3),
+after phases 81 and 82. Verdict: **substantial remediation accepted, audit not
+fully remediated.** Eight addressed, two partial (C-01, L-01), one open
+(H-01); residual technical severity stays *Critical*, because that rating
+describes the impact of violating the malicious-server goal and C-01 and H-01
+are what leave it violable.
+
+It confirmed the phase-81 fixes hold at the finding level, and independently
+re-ran the checks — `npm audit` clean in both trees, `govulncheck` clean of
+reachable vulnerabilities, 104/104 web test files, typecheck and build green.
+It also caught the "twelve findings" miscount corrected at the top of this
+document.
+
+| Item | Status then | Closed by |
+|---|---|---|
+| Membership is server-asserted (C-01 residue) | Partial | **Open** — phase 83, half B |
+| Signed message envelope (H-01) | Open | **Open** — phase 83, half A |
+| `CHALK_WRAP_SIG_REQUIRED` defaults false | Partial | 82-10 |
+| Recovery response/work enumeration (L-01) | Partial | 81-7 |
+| Session revocation after factor changes (H-03) | Defence-in-depth | 81-8 |
+
+Its remaining recommendations, **not** taken and still open — recorded here so
+the next review does not read silence as a claim:
+
+- **One-time, operation-bound recent-auth grants.** 81-2 sends the password
+  proof with each step-up request instead of minting a short-lived grant.
+  Deliberate: no server-side grant means nothing to steal or replay, and it is
+  what `/password/change` has always done. The cost is that the proof is sent
+  more often, which is the trade the reviewer would rather make the other way.
+- **Step-up on email change.** `email_change_http.go` stays session-gated plus
+  verification at the new address.
+- **Per-account and global auth limits, exposed occupancy metrics, and
+  Caddy-layer request limits.** 81-4 landed only the per-IP half of M-01.
+- **A through-Caddy test proving distinct forwarded client IPs**, and a
+  startup warning for a proxy deployment whose `CHALK_TRUSTED_PROXY` does not
+  match its topology. 81-3 proves configuration generation, not deployment
+  behaviour.
+- **Automatic CI and E2E gates** — still the dormant-CI item above.
+
+Two enumeration oracles outside the recovery paths were noticed while doing
+81-7 and are deliberately left: `/api/auth/authenticate/begin` returns
+`unknown_user`, and `handleLoginPassword` surfaces `user_deleted` /
+`user_blocked` before verifying anything — while `preloginParams` goes to the
+trouble of hiding exactly that with decoy KDF params. 81-7 fixed the paths the
+finding named; these are the same class and want the same treatment.

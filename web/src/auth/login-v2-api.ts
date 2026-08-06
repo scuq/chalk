@@ -7,25 +7,7 @@
 //   GET  /api/auth/seed-wraps       -> password-wrapped entropy (new-device unlock)
 
 import type { LoginResult } from "./types";
-import { SignupApiError } from "./signup-v2-api";
-
-async function parse<T>(resp: Response): Promise<T> {
-  let body: unknown = null;
-  try {
-    body = await resp.json();
-  } catch {
-    /* fall through */
-  }
-  if (!resp.ok) {
-    const b = (body ?? {}) as { code?: string; message?: string };
-    throw new SignupApiError(
-      resp.status,
-      b.code ?? "http_error",
-      b.message ?? `HTTP ${resp.status}`,
-    );
-  }
-  return body as T;
-}
+import { parseAuthResponse } from "./signup-v2-api";
 
 export interface PreloginResult {
   kdf_alg: number;
@@ -42,7 +24,7 @@ export async function prelogin(username: string): Promise<PreloginResult> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username }),
   });
-  return parse<PreloginResult>(resp);
+  return parseAuthResponse<PreloginResult>(resp);
 }
 
 export interface LoginPasswordResult {
@@ -60,7 +42,7 @@ export async function loginPassword(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, auth_proof_b64: authProofB64 }),
   });
-  return parse<LoginPasswordResult>(resp);
+  return parseAuthResponse<LoginPasswordResult>(resp);
 }
 
 interface loginTOTPWire {
@@ -78,7 +60,7 @@ export async function loginTOTP(totpPending: string, code: string): Promise<Logi
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ totp_pending: totpPending, code }),
   });
-  const w = await parse<loginTOTPWire>(resp);
+  const w = await parseAuthResponse<loginTOTPWire>(resp);
   return {
     userID: w.user_id,
     username: w.username,
@@ -100,6 +82,6 @@ export async function fetchSeedWraps(generation = 1): Promise<SeedWrapEntry[]> {
     method: "GET",
     credentials: "same-origin",
   });
-  const body = await parse<{ wraps: SeedWrapEntry[] }>(resp);
+  const body = await parseAuthResponse<{ wraps: SeedWrapEntry[] }>(resp);
   return body.wraps ?? [];
 }

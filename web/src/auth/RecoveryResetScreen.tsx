@@ -35,7 +35,7 @@ import {
   DEFAULT_KDF,
   PASSWORD_MIN_LENGTH,
 } from "../crypto/authkdf";
-import { resetAuthViaRecovery } from "./recovery-reset-api";
+import { resetAuthViaRecovery, resetErrorMessage } from "./recovery-reset-api";
 import { SignupApiError } from "./signup-v2-api";
 import { totpEnroll, totpConfirm } from "./security-api";
 import { setKEK } from "./kek-holder";
@@ -68,29 +68,6 @@ function normalizePhrase(raw: string): string[] {
     .split(/[\s,;]+/)
     .map((w) => w.replace(/^\d+[.)]?$/, "").replace(/[^a-z]/g, ""))
     .filter((w) => w.length > 0);
-}
-
-function messageFor(e: SignupApiError): string {
-  switch (e.code) {
-    case "bad_username":
-      return "username must be 3-32 characters: lowercase letters, digits, and underscore";
-    case "unknown_user":
-      return "that account doesn't exist, or has no recovery code on file";
-    case "code_used":
-      return "that recovery code was already used. Contact the admin if you're locked out.";
-    case "invalid_words":
-      return "the recovery words don't match this account (or aren't 24 valid words)";
-    case "totp_required":
-      return "this account has two-factor enabled: enter a code, or tick the box below to reset it";
-    case "invalid_totp":
-      return "that authenticator code didn't match. Wait for the next code and try again.";
-    case "totp_locked":
-      return "too many incorrect codes. Try again in a few minutes.";
-    case "kdf_params_too_weak":
-      return "this browser derived weaker key parameters than the server accepts; please report this";
-    default:
-      return e.message;
-  }
 }
 
 export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterReset, onGoLogin }: Props) {
@@ -169,7 +146,7 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
       setUserID(result.user_id);
       setStep("words");
     } catch (e) {
-      if (e instanceof SignupApiError) setErr(messageFor(e));
+      if (e instanceof SignupApiError) setErr(resetErrorMessage(e));
       else {
         console.error("recovery reset:", e);
         setErr("Something went wrong. Please try again.");

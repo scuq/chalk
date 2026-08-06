@@ -29,6 +29,21 @@ The engineering-level history (which slice shipped what) lives in
   you pick is remembered and follows you to your other devices.
 
 ### Fixed
+- **The password reset told a stranger whether your account existed.** Typing a
+  username into the reset form and guessing at the phrase gave a different
+  answer for "no such account" than for "wrong words" — and answered the first
+  one far faster — so anyone could work through a list of names and learn which
+  ones were real. Every way of getting the username or the phrase wrong now
+  gives the same answer, takes the same time, and says the same thing. If your
+  account is blocked or your phrase has already been spent, you are still told
+  so plainly — but only once you have typed the right phrase.
+- **Sign-in and account screens said "HTTP 401" instead of what went wrong.**
+  Wrong password, wrong authenticator code, an expired invite, a phrase that
+  did not match: all of them reached the screen as a bare status number,
+  because the messages the server was sending were being thrown away before
+  anyone could read them. The real reason now shows on the login screen, the
+  signup wizard, the account-migration screen, the security panel and the
+  password reset.
 - **A number in the tab title with nothing on screen to explain it.** Friend
   requests you had never opened counted toward the unread badge, but the only
   place they appeared was two clicks inside the friends panel — so the count
@@ -38,6 +53,20 @@ The engineering-level history (which slice shipped what) lives in
   you straight to the requests instead of to the add form.
 
 ### Changed
+- **Changing a security setting now signs your other devices out.** Replacing
+  your authenticator app, adding or removing a passkey, or generating a fresh
+  recovery phrase used to leave every other signed-in device exactly where it
+  was — including anyone else's, which is usually the reason you were changing
+  it. Those actions now end every other session, the way changing your password
+  already did. The device you are using stays signed in, and setting up
+  two-factor for the first time does not sign anything out.
+- **New servers now refuse unsigned channel keys out of the box.** The check
+  that stops a server handing out a key it made up itself has been available
+  since the signed-key work landed, but it had to be switched on by hand, so a
+  freshly installed chalk went without it until someone remembered. A new
+  install now has it on from the start. Existing servers are untouched:
+  upgrading keeps your current setting, and `chalkctl wrapsig status` still
+  tells you when it is safe to turn on.
 - **Picking a group for a new channel now offers the ones you already have.**
   The group field was a plain text box, and the groups already in your roster
   only showed up in the browser's own dropdown — an unstyled grey box that

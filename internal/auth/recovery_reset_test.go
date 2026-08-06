@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -188,9 +189,112 @@ func TestRecoveryResetRevokesSessions(t *testing.T) {
 	}
 }
 
-// TestRecoveryLoginRefusedForEnrolledAccounts pins the retired path: under the
-// hard cutover the phrase alone no longer mints a session.
-func TestRecoveryLoginRefusedForEnrolledAccounts(t *testing.T) {
+// ---- 81-7: the phrase gate answers with one voice -----------------------
+
+// TestRecoveryResetResponsesAreIndistinguishable is the regression test for
+// the remaining half of L-01. Four ways to fail before the phrase verifies --
+// no such account, no code on file, a spent code, the wrong words -- must be
+// one answer, byte for byte. Anything else lets an anonymous caller ask "does
+// this username exist?" and get a reply.
+func TestRecoveryResetResponsesAreIndistinguishable(t *testing.T) {
+	pool, st := openClaimTestDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	dropResetUser(t, ctx, pool)
+	t.Cleanup(func() {
+		c, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		dropResetUser(t, c, pool)
+	})
+
+	srv, _ := startResetTestServer(t, st)
+	signupResetUser(t, srv.URL)
+
+	user, err := st.GetUserByUsername(ctx, resetTestUser)
+	if err != nil {
+		t.Fatalf("GetUserByUsername: %v", err)
+	}
+
+	// Valid-shape but wrong words. They must pass the BIP-39 checksum, or the
+	// shape check answers 400 bad_phrase before the handler looks anything up
+	// -- which is that check doing its job, not the path under test.
+	wrong, err := auth.GenerateRecoveryWords()
+	if err != nil {
+		t.Fatalf("GenerateRecoveryWords: %v", err)
+	}
+
+	type probe struct {
+		name   string
+		setup  func()
+		req    resetReq
+		status int
+		body   []byte
+	}
+	probes := []probe{
+		{
+			name: "no such account",
+			req:  resetReq{username: "doesnotexist_xyz", words: wrong},
+		},
+		{
+			name: "wrong phrase",
+			req:  resetReq{words: wrong},
+		},
+		{
+			name: "no recovery code on file",
+			setup: func() {
+				if _, err := pool.Exec(ctx,
+					`DELETE FROM recovery_codes WHERE user_id = $1`, user.ID); err != nil {
+					t.Fatalf("delete recovery code: %v", err)
+				}
+			},
+			req: resetReq{words: wrong},
+		},
+		{
+			name: "code already spent",
+			setup: func() {
+				if err := st.SetRecoveryCode(ctx, user.ID, bytes.Repeat([]byte{1}, 48)); err != nil {
+					t.Fatalf("SetRecoveryCode: %v", err)
+				}
+				if _, err := pool.Exec(ctx,
+					`UPDATE recovery_codes SET used_at = now() WHERE user_id = $1`,
+					user.ID); err != nil {
+					t.Fatalf("mark code used: %v", err)
+				}
+			},
+			req: resetReq{words: wrong},
+		},
+	}
+
+	for i := range probes {
+		if probes[i].setup != nil {
+			probes[i].setup()
+		}
+		probes[i].status, probes[i].body = postResetRaw(t, srv.URL, probes[i].req)
+		if probes[i].status != http.StatusUnauthorized {
+			t.Fatalf("%s = %d, want 401 (a 429 here means the per-IP recovery"+
+				" budget is tighter than this test's request count)",
+				probes[i].name, probes[i].status)
+		}
+	}
+	for _, p := range probes[1:] {
+		if p.status != probes[0].status || !bytes.Equal(p.body, probes[0].body) {
+			t.Errorf("%q answers %d %s but %q answers %d %s; the two must be"+
+				" indistinguishable or the difference is an account oracle",
+				probes[0].name, probes[0].status, probes[0].body,
+				p.name, p.status, p.body)
+		}
+	}
+	if !bytes.Contains(probes[0].body, []byte(`"recovery_failed"`)) {
+		t.Errorf("merged failure body = %s, want code recovery_failed", probes[0].body)
+	}
+}
+
+// TestRecoveryResetSpentPhraseNeedsTheRightWords covers the deliberate
+// asymmetry: "already used" is only worth saying to someone who proved they
+// hold the phrase. Answering it to anyone who guessed the username is how the
+// old handler leaked.
+func TestRecoveryResetSpentPhraseNeedsTheRightWords(t *testing.T) {
 	pool, st := openClaimTestDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -205,22 +309,116 @@ func TestRecoveryLoginRefusedForEnrolledAccounts(t *testing.T) {
 	srv, _ := startResetTestServer(t, st)
 	words, _ := signupResetUser(t, srv.URL)
 
-	body, _ := json.Marshal(map[string]any{
-		"username": resetTestUser,
-		"words":    words,
-	})
-	resp, err := http.Post(srv.URL+"/api/auth/recovery",
-		"application/json", bytes.NewReader(body))
+	user, err := st.GetUserByUsername(ctx, resetTestUser)
 	if err != nil {
-		t.Fatalf("recovery POST: %v", err)
+		t.Fatalf("GetUserByUsername: %v", err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("phrase-only recovery = %d, want 409 (reset required)", resp.StatusCode)
+	if _, err := pool.Exec(ctx,
+		`UPDATE recovery_codes SET used_at = now() WHERE user_id = $1`, user.ID); err != nil {
+		t.Fatalf("mark code used: %v", err)
 	}
-	eb, _ := decodeError(resp.Body)
-	if eb.Error.Code != "auth_reset_required" {
-		t.Errorf("error code = %q, want auth_reset_required", eb.Error.Code)
+
+	wrong, err := auth.GenerateRecoveryWords()
+	if err != nil {
+		t.Fatalf("GenerateRecoveryWords: %v", err)
+	}
+	if res := postReset(t, srv.URL, resetReq{words: wrong}); res.code != "recovery_failed" {
+		t.Errorf("spent code + wrong words = %d %q, want 401 recovery_failed",
+			res.status, res.code)
+	}
+	res := postReset(t, srv.URL, resetReq{words: words, resetTOTP: true})
+	if res.status != http.StatusUnauthorized || res.code != "code_used" {
+		t.Errorf("spent code + the right words = %d %q, want 401 code_used --"+
+			" the owner of a spent phrase should be told so", res.status, res.code)
+	}
+}
+
+// TestRecoveryResetTellsAModeratedOwner pins the reordering. Blocked and
+// deleted used to be answered before the phrase was checked, so 403/410 came
+// back only for usernames that exist. Now a stranger gets the merged 401 and
+// only the account's owner is told -- and being told must not burn the phrase.
+func TestRecoveryResetTellsAModeratedOwner(t *testing.T) {
+	pool, st := openClaimTestDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	dropResetUser(t, ctx, pool)
+	t.Cleanup(func() {
+		c, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		dropResetUser(t, c, pool)
+	})
+
+	srv, _ := startResetTestServer(t, st)
+	words, _ := signupResetUser(t, srv.URL)
+
+	if _, err := pool.Exec(ctx,
+		`UPDATE users SET blocked_at = now() WHERE username = $1`, resetTestUser); err != nil {
+		t.Fatalf("block user: %v", err)
+	}
+
+	wrong, err := auth.GenerateRecoveryWords()
+	if err != nil {
+		t.Fatalf("GenerateRecoveryWords: %v", err)
+	}
+	if res := postReset(t, srv.URL, resetReq{words: wrong}); res.code != "recovery_failed" {
+		t.Errorf("blocked account + wrong words = %d %q, want 401 recovery_failed"+
+			" -- moderation state must not be readable without the phrase",
+			res.status, res.code)
+	}
+
+	res := postReset(t, srv.URL, resetReq{words: words, resetTOTP: true})
+	if res.status != http.StatusForbidden || res.code != "user_blocked" {
+		t.Fatalf("blocked account + the right words = %d %q, want 403 user_blocked",
+			res.status, res.code)
+	}
+	var usedAt *time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT rc.used_at FROM recovery_codes rc JOIN users u ON u.id = rc.user_id
+		  WHERE u.username = $1`, resetTestUser).Scan(&usedAt); err != nil {
+		t.Fatalf("read used_at: %v", err)
+	}
+	if usedAt != nil {
+		t.Error("refusing a blocked account consumed its recovery phrase")
+	}
+}
+
+// TestRecoveryResetUnknownUserStillHashes is a lower bound, never an equality:
+// scheduler noise and the two-slot Argon2 semaphore make timings unstable, but
+// the gap this closes is three orders of magnitude. A handler that skipped the
+// hash for an unknown username returned in well under a millisecond.
+func TestRecoveryResetUnknownUserStillHashes(t *testing.T) {
+	_, st := openClaimTestDB(t)
+
+	srv, _ := startResetTestServer(t, st)
+	wrong, err := auth.GenerateRecoveryWords()
+	if err != nil {
+		t.Fatalf("GenerateRecoveryWords: %v", err)
+	}
+
+	start := time.Now()
+	status, _ := postResetRaw(t, srv.URL, resetReq{
+		username: "doesnotexist_xyz", words: wrong,
+	})
+	elapsed := time.Since(start)
+	if status != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", status)
+	}
+	if elapsed < 10*time.Millisecond {
+		t.Errorf("an unknown username answered in %v; a real 64 MiB Argon2 pass"+
+			" cannot finish that fast, so the decoy verify was skipped", elapsed)
+	}
+}
+
+// TestRecoveryResetRejectsBadPhraseShape: a phrase that is not 24 valid BIP-39
+// words is refused on its shape alone, before any lookup. That answer is a
+// function of what was typed, so it keeps a code of its own -- and needs no
+// database.
+func TestRecoveryResetRejectsBadPhraseShape(t *testing.T) {
+	srv, _ := startResetTestServer(t, &store.Store{}) // never reached
+	res := postReset(t, srv.URL, resetReq{words: []string{"only", "three", "words"}})
+	if res.status != http.StatusBadRequest || res.code != "bad_phrase" {
+		t.Errorf("three-word phrase = %d %q, want 400 bad_phrase", res.status, res.code)
 	}
 }
 
@@ -334,9 +532,51 @@ func signupResetUser(t *testing.T, baseURL string) (words []string, secret []byt
 }
 
 type resetReq struct {
+	username  string // defaults to resetTestUser
 	words     []string
 	code      string
 	resetTOTP bool
+}
+
+// resetBody builds the /reset-auth request body. The new-password fields are
+// fixed dummies: every test here is about the phrase gate, which runs long
+// before anything looks at them.
+func resetBody(req resetReq) []byte {
+	name := req.username
+	if name == "" {
+		name = resetTestUser
+	}
+	body, _ := json.Marshal(map[string]any{
+		"username":       name,
+		"words":          req.words,
+		"totp_code":      req.code,
+		"reset_totp":     req.resetTOTP,
+		"auth_proof_b64": base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32)),
+		"salt_b64":       base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{8}, 16)),
+		"kdf_alg":        1,
+		"kdf_mem_kib":    auth.Argon2MemFloorKiB(),
+		"kdf_iters":      auth.Argon2ItersFloor(),
+		"kdf_par":        auth.Argon2ParFloor(),
+	})
+	return body
+}
+
+// postResetRaw returns the status and the response bytes verbatim. The
+// indistinguishability test compares those bytes, so nothing may decode them
+// on the way through.
+func postResetRaw(t *testing.T, baseURL string, req resetReq) (int, []byte) {
+	t.Helper()
+	resp, err := http.Post(baseURL+"/api/auth/recovery/reset-auth",
+		"application/json", bytes.NewReader(resetBody(req)))
+	if err != nil {
+		t.Fatalf("reset-auth POST: %v", err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read reset-auth body: %v", err)
+	}
+	return resp.StatusCode, raw
 }
 
 type resetResult struct {
@@ -349,20 +589,8 @@ type resetResult struct {
 
 func postReset(t *testing.T, baseURL string, req resetReq) resetResult {
 	t.Helper()
-	body, _ := json.Marshal(map[string]any{
-		"username":       resetTestUser,
-		"words":          req.words,
-		"totp_code":      req.code,
-		"reset_totp":     req.resetTOTP,
-		"auth_proof_b64": base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{9}, 32)),
-		"salt_b64":       base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{8}, 16)),
-		"kdf_alg":        1,
-		"kdf_mem_kib":    auth.Argon2MemFloorKiB(),
-		"kdf_iters":      auth.Argon2ItersFloor(),
-		"kdf_par":        auth.Argon2ParFloor(),
-	})
 	resp, err := http.Post(baseURL+"/api/auth/recovery/reset-auth",
-		"application/json", bytes.NewReader(body))
+		"application/json", bytes.NewReader(resetBody(req)))
 	if err != nil {
 		t.Fatalf("reset-auth POST: %v", err)
 	}

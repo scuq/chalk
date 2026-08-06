@@ -15,7 +15,7 @@
 //	   kdf_mem_kib, kdf_iters, kdf_par, reset_totp, totp_code}
 //	  Forgot-password path, gated by the RECOVERY phrase (the auth-only
 //	  phrase; NOT the encryption phrase, which never leaves the client).
-//	  Verifies + consumes the recovery code exactly like /api/auth/recovery,
+//	  Verifies + consumes the recovery code,
 //	  installs the new password, optionally clears TOTP (lost-authenticator
 //	  case: reset_totp=true forces re-enrollment via the minted session),
 //	  deletes the now-stale password seed wraps, revokes every existing
@@ -223,7 +223,10 @@ func (d *HTTPDeps) handleRecoveryResetAuth(w http.ResponseWriter, r *http.Reques
 		words = NormalizeRecoveryWords(req.Phrase)
 	}
 	if err := VerifyRecoveryWords(words); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_words", err.Error())
+		// Shape or checksum, both computable in the browser without ever
+		// asking us. Says something about what was typed, nothing about
+		// whether the account exists -- so it keeps its own code.
+		writeError(w, http.StatusBadRequest, "bad_phrase", err.Error())
 		return
 	}
 	proofHash, salt, ok := decodeNewPassword(w, req.newPasswordFields)
@@ -231,46 +234,89 @@ func (d *HTTPDeps) handleRecoveryResetAuth(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	user, err := d.Store.GetUserByUsername(r.Context(), username)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			writeError(w, http.StatusUnauthorized, "unknown_user",
-				"that account doesn't exist, or has no recovery code")
+	// 81-7, the rule this whole block exists to enforce: BEFORE the phrase
+	// verifies, say exactly one thing; AFTER it verifies, be as helpful as
+	// possible. Producing a matching 24-word phrase proves ownership, so
+	// nothing disclosed past that point is an enumeration oracle -- and
+	// everything before it is.
+	//
+	// So resolve the stored hash or a decoy, then verify unconditionally.
+	// Every account-dependent failure -- no such user, no code row, a spent
+	// code, the wrong words -- then costs one identical Argon2 pass, queues on
+	// the same two-slot semaphore, and answers with the same bytes.
+	storedHash := decoyRecoveryHash(username)
+	var (
+		user     store.User
+		found    bool
+		codeUsed bool
+		reason   = "unknown_user"
+	)
+	if u, uerr := d.Store.GetUserByUsername(r.Context(), username); uerr == nil {
+		user, found = u, true
+		reason = "no_code"
+		rec, rerr := d.Store.GetRecoveryCode(r.Context(), u.ID)
+		switch {
+		case rerr == nil:
+			// A row whose hash is the wrong width would escape
+			// VerifyRecoveryCodeHash's length check before it takes a slot,
+			// which is the fast path all over again. Treat it as absent.
+			if len(rec.Hash) == argonSaltLen+argonKeyLen {
+				storedHash = rec.Hash
+				reason = "mismatch"
+			}
+			codeUsed = rec.HasBeenUsed()
+		case errors.Is(rerr, store.ErrNotFound):
+			// Keep the decoy.
+		default:
+			d.Logger.Printf("recovery/reset-auth: GetRecoveryCode: %v", rerr)
+			writeError(w, http.StatusInternalServerError, "lookup_failed", "internal error")
 			return
 		}
-		d.Logger.Printf("recovery/reset-auth: GetUserByUsername: %v", err)
+	} else if !errors.Is(uerr, store.ErrNotFound) {
+		d.Logger.Printf("recovery/reset-auth: GetUserByUsername: %v", uerr)
 		writeError(w, http.StatusInternalServerError, "lookup_failed", "internal error")
-		return
-	}
-	if !user.DeletedAt.IsZero() {
-		writeError(w, http.StatusGone, "user_deleted", "this account has been deleted")
-		return
-	}
-	if !user.BlockedAt.IsZero() {
-		writeError(w, http.StatusForbidden, "user_blocked",
-			"this account has been blocked by an administrator")
 		return
 	}
 
-	rec, err := d.Store.GetRecoveryCode(r.Context(), user.ID)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			writeError(w, http.StatusUnauthorized, "unknown_user",
-				"that account doesn't exist, or has no recovery code")
-			return
+	// Its own statement on purpose. Folded into the condition below, Go's
+	// short-circuit would skip the hash whenever the user does not exist --
+	// which is precisely the oracle being closed here, and it would read as
+	// correct.
+	phraseOK := VerifyRecoveryCodeHash(storedHash, words) == nil
+	if !found || !phraseOK {
+		if found && codeUsed && reason == "mismatch" {
+			reason = "used"
 		}
-		d.Logger.Printf("recovery/reset-auth: GetRecoveryCode: %v", err)
-		writeError(w, http.StatusInternalServerError, "lookup_failed", "internal error")
+		// The distinctions leave the response but stay in the log, where the
+		// operator diagnosing a locked-out user can still read them.
+		ip := clientIPString(r)
+		d.secLogThrottled("recovery_fail|"+ip,
+			"recovery_failed username=%q ip=%s reason=%s", username, ip, reason)
+		writeError(w, http.StatusUnauthorized, "recovery_failed",
+			"that username and recovery phrase don't match an account we can reset")
 		return
 	}
-	if rec.HasBeenUsed() {
+
+	// Past the fence. The caller holds this account's phrase, so from here on
+	// the answers are specific.
+	if codeUsed {
 		writeError(w, http.StatusUnauthorized, "code_used",
 			"that recovery code was already used; contact the admin if locked out")
 		return
 	}
-	if err := VerifyRecoveryCodeHash(rec.Hash, words); err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid_words",
-			"the recovery words don't match this account")
+	// 09d-1: recovery must not bypass moderation. These checks sit after the
+	// verify rather than before it (where they leaked existence: 410/403 came
+	// back only for a username that exists), and before MarkRecoveryCodeUsed
+	// below, so refusing a moderated account does not burn their phrase.
+	if !user.DeletedAt.IsZero() {
+		d.secLog("recovery_deleted_account username=%q ip=%s", username, clientIPString(r))
+		writeError(w, http.StatusGone, "user_deleted", "this account has been deleted")
+		return
+	}
+	if !user.BlockedAt.IsZero() {
+		d.secLog("recovery_blocked_account username=%q ip=%s", username, clientIPString(r))
+		writeError(w, http.StatusForbidden, "user_blocked",
+			"this account has been blocked by an administrator")
 		return
 	}
 

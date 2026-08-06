@@ -225,10 +225,12 @@ deliberately so — **31-13 made recovery a reset, not a login.**
   `POST /api/auth/recovery/reset-auth`, together with a **live `totp_code`** —
   or `reset_totp` when the authenticator is what was lost, which clears TOTP for
   re-enrollment through the session the reset mints.
-- **Phrase-alone `POST /api/auth/recovery` is 409 `auth_reset_required`** for
+- **Phrase-alone `POST /api/auth/recovery` was 409 `auth_reset_required`** for
   enrolled accounts. The old behaviour signed the user in from the phrase alone,
   which bypassed the second factor entirely *and* left them logged in but still
-  unable to change the password they had forgotten.
+  unable to change the password they had forgotten. 81-7 deleted the endpoint
+  outright: with the cutover complete nothing reached it, and its 409 disclosed
+  that a username existed and was enrolled.
 - **The reset purges the password seed wraps.** Only the identity gate's
   `maybeUploadSeedWrap` re-creates them, from the encryption phrase — the new
   password cannot wrap entropy the resetting client does not hold.
