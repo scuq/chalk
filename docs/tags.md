@@ -61,6 +61,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #chalkctl       72 73 82  internal/chalkctl/ cmd/chalkctl/ test/integration/backup_restore_test.go docs/deployment.md docs/phases/PHASE-72-BACKUP.md docs/phases/PHASE-73-METRICS.md
 #ephemeral      80        internal/chalkctl/ migrations/ internal/store/ internal/server/ internal/auth/ internal/proto/ internal/config/ web/src/crypto/ web/src/components/ web/src/chat/
 #hardening      81        internal/auth/ internal/ratelimit/ internal/store/ internal/chalkctl/ docs/threat-model.md docs/phases/PHASE-81-SECAUDIT.md
+#msgsig         -         docs/phases/PHASE-83-MSGSIG.md docs/threat-model.md
 #signedwrap     82        web/src/crypto/ web/src/components/ web/src/chat/keyprovenance.ts web/src/state/ internal/proto/ internal/server/ internal/store/ internal/config/ internal/chalkctl/ internal/auth/join_http.go docs/phases/PHASE-82-SIGNEDWRAP.md docs/design/crypto-agility.md docs/threat-model.md
 #oplog          85        internal/config/oplog.go internal/server/oplog.go internal/auth/security_log.go internal/chalkctl/secret.go internal/chalkctl/templates/Caddyfile.tmpl cmd/chalkd/main.go docs/deployment.md docs/phases/PHASE-85-OPLOG.md
 #pinbackup      84        web/src/crypto/pin-backup.ts web/src/crypto/pin-sync.ts web/src/crypto/idb.ts web/src/components/ProfilePanel.tsx web/src/components/App.tsx web/src/settings-nav.ts web/src/state/types.ts docs/phases/PHASE-84-PINBACKUP.md docs/threat-model.md
@@ -78,7 +79,7 @@ Phase numbers that appear in the source but are not claimed above. Left here
 rather than guessed at, so the legend stays trustworthy; move one into a tag
 line when its topic is clear.
 
-    (none — 25 through 91 are all claimed)
+    (none — 25 through 92 are all claimed)
 
 Phases below 25 predate the tagging convention and carry no `// NN-n:` comments
 to find. They are recorded in `docs/phases/PHASE-00-29-FOUNDATION.md` instead —

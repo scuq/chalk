@@ -74,7 +74,7 @@ as-built rather than a contemporaneous plan.
 | 80 | ephemeral voice rooms, guest links | [PHASE-80-EPHEMERAL.md](phases/PHASE-80-EPHEMERAL.md) |
 | 81 | security audit and remediation | [PHASE-81-SECAUDIT.md](phases/PHASE-81-SECAUDIT.md) |
 | 82 | signed channel-key wraps | [PHASE-82-SIGNEDWRAP.md](phases/PHASE-82-SIGNEDWRAP.md) |
-| 83 | signed message envelope — **planned, not started** | scoped in [PHASE-81-SECAUDIT.md](phases/PHASE-81-SECAUDIT.md) and [threat-model.md](threat-model.md) |
+| 83 | signed message envelope + channel-state transcript — **planned, not started** | [PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md) |
 | 84 | identity-pin backup | [PHASE-84-PINBACKUP.md](phases/PHASE-84-PINBACKUP.md) |
 | 85 | operational logging | [PHASE-85-OPLOG.md](phases/PHASE-85-OPLOG.md) |
 | 86 | ties: answering without quoting — **planned, not started** | [PHASE-86-TIES.md](phases/PHASE-86-TIES.md) |
@@ -696,10 +696,11 @@ with TOFU identity pinning, a self-healing re-sign sweep and `chalkctl wrapsig`
 logging — security events, opt-in connection snapshot, slow requests, Caddy
 access log (85).
 
-**Not started.** 65 (web push, planned in `PHASE-65-PUSH.md`) and 83 (signed
-message envelope plus authenticated channel-state transcript, scoped in
-`PHASE-81-SECAUDIT.md`). CLAUDE.md's *Current state / open items* is the
-authority on what is open; this log only records what shipped.
+**Not started.** 65 (web push), 83 (signed message envelope plus authenticated
+channel-state transcript), 86 (ties), 87 (message reminders) and 90 (a local
+idle agent) — each planned in its own `PHASE-*.md`, and each marked
+*planned, not started* in the index above. CLAUDE.md's *Current state / open
+items* is the authority on what is open; this log only records what shipped.
 
 ## Phase numbering note
 
