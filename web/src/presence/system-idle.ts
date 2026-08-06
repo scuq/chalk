@@ -34,12 +34,14 @@ interface IdleDetectorCtor {
  * 60s is the API's *floor* -- start() throws RangeError below it -- not its
  * value, and running at the floor is what made away arrive far too fast: one
  * minute without touching anything and the dot flipped, while the in-page rules
- * next door wait two minutes for a hidden tab and ten for an unfocused one. The
- * system signal is the strongest evidence of absence chalk has, but a minute of
- * it is evidence of reading, not of leaving.
+ * next door wait minutes for a hidden tab and far longer for an unfocused one.
+ * The system signal is the strongest evidence of absence chalk has, but a minute
+ * of it is evidence of reading, not of leaving.
  *
- * Matched to IDLE_AFTER_UNFOCUSED_MS so both paths agree on how long is long
- * enough. Nothing else needs damping alongside it: the return edge is instant
+ * Ten minutes sits below IDLE_AFTER_UNFOCUSED_MS deliberately: this signal knows
+ * about input to every app, so it can be trusted sooner than a rule that can
+ * only see the page. Nothing else needs damping alongside it: the return edge
+ * is instant
  * (userState goes active on the first input anywhere), and a locked screen
  * still reports immediately through screenState, which is the one signal that
  * deserves no grace at all.

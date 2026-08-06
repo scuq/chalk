@@ -22,6 +22,11 @@ The engineering-level history (which slice shipped what) lives in
   you straight to the requests instead of to the add form.
 
 ### Changed
+- **A backgrounded or unfocused chalk stays online for longer.** Hiding the tab
+  now takes just under six minutes to show you as away instead of two, and
+  leaving chalk on screen while you work in another window takes 23 minutes of
+  no activity instead of ten. Returning to the tab or touching chalk clears it
+  instantly as before.
 - **Away no longer arrives after a single quiet minute.** Where chalk can watch
   system-wide idleness — Chrome, with the permission granted, which is how away
   detection is meant to run — a minute of not touching the keyboard or mouse was
