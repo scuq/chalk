@@ -10,7 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## v0.7.6 — 6 August 2026 — Account security and the roster at a glance
+
+Same contents as v0.7.5, plus a fix to the release pipeline itself. v0.7.5 was
+tagged but never built — GitHub dropped the trigger that starts a release, so
+that version has no image and no binaries behind it. Install this one; every
+change listed under v0.7.5 below is in it.
+
+---
+
 ## v0.7.5 — 6 August 2026 — Account security and the roster at a glance
+
+*Tagged but never published — see v0.7.6 above.*
 
 ### Added
 - **Rest the pointer on a friend to see who they are and when they were last
