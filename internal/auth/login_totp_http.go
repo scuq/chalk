@@ -242,10 +242,24 @@ func (d *HTTPDeps) handleTOTPConfirm(w http.ResponseWriter, r *http.Request, su 
 		writeError(w, http.StatusUnauthorized, "invalid_totp", "incorrect authentication code")
 		return
 	}
+	// Read before the promotion: afterwards everyone has a confirmed secret and
+	// the distinction is gone.
+	replacing := false
+	if ua, uerr := d.Store.GetUserAuth(r.Context(), su.UserID); uerr == nil {
+		replacing = ua.TOTPConfirmed()
+	}
 	if err := d.Store.PromotePendingTOTP(r.Context(), su.UserID); err != nil {
 		d.Logger.Printf("totp/confirm: promote: %v", err)
 		writeError(w, http.StatusInternalServerError, "confirm_failed", "internal error")
 		return
+	}
+	// 81-8: only a REPLACEMENT evicts other sessions. This is the same line
+	// requireStepUp draws -- initial enrollment (the migration wizard, or
+	// re-enrollment through the session a recovery reset just minted) is
+	// someone gaining a second factor, not someone suspecting a thief, and
+	// signing them out mid-wizard would be a lockout dressed as hardening.
+	if replacing {
+		d.revokeOtherSessions(r, "totp/confirm", su.UserID, "authenticator replaced")
 	}
 	writeJSON(w, http.StatusOK, totpConfirmResponse{Confirmed: true})
 }

@@ -82,6 +82,43 @@ func (d *HTTPDeps) requireStepUp(
 	return d.verifyLiveTOTP(w, r, logPrefix, userID, strings.TrimSpace(f.TOTPCode))
 }
 
+// revokeOtherSessions signs every other device out after a factor changed,
+// and drops the matching live WS connections.
+//
+// 81-8 applies this uniformly to all four step-up-gated rotations rather than
+// picking between them. 81-1 already did it for password change and recovery
+// reset; leaving the others alone meant a user who replaced their
+// authenticator because they suspected a thief left the thief signed in. Every
+// caller here is gated on the current password plus a live code, so "a factor
+// changed, so other devices sign in again" is a rule a user can predict --
+// which is worth more than saving one phone re-login after adding a passkey.
+//
+// Best-effort by design: the rotation itself has already been committed, and
+// failing the request afterwards would tell the user their change did not land
+// when it did. Logged instead.
+func (d *HTTPDeps) revokeOtherSessions(
+	r *http.Request,
+	logPrefix string,
+	userID uuid.UUID,
+	reason string,
+) {
+	keepToken, err := SessionTokenFromRequest(r)
+	if err != nil {
+		keepToken = nil // revoke everything rather than skip the revocation
+	}
+	if _, err := d.Store.DeleteSessionsForUserExcept(r.Context(), userID, keepToken); err != nil {
+		d.Logger.Printf("%s: revoke other sessions: %v", logPrefix, err)
+		return
+	}
+	// The hub tracks connections per user, so this also drops the caller's own
+	// socket; the SPA reconnects against its still-valid session.
+	if d.Kicker != nil {
+		d.Kicker.CloseConnsForUser(userID.String(), errors.New(reason))
+	}
+	d.secLog("factor_changed_sessions_revoked user=%s change=%s ip=%s",
+		userID, reason, clientIPString(r))
+}
+
 // verifyLiveTOTP checks one live second-factor code, consuming it against the
 // replay/lockout counters. Accounts without a confirmed secret pass through.
 // Writes the error response itself and returns false on failure.

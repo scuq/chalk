@@ -6,6 +6,7 @@ import (
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
@@ -309,5 +310,122 @@ func TestStepUpRequiredForAddPasskey(t *testing.T) {
 		eb, _ := decodeError(resp.Body)
 		t.Fatalf("passkeys/add/begin with step-up = %d (%s: %s)",
 			resp.StatusCode, eb.Error.Code, eb.Error.Message)
+	}
+}
+
+// ---- 81-8: a factor change signs the other devices out ------------------
+
+// TestFactorChangesSignOtherDevicesOut is the H-03 residual the audit
+// follow-up asked for. 81-1 revoked on password change and recovery reset;
+// the rotations behind step-up did not, so replacing an authenticator because
+// you suspect a thief left the thief signed in.
+func TestFactorChangesSignOtherDevicesOut(t *testing.T) {
+	e := setupStepUpEnv(t)
+	c := context.Background()
+	st := &store.Store{Pool: e.pool}
+
+	user, err := st.GetUserByUsername(c, e.username)
+	if err != nil {
+		t.Fatalf("GetUserByUsername: %v", err)
+	}
+	otherSession := func() store.Session {
+		t.Helper()
+		s, err := st.CreateSession(c, user.ID, "another device", nil)
+		if err != nil {
+			t.Fatalf("CreateSession: %v", err)
+		}
+		return s
+	}
+	assertRevoked := func(what string, s store.Session) {
+		t.Helper()
+		if _, err := st.GetSession(c, s.Token); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("%s left another device signed in: GetSession = %v, want ErrNotFound", what, err)
+		}
+	}
+
+	// ---- rotating the recovery phrase ----------------------------------
+	stolen := otherSession()
+	var regenerated struct {
+		RecoveryWords []string `json:"recovery_words"`
+	}
+	e.postJSON(t, "/api/auth/recovery/regenerate", map[string]any{
+		"auth_proof_b64": e.proofB64,
+		"totp_code":      e.liveCode(0),
+	}, &regenerated)
+	assertRevoked("rotating the recovery phrase", stolen)
+
+	// The caller keeps its own session -- it just proved the password and a
+	// live code, and signing it out would be theatre.
+	resp, err := e.client.Get(e.srv.URL + "/api/auth/me")
+	if err != nil {
+		t.Fatalf("GET /api/auth/me: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("the caller's own session did not survive the rotation: /api/auth/me = %d",
+			resp.StatusCode)
+	}
+
+	// ---- replacing the authenticator -----------------------------------
+	stolen = otherSession()
+	var enrolled struct {
+		SecretB32 string `json:"secret_b32"`
+	}
+	e.postJSON(t, "/api/auth/totp/enroll", map[string]any{
+		"auth_proof_b64": e.proofB64,
+		"totp_code":      e.liveCode(1),
+	}, &enrolled)
+	fresh, err := base32.StdEncoding.WithPadding(base32.NoPadding).
+		DecodeString(enrolled.SecretB32)
+	if err != nil {
+		t.Fatalf("decode staged secret: %v", err)
+	}
+	e.postJSON(t, "/api/auth/totp/confirm", map[string]any{
+		"code": auth.TOTPCodeAt(fresh, time.Now()),
+	}, nil)
+	assertRevoked("replacing the authenticator", stolen)
+}
+
+// TestInitialTOTPEnrollmentKeepsOtherSessions is the other half of the rule.
+// Gaining a first second factor is not the "I think someone is in my account"
+// action, and it happens mid-wizard -- revoking there would read as a lockout.
+func TestInitialTOTPEnrollmentKeepsOtherSessions(t *testing.T) {
+	e := setupStepUpEnv(t)
+	c := context.Background()
+	st := &store.Store{Pool: e.pool}
+
+	if _, err := e.pool.Exec(c,
+		`UPDATE user_auth SET totp_secret_enc = NULL, totp_confirmed_at = NULL
+		  WHERE user_id = (SELECT id FROM users WHERE username = $1)`,
+		e.username,
+	); err != nil {
+		t.Fatalf("clear totp: %v", err)
+	}
+	user, err := st.GetUserByUsername(c, e.username)
+	if err != nil {
+		t.Fatalf("GetUserByUsername: %v", err)
+	}
+	other, err := st.CreateSession(c, user.ID, "another device", nil)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	var enrolled struct {
+		SecretB32 string `json:"secret_b32"`
+	}
+	e.postJSON(t, "/api/auth/totp/enroll", map[string]any{
+		"auth_proof_b64": e.proofB64,
+	}, &enrolled)
+	fresh, err := base32.StdEncoding.WithPadding(base32.NoPadding).
+		DecodeString(enrolled.SecretB32)
+	if err != nil {
+		t.Fatalf("decode staged secret: %v", err)
+	}
+	e.postJSON(t, "/api/auth/totp/confirm", map[string]any{
+		"code": auth.TOTPCodeAt(fresh, time.Now()),
+	}, nil)
+
+	if _, err := st.GetSession(c, other.Token); err != nil {
+		t.Errorf("first-time enrollment signed another device out: %v", err)
 	}
 }

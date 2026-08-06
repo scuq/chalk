@@ -221,6 +221,41 @@ func (s *Store) DeleteAllSessionsForUser(ctx context.Context, userID uuid.UUID) 
 	return tag.RowsAffected(), nil
 }
 
+// DeleteSessionsForUserExcept removes every session for the user apart from
+// keepToken, which is normally the caller's own. Pass a nil or empty keepToken
+// to revoke everything; that is DeleteAllSessionsForUser with an extra branch,
+// and callers who mean "everything" should use that instead.
+//
+// 81-8: the factor rotations (recovery phrase, TOTP, passkeys) call this after
+// they succeed. A user who replaces a factor is usually doing it because they
+// think someone else is in the account, and leaving that someone's session
+// alive is the one outcome the action was taken to prevent. The caller's own
+// session survives because it just proved the current password and a live code
+// to get here -- signing them out of the tab they are working in would be
+// theatre, not security.
+//
+// ChangePasswordAuth runs the same DELETE inline rather than calling this: it
+// has to happen inside that function's transaction, so the new credentials and
+// the revocation commit together or not at all. Here the rotation has already
+// been committed by the time this runs, so a separate statement is correct.
+//
+// Returns the number of sessions deleted.
+func (s *Store) DeleteSessionsForUserExcept(
+	ctx context.Context, userID uuid.UUID, keepToken []byte,
+) (int64, error) {
+	if len(keepToken) == 0 {
+		return s.DeleteAllSessionsForUser(ctx, userID)
+	}
+	tag, err := s.Pool.Exec(ctx,
+		`DELETE FROM sessions WHERE user_id = $1 AND token <> $2`,
+		userID, keepToken,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete other sessions: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // DeleteExpiredSessions removes sessions whose expires_at is in the
 // past or whose age exceeds SessionMaxLifetime (rows from before the
 // cap existed can carry an expires_at past their ceiling). Run

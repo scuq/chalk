@@ -249,6 +249,7 @@ func (d *HTTPDeps) handleAddPasskeyFinish(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	d.revokeOtherSessions(r, "passkeys/add/finish", su.UserID, "passkey added")
 	writeJSON(w, http.StatusOK, addPasskeyFinishResponse{Passkey: passkeyToDTO(pk)})
 }
 
@@ -299,6 +300,7 @@ func (d *HTTPDeps) handleDeletePasskey(w http.ResponseWriter, r *http.Request, s
 
 	switch err := d.Store.DeletePasskeyForUser(r.Context(), credID, su.UserID); {
 	case err == nil:
+		d.revokeOtherSessions(r, "passkeys/delete", su.UserID, "passkey removed")
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, "passkey_not_found",
