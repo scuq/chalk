@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.7.5 — 6 August 2026 — Account security and the roster at a glance
 
 ### Added
 - **Rest the pointer on a friend to see who they are and when they were last
