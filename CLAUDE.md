@@ -279,7 +279,7 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
 (user-facing). Latest release: v0.7.4 — keep this in step with the topmost
 `## vX.Y.Z` heading in `CHANGELOG.md`. Only what is NOT done belongs here.
 
-- Phase 91 is the newest work; `docs/phase-log.md` has the full history,
+- Phase 92 is the newest work; `docs/phase-log.md` has the full history,
   and the arcs named here are a sample, not the whole list. Among the complete
   ones: auth v2 (31), voice/video
   (30-1 … 30-8 plus the 41/44/47/48 mic, device and call-UI work), governance
@@ -338,7 +338,12 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   above the parking lot, the whole set in a sealed prefs blob so the server never
   learns a reminder exists, and no server code at all); the SFU seam (voice
   design Slice I) for rooms too large for a mesh; governance `set_config`
-  proposals. Federation is **not** a candidate — phase 88
+  proposals. The roster hover card's **device line** (92-3) is designed and
+  deliberately unbuilt: showing a friend which device you are online from
+  crosses a privacy line `AggregateUserState` currently draws for us, so it
+  needs an opt-in before it ships — the reasoning is in
+  `docs/phases/PHASE-92-HOVERCARD.md`, read it before building it. Federation
+  is **not** a candidate — phase 88
   (`docs/phases/PHASE-88-FEDERATION.md`) is a declined design, not a plan
   awaiting a builder, gated on 83 if it is ever reconsidered; read it before
   re-proposing the idea, since it also records what already works across

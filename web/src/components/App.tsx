@@ -2705,6 +2705,9 @@ export function App() {
             kind: "presence_set",
             userID: pp.user_id,
             state: pp.state,
+            // 92-2: the roster hover card's "last seen". Kept as sent; the
+            // card is what decides whether a given value is usable.
+            at: pp.at,
           });
         }
         break;
@@ -4938,6 +4941,7 @@ export function App() {
           activeID={state.activeChannelID}
           ownUserID={state.user?.id ?? null}
           presence={state.presence}
+          lastSeen={state.lastSeen}
           voiceRosters={state.voiceRosters}
           unread={state.unread}
           onSelect={(id) => {

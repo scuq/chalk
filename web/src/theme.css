@@ -7860,6 +7860,45 @@ body.chalk-resizing-y .chalk-composer-resizer {
   background: var(--chalk-bg-elev-2);
 }
 
+/* ---- roster hover card (92-1) ----
+   Same surface as the menu above it -- the two open on the same rows and
+   would look unrelated otherwise. pointer-events:none is load-bearing: the
+   card is drawn next to the row the cursor is on, and anything intercepting
+   the pointer there would both eat the click and flicker the card. */
+.chalk-friend-card {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  min-width: 150px;
+  max-width: 220px;
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  font-size: var(--chalk-size-small);
+  line-height: 1.5;
+}
+.chalk-friend-card-name {
+  font-weight: 600;
+  color: var(--chalk-fg);
+  overflow-wrap: anywhere;
+}
+.chalk-friend-card-state {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  color: var(--chalk-fg-dim);
+}
+.chalk-friend-card-seen,
+.chalk-friend-card-hint {
+  color: var(--chalk-fg-muted);
+}
+.chalk-friend-card-hint {
+  margin-top: var(--chalk-s1);
+  font-style: italic;
+}
+
 /* ============================================================
    Phase 9.7g: emoji picker
    ============================================================

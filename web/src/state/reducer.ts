@@ -2101,21 +2101,36 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         presence: { ...state.presence, [action.userID]: action.state },
+        // 92-2: only a usable timestamp is stored; anything else leaves the
+        // last known one alone. This is what makes "last seen" work at all
+        // for an offline friend: the server DELETES device_presence rows on
+        // disconnect (ClearDevicePresence), so the aggregate for someone who
+        // just left is a zero time.Time -- a large negative UnixMilli, not a
+        // missing field. Overwriting with it would throw away the last
+        // heartbeat we saw while they were online, which is the answer.
+        lastSeen:
+          action.at === undefined || action.at <= 0
+            ? state.lastSeen
+            : { ...state.lastSeen, [action.userID]: action.at },
       };
 
     case "presence_clear": {
       // Drop this user_id from the presence map. Used when an
       // ex-friend should no longer have presence tracked.
-      if (!(action.userID in state.presence)) return state;
+      if (!(action.userID in state.presence) && !(action.userID in state.lastSeen)) {
+        return state;
+      }
       const next: typeof state.presence = { ...state.presence };
       delete next[action.userID];
-      return { ...state, presence: next };
+      const nextSeen: typeof state.lastSeen = { ...state.lastSeen };
+      delete nextSeen[action.userID];
+      return { ...state, presence: next, lastSeen: nextSeen };
     }
 
     case "presence_reset":
       // Used on WS disconnect / re-connect: clear all known presence
       // so the next subscribe round-trip rebuilds the map cleanly.
-      return { ...state, presence: {} };
+      return { ...state, presence: {}, lastSeen: {} };
 
     // ---- Phase 9.6j: manual presence override ---------------------------
 

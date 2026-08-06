@@ -315,6 +315,12 @@ export const initialFriendsPanelState: FriendsPanelState = {
 // in the UI.
 export type PresenceMap = Record<string, string>;
 
+// 92-2: last-activity timestamps (unix-millis), keyed by the same user_ids
+// PresenceMap uses and written by the same three actions. A sibling map rather
+// than a widened PresenceMap value: every other reader of presence wants the
+// state string alone, and only the roster hover card wants the time.
+export type LastSeenMap = Record<string, number>;
+
 // ---- Reducer state -------------------------------------------------------
 
 // Phase 9.7a: typed view over the server's opaque prefs JSON.
@@ -711,6 +717,10 @@ export interface AppState {
   dmPendingForUserID: string | null;
   // Phase 9.6c: per-friend presence state. Keys are user_ids.
   presence: PresenceMap;
+  // 92-2: when each of those friends was last active. Keyed like `presence`
+  // and cleared with it; a friend can be in `presence` and missing here if
+  // their push carried no usable timestamp.
+  lastSeen: LastSeenMap;
   // Phase 9.6j: presence override for the local user.
   // "auto" tracks document visibility; "online" / "away"
   // force the state. The SPA sends presence_update whenever
@@ -1002,6 +1012,8 @@ export const initialState: AppState = {
   dmPendingForUserID: null,
   // Phase 9.6c:
   presence: {},
+  // 92-2:
+  lastSeen: {},
   // Phase 9.6j:
   myPresenceMode: "auto",
   myEffectivePresence: "offline",
@@ -1252,7 +1264,9 @@ export type Action =
   | { kind: "dm_pending_set"; userID: string }
   | { kind: "dm_pending_clear" }
   // ---- Phase 9.6c: presence ---------------------------------------------
-  | { kind: "presence_set"; userID: string; state: string }
+  // 92-2: `at` is the push's last-activity stamp, absent when the caller
+  // has none (the reducer then leaves lastSeen untouched for that user).
+  | { kind: "presence_set"; userID: string; state: string; at?: number }
   | { kind: "presence_clear"; userID: string }
   | { kind: "presence_reset" }
   // ---- Phase 9.6j: manual presence override ---------------------------

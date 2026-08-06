@@ -13,6 +13,14 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **Rest the pointer on a friend to see who they are and when they were last
+  around.** The roster's coloured dot says whether someone is there, but never
+  since when — an away dot looks the same after two minutes and after four
+  hours. Hovering a friend for a moment now brings up a small card with their
+  name in their own colour, whether they are online, away or offline, and
+  "last seen 20m ago" when they are not online. It replaces the plain browser
+  tooltip that used to appear there, and it shows for keyboard users too when
+  a roster row is tabbed to.
 - **Drag the line above the message box to make it bigger.** The box could
   always be resized by its bottom-right corner, but that grip is easy to miss
   and the size it set was forgotten on the next reload. The divider between the
