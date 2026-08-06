@@ -22,6 +22,12 @@ The engineering-level history (which slice shipped what) lives in
   you straight to the requests instead of to the add form.
 
 ### Changed
+- **Picking a group for a new channel now offers the ones you already have.**
+  The group field was a plain text box, and the groups already in your roster
+  only showed up in the browser's own dropdown — an unstyled grey box that
+  looked nothing like the rest of chalk, and easy to type straight past into a
+  second "general". It is now a list of your existing groups with a "+ new
+  group…" entry at the bottom for when you actually want a new one.
 - **A backgrounded or unfocused chalk stays online for longer.** Hiding the tab
   now takes just under six minutes to show you as away instead of two, and
   leaving chalk on screen while you work in another window takes 23 minutes of

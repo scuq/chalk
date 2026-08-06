@@ -42,10 +42,12 @@ override. The server stores a hint, the client owns the view.
 - A collapsed group shows a rolled-up unread dot (mention variant wins)
   aggregated from its children, respecting the voice-channel
   `countsAsUnread` rule — collapsing must not become an accidental mute.
-- Anti-fragmentation: the create modal and the override UI offer a datalist
-  of group names already visible in the user's roster; input is trimmed and
-  matched case-insensitively against existing names before creating a new
-  group. Otherwise "General"/"general"/"Genral" proliferate.
+- Anti-fragmentation: the create modal and the override UI offer the group
+  names already visible in the user's roster; input is trimmed and matched
+  case-insensitively against existing names before creating a new group.
+  Otherwise "General"/"general"/"Genral" proliferate. 54-5 makes the create
+  modal's version a real picker rather than a datalist hint — reuse is the
+  default and a new group is an explicit step.
 - Groups sort alphabetically, `General` first. DMs are untouched — grouping
   applies to the channels section only.
 
@@ -67,6 +69,16 @@ override. The server stores a hint, the client owns the view.
 - **54-4 — per-user override.** "Move to group…" in the channel context
   menu (the 50-5 menu), writing `prefs.roster.groupOverrides`; datalist of
   known groups; "reset to suggested" clears the entry.
+- **54-5 — the create modal's group picker.** 54-2's free-text input with a
+  `<datalist>` read as a plain text box: the existing groups only appeared in
+  the browser's own unstyled popup (visibly foreign against the terminal
+  theme), and nothing stopped typing straight past them. Replaced with a
+  `<select>` of `knownGroups`, preselected to `General`, plus a trailing
+  `+ new group…` option that reveals a name input; picking any group again is
+  the way back out of it. Submitting with that option chosen and the input
+  blank is an error rather than a silent fall back to `General`, and the new
+  name is still canonicalized against `knownGroups`. *The 54-4 override row in
+  the channel menu still uses the datalist — same weakness, not touched here.*
 
 Each slice is independently verifiable; 54-1 ships value before any
 grouping exists.

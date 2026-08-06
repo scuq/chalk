@@ -21,8 +21,9 @@ interface Props {
   // 30-6: server feature flag. When false the voice option is hidden --
   // the server would reject the join anyway (CHALK_VOICE_ENABLED).
   voiceEnabled: boolean;
-  // 54-2: group names already in the roster, for the datalist. Typing one
-  // of these (any casing) reuses it instead of minting a near-duplicate.
+  // 54-2: group names already in the roster. 54-5: they are the picker's
+  // options, so reusing one is the default and minting a near-duplicate
+  // takes a deliberate step.
   knownGroups: string[];
   onClose: () => void;
   // 80-12: server feature flag for ephemeral channels; hides the TTL option
@@ -37,6 +38,11 @@ interface Props {
   onSubmit: (name: string, isDM: boolean, memberIDs: string[], voice: boolean, group: string, ttlSecs: number) => void;
 }
 
+// 54-5: the <option> value that reveals the new-group input. Leading and
+// trailing space is trimmed off every real group name, so a lone space can
+// never collide with one.
+const NEW_GROUP_OPTION = " ";
+
 // 80-12: the ephemeral lifetime choices. The server clamps to its own cap
 // (default one month), so the menu only offers values under it.
 const TTL_CHOICES: Array<{ label: string; secs: number }> = [
@@ -50,11 +56,15 @@ const TTL_CHOICES: Array<{ label: string; secs: number }> = [
 
 export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEnabled, knownGroups, onClose, onSubmit }: Props) {
   const [name, setName] = useState("");
-  const [group, setGroup] = useState(""); // 54-2; empty -> DEFAULT_GROUP
+  // 54-5: the picked group, or NEW_GROUP_OPTION while naming a new one.
+  const [group, setGroup] = useState(knownGroups[0] ?? DEFAULT_GROUP);
+  const [newGroup, setNewGroup] = useState("");
   const [voice, setVoice] = useState(false); // 30-4
   const [ttlSecs, setTtlSecs] = useState(0); // 80-12; 0 = permanent
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+
+  const namingNewGroup = group === NEW_GROUP_OPTION;
 
   // Escape to close.
   useEffect(() => {
@@ -79,7 +89,13 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEn
       setError("name too long (max 80)");
       return;
     }
-    if (group.trim().length > 80) {
+    // Falling back to the default group here would silently ignore the
+    // deliberate "new group" pick, so say so instead.
+    if (namingNewGroup && !newGroup.trim()) {
+      setError("new group name required");
+      return;
+    }
+    if (newGroup.trim().length > 80) {
       setError("group too long (max 80)");
       return;
     }
@@ -90,7 +106,8 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEn
     // is_dm is always false here: a 1:1 is created by clicking a friend in
     // the roster (which opens the EXISTING DM), never from this modal. A
     // second DM between the same pair would strand the first one's history.
-    onSubmit(trimmed, false, Array.from(selected), voice, canonicalizeGroup(group, knownGroups),
+    onSubmit(trimmed, false, Array.from(selected), voice,
+      canonicalizeGroup(namingNewGroup ? newGroup : group, knownGroups),
       voice ? ttlSecs : 0);
   };
 
@@ -130,28 +147,44 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEn
             />
           </label>
 
-          {/* 54-2: the grouping suggestion. A combobox in the HTML sense --
-              free text plus a datalist of groups already in the roster, so
-              reusing a group is one click and typos don't fork near-
-              duplicates (submit canonicalizes case against knownGroups). */}
-          <label class="chalk-field">
+          {/* 54-2/54-5: the grouping suggestion. The groups already in the
+              roster are the options and one of them is preselected, so the
+              cheap path is reuse; a new group is an explicit pick that
+              reveals a name field. (54-2 offered free text with a datalist
+              of the same names, which read as a plain text box -- the
+              existing groups only surfaced in an unstyled native popup, and
+              typing past them forked "General"/"general".) Submit still
+              canonicalizes case against knownGroups. */}
+          <div class="chalk-field">
             <span class="chalk-field-label">group</span>
-            <input
-              type="text"
+            <select
               class="chalk-field-input"
               data-testid="create-modal-group"
               value={group}
-              onInput={(e) => setGroup((e.target as HTMLInputElement).value)}
-              maxLength={80}
-              placeholder={DEFAULT_GROUP}
-              list="create-modal-group-options"
-            />
-            <datalist id="create-modal-group-options">
+              onChange={(e) => setGroup((e.target as HTMLSelectElement).value)}
+              aria-label="group"
+            >
               {knownGroups.map((g) => (
-                <option key={g} value={g} />
+                <option key={g} value={g}>
+                  {g}
+                </option>
               ))}
-            </datalist>
-          </label>
+              <option value={NEW_GROUP_OPTION}>+ new group…</option>
+            </select>
+            {namingNewGroup && (
+              <input
+                type="text"
+                class="chalk-field-input"
+                data-testid="create-modal-group-new"
+                value={newGroup}
+                onInput={(e) => setNewGroup((e.target as HTMLInputElement).value)}
+                autoFocus
+                maxLength={80}
+                placeholder="new group name"
+                aria-label="new group name"
+              />
+            )}
+          </div>
 
           {voiceEnabled && (
             <label class="chalk-field chalk-field--checkbox">
