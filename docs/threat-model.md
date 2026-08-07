@@ -104,11 +104,14 @@ Two consequences:
   alone cannot prove which member wrote it. An honest server enforces
   attribution from the authenticated connection; a dishonest one need not.
 
-The fix is a signed message envelope binding the sender's identity and the
-server-supplied metadata to the ciphertext, covering edits, reactions, and
-attachment references as well. This is phase 83, and the expensive half of it
-— the identity anchor a signature would be checked against — was already paid
-for by phase 82.
+The fix is a signed message envelope covering the sender-meaningful fields —
+sender, the sender's own timestamp, parent/thread, body, and attachment
+digests — for messages, edits, and reactions alike. Server-minted message ID,
+timestamp, and sequence deliberately stay *outside* the signature (the server
+mints them after the client signs) and are demoted to untrusted receipt
+metadata; replay and re-dating become detectable rather than prevented. This
+is phase 83, and the expensive half of it — the identity anchor a signature
+would be checked against — was already paid for by phase 82.
 
 ## Adversaries chalk does defend against
 
