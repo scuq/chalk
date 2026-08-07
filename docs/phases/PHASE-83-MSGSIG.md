@@ -593,9 +593,11 @@ event_hash = SHA-256(canonical || lp(sig))
 
 The server stores and relays events (one new table, `(channel_id, index)`
 unique; append is **idempotent for an identical event** — same channel,
-index and event_hash acks as success; a *different* event at a taken index
-is the append race, and the loser refetches, verifies the new suffix, and
-re-signs at the new head). The server can forge nothing; fork, rollback and
+index and event_hash (and, where the frame carries one, an identical
+self-wrap) acks as success; a *different* event at a taken index is the
+append race, resolved by the mode-dependent rule in the rotation section —
+non-epoch events re-sign at the new head; a losing `key_epoch` candidate is
+abandoned). The server can forge nothing; fork, rollback and
 withholding are what the checkpoint rules detect, **eventually**.
 
 ### The frozen byte schema (R3-05 + R4-05)
@@ -819,7 +821,8 @@ and commits atomically with the genesis** (the R5-01 rule — see the
 rotation section), and the other members' wraps are published after the
 ack; `ensureChannelKeyInner`'s no-key-anywhere mint branch is superseded
 for transcript channels. DM idempotency: the existing-DM short-circuit returns
-the existing channel; the submitted ID, genesis and key are discarded. Old
+the existing channel; the submitted ID, genesis, key and self-wrap are all
+discarded. Old
 clients omit both fields → legacy channel, inside the soft window; under
 `CHALK_TRANSCRIPT_REQUIRED` the server rejects creates without a genesis.
 
