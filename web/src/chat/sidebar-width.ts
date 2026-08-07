@@ -7,8 +7,10 @@
 //
 // The bounds are not cosmetic. Below the minimum the channel names ellipsise
 // to nothing useful; above the maximum the message column starves, badly so
-// when the thread panel is also open (it takes a fixed 340px of the same
-// 1100px shell).
+// when the thread panel is also open (it takes a fixed 340px out of the same
+// shell). The maximum is sized for the centred 1100px shell, which is the
+// mode that needs it -- in the full-window mode (93-1) there is more to go
+// round, so the same absolute clamp is simply less binding.
 
 export const SIDEBAR_WIDTH_MIN = 160;
 export const SIDEBAR_WIDTH_MAX = 420;

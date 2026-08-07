@@ -33,7 +33,13 @@ import {
   deletePasskey,
   type PasskeyInfo,
 } from "../auth/api";
-import { FONT_CHOICES, SCALE_STEPS, useDisplayPrefs } from "../display-prefs";
+import {
+  APP_WIDTH_CHOICES,
+  FONT_CHOICES,
+  SCALE_STEPS,
+  useDisplayPrefs,
+  type AppWidth,
+} from "../display-prefs";
 import {
   PARKING_LOT_DEFAULT_NAME,
   PARKING_LOT_NAME_MAX,
@@ -639,6 +645,32 @@ export function ProfilePanel({
               </div>
 
               <div class="chalk-profile-field">
+                <label class="chalk-profile-label" for="app-width">layout width</label>
+                <select
+                  id="app-width"
+                  class="chalk-profile-select"
+                  value={display.appWidth}
+                  onChange={(e) =>
+                    setDisplay({
+                      appWidth: (e.target as HTMLSelectElement).value as AppWidth,
+                    })
+                  }
+                  data-testid="display-app-width"
+                >
+                  {APP_WIDTH_CHOICES.map((w) => (
+                    <option key={w.value} value={w.value}>
+                      {w.label}
+                    </option>
+                  ))}
+                </select>
+                <p class="chalk-profile-hint">
+                  full window lets the conversation use the whole screen instead
+                  of a centred column. on a narrow window the layout already
+                  fills the screen, so this makes no difference there.
+                </p>
+              </div>
+
+              <div class="chalk-profile-field">
                 <label class="chalk-profile-checkbox-label">
                   <input
                     type="checkbox"
@@ -652,8 +684,8 @@ export function ProfilePanel({
                 </label>
                 <p class="chalk-profile-hint">
                   with the bars hidden the wheel, trackpad and keyboard still
-                  scroll. font, text size and this are stored on this device
-                  only, so your phone and your desktop can differ.
+                  scroll. font, text size, layout width and this are stored on
+                  this device only, so your phone and your desktop can differ.
                 </p>
               </div>
             </section>

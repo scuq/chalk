@@ -110,6 +110,9 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     keywords: [
       "theme", "font", "text size", "scale", "dark", "light", "scrollbar",
       "monospace", "ligatures", "hack", "jetbrains", "fira", "cascadia",
+      // 93-1: what someone hunting for the layout-width pref would type.
+      "width", "full width", "wide", "fullscreen", "layout", "column",
+      "margins", "ultrawide",
     ],
   },
   {

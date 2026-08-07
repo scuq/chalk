@@ -1,7 +1,7 @@
 # Phase 93 — the full-width layout
 
-**Status:** **planned, not started.** One slice (93-1) carries the whole
-feature; everything else here is deliberately left open.
+**Status:** **shipped** — 93-1, one slice, carries the whole feature.
+Everything under [Left open](#left-open) is deliberately not built.
 
 **Tag:** `#fullwidth` → `tools/where.sh -g fullwidth`. (Not `#width`: every
 CSS `width:` in the repo matches that, and a tag that returns 500 hits is not
@@ -229,6 +229,11 @@ needs it. One sentence in each of the three.
 
 ## How it gets verified
 
+**Ran clean at 93-1.** `node test.mjs` 1243/1243; the probe 14/14, and every
+measured number below came back exactly as predicted — 1100/836 centred,
+1920/1888/1656 full, 1304 with a thread open, 390px either way on the phone.
+The grid arithmetic and the stylesheet agree.
+
 - `node test.mjs` — `display-prefs.test.ts` extended: default is `centered`,
   an unknown / missing / non-string value normalizes to `centered`, a stored
   `full` round-trips, and `applyDisplayPrefs` sets `--chalk-app-max-w` to
@@ -270,13 +275,13 @@ needs it. One sentence in each of the three.
   width, the answer is a *second, separate* opt-in — a `--chalk-measure` cap on
   the message text column only, off by default, so "full width" keeps meaning
   full width. Do not fold it into `appWidth`.
-- **Whether the composer should stretch.** `.chalk-footer` repeats the shell's
-  `sidebar-w / 1fr` split, so at 1920px the field is ~1656px wide — a single
-  line of a two-line message running most of a monitor. Nothing has to be done
-  for the layout to work, and a cap is one `max-width` on
-  `.chalk-composer--railed` if the probe run says it reads badly. Decide by
-  looking, not in advance; it is the one thing here that cannot be settled
-  from the stylesheet.
+- ~~**Whether the composer should stretch.**~~ **Decided by looking (93-1):
+  it stretches, and stays that way.** At 1920px the field is indeed ~1656px
+  wide, but in the screenshot it reads as the same edge the header rule and the
+  message rows already run to — capping it would put a short line back in the
+  middle of an otherwise full-width shell, which is the same lie this phase
+  refuses for the message text. The cap remains one `max-width` on
+  `.chalk-composer--railed` if anyone disagrees after living with it.
 - **A third step (`wide`, ~1600px)** for people who want more than 1100 and
   less than everything. The enum is shaped for it; nothing else has to change.
 - **Zen / focus mode** — hiding the sidebar entirely — is a different feature

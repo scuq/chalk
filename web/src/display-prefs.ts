@@ -1,4 +1,4 @@
-// chalk-web -- per-device display preferences (font family + font size).
+// chalk-web -- per-device display preferences (font family, font size, layout width).
 //
 // Deliberately NOT server-synced prefs like theme. The whole point is
 // that the phone and the desktop disagree: a 14px mono that reads fine
@@ -14,6 +14,8 @@
 //   --chalk-scrollbar-width thin, or none to hide the bars entirely
 //   --chalk-scroll-lane     the message pane's right padding, which only
 //                           exists to keep the scrollbar off the text
+//   --chalk-app-max-w       the shell's max-width: 1100px, or none to let
+//                           the app fill the window (93-1)
 //
 // Inline styles outrank the :root and [data-theme=...] blocks, so the
 // device preference wins over whatever the active theme sets.
@@ -25,16 +27,23 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 // font. Only its label changed once it stopped being the only monospace.
 export type FontChoice = "mono" | "jetbrains" | "fira" | "cascadia" | "sans" | "serif";
 
+// 93-1: an enum rather than a boolean. "centered" names what the layout
+// already is, and a third step (a wider fixed column) is a value away,
+// where fullWidth: true/false would have needed a migration.
+export type AppWidth = "centered" | "full";
+
 export interface DisplayPrefs {
   font: FontChoice;
   scale: number;
   hideScrollbars: boolean;
+  appWidth: AppWidth;
 }
 
 export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
   font: "mono",
   scale: 1,
   hideScrollbars: false,
+  appWidth: "centered",
 };
 
 const STORAGE_KEY = "chalk.display.v1";
@@ -64,8 +73,22 @@ export const SCALE_STEPS: { value: number; label: string }[] = [
   { value: 1.25, label: "extra large" },
 ];
 
+export const APP_WIDTH_CHOICES: { value: AppWidth; label: string }[] = [
+  { value: "centered", label: "centered (default)" },
+  { value: "full", label: "full window" },
+];
+
+// The centred cap, kept here rather than only in theme.css because
+// applyDisplayPrefs is what writes it. theme.css repeats it as the custom
+// property's fallback, for the render before this runs.
+export const CENTERED_MAX_WIDTH = "1100px";
+
 function isFontChoice(v: unknown): v is FontChoice {
   return FONT_CHOICES.some((f) => f.value === v);
+}
+
+function isAppWidth(v: unknown): v is AppWidth {
+  return APP_WIDTH_CHOICES.some((w) => w.value === v);
 }
 
 // normalizeDisplayPrefs turns anything at all into usable prefs: an
@@ -83,7 +106,8 @@ export function normalizeDisplayPrefs(raw: unknown): DisplayPrefs {
     typeof o.hideScrollbars === "boolean"
       ? o.hideScrollbars
       : DEFAULT_DISPLAY_PREFS.hideScrollbars;
-  return { font, scale, hideScrollbars };
+  const appWidth = isAppWidth(o.appWidth) ? o.appWidth : DEFAULT_DISPLAY_PREFS.appWidth;
+  return { font, scale, hideScrollbars, appWidth };
 }
 
 // The subset of HTMLElement applyDisplayPrefs needs, so the unit tests
@@ -101,6 +125,12 @@ export function applyDisplayPrefs(prefs: DisplayPrefs, target?: StyleTarget): vo
   // The lane goes with the bar: 8px of dead space on the right of the feed
   // reads as a misalignment once there's no scrollbar standing in it.
   el.style.setProperty("--chalk-scroll-lane", prefs.hideScrollbars ? "0px" : "var(--chalk-s2)");
+  // margin: 0 auto stays on the shell either way -- at max-width: none
+  // centring is a no-op, so there is nothing to undo.
+  el.style.setProperty(
+    "--chalk-app-max-w",
+    prefs.appWidth === "full" ? "none" : CENTERED_MAX_WIDTH,
+  );
 }
 
 export function loadDisplayPrefs(): DisplayPrefs {
