@@ -5,22 +5,24 @@ and the one the 2026-08-05 audit follow-up put at the top of its
 remaining-work list. **NOT IMPLEMENTED — no code exists.** This document is
 the plan and nothing below it has been built.
 
-**Status: design, third revision.**
+**Status: design, fourth revision.**
 
 - First revision, 6 August 2026: exploratory design. Reviewed 7 August 2026;
   six findings, P83-01 … P83-06, verdict *"accept as an exploratory design
   record, request major revision."*
-- Second revision, 7 August 2026 (commit `9890571`): answered those six.
-  Re-reviewed the same day: P83-02 and P83-04 **resolved**, the rest partial;
-  **Gate 0 not passed**; seven new findings, P83-R2-01 … R2-07.
-- This third revision answers the re-review. Both review documents are
-  external, like the phase-81 audits; this doc is the in-repo record of what
-  they found and how each finding was resolved.
+- Second revision (commit `9890571`): answered those six. Re-reviewed the
+  same day: P83-02 and P83-04 resolved, the rest partial; **Gate 0 not
+  passed**; seven new findings P83-R2-01 … R2-07.
+- Third revision (commit `3d8a25f`): answered those seven. Third review, same
+  day: R2-04, R2-05 and R2-07 **resolved**; **Gate 0 not passed**; five
+  blocking findings P83-R3-01 … R3-05 plus one claim correction, R3-06.
+- This fourth revision answers the third review. All review documents are
+  external, like the phase-81 audits; this doc is the in-repo record.
 
 **Gate 0: nothing in the slice table may start until this revision passes
-independent protocol review.** Two review rounds have each found blocking
-protocol errors on paper — which is the gate doing its job, and the reason
-the canonical encoder still must not be implemented first.
+independent protocol review.** Three paper reviews have each caught blocking
+protocol errors before a line of code existed — the gate working exactly as
+intended.
 
 **Tag:** `#msgsig` → `tools/where.sh -g msgsig` (which today finds this plan
 and the documents that point at it, and no code, because none exists).
@@ -29,34 +31,32 @@ and the documents that point at it, and no code, because none exists).
 anchor a signature can be checked against — was already paid for there:
 `web/src/crypto/trust.ts` pins peer Ed25519 keys, and `channel-crypto.ts`
 already verifies-then-decrypts against a pinned signer. This phase spends
-that anchor twice more.
+that anchor twice more, and (since this revision) extends phase 82's wrap
+format once.
 
 ---
 
 ## Review dispositions
 
-First review (of revision 1):
+First review: P83-01 → §1/§4; P83-02 → §3 (resolved); P83-03 → §7;
+P83-04 → §2 (resolved); P83-05 → §5; P83-06 → §6.
+
+Re-review: R2-01 → §7 authority (partial → completed below);
+R2-02 → §7 genesis (partial → completed below); R2-03 → §7 schema
+(partial → completed below); R2-04 checkpoints (resolved);
+R2-05 dedup (resolved); R2-06 → §5 (partial → completed below);
+R2-07 uniform legacy (resolved).
+
+Third review, all answered in this revision:
 
 | Finding | Was | Resolved in |
 |---|---|---|
-| P83-01 | Option A claimed to close H-01 but left re-dating, reordering and replay open | §1 (staged claims), §4 (dedup model) |
-| P83-02 | Format was circular: signature inside the plaintext *and* a ciphertext hash inside the signed envelope | §3 — **resolved per the re-review** |
-| P83-03 | Half B deferred its central security decisions | §7 |
-| P83-04 | Envelope claimed a device the per-user identity cannot prove | §2 — **resolved per the re-review** |
-| P83-05 | Edits/reactions/attachments given message semantics implicitly | §5 |
-| P83-06 | Migration, downgrade resistance, acceptance criteria incomplete | §6 |
-
-Re-review (of revision 2), all answered in this revision:
-
-| Finding | Was | Resolved in |
-|---|---|---|
-| P83-R2-01 (Critical) | Transcript authority table contradicted chalk's real governance rules; server-tallied votes treated as authorization | §7 (per-mode authority; democratic exclusion) |
-| P83-R2-02 (Critical) | Genesis could be suppressed into the legacy path — the server mints the channel ID, so a creation-time genesis was impossible as written | §7 (client-minted channel ID; adoption ratchet) |
-| P83-R2-03 (High) | Transcript event contents not canonically specified; no admitted-key binding; no key commitment | §7 (frozen event fields; fingerprints; epoch commitments) |
-| P83-R2-04 (High) | `chain_head` was a bare hash; the fork/staleness rules needed an index | §3, §7 (structured checkpoints; eventual detection) |
-| P83-R2-05 (High) | The scalar replay watermark misclassified ordinary paginated history as replay | §4 (exact-identity dedup; evictions become unknown) |
-| P83-R2-06 (High) | `edit_seq`/`rx_seq` were unsafe across a user's devices; edit targets bound only the untrusted server row | §5 (revision chains; content-identity targets) |
-| P83-R2-07 (Medium) | Legacy vs downgrade cannot be distinguished without a trusted write-time boundary | §6 (classification withdrawn) |
+| P83-R3-01 (Critical) | A fresh recipient with no transcript and a suppressed welcome flag takes the legacy path — the wrap carried no transcript binding | §7 (wrap suite 3: epoch-bound wraps; migrated-channel residual stated) |
+| P83-R3-02 (High) | Edits destroy the signed original a fresh reader needs; replies bind only the untrusted server row ID | §5 (server-retained revision ancestry; replies sign the parent's content identity + envelope hash) |
+| P83-R3-03 (High) | A lone latest-hash cannot distinguish stale revisions from sibling forks; ancestry was unfetchable | §5 (revision DAG state + fetchable ancestry; full state machine; reactions explicitly narrowed instead) |
+| P83-R3-04 (High) | No transition from membership event to usable key epoch; no post-removal send freeze | §7 (epoch lifecycle: active/frozen; additions without rotation; removal freezes sends until a post-removal epoch) |
+| P83-R3-05 (High) | Event type tags, enums, subjects, variant tags and bounds left to implementation | §7 (the frozen byte-schema table; `subjects[]` deleted) |
+| P83-R3-06 (Medium) | "Every member witnessed the lifecycle" overstates democratic detection | §7 (exact observation condition; persisted lifecycle records; accepted residual) |
 
 ---
 
@@ -100,26 +100,26 @@ provenance line) — visibility, not prevention.
   member or server — can produce an object that verifies as that user.
 - **Relocation resistance.** A signed object cannot be presented in a
   different channel, against a different target, at a different key version,
-  or under a parent the sender did not name. Every one of those is inside
-  the signature.
+  or under a parent whose signed content identity the sender did not name.
 - **Membership integrity in dictator-mode channels**, once Half B is
-  enforced: keys are shared only with principals the replayed transcript
-  authorizes. In **democratic-mode** channels this is **conditional** — see
-  the exclusion in §7; the tally is server-trusted and the guarantee there
-  is detection, not prevention.
+  enforced — **complete for channels born with a transcript** (every wrap
+  they ever produce is epoch-bound, §7), and **beginning at migration for
+  channels converted from legacy**, with the pre-migration residual stated
+  in §7. In **democratic-mode** channels this is **conditional** — the tally
+  is server-trusted and the guarantee there is detection under the precise
+  observation condition of §7, not prevention.
 
 **Detectable, not prevented:**
 
 - **Duplication** of a genuine object the client currently holds identity
-  state for, via the exact-identity dedup of §4. (Broader replay claims were
-  withdrawn per P83-R2-05 — the client asserts only what it can prove.)
+  state for, via the exact-identity dedup of §4.
 - **Re-dating.** The envelope carries the sender's own clock (`sender_ts`);
-  the server's timestamp is demoted to *receipt metadata*. A server that
-  re-dates a message produces a visible skew between the two, not a silent
-  rewrite of history.
+  the server's timestamp is demoted to *receipt metadata*.
 - **Stale or forked channel state**, once Half B ships, via checkpoint
-  cross-attestation (§7) — and detection there is **eventual**, when
-  evidence from the separated views meets, never immediate.
+  cross-attestation (§7) — detection is **eventual**, when evidence from the
+  separated views meets, never immediate.
+- **Fabricated democratic outcomes**, only by clients that observed and
+  retained the contradicting proposal lifecycle (§7).
 
 **Explicit non-goals — stated so nobody rounds up:**
 
@@ -130,76 +130,70 @@ provenance line) — visibility, not prevention.
   client_msg_id)` triple.
 - **Completeness.** A server can still withhold messages or events. Half B
   bounds this for channel state (§7); for messages it remains open.
+  Withheld edit ancestry degrades an edit to unverified-target, never to
+  false trust (§5).
 - **Democratic tallies.** Votes are deliberately secret and unsigned;
   governance outcomes are enacted on the server's word. §7 states exactly
-  what is and is not claimed there.
+  what is and is not claimed there — C-01 in democratic channels is an
+  **accepted residual risk**, not a resolved finding.
 - **Denial of service.** Out of scope, as everywhere else in the threat
-  model.
-- **TOFU first-fetch.** Unchanged from phase 82: a server that lies from
-  the very first identity fetch gets its key pinned, and only the
-  out-of-band picture-word comparison detects it. Signatures verify against
-  the pin, so they inherit exactly that limit.
+  model. (The §7 removal freeze trades availability for confidentiality
+  deliberately and says so.)
+- **TOFU first-fetch.** Unchanged from phase 82; signatures verify against
+  the pin and inherit exactly that limit.
 - **Device attribution.** See §2. The guarantee is scoped to the user.
-- **Forward secrecy / post-quantum.** Unchanged non-goals of the whole
-  design.
+- **Forward secrecy / post-quantum.** Unchanged non-goals.
 
 **A fresh device (or cleared local state) starts with no dedup state, no
 revision heads, no transcript head, and no pins beyond what the phase-84
-backup restores.** Its detection guarantees begin at zero and grow. Stated
-as a limitation, not hidden.
+backup restores.** Its detection guarantees begin at zero and grow. What a
+fresh device can *prove* is stated per object class in §5 and §7.
 
 ## §2 — Identity: user-only authorship, on the anchor we already have
 
-*(Resolved in the re-review; unchanged in substance.)*
+*(Resolved; unchanged in substance since the second revision.)*
 
 chalk's identity is per-user by design (`migrations/0031_identity_keys.sql`):
 every device signed into an account derives the same X25519/Ed25519 pair
 from the same phrase. A device ID is a random UUID in localStorage with no
-key material behind it. A signature made with the identity key therefore
-proves *the user*, and the envelope's `writer_scope` — an opaque UUID whose
-**only** role is to namespace per-device sender state (§4, §5) — is
-documented everywhere as an unauthenticated label. It is never rendered as
-"sent from device X".
+key material behind it. A signature made with the identity key proves *the
+user*; the envelope's `writer_scope` — an opaque UUID whose **only** role is
+to namespace per-device sender state (§4, §5) — is documented everywhere as
+an unauthenticated label, never rendered as "sent from device X".
 
-**Rejected: per-device signing subkeys** certified by the user identity —
-a whole new sub-protocol (certificate format, revocation, storage, sync)
-with no existing machinery and no product requirement. If a need appears it
-layers on top without changing the envelope.
+**Rejected: per-device signing subkeys** certified by the user identity — a
+whole new sub-protocol with no existing machinery and no product
+requirement; it layers on later without changing the envelope if ever
+needed.
 
 **The verification anchor is `trust.ts`, unchanged:** `resolveSigner` from
 local pins on unattended paths; `fetchTrustedIdentity` (TOFU-pins) only
-where `openWrap` allows the network today; `markManuallyVerified` (the
-picture-word flow) upgrades the same pin, and a `changed` pin repudiates it;
-the phase-84 backup carries the pins across devices. Message assurance maps
-onto the existing `MemberTrust` vocabulary rather than inventing a parallel
-one.
+where `openWrap` allows the network today; `markManuallyVerified` upgrades
+the same pin and a `changed` pin repudiates it; the phase-84 backup carries
+pins across devices. Message assurance maps onto the existing `MemberTrust`
+vocabulary.
 
 **Key rotation.** Not implemented today — nothing sets
-`identity_keys.retired_at`. Verification is against the *pinned* key, full
-stop. When rotation is built, it inherits a constraint recorded here: old
-signatures must remain verifiable against a verified historical key or a
-signed transition record, never silently re-checked against the current
-key.
+`identity_keys.retired_at`. Verification is against the *pinned* key. When
+rotation is built it inherits a constraint recorded here: old signatures
+must remain verifiable against a verified historical key or a signed
+transition record, never silently re-checked against the current key.
 
 ## §3 — Construction: sign-then-encrypt, and nothing circular
 
-*(Resolved in the re-review; carried forward with one field change:
-the chain reference is now a structured checkpoint, per P83-R2-04.)*
+*(Resolved; carried forward. One change this revision: the reply binding —
+see §5 — replaces `parent_id` in the signed fields.)*
 
 **Sign a canonical plaintext object; encrypt the object and its signature
-together.** There is no ciphertext hash anywhere. The two layers divide the
-work:
-
-- The **AEAD** (AAD = `chalk-msg-s{suite}:{channelID}:{keyVersion}`)
-  authenticates the ciphertext and binds it to channel and key version.
-- The **inner Ed25519 signature** authenticates every sender-meaningful
-  field, including channel and key version *again*, so the signature is
-  self-contained even if a future suite changes the AAD.
-
-The server never sees the signature and cannot strip it without breaking
-the AEAD. Precedents: phase 82's wrap signature inside the opaque
-`wrap_blob`; `signal-crypto.ts`'s `fp_sig` inside the sealed `SdpSignal`.
-No schema change; `messages.meta` stays unused.
+together.** No ciphertext hash anywhere. The AEAD (AAD =
+`chalk-msg-s{suite}:{channelID}:{keyVersion}`) authenticates the ciphertext
+and binds channel and key version; the inner Ed25519 signature
+authenticates every sender-meaningful field, including channel and key
+version *again*, so the signature is self-contained even if a future suite
+changes the AAD. The server never sees the signature and cannot strip it
+without breaking the AEAD. Precedents: phase 82's wrap signature inside the
+opaque `wrap_blob`; `signal-crypto.ts`'s `fp_sig` inside the sealed
+`SdpSignal`. No message-table schema change; `messages.meta` stays unused.
 
 ### The wire format
 
@@ -210,9 +204,9 @@ No schema change; `messages.meta` stays unused.
 { "e": { ...typed envelope fields... }, "sig": "<base64 Ed25519 signature>" }
 ```
 
-JSON is the transport shape only. **The signature is never computed over
-JSON.** The verifier rebuilds the canonical byte string from the parsed
-fields and verifies against that.
+JSON is the transport shape only; **the signature is never computed over
+JSON**. The verifier rebuilds the canonical byte string from the parsed
+fields.
 
 ### The canonical encoding
 
@@ -222,108 +216,81 @@ canonical = utf8("chalk-msg-sig.v1") || u8(objType) || <fields per class, §5>
 ```
 
 - Domain `chalk-msg-sig.v1`, sibling of `chalk-wrap-sig.v1` and
-  `chalk-voice-fp.v1`. Half B's transcript events use their own domain
-  (`chalk-chan-sig.v1`, §7).
-- `objType`: `0x01` message, `0x02` edit, `0x03` reaction set. Attachment
-  bindings ride inside types 1 and 2.
-- Every variable-length field is `lp()`-prefixed; fixed-width integers are
-  fixed-width big-endian; lists are `u32be(count)` followed by each
-  element's encoding; absent optionals encode as `lp("")` (absent and empty
-  are deliberately the same: "no value").
-- The **chain checkpoint** is a structured pair, not a bare hash:
-  `u64be(chain_index) || lp(chain_hash)` — `(0, lp(""))` until the channel
-  has a transcript (§7 defines the receiver's state machine).
+  `chalk-voice-fp.v1`. Half B's transcript events use `chalk-chan-sig.v1`
+  (§7).
+- `objType`: `0x01` message, `0x02` edit, `0x03` reaction set.
+- Every variable-length field `lp()`-prefixed; fixed-width integers
+  fixed-width big-endian; lists `u32be(count)` + elements; absent optionals
+  `lp("")` (absent and empty deliberately identical: "no value").
+- The **chain checkpoint** is `u64be(chain_index) || lp(chain_hash)` —
+  `(0, lp(""))` until the channel has a transcript.
 - 83-1 **exports** the private helpers from `spacekey.ts` (`writeU32BE`,
-  `lengthPrefixed`, `concat`, `bytesEqual`, `utf8`); both
-  `canonicalWrapMessage` and the new encoders use them. Two canonical
-  encoders that drift apart is the failure mode this phase exists to avoid.
+  `lengthPrefixed`, `concat`, `bytesEqual`, `utf8`); every canonical encoder
+  in the repo uses them. Two encoders that drift apart is the failure mode
+  this phase exists to avoid.
 
 ### Sign and verify behaviour
 
-The repo's established asymmetry: **signing throws** on degenerate input
-(programmer errors); **verification never throws** and returns a typed
-result on every path (attacker-reachable, must be total). Results:
+The repo's established asymmetry: **signing throws** on degenerate input;
+**verification never throws** and returns a typed result on every path.
 
 | Result | Meaning |
 |---|---|
-| `verified` | Signature valid against the pinned/verified key for the signed sender, and every server-supplied outer field matches its signed inner counterpart |
-| `mismatch` | Signature valid, but an outer field (sender, parent, thread, target…) disagrees with the signed value — the server's framing is forged; the inner values are authoritative |
+| `verified` | Signature valid against the pinned/verified key for the signed sender; every server-supplied outer field matches its signed inner counterpart |
+| `mismatch` | Signature valid, but an outer field disagrees with the signed value — the server's framing is forged; the inner values are authoritative |
 | `forged` | Signature invalid against our belief about the signed sender's key |
 | `unpinned` | No local pin for the signed sender and the path may not fetch — decided later, not trusted now |
 | `unsigned` | Suite-1 object — rendered unauthenticated, uniformly (§6) |
 
 **On `mismatch`, the signed inner fields win, always.** **Content is
-displayed even when attribution fails**, under an unmistakable warning:
-only channel-key holders can produce decryptable content at all, so hiding
-it would hand a hostile server a censorship lever (corrupt an envelope,
-suppress a message). Attribution fails closed; availability does not.
+displayed even when attribution fails**, under an unmistakable warning —
+only key holders can produce decryptable content, so hiding it would hand a
+hostile server a censorship lever. Attribution fails closed; availability
+does not.
 
 ## §4 — Deduplication and ordering: exactly what the client can prove
 
-**P83-R2-05's fix.** The second revision's scalar watermark ("`wseq` at or
-below the high-water mark ⇒ replay") is deleted: chalk loads history,
-thread previews, search results and channel summaries out of order by
-design, so a newest-first page followed by a scroll into older messages
-would have flagged ordinary rows as replays. False security warnings train
-users to ignore real ones. The replacement claims only what is provable:
+*(Resolved in the third review; unchanged.)*
 
 ### Sender side
 
-Every plain message envelope carries:
-
-- `client_msg_id` — a fresh UUID, minted **before** anything else in the
-  send flow (§5).
-- `sender_ts` — the sender's clock, unix millis. The authenticated "when".
-- `writer_scope` — an opaque UUID naming this device's sender-state store.
-  **One scope per device counter-store, never shared across devices.** If
-  the store is lost while the localStorage device ID survives, the client
-  mints a **new** scope rather than restarting an old one — a scope whose
-  state you do not hold is never reused.
-- `wseq` — strictly increasing per `(channel, writer_scope)`, persisted in
-  the sender's IndexedDB. **In this phase `wseq` is an ordering claim
-  only**: it feeds display and future completeness-range work, and
-  generates **no security warnings**. (A future revision may add
-  completeness-aware range tracking on top; the field is already there.)
+Every plain message envelope carries `client_msg_id` (fresh UUID, minted
+first in the send flow), `sender_ts` (sender's clock, the authenticated
+"when"), `writer_scope` (opaque UUID naming this device's sender-state
+store — **one scope per device counter-store, never shared**; a lost store
+mints a fresh scope, never restarts an old one), and `wseq` (strictly
+increasing per `(channel, writer_scope)`, persisted sender-side). **`wseq`
+is an ordering claim only** in this phase: it feeds display and future
+completeness-range work and generates **no security warnings**.
 
 ### Receiver side
 
-One bounded IndexedDB store (a new store; `idb.ts` takes its first
-`DB_VERSION` bump since v4 — mechanical):
+One bounded IndexedDB store (`idb.ts` takes its first `DB_VERSION` bump
+since v4 — mechanical): **exact-identity dedup** — signed
+`(sender_user_id, writer_scope, client_msg_id)` → first-seen `server_id`,
+bounded LRU. The same triple under a **different** server row is a
+duplicate: dropped and flagged. **Eviction produces "unknown", never
+"replay"** — no arrival order, page order, or gap is ever classified as
+suspicious by itself; out-of-order history, previews, search and
+deep-search pages are all normal.
 
-- **Exact-identity dedup**: signed `(sender_user_id, writer_scope,
-  client_msg_id)` → first-seen `server_id`, bounded LRU. The same triple
-  arriving under a **different** server row is a duplicate — the second
-  presentation is dropped and the event flagged (a server replay or a
-  resend race; either way not a second message).
-- **Eviction produces "unknown", never "replay".** Once an entry has aged
-  out of the LRU, the client makes no claim about later presentations of
-  that identity. No arrival order, page order, or gap is ever classified
-  as suspicious by itself.
+**Buys:** duplicate elimination within the window; re-dating visible as
+`sender_ts`/server-`ts` skew; per-scope ordering displayable from signed
+data. **Does not buy:** replay detection beyond the window, fresh-device
+auditing of unheld history, withholding detection. All stated in §1.
 
-**What this buys, honestly:** duplicates within the dedup window are
-eliminated; re-dating is visible as `sender_ts` / server-`ts` skew
-(surfaced in the message's info affordance past a threshold); ordering
-within one writer's scope is displayable from signed data. **What it does
-not buy:** replay detection beyond the window, a fresh device auditing
-history it never held, or detection of withholding. All stated in §1.
+**Rejected (recorded):** Option B, the client-minted message ID — the
+partitioned `(ts, id)` PK cannot enforce global uniqueness of a
+client-supplied ID, and without uniqueness a hostile client gets an
+equivocation primitive. The scalar watermark — misclassifies paginated
+history (P83-R2-05).
 
-### Rejected alternatives (recorded)
+## §5 — Typed object protocols, and the storage that backs their claims
 
-- **Option B, the client-minted message ID** (first review): `messages` is
-  partitioned by range on `ts` with PK `(ts, id)`, and Postgres unique
-  indexes on a partitioned table must include the partition key — global
-  uniqueness of a client-supplied ID is unenforceable without redesigning
-  the partitioning, and without it a hostile client gets an equivocation
-  primitive for free.
-- **The scalar watermark** (second revision): misclassifies paginated
-  history; see above.
-
-## §5 — Typed object protocols, and the flows that make them possible
-
-**P83-05's and P83-R2-06's fixes.** One envelope per object class; message
-semantics are applied to nothing else — voice signals (already signed under
-`chalk-voice-fp.v1`), prefs blobs, the parking lot, and link previews
-(embedded in the body before encryption) keep their existing shapes.
+**P83-05, P83-R2-06, P83-R3-02 and P83-R3-03's fixes.** One envelope per
+object class; message semantics apply to nothing else — voice signals
+(signed under `chalk-voice-fp.v1`), prefs blobs, the parking lot and link
+previews (embedded in the body before encryption) keep their shapes.
 
 ### The send-flow reorder (prerequisite)
 
@@ -339,12 +306,31 @@ mint client_msg_id
 The optimistic append moves with the mint. Guest sends in `GuestRoom.tsx`
 get the same order.
 
+### The signed content identity
+
+A suite-2 object's durable, signed identity is
+`(sender_user_id, writer_scope, client_msg_id)` from its envelope. Edits,
+reactions **and now replies** bind their target by content identity plus an
+**envelope hash** — never by the server row locator alone. Wire frames
+still carry `(channel_id, message_id, ts)` for row lookup; those are
+receipt metadata. A **legacy suite-1 target** has no content identity: the
+binding encodes as `lp("")` fields and the object renders with an
+unauthenticated-target mark — for replies exactly as for edits and
+reactions. Operations on legacy rows cannot be strongly bound, ever.
+
 ### `0x01` — message
 
 ```
 lp(channel_id) || u32be(key_version) || lp(sender_user_id)
 || lp(writer_scope) || lp(client_msg_id) || u64be(sender_ts)
-|| u64be(wseq) || lp(parent_id)            // lp("") when not a reply
+|| u64be(wseq)
+|| lp(par_sender) || lp(par_scope) || lp(par_client_msg_id)   // reply target:
+|| lp(par_env_hash)                                            //  content identity
+                                                               //  + SHA-256 of the
+                                                               //  parent's canonical
+                                                               //  envelope; all lp("")
+                                                               //  when not a reply or
+                                                               //  legacy parent
 || u64be(chain_index) || lp(chain_hash)    // (0, lp("")) pre-transcript
 || lp(utf8(body_text))
 || u32be(att_count) || att_binding*
@@ -358,101 +344,116 @@ lp(attachment_id) || u32be(att_key_version) || u64be(byte_len)
 || lp(sha256(enc_preview))                 // lp("") when no preview
 ```
 
-- `parent_id` is what the *sender* names; the server's derived `thread_id`
-  is receipt metadata, checked against the signed parent on display
-  (`mismatch` if the server moved the message into a thread the sender did
-  not reply into).
+- **Replies (P83-R3-02):** the sender holds the decrypted parent envelope,
+  so it signs the parent's content identity *and* the hash of the parent's
+  canonical envelope. `parent_id` rides only on the wire frame as an
+  untrusted lookup locator; the server's derived `thread_id` remains
+  receipt metadata. A server mapping one `parent_id` to different signed
+  parents in different views now produces a visible `mismatch` for any
+  client holding either parent: the signed hash pins exactly one. A reply
+  whose parent the client does not hold renders its threading as
+  unverified-target — never as false trust.
 - Attachment digests are over the *ciphertexts*, which exist before the
-  message is built (blobs are encrypted before `initUpload`; the IDs
-  arrive with the upload; both precede the envelope). Receivers verify
-  every fetched or inline blob against the signed digest before
-  decrypting; a mismatch renders the attachment as tampered. An attachment
-  ref not covered by its parent's envelope renders unauthenticated.
-- `att_key_version` is per attachment because an upload pins its own key
-  version, which can lag the message's across a rotation.
+  message is built; receivers verify every fetched or inline blob against
+  the signed digest before decrypting. An attachment ref not covered by
+  its parent's envelope renders unauthenticated. `att_key_version` is per
+  attachment because an upload pins its own key version across a rotation.
 
-### The signed content identity, and target binding
+### Revision ancestry: the storage model (P83-R3-02, P83-R3-03)
 
-A suite-2 message's durable, signed identity is the triple
-`(sender_user_id, writer_scope, client_msg_id)` from its envelope. **Edits
-and reactions bind their target by this content identity, taken from the
-decrypted original envelope — not by the server row locator.** The wire
-frames still carry `(channel_id, message_id, ts)` for row lookup; inside
-the envelope those are receipt metadata. A **legacy suite-1 target** has no
-content identity: the binding encodes as three `lp("")` fields and the
-edit/reaction renders with an unauthenticated-target mark. Stated plainly:
-operations on legacy rows cannot be strongly bound, ever.
+The third review is right twice over: an in-place `UPDATE messages SET
+body = …` destroys the signed original a fresh reader needs, and a lone
+latest-hash cannot distinguish "older revision" from "sibling fork" once a
+chain is more than one link long. The fix is storage, decided (scuq,
+2026-08-07): **edits become append-only on the server.**
 
-### Revision chains (shared by edits and reactions)
+- New table, `message_revisions`: `(message identity, rev_hash,
+  body ciphertext, replaced_at)`. An edit **moves** the replaced body into
+  it instead of destroying it; rows are opaque E2E ciphertexts like any
+  body, readable only by key holders. Deleting a message purges its
+  revisions in the same statement as the tombstone. Volume is bounded by
+  the 15-minute edit window — chains are short by construction.
+- **This reverses migration 0044's deliberate overwrite-no-revisions
+  choice**, recorded here so the contradiction is on paper: 0044 optimised
+  for storage simplicity when bodies carried no signatures; once an edit
+  destroys signed evidence, overwrite is no longer compatible with the
+  guarantee this phase exists to provide. The 83-4 migration states this
+  in its header.
+- New fetch frame (`fetch_revisions`, by message): returns the revision
+  ciphertexts so any client — including a fresh device — can decrypt,
+  verify each envelope, and walk the chain.
 
-`edit_seq` and `rx_seq` from the second revision are **deleted** — a
-user's devices share one signing key and cannot coordinate counters, so
-two devices could honestly sign the same "next" number and the server
-could show different valid objects to different recipients (P83-R2-06).
-The replacement is a per-object hash chain:
+**Per-object revision state, persisted client-side** (same IDB store
+family as §4): a bounded set of verified revision nodes
+`rev_hash → prev_rev_hash` plus the set of current **heads** (plural — a
+fork has two). Eviction of nodes returns classification to **unknown**,
+never to stale or forked.
 
-- Each revision signs `prev_rev_hash` — the SHA-256 of the canonical
-  envelope it replaces (`lp("")` for the first revision of an object).
-- The receiver keeps, per target, the hash of the **latest verified
-  revision**. A revision extending that head advances it. A revision whose
-  `prev` matches an *older* point is **stale**: it can no longer displace
-  what the client holds — the old-edit-replay attack dies here.
-- Two revisions with the **same** `prev` are a **concurrent fork**: both
-  signatures genuine, both preserved, presentation order is the server's
-  and is labelled unauthenticated; the UI surfaces "edited concurrently on
-  two devices" rather than pretending an order.
-- **Fresh-reader honesty:** a client that never held prior revisions
-  verifies the current revision's signature and target binding, and can
-  audit nothing about chain depth. What it can prove: *this user produced
-  this content for this target*. What it cannot: *this is the latest
-  revision*. Stated, not papered over.
+**The classification state machine**, given an incoming verified revision
+`R` with parent pointer `R.prev`:
+
+| Condition | Class | Action |
+|---|---|---|
+| `R.prev` is a current head | **extend** | advance that head to `hash(R)` |
+| `R.prev` is a known non-head ancestor, and a known child of `R.prev` ≠ `R` exists | **sibling fork** | keep both branches; surface "edited concurrently"; presentation order is the server's, labelled unauthenticated |
+| `hash(R)` is a known ancestor of a current head | **stale** | already-superseded revision re-presented; it cannot displace the head |
+| `R.prev` unknown and not fetchable | **unknown** | fetch ancestry via `fetch_revisions`; if the server withholds it, render **unverified-target** and do not adopt as latest |
+| First revision (`R.prev = lp("")`) matching the original's envelope hash | **root** | chain begins |
+
+**Fresh-reader claim, now backed by storage:** a fresh device fetches the
+ancestry, verifies every signature and link, and proves target binding,
+staleness and forks exactly as a long-lived device does. If the server
+withholds ancestry, the edit degrades to unverified-target — withholding
+is visible and fails toward *less* trust, never more. The only remaining
+fresh-reader limit is inherited from §1: a server can withhold the entire
+message; it can no longer misrepresent what an edit replaced.
 
 ### `0x02` — edit
-
-An edit **replaces the row's body** (`UPDATE messages SET body = …`), so
-the edit envelope is self-sufficient *given a verified target identity*:
 
 ```
 lp(channel_id) || u32be(key_version) || lp(sender_user_id)
 || lp(tgt_sender) || lp(tgt_scope) || lp(tgt_client_msg_id)  // content identity
-|| lp(prev_rev_hash)
+|| lp(prev_rev_hash)                       // hash of the replaced envelope
 || u64be(sender_ts) || u64be(chain_index) || lp(chain_hash)
 || lp(utf8(body_text))
 || u32be(att_count) || att_binding*        // re-stated from the original
 ```
 
-- Only the original sender may edit (server-enforced today; the signature
-  now enforces it cryptographically — `sender_user_id` must equal
-  `tgt_sender`).
-- Attachment bindings are re-stated verbatim because the UPDATE destroys
-  the original envelope; attachments must not become unauthenticated by
-  editing a caption.
-- Wire gap closed in the same slice: `message_edited` gains the editor's
-  user ID (display-before-decrypt convenience, checked like any outer
-  field).
+Only the original sender may edit (server-enforced today; the signature
+now enforces it — `sender_user_id` must equal `tgt_sender`). Attachment
+bindings are re-stated so the current revision stays self-sufficient
+without a fetch. Wire gap closed in the same slice: `message_edited` gains
+the editor's user ID (display-before-decrypt convenience, checked like any
+outer field).
 
 ### `0x03` — reaction set
-
-Whole-set replacement per `(actor, target)`, chained like edits:
 
 ```
 lp(channel_id) || u32be(key_version) || lp(actor_user_id)
 || lp(tgt_sender) || lp(tgt_scope) || lp(tgt_client_msg_id)
+|| lp(tgt_env_hash)                        // hash of the target's envelope
 || lp(prev_set_hash)                       // lp("") for the actor's first set
 || u64be(sender_ts)
 || u32be(emoji_count) || lp(emoji)*        // zero-count = cleared
 ```
 
-- **Clearing stays a signed, sealed empty set** (`emoji_count = 0`) — the
-  current bare `body: ""` special case, which skips the key-version
-  requirement and the ceiling check server-side and produces an
-  unauthenticated, unencrypted push, is retired; the server stores and
-  pushes a clear as a normal value and its skip-the-checks branches are
-  deleted.
-- Stale sets cannot displace newer held ones (chain rule); concurrent
-  device sets surface as a fork with server-order presentation, flagged
-  not authenticated.
-- Any member may react (unchanged); the signature binds the actor.
+- **Clearing stays a signed, sealed empty set** — the bare `body: ""`
+  special case (which skips the key-version and ceiling checks server-side
+  and produces an unauthenticated, unencrypted push) is retired; the
+  server stores and pushes a clear as a normal value and its
+  skip-the-checks branches are deleted.
+- **Reactions do *not* get server-side ancestry — and their guarantee is
+  narrowed accordingly, on the reviewer's own terms** (P83-R3-03: "without
+  it, keep the latest-content guarantee explicitly limited to locally
+  observed ancestry"). The server keeps one row per `(message, reactor)`
+  as today. A client that observed a newer set refuses a stale one by its
+  local chain state; a **fresh device proves only that the actor signed
+  the presented set for that target at the signed `sender_ts`** — not that
+  it is the latest. Concurrent device sets it happens to hold surface as
+  forks; ones it never saw are invisible to it. Rationale: reaction sets
+  are ephemeral, low-stakes emoji state; full ancestry storage is not
+  worth its cost here, and the honest narrow claim is stated instead. Any
+  member may react (unchanged); the signature binds the actor.
 
 ### Guests
 
@@ -460,62 +461,49 @@ Guests derive a full Ed25519 identity from the link secret and can sign
 (`GuestRoom.tsx` holds a `DerivedIdentity`); guest identities are served by
 `fetch_identity` since 80-9. Guests sign like members; members verify a
 guest like any peer. A guest verifies members best-effort with in-session
-TOFU pins (no durable pin store, no phase-84 backup) — the guest-path
-limitation, stated. Links minted before 82-7 remain unsigned-wrap territory
-until expiry — unchanged, out of scope here.
+TOFU pins (no durable pin store, no phase-84 backup) — stated. Links
+minted before 82-7 remain unsigned-wrap territory until expiry —
+unchanged, out of scope here.
 
 ### Previews (thread inbox, search, channel summaries)
 
 A preview renders outer `sender` and `ts` beside decrypted text; until the
 underlying row is verified those are receipt metadata, and the preview
 carries the same assurance mark as a full row — a preview must never look
-*more* trustworthy than the message it previews. Wire gap closed so
-previews are verifiable at all: `ThreadInboxEntry` gains the head and
-last-reply **message IDs** (the server already holds
+*more* trustworthy than the message it previews. `ThreadInboxEntry` gains
+the head and last-reply **message IDs** (the server already holds
 `thread_activity.last_reply_id`; it just never sent it).
 
 ## §6 — Migration, downgrade resistance, enforcement
 
-**P83-06's and P83-R2-07's fixes.**
-
-**The legacy-vs-downgrade classification is withdrawn.** The second
-revision claimed suite-1 rows before a per-sender ratchet point would
-render as quiet legacy and later ones as flagged downgrades. The re-review
-is right that no trusted write-time boundary exists: server `id`/`ts`/`seq`
-are untrusted by §1, history arrives out of order by design, and
-observation order is not creation order. The claim goes. What replaces it
-is smaller and provable:
+*(P83-06 and P83-R2-07, resolved; carried forward, with the acceptance
+list extended per the third review.)*
 
 - **All suite-1 content is one class: unauthenticated.** A quiet mark, no
-  attribution checkmark, ever — and **identically** in history, previews,
-  search results and live pushes (the re-review's consistency demand).
-  Suite-1 content never gains authenticated attribution under any
-  circumstance; that property is preserved in full.
+  attribution checkmark, ever — identically in history, previews, search
+  and live. No claim is made about *when* legacy content was written
+  (observation order is not creation order); suite-1 content never gains
+  authenticated attribution under any circumstance.
 - **The enforcement flag**, `CHALK_MSG_SIG_REQUIRED` (the exact
   `CHALK_WRAP_SIG_REQUIRED` shape: config default + `--flag` + env parse +
-  welcome field + one-way client latch + chalkctl generate/preserve per the
-  `init.go` pattern), keeps both halves:
+  welcome field + one-way client latch + chalkctl generate/preserve per
+  the `init.go` pattern):
   - *Server-side:* `handleSend`, `handleEditMessage` and
     `handleSetReactions` reject suite-1 bodies — the leading byte after
-    base64 decode is the suite; no content access needed. Old builds
-    cannot re-seed unsigned traffic after the flip, on honest deployments.
+    base64 decode is the suite; no content access needed.
   - *Client-side (the security boundary):* the latch is one-way per
-    session, and under it **live** suite-1 arrivals are flagged hard — on
-    a latched client they cannot be legitimate, because an honest server
-    no longer accepts them. History rows stay in the uniform
-    unauthenticated class; no claim is made about when they were written.
+    session; under it, **live** suite-1 arrivals are flagged hard — on a
+    latched client they cannot be legitimate.
 - The per-`(channel, sender)` "seen signing" memo survives **only as UI
-  copy input** ("this member's messages are normally signed"), explicitly
-  not a security classification and never a rejection rule.
+  copy input**, explicitly not a security classification.
 - Defaults **off** through the migration; a later slice flips the default
-  to **on** once released builds all sign (the 82-10 precedent, including
-  `chalkctl update` preserving an explicit operator choice).
+  **on** (the 82-10 precedent, `chalkctl update` preserving an explicit
+  operator choice).
 - **Readiness** (pattern 82-9): `chalkctl msgsig status` reports the share
   of recent messages at suite 2 per channel by the leading suite byte —
   content-free. `enable` refuses while active senders still produce
   suite 1 (`--force` overrides and says so); `disable` exists for the same
-  reason `wrapsig disable` does. Migration in one line: ship it, let
-  clients upgrade, wait for READY, `chalkctl msgsig enable`.
+  reason `wrapsig disable` does.
 
 **The threat-model staging table** — which claim moves at which point, and
 *only* then:
@@ -525,303 +513,369 @@ is smaller and provable:
 | 83-1 … 83-2 (helpers, policy) | Nothing. Helpers are not guarantees. |
 | 83-3 … 83-5 (objects signed end-to-end, enforcement off) | Sender-authenticity gains a "phase 83 partially deployed" paragraph; **status stays NOT met**. |
 | 83-6 (enforcement) | Sender authenticity becomes **conditionally met** — user-authorship and relocation, where `CHALK_MSG_SIG_REQUIRED` is on, with §1's non-goals stated. Never unconditional. |
-| Half B complete + enforced | The membership paragraph moves — **closed in dictator-mode channels; conditional in democratic-mode channels** (the tally exclusion, §7), each with its enforcement condition. Not before, and never on the strength of Half A. |
+| Half B complete + enforced | The membership paragraph moves, **split three ways**: complete for transcript-born dictator channels; beginning-at-migration for converted ones (pre-migration residual stated); accepted-residual for democratic tallies. Each under its enforcement condition. Not before, and never on the strength of Half A. |
 
-**Acceptance tests** (extended per the re-review's item 11), all as
-hostile-server / hostile-member cases in `*.test.ts` against the real
-verify path — and attacking with the *accepted* suite, not one the old
-code rejects anyway (phase 82's hard lesson):
+**Acceptance tests** — all hostile-server / hostile-member cases in
+`*.test.ts` against the real verify path, attacking with the *accepted*
+suite (phase 82's hard lesson):
 
 sender substitution (outer ≠ inner); signature forged by another key
-holder; a held message re-presented under a new server id (dedup window);
-LRU eviction never producing a replay claim; out-of-order history loading
-producing **zero** warnings; re-dating skew surfaced; relocation across
-channel, thread, parent and target; an older edit re-presented (stale by
-chain rule); a multi-device edit fork (same `prev`, both valid — surfaced,
-neither dropped); the same for reaction sets; a stale reaction set
-re-presented; an attachment blob swapped under a signed digest; a reaction
-clear forged without the actor's key; an edit targeting a legacy row
-(unauthenticated-target mark); suite downgrade under a latched client;
-`unpinned` never upgrading to `verified` without a pin; and for Half B:
-concurrent transcript appends racing at one index; suppressed genesis on a
-fresh recipient (fail closed, no legacy fallback); a democratic-outcome
-event whose bound proposal record contradicts the witnessed lifecycle; a
-unilateral event in democratic-mode replayed state (invalid, chain stops);
-transcript fork at one index (both signed — proof); rollback below a held
-head; an unserveable checkpoint suffix (stale, key ops frozen); a wrap
-opening to a key that mismatches the epoch commitment.
+holder; a held message re-presented under a new server id; LRU eviction
+never producing a replay claim; out-of-order history producing **zero**
+warnings; re-dating skew surfaced; relocation across channel, thread,
+parent and target; a reply whose `parent_id` row disagrees with the signed
+parent identity/hash (`mismatch`); a reply to an unheld parent
+(unverified-target, no false trust); an older edit re-presented (stale by
+chain rule); a sibling edit fork (same `prev`, both valid — surfaced,
+neither dropped); ancestry withheld by the server (unverified-target, not
+adopted as latest); a stale reaction set re-presented to a device that
+observed newer; the fresh-device reaction claim held to its narrow form;
+an attachment blob swapped under a signed digest; a reaction clear forged
+without the actor's key; an edit targeting a legacy row; suite downgrade
+under a latched client; `unpinned` never upgrading without a pin; and for
+Half B: concurrent transcript appends racing at one index; **suppressed
+genesis against a fresh recipient holding a suite-3 wrap (must fail
+closed)**; **a suite-2 wrap presented for a transcript-born channel
+(refused — honest signers never produce one)**; a fabricated democratic
+outcome vs a client with retained lifecycle records; a unilateral event in
+democratic replayed state; transcript fork at one index; rollback below a
+held head; an unserveable checkpoint suffix (stale, key ops frozen); a
+wrap opening to a key mismatching the epoch commitment; **an addition
+wrapped before its admission event exists (refused); a send attempted
+under a frozen epoch (refused); a removal followed by continued sends
+under the old epoch (impossible on a compliant client — frozen); creator
+offline across a removal (channel frozen, no silent fallback); a replayed
+pre-removal epoch (refused by replayed state); partial rotation recovery
+(wraps published, event missing — epoch stays pending)**.
 
 ## §7 — Half B: the authenticated channel-state transcript
 
-**P83-03's and P83-R2-01/02/03/04's fixes.** Membership becomes a
-hash-linked, signed event sequence replayed by every member; key handling
-trusts the replayed state, not the roster. This revision corrects the
-authority rules to match chalk's real authorization model, makes genesis
-downgrade-safe, freezes every event's canonical contents, and structures
-the checkpoints.
+Membership becomes a hash-linked, signed event sequence replayed by every
+member; key handling trusts the replayed state, not the roster. This
+revision adds the epoch-bound wrap format (R3-01), the epoch lifecycle
+(R3-04), the fully frozen byte schema (R3-05), and the corrected
+democratic-detection condition (R3-06).
 
 ### The event chain
 
 ```
-event     = { channel_id, index, prev_hash, type, actor_user_id,
-              subjects[], details, sig }
+event     = { channel_id, index, prev_hash, type, actor_user_id, details, sig }
 canonical = utf8("chalk-chan-sig.v1") || u8(event_type)
             || lp(channel_id) || u64be(index) || lp(prev_hash)
-            || lp(actor_user_id) || u32be(subject_count) || lp(subject)*
-            || <details fields, per type, frozen below>
+            || lp(actor_user_id) || <details, exactly per the schema table>
 event_hash = SHA-256(canonical || lp(sig))
 ```
 
-Types: `genesis`, `genesis_migration`, `add_member`, `remove_member`,
-`self_leave`, `set_mode`, `key_epoch`, `guest_grant`, `guest_revoke`.
+The generic `subjects[]` field from the third revision is **deleted**
+(P83-R3-05): every event's target lives in its typed `details`, in exactly
+one place, so no consistency rule between two representations is needed.
 
 The server stores and relays events (one new table, `(channel_id, index)`
-unique — concurrent appends race and the loser refetches and re-appends on
-the new head; new fetch/append frames) and can forge none of them. What it
-*can* do — fork, roll back, withhold — is what the client rules below
-detect, **eventually**.
+unique — concurrent appends race, the loser refetches and re-appends on
+the new head; fetch/append frames) and can forge none of them. What it
+*can* do — fork, roll back, withhold — the checkpoint rules below detect,
+**eventually**.
+
+### The frozen byte schema (P83-R3-05)
+
+Nothing below is left for an implementation slice to decide. Common rules:
+every variable field `lp()`-prefixed; lists `u32be(count)` + elements,
+sorted by user-ID bytes, duplicates invalid; absent optionals `lp("")`;
+`ed25519_fp` = SHA-256 of the raw 32-byte public key; `index` starts at 0
+(genesis) and is `< 2^63`.
+
+Enum tags (each one byte):
+
+| Enum | Values |
+|---|---|
+| `event_type` | `0x01` genesis, `0x02` genesis_migration, `0x03` add_member, `0x04` remove_member, `0x05` self_leave, `0x06` set_mode, `0x07` key_epoch, `0x08` guest_grant, `0x09` guest_revoke |
+| `role` | `0x00` member, `0x01` owner |
+| `mode` | `0x00` dictator, `0x01` democratic |
+| `chan_kind` | `0x00` group, `0x01` dm, `0x02` ephemeral |
+| `auth_arm` | `0x00` unilateral, `0x01` governance (proposer), `0x02` governance (owner fallback) |
+
+`member_entry` = `lp(user_id) || lp(ed25519_fp) || u8(role)`.
+
+`gov_record` (the governance-resolution evidence, one fixed byte order) =
+`lp(proposal_id) || u8(proposal_type: 0x00 add_member, 0x01 remove_member,
+0x02 set_mode) || lp(target_user_id) || u8(mode_payload; 0xFF when absent)
+|| u32be(eligible) || u32be(yes) || u32be(no) || u32be(quorum_percent)
+|| u32be(threshold_percent)`.
+
+`details` per event type:
+
+| Type | `details`, in exact order | Bounds / validation |
+|---|---|---|
+| `genesis` | `member_entry(creator) || u32be(n) || member_entry*(initial members) || u8(mode) || u8(chan_kind) || u32be(key_version=1) || lp(key_commitment)` | n ≤ 512; creator's role must be `owner`; exactly one owner |
+| `genesis_migration` | `u32be(n) || member_entry*(roster) || u8(mode) || u32be(key_version) || lp(key_commitment) || u8(prior_state = 0x00 legacy)` | n ≤ 512; exactly one owner; actor must be that owner |
+| `add_member` | `lp(target_user_id) || lp(target_ed25519_fp) || u8(role = 0x00) || u8(auth_arm) || gov_record?` | `gov_record` present iff `auth_arm ≠ 0x00`; target not in replayed membership; `gov_record.proposal_type = 0x00` and `gov_record.target_user_id` = target |
+| `remove_member` | `lp(target_user_id) || u8(auth_arm) || gov_record?` | target in replayed membership, not the owner; actor ≠ target; same `gov_record` consistency |
+| `self_leave` | *(empty)* | actor in replayed membership and not the owner; the actor is the subject |
+| `set_mode` | `u8(old_mode) || u8(new_mode) || u8(auth_arm) || gov_record?` | old = replayed mode; dictator→democratic requires `auth_arm = 0x00` and actor = owner; democratic→dictator requires a governance arm with `proposal_type = 0x02`, `mode_payload = 0x00`, `threshold_percent` = the supermajority |
+| `key_epoch` | `u32be(key_version) || lp(key_commitment) || u64be(under_index) || lp(under_event_hash)` | actor = creator; key_version = replayed version + 1; `(under_index, under_event_hash)` names a real event at or before this one |
+| `guest_grant` | `lp(guest_user_id) || lp(guest_ed25519_fp) || lp(owner_ed25519_fp) || u64be(expiry_unix_ms) || u32be(key_version)` | actor = owner; the guest fp is derivable by the owner at mint (identity is a pure function of the link secret) |
+| `guest_revoke` | `u64be(grant_index) || lp(grant_event_hash)` | actor = owner; names a real `guest_grant` |
+
+`key_commitment` = `SHA-256(utf8("chalk-key-commit.v1") || spaceKey)`.
+
+The **state-transition function** — (replayed state × event) → new state
+or `invalid`, `invalid` stopping the chain for every honest client — is
+part of the spec, implemented in 83-7 as a pure function with the event
+list as input, testable without a server. The authority checker, the
+transition function and the signer all read the *same* decoded structures;
+the table above is the only decoding.
 
 ### Authority, per event type and per governance mode
 
-Corrected against the actual product rules (each verified in the tree:
-democratic mode hard-rejects unilateral adds and removes; self-leave is
-`remove_member` on self, allowed in both modes, never proposal-gated, and
-is the only leave path; the owner can never be removed or leave; rotation
-is creator-only in SQL in both modes; guest invite mint/revoke is
-owner-only; `dictator→democratic` is owner-unilateral while
-`democratic→dictator` is proposal-only at supermajority):
+*(Corrected in the third revision against the verified product rules;
+unchanged.)*
 
 | Event | dictator mode | democratic mode |
 |---|---|---|
 | `genesis` | creator | creator |
 | `genesis_migration` | owner | owner |
-| `add_member` | any current transcript member | governance-resolution form only |
-| `remove_member` (actor ≠ subject) | owner (subject never the owner) | governance-resolution form only |
-| `self_leave` (actor = subject) | the member; never the owner | same — never proposal-gated |
+| `add_member` | any current transcript member | governance arm only |
+| `remove_member` | owner (target never the owner) | governance arm only |
+| `self_leave` | the member; never the owner | same — never proposal-gated |
 | `set_mode` → democratic | owner, unilateral | — |
-| `set_mode` → dictator | — | governance-resolution form only |
+| `set_mode` → dictator | — | governance arm only (supermajority) |
 | `key_epoch` | creator only | creator only |
 | `guest_grant` / `guest_revoke` | owner only | owner only |
 
-The verifier's authority check is **mode-dependent on the replayed
-state**: a unilateral `add_member` in a channel whose replayed mode is
-democratic is invalid and the chain stops there for every honest client —
-the same fail-closed rule as an invalid wrap signature.
+The verifier's check is **mode-dependent on the replayed state**: a
+unilateral `add_member` in replayed-democratic state is invalid, chain
+stops.
 
-**The governance-resolution form, and the democratic exclusion.** chalk's
-ballots are deliberately secret — per-voter votes are never broadcast, only
-aggregates — and nothing in governance is client-signed. Any verifiable
-quorum certificate would necessarily reveal at least the endorsing voters
-to every transcript verifier, permanently. The decision (scuq, 2026-08-07):
-**ballot secrecy wins; democratic tallies are excluded from the
-cryptographic guarantee.** Concretely:
+**The democratic exclusion, with its detection condition stated exactly
+(P83-R3-06).** Ballots are secret and unsigned by deliberate product
+choice (scuq, 2026-08-07: ballot secrecy wins; any verifiable quorum
+certificate permanently reveals endorsers — recorded future hardening). A
+democratic outcome is enacted by an event signed by the **enacting
+proposer** (or the owner as the named fallback arm), binding the full
+`gov_record`. What that proves: a named member enacted a specific, fully
+stated claimed outcome. What it does not prove: that the tally was honest.
 
-- A democratic outcome is enacted in the transcript by an event signed by
-  the **enacting proposer** (or, if the proposer never returns, the owner,
-  as a named fallback arm), whose `details` bind the full proposal record:
-  proposal id, type, target, mode payload, frozen eligibility count, final
-  yes/no/turnout, and the thresholds applied.
-- What that signature proves: a named member enacted a specific, fully
-  stated claimed outcome. What it does not prove: that the tally was
-  honest. Every member witnessed the proposal lifecycle live
-  (`governance_event` fan-out), so a fabricated outcome contradicts what
-  voters saw — **detection, not prevention**, and the threat model says so
-  (§6 staging table: C-01 closed in dictator channels, conditional in
-  democratic ones).
-- **Recorded future hardening:** signed ballots / quorum certificates,
-  with the privacy cost named — endorsers become permanently visible in
-  the channel transcript. If chalk ever wants cryptographic democracy, it
-  buys it with ballot secrecy, and that trade belongs to a future phase.
-- **Enactment lag is a feature, not a bug:** the server executes a passed
-  proposal immediately (rows change), but the transcript event waits for
-  the enacting client to sign it. Until it lands, replayed state and
-  server roster disagree — and the reshare gate below therefore refuses to
-  hand the key to a newly added member until the *authenticated* admission
-  exists. The lag window is exactly the window in which the addition is
-  not yet proven.
+The detection claim, narrowed to what is true: **a client detects a
+fabricated outcome only if it was connected during the relevant proposal
+lifecycle and retained its observations.** Concretely: clients persist
+observed proposal records — proposal id, type, target, and the final
+counts at resolution — in IndexedDB (bounded, per channel), and the
+transcript verifier compares a governance-arm event's `gov_record` against
+the retained record for that proposal id. A contradiction (different
+target, different outcome, a proposal this client watched fail) is
+surfaced as evidence, like a fork. A member that was offline for the whole
+lifecycle, or a fresh device, has no record and detects nothing — and a
+server can present a consistent fabricated lifecycle to a partition it
+controls. **C-01 in democratic-mode channels is therefore an accepted
+residual risk**, stated in the threat model in those words, not a resolved
+finding.
 
-### Genesis: downgrade-safe by construction
+**Enactment lag:** the server executes a passed proposal immediately; the
+transcript event waits for the enacting client. Until it lands, replayed
+state and roster disagree — and the reshare gate refuses the key to a
+newly added member until the authenticated admission exists. The lag is
+the window in which the addition is not yet proven, and it is closed by
+the event, not by trust.
 
-The re-review's P83-R2-02 killed the second revision's "creator signs
-genesis in the same client transaction" — impossible as written, because
-the client never had the channel ID (the server mints it via
-`gen_random_uuid()` and returns it in the ack), and an after-the-fact
-genesis is suppressible: hide it from a fresh member and the channel
-demotes to legacy, server-asserted membership. Chosen fix (the review's
-option 1; option 2 — a pending channel activated only after the creator
-appends genesis — rejected as a second round-trip plus a partial-failure
-state machine for no additional guarantee):
+### Genesis: downgrade-safe on both ends (P83-R2-02 + P83-R3-01)
 
-- **The client mints the channel ID.** `create_channel` gains `channel_id`
-  (a client-generated UUID) and `genesis` (the signed event). The
-  `channels` table is a plain, unpartitioned UUID PK, so a client-supplied
-  ID is enforceable; a collision is an insert error and the client
-  re-mints. Genesis is bound to the channel **before the channel exists**;
-  there is no genesis-less window to suppress.
-- Since `genesis` commits to key version 1 (below), **the creator's client
-  mints the space key at creation time** rather than lazily on first open
-  — the commitment is a hash, so the key is held locally and the wraps are
-  published after the ack exactly as today; `ensureChannelKeyInner`'s
-  no-key-anywhere mint branch is superseded for transcript channels (its
-  82-4 read-back guard remains).
-- **DM idempotency**: the existing-DM short-circuit returns the existing
-  channel; the submitted ID, genesis and freshly minted key are discarded
-  — the existing channel keeps its own transcript state.
-- **Old clients** omit both fields; the server mints the ID and the
-  channel is **legacy**, inside the migration soft window. Once
-  `CHALK_TRANSCRIPT_REQUIRED` (Half B's enforcement flag, same
-  config → welcome → one-way-latch shape as the other two) is on, the
-  server rejects creates without a genesis.
-- **The transcript-adoption ratchet** (client, IndexedDB, the 82-5
-  pattern): once a client holds a valid `genesis` or `genesis_migration`
-  for a channel, it never again treats that channel as legacy — key
-  adoption and auto-resharing run only off replayed state from then on,
-  permanently. And on a transcript-required deployment, a channel with
-  **no** held genesis gets **no key adoption and no resharing** —
-  fail-closed `waiting`, never a legacy fallback.
-- **Existing channels** migrate by an owner-signed `genesis_migration`
-  asserting the roster as it stands, displayed to every member as an
-  adoption: *"roster as asserted by \<owner\> on \<date\>"* — TOFU for
-  membership, documented as such; guarantees begin at the migration event
-  and retroactively prove nothing.
-- **Channels that cannot migrate, scoped out explicitly:** the lobby
-  channel (`created_by` NULL by design, no members, membership checks
-  skipped) is permanently outside transcript scope. Orphaned channels
-  (creator's account deleted; `created_by` went NULL and is never
-  reassigned) cannot migrate — and cannot rotate keys today either, for
-  the same reason; they stay legacy, and the honest recommendation is to
-  recreate them. Both documented in the threat model when Half B's claims
-  move.
+**Creator side** *(third revision, unchanged)*: the client mints the
+channel ID and submits the signed `genesis` inside `create_channel` (the
+`channels` table is a plain unpartitioned UUID PK; a collision is an
+insert error and the client re-mints; option 2 — a pending channel
+activated on a later genesis append — rejected as a second round-trip plus
+a partial-failure state machine for no additional guarantee). Since
+`genesis` commits to key version 1, **the creator mints the space key at
+creation time**; the wraps are published after the ack as today;
+`ensureChannelKeyInner`'s no-key-anywhere mint branch is superseded for
+transcript channels (its 82-4 read-back guard remains). DM idempotency:
+the existing-DM short-circuit returns the existing channel; the submitted
+ID, genesis and key are discarded. Old clients omit both fields → the
+channel is **legacy**, inside the migration soft window; under
+`CHALK_TRANSCRIPT_REQUIRED` (config → welcome → one-way latch) the server
+rejects creates without a genesis.
 
-### Canonical event contents, frozen (P83-R2-03)
+**Recipient side — the R3-01 fix: the wrap itself carries the transcript
+binding.** The third revision hung the fresh recipient's fail-closed
+decision on a server-controlled welcome flag; a server could suppress the
+genesis, report enforcement off, serve an honest phase-82 wrap and collect
+a reshare. Closed by extending the one format the recipient *must* verify
+anyway:
 
-Common rules: every variable field `lp()`-prefixed; member lists
-count-prefixed, sorted by user-ID bytes, duplicates invalid; explicit
-bounds on every list; absent optionals `lp("")`; `ed25519_fp` is the
-SHA-256 of the raw 32-byte public key. `details` per type:
+- **Wrap suite 3** (`WRAP_SUITE_X25519_AESGCM_ED25519_EPOCH`): phase 82's
+  suite-2 wrap plus the authorized epoch's identity inside the signed
+  canonical message —
 
-- `genesis`: creator `(user_id, ed25519_fp)`; initial members as
-  `(user_id, ed25519_fp, role)` sorted; governance mode; channel type +
-  is_dm; **key commitment** for version 1 (below).
-- `genesis_migration`: asserted roster `(user_id, ed25519_fp, role)`
-  sorted; mode; current key version + commitment; a prior-state marker
-  (`legacy`).
-- `add_member`: target `(user_id, ed25519_fp)`; role (always `member`);
-  authorization arm — `unilateral` or the governance record above.
-- `remove_member`: target `(user_id)`; authorization arm.
-- `self_leave`: no details; actor = subject, enforced by the verifier.
-- `set_mode`: old mode, new mode, authorization arm.
-- `key_epoch`: key version; **key commitment**
-  `SHA-256(utf8("chalk-key-commit.v1") || spaceKey)`; the membership head
-  `(index, event_hash)` it was minted under; rotator = creator, enforced
-  by the verifier.
-- `guest_grant`: guest `(user_id, ed25519_fp)` — derivable by the owner at
-  mint time, because the guest identity is a pure function of the link
-  secret; owner fp; expiry; key version granted. `guest_revoke`: the
-  grant's `(index, event_hash)`.
+  ```
+  message = utf8("chalk-wrap-sig.v1") || u8(3) || u32be(keyVersion)
+         || lp(channelID) || lp(recipientID) || lp(signerUserID) || lp(sealed)
+         || u64be(epoch_index) || lp(epoch_event_hash)
+  ```
+
+  where `(epoch_index, epoch_event_hash)` names the `key_epoch` (or
+  `genesis` / `genesis_migration`) event that authorized this key version.
+  The suite byte is inside the signed message, as in phase 82, so the
+  format is **cryptographically self-describing — a legacy wrap is
+  distinguishable by construction, not by any server-supplied flag.**
+- **Honest members of a transcript channel produce only suite-3 wraps.**
+  A recipient of a suite-3 wrap must fetch and verify the transcript
+  through the named event, check the epoch's key commitment against the
+  unwrapped key, and only then adopt or reshare — with no transcript
+  served, it stays fail-closed `waiting`. A server cannot strip the epoch
+  binding without breaking the signature, and cannot forge a suite-2 wrap
+  from a suite-3 one.
+- **Transcript-born channels are thereby closed completely**: every wrap
+  that has ever existed for them is suite-3, so a fresh device either
+  verifies the transcript or refuses the key. The welcome flag and the
+  adoption ratchet remain as defence in depth, no longer load-bearing.
+- **Migrated channels carry a stated residual**: a server that *retained*
+  pre-migration suite-2 wraps can present them to a fresh device along
+  with a suppressed transcript and a stale `current_key_version`, holding
+  that device on a pre-migration epoch. Bounded honestly: honest members
+  send under post-migration epochs the downgraded device cannot open, so
+  the device sees undecryptable traffic ("waiting") rather than a working
+  channel — loud, not silent — and the exposed material is pre-migration
+  history plus anything the downgraded device itself sends before its user
+  notices. Completing a migration therefore **includes a rotation**
+  (`genesis_migration` → creator rotates → suite-3 wraps at the new
+  version), and the phase-84-style recommendation is recorded: the
+  guarantee for converted channels begins at migration-plus-rotation.
+  Channels that cannot migrate stay scoped out: the lobby channel
+  (`created_by` NULL by design, no members) permanently; orphaned channels
+  (creator deleted — who also cannot rotate today) stay legacy, recommend
+  recreation.
+- **The transcript-adoption ratchet** (client, IndexedDB, 82-5 pattern):
+  once a client holds a valid genesis or migration for a channel, it never
+  again treats that channel as legacy — permanently, regardless of flags.
+
+**Existing channels** migrate by an owner-signed `genesis_migration`
+asserting the roster as it stands, displayed to every member as an
+adoption: *"roster as asserted by \<owner\> on \<date\>"* — TOFU for
+membership, documented as such; guarantees begin at the migration event
+and retroactively prove nothing.
 
 **Admission binds the admitted key.** The authorizer resolves the target's
 Ed25519 key (pin, or fetch-then-pin) *at admission time* and signs its
-fingerprint. Every member therefore converges on one admitted key; a later
-different key for that user is the existing changed-pin flow, never a
-silent re-resolution. This does not eliminate TOFU's first fetch — the
-authorizer's own pin may have been poisoned at its first sight — it
-prevents *divergent* resolution after the admission. Stated in both
-directions.
+fingerprint; every member converges on one admitted key, and a later
+different key is the existing changed-pin flow. This does not eliminate
+TOFU's first fetch — the authorizer's own pin may have been poisoned at
+first sight — it prevents *divergent* resolution after the admission.
 
-**The key commitment closes the last substitution seam.** Without it the
-transcript proves a version number and a roster while every actual key
-still arrives by wrap. With it, on transcript channels `openWrap` gains a
-final check: the unwrapped key's commitment must equal the current epoch's
-(genesis's, for v1). A wrap that verifies but opens to a key the epoch
-never authorized is refused regardless of its signature. Rotation ordering
-follows from the head binding: a `key_epoch` minted under a membership
-head that still contains a removed member is visibly pre-removal, and
-clients refuse to wrap that epoch's key to anyone absent from the epoch's
-bound membership.
+### The epoch lifecycle (P83-R3-04)
 
-**The state-transition function is part of the spec**: for each event
-type, (replayed state × event) → new state or `invalid`, deterministic,
-with `invalid` stopping the chain. 83-7 implements it as a pure function
-with the event list as input — testable without a server.
+The key commitment closes substitution *within* an epoch; this section
+defines when an epoch may be used at all. Per channel, the replayed state
+carries an epoch status: **active** or **frozen**.
 
-### Checkpoints: fork, rollback, staleness (P83-R2-04)
+- **Additions do not require a new epoch.** The epoch's
+  `(under_index, under_event_hash)` records where it was *minted*;
+  authority to **distribute** it is the replayed *current* membership. A
+  member added after the epoch receives the current key (matching today's
+  deliberate rewrap flow) — but **only after its `add_member` event is
+  verified** (the enactment-lag gate above), and only while the epoch is
+  active. Creator-offline is therefore a non-event for additions.
+- **A removal or self-leave freezes the epoch.** The moment a client's
+  replayed state applies a `remove_member` or `self_leave`, the current
+  epoch becomes **frozen**: on a compliant client, **sending, key
+  adoption and resharing all stop** in that channel (compose disabled
+  under a banner — "waiting for key rotation"), because anything sent
+  under the old epoch is readable by the removed member, who still holds
+  the key. A transcript proving a removal does not revoke a key; only the
+  rotation does. Today's behaviour — traffic continuing under the old key
+  with `rotation_pending` making the gap merely *visible* — is exactly
+  the hole; the freeze is the fix, and its availability cost is
+  deliberate and stated (§1).
+- **Unfreezing is the post-removal epoch**: the creator publishes suite-3
+  wraps for version `v+1` to the post-removal membership, appends the
+  `key_epoch` event bound to a head at or after the removal, and commits
+  the server-side version advance (the existing `rotate_channel_key`
+  flow). Clients unfreeze when their replayed state applies a `key_epoch`
+  whose `under_*` head includes the removal. **Ordering and recovery:**
+  wraps-published-but-no-event ⇒ the epoch is *pending*, the channel
+  stays frozen, the creator's client retries the append (idempotent — the
+  unique `(channel_id, index)` race resolves by refetch-and-reappend);
+  event-appended-but-version-not-advanced ⇒ retry the advance
+  (`stale_key_version` is already swallowed as success in today's client
+  rotation path). A replayed *pre-removal* epoch can never unfreeze a
+  channel: its `under_*` head precedes the removal, which the transition
+  function checks.
+- **Creator offline across a removal ⇒ the channel stays frozen until the
+  creator returns.** This matches the existing authorization model
+  (rotation is creator-only in SQL, in both modes; `rotate_needed` and
+  the durable `rotation_pending` catch-up already target only the
+  creator) — the phase makes the wait *safe* instead of silently unsafe.
+  Widening rotation authority would be a product change this phase
+  deliberately does not make; recorded as a rejected alternative
+  (creator-only is also what keeps `key_epoch` authority checkable).
+
+### Checkpoints: fork, rollback, staleness (P83-R2-04, resolved)
 
 The envelope's chain reference is the structured checkpoint
-`(chain_index, chain_hash)` — a bare hash cannot express "different at the
-same index" or "names an event the server will not serve". Receiver state
-machine, comparing a peer's checkpoint `P` against the local verified head
-`L` (both persisted per channel in IndexedDB):
+`(chain_index, chain_hash)`. Receiver state machine, comparing a peer's
+checkpoint `P` against the local verified head `L` (both persisted per
+channel):
 
 | Comparison | Meaning | Action |
 |---|---|---|
 | `P.index == L.index && P.hash == L.hash` | agreement | none |
-| `P.index < L.index` and `P.hash` matches our chain at that index | peer is older | none — old messages carry old heads |
-| `P.index < L.index` and `P.hash` does **not** match our chain there | **fork proof** | permanent evidence; surface like the identity-changed wall; freeze key ops |
-| `P.index > L.index` | peer is ahead | fetch the suffix `(L.index, P.index]`; verify; advance `L`. If the server cannot serve it → channel **stale** |
+| `P.index < L.index`, `P.hash` matches our chain at that index | peer is older | none |
+| `P.index < L.index`, `P.hash` does **not** match our chain there | **fork proof** | permanent evidence; surface like the identity-changed wall; freeze key ops |
+| `P.index > L.index` | peer is ahead | fetch `(L.index, P.index]`; verify; advance. Unserveable → channel **stale** |
 | `P.index == L.index && P.hash != L.hash` | **fork proof** | as above |
-| No local transcript at all | unknown | legacy channel: ignore. Transcript-required: **stale** |
+| no local transcript | unknown | legacy channel: ignore. Suite-3 wrap held or transcript-required: **stale** |
 
-- **Rollback:** any served prefix ending below `L` is refused outright —
-  `L` is monotonic.
-- **Freeze rules:** *stale* or *forked* ⇒ no key adoption, no resharing;
-  messaging continues under a banner (availability again does not fail
-  closed; key material does).
-- **Resume rules:** *stale* clears when the missing suffix arrives and
-  verifies. A **proven fork never clears** — two validly signed events at
-  one index is permanent cryptographic evidence of equivocation, kept and
-  displayed, like a repudiated pin.
-- **Detection is eventual, stated as such:** cross-attestation catches
-  equivocation only when evidence from the separated views meets — via
-  envelopes crossing the partition, or catch-up fetches. A server that
-  partitions two members perfectly and forever is caught by neither; what
-  it can no longer do is heal the partition without the fork becoming
-  provable.
+Rollback: any served prefix ending below `L` is refused — `L` is
+monotonic. Freeze rules: *stale* or *forked* ⇒ no key adoption, no
+resharing (messaging continues under a banner — distinct from the *epoch*
+freeze above, which stops sends). Resume: *stale* clears when the suffix
+arrives and verifies; a **proven fork never clears**. Detection is
+**eventual**: cross-attestation catches equivocation only when evidence
+from the separated views meets; a perfect permanent partition is caught by
+neither side — what the server can no longer do is heal the partition
+without the fork becoming provable.
 
 ### Catch-up, multi-device, guests
 
-- **Offline catch-up** is replay: fetch events past `L`, verify each
-  (signature + prev-hash + mode-dependent authority + state transition),
-  advance. Self-contained; nothing interactive.
-- **Multi-device:** each device replays independently and keeps its own
-  head; the chain is refetchable and verification deterministic, so honest
-  devices converge by construction. (The phase-84 backup is deliberately
-  unused here.)
-- **Guests** do not verify the transcript in v1 — scoped out, documented.
-  Their admission is authenticated *for members* via `guest_grant` /
-  `guest_revoke`; their key access rides 82-7's fragment anchor; a guest
-  trusts the member who handed it the link, which was already the guest
-  trust model.
+Offline catch-up is replay: fetch events past `L`, verify each (signature
++ prev-hash + mode-dependent authority + state transition), advance.
+Multi-device: each device replays independently and keeps its own head;
+honest devices converge by construction (the phase-84 backup is
+deliberately unused). Guests do not verify the transcript in v1 — scoped
+out, documented; their admission is authenticated *for members* via
+`guest_grant`/`guest_revoke`, their key access rides 82-7's fragment
+anchor, and a guest trusts the member who handed it the link, which was
+already the guest trust model.
 
 ## §8 — Slices
 
-**Gate 0 — independent protocol review of this third revision. Nothing
+**Gate 0 — independent protocol review of this fourth revision. Nothing
 below starts before it passes.** Then, Half A first:
 
 | Slice | Content |
 |---|---|
-| 83-1 | Export the canonical helpers from `spacekey.ts`; `chalk-msg-sig.v1` typed encoders for objTypes 1–3; sign (throws) and verify (total, typed result). Pure crypto, nothing produces it yet. Tests modelled on 82-1's. |
-| 83-2 | Public trusted-signer accessor on `ChannelCrypto`; the verify policy copied from `openWrap` including the offline warm path; the dedup and revision-head stores (idb version bump). |
-| 83-3 | The `onSend` reorder; message envelope (`0x01`); `CURRENT_MSG_SUITE = 2` + `describeSuites()` arm; plain sends signed and verified end to end, enforcement off. |
-| 83-4 | Edits (`0x02`: content-identity targets, revision chains, re-stated attachment bindings, the `message_edited` editor-ID wire field) and reactions (`0x03`: chained sets, the sealed signed clear, deletion of the server's skip-the-checks branches). |
+| 83-1 | Export the canonical helpers from `spacekey.ts`; `chalk-msg-sig.v1` typed encoders for objTypes 1–3; sign (throws) and verify (total, typed result). Pure crypto. Tests modelled on 82-1's. |
+| 83-2 | Public trusted-signer accessor on `ChannelCrypto`; the verify policy copied from `openWrap` including the offline warm path; the dedup, revision-DAG and lifecycle-record stores (idb version bump). |
+| 83-3 | The `onSend` reorder; message envelope (`0x01`) including the signed parent binding; `CURRENT_MSG_SUITE = 2` + `describeSuites()` arm; plain sends signed and verified end to end, enforcement off. |
+| 83-4 | Edits (`0x02`): the `message_revisions` migration (recording the 0044 reversal in its header), the append-only edit path + purge-on-delete, `fetch_revisions`, the revision state machine, the `message_edited` editor-ID field. Reactions (`0x03`): chained sets, the sealed signed clear, deletion of the skip-the-checks branches, the narrowed fresh-device claim in the UI. |
 | 83-5 | Attachment digest verification on every fetch path; guest signing in `GuestRoom.tsx`; `ThreadInboxEntry` head/last-reply IDs and preview assurance marks. |
 | 83-6 | Assurance UI (§3's five results on the `MemberTrust` vocabulary; uniform suite-1 rendering); `CHALK_MSG_SIG_REQUIRED` end to end; `chalkctl msgsig status/enable/disable`. Threat model moves per §6's staging table. |
-| 83-7 … | Half B, its own slice run once Gate 0 has covered §7: the state-transition function (pure, event-list-in); event table + fetch/append frames; `create_channel` wire change (client-minted ID + genesis, creation-time key mint); client replay/verify + checkpoint heads; envelope checkpoint production and cross-attestation; the reshare/adoption gate + transcript-adoption ratchet; `genesis_migration` rollout; `CHALK_TRANSCRIPT_REQUIRED`. Each slice names its threat-model movement. |
+| 83-7 … | Half B: the state-transition function (pure, event-list-in, the §7 schema as its only decoding); event table + fetch/append frames; **wrap suite 3** in `spacekey.ts` + `openWrap`'s transcript-fetch-and-commitment check; `create_channel` wire change (client-minted ID + genesis, creation-time key mint); the epoch lifecycle (freeze/unfreeze, compose gating, rotation recovery); client replay/verify + checkpoint heads; envelope checkpoint production and cross-attestation; the reshare/adoption gate + adoption ratchet; `genesis_migration` + migration-completes-with-rotation; persisted proposal-lifecycle records + the gov_record comparison; `CHALK_TRANSCRIPT_REQUIRED`. Each slice names its threat-model movement. |
 
 ## Before this ships
 
-Gate 0 sits before code, not before release — two paper reviews have each
-caught blocking protocol errors, which is the cheapest possible place to
-catch them. Phase 81 gave the standing reason: a signature verified
+Gate 0 sits before code, not before release — three paper reviews have
+each caught blocking protocol errors, which is the cheapest possible place
+to catch them. Phase 81 gave the standing reason: a signature verified
 inconsistently, or a transcript that does not actually bind membership,
 produces the *appearance* of the guarantee, which is worse than the
 current state, where `threat-model.md` says plainly that neither guarantee
 is met.
 
 `docs/threat-model.md` moves per §6's staging table and at no other time —
-and when Half B's membership claim moves, it moves **split**: closed in
-dictator-mode channels, conditional in democratic-mode channels (the tally
-exclusion), each under its enforcement flag.
+and when Half B's membership claim moves, it moves **split three ways**:
+complete for transcript-born dictator channels, beginning-at-migration for
+converted ones, accepted-residual for democratic tallies — each under its
+enforcement condition.
 
 Phase 88 (federation, declined) treats this phase as a hard prerequisite;
 if federation is ever reconsidered it is gated on **both** halves,
