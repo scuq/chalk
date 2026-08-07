@@ -1,6 +1,7 @@
 # Phase 93 — the full-width layout
 
-**Status:** **shipped** — 93-1, one slice, carries the whole feature.
+**Status:** **shipped** — 93-1 carries the feature; 93-2 rebalanced the thread
+panel against it, found by looking at the result rather than planned here.
 Everything under [Left open](#left-open) is deliberately not built.
 
 **Tag:** `#fullwidth` → `tools/where.sh -g fullwidth`. (Not `#width`: every
@@ -123,16 +124,25 @@ layout already fills the screen.
 ### The extra space goes to the conversation
 
 `.chalk-main` is the `1fr` column of the shell grid, and it is the only
-flexible one — the sidebar is sized by its own pref, the thread panel is a
+flexible one — the sidebar is sized by its own pref, the thread panel was a
 fixed 340px — so **all** the space unlocked by removing the cap lands in the
 feed.
 
-That does not make the thread panel free. It still takes its 340px and a gap
-out of the conversation, in either mode; what changes is the budget it comes
-out of. At 1920px the feed goes from ~836px centred to ~1656px full, and
-~1304px with a thread open — so the panel stops being the difference between
-a readable conversation and a squeezed one, which is the honest version of
-the claim.
+That does not make the thread panel free. It still takes a column and a gap out
+of the conversation, in either mode; what changes is the budget it comes out
+of. At 1920px the feed goes from ~836px centred to ~1656px full — so the panel
+stops being the difference between a readable conversation and a squeezed one,
+which is the honest version of the claim.
+
+**93-2 changed what that column costs.** A flat 340px next to a 1656px feed is
+its own imbalance — a letterbox of wrapped replies, with a reply composer
+squeezed under it, beside six times its width of empty feed. The panel is now
+`clamp(340px, 28%, 560px)`. The percentage resolves against the *shell's*
+content box, not the viewport, which is what makes one line cover both modes:
+in the centred 1100px column 28% (≈299px) is under the floor, so nothing moves;
+a full-width shell has room, so at 1920px the panel takes 529px and the feed
+keeps 1115px. The 560px ceiling stops an ultrawide handing the panel more than
+a column of short replies can use.
 
 What does *not* stretch is media, and that is already handled: attachments cap
 at `min(720px, 100%)` (theme.css:1410), code cards at `44rem`, link-preview
@@ -190,6 +200,7 @@ adding a second one.
 | slice | what it lands |
 | --- | --- |
 | 93-1 | `appWidth` in `display-prefs.ts` (type, default, normalize, apply), `--chalk-app-max-w` on `.chalk-app--phase08b`, the appearance select in `ProfilePanel.tsx`, `settings-nav.ts` keywords, `display-prefs.test.ts` cases, a `CHANGELOG.md` bullet, the reworded comments (below), and the phase-state bookkeeping (below). |
+| 93-2 | the thread panel's share: `clamp(340px, 28%, 560px)` on the thread-open grid, one line in `theme.css`. Found by looking at 93-1 running at 1920px — the balance complaint the plan did not anticipate. No JS, no pref, and centred mode is unchanged by construction. |
 
 ### The bookkeeping is part of the slice
 
@@ -229,10 +240,11 @@ needs it. One sentence in each of the three.
 
 ## How it gets verified
 
-**Ran clean at 93-1.** `node test.mjs` 1243/1243; the probe 14/14, and every
-measured number below came back exactly as predicted — 1100/836 centred,
-1920/1888/1656 full, 1304 with a thread open, 390px either way on the phone.
-The grid arithmetic and the stylesheet agree.
+**Ran clean at 93-1** (`node test.mjs` 1243/1243, probe 14/14: 1100/836
+centred, 1920/1888/1656 full, 1304 with a thread open, 390px either way on the
+phone) **and again at 93-2** (probe 16/16, with the thread-open numbers now
+529/1115 in full mode and centred held at exactly 340). The grid arithmetic and
+the stylesheet agree.
 
 - `node test.mjs` — `display-prefs.test.ts` extended: default is `centered`,
   an unknown / missing / non-string value normalizes to `centered`, a stored
@@ -254,14 +266,19 @@ The grid arithmetic and the stylesheet agree.
     question, but do not expect it from `getBoundingClientRect()`.
   - **The feed.** `.chalk-main` at ~1656px in full mode against ~836px
     centred, thread closed. That difference is the feature.
-  - **The thread panel still costs 340px**, and the criterion has to say so.
-    The grid goes from `sidebar 1fr` to `sidebar 1fr 340px`, so opening a
-    thread narrows the feed by 340 + one 12px `column-gap` in *both* modes —
-    full width buys a bigger starting number, not an exemption. What is
-    checkable, and what the phase actually claims, is the comparison:
-    **full + thread open (~1304px) is wider than centred + thread closed
-    (~836px)** — i.e. in full mode the thread panel no longer costs you the
-    conversation.
+  - **The thread panel still costs a column**, and the criterion has to say so.
+    Full width buys a bigger starting number, not an exemption from the panel.
+    What is checkable, and what the phase actually claims, is the comparison:
+    **full + thread open is wider than centred + thread closed** — i.e. in full
+    mode the thread panel no longer costs you the conversation.
+
+    Since 93-2 that column is `clamp(340px, 28%, 560px)`, so the criteria are
+    a ratio rather than a constant: in full mode at 1920px the panel measures
+    **529px** against a **1115px** feed — past its floor, inside its ceiling,
+    and roughly 1:2 against the feed. **Centred mode must still measure exactly
+    340px** and still lose 352px of feed, because that is the case where the
+    percentage falls under the floor; a probe that does not check it would miss
+    93-2 regressing the layout it was supposed to leave alone.
   - Switching the select changes all of this live; it survives a reload; and
     under iPhone emulation both settings render identically.
 - Full chain before it is done: `go build ./... && go vet ./...`,
@@ -284,6 +301,12 @@ The grid arithmetic and the stylesheet agree.
   `.chalk-composer--railed` if anyone disagrees after living with it.
 - **A third step (`wide`, ~1600px)** for people who want more than 1100 and
   less than everything. The enum is shaped for it; nothing else has to change.
+- **Thread-panel width as a pref**, the way 33-4 made the sidebar draggable.
+  93-2 deliberately did not: `clamp(340px, 28%, 560px)` needs no control
+  because it already answers differently on a laptop and an ultrawide, and a
+  drag handle here would be a second knob for the same question the layout
+  pref just settled. If the 28% turns out to be wrong for someone, that is the
+  argument for the pref — not a reason to build it in advance.
 - **Zen / focus mode** — hiding the sidebar entirely — is a different feature
   that people often ask for in the same breath. Not this phase.
 - **`.chalk-app`'s dead `max-width: 900px`** (theme.css:284) and, with it,

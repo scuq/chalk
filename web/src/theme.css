@@ -4938,7 +4938,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
    ============================================================ */
 
 .chalk-app--phase08b.chalk-app--thread-open {
-  grid-template-columns: var(--chalk-sidebar-w, 220px) 1fr 340px;
+  /* 93-2: the panel takes a share of the shell rather than a flat 340px. The
+     percentage resolves against the grid container's content box -- the shell,
+     not the window -- so it is self-balancing: in the centred 1100px column 28%
+     is under the 340px floor and nothing changes, while a full-width shell has
+     room to spend and the thread stops being a letterbox next to a feed six
+     times its width. The 560px ceiling keeps an ultrawide from handing the
+     panel more than a thread of short replies can use. */
+  grid-template-columns: var(--chalk-sidebar-w, 220px) 1fr clamp(340px, 28%, 560px);
   grid-template-areas:
     "header  header header"
     "sidebar main   thread"
