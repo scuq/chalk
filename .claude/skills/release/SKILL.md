@@ -1,6 +1,6 @@
 ---
 name: release
-description: Cut a chalk release — rename the CHANGELOG `## Unreleased` block to a version heading, update the CLAUDE.md pointer, and print the git add / commit / push / tag commands for scuq to run. Use when asked to release, cut a version, or tag vX.Y.Z.
+description: Cut a chalk release — rename the CHANGELOG `## Unreleased` block to a version heading, update the release pointer in docs/open-items.md, and print the git add / commit / push / tag commands for scuq to run. Use when asked to release, cut a version, or tag vX.Y.Z.
 ---
 
 Cutting a release in chalk is a documentation change plus a tag. There is no
@@ -40,9 +40,9 @@ scuq runs them. That applies to `git add`, `commit`, `tag` and both pushes.
    today's date and covers the same ground, ask scuq whether to fold the new
    bullets into it instead of cutting another version.
 
-4. **Move the pointer.** Update `Latest release: vX.Y.Z` under *Current state /
-   open items* in `CLAUDE.md`, in the same change set. A stale pointer is worse
-   than none, because it still reads as current.
+4. **Move the pointer.** Update `Latest release: **vX.Y.Z**` at the top of
+   `docs/open-items.md`, in the same change set. A stale pointer is worse than
+   none, because it still reads as current.
 
 5. **Run the verify chain** from CLAUDE.md — `go build ./... && go vet ./...`,
    `go test ./...`, `gofmt -l .`, and from `web/`: `npx tsc --noEmit`,
@@ -52,7 +52,7 @@ scuq runs them. That applies to `git add`, `commit`, `tag` and both pushes.
 6. **Print the commands** in one block, ready to paste:
 
    ```bash
-   git add CHANGELOG.md CLAUDE.md
+   git add CHANGELOG.md docs/open-items.md
    git commit -m "release vX.Y.Z: <theme, lowercased>"
    git push
    git tag -a vX.Y.Z -m "vX.Y.Z — <theme>"

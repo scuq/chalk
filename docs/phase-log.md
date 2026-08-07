@@ -699,8 +699,8 @@ access log (85).
 **Not started.** 65 (web push), 83 (signed message envelope plus authenticated
 channel-state transcript), 86 (ties), 87 (message reminders) and 90 (a local
 idle agent) — each planned in its own `PHASE-*.md`, and each marked
-*planned, not started* in the index above. CLAUDE.md's *Current state / open
-items* is the authority on what is open; this log only records what shipped.
+*planned, not started* in the index above. [open-items.md](open-items.md) is the
+authority on what is open; this log only records what shipped.
 
 ## Phase numbering note
 
