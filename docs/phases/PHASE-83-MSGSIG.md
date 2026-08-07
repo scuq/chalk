@@ -5,7 +5,7 @@ and the one the 2026-08-05 audit follow-up put at the top of its
 remaining-work list. **NOT IMPLEMENTED — no code exists.** This document is
 the plan and nothing below it has been built.
 
-**Status: design, fifth revision.**
+**Status: design, sixth revision.**
 
 - First revision, 6 August 2026: exploratory design. Reviewed; six findings
   P83-01 … 06, verdict *"request major revision."*
@@ -16,11 +16,14 @@ the plan and nothing below it has been built.
 - Fourth revision (commit `60c2ade`): R3-06 resolved on fourth review; seven
   findings R4-01 … 07 — implementation-critical contradictions in the new
   constructions. Gate 0 not passed.
-- This fifth revision answers the fourth review. All review documents are
+- Fifth revision (commit `b6ba5aa`): R4-01, R4-04 and R4-06 resolved on the
+  fifth review; four blocking findings R5-01 … 04, each on a persistence,
+  AEAD-context, downgrade or hash-definition boundary. Gate 0 not passed.
+- This sixth revision answers the fifth review. All review documents are
   external, like the phase-81 audits; this doc is the in-repo record.
 
 **Gate 0: nothing in the slice table may start until this revision passes
-independent protocol review.** Four paper reviews have each caught blocking
+independent protocol review.** Five paper reviews have each caught blocking
 errors before a line of code existed — the gate working exactly as intended.
 
 **Tag:** `#msgsig` → `tools/where.sh -g msgsig` (which today finds this plan
@@ -43,7 +46,8 @@ R2-04 (checkpoints), R2-05 (dedup), R2-06 → §5, R2-07 (uniform legacy) —
 resolved; R3-01 → §7 wrap binding; R3-02/03 → §5 ancestry; R3-04 → §7
 epochs; R3-05 → §7 schema; R3-06 (democratic detection) — resolved.
 
-Fourth review, all answered in this revision:
+Fourth review (per the fifth review: R4-01, R4-04 and R4-06 resolved, the
+rest partial until this revision):
 
 | Finding | Was | Resolved in |
 |---|---|---|
@@ -54,6 +58,19 @@ Fourth review, all answered in this revision:
 | P83-R4-05 (High) | UUID text aliasing, unfixed digest lengths, missing genesis/index invariants | §7 (canonical `uuid16`/`h32` forms; index chain rules; complete variant validation; per-field caps) |
 | P83-R4-06 (High) | "Continued sends impossible on a compliant client" ignores a withheld removal | §1, §6, §7 (removal confidentiality scoped to the verified view, explicitly eventual) |
 | P83-R4-07 (Medium) | Guests and suite 3: unstated whether guests verify the epoch proof | §7 (fragment-anchored owner-signature check over the full suite-3 message; epoch proof deliberately unverified by guests in v1) |
+
+Fifth review, all answered in this revision:
+
+| Finding | Was | Resolved in |
+|---|---|---|
+| P83-R5-01 (High) | Rotation could commit a key commitment whose 32-byte preimage lived only in volatile client state, and the append-race retry was invalid once another creator device won | §7 (durable pending op; **atomic event + creator-self-wrap append**; the losing-device abandon rule) |
+| P83-R5-02 (High) | `message_revisions` archived a ciphertext without the `key_version` that is its AEAD context — cross-epoch ancestry was undecryptable | §5 (column added; copied atomically; returned by `fetch_revisions`) |
+| P83-R5-03 (High) | The guest fragment has only two authenticated forms and cannot require suite 3 | §7 (the frozen 65-byte era-3 fragment form) |
+| P83-R5-04 (High) | The object hash used by replies, edits and reactions was never defined | §3 (`object_hash`, one formula, used by every chain) |
+
+Plus the fifth review's two non-blocking observations, both adopted: the
+complete suite-3 `openWrap` predicate and the pin-backup marker capacity
+rule (§7).
 
 ---
 
@@ -209,7 +226,23 @@ uuid16(x)  = the UUID's raw 16 bytes; parse strictly, reject anything that
 h32(x)     = exactly 32 raw bytes (SHA-256 output / Ed25519-key digest);
              fixed width, no length prefix; any other length is malformed
 canonical  = utf8("chalk-msg-sig.v1") || u8(objType) || <fields per class, §5>
+
+object_hash(O) = SHA-256( canonical(O) || lp(sig) )
+             // sig = the raw 64-byte Ed25519 signature, base64-decoded and
+             // length-checked (exactly 64 bytes) BEFORE hashing
 ```
+
+**`object_hash` is the one hash formula for every message-class chain link**
+(P83-R5-04): `par_env_hash`, `prev_rev_hash`, revision node IDs,
+`tgt_env_hash` and `prev_set_hash` are all `object_hash` of the referenced
+artifact — the same shape as the transcript's
+`event_hash = SHA-256(canonical || lp(sig))`, deliberately, so both domains
+identify the **complete signed artifact**, fields *and* signature (a
+re-signed copy of the same fields is a different artifact, which is what a
+chain must distinguish). The JSON transport object and base64 spellings
+never enter any hash. Cross-object test vectors and mutation tests — sender,
+object type, every target field, and the signature each perturbing the
+hash — are 83-1 material.
 
 - Domain `chalk-msg-sig.v1`, sibling of `chalk-wrap-sig.v1` and
   `chalk-voice-fp.v1`. Half B's transcript events use `chalk-chan-sig.v1`
@@ -322,7 +355,7 @@ uuid16(attachment_id) || u32be(att_key_version) || u64be(byte_len)
 ```
 
 - **Replies:** the sender holds the decrypted parent envelope and signs its
-  content identity *and* canonical-envelope hash. `parent_id` rides only on
+  content identity *and* `par_env_hash = object_hash(parent)` (§3). `parent_id` rides only on
   the wire as an untrusted locator; `thread_id` remains receipt metadata. A
   server mapping one `parent_id` to different signed parents produces a
   visible `mismatch` for any client holding either parent. **A reply's
@@ -354,16 +387,21 @@ message_revisions (
   rev_seq     INT         NOT NULL,   -- server-assigned arrival order;
                                       -- receipt metadata, untrusted
   body        TEXT        NOT NULL,   -- the replaced ciphertext, opaque
+  key_version INT         NOT NULL,   -- the displaced body's AEAD context
+                                      -- (P83-R5-02): the msgAAD binds it, so
+                                      -- an archived ciphertext without it is
+                                      -- undecryptable after a rotation —
+                                      -- exactly as 0044's design note foresaw
   replaced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (message_ts, message_id, rev_seq)
 )
 ```
 
 - **The atomic edit transaction:** lock the message row (`FOR UPDATE`),
-  `INSERT` the current body into `message_revisions` with
-  `rev_seq = prior count + 1`, then `UPDATE messages SET body`. Concurrent
-  edits serialize on the row lock; the moved body is always exactly the one
-  displaced. Deleting a message purges its revisions in the same
+  `INSERT` the current **body and its `key_version` together** into
+  `message_revisions` with `rev_seq = prior count + 1`, then
+  `UPDATE messages SET body, key_version`. Concurrent edits serialize on the
+  row lock; the moved pair is always exactly the one displaced. Deleting a message purges its revisions in the same
   transaction as the tombstone.
 - **Revision cap:** the server refuses edits past
   `MAX_MESSAGE_REVISIONS = 64` per message (`edit_forbidden`) — the
@@ -371,19 +409,20 @@ message_revisions (
   the cap is explicit.
 - **No hashes cross the trust boundary:** the server stores and serves only
   ciphertexts and locators. Clients decrypt each revision, recompute every
-  envelope hash, and trust only what they recomputed. `fetch_revisions`
-  (new frame, by message locator) returns the ciphertexts with their
-  `rev_seq`.
+  `object_hash`, and trust only what they recomputed. `fetch_revisions`
+  (new frame, by message locator) returns each revision's ciphertext,
+  **`key_version`** (bounds-checked: `1 ≤ v ≤` the channel's current
+  version) and `rev_seq`.
 
 **The chain root, fixed** (the fourth review's contradiction):
 
 ```
-first_edit.prev_rev_hash = SHA-256(original canonical message envelope)
-later_edit.prev_rev_hash = SHA-256(previous canonical edit envelope)
+first_edit.prev_rev_hash = object_hash(original message artifact)
+later_edit.prev_rev_hash = object_hash(previous edit artifact)
 ```
 
 There is no empty-parent edit. The original message envelope is the root
-node of the DAG; its own hash is computed by any client that decrypts it
+node of the DAG; its `object_hash` is computed by any client that decrypts it
 (current body, or the earliest revision row once edited).
 
 **Per-object revision state, persisted client-side:** a bounded set of
@@ -395,7 +434,7 @@ The state machine, for an incoming verified revision `R`:
 |---|---|---|
 | `R.prev` is a current head | **extend** | advance that head |
 | `R.prev` is a known non-head node with a different known child | **sibling fork** | keep both branches; surface "edited concurrently"; presentation order is the server's, labelled unauthenticated |
-| `hash(R)` is a known ancestor of a current head | **stale** | superseded revision re-presented; cannot displace the head |
+| `object_hash(R)` is a known ancestor of a current head | **stale** | superseded revision re-presented; cannot displace the head |
 | `R.prev` matches no known node | **unknown** | fetch ancestry via `fetch_revisions`, verify, reclassify; if the server withholds it, render **unverified-target** and do not adopt as latest |
 
 **Fresh-reader claim, backed by storage:** a fresh device fetches ancestry,
@@ -517,19 +556,30 @@ held head; an unserveable checkpoint suffix; a wrap opening to a key
 mismatching the epoch commitment; an addition wrapped before its admission
 event exists; a send under a frozen epoch; creator offline across a removal
 (frozen, no silent fallback); partial rotation at every interruption point
-of §7's state machine; **a converted channel's fresh device offered a
-retained suite-2 wrap plus a suppressed transcript (downgrade succeeds —
-asserting the documented residual, and that the per-device adoption ratchet
-prevents it on any device that ever adopted)**.
+of §7's state machine; **crash/reload before and after every durable write
+of the rotation and genesis machines; two creator devices racing different
+keys for one version (one commits, the loser abandons its candidate and
+adopts via the winner's self-wrap); a lost append ack (idempotent retry);
+recovery of a committed epoch driven entirely from a second creator
+device; an original plus edits spanning at least two key epochs, decrypted
+and chain-verified by a fresh reader; cross-era guest-link substitutions
+(a suite-2 blob under an era-3 link, a suite-3 blob under an era-2 link,
+a 65-byte fragment with an unknown leading byte — all refused);
+`object_hash` vectors (sender, object type, each target field and the
+signature each perturbing the hash)**; a converted channel's fresh device
+offered a retained suite-2 wrap plus a suppressed transcript (downgrade
+succeeds — asserting the documented residual, and that the per-device
+adoption ratchet prevents it on any device that ever adopted).
 
 ## §7 — Half B: the authenticated channel-state transcript
 
 Membership becomes a hash-linked, signed event sequence replayed by every
-member; key handling trusts the replayed state, not the roster. This
-revision freezes the suite-3 artifact (R4-01), makes rotation
-committed-event-first (R4-02), fixes the converted-channel claim (R4-04),
-completes the canonical schema (R4-05), scopes removal confidentiality
-(R4-06) and defines the guest rule (R4-07).
+member; key handling trusts the replayed state, not the roster. The suite-3
+artifact is frozen (R4-01), rotation is committed-event-first with no
+unrecoverable state (R4-02 + R5-01), the converted-channel claim is
+per-device (R4-04), the canonical schema is complete (R4-05), removal
+confidentiality is view-scoped (R4-06), and the guest rule — including the
+era-3 fragment form (R5-03) — is defined.
 
 ### The event chain
 
@@ -671,49 +721,92 @@ message = utf8("chalk-wrap-sig.v1") || u8(3) || u32be(keyVersion)
   The suite registry (`describeSuites`), wrap/open dispatch,
   `maxWrapBlobBytes` and `checkWrapPublish`'s size rule all gain the
   suite-3 arm in the same slice.
-- **Recipient rule:** a suite-3 wrap obliges the recipient to fetch and
-  verify the transcript through the named event, check the epoch's
-  `key_commitment` against the unwrapped key, and only then adopt or
-  reshare; with no transcript served it stays fail-closed `waiting`. The
-  suite byte is inside the signed message, so the format is
+- **Recipient rule — the complete acceptance predicate**, stated as one
+  list so "verify through the named event" cannot be implemented as
+  stopping at an old epoch that predates the recipient's own admission
+  (a member wrap is adopted only when *all* hold, at the recipient's
+  **full verified head**, not merely at the named epoch):
+  1. the blob parses (exact length, bounds) and the signature verifies
+     against the resolved signer's pinned key;
+  2. the transcript is fetched and verified through the named
+     `(epoch_index, epoch_event_hash)`;
+  3. the epoch's `key_commitment` matches the unwrapped key;
+  4. the replayed state contains the **recipient** as a current member;
+  5. the replayed state contains the **signer** as a current member;
+  6. no verified removal after the named epoch leaves the epoch **frozen**
+     — the epoch is active in replayed state.
+
+  Any failure → fail-closed `waiting`; with no transcript served, the same.
+  The suite byte is inside the signed message, so the format is
   **cryptographically self-describing** — a legacy wrap is distinguishable
   by construction, not by any server-supplied flag.
 - **Tests** (in §6's list): every field mutated, truncated, duplicated,
   relocated; epoch fields swapped between two otherwise-valid wraps; a
   wrap naming an uncommitted or re-indexed event.
 
-### Rotation: committed-event-first (P83-R4-02)
+### Rotation: committed-event-first, with no unrecoverable state (P83-R4-02 + P83-R5-01)
 
-The fourth review is right that wraps-first orphans every published wrap
-when the `key_epoch` append loses its index race — re-appending changes
-index, prev_hash, signature and event_hash, and the already-published
-wraps then name an event that never existed, unrepairable under the
-recipient-or-upgrade overwrite guard. The order is inverted:
+The fourth review showed wraps-first orphans every published wrap when the
+`key_epoch` append loses its index race. The fifth review showed the naive
+inversion is worse: an epoch whose commitment is committed while its
+32-byte preimage lives only in one tab's volatile memory is **permanently
+unfillable** — replay reveals the commitment, never the key. Both are
+closed by one rule: **an epoch (or genesis) cannot exist without its key
+being recoverable by the creator's account.**
 
-1. the creator mints key `v+1` and its commitment;
-2. signs and **appends `key_epoch` against the current verified head — and
-   retries the append to completion before any wrap exists** (an index
-   race means: refetch, verify the new suffix, re-sign at the new head;
-   the idempotent-append rule makes a duplicate retry of the identical
-   event a success);
-3. publishes suite-3 wraps for `v+1` to the post-change membership, each
-   naming the **committed** `(index, event_hash)` — new-version slots are
-   empty, so the upsert guard permits them;
-4. advances `current_key_version` (the existing `rotate_channel_key`
+1. The creator mints key `v+1` and its commitment, and **durably persists a
+   pending-operation record — the key included — in the space-key
+   IndexedDB cache before any network step.** A crash here is safe in both
+   directions: nothing exists server-side, and on restart the pending op
+   is either resumed or discarded (the key was never referenced).
+2. **The append is atomic with a creator-self wrap.** The `key_epoch`
+   append frame (and `create_channel`, for `genesis`) carries the
+   creator's own suite-3 self-wrap for the new key, and the server commits
+   event and wrap in one transaction. From the instant the epoch exists,
+   its key is recoverable by **any device of the creator's account** —
+   identity is per-user, so the shared X25519 private key opens the
+   self-wrap. Volatile client state is never load-bearing after this
+   point. (A duplicate retry of the identical event+wrap is idempotent
+   success, per the append rule.)
+3. **The race rule distinguishes who won.** Index taken by a *non-epoch*
+   event: refetch, verify the new suffix, re-sign the same candidate at
+   the new head, retry. Index taken by **another `key_epoch(v+1)` — a
+   second device of the same creator racing its own rotation**: the loser
+   **abandons its candidate entirely** — discards the pending op and its
+   key, and adopts the winner's key from the winner's self-wrap (checking
+   the commitment). Re-signing the losing candidate is invalid: replayed
+   state is now at `v+1` and the schema requires the next epoch to be
+   `v+2`. If a further rotation is genuinely still needed (the winning
+   epoch's `under_*` head predates the removal that forced the freeze), a
+   **fresh `v+2` rotation starts only after the winner's version advance
+   commits** — the server's publish gate permits only `current + 1`.
+4. The creator publishes suite-3 wraps for `v+1` to the post-change
+   membership, each naming the committed `(index, event_hash)` —
+   new-version slots are empty, so the upsert guard permits them.
+5. Advances `current_key_version` (the existing `rotate_channel_key`
    frame; `stale_key_version` is already swallowed as success in the
-   client's rotation path);
-5. clients unfreeze only when they hold the committed event **and** a key
+   client's rotation path).
+6. Clients unfreeze only when they hold the committed event **and** a key
    whose commitment matches it.
 
-**Recovery, at every interruption point** (creator restart resumes from
-replayed state, which names exactly one pending step): event committed /
-no wraps → recipients stay fail-closed `waiting`; the creator (or its
-restarted client) sees the committed epoch at `replayed version + 1` with
-missing wraps and resumes at step 3. Some recipients wrapped → retry the
-missing slots (empty-slot inserts, always permitted). Wraps complete /
-version not advanced → resume at step 4. Duplicate anything → idempotent
-by the rules above. There is no state from which the protocol cannot
-either finish or remain safely frozen.
+**Recovery, at every interruption point — by any device of the creator's
+account, not only the one that started:** replayed state names exactly one
+pending step, and the self-wrap supplies the key. Event committed / member
+wraps missing → recover the key from the self-wrap, resume at step 4
+(recipients stay fail-closed `waiting` meanwhile). Some recipients
+wrapped → retry the missing slots (empty-slot inserts, always permitted).
+Wraps complete / version not advanced → resume at step 5. Local pending op
+lost at any point after step 2 → the self-wrap makes it moot. Duplicate
+anything → idempotent. There is no state from which the protocol cannot
+either finish or remain safely frozen, and no state whose completion
+depends on a single device surviving.
+
+**Genesis gets the same treatment**: `create_channel` carries the signed
+`genesis` **and the creator's suite-3 self-wrap for key version 1** in one
+request, committed in one server transaction — the creation-time key is
+account-recoverable from the ack onward. A crash between the local mint
+and the create request leaves nothing server-side; the pending op is
+discarded.
 
 ### Genesis: downgrade-safe on both ends, with an honest converted-channel boundary
 
@@ -721,9 +814,11 @@ either finish or remain safely frozen.
 the signed `genesis` inside `create_channel` (plain unpartitioned UUID PK;
 collision → re-mint; the pending-channel alternative stays rejected).
 `genesis` commits to key version 1, so the creator mints the space key at
-creation time; wraps are published after the ack;
-`ensureChannelKeyInner`'s no-key-anywhere mint branch is superseded for
-transcript channels. DM idempotency: the existing-DM short-circuit returns
+creation time; **the creator's suite-3 self-wrap rides the create request
+and commits atomically with the genesis** (the R5-01 rule — see the
+rotation section), and the other members' wraps are published after the
+ack; `ensureChannelKeyInner`'s no-key-anywhere mint branch is superseded
+for transcript channels. DM idempotency: the existing-DM short-circuit returns
 the existing channel; the submitted ID, genesis and key are discarded. Old
 clients omit both fields → legacy channel, inside the soft window; under
 `CHALK_TRANSCRIPT_REQUIRED` the server rejects creates without a genesis.
@@ -759,6 +854,13 @@ chosen and stated:
   which channels have transcripts before the server can present them as
   legacy. The server can withhold the prefs blob, so this raises the cost
   of the attack and is *not* the boundary; the per-device rule above is.
+  **Capacity semantics:** the markers ride phase 84's existing bounded blob
+  (`BLOB_BUDGET_BYTES`, ~7900 bytes) at roughly 17 bytes each
+  (`uuid16` + era flag). When the budget is tight, **pins always win** —
+  they are the security record; markers are best-effort by definition —
+  and omitted markers are reported through the same `PinSyncStatus`
+  overflow surface phase 84 already has, so the user is told rather than
+  silently uncovered.
 - Completing a migration still **includes a rotation**
   (`genesis_migration` → committed-event-first rotation → suite-3 wraps at
   the new version): it moves honest members onto epoch-bound wraps and
@@ -846,22 +948,38 @@ The fragment decides, exactly as 82-7 established — and the teeth stay in
 guest rule (the guest rule lives only in `openGuestWrap`, reached only
 from a join fragment):
 
-- A link minted on a **transcript channel** carries the owner key in the
-  fragment, and its parked wrap is **suite 3**. The guest parses the
-  suite-3 blob and verifies the owner's signature **over the full
-  canonical message, epoch fields included** — anchored on the fragment
-  key, as today. The guest **does not verify the transcript behind the
-  epoch reference** in v1: it has no pins, no transcript state, and its
-  trust anchor is the member who handed it the link. Deliberate, stated;
-  the epoch fields are still signed, so the guest's wrap cannot be
-  re-pointed at a different epoch without breaking the signature it *does*
-  check.
-- A pre-82-7 anchorless link keeps requiring a suite-1 unsigned wrap; a
-  pre-transcript link with an owner key keeps requiring suite 2. Both
-  directions still hold: a server can neither strip a signature off a
-  current link nor bolt one onto a legacy link — and now also cannot
-  downgrade a transcript-channel link's wrap to suite 2, because the
-  fragment era determines the required suite.
+- **The fragment grows a third frozen form** (P83-R5-03 — the existing two
+  shapes are distinguished by length alone and cannot express "requires
+  suite 3"; deriving the requirement from server-supplied state would undo
+  the fragment-decides downgrade property):
+
+  ```
+  secret(32)                              32 bytes → requires suite 1
+  secret(32) || owner_pub(32)             64 bytes → requires suite 2
+  0x03 || secret(32) || owner_pub(32)     65 bytes → requires suite 3
+  ```
+
+  `parseJoinFragment` accepts **exactly** these: length 32; length 64;
+  length 65 with leading byte `0x03` (any other leading byte in a 65-byte
+  fragment is rejected — the byte is the era marker and leaves room for
+  future forms). The 32- and 64-byte forms parse byte-identically to
+  today, so every existing link keeps working. Each accepted form maps to
+  exactly one required wrap suite — both directions, as 82-7 established:
+  a server can neither strip the epoch binding off an era-3 link's wrap
+  nor bolt suite 3 onto an older link. Links minted on transcript channels
+  emit the era-3 form. `buildJoinURL`, `GuestFragment`,
+  `parseJoinFragment`, `openGuestWrap` and `JoinScreen` all change in the
+  same slice; cross-era substitution tests (a suite-2 blob with an era-3
+  link, a suite-3 blob with an era-2 link, unknown leading byte) are named
+  in §6.
+- On an era-3 link the guest parses the suite-3 blob and verifies the
+  owner's signature **over the full canonical message, epoch fields
+  included** — anchored on the fragment key, as today. The guest **does
+  not verify the transcript behind the epoch reference** in v1: it has no
+  pins, no transcript state, and its trust anchor is the member who handed
+  it the link. Deliberate, stated; the epoch fields are still signed, so
+  the guest's wrap cannot be re-pointed at a different epoch without
+  breaking the signature it *does* check.
 - `guest_grant` / `guest_revoke` authenticate guest admission *for
   members* (owner-only, per the authority table); members' own handling of
   guest wraps follows the member rules, never this section.
@@ -877,22 +995,22 @@ best-effort adoption markers above).
 
 ## §8 — Slices
 
-**Gate 0 — independent protocol review of this fifth revision. Nothing
+**Gate 0 — independent protocol review of this sixth revision. Nothing
 below starts before it passes.** Then, Half A first:
 
 | Slice | Content |
 |---|---|
-| 83-1 | Export the canonical helpers from `spacekey.ts` (+ `uuid16`); `chalk-msg-sig.v1` typed encoders for objTypes 1–3; sign (throws) and verify (total, typed result). Pure crypto. Tests modelled on 82-1's. |
+| 83-1 | Export the canonical helpers from `spacekey.ts` (+ `uuid16`); `chalk-msg-sig.v1` typed encoders for objTypes 1–3; **`object_hash` with cross-object vectors and mutation tests**; sign (throws) and verify (total, typed result). Pure crypto. Tests modelled on 82-1's. |
 | 83-2 | Public trusted-signer accessor on `ChannelCrypto`; the verify policy copied from `openWrap` including the offline warm path; the dedup, revision-DAG and lifecycle-record stores (idb version bump). |
 | 83-3 | The `onSend` reorder; message envelope (`0x01`) with the signed parent binding; `CURRENT_MSG_SUITE = 2` + `describeSuites()` arm; plain sends signed and verified end to end, enforcement off. |
-| 83-4 | Edits (`0x02`): the `message_revisions` migration (recording the 0044 reversal; the frozen schema and atomic edit transaction of §5; `MAX_MESSAGE_REVISIONS`), `fetch_revisions`, the revision state machine, the `message_edited` editor-ID field. Reactions (`0x03`): chained sets, the sealed signed clear, deletion of the skip-the-checks branches, the narrowed fresh-device claim in the UI. |
+| 83-4 | Edits (`0x02`): the `message_revisions` migration (recording the 0044 reversal; the frozen schema — `key_version` archived with every row — and atomic edit transaction of §5; `MAX_MESSAGE_REVISIONS`), `fetch_revisions` (body + `key_version` + `rev_seq`), the revision state machine, the `message_edited` editor-ID field. Reactions (`0x03`): chained sets, the sealed signed clear, deletion of the skip-the-checks branches, the narrowed fresh-device claim in the UI. |
 | 83-5 | Attachment digest verification on every fetch path; guest signing in `GuestRoom.tsx`; `ThreadInboxEntry` head/last-reply IDs and preview assurance marks. |
 | 83-6 | Assurance UI (§3's five results on the `MemberTrust` vocabulary; uniform suite-1 rendering); `CHALK_MSG_SIG_REQUIRED` end to end; `chalkctl msgsig status/enable/disable`. Threat model moves per §6's staging table. |
-| 83-7 … | Half B: the state-transition function (pure, event-list-in, §7's schema as its only decoding); event table + fetch/append frames with the idempotent-append rule; **wrap suite 3** — blob layout, registry, dispatch, size rules, `openWrap`'s transcript-fetch-and-commitment check, the guest-fragment rule; `create_channel` wire change (client-minted ID + genesis, creation-time key mint); **committed-event-first rotation** with its recovery table; the epoch lifecycle (freeze/unfreeze, compose gating); client replay/verify + checkpoint heads; envelope checkpoint production and cross-attestation; the reshare/adoption gate + adoption ratchet + the pin-backup adoption markers; `genesis_migration` + migration-completes-with-rotation + the recreate-for-full-guarantee UI note; persisted proposal-lifecycle records + the `gov_record` comparison; `CHALK_TRANSCRIPT_REQUIRED`. Each slice names its threat-model movement. |
+| 83-7 … | Half B: the state-transition function (pure, event-list-in, §7's schema as its only decoding); event table + fetch/append frames with the idempotent-append rule — **the `key_epoch` append atomic with the creator self-wrap**; **wrap suite 3** — blob layout, registry, dispatch, size rules, the complete `openWrap` acceptance predicate, **the era-3 guest fragment** (`buildJoinURL` / `parseJoinFragment` / `openGuestWrap` / `JoinScreen`); `create_channel` wire change (client-minted ID + genesis **+ creator self-wrap**, creation-time key mint, durable pending op); **committed-event-first rotation** with its recovery table and losing-device rule; the epoch lifecycle (freeze/unfreeze, compose gating); client replay/verify + checkpoint heads; envelope checkpoint production and cross-attestation; the reshare/adoption gate + adoption ratchet + the pin-backup adoption markers; `genesis_migration` + migration-completes-with-rotation + the recreate-for-full-guarantee UI note; persisted proposal-lifecycle records + the `gov_record` comparison; `CHALK_TRANSCRIPT_REQUIRED`. Each slice names its threat-model movement. |
 
 ## Before this ships
 
-Gate 0 sits before code, not before release — four paper reviews have each
+Gate 0 sits before code, not before release — five paper reviews have each
 caught blocking errors, which is the cheapest possible place to catch
 them. Phase 81 gave the standing reason: a signature verified
 inconsistently, or a transcript that does not actually bind membership,
