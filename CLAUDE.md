@@ -348,7 +348,10 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
   (phase 87, full plan in `docs/phases/PHASE-87-REMINDERS.md`: bring one message
   back later — 1h/24h/weekend/custom from the row menu, a badged Reminders entry
   above the parking lot, the whole set in a sealed prefs blob so the server never
-  learns a reminder exists, and no server code at all); the SFU seam (voice
+  learns a reminder exists, and no server code at all); the full-width layout
+  (phase 93, full plan in `docs/phases/PHASE-93-WIDTH.md`: a per-device
+  appearance pref that lifts the shell's 1100px cap, one slice, client-only);
+  the SFU seam (voice
   design Slice I) for rooms too large for a mesh; governance `set_config`
   proposals. The roster hover card's **device line** (92-3) is designed and
   deliberately unbuilt: showing a friend which device you are online from
