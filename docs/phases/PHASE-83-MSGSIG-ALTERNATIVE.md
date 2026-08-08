@@ -1,7 +1,8 @@
 # Phase 83 — ALTERNATIVES: envelope fanout, or first-responder rotation
 
-**Status: alternative proposals, not started. Option A twice reviewed and
-under second focused revision (this text); Option B not yet reviewed.**
+**Status: alternative proposals, not started. Option A three times reviewed
+and under third (narrow) focused revision (this text); Option B not yet
+reviewed.**
 Competing designs to `PHASE-83-MSGSIG.md` (sixth revision, Gate 0 pending),
 born from the usability audit that found the main plan's three user-felt
 costs — the departure freeze above all.
@@ -9,10 +10,12 @@ costs — the departure freeze above all.
 - **Option A — envelope fanout**: no group key exists at all; every message
   wraps its own key once per member over pairwise-derived secrets;
   authenticity is a per-recipient MAC — deniable, rotation-free,
-  freeze-free. **Reviewed 2026-08-08 twice**: first review (commit
-  `177d14c`) — "viable, revise", findings P83-A-01 … 06; second review
-  (commit `e774247`) — A-04/A-05 resolved, **seven blocking findings
-  P83-A-R2-01 … 07** plus corrections. **This revision incorporates all of
+  freeze-free. **Reviewed 2026-08-08 three times**: first (commit
+  `177d14c`) — "viable, revise", P83-A-01 … 06; second (commit `e774247`)
+  — A-04/A-05 resolved, seven blocking R2-01 … 07; third (commit
+  `8a0931a`) — R2-03/06/07 resolved, *"close to reviewable completion"*,
+  **five narrow blocking findings P83-A-R3-01 … 05** plus one claim
+  correction and completion items. **This revision incorporates all of
   them.** The reviewer's principle stands: *a design that protects a
   conversation only by repeatedly preventing people from using it is not a
   successful secure-messaging design.*
@@ -50,6 +53,18 @@ Second review (2026-08-08, commit `e774247`), all answered in this revision:
 
 Non-blocking corrections, also adopted: WebCrypto disposal wording (§A.2),
 the over-limit-channel conversion outcome (§A.7), parser minimums (§A.3).
+
+Third review (2026-08-08, commit `8a0931a`), all answered in this revision:
+
+| Finding | Was | Resolved in |
+|---|---|---|
+| P83-A-R3-01 (Critical) | The conversion anchor put the converter in the owner slot — any-member conversion silently changed governance or produced an invalid manifest | §A.4 (converter and owner get **distinct anchor fields**; the manifest's one-owner rule matches the *owner* slot; the converter attests, never inherits) |
+| P83-A-R3-02 (High) | Manifest members had no valid `actor_admit_ref`; policy certs lacked hash, signature validation, idempotency and fork behavior | §A.4 (`manifest_admit_ref` derivation; the complete policy artifact + the no-freeze policy-fork rule) |
+| P83-A-R3-03 (High) | The backup's merge needed `policy_p` the record didn't carry; the size math and page framing were wrong/missing | §A.7 (record carries `policy_p`; corrected budget; frozen page envelope, ordering, conflicts, tombstones) |
+| P83-A-R3-04 (High) | Guest certs typed the raw lookup as a UUID and left revoke/expiry bytes open | §A.5 (`lookup16` type; separate frozen admit/revoke field lists; expiry + clock-skew rules) |
+| P83-A-R3-05 (High) | Born-fanout creation needed a client-known channel ID and atomic anchor commit — unspecified wire/idempotency | §A.7 (client-minted `channel_id`, one-transaction insert, idempotent retry, pending-op record, the DM rule) |
+| Claim correction | "No-suite-1 bounds the damage" read as availability-only; a poisoned conversion manifest is content disclosure | §A.7/§A.8 (scoped four-line claim) |
+| Completion items | History quota/subtype; display-only timestamps; multi-instance Gate F | §A.6, §A.9 |
 
 ---
 
@@ -167,17 +182,24 @@ epoch, no composer freeze, no serialization of messages.
 ### The anchors (the authority root)
 
 ```
-channel_anchor    (born-fanout, signed by the creator):
+channel_anchor    (born-fanout, signed by the creator; creator = owner):
   utf8("chalk-chan-anchor.v1") || u8(kind = 0x01)
   || uuid16(channel) || u8(era = 1)
-  || uuid16(creator) || h32(creator_ed25519_fp)
+  || uuid16(owner) || h32(owner_ed25519_fp)      // = the creator, locally known
   || u8(mode) || u8(chan_kind)
   || h32(member_manifest_hash)
-anchor_hash = SHA-256(canonical || lp(sig))
+anchor_hash = SHA-256(canonical || lp(sig))      // sig = signer's Ed25519, exactly 64 B
 
-conversion_anchor (converted channels, signed by one converter):
-  same fields with kind = 0x02, converter in the actor slot, plus
-  u64be(converted_at_ms)   // the converter's clock, display only
+conversion_anchor (converted channels, signed by one converter — P83-A-R3-01:
+                   the converter ATTESTS; it never inherits ownership):
+  utf8("chalk-chan-anchor.v1") || u8(kind = 0x02)
+  || uuid16(channel) || u8(era = 1)
+  || uuid16(converter) || h32(converter_ed25519_fp)   // the signer/attester
+  || uuid16(owner)     || h32(owner_ed25519_fp)       // asserted by the legacy roster
+  || u8(mode) || u8(chan_kind)
+  || h32(member_manifest_hash)
+  || u64be(converted_at_ms)   // the converter's clock; DISPLAY ONLY — never
+                              // ordering, expiry or conflict resolution
 ```
 
 `member_manifest` (hashed into the anchor, stored alongside it):
@@ -186,17 +208,39 @@ conversion_anchor (converted channels, signed by one converter):
 utf8("chalk-chan-manifest.v1") || uuid16(channel)
 || u32be(n) || entry*            // entry = uuid16(user) || h32(ed25519_fp) || u8(role)
                                  // sorted by uuid16; duplicates invalid; n ≤ 64;
-                                 // exactly one owner = the anchor's creator/converter slot
+                                 // exactly one owner entry, and it must equal the
+                                 // anchor's OWNER slot (never the converter);
+                                 // the converter must appear as an admitted member
 ```
+
+**The manifest admission reference** (P83-A-R3-02): manifest members have
+no admission certificate, so their authority to act is named by a
+deterministic derived artifact:
+
+```
+manifest_admit_ref(user) = SHA-256(
+  utf8("chalk-manifest-member.v1") || anchor_hash
+  || uuid16(user) || h32(ed25519_fp) || u8(role) )
+```
+
+`actor_admit_ref` (below) may name either a `manifest_admit_ref` or a
+later admission `cert_hash`; a removal supersedes **the exact referenced
+membership state**, whichever form it took. Cross-type vectors (manifest
+actor admits, cert actor admits, removal superseding each) are A-2 test
+material.
 
 - The server stores **one anchor per channel** — compare-and-set, first
   writer wins, identical re-append idempotent. Racing converters produce
   competing *whole manifests*; a client shown two valid anchors for one
   channel reports a **channel-conversion fork** (evidence, surfaced like
   the identity-changed wall) — other channels unaffected (P83-A-R2-02).
-- The anchor is the **root of all authority**: the creator/converter's
-  own membership needs no admitter (the bootstrap problem dies here), and
-  every member in the manifest has its chain root in the anchor.
+- The anchor is the **root of all authority**: the owner's membership
+  needs no admitter (the bootstrap problem dies here), and every manifest
+  member's authority is its `manifest_admit_ref`. Owner-only validations
+  (removals, guest admission, policy changes) check the anchor's **owner**
+  slot — under a conversion anchor that is the attested legacy owner,
+  which stays inside the stated conversion-TOFU residual; the converter's
+  signature upgrades nothing about it.
 - Signing a server-presented legacy roster remains the deliberately
   accepted TOFU conversion residual, displayed as *"membership as
   recorded by <converter> on <date>"* — now a claim one signature
@@ -209,18 +253,34 @@ chain rather than freezing the mode forever:
 
 ```
 policy_cert: utf8("chalk-policy-cert.v1")
-  || uuid16(channel) || u64be(p)          // p starts 1; anchor is p = 0
+  || uuid16(channel) || u64be(p)          // p starts 1; the anchor is p = 0
   || h32(prev_policy_hash)                // anchor_hash for p = 1
   || u8(old_mode) || u8(new_mode)
-  || uuid16(actor) || u8(auth_arm) || gov_record?
+  || uuid16(actor) || h32(actor_admit_ref)   // zeros ONLY for the anchor owner
+  || u8(auth_arm) || gov_record?
+policy_hash = SHA-256(canonical || lp(sig))  // sig exactly 64 B, validated
+                                             // against the actor's pinned key
+                                             // before hashing
 ```
 
-Authorization mirrors the product rules (owner unilateral → democratic;
-governance arm at supermajority → dictator). Owner identity is fixed at
-the anchor (chalk never transfers ownership today; if that ever changes it
-extends this chain, not the cert format). Clients persist the highest
-verified `(p, hash)` per channel — same rollback latch semantics as
-below.
+**The policy artifact is complete** (P83-A-R3-02): authorization mirrors
+the product rules (owner unilateral → democratic; governance arm at
+supermajority → dictator), the actor's membership is named by
+`actor_admit_ref` (manifest-derived or cert), the server enforces unique
+`(channel, p)` with identical-cert idempotency (race serialization, not
+security), and clients persist the highest verified `(p, policy_hash)`
+per channel as a rollback latch. Owner identity is fixed at the anchor
+(chalk never transfers ownership today; if that changes it extends this
+chain, not the cert format).
+
+**Policy forks, without a freeze:** two valid policy certs at one
+`(channel, p)` are kept as evidence and surfaced once at channel level.
+The client then **retains the last common policy** for validating
+existing memberships and for ordinary messaging — flaps to
+already-authorized recipients continue — and refuses only *new
+transitions* (membership or policy) that depend on either forked head.
+Applying a server-chosen branch would recreate server-selected authority;
+freezing the channel would betray the design principle. Neither happens.
 
 ### Membership certificates (revised)
 
@@ -306,14 +366,40 @@ by server and by pairwise keys; observed-ancestry recency (narrow claim);
   byte-identically; links minted on fanout channels emit the `0x04`
   form. (The main plan's `0x03` era byte belongs to that design; the
   tags are distinct so no ambiguity survives whichever ships.)
-- **Guest certificates, frozen** (kinds `0x05`/`0x06` in the §A.4
-  format): `guest_admit`'s admit-slot fields are the guest's
-  `(uuid16, ed25519_fp)` — derivable by the owner at mint, the guest
-  identity being a pure function of the link secret — and its
-  `gov_record?` slot is replaced by
-  `h32(owner_ed25519_fp) || u64be(expiry_ms) || uuid16(invite_id)`
-  (the link's lookup id). `guest_revoke` references the grant's
-  `cert_hash`. Actor: owner only, both kinds.
+- **Guest certificates, actually frozen** (P83-A-R3-04). A new byte type:
+  `lookup16(x)` = the link's raw 16-byte truncated-SHA-256 lookup value —
+  it is *not* a UUID and is never parsed as one (it travels as base64 on
+  the existing wire). Two separate canonical field lists, both signed by
+  the owner only:
+
+  ```
+  guest_admit  (kind 0x05):
+    utf8("chalk-member-cert.v1") || u8(0x05)
+    || uuid16(channel) || uuid16(guest)
+    || u64be(n) || h32(prev_cert_hash)       // chain rules as §A.4
+    || uuid16(actor) || h32(policy_head) || h32(actor_admit_ref)
+    || h32(guest_ed25519_fp)                 // derivable by the owner at mint —
+                                             // the guest identity is a pure
+                                             // function of the link secret
+    || h32(owner_ed25519_fp)
+    || u64be(expiry_ms) || lookup16(invite)
+
+  guest_revoke (kind 0x06):
+    utf8("chalk-member-cert.v1") || u8(0x06)
+    || uuid16(channel) || uuid16(guest)
+    || u64be(n) || h32(prev_cert_hash)       // MUST be the guest_admit's cert_hash
+    || uuid16(actor) || h32(policy_head) || h32(actor_admit_ref)
+    || lookup16(invite)                      // cross-checked against the admit
+  ```
+
+  **Rules:** `guest_admit`/`guest_revoke` occupy the admit/remove
+  polarities of the §A.4 alternation rule. **Expiry is a lapse, not a
+  cert**: clients enforce `now > expiry_ms` at flap time and at guest
+  verification with a ±5-minute clock-skew allowance; an expired admit
+  remains a *verifiable historical artifact* (old messages keep their
+  assurance) but never validates a new flap. Vectors: admit→revoke
+  transition, replay of a revoked admit, cross-invite substitution
+  (lookup mismatch), cross-era substitution, expiry boundary ± skew.
 - **The guest verifies the owner's signed `guest_admit` against the
   fragment key before sending or accepting anything** — never a
   server-state fallback. Members verify guest flaps against the admitted
@@ -347,8 +433,9 @@ sealed chunk = nonce(12) || AES-256-GCM(K_history(grantor→grantee),
   a **new, independently complete grant** with its own id and range —
   paging never mutates a prior grant.
 - Server storage/forwarding keyed by `(grantee, grant_id, chunk_index)`,
-  idempotent; **quota** per grantor per channel (e.g. 32 stored chunks);
-  **expiry**: blobs deleted after fetch-ack or 30 days, whichever first.
+  idempotent; **quota: 32 stored chunks per (grantor, channel)** — a
+  constant, not a knob; **expiry**: blobs deleted after fetch-ack or
+  30 days, whichever first.
   Retry = re-send same id/chunk; replacement = new grant_id; an
   incomplete batch renders nothing until its chunks are present.
 - Grantee rules: verify the seal (grantor-authenticated by the pairwise
@@ -361,8 +448,19 @@ sealed chunk = nonce(12) || AES-256-GCM(K_history(grantor→grantee),
   post-admission messages carry normal assurance.
 - Default: the admitting member auto-grants the recent fetch-history
   window; older ranges on demand; per-channel knob to disable.
-- **Legacy space keys are all-or-nothing** (`legacy_key_grant`, sealed
-  under `K_history`): a granted key era opens everything that era
+- **Legacy space keys are all-or-nothing**, and the subtype is frozen:
+
+  ```
+  legacy_key_grant canonical = utf8("chalk-legacy-grant.v1")
+    || uuid16(channel) || uuid16(grantor) || uuid16(grantee)
+    || uuid16(grant_id)
+    || u64be(grantee_admit_n) || h32(grantee_admit_cert_hash)
+    || u32be(key_version_era) || space_key(32)
+  ```
+
+  sealed under `K_history` with AAD
+  `utf8("chalk-grant-s1:") || uuid16(channel) || uuid16(grantee) ||
+  uuid16(grant_id) || u32be(0)`. A granted era opens everything that era
   retained; no narrower window is claimed.
 
 ## A.7 Migration — the full scenario
@@ -398,10 +496,32 @@ stated. Legacy content stays readable in its marked read-only section.
 **Stage 0 — today.** Space keys, suite 1, `CHALK_WRAP_SIG_REQUIRED`
 governing legacy wraps.
 
-**Stage 1 — build F (Gate F, §A.9).** New channels: the creator writes
-the local adoption record, signs the `channel_anchor` + manifest, and
-sends both **inside `create_channel`** — committed atomically with the
-channel row; fanout-only from birth, no server preference consulted.
+**Stage 1 — build F (Gate F, §A.9).** New channels are fanout-only from
+birth, and the creation wire is frozen (P83-A-R3-05 — today
+`CreateChannelPayload` carries no ID and Postgres assigns it via
+`INSERT … RETURNING`, so the anchor could not name the channel; the same
+client-minted-UUID move the main plan adopted for genesis applies here):
+
+- `create_channel` gains `channel_id` (client-minted UUID), `anchor`
+  (the signed `channel_anchor` bytes) and `manifest` (the full member
+  manifest). The client durably persists a **pending-op record**
+  (id + anchor + adoption intent) *before* sending.
+- The server validates agreement before touching the database: caller =
+  anchor owner; payload `channel_id` = the anchor's; manifest hash =
+  the anchor's; manifest members/roles = the payload member list +
+  creator-as-owner; `chan_kind`/mode consistent with the payload — then
+  **one transaction** inserts channel row, member rows and anchor.
+- **Idempotent retry**: re-creating the same client-minted `channel_id`
+  with a byte-identical anchor acks success (returns the existing
+  channel) — a lost ack is retried safely; the same ID with a
+  *different* anchor is an error (the client re-mints everything). The
+  pending-op record clears on ack.
+- **The DM rule**: if a DM between the pair already exists, the server
+  returns *it* (today's reuse path) and the submitted ID, anchor,
+  manifest and key material are discarded — the client then runs the
+  §A.7 adoption state machine on the returned channel (verify its
+  anchor, or convert it) rather than silently attaching a new-channel
+  anchor to a different ID.
 Existing channels: converted by the state machine above, typically by the
 first member to send on build F. After adoption, suite 1 renders only in
 the read-only legacy section; a new suite-1 arrival is flagged, never
@@ -414,15 +534,37 @@ cert heads would swamp it, and pin merge semantics don't fit monotonic
 heads). Instead, a second prefs key with its own domain:
 
 ```
-key   "channel_security_enc"
-KDF    HKDF over the identity X25519 scalar,
-       salt "chalk-chansec-salt-v1", info "chalk-chansec-v1"
-record uuid16(channel) || u8(era) || h32(anchor_hash) || h32(policy_head)
-       (~66 bytes/channel; ~100 channels per 7,900-byte page; paged
-       "channel_security_enc.2" … if ever needed)
-merge  union by channel; monotonic: a record is replaced only by one with
-       a higher verified policy p; conflicting anchor hashes for one
-       channel are kept AND surfaced — that is fork evidence, not noise
+keys    "channel_security_enc" (page 0), "channel_security_enc.1", …
+KDF     HKDF over the identity X25519 scalar,
+        salt "chalk-chansec-salt-v1", info "chalk-chansec-v1"
+
+record  uuid16(channel) || u8(flags) || h32(anchor_hash)
+        || h32(policy_head) || u64be(policy_p)
+        = 89 bytes exactly (P83-A-R3-03: the merge needs policy_p IN the
+        record — chain state refetched from the server can never feed the
+        merge). flags bit0 = era-adopted; bit1 = conflict record (a second
+        anchor for the same channel — both records survive, surfaced as
+        fork evidence); bit2 = tombstone (channel left/deleted; dropped at
+        the next repack after 30 days)
+
+page    plaintext = u8(v = 1) || u8(page_index) || u8(page_count)
+                 || u16be(record_count) || record*
+        sealed   = nonce(12) || AES-256-GCM(K, plaintext) || tag(16)
+        AAD      = utf8("chalk-chansec-s1:") || u8(page_index)
+        Budget: sealed+base64 must fit the 7,900-byte prefs value —
+        usable plaintext ≈ (7900 × 3/4) − 28 − 5 ≈ 5.8 KiB ⇒
+        **≤ 64 records per page** (89 B each), NOT the previous ~100.
+        Assignment: records sorted by uuid16(channel), packed in order,
+        repacked wholesale on every change (deterministic; no stable
+        residency). Upload order: pages written ascending, **page 0
+        last** — page 0 carries page_count, and a reader that cannot
+        fetch every named page keeps its previous state (a partial
+        upload reads as the old consistent set, never as truncation).
+
+merge   union by channel; a record is replaced only by one whose
+        **policy_p is higher** (now verifiable from the record itself);
+        equal-p different-anchor ⇒ keep both, set bit1, surface;
+        tombstones win over absence, lose to any higher-p record
 ```
 
 Cert-chain heads are deliberately **not** backed up: chains are
@@ -431,9 +573,27 @@ anchor is what makes them verifiable, and it is 32 bytes. What a fresh
 restore loses without head backup is only the rollback high-water marks,
 which collapses into the already-accepted stale-view residual.
 `PinSyncStatus` grows the second blob's counters; overflow reported, not
-silent; **sending never waits on backup**. If the backup is absent or
-withheld, the no-suite-1 rule already bounds the damage; the
-channel/security settings surface says protection state plainly.
+silent; **sending never waits on backup**.
+
+**What no-suite-1 does and does not buy, scoped exactly** (the third
+review's claim correction — the earlier "bounds the damage" wording read
+as availability-only, and for C-01 it is not):
+
+- no-suite-1 **eliminates legacy shared-key substitution** for build-F
+  traffic — the server can never again recover a server-known space key
+  for new messages;
+- a backed-up or manually verified authority anchor **prevents silent
+  anchor replacement** on that device;
+- **without either, conversion is TOFU**: a malicious server can present
+  a poisoned manifest whose converter or members include a
+  server-controlled identity, and the fresh client will mint valid flaps
+  for it — **content disclosure on that fresh view**, not merely an
+  availability loss; and
+- later anchor conflicts and membership rollback on the same device are
+  detected and refused (the latches).
+
+The channel/security settings surface states the protection level
+plainly; mandatory verification remains deliberately off the table.
 
 **Stage 3 — enforcement and retirement.** `CHALK_FAN_REQUIRED`
 (`chalkctl fanout status/enable/disable`) rejects new suite-1 writes by
@@ -481,7 +641,7 @@ flap, self-flap included.
 | Democratic tallies | authorized-member attestation to a server-reported outcome |
 | Deniability | "authenticated for you"; no moderator-verifiable evidence |
 | No FS / PCS | stated, accepted |
-| Fresh device, no backup | no-suite-1 rule bounds it; backup restores it; recreation for high assurance |
+| Fresh device, no backup | no legacy-key substitution ever (no-suite-1); but conversion is TOFU — a poisoned manifest can include a decrypting principal on that fresh view; backup restores protection; recreation for high assurance |
 | Room size | hard cap 64 at member-add; over-limit channels resolved at migration |
 
 **Audit coverage:** C-01 — no server-substitutable group key for fanout
@@ -505,9 +665,13 @@ At Gate F: a pre-F session receives a controlled
 the SPA preserves the composer draft, reloads once, reconnects, and
 resumes. **Conversion of a channel is not initiated while the server
 reports active pre-F official sessions for its members** — they are
-upgraded (the reload) or explicitly disconnected first. A two-client
-mixed-version acceptance test (old tab + new tab, drafts surviving) is
-part of the gate. A brief software-update boundary, not an ongoing
+upgraded (the reload) or explicitly disconnected first — and that report
+**aggregates across every `chalkd` instance** through the existing shared
+presence/pubsub mechanism, never just the converting instance's own
+connections; a stale aggregate may *delay* conversion but can never
+permit mixed-era delivery. A two-client mixed-version acceptance test
+(old tab + new tab, drafts surviving), including a two-instance variant,
+is part of the gate. A brief software-update boundary, not an ongoing
 roadblock.
 
 ## A.10 Slices
@@ -515,13 +679,13 @@ roadblock.
 | Slice | Content (dark until Gate F) |
 |---|---|
 | A-1 | Pairwise HKDF tree (incl. `K_history`); flaps; HMAC tags; frozen parser + full vectors; WebCrypto disposal rules |
-| A-2 | Anchors + manifest + policy chain + membership/guest certificates: canonicals, pure state machine, server tables (per-channel anchor CAS; `(channel,target,n)` idempotency), rollback latches |
+| A-2 | Anchors (converter/owner split) + manifest + `manifest_admit_ref` + complete policy artifacts + membership/guest certificates (`lookup16`, expiry rules): canonicals, pure state machine, server tables (per-channel anchor CAS; `(channel,target,n)` and `(channel,p)` idempotency), rollback latches, policy-fork behavior |
 | A-3 | Canonical envelope reuse; verify policy; typed results incl. `granted` |
 | A-4 | Suite-2 send/receive; self-flap; `key_version` exemptions per inventory |
 | A-5 | Edits, reactions (sealed clear), attachments-in-envelope, voice pairwise sealing |
 | A-6 | Guests: `0x04` fragment form, guest certs, fragment-anchored verification |
 | A-7 | Grantor-attested history: grant wire, storage/quota/expiry, auto-grant + paging + knob, `granted` UI |
-| A-8 | Adoption state machine (restore/verify/convert/read-only), `create_channel` anchor carriage, `channel_security_enc` backup, read-only legacy rendering, era capability + `client_upgrade_required` |
+| A-8 | Adoption state machine (restore/verify/convert/read-only); the client-minted-ID creation wire (anchor + manifest in `create_channel`, one-transaction insert, idempotent retry, pending-op records, the DM rule); `channel_security_enc` backup (89-byte records, paged); read-only legacy rendering; era capability + `client_upgrade_required` |
 | A-9 | **Gate F**: emission on; conversion rollout; over-limit handling; `CHALK_FAN_REQUIRED` + `chalkctl fanout`; threat-model staging move |
 | A-10 | Legacy retirement: wrapsig secure default; cert-gated legacy reshares; pre-F sunset |
 
