@@ -89,6 +89,24 @@ target-local, loud — the hardening stands). The second is a
 correction to gate-covered text, so per the standing rule the gate
 re-opens for that sentence only.
 
+A **tenth read** (2026-08-09, adversarial — transplant, reflection,
+mix-and-match, encapsulation grinding, backup atomicity) found the
+core sound, confirmed the ninth read's re-scoped §A.5 sentence
+(closing the gate on it), and left six low/informational findings,
+none re-opening Gate 0's security conclusions. Two are normative
+freezes, each re-opening the gate for its sentence only per the
+standing rule: the self-flap's degenerate MAC derivation (§A.2 —
+`K_mac(A→A)`, min = max, plus an A-1 vector) and the grant ceiling's
+no-expired-chunk case (§A.6 — refuse the new grant, never evict a
+live chunk). Three state already-true properties: a failed tag
+accuses no one (§A.5), key-compromise impersonation joins §A.8's
+residual table, and sender-only editing's load-bearing check is the
+client's (§A.5). The sixth is discharged, not deferred: the canonical
+envelope's leading `uuid16(channel_id)` — confirmed against the
+retired plan's frozen bytes in git history — already binds the
+channel inside the MAC independently of both AADs, and §A.3 now says
+A-3's re-freeze must retain it.
+
 **Tag:** `#msgsig`.
 
 ---
@@ -277,6 +295,12 @@ strict parse. The sorted-UUID root is symmetric; directional infos split
 the purposes — **`K_history` is its own derivation** so voice sealing and
 history grants never share an AES-GCM nonce domain (P83-A-R2-06).
 
+- **The self-flap derives degenerately, by the same formulas** (the
+  tenth read): for the sender's own flap A = B, so
+  `ss = X25519(my_x25519_priv, my_x25519_pub)`, min = max = A, and the
+  tag key is `K_mac(A→A)` — no special case and no skipped MAC (the
+  wrap already uses the uniform per-message `flap_key`). An A-1 vector
+  pins the derivation.
 - Trust anchoring unchanged: `trust.ts` pins Ed25519 (TOFU, picture-word
   upgrade); `verifyIdentitySelfSig` binds X25519 to it.
 - Each message mints one ephemeral X25519 pair — **fresh per-message
@@ -325,7 +349,10 @@ The body plaintext is the canonical envelope inherited from the retired
 transcript plan (typed objects `0x01/0x02/0x03`, `client_msg_id`,
 `sender_ts`, parent binding, attachment bindings — exact bytes preserved
 with that plan in git history; A-3 re-freezes them here) minus the
-signature; `object_hash = SHA-256(canonical)`.
+signature; `object_hash = SHA-256(canonical)`. The canonical's leading
+`uuid16(channel_id)` is load-bearing beyond replay identity: it binds
+the channel inside the MAC independently of both AADs (the tenth
+read), and A-3's re-freeze — which drops the signature — retains it.
 
 **Replay identity, re-frozen with the canonical** (the seventh review's
 confirmation item): the retired plan's first-seen rule carries over
@@ -347,8 +374,9 @@ closed; availability does not.
 
 **Vectors (A-1):** per-field mutation; truncation at every boundary
 including a 15-byte `body_ct`; cross-channel; cross-recipient flap swap;
-duplicate flap; missing/wrong self-flap; reversed-direction tag; all-zero
-DH; oversize counts; length mismatch; oversize canonical.
+duplicate flap; missing/wrong self-flap; the self-flap's degenerate
+`K_mac(A→A)` tag; reversed-direction tag; all-zero DH; oversize counts;
+length mismatch; oversize canonical.
 
 ## A.4 Membership: an authority root, a policy chain, per-target cert chains
 
@@ -620,7 +648,13 @@ nothing else** (the seventh review's provenance item): outer server
 metadata is display-only and never selects the MAC key — keying off a
 server-supplied sender label would let a relabel manufacture false
 `forged` evidence against an innocent third member. A-4 carries the
-relabel vector.
+relabel vector. **A failed tag accuses no one** (the tenth read):
+anyone — the server included — can mint an envelope that decrypts for
+a recipient (the flap is public-key encapsulation) and names any
+`sender_user_id` in the canonical, so `forged` / `mismatch` verdicts
+are evidence that *someone attempted a forgery*, never evidence
+against the claimed sender — no UI surface may attribute or aggregate
+them per claimed sender.
 
 **The sender-acceptance rule (P83-A-R5-01) — a valid tag is necessary,
 never sufficient.** The pairwise secrets are static-static: removal
@@ -689,9 +723,13 @@ residual bounds it exactly as it bounds send-side flap emission.
 
 **Attachments:** per-attachment random keys inside the envelope's
 attachment binding, digests verified before decryption. **Edits /
-reactions:** same typed objects fanned out; sender-only editing enforced
-by server and by pairwise keys; observed-ancestry recency (narrow claim);
-0044 overwrite stands. **Voice:** signals seal pairwise under `K_wrap`;
+reactions:** same typed objects fanned out; sender-only editing;
+observed-ancestry recency (narrow claim); 0044 overwrite stands. The
+load-bearing edit check is client-side (the
+tenth read): the pairwise keys authenticate who wrote the edit, and
+the client renders it only when that equals the original's
+authenticated sender — the server's sender check is convenience, never
+the boundary. **Voice:** signals seal pairwise under `K_wrap`;
 `chalk-voice-fp.v1` untouched.
 
 **Guests (P83-A-R2-04), the fanout era made explicit:**
@@ -813,9 +851,12 @@ sealed chunk = nonce(12) || AES-256-GCM(K_history(grantor→grantee),
   item): **32 stored chunks per `(grantor, channel, grantee)`**, so
   normal automatic grants to different new members never exhaust one
   another, under an overall abuse ceiling of **256 chunks per
-  `(grantor, channel)`** with oldest-expired eviction — constants, not
-  knobs; **expiry**: blobs deleted after fetch-ack or 30 days, whichever
-  first.
+  `(grantor, channel)`** with oldest-expired eviction; a ceiling reached
+  with **no expired chunk refuses the new grant** (surfaced at the
+  grantor), never evicts a live one — eviction could silently gut
+  another grantee's incomplete batch, which renders nothing (the tenth
+  read) — constants, not knobs; **expiry**: blobs deleted after
+  fetch-ack or 30 days, whichever first.
   Retry = re-send same id/chunk; replacement = new grant_id; an
   incomplete batch renders nothing until its chunks are present.
 - Grantee rules: verify the seal (grantor-authenticated by the pairwise
@@ -1107,13 +1148,14 @@ frozen fact rather than folklore.
 | Democratic tallies | authorized-member attestation to a server-reported outcome |
 | Deniability | "authenticated for you"; no moderator-verifiable evidence |
 | No FS / PCS | stated, accepted |
+| Key-compromise impersonation | the MACs are static-static, so compromise of a recipient's X25519 key lets its holder impersonate **every** sender to that recipient until the identity is replaced — the authenticity face of "the sender or the recipient produced it", distinct from the no-FS/PCS row's confidentiality loss; stated, accepted |
 | Fresh device, no backup | no legacy-key substitution ever (no-suite-1); but conversion is TOFU — a poisoned manifest can include a decrypting principal on that fresh view; backup restores protection; recreation for high assurance |
 | Room size | hard cap 64 at member-add; over-limit channels resolved at migration; the concurrent-mint race past the cap resolves by §A.5's deterministic shed |
 | Flagged-history path choice | the server picks live vs backfill, so an injection can present as `former-member` instead of the alarm; it can never reach member assurance (§A.5) |
 | Guest identity = link possession | the guest keypair is a pure function of the fragment secret — every link holder, the minting owner included, is the same cryptographic principal; consistent with "authenticated for you" plus the guest label |
 | `era_enforced` withheld | a server advertising `era_enforced = false` forever holds build-F clients read-only — denial only (no-suite-1 means no downgrade), visible in the §A.9 banner |
 | Backup generation rollback | closed by `repack_seq` for devices with prior state; a fresh device cannot distinguish a complete older generation — inside the fresh-device residual |
-| No per-message roster commitment | recipients verify only their own flap — nothing commits a message to its flap set or the sender's roster view, so a malicious **sender** (not just the server) can hand Bob and Carol disjoint flap sets for the "same" message, or silently omit one member, and no honest client can detect it; receipt-time ordering leaves no transcript to cross-check. Accepted with the deniable, coordinator-free design (a commitment would cost a per-message signed artifact — the thing this phase deliberately avoids — and the server already controls delivery); do not over-read "authenticated for you" as "everyone saw this" |
+| No per-message roster commitment | a recipient can verify only its **own** flap (the other flaps' recipient ids are visible, their contents unverifiable), so a malicious **sender** — not just the server — can hand Bob and Carol disjoint flap sets for the "same" message, or exclude one member. With the server choosing delivery it is undetectable; against an honest broadcast the excluded view gets at most an unattributable `mismatch` artifact. Detection would take cross-recipient comparison — a transcript, the design this phase retired — and a sender-signed roster commitment would be transferable proof, un-doing deniability; accepted. Do not over-read "authenticated for you" as "everyone saw this" |
 
 **Audit coverage:** C-01 — no server-substitutable group key for fanout
 traffic; membership validated against a signed authority root **at both
