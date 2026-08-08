@@ -93,7 +93,7 @@ same space.
 
 Two deliberate exclusions:
 
-- The roster hover card's **device line** (92-3) is designed and deliberately
+- The hover card's **device line** (92-3) is designed and deliberately
   unbuilt: showing a friend which device you are online from crosses a privacy
   line `AggregateUserState` currently draws for us, so it needs an opt-in before
   it ships. Reasoning in

@@ -10,6 +10,24 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Rest the pointer on a name in a conversation to see who it is.** Names in
+  the message list are cut short to keep the messages lined up, and the only
+  way to read a long one was the browser's own grey tooltip. Now a card comes
+  up beside it with the full name, the person's display name, whether they are
+  around, and — for a friend who isn't — when they were last seen. It works in
+  threads too.
+
+### Changed
+- **The friends-list card shows display names.** Hovering someone in the
+  friends list already showed their name and whether they were online; it now
+  also shows the display name they set on their profile, when that is
+  something other than their username.
+
+---
+
 ## v0.7.8 — 8 August 2026 — The whole window, and a composer that fits a phone
 
 ### Added

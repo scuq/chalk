@@ -42,7 +42,10 @@ import type {
   PresenceMap,
   VoiceParticipant,
 } from "../state/types";
-import { lastSeenLine } from "../chat/hovercard";
+import { rosterCardInfo } from "../chat/hovercard";
+import { presenceClass, presenceLabel } from "../chat/presence";
+import { HOVER_CARD_DELAY_MS, PersonCard, useHoverCard } from "./HoverCard";
+import type { DisplayNameMap } from "../auth/display-names";
 
 // 33-2: the unread marker. Extracted to UnreadDot.tsx in 62-6 so the
 // Zuckermode conversation list renders the identical dot.
@@ -142,6 +145,10 @@ interface Props {
   // "last seen" line. Optional so other Sidebar callers are unaffected; an
   // absent map just means every card is state-only.
   lastSeen?: LastSeenMap;
+  // 92-5: profile display names by user_id, for the hover card's second
+  // line. Optional and best-effort -- absent, or missing an entry, just
+  // means a card with no display-name line.
+  displayNames?: DisplayNameMap;
   // 30-5: live voice-room occupancy by channel id (reducer-owned).
   voiceRosters: Record<string, VoiceParticipant[]>;
   // 33-2: unread + mention state by channel id (reducer-owned). Missing
@@ -220,22 +227,6 @@ function findDMWithFriend(
     if (otherID === friendUserID) return ch;
   }
   return null;
-}
-
-// Phase 9.6c: map state string to a CSS modifier class. "online" →
-// solid green; "away" → solid yellow; everything else (including
-// missing entries) → hollow grey. Exported for the Zuckermode list (62-6),
-// which shows the same dot on DM rows.
-export function presenceClass(state: string | undefined): string {
-  if (state === "online") return "chalk-presence-dot--online";
-  if (state === "away") return "chalk-presence-dot--away";
-  return "chalk-presence-dot--offline";
-}
-
-export function presenceLabel(state: string | undefined): string {
-  if (state === "online") return "online";
-  if (state === "away") return "away";
-  return "offline";
 }
 
 // 30-5: resolve an occupant's display name from the channel's member list.
@@ -327,14 +318,6 @@ function ScreenIcon() {
   );
 }
 
-// 92-1: how long the pointer has to rest on a roster row before its card
-// appears. Long enough that crossing the roster on the way somewhere else
-// shows nothing, short enough to beat the browser's own tooltip timing.
-const HOVER_CARD_DELAY_MS = 500;
-// Used only to keep the card inside the viewport; the CSS sizes it.
-const HOVER_CARD_W = 220;
-const HOVER_CARD_H = 110;
-
 export function Sidebar({
   channels,
   friends,
@@ -342,6 +325,7 @@ export function Sidebar({
   ownUserID,
   presence,
   lastSeen,
+  displayNames,
   voiceRosters,
   unread,
   onSelect,
@@ -400,13 +384,15 @@ export function Sidebar({
   // draft (seeded on open, committed explicitly).
   const overrides = groupOverrides ?? {};
   const [groupDraft, setGroupDraft] = useState("");
-  // 92-1: the roster hover card -- which friend, and where to draw it. Held
-  // by userID rather than by value so a presence push that lands while the
-  // card is open is reflected on the next render.
-  const [hoverCard, setHoverCard] = useState<
-    { userID: string; x: number; y: number } | null
-  >(null);
-  const hoverTimer = useRef<number | null>(null);
+  // 92-1: the roster hover card. Held by userID rather than by value so a
+  // presence push that lands while the card is open is reflected on the next
+  // render. 92-4: the state, the timer and the placement live in the hook the
+  // feed's card shares.
+  const {
+    card: hoverCard,
+    arm: armHoverCard,
+    close: closeHoverCard,
+  } = useHoverCard<string>();
   // A long-press must NOT also fire the row's click (which opens the DM).
   // The pointer sequence is down -> (timer fires) -> up -> click, so we set
   // a flag when the timer fires and consume it in the click handler.
@@ -424,34 +410,6 @@ export function Sidebar({
     x: Math.min(x, Math.max(0, window.innerWidth - 210)),
     y: Math.min(y, Math.max(0, window.innerHeight - 150)),
   });
-
-  // 92-1: the card is anchored to the row, not to the cursor -- a tooltip that
-  // follows mouse jitter is harder to read than one that stays put -- and
-  // clamped the same way the menus are for rows near the viewport edges.
-  const cardPosition = (row: HTMLElement) => {
-    const r = row.getBoundingClientRect();
-    return {
-      x: Math.min(r.right + 8, Math.max(0, window.innerWidth - HOVER_CARD_W)),
-      y: Math.min(r.top, Math.max(0, window.innerHeight - HOVER_CARD_H)),
-    };
-  };
-
-  const closeHoverCard = () => {
-    if (hoverTimer.current !== null) {
-      window.clearTimeout(hoverTimer.current);
-      hoverTimer.current = null;
-    }
-    setHoverCard(null);
-  };
-
-  const armHoverCard = (userID: string, row: HTMLElement, delayMS: number) => {
-    closeHoverCard();
-    const at = cardPosition(row);
-    hoverTimer.current = window.setTimeout(() => {
-      hoverTimer.current = null;
-      setHoverCard({ userID, ...at });
-    }, delayMS);
-  };
 
   const openNickMenu = (friend: Friend, x: number, y: number) => {
     const at = clampMenu(x, y);
@@ -494,29 +452,6 @@ export function Sidebar({
       window.removeEventListener("keydown", onKey);
     };
   }, [nickMenu, channelMenu]);
-
-  // 92-1: the roster scrolls under a stationary pointer without firing a
-  // pointerleave, which would strand the card over an unrelated row.
-  useEffect(() => {
-    if (!hoverCard) return;
-    const close = () => setHoverCard(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [hoverCard]);
-
-  useEffect(
-    () => () => {
-      if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
-    },
-    [],
-  );
 
   const sortedFriends = sortFriends(friends);
 
@@ -621,28 +556,23 @@ export function Sidebar({
   // open, or when its friend left the roster while it was up. The relative
   // time is fixed at open: a card is not held long enough to age.
   const hoverFriend = hoverCard
-    ? (friends.find((f) => f.userID === hoverCard.userID) ?? null)
+    ? (friends.find((f) => f.userID === hoverCard.data) ?? null)
     : null;
-  let hoverInfo: {
-    name: string;
-    hue: number | null;
-    state: string;
-    seen: string | null;
-    showHint: boolean;
-  } | null = null;
-  if (hoverFriend) {
-    const state = presenceLabel(presence[hoverFriend.userID]);
-    hoverInfo = {
-      name: hoverFriend.handle || hoverFriend.userID.slice(-8),
-      hue: hoverFriend.handle
-        ? (hueForHandle?.(hoverFriend.handle) ?? null)
-        : null,
-      state,
-      seen: lastSeenLine(state, lastSeen?.[hoverFriend.userID], new Date()),
-      showHint:
-        findDMWithFriend(channels, hoverFriend.userID, ownUserID) === null,
-    };
-  }
+  const hoverInfo = hoverFriend
+    ? rosterCardInfo({
+        userID: hoverFriend.userID,
+        handle: hoverFriend.handle,
+        hue: hoverFriend.handle
+          ? (hueForHandle?.(hoverFriend.handle) ?? null)
+          : null,
+        presence: presence[hoverFriend.userID],
+        displayName: displayNames?.[hoverFriend.userID],
+        lastSeenMS: lastSeen?.[hoverFriend.userID],
+        showHint:
+          findDMWithFriend(channels, hoverFriend.userID, ownUserID) === null,
+        now: new Date(),
+      })
+    : null;
 
   return (
     <div class="chalk-sidebar-inner" data-testid="sidebar">
@@ -1086,33 +1016,12 @@ export function Sidebar({
           menus are, and pointer-transparent -- it is a tooltip, and must never
           be the thing under the cursor when the row is clicked. */}
       {hoverCard && hoverInfo && (
-        <div
-          class="chalk-friend-card"
-          style={`left:${hoverCard.x}px;top:${hoverCard.y}px`}
-          data-testid="friend-hover-card"
-          role="tooltip"
-        >
-          <div
-            class={`chalk-friend-card-name ${hoverInfo.hue !== null ? "chalk-nick-tinted" : ""}`}
-            style={
-              hoverInfo.hue !== null ? nickTintStyle(hoverInfo.hue) : undefined
-            }
-          >
-            {hoverInfo.name}
-          </div>
-          <div class="chalk-friend-card-state">
-            <span
-              class={`chalk-presence-dot ${presenceClass(presence[hoverCard.userID])}`}
-            />
-            {hoverInfo.state}
-          </div>
-          {hoverInfo.seen && (
-            <div class="chalk-friend-card-seen">{hoverInfo.seen}</div>
-          )}
-          {hoverInfo.showHint && (
-            <div class="chalk-friend-card-hint">start chat</div>
-          )}
-        </div>
+        <PersonCard
+          x={hoverCard.x}
+          y={hoverCard.y}
+          info={hoverInfo}
+          testID="friend-hover-card"
+        />
       )}
 
       {/* Phase 9.7f / 50-5: per-friend context menu -- nick color plus the

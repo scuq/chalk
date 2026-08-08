@@ -330,6 +330,7 @@ import {
   ApiError,
 } from "../auth/api";
 import { lookupUser } from "../auth/users";
+import { resetDisplayNames, useDisplayNames } from "../auth/display-names";
 
 function classifyDevice(): "phone" | "tablet" | "desktop" {
   const ua = navigator.userAgent;
@@ -3949,6 +3950,38 @@ export function App() {
     };
   }, [state.authStage, state.me]);
 
+  // 92-5: profile display names for the hover cards, from the server
+  // directory (auth/display-names.ts explains why from there). The directory
+  // deliberately omits the caller, so our own name is merged in from `me` --
+  // otherwise your own messages would be the one place in the feed whose card
+  // has no display-name line.
+  // Everyone a card could name right now: the roster, plus the open
+  // channel's members. Someone who joined the server after the first fetch is
+  // an id the map has never seen, which is what makes it fetch again.
+  const ownUserIDForNames = state.user?.id ?? state.me?.userID ?? null;
+  const cardUserIDs = useMemo(() => {
+    const ids = new Set<string>();
+    for (const f of state.friends) {
+      if (f.userID && f.userID !== ownUserIDForNames) ids.add(f.userID);
+    }
+    const ch = state.activeChannelID
+      ? state.channels[state.activeChannelID]
+      : undefined;
+    for (const m of ch?.members ?? []) {
+      if (m.userID && m.userID !== ownUserIDForNames) ids.add(m.userID);
+    }
+    return ids;
+  }, [state.friends, state.channels, state.activeChannelID, ownUserIDForNames]);
+  const directoryNames = useDisplayNames(
+    state.authStage === "authed",
+    cardUserIDs,
+  );
+  const displayNames = useMemo(() => {
+    const ownName = state.me?.displayName ?? "";
+    if (!ownUserIDForNames || ownName === "") return directoryNames;
+    return { ...directoryNames, [ownUserIDForNames]: ownName };
+  }, [directoryNames, ownUserIDForNames, state.me?.displayName]);
+
   // ---- Phase 09d-2b: admin route + popstate listener ---------------
   //
   // Two responsibilities:
@@ -4189,6 +4222,10 @@ export function App() {
     void clearAttachmentCache().catch((err) =>
       console.error("clear attachment cache failed:", err),
     );
+    // 92-5: the directory is a session-lifetime cache in a module, not in
+    // reducer state, so the reset below does not reach it. Drop it here or
+    // the next account signing in on this browser inherits it.
+    resetDisplayNames();
     dispatch({ kind: "auth_logged_out" });
   };
 
@@ -4942,6 +4979,7 @@ export function App() {
           ownUserID={state.user?.id ?? null}
           presence={state.presence}
           lastSeen={state.lastSeen}
+          displayNames={displayNames}
           voiceRosters={state.voiceRosters}
           unread={state.unread}
           onSelect={(id) => {
@@ -5202,6 +5240,10 @@ export function App() {
               ownUserID={state.user?.id ?? null}
               ownHandle={state.me?.username ?? null}
               members={activeChannel.members ?? []}
+              // 92-6: what the sender hover card draws beyond the handle.
+              presence={state.presence}
+              lastSeen={state.lastSeen}
+              displayNames={displayNames}
               isDM={activeChannel.isDM}
               display={selectChatPrefs(state.prefs)}
               giphyPref={selectGiphyPref(state.prefs)}
@@ -5301,6 +5343,9 @@ export function App() {
             ownUserID={state.user?.id ?? null}
             ownHandle={state.me?.username ?? null}
             members={activeChannel.members ?? []}
+            presence={state.presence}
+            lastSeen={state.lastSeen}
+            displayNames={displayNames}
             isDM={activeChannel.isDM}
             display={selectChatPrefs(state.prefs)}
             disabled={state.wsState !== "open"}

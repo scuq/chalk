@@ -9,7 +9,12 @@ import {
   nextEmptyStreak,
   unreadRunFits,
 } from "../chat/history-paging";
-import type { Message, ReactionSet } from "../state/types";
+import type {
+  LastSeenMap,
+  Message,
+  PresenceMap,
+  ReactionSet,
+} from "../state/types";
 import { buildMessageMenu, type MessageMenuItem } from "../chat/message-menu";
 import { LONG_PRESS_MS, pressWandered } from "../chat/press";
 import { MessageMenu } from "./MessageMenu";
@@ -24,6 +29,9 @@ import { DEFAULT_SELF_HUE, nickTintStyle, resolveNickHue } from "../chat/nickcol
 import { linkDisplayText, splitBodyParts } from "../chat/links";
 import { splitBodyNano, type NanoPart } from "../chat/nanomd";
 import { fmtRelative } from "../chat/reltime";
+import { senderCardInfo } from "../chat/hovercard";
+import { HOVER_CARD_DELAY_MS, PersonCard, useHoverCard } from "./HoverCard";
+import type { DisplayNameMap } from "../auth/display-names";
 import { lazyComponent } from "./LazyComponent";
 // Lazy: Giphy render path is opt-in; keep it out of the initial bundle.
 const GiphyView = lazyComponent(() =>
@@ -332,6 +340,14 @@ interface Props {
   // on their messages. Falls back to "you" when unknown (pre-session).
   ownHandle?: string | null;
   members?: { userID: string; handle: string }[];
+  // 92-6: what the sender hover card knows beyond the member list. All three
+  // are optional and best-effort -- the thread panel passes none of them, and
+  // a card missing a map simply draws fewer lines. presence only ever holds
+  // friends (subscriptions are friends-only server-side), which is why a
+  // missing entry means "no presence line" rather than "offline".
+  presence?: PresenceMap;
+  lastSeen?: LastSeenMap;
+  displayNames?: DisplayNameMap;
   // empty is the text shown when messages.length === 0.
   empty?: string;
   // Phase 9.7d: chat display settings (timestamps + compact mode).
@@ -459,7 +475,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return fmtRelative(d, now);
 }
 
-export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy, linkPreviewHide, ephemeral, flashMessageID, onFlashDone, onLoadOlder, historyComplete, oldestSeq }: Props) {
+export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, presence, lastSeen, displayNames, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy, linkPreviewHide, ephemeral, flashMessageID, onFlashDone, onLoadOlder, historyComplete, oldestSeq }: Props) {
   const messages = ephemeral ? allMessages.slice(-EPHEMERAL_MAX_ROWS) : allMessages;
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -493,6 +509,22 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
 
   // Never leave a menu hanging over a different channel's feed.
   useEffect(() => setMenu(null), [channelID]);
+
+  // 92-6: the sender hover card. Held by the row's own identity fields --
+  // a message names a user AND a device, and a user with two devices has one
+  // presence state but two ids, so the card cannot be resolved from a userID
+  // alone the way the roster's can.
+  const {
+    card: senderCard,
+    arm: armSenderCard,
+    close: closeSenderCard,
+  } = useHoverCard<{
+    userID: string;
+    device: string;
+    handle: string | null;
+    hue: number | null;
+    own: boolean;
+  }>();
 
   // What this caller lets the viewer do to a given message. One place, so the
   // marker's visibility, the right-click, the long-press and the "r" shortcut
@@ -987,11 +1019,6 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
           : m.sender === ""
           ? "[unknown]"
           : m.sender.slice(-8);
-        const senderTitle = m.sender === ""
-          ? "unknown sender"
-          : m.senderUserID
-          ? `${handle ?? "?"} (user ${m.senderUserID.slice(0, 8)}…, device ${m.sender.slice(0, 8)}…)`
-          : m.sender;
         // 33-4: highlight only what was unread on arrival. The upper bound
         // is what stops messages arriving while you read from joining the
         // highlighted block.
@@ -1147,11 +1174,34 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                 userHues: display_.userHues,
                 legacyColorByHandle: colorByHandle,
               });
+              // 92-6: the name carries no `title`. The sender column is
+              // capped at 10ch and ellipsis-truncates, so the browser's
+              // tooltip was the only way to read a long handle -- and it also
+              // said the account and device, which the card's footer keeps.
+              // Mouse only: in the feed a long press is already the message
+              // menu, and the DOM text is the full handle either way, so a
+              // screen reader never needed the tooltip.
               return (
                 <span
                   class={`chalk-message-sender ${nickHue !== null ? "chalk-message-sender--tinted" : ""}`}
-                  title={senderTitle}
                   style={nickHue !== null ? nickTintStyle(nickHue) : undefined}
+                  onPointerEnter={(e) => {
+                    if (e.pointerType !== "mouse") return;
+                    armSenderCard(
+                      {
+                        userID: m.senderUserID ?? "",
+                        device: m.sender,
+                        handle: handle ?? null,
+                        hue: nickHue,
+                        own,
+                      },
+                      e.currentTarget as HTMLElement,
+                      HOVER_CARD_DELAY_MS,
+                      "below",
+                    );
+                  }}
+                  onPointerLeave={closeSenderCard}
+                  onPointerDown={closeSenderCard}
                 >
                   {senderLabel}
                 </span>
@@ -1352,6 +1402,23 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
           />
         );
       })()}
+      {/* 92-6: one card for the whole feed, next to the menu for the same
+          reason -- a fixed-position overlay owned by the list, not by a row
+          that scrolls out from under it. */}
+      {senderCard && (
+        <PersonCard
+          x={senderCard.x}
+          y={senderCard.y}
+          info={senderCardInfo({
+            ...senderCard.data,
+            presence: presence?.[senderCard.data.userID],
+            displayName: displayNames?.[senderCard.data.userID],
+            lastSeenMS: lastSeen?.[senderCard.data.userID],
+            now,
+          })}
+          testID="sender-hover-card"
+        />
+      )}
     </div>
   );
 }

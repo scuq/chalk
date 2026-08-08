@@ -35,7 +35,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #notify         40 50 71  web/src/notify/ docs/notification-sounds.md docs/phases/PHASE-40-SOUNDS.md docs/phases/PHASE-50-NOTIFYRULES.md docs/phases/PHASE-71-CALLSOUNDS.md
 #push           -         docs/phases/PHASE-65-PUSH.md
 #parking        53        web/src/parking.ts web/src/parking-hotkey.ts web/src/state/ web/src/components/ docs/phases/PHASE-53-PARKING.md
-#roster         54 78 92  web/src/chat/ web/src/components/Sidebar.tsx web/src/components/ZuckerList.tsx web/src/components/CreateChannelModal.tsx web/src/theme.css docs/phases/PHASE-54-ROSTER.md docs/phases/PHASE-78-HIDECHANNELS.md docs/phases/PHASE-92-HOVERCARD.md
+#roster         54 78 92  web/src/chat/ web/src/components/Sidebar.tsx web/src/components/HoverCard.tsx web/src/components/ZuckerList.tsx web/src/components/CreateChannelModal.tsx web/src/theme.css docs/phases/PHASE-54-ROSTER.md docs/phases/PHASE-78-HIDECHANNELS.md docs/phases/PHASE-92-HOVERCARD.md
 #zucker         62 64     web/src/chat/zucker.ts web/src/components/ZuckerList.tsx docs/phases/PHASE-62-ZUCKER.md
 #history        55 69 79  internal/store/ web/src/chat/ web/src/components/MessageList.tsx docs/phases/PHASE-55-HISTORY.md docs/phases/PHASE-69-PINNEDHEADER.md docs/phases/PHASE-79-LANDING.md
 #mentions       56        web/src/chat/ web/src/components/Composer.tsx docs/phases/PHASE-56-MENTIONS.md
@@ -46,7 +46,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #search         61        web/src/chat/ web/src/components/ docs/phases/PHASE-61-SEARCH.md
 #reactions      37 58 75  web/src/chat/reactions.ts web/src/chat/press.ts web/src/chat/editpolicy.ts web/src/state/ web/src/components/ReactionBar.tsx docs/phases/PHASE-37-EDITREACT.md docs/phases/PHASE-58-EDITWINDOW.md docs/phases/PHASE-75-REACTORS.md
 #typing         43        internal/server/ web/src/state/ docs/phases/PHASE-43-TYPING.md
-#presence       34 45 60 92  internal/presence/ internal/server/ web/src/chat/hovercard.ts web/src/state/ docs/phases/PHASE-34-PRESENCE.md docs/phases/PHASE-45-SCRATCHPAD.md docs/phases/PHASE-92-HOVERCARD.md
+#presence       34 45 60 92  internal/presence/ internal/server/ web/src/chat/hovercard.ts web/src/chat/presence.ts web/src/components/HoverCard.tsx web/src/components/MessageList.tsx web/src/auth/display-names.ts web/src/state/ docs/phases/PHASE-34-PRESENCE.md docs/phases/PHASE-45-SCRATCHPAD.md docs/phases/PHASE-92-HOVERCARD.md
 #spacekeys      25 38     web/src/crypto/ internal/store/ docs/phases/PHASE-38-KEYDELIVERY.md docs/phases/PHASE-00-29-FOUNDATION.md
 #deletion       35        web/src/chat/ web/src/components/ docs/phases/PHASE-35-DELETION.md
 #mobile         32 60 64 76 94  web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/components/ web/src/theme.css docs/phases/PHASE-32-MOBILE.md docs/phases/PHASE-60-MOBILEFIT.md docs/phases/PHASE-64-SWIPEBACK.md docs/phases/PHASE-94-PHONECOMPOSER.md

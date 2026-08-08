@@ -15,7 +15,13 @@
 // On desktop: this lives in the 3rd column of the .chalk-app grid.
 // On mobile: media query covers main + channel composer entirely.
 
-import type { Message, ReactionSet } from "../state/types";
+import type {
+  LastSeenMap,
+  Message,
+  PresenceMap,
+  ReactionSet,
+} from "../state/types";
+import type { DisplayNameMap } from "../auth/display-names";
 import type { ResolvedChatPrefs } from "../state/types";
 import type { PendingAttachment } from "../attachments/types";
 import type { AttachmentController } from "../attachments/pipeline";
@@ -43,6 +49,11 @@ interface Props {
   ownHandle?: string | null;
   // Channel members for sender → handle resolution.
   members: { userID: string; handle: string }[];
+  // 92-6: forwarded verbatim to both lists so a sender's hover card says the
+  // same thing in a thread as it does in the feed.
+  presence?: PresenceMap;
+  lastSeen?: LastSeenMap;
+  displayNames?: DisplayNameMap;
   isDM: boolean;
   // Chat display prefs (timestamps, compact, user colors).
   display: ResolvedChatPrefs;
@@ -120,6 +131,9 @@ export function ThreadPanel({
   ownUserID,
   ownHandle,
   members,
+  presence,
+  lastSeen,
+  displayNames,
   isDM,
   display,
   disabled,
@@ -218,6 +232,9 @@ export function ThreadPanel({
               ownUserID={ownUserID}
               ownHandle={ownHandle}
               members={members}
+              presence={presence}
+              lastSeen={lastSeen}
+              displayNames={displayNames}
               isDM={isDM}
               display={display}
               canDeleteMessage={canDeleteMessage}
@@ -258,6 +275,9 @@ export function ThreadPanel({
             ownUserID={ownUserID}
             ownHandle={ownHandle}
             members={members}
+            presence={presence}
+            lastSeen={lastSeen}
+            displayNames={displayNames}
             isDM={isDM}
             display={display}
             canDeleteMessage={canDeleteMessage}
