@@ -51,6 +51,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #deletion       35        web/src/chat/ web/src/components/ docs/phases/PHASE-35-DELETION.md
 #mobile         32 60 64 76  web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/components/ web/src/theme.css docs/phases/PHASE-32-MOBILE.md docs/phases/PHASE-60-MOBILEFIT.md docs/phases/PHASE-64-SWIPEBACK.md
 #settings       68 70 76  web/src/settings-nav.ts web/src/components/ProfilePanel.tsx docs/phases/PHASE-68-SETTINGSTABS.md docs/phases/PHASE-70-APPEARANCE.md docs/phases/PHASE-76-SHORTCUTS.md
+#fullwidth      93        web/src/display-prefs.ts web/src/theme.css web/src/components/ProfilePanel.tsx docs/phases/PHASE-93-WIDTH.md
 #themes         -         web/src/theme.css web/src/theme-palette.test.ts web/src/components/ProfilePanel.tsx web/src/chat/nickcolor.ts docs/theming.md
 #version        39        internal/version/ web/src/version.ts docs/phases/PHASE-39-VERSION.md
 #servernotice   46        web/src/state/ web/src/components/ docs/phases/PHASE-46-UPDATENOTICE.md

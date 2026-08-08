@@ -304,7 +304,10 @@ html {
      and the footer composer stays anchored at the bottom. */
   height: 100dvh;
   min-height: 0;
-  max-width: 1100px;
+  /* 93-1: the layout-width pref sets this inline on the root -- 1100px for the
+     centred column, none to fill the window. The fallback is the centred value
+     so the first paint is right, before applyDisplayPrefs has run. */
+  max-width: var(--chalk-app-max-w, 1100px);
   column-gap: var(--chalk-s3);
 }
 .chalk-app--phase08b .chalk-header  { grid-area: header; }
@@ -4935,7 +4938,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
    ============================================================ */
 
 .chalk-app--phase08b.chalk-app--thread-open {
-  grid-template-columns: var(--chalk-sidebar-w, 220px) 1fr 340px;
+  /* 93-2: the panel takes a share of the shell rather than a flat 340px. The
+     percentage resolves against the grid container's content box -- the shell,
+     not the window -- so it is self-balancing: in the centred 1100px column 28%
+     is under the 340px floor and nothing changes, while a full-width shell has
+     room to spend and the thread stops being a letterbox next to a feed six
+     times its width. The 560px ceiling keeps an ultrawide from handing the
+     panel more than a thread of short replies can use. */
+  grid-template-columns: var(--chalk-sidebar-w, 220px) 1fr clamp(340px, 28%, 560px);
   grid-template-areas:
     "header  header header"
     "sidebar main   thread"
@@ -9827,13 +9837,15 @@ body.chalk-resizing-y .chalk-composer-resizer {
    should. The overlay only exists in an installed desktop window, so the guard
    costs nothing. */
 @media (display-mode: window-controls-overlay) and (min-width: 768px) {
-  /* The header leaves the centred column and spans the window. env(titlebar-*)
-     is measured from the window edge, while .chalk-app is max-width:1100px and
-     centred -- so on a wide monitor the column starts well right of the macOS
-     traffic lights (applying the inset there would indent the logo for no
-     reason) and on a narrow one it collides with them. No padding expression is
-     right in both cases while the header stays inside that box, so it comes
-     out of it. Content below stays centred. */
+  /* The header leaves the shell's box and spans the window. env(titlebar-*) is
+     measured from the window edge, while .chalk-app is a padded box that the
+     layout-width pref may also cap at 1100px and centre (93-1) -- so in centred
+     mode on a wide monitor the column starts well right of the macOS traffic
+     lights (applying the inset there would indent the logo for no reason) and
+     on a narrow one it collides with them. No padding expression is right in
+     every case while the header stays inside that box, so it comes out of it.
+     Correct in full-window mode too, where it simply has less to correct.
+     Content below keeps whatever width the pref gives it. */
   .chalk-header {
     position: fixed;
     top: env(titlebar-area-y, 0);

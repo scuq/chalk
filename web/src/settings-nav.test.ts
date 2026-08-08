@@ -26,6 +26,15 @@ test("the keyboard cheat sheet is findable by what it is called", () => {
   assert.equal(SECTION_TAB["shortcuts"], "chat");
 });
 
+// 93-1: the layout-width pref has no word in common with "appearance", so
+// only its keywords can lead anyone to it.
+test("the layout width setting is findable by what it is called", () => {
+  for (const q of ["full width", "wide", "ultrawide", "margins", "fullscreen"]) {
+    assert.ok(matchSections(q)!.has("appearance"), `"${q}" missed the section`);
+  }
+  assert.equal(SECTION_TAB["appearance"], "appearance");
+});
+
 test("a term can hit several sections", () => {
   const hits = matchSections("email")!;
   assert.ok(hits.has("identity"));

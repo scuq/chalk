@@ -37,14 +37,16 @@ reaching for when JS needs the geometry, and the layout does not.
 
 Two things forced the shape of it:
 
-- **The header leaves the centred column.** `env(titlebar-area-*)` is measured
-  from the window edge, but `.chalk-app` is `max-width: 1100px; margin: 0 auto`.
-  On a wide monitor the column starts well right of the macOS traffic lights, so
-  applying the inset would indent the logo for nothing; on a window narrower than
-  the column it collides with them. No padding expression is right in both cases
-  while the header stays in that box, so in overlay mode it goes `position:
-  fixed` across the window and `.chalk-app` takes a compensating `padding-top`.
-  Content below stays centred.
+- **The header leaves the shell's box.** `env(titlebar-area-*)` is measured
+  from the window edge, but `.chalk-app` is a padded, `margin: 0 auto` box —
+  capped at 1100px unless the layout-width pref (93-1) lifts the cap. In centred
+  mode on a wide monitor the column starts well right of the macOS traffic
+  lights, so applying the inset would indent the logo for nothing; on a window
+  narrower than the column it collides with them. No padding expression is right
+  in every case while the header stays in that box, so in overlay mode it goes
+  `position: fixed` across the window and `.chalk-app` takes a compensating
+  `padding-top`. That is equally correct in full-window mode, where there is
+  simply less to correct. Content below keeps whatever width the pref gives it.
 - **Drag regions are load-bearing.** `app-region: drag` on the strip, `no-drag`
   on `.chalk-header button, .chalk-header a`. Miss either half and the window
   cannot be moved, or the presence pill cannot be clicked — and neither failure

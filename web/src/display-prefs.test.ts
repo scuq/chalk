@@ -7,7 +7,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  APP_WIDTH_CHOICES,
   applyDisplayPrefs,
+  CENTERED_MAX_WIDTH,
   DEFAULT_DISPLAY_PREFS,
   FONT_CHOICES,
   MAX_SCALE,
@@ -30,11 +32,15 @@ function styleStub(): StyleTarget & { props: Record<string, string> } {
 }
 
 test("normalize keeps a valid pref untouched", () => {
-  assert.deepEqual(normalizeDisplayPrefs({ font: "serif", scale: 1.1, hideScrollbars: true }), {
-    font: "serif",
-    scale: 1.1,
-    hideScrollbars: true,
-  });
+  assert.deepEqual(
+    normalizeDisplayPrefs({
+      font: "serif",
+      scale: 1.1,
+      hideScrollbars: true,
+      appWidth: "full",
+    }),
+    { font: "serif", scale: 1.1, hideScrollbars: true, appWidth: "full" },
+  );
 });
 
 test("normalize falls back on junk input", () => {
@@ -48,11 +54,13 @@ test("normalize keeps the good half of a partially bad pref", () => {
     font: "sans",
     scale: DEFAULT_DISPLAY_PREFS.scale,
     hideScrollbars: DEFAULT_DISPLAY_PREFS.hideScrollbars,
+    appWidth: DEFAULT_DISPLAY_PREFS.appWidth,
   });
   assert.deepEqual(normalizeDisplayPrefs({ font: "wingdings", scale: 1.25 }), {
     font: DEFAULT_DISPLAY_PREFS.font,
     scale: 1.25,
     hideScrollbars: DEFAULT_DISPLAY_PREFS.hideScrollbars,
+    appWidth: DEFAULT_DISPLAY_PREFS.appWidth,
   });
   assert.equal(
     normalizeDisplayPrefs({ font: "mono", scale: 1, hideScrollbars: "yes" }).hideScrollbars,
@@ -78,12 +86,16 @@ test("every offered scale step survives normalization unchanged", () => {
 
 test("apply writes the custom properties theme.css reads", () => {
   const el = styleStub();
-  applyDisplayPrefs({ font: "sans", scale: 1.25, hideScrollbars: false }, el);
+  applyDisplayPrefs(
+    { font: "sans", scale: 1.25, hideScrollbars: false, appWidth: "centered" },
+    el,
+  );
   assert.deepEqual(el.props, {
     "--chalk-font": "var(--chalk-font-sans)",
     "--chalk-font-scale": "1.25",
     "--chalk-scrollbar-width": "thin",
     "--chalk-scroll-lane": "var(--chalk-s2)",
+    "--chalk-app-max-w": CENTERED_MAX_WIDTH,
   });
 });
 
@@ -91,15 +103,50 @@ test("apply writes the custom properties theme.css reads", () => {
 // a strip of dead space on its right edge with nothing in it.
 test("hiding scrollbars removes both the bar and its lane", () => {
   const el = styleStub();
-  applyDisplayPrefs({ font: "mono", scale: 1, hideScrollbars: true }, el);
+  applyDisplayPrefs(
+    { font: "mono", scale: 1, hideScrollbars: true, appWidth: "centered" },
+    el,
+  );
   assert.equal(el.props["--chalk-scrollbar-width"], "none");
   assert.equal(el.props["--chalk-scroll-lane"], "0px");
+});
+
+// 93-1: the layout-width pref.
+
+test("the layout defaults to the centred column", () => {
+  assert.equal(DEFAULT_DISPLAY_PREFS.appWidth, "centered");
+  assert.equal(normalizeDisplayPrefs({ font: "mono", scale: 1 }).appWidth, "centered");
+});
+
+test("an unrecognized stored width falls back to centred", () => {
+  for (const junk of ["wide", "FULL", "", 1, true, null, {}]) {
+    assert.equal(normalizeDisplayPrefs({ appWidth: junk }).appWidth, "centered");
+  }
+});
+
+test("every offered width survives normalization unchanged", () => {
+  for (const { value } of APP_WIDTH_CHOICES) {
+    assert.equal(normalizeDisplayPrefs({ appWidth: value }).appWidth, value);
+  }
+});
+
+// The pref only reaches the layout through this one property, so this is the
+// whole feature: "none" lifts the cap, anything else keeps the centred column.
+test("apply maps the width pref onto the shell's max-width", () => {
+  for (const { value } of APP_WIDTH_CHOICES) {
+    const el = styleStub();
+    applyDisplayPrefs({ ...DEFAULT_DISPLAY_PREFS, appWidth: value }, el);
+    assert.equal(
+      el.props["--chalk-app-max-w"],
+      value === "full" ? "none" : CENTERED_MAX_WIDTH,
+    );
+  }
 });
 
 test("apply names a family alias for every offered font", () => {
   for (const { value } of FONT_CHOICES) {
     const el = styleStub();
-    applyDisplayPrefs({ font: value, scale: 1, hideScrollbars: false }, el);
+    applyDisplayPrefs({ ...DEFAULT_DISPLAY_PREFS, font: value }, el);
     assert.equal(el.props["--chalk-font"], `var(--chalk-font-${value})`);
   }
 });

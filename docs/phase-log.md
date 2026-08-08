@@ -84,6 +84,7 @@ as-built rather than a contemporaneous plan.
 | 90 | a local idle agent — **planned, not started** | [PHASE-90-IDLEEXT.md](phases/PHASE-90-IDLEEXT.md) |
 | 91 | resizing the message box | [PHASE-91-COMPOSERSIZE.md](phases/PHASE-91-COMPOSERSIZE.md) |
 | 92 | the roster hover card | [PHASE-92-HOVERCARD.md](phases/PHASE-92-HOVERCARD.md) |
+| 93 | the full-width layout | [PHASE-93-WIDTH.md](phases/PHASE-93-WIDTH.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

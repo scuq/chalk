@@ -10,6 +10,30 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Let chalk use the whole window.** The app has always been capped at a
+  centred column, which is right on a laptop and wasteful on a wide monitor —
+  on a 2560px screen more than half the window was empty background, and
+  opening a thread narrowed the very conversation it belonged to. Appearance
+  settings now have a **layout width** setting: leave it centred, or switch to
+  full window and give all of that space to the conversation. Text rows, the
+  header and the composer stretch; photos, code blocks and link cards keep
+  their own sizes. It is remembered per device, so an ultrawide desktop and a
+  laptop can disagree — and on a phone, where the layout already fills the
+  screen, it changes nothing.
+
+### Changed
+- **The thread panel takes a fairer share of a wide window.** It was a fixed
+  narrow column, which looked stranded next to a full-width conversation and
+  left the reply box cramped. It now grows with the window — up to a point,
+  since a thread of short replies does not need half a monitor — while the
+  conversation keeps the larger share. On a normal-width window it is exactly
+  as wide as before.
+
+---
+
 ## v0.7.6 — 6 August 2026 — Account security and the roster at a glance
 
 Same contents as v0.7.5, plus a fix to the release pipeline itself. v0.7.5 was

@@ -284,7 +284,7 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
 (user-facing). Latest release: v0.7.6 — keep this in step with the topmost
 `## vX.Y.Z` heading in `CHANGELOG.md`. Only what is NOT done belongs here.
 
-- Phase 92 is the newest work; `docs/phase-log.md` has the full history,
+- Phase 93 is the newest work; `docs/phase-log.md` has the full history,
   and the arcs named here are a sample, not the whole list. Among the complete
   ones: auth v2 (31), voice/video
   (30-1 … 30-8 plus the 41/44/47/48 mic, device and call-UI work), governance
@@ -339,6 +339,14 @@ Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
     `web/src/voice/signal-crypto.ts`, which already does canonical-encode →
     Ed25519 sign → fail-closed verify correctly. The audit asks for an
     independent protocol review before this ships.
+- **Phase 93-3 is designed and not started** — the thread pane as a drag
+  handle, width stored per device in `display-prefs.ts`, design at the end of
+  the slice section in `docs/phases/PHASE-93-WIDTH.md`. It copies 33-4's
+  interaction but deliberately not its storage, and the design records a live
+  hazard it must fix on the way in: a second `useDisplayPrefs` mount in one tab
+  clobbers the first instance's fields, because `update()` merges onto its own
+  `prev` and persists the whole object. Read the design before building it;
+  three questions in it are scuq's to answer.
 - Next candidates, none started: web push notifications (phase 65, full
   plan in `docs/phases/PHASE-65-PUSH.md`: hand-rolled `internal/webpush`, DMs-only
   default, content-free payloads); ties (phase 86, full plan in
