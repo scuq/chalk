@@ -24,9 +24,15 @@ import { rulesAesKey } from "../notify/rules-sync.ts";
 const SCALAR = new Uint8Array(32).fill(7);
 const OTHER_SCALAR = new Uint8Array(32).fill(8);
 
+// Fully-specified rows: what comes back out of openPeerAudioStore has been
+// through the normalizer, so anything short of a complete pref would compare
+// unequal for reasons that have nothing to do with the crypto.
 const STORE = {
-  "chan-1": { "user-a": { muted: true, volume: 1 }, "user-b": { muted: false, volume: 0.4 } },
-  "chan-2": { "user-a": { muted: true, volume: 0.8 } },
+  "chan-1": {
+    "user-a": { muted: true, volume: 1, screenMuted: false, screenVolume: 1 },
+    "user-b": { muted: false, volume: 0.4, screenMuted: false, screenVolume: 0.2 },
+  },
+  "chan-2": { "user-a": { muted: true, volume: 0.8, screenMuted: true, screenVolume: 1 } },
 };
 
 function b64decode(s: string): Uint8Array {
@@ -84,20 +90,45 @@ test("garbage input opens as null, never throws", async () => {
   assert.equal(await openPeerAudioStore(key, b64encode(new Uint8Array(4))), null);
 });
 
+const DEFAULT_PREF = { muted: false, volume: 1, screenMuted: false, screenVolume: 1 };
+
 test("normalizePeerAudioPref clamps and defaults", () => {
-  assert.deepEqual(normalizePeerAudioPref(undefined), { muted: false, volume: 1 });
-  assert.deepEqual(normalizePeerAudioPref({ volume: 2 }), { muted: false, volume: 1 });
-  assert.deepEqual(normalizePeerAudioPref({ volume: -1 }), { muted: false, volume: 0 });
+  assert.deepEqual(normalizePeerAudioPref(undefined), DEFAULT_PREF);
+  assert.deepEqual(normalizePeerAudioPref({ volume: 2 }), DEFAULT_PREF);
+  assert.deepEqual(normalizePeerAudioPref({ volume: -1 }), { ...DEFAULT_PREF, volume: 0 });
   // A NaN volume would silence someone permanently: element.volume = NaN
   // throws, so the slider would be stuck. Falls back to full.
-  assert.deepEqual(normalizePeerAudioPref({ volume: NaN }), { muted: false, volume: 1 });
-  assert.deepEqual(normalizePeerAudioPref({ muted: 1 } as never), { muted: true, volume: 1 });
+  assert.deepEqual(normalizePeerAudioPref({ volume: NaN }), DEFAULT_PREF);
+  assert.deepEqual(normalizePeerAudioPref({ muted: 1 } as never), {
+    ...DEFAULT_PREF,
+    muted: true,
+  });
+});
+
+// 96-3: the share's pair gets the same treatment, and a row written before
+// the split (no screen fields at all) reads as "share at full volume".
+test("normalizePeerAudioPref treats the share's pair the same way", () => {
+  assert.deepEqual(normalizePeerAudioPref({ screenVolume: 4 }), DEFAULT_PREF);
+  assert.deepEqual(normalizePeerAudioPref({ screenVolume: NaN }), DEFAULT_PREF);
+  assert.deepEqual(normalizePeerAudioPref({ screenVolume: -3 }), {
+    ...DEFAULT_PREF,
+    screenVolume: 0,
+  });
+  assert.deepEqual(normalizePeerAudioPref({ muted: true, volume: 0.5 }), {
+    muted: true,
+    volume: 0.5,
+    screenMuted: false,
+    screenVolume: 1,
+  });
 });
 
 test("isDefaultPeerAudioPref spots the rows worth dropping", () => {
-  assert.equal(isDefaultPeerAudioPref({ muted: false, volume: 1 }), true);
-  assert.equal(isDefaultPeerAudioPref({ muted: true, volume: 1 }), false);
-  assert.equal(isDefaultPeerAudioPref({ muted: false, volume: 0.5 }), false);
+  assert.equal(isDefaultPeerAudioPref(DEFAULT_PREF), true);
+  assert.equal(isDefaultPeerAudioPref({ ...DEFAULT_PREF, muted: true }), false);
+  assert.equal(isDefaultPeerAudioPref({ ...DEFAULT_PREF, volume: 0.5 }), false);
+  // A row that only ever turned a share down is still worth keeping.
+  assert.equal(isDefaultPeerAudioPref({ ...DEFAULT_PREF, screenMuted: true }), false);
+  assert.equal(isDefaultPeerAudioPref({ ...DEFAULT_PREF, screenVolume: 0.3 }), false);
 });
 
 test("normalizePeerAudioStore is total over junk", () => {
@@ -115,6 +146,6 @@ test("normalizePeerAudioStore drops default rows and empty rooms", () => {
       "chan-1": { "user-a": { muted: false, volume: 1 }, "user-b": { muted: true } },
       "chan-2": { "user-c": { muted: false, volume: 1 } },
     }),
-    { "chan-1": { "user-b": { muted: true, volume: 1 } } },
+    { "chan-1": { "user-b": { ...DEFAULT_PREF, muted: true } } },
   );
 });

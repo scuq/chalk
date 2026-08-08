@@ -12,6 +12,15 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **Switch a call between tiles and the spotlight yourself.** A **tiles** button
+  next to **debug** picks the layout instead of leaving it to the participant
+  count: equal tiles for two people, or one big tile in a group, and it stays
+  where you put it while somebody shares their screen.
+- **A screen share's sound has its own volume and mute.** Turn the game or the
+  video down without turning the person sharing it down with it — the controls
+  are on their share's tile, next to **hide for me**.
+
 ### Changed
 - **The voice buttons are out of the way on a phone.** In the conversation-list
   layout, the mute / deafen / camera / share row no longer sits across the
@@ -28,6 +37,10 @@ The engineering-level history (which slice shipped what) lives in
   padding that was sitting around the send button and the F/G/E/C block.
 
 ### Fixed
+- **The tile view now appears when a third person joins**, even if you had
+  clicked someone's face to focus it while the call was still just the two of
+  you. Focusing a face in a one-to-one call no longer counts as refusing the
+  tiles.
 - **The C on the phone's code button is centred** like the other three.
 
 ---

@@ -1,7 +1,8 @@
 // chalk-web -- persistence for the per-peer local audio prefs ("mute for me").
 //
 // Receive-side only: local mute and 0..1 volume applied to OUR playback of a
-// peer. Never touches the wire -- the peer's uplink and everyone else's ears
+// peer -- since 96-3, one pair for their voice and one for the program audio
+// riding their screen share. Never touches the wire -- the peer's uplink and everyone else's ears
 // are unchanged, and nothing is broadcast (unlike self-mute, which rides
 // voice_state for the roster). Scoped per CHANNEL per USER (design A1: the
 // driving case is "my partner sits beside me in this room" -- a room-scoped
@@ -19,6 +20,12 @@ export interface PeerAudioPref {
   muted: boolean;
   /** Playback volume 0..1 (A4 subset; HTMLMediaElement.volume ceiling). */
   volume: number;
+  /** 96-3: local mute for this person's SHARED PROGRAM AUDIO (the tab or
+   * system sound riding their screen share), separate from their voice.
+   * Turning a game down to hear someone talk over it is the whole case. */
+  screenMuted: boolean;
+  /** 96-3: playback volume 0..1 for that shared program audio. */
+  screenVolume: number;
 }
 
 /** channel -> user -> pref. */
@@ -26,11 +33,21 @@ export type PeerAudioStore = Record<string, Record<string, PeerAudioPref>>;
 
 const STORAGE_KEY = "chalk-voice-peer-audio";
 
+/** 0..1, defaulting to full volume for anything that is not a real number --
+ * a NaN would silence someone permanently (element.volume = NaN throws). */
+function clampVolume(v: unknown): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return 1;
+  return Math.min(1, Math.max(0, v));
+}
+
 export function normalizePeerAudioPref(p: Partial<PeerAudioPref> | undefined): PeerAudioPref {
-  const vol = typeof p?.volume === "number" && Number.isFinite(p.volume) ? p.volume : 1;
   return {
     muted: !!p?.muted,
-    volume: Math.min(1, Math.max(0, vol)),
+    volume: clampVolume(p?.volume),
+    // 96-3: a row written before the split has neither field, and defaults
+    // are exactly right for it -- the share played at full volume then.
+    screenMuted: !!p?.screenMuted,
+    screenVolume: clampVolume(p?.screenVolume),
   };
 }
 
@@ -38,7 +55,7 @@ export function normalizePeerAudioPref(p: Partial<PeerAudioPref> | undefined): P
  * are dropped rather than stored, which is also what keeps the synced blob
  * from growing a row per person you have ever been in a room with. */
 export function isDefaultPeerAudioPref(p: PeerAudioPref): boolean {
-  return !p.muted && p.volume === 1;
+  return !p.muted && p.volume === 1 && !p.screenMuted && p.screenVolume === 1;
 }
 
 /** normalizePeerAudioStore is total: anything that is not a channel map of

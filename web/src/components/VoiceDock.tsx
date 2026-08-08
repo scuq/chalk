@@ -160,8 +160,12 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
         );
       })}
       {/* Job 2b (30-7b): shared PROGRAM audio (tab/system capture riding a
-          screen share). Same local prefs as the person's voice -- "mute for
-          me" silences their game too, which is what you meant. */}
+          screen share). 96-3: on its OWN local mute and volume, not the
+          person's. 30-7b tied the two together on the reading that muting
+          someone means muting their game as well; in use it is the reverse
+          that people reach for -- turn the game down to hear the person over
+          it -- and one slider could not express it. Deafen still takes
+          everything: that control means silence. */}
       {Object.values(snap.tiles)
         .filter((t) => t.screenStream && t.screenStream.getAudioTracks().length > 0)
         .map((t) => {
@@ -170,8 +174,8 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
             <AudioSink
               key={t.key + ":screen"}
               stream={t.screenStream!}
-              muted={snap.deafened || !!pref?.muted}
-              volume={typeof pref?.volume === "number" ? pref.volume : 1}
+              muted={snap.deafened || !!pref?.screenMuted}
+              volume={typeof pref?.screenVolume === "number" ? pref.screenVolume : 1}
             />
           );
         })}

@@ -806,6 +806,20 @@ class VoiceSessionImpl {
     }));
   }
 
+  /** 96-3: locally silence the program audio riding one participant's screen
+   * share. Their VOICE is untouched -- that is the point of the split. */
+  setPeerScreenLocalMute(userID: string, muted: boolean): void {
+    this.updatePeerAudio(userID, (p) => ({ ...p, screenMuted: muted }));
+  }
+
+  /** 96-3: playback volume 0..1 for that shared program audio. Persisted. */
+  setPeerScreenVolume(userID: string, volume: number): void {
+    this.updatePeerAudio(userID, (p) => ({
+      ...p,
+      screenVolume: Math.min(1, Math.max(0, volume)),
+    }));
+  }
+
   private updatePeerAudio(
     userID: string,
     fn: (p: PeerAudioPref) => PeerAudioPref,

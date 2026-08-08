@@ -87,6 +87,7 @@ as-built rather than a contemporaneous plan.
 | 93 | the full-width layout | [PHASE-93-WIDTH.md](phases/PHASE-93-WIDTH.md) |
 | 94 | the phone composer | [PHASE-94-PHONECOMPOSER.md](phases/PHASE-94-PHONECOMPOSER.md) |
 | 95 | voice, off the phone's home screen | [PHASE-95-PHONEVOICE.md](phases/PHASE-95-PHONEVOICE.md) |
+| 96 | the call's layout, and the share's own volume | [PHASE-96-CALLSTAGE.md](phases/PHASE-96-CALLSTAGE.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

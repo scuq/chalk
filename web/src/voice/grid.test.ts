@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { gridPlan, useGrid, isCrowded } from "./grid";
+import { gridPlan, useGrid, isCrowded, resolveGridMode } from "./grid";
 
 test("1:1 and solo calls keep the spotlight", () => {
   assert.equal(useGrid(1), false);
@@ -39,4 +39,35 @@ test("crowded starts past four participants", () => {
   assert.equal(isCrowded(3), false);
   assert.equal(isCrowded(4), false);
   assert.equal(isCrowded(5), true);
+});
+
+// 96-1: the layout under a viewer's standing choice.
+
+test("auto follows the 63-1 rule", () => {
+  assert.equal(resolveGridMode("auto", 2, false), false);
+  assert.equal(resolveGridMode("auto", 3, false), true);
+  assert.equal(resolveGridMode("auto", 9, false), true);
+});
+
+test("auto yields the stage to a live share", () => {
+  assert.equal(resolveGridMode("auto", 5, true), false);
+});
+
+test("an explicit choice outranks the rule and the share", () => {
+  assert.equal(resolveGridMode("grid", 2, false), true);
+  assert.equal(resolveGridMode("grid", 5, true), true);
+  assert.equal(resolveGridMode("spotlight", 9, false), false);
+});
+
+test("an empty stage is never a grid", () => {
+  assert.equal(resolveGridMode("auto", 0, false), false);
+  assert.equal(resolveGridMode("grid", 0, false), false);
+});
+
+// The 96-1 bug: focusing a face in a 1:1 call (the only layout there IS the
+// spotlight) left a pin behind that kept the grid from ever appearing when a
+// third person joined. resolveGridMode does not consult the pin at all, so
+// the arrival is decided by the count alone.
+test("a pin made at two participants cannot suppress the grid at three", () => {
+  assert.equal(resolveGridMode("auto", 3, false), true);
 });

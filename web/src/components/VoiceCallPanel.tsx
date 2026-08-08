@@ -8,8 +8,9 @@
 //   * it renders the 30-5 stage (big tile + filmstrip, click-to-pin focus,
 //     roster-driven "connecting…" honesty, control bar, debug drawer) when
 //     the session is in THIS channel -- or, for group calls of three or
-//     more (63-1), a grid of identical tiles (voice/grid.ts); pinning a
-//     tile or a live screen share brings the spotlight back
+//     more (63-1), a grid of identical tiles (voice/grid.ts); a live screen
+//     share brings the spotlight back, as does clicking a grid tile, and
+//     96-2's control-bar toggle overrides the lot
 //   * when the session is in a DIFFERENT room, it says so and offers the
 //     lobby (joining here moves you -- one call at a time)
 //   * unmount does NOT leave; lifecycle edges (WS loss, removal, logout)
@@ -47,7 +48,7 @@ import {
   subscribePopouts,
   syncTilePopouts,
 } from "../voice/pip";
-import { gridPlan, isCrowded, useGrid } from "../voice/grid";
+import { gridPlan, isCrowded, resolveGridMode, type VoiceLayout } from "../voice/grid";
 
 /** Stats refresh cadence while the drawer is open. Passive getStats reads
  * only (the Addendum D rule: nothing in-call may compete with media). */
@@ -122,6 +123,10 @@ export function VoiceCallPanel({
   // 30-5 stage focus: null = automatic; a key = user-pinned. View-local --
   // pinning is a "what am I looking at" concern, not call state.
   const [pinnedKey, setPinnedKey] = useState<string | null>(null);
+  // 96-1: grid vs spotlight. "auto" is the 63-1 rule; the bar's toggle and a
+  // click on a grid tile record a standing choice. View-local and per visit:
+  // it is about this stage, not about the account.
+  const [layout, setLayout] = useState<VoiceLayout>("auto");
   const [nowTick, setNowTick] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
   // 45-5: the tile blown up in the in-app expanded view -- the fallback for
@@ -323,6 +328,10 @@ export function VoiceCallPanel({
         stream: t.screenStream,
         hasLiveVideo:
           !hidden && t.screenStream.getVideoTracks().some((x) => x.readyState === "live"),
+        // 96-3: only a share that actually carries program audio gets the
+        // volume controls -- most don't, and a dead slider is a lie. Tracks
+        // can be added mid-share, which the nowTick recompute picks up.
+        hasAudio: t.screenStream.getAudioTracks().length > 0,
         connState: null,
         isScreen: true,
       });
@@ -351,11 +360,43 @@ export function VoiceCallPanel({
   const strip = stageTiles.filter((t) => t.key !== focusedKey);
 
   // 63-1: group calls render as a grid of identical tiles. The spotlight
-  // stays for 1:1, for a pinned tile (clicking a grid tile pins it; clicking
-  // the big tile unpins, back to the grid) and while a share is live.
+  // stays for 1:1 and while a share is live -- unless the viewer has said
+  // otherwise with the bar's toggle (96-1).
   const hasLiveShare = stageTiles.some((t) => t.isScreen && t.hasLiveVideo);
-  const gridMode = useGrid(stageTiles.length) && !hasLiveShare && !pinnedKey;
+  const gridMode = resolveGridMode(layout, stageTiles.length, hasLiveShare);
   const grid = gridPlan(stageTiles.length);
+
+  // Leaving the grid is a layout decision, so clicking a grid tile records
+  // one: pin it AND stand the spotlight up. Clicking the big tile puts that
+  // back -- but only when there is a pin to release, so a spotlight chosen
+  // with the toggle is not undone by a click on the tile it is showing.
+  const pinFromGrid = (key: string) => {
+    setPinnedKey(key);
+    setLayout("spotlight");
+  };
+  const unpin = () => {
+    if (!pinnedKey) return;
+    setPinnedKey(null);
+    setLayout("auto");
+  };
+  // The toggle. Switching to the grid drops the pin with it: a pinned tile in
+  // a grid of equals is a promise the layout cannot keep, and leaving it set
+  // would have it reappear the next time the spotlight came up.
+  const toggleLayout = () => {
+    if (gridMode) {
+      setLayout("spotlight");
+      return;
+    }
+    setPinnedKey(null);
+    setLayout("grid");
+  };
+
+  // A fresh room is a fresh stage: neither the pin nor the layout choice
+  // follows you into the next call.
+  useEffect(() => {
+    setPinnedKey(null);
+    setLayout("auto");
+  }, [hereInCall, channel.id]);
 
   // ---- 45-5 / 47-4: pop tiles out -------------------------------------
   //
@@ -468,7 +509,7 @@ export function VoiceCallPanel({
                     grid
                     label={handleFor(t.userID)}
                     rttMs={rttByKey[t.key]}
-                    onClick={() => setPinnedKey(t.key)}
+                    onClick={() => pinFromGrid(t.key)}
                     onPopOut={t.hasLiveVideo ? () => popOut(t) : undefined}
                     poppedOut={popped.includes(t.key)}
                     snap={snap}
@@ -494,7 +535,7 @@ export function VoiceCallPanel({
                       label={handleFor(focused.userID)}
                       rttMs={rttByKey[focused.key]}
                       big
-                      onClick={() => setPinnedKey(null)}
+                      onClick={unpin}
                       onPopOut={focused.hasLiveVideo ? () => popOut(focused) : undefined}
                       poppedOut={popped.includes(focused.key)}
                       snap={snap}
@@ -561,6 +602,26 @@ export function VoiceCallPanel({
                   </button>
                 ))}
               </span>
+            )}
+            {/* 96-2: the layout, switchable rather than inferred. The 63-1
+                rule is a good default and a bad law -- three people with one
+                of them screen-sharing a terminal, or two people who want
+                equal tiles, both want the other layout. Lit when the grid is
+                what you are looking at, whether by rule or by choice. */}
+            {stageTiles.length > 1 && (
+              <button
+                class={"chalk-btn chalk-voice-ctl" + (gridMode ? " chalk-voice-ctl--on" : "")}
+                onClick={toggleLayout}
+                data-testid="voice-layout-toggle"
+                aria-pressed={gridMode ? "true" : "false"}
+                title={
+                  gridMode
+                    ? "switch to the spotlight — one big tile, the rest in a strip"
+                    : "switch to tiles — everyone the same size"
+                }
+              >
+                tiles
+              </button>
             )}
             <button
               class={"chalk-btn chalk-voice-ctl" + (debugOpen ? " chalk-voice-ctl--on" : "")}
@@ -755,6 +816,9 @@ interface StageTile {
   isSelf: boolean;
   stream: MediaStream | null;
   hasLiveVideo: boolean;
+  /** 96-3: this stream carries audio we play back (screen tiles only -- a
+   * camera tile's audio is the person's voice, always assumed present). */
+  hasAudio?: boolean;
   connState: string | null;
   part?: VoiceParticipant;
   /** 30-7a: this tile is a screen share (own tile, never mirrored, no
@@ -792,7 +856,11 @@ function StagePeer({
   channel: ChannelSummary;
   selfUserID: string;
 }) {
-  const pref = tile.isSelf || tile.isScreen ? undefined : snap.peerAudio[tile.userID];
+  // 96-3: a screen tile now has prefs of its own (the share's program audio),
+  // so it reads the same row -- just the other pair of fields.
+  const pref = tile.isSelf ? undefined : snap.peerAudio[tile.userID];
+  const screenMuted = !!pref?.screenMuted;
+  const screenVolume = pref?.screenVolume ?? 1;
   const shownLabel = tile.isScreen ? `${label} — screen` : label;
   // 63-2: green dot = sound arriving from this tile right now. Camera tiles
   // only (a share's audio, when any, belongs to the person's camera tile);
@@ -894,10 +962,14 @@ function StagePeer({
         {tile.part?.screenOn && (
           <span class="chalk-voice-peer-flag" title="sharing screen">s</span>
         )}
-        {!tile.isSelf && pref?.muted && (
+        {!tile.isSelf && (tile.isScreen ? screenMuted : pref?.muted) && (
           <span
             class="chalk-voice-peer-flag chalk-voice-peer-flag--local"
-            title="muted by you (local — they don't know)"
+            title={
+              tile.isScreen
+                ? "their share's sound is muted by you (local — they don't know)"
+                : "muted by you (local — they don't know)"
+            }
           >
             M
           </span>
@@ -945,6 +1017,57 @@ function StagePeer({
                   ? "hide for me"
                   : "hide"}
             </button>
+            {/* 96-3: the share's own sound. Turning a game down to hear the
+                person over it used to be impossible -- one slider drove both
+                -- and that is the thing everyone tries first. Same placement
+                rule as the camera tile: the slider needs width, so it rides
+                the big tile only. */}
+            {tile.hasAudio && (
+              <>
+                {big && !screenMuted && (
+                  <input
+                    class="chalk-voice-volume"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={Math.round(screenVolume * 100)}
+                    onInput={(e) =>
+                      voiceSession.setPeerScreenVolume(
+                        tile.userID,
+                        Number((e.target as HTMLInputElement).value) / 100,
+                      )
+                    }
+                    title={`${label}'s share volume: ${Math.round(
+                      screenVolume * 100,
+                    )}% (only for you — their voice is separate)`}
+                    aria-label={`${label} screen share volume`}
+                    data-testid="voice-screen-volume"
+                  />
+                )}
+                <button
+                  class={
+                    "chalk-voice-localmute" + (screenMuted ? " chalk-voice-localmute--on" : "")
+                  }
+                  type="button"
+                  onClick={() => voiceSession.setPeerScreenLocalMute(tile.userID, !screenMuted)}
+                  title={
+                    screenMuted
+                      ? `unmute ${label}'s share (their voice was never muted with it)`
+                      : `mute the sound from ${label}'s share for me — you still hear them talk`
+                  }
+                  data-testid="voice-screen-mute"
+                >
+                  {screenMuted
+                    ? big || grid
+                      ? "unmute sound"
+                      : "unmute"
+                    : big || grid
+                      ? "mute sound"
+                      : "mute"}
+                </button>
+              </>
+            )}
           </span>
         )}
         {!tile.isSelf && !tile.isScreen && (
