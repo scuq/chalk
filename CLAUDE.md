@@ -2,392 +2,174 @@
 
 Self-hosted, end-to-end-encrypted group chat. Sole developer: scuq. One repo,
 one deployable image (chalkd + web bundle) plus the `chalkctl` deployment
-manager.
+manager. This file is only what applies to every session; the detail lives in
+`docs/` and is linked from where it is needed.
 
-## Code Style
+## Stack
 
-- Write code for humans first. Prioritize readability over cleverness.
-- Keep implementations simple, clean, and maintainable.
-- Prefer explicit code over unnecessary abstractions.
-- Avoid premature optimization and over-engineering.
-- Keep functions focused on a single responsibility.
-
-## Comments
-
-- Do not comment obvious code.
-- Add comments only when the intent, reasoning, or a non-obvious implementation needs explanation.
-- Comments should explain *why*, not *what* the code does.
-- Remove outdated comments instead of leaving misleading documentation.
-
-## Dependencies
-
-- Minimize external dependencies.
-- Prefer the standard library whenever it provides a reasonable solution.
-- Only introduce third-party libraries when they provide significant value.
-- Choose mature, stable, actively maintained, and widely adopted libraries.
-- Avoid adding dependencies for trivial functionality.
-
-## Maintainability
-
-- Keep the codebase consistent in style and structure.
-- Avoid unnecessary complexity.
-- Prefer predictable, stable solutions over clever tricks.
-- Refactor duplicated logic when it improves clarity without introducing unnecessary abstractions.
-- Write code that another engineer can understand in a few minutes.
-
-## General Principles
-
-- Optimize for long-term maintainability rather than short-term convenience.
-- Favor robustness and correctness over micro-optimizations.
-- When multiple solutions exist, choose the simplest one that satisfies the requirements.
-
-## Stack & layout
-
-- **Server**: Go 1.25, net/http (method-pattern mux), pgx/v5, PostgreSQL.
-  - `internal/auth/` — passkeys (go-webauthn), auth v2 (password+TOTP), sessions
-  - `internal/store/` — all SQL; `s.Pool` for one-shot queries, `s.withTx`
-    (store.go) + `FOR UPDATE` for anything needing consistency guarantees
-  - `internal/chalkctl/` + `cmd/chalkctl/` — deployment manager (podman
-    quadlets, Caddy, coturn, cosign-verified GHCR pulls, weekly update timer)
-- **Client**: Preact + TypeScript, esbuild, Node 22. Lives in `web/`.
-  - `web/src/auth/`, `web/src/crypto/`, `web/src/components/`, `web/src/state/`
-  - All E2E crypto is client-side: BIP-39 identity seed → X25519/Ed25519;
-    per-channel space keys, AES-256-GCM; server is a blind relay.
-- **Infra**: Dockerfile/Containerfile at root; `.github/workflows/release.yml`
-  builds multi-arch image + chalkctl binaries on `v*` tags, cosign-signed.
+- **Server** — Go 1.25, net/http (method-pattern mux), pgx/v5, PostgreSQL.
+  `internal/store/` holds all SQL: `s.Pool` for one-shot queries, `s.withTx`
+  (store.go) + `FOR UPDATE` for anything needing consistency guarantees.
+  `internal/chalkctl/` + `cmd/chalkctl/` is the deployment manager (podman
+  quadlets, Caddy, coturn, cosign-verified GHCR pulls, weekly update timer).
+- **Client** — Preact + TypeScript, esbuild, Node 22, all under `web/`.
+- **Crypto is client-side and the server is a blind relay** — BIP-39 identity
+  seed → X25519/Ed25519, per-channel space keys, AES-256-GCM. Never move a
+  decision the client owns onto the server.
 
 ## Commands
 
 ```bash
-# server
+# server (repo root)
 go build ./... && go vet ./...
 go test ./...                      # or scoped: ./internal/auth/ ./internal/chalkctl/
 gofmt -l .                         # must be empty before commit
 
 # client (from web/)
-npm install
 npx tsc --noEmit
-node test.mjs                      # node:test suite; currently 1238 tests, 0 fail
+node test.mjs                      # node:test suite
 node build.mjs
 
-# notification sounds (from the repo root)
-node tools/sound-bench.mjs         # regenerate + open tools/sound-bench.html
-
-# finding code (from the repo root)
+# finding code (repo root) — see below
 tools/where.sh -c parking          # which layers does a feature touch?
 tools/where.sh friend_request      # the chain, both sides of the wire
 
-# database (dev)
+# dev database
 sudo docker exec -i chalk-dev-pg psql -U chalk -d chalk
 ```
 
-Run the full verify chain (build, vet, tests, tsc, client tests, bundle)
-before declaring any change done.
+**Run the full verify chain — build, vet, gofmt, `go test`, tsc, `node
+test.mjs`, `node build.mjs` — before declaring any change done.**
+
+## Finding code
 
 Start feature work and bug hunts with `tools/where.sh`, not a bare grep.
-chalk's features cut vertically — schema → wire frame → ws handler → store →
-client proto → reducer → component — and the script runs that sweep in one
-pass, groups the hits in that order, and tags each one with its enclosing
-`func`/`const`/`case`. `-c` gives the layer map alone, which is usually enough
-to tell whether a bug is server-side or client-side before opening anything.
-It is a locator, not an index: it shells out to ripgrep every time (the whole
-repo greps in ~6 ms), so it can never go stale.
+chalk's features cut vertically (schema → wire frame → ws handler → store →
+client proto → reducer → component) and chalk renames at every hop
+(`friend_request` → `TypeFriendRequest` → `handleFriendRequest` →
+`friends.Request`), so a literal grep for the wire string never reaches
+`internal/server/` at all. `where.sh` sweeps every layer in one pass, matches
+across naming conventions, and tags each hit with its enclosing symbol. `-c`
+gives the layer map alone — usually enough to tell server-side from
+client-side before opening anything. `-g <topic>` resolves a topic through
+`docs/tags.md` to the ~650 `// 54-2:` phase comments, which finds code whose
+*name* never mentions the topic. Run it with no arguments for full usage.
 
-It also matches a plain identifier across naming conventions, which matters
-because chalk renames at every hop: `friend_request` → `TypeFriendRequest` →
-`handleFriendRequest` → `friends.Request`. Seeding with the wire string finds
-the whole chain; a literal grep for it never reaches `internal/server/` or
-`internal/friends/` at all. Pass `-l` for a literal match; a pattern containing
-regex characters is used as written.
+It needs ripgrep and says so when missing — ask scuq to install it
+(`sudo apt install ripgrep` on this Debian box) rather than falling back to
+`grep -r`.
 
-Topics are tagged, and the tags already exist: ~650 phase comments (`// 54-2:`)
-across ~120 files. `docs/tags.md` is the legend mapping topics to those phase
-numbers and to the paths they live in — `tools/where.sh -g roster` searches
-both at once, `-g` alone lists every tag. This finds code whose *name* never
-mentions the topic: `-g camera-bg` works even though that string appears
-nowhere in the source, because phase 52 is tagged throughout it.
-
-A tag whose phases have drifted is worse than a missing one, so `-g` warns when
-a listed path no longer exists. Keeping the legend current is a working
-agreement below, not an optional tidy-up.
-
-It needs ripgrep, and exits with `where.sh: needs ripgrep` when it is missing.
-That is not something to work around with `grep -r` — ask scuq to install it
-(`sudo apt install ripgrep` on this Debian box) and carry on once it is there.
+When `where.sh` is the wrong shape for the question — one literal string in
+one known file — call `rg` directly; `grep -r` walks `node_modules/` and
+`web/dist/`. To read a known range, use the file-read tool with an offset and
+a line count, never `sed -n`, `head` or `cat`. Issue independent lookups as
+parallel tool calls rather than `;`-chained one-liners: chained commands run
+serially and each unique string misses the allowlist and prompts.
 
 ## Working agreements
 
 - **NEVER commit or push.** Propose the `git add` file list and a
-  `git commit -m "..."` one-liner; scuq runs it. Commit messages:
-  `phase <N>-<slice>: <summary>` (e.g. `phase 31-9: auth-v2 hard cutover ...`).
-- Features are built as **numbered slices** (31-1 … 31-13, 30-1 … 30-8), each
-  independently verifiable. Ask before widening scope beyond the slice.
-- **Surgical fixes over architectural change** for bugs found in testing.
-- **Changelog with the change.** Any slice a user would notice — a feature, a
-  behaviour change, a bug they could have hit — gets a bullet under
-  `## Unreleased` in `CHANGELOG.md` in the same change set, and the file goes
-  in the proposed `git add` list. Skip it for refactors, tests, docs, and
-  internal plumbing nobody outside the repo can observe; if it's borderline,
-  add the bullet. Write it for a chalk *user*, not for the commit log: what
-  they can now do, or what used to go wrong and no longer does — no slice
-  numbers, no file or symbol names. Fixes say what the wrong behaviour looked
-  like. Sections in an `## Unreleased` block: `### Added`, `### Changed`,
-  `### Fixed`. Never invent a version heading; scuq cuts releases by tagging,
-  and `## Unreleased` gets renamed then.
-- **Release version follows `CHANGELOG.md`.** Cutting a release means renaming
-  `## Unreleased` to `## vX.Y.Z — <D Month YYYY> — <theme>`; in the same change
-  set, update "Latest release" under *Current state / open items* below to that
-  version. The topmost `## vX.Y.Z` heading in `CHANGELOG.md` is the source of
-  truth and this file only points at it — nothing else in the repo carries a
-  version number, since it is stamped from the git tag through ldflags
-  (`Makefile` `VERSION`, set by `.github/workflows/release.yml`). A stale
-  pointer is worse than none, because it still reads as current.
-- **Tags with the phase.** A new phase number gets a line in `docs/tags.md`, or
-  its number appended to the topic already listed there, in the same change set
-  — and the file goes in the proposed `git add` list. Same whenever a search
-  shows a topic living somewhere its paths do not cover: widen that line. The
-  legend is the only thing that makes the phase comments findable by topic, and
-  it stays true only if it moves with the code. Correct a drifted entry in
-  place; never add a second line for a topic that already has one.
-- **A phase doc with the phase.** A new phase number also gets its own
-  `docs/phases/PHASE-<N>-<TOPIC>.md` — created with the first slice, not after the
-  last — and the file goes in the proposed `git add` list. Name the topic in
-  caps, one word (`PHASE-82-SIGNEDWRAP.md`, `PHASE-84-PINBACKUP.md`). It
-  carries what the code cannot: the problem the phase exists to solve, the
-  design and what was rejected, the slice list with what each one lands, and
-  any manual checklist a slice leaves open. Keep it current as slices land —
-  a plan that stopped matching the code is worse than no plan. Then point at
-  it from *Current state / open items* below while the phase is open, and add
-  its row to the phase-doc index at the top of `docs/phase-log.md` once it
-  ships — that index is how a phase number is turned back into its record.
-  Phases 30–79 were backfilled after the fact and say so in their header; a
-  backfilled record is as-built, not a contemporaneous plan.
-- **Check the planned phases before opening a new one.** Some phase docs are
-  designs with no code behind them — they say **planned, not started** in the
-  index at the top of `docs/phase-log.md`, and say it again in their own
-  header where they have a doc of their own (65 web push and 86 ties do; 83's
-  signed message envelope is scoped inside the phase-81 record instead). Read
-  that index and the *Next candidates* bullet below **before** proposing a
-  phase number or designing a feature. Three things follow: a new idea is often
-  an existing plan, and belongs in that doc rather than in a parallel number; a
-  planned number is claimed, so the next free number is past it, never one of
-  them; and building one means flipping its status header
-  and dropping *planned, not started* from its index row in the same change set
-  — a doc that still claims to be unbuilt is exactly as misleading as a stale
-  version pointer. The same applies when a plan turns out to be wrong: correct
-  or retire the doc, do not leave it standing beside the code that contradicts
-  it.
-- **Probes belong in the test suite.** To find out how code behaves, add or
-  extend a `*.test.ts` beside it and run `node test.mjs`, or a `_test.go` and
-  `go test ./internal/...` — both are permitted, so neither prompts. Do not
-  pipe a throwaway script into `node`: a heredoc write plus an arbitrary
-  `node <path>` run is precisely what the permission prompts exist to catch,
-  it cannot be allowlisted without granting blanket execution, and the answer
-  evaporates instead of becoming regression cover. `--experimental-strip-types`
-  is specifically what `web/test.mjs` exists to avoid — read its header before
-  reaching for it. Check for an existing test file first; the behaviour in
-  question is often already asserted.
-  The exception is UI probes, which need a browser and a running stack and so
-  cannot be a `*.test.ts`: write those to
-  `.claude/skills/run-chalk/probes/ui.mjs` (allowlisted, gitignored, rewritten
-  per investigation) and run them from the repo root with no `cd`, no `rm` and
-  no pipe — the probe cleans `/tmp/chalk-probe/` itself and prints its own
-  summary. A probe worth a second run gets a topic name, a commit beside
-  `readme-shots.mjs`, and its own allowlist entry.
-- **Read and search with the dedicated tools, not shell text-slicing.** To read
-  a known range, use the file-read tool with an offset and a line count — not
-  `sed -n '150,215p'`, `head`, or `cat`. It returns numbered lines, it does not
-  prompt, and an edit needs the file read first anyway, so `sed` reads it twice.
-  When `tools/where.sh` is the wrong shape for the question — one literal string
-  in one known file — call `rg` directly: `grep -r` walks `node_modules/` and
-  `web/dist/`, and a `web/src/**/*.ts` glob silently matches a single directory
-  level unless the shell has `globstar` on. Issue independent lookups as
-  separate parallel tool calls instead of chaining them with `;` and `echo
-  "=== ... ==="` separators — chained one-liners run serially, each unique
-  string misses the allowlist and prompts, and parallel results come back
-  labelled already.
-- Ask before adding dependencies (Go modules or npm packages).
+  `git commit -m "..."` one-liner; scuq runs it. Messages are
+  `phase <N>-<slice>: <summary>`.
+- Features are built as **numbered slices**, each independently verifiable.
+  **Ask before widening scope beyond the slice.** Prefer surgical fixes over
+  architectural change for bugs found in testing.
+- **Ask before adding any dependency** (Go module or npm package). chalk
+  prefers the standard library and hand-rolls small things on purpose.
+- **A change set carries its own paperwork**, and each file below goes in the
+  proposed `git add` list:
+  - `CHANGELOG.md` — a bullet under `## Unreleased` (`### Added` / `###
+    Changed` / `### Fixed`) for anything a user would notice; skip refactors,
+    tests, docs and internal plumbing; add it when borderline. Write it for a
+    chalk *user*: what they can now do, or what used to go wrong and no longer
+    does — no slice numbers, no file or symbol names. Never invent a version
+    heading.
+  - `docs/tags.md` — a new phase number gets a line, or its number appended to
+    the topic already listed there; widen a line whenever a search shows a
+    topic living outside its paths. Correct a drifted entry in place, never add
+    a second line for a topic that has one. This legend is the only thing that
+    makes the phase comments findable by topic.
+  - `docs/phases/PHASE-<N>-<TOPIC>.md` — created with the **first** slice, not
+    after the last (topic in caps, one word). It carries what the code cannot:
+    the problem, the design and what was rejected, the slice list, and any
+    manual checklist a slice leaves open. Keep it current as slices land, and
+    add its row to the index at the top of `docs/phase-log.md` once it ships.
+- **Read `docs/phase-log.md`'s index before proposing a phase number.** Several
+  phases are designed with no code behind them (marked *planned, not started*).
+  A new idea is often one of them and belongs in its doc rather than a parallel
+  number; those numbers are claimed, so the next free one is past them; and
+  building one means flipping its status header and its index row in the same
+  change set. A plan that turns out wrong gets corrected or retired, never left
+  standing beside code that contradicts it.
+- **Cutting a release is the `/release` skill.** Do not do it by hand.
+- **Probes belong in the test suite.** To learn how code behaves, extend a
+  `*.test.ts` and run `node test.mjs`, or a `_test.go` and `go test`; both are
+  allowlisted, so neither prompts. Never pipe a throwaway script into `node` —
+  it is exactly what the permission prompts exist to catch, it cannot be
+  allowlisted without granting blanket execution, and the answer evaporates
+  instead of becoming regression cover. Check for an existing test file first;
+  the behaviour is often already asserted. UI probes are the exception, since
+  they need a browser and a running stack: write those to
+  `.claude/skills/run-chalk/probes/ui.mjs` and run them from the repo root with
+  no `cd`, no `rm` and no pipe.
 - Style: direct, concise, no filler. Explain what changed and why in a few
   lines, then the verify commands.
 
-## Hard-won gotchas
+## Gotchas
 
-- **SELECT/scan three-site rule**: RETURNING column count, struct field
-  count, and scan argument count must all match. Check all three whenever any
-  one changes.
+- **SELECT/scan three-site rule**: RETURNING column count, struct field count
+  and scan argument count must all match. Check all three whenever one changes.
 - **SQL scope**: LATERAL/subquery columns not exposed to the outer SELECT
-  compile in Go but fail at runtime in Postgres. Trace column scope manually;
-  `go build` proves nothing about SQL.
-- **gofmt realignment**: const blocks, struct fields, and keyed composite
+  compile in Go but fail at runtime in Postgres. `go build` proves nothing
+  about SQL — trace column scope by hand.
+- **gofmt realignment**: const blocks, struct fields and keyed composite
   literals get value/comment column realignment. Never assume byte-exact
   content of such regions; re-read before editing.
-- **Notification sounds are tuned by ear, never derived.** `SOUND_SPECS`
-  (`web/src/notify/synth.ts`) is the recording of a listening session, and
-  its comments say *why* each number is what it is — changing one means
-  listening again and rewriting the comment with it. `node
-  tools/sound-bench.mjs` builds the bench that session needs (every
-  category, the real synth graph extracted from the source so it can't
-  drift, sliders, A/B against what's committed, and the `synth.test.ts`
-  invariants shown live so tuning can't end in a red build) and prints its
-  `file://` URL for scuq to open. Its "copy tuned specs" block pastes back
-  into the table.
 - **Client cache vs server**: IndexedDB caches (space keys, identities,
-  attachments) can mask or mimic server bugs — distinguish stale client state
-  from real server holes before "fixing" the server.
-- **npm audit**: clean in both `web/` and `test/e2e/` as of 81-5, which
-  retired the long-accepted esbuild dev-server advisory by bumping to 0.25.
-  Keep it that way; never run `npm audit fix --force`.
-- **Env config**: everything is `CHALK_*` env vars, deployed via
-  `internal/chalkctl/templates/chalk.env.tmpl`. A new server env var is not
-  done until chalkctl generates/preserves it (see `CHALK_TOTP_ENC_KEY` /
-  `CHALK_ADMIN_BOOTSTRAP_TOKEN` in init.go for the pattern: generate fresh,
-  preserve on `--force`, backfill on `update` when absent).
+  attachments) can mask or mimic server bugs. Rule out stale client state
+  before "fixing" the server.
+- **Env config**: everything is `CHALK_*` env vars. A new server env var is not
+  done until `chalkctl` generates it fresh, preserves it on `--force` and
+  backfills it on `update` (pattern: `CHALK_TOTP_ENC_KEY` in
+  `internal/chalkctl/init.go`; template `templates/chalk.env.tmpl`).
 - **webauthn**: go-webauthn v0.17 validates credential BE/BS flags, so a
-  credential row with zero-value flags fails login against a synced passkey
-  ("Backup Eligible flag inconsistency"). Handled: migration 0042 stores the
-  flags and `adoptLegacyFlags` (internal/auth/http.go) seeds pre-0042 rows
-  from the asserted flags. Any new credential path must persist them.
+  credential row with zero-value flags fails login against a synced passkey.
+  Any new credential path must persist them (migration 0042, `adoptLegacyFlags`
+  in `internal/auth/http.go`).
+- **npm audit** is clean in `web/` and `test/e2e/`. Keep it that way; never run
+  `npm audit fix --force`.
+- **Notification sounds are tuned by ear, never derived.** `SOUND_SPECS`
+  (`web/src/notify/synth.ts`) is the recording of a listening session and its
+  comments say *why* each number is what it is. Changing one means running
+  `node tools/sound-bench.mjs`, listening again, and rewriting the comment with
+  it. Details in `docs/notification-sounds.md`.
 
-## Auth model (v2, phase 31 — complete)
+## Auth model (v2, complete — full record in `docs/phases/PHASE-31-AUTHV2.md`)
 
-- Password ≥20 chars, 4 classes (space counts as special), client-enforced;
-  server floor Argon2id 256 MiB/3/1.
-- master = Argon2id(pw, salt); authProof = HKDF(master, "chalk/auth") (server
-  stores SHA-256 of it); KEK = HKDF(master, "chalk/kek") wraps the 32-byte
-  identity entropy (`identity_seed_wrap`).
-- TOTP mandatory on every login, including the passkey path. Passkeys are a
-  convenience factor, not a bypass.
-- Two separate 24-word phrases: recovery phrase (auth reset) vs encryption
-  phrase (identity seed; never leaves the client).
-- Hard cutover: `CHALK_AUTH_V2_REQUIRED` (default on) + per-user
-  `auth_v2_enrolled`; un-enrolled sessions get 409 → client migration wizard.
-- Admin bootstrap: reserved admin username claimable only with the one-shot
-  `CHALK_ADMIN_BOOTSTRAP_TOKEN` (URL `?admin_token=...`), dead once the admin
-  account exists.
-- Recovery = **reset**, not login (31-13): the phrase sets a new password via
-  `/api/auth/recovery/reset-auth`, plus a live `totp_code` — or `reset_totp`
-  when the authenticator is what was lost, which clears TOTP for re-enrollment
-  through the minted session. Phrase-alone `/api/auth/recovery` was **deleted**
-  in 81-7 (it bypassed the second factor, left the user unable to change the
-  password they'd forgotten, and its 409 told a stranger the account existed).
-  The reset purges the password seed wraps; only the identity gate's
-  `maybeUploadSeedWrap` re-creates them from the encryption phrase.
-- Reset failures before the phrase verifies are one answer, `recovery_failed`
-  (81-7): unknown user, no code on file, spent code and wrong phrase are
-  indistinguishable in body, status and work. What the phrase *proves* is the
-  fence — everything after it (`code_used`, `user_blocked`, the TOTP gate) can
-  be specific, because only the account's owner gets that far.
+- Password ≥20 chars, 4 classes, client-enforced; server floor Argon2id
+  256 MiB/3/1. master = Argon2id(pw, salt); authProof = HKDF(master,
+  `chalk/auth`), server stores its SHA-256; KEK = HKDF(master, `chalk/kek`)
+  wraps the 32-byte identity entropy.
+- **TOTP is mandatory on every login, including the passkey path.** Passkeys
+  are a convenience factor, never a bypass.
+- Two separate 24-word phrases — recovery (auth reset) and encryption (identity
+  seed, never leaves the client). Do not conflate them.
+- **Recovery is a reset, not a login**: the phrase plus a live TOTP code sets a
+  new password. Phrase-alone login was deleted in 81-7 and must not come back.
+  Every failure before the phrase verifies answers `recovery_failed`,
+  indistinguishable in body, status and work; only what the phrase proves
+  unlocks specific errors.
 
-## Current state / open items
+## What's open
 
-Shipped history lives in `docs/phase-log.md` (engineering) and `CHANGELOG.md`
-(user-facing). Latest release: v0.7.6 — keep this in step with the topmost
-`## vX.Y.Z` heading in `CHANGELOG.md`. Only what is NOT done belongs here.
+`docs/open-items.md` is the authority on what is **not** done — open phases and
+their caveats, next candidates, and deferred cleanup. Read it before proposing
+new work. Shipped history is `docs/phase-log.md` (engineering) and
+`CHANGELOG.md` (user-facing); the topmost `## vX.Y.Z` heading there is the only
+version number in the repo, everything else is stamped from the git tag.
 
-- Phase 93 is the newest work; `docs/phase-log.md` has the full history,
-  and the arcs named here are a sample, not the whole list. Among the complete
-  ones: auth v2 (31), voice/video
-  (30-1 … 30-8 plus the 41/44/47/48 mic, device and call-UI work), governance
-  (gov-1/gov-2, panel included), attachments, multi-device, unread + read
-  cursors (33), threads and the thread inbox (42/47/49), notifications
-  (40/50), mobile layout (32), CSP + security headers (51-1), the voice
-  scratchpad (45), camera background effects (52), the parking lot
-  (53-1 … 53-5: the lot, its settings, the F9 boss key, the way back off it,
-  and the privacy screen), roster filter + channel groups (54, plan in
-  `docs/phases/PHASE-54-ROSTER.md`), main-feed scrollback paging (55, plan in
-  `docs/phases/PHASE-55-HISTORY.md`), composer @mention autocomplete (56-1), link
-  previews (57, plan in `docs/phases/PHASE-57-LINKPREVIEW.md`: sender-built,
-  E2E-embedded, opt-in, SSRF-guarded server fetcher), the security-audit
-  remediation (81, record in `docs/phases/PHASE-81-SECAUDIT.md`), signed channel-key
-  wraps (82, record in `docs/phases/PHASE-82-SIGNEDWRAP.md`), the identity-pin backup
-  (84, record in `docs/phases/PHASE-84-PINBACKUP.md`), operational logging (85-1 …
-  85-4, record in `docs/phases/PHASE-85-OPLOG.md`: security events, the opt-in
-  connection snapshot, slow requests, and Caddy's access log; chalkd's knobs
-  are `CHALK_OPLOG_*`, documented in `internal/config/oplog.go`). Phase 85's
-  open items are the live-stack run of the connection snapshot and the missing
-  off switch for the Caddy access log — both listed at the end of its record.
-- **Phase 82 (signed channel-key wraps) is COMPLETE** — 82-1 … 82-10, record in
-  `docs/phases/PHASE-82-SIGNEDWRAP.md`. It closes the phase-81 audit's C-01, but
-  **conditionally**: C-01 is closed only where `CHALK_WRAP_SIG_REQUIRED` is on.
-  Since 82-10 it defaults to **true**, so new deployments are covered — but
-  `chalkctl update` preserves an existing `false`, so a deployment that predates
-  phase 82 keeps the migration window until its operator runs `chalkctl wrapsig
-  enable` (after `chalkctl wrapsig status` says READY). Until then a server can
-  still substitute a key on a channel no current-build member has opened. Never
-  describe C-01 as fixed unconditionally.
-  - Two follow-ups are still open: the **end-to-end run against a live stack**
-    (checklist at the end of the phase doc — the only exercise of the real
-    Postgres upsert guard, and worth doing before a release carries this), and
-    the guest path's remaining exposure: links minted before 82-7 stay unsigned
-    until they expire.
-- **Open security gap, confirmed by the phase-81 audit and reconfirmed by its
-  2026-08-05 follow-up** — the whole design now lives in
-  `docs/phases/PHASE-83-MSGSIG.md` (**planned, not started**);
-  `docs/threat-model.md` states both halves as unmet guarantees:
-  - **Messages carry no sender signature.** The AEAD associated data is only
-    suite/channel/key-version, so sender, message ID and timestamp are
-    unauthenticated server-supplied metadata and any key holder can be
-    impersonated. Fix = signed message envelope, extended to edits, reactions
-    and attachment refs. Phase 83 half A, whose central constraint is that the
-    server mints message id *and* ts, so a send-time signature cannot cover
-    them.
-  - **Membership is server-asserted**, so a server that adds a principal it
-    controls gets the key handed to it by a member's auto-reshare. 82-8 makes
-    that visible (the join notice) but cannot prevent it. Phase 83 half B, the
-    authenticated channel-state transcript.
-  - Both share the identity anchor phase 82 already paid for, and should copy
-    `web/src/voice/signal-crypto.ts`, which already does canonical-encode →
-    Ed25519 sign → fail-closed verify correctly. The audit asks for an
-    independent protocol review before this ships.
-- **Phase 93-3 is designed and not started** — the thread pane as a drag
-  handle, width stored per device in `display-prefs.ts`, design at the end of
-  the slice section in `docs/phases/PHASE-93-WIDTH.md`. It copies 33-4's
-  interaction but deliberately not its storage, and the design records a live
-  hazard it must fix on the way in: a second `useDisplayPrefs` mount in one tab
-  clobbers the first instance's fields, because `update()` merges onto its own
-  `prev` and persists the whole object. Read the design before building it;
-  three questions in it are scuq's to answer.
-- Next candidates, none started: web push notifications (phase 65, full
-  plan in `docs/phases/PHASE-65-PUSH.md`: hand-rolled `internal/webpush`, DMs-only
-  default, content-free payloads); ties (phase 86, full plan in
-  `docs/phases/PHASE-86-TIES.md`: say "this answers that" across an interleaved
-  channel without quoting — a sealed per-user side record on the reactions
-  pattern, drawn as a gutter mark plus a hover connector); message reminders
-  (phase 87, full plan in `docs/phases/PHASE-87-REMINDERS.md`: bring one message
-  back later — 1h/24h/weekend/custom from the row menu, a badged Reminders entry
-  above the parking lot, the whole set in a sealed prefs blob so the server never
-  learns a reminder exists, and no server code at all); the SFU seam (voice
-  design Slice I) for rooms too large for a mesh; governance `set_config`
-  proposals. The roster hover card's **device line** (92-3) is designed and
-  deliberately unbuilt: showing a friend which device you are online from
-  crosses a privacy line `AggregateUserState` currently draws for us, so it
-  needs an opt-in before it ships — the reasoning is in
-  `docs/phases/PHASE-92-HOVERCARD.md`, read it before building it. Federation
-  is **not** a candidate — phase 88
-  (`docs/phases/PHASE-88-FEDERATION.md`) is a declined design, not a plan
-  awaiting a builder, gated on 83 if it is ever reconsidered; read it before
-  re-proposing the idea, since it also records what already works across
-  deployments without any of it.
-- Deferred cleanup, all verified still open:
-  - `RegisterFromInviteScreen` still registers passkey-first
-    (`navigator.credentials.create()`), out of step with the auth-v2 password
-    + TOTP flow every other entry point uses.
-  - `auth_backup_code` is dormant: migration 0040 creates it and
-    `store/auth_v2.go` has `ReplaceBackupCodes` / `ConsumeBackupCode` /
-    `CountUnusedBackupCodes`, with no caller anywhere. Drop table + funcs.
-  - The threads dot's server total is only re-synced on a debounced refetch;
-    threads whose inbox rows this client doesn't hold still lag until then
-    (`threadsNeedingYouCount` corrects only held rows).
-  - The camera choice (`device-prefs.ts` cameraId) has the same stale-id
-    weakness the mic had before 63-3 (Brave re-randomizes deviceIds per
-    session; late-plugged devices unmatched). Fix the same way: persist the
-    label, resolve via `voice/device-resolve.ts` at capture time.
-  - The client's windowed attachment backfill (App.tsx `listAttachments`
-    effect, `GET /api/attachments`, `CHALK_ATTACH_FETCH_WINDOW_HOURS`) is
-    redundant since fetch_history started carrying attachment refs on the
-    page itself; drop the effect, the endpoint, the
-    `ListAttachmentsForChannelWindow` query and the env knob together.
-  - `docker/Dockerfile`'s frontend stage runs `npm run build` without
-    `NODE_ENV=production`, so released images ship unminified bundles with
-    inline sourcemaps. Costlier since 52-2 (the MediaPipe chunk is 153 KB
-    minified vs 737 KB as shipped).
+**Before making any claim about chalk's security properties**, read
+`docs/threat-model.md` and `docs/open-items.md`. Two guarantees are unmet —
+messages carry no sender signature, and membership is server-asserted (both are
+phase 83, planned) — and the phase-81 audit's C-01 is closed only where
+`CHALK_WRAP_SIG_REQUIRED` is on, so it is never "fixed unconditionally".
