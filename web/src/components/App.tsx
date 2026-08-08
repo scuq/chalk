@@ -193,7 +193,12 @@ import { StatusBar } from "./StatusBar";
 import { Sidebar, ChannelGlyph } from "./Sidebar";
 // 62-6: Zuckermode -- the phone's unified conversation list.
 import { ZuckerList } from "./ZuckerList";
-import { buildConversationList, buildFriendList, previewText } from "../chat/zucker";
+import {
+  buildConversationList,
+  buildFriendList,
+  buildVoiceOccupants,
+  previewText,
+} from "../chat/zucker";
 import { messageText } from "../chat/bodytext";
 // 64-3/64-4/64-10: swipe right = back, on every screen that has a "back".
 import { useSwipeBack } from "../chat/use-swipe-back";
@@ -551,16 +556,23 @@ export function App() {
     }
     return null;
   }, [state.voiceRosters, state.user]);
-  // 95-2: occupancy per voice room, for the list's pinned "@ voice" row. The
-  // rosters are already live state (the sidebar draws its dots from them), so
-  // this is only a reshape into what the row counts.
-  const zuckerVoiceCounts = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const [cid, roster] of Object.entries(state.voiceRosters)) {
-      m[cid] = roster.length;
-    }
-    return m;
-  }, [state.voiceRosters]);
+  // 95-2/95-4: occupancy per voice room, for the list's pinned "@ voice" row
+  // and the occupant line under each live room. The rosters are already live
+  // state (the sidebar draws its dots from them), so this is only a reshape --
+  // plus the name resolution ZuckerList cannot do, since it never sees a
+  // channel's member list.
+  const zuckerVoiceOccupants = useMemo(
+    () =>
+      buildVoiceOccupants(
+        state.voiceRosters,
+        state.user?.id ?? null,
+        (channelID, userID) =>
+          state.channels[channelID]?.members.find((m) => m.userID === userID)
+            ?.handle ||
+          userID.slice(0, 8),
+      ),
+    [state.voiceRosters, state.user, state.channels],
+  );
   // userID -> handle for preview sender labels: friends first, then every
   // channel's member roster (which carries handles since 08c).
   const zuckerHandles = useMemo(() => {
@@ -5046,7 +5058,7 @@ export function App() {
             hiddenRows={zuckerSplit.hidden}
             presence={state.presence}
             friends={zuckerFriends}
-            voiceCounts={zuckerVoiceCounts}
+            voiceOccupants={zuckerVoiceOccupants}
             parkingName={parking.hidden ? null : parking.name}
             threadsUnread={threadsNeedingYou}
             onSelect={(id) => {

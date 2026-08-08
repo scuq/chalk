@@ -10,13 +10,25 @@
 // activity-sorted list buries anyone you haven't talked to lately.
 
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
-import { splitVoice, type ZuckerFriend, type ZuckerRow } from "../chat/zucker";
+import {
+  splitVoice,
+  type ZuckerFriend,
+  type ZuckerOccupant,
+  type ZuckerRow,
+} from "../chat/zucker";
 import type { PresenceMap } from "../state/types";
 import { filterRoster } from "../chat/roster-filter";
 import { fmtRelative } from "../chat/reltime";
 import { formatCountdown, countdownUrgent } from "../chat/countdown";
 import { UnreadDot } from "./UnreadDot";
-import { ChannelGlyph, presenceClass, presenceLabel } from "./Sidebar";
+import {
+  CamIcon,
+  ChannelGlyph,
+  MicOffIcon,
+  ScreenIcon,
+  presenceClass,
+  presenceLabel,
+} from "./Sidebar";
 
 interface Props {
   rows: ZuckerRow[];
@@ -26,10 +38,10 @@ interface Props {
   hiddenRows?: ZuckerRow[];
   presence: PresenceMap;
   friends: ZuckerFriend[];
-  // 95-2: channel id -> how many people are in that room right now, for the
-  // pinned voice row's "1/4 live". Absent means nobody anywhere, which is what
-  // an empty voiceRosters map says too.
-  voiceCounts?: Record<string, number>;
+  // 95-2/95-4: channel id -> who is in that room right now, for the pinned
+  // voice row's "1/4 live" and each live room's occupant line. Absent means
+  // nobody anywhere, which is what an empty voiceRosters map says too.
+  voiceOccupants?: Record<string, ZuckerOccupant[]>;
   // null hides the row (prefs.parkingLot.hidden), mirroring the sidebar.
   parkingName: string | null;
   threadsUnread: number;
@@ -48,7 +60,7 @@ export function ZuckerList({
   hiddenRows = [],
   presence,
   friends,
-  voiceCounts = {},
+  voiceOccupants = {},
   parkingName,
   threadsUnread,
   onSelect,
@@ -82,7 +94,9 @@ export function ZuckerList({
   // list opens itself if it has matches (and stays shut when it has none, so
   // the row does not flash open on every keystroke).
   const voiceShowing = filter.trim() !== "" ? shownVoice.length > 0 : voiceOpen;
-  const liveRooms = voiceRows.filter((r) => (voiceCounts[r.id] ?? 0) > 0).length;
+  const liveRooms = voiceRows.filter(
+    (r) => (voiceOccupants[r.id] ?? []).length > 0,
+  ).length;
   // Same reason the hidden shelf carries one: a room's scratchpad can go unread
   // behind a closed row, and hiding it is not muting it.
   const voiceUnread = voiceRows.some((r) => r.unread);
@@ -98,67 +112,95 @@ export function ZuckerList({
   // times must agree with itself.
   const now = new Date();
 
-  const conversationRow = (r: ZuckerRow, hidden: boolean) => (
-    <li key={r.id}>
-      <button
-        type="button"
-        class={`chalk-zucker-row ${hidden ? "chalk-zucker-row--hidden" : ""}`}
-        onClick={() => onSelect(r.id)}
-        data-testid="zucker-row"
-        data-channel-id={r.id}
-        data-hidden={hidden ? "true" : "false"}
-      >
-        <span class="chalk-zucker-row-badge">
-          {r.isDM ? (
-            <span
-              class={`chalk-presence-dot ${presenceClass(
-                r.otherUserID !== null ? presence[r.otherUserID] : undefined,
-              )}`}
-              title={presenceLabel(
-                r.otherUserID !== null ? presence[r.otherUserID] : undefined,
-              )}
-            />
-          ) : (
-            <ChannelGlyph type={r.isVoice ? "voice" : "text"} />
-          )}
-        </span>
-        <span class="chalk-zucker-row-main">
-          <span class="chalk-zucker-row-top">
-            <span class="chalk-zucker-row-name">{r.name}</span>
-            {r.expiresAt != null && countdownNow != null && (
+  const conversationRow = (r: ZuckerRow, hidden: boolean) => {
+    // 95-4: an empty room previews "voice room" forever (95-2's complaint
+    // about it in the main list holds here too), but a room with people in it
+    // has exactly one thing worth a line: who. That answers the question the
+    // "1/4 live" count raises rather than repeating a scratchpad line nobody
+    // opened the shelf for -- and it is why the shelf is sized to grow.
+    const occupants = voiceOccupants[r.id] ?? [];
+    return (
+      <li key={r.id}>
+        <button
+          type="button"
+          class={`chalk-zucker-row ${hidden ? "chalk-zucker-row--hidden" : ""}`}
+          onClick={() => onSelect(r.id)}
+          data-testid="zucker-row"
+          data-channel-id={r.id}
+          data-hidden={hidden ? "true" : "false"}
+        >
+          <span class="chalk-zucker-row-badge">
+            {r.isDM ? (
               <span
-                class={
-                  "chalk-expiry-badge" +
-                  (countdownUrgent(r.expiresAt - countdownNow) ? " chalk-expiry-badge--urgent" : "")
-                }
-                data-testid="zucker-expiry"
-              >
-                {formatCountdown(r.expiresAt - countdownNow)}
-              </span>
-            )}
-            <span class="chalk-zucker-row-when">
-              {fmtRelative(new Date(r.when), now)}
-            </span>
-          </span>
-          <span class="chalk-zucker-row-preview">
-            {r.preview !== null ? (
-              <>
-                {r.previewSender !== null && (
-                  <span class="chalk-zucker-row-sender">{r.previewSender}: </span>
+                class={`chalk-presence-dot ${presenceClass(
+                  r.otherUserID !== null ? presence[r.otherUserID] : undefined,
+                )}`}
+                title={presenceLabel(
+                  r.otherUserID !== null ? presence[r.otherUserID] : undefined,
                 )}
-                {r.preview}
-              </>
+              />
             ) : (
-              <span class="chalk-zucker-row-empty">
-                {r.isVoice ? "voice room" : "no messages yet"}
+              <ChannelGlyph type={r.isVoice ? "voice" : "text"} />
+            )}
+          </span>
+          <span class="chalk-zucker-row-main">
+            <span class="chalk-zucker-row-top">
+              <span class="chalk-zucker-row-name">{r.name}</span>
+              {r.expiresAt != null && countdownNow != null && (
+                <span
+                  class={
+                    "chalk-expiry-badge" +
+                    (countdownUrgent(r.expiresAt - countdownNow) ? " chalk-expiry-badge--urgent" : "")
+                  }
+                  data-testid="zucker-expiry"
+                >
+                  {formatCountdown(r.expiresAt - countdownNow)}
+                </span>
+              )}
+              <span class="chalk-zucker-row-when">
+                {fmtRelative(new Date(r.when), now)}
+              </span>
+            </span>
+            {occupants.length > 0 ? (
+              <span
+                class="chalk-zucker-row-occupants"
+                data-testid="zucker-voice-occupants"
+              >
+                {occupants.map((o) => (
+                  <span
+                    class="chalk-zucker-occupant"
+                    key={o.userID}
+                    data-user-id={o.userID}
+                  >
+                    <span class="chalk-zucker-occupant-name">{o.name}</span>
+                    {o.muted && <MicOffIcon />}
+                    {o.videoOn && <CamIcon />}
+                    {o.screenOn && <ScreenIcon />}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span class="chalk-zucker-row-preview">
+                {r.preview !== null ? (
+                  <>
+                    {r.previewSender !== null && (
+                      <span class="chalk-zucker-row-sender">{r.previewSender}: </span>
+                    )}
+                    {r.preview}
+                  </>
+                ) : (
+                  <span class="chalk-zucker-row-empty">
+                    {r.isVoice ? "voice room" : "no messages yet"}
+                  </span>
+                )}
               </span>
             )}
           </span>
-        </span>
-        {r.unread && <UnreadDot mention={r.mention} />}
-      </button>
-    </li>
-  );
+          {r.unread && <UnreadDot mention={r.mention} />}
+        </button>
+      </li>
+    );
+  };
 
   return (
     <div class="chalk-zucker" data-testid="zucker-list">
@@ -267,7 +309,10 @@ export function ZuckerList({
             {voiceUnread && <UnreadDot mention={voiceMention} />}
           </button>
           {voiceShowing && (
-            <ul class="chalk-zucker-rows" data-testid="zucker-voice-rows">
+            <ul
+              class="chalk-zucker-rows chalk-zucker-rows--shelf"
+              data-testid="zucker-voice-rows"
+            >
               {shownVoice.map((r) => conversationRow(r, false))}
             </ul>
           )}
@@ -324,7 +369,10 @@ export function ZuckerList({
             {hiddenUnread && <UnreadDot mention={hiddenMention} />}
           </button>
           {hiddenOpen && (
-            <ul class="chalk-zucker-rows" data-testid="zucker-hidden-rows">
+            <ul
+              class="chalk-zucker-rows chalk-zucker-rows--shelf"
+              data-testid="zucker-hidden-rows"
+            >
               {shownHidden.map((r) => conversationRow(r, true))}
             </ul>
           )}

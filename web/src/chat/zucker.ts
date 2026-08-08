@@ -201,3 +201,64 @@ export function splitVoice<T extends { isVoice: boolean }>(
   for (const r of rows) (r.isVoice ? rooms : rest).push(r);
   return { rest, rooms };
 }
+
+// 95-4: one person in a live room, as the phone's `@ voice` shelf draws them.
+// Names are resolved before this reaches ZuckerList, which has no member
+// lists to look them up in -- same injection buildConversationList uses.
+export interface ZuckerOccupant {
+  userID: string;
+  name: string;
+  muted: boolean;
+  videoOn: boolean;
+  screenOn: boolean;
+}
+
+// The structural subset of VoiceParticipant this needs.
+interface RosterEntry {
+  userID: string;
+  deviceID: string;
+  muted: boolean;
+  videoOn: boolean;
+  screenOn: boolean;
+}
+
+// buildVoiceOccupants reshapes the live rosters into per-room name lists.
+//
+// One row per *person*, not per device: the sidebar lists both of someone's
+// devices because a desktop column can afford to, but on a phone two "blade"
+// lines in a row read as a bug. Merging them means deciding what the badges
+// say for a person who is in twice -- muted only when every one of their
+// devices is (one open mic is an open mic), sending video or screen when any
+// of them is. Own entry reads "you", the 30-5 rule, because seeing yourself
+// listed is what tells you the join landed.
+export function buildVoiceOccupants(
+  rosters: Record<string, RosterEntry[]>,
+  ownUserID: string | null,
+  nameFor: (channelID: string, userID: string) => string,
+): Record<string, ZuckerOccupant[]> {
+  const out: Record<string, ZuckerOccupant[]> = {};
+  for (const [channelID, roster] of Object.entries(rosters)) {
+    const byUser = new Map<string, ZuckerOccupant>();
+    for (const p of roster) {
+      const prev = byUser.get(p.userID);
+      if (prev) {
+        prev.muted = prev.muted && p.muted;
+        prev.videoOn = prev.videoOn || p.videoOn;
+        prev.screenOn = prev.screenOn || p.screenOn;
+        continue;
+      }
+      byUser.set(p.userID, {
+        userID: p.userID,
+        name:
+          ownUserID !== null && p.userID === ownUserID
+            ? "you"
+            : nameFor(channelID, p.userID),
+        muted: p.muted,
+        videoOn: p.videoOn,
+        screenOn: p.screenOn,
+      });
+    }
+    out[channelID] = [...byUser.values()];
+  }
+  return out;
+}

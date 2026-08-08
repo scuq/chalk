@@ -1,7 +1,9 @@
 # Phase 95 — voice, off the phone's home screen
 
-**Status:** 95-1 and 95-2 shipped together, one change set. The phase is closed
-unless the follow-ups under [Left open](#left-open) are taken up.
+**Status:** 95-1 and 95-2 shipped together, one change set. 95-3 and 95-4
+followed as a second, reported against the shelf 95-2 built. The phase is
+closed unless the remaining follow-ups under [Left open](#left-open) are taken
+up.
 
 **Tag:** `#zucker` and `#voice` → `tools/where.sh -g zucker`. It sits on the
 seam between the two: it changes nothing about how a call works, only how much
@@ -75,6 +77,60 @@ Two things the collapse must not swallow:
   *neither* half matched. Otherwise typing a room's name would answer "no
   matches" while the match sat inside a collapsed row.
 
+### 95-3 — the shelf was being squeezed
+
+Reported against 95-2: expanding `@ voice` gave the room a sliver, and its row
+was cut off mid-line.
+
+95-2 reused `.chalk-zucker-rows` for the expanded list, which was the right
+call for the markup and the wrong one for the sizing. That class is the
+*conversation list* — `flex: 1 1 auto`, the child that eats whatever the column
+has left. Rendering a second one made two children fight over the same
+leftover, so the shelf got a share proportional to nothing in particular:
+enough for 48 of the 56px its row asks for, and the row clipped inside its own
+scroll container.
+
+The friends roster above it never had this problem because 64-1 gave it its own
+class with its own sizing. So the fix is the rule 64-1 already found, written
+once for both shelves (`@ voice` and 78-3's `hidden`, which shares the class
+and therefore shared the bug): `.chalk-zucker-rows--shelf` is `flex: 0 1 auto`
+with a 40vh cap.
+
+The shrink factor is deliberate rather than `0 0 auto` — the shelf should be
+content-sized whenever the conversation list has anything left to give, but if
+three sections are open at once, something has to yield, and a shelf that
+yields *scrolls* while a column that overflows just loses its bottom rows.
+Flexbox distributes that shrinkage to the list first, since its content-derived
+basis is far larger.
+
+### 95-4 — who is in a live room
+
+The follow-up this phase left open, and half of the same report: the shelf needs
+the vertical space *because* a room with people in it has something to say.
+
+`buildVoiceOccupants` (pure, in `chat/zucker.ts`, tested) reshapes
+`state.voiceRosters` into per-room name lists; the row spends its preview line
+on them when the room is live, and falls back to the preview — "voice room",
+forever, for an empty room — when it is not. A room's scratchpad line loses
+that contest on purpose: the count on the pinned row above raises the question
+"who", and nobody opened the shelf to read a link someone dropped mid-call.
+
+Two decisions the sidebar did not have to make:
+
+- **One row per person, not per device.** 30-5 lists both of someone's devices
+  because a desktop column can afford to; two identical handles in a row on a
+  phone read as a bug. Merging them means merging their badges, and the safe
+  direction is not the obvious one: someone is muted only when *every* device
+  of theirs is (one open mic is an open mic), and is sending video or screen
+  when *any* is.
+- **Names resolve in App, not in the component.** `ZuckerList` is
+  presentational — rows arrive pre-built (62-6) — and it has no channel member
+  lists to look a userID up in. Same injection `buildConversationList` uses.
+
+The line wraps rather than ellipsising, which is the whole point of 95-3: a full
+room is exactly when the names matter, so the row is allowed to be two or three
+lines tall and the shelf is allowed to grow with it.
+
 ## Also in this change set — 94-4
 
 Two things reported against the 94 composer at the same time, recorded in
@@ -96,7 +152,20 @@ band's presence on the classic layout and absence on the Zuckermode list, its
 return once a room is joined, and the `@ voice` row's split, count, collapse,
 expansion and filter behaviour.
 
-Three things it had to learn, all worth keeping if the probe is rewritten:
+`node test.mjs` covers `buildVoiceOccupants` for 95-4 — naming, `you` for the
+viewer, per-channel resolution, the device merge in both directions (muted only
+when every device is, badges when any is), and the empty-room edge.
+
+95-3 is a measurement, so the probe was rewritten around it: three users, B and
+C in a room while A watches from the Zuckermode list, 12 checks under iPhone 14
+emulation. The ones that matter are `getBoundingClientRect().height` vs
+`scrollHeight` on the shelf (equal means nothing is clipped), `flex-grow` being
+`0`, the conversation list still having a usable height, and the same two
+measurements again with the friends roster expanded above it — the two-shelf
+case a naive fix passes and then fails.
+
+Three things the 95-1/95-2 probe had to learn, all worth keeping if the probe is
+rewritten:
 
 - **The 94-4 bug is invisible in the default tool style.** `icons` centres its
   glyph with flex, so the probe has to select `text` in settings ▸ chat before
@@ -114,10 +183,8 @@ Three things it had to learn, all worth keeping if the probe is rewritten:
   but 95-1 is the change that makes the question obvious: the toggles are now
   on screen exactly when you are in a call, and the exit still is not anywhere.
   The natural home is the band itself, beside the four toggles.
-- **The `@ voice` row does not say who is in a room, only how many.** The
-  roster is right there in `state.voiceRosters`; a line of handles under the
-  room name is the obvious next thing, and was left out because the row is
-  already carrying a count, an unread dot and a preview.
+- ~~**The `@ voice` row does not say who is in a room, only how many.**~~ Done
+  in 95-4.
 - **The classic mobile drawer keeps both behaviours.** Voice rooms stay in its
   channel groups and the controls band stays under its composer. If the drawer
   layout turns out to want the same treatment, the split is already pure and

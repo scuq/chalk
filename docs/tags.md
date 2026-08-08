@@ -36,7 +36,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #push           -         docs/phases/PHASE-65-PUSH.md
 #parking        53        web/src/parking.ts web/src/parking-hotkey.ts web/src/state/ web/src/components/ docs/phases/PHASE-53-PARKING.md
 #roster         54 78 92  web/src/chat/ web/src/components/Sidebar.tsx web/src/components/ZuckerList.tsx web/src/components/CreateChannelModal.tsx web/src/theme.css docs/phases/PHASE-54-ROSTER.md docs/phases/PHASE-78-HIDECHANNELS.md docs/phases/PHASE-92-HOVERCARD.md
-#zucker         62 64 95  web/src/chat/zucker.ts web/src/components/ZuckerList.tsx docs/phases/PHASE-62-ZUCKER.md docs/phases/PHASE-95-PHONEVOICE.md
+#zucker         62 64 78 95  web/src/chat/zucker.ts web/src/components/ZuckerList.tsx web/src/theme.css docs/phases/PHASE-62-ZUCKER.md docs/phases/PHASE-78-HIDECHANNELS.md docs/phases/PHASE-95-PHONEVOICE.md
 #history        55 69 79  internal/store/ web/src/chat/ web/src/components/MessageList.tsx docs/phases/PHASE-55-HISTORY.md docs/phases/PHASE-69-PINNEDHEADER.md docs/phases/PHASE-79-LANDING.md
 #mentions       56        web/src/chat/ web/src/components/Composer.tsx docs/phases/PHASE-56-MENTIONS.md
 #composer       91 94     web/src/chat/composer-height.ts web/src/chat/composer-keys.ts web/src/components/ComposerResizer.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-91-COMPOSERSIZE.md docs/phases/PHASE-94-PHONECOMPOSER.md

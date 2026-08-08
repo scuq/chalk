@@ -8936,6 +8936,21 @@ body.chalk-resizing-y .chalk-composer-resizer {
     overscroll-behavior: contain;
   }
 
+  /* 95-3: the sublists behind a pinned row (@ voice, hidden) are shelves, not
+     the list. They share the rows' markup, so without this they inherit
+     flex-grow from it and stand as a second growing child beside the
+     conversation list -- which splits the column between them and squeezes a
+     one-room voice shelf down to less than the 56px its row needs, clipping it
+     mid-line. A shelf is content-sized instead: it never grows, it yields only
+     after the conversation list has given everything it has, and it caps at
+     40vh with its own scroll for the case the friends roster was capped for --
+     a live room with a long occupant list must not swallow the screen. */
+  .chalk-zucker-rows--shelf {
+    flex: 0 1 auto;
+    max-height: 40vh;
+    border-bottom: 1px solid var(--chalk-border);
+  }
+
   .chalk-zucker-row {
     display: flex;
     align-items: center;
@@ -9001,6 +9016,36 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
   .chalk-zucker-row-sender {
     color: var(--chalk-fg-dim);
+  }
+
+  /* 95-4: who is in a live room, in the preview line's slot. It wraps rather
+     than ellipsising -- a full room is exactly when the names matter, and the
+     shelf above is content-sized now, so the row is allowed to be two or three
+     lines tall. Row gap is tighter than column gap so a wrapped second line
+     still reads as one block. */
+  .chalk-zucker-row-occupants {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1px var(--chalk-s2);
+    min-width: 0;
+    font-size: var(--chalk-size-small);
+    color: var(--chalk-fg-muted);
+  }
+
+  .chalk-zucker-occupant {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  /* One long handle must not push the badges off the row; it gives up its own
+     tail first. */
+  .chalk-zucker-occupant-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .chalk-zucker-row-empty {

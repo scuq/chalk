@@ -10,6 +10,21 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **The phone's `@ voice` row says who is in a room, not just how many.** Open
+  it and a live room lists the people in it under its name, with the same
+  muted / camera / sharing marks the desktop roster uses — so you can tell
+  whether it is the conversation you wanted before you walk into it.
+
+### Fixed
+- **Expanding `@ voice` on a phone no longer squeezes the rooms.** The list
+  was splitting the screen with the conversations below it, which cut the
+  room's row off mid-line. It now takes the room it needs — growing with the
+  people in a busy room, and scrolling on its own once it has taken 40% of the
+  screen. The **hidden** shelf was doing the same thing and no longer does.
+
 ## v0.7.9 — 8 August 2026 — Call layout you choose, and voice off the phone's home screen
 
 ### Added

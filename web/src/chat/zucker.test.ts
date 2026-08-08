@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import {
   buildConversationList,
   buildFriendList,
+  buildVoiceOccupants,
   previewText,
   splitVoice,
   DELETED_PREVIEW,
@@ -261,4 +262,74 @@ test("a voice channel lands in the rooms half of a built list", () => {
   const { rest, rooms } = splitVoice(rows);
   assert.deepEqual(rest.map((r) => r.id), ["c1"]);
   assert.deepEqual(rooms.map((r) => r.id), ["c2"]);
+});
+
+// ---- buildVoiceOccupants (95-4) ---------------------------------------
+
+const dev = (userID: string, deviceID: string, over = {}) => ({
+  userID,
+  deviceID,
+  muted: false,
+  videoOn: false,
+  screenOn: false,
+  ...over,
+});
+
+test("buildVoiceOccupants names each occupant, own entry as you", () => {
+  const out = buildVoiceOccupants(
+    { r1: [dev(ME, "d1"), dev("u2", "d2")] },
+    ME,
+    (_cid, u) => (u === "u2" ? "blade" : "?"),
+  );
+  assert.deepEqual(out.r1.map((o) => o.name), ["you", "blade"]);
+});
+
+test("buildVoiceOccupants resolves names per channel", () => {
+  const out = buildVoiceOccupants(
+    { r1: [dev("u2", "d1")], r2: [dev("u2", "d2")] },
+    ME,
+    (cid, u) => `${u}@${cid}`,
+  );
+  assert.equal(out.r1[0].name, "u2@r1");
+  assert.equal(out.r2[0].name, "u2@r2");
+});
+
+test("buildVoiceOccupants merges one person's devices into one row", () => {
+  const out = buildVoiceOccupants(
+    {
+      r1: [
+        dev("u2", "phone", { muted: true, videoOn: true }),
+        dev("u2", "laptop", { muted: true, screenOn: true }),
+      ],
+    },
+    ME,
+    (_cid, u) => u,
+  );
+  assert.equal(out.r1.length, 1);
+  // Muted on every device, so muted; sending video from one and screen from
+  // the other, so both badges show.
+  assert.deepEqual(
+    { muted: out.r1[0].muted, videoOn: out.r1[0].videoOn, screenOn: out.r1[0].screenOn },
+    { muted: true, videoOn: true, screenOn: true },
+  );
+});
+
+test("buildVoiceOccupants: one open mic means not muted", () => {
+  const out = buildVoiceOccupants(
+    { r1: [dev("u2", "phone", { muted: true }), dev("u2", "laptop")] },
+    ME,
+    (_cid, u) => u,
+  );
+  assert.equal(out.r1[0].muted, false);
+});
+
+test("buildVoiceOccupants keeps empty rooms as empty lists", () => {
+  const out = buildVoiceOccupants({ r1: [] }, ME, (_cid, u) => u);
+  assert.deepEqual(out, { r1: [] });
+  assert.deepEqual(buildVoiceOccupants({}, ME, (_cid, u) => u), {});
+});
+
+test("buildVoiceOccupants with no viewer names every entry", () => {
+  const out = buildVoiceOccupants({ r1: [dev(ME, "d1")] }, null, () => "nowx");
+  assert.equal(out.r1[0].name, "nowx");
 });

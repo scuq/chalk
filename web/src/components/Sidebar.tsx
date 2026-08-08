@@ -262,7 +262,7 @@ function occupantHandle(ch: ChannelSummary, userID: string): string {
 // Tiny inline SVGs in currentColor so they inherit the theme (the emoji
 // variants 🔇/🎥 fight the green-on-black palette). Stroke style, 12px box.
 
-function MicOffIcon() {
+export function MicOffIcon() {
   return (
     <svg
       class="chalk-voice-badge chalk-voice-badge--muted"
@@ -284,7 +284,7 @@ function MicOffIcon() {
   );
 }
 
-function CamIcon() {
+export function CamIcon() {
   return (
     <svg
       class="chalk-voice-badge chalk-voice-badge--cam"
@@ -305,7 +305,7 @@ function CamIcon() {
   );
 }
 
-function ScreenIcon() {
+export function ScreenIcon() {
   return (
     <svg
       class="chalk-voice-badge chalk-voice-badge--screen"
