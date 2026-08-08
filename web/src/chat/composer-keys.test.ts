@@ -75,3 +75,16 @@ test("the help sheet covers every shortcut and has no blanks", () => {
     assert.ok(rows.some((r) => r.keys === label), `help is missing ${action}`);
   }
 });
+
+// 94-3: the sheet is the only written record of what Enter does, so it has to
+// follow the composer onto the phone rather than keep promising a send.
+test("the phone sheet says enter is a newline", () => {
+  const rows = composerHelp(false, true);
+  const enter = rows.filter((r) => r.keys.endsWith("enter"));
+  assert.equal(enter.length, 1, "shift+enter has nothing to say on a phone");
+  assert.equal(enter[0].keys, "enter");
+  assert.ok(!/^send$/.test(enter[0].what));
+  assert.match(enter[0].what, /new line/);
+  // Everything else is unchanged -- a phone can still have a keyboard.
+  assert.ok(rows.some((r) => r.keys === shortcutLabel("emoji", false)));
+});

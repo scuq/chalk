@@ -47,6 +47,7 @@ import {
 } from "../parking";
 import { PARKING_HOTKEY_LABEL } from "../parking-hotkey";
 import { composerHelp, isMacPlatform } from "../chat/composer-keys";
+import { useIsMobile } from "../mobile";
 import { notifySounds } from "../notify";
 import { useSoundPrefs } from "../notify/prefs";
 import { CATEGORY_LABELS, MACHINE_CATEGORIES } from "../notify/types";
@@ -232,6 +233,9 @@ export function ProfilePanel({
   // non-empty filter overrides the tab and searches every section.
   const [activeTab, setActiveTab] = useState<SettingsTab>("account");
   const [filterQuery, setFilterQuery] = useState("");
+  // 94-3: the shortcut sheet reads differently on a phone -- Enter is a
+  // newline there.
+  const isMobile = useIsMobile();
 
   // Local UI state: are we in the rotate-recovery sub-view?
   // Local because no other component cares.
@@ -1073,7 +1077,9 @@ export function ProfilePanel({
 
           {/* 76-1: the cheat sheet the composer's "?" used to hold. Same
               composerHelp() rows, so the two can't drift; the keys are the
-              same on every device, so there is nothing to store. */}
+              same on every device, so there is nothing to store.
+              94-3: except Enter, which sends on a desktop and types a newline
+              on a phone -- hence the viewport argument. */}
           {show("shortcuts") && (
             <section class="chalk-profile-shortcuts" data-testid="shortcuts-settings">
               <h3>keyboard shortcuts</h3>
@@ -1082,7 +1088,7 @@ export function ProfilePanel({
                 configurable yet.
               </p>
               <dl class="chalk-profile-keys" data-testid="shortcuts-list">
-                {composerHelp(isMacPlatform()).map((row) => (
+                {composerHelp(isMacPlatform(), isMobile).map((row) => (
                   <div class="chalk-profile-keys-row" key={row.keys}>
                     <dt>
                       <kbd>{row.keys}</kbd>

@@ -76,10 +76,16 @@ export interface HelpRow {
 // composerHelp is the whole cheat sheet -- shortcuts plus the composer
 // behaviours people never discover on their own (shift+enter, cursor-up to
 // edit). One list so the popover and any future docs cannot drift apart.
-export function composerHelp(mac: boolean): HelpRow[] {
+//
+// 94-3: `mobile` is the phone reading of the same sheet. Enter does not send
+// there, and the sheet is the only place that claim is written down -- so it
+// follows the composer rather than becoming the one page that still says it.
+export function composerHelp(mac: boolean, mobile = false): HelpRow[] {
   return [
-    { keys: "enter", what: "send" },
-    { keys: "shift+enter", what: "new line" },
+    mobile
+      ? { keys: "enter", what: "new line -- tap send to send" }
+      : { keys: "enter", what: "send" },
+    ...(mobile ? [] : [{ keys: "shift+enter", what: "new line" }]),
     { keys: "@", what: "mention a member" },
     { keys: "↑", what: "edit your last message" },
     { keys: "esc", what: "cancel editing" },

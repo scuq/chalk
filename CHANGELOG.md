@@ -25,12 +25,27 @@ The engineering-level history (which slice shipped what) lives in
   screen, it changes nothing.
 
 ### Changed
+- **Enter no longer sends on a phone.** The return key on an on-screen
+  keyboard has no shift beside it to pair with, so it now starts a new line
+  like it does everywhere else on a phone, and the send button is the only way
+  to post. Nothing changes on a desktop: Enter still sends, Shift+Enter still
+  breaks the line.
+- **More room to type on a phone.** The buttons beside the message box shrink
+  to their initials — F, G, E, C — giving the field back the width four words
+  were taking, and the send button is now as tall as the box itself instead of
+  a chip in the corner. The taller send button is on the desktop too.
+
 - **The thread panel takes a fairer share of a wide window.** It was a fixed
   narrow column, which looked stranded next to a full-width conversation and
   left the reply box cramped. It now grows with the window — up to a point,
   since a thread of short replies does not need half a monitor — while the
   conversation keeps the larger share. On a normal-width window it is exactly
   as wide as before.
+
+### Fixed
+- **The send button no longer hangs off the edge of a phone screen.** The
+  message box was wider than the screen it sat on, which pushed the button
+  past the right edge and let the whole page scroll sideways.
 
 ---
 

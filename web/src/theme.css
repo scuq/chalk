@@ -386,6 +386,14 @@ html {
   position: relative;
 }
 
+/* 94-1: the footer itself needs it as much as its columns do. It is a grid
+   item, so its automatic minimum is its min-content width -- and a textarea's
+   min-content is the intrinsic width of its `cols`, which nothing inside the
+   composer row can shrink past. On a phone that pushed the track ~19px wider
+   than the screen and carried the send button off the right edge, whichever
+   tool style was picked. With the minimum lifted the track is the screen and
+   the row's own flex shrinking (the field has min-width: 0) does the rest. */
+.chalk-footer,
 .chalk-footer-left,
 .chalk-footer-main {
   min-width: 0;
@@ -794,13 +802,17 @@ html {
   cursor: not-allowed;
 }
 
-/* 42-1: a small button parked at the bottom of the field instead of a slab
-   as tall as the textarea. Enter sends; this is for the mouse, and it does
-   not need to be the loudest thing in the footer. */
+/* 42-1: a quiet outline button -- Enter sends, so this does not need to be the
+   loudest thing in the footer.
+   94-2: it does need to be the same height as the field it sits beside. It was
+   a 26px button parked at the bottom corner, which read as a stray control
+   rather than the composer's own; with the field resizable (91-1) and Enter no
+   longer sending on a phone (94-3), it is also the target you actually aim at.
+   stretch rather than a height: the row's height is the textarea's, whether
+   that is two rows or a dragged 60dvh. */
 .chalk-composer-send {
   flex: 0 0 auto;
-  align-self: end;
-  height: 26px;
+  align-self: stretch;
   padding: 0 var(--chalk-s3);
   background: transparent;
   color: var(--chalk-fg);
@@ -8658,15 +8670,23 @@ body.chalk-resizing-y .chalk-composer-resizer {
     display: flex;
     flex-direction: column-reverse;
     gap: var(--chalk-s2);
+    /* 94-1: the desktop rule's align-items: end means "sit on the bottom of
+       the grid row". Here the axis has turned: in a column flex it means "hug
+       the RIGHT edge", so the composer stopped stretching to the footer and
+       took its own min-content width instead -- 393px of textarea intrinsic
+       on a 374px screen, hanging off the left edge. Stretch is what the
+       stacked layout wanted all along. */
+    align-items: stretch;
   }
 
   .chalk-composer-input {
     min-width: 0;
   }
 
+  /* 94-2: the button is the field's height on both layouts now; a phone only
+     needs the wider tap target. */
   .chalk-composer-send {
-    height: 34px;
-    padding: 0 var(--chalk-s3);
+    padding: 0 var(--chalk-s4);
   }
 
   /* 44-5: bigger squares for thumbs. The block is then 2 x 34px + the gap, so
@@ -8677,9 +8697,15 @@ body.chalk-resizing-y .chalk-composer-resizer {
     height: 34px;
   }
 
-  /* Word labels are opt-in now, but they still have to be tappable. */
+  /* 94-1: the text labels are initials here, so the same 34px square as the
+     icons -- "F" with padding alone would be a 24px target, under the 16px
+     control floor's spirit and awkward to hit. The rail is then the same
+     72px block whichever style you picked. */
   .chalk-composer-rail--text .chalk-composer-tool {
+    width: 34px;
     height: 34px;
+    padding: 0;
+    text-align: center;
   }
 
   .chalk-composer-rail {

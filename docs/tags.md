@@ -39,7 +39,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #zucker         62 64     web/src/chat/zucker.ts web/src/components/ZuckerList.tsx docs/phases/PHASE-62-ZUCKER.md
 #history        55 69 79  internal/store/ web/src/chat/ web/src/components/MessageList.tsx docs/phases/PHASE-55-HISTORY.md docs/phases/PHASE-69-PINNEDHEADER.md docs/phases/PHASE-79-LANDING.md
 #mentions       56        web/src/chat/ web/src/components/Composer.tsx docs/phases/PHASE-56-MENTIONS.md
-#composer       91        web/src/chat/composer-height.ts web/src/components/ComposerResizer.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-91-COMPOSERSIZE.md
+#composer       91 94     web/src/chat/composer-height.ts web/src/chat/composer-keys.ts web/src/components/ComposerResizer.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-91-COMPOSERSIZE.md docs/phases/PHASE-94-PHONECOMPOSER.md
 #linkpreview    57 67     internal/linkpreview/ web/src/linkpreview/ web/src/chat/links.ts docs/phases/PHASE-57-LINKPREVIEW.md docs/phases/PHASE-67-LINKLABELS.md
 #code           74        web/src/code/ web/src/chat/bodytext.ts web/src/components/CodeModal.tsx web/src/components/CodeBlockView.tsx docs/phases/PHASE-74-CODEBLOCKS.md
 #nanomd         77        web/src/chat/nanomd.ts web/src/components/MessageList.tsx web/src/theme.css docs/phases/PHASE-77-NANOMD.md
@@ -49,7 +49,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #presence       34 45 60 92  internal/presence/ internal/server/ web/src/chat/hovercard.ts web/src/state/ docs/phases/PHASE-34-PRESENCE.md docs/phases/PHASE-45-SCRATCHPAD.md docs/phases/PHASE-92-HOVERCARD.md
 #spacekeys      25 38     web/src/crypto/ internal/store/ docs/phases/PHASE-38-KEYDELIVERY.md docs/phases/PHASE-00-29-FOUNDATION.md
 #deletion       35        web/src/chat/ web/src/components/ docs/phases/PHASE-35-DELETION.md
-#mobile         32 60 64 76  web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/components/ web/src/theme.css docs/phases/PHASE-32-MOBILE.md docs/phases/PHASE-60-MOBILEFIT.md docs/phases/PHASE-64-SWIPEBACK.md
+#mobile         32 60 64 76 94  web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/components/ web/src/theme.css docs/phases/PHASE-32-MOBILE.md docs/phases/PHASE-60-MOBILEFIT.md docs/phases/PHASE-64-SWIPEBACK.md docs/phases/PHASE-94-PHONECOMPOSER.md
 #settings       68 70 76  web/src/settings-nav.ts web/src/components/ProfilePanel.tsx docs/phases/PHASE-68-SETTINGSTABS.md docs/phases/PHASE-70-APPEARANCE.md docs/phases/PHASE-76-SHORTCUTS.md
 #fullwidth      93        web/src/display-prefs.ts web/src/theme.css web/src/components/ProfilePanel.tsx docs/phases/PHASE-93-WIDTH.md
 #themes         -         web/src/theme.css web/src/theme-palette.test.ts web/src/components/ProfilePanel.tsx web/src/chat/nickcolor.ts docs/theming.md

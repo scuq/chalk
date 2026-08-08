@@ -46,6 +46,7 @@ import {
   applyMention,
   matchMentionHandles,
 } from "../chat/mention-complete";
+import { useIsMobile } from "../mobile";
 
 // Phase 9.6g: disabledReason distinguishes the two reasons the
 // composer might be unusable. "offline" reflects a real connection
@@ -88,6 +89,9 @@ interface Props {
   // Phase 9.7h: tool row presentation. "text" (default) renders FILE / GIF /
   // EMOJI labels; "icons" renders glyphs. The emoji button keeps its 🙂 in
   // both -- it already is an icon.
+  //
+  // 94-1: on a phone the text style renders the initials instead (F / G / E /
+  // C) -- see TOOL_LABELS.
   toolStyle?: "text" | "icons";
   // 42-1: replace typed emoticons with emoji as you type. Defaults to on;
   // the profile pref turns it off.
@@ -147,6 +151,18 @@ type PreviewCard =
     };
 
 const MAX_LEN = 4000;
+
+// 94-1: the word labels are the desktop presentation. On a phone the four of
+// them are a 110px block taken out of a 360px screen, so the text style drops
+// to initials there -- the same four buttons in the width of the icon rail,
+// still readable without knowing what the glyphs mean. The aria-label and the
+// title carry the full name in both, so nothing about the button is lost.
+const TOOL_LABELS: Record<"file" | "gif" | "emoji" | "code", [string, string]> = {
+  file: ["FILE", "F"],
+  gif: ["GIF", "G"],
+  emoji: ["EMOJI", "E"],
+  code: ["CODE", "C"],
+};
 
 // 57-3: the card always names the real destination host -- preview text is
 // sender-asserted, the host is what the reader can trust.
@@ -224,6 +240,11 @@ function IconCode() {
 
 export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast, focusKey, onTyping, mentionHandles, linkPreviewEnabled, linkPreviewPref, linkPreviewDomains, onRequestEnableLinkPreview }: Props) {
   const icons = toolStyle === "icons";
+  // 94-1/94-3: the phone differs from the desktop in two ways the composer
+  // owns -- the tool labels are initials, and Enter is a newline.
+  const isMobile = useIsMobile();
+  const toolLabel = (tool: keyof typeof TOOL_LABELS): string =>
+    TOOL_LABELS[tool][isMobile ? 1 : 0];
   const emoticonsOn = emoticons !== false;
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<PendingAttachment[]>([]);
@@ -797,7 +818,12 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
         return;
       }
     }
-    if (e.key === "Enter" && !e.shiftKey) {
+    // 94-3: Enter sends on the desktop, where it is the fastest thing on the
+    // keyboard and Shift+Enter is right there for a newline. On a phone the
+    // same key is the on-screen keyboard's return key with no shift to pair
+    // with it, so it types a newline and the send button is the only way out
+    // -- a half-typed message posted by a stray return is the worse mistake.
+    if (e.key === "Enter" && !e.shiftKey && !isMobile) {
       e.preventDefault();
       void submit();
       return;
@@ -1160,7 +1186,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
                       aria-label="attach a file"
                       data-testid="composer-attach"
                     >
-                      {icons ? <IconFile /> : "FILE"}
+                      {icons ? <IconFile /> : toolLabel("file")}
                     </button>
                   )}
                   {giphyEnabled && (
@@ -1173,7 +1199,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
                       aria-label="send a GIF"
                       data-testid="composer-giphy"
                     >
-                      {icons ? <IconGif /> : "GIF"}
+                      {icons ? <IconGif /> : toolLabel("gif")}
                     </button>
                   )}
                   <button
@@ -1185,7 +1211,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
                     aria-label="insert emoji"
                     data-testid="composer-emoji"
                   >
-                    {icons ? "🙂" : "EMOJI"}
+                    {icons ? "🙂" : toolLabel("emoji")}
                   </button>
                   {/* 74-2: no shortcut in the title -- see openTool. */}
                   <button
@@ -1197,7 +1223,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
                     aria-label="paste code"
                     data-testid="composer-code"
                   >
-                    {icons ? <IconCode /> : "CODE"}
+                    {icons ? <IconCode /> : toolLabel("code")}
                   </button>
                 </div>
               )}
