@@ -59,10 +59,13 @@ layer should copy `web/src/voice/signal-crypto.ts`, which already does
 canonical-encode → Ed25519 sign → fail-closed verify correctly. **Gate 0
 passed** at the sixth revision: the eighth review
 ([audits/security-phase-83-eighth-review-2026-08-08.md](audits/security-phase-83-eighth-review-2026-08-08.md))
-verified the R6-01/R6-02/R7-01 delta closed and cleared slice A-1 to land,
-with three non-blocking notes to fold into the A-6/A-8 slice text. Any
-further normative change to the design re-opens the gate for the changed
-text only.
+verified the R6-01/R6-02/R7-01 delta closed and cleared slice A-1 to land.
+Its three non-blocking notes are folded into the design text (2026-08-08);
+Note 2 was taken as the hardening — the overflow-shed order keys on the
+admit's content hash, not `cert_hash` — which is the one normative delta
+since the gate and re-opens it for that sentence only. Any further
+normative change to the design re-opens the gate for the changed text
+only.
 
 ## Phase 85 — operational logging
 

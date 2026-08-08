@@ -61,10 +61,17 @@ and every completion item closed in the text, re-derives the changed
 arithmetic, and finds only three non-blocking notes: state that
 manifest members are never shed (A-6); acknowledge or remove the
 signature-grindability of the shed order's `cert_hash` key (A-6); one
-sentence that the concurrent-repack race self-heals (A-8).
+sentence that the concurrent-repack race self-heals (A-8). **All three
+are folded into this text** (dispositions below) rather than deferred
+to the slice text.
 
 **Gate 0 passed** at this revision (eighth review). Slice A-1 may
-land; the three notes fold into the A-6/A-8 slice text as built. Any
+land. Of the folded notes, only the Note-2 choice is normative — the
+shed order now keys on the admit's **content hash**,
+`SHA-256(canonical)`, not `cert_hash` (the hardening the review
+offered, taken over the accepted-residual wording) — and per the
+standing rule that one sentence re-opens the gate for the changed text
+only; Notes 1 and 3 state what the review already verified. Any
 further normative change to the design re-opens the gate for the
 changed text only.
 
@@ -129,9 +136,19 @@ answered in this revision:
 | Finding | Was | Resolved in |
 |---|---|---|
 | P83-A-R6-01 (blocking) | One alarm for two verdicts: no grant exists for one's own post-join scrollback, so a restored or long-dormant device re-fetched all departed-member and lapsed-guest history as first-fetched-after-removal and rendered it `unauthorized-sender` — training users to ignore the alarm | §A.5 (the `former-member` / `unauthorized-sender` split on the frozen live-delivery/backfill boundary; the path-choice residual stated in §A.8) |
-| P83-A-R6-02 (blocking) | Two authorized actors each seeing 63 could mint concurrently to 65 valid certificates — state every client verifies and no client can send under | §A.5 (the effective roster as a pure function of verified state: deterministic shed to 64 — guests before members, descending admit `cert_hash` — target-local, loud, self-healing; gates flap emission only, acceptance untouched) |
+| P83-A-R6-02 (blocking) | Two authorized actors each seeing 63 could mint concurrently to 65 valid certificates — state every client verifies and no client can send under | §A.5 (the effective roster as a pure function of verified state: deterministic shed to 64 — guests before members, descending admit content hash (hardened from `cert_hash` per the eighth review's Note 2) — target-local, loud, self-healing; gates flap emission only, acceptance untouched) |
 | P83-A-R7-01 (blocking) | The Gate-F interregnum: the weekly automatic update could ship the build-F bundle overnight while the epoch flip stayed a manual `chalkctl` step — every channel read-only, window unbounded, no operator present | §A.9 (the raise is coupled to deployment: a build-F `chalkd` raises the epoch itself at startup, compare-and-set, never lowered; the instance-ack barrier still gates enforcement; the bounded window frozen with its banner; the withheld-`era_enforced` denial named in §A.8) |
 | R6/R7 completion items | Commit-record page bound; pin-blob capacity; threat-model scale sentence; `claimed_sender` provenance; replay identity; §A.8 overhead arithmetic; backup generation rollback; guest identity = link possession; the SP 800-38D bound; backup KDF IKM hygiene | §A.3 (the first-seen replay rule), §A.5 (canonical-only sender provenance + vectors), §A.7 (`repack_seq`, the ≤ 182-page bound, the pin-blob note, the KDF note), §A.8 (`63 + N×108`, the GCM bound, new residual rows), §A.9 (the frozen scale sentence) |
+
+Eighth review (2026-08-08, the Gate 0 re-review —
+`docs/audits/security-phase-83-eighth-review-2026-08-08.md`): **Gate 0
+passes**; three non-blocking notes, all folded here:
+
+| Note | Was | Resolved in |
+|---|---|---|
+| Note 1 | The shed order named "admit `cert_hash`" while manifest members have no admission certificate — the never-shed reading was derivable, not stated | §A.5 (manifest members are never shed; the shed set is certificate and guest admissions only, and the arithmetic guarantees they suffice) |
+| Note 2 | `cert_hash = SHA-256(canonical ‖ sig64)` and Ed25519 signing may be randomized — a minting actor could grind `sig64` to steer their own admission below the shed line | §A.5 (**hardened**: the shed order keys on `SHA-256(canonical)` alone — no attacker-free field to grind; the one normative delta since the gate, re-opening it for that sentence only) |
+| Note 3 | Two devices of one identity repacking concurrently race the single commit key; an implementer might "fix" it with locking | §A.7 (the race self-heals: the backup is never authority, the loser's records re-merge at its next repack via `(channel, anchor_hash)`/`rev`; the floor cannot wedge an honest device; do not add locking) |
 
 ---
 
@@ -552,7 +569,15 @@ no server input and no new signed artifact: apply §A.4's latches
 (admissions intersected, removals unioned under forks), and if the
 valid sum still exceeds 64, **shed to exactly 64 in a frozen order —
 active guest admissions before member admissions, and within each
-class descending admit `cert_hash`**. A shed admission is target-local
+class descending `SHA-256(canonical)` of the admit** — the content
+hash, deliberately not `cert_hash` (the eighth review's Note 2):
+`cert_hash` covers `canonical || sig64` and Ed25519 signing may be
+randomized, so a minting actor could grind `sig64` to steer their own
+admission below the shed line; the content hash has no attacker-free
+field to grind. **Manifest members are never shed** (Note 1): the shed
+set is drawn from certificate admissions and guest admissions only,
+and the arithmetic guarantees they suffice — the manifest holds ≤ 64,
+so any overflow is composed of later admissions. A shed admission is target-local
 and loud: the target is surfaced as *"admitted — waiting for room"*,
 receives no flaps while shed, and re-activates automatically the moment
 a departure, revocation or lapse brings the sum back within the cap —
@@ -904,6 +929,16 @@ pages   double-buffered namespaces (P83-A-R4-02):
         state. gen16 stays the torn-write detector; repack_seq is the
         order. A fresh device has no floor: the stated fresh-device
         residual, unchanged in scope.
+        The concurrent-repack race self-heals — do not add locking
+        (the eighth review's Note 3): two devices of one identity both
+        read seq N and write N + 1, the commit key holds one value,
+        and one write wins wholesale. Nothing is lost: the backup is
+        never authority, the loser's records live on in its local
+        state, and its next repack reads the winner (at or above its
+        floor) and re-contributes them through the
+        (channel, anchor_hash)/rev merge. The floor only ever rejects
+        generations older than one this device itself verified, so it
+        cannot wedge an honest device.
         The commit record, not its u8, is the real page bound: 27
         fixed plaintext bytes + 32 per page hash in the same ~5.7 KiB
         budget ⇒ page_count ≤ 182 (~11,400 records — no practical
