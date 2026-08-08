@@ -75,6 +75,20 @@ only; Notes 1 and 3 state what the review already verified. Any
 further normative change to the design re-opens the gate for the
 changed text only.
 
+A **ninth read** (2026-08-09) found the core sound and added two
+corrections, neither re-opening Gate 0's security conclusions. First,
+a residual §A.8 had never stated: **no per-message roster
+commitment** — recipients verify only their own flap, so a malicious
+sender (not just the server) can partition the room's view of a
+message; the row is now in §A.8's table. Second, Note 2's "no
+attacker-free field to grind" was overstated: a `guest_admit`'s
+owner-chosen `expiry_ms` and a democratic cert's attested
+`proposal_id` remain grindable, so the §A.5 claim is scoped to the
+common member-admit path (the effect stays availability-only,
+target-local, loud — the hardening stands). The second is a
+correction to gate-covered text, so per the standing rule the gate
+re-opens for that sentence only.
+
 **Tag:** `#msgsig`.
 
 ---
@@ -147,7 +161,7 @@ passes**; three non-blocking notes, all folded here:
 | Note | Was | Resolved in |
 |---|---|---|
 | Note 1 | The shed order named "admit `cert_hash`" while manifest members have no admission certificate — the never-shed reading was derivable, not stated | §A.5 (manifest members are never shed; the shed set is certificate and guest admissions only, and the arithmetic guarantees they suffice) |
-| Note 2 | `cert_hash = SHA-256(canonical ‖ sig64)` and Ed25519 signing may be randomized — a minting actor could grind `sig64` to steer their own admission below the shed line | §A.5 (**hardened**: the shed order keys on `SHA-256(canonical)` alone — no attacker-free field to grind; the one normative delta since the gate, re-opening it for that sentence only) |
+| Note 2 | `cert_hash = SHA-256(canonical ‖ sig64)` and Ed25519 signing may be randomized — a minting actor could grind `sig64` to steer their own admission below the shed line | §A.5 (**hardened**: the shed order keys on `SHA-256(canonical)` alone — no grindable field on the common path; guest `expiry_ms` and democratic `proposal_id` remain steerable, availability-only, stated there; the one normative delta since the gate, re-opening it for that sentence only) |
 | Note 3 | Two devices of one identity repacking concurrently race the single commit key; an implementer might "fix" it with locking | §A.7 (the race self-heals: the backup is never authority, the loser's records re-merge at its next repack via `(channel, anchor_hash)`/`rev`; the floor cannot wedge an honest device; do not add locking) |
 
 ---
@@ -573,8 +587,19 @@ class descending `SHA-256(canonical)` of the admit** — the content
 hash, deliberately not `cert_hash` (the eighth review's Note 2):
 `cert_hash` covers `canonical || sig64` and Ed25519 signing may be
 randomized, so a minting actor could grind `sig64` to steer their own
-admission below the shed line; the content hash has no attacker-free
-field to grind. **Manifest members are never shed** (Note 1): the shed
+admission below the shed line; the content hash has no grindable
+field **on the common path**. Two admission forms do retain
+attacker-influenced bytes inside the canonical itself: a
+`guest_admit` carries the owner-chosen absolute `expiry_ms`
+(millisecond granularity — thousands of plausible candidates within
+any sensible expiry), and a democratic cert's `gov_record` carries
+the 16-byte `proposal_id`, pure attestation with nothing
+cryptographic to check it against — so a minting actor can still
+steer *those* admissions' positions in the shed order. The effect is
+exactly the one already accepted for the shed itself: target-local,
+loud (*"waiting for room"*), availability-only; the hardening stands
+because it closes the common member-admit path, not because grinding
+is impossible everywhere. **Manifest members are never shed** (Note 1): the shed
 set is drawn from certificate admissions and guest admissions only,
 and the arithmetic guarantees they suffice — the manifest holds ≤ 64,
 so any overflow is composed of later admissions. A shed admission is target-local
@@ -1088,6 +1113,7 @@ frozen fact rather than folklore.
 | Guest identity = link possession | the guest keypair is a pure function of the fragment secret — every link holder, the minting owner included, is the same cryptographic principal; consistent with "authenticated for you" plus the guest label |
 | `era_enforced` withheld | a server advertising `era_enforced = false` forever holds build-F clients read-only — denial only (no-suite-1 means no downgrade), visible in the §A.9 banner |
 | Backup generation rollback | closed by `repack_seq` for devices with prior state; a fresh device cannot distinguish a complete older generation — inside the fresh-device residual |
+| No per-message roster commitment | recipients verify only their own flap — nothing commits a message to its flap set or the sender's roster view, so a malicious **sender** (not just the server) can hand Bob and Carol disjoint flap sets for the "same" message, or silently omit one member, and no honest client can detect it; receipt-time ordering leaves no transcript to cross-check. Accepted with the deniable, coordinator-free design (a commitment would cost a per-message signed artifact — the thing this phase deliberately avoids — and the server already controls delivery); do not over-read "authenticated for you" as "everyone saw this" |
 
 **Audit coverage:** C-01 — no server-substitutable group key for fanout
 traffic; membership validated against a signed authority root **at both
