@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.7.9 — 8 August 2026 — Call layout you choose, and voice off the phone's home screen
 
 ### Added
 - **Switch a call between tiles and the spotlight yourself.** A **tiles** button
