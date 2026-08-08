@@ -56,13 +56,13 @@ recorded in its decision section and preserved in git history), and
 
 Both build on the identity anchor phase 82 already paid for; the certificate
 layer should copy `web/src/voice/signal-crypto.ts`, which already does
-canonical-encode → Ed25519 sign → fail-closed verify correctly. Gate 0 — an
-independent re-review — applies before slice 1. The sixth and seventh
-reviews (the latter at
-[audits/security-phase-83-seventh-review-2026-08-08.md](audits/security-phase-83-seventh-review-2026-08-08.md))
-failed it at the fifth revision on R6-01/R6-02/R7-01; the sixth revision
-answers all three plus every completion item, and the re-review of that
-delta is what Gate 0 now awaits.
+canonical-encode → Ed25519 sign → fail-closed verify correctly. **Gate 0
+passed** at the sixth revision: the eighth review
+([audits/security-phase-83-eighth-review-2026-08-08.md](audits/security-phase-83-eighth-review-2026-08-08.md))
+verified the R6-01/R6-02/R7-01 delta closed and cleared slice A-1 to land,
+with three non-blocking notes to fold into the A-6/A-8 slice text. Any
+further normative change to the design re-opens the gate for the changed
+text only.
 
 ## Phase 85 — operational logging
 

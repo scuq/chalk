@@ -1,7 +1,8 @@
 # Phase 83 — MSGSIG: envelope fanout
 
-**Status: the phase-83 plan — planned, not started; sixth revision, seven
-review rounds, Gate 0 pending. Decided 2026-08-08: envelope fanout
+**Status: the phase-83 plan — planned, not started; sixth revision, eight
+review rounds, **Gate 0 passed** (eighth review, 2026-08-08). Decided
+2026-08-08: envelope fanout
 (formerly "option A" of `PHASE-83-MSGSIG-ALTERNATIVE.md`, this file's
 previous name) supersedes the original transcript design that lived at
 this path. The rejected designs are recorded in "The decision" at the end
@@ -53,10 +54,19 @@ bound, the pin-blob capacity note, the threat-model scale sentence).
 **This sixth revision incorporates all three blockers and every
 completion item** — dispositions below.
 
-**Gate 0 applies:** independent re-review of this revision before any
-code. The fifth revision failed the gate on R6-01/R6-02/R7-01; this
-revision answers all three and folds in the completion items, and the
-re-review of exactly that delta is what Gate 0 now awaits.
+An **eighth review** (2026-08-08,
+`docs/audits/security-phase-83-eighth-review-2026-08-08.md`) — the
+Gate 0 re-review of exactly that delta — verifies all three blockers
+and every completion item closed in the text, re-derives the changed
+arithmetic, and finds only three non-blocking notes: state that
+manifest members are never shed (A-6); acknowledge or remove the
+signature-grindability of the shed order's `cert_hash` key (A-6); one
+sentence that the concurrent-repack race self-heals (A-8).
+
+**Gate 0 passed** at this revision (eighth review). Slice A-1 may
+land; the three notes fold into the A-6/A-8 slice text as built. Any
+further normative change to the design re-opens the gate for the
+changed text only.
 
 **Tag:** `#msgsig`.
 
@@ -1179,7 +1189,7 @@ The comparison that decided it:
 |---|---|---|---|
 | Departure freeze | until creator acts | seconds | none |
 | Creator crypto role | load-bearing | none | anchor signer only (once) |
-| Review state | 6 revisions, Gate 0 pending | unreviewed delta | 7 rounds, all findings answered |
+| Review state | 6 revisions, Gate 0 never passed | unreviewed delta | 8 rounds, **Gate 0 passed** |
 | Membership | transcript (fork proofs) | transcript (fork proofs) | anchors + policy chain + per-target chains, rollback latch |
 | Deniability | no | no | **yes** ("authenticated for you") |
 | New-member history | as today | as today | grantor-attested (explicit, labelled) |
@@ -1189,7 +1199,8 @@ The comparison that decided it:
 
 The costs in the last three rows are accepted deliberately (§A.8): they
 buy the only deniable, freeze-free, coordinator-free design on the
-table. Gate 0 reviews this document before slice 1.
+table. Gate 0 reviewed this document across eight rounds and passed at
+the sixth revision.
 
 ## Prior-art sources
 
