@@ -1,6 +1,6 @@
 # Phase 83 — MSGSIG: envelope fanout
 
-**Status: the phase-83 plan — planned, not started; fifth revision, five
+**Status: the phase-83 plan — planned, not started; sixth revision, seven
 review rounds, Gate 0 pending. Decided 2026-08-08: envelope fanout
 (formerly "option A" of `PHASE-83-MSGSIG-ALTERNATIVE.md`, this file's
 previous name) supersedes the original transcript design that lived at
@@ -22,12 +22,41 @@ findings P83-A-R3-01 … 05; fourth (commit `eb1ee873`) — all R3 findings
 answered in structure, **five blocking state-machine/commit-protocol
 findings P83-A-R4-01 … 05**; fifth (same commit, independent re-review)
 — all five R4 findings confirmed against source, plus **P83-A-R5-01**
-(receive-side sender membership) and new completion items. **This
-revision incorporates all of them.** The reviewer's principle stands: *a
+(receive-side sender membership) and new completion items. **The fifth
+revision incorporated all of them.** The reviewer's principle stands: *a
 design that protects a conversation only by repeatedly preventing people
 from using it is not a successful secure-messaging design.*
 
-**Gate 0 applies:** independent re-review of this revision before any code.
+A **sixth review** (2026-08-08, of the fifth revision) — security,
+usability at scale, performance — confirmed the six prior blockers
+closed and added two blocking findings: P83-A-R6-01 (the
+directional-assurance latch falsely flagged departed-member and
+lapsed-guest history on restored/dormant devices) and P83-A-R6-02
+(concurrent mints could exceed `MAX_FLAPS` with no frozen resolution).
+It also settled scale: performance at the 64 cap is a non-issue, and
+≥ 65-member rooms (the 512-user question) are out of scope by
+construction — a different message layer, not a larger cap.
+
+A **seventh review** (2026-08-08, an independent cryptographic audit —
+`docs/audits/security-phase-83-seventh-review-2026-08-08.md`, which
+also carries the fifth and sixth reviews' record; earlier rounds live
+in the disposition tables below and in git history) found the
+cryptographic core sound, re-verified both R6 findings still open at
+the fifth revision, and added **P83-A-R7-01** (blocking — the Gate-F
+interregnum: between the build-F bundle deploying and a deliberate
+epoch flip, a build-F client could emit neither suite, so every
+channel went read-only) plus completion items (`claimed_sender`
+provenance, replay identity, the §A.8 overhead arithmetic, backup
+generation rollback, guest identity = link possession, the static-key
+GCM bound, and the sixth review's leftovers: the commit-record page
+bound, the pin-blob capacity note, the threat-model scale sentence).
+**This sixth revision incorporates all three blockers and every
+completion item** — dispositions below.
+
+**Gate 0 applies:** independent re-review of this revision before any
+code. The fifth revision failed the gate on R6-01/R6-02/R7-01; this
+revision answers all three and folds in the completion items, and the
+re-review of exactly that delta is what Gate 0 now awaits.
 
 **Tag:** `#msgsig`.
 
@@ -82,6 +111,18 @@ answered in this revision:
 | P83-A-R5-01 (High) | The receive pipeline never consulted the sender's chain, and pairwise MAC keys outlive removal — an ex-member plus the malicious server injects `authenticated-for-you` messages forever | §A.5 (the sender-acceptance rule; the `unauthorized-sender` typed result; directional historical assurance) |
 | Completion items | `lp()`/`gov_record` bytes; history quota keying; tombstone retention vs dormant devices; guest flaps vs the flap cap; forks had no exit; one shared grant AAD shape | §A.3–§A.7 (canonical conventions, per-grantee quota, tombstones-as-UI rule, cap accounting, the era door, the grant subtype byte) |
 
+Sixth review (2026-08-08, of the fifth revision) and seventh review
+(2026-08-08, the independent cryptographic audit —
+`docs/audits/security-phase-83-seventh-review-2026-08-08.md`), all
+answered in this revision:
+
+| Finding | Was | Resolved in |
+|---|---|---|
+| P83-A-R6-01 (blocking) | One alarm for two verdicts: no grant exists for one's own post-join scrollback, so a restored or long-dormant device re-fetched all departed-member and lapsed-guest history as first-fetched-after-removal and rendered it `unauthorized-sender` — training users to ignore the alarm | §A.5 (the `former-member` / `unauthorized-sender` split on the frozen live-delivery/backfill boundary; the path-choice residual stated in §A.8) |
+| P83-A-R6-02 (blocking) | Two authorized actors each seeing 63 could mint concurrently to 65 valid certificates — state every client verifies and no client can send under | §A.5 (the effective roster as a pure function of verified state: deterministic shed to 64 — guests before members, descending admit `cert_hash` — target-local, loud, self-healing; gates flap emission only, acceptance untouched) |
+| P83-A-R7-01 (blocking) | The Gate-F interregnum: the weekly automatic update could ship the build-F bundle overnight while the epoch flip stayed a manual `chalkctl` step — every channel read-only, window unbounded, no operator present | §A.9 (the raise is coupled to deployment: a build-F `chalkd` raises the epoch itself at startup, compare-and-set, never lowered; the instance-ack barrier still gates enforcement; the bounded window frozen with its banner; the withheld-`era_enforced` denial named in §A.8) |
+| R6/R7 completion items | Commit-record page bound; pin-blob capacity; threat-model scale sentence; `claimed_sender` provenance; replay identity; §A.8 overhead arithmetic; backup generation rollback; guest identity = link possession; the SP 800-38D bound; backup KDF IKM hygiene | §A.3 (the first-seen replay rule), §A.5 (canonical-only sender provenance + vectors), §A.7 (`repack_seq`, the ≤ 182-page bound, the pin-blob note, the KDF note), §A.8 (`63 + N×108`, the GCM bound, new residual rows), §A.9 (the frozen scale sentence) |
+
 ---
 
 # The design — envelope fanout, in full
@@ -90,6 +131,72 @@ answered in this revision:
 key exists, ever. chalk's per-user X25519/Ed25519 identities make the
 pairwise layer free: a standing secret between any two users is computable
 offline from keys both already hold.
+
+## A.0 Alice, Bob and Carol — the plain-language version
+
+*(Explanatory only — nothing in this section is normative; the frozen
+rules live in §A.2–§A.9.)*
+
+Alice, Bob and Carol share a channel. When Alice sends "lunch?":
+
+1. Her client makes a fresh random key — the **message key** — and
+   locks the message with it. One locked box.
+2. It attaches one **flap** per person in the room: Bob, Carol, and
+   Alice herself. Bob's flap holds the message key wrapped so only Bob
+   can open it, plus a tag computed from the standing Alice↔Bob secret
+   — a secret both of them can derive offline from long-term keys they
+   already hold, and nobody else can. Carol's flap is the same under
+   the Alice↔Carol secret. The self-flap lets Alice reread her own
+   message on another day or device.
+3. Bob's client finds its flap, unwraps the message key, opens the box,
+   and checks the tag. A good tag proves *Alice or Bob* made it — and
+   Bob knows it wasn't him, so it was Alice: **authenticated for you**.
+   Carol cannot forge Alice-to-Bob mail; she can't compute their
+   secret. (Bob *could* forge it — to himself only. That is deliberate:
+   nothing Bob holds proves to anyone else what Alice said.
+   Deniability is a feature, not a gap.)
+
+**So what exactly is a "flap"?** Picture the message as one strongbox
+with a single key. The sender doesn't hand that key around — she makes
+one copy per person in the room and seals each copy into a small
+personal pouch: Bob's pouch only Bob can open, Carol's only Carol, and
+inside each is the strongbox key plus a slip proving who packed it.
+The strongbox and the whole row of pouches travel together as one
+package; each member opens just their own pouch, takes the key, opens
+the box, and ignores the other pouches. One of those pouches *is* a
+flap. On the wire it is just three fields — the recipient's id, the
+wrapped message key, and the authenticity tag (§A.3) — about a hundred
+bytes per person.
+
+There is **no group key** — nothing the whole room shares that could be
+stolen once to open everything, and therefore nothing to rotate when
+membership changes.
+
+**When Carol is removed**, two things happen, neither a ceremony:
+
+- **The flap stops.** Alice and Bob simply stop adding a flap for
+  Carol. New messages carry nothing she can open. No re-keying, no
+  freeze — the channel keeps working through every membership change.
+- **The door is checked.** Carol still knows her old pairwise secrets
+  forever (they derive from long-term keys), so if she — with a
+  malicious server's help — mails Bob a validly-tagged message anyway,
+  Bob's client asks a second question after "who wrote this?": *were
+  they still in the room?* It checks Carol's signed membership chain,
+  sees it ends in "removed", and renders the message as
+  `unauthorized-sender` evidence instead of a member's words (§A.5).
+
+Who is "in the room" is never the server's word. Each channel has one
+signed **anchor** (creator, owner, starting roster), a small signed
+**policy chain** (mode changes), and a signed **certificate chain per
+member** (admitted → removed → re-admitted …). Clients fetch and verify
+all of it themselves; the server stores and relays boxes it cannot open
+and chains it cannot forge.
+
+When Dave joins later, history does not reappear by magic: whoever
+admitted him seals the old message keys to him as a labelled **grant** —
+"history from before you joined was shared by Alice; original
+authorship is not independently verified for you" (§A.6). Live messages
+from the moment he joined carry normal assurance.
 
 ## A.1 Design principles (from the reviews, adopted)
 
@@ -178,10 +285,24 @@ transcript plan (typed objects `0x01/0x02/0x03`, `client_msg_id`,
 `sender_ts`, parent binding, attachment bindings — exact bytes preserved
 with that plan in git history; A-3 re-freezes them here) minus the
 signature; `object_hash = SHA-256(canonical)`.
+
+**Replay identity, re-frozen with the canonical** (the seventh review's
+confirmation item): the retired plan's first-seen rule carries over
+unchanged — a client keys every suite-2 object by
+`(sender_user_id, writer_scope, client_msg_id)` and binds that triple
+to the first-seen server message id; a later envelope carrying the same
+triple is a duplicate of that object, rendered once, never a fresh
+message. A server-replayed envelope therefore changes nothing a user
+sees; ordering and receipt timing stay server-controlled, as already
+accepted with receipt-time timestamps.
+
 Verification results: `authenticated-for-you` / `mismatch` / `forged` /
 `unpinned` / `granted` / `legacy` / `unauthorized-sender` (a valid tag
-from a principal whose chain does not currently end in admit — §A.5's
-acceptance rule). Attribution fails closed; availability does not.
+from a never-admitted principal, or live delivery from one whose chain
+does not currently end in admit) / `former-member` (a valid tag from a
+once-admitted principal, first obtained by backfill — both per §A.5's
+acceptance rule and its live/backfill boundary). Attribution fails
+closed; availability does not.
 
 **Vectors (A-1):** per-field mutation; truncation at every boundary
 including a 15-byte `body_ct`; cross-channel; cross-recipient flap swap;
@@ -411,9 +532,35 @@ malicious server enforces nothing). A full 64-member channel therefore
 has no guest slot until someone leaves or a guest lapses — stated in the
 invite UI, not discovered at send time.
 
+**The concurrent-mint overflow has a frozen resolution (P83-A-R6-02).**
+Client-side refusal cannot serialize two authorized actors who each see
+63 and mint concurrently to 65 valid certificates — verified state no
+one could send under, since the parser refuses > 64 flaps and no valid
+member may be silently omitted. So the **effective roster** is a pure
+function of verified state, computed identically by every client with
+no server input and no new signed artifact: apply §A.4's latches
+(admissions intersected, removals unioned under forks), and if the
+valid sum still exceeds 64, **shed to exactly 64 in a frozen order —
+active guest admissions before member admissions, and within each
+class descending admit `cert_hash`**. A shed admission is target-local
+and loud: the target is surfaced as *"admitted — waiting for room"*,
+receives no flaps while shed, and re-activates automatically the moment
+a departure, revocation or lapse brings the sum back within the cap —
+the function's output simply changes; no ceremony, no new certificate.
+Shedding gates **flap emission only**: a shed target's own messages
+still pass the acceptance rule below (their chain validly ends in
+admit), so the shed state is exactly the withheld-flap shape of the
+stale-view residual — never a freeze, never silent.
+
 **Receive:** own flap → DH → unwrap → decrypt → parse → derive
 `K_mac(claimed_sender→me)` from the pinned identity → recompute tag →
 **sender acceptance (below)** → typed result; inner wins on mismatch.
+**The claimed sender is the canonical's sealed `sender_user_id`,
+nothing else** (the seventh review's provenance item): outer server
+metadata is display-only and never selects the MAC key — keying off a
+server-supplied sender label would let a relabel manufacture false
+`forged` evidence against an innocent third member. A-4 carries the
+relabel vector.
 
 **The sender-acceptance rule (P83-A-R5-01) — a valid tag is necessary,
 never sufficient.** The pairwise secrets are static-static: removal
@@ -427,22 +574,54 @@ flaps are emitted:
   **currently ends in admit** — evaluated under §A.4's rollback,
   observed-removal and fork latches, at the moment of first local
   acceptance;
-- anything else is the typed result **`unauthorized-sender`**:
-  attribution fails closed — surfaced and flagged as evidence, never
-  silently rendered as a member's words and never silently dropped;
-- **assurance is directional**: an object accepted *before* the removal
-  was observed keeps its assurance permanently; one first fetched
-  *after* cannot prove it predates the removal (`sender_ts` is display
-  only) and takes the flagged state. Fresh devices lose nothing real:
-  their pre-join scrollback arrives grantor-attested as `granted`
-  (§A.6) rather than through this path;
+- anything else takes a flagged typed result — **`unauthorized-sender`**
+  or **`former-member`**, split by the boundary below: attribution
+  fails closed — surfaced, never silently rendered as a member's words
+  and never silently dropped;
+- **assurance is directional, and the flagged state is split
+  (P83-A-R6-01)**: an object this device locally accepted *before* the
+  removal was observed keeps its assurance permanently. One first
+  obtained *after* cannot prove it predates the removal (`sender_ts` is
+  display only) — but *cannot-prove-timing* and *injected* are
+  different verdicts, and one alarm for both trains users to ignore it:
+  a restored device of an existing member re-fetches its entire
+  post-join scrollback with no grant (there is no grantor for one's own
+  membership), so every since-departed member's and every lapsed
+  guest's history would otherwise re-arrive as the alarm. The boundary
+  is the delivery path, frozen:
+  - **live delivery** — an object pushed as new on a connected
+    session — from a sender whose chain does not currently end in
+    admit is **`unauthorized-sender`**: the alarm, kept as evidence;
+  - **backfill** — history fetch, scrollback, thread or summary — from
+    a sender whose verified chain (or the manifest) contains at least
+    one admit, member or guest, but does not currently end in one, is
+    **`former-member`**: rendered as history from a former member (for
+    guests, a former guest), labelled *"from a former member —
+    membership at the time of sending is not verifiable for you"* —
+    distinct from the alarm, and never full assurance;
+  - a principal that appears in **no** verified chain and not in the
+    manifest is `unauthorized-sender` on every path; and
+  - the residual is stated (§A.8): the server chooses the delivery
+    path, so it can downgrade an injection from the alarm to
+    `former-member` by serving it as backfill — what it can never
+    obtain for that message is member assurance, which is the property
+    that holds; the same class as `sender_ts` being display-only.
+
+  Fresh devices of *new* members still lose nothing real: their
+  pre-join scrollback arrives grantor-attested as `granted` (§A.6)
+  rather than through this path;
 - a recipient whose view is stale (the removal cert withheld) accepts —
   that is the already-stated withheld-cert residual, unchanged in scope;
 - voice: a pairwise-sealed signal from a principal failing the same
   check is refused identically; and
-- vectors (A-4): post-removal injection; a pre-removal message
-  re-fetched after the removal is observed; removal observed
-  mid-session; a revoked guest re-using its admitted key.
+- vectors (A-4): post-removal injection on the live path
+  (`unauthorized-sender`); a pre-removal message re-fetched after the
+  removal is observed; a restored device backfilling departed-member
+  and lapsed-guest history (`former-member`, never the alarm); a
+  never-admitted principal via backfill (`unauthorized-sender`);
+  removal observed mid-session; a revoked guest re-using its admitted
+  key; a server-relabeled outer sender (the MAC key follows the
+  canonical's `sender_user_id` only).
 
 This is a client-local check against chains the client already fetches
 and verifies — no round trip, no coordinator, no freeze; the stale-view
@@ -504,7 +683,9 @@ by server and by pairwise keys; observed-ancestry recency (narrow claim);
   direction, and **"historical assurance" means an object this device
   already locally accepted** before the lapse. A guest object first
   fetched after expiry cannot prove it predates it (`sender_ts` is
-  display only) and takes §A.5's flagged state. Vectors: admit→revoke
+  display only) and takes §A.5's split verdict — `former-member` on
+  backfill (the guest was admitted once), `unauthorized-sender` on
+  live delivery. Vectors: admit→revoke
   transition, replay of a revoked admit, cross-invite substitution
   (lookup mismatch), cross-era substitution, expiry boundary at the skew
   edge in both directions, first-fetch-after-expiry.
@@ -700,10 +881,23 @@ pages   double-buffered namespaces (P83-A-R4-02):
                       || u8(page_count) || u16be(record_count) || record*
         sealed        = nonce(12) || AES-256-GCM(K, plaintext) || tag(16)
         page AAD      = utf8("chalk-chansec-s1:") || u8(page_index)
-        commit plaintext = u8(v = 1) || gen16 || u8(ns: 0x00 a / 0x01 b)
+        commit plaintext = u8(v = 1) || gen16 || u64be(repack_seq)
+                      || u8(ns: 0x00 a / 0x01 b)
                       || u8(page_count) || h32(sha256(sealed_page))*
         commit AAD    = utf8("chalk-chansec-commit-s1:")
         gen16 = 16 CSPRNG bytes minted per repack.
+        repack_seq (the seventh review's rollback item) = a u64 bumped
+        on every repack, floor-latched like rev: each device persists
+        the highest repack_seq it has verified and refuses a commit
+        below its floor — a complete-but-older generation is then
+        detected rollback, not current, on any device with prior
+        state. gen16 stays the torn-write detector; repack_seq is the
+        order. A fresh device has no floor: the stated fresh-device
+        residual, unchanged in scope.
+        The commit record, not its u8, is the real page bound: 27
+        fixed plaintext bytes + 32 per page hash in the same ~5.7 KiB
+        budget ⇒ page_count ≤ 182 (~11,400 records — no practical
+        limit, stated so the u8's 255 is never read as the bound).
         Budget: sealed+base64 must fit the 7,900-byte prefs value —
         usable plaintext ≈ (7900 × 3/4) − 28 − 21 ≈ 5.7 KiB ⇒
         **≤ 63 records per page** (93 B each).
@@ -712,10 +906,11 @@ pages   double-buffered namespaces (P83-A-R4-02):
         the tiebreak), write EVERY page of the new generation into the
         INACTIVE namespace, then write the commit record last. The
         commit is one prefs value — its overwrite is the atomic switch.
-        Reader: fetch commit → fetch the named namespace's pages →
+        Reader: fetch commit → refuse it if its repack_seq is below
+        the local floor → fetch the named namespace's pages →
         accept only when every page's gen16 and sealed-bytes hash match
-        the commit; anything else (torn write, crashed writer, withheld
-        page) keeps the previous local state — and a fresh device
+        the commit; anything else (rollback, torn write, crashed
+        writer, withheld page) keeps the previous local state — and a fresh device
         treats the backup as absent and retries, because a crash before
         commit leaves the OLD generation fully intact in the other
         namespace. The losing namespace is garbage: the next repack
@@ -747,13 +942,25 @@ merge   keyed by (channel, anchor_hash) — NEVER by channel alone, and
           again) — the tombstone only hides UI.
 ```
 
+A hygiene note, recorded (the seventh review): the KDF's IKM is the
+identity X25519 scalar. HKDF is one-way, so the backup key leaks
+nothing about the scalar, and whoever holds the scalar can decrypt
+everything the backup protects anyway — acceptable as frozen; deriving
+from the identity seed entropy instead would be stricter key-separation
+hygiene if this KDF is ever revisited.
+
 Cert-chain heads are deliberately **not** backed up: chains are
 refetched from the server and re-verified against the anchor — the
 anchor is what makes them verifiable, and it is 32 bytes. What a fresh
 restore loses without head backup is only the rollback high-water marks,
 which collapses into the already-accepted stale-view residual.
 `PinSyncStatus` grows the second blob's counters; overflow reported, not
-silent; **sending never waits on backup**.
+silent; **sending never waits on backup**. One capacity fact, stated so
+nobody mistakes the *pin* blob for full-roster coverage: a single full
+64-member channel needs more identity pins than the pin blob's ~60-pin
+budget holds on its own. Pin overflow is already reported-not-silent,
+and members beyond it are simply unpinned on a fresh device — the
+stated TOFU-first-fetch residual, not a new one.
 
 **What no-suite-1 does and does not buy, scoped exactly** (the third
 review's claim correction — the earlier "bounds the damage" wording read
@@ -781,7 +988,9 @@ leading byte — operational hygiene, explicitly not the boundary.
 **Over-limit channels** (> 64 members): `chalkctl fanout status` lists
 them **before** Gate F; on build F they are read-only-legacy for sending
 until deliberately split or recreated — a client never silently omits
-valid members to fit the flap cap. `CHALK_WRAP_SIG_REQUIRED` flips to a
+valid members to fit the flap cap (the §A.5 overflow shed is not an
+exception: it exists only for the concurrent-mint race past the cap,
+and it is loud, deterministic and self-healing). `CHALK_WRAP_SIG_REQUIRED` flips to a
 secure default once telemetry is READY; legacy reshares are cert-gated
 from Stage 1 and retire with the last pre-F build.
 
@@ -807,11 +1016,18 @@ notice per channel, never silently.
 
 ## A.8 Costs and accepted residuals
 
-Per-message `34 + N×108` bytes, N DHs at send, one DH + one HMAC at
-receive; hard cap N = 64 communicated once. "Authenticated for you" —
-no transferable proof. **No forward secrecy, no PCS** — static-key
-compromise plus recorded ciphertexts recovers old message keys via any
-flap, self-flap included.
+Per-message fixed overhead `63 + N×108` bytes beyond the message
+ciphertext — the 35-byte header (`1 + 32 + 2`), the 12-byte body
+nonce, the 16-byte GCM tag, plus 108 per flap (~6.8 KiB at N = 64);
+N DHs at send, one DH + one HMAC at receive; hard cap N = 64
+communicated once. "Authenticated for you" — no transferable proof.
+**No forward secrecy, no PCS** — static-key compromise plus recorded
+ciphertexts recovers old message keys via any flap, self-flap
+included. The two static-key AEAD domains — `K_wrap` (voice signals)
+and `K_history` (grant chunks) — use random 96-bit nonces under
+long-lived keys, which NIST SP 800-38D bounds at 2³² invocations per
+key; unreachable at chalk scale, and stated here so the bound is a
+frozen fact rather than folklore.
 
 | Residual | Treatment |
 |---|---|
@@ -822,7 +1038,11 @@ flap, self-flap included.
 | Deniability | "authenticated for you"; no moderator-verifiable evidence |
 | No FS / PCS | stated, accepted |
 | Fresh device, no backup | no legacy-key substitution ever (no-suite-1); but conversion is TOFU — a poisoned manifest can include a decrypting principal on that fresh view; backup restores protection; recreation for high assurance |
-| Room size | hard cap 64 at member-add; over-limit channels resolved at migration |
+| Room size | hard cap 64 at member-add; over-limit channels resolved at migration; the concurrent-mint race past the cap resolves by §A.5's deterministic shed |
+| Flagged-history path choice | the server picks live vs backfill, so an injection can present as `former-member` instead of the alarm; it can never reach member assurance (§A.5) |
+| Guest identity = link possession | the guest keypair is a pure function of the fragment secret — every link holder, the minting owner included, is the same cryptographic principal; consistent with "authenticated for you" plus the guest label |
+| `era_enforced` withheld | a server advertising `era_enforced = false` forever holds build-F clients read-only — denial only (no-suite-1 means no downgrade), visible in the §A.9 banner |
+| Backup generation rollback | closed by `repack_seq` for devices with prior state; a fresh device cannot distinguish a complete older generation — inside the fresh-device residual |
 
 **Audit coverage:** C-01 — no server-substitutable group key for fanout
 traffic; membership validated against a signed authority root **at both
@@ -854,10 +1074,18 @@ resumes.
 on reconnect, so they cannot represent an old and a new tab on one
 device; presence stays UI-only and is **never load-bearing here**:
 
-- **one durable row** holds the required era (flipped once, deliberately,
-  by `chalkctl fanout gate-f` — a database row, not a `CHALK_*` env var,
-  precisely because it must be one value for the whole cluster and
-  survive every restart);
+- **one durable row** holds the required era — a database row, not a
+  `CHALK_*` env var, precisely because it must be one value for the
+  whole cluster and survive every restart. **The raise is coupled to
+  deployment (P83-A-R7-01)**: a build-F `chalkd` raises the row to its
+  own era at startup — idempotent compare-and-set, never lowered — so
+  no manual step stands between the weekly automatic update and a
+  sendable client. The seventh review's interregnum was exactly that
+  step: with a deliberate `chalkctl fanout gate-f` flip, the update
+  timer could ship build F overnight and hold every channel read-only
+  until an operator woke up, since a build-F client may emit neither
+  suite until enforcement. `chalkctl fanout status` reports epoch,
+  acks and barrier; there is no flip left to forget;
 - every `chalkd` instance records each connection's era at hello **in
   its own connection table** and enforces the epoch at all three gates —
   hello admission, send accept, fanout delivery — per frame, from its
@@ -879,12 +1107,32 @@ device; presence stays UI-only and is **never load-bearing here**:
   neither converts nor emits suite 2 until the latter is true — staleness
   can therefore only *delay* the cutover, never admit a mixed-era
   delivery, because the instance that would deliver to a pre-F tab has,
-  by acking, already upgraded or disconnected that tab; and
+  by acking, already upgraded or disconnected that tab;
+- **the interregnum is frozen: bounded, visible, self-resolving.**
+  Between the build-F bundle reaching a device and `era_enforced`
+  turning true, the client can emit neither suite — by design, and
+  briefly: with the startup raise the window is one rolling deploy
+  plus at most one heartbeat (on the single-instance deployments chalk
+  targets, one restart). During it the client shows one banner —
+  *"Server update in progress — you can read; sending resumes
+  automatically"* — and resumes off the welcome's `era_enforced`
+  alone: no user action, no reload beyond this section's own upgrade
+  path. A server that advertises `era_enforced = false` forever is the
+  stated §A.8 denial residual — read-only, visibly, never a
+  downgrade; and
 - the acceptance test is explicitly hostile: two instances, an old and a
   new tab on one device (drafts surviving), a **dropped pubsub
-  notification**, and an **instance crash and reclaim** mid-cutover.
+  notification**, an **instance crash and reclaim** mid-cutover, and an
+  **unattended timer-driven update** — the deploy completes with no
+  operator present and sending resumes on its own.
 
 A brief software-update boundary, not an ongoing roadblock.
+
+The Gate-F threat-model move (slice A-9) includes one scale sentence,
+frozen here so it cannot drift: *"Group messaging is designed for at
+most 64 participants per channel (members plus active guests); larger
+rooms are out of scope by construction — a different message layer,
+not a larger cap."*
 
 ## A.10 Slices
 
@@ -893,12 +1141,12 @@ A brief software-update boundary, not an ongoing roadblock.
 | A-1 | Pairwise HKDF tree (incl. `K_history`); flaps; HMAC tags; frozen parser + full vectors; WebCrypto disposal rules |
 | A-2 | Anchors (converter/owner split) + manifest + `manifest_admit_ref` + complete policy artifacts + membership/guest certificates (`lookup16`, expiry rules): canonicals (`sig64`/`gov_record` conventions + mutation vectors), pure state machine, server tables (per-channel anchor CAS; `(channel,target,n)` and `(channel,p)` idempotency), rollback latches, policy-fork behavior + the monotonic removal latch, the era-door re-anchor bytes |
 | A-3 | Canonical envelope reuse; verify policy; typed results incl. `granted` |
-| A-4 | Suite-2 send/receive; self-flap; the sender-acceptance rule (`unauthorized-sender`, directional assurance) + its vectors; `key_version` exemptions per inventory |
+| A-4 | Suite-2 send/receive; self-flap; the sender-acceptance rule (`unauthorized-sender`/`former-member`, the live/backfill boundary, canonical-only sender provenance, directional assurance) + its vectors; the first-seen replay rule; `key_version` exemptions per inventory |
 | A-5 | Edits, reactions (sealed clear), attachments-in-envelope, voice pairwise sealing |
-| A-6 | Guests: `0x04` fragment form, guest certs, fragment-anchored verification; the atomic mint/revoke wire (advertised caps, absolute signed expiry, one-transaction storage, idempotent retry); cap accounting at mint |
+| A-6 | Guests: `0x04` fragment form, guest certs, fragment-anchored verification; the atomic mint/revoke wire (advertised caps, absolute signed expiry, one-transaction storage, idempotent retry); cap accounting at mint + the deterministic overflow shed |
 | A-7 | Grantor-attested history: grant wire, storage/quota/expiry, auto-grant + paging + knob, `granted` UI |
-| A-8 | Adoption state machine (restore/verify/convert/read-only); the client-minted-ID creation wire (anchor + manifest in `create_channel`, one-transaction insert, idempotent retry, pending-op records, the DM rule); `channel_security_enc` backup (93-byte records, generation-committed double-buffered pages, anchor-keyed merge); read-only legacy rendering; era capability + `client_upgrade_required` |
-| A-9 | **Gate F**: the required-era epoch + instance-ack barrier (`chalkctl fanout gate-f`, `acked_era`, the hostile two-instance test); emission on; conversion rollout; over-limit handling; `CHALK_FAN_REQUIRED` + `chalkctl fanout`; threat-model staging move |
+| A-8 | Adoption state machine (restore/verify/convert/read-only); the client-minted-ID creation wire (anchor + manifest in `create_channel`, one-transaction insert, idempotent retry, pending-op records, the DM rule); `channel_security_enc` backup (93-byte records, generation-committed double-buffered pages, the `repack_seq` floor, anchor-keyed merge); read-only legacy rendering; era capability + `client_upgrade_required` |
+| A-9 | **Gate F**: the required-era epoch raised at build-F startup + instance-ack barrier (`acked_era`, the interregnum banner, the hostile two-instance test); emission on; conversion rollout; over-limit handling; `CHALK_FAN_REQUIRED` + `chalkctl fanout status`; threat-model staging move (incl. the frozen 64-participant sentence) |
 | A-10 | Legacy retirement: wrapsig secure default; cert-gated legacy reshares; pre-F sunset |
 
 ---
@@ -931,7 +1179,7 @@ The comparison that decided it:
 |---|---|---|---|
 | Departure freeze | until creator acts | seconds | none |
 | Creator crypto role | load-bearing | none | anchor signer only (once) |
-| Review state | 6 revisions, Gate 0 pending | unreviewed delta | 5 rounds, all findings answered |
+| Review state | 6 revisions, Gate 0 pending | unreviewed delta | 7 rounds, all findings answered |
 | Membership | transcript (fork proofs) | transcript (fork proofs) | anchors + policy chain + per-target chains, rollback latch |
 | Deniability | no | no | **yes** ("authenticated for you") |
 | New-member history | as today | as today | grantor-attested (explicit, labelled) |
