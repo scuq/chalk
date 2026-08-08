@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.7.8 — 8 August 2026 — The whole window, and a composer that fits a phone
 
 ### Added
 - **Let chalk use the whole window.** The app has always been capped at a
