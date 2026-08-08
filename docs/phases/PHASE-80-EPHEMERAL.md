@@ -395,9 +395,9 @@ device per guest; recovering an ephemeral channel after expiry.
 - Two people sharing one link derive the same identity and collide on
   `voice_participants`' PK — correct failure, terrible message. Surface it as
   "this link is already in use".
-- `docker/Dockerfile` ships unminified bundles (existing CLAUDE.md open item). A
-  guest lands cold with no cache, so this phase makes that user-visible for the
-  first time.
+- `docker/Dockerfile` ships unminified bundles (an open item in
+  `docs/open-items.md`). A guest lands cold with no cache, so this phase makes
+  that user-visible for the first time.
 
 ## As built (deviations from the plan above)
 

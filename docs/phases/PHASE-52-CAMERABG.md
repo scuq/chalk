@@ -52,5 +52,5 @@ mid-call without the picture dropping for viewers.
 
 `docker/Dockerfile`'s frontend stage runs `npm run build` without
 `NODE_ENV=production`, so released images ship the MediaPipe chunk unminified —
-153 KB minified vs 737 KB as shipped. Listed in CLAUDE.md under deferred
-cleanup; this phase is what made it expensive.
+153 KB minified vs 737 KB as shipped. Listed in `docs/open-items.md` under
+deferred cleanup; this phase is what made it expensive.

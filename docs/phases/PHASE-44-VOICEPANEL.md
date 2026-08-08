@@ -55,5 +55,5 @@ device *id* is not stable either, so it is resolved by label.)
 The camera choice (`device-prefs.ts` `cameraId`) still has the stale-id weakness
 the mic had before 63-3: Brave re-randomizes deviceIds per session and
 late-plugged devices go unmatched. Fix the same way — persist the label, resolve
-via `voice/device-resolve.ts` at capture time. Listed in CLAUDE.md under
-deferred cleanup.
+via `voice/device-resolve.ts` at capture time. Listed in `docs/open-items.md`
+under deferred cleanup.

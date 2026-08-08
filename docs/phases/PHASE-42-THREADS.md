@@ -143,5 +143,5 @@ window is over.
 
 The threads dot's **server total** is only re-synced on a debounced refetch.
 Threads whose inbox rows this client does not hold still lag until then —
-`threadsNeedingYouCount` corrects only the rows it holds. Listed in CLAUDE.md
-under deferred cleanup.
+`threadsNeedingYouCount` corrects only the rows it holds. Listed in
+`docs/open-items.md` under deferred cleanup.

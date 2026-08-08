@@ -46,5 +46,5 @@ each with a `.test.ts` beside it.
 
 The **camera** picker still resolves by id and has the exact weakness 63-3 fixed
 for the mic. Same fix applies: persist the label, resolve via
-`voice/device-resolve.ts` at capture time. Listed in CLAUDE.md under deferred
-cleanup.
+`voice/device-resolve.ts` at capture time. Listed in `docs/open-items.md` under
+deferred cleanup.

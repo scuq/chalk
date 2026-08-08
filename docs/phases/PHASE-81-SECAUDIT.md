@@ -431,7 +431,7 @@ written to.
   triggers commented out and the e2e job hard-disabled. Every check in this
   document was run by hand.
 - **`web/dist` is still built without `NODE_ENV=production`** in
-  `docker/Dockerfile` (a pre-existing item in CLAUDE.md's deferred list).
+  `docker/Dockerfile` (a pre-existing item in `docs/open-items.md`).
   Unminified bundles with inline sourcemaps are not a vulnerability, but they
   are a much larger attack-surface-reading convenience than they need to be.
 

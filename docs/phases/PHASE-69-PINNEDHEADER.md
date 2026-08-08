@@ -39,4 +39,5 @@ of text could otherwise show through it while scrolling.
 69-1 made the client's windowed attachment backfill **redundant**. The App.tsx
 `listAttachments` effect, the `GET /api/attachments` endpoint, the
 `ListAttachmentsForChannelWindow` query and `CHALK_ATTACH_FETCH_WINDOW_HOURS`
-should be dropped together. Listed in CLAUDE.md under deferred cleanup.
+should be dropped together. Listed in `docs/open-items.md` under deferred
+cleanup.
