@@ -18,7 +18,6 @@
       "Bash(rg *)",
       "Bash(node .claude/skills/run-chalk/probes/ui.mjs)",
       "Bash(node .claude/skills/run-chalk/probes/ui.mjs *)",
-      "Bash(node .claude/skills/run-chalk/driver.mjs)",
       "Bash(node .claude/skills/run-chalk/driver.mjs *)",
       "Bash(node .claude/skills/run-chalk/readme-shots.mjs)",
       "Bash(node .claude/skills/run-chalk/unread-landing.mjs)",
@@ -31,7 +30,8 @@
       "Edit(/.claude/skills/run-chalk/**)",
       "Bash(gofmt -w internal/config/config_test.go)",
       "Bash(CHALK_TEST_DATABASE_URL='postgres://chalk:chalk@127.0.0.1:5432/chalk' go test ./internal/... ./cmd/...)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(git -C /home/scuq/chalk log --all --oneline --diff-filter=A -- '*security-audit*' '*security-phase*')"
     ]
   }
 }
