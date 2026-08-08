@@ -35,25 +35,29 @@ Two follow-ups remain open:
 ## Phase 83 — the open security gap
 
 Confirmed by the phase-81 audit and reconfirmed by its 2026-08-05 follow-up. The
-whole design lives in [phases/PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md)
-(**planned, not started**), and [threat-model.md](threat-model.md) states both
-halves as unmet guarantees.
+design is **envelope fanout**, chosen 2026-08-08 after five review rounds; the
+whole plan lives in [phases/PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md)
+(**planned, not started**; the retired transcript design and option B are
+recorded in its decision section and preserved in git history), and
+[threat-model.md](threat-model.md) states both halves as unmet guarantees.
 
 - **Messages carry no sender signature.** The AEAD associated data is only
   suite/channel/key-version, so sender, message ID and timestamp are
   unauthenticated server-supplied metadata, and any key holder can be
-  impersonated. Fix = a signed message envelope, extended to edits, reactions
-  and attachment refs. This is half A, whose central constraint is that the
-  server mints message id *and* ts, so a send-time signature cannot cover them.
+  impersonated. Fanout's answer: no group key at all — every message wraps its
+  own key once per member over pairwise-derived secrets, with a per-recipient
+  MAC binding sender, channel and body ("authenticated for you"; deliberately
+  deniable), covering edits and reactions alike.
 - **Membership is server-asserted**, so a server that adds a principal it
   controls gets the key handed to it by a member's auto-reshare. 82-8 makes that
-  visible (the join notice) but cannot prevent it. This is half B, the
-  authenticated channel-state transcript.
+  visible (the join notice) but cannot prevent it. Fanout's answer: a signed
+  per-channel authority anchor, a small policy chain, and per-target membership
+  certificate chains — enforced at both flap emission and message acceptance.
 
-Both share the identity anchor phase 82 already paid for, and should copy
-`web/src/voice/signal-crypto.ts`, which already does canonical-encode → Ed25519
-sign → fail-closed verify correctly. The audit asks for an independent protocol
-review before this ships.
+Both build on the identity anchor phase 82 already paid for; the certificate
+layer should copy `web/src/voice/signal-crypto.ts`, which already does
+canonical-encode → Ed25519 sign → fail-closed verify correctly. Gate 0 — an
+independent re-review of the fifth revision — applies before slice 1.
 
 ## Phase 85 — operational logging
 

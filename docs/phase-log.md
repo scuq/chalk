@@ -74,7 +74,7 @@ as-built rather than a contemporaneous plan.
 | 80 | ephemeral voice rooms, guest links | [PHASE-80-EPHEMERAL.md](phases/PHASE-80-EPHEMERAL.md) |
 | 81 | security audit and remediation | [PHASE-81-SECAUDIT.md](phases/PHASE-81-SECAUDIT.md) |
 | 82 | signed channel-key wraps | [PHASE-82-SIGNEDWRAP.md](phases/PHASE-82-SIGNEDWRAP.md) |
-| 83 | signed message envelope + channel-state transcript — **planned, not started** | [PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md) |
+| 83 | envelope fanout: pairwise-authenticated messages + anchored membership — **planned, not started** | [PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md) |
 | 84 | identity-pin backup | [PHASE-84-PINBACKUP.md](phases/PHASE-84-PINBACKUP.md) |
 | 85 | operational logging | [PHASE-85-OPLOG.md](phases/PHASE-85-OPLOG.md) |
 | 86 | ties: answering without quoting — **planned, not started** | [PHASE-86-TIES.md](phases/PHASE-86-TIES.md) |

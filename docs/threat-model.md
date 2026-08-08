@@ -80,7 +80,8 @@ whoever appears in the roster. A server that adds a principal it controls is
 therefore handed the key by a legitimate member's client. Signing a wrap proves
 who *sent* a key, not who *deserved* one. The client makes this visible rather
 than silent (a join notice, and a per-key provenance line in the members
-panel); the fix is phase 83's authenticated channel-state transcript.
+panel); the fix is phase 83's anchored membership — a signed per-channel
+authority root plus certificate chains, checked at both send and receive.
 
 TOFU's own limit is also worth stating plainly: a server that lies from the
 *very first* fetch of a peer gets its key pinned, and only the out-of-band
@@ -104,14 +105,16 @@ Two consequences:
   alone cannot prove which member wrote it. An honest server enforces
   attribution from the authenticated connection; a dishonest one need not.
 
-The fix is a signed message envelope covering the sender-meaningful fields —
-sender, the sender's own timestamp, parent/thread, body, and attachment
-digests — for messages, edits, and reactions alike. Server-minted message ID,
-timestamp, and sequence deliberately stay *outside* the signature (the server
-mints them after the client signs) and are demoted to untrusted receipt
-metadata; replay and re-dating become detectable rather than prevented. This
-is phase 83, and the expensive half of it — the identity anchor a signature
-would be checked against — was already paid for by phase 82.
+The fix is phase 83's envelope fanout: each message carries a per-recipient
+MAC over the canonical sender-meaningful fields — sender, the sender's own
+timestamp, parent/thread, body, and attachment digests — for messages, edits,
+and reactions alike, keyed from the pairwise secret of the two identities
+("authenticated for you"; deliberately deniable to anyone else). Server-minted
+message ID, timestamp, and sequence deliberately stay *outside* the
+authenticated canonical and are demoted to untrusted receipt metadata; replay
+and re-dating become detectable rather than prevented. The expensive half —
+the identity anchor the pairwise keys derive from — was already paid for by
+phase 82.
 
 ## Adversaries chalk does defend against
 
