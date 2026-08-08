@@ -10,6 +10,28 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **The voice buttons are out of the way on a phone.** In the conversation-list
+  layout, the mute / deafen / camera / share row no longer sits across the
+  bottom of every screen — it appears when you join a room and goes away when
+  you leave. The settings it used to hold before a call (join muted, join with
+  the camera off) are in **settings ▸ voice**.
+- **Voice rooms have their own row on a phone.** They used to sit in the
+  conversation list, sorted by whatever was last dropped in their scratchpad,
+  pushing people you actually talk to down the screen. They now live behind a
+  single **@ voice** row under **@ friends**, which says how many rooms have
+  somebody in them, and still shows a dot if one of them has unread messages.
+  Searching finds them either way.
+- **A little more room to type on a phone.** The message box gained back the
+  padding that was sitting around the send button and the F/G/E/C block.
+
+### Fixed
+- **The C on the phone's code button is centred** like the other three.
+
+---
+
 ## v0.7.8 — 8 August 2026 — The whole window, and a composer that fits a phone
 
 ### Added

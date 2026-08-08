@@ -181,3 +181,23 @@ export function buildConversationList(
   rows.sort((a, b) => b.when - a.when || a.id.localeCompare(b.id));
   return rows;
 }
+
+// 95-2: voice rooms out of the conversation list.
+//
+// The list is sorted by activity, and a voice room's activity is its
+// scratchpad -- a handful of links dropped mid-call, which then outrank the
+// conversations you actually read. Worse, a room is a place rather than a
+// thread: its row previews "voice room" forever and answers a question nobody
+// asked while scrolling for a person. So the rooms come out and sit behind one
+// pinned row, exactly the way 64-1 took the friend roster out.
+//
+// Order is preserved in both halves (splitHidden's precedent), so the rooms
+// stay activity-sorted among themselves.
+export function splitVoice<T extends { isVoice: boolean }>(
+  rows: T[],
+): { rest: T[]; rooms: T[] } {
+  const rest: T[] = [];
+  const rooms: T[] = [];
+  for (const r of rows) (r.isVoice ? rooms : rest).push(r);
+  return { rest, rooms };
+}

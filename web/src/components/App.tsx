@@ -551,6 +551,16 @@ export function App() {
     }
     return null;
   }, [state.voiceRosters, state.user]);
+  // 95-2: occupancy per voice room, for the list's pinned "@ voice" row. The
+  // rosters are already live state (the sidebar draws its dots from them), so
+  // this is only a reshape into what the row counts.
+  const zuckerVoiceCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const [cid, roster] of Object.entries(state.voiceRosters)) {
+      m[cid] = roster.length;
+    }
+    return m;
+  }, [state.voiceRosters]);
   // userID -> handle for preview sender labels: friends first, then every
   // channel's member roster (which carries handles since 08c).
   const zuckerHandles = useMemo(() => {
@@ -5036,6 +5046,7 @@ export function App() {
             hiddenRows={zuckerSplit.hidden}
             presence={state.presence}
             friends={zuckerFriends}
+            voiceCounts={zuckerVoiceCounts}
             parkingName={parking.hidden ? null : parking.name}
             threadsUnread={threadsNeedingYou}
             onSelect={(id) => {
@@ -5362,10 +5373,16 @@ export function App() {
         )}
         {/* 44-2: the roster-width column the composer's tool rail used to
             occupy. Voice controls live here now -- always visible, so mute and
-            camera are set before you join rather than after. */}
+            camera are set before you join rather than after.
+            95-1: "always visible" holds everywhere except the phone list, where
+            the panel is a full-width band under the composer rather than a
+            corner of a column -- see VoiceControls' hideIdle. */}
         <div class="chalk-footer-left">
           {state.voiceEnabled && (
-            <VoiceControls onOpenMicSettings={() => setMicSettingsOpen(true)} />
+            <VoiceControls
+              onOpenMicSettings={() => setMicSettingsOpen(true)}
+              hideIdle={zuckerActive}
+            />
           )}
         </div>
         {/* 53-1: hidden, not unmounted -- the composer owns its draft and its

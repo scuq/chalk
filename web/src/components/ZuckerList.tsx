@@ -10,7 +10,7 @@
 // activity-sorted list buries anyone you haven't talked to lately.
 
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
-import type { ZuckerFriend, ZuckerRow } from "../chat/zucker";
+import { splitVoice, type ZuckerFriend, type ZuckerRow } from "../chat/zucker";
 import type { PresenceMap } from "../state/types";
 import { filterRoster } from "../chat/roster-filter";
 import { fmtRelative } from "../chat/reltime";
@@ -26,6 +26,10 @@ interface Props {
   hiddenRows?: ZuckerRow[];
   presence: PresenceMap;
   friends: ZuckerFriend[];
+  // 95-2: channel id -> how many people are in that room right now, for the
+  // pinned voice row's "1/4 live". Absent means nobody anywhere, which is what
+  // an empty voiceRosters map says too.
+  voiceCounts?: Record<string, number>;
   // null hides the row (prefs.parkingLot.hidden), mirroring the sidebar.
   parkingName: string | null;
   threadsUnread: number;
@@ -44,6 +48,7 @@ export function ZuckerList({
   hiddenRows = [],
   presence,
   friends,
+  voiceCounts = {},
   parkingName,
   threadsUnread,
   onSelect,
@@ -66,7 +71,22 @@ export function ZuckerList({
   useLayoutEffect(() => {
     if (filterOpen) filterRef.current?.focus();
   }, [filterOpen]);
-  const visibleRows = filterRoster(rows, filter, (r) => r.name);
+  // 95-2: voice rooms are a place, not a conversation -- they live behind
+  // their own pinned row rather than in the activity-sorted list. Split before
+  // the filter so the filter can then run over each half independently.
+  const { rest: chatRows, rooms: voiceRows } = splitVoice(rows);
+  const visibleRows = filterRoster(chatRows, filter, (r) => r.name);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const shownVoice = filterRoster(voiceRows, filter, (r) => r.name);
+  // A collapsed row must not swallow a search hit: while filtering, the voice
+  // list opens itself if it has matches (and stays shut when it has none, so
+  // the row does not flash open on every keystroke).
+  const voiceShowing = filter.trim() !== "" ? shownVoice.length > 0 : voiceOpen;
+  const liveRooms = voiceRows.filter((r) => (voiceCounts[r.id] ?? 0) > 0).length;
+  // Same reason the hidden shelf carries one: a room's scratchpad can go unread
+  // behind a closed row, and hiding it is not muting it.
+  const voiceUnread = voiceRows.some((r) => r.unread);
+  const voiceMention = voiceRows.some((r) => r.unread && r.mention);
   const onlineCount = friends.filter((f) => f.presence === "online").length;
   // 78-3: the hidden shelf. Open state is component state, like the
   // sidebar's: a peek, not a setting.
@@ -228,6 +248,31 @@ export function ZuckerList({
           ))}
         </ul>
       )}
+      {/* 95-2: the rooms, behind one row, directly under the friends they are
+          the other half of -- "who is around" and "where they are talking". */}
+      {voiceRows.length > 0 && (
+        <>
+          <button
+            type="button"
+            class="chalk-zucker-pinned"
+            onClick={() => setVoiceOpen(!voiceOpen)}
+            aria-expanded={voiceShowing}
+            data-testid="zucker-voice"
+            data-open={voiceShowing ? "true" : "false"}
+          >
+            <span>@ voice</span>
+            <span class="chalk-zucker-pinned-note">
+              {liveRooms}/{voiceRows.length} live
+            </span>
+            {voiceUnread && <UnreadDot mention={voiceMention} />}
+          </button>
+          {voiceShowing && (
+            <ul class="chalk-zucker-rows" data-testid="zucker-voice-rows">
+              {shownVoice.map((r) => conversationRow(r, false))}
+            </ul>
+          )}
+        </>
+      )}
       <button
         type="button"
         class="chalk-zucker-pinned"
@@ -254,7 +299,9 @@ export function ZuckerList({
       )}
 
       <ul class="chalk-zucker-rows" data-testid="zucker-rows">
-        {rows.length > 0 && visibleRows.length === 0 && (
+        {/* 95-2: "no matches" means nothing matched anywhere -- a filter that
+            only hits a voice room has a hit, it is just up in that list. */}
+        {rows.length > 0 && visibleRows.length === 0 && shownVoice.length === 0 && (
           <li class="chalk-zucker-friends-empty">no matches</li>
         )}
         {visibleRows.map((r) => conversationRow(r, false))}

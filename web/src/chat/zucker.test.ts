@@ -7,6 +7,7 @@ import {
   buildConversationList,
   buildFriendList,
   previewText,
+  splitVoice,
   DELETED_PREVIEW,
   type ZuckerChannel,
 } from "./zucker.ts";
@@ -220,4 +221,44 @@ test("missing or unknown presence resolves to offline", () => {
 test("handle-less friends fall back to a userID slice", () => {
   const rows = buildFriendList([{ userID: "user-123456789", handle: "" }], {});
   assert.equal(rows[0].name, "23456789");
+});
+
+// ---- splitVoice (95-2) -----------------------------------------------
+
+test("splitVoice separates rooms from conversations, order preserved", () => {
+  const rows = [
+    { id: "a", isVoice: false },
+    { id: "b", isVoice: true },
+    { id: "c", isVoice: false },
+    { id: "d", isVoice: true },
+  ];
+  const { rest, rooms } = splitVoice(rows);
+  assert.deepEqual(rest.map((r) => r.id), ["a", "c"]);
+  assert.deepEqual(rooms.map((r) => r.id), ["b", "d"]);
+});
+
+test("splitVoice handles all-voice and no-voice rosters", () => {
+  assert.deepEqual(splitVoice([{ id: "a", isVoice: true }]).rest, []);
+  assert.deepEqual(splitVoice([{ id: "a", isVoice: false }]).rooms, []);
+  assert.deepEqual(splitVoice([]), { rest: [], rooms: [] });
+});
+
+test("a voice channel lands in the rooms half of a built list", () => {
+  const channels: Record<string, ZuckerChannel> = {
+    c1: { id: "c1", isDM: false, channelType: "text", createdAt: new Date(2_000) },
+    c2: { id: "c2", isDM: false, channelType: "voice", createdAt: new Date(1_000) },
+  };
+  const rows = buildConversationList(
+    ["c1", "c2"],
+    channels,
+    {},
+    {},
+    ME,
+    null,
+    (ch) => ch.id,
+    (u) => u,
+  );
+  const { rest, rooms } = splitVoice(rows);
+  assert.deepEqual(rest.map((r) => r.id), ["c1"]);
+  assert.deepEqual(rooms.map((r) => r.id), ["c2"]);
 });

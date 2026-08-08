@@ -96,11 +96,22 @@ function IconGear() {
 
 interface Props {
   onOpenMicSettings: () => void;
+  // 95-1: render nothing outside a call. The "always present" argument above is
+  // a desktop argument -- it costs a corner of a roster column there, and a
+  // 40px band across the bottom of a phone, which in Zuckermode is a band the
+  // conversation list is paying for on every screen including the ones with no
+  // voice in them. Set from App for the phone list; the panel comes back the
+  // moment a room is joined, which is when the toggles have something to act
+  // on. Pre-join defaults are still reachable -- settings ▸ voice.
+  hideIdle?: boolean;
 }
 
-export function VoiceControls({ onOpenMicSettings }: Props) {
+export function VoiceControls({ onOpenMicSettings, hideIdle }: Props) {
   const snap = useVoiceSession();
   const inCall = snap.phase === "in-call";
+  // "joining" counts as joined here: the controls appear with the dock, not a
+  // beat after it, or the footer would jump twice on the way into a room.
+  if (hideIdle && snap.phase === "idle") return null;
   // Outside a call every title has to say that it is setting a default, or the
   // buttons read as broken -- pressing mute with nothing connected otherwise
   // looks like it did nothing.

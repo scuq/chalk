@@ -1048,7 +1048,10 @@ html {
 /* -- 74-2: the staged code snippet --------------------------------- */
 /* Same chip shape as the link-preview card above -- both mean "this rides
    the next send" -- with the accent rule the received card also carries, so
-   the two read as the same object before and after sending. */
+   the two read as the same object before and after sending.
+   94-4: this is the CHIP. The tool button that stages one is
+   .chalk-composer-code-tool -- it used to share this name, and inherited the
+   display: flex below, which left its label at flex-start. */
 .chalk-composer-code {
   display: flex;
   align-items: center;
@@ -8683,10 +8686,20 @@ body.chalk-resizing-y .chalk-composer-resizer {
     min-width: 0;
   }
 
-  /* 94-2: the button is the field's height on both layouts now; a phone only
-     needs the wider tap target. */
+  /* 94-2: the button is the field's height on both layouts now.
+     94-4: and it is already a full-height target, so the extra horizontal
+     padding was buying nothing -- 94-2 widened it for a thumb back when it was
+     a 26px chip. The word plus s2 is still a ~48px-wide, field-height target,
+     and the 16px it gives back goes to the field beside it. */
   .chalk-composer-send {
-    padding: 0 var(--chalk-s4);
+    padding: 0 var(--chalk-s2);
+  }
+
+  /* 94-4: the gap between the tool block, the field and send. s2 is the
+     desktop rhythm, where there is width to spend on it; here every 4px is a
+     character and a half of the line you are typing. */
+  .chalk-composer-row {
+    gap: var(--chalk-s1);
   }
 
   /* 44-5: bigger squares for thumbs. The block is then 2 x 34px + the gap, so

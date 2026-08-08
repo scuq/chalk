@@ -1213,10 +1213,14 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
                   >
                     {icons ? "🙂" : toolLabel("emoji")}
                   </button>
-                  {/* 74-2: no shortcut in the title -- see openTool. */}
+                  {/* 74-2: no shortcut in the title -- see openTool.
+                      94-4: the class is -code-tool, not -code: .chalk-composer-code
+                      is the staged-snippet chip below, and the collision made this
+                      button a flex container, which is what stopped `text-align:
+                      center` from centring the phone's "C". */}
                   <button
                     type="button"
-                    class="chalk-composer-tool chalk-composer-code"
+                    class="chalk-composer-tool chalk-composer-code-tool"
                     onClick={() => openTool("code")}
                     disabled={effectiveDisabled || sending}
                     title="paste code"

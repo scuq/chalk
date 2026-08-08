@@ -1,7 +1,8 @@
 # Phase 94 — the phone composer
 
-**Status:** 94-1, 94-2 and 94-3 shipped together. One change set; the phase is
-closed unless the follow-ups under [Left open](#left-open) are taken up.
+**Status:** 94-1, 94-2 and 94-3 shipped together. 94-4 followed, from what the
+first three looked like on a real phone. The phase is closed unless the
+follow-ups under [Left open](#left-open) are taken up.
 
 **Tag:** `#composer` → `tools/where.sh -g composer`. (Shares the tag with 91 —
 both are about the shape of the box you type into.)
@@ -73,6 +74,36 @@ The shortcut sheet in settings (76-1) was the only written record of "enter →
 send", so `composerHelp()` takes a `mobile` flag and reads "new line — tap
 send to send" there, dropping the `shift+enter` row that has nothing to say on
 a phone. The ctrl/⌘ rows stay: a phone can have a keyboard attached.
+
+### 94-4 — the `C` that was not centred, and the width around it
+
+Shipping 94-1 to a phone turned up two things a screenshot shows and a unit
+test cannot.
+
+**The `C` sat at the left of its button while `F` `G` `E` were centred.** The
+cause is a class-name collision old enough that 94-1 only exposed it: the code
+tool button carried `chalk-composer-code`, which is also the class of the
+*staged snippet chip* (74-2) further up the composer. The chip is a flex
+container, so the button became one too — and `text-align: center` does nothing
+to a flex item, it aligns inline content the flex container no longer has. On a
+desktop the label is `CODE`, which fills the button, so the misalignment had
+nowhere to show. The fix is the rename the two objects should always have had:
+the button is `chalk-composer-code-tool`, the chip keeps `chalk-composer-code`,
+and a comment on each points at the other.
+
+**The composer was giving away ~24px of a 393px screen.** Two insets that are
+right on a desktop and wrong on a phone:
+
+- `.chalk-composer-row`'s `gap` was `s2` (8px), and there are two of them —
+  rail to field, field to send.
+- `.chalk-composer-send`'s horizontal padding was `s4` (16px), widened by 94-2
+  when the button was still a 26px chip that needed to be reachable. It is the
+  full height of the field now, so its width was buying nothing; `s2` still
+  leaves a ~48px-wide, field-height target.
+
+Both drop on the mobile rule only. What the tool block itself costs is
+unchanged — the 34px squares are 94-1's tap-target decision and the 4px grid
+gap inside them is already the smallest step on the scale.
 
 ## The overflow that was already there
 

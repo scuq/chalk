@@ -124,6 +124,14 @@ Two deliberate exclusions:
   fetch_history started carrying attachment refs on the page itself; drop the
   effect, the endpoint, the `ListAttachmentsForChannelWindow` query and the env
   knob together.
+- **Zuckermode has no reachable "leave call" control.** The only leave button
+  is the voice dock's (`voice-dock-leave`), the dock renders inside the
+  sidebar, and Zuckermode hides the sidebar and its nav toggle outright
+  (`.chalk-app--zucker .chalk-nav-toggle { display: none }`). So a phone in
+  that mode can join a room and has nothing to press to get out — the mic and
+  camera toggles are there, the exit is not. Found while probing 95-1, which
+  did not cause it: the controls band never carried a leave button either.
+  Verified in the running app, and the last check in the 95 probe records it.
 - `docker/Dockerfile`'s frontend stage runs `npm run build` without
   `NODE_ENV=production`, so released images ship unminified bundles with inline
   sourcemaps. Costlier since 52-2 (the MediaPipe chunk is 153 KB minified vs
