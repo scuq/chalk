@@ -62,6 +62,72 @@ decision section preserves its own rejected designs:
 And it does not actually lift the cap: the binding costs past 64 (below)
 are in the membership layer, which amortized fan-out leaves untouched.
 
+## Alice, Bob and Carol — the plain-language version
+
+*(Explanatory only — nothing in this section is normative. This whole
+phase is a sketch; the rules get frozen by its own Gate-0-style review,
+and where this walkthrough and the sketch below disagree, neither wins —
+the review does.)*
+
+Alice, Bob and Carol share a big room — them and three hundred others.
+Fanout would sew three hundred pouches onto every single message; here
+the cost moves: each sender pays once to hand out a key chain, and
+after that every message is one small box, the same size whether the
+room holds three people or five hundred.
+
+1. When Alice first sends, her client mints a random **chain key** —
+   the first link of her personal **stream**. She seals a copy to each
+   member individually, using the same pairwise machinery phase 83
+   built: one sealed announcement for Bob, one for Carol, and so on
+   down the roster. That is the expensive step, and it is paid per
+   membership event, never per message.
+2. To send "lunch?", her client turns the crank once: out fall a
+   one-time **message key**, which locks this message, and the next
+   link of the chain. One box, no pouches. Inside the box, the message
+   carries Alice's **signature**, made with her identity key.
+3. Bob's client holds Alice's chain, turns the same crank, gets the
+   same message key, opens the box — and checks the signature. The
+   signature is the proof of authorship here, not a per-person tag:
+   everyone in the room can compute the message key, so *anyone
+   holding the chain* could have made the box, but only Alice can make
+   her signature.
+
+That last point is the deliberate trade, in plain words: fanout's tag
+proves "Alice or Bob wrote this" — Bob knows it was Alice, but he can
+prove nothing to anyone else. A signature proves "Alice wrote this" to
+*whoever is shown it*, forever. Deniability is given up, on purpose: a
+room of five hundred is closer to a broadcast than a conversation, and
+what a broadcast needs is exactly transferable authorship.
+
+**When Carol is removed**, nobody rotates a shared room key, because
+there isn't one — there are three hundred personal chains:
+
+- **Each remaining member resets their own stream.** Alice mints a
+  fresh chain key and announces it to everyone still in the room —
+  everyone except Carol. So does Bob, and so does everyone else, each
+  on their own, the next time they send. No coordinator, no ceremony,
+  no frozen channel. Carol keeps every old chain key forever, but they
+  open nothing minted after the reset.
+- **The door is still checked.** Membership is phase 83's layer,
+  reused verbatim: the signed anchor, the policy chain, the per-member
+  certificate chains. If Carol — with a malicious server's help —
+  mails the room a validly-signed message anyway, each client checks
+  her chain, sees it ends in "removed", and refuses it under the same
+  acceptance rule fanout uses.
+
+**When Dave joins**, history scoping falls out of where you start the
+chain: hand him Alice's chain from its first link and he can read her
+stream from the beginning; hand him only the current link and he reads
+from now on. Per-admission history is a property of the announcement,
+not a separate grant machine.
+
+And the seam this design shows honestly: until Alice's announcement
+reaches Bob, Bob cannot read *Alice's* messages — everyone else's
+remain fine. The waiting state is per-sender ("waiting for Alice's
+key"), never channel-wide, and the review has to decide what that UI
+says — the cost section below already names it as the seam that needs
+one.
+
 ## The sketch: per-sender streams on phase 83's membership layer
 
 The direct ancestor is the superseded per-sender-streams draft
