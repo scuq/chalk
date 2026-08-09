@@ -7885,7 +7885,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   background: var(--chalk-bg-elev-2);
 }
 
-/* ---- roster hover card (92-1) ----
+/* ---- the hover card (92-1; shared with the message feed in 92-4) ----
    Same surface as the menu above it -- the two open on the same rows and
    would look unrelated otherwise. pointer-events:none is load-bearing: the
    card is drawn next to the row the cursor is on, and anything intercepting
@@ -7915,6 +7915,13 @@ body.chalk-resizing-y .chalk-composer-resizer {
   gap: var(--chalk-s2);
   color: var(--chalk-fg-dim);
 }
+/* 92-5: the profile display name, under the handle it belongs to. Dimmer
+   than the name and never tinted -- the nick colour identifies the account,
+   and colouring both lines would read as two people. */
+.chalk-friend-card-display {
+  color: var(--chalk-fg-dim);
+  overflow-wrap: anywhere;
+}
 .chalk-friend-card-seen,
 .chalk-friend-card-hint {
   color: var(--chalk-fg-muted);
@@ -7922,6 +7929,15 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-friend-card-hint {
   margin-top: var(--chalk-s1);
   font-style: italic;
+}
+/* 92-6: the identity footer the feed's old native tooltip used to carry.
+   Smallest and dimmest thing on the card: it is there to be found when a
+   multi-device sender needs telling apart, not to be read every hover. */
+.chalk-friend-card-meta {
+  margin-top: var(--chalk-s1);
+  color: var(--chalk-fg-muted);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
 }
 
 /* ============================================================

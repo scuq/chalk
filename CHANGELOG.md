@@ -20,12 +20,22 @@ The engineering-level history (which slice shipped what) lives in
   counter in the drawer), and captures a snapshot of the network path at the
   moment a connection starts degrading. "copy report" after a bad call now
   shows what led up to it, even from a call that is already over.
+- **Rest the pointer on a name in a conversation to see who it is.** Names in
+  the message list are cut short to keep the messages lined up, and the only
+  way to read a long one was the browser's own grey tooltip. Now a card comes
+  up beside it with the full name, the person's display name, whether they are
+  around, and — for a friend who isn't — when they were last seen. It works in
+  threads too.
 
 ### Changed
 - **The phone's `@ voice` row says who is in a room, not just how many.** Open
   it and a live room lists the people in it under its name, with the same
   muted / camera / sharing marks the desktop roster uses — so you can tell
   whether it is the conversation you wanted before you walk into it.
+- **The friends-list card shows display names.** Hovering someone in the
+  friends list already showed their name and whether they were online; it now
+  also shows the display name they set on their profile, when that is
+  something other than their username.
 
 ### Fixed
 - **Expanding `@ voice` on a phone no longer squeezes the rooms.** The list

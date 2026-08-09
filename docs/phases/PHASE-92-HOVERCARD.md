@@ -1,10 +1,15 @@
-# Phase 92 — the roster hover card
+# Phase 92 — the hover card
 
-**Status:** 92-1 and 92-2 shipped. 92-3 (device type) is **designed and
-deliberately not built** — see [The device line](#the-device-line-92-3-not-built).
+**Status:** 92-1, 92-2, 92-4, 92-5 and 92-6 shipped. 92-3 (device type) is
+**designed and deliberately not built** — see
+[The device line](#the-device-line-92-3-not-built).
 
 **Tag:** `#roster` → `tools/where.sh -g roster`, `#presence` for the last-seen
 plumbing.
+
+The phase started as one tooltip on one surface (92-1/92-2, below) and was
+extended to the message feed's sender names, with a display-name line on both,
+in 92-4 through 92-6 — [The second surface](#the-second-surface-92-4-92-6).
 
 ## The problem
 
@@ -109,6 +114,85 @@ server-asserted metadata: chalkd sees the hello claim and could substitute it,
 the same way it could lie about presence. That is a different bar from the rest
 of the card, all of which is either client-local or already disclosed.
 
+## The second surface (92-4 – 92-6)
+
+The roster is not the only place chalk names a person, and it was not the place
+with the worst tooltip. The message feed sizes its sender column to the widest
+label in view and **caps it at 10 characters** (`senderColCh`, phase 9.7k), so
+a long handle is ellipsis-truncated on every row it sends. The only way to read
+it was the browser's native `title` — which also carried the account and device
+ids, and which is the thing 92-1 had already decided was not good enough
+anywhere else.
+
+So the card moved out of `Sidebar` and onto both.
+
+### What is shared, and what is not
+
+`components/HoverCard.tsx` holds `useHoverCard<T>()` — the open card, the
+rest timer, the anchor clamp, the close-on-scroll and close-on-Escape
+listeners — and `PersonCard`, which draws a resolved card. Everything that
+decides *what a card says* stays in `chat/hovercard.ts`, where it is testable
+without a browser: `rosterCardInfo` and `senderCardInfo` both return a
+`PersonCardInfo` whose null fields mean "draw no line".
+
+Two things deliberately differ per surface:
+
+- **Placement.** The roster's card sits to the right of the row, because what
+  is to the right of the sidebar is the feed's margin. The feed's sits *below*
+  the name, because what is to the right of a sender name is the message you
+  are hovering it to read.
+- **The presence line.** The roster always has one: presence subscriptions are
+  friends-only server-side, so a roster row's absent entry genuinely means
+  offline. A channel member need not be a friend, so in the feed an absent
+  entry means *we were never told*, and the card draws no line rather than
+  printing a guess as a fact. The distinction is why `PersonCardInfo.state` is
+  `string | null` and not just a state word.
+
+`presenceClass` / `presenceLabel` moved from `Sidebar.tsx` to
+`chat/presence.ts` in the same slice: the card draws its own dot, and Sidebar
+imports the card, so leaving them where they were made that a cycle.
+
+### Where the display name comes from (92-5)
+
+Nothing on the wire carries it. Not the friend list, not a channel's member
+list, not `sender_user_id` — chalk's wire knows people by handle, and the
+profile display name is an HTTP-API field.
+
+The card reads it from `GET /api/users/directory`, the endpoint 59-1 added for
+the friends panel's "everyone on this server" list, wrapped in
+`auth/display-names.ts`. That endpoint is already open to any signed-in member
+by an explicit decision of 59-1, so this discloses nothing new; the rejected
+alternative — widening the friend-list and member-list frames — is three
+layers and a policy question per surface to deliver a field two tooltips read.
+
+Two details in that module are load-bearing:
+
+- **A user with no display name is cached as `""`, not left out.** Absent
+  means "never resolved" and triggers a refetch; `""` means "resolved, nothing
+  to show". Conflating them refetches the directory forever on behalf of
+  everyone who skipped the field at signup.
+- **The refetch trigger is an unknown id, not a timer.** `useDisplayNames`
+  takes the set of user ids whose cards could be drawn — the roster plus the
+  open channel's members, minus your own — and fetches again when one of them
+  is not in the map. Someone who registered or joined a channel after you
+  opened chalk is exactly that case, and it was the first thing the UI probe
+  caught: a fetch-once-per-session map is empty of everyone who arrives later.
+  Your own name is merged in from `me`, because the directory omits the caller.
+
+### The identity footer
+
+The feed's card keeps what the native `title` said last —
+`user 1a2b3c… · device 4d5e6f…` — as a dim footer. It is the only place a
+multi-device sender can be told apart, and dropping it while removing the
+`title` would have been a quiet loss. The roster has no footer: a roster row
+knows a user, not a device.
+
+Accessibility did not regress with the `title`: the truncation is CSS
+(`text-overflow: ellipsis`), so the DOM text was always the full handle, and a
+screen reader never needed the tooltip. The card is mouse-only in the feed —
+a long press there is already the message menu — where the roster also opens
+it on `:focus-visible`.
+
 ## The slices
 
 - **92-1 — the card.** `Sidebar` grows the hover state, the open/close
@@ -120,6 +204,15 @@ of the card, all of which is either client-local or already disclosed.
   so the card ages a timestamp exactly the way the message list and the thread
   inbox do.
 - **92-3 — the device line.** Not built. Above.
+- **92-4 — one card, two homes.** `components/HoverCard.tsx`
+  (`useHoverCard` + `PersonCard`), `chat/presence.ts`, and `Sidebar` rebuilt on
+  both with no change to what it shows.
+- **92-5 — the display name.** `auth/display-names.ts`, threaded from `App`
+  into both surfaces; a second line on every card whose display name is not
+  just the handle again.
+- **92-6 — the feed's sender card.** `MessageList` opens the card on a 500 ms
+  mouse rest over a sender name and drops the `title`; `ThreadPanel` forwards
+  the same three maps so a thread reply's card says what the feed's does.
 
 ## Left open
 
@@ -129,3 +222,11 @@ of the card, all of which is either client-local or already disclosed.
   `SearchPanel` and the thread inbox have the same property.
 - `ZuckerList` (mobile) still shows presence as a dot and a bare state word.
   Last seen would fit its friend rows, but the gesture budget on touch is spent.
+- A display name changed mid-session is not picked up: the refetch trigger is
+  an id the map has never seen, and a renamed user's id is one it has. A
+  reload gets it. Fixing it properly means the server telling us, which is the
+  wire change 92-5 declined.
+- The members panel, the voice-room occupant list and the reaction-who card
+  name people without a hover card. They are all untruncated, so none of them
+  has the problem 92-6 solved; they would be a consistency argument, not a
+  legibility one.

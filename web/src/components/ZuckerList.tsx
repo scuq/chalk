@@ -21,14 +21,8 @@ import { filterRoster } from "../chat/roster-filter";
 import { fmtRelative } from "../chat/reltime";
 import { formatCountdown, countdownUrgent } from "../chat/countdown";
 import { UnreadDot } from "./UnreadDot";
-import {
-  CamIcon,
-  ChannelGlyph,
-  MicOffIcon,
-  ScreenIcon,
-  presenceClass,
-  presenceLabel,
-} from "./Sidebar";
+import { CamIcon, ChannelGlyph, MicOffIcon, ScreenIcon } from "./Sidebar";
+import { presenceClass, presenceLabel } from "../chat/presence";
 
 interface Props {
   rows: ZuckerRow[];
