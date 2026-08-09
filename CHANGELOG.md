@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.7.10 — 9 August 2026 — A card on every name, and calls that remember what went wrong
 
 ### Added
 - **A voice call that reconnects can now tell you why.** The call's debug
