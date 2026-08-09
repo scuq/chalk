@@ -82,6 +82,29 @@ observation) and the diff-before-reshare ordering is frozen so the
 notice really does precede any wrap. **Gate 0 stays open pending what
 the reviewer expects to be the final claim-consistency pass.**
 
+Fifth review (R20, 2026-08-09 —
+`docs/audits/security-phase-83-r20-review-2026-08-09.md`): the final
+pass, run against the fourth-revision text while the fifth was in
+flight, so its R19 restatement was already answered; it confirmed
+**every protocol area passes** — identity continuity, message
+authenticity, rotation, concurrent rotation, the malicious-rotator
+residual, the server pin, authorization integrity — and conditioned
+Gate 0 PASS on exactly four claim/documentation changes. **This sixth
+revision completes the set**: (1) process-memory reads removed from
+claim 2 and (2) server-identity-key compromise placed inside the
+malicious-chalkd boundary (both already in the fifth revision); (3)
+the residual renamed **"Server-storage disclosure"** (the reviewer's
+point taken — "host compromise" implies broader control than a
+dump); (4) D.6's guarantee stated in the reviewer's words —
+*unauthorized roster changes are surfaced to any client that
+observes the changed roster; detection, not prevention, no guarantee
+for changes never observed* — with the frozen diff-before-reshare
+ordering kept and its promise stated as mechanical (the record
+precedes the key), never as the human having read it. Per the
+reviewer's own words, with these applied they "would be comfortable
+marking Gate 0 PASS" — **the gate awaits that confirmation, and
+nothing else.**
+
 **Tag:** `#msgsig`.
 
 ---
@@ -529,21 +552,23 @@ the roster changed:
   and not attributable to an actor (the whole point is that no
   trustworthy actor record exists for a DB insert). It says *what*
   changed in the membership the client now sees, never *who* did it.
-- The property, stated precisely (the R19 review's correction — not
-  "silent changes are impossible"): **a persisted unauthorized
-  membership change is surfaced when an existing client next observes
-  a roster containing it.** An attacker who inserts and removes a
-  principal entirely between two observations is not caught by this
-  mechanism, and visibility timing follows refresh flows. It is
-  detection and disclosure, not prevention — consistent with the
-  narrowed claim, and the honest most a server-asserted-membership
-  design can offer.
-- **The ordering is frozen so the notice really does precede the
-  key** (R19's inexpensive hardening): fetch roster → compute the
-  diff → persist and surface additions → **only then** may
-  auto-reshare wrap to the new roster. A member added by manipulation
-  is therefore told about *before* any client of yours hands over a
-  wrap — the wrap follows the warning, never the other way around.
+- The property, stated precisely (the R19/R20 reviews' correction —
+  never "silent changes are impossible"): **D.6 surfaces unauthorized
+  roster changes to any existing client that observes the changed
+  roster; it is detection, not prevention, and provides no guarantee
+  against changes that are never observed.** An attacker who inserts
+  and removes a principal entirely between two observations is not
+  caught, and visibility timing follows refresh flows — consistent
+  with the narrowed claim, and the honest most a
+  server-asserted-membership design can offer.
+- **The ordering is frozen so the notice precedes the key**
+  (R19's inexpensive hardening, kept under R20's framing): fetch
+  roster → compute the diff → persist and surface additions → **only
+  then** may auto-reshare wrap to the new roster. The guarantee is
+  mechanical, not human: the notice is *persisted and rendered*
+  before any client of yours hands over a wrap — whether the user has
+  read it yet is theirs; what the ordering promises is that the
+  record always precedes the key, never the other way around.
 - Consistency with the identity chain: a fingerprint-change notice
   reuses D.1's generation verification — an *unlinked* fingerprint
   change (no valid idgen chain to the prior pin) is the louder
@@ -564,9 +589,9 @@ Ed25519 op per object.
 | Residual | Treatment |
 |---|---|
 | Malicious/compelled chalkd | **Out of the trust model** (claim 1, decided 2026-08-09): a server that lies about membership is handed channel keys by honest clients. Visible (join notices, wrap provenance), not prevented. Federation stays gated on this (PHASE-88). |
-| Host compromise (storage read) | Reads all metadata (rosters, timing, sizes, edit/reaction graphs) and every ciphertext; **a storage breach opens nothing** (claim 2 — DB dumps, stolen disks, backups, logs). TOTP secrets decrypt on the host (`CHALK_TOTP_ENC_KEY`) → account access ≠ message plaintext (the encryption phrase never reaches the server). |
+| Server-storage disclosure | Reads all metadata (rosters, timing, sizes, edit/reaction graphs) and every ciphertext; **a storage breach opens nothing** (claim 2 — DB dumps, stolen disks, backups, logs, stored ciphertexts). Renamed from "host compromise (read)" per R20: "host compromise" implies broader control than obtaining a database dump. TOTP secrets decrypt on the host (`CHALK_TOTP_ENC_KEY`) → account access ≠ message plaintext (the encryption phrase never reaches the server). |
 | Host compromise (live process) | **Outside claim 2 (P83-A-R19-01)**: reading chalkd's memory can exfiltrate the server identity key, whose holder passes the D.3 handshake, presents any roster, and is auto-reshared channel keys — so live-process compromise, like authorization-table writes, is a lost trusted endpoint, classified with malicious chalkd. Phase 99's in-memory hygiene raises the bar; it does not move the boundary. |
-| Host compromise (write to authorization state) | **A real, undefended threat (P83-A-R18-01)**: a database write that inserts a principal into a roster makes honest clients wrap the channel key to it — no signature fails, because membership is server-asserted by design and the tables' integrity sits inside the claim-1 trust boundary. Mitigations, not guarantees: the client-derived roster-diff notice (D.6) surfaces a persisted change when a client next observes it — diffed and announced *before* any auto-reshare wraps to the new roster — and phase 99 hardens the database credentials that make the write cheap. Stored *cryptographic* objects (ciphertexts, wraps, identity records) stay tamper-evident and fail closed. |
+| Host compromise (write to authorization state) | **A real, undefended threat (P83-A-R18-01)**: a database write that inserts a principal into a roster makes honest clients wrap the channel key to it — no signature fails, because membership is server-asserted by design and the tables' integrity sits inside the claim-1 trust boundary. Mitigations, not guarantees: D.6 surfaces unauthorized roster changes to any existing client that observes the changed roster (detection, not prevention; no guarantee against changes never observed; the diff is persisted and rendered *before* any auto-reshare wraps), and phase 99 hardens the database credentials that make the write cheap. Stored *cryptographic* objects (ciphertexts, wraps, identity records) stay tamper-evident and fail closed. |
 | First contact | Registration MITM wins that device's pins (server and peers alike); picture-word comparison remains the out-of-band upgrade. |
 | Bundle delivery | A web client cannot verify its own code; a bundle-serving MITM is endpoint compromise. PWA caching narrows, does not close. |
 | Deniability | Gone, deliberately: signatures are transferable proof of authorship. The fanout design's "authenticated for you" was the deniable alternative and retired with its threat model. |

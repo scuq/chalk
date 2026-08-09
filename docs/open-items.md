@@ -82,9 +82,12 @@ reading chalkd's *process memory*, where the server-identity key
 lives — and its holder is the server to every pinned client. Final
 form: **claim 2 is a persistent-storage breach claim** (dumps, disks,
 backups open nothing); live process compromise, like
-authorization-table writes, is a lost trusted endpoint. Every
-protocol area is green in R19; the gate awaits the final
-claim-consistency pass.
+authorization-table writes, is a lost trusted endpoint. The R20 final
+pass confirmed every protocol area green and conditioned Gate 0 PASS
+on four claim/documentation items — all four are applied (the last
+two: the "Server-storage disclosure" rename and D.6's guarantee in
+the reviewer's exact words). **The gate awaits the reviewer's PASS
+confirmation, nothing else.**
 Phase 98 (big rooms) was gated on fanout's membership layer and needs
 a re-sketch against this design before its own review.
 
