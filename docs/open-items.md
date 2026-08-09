@@ -70,8 +70,15 @@ revision answers all five — the era door is **removed** (recreation is
 the sole fork exit; a successor-anchor protocol would be its own phase),
 the canonical is frozen in the plan itself, `acked_era` became a
 self-fencing lease, the shed sender pauses loudly, and the backup merge
-is field-wise. **No slice lands until an independent re-review of that
-delta closes the gate again.**
+is field-wise. A second external review of that seventh revision
+([audits/security-phase-83-r11-review-2026-08-09.md](audits/security-phase-83-r11-review-2026-08-09.md))
+confirmed the cryptographic core but found two more blockers in the
+membership state machine — the acceptance predicate's manifest arm let a
+*removed founding member* keep passing, and nothing bound an admission's
+fingerprint to the runtime identity actually used — both frozen in the
+eighth revision as one `member_state` predicate plus the
+`authorized_fp`/`identity-mismatch` binding. **No slice lands until an
+independent re-review of the accumulated delta closes the gate again.**
 
 ## Phase 85 — operational logging
 

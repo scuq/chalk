@@ -1,11 +1,13 @@
 # Phase 83 — MSGSIG: envelope fanout
 
-**Status: the phase-83 plan — planned, not started; seventh revision.
-**Gate 0 re-opened** (fifth independent review, 2026-08-09): it passed at
-the sixth revision (eighth review, 2026-08-08), but the external review
-found five blockers at that state; this revision answers all of them and
-**no slice lands until an independent re-review of the delta closes the
-gate again**. Decided
+**Status: the phase-83 plan — planned, not started; eighth revision.
+**Gate 0 re-opened** and held open by two external reviews: the fifth
+independent review (2026-08-09, five blockers, answered in the seventh
+revision) and the R11 review (2026-08-09, of the seventh revision —
+two blockers, the receive predicate's manifest arm and the unfrozen
+fingerprint→runtime-identity binding, answered in this revision).
+**No slice lands until an independent re-review of the accumulated
+delta closes the gate again**. Decided
 2026-08-08: envelope fanout
 (formerly "option A" of `PHASE-83-MSGSIG-ALTERNATIVE.md`, this file's
 previous name) supersedes the original transcript design that lived at
@@ -132,6 +134,29 @@ decided 2026-08-09): recreation is the sole fork exit this phase.
 **Gate 0 stands re-opened for the changed text and passes again only
 on independent re-review of this delta; no slice lands before that.**
 
+An **R11 review** (2026-08-09, external, of the seventh revision —
+`docs/audits/security-phase-83-r11-review-2026-08-09.md`; findings
+`P83-A-R11-*`, its own numbering chosen clear of the reads above)
+confirmed the cryptographic core ("I would not redesign the
+envelope-fanout crypto based on this review") and the seventh
+revision's Gate-F lease, then found **two blockers in the membership
+state machine**: the sender-acceptance predicate's manifest arm lacked
+the send side's "with no chain yet" qualifier, so a *removed manifest
+member* passed acceptance forever — a one-word gap that restored
+post-removal authenticated injection for founding members exactly
+(P83-A-R11-01) — and the binding between the fingerprint an admission
+authorizes and the runtime identity actually used for DH/MAC/signature
+work was never frozen, leaving a compliant implementation free to use
+a server-fetched "current identity" (P83-A-R11-02). Plus one Low
+(duplicate membership predicates invite drift, R11-03) and two
+informationals (FS/PCS consequence and roster equivocation — both
+already stated, with an operational note and a wording caveat worth
+adopting). **This eighth revision incorporates all five** —
+dispositions below: §A.4 now freezes one `member_state` predicate
+consumed everywhere, the `authorized_fp` binding with the
+`identity-mismatch` typed result, and the identity-replacement
+transition. **The gate stays open pending independent re-review.**
+
 **Tag:** `#msgsig`.
 
 ---
@@ -219,6 +244,18 @@ all answered in this seventh revision:
 | P83-A-F5-04 (High) | The bytes every per-recipient MAC authenticates — the substance of H-01 — lived in git history and a deferred A-3 "re-freeze", not in the selected plan | §A.3 (the complete canonical envelope frozen in this document: conventions, identity-field definitions, the `0x01/0x02/0x03` field lists, absence encoding, caps, the three named fanout adaptations, the vector list; A-3 implements, it no longer decides) |
 | P83-A-F5-05 (High) | Scalar `rev` cannot converge two devices' concurrent same-anchor writes: benign sync races surface as permanent "write race" warnings, or a wholesale pick loses a monotonic latch | §A.7 (a field-wise same-anchor join: monotonic flag OR, ancestry-ordered policy latch, the tombstone derived from verified chains, verified floors by max; one merged record at `max(rev) + 1`; duplicate records survive only for a chain-confirmed genuine policy fork) |
 | Completion items | The pending-op record too thin to replay a create; the seventh/eighth-review files deleted while still linked; the header still said "passed" | §A.7 (the pending-op record persists the complete canonical create request); `docs/audits/` (both files restored, the fifth review committed); the status header (Gate 0 re-opened, re-review required) |
+
+R11 review (2026-08-09, external, of the seventh revision —
+`docs/audits/security-phase-83-r11-review-2026-08-09.md`), all
+answered in this eighth revision:
+
+| Finding | Was | Resolved in |
+|---|---|---|
+| P83-A-R11-01 (High) | The acceptance predicate read "manifest member OR chain ends in admit" while flap emission read "manifest member *with no chain yet*" — literally implemented, a removed manifest member passes acceptance forever, restoring the P83-A-R5-01 injection for founding members | §A.4 (one frozen `currently_admitted` predicate — the manifest entry is the implied root of a chain that does not exist yet, and any verified chain supersedes it entirely; both call sites now cite it; the six required vectors) |
+| P83-A-R11-02 (High) | Admissions authorize a fingerprint, but no rule bound it to the runtime identity used for DH/MAC/signature work — a compliant client could use a server-fetched "current identity", letting a malicious identity service substitute keys for unpinned members | §A.4 (`authorized_fp` — manifest fp until a chain supersedes it, else the latest admit's fp — checked with `verifyIdentitySelfSig` before every cryptographic use; the `identity-mismatch` typed result, never silent TOFU; the remove + re-admit identity-replacement transition) |
+| P83-A-R11-03 (Low) | The same membership question expressed independently at send and receive — the exact drift that produced R11-01 | §A.4 (`member_state` is one pure state-machine module with reference-model vectors in A-2; flap emission, acceptance, voice, guests, grants and actor authorization all consume it; nothing else computes membership) |
+| P83-A-R11-04 (Info) | No FS/PCS means X25519 compromise = full impersonation toward the victim; accurately disclosed, but recovery deserved prominence | §A.8 (the key-compromise row now states the only repair: identity replacement via §A.4's transition — passwords and sessions repair nothing) |
+| P83-A-R11-05 (Info) | `K_history` grants could read as grantor-signed; roster equivocation already accepted | §A.6 (grant authenticity stated as pairwise-deniable — a grantee could mint a grant to itself; no wording may imply a transferable grantor signature); §A.8 roster row unchanged |
 
 ---
 
@@ -540,7 +577,10 @@ accepted with receipt-time timestamps.
 ### Typed results and the envelope vectors
 
 Verification results: `authenticated-for-you` / `mismatch` / `forged` /
-`unpinned` / `granted` / `legacy` / `unauthorized-sender` (a valid tag
+`unpinned` / `granted` / `legacy` / `identity-mismatch` (the runtime
+identity fails §A.4's authorized-fingerprint binding — the fetched key
+is not the one the membership state admitted, or its self-sig fails) /
+`unauthorized-sender` (a valid tag
 from a never-admitted principal, or live delivery from one whose chain
 does not currently end in admit) / `former-member` (a valid tag from a
 once-admitted principal, first obtained by backfill — both per §A.5's
@@ -676,8 +716,10 @@ policy_cert: utf8("chalk-policy-cert.v1")
   || u8(old_mode) || u8(new_mode)
   || uuid16(actor) || h32(actor_admit_ref)   // zeros ONLY for the anchor owner
   || u8(auth_arm) || gov_record?
-policy_hash = SHA-256(canonical || sig64)    // validated against the actor's
-                                             // pinned key before hashing
+policy_hash = SHA-256(canonical || sig64)    // sig validated against the
+                                             // actor's §A.4-authorized
+                                             // identity (fingerprint +
+                                             // self-sig) before hashing
 ```
 
 **The policy artifact is complete** (P83-A-R3-02): authorization mirrors
@@ -758,8 +800,10 @@ conversion manifest replaced it.)
   `(channel, target)` persisted; chains ending below it are refused; two
   valid certs at one `(target, n)` = target-local fork → omit that flap,
   surface a per-target status, keep sending to everyone else.
-- A flap is added only for targets whose verified chain currently ends in
-  admit (or who are manifest members with no chain yet).
+- A flap is added only for targets that are `currently_admitted` per
+  the one frozen predicate below (P83-A-R11-01) — a verified chain
+  currently ending in admit, or a manifest member whose chain does not
+  exist yet — and not shed (§A.5).
 - Server storage: unique `(channel, target, n)`, idempotent identical
   re-append — race serialization, explicitly *not* a security mechanism.
 
@@ -769,6 +813,106 @@ view-local, one sender's flaps; TOFU first-fetch scopes to the admitter's
 pin; democratic certs record *authorized-member attestation to a
 server-reported outcome* — C-01 closure stated separately for
 dictator-authorized (cryptographic) and democratic (attested) transitions.
+
+### One membership predicate, one identity binding (P83-A-R11-01/02/03)
+
+**The predicate (R11-01, R11-03).** "Is this principal currently
+admitted?" was written twice — at flap emission ("chain ends in admit,
+or manifest member *with no chain yet*") and at sender acceptance
+("manifest member, or chain ends in admit") — and the one-word
+difference was a High blocker: read literally, the acceptance arm let
+a **removed manifest member** pass forever, because the manifest entry
+survives its own supersession. That re-opened exactly the post-removal
+injection P83-A-R5-01 exists to close, for the founding members
+specifically. The rule is therefore frozen **once**, as one pure
+function every consumer calls — never re-derived in prose or UI code:
+
+```
+member_state(channel, principal, verified_state) ∈
+  { CURRENT, CURRENT_SHED, FORMER, NEVER, FORKED, LAPSED_GUEST }
+
+currently_admitted(principal) =
+  a verified cert chain exists → that chain currently ends in admit,
+                                 evaluated under this section's
+                                 rollback, observed-removal and fork
+                                 latches
+  no chain exists              → principal is a manifest member
+  // the manifest entry is the IMPLIED ROOT of a chain that does not
+  // exist yet. The moment ANY verified chain exists for the
+  // principal, it supersedes the manifest entry entirely — the
+  // manifest is never a fallback past its own chain, and a removed
+  // manifest member is as removed as anyone.
+```
+
+Consumers — all of them, and only through this function: **flap
+emission** (`CURRENT` only — `CURRENT_SHED` withholds flaps per §A.5),
+**sender acceptance** (`CURRENT` or `CURRENT_SHED` — shed is never
+removal), **voice signal acceptance**, **guest handling**
+(`LAPSED_GUEST` per §A.5's expiry rules), **history-grant acceptance**,
+and **actor authorization** — the same function, evaluated over the
+state the caller must use: current verified state for send/accept, the
+referenced heads (`actor_admit_ref`, `policy_head`) for actor
+authority, which stays non-retroactive as frozen above. The §A.5
+live/backfill boundary maps onto its outputs: `NEVER` is
+`unauthorized-sender` on every path; `FORMER` is the alarm on live
+delivery and `former-member` on backfill. A-2 implements it as **one
+pure state-machine module with reference-model vectors**; nothing else
+in the client computes membership.
+
+**The identity binding (R11-02).** Certificates and the manifest
+authorize a *fingerprint*, not a UUID — `target_ed25519_fp` /
+`ed25519_fp` exist precisely because "user X is admitted" is
+meaningless without "as this key". What was never frozen is the check
+that the runtime identity actually *used* — for the flap DH, the MAC
+key, an actor's certificate signature, a grant seal, a voice signal —
+is the one the membership state authorized. Without it, a compliant
+implementation could fetch "the current identity for X" from the
+server and use it, letting a malicious identity service substitute a
+different first-seen key for an unpinned member even though the
+admission authenticated another fingerprint. Frozen:
+
+```
+authorized_fp(principal) =
+  the fingerprint of the latest effective admission state:
+    the manifest entry's ed25519_fp while no chain supersedes it,
+    else the latest valid admit's target_ed25519_fp
+
+before ANY cryptographic use of a principal's identity —
+flap emission, K_mac verification, actor signature validation,
+history-grant acceptance, voice acceptance:
+  SHA-256(identity.ed25519_public) == authorized_fp(principal)
+  AND verifyIdentitySelfSig(x25519_pub, ed25519_pub, self_sig)
+```
+
+A failure is the typed result **`identity-mismatch`** — surfaced like
+the identity-changed wall, **never silently absorbed as a fresh TOFU
+pin** — and it fails attribution closed without freezing anything
+else. The `trust.ts` pin remains what it is (continuity protection for
+unverified identities over time); the authorized fingerprint is the
+stronger, membership-anchored bound, and it wins wherever they
+disagree.
+
+**Identity replacement, defined (R11-02's transition item).** A member
+who regenerates their identity changes their fingerprint, and no
+silent path may rebind it. The transition is the existing machinery,
+not a new kind of artifact: an authorized actor issues **removal +
+re-admission** at the target's next two `n` (one "update identity"
+action in the UI), and the re-admit's `target_ed25519_fp` binds the
+new key. Until it lands, the member's new traffic is
+`identity-mismatch` — target-local, loud, freeze-free like any
+removal. Objects this device accepted under the old identity keep
+their assurance (directional, as everywhere). Guests never rotate: the
+guest identity is a pure function of the link secret (§A.8).
+
+**Vectors (A-2/A-4):** manifest member → removed → live injection
+(`unauthorized-sender`); the same object via backfill
+(`former-member`); manifest member → removed → re-admitted → accepted;
+manifest member with no chain → accepted; later admit → removed →
+rejected; a fetched identity whose fingerprint ≠ `authorized_fp`
+(`identity-mismatch`, no TOFU adoption); a correct Ed25519 fingerprint
+with a wrong X25519 or self-sig (`identity-mismatch`); an identity
+change under an active membership (mismatch until the re-admit lands,
+accepted after).
 
 ## A.5 Send, receive, objects, guests
 
@@ -854,7 +998,11 @@ concurrent-mint race, paused loudly until a slot opens — never a
 channel-wide freeze.
 
 **Receive:** own flap → DH → unwrap → decrypt → parse → derive
-`K_mac(claimed_sender→me)` from the pinned identity → recompute tag →
+`K_mac(claimed_sender→me)` from the identity bound by §A.4's
+authorized-fingerprint rule (fingerprint match + self-sig, else
+`identity-mismatch` — never the server's "current identity for X",
+and never a bare TOFU pin where an admission authorized a different
+key) → recompute tag →
 **sender acceptance (below)** → typed result; inner wins on mismatch.
 **The claimed sender is the canonical's sealed `sender_user_id`,
 nothing else** (the seventh review's provenance item): outer server
@@ -877,10 +1025,14 @@ therefore be checked where messages are **accepted**, not only where
 flaps are emitted:
 
 - a suite-2 object renders as current with full assurance only when the
-  claimed sender is a manifest member or a target whose verified chain
-  **currently ends in admit** — evaluated under §A.4's rollback,
-  observed-removal and fork latches, at the moment of first local
-  acceptance;
+  claimed sender is **`currently_admitted` per §A.4's one frozen
+  predicate** (P83-A-R11-01) — a verified chain currently ending in
+  admit, or a manifest member whose chain does not exist yet; **never**
+  a manifest entry surviving its own superseding chain, so a removed
+  manifest member is as removed as anyone — evaluated under §A.4's
+  rollback, observed-removal and fork latches, at the moment of first
+  local acceptance (a shed sender's chain still ends in admit —
+  `CURRENT_SHED` accepts);
 - anything else takes a flagged typed result — **`unauthorized-sender`**
   or **`former-member`**, split by the boundary below: attribution
   fails closed — surfaced, never silently rendered as a member's words
@@ -928,7 +1080,9 @@ flaps are emitted:
   never-admitted principal via backfill (`unauthorized-sender`);
   removal observed mid-session; a revoked guest re-using its admitted
   key; a server-relabeled outer sender (the MAC key follows the
-  canonical's `sender_user_id` only).
+  canonical's `sender_user_id` only); and §A.4's predicate/binding
+  family (the manifest-removal injections and the `identity-mismatch`
+  cases, listed there).
 
 This is a client-local check against chains the client already fetches
 and verifies — no round trip, no coordinator, no freeze; the stale-view
@@ -1080,6 +1234,12 @@ sealed chunk = nonce(12) || AES-256-GCM(K_history(grantor→grantee),
   line — *"History from before you joined was shared by <grantor>;
   original authorship is not independently verified for you."* Live
   post-admission messages carry normal assurance.
+- **Grant authenticity is pairwise-deniable like everything else**
+  (the R11 review's wording item): `K_history` is a secret both ends
+  hold, so a grantee could mint a valid grant addressed to itself —
+  "shared by <grantor>" asserts provenance *for the grantee*, exactly
+  the "authenticated for you" shape, and no UI or documentation
+  wording may imply a third-party-verifiable grantor signature.
 - Default: the admitting member auto-grants the recent fetch-history
   window; older ranges on demand; per-channel knob to disable.
 - **Legacy space keys are all-or-nothing**, and the subtype is frozen:
@@ -1394,7 +1554,7 @@ frozen fact rather than folklore.
 | Democratic tallies | authorized-member attestation to a server-reported outcome |
 | Deniability | "authenticated for you"; no moderator-verifiable evidence |
 | No FS / PCS | stated, accepted |
-| Key-compromise impersonation | the MACs are static-static, so compromise of a recipient's X25519 key lets its holder impersonate **every** sender to that recipient until the identity is replaced — the authenticity face of "the sender or the recipient produced it", distinct from the no-FS/PCS row's confidentiality loss; stated, accepted |
+| Key-compromise impersonation | the MACs are static-static, so compromise of a recipient's X25519 key lets its holder impersonate **every** sender to that recipient until the identity is replaced — the authenticity face of "the sender or the recipient produced it", distinct from the no-FS/PCS row's confidentiality loss; stated, accepted. **The only repair is identity replacement** — §A.4's remove + re-admit transition binding the new fingerprint; rotating passwords or sessions repairs nothing here (the R11 review's operational note) |
 | Fresh device, no backup | no legacy-key substitution ever (no-suite-1); but conversion is TOFU — a poisoned manifest can include a decrypting principal on that fresh view; backup restores protection; recreation for high assurance |
 | Room size | hard cap 64 at member-add; over-limit channels resolved at migration; the concurrent-mint race past the cap resolves by §A.5's deterministic shed |
 | Flagged-history path choice | the server picks live vs backfill, so an injection can present as `former-member` instead of the alarm; it can never reach member assurance (§A.5) |
@@ -1528,9 +1688,9 @@ not a larger cap."*
 | Slice | Content (dark until Gate F) |
 |---|---|
 | A-1 | Pairwise HKDF tree (incl. `K_history`); flaps; HMAC tags; frozen parser + full vectors; WebCrypto disposal rules |
-| A-2 | Anchors (converter/owner split) + manifest + `manifest_admit_ref` + complete policy artifacts + membership/guest certificates (`lookup16`, expiry rules): canonicals (`sig64`/`gov_record` conventions + mutation vectors), pure state machine, server tables (per-channel anchor CAS; `(channel,target,n)` and `(channel,p)` idempotency), rollback latches, policy-fork behavior + the monotonic removal latch (the `era` byte frozen at 1 — no door this phase, P83-A-F5-01) |
+| A-2 | Anchors (converter/owner split) + manifest + `manifest_admit_ref` + complete policy artifacts + membership/guest certificates (`lookup16`, expiry rules): canonicals (`sig64`/`gov_record` conventions + mutation vectors), pure state machine, server tables (per-channel anchor CAS; `(channel,target,n)` and `(channel,p)` idempotency), rollback latches, policy-fork behavior + the monotonic removal latch (the `era` byte frozen at 1 — no door this phase, P83-A-F5-01); the one `member_state`/`authorized_fp` module with its reference-model vectors (P83-A-R11-01/02/03) |
 | A-3 | The §A.3 canonical envelope, exactly as frozen in this plan (P83-A-F5-04 — encoders, total parser, the three adaptations, full vectors); verify policy; typed results incl. `granted` |
-| A-4 | Suite-2 send/receive; self-flap; the sender-acceptance rule (`unauthorized-sender`/`former-member`, the live/backfill boundary, canonical-only sender provenance, directional assurance) + its vectors; the first-seen replay rule; `key_version` exemptions per inventory |
+| A-4 | Suite-2 send/receive; self-flap; the sender-acceptance rule (`unauthorized-sender`/`former-member`, the live/backfill boundary, canonical-only sender provenance, directional assurance) consuming §A.4's one predicate and identity binding (`identity-mismatch` — P83-A-R11-01/02) + its vectors; the first-seen replay rule; `key_version` exemptions per inventory |
 | A-5 | Edits, reactions (sealed clear), attachments-in-envelope, voice pairwise sealing |
 | A-6 | Guests: `0x04` fragment form, guest certs, fragment-anchored verification; the atomic mint/revoke wire (advertised caps, absolute signed expiry, one-transaction storage, idempotent retry); cap accounting at mint + the deterministic overflow shed |
 | A-7 | Grantor-attested history: grant wire, storage/quota/expiry, auto-grant + paging + knob, `granted` UI |
@@ -1568,7 +1728,7 @@ The comparison that decided it:
 |---|---|---|---|
 | Departure freeze | until creator acts | seconds | none |
 | Creator crypto role | load-bearing | none | anchor signer only (once) |
-| Review state | 6 revisions, Gate 0 never passed | unreviewed delta | 10 reads + an external review series; passed at the sixth revision, **re-opened at the seventh — re-review pending** |
+| Review state | 6 revisions, Gate 0 never passed | unreviewed delta | 10 reads + two external reviews; passed at the sixth revision, **re-opened — re-review of the seventh/eighth delta pending** |
 | Membership | transcript (fork proofs) | transcript (fork proofs) | anchors + policy chain + per-target chains, rollback latch |
 | Deniability | no | no | **yes** ("authenticated for you") |
 | New-member history | as today | as today | grantor-attested (explicit, labelled) |
@@ -1579,8 +1739,10 @@ The comparison that decided it:
 The costs in the last three rows are accepted deliberately (§A.8): they
 buy the only deniable, freeze-free, coordinator-free design on the
 table. Gate 0 passed at the sixth revision after eight review rounds;
-the external fifth independent review re-opened it (2026-08-09) with
-five blockers, all answered in the seventh revision, whose delta
+two external reviews re-opened it (2026-08-09) — the fifth independent
+review's five blockers, answered in the seventh revision, and the R11
+review's two (the acceptance predicate's manifest arm, the unfrozen
+identity binding), answered in the eighth. The accumulated delta
 awaits independent re-review before any slice lands.
 
 ## Prior-art sources
