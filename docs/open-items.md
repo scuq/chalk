@@ -47,8 +47,9 @@ witness infrastructure (P83-A-R15-01). Rather than adopt consensus
 machinery or ship a half-claim, the claim went.
 
 The new plan in [phases/PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md)
-(**planned, not started** — needs its own review before slice 1) is
-deliberately small:
+(**in progress** — slice 83-1 landed 2026-08-09 after the R20 review
+conditioned Gate 0 PASS on four items, all in the sixth revision;
+slices 83-2 … 83-8 remain) is deliberately small:
 
 - **Signed sealed envelopes** — the phase-81 audit's H-01, still real:
   a canonical Ed25519-signed envelope (messages, edits, reactions)

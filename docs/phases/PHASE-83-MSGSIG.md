@@ -1,8 +1,10 @@
 # Phase 83 — MSGSIG: the signed sealed envelope
 
-**Status: planned, not started — a fresh design under the revised trust
-model (decided by scuq, 2026-08-09), superseding the envelope-fanout
-design in its entirety.** The fanout plan's final text (twelve
+**Status: in progress — slice 83-1 landed 2026-08-09 (scuq opened
+implementation on the R20-conditioned pass, all four of its items
+being complete in the sixth revision). A fresh design under the
+revised trust model (decided by scuq, 2026-08-09), superseding the
+envelope-fanout design in its entirety.** The fanout plan's final text (twelve
 revisions) is preserved in git history at `731eac5`; its external audit
 trail lives on in `docs/audits/` (the fifth and sixth independent
 reviews, and the R11–R14 delta series). This document replaces it and
@@ -612,7 +614,7 @@ half-claimed. L-01 — unchanged, separate account-recovery work.
 
 | Slice | Content |
 |---|---|
-| 83-1 | Canonical envelope: encoders (exported helpers + `uuid16`), sign/verify, typed results, total parser, full mutation/replay vector suite |
+| 83-1 | Canonical envelope: encoders (exported helpers + `uuid16`), sign/verify, typed results, total parser, full mutation/replay vector suite — **landed 2026-08-09** (`web/src/crypto/envelope.ts`; see the slice record below) |
 | 83-2 | Send/receive integration: sign-then-seal, verify-fail-closed rendering incl. `unsigned` legacy label, replay dedup store (`idb.ts` bump), send-flow reorder |
 | 83-3 | Append-only edits: `message_revisions` migration + atomic edit transaction, `fetch_revisions`, client ancestry classification; signed sealed reaction clears (delete the unencrypted-clear branch) |
 | 83-4 | Identity generations: the `chalk-idgen.v1` chain cert minted at rotation (R16-1), `(user_id, ed25519_fp)` fetch incl. retired + certs, chain-to-pin verification, `verified-former-identity` labelling, the chain-break wall |
@@ -623,6 +625,44 @@ half-claimed. L-01 — unchanged, separate account-recovery work.
 
 Each slice is independently verifiable; 83-1 through 83-4 and 83-7 are
 pure client (plus one migration); 83-5/83-6 touch chalkd and chalkctl.
+
+## Slice record
+
+**83-1 (landed 2026-08-09)** — `web/src/crypto/envelope.ts` +
+`envelope.test.ts`; the five canonical-encoding helpers exported from
+`spacekey.ts` unchanged. Two points D.1 left open were frozen here and
+now bind every later slice:
+
+- **The identity fingerprint**: `ed25519_fp = SHA-256(raw 32-byte
+  Ed25519 public key)`, no domain prefix — it is an identifier, not a
+  signed statement; every canonical embedding it is itself
+  domain-prefixed. This is the value 83-4's `(user_id, ed25519_fp)`
+  lookup and the idgen chain must reproduce byte-for-byte, so the Go
+  side implements exactly this.
+- **Parser-level structural invariants** (violations are `malformed`,
+  enforced by encoder *and* parser so no well-formed-but-invalid
+  envelope exists): required uuids non-nil; key versions ≥ 1;
+  u64 fields ≤ 2^53−1 on both encode and parse (two clients must
+  never disagree on a value JS cannot represent); bodies strict
+  UTF-8; an edit's sender equals its target sender (the "only the
+  author edits" boundary sits in the parse, so a violating envelope
+  can never apply); a reply's parent triple is all-or-nothing, and a
+  parent hash without a triple is refused; attachment `byte_len ≥ 1`;
+  emoji 1–32 bytes; an *explicit* all-zero h32/uuid where a value is
+  required is refused (absent is expressed as null → zeros, never the
+  reverse). Per D.4 a malformed body renders `unsigned` like legacy —
+  only the sender can produce one, the seal guarantees that — but the
+  parser keeps `legacy` and `malformed` distinct for tests and
+  diagnostics.
+
+The test suite asserts the frozen 0x01 layout byte-for-byte against an
+independent hand-built encoder, and covers every slice-1 vector from
+D.1: per-field mutation across all three types, raw byte-flip sweep,
+cross-object/cross-channel confusion, truncation, trailing bytes,
+absent-vs-zero, oversize caps, wrong-size signatures,
+retired-generation labelling, foreign fingerprints, frame relabeling
+(`mismatch`, inner wins), unpinned/resolver-failure, and the
+replay-triple identity for all three types.
 
 ## The decision record (2026-08-09)
 

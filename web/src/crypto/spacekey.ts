@@ -584,6 +584,12 @@ async function decMsgV1(
 }
 
 // ---- shared internals ---------------------------------------------------
+//
+// 83-1: utf8 / concat / writeU32BE / lengthPrefixed / bytesEqual are EXPORTED:
+// they are the canonical-encoding primitives this file froze for wrap
+// signatures, and phase 83's signed envelope (crypto/envelope.ts) is specified
+// to reuse exactly these rather than restate them. Their behaviour is
+// load-bearing for injectivity; do not change it, add new helpers instead.
 
 async function hkdfWrapKey(shared: ArrayBuffer, usages: KeyUsage[]): Promise<CryptoKey> {
   const base = await crypto.subtle.importKey("raw", shared, "HKDF", false, ["deriveKey"]);
@@ -614,14 +620,14 @@ function randomNonce(): Uint8Array {
   return n;
 }
 
-function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
+export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
   const out = new Uint8Array(a.length + b.length);
   out.set(a, 0);
   out.set(b, a.length);
   return out;
 }
 
-function writeU32BE(buf: Uint8Array, offset: number, n: number): void {
+export function writeU32BE(buf: Uint8Array, offset: number, n: number): void {
   buf[offset] = (n >>> 24) & 0xff;
   buf[offset + 1] = (n >>> 16) & 0xff;
   buf[offset + 2] = (n >>> 8) & 0xff;
@@ -629,14 +635,14 @@ function writeU32BE(buf: Uint8Array, offset: number, n: number): void {
 }
 
 /** lengthPrefixed returns u32be(x.length) || x -- the injectivity primitive. */
-function lengthPrefixed(x: Uint8Array): Uint8Array {
+export function lengthPrefixed(x: Uint8Array): Uint8Array {
   const out = new Uint8Array(4 + x.length);
   writeU32BE(out, 0, x.length);
   out.set(x, 4);
   return out;
 }
 
-function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
     if (a[i] !== b[i]) return false;
@@ -644,6 +650,6 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
-function utf8(s: string): Uint8Array {
+export function utf8(s: string): Uint8Array {
   return new TextEncoder().encode(s);
 }
