@@ -188,8 +188,27 @@ status is unchanged: planned, not started.
 
 The full chain — `go build ./... && go vet ./... && gofmt -l .`,
 `go test ./...`, and from `web/`: `npx tsc --noEmit`, `node test.mjs`,
-`node build.mjs` — plus a live two-user run through the `run-chalk` skill,
-whose steps are the eleven in the phase-99 plan: quote across users, the pref
-off and on, nesting, mentions and marks inside a quote, gif and snippet rows,
-splicing into a half-written draft, quoting twice, the thread composer, the
-phone viewport, and the `(edited)` placement above.
+`node build.mjs`.
+
+**Ran live**, three users (two desktop, one on an iPhone 14 profile) in one
+channel, through the `run-chalk` skill, 9 August 2026 — 11 checks, no page
+errors:
+
+- The row menu offers **quote**, and the draft it produces starts
+  `> alice wrote:` with every line prefixed and a blank line under it.
+- With the pref **off** the sent message shows the literal `> ` characters;
+  turning it **on** renders the same message as a quote block and the markers
+  disappear from the text.
+- Quoting a quote produces `> > ` and renders two nested levels.
+- Splicing into a half-written draft keeps what was already typed.
+- On the phone the block renders with its rule inside the narrow body column,
+  and **quote** is reachable from the touch row menu.
+
+Two frames were captured for the pull request: the desktop one with rendered
+quotes in the feed and a live quote sitting in the composer, and the phone
+one. They are **not** in `docs/screenshots/` — those three are the README's
+and `readme-shots.mjs` regenerates them together.
+
+Still unexercised by any run: the gif and snippet menu gates (asserted in
+`quote.test.ts` instead), and the `(edited)` placement under
+[Left open](#left-open).
