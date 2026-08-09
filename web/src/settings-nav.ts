@@ -134,6 +134,8 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       "bold",
       "italic",
       "inline code",
+      "quote",
+      "blockquote",
     ],
   },
   {

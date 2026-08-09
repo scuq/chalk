@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitBodyNano, stripNanoMarks } from "./nanomd.ts";
+import { splitBodyBlocks, splitBodyNano, stripNanoMarks } from "./nanomd.ts";
+import { QUOTE_MAX_DEPTH, quoteDepth, stripQuote } from "./quote.ts";
 import { splitBodyParts } from "./links.ts";
 import { selectChatPrefs } from "../state/types.ts";
 
@@ -191,4 +192,66 @@ test("the pref is off until someone asks for it", () => {
 test("stripNanoMarks drops the markers and keeps the words", () => {
   assert.equal(stripNanoMarks("**a *b* `c`**", known), "a b c");
   assert.equal(stripNanoMarks("2 * 3 * 4", known), "2 * 3 * 4");
+});
+
+// 99-2: the block layer. `b` gives one entry per block as
+// "<depth>:<joined text>", which is the shape MessageBody renders.
+const b = (body: string) =>
+  splitBodyBlocks(body, known).map((k) => `${k.depth}:${k.parts.map((p) => p.text).join("")}`);
+
+test("a body with no quote line is one block at depth 0", () => {
+  assert.deepEqual(b("just talking"), ["0:just talking"]);
+  assert.deepEqual(b("two\nlines"), ["0:two\nlines"]);
+  // And it is the same inline split the non-block path produces, so the
+  // renderer's fast path and this one can never disagree about a plain body.
+  assert.deepEqual(splitBodyBlocks("a *b* c", known)[0].parts, splitBodyNano("a *b* c", known));
+});
+
+test("a run of quoted lines is one block, markers gone", () => {
+  assert.deepEqual(b("> alice wrote:\n> hello"), ["1:alice wrote:\nhello"]);
+});
+
+test("quoted and plain runs alternate, and the joining newline is dropped", () => {
+  // The dropped "\n" is load-bearing: the caller renders each block as a
+  // block-level element under white-space: pre-wrap, so keeping it would put
+  // a blank line above every quote.
+  assert.deepEqual(b("before\n> quoted\nafter"), ["0:before", "1:quoted", "0:after"]);
+});
+
+test("depth nests, and stops at the cap with the rest left literal", () => {
+  assert.deepEqual(b("> a\n> > b"), ["1:a", "2:b"]);
+  // Six markers, four levels: the cap nests four and the two it will not
+  // nest stay literal text, rather than being eaten on the way past.
+  assert.deepEqual(b(">".repeat(6) + "x"), [`${QUOTE_MAX_DEPTH}:>>x`]);
+});
+
+test("inline marks, mentions and links still work inside a quote", () => {
+  const parts = splitBodyBlocks("> *hi* @alice https://x.example/p", known)[0].parts;
+  assert.equal(parts.some((p) => p.italic), true);
+  assert.equal(parts.some((p) => p.handle === "alice"), true);
+  assert.equal(parts.some((p) => p.href === "https://x.example/p"), true);
+});
+
+test("a '>' that is not at the start of a line is ordinary text", () => {
+  assert.deepEqual(b("2 > 1"), ["0:2 > 1"]);
+  assert.deepEqual(b("a\n b > c"), ["0:a\n b > c"]);
+});
+
+test("no text is lost by the block split, only the markers", () => {
+  // Newlines are excluded from the comparison because whether one survives
+  // depends on whether it fell inside a run or between two; everything else
+  // a sender wrote has to come out the other side.
+  const peel = (line: string) => {
+    let out = line;
+    for (let d = quoteDepth(line); d > 0; d--) out = stripQuote(out);
+    return out;
+  };
+  for (const body of ["> a\nb", ">\n> x", "> > deep", "a\n>b\nc", ">", ">>>>>>x"]) {
+    const got = splitBodyBlocks(body, known)
+      .flatMap((k) => k.parts.map((p) => p.text))
+      .join("")
+      .replace(/\n/g, "");
+    const want = body.split("\n").map(peel).join("");
+    assert.equal(got, want, JSON.stringify(body));
+  }
 });

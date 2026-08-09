@@ -27,7 +27,8 @@ import { decideCodeRender } from "../code/code";
 import { clipboardText } from "../chat/bodytext";
 import { DEFAULT_SELF_HUE, nickTintStyle, resolveNickHue } from "../chat/nickcolor";
 import { linkDisplayText, splitBodyParts } from "../chat/links";
-import { splitBodyNano, type NanoPart } from "../chat/nanomd";
+import { splitBodyBlocks, splitBodyNano, type NanoPart } from "../chat/nanomd";
+import { hasQuoteLine } from "../chat/quote";
 import { fmtRelative } from "../chat/reltime";
 import { senderCardInfo } from "../chat/hovercard";
 import { HOVER_CARD_DELAY_MS, PersonCard, useHoverCard } from "./HoverCard";
@@ -57,6 +58,12 @@ const CodeBlockView = lazyComponent(() =>
 // characters and hands back substrings; the <code>/<strong>/<em> around a
 // piece are elements this function creates, never markup parsed out of a
 // message.
+//
+// 99-2: quoted lines add the one block construct. splitBodyBlocks hands back
+// runs of lines at a quote depth, and the depth becomes N nested spans this
+// function creates -- still nothing parsed out of a message. The span is
+// display:block rather than a <blockquote> because this all renders inside
+// <span class="chalk-message-body">, which has to stay a valid inline tree.
 const marked = (seg: NanoPart) => !!(seg.code || seg.bold || seg.italic);
 
 function MessageBody({
@@ -72,6 +79,21 @@ function MessageBody({
   shortenLinks?: boolean;
   nanoMarkdown?: boolean;
 }) {
+  if (nanoMarkdown && hasQuoteLine(body)) {
+    return (
+      <>
+        {splitBodyBlocks(body, known).map((block, i) => {
+          let out: ComponentChildren = (
+            <RenderParts parts={block.parts} ownHandle={ownHandle} shortenLinks={shortenLinks} />
+          );
+          for (let d = 0; d < block.depth; d++) {
+            out = <span class="chalk-body-quote">{out}</span>;
+          }
+          return <Fragment key={i}>{out}</Fragment>;
+        })}
+      </>
+    );
+  }
   const segments: NanoPart[] = nanoMarkdown
     ? splitBodyNano(body, known)
     : splitBodyParts(body, known);
@@ -83,10 +105,22 @@ function MessageBody({
   ) {
     return <>{body}</>;
   }
+  return <RenderParts parts={segments} ownHandle={ownHandle} shortenLinks={shortenLinks} />;
+}
+
+function RenderParts({
+  parts,
+  ownHandle,
+  shortenLinks,
+}: {
+  parts: NanoPart[];
+  ownHandle?: string | null;
+  shortenLinks?: boolean;
+}) {
   const me = ownHandle ? ownHandle.toLowerCase() : null;
   return (
     <>
-      {segments.map((seg, i) => {
+      {parts.map((seg, i) => {
         // 67-1: a long URL's visible text collapses to "link to <host>";
         // href and title keep the full address, so hover and the native
         // "copy link address" stay honest.

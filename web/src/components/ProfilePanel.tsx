@@ -930,12 +930,12 @@ export function ProfilePanel({
                   <span>nano markdown</span>
                 </label>
                 <p class="chalk-profile-hint">
-                  *asterisks* become italic, **two** become bold, and
-                  `backticks` become fixed-width code. three markers, nothing
-                  else — no headings, lists or link syntax. this only changes
-                  what you read: your own typing is never altered, and the
-                  people you write to see the plain characters unless they
-                  turn this on too.
+                  *asterisks* become italic, **two** become bold,
+                  `backticks` become fixed-width code, and lines starting
+                  with &gt; become a quote. nothing else — no headings, lists
+                  or link syntax. this only changes what you read: your own
+                  typing is never altered, and the people you write to see
+                  the plain characters unless they turn this on too.
                 </p>
               </div>
               {onSetUserColors && (

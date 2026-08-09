@@ -1,4 +1,9 @@
-// 77-1: nano markdown -- `code`, **bold** and *italic*, and nothing else.
+// 77-1: nano markdown -- `code`, **bold** and *italic*.
+//
+// 99-2: and one block construct, quoted lines, added by splitBodyBlocks at
+// the bottom of this file. Everything between here and there is the inline
+// scan, which quoting did not touch: it still sees one run of lines at a
+// time and still knows nothing about "> ".
 //
 // This is a receive-side, opt-in reading aid. Nothing here runs on the send
 // side: the composer never rewrites or previews anything, so the literal
@@ -37,6 +42,7 @@
 //       plain text for the majority to serve the minority.
 
 import { findLinks, splitBodyParts, type BodyPart } from "./links";
+import { QUOTE_MAX_DEPTH, hasQuoteLine, splitQuoteRuns } from "./quote";
 
 /** One piece of a body, ready to render: the plain/mention/link piece
  *  chat/links.ts produces, plus the marks wrapped around it. */
@@ -265,6 +271,51 @@ export function splitBodyNano(body: string, known: Set<string>): NanoPart[] {
   const parts: NanoPart[] = [];
   for (const chunk of merge(chunks)) emitChunk(body, chunk, code, known, parts);
   return parts;
+}
+
+/** One block of a body: a run of lines at the same quote depth, already
+ *  split into inline pieces. Depth 0 is ordinary prose. */
+export interface NanoBlock {
+  depth: number;
+  parts: NanoPart[];
+}
+
+/** 99-2: the body as blocks, honouring quoted lines on top of the three
+ *  inline marks.
+ *
+ * A layer ABOVE splitBodyNano, not a change to it. The inline scan is
+ * per-line by construction (R0) and merge() joins chunks across newlines, so
+ * a block flag threaded through it would have to survive a merge that is
+ * deliberately blind to line boundaries. Splitting into runs first and
+ * handing each run to the unchanged scanner keeps both jobs simple, and
+ * costs one extra pass over the lines on the bodies that have a "> " in them
+ * at all.
+ *
+ * The newline that SEPARATES two blocks is dropped: the caller renders each
+ * block as a block-level element, which supplies that break itself, and
+ * .chalk-message-body is white-space: pre-wrap, so keeping it would show as a
+ * blank line above every quote. Newlines *inside* a run are kept. */
+export function splitBodyBlocks(body: string, known: Set<string>): NanoBlock[] {
+  if (!hasQuoteLine(body)) return [{ depth: 0, parts: splitBodyNano(body, known) }];
+  return blocksOf(body.split("\n"), 0, known);
+}
+
+function blocksOf(lines: string[], depth: number, known: Set<string>): NanoBlock[] {
+  // The cap is checked BEFORE splitting, not after: splitQuoteRuns strips a
+  // level as it groups, so testing it on the way out would eat one marker
+  // more than it nested and leave the deepest quote a ">" short.
+  if (depth >= QUOTE_MAX_DEPTH) {
+    return [{ depth, parts: splitBodyNano(lines.join("\n"), known) }];
+  }
+  const out: NanoBlock[] = [];
+  for (const run of splitQuoteRuns(lines)) {
+    if (run.quoted) {
+      out.push(...blocksOf(run.lines, depth + 1, known));
+      continue;
+    }
+    out.push({ depth, parts: splitBodyNano(run.lines.join("\n"), known) });
+  }
+  return out;
 }
 
 /** The body as it reads with the markers applied but no styling available --
