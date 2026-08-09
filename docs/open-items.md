@@ -87,8 +87,32 @@ construction — both frozen in the ninth revision: a state-relative
 `authorized_fp_current`/`authorized_fp_at` split with a
 fingerprint-keyed historical identity fetch, and owner identity
 replacement declared unsupported this phase (recreate the channel).
-**No slice lands until an independent re-review of the accumulated
-delta closes the gate again.**
+The R13 delta review
+([audits/security-phase-83-r13-review-2026-08-09.md](audits/security-phase-83-r13-review-2026-08-09.md))
+verified those closed and found the fix's own two blockers — the
+owner's zero `actor_admit_ref` had no resolver arm, and messages and
+grants sealed no historical identity reference at all, so a sender's
+legitimate rotation broke first-fetch verification of their entire
+history — both frozen in the tenth revision: the `(actor, ref)`
+resolver with the owner arm, `actor_admit_ref` in every suite-2
+canonical, `grantor_admit_ref` in both grant canonicals, and the
+four-step verify-then-authorize order. The sixth independent review
+([audits/security-phase-83-option-a-sixth-review-2026-08-09.md](audits/security-phase-83-option-a-sixth-review-2026-08-09.md),
+of the ninth revision — two of its four blockers had already converged
+with R13's fixes) found the deepest hole yet: per-target chains gave no
+authenticated order *between* targets, so a removed member plus the
+server could plant an admission on fresh devices via fetch order. The
+eleventh revision answers it with the membership-control chain (every
+control artifact seals `prev_control_head`; one CAS-serialized order
+per channel; messages never behind it), fixes the edit/reaction replay
+fields, replaces the backup's LWW commit with immutable generations +
+a conditional head (the "do not add locking" note retracted), adds the
+`former-identity` verdict and rotation backup-rekey, and freezes the
+policy-fork record key. **Two release dependencies are now explicit:
+the assisted owner-recreation (break-glass) flow must exist before the
+identity-replacement UI ships at Gate F, and backup rekey rides the
+rotation action. No slice lands until an independent re-review of the
+accumulated delta closes the gate again.**
 
 ## Phase 85 — operational logging
 

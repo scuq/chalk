@@ -1,16 +1,20 @@
 # Phase 83 — MSGSIG: envelope fanout
 
-**Status: the phase-83 plan — planned, not started; ninth revision.
-**Gate 0 re-opened** and held open by three external reviews: the
+**Status: the phase-83 plan — planned, not started; eleventh revision.
+**Gate 0 re-opened** and held open by five external reviews: the
 fifth independent review (2026-08-09, five blockers → seventh
-revision), the R11 review (2026-08-09, two membership-state-machine
-blockers → eighth revision, and it verified R11-01/02/03 closed
-there), and the R12 delta review (2026-08-09, of the eighth revision —
-two blockers *in the eighth revision's own identity-replacement text*,
-the temporally ambiguous fingerprint resolver and the impossible owner
-replacement, answered in this revision). **No slice lands until an
-independent re-review of the accumulated delta closes the gate
-again**. Decided
+revision), the R11 review (two membership-state-machine blockers →
+eighth), the R12 delta review (two blockers in the replacement text →
+ninth, R11's verified closed), the R13 delta review (the owner's
+unresolvable zero ref + the missing admission references in messages
+and grants → tenth, R12's verified closed), and the **sixth
+independent review** (2026-08-09, of the ninth revision at `7dbdcb31`
+— four blockers `P83-A-F6-01 … 04`, two of which — F6-02's core and
+the owner-zero resolver — the then-uncommitted tenth revision had
+independently already fixed via R13; the rest, above all the
+cross-target ordering hole, answered in this revision). **No slice
+lands until an independent re-review of the accumulated delta closes
+the gate again**. Decided
 2026-08-08: envelope fanout
 (formerly "option A" of `PHASE-83-MSGSIG-ALTERNATIVE.md`, this file's
 previous name) supersedes the original transcript design that lived at
@@ -182,6 +186,61 @@ own future phase. **This ninth revision incorporates both** —
 dispositions below; the gate stays open pending the reviewer's
 proposed focused §A.4/§A.5 re-read.
 
+An **R13 delta review** (2026-08-09, external, of the ninth revision —
+`docs/audits/security-phase-83-r13-review-2026-08-09.md`) **verified
+R12-01/02 closed** and found the fix's own two blockers, both temporal
+bindings again, neither cryptographic. P83-A-R13-01: certificates
+encode `actor_admit_ref = zeros` for the anchor owner, and
+`authorized_fp_at` had no zeros arm — a literal implementation could
+not validate any owner-signed certificate; the resolver now takes
+`(actor, ref)`, maps the zero ref to `anchor.owner_ed25519_fp` **iff**
+the actor is the anchor owner, and rejects a zero ref from anyone
+else. P83-A-R13-02, the important one: certificates learned to name
+their historical signer but *messages and grants did not* — no
+`actor_admit_ref` in the message canonical, no `grantor_admit_ref` in
+the grant canonicals — so a sender's legitimate rotation made their
+entire history unverifiable (and grants undecryptable) on first fetch
+by a fresh device, with no server-safe repair (asking the server which
+retired identity to use hands it the choice). Every suite-2 object now
+seals `actor_admit_ref` (fanout adaptation 4) and both grant
+canonicals seal `grantor_admit_ref`; the reference is key selection
+inside the MAC'd canonical — verification, never authorization, so
+deniability and the R11 removal semantics are untouched, and the
+four-step order (resolve identity → verify MAC → evaluate
+`member_state` → classify) is frozen in §A.5. **This tenth revision
+incorporates both**; the gate stays open, the next review scoped to
+the added references and their interaction with removal/re-admission.
+
+A **sixth independent review** (2026-08-09, external —
+`docs/audits/security-phase-83-option-a-sixth-review-2026-08-09.md`,
+of the ninth revision at `7dbdcb31`; it had not seen the tenth) found
+four blockers, `P83-A-F6-01 … 04`. Two converged exactly with R13,
+already fixed in the tenth revision — F6-02's admission references in
+messages and grants, and the owner-zero resolver arm — independent
+confirmation those fixes were the right shape; F6-02's remainder (the
+distinct `former-identity` verdict; backup rekey on rotation) lands
+here. The genuinely new findings: **F6-01** (Critical) — per-target
+chains gave no authenticated order *between* targets, so a removed
+actor plus the server could serve a fresh device a
+post-removal-minted admission before the removal and have it stick;
+answered with the **membership-control chain** (decided 2026-08-09
+over backup-heads-only and checkpoints): every control artifact seals
+`prev_control_head`, one CAS-serialized total order per channel,
+authority evaluated at control position — fetch-order-independent on
+every device, messages never behind it. **F6-03** — edits and
+reactions lacked the replay fields the frozen replay rule demanded
+(adaptation 5: uniform `(actor, writer_scope, client_msg_id)` triple
+in all three types). **F6-04** — the backup commit rode a
+last-write-wins prefs key, so a concurrent acked repack could be
+silently discarded; the eighth review's Note 3 ("do not add locking")
+is **retracted**, the a/b double buffer replaced by immutable
+per-generation namespaces with a conditional (CAS) commit head.
+Completion items: the policy-fork record key frozen as
+`(channel, anchor_hash, policy_head)`; the assisted owner-recreation
+flow recorded as an explicit Gate-F release dependency. **This
+eleventh revision incorporates all of it**; the gate stays open
+pending independent re-review of the accumulated delta.
+
 **Tag:** `#msgsig`.
 
 ---
@@ -290,6 +349,30 @@ R11-01/02/03 closed), both findings answered in this ninth revision:
 |---|---|---|
 | P83-A-R12-01 (High) | `authorized_fp` resolved only the *latest* effective admission, while actor authority is frozen non-retroactive — after a rotation, historical certificates signed under A1 would verify against A2 and fail `identity-mismatch`, retroactively destroying legitimate authority chains on fresh devices | §A.4 (the resolver is state-relative: `authorized_fp_current` for live traffic, `authorized_fp_at(actor_admit_ref)` for authority artifacts — one temporal model with the authority rule; a frozen `(user_id, ed25519_fp)` historical identity lookup in A-2, the store's retired generations already existing; the rotation-history vector) |
 | P83-A-R12-02 (High) | The replacement transition (remove + re-admit) is impossible for the owner: the anchor bakes in `owner_ed25519_fp`, removal is prohibited (`ErrCannotRemoveOwner`, governance too), and F5-01 removed successor anchors — a contradiction, not a path | §A.4 (owner identity replacement is explicitly **unsupported this phase — recreate the channel**, surfaced as such; no owner-rotation artifact is invented, the security-root transition stays a future phase); §A.8 (the key-compromise row reworded per the review) |
+
+R13 delta review (2026-08-09, external, of the ninth revision —
+`docs/audits/security-phase-83-r13-review-2026-08-09.md`; it verified
+R12-01/02 closed), both findings answered in this tenth revision:
+
+| Finding | Was | Resolved in |
+|---|---|---|
+| P83-A-R13-01 (High) | `actor_admit_ref = zeros` is the frozen encoding for the anchor owner, but `authorized_fp_at` defined no zeros arm — owner-signed policy/member/guest certificates were unverifiable under the new resolver | §A.4 (`authorized_fp_at(actor, ref)` — the actor joins the signature because zeros alone identifies nothing; the zero arm returns `anchor.owner_ed25519_fp` iff actor == anchor owner, `malformed` for anyone else; admit refs must name the actor as target; the four owner-arm vectors) |
+| P83-A-R13-02 (High) | Certificates sealed their historical signer, but messages and grants did not — after a legitimate rotation, every earlier message MAC-failed on first fetch (`K_mac` derived from the rotated identity) and every stored grant became undecryptable, with no server-safe repair | §A.3 (fanout adaptation 4: `h32(actor_admit_ref)` in all three object types, one field, one rule); §A.6 (`grantor_admit_ref` in both grant canonicals, matching the grantee ref that always existed); §A.5 (the frozen four-step order — resolve identity via the ref, verify MAC, evaluate `member_state`, classify — verification never authorization, full current assurance requires ref == current admission, deniability and the R11 semantics untouched) |
+
+Sixth independent review (2026-08-09, external, of the ninth revision
+at `7dbdcb31` —
+`docs/audits/security-phase-83-option-a-sixth-review-2026-08-09.md`;
+its F6-02 core and owner-zero item had already been fixed by the
+then-uncommitted tenth revision via R13 — independent convergence),
+all remaining findings answered in this eleventh revision:
+
+| Finding | Was | Resolved in |
+|---|---|---|
+| P83-A-F6-01 (Critical) | Per-target chains had no authenticated order between targets: a removed Alice, keeping her key, could sign a Mallory-admit referencing her old valid admission, and a fresh/restored device served it before her removal accepts it durably — restore outcome hung on server-selected fetch order | §A.4 (**the membership-control chain**: every control artifact seals `h32(prev_control_head)`, one server-CAS'd total order per channel; authority evaluated at control position, so a post-removal mint cannot chain before the removal on any device in any order; control forks = the policy-fork rules; the control floor in the §A.7 record; truncation stays the stated prefix-only residual; messages never serialize behind it) |
+| P83-A-F6-02 (High) | Core already fixed (R13-02, tenth revision). Remainder: no distinct verdict for a valid retired-identity object (`former-member` misdescribes a still-current, rotated sender), and identity replacement orphaned the scalar-derived backup | §A.3/§A.5 (**`former-identity`** — the frozen joint classification table: the most any retired-key object can obtain, never current, never an attributed forgery); §A.4/§A.7 (rotation repacks `channel_security_enc` under the new scalar's key inside the same "update identity" action; a crash reads as absent, never corrupt) |
+| P83-A-F6-03 (High) | `0x02`/`0x03` carried no `writer_scope`/`client_msg_id` while the frozen replay rule keyed every object by them — unimplementable as written, and reactions' `actor_user_id` didn't even match the triple's field name | §A.3 (adaptation 5: both fields in edits and reactions; the uniform `(actor, writer_scope, client_msg_id)` triple; identical first-seen/duplicate/retry semantics for all three types; replay-under-new-server-id vectors for all three) |
+| P83-A-F6-04 (High) | The commit key rode the LWW prefs store — two acked concurrent repacks, one silently discarded; the field-wise join never sees a record the storage dropped, and the "self-heals, do not add locking" note assumed the loser survives | §A.7 (**Note 3 retracted**; immutable per-generation page namespaces + a conditional commit head — a dedicated row CAS'd on the one plaintext `repack_seq`; losers fetch, join, retry under a fresh generation; GC keeps new + previous; the five sixth-review tests) |
+| Completion items | Owner-zero resolver (already fixed, R13-01); the policy-fork record key stated but absent from key/sort; bare "recreate the channel" not a usable owner recovery | §A.7 (fork-record key frozen `(channel, anchor_hash, policy_head)`, in the writer's sort); §A.4 + `docs/open-items.md` (the assisted one-action recreation flow is an explicit Gate-F release dependency — without it the owner-replacement UI stays hidden) |
 
 ---
 
@@ -509,7 +592,7 @@ from it. `sender_ts` — the sender's clock, display only (§A.8). The
 durable object identity is `(sender_user_id, writer_scope,
 client_msg_id)` — the replay triple above, sealed in the canonical.
 
-**The three fanout adaptations** (each frozen; violating any is
+**The five fanout adaptations** (each frozen; violating any is
 `malformed`):
 
 1. **`key_version` is `0`.** Suite 2 has no space-key context — the
@@ -521,12 +604,47 @@ client_msg_id)` — the replay triple above, sealed in the canonical.
    fanout, so both are permanently zero; nonzero is `malformed`.
 3. **`att_binding` gains the attachment key.** §A.5's per-attachment
    random keys ride the envelope, so each binding appends
-   `att_key(32)` — the one field fanout adds.
+   `att_key(32)`.
+4. **Every object seals its actor's admission reference
+   (P83-A-R13-02).** `h32(actor_admit_ref)` follows the actor identity
+   field in all three types — `sender_user_id` for messages and edits,
+   `actor_user_id` for reactions; one name, one semantic rule. It is
+   the sender's **own effective admission at send time**: their
+   `manifest_admit_ref` while no chain supersedes it, else their
+   current admit `cert_hash` (zeros never valid here — every sender,
+   the anchor owner included, has a manifest entry or a chain; §A.4's
+   zero arm is for certificate actors only). It exists because the
+   pairwise MAC key is a function of *which identity generation* sent:
+   without it, a sender's later legitimate rotation makes every
+   earlier message unverifiable on first fetch (the recipient would
+   derive `K_mac` from the rotated identity), and asking the server
+   which retired identity to use would hand it the choice. The
+   reference selects the verifying identity via
+   `authorized_fp_at(sender, ref)` — the referenced admission must
+   name the sender, else `malformed` — and it is **verification, not
+   authorization**: current authority stays `member_state`'s separate
+   question (§A.5). This preserves deniability — it is a key-selection
+   binding inside the MAC'd canonical, not a signature.
+5. **Edits and reactions carry the replay fields (P83-A-F6-03).** The
+   transcript bytes gave only the `0x01` message `writer_scope` and
+   `client_msg_id`, while the frozen replay rule keys *every* suite-2
+   object by them — a contradiction no implementation could satisfy.
+   Both fields now follow `actor_admit_ref` in `0x02` and `0x03`:
+   `client_msg_id` is minted fresh per object (edits and reactions
+   included), `writer_scope` is the device's one scope, and the
+   replay triple is uniform — `(actor, writer_scope, client_msg_id)`,
+   the actor being the canonical's `sender_user_id` (messages, edits)
+   or `actor_user_id` (reactions). First-seen, duplicate and
+   optimistic-retry behavior is identical for all three types: a
+   byte-identical resend dedups by triple and re-renders nothing; a
+   duplicate triple under a different server id is a replay, rendered
+   once.
 
 `0x01` — message:
 
 ```
 uuid16(channel_id) || u32be(key_version = 0) || uuid16(sender_user_id)
+|| h32(actor_admit_ref)                 // fanout adaptation 4
 || uuid16(writer_scope) || uuid16(client_msg_id) || u64be(sender_ts)
 || u64be(wseq)
 || uuid16(par_sender) || uuid16(par_scope) || uuid16(par_client_msg_id)
@@ -549,6 +667,8 @@ att_binding = uuid16(attachment_id) || u32be(att_key_version = 0)
 
 ```
 uuid16(channel_id) || u32be(key_version = 0) || uuid16(sender_user_id)
+|| h32(actor_admit_ref)                 // fanout adaptation 4
+|| uuid16(writer_scope) || uuid16(client_msg_id)   // adaptation 5 (F6-03)
 || uuid16(tgt_sender) || uuid16(tgt_scope) || uuid16(tgt_client_msg_id)
 || h32(prev_rev_hash)
 || u64be(sender_ts) || u64be(chain_index = 0) || h32(chain_hash = zeros)
@@ -570,6 +690,8 @@ re-stated in full so the current revision is self-sufficient.
 
 ```
 uuid16(channel_id) || u32be(key_version = 0) || uuid16(actor_user_id)
+|| h32(actor_admit_ref)                 // fanout adaptation 4
+|| uuid16(writer_scope) || uuid16(client_msg_id)   // adaptation 5 (F6-03)
 || uuid16(tgt_sender) || uuid16(tgt_scope) || uuid16(tgt_client_msg_id)
 || h32(tgt_env_hash)
 || h32(prev_set_hash)                   // zeros for the actor's first set
@@ -591,9 +713,13 @@ all three types.
 
 **Vectors (A-3):** per-field mutation across all three types;
 cross-object type confusion (an edit's bytes presented as a message);
-trailing bytes; absent-vs-zero optional fields; the three adaptations
+trailing bytes; absent-vs-zero optional fields; the five adaptations
 violated (nonzero `key_version`, nonzero checkpoint, missing or short
-`att_key`); oversize `body_text`/`att_count`/`emoji_count`/emoji;
+`att_key`, a zero or foreign `actor_admit_ref` — one referencing an
+admission whose target is not the object's actor — and missing replay
+fields in an edit or reaction);
+replay-under-a-new-server-id for **all three** object types (F6-03);
+oversize `body_text`/`att_count`/`emoji_count`/emoji;
 a reply naming a legacy parent (all-zero binding); an edit whose
 `sender_user_id ≠ tgt_sender`; the replay triple under a second server
 id; a cross-channel canonical under a mismatched AAD.
@@ -601,7 +727,10 @@ id; a cross-channel canonical under a mismatched AAD.
 **Replay identity, re-frozen with the canonical** (the seventh review's
 confirmation item): the retired plan's first-seen rule carries over
 unchanged — a client keys every suite-2 object by
-`(sender_user_id, writer_scope, client_msg_id)` and binds that triple
+`(actor, writer_scope, client_msg_id)` — the actor being the
+canonical's `sender_user_id` for messages and edits, `actor_user_id`
+for reactions; every type carries all three fields (adaptation 5,
+P83-A-F6-03) — and binds that triple
 to the first-seen server message id; a later envelope carrying the same
 triple is a duplicate of that object, rendered once, never a fresh
 message. A server-replayed envelope therefore changes nothing a user
@@ -614,6 +743,11 @@ Verification results: `authenticated-for-you` / `mismatch` / `forged` /
 `unpinned` / `granted` / `legacy` / `identity-mismatch` (the runtime
 identity fails §A.4's authorized-fingerprint binding — the fetched key
 is not the one the membership state admitted, or its self-sig fails) /
+`former-identity` (a valid object whose sealed `actor_admit_ref`
+resolves to a **superseded** admission — produced by an earlier
+identity of the principal; rendered as history from that earlier
+identity, labelled, never current assurance and never an attributed
+forgery — P83-A-F6-02) /
 `unauthorized-sender` (a valid tag
 from a never-admitted principal, or live delivery from one whose chain
 does not currently end in admit) / `former-member` (a valid tag from a
@@ -747,14 +881,18 @@ chain rather than freezing the mode forever:
 policy_cert: utf8("chalk-policy-cert.v1")
   || uuid16(channel) || u64be(p)          // p starts 1; the anchor is p = 0
   || h32(prev_policy_hash)                // anchor_hash for p = 1
+  || h32(prev_control_head)               // the channel-wide control chain
+                                          // (P83-A-F6-01, below)
   || u8(old_mode) || u8(new_mode)
   || uuid16(actor) || h32(actor_admit_ref)   // zeros ONLY for the anchor owner
   || u8(auth_arm) || gov_record?
 policy_hash = SHA-256(canonical || sig64)    // sig validated against the
-                                             // actor's authorized_fp_at(
+                                             // authorized_fp_at(actor,
                                              // actor_admit_ref) identity
                                              // (§A.4: fingerprint +
-                                             // self-sig) before hashing
+                                             // self-sig; zeros = the
+                                             // anchor owner only) before
+                                             // hashing
 ```
 
 **The policy artifact is complete** (P83-A-R3-02): authorization mirrors
@@ -802,6 +940,8 @@ common safe roster continue.
 canonical = utf8("chalk-member-cert.v1") || u8(kind)
          || uuid16(channel) || uuid16(target)
          || u64be(n) || h32(prev_cert_hash)     // n = 0 root: prev = anchor_hash
+         || h32(prev_control_head)              // the channel-wide control
+                                                //   chain (P83-A-F6-01, below)
          || uuid16(actor)
          || h32(policy_head)                    // the policy state this cert
                                                 //   was authorized under
@@ -848,6 +988,77 @@ view-local, one sender's flaps; TOFU first-fetch scopes to the admitter's
 pin; democratic certs record *authorized-member attestation to a
 server-reported outcome* — C-01 closure stated separately for
 dictator-authorized (cryptographic) and democratic (attested) transitions.
+
+### The membership-control chain (P83-A-F6-01)
+
+Per-target chains authenticate each target's *sequence*, but nothing
+ordered one target's chain against another's — and the sixth
+independent review showed that gap is content disclosure, not
+inconvenience: authority is non-retroactive (correctly), so a removed
+Alice, keeping her signing key, could mint an admit for a
+server-controlled Mallory that references her old valid
+`actor_admit_ref`, and a fresh or restored Carol — served Mallory's
+admit *before* Alice's removal — accepts it; the observed-removal rule
+only guards devices that saw the honest order, and the server chooses
+the order. Restore outcome depended on server-selected fetch order,
+which no pure state machine can tolerate.
+
+So membership control gets what messages deliberately do not: **one
+authenticated total order per channel.**
+
+- **Every control artifact** — membership certificates of every kind,
+  guest admits and revokes, policy certificates — carries
+  `h32(prev_control_head)`: the artifact hash (`cert_hash` /
+  `policy_hash`) of the immediately preceding control artifact,
+  channel-wide; the first control artifact after creation names the
+  `anchor_hash`. One linear hash chain interleaves every target's
+  certs and the policy chain. Per-target `(n, prev_cert_hash)` links
+  and `(p, prev_policy_hash)` links remain — an artifact is doubly
+  linked: within its target's chain and within the channel's control
+  chain.
+- **The server holds one `control_head` per channel** and accepts a
+  control artifact iff its `prev_control_head` equals the current
+  head — compare-and-set, identical re-append idempotent. A lost race
+  is rejected *with the current head*; the minting client fetches the
+  delta, re-validates (the §A.4 rules, against the now-longer chain),
+  re-signs, and retries — the same transparent re-sign-and-retry shape
+  the guest mint already froze (P83-A-R4-03). **Only the rare
+  control plane serializes; messages never wait on it, never
+  reference it, and never freeze behind it.**
+- **Validation is in control order.** Clients verify the control chain
+  linearly from the anchor (or from their persisted control floor),
+  and actor authority is evaluated **at the artifact's control
+  position**: the actor's own chain state, as of everything preceding
+  this artifact in the control chain, must be admitted. A cert minted
+  after its actor's removal must chain *past* that removal — it
+  cannot be inserted before it, because minting requires holding the
+  head, and the removal already holds an earlier position — so it is
+  invalid on **every** device, in **every** fetch order. The
+  first-seen observed-removal rule remains as defense in depth, but it
+  is no longer load-bearing for fresh devices.
+- **Forks:** two valid control artifacts naming one
+  `prev_control_head` are a **control fork** — the policy fork is now
+  simply its policy-cert case, and the handling is the frozen policy
+  rule, unchanged: both kept as evidence, surfaced once, the last
+  common control state retained for existing memberships and ordinary
+  messaging, new transitions on either forked head refused, recreation
+  the exit.
+- **The control floor:** each client persists its highest verified
+  `(control position, control head)` per channel — a rollback latch
+  like the per-target ones, restored from the §A.7 backup. What
+  truncation can still do is frozen as the residual: a server may
+  serve a *prefix* of the chain (withholding the tail hides a recent
+  removal from a fresh device — exactly the stale-view residual,
+  unchanged in scope); what it can never do again is **reorder or
+  retro-insert** — any chain it serves is one the honest mints
+  actually produced, in the order they produced it.
+- **Vectors (A-2):** Bob-admit then Alice-removal, both fetch orders
+  (same result); a Mallory-admit minted after Alice's removal, served
+  before and after that removal (invalid in both); a restore with a
+  backed-up control floor refusing a truncated chain; a fresh device
+  with no backup on a truncated chain (accepts the prefix — the stated
+  residual — but can never accept a reordering); a control fork; a
+  lost mint race retried.
 
 ### One membership predicate, one identity binding (P83-A-R11-01/02/03)
 
@@ -912,23 +1123,36 @@ authorized_fp_current(principal) =
     the manifest entry's ed25519_fp while no chain supersedes it,
     else the latest valid admit's target_ed25519_fp
 
-authorized_fp_at(membership_ref) =
-  the fingerprint the REFERENCED admission state committed to:
-    a manifest_admit_ref → that manifest entry's ed25519_fp
-    an admit cert_hash   → that certificate's target_ed25519_fp
+authorized_fp_at(actor, membership_ref) =
+  the fingerprint the REFERENCED admission state committed to
+  (the actor is part of the signature — zeros alone identifies
+  nothing, P83-A-R13-01):
+    membership_ref == zeros → valid IFF actor == the anchor's owner;
+                              returns anchor.owner_ed25519_fp — the
+                              owner's authority is the anchor itself.
+                              A zero ref from ANY other actor is
+                              malformed, on every artifact kind
+    a manifest_admit_ref    → that manifest entry's ed25519_fp
+    an admit cert_hash      → that certificate's target_ed25519_fp
+                              (the referenced admission must name the
+                              actor as its target, else malformed)
+    anything else           → invalid
 
 before ANY cryptographic use of a principal's identity:
   SHA-256(identity.ed25519_public) == the applicable authorized_fp
   AND verifyIdentitySelfSig(x25519_pub, ed25519_pub, self_sig)
 
-which resolver applies (P83-A-R12-01 — one temporal model, the same
-one authority already uses):
-  live traffic — flap emission, K_mac verification, history-grant
-  acceptance, voice acceptance
-      → authorized_fp_current(principal)
-  authority artifacts — validating the signature on a membership,
-  guest or policy certificate
-      → authorized_fp_at(the artifact's actor_admit_ref)
+which resolver applies (P83-A-R12-01/R13-02 — one temporal model,
+the same one authority already uses):
+  authorized_fp_current(principal) — resolving a principal NOW:
+      flap emission (each target's wrap identity), voice signal
+      acceptance (live-only traffic)
+  authorized_fp_at(actor, ref) — verifying/decrypting an artifact
+  that SEALS its own reference:
+      a certificate's or policy cert's actor_admit_ref (signature
+      validation), a suite-2 object's actor_admit_ref (K_mac
+      selection, §A.3/§A.5), a grant's grantor_admit_ref
+      (K_history selection, §A.6)
 ```
 
 The split exists because §A.4's authority rule is **non-retroactive**
@@ -971,7 +1195,19 @@ action in the UI), and the re-admit's `target_ed25519_fp` binds the
 new key. Until it lands, the member's new traffic is
 `identity-mismatch` — target-local, loud, freeze-free like any
 removal. Objects this device accepted under the old identity keep
-their assurance (directional, as everywhere). Guests never rotate: the
+their assurance (directional, as everywhere). One cost stated plainly:
+the new identity cannot decrypt flaps sealed to the old key — old
+history returns through §A.6 grants, not through the old self-flaps.
+**And the backup moves with the identity (P83-A-F6-02's rekey item):**
+`channel_security_enc`'s key derives from the identity X25519 scalar
+(§A.7), so remove + re-admit alone would orphan the encrypted security
+state — the rotation flow therefore **repacks the backup under the new
+scalar's key as part of the same "update identity" action** (the
+rotating client holds all the state locally; the old-key generation is
+dead weight, garbage-collected by the next repack). A crash between
+the rotation and the new-key commit leaves the backup reading as
+*absent* to the new identity — the stated fresh-device residual until
+the next repack, never silent corruption. Guests never rotate: the
 guest identity is a pure function of the link secret (§A.8).
 
 **Except the owner (P83-A-R12-02).** The transition above cannot apply
@@ -986,7 +1222,15 @@ An owner whose new identity fails `authorized_fp_current` against the
 anchor is surfaced with exactly that instruction. Inventing an
 owner-key-rotation artifact here would re-open the security-root
 transition F5-01 closed; if it is ever wanted, it is the same future
-phase as the successor anchor, with its own review.
+phase as the successor anchor, with its own review. One product
+dependency is recorded rather than left as a surprise (the sixth
+review's break-glass item): **before the identity-replacement UI
+ships at Gate F, "recreate the channel" must be an assisted one-action
+flow** — create the replacement, carry forward the locally verified
+roster and settings, mark the old channel unsafe and read-only, and
+state plainly which history cannot carry current assurance across —
+or the owner-replacement surface stays hidden. Tracked in
+`docs/open-items.md`.
 
 **Vectors (A-2/A-4):** manifest member → removed → live injection
 (`unauthorized-sender`); the same object via backfill
@@ -1000,7 +1244,12 @@ accepted after); **the rotation-history vector (R12-01)**: A1 admitted
 → A1 signs Bob's admit → A1 removed → A2 re-admitted → a fresh device
 verifies Bob's admit and it **succeeds via `authorized_fp_at` = A1**,
 while A1's *new live traffic* stays `identity-mismatch` under
-`authorized_fp_current` = A2.
+`authorized_fp_current` = A2; **the owner-arm vectors (R13-01)**:
+owner + zero `actor_admit_ref` + the anchor's owner key → valid;
+a non-owner actor with a zero ref → `malformed`; owner + zero ref +
+a substituted identity → `identity-mismatch`; a historical
+owner-signed cert on a fresh device → verifies against the anchor's
+`owner_ed25519_fp`.
 
 ## A.5 Send, receive, objects, guests
 
@@ -1085,12 +1334,14 @@ scoped exactly as the review scoped it: one participant, in a rare
 concurrent-mint race, paused loudly until a slot opens — never a
 channel-wide freeze.
 
-**Receive:** own flap → DH → unwrap → decrypt → parse → derive
-`K_mac(claimed_sender→me)` from the identity bound by §A.4's
-authorized-fingerprint rule (fingerprint match + self-sig, else
-`identity-mismatch` — never the server's "current identity for X",
-and never a bare TOFU pin where an admission authorized a different
-key) → recompute tag →
+**Receive:** own flap → DH → unwrap → decrypt → parse → resolve the
+producing identity from the canonical's sealed `actor_admit_ref` via
+`authorized_fp_at(sender, ref)` (§A.4: the referenced admission must
+name the canonical's sender, else `malformed`; fingerprint match +
+self-sig, else `identity-mismatch` — never the server's "current
+identity for X", and never a bare TOFU pin where an admission
+authorized a different key; P83-A-R13-02) → derive
+`K_mac(that identity → me)` → recompute tag →
 **sender acceptance (below)** → typed result; inner wins on mismatch.
 **The claimed sender is the canonical's sealed `sender_user_id`,
 nothing else** (the seventh review's provenance item): outer server
@@ -1172,6 +1423,49 @@ flaps are emitted:
   family (the manifest-removal injections and the `identity-mismatch`
   cases, listed there).
 
+**Verification and authorization are two different questions
+(P83-A-R13-02), asked in a frozen order.** The sealed
+`actor_admit_ref` answers *"which identity produced this object?"* —
+it selects the pairwise key and nothing more. `member_state` answers
+*"may this person speak as a current member now?"*. The pipeline asks
+both, independently: (1) resolve the producing identity via
+`authorized_fp_at(sender, ref)`; (2) verify the MAC under it; (3)
+evaluate current `member_state(sender)`; (4) classify by the
+live/backfill boundary. A removed member's old-identity message,
+served as new by a malicious server, therefore *verifies* under step 2
+and is still **`unauthorized-sender`** at step 4 — an admission
+reference is never a ticket back in, and the R11 predicate fix is
+untouched. The joint classification is frozen (P83-A-F6-02):
+
+- `member_state` = `NEVER` → `unauthorized-sender`, every path;
+- `member_state` = `FORMER` / `LAPSED_GUEST` → the live/backfill split
+  above (`unauthorized-sender` / `former-member`), regardless of which
+  of the principal's admissions the ref names;
+- `member_state` = `CURRENT` (or `CURRENT_SHED`) and the sealed ref
+  **is** the principal's current effective admission →
+  `authenticated-for-you`; and
+- `member_state` = `CURRENT` but the sealed ref resolves to a
+  **superseded** admission of the same principal — a pre-rotation
+  identity — → **`former-identity`**: rendered as history from that
+  earlier identity (*"from an earlier identity of <user> — produced
+  before their key changed; not verifiable as current for you"*),
+  loud, lower assurance, **the most any object made with a retired
+  key can ever obtain** — never current assurance, and never an
+  attributed forgery (a compromised retired key gains no current
+  authority, and its holder frames no one). An honest client always
+  seals its current ref, so a live `former-identity` arises only
+  under manipulation or a mid-rotation race, and it fails toward
+  less assurance.
+
+Vectors (A-4): the rotated sender's pre-rotation message first
+fetched on a fresh device (verifies via A1 → `former-identity`,
+never `mismatch`); a *new* injection made with the retired A1 key
+after A2 is current (at most `former-identity`, never current); an
+ex-member's old ref on live delivery (verifies, then
+`unauthorized-sender`); a current member with a stale own ref
+(`former-identity`); a ref naming another user's admission
+(`malformed`).
+
 This is a client-local check against chains the client already fetches
 and verifies — no round trip, no coordinator, no freeze; the stale-view
 residual bounds it exactly as it bounds send-side flap emission.
@@ -1213,6 +1507,7 @@ the boundary. **Voice:** signals seal pairwise under `K_wrap`;
     utf8("chalk-member-cert.v1") || u8(0x05)
     || uuid16(channel) || uuid16(guest)
     || u64be(n) || h32(prev_cert_hash)       // chain rules as §A.4
+    || h32(prev_control_head)                // §A.4's control chain
     || uuid16(actor) || h32(policy_head) || h32(actor_admit_ref)
     || h32(guest_ed25519_fp)                 // derivable by the owner at mint —
                                              // the guest identity is a pure
@@ -1224,6 +1519,7 @@ the boundary. **Voice:** signals seal pairwise under `K_wrap`;
     utf8("chalk-member-cert.v1") || u8(0x06)
     || uuid16(channel) || uuid16(guest)
     || u64be(n) || h32(prev_cert_hash)       // MUST be the guest_admit's cert_hash
+    || h32(prev_control_head)                // §A.4's control chain
     || uuid16(actor) || h32(policy_head) || h32(actor_admit_ref)
     || lookup16(invite)                      // cross-checked against the admit
   ```
@@ -1281,6 +1577,11 @@ granting member, labelled once at channel level. The wire is now exact:
 grant canonical = utf8("chalk-history-grant.v1")
   || uuid16(channel) || uuid16(grantor) || uuid16(grantee)
   || uuid16(grant_id)                          // fresh random per grant
+  || h32(grantor_admit_ref)                    // the grantor's effective
+                                               // admission at mint time
+                                               // (P83-A-R13-02) — selects
+                                               // the K_history identity
+                                               // via authorized_fp_at
   || u64be(grantee_admit_n) || h32(grantee_admit_cert_hash)
   || u64be(range_from_ms) || u64be(range_to_ms)   // absolute, half-open
   || u32be(chunk_index) || u32be(chunk_count)     // fixed per grant_id
@@ -1314,10 +1615,17 @@ sealed chunk = nonce(12) || AES-256-GCM(K_history(grantor→grantee),
   fetch-ack or 30 days, whichever first.
   Retry = re-send same id/chunk; replacement = new grant_id; an
   incomplete batch renders nothing until its chunks are present.
-- Grantee rules: verify the seal (grantor-authenticated by the pairwise
-  `K_history`), check the admit reference against its own verified
+- Grantee rules: resolve the grantor identity from the sealed
+  `grantor_admit_ref` via `authorized_fp_at(grantor, ref)` (§A.4 —
+  the referenced admission must name the grantor, else the grant is
+  refused; P83-A-R13-02: a grant minted under A1 stays decryptable
+  after the grantor rotates to A2, and the server never picks among
+  retired identities), derive `K_history(that identity → me)`, verify
+  the seal, check the grantee admit reference against its own verified
   admission, adopt keys, then verify both hashes per message after
-  decrypting; mismatched entries are discarded individually.
+  decrypting; mismatched entries are discarded individually. The
+  grantee-side reference always existed; the grantor side now matches
+  it.
 - UI: the `granted` assurance state plus one persistent channel-level
   line — *"History from before you joined was shared by <grantor>;
   original authorship is not independently verified for you."* Live
@@ -1336,6 +1644,7 @@ sealed chunk = nonce(12) || AES-256-GCM(K_history(grantor→grantee),
   legacy_key_grant canonical = utf8("chalk-legacy-grant.v1")
     || uuid16(channel) || uuid16(grantor) || uuid16(grantee)
     || uuid16(grant_id)
+    || h32(grantor_admit_ref)                  // as the history grant's
     || u64be(grantee_admit_n) || h32(grantee_admit_cert_hash)
     || u32be(key_version_era) || space_key(32)
   ```
@@ -1423,14 +1732,21 @@ cert heads would swamp it, and pin merge semantics don't fit monotonic
 heads). Instead, a second prefs key with its own domain:
 
 ```
-keys    "channel_security_enc.a.<i>" / "channel_security_enc.b.<i>"
-        (double-buffered page namespaces) + "channel_security_commit"
+keys    "channel_security_enc.<gen>.<i>" — immutable per-generation
+        page namespaces, <gen> = lowercase hex of gen16 — plus one
+        conditional commit head (P83-A-F6-04, below)
 KDF     HKDF over the identity X25519 scalar,
         salt "chalk-chansec-salt-v1", info "chalk-chansec-v1"
+        (re-derived on identity replacement — §A.4's rotation flow
+        repacks under the new scalar's key before the rotation is
+        complete)
 
 record  uuid16(channel) || u8(flags) || h32(anchor_hash)
-        || h32(policy_head) || u64be(policy_p) || u32be(rev)
-        = 93 bytes exactly. flags bit0 = era-adopted; bit1 = conflict
+        || h32(policy_head) || u64be(policy_p)
+        || h32(control_head) || u64be(control_p)   // the §A.4 control
+                                                   // floor (P83-A-F6-01)
+        || u32be(rev)
+        = 133 bytes exactly. flags bit0 = era-adopted; bit1 = conflict
         record (a second anchor for the same channel — both records
         survive, surfaced as fork evidence); bit2 = tombstone (channel
         left/deleted; dropped at the next repack after 30 days).
@@ -1439,60 +1755,84 @@ record  uuid16(channel) || u8(flags) || h32(anchor_hash)
         encodes (adoption, latch advance, conflict flag, leave, rejoin).
         It exists because policy_p CANNOT order the merge even inside
         one anchor: p advances only on mode changes, while adoption,
-        leaves and latch updates never touch it. policy_p stays in the
-        record purely to restore the rollback-latch floor.
+        leaves and latch updates never touch it. policy_p and control_p
+        stay in the record purely to restore the rollback-latch floors.
+        The fork-record key is (channel, anchor_hash, policy_head) —
+        the sixth review's consistency item: two records for one
+        (channel, anchor_hash) exist ONLY for a chain-confirmed policy
+        fork, keyed and sorted by policy_head, collapsing when
+        ancestry resolves.
 
-pages   double-buffered namespaces (P83-A-R4-02):
-        "channel_security_enc.a.0" … and "channel_security_enc.b.0" …,
-        plus one commit key "channel_security_commit".
+pages   immutable generations plus a conditional head (P83-A-F6-04 —
+        this supersedes the a/b double buffer; R4-02's goal, no
+        authenticated mixture of generations, is preserved by the
+        commit's page hashes):
         page plaintext = u8(v = 1) || gen16 || u8(page_index)
                       || u8(page_count) || u16be(record_count) || record*
         sealed        = nonce(12) || AES-256-GCM(K, plaintext) || tag(16)
         page AAD      = utf8("chalk-chansec-s1:") || u8(page_index)
         commit plaintext = u8(v = 1) || gen16 || u64be(repack_seq)
-                      || u8(ns: 0x00 a / 0x01 b)
                       || u8(page_count) || h32(sha256(sealed_page))*
         commit AAD    = utf8("chalk-chansec-commit-s1:")
-        gen16 = 16 CSPRNG bytes minted per repack.
+        gen16 = 16 CSPRNG bytes minted per repack; every page of one
+        repack lands under its own gen-keyed namespace, so concurrent
+        writers can never interleave into each other's pages.
         repack_seq (the seventh review's rollback item) = a u64 bumped
         on every repack, floor-latched like rev: each device persists
         the highest repack_seq it has verified and refuses a commit
         below its floor — a complete-but-older generation is then
         detected rollback, not current, on any device with prior
-        state. gen16 stays the torn-write detector; repack_seq is the
-        order. A fresh device has no floor: the stated fresh-device
+        state. A fresh device has no floor: the stated fresh-device
         residual, unchanged in scope.
-        The concurrent-repack race self-heals — do not add locking
-        (the eighth review's Note 3): two devices of one identity both
-        read seq N and write N + 1, the commit key holds one value,
-        and one write wins wholesale. Nothing is lost: the backup is
-        never authority, the loser's records live on in its local
-        state, and its next repack reads the winner (at or above its
-        floor) and re-contributes them through the
-        (channel, anchor_hash)/rev merge. The floor only ever rejects
-        generations older than one this device itself verified, so it
-        cannot wedge an honest device.
-        The commit record, not its u8, is the real page bound: 27
-        fixed plaintext bytes + 32 per page hash in the same ~5.7 KiB
-        budget ⇒ page_count ≤ 182 (~11,400 records — no practical
-        limit, stated so the u8's 255 is never read as the bound).
-        Budget: sealed+base64 must fit the 7,900-byte prefs value —
-        usable plaintext ≈ (7900 × 3/4) − 28 − 21 ≈ 5.7 KiB ⇒
-        **≤ 63 records per page** (93 B each).
+        **The commit is conditional — the eighth review's Note 3
+        ("the race self-heals; do not add locking") is retracted as
+        the sixth independent review showed** (P83-A-F6-04): the
+        self-heal assumed the losing device survives to re-merge, but
+        the prefs store is last-write-wins per key, so with a plain
+        overwrite two devices can both be *acked* while one write is
+        silently discarded — and if that loser dies, its conflict
+        observation or newer anchor is never durably merged. So the
+        commit head moves out of the LWW prefs blob into a dedicated
+        row carrying ONE server-visible plaintext field, the u64
+        repack_seq (deliberately: it is concurrency metadata — a
+        repack counter — not channel data; everything else stays
+        sealed): publish = UPDATE … WHERE seq = expected_seq, taking
+        the sealed commit blob and new seq together. The CAS is
+        concurrency control, never cryptographic authority — pages
+        and commits stay authenticated, floors stay local, and a
+        malicious server can still deny (refuse every CAS) but an
+        honest server can no longer lose one of two acknowledged
+        updates.
         Writer: repack wholesale (records sorted by uuid16(channel),
-        then anchor_hash — two surviving records for one channel need
-        the tiebreak), write EVERY page of the new generation into the
-        INACTIVE namespace, then write the commit record last. The
-        commit is one prefs value — its overwrite is the atomic switch.
-        Reader: fetch commit → refuse it if its repack_seq is below
-        the local floor → fetch the named namespace's pages →
-        accept only when every page's gen16 and sealed-bytes hash match
-        the commit; anything else (rollback, torn write, crashed
-        writer, withheld page) keeps the previous local state — and a fresh device
-        treats the backup as absent and retries, because a crash before
-        commit leaves the OLD generation fully intact in the other
-        namespace. The losing namespace is garbage: the next repack
-        overwrites it.
+        then anchor_hash, then policy_head), write EVERY page under a
+        fresh gen16 namespace, then CAS the commit with
+        expected_seq = the seq this repack was built from. On CAS
+        failure: fetch the winner, decrypt, run the field-wise join
+        below against local state, and retry under a NEW gen16 —
+        bounded retries, no lock, and the join now actually executes
+        for concurrent writers instead of relying on the loser's
+        survival. After a successful commit the writer deletes page
+        namespaces other than the new and immediately previous
+        generation (the GC bound).
+        Reader: fetch the commit → refuse it if its repack_seq is
+        below the local floor → fetch the named generation's pages →
+        accept only when every page's gen16 and sealed-bytes hash
+        match the commit; anything else (rollback, torn write,
+        crashed writer, withheld page) keeps the previous local
+        state — and a fresh device treats the backup as absent and
+        retries, because a crash before commit leaves the previous
+        generation's namespace fully intact and still named by the
+        head. Orphaned namespaces from crashed writers are garbage,
+        GC'd by the next successful repack.
+        Bounds: usable plaintext ≈ (7900 × 3/4) − 28 − 21 ≈ 5.7 KiB ⇒
+        **≤ 43 records per page** (133 B each); the commit record is
+        the real page bound — 26 fixed plaintext bytes + 32 per page
+        hash ⇒ page_count ≤ 181 (~7,700 records — no practical limit,
+        stated so the u8's 255 is never read as the bound).
+        Tests (A-8, per the sixth review): two writers with disjoint
+        records; two writers changing the same record; the loser
+        crashing immediately after its ack; a third device restoring
+        mid-race; a crashed writer's orphan generation.
 
 merge   keyed by (channel, anchor_hash) — NEVER by channel alone, and
         policy sequence never orders competing roots (P83-A-R4-01):
@@ -1554,11 +1894,16 @@ everything the backup protects anyway — acceptable as frozen; deriving
 from the identity seed entropy instead would be stricter key-separation
 hygiene if this KDF is ever revisited.
 
-Cert-chain heads are deliberately **not** backed up: chains are
-refetched from the server and re-verified against the anchor — the
-anchor is what makes them verifiable, and it is 32 bytes. What a fresh
-restore loses without head backup is only the rollback high-water marks,
-which collapses into the already-accepted stale-view residual.
+Per-target cert-chain heads are deliberately **not** backed up: chains
+are refetched from the server and re-verified against the anchor — the
+anchor is what makes them verifiable, and it is 32 bytes. This became
+safe to say only with the §A.4 control chain (P83-A-F6-01 — before it,
+"re-verified" was fetch-order-dependent): the record's **control
+floor** is what a restore needs, since refusing a truncated control
+chain recovers every per-target head *in authenticated order*. What a
+fresh restore loses without per-target head backup is then only the
+rollback high-water marks, which collapses into the already-accepted
+stale-view (prefix-truncation) residual.
 `PinSyncStatus` grows the second blob's counters; overflow reported, not
 silent; **sending never waits on backup**. One capacity fact, stated so
 nobody mistakes the *pin* blob for full-roster coverage: a single full
@@ -1776,13 +2121,13 @@ not a larger cap."*
 | Slice | Content (dark until Gate F) |
 |---|---|
 | A-1 | Pairwise HKDF tree (incl. `K_history`); flaps; HMAC tags; frozen parser + full vectors; WebCrypto disposal rules |
-| A-2 | Anchors (converter/owner split) + manifest + `manifest_admit_ref` + complete policy artifacts + membership/guest certificates (`lookup16`, expiry rules): canonicals (`sig64`/`gov_record` conventions + mutation vectors), pure state machine, server tables (per-channel anchor CAS; `(channel,target,n)` and `(channel,p)` idempotency), rollback latches, policy-fork behavior + the monotonic removal latch (the `era` byte frozen at 1 — no door this phase, P83-A-F5-01); the one `member_state` module with the split `authorized_fp_current`/`authorized_fp_at` resolvers and its reference-model vectors (P83-A-R11-01/02/03, P83-A-R12-01/02); the `(user_id, ed25519_fp)` historical identity fetch |
-| A-3 | The §A.3 canonical envelope, exactly as frozen in this plan (P83-A-F5-04 — encoders, total parser, the three adaptations, full vectors); verify policy; typed results incl. `granted` |
+| A-2 | Anchors (converter/owner split) + manifest + `manifest_admit_ref` + complete policy artifacts + membership/guest certificates (`lookup16`, expiry rules): canonicals (`sig64`/`gov_record` conventions + mutation vectors), pure state machine, server tables (per-channel anchor CAS; `(channel,target,n)` and `(channel,p)` idempotency), rollback latches, policy-fork behavior + the monotonic removal latch (the `era` byte frozen at 1 — no door this phase, P83-A-F5-01); **the membership-control chain** (`prev_control_head`, the per-channel CAS head, control-order validation, the control floor — P83-A-F6-01); the one `member_state` module with the split `authorized_fp_current`/`authorized_fp_at` resolvers and its reference-model vectors (P83-A-R11-01/02/03, P83-A-R12-01/02); the `(user_id, ed25519_fp)` historical identity fetch |
+| A-3 | The §A.3 canonical envelope, exactly as frozen in this plan (P83-A-F5-04 — encoders, total parser, the five adaptations incl. `actor_admit_ref` and the uniform replay fields, full vectors); verify policy; typed results incl. `granted` and `former-identity` |
 | A-4 | Suite-2 send/receive; self-flap; the sender-acceptance rule (`unauthorized-sender`/`former-member`, the live/backfill boundary, canonical-only sender provenance, directional assurance) consuming §A.4's one predicate and identity binding (`identity-mismatch` — P83-A-R11-01/02) + its vectors; the first-seen replay rule; `key_version` exemptions per inventory |
 | A-5 | Edits, reactions (sealed clear), attachments-in-envelope, voice pairwise sealing |
 | A-6 | Guests: `0x04` fragment form, guest certs, fragment-anchored verification; the atomic mint/revoke wire (advertised caps, absolute signed expiry, one-transaction storage, idempotent retry); cap accounting at mint + the deterministic overflow shed |
-| A-7 | Grantor-attested history: grant wire, storage/quota/expiry, auto-grant + paging + knob, `granted` UI |
-| A-8 | Adoption state machine (restore/verify/convert/read-only); the client-minted-ID creation wire (anchor + manifest in `create_channel`, one-transaction insert, idempotent retry, pending-op records, the DM rule); `channel_security_enc` backup (93-byte records, generation-committed double-buffered pages, the `repack_seq` floor, anchor-keyed merge); read-only legacy rendering; era capability + `client_upgrade_required` |
+| A-7 | Grantor-attested history: grant wire (incl. `grantor_admit_ref` — P83-A-R13-02), storage/quota/expiry, auto-grant + paging + knob, `granted` UI |
+| A-8 | Adoption state machine (restore/verify/convert/read-only); the client-minted-ID creation wire (anchor + manifest in `create_channel`, one-transaction insert, idempotent retry, pending-op records, the DM rule); `channel_security_enc` backup (133-byte records incl. the control floor, immutable per-generation pages + the conditional commit head — P83-A-F6-04 — the `repack_seq` floor, anchor-keyed field-wise merge, rotation rekey, the five concurrency tests); read-only legacy rendering; era capability + `client_upgrade_required` |
 | A-9 | **Gate F**: the required-era epoch raised at build-F startup + instance-ack barrier (`acked_era` as a renewable lease with local self-fencing — P83-A-F5-03 — the interregnum banner, the hostile two-instance + partitioned-lease test); emission on; conversion rollout; over-limit handling; `CHALK_FAN_REQUIRED` + `chalkctl fanout status`; threat-model staging move (incl. the frozen 64-participant sentence) |
 | A-10 | Legacy retirement: wrapsig secure default; cert-gated legacy reshares; pre-F sunset |
 
@@ -1816,7 +2161,7 @@ The comparison that decided it:
 |---|---|---|---|
 | Departure freeze | until creator acts | seconds | none |
 | Creator crypto role | load-bearing | none | anchor signer only (once) |
-| Review state | 6 revisions, Gate 0 never passed | unreviewed delta | 10 reads + three external reviews; passed at the sixth revision, **re-opened — re-review of the seventh–ninth delta pending** |
+| Review state | 6 revisions, Gate 0 never passed | unreviewed delta | 10 reads + five external reviews; passed at the sixth revision, **re-opened — re-review of the seventh–eleventh delta pending** |
 | Membership | transcript (fork proofs) | transcript (fork proofs) | anchors + policy chain + per-target chains, rollback latch |
 | Deniability | no | no | **yes** ("authenticated for you") |
 | New-member history | as today | as today | grantor-attested (explicit, labelled) |
@@ -1827,13 +2172,19 @@ The comparison that decided it:
 The costs in the last three rows are accepted deliberately (§A.8): they
 buy the only deniable, freeze-free, coordinator-free design on the
 table. Gate 0 passed at the sixth revision after eight review rounds;
-three external reviews re-opened and held it open (2026-08-09) — the
+five external reviews re-opened and held it open (2026-08-09) — the
 fifth independent review's five blockers (→ seventh revision), the R11
 review's two, the acceptance predicate's manifest arm and the unfrozen
-identity binding (→ eighth), and the R12 delta review's two in that
+identity binding (→ eighth), the R12 delta review's two in that
 revision's own replacement text, the temporally ambiguous resolver and
-the impossible owner replacement (→ ninth). The accumulated delta
-awaits independent re-review before any slice lands.
+the impossible owner replacement (→ ninth), the R13 delta review's
+two, the owner's unresolvable zero ref and the missing historical
+identity references in messages and grants (→ tenth), and the sixth
+independent review's four — above all the cross-target ordering hole
+answered by the membership-control chain, plus the replay-field gap
+and the backup's non-convergent commit (→ eleventh; its other two
+findings had already converged with R13's fixes). The accumulated
+delta awaits independent re-review before any slice lands.
 
 ## Prior-art sources
 
