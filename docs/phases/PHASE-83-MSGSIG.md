@@ -1,13 +1,16 @@
 # Phase 83 — MSGSIG: envelope fanout
 
-**Status: the phase-83 plan — planned, not started; eighth revision.
-**Gate 0 re-opened** and held open by two external reviews: the fifth
-independent review (2026-08-09, five blockers, answered in the seventh
-revision) and the R11 review (2026-08-09, of the seventh revision —
-two blockers, the receive predicate's manifest arm and the unfrozen
-fingerprint→runtime-identity binding, answered in this revision).
-**No slice lands until an independent re-review of the accumulated
-delta closes the gate again**. Decided
+**Status: the phase-83 plan — planned, not started; ninth revision.
+**Gate 0 re-opened** and held open by three external reviews: the
+fifth independent review (2026-08-09, five blockers → seventh
+revision), the R11 review (2026-08-09, two membership-state-machine
+blockers → eighth revision, and it verified R11-01/02/03 closed
+there), and the R12 delta review (2026-08-09, of the eighth revision —
+two blockers *in the eighth revision's own identity-replacement text*,
+the temporally ambiguous fingerprint resolver and the impossible owner
+replacement, answered in this revision). **No slice lands until an
+independent re-review of the accumulated delta closes the gate
+again**. Decided
 2026-08-08: envelope fanout
 (formerly "option A" of `PHASE-83-MSGSIG-ALTERNATIVE.md`, this file's
 previous name) supersedes the original transcript design that lived at
@@ -157,6 +160,28 @@ consumed everywhere, the `authorized_fp` binding with the
 `identity-mismatch` typed result, and the identity-replacement
 transition. **The gate stays open pending independent re-review.**
 
+An **R12 delta review** (2026-08-09, external, of the eighth
+revision — `docs/audits/security-phase-83-r12-review-2026-08-09.md`)
+**verified R11-01/02/03 closed** and found two High blockers in the
+eighth revision's own new text. P83-A-R12-01: the single "latest
+effective admission" fingerprint resolver contradicted the frozen
+non-retroactivity of actor authority — after an identity rotation
+(A1 removed, re-admitted as A2), a fresh device would verify Alice's
+*legitimate historical* certificates against A2 and manufacture
+`identity-mismatch` for the downstream authority chain; the resolver
+is now state-relative (`authorized_fp_current` for live traffic,
+`authorized_fp_at(actor_admit_ref)` for authority artifacts), with a
+frozen fingerprint-keyed historical identity lookup (the store already
+retains retired generations; the fetch wire did not serve them).
+P83-A-R12-02: "the only repair is identity replacement" was impossible
+for the owner — the anchor bakes in the owner's fingerprint, the owner
+cannot be removed, and F5-01 removed successor anchors — so owner
+identity replacement is now explicitly **unsupported in this phase:
+recreate the channel**, keeping the security-root transition in its
+own future phase. **This ninth revision incorporates both** —
+dispositions below; the gate stays open pending the reviewer's
+proposed focused §A.4/§A.5 re-read.
+
 **Tag:** `#msgsig`.
 
 ---
@@ -256,6 +281,15 @@ answered in this eighth revision:
 | P83-A-R11-03 (Low) | The same membership question expressed independently at send and receive — the exact drift that produced R11-01 | §A.4 (`member_state` is one pure state-machine module with reference-model vectors in A-2; flap emission, acceptance, voice, guests, grants and actor authorization all consume it; nothing else computes membership) |
 | P83-A-R11-04 (Info) | No FS/PCS means X25519 compromise = full impersonation toward the victim; accurately disclosed, but recovery deserved prominence | §A.8 (the key-compromise row now states the only repair: identity replacement via §A.4's transition — passwords and sessions repair nothing) |
 | P83-A-R11-05 (Info) | `K_history` grants could read as grantor-signed; roster equivocation already accepted | §A.6 (grant authenticity stated as pairwise-deniable — a grantee could mint a grant to itself; no wording may imply a transferable grantor signature); §A.8 roster row unchanged |
+
+R12 delta review (2026-08-09, external, of the eighth revision —
+`docs/audits/security-phase-83-r12-review-2026-08-09.md`; it verified
+R11-01/02/03 closed), both findings answered in this ninth revision:
+
+| Finding | Was | Resolved in |
+|---|---|---|
+| P83-A-R12-01 (High) | `authorized_fp` resolved only the *latest* effective admission, while actor authority is frozen non-retroactive — after a rotation, historical certificates signed under A1 would verify against A2 and fail `identity-mismatch`, retroactively destroying legitimate authority chains on fresh devices | §A.4 (the resolver is state-relative: `authorized_fp_current` for live traffic, `authorized_fp_at(actor_admit_ref)` for authority artifacts — one temporal model with the authority rule; a frozen `(user_id, ed25519_fp)` historical identity lookup in A-2, the store's retired generations already existing; the rotation-history vector) |
+| P83-A-R12-02 (High) | The replacement transition (remove + re-admit) is impossible for the owner: the anchor bakes in `owner_ed25519_fp`, removal is prohibited (`ErrCannotRemoveOwner`, governance too), and F5-01 removed successor anchors — a contradiction, not a path | §A.4 (owner identity replacement is explicitly **unsupported this phase — recreate the channel**, surfaced as such; no owner-rotation artifact is invented, the security-root transition stays a future phase); §A.8 (the key-compromise row reworded per the review) |
 
 ---
 
@@ -717,8 +751,9 @@ policy_cert: utf8("chalk-policy-cert.v1")
   || uuid16(actor) || h32(actor_admit_ref)   // zeros ONLY for the anchor owner
   || u8(auth_arm) || gov_record?
 policy_hash = SHA-256(canonical || sig64)    // sig validated against the
-                                             // actor's §A.4-authorized
-                                             // identity (fingerprint +
+                                             // actor's authorized_fp_at(
+                                             // actor_admit_ref) identity
+                                             // (§A.4: fingerprint +
                                              // self-sig) before hashing
 ```
 
@@ -872,17 +907,52 @@ different first-seen key for an unpinned member even though the
 admission authenticated another fingerprint. Frozen:
 
 ```
-authorized_fp(principal) =
+authorized_fp_current(principal) =
   the fingerprint of the latest effective admission state:
     the manifest entry's ed25519_fp while no chain supersedes it,
     else the latest valid admit's target_ed25519_fp
 
-before ANY cryptographic use of a principal's identity —
-flap emission, K_mac verification, actor signature validation,
-history-grant acceptance, voice acceptance:
-  SHA-256(identity.ed25519_public) == authorized_fp(principal)
+authorized_fp_at(membership_ref) =
+  the fingerprint the REFERENCED admission state committed to:
+    a manifest_admit_ref → that manifest entry's ed25519_fp
+    an admit cert_hash   → that certificate's target_ed25519_fp
+
+before ANY cryptographic use of a principal's identity:
+  SHA-256(identity.ed25519_public) == the applicable authorized_fp
   AND verifyIdentitySelfSig(x25519_pub, ed25519_pub, self_sig)
+
+which resolver applies (P83-A-R12-01 — one temporal model, the same
+one authority already uses):
+  live traffic — flap emission, K_mac verification, history-grant
+  acceptance, voice acceptance
+      → authorized_fp_current(principal)
+  authority artifacts — validating the signature on a membership,
+  guest or policy certificate
+      → authorized_fp_at(the artifact's actor_admit_ref)
 ```
+
+The split exists because §A.4's authority rule is **non-retroactive**
+— an actor's certificates stay valid per the state referenced when
+signed — and the fingerprint resolver must share that temporal model
+or contradict it: with a single "latest" resolver, an identity
+rotation (A1 → removed → re-admitted as A2) would make a fresh device
+verify Alice's *old*, legitimate certificates against A2 and
+manufacture `identity-mismatch` for the whole downstream authority
+chain. A historical artifact verifies against the identity its
+referenced admission committed to — A1 — and the vector below pins it.
+
+**Historical identity retrieval, frozen (A-2):** resolving
+`authorized_fp_at` requires retired identity generations to stay
+fetchable. The store already keeps them (`identity_keys` marks old
+generations `retired_at`, never deletes), but today's `fetch_identity`
+returns only the active generation (`GetActiveIdentityKeyAny`), so A-2
+adds a lookup keyed by **`(user_id, ed25519_fp)`** — the fingerprint,
+because that is what the authenticated membership artifact commits to,
+not a generation number the artifact never carries. A retired
+generation returned this way passes the same self-sig check; the
+server can serve only generations that existed, and a withheld one is
+the familiar denial shape (verification fails closed, availability
+loss only, never a substitution).
 
 A failure is the typed result **`identity-mismatch`** — surfaced like
 the identity-changed wall, **never silently absorbed as a fresh TOFU
@@ -904,15 +974,33 @@ removal. Objects this device accepted under the old identity keep
 their assurance (directional, as everywhere). Guests never rotate: the
 guest identity is a pure function of the link secret (§A.8).
 
+**Except the owner (P83-A-R12-02).** The transition above cannot apply
+to the channel owner, and pretending otherwise would be a
+specification contradiction on three frozen facts at once: the owner's
+fingerprint is baked into the immutable anchor, the owner cannot be
+removed (today's `ErrCannotRemoveOwner`, and governance refuses it
+too), and this phase deliberately has no successor anchors (F5-01).
+So it is stated plainly rather than papered over: **owner identity
+replacement is not supported in phase 83 — recreate the channel.**
+An owner whose new identity fails `authorized_fp_current` against the
+anchor is surfaced with exactly that instruction. Inventing an
+owner-key-rotation artifact here would re-open the security-root
+transition F5-01 closed; if it is ever wanted, it is the same future
+phase as the successor anchor, with its own review.
+
 **Vectors (A-2/A-4):** manifest member → removed → live injection
 (`unauthorized-sender`); the same object via backfill
 (`former-member`); manifest member → removed → re-admitted → accepted;
 manifest member with no chain → accepted; later admit → removed →
-rejected; a fetched identity whose fingerprint ≠ `authorized_fp`
-(`identity-mismatch`, no TOFU adoption); a correct Ed25519 fingerprint
+rejected; a fetched identity whose fingerprint ≠ the applicable
+resolver's `authorized_fp` (`identity-mismatch`, no TOFU adoption); a correct Ed25519 fingerprint
 with a wrong X25519 or self-sig (`identity-mismatch`); an identity
 change under an active membership (mismatch until the re-admit lands,
-accepted after).
+accepted after); **the rotation-history vector (R12-01)**: A1 admitted
+→ A1 signs Bob's admit → A1 removed → A2 re-admitted → a fresh device
+verifies Bob's admit and it **succeeds via `authorized_fp_at` = A1**,
+while A1's *new live traffic* stays `identity-mismatch` under
+`authorized_fp_current` = A2.
 
 ## A.5 Send, receive, objects, guests
 
@@ -1554,7 +1642,7 @@ frozen fact rather than folklore.
 | Democratic tallies | authorized-member attestation to a server-reported outcome |
 | Deniability | "authenticated for you"; no moderator-verifiable evidence |
 | No FS / PCS | stated, accepted |
-| Key-compromise impersonation | the MACs are static-static, so compromise of a recipient's X25519 key lets its holder impersonate **every** sender to that recipient until the identity is replaced — the authenticity face of "the sender or the recipient produced it", distinct from the no-FS/PCS row's confidentiality loss; stated, accepted. **The only repair is identity replacement** — §A.4's remove + re-admit transition binding the new fingerprint; rotating passwords or sessions repairs nothing here (the R11 review's operational note) |
+| Key-compromise impersonation | the MACs are static-static, so compromise of a recipient's X25519 key lets its holder impersonate **every** sender to that recipient until the identity is replaced — the authenticity face of "the sender or the recipient produced it", distinct from the no-FS/PCS row's confidentiality loss; stated, accepted. **Compromise recovery requires identity replacement** — rotating passwords or sessions repairs nothing here (the R11 review's operational note). For non-owner members that is §A.4's remove + re-admit transition binding the new fingerprint; **because the owner's fingerprint is part of the immutable anchor, owner identity replacement requires channel recreation in this phase** (P83-A-R12-02) |
 | Fresh device, no backup | no legacy-key substitution ever (no-suite-1); but conversion is TOFU — a poisoned manifest can include a decrypting principal on that fresh view; backup restores protection; recreation for high assurance |
 | Room size | hard cap 64 at member-add; over-limit channels resolved at migration; the concurrent-mint race past the cap resolves by §A.5's deterministic shed |
 | Flagged-history path choice | the server picks live vs backfill, so an injection can present as `former-member` instead of the alarm; it can never reach member assurance (§A.5) |
@@ -1688,7 +1776,7 @@ not a larger cap."*
 | Slice | Content (dark until Gate F) |
 |---|---|
 | A-1 | Pairwise HKDF tree (incl. `K_history`); flaps; HMAC tags; frozen parser + full vectors; WebCrypto disposal rules |
-| A-2 | Anchors (converter/owner split) + manifest + `manifest_admit_ref` + complete policy artifacts + membership/guest certificates (`lookup16`, expiry rules): canonicals (`sig64`/`gov_record` conventions + mutation vectors), pure state machine, server tables (per-channel anchor CAS; `(channel,target,n)` and `(channel,p)` idempotency), rollback latches, policy-fork behavior + the monotonic removal latch (the `era` byte frozen at 1 — no door this phase, P83-A-F5-01); the one `member_state`/`authorized_fp` module with its reference-model vectors (P83-A-R11-01/02/03) |
+| A-2 | Anchors (converter/owner split) + manifest + `manifest_admit_ref` + complete policy artifacts + membership/guest certificates (`lookup16`, expiry rules): canonicals (`sig64`/`gov_record` conventions + mutation vectors), pure state machine, server tables (per-channel anchor CAS; `(channel,target,n)` and `(channel,p)` idempotency), rollback latches, policy-fork behavior + the monotonic removal latch (the `era` byte frozen at 1 — no door this phase, P83-A-F5-01); the one `member_state` module with the split `authorized_fp_current`/`authorized_fp_at` resolvers and its reference-model vectors (P83-A-R11-01/02/03, P83-A-R12-01/02); the `(user_id, ed25519_fp)` historical identity fetch |
 | A-3 | The §A.3 canonical envelope, exactly as frozen in this plan (P83-A-F5-04 — encoders, total parser, the three adaptations, full vectors); verify policy; typed results incl. `granted` |
 | A-4 | Suite-2 send/receive; self-flap; the sender-acceptance rule (`unauthorized-sender`/`former-member`, the live/backfill boundary, canonical-only sender provenance, directional assurance) consuming §A.4's one predicate and identity binding (`identity-mismatch` — P83-A-R11-01/02) + its vectors; the first-seen replay rule; `key_version` exemptions per inventory |
 | A-5 | Edits, reactions (sealed clear), attachments-in-envelope, voice pairwise sealing |
@@ -1728,7 +1816,7 @@ The comparison that decided it:
 |---|---|---|---|
 | Departure freeze | until creator acts | seconds | none |
 | Creator crypto role | load-bearing | none | anchor signer only (once) |
-| Review state | 6 revisions, Gate 0 never passed | unreviewed delta | 10 reads + two external reviews; passed at the sixth revision, **re-opened — re-review of the seventh/eighth delta pending** |
+| Review state | 6 revisions, Gate 0 never passed | unreviewed delta | 10 reads + three external reviews; passed at the sixth revision, **re-opened — re-review of the seventh–ninth delta pending** |
 | Membership | transcript (fork proofs) | transcript (fork proofs) | anchors + policy chain + per-target chains, rollback latch |
 | Deniability | no | no | **yes** ("authenticated for you") |
 | New-member history | as today | as today | grantor-attested (explicit, labelled) |
@@ -1739,10 +1827,12 @@ The comparison that decided it:
 The costs in the last three rows are accepted deliberately (§A.8): they
 buy the only deniable, freeze-free, coordinator-free design on the
 table. Gate 0 passed at the sixth revision after eight review rounds;
-two external reviews re-opened it (2026-08-09) — the fifth independent
-review's five blockers, answered in the seventh revision, and the R11
-review's two (the acceptance predicate's manifest arm, the unfrozen
-identity binding), answered in the eighth. The accumulated delta
+three external reviews re-opened and held it open (2026-08-09) — the
+fifth independent review's five blockers (→ seventh revision), the R11
+review's two, the acceptance predicate's manifest arm and the unfrozen
+identity binding (→ eighth), and the R12 delta review's two in that
+revision's own replacement text, the temporally ambiguous resolver and
+the impossible owner replacement (→ ninth). The accumulated delta
 awaits independent re-review before any slice lands.
 
 ## Prior-art sources

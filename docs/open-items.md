@@ -77,8 +77,18 @@ membership state machine — the acceptance predicate's manifest arm let a
 *removed founding member* keep passing, and nothing bound an admission's
 fingerprint to the runtime identity actually used — both frozen in the
 eighth revision as one `member_state` predicate plus the
-`authorized_fp`/`identity-mismatch` binding. **No slice lands until an
-independent re-review of the accumulated delta closes the gate again.**
+`authorized_fp`/`identity-mismatch` binding. The R12 delta review
+([audits/security-phase-83-r12-review-2026-08-09.md](audits/security-phase-83-r12-review-2026-08-09.md))
+verified those closed and caught two blockers in the eighth revision's
+own replacement text — the fingerprint resolver ignored the
+non-retroactive temporal model (historical certificates would fail after
+an identity rotation) and owner replacement was impossible by
+construction — both frozen in the ninth revision: a state-relative
+`authorized_fp_current`/`authorized_fp_at` split with a
+fingerprint-keyed historical identity fetch, and owner identity
+replacement declared unsupported this phase (recreate the channel).
+**No slice lands until an independent re-review of the accumulated
+delta closes the gate again.**
 
 ## Phase 85 — operational logging
 
