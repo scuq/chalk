@@ -100,6 +100,10 @@ same space.
   badged Reminders entry above the parking lot, the whole set in a sealed prefs
   blob so the server never learns a reminder exists, and no server code at all.
 - **A local idle agent** (90, [phases/PHASE-90-IDLEEXT.md](phases/PHASE-90-IDLEEXT.md)).
+- **Large rooms** (98, [phases/PHASE-98-BIGROOMS.md](phases/PHASE-98-BIGROOMS.md)):
+  per-sender streams on 83's membership layer for rooms past the 64 cap —
+  gated on phase 83 shipping and on its own review before any code.
+  Non-deniable by design; fanout stays the ≤64 layer.
 - **The SFU seam** (voice design Slice I) for rooms too large for a mesh.
 - **Governance `set_config` proposals.**
 
