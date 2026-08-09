@@ -31,9 +31,21 @@ import {
 } from "./transport";
 import { cacheGet, cachePut } from "./cache";
 
+/**
+ * 83-2: ciphertext digests of one uploaded attachment, computed while the
+ * bytes are still in hand. The signed message envelope carries these
+ * (AttachmentBinding), tying the signature to the exact blobs uploaded so a
+ * stored attachment cannot be substituted under an already-signed message.
+ */
+export interface UploadBinding {
+  ciphertextSha256: Uint8Array; // over the full uploaded ciphertext
+  encMetaSha256: Uint8Array | null; // null when no enc_meta (never, today)
+  encPreviewSha256: Uint8Array | null; // null when the kind has no preview
+}
+
 /** Result of an upload attempt: the ref (+meta) to render, or blocked on key. */
 export type UploadResult =
-  | { kind: "uploaded"; ref: AttachmentRef; meta: AttachmentMeta }
+  | { kind: "uploaded"; ref: AttachmentRef; meta: AttachmentMeta; binding: UploadBinding }
   | { kind: "waiting" };
 
 export interface UploadOptions {
@@ -118,7 +130,18 @@ export async function uploadAttachment(
     encPreviewB64,
     previewLen,
   };
-  return { kind: "uploaded", ref, meta };
+  // 83-2: digest the exact ciphertexts that went up, for the envelope's
+  // attachment binding. Computed last so a failed upload never yields one.
+  const binding: UploadBinding = {
+    ciphertextSha256: await sha256(encFull.ciphertext),
+    encMetaSha256: await sha256(encMeta),
+    encPreviewSha256: encPreview ? await sha256(encPreview) : null,
+  };
+  return { kind: "uploaded", ref, meta, binding };
+}
+
+async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
 }
 
 /** wireRefToRef converts a server AttachmentRefWire into the client ref shape. */

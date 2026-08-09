@@ -179,7 +179,7 @@ import {
 } from "../proto";
 import { mintGuestLink, buildJoinURL, hexToBytes as guestHexToBytes, bytesToBase64 as guestB64 } from "../crypto/guest-link";
 import { countdownTickMs } from "../chat/countdown";
-import { WSClient, getOrCreateDeviceId, clearDeviceId } from "../ws-client";
+import { WSClient, getOrCreateDeviceId, clearDeviceId, randomUuid } from "../ws-client";
 import { reducer } from "../state/reducer";
 import { hasUnread, initialState, selectChatPrefs, selectJoinMuted, selectParkingLotPrefs, selectRosterPrefs, selectVoicePrefs, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow, type VoicePrefs } from "../state/types";
 import { selectGiphyPref } from "../giphy/giphy";
@@ -310,6 +310,11 @@ import {
   type ChannelKeyStatus,
   type KeyProvenance,
 } from "../crypto/channel-crypto";
+// 83-2: signed sealed envelopes -- envelope field types for the send path,
+// the writer sequence, and the pure verdict-into-row merge.
+import { OBJ_MESSAGE, type AttachmentBinding, type ReplyBinding } from "../crypto/envelope";
+import { nextWseq } from "../crypto/wseq";
+import { applyOpened, hexToBytes, bytesToHex } from "../chat/verify";
 // att-2: attachment pipeline (send-side upload + receive-side controller),
 // the transport list query for history backfill, and the ciphertext cache
 // teardown (logout / settings "clear cached images").
@@ -1987,33 +1992,42 @@ export function App() {
     keyStatus,
   ]);
 
-  // Phase 23f (fail-closed): run EVERY message through decryptForChannel
-  // before it reaches the reducer. It returns plaintext only for properly
-  // decrypted ciphertext; a null/0 key_version body is replaced by a blocked
-  // placeholder, so cleartext can never be displayed. When the crypto isn't
-  // built yet, bodies are replaced with a placeholder too (we can't read).
+  // Phase 23f (fail-closed): run EVERY message through the envelope-aware
+  // open path before it reaches the reducer. It returns plaintext only for
+  // properly decrypted ciphertext; a null/0 key_version body is replaced by a
+  // blocked placeholder, so cleartext can never be displayed. When the crypto
+  // isn't built yet, bodies are replaced with a placeholder too (we can't
+  // read). 83-2: each row also gets its verification verdict + signed triple
+  // (applyOpened), and a row whose envelope replay-triple is already bound to
+  // a DIFFERENT server row is dropped -- rendered once, per D.1.
   async function decryptAll(msgs: Message[]): Promise<Message[]> {
     const cc = ccRef.current;
-    return Promise.all(
-      msgs.map(async (m) => {
+    const opened = await Promise.all(
+      msgs.map(async (m): Promise<Message | null> => {
         // Phase 26: deleted messages carry no decryptable body; render the
         // tombstone placeholder and skip decryption entirely.
         if (m.deleted) return { ...m, body: "[message deleted]" };
         if (!cc) return { ...m, body: "[encrypted message -- key not available yet]" };
-        const body = await cc.decryptForChannel(m.channelID, m.keyVersion, m.body);
+        const op = await cc.openMessageForChannel(m.channelID, m.keyVersion, m.body, {
+          serverMsgID: m.id,
+          senderUserID: m.senderUserID,
+        });
+        if (op.duplicate) return null; // replay: this envelope already renders under another row
+        const next = applyOpened(m, op);
         // Decrypt the thread last-reply preview too (it's separate ciphertext
-        // with its own key version), so the preview shows plaintext, not base64.
-        let lastReplyBody = m.lastReplyBody;
-        if (lastReplyBody) {
-          lastReplyBody = await cc.decryptForChannel(
+        // with its own key version), so the preview shows plaintext, not
+        // base64. Display-text path: previews carry no verdict.
+        if (next.lastReplyBody) {
+          next.lastReplyBody = await cc.decryptForChannel(
             m.channelID,
             m.lastReplyKeyVersion,
-            lastReplyBody,
+            next.lastReplyBody,
           );
         }
-        return { ...m, body, lastReplyBody };
+        return next;
       }),
     );
+    return opened.filter((m): m is Message => m !== null);
   }
 
   // 33-3: flag a channel as having a mention of the viewer.
@@ -2194,18 +2208,27 @@ export function App() {
         // Keyed on the user, not m.sender -- that field is a device id.
         if (m.senderUserID) typingStore.clearUser(m.channelID, m.senderUserID);
         // Phase 23f (fail-closed): always decrypt before dispatch; a null-
-        // version or undecryptable body becomes a placeholder, never cleartext.
+        // version or undecryptable body becomes a placeholder, never
+        // cleartext. 83-2: the open path also verifies the envelope; the
+        // dispatched row carries the verdict, the signed sender wins the
+        // frame on any signature-valid verdict, and a replayed envelope
+        // (triple bound to another server row) is dropped before dispatch.
         if (ccRef.current) {
           void ccRef.current
-            .decryptForChannel(m.channelID, m.keyVersion, m.body)
-            .then((body) => {
-              dispatch({ kind: "message", message: { ...m, body } });
-              noteMention(m.channelID, m.senderUserID, body); // 33-3
-              if (m.parentID) {
+            .openMessageForChannel(m.channelID, m.keyVersion, m.body, {
+              serverMsgID: m.id,
+              senderUserID: m.senderUserID,
+            })
+            .then((op) => {
+              if (op.duplicate) return; // replay: rendered once already
+              const msg = applyOpened(m, op);
+              dispatch({ kind: "message", message: msg });
+              noteMention(msg.channelID, msg.senderUserID, msg.body); // 33-3
+              if (msg.parentID) {
                 // 42-7: a reply naming us makes its thread need us.
-                noteThreadMention(m.threadID ?? m.parentID, m.senderUserID, body);
+                noteThreadMention(msg.threadID ?? msg.parentID, msg.senderUserID, msg.body);
               }
-              noteSound(m, body); // 40-2
+              noteSound(msg, msg.body); // 40-2
             });
         } else {
           dispatch({
@@ -3573,30 +3596,33 @@ export function App() {
     if (!cid) return false;
     if (!state.user) return false;
 
-    // Phase 23d: encrypt for this channel if it holds a key. "waiting" means
-    // the channel is encrypted but our key hasn't arrived -- block the send
-    // (the composer is also disabled in that state) BEFORE the optimistic
-    // append, so nothing is shown that won't actually be sent.
     // Phase 23f (fail-closed): a message is sent ONLY if it can be encrypted.
     // No crypto instance, or no usable channel key, means the send is blocked
     // entirely -- plaintext is never transmitted.
     if (!ccRef.current) return false;
-    const enc = await ccRef.current.encryptForChannel(cid, body);
-    if (enc.kind !== "encrypted") return false; // "waiting": blocked until key arrives
-    const sendBody = enc.body;
-    const sendKeyVersion: number = enc.keyVersion;
+
+    // 83-2: the frozen send-flow order -- mint id, upload attachments, build,
+    // sign, seal, send. The client_msg_id is minted FIRST because it is
+    // sealed inside the signed envelope (the replay triple), so nothing
+    // about the send can pick it later.
+    const deviceID = getOrCreateDeviceId();
+    const cmid = randomUuid();
+    const localID = "local-" + cmid;
 
     // att-2: upload any pending attachments BEFORE the optimistic append + send
     // frame. Each is encrypted under the channel key, chunk-uploaded over HTTP,
     // then finalized; we carry the ids on the send frame and the refs on the
     // optimistic message (chalkd echo-suppresses our own device, so our own
     // attachments render from these optimistic refs). If any upload blocks on
-    // the key or errors, abort the whole send -- nothing half-sent.
+    // the key or errors, abort the whole send -- nothing half-sent. A key
+    // that is "waiting" blocks here exactly as it blocks the body encrypt.
     // att-3: thread per-item upload progress back to the composer tray.
+    // 83-2: each upload also returns the ciphertext digests the envelope
+    // binds, so a stored blob can't be substituted under the signature.
     const attachmentIDs: string[] = [];
     const attachmentRefs: AttachmentRef[] = [];
+    const attachmentBindings: AttachmentBinding[] = [];
     if (pending && pending.length > 0) {
-      const deviceID = getOrCreateDeviceId();
       try {
         for (const p of pending) {
           const res = await uploadAttachment(ccRef.current, cid, deviceID, p.file, {
@@ -3607,12 +3633,64 @@ export function App() {
           if (res.kind !== "uploaded") return false; // "waiting": key vanished mid-send
           attachmentIDs.push(res.ref.id);
           attachmentRefs.push(res.ref);
+          attachmentBindings.push({
+            attachmentID: res.ref.id,
+            attKeyVersion: res.ref.keyVersion,
+            byteLen: res.ref.byteLen,
+            ciphertextSha256: res.binding.ciphertextSha256,
+            encMetaSha256: res.binding.encMetaSha256,
+            encPreviewSha256: res.binding.encPreviewSha256,
+          });
         }
       } catch (err) {
         console.error("attachment upload failed; send aborted:", err);
         return false;
       }
     }
+
+    // 83-2: reply binding -- if the parent row carried a verified envelope we
+    // hold its signed replay triple + object hash and the reply binds to it;
+    // a pre-83 (or unverifiable) parent gets no binding, which the envelope
+    // encodes as "not a reply / parent is legacy" (the outer parent_id still
+    // threads it).
+    let reply: ReplyBinding | null = null;
+    if (parentID) {
+      const parent =
+        (state.messages[cid] ?? []).find((m) => m.id === parentID) ??
+        Object.values(state.threadMessages)
+          .flat()
+          .find((m) => m.id === parentID);
+      if (parent?.sigActor && parent.sigScope && parent.sigClientMsgID) {
+        reply = {
+          parentSender: parent.sigActor,
+          parentScope: parent.sigScope,
+          parentClientMsgID: parent.sigClientMsgID,
+          parentEnvHash: parent.sigObjectHash ? hexToBytes(parent.sigObjectHash) : null,
+        };
+      }
+    }
+
+    // Build -> sign -> seal. "waiting" blocks the send exactly as the
+    // pre-83 encrypt did (the composer is also disabled in that state),
+    // BEFORE the optimistic append, so nothing is shown that won't be sent.
+    const senderTs = Date.now();
+    const enc = await ccRef.current.signAndEncryptMessage(cid, (keyVersion, fp) => ({
+      objType: OBJ_MESSAGE,
+      channelID: cid,
+      keyVersion,
+      senderUserID: state.user!.id,
+      senderEd25519Fp: fp,
+      writerScope: deviceID,
+      clientMsgID: cmid,
+      senderTs,
+      wseq: nextWseq(deviceID),
+      reply,
+      bodyText: body,
+      attachments: attachmentBindings,
+    }));
+    if (enc.kind !== "encrypted") return false; // "waiting": blocked until key arrives
+    const sendBody = enc.body;
+    const sendKeyVersion: number = enc.keyVersion;
 
     // Phase 08b polish: optimistic-append. chalkd intentionally
     // echo-suppresses the sender device so a smarter SPA can
@@ -3632,11 +3710,6 @@ export function App() {
       existing.length === 0
         ? 1
         : Math.max(...existing.map((m) => m.seq)) + 1;
-    const localID =
-      "local-" +
-      (typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID()
-        : Date.now().toString(36) + Math.random().toString(36).slice(2));
     dispatch({
       kind: "message",
       message: {
@@ -3660,18 +3733,28 @@ export function App() {
         replyCount: 0,
         // att-2: render our own attachments optimistically (no server echo).
         attachments: attachmentRefs.length > 0 ? attachmentRefs : undefined,
-        // Idempotency key: the optimistic row's own local UUID. The server
-        // echoes it back in the live push so the reducer replaces THIS row
-        // (adopting the server id/seq/ts) instead of appending a duplicate
-        // when the echo reaches us (e.g. after a reconnect).
-        clientMsgID: localID,
+        // Idempotency key: the uuid minted at the top of the send (83-2: a
+        // BARE uuid now, because it is sealed inside the signed envelope as
+        // uuid16). The server echoes it back in the live push so the reducer
+        // replaces THIS row (adopting the server id/seq/ts) instead of
+        // appending a duplicate when the echo reaches us (e.g. after a
+        // reconnect).
+        clientMsgID: cmid,
+        // 83-2: our own send is signed by construction; stamp the row with
+        // the verdict and the signed triple + hash so a reply typed before
+        // the echo arrives can already bind to it.
+        verify: "verified",
+        sigActor: state.user.id,
+        sigScope: deviceID,
+        sigClientMsgID: cmid,
+        sigObjectHash: bytesToHex(enc.objectHash),
       },
     });
 
     const payload: SendPayload = { channel_id: cid, body: sendBody, key_version: sendKeyVersion };
     if (parentID) payload.parent_id = parentID;
     if (attachmentIDs.length > 0) payload.attachment_ids = attachmentIDs;
-    payload.client_msg_id = localID;
+    payload.client_msg_id = cmid;
     c.send(TypeSend, payload);
     return true;
   };

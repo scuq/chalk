@@ -1039,6 +1039,11 @@ export function reducer(state: AppState, action: Action): AppState {
               body: action.body,
               keyVersion: action.keyVersion,
               editedAt: action.editedAt,
+              // 83-2: edits are not signed until 83-3, so the displayed body
+              // no longer carries the original's signature -- the verdict
+              // honestly downgrades. The sig* triple stays: it identifies the
+              // message (and 83-3's revision chain re-anchors on it).
+              verify: "unsigned",
             }
           : m;
 

@@ -39,11 +39,16 @@ const DB_NAME = "chalk";
 // (full blobs + previews), so scroll-back doesn't re-fetch over the network.
 // Ciphertext, not plaintext: every byte at rest stays key-protected, the same
 // invariant as space keys and identity.
-const DB_VERSION = 4;
+// v5 (83-2): adds the replay_ids store binding each signed envelope's replay
+// triple (actor/writer_scope/client_msg_id) to the FIRST server row id it was
+// seen under, so the same envelope re-delivered under a new server id renders
+// once (PHASE-83-MSGSIG.md D.1).
+const DB_VERSION = 5;
 const STORE = "identity";
 const SPACE_KEY_STORE = "space_keys";
 const VERIFICATION_STORE = "verifications";
 const ATTACHMENT_CACHE_STORE = "attachment_cache";
+const REPLAY_STORE = "replay_ids";
 
 /** A loaded identity record, with both private keys as usable CryptoKeys. */
 export interface StoredIdentity {
@@ -83,6 +88,9 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(ATTACHMENT_CACHE_STORE)) {
         db.createObjectStore(ATTACHMENT_CACHE_STORE, { keyPath: "cacheKey" });
+      }
+      if (!db.objectStoreNames.contains(REPLAY_STORE)) {
+        db.createObjectStore(REPLAY_STORE, { keyPath: "triple" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -573,6 +581,52 @@ export async function clearAttachmentCache(): Promise<void> {
   const db = await openDB();
   try {
     await tx(db, "readwrite", (s) => s.clear(), ATTACHMENT_CACHE_STORE);
+  } finally {
+    db.close();
+  }
+}
+
+// ---- replay bindings (83-2) ---------------------------------------------
+
+/**
+ * One replay binding: the first server row id a signed envelope's replay
+ * triple was seen under. The triple string is envelope.ts's replayIdentity
+ * ("actor/writer_scope/client_msg_id" -- three uuids, injective join).
+ */
+export interface ReplayRecord {
+  triple: string;
+  serverID: string;
+  channelID: string;
+  firstSeenAt: number; // epoch ms, diagnostics only
+}
+
+/** loadReplayRecord returns the stored binding for a triple, or null. */
+export async function loadReplayRecord(triple: string): Promise<ReplayRecord | null> {
+  const db = await openDB();
+  try {
+    const rec = await tx<ReplayRecord | undefined>(db, "readonly", (s) => s.get(triple), REPLAY_STORE);
+    return rec ?? null;
+  } finally {
+    db.close();
+  }
+}
+
+/** saveReplayRecord persists a first-seen binding (overwrites never happen in
+ *  practice -- the guard writes only when no record exists). */
+export async function saveReplayRecord(record: ReplayRecord): Promise<void> {
+  const db = await openDB();
+  try {
+    await tx(db, "readwrite", (s) => s.put(record), REPLAY_STORE);
+  } finally {
+    db.close();
+  }
+}
+
+/** clearReplayRecords empties the replay store (tests / storage reset). */
+export async function clearReplayRecords(): Promise<void> {
+  const db = await openDB();
+  try {
+    await tx(db, "readwrite", (s) => s.clear(), REPLAY_STORE);
   } finally {
     db.close();
   }

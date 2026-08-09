@@ -48,6 +48,38 @@ test("edit swaps the body in place and stamps editedAt", () => {
   assert.deepEqual(row.editedAt, EDITED);
 });
 
+test("83-2: an edit downgrades the verification verdict to unsigned, keeping the triple", () => {
+  let s = baseState();
+  s = reducer(s, {
+    kind: "message",
+    message: msg({
+      id: "m1",
+      verify: "verified",
+      sigActor: "user-1",
+      sigScope: "scope-1",
+      sigClientMsgID: "cmid-1",
+      sigObjectHash: "abcd",
+    }),
+  });
+  s = reducer(s, {
+    kind: "message_edited",
+    channelID: "chan-1",
+    messageID: "m1",
+    body: "hello",
+    keyVersion: 2,
+    editedAt: EDITED,
+  });
+
+  const row = s.messages["chan-1"]![0]!;
+  // Edits are unsigned until 83-3: the displayed body no longer carries the
+  // original's signature, so the badge must not keep claiming verified.
+  assert.equal(row.verify, "unsigned");
+  // The signed replay triple still identifies the message (83-3 re-anchors
+  // its revision chain on it).
+  assert.equal(row.sigActor, "user-1");
+  assert.equal(row.sigObjectHash, "abcd");
+});
+
 test("edit does not move the message or disturb its neighbours", () => {
   let s = baseState();
   s = reducer(s, { kind: "message", message: msg({ id: "m1", seq: 1 }) });

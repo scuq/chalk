@@ -16,6 +16,7 @@ import type {
   ReactionSet,
 } from "../state/types";
 import { buildMessageMenu, type MessageMenuItem } from "../chat/message-menu";
+import { verifyLabel, verifyTitle } from "../chat/verify"; // 83-2
 import { LONG_PRESS_MS, pressWandered } from "../chat/press";
 import { MessageMenu } from "./MessageMenu";
 import { ReactionBar } from "./ReactionBar";
@@ -1234,6 +1235,19 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                   data-testid={`message-edited-${m.id}`}
                 >
                   (edited)
+                </span>
+              )}
+              {/* 83-2: envelope verification verdict. Nothing for the healthy
+                  "verified" state; one uniform quiet label for pre-83
+                  history; unmistakable warnings for the fail-closed states.
+                  Content is always shown -- the label is the boundary. */}
+              {!m.deleted && verifyLabel(m.verify) !== "" && (
+                <span
+                  class={`chalk-message-verify chalk-message-verify-${m.verify}`}
+                  title={verifyTitle(m.verify)}
+                  data-testid={`message-verify-${m.id}`}
+                >
+                  {verifyLabel(m.verify)}
                 </span>
               )}
             </span>

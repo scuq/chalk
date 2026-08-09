@@ -74,7 +74,7 @@ as-built rather than a contemporaneous plan.
 | 80 | ephemeral voice rooms, guest links | [PHASE-80-EPHEMERAL.md](phases/PHASE-80-EPHEMERAL.md) |
 | 81 | security audit and remediation | [PHASE-81-SECAUDIT.md](phases/PHASE-81-SECAUDIT.md) |
 | 82 | signed channel-key wraps | [PHASE-82-SIGNEDWRAP.md](phases/PHASE-82-SIGNEDWRAP.md) |
-| 83 | signed sealed envelopes + server pin, under the revised trust model (the fanout design retired at git `731eac5`) — **in progress, 83-1 landed** | [PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md) |
+| 83 | signed sealed envelopes + server pin, under the revised trust model (the fanout design retired at git `731eac5`) — **in progress, 83-1/83-2 landed** | [PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md) |
 | 84 | identity-pin backup | [PHASE-84-PINBACKUP.md](phases/PHASE-84-PINBACKUP.md) |
 | 85 | operational logging | [PHASE-85-OPLOG.md](phases/PHASE-85-OPLOG.md) |
 | 86 | ties: answering without quoting — **planned, not started** | [PHASE-86-TIES.md](phases/PHASE-86-TIES.md) |
@@ -704,8 +704,8 @@ logging — security events, opt-in connection snapshot, slow requests, Caddy
 access log (85).
 
 **In progress.** 83 (signed sealed envelopes, rotation and the server
-pin under the 2026-08-09 revised trust model) — slice 83-1 landed
-2026-08-09.
+pin under the 2026-08-09 revised trust model) — slices 83-1 and 83-2
+landed 2026-08-09.
 
 **Not started.** 65 (web push), 86 (ties), 87
 (message reminders), 90 (a local idle agent) and 99 (database-credential

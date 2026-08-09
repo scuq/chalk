@@ -254,6 +254,16 @@ const DEVICE_ID_KEY = "chalk.deviceId";
 // ever opened. The fallback only has to be unique across one user's own
 // devices, so Math.random is acceptable.
 function randomDeviceId(): string {
+  return randomUuid();
+}
+
+/**
+ * randomUuid returns a canonical v4-shaped uuid string, with the same
+ * fallback ladder the device id uses. 83-2: message client_msg_ids come from
+ * here too -- the signed envelope encodes them as strict uuid16, so they must
+ * be real uuids, not prefixed strings.
+ */
+export function randomUuid(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
   }

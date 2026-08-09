@@ -43,7 +43,28 @@ import {
 } from "./spacekey-sync";
 import { fetchIdentity } from "./identity-sync";
 import { fetchTrustedIdentity, resolveSigner } from "./trust";
-import { loadSpaceKey, saveSpaceKey, channelHasSignedKey, type KeyProvenance } from "./idb";
+import {
+  loadSpaceKey,
+  saveSpaceKey,
+  channelHasSignedKey,
+  loadVerification,
+  type KeyProvenance,
+} from "./idb";
+// 83-2: the signed sealed envelope rides INSIDE the message ciphertext.
+import {
+  OBJ_MESSAGE,
+  parseEnvelope,
+  classifyEnvelope,
+  signEnvelope,
+  envelopeObjectHash,
+  ed25519Fingerprint,
+  envelopeActor,
+  replayIdentity,
+  type MessageEnvelope,
+  type SignerResolution,
+  type VerifyStatus,
+} from "./envelope";
+import { ReplayGuard } from "./replay";
 
 export type { KeyProvenance };
 
@@ -85,6 +106,40 @@ export type ChannelKeyStatus = "ready" | "waiting";
 export type EncryptResult =
   | { kind: "encrypted"; body: string; keyVersion: number } // body is base64
   | { kind: "waiting" };
+
+/**
+ * 83-2: what signAndEncryptMessage hands back. The envelope and its
+ * object_hash ride along so the send path can stamp the optimistic row with
+ * the signed replay triple + hash (what a later reply binds to).
+ */
+export type SignedEncryptResult =
+  | {
+      kind: "encrypted";
+      body: string; // base64 ciphertext of (canonical || lp(sig64))
+      keyVersion: number;
+      envelope: MessageEnvelope;
+      objectHash: Uint8Array;
+    }
+  | { kind: "waiting" };
+
+/**
+ * 83-2: one opened (decrypted + envelope-classified) message body.
+ *
+ * `verify` is undefined when the body never decrypted (text is a
+ * placeholder); "unsigned" covers both pre-83 legacy bodies and bodies that
+ * fail strict envelope parsing (D.4: only the sender can produce the latter,
+ * the seal guarantees it). `duplicate` marks a signature-valid envelope whose
+ * replay triple is already bound to a different server row -- the caller
+ * renders the first row and drops this one.
+ */
+export interface OpenedMessage {
+  text: string;
+  verify?: VerifyStatus;
+  duplicate?: boolean;
+  env?: MessageEnvelope;
+  /** hex SHA-256(canonical || lp(sig64)); what replies/edits bind to. */
+  objectHashHex?: string;
+}
 
 /**
  * What encryptBytesForChannel hands back to the attachment upload path. Unlike
@@ -189,6 +244,15 @@ export class ChannelCrypto {
   // wrap is refused on the read path everywhere, not just on ratcheted
   // channels -- the soft window is over.
   private wrapSigRequired = false;
+  // 83-2: replay-triple first-seen bindings (one guard per brain; serialized).
+  private readonly replayGuard = new ReplayGuard();
+  // 83-2: our own identity fingerprint (SHA-256 of the Ed25519 public key),
+  // computed once -- it is sealed into every envelope this client signs.
+  private ownFpPromise: Promise<Uint8Array> | null = null;
+  // 83-2: peers we already tried an identity fetch for while resolving an
+  // envelope signer this session, so an unpinned sender costs one fetch, not
+  // one per message.
+  private readonly envelopeFetchTried = new Set<string>();
 
   constructor(
     transport: CryptoTransport,
@@ -877,7 +941,158 @@ export class ChannelCrypto {
       return PLACEHOLDER_FAILED;
     }
     const pt = await decryptMessage(sk, channelID, keyVersion, bytes);
-    return pt ? new TextDecoder().decode(pt) : PLACEHOLDER_FAILED;
+    if (!pt) return PLACEHOLDER_FAILED;
+    // 83-2: the plaintext may be a signed envelope. This path is DISPLAY
+    // TEXT ONLY (previews, search) -- no verification verdict is surfaced, so
+    // none is computed; the message feed goes through openMessageForChannel.
+    return envelopeDisplayText(pt);
+  }
+
+  // ---- 83-2: the signed sealed envelope ----------------------------------
+
+  /** ownFp returns this identity's fingerprint (memoized; sealed into every
+   *  envelope we sign, and the self-resolution belief on the read path). */
+  private ownFp(): Promise<Uint8Array> {
+    if (!this.ownFpPromise) {
+      this.ownFpPromise = ed25519Fingerprint(this.identity.ed25519Public);
+    }
+    return this.ownFpPromise;
+  }
+
+  /**
+   * signAndEncryptMessage is the 83-2 send path: build -> sign -> seal, in
+   * that order (the envelope must know the key version it will seal under,
+   * so the builder callback receives it along with our fingerprint).
+   * Returns "waiting" when no usable key is held -- same fail-closed rule as
+   * encryptForChannel, checked BEFORE signing so no signed envelope exists
+   * that was never sealed.
+   */
+  async signAndEncryptMessage(
+    channelID: string,
+    make: (keyVersion: number, senderEd25519Fp: Uint8Array) => MessageEnvelope,
+  ): Promise<SignedEncryptResult> {
+    const v = this.currentVersion(channelID);
+    const sk = await this.getKey(channelID, v);
+    if (!sk) return { kind: "waiting" };
+    const envelope = make(v, await this.ownFp());
+    const signed = await signEnvelope(envelope, this.identity.ed25519Private);
+    const objectHash = await envelopeObjectHash(signed);
+    const ct = await encryptMessage(sk, channelID, v, signed);
+    return { kind: "encrypted", body: bytesToBase64(ct), keyVersion: v, envelope, objectHash };
+  }
+
+  /**
+   * openMessageForChannel is the 83-2 receive path for the message feed:
+   * decrypt, then parse + verify the envelope fail-closed and check the
+   * replay binding. Placeholders and the decrypt preamble mirror
+   * decryptForChannel exactly; what differs is that the verdict comes back
+   * typed instead of being flattened into text.
+   *
+   * The replay triple is bound to `serverMsgID` only for SIGNATURE-VALID
+   * envelopes (see replay.ts on why binding a forgery would be a gift), and
+   * a triple already bound to a different row comes back duplicate -- the
+   * caller drops it, so the same envelope renders once no matter how many
+   * server rows carry it.
+   */
+  async openMessageForChannel(
+    channelID: string,
+    keyVersion: number | undefined,
+    body: string,
+    outer: { serverMsgID: string; senderUserID: string },
+  ): Promise<OpenedMessage> {
+    if (!keyVersion || keyVersion < 1) return { text: PLACEHOLDER_PLAINTEXT_BLOCKED };
+    let sk = await this.getKey(channelID, keyVersion);
+    if (!sk && !this.settled.has(channelID)) {
+      await this.waitForKeySettled(channelID);
+      sk = await this.getKey(channelID, keyVersion);
+    }
+    if (!sk) return { text: PLACEHOLDER_NO_KEY };
+    let bytes: Uint8Array;
+    try {
+      bytes = base64ToBytes(body);
+    } catch {
+      return { text: PLACEHOLDER_FAILED };
+    }
+    const pt = await decryptMessage(sk, channelID, keyVersion, bytes);
+    if (!pt) return { text: PLACEHOLDER_FAILED };
+
+    const parsed = parseEnvelope(pt);
+    if (parsed.kind === "legacy") {
+      // Pre-83 body: bare text inside the seal. One uniform label, no alarm.
+      return { text: new TextDecoder().decode(pt), verify: "unsigned" };
+    }
+    if (parsed.kind === "malformed") {
+      // Only the sender can produce this (the body sits inside AEAD). Per
+      // D.4 it renders as unsigned; the text is unreconstructable, so the
+      // placeholder stands in rather than envelope bytes decoded as prose.
+      return { text: PLACEHOLDER_FAILED, verify: "unsigned" };
+    }
+    if (parsed.env.objType !== OBJ_MESSAGE) {
+      // A signed edit/reaction envelope sealed into a MESSAGE slot: slot
+      // confusion only the sender can construct. Same rendering rule as
+      // malformed -- and never its body as message text.
+      return { text: PLACEHOLDER_FAILED, verify: "unsigned" };
+    }
+
+    const cls = await classifyEnvelope(
+      parsed,
+      { channelID, keyVersion, senderUserID: outer.senderUserID },
+      (actor, fp) => this.resolveEnvelopeSigner(actor, fp),
+    );
+    const env = parsed.env as MessageEnvelope;
+    const opened: OpenedMessage = {
+      text: env.bodyText,
+      verify: cls.status,
+      env,
+      objectHashHex: bytesToHex(await envelopeObjectHash(pt)),
+    };
+    const sigValid =
+      cls.status === "verified" || cls.status === "verified-former-identity" || cls.status === "mismatch";
+    if (sigValid) {
+      const verdict = await this.replayGuard.bind(replayIdentity(env), outer.serverMsgID, channelID);
+      if (verdict === "duplicate") opened.duplicate = true;
+    }
+    return opened;
+  }
+
+  /**
+   * resolveEnvelopeSigner answers "what do we believe about (actor, fp)?"
+   * for envelope classification, from the SAME pin store the wrap path
+   * trusts (82-2). 83-2 knows only current pins: a fingerprint that is not
+   * the actor's pinned key is foreign (rendered forged). 83-4 inserts the
+   * retired-generation chain walk here before that conclusion.
+   *
+   * Offline-first like resolveSigner: one identity fetch per unpinned actor
+   * per session (which TOFU-pins exactly like the wrap path), never a fetch
+   * per message.
+   */
+  private async resolveEnvelopeSigner(actorUserID: string, fp: Uint8Array): Promise<SignerResolution> {
+    // Ourselves: our key is the belief; the pin store has no self record.
+    if (actorUserID === this.identity.userID) {
+      return bytesEqual(await this.ownFp(), fp)
+        ? { kind: "current", ed25519Public: this.identity.ed25519Public }
+        : { kind: "foreign" };
+    }
+    let rec = await loadVerification(actorUserID);
+    if (!rec?.ed25519PubB64 && !this.envelopeFetchTried.has(actorUserID)) {
+      this.envelopeFetchTried.add(actorUserID);
+      try {
+        await fetchTrustedIdentity(this.transport, actorUserID);
+      } catch {
+        // offline / no identity published; fall through to unpinned
+      }
+      rec = await loadVerification(actorUserID);
+    }
+    if (!rec?.ed25519PubB64) return { kind: "unpinned" };
+    const pinned = base64ToBytes(rec.ed25519PubB64);
+    const pinnedFp = await ed25519Fingerprint(pinned);
+    return bytesEqual(pinnedFp, fp) ? { kind: "current", ed25519Public: pinned } : { kind: "foreign" };
+  }
+
+  /** envelopeActorOf exposes envelope.ts's actor rule without the caller
+   *  importing the crypto module directly. */
+  envelopeActorOf(env: MessageEnvelope): string {
+    return envelopeActor(env);
   }
 
   // ---- structured payloads (37-5) ---------------------------------------
@@ -977,6 +1192,30 @@ export class ChannelCrypto {
     if (!sk) return null;
     return decryptMessage(sk, channelID, keyVersion, ciphertext);
   }
+}
+
+// ---- 83-2 display helpers ------------------------------------------------
+
+/**
+ * envelopeDisplayText flattens decrypted plaintext to display text for the
+ * paths that show a body WITHOUT surfacing a verdict (thread previews,
+ * search): a well-formed message envelope yields its body text, a legacy
+ * body yields itself, and anything else yields the failure placeholder --
+ * never envelope bytes decoded as prose.
+ */
+function envelopeDisplayText(pt: Uint8Array): string {
+  const parsed = parseEnvelope(pt);
+  if (parsed.kind === "legacy") return new TextDecoder().decode(pt);
+  if (parsed.kind === "envelope" && parsed.env.objType === OBJ_MESSAGE) {
+    return (parsed.env as MessageEnvelope).bodyText;
+  }
+  return PLACEHOLDER_FAILED;
+}
+
+function bytesToHex(b: Uint8Array): string {
+  let s = "";
+  for (const x of b) s += x.toString(16).padStart(2, "0");
+  return s;
 }
 
 // ---- base64 (standard, matches Go base64.StdEncoding) ----

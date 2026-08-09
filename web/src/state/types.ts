@@ -92,6 +92,19 @@ export interface Message {
   // 42-3: whether we wrote this thread's head or any of its replies. Server-
   // computed from sender_device_id, so it never needs a decrypted body.
   threadInvolved?: boolean;
+  // 83-2: envelope verification verdict for this row (crypto/envelope.ts's
+  // typed set). Undefined when the body never decrypted (placeholder rows,
+  // tombstones). "unsigned" is the uniform pre-83 legacy label. When the
+  // signature verifies, senderUserID already holds the SIGNED sender (inner
+  // wins over the server frame), so renderers need no second field.
+  verify?: import("../crypto/envelope").VerifyStatus;
+  // 83-2: the signed replay triple + object hash, present when this row
+  // carried a well-formed envelope. What a reply (par_*) -- and, in 83-3, an
+  // edit or reaction -- binds to.
+  sigActor?: string;
+  sigScope?: string;
+  sigClientMsgID?: string;
+  sigObjectHash?: string; // hex SHA-256(canonical || lp(sig64))
 }
 
 // 42-7: one row of the thread inbox. camelCase mirror of proto.ThreadInboxEntry.

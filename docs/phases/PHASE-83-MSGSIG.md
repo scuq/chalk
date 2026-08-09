@@ -615,7 +615,7 @@ half-claimed. L-01 — unchanged, separate account-recovery work.
 | Slice | Content |
 |---|---|
 | 83-1 | Canonical envelope: encoders (exported helpers + `uuid16`), sign/verify, typed results, total parser, full mutation/replay vector suite — **landed 2026-08-09** (`web/src/crypto/envelope.ts`; see the slice record below) |
-| 83-2 | Send/receive integration: sign-then-seal, verify-fail-closed rendering incl. `unsigned` legacy label, replay dedup store (`idb.ts` bump), send-flow reorder |
+| 83-2 | Send/receive integration: sign-then-seal, verify-fail-closed rendering incl. `unsigned` legacy label, replay dedup store (`idb.ts` bump), send-flow reorder — **landed 2026-08-09** (see the slice record) |
 | 83-3 | Append-only edits: `message_revisions` migration + atomic edit transaction, `fetch_revisions`, client ancestry classification; signed sealed reaction clears (delete the unencrypted-clear branch) |
 | 83-4 | Identity generations: the `chalk-idgen.v1` chain cert minted at rotation (R16-1), `(user_id, ed25519_fp)` fetch incl. retired + certs, chain-to-pin verification, `verified-former-identity` labelling, the chain-break wall |
 | 83-5 | Rotation-due: server marks on shrink; the atomic `rotate_channel_key` transaction + `rotation_required` send gate (R16-2); tests incl. owner-leave, 2-person channels, and the two-concurrent-responders race (no mixed generation in any interleaving) |
@@ -663,6 +663,45 @@ absent-vs-zero, oversize caps, wrong-size signatures,
 retired-generation labelling, foreign fingerprints, frame relabeling
 (`mismatch`, inner wins), unpinned/resolver-failure, and the
 replay-triple identity for all three types.
+
+**83-2 (landed 2026-08-09)** — sign-then-seal on the send path
+(`ChannelCrypto.signAndEncryptMessage`), fail-closed envelope opening
+on every message-feed read (`openMessageForChannel` → the typed
+verdict on each row, warning labels in the feed, "inner wins" on any
+signature-valid verdict), the replay guard (`crypto/replay.ts` +
+`replay_ids` store, IndexedDB v5), and the frozen send order
+mint id → upload attachments → build → sign → seal → send. Decisions
+made here:
+
+- **writer_scope is the device id** (a uuid, stable per browser
+  profile) and **wseq is a localStorage counter** per scope. Two tabs
+  can race the counter; accepted — wseq is detection metadata, the
+  replay identity's uniqueness comes from `client_msg_id`.
+- **`client_msg_id` is now a bare uuid on the wire** (it is sealed
+  into the envelope as `uuid16`); the optimistic row id keeps its
+  `local-` prefix locally. The server always treated the field as
+  opaque.
+- **Replay binding is only written for signature-valid envelopes**
+  (`verified` / `verified-former-identity` / `mismatch`): binding a
+  forgery would let any key-holding member squat a victim's triple and
+  turn a failed forgery into denial of rendering. `unpinned` is not
+  bound either. The guard fails open on storage failure (replay
+  detection degrades; rendering never does).
+- **Malformed envelopes and non-message objTypes in a message slot**
+  render as `unsigned` with the failure placeholder, never their bytes
+  as prose (only the sender can produce them; the seal guarantees it).
+- **Signer resolution is current-pin only** (82-2's store, one
+  TOFU fetch per unpinned actor per session); a non-matching
+  fingerprint is `forged` until 83-4 adds the retired-generation
+  chain walk. `decryptForChannel` became the display-text-only path
+  (previews, search) — it flattens envelopes without a verdict.
+- **An edit downgrades the row's verdict to `unsigned`** until 83-3
+  signs edits; the signed triple stays on the row (the revision chain
+  re-anchors on it).
+- **Open caveat: guest sends (GuestRoom) are still unsigned** and
+  render as `(unsigned)` for members. Guests derive an identity from
+  the link secret, so signing them is possible — folded into 83-3 or
+  a follow-up slice, to be decided.
 
 ## The decision record (2026-08-09)
 

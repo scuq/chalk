@@ -10,6 +10,21 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Messages now carry your cryptographic signature, and chalk checks it on
+  every message you read.** Each message you send is signed with your identity
+  key inside the encryption, so the people you chat with can tell it really
+  came from you — the server relaying it can no longer be the only word on
+  who said what. Messages whose signature doesn't check out are still shown,
+  but under a clear warning ("sender mismatch", "signature invalid"); messages
+  from before this build are marked "(unsigned)" quietly, with no alarm. A
+  message the server delivers twice under different identities now renders
+  only once.
+
+---
+
 ## v0.7.10 — 9 August 2026 — A card on every name, and calls that remember what went wrong
 
 ### Added

@@ -4895,6 +4895,25 @@ body.chalk-resizing-y .chalk-composer-resizer {
   cursor: default;
 }
 
+/* 83-2: envelope verification labels. The quiet states borrow the (edited)
+   look; the fail-closed states must be unmistakable next to the body. */
+.chalk-message-verify {
+  margin-left: 0.4em;
+  font-size: var(--chalk-size-small);
+  cursor: default;
+}
+.chalk-message-verify-unsigned,
+.chalk-message-verify-unpinned,
+.chalk-message-verify-verified-former-identity {
+  color: var(--chalk-fg-dim);
+  opacity: 0.7;
+}
+.chalk-message-verify-mismatch,
+.chalk-message-verify-forged {
+  color: var(--chalk-error);
+  font-weight: 600;
+}
+
 /* 37-3: the row whose message is currently open in the composer. A left
    accent rail rather than a background wash, so the body text keeps its
    normal contrast while the row is unmistakably the one being edited. */
