@@ -1,7 +1,11 @@
 # Phase 83 — MSGSIG: envelope fanout
 
-**Status: the phase-83 plan — planned, not started; sixth revision, eight
-review rounds, **Gate 0 passed** (eighth review, 2026-08-08). Decided
+**Status: the phase-83 plan — planned, not started; seventh revision.
+**Gate 0 re-opened** (fifth independent review, 2026-08-09): it passed at
+the sixth revision (eighth review, 2026-08-08), but the external review
+found five blockers at that state; this revision answers all of them and
+**no slice lands until an independent re-review of the delta closes the
+gate again**. Decided
 2026-08-08: envelope fanout
 (formerly "option A" of `PHASE-83-MSGSIG-ALTERNATIVE.md`, this file's
 previous name) supersedes the original transcript design that lived at
@@ -65,8 +69,9 @@ sentence that the concurrent-repack race self-heals (A-8). **All three
 are folded into this text** (dispositions below) rather than deferred
 to the slice text.
 
-**Gate 0 passed** at this revision (eighth review). Slice A-1 may
-land. Of the folded notes, only the Note-2 choice is normative — the
+**Gate 0 passed** at that revision (eighth review), clearing slice A-1
+at the time — superseded below by the fifth independent review's
+re-opening. Of the folded notes, only the Note-2 choice is normative — the
 shed order now keys on the admit's **content hash**,
 `SHA-256(canonical)`, not `cert_hash` (the hardening the review
 offered, taken over the accepted-residual wording) — and per the
@@ -106,6 +111,26 @@ envelope's leading `uuid16(channel_id)` — confirmed against the
 retired plan's frozen bytes in git history — already binds the
 channel inside the MAC independently of both AADs, and §A.3 now says
 A-3's re-freeze must retain it.
+
+A **fifth independent review** (2026-08-09, external —
+`docs/audits/security-phase-83-option-a-fifth-review-2026-08-09.md`;
+its round numbering is its own repository-level Option A series, not
+the reads above, so its findings are `P83-A-F5-*`) examined the
+tenth-read revision at `2732a94` and found **Gate 0 does not pass
+there**: five blocking findings — the fork era door under-specified
+and over-powered (F5-01), a shed sender unable to form a valid
+envelope at all (F5-02), Gate F's expired-row premise contradicted by
+the runtime's deliberate reclaim-and-keep-alive behavior (F5-03), the
+authenticated message canonical living in git history instead of this
+document (F5-04), and the scalar backup `rev` turning ordinary
+two-device sync races into permanent security warnings (F5-05) — plus
+three completion items (the too-thin create-retry record, the
+dangling audit links, the stale "passed" status). **This seventh
+revision incorporates all of them** — dispositions below. The era
+door is *removed* rather than frozen (the review's smaller option,
+decided 2026-08-09): recreation is the sole fork exit this phase.
+**Gate 0 stands re-opened for the changed text and passes again only
+on independent re-review of this delta; no slice lands before that.**
 
 **Tag:** `#msgsig`.
 
@@ -158,7 +183,7 @@ answered in this revision:
 | P83-A-R4-04 (High) | Falling back to the last common policy after a fork could un-verify an observed removal and restore the target's flap | §A.4 (the monotonic omit latch: intersection for admissions, union for removals, across fork discovery) |
 | P83-A-R4-05 (High) | Multi-instance Gate F asserted "never mixed-era delivery" over per-device, era-less presence rows that cannot represent it | §A.9 (the durable required-era epoch + per-instance ack barrier; hello, send and delivery gate on it; presence demoted to UI) |
 | P83-A-R5-01 (High) | The receive pipeline never consulted the sender's chain, and pairwise MAC keys outlive removal — an ex-member plus the malicious server injects `authenticated-for-you` messages forever | §A.5 (the sender-acceptance rule; the `unauthorized-sender` typed result; directional historical assurance) |
-| Completion items | `lp()`/`gov_record` bytes; history quota keying; tombstone retention vs dormant devices; guest flaps vs the flap cap; forks had no exit; one shared grant AAD shape | §A.3–§A.7 (canonical conventions, per-grantee quota, tombstones-as-UI rule, cap accounting, the era door, the grant subtype byte) |
+| Completion items | `lp()`/`gov_record` bytes; history quota keying; tombstone retention vs dormant devices; guest flaps vs the flap cap; forks had no exit; one shared grant AAD shape | §A.3–§A.7 (canonical conventions, per-grantee quota, tombstones-as-UI rule, cap accounting, the era door — since removed by P83-A-F5-01, recreation is the exit — the grant subtype byte) |
 
 Sixth review (2026-08-08, of the fifth revision) and seventh review
 (2026-08-08, the independent cryptographic audit —
@@ -181,6 +206,19 @@ passes**; three non-blocking notes, all folded here:
 | Note 1 | The shed order named "admit `cert_hash`" while manifest members have no admission certificate — the never-shed reading was derivable, not stated | §A.5 (manifest members are never shed; the shed set is certificate and guest admissions only, and the arithmetic guarantees they suffice) |
 | Note 2 | `cert_hash = SHA-256(canonical ‖ sig64)` and Ed25519 signing may be randomized — a minting actor could grind `sig64` to steer their own admission below the shed line | §A.5 (**hardened**: the shed order keys on `SHA-256(canonical)` alone — no grindable field on the common path; guest `expiry_ms` and democratic `proposal_id` remain steerable, availability-only, stated there; the one normative delta since the gate, re-opening it for that sentence only) |
 | Note 3 | Two devices of one identity repacking concurrently race the single commit key; an implementer might "fix" it with locking | §A.7 (the race self-heals: the backup is never authority, the loser's records re-merge at its next repack via `(channel, anchor_hash)`/`rev`; the floor cannot wedge an honest device; do not add locking) |
+
+Fifth independent review (2026-08-09, external —
+`docs/audits/security-phase-83-option-a-fifth-review-2026-08-09.md`),
+all answered in this seventh revision:
+
+| Finding | Was | Resolved in |
+|---|---|---|
+| P83-A-F5-01 (Critical) | The era door was sketch-level and over-powered: competing conversion anchors can assert *different owners* (so "the owner slot" names no one signer), and a fresh-manifest successor lets the owner replace a democratic roster exactly when governance evidence is ambiguous | §A.4 (**the era door is removed** — recreation is the sole fork exit this phase; the anchor's `era` byte frozen at `1`, reserved; a successor-anchor protocol is a future phase with its own review, never an A-2 detail) |
+| P83-A-F5-02 (High) | A shed sender cannot form a valid envelope: exactly-one-self-flap plus the frozen 64-recipient effective roster is 65 flaps, and swapping itself in silently omits a required recipient | §A.5 (a shed participant cannot originate while shed: composer paused at *"admitted — waiting for room"*, draft kept, automatic reactivation on recomputation; incoming acceptance untouched; the shed order's direction stated — the list names what is **shed**) |
+| P83-A-F5-03 (High) | The barrier read an expired heartbeat row as a dead process; the runtime deliberately survives a reaping — `HeartbeatLoop` re-registers and `reassertLocalPresence` keeps the sockets' presence alive — so delivery can outlive the row | §A.9 (`acked_era` is a renewable lease with **local self-fencing**: renewal confirmed before a deadline shorter than the stale-row threshold, or the process closes its three gates and its sockets itself, before the barrier may move without it; the partitioned-lease acceptance case added) |
+| P83-A-F5-04 (High) | The bytes every per-recipient MAC authenticates — the substance of H-01 — lived in git history and a deferred A-3 "re-freeze", not in the selected plan | §A.3 (the complete canonical envelope frozen in this document: conventions, identity-field definitions, the `0x01/0x02/0x03` field lists, absence encoding, caps, the three named fanout adaptations, the vector list; A-3 implements, it no longer decides) |
+| P83-A-F5-05 (High) | Scalar `rev` cannot converge two devices' concurrent same-anchor writes: benign sync races surface as permanent "write race" warnings, or a wholesale pick loses a monotonic latch | §A.7 (a field-wise same-anchor join: monotonic flag OR, ancestry-ordered policy latch, the tombstone derived from verified chains, verified floors by max; one merged record at `max(rev) + 1`; duplicate records survive only for a chain-confirmed genuine policy fork) |
+| Completion items | The pending-op record too thin to replay a create; the seventh/eighth-review files deleted while still linked; the header still said "passed" | §A.7 (the pending-op record persists the complete canonical create request); `docs/audits/` (both files restored, the fifth review committed); the status header (Gate 0 re-opened, re-review required) |
 
 ---
 
@@ -345,14 +383,149 @@ flap AAD = utf8("chalk-fan-flap-s2:") || uuid16(channel)
 **decrypted canonical capped at 128 KiB**; violations → typed `malformed`.
 Nonces: 96-bit CSPRNG, fresh per AEAD call.
 
+### The canonical envelope (frozen here — P83-A-F5-04)
+
 The body plaintext is the canonical envelope inherited from the retired
-transcript plan (typed objects `0x01/0x02/0x03`, `client_msg_id`,
-`sender_ts`, parent binding, attachment bindings — exact bytes preserved
-with that plan in git history; A-3 re-freezes them here) minus the
-signature; `object_hash = SHA-256(canonical)`. The canonical's leading
-`uuid16(channel_id)` is load-bearing beyond replay identity: it binds
-the channel inside the MAC independently of both AADs (the tenth
-read), and A-3's re-freeze — which drops the signature — retains it.
+transcript plan, **frozen in this document** rather than by reference
+to git history: these bytes are what every per-recipient MAC
+authenticates — the substance of H-01 — so the selected plan must
+contain them, and A-3 now *implements* this section instead of making
+a protocol decision after the gate. The definitions are the reviewed
+transcript bytes **minus the signature**, with exactly three fanout
+adaptations, each named below.
+
+Conventions (the `sig64`/`gov_record` rules stay in §A.4):
+
+```
+lp(x)     = u32be(len(x)) || x
+uuid16(x) = the UUID's raw 16 bytes; strict parse — text case can
+            never alias
+h32(x)    = exactly 32 raw bytes; fixed width, no length prefix; any
+            other length is malformed
+
+canonical      = utf8("chalk-msg-sig.v1") || u8(objType) || fields
+object_hash(O) = SHA-256(canonical(O))   // suite 2 carries NO signature:
+                                         // authenticity is the per-flap
+                                         // MAC above, so the hash covers
+                                         // the canonical alone — unlike
+                                         // the transcript's
+                                         // canonical || lp(sig)
+```
+
+The domain string keeps the transcript plan's name: nothing ever
+shipped under it (that design retired dark), the reviewed mutation
+vectors carry over byte-for-byte, and renaming would be a normative
+change with no security content.
+
+- `objType`: `0x01` message, `0x02` edit, `0x03` reaction set.
+- Every UUID-valued field is `uuid16`; every digest, fingerprint or
+  commitment is `h32`; remaining variable fields are `lp()`-prefixed
+  with the per-field caps below; lists are `u32be(count) || element*`.
+  An absent optional `uuid16`/`h32` encodes as all-zero bytes of its
+  fixed width; an absent `lp` field as `lp("")`. Trailing bytes after
+  the last field are `malformed`.
+- Encoders reuse the `spacekey.ts` helpers (`writeU32BE`,
+  `lengthPrefixed`, `concat`, `bytesEqual`, `utf8`), exported by A-1,
+  plus a new `uuid16` — every canonical encoder in the repo uses them.
+
+**Identity fields, defined:** `client_msg_id` — a fresh UUID, minted
+first in the send flow, never reused. `writer_scope` — an opaque UUID
+namespacing one device's counter store; never shared across devices; a
+lost store mints a fresh scope and never restarts an old one. `wseq` —
+strictly increasing per `(channel, writer_scope)`, persisted
+sender-side, **an ordering claim only**: no security warning derives
+from it. `sender_ts` — the sender's clock, display only (§A.8). The
+durable object identity is `(sender_user_id, writer_scope,
+client_msg_id)` — the replay triple above, sealed in the canonical.
+
+**The three fanout adaptations** (each frozen; violating any is
+`malformed`):
+
+1. **`key_version` is `0`.** Suite 2 has no space-key context — the
+   message key rides the flap — so every `u32be(key_version)` and
+   `u32be(att_key_version)` below is zero; nonzero is `malformed`. The
+   fields stay for byte-layout continuity with the reviewed vectors.
+2. **The chain checkpoint is `(0, zeros)`.** `u64be(chain_index) ||
+   h32(chain_hash)` bound the transcript; no transcript exists under
+   fanout, so both are permanently zero; nonzero is `malformed`.
+3. **`att_binding` gains the attachment key.** §A.5's per-attachment
+   random keys ride the envelope, so each binding appends
+   `att_key(32)` — the one field fanout adds.
+
+`0x01` — message:
+
+```
+uuid16(channel_id) || u32be(key_version = 0) || uuid16(sender_user_id)
+|| uuid16(writer_scope) || uuid16(client_msg_id) || u64be(sender_ts)
+|| u64be(wseq)
+|| uuid16(par_sender) || uuid16(par_scope) || uuid16(par_client_msg_id)
+|| h32(par_env_hash)                    // reply target: content identity
+                                        //  + parent object_hash; all zero
+                                        //  when not a reply or the parent
+                                        //  is legacy (rendered with the
+                                        //  unauthenticated-target mark)
+|| u64be(chain_index = 0) || h32(chain_hash = zeros)
+|| lp(utf8(body_text))                  // ≤ 65,536 bytes
+|| u32be(att_count) || att_binding*     // ≤ 10 (the server cap)
+
+att_binding = uuid16(attachment_id) || u32be(att_key_version = 0)
+|| u64be(byte_len) || h32(sha256(full_ciphertext)) || h32(sha256(enc_meta))
+|| h32(sha256(enc_preview))             // zeros when no preview
+|| att_key(32)                          // fanout adaptation 3
+```
+
+`0x02` — edit:
+
+```
+uuid16(channel_id) || u32be(key_version = 0) || uuid16(sender_user_id)
+|| uuid16(tgt_sender) || uuid16(tgt_scope) || uuid16(tgt_client_msg_id)
+|| h32(prev_rev_hash)
+|| u64be(sender_ts) || u64be(chain_index = 0) || h32(chain_hash = zeros)
+|| lp(utf8(body_text)) || u32be(att_count) || att_binding*
+```
+
+`sender_user_id` must equal `tgt_sender` — sender-only editing, and
+the client-side check is the boundary (§A.5). `prev_rev_hash` root
+rule: a first edit names the `object_hash` of the original message; a
+later edit names the previous edit — there is no empty-parent edit.
+Under fanout this chain backs the **observed-ancestry recency claim
+only** (§A.5): 0044's overwrite stands, there is no server revision
+store and no ancestry fetch — the transcript plan's append-only
+reversal retired with it, and unresolvable ancestry renders
+unverified-recency, never false trust. Attachment bindings are
+re-stated in full so the current revision is self-sufficient.
+
+`0x03` — reaction set:
+
+```
+uuid16(channel_id) || u32be(key_version = 0) || uuid16(actor_user_id)
+|| uuid16(tgt_sender) || uuid16(tgt_scope) || uuid16(tgt_client_msg_id)
+|| h32(tgt_env_hash)
+|| h32(prev_set_hash)                   // zeros for the actor's first set
+|| u64be(sender_ts)
+|| u32be(emoji_count) || lp(emoji)*     // ≤ 64 per set, ≤ 32 bytes each;
+                                        // zero count = cleared
+```
+
+A clear is a normal sealed fanout envelope — the bare unencrypted-clear
+special case is deleted per the §A.7 inventory. Edit, reaction and
+reply targets bind by content identity plus object hash, never by
+server row locators; wire-frame `(channel_id, message_id, ts)` stays
+receipt metadata.
+
+The canonical's leading `uuid16(channel_id)` is load-bearing beyond
+replay identity: it binds the channel inside the MAC independently of
+both AADs (the tenth read) — retained above, in first position, for
+all three types.
+
+**Vectors (A-3):** per-field mutation across all three types;
+cross-object type confusion (an edit's bytes presented as a message);
+trailing bytes; absent-vs-zero optional fields; the three adaptations
+violated (nonzero `key_version`, nonzero checkpoint, missing or short
+`att_key`); oversize `body_text`/`att_count`/`emoji_count`/emoji;
+a reply naming a legacy parent (all-zero binding); an edit whose
+`sender_user_id ≠ tgt_sender`; the replay triple under a second server
+id; a cross-channel canonical under a mismatched AAD.
 
 **Replay identity, re-frozen with the canonical** (the seventh review's
 confirmation item): the retired plan's first-seen rule carries over
@@ -363,6 +536,8 @@ triple is a duplicate of that object, rendered once, never a fresh
 message. A server-replayed envelope therefore changes nothing a user
 sees; ordering and receipt timing stay server-controlled, as already
 accepted with receipt-time timestamps.
+
+### Typed results and the envelope vectors
 
 Verification results: `authenticated-for-you` / `mismatch` / `forged` /
 `unpinned` / `granted` / `legacy` / `unauthorized-sender` (a valid tag
@@ -468,18 +643,26 @@ material.
   accepted TOFU conversion residual, displayed as *"membership as
   recorded by <converter> on <date>"* — now a claim one signature
   actually binds.
-- **A fork has a door (the fifth review's exit item)**: the anchor's
-  `era` byte is the recovery path. The **owner** (the anchor's owner
-  slot, never the converter) may sign a successor anchor at `era + 1`
-  whose canonical embeds the hashes of **both** fork heads it resolves
-  (conversion fork: both anchor hashes; policy fork: both policy heads)
-  plus a fresh manifest. A client accepts an era successor only when it
-  is owner-signed *and* references exactly the fork evidence that client
-  holds; acceptance is surfaced like the fork itself and re-runs the
-  §A.7 adoption machine — never silent. Without one, "recreate the
-  channel" remains the documented fallback. This is the one canonical
-  deliberately left at sketch level: it only exists downstream of
-  already-surfaced fork evidence, and A-2 freezes its exact bytes.
+- **A fork has no door in this phase (P83-A-F5-01 — the era door is
+  removed).** The sixth revision sketched an owner-signed successor
+  anchor at `era + 1`; the fifth independent review found it both
+  under-specified and over-powered, and it does not survive. Two
+  authority defects, recorded so the door is not quietly re-invented:
+  competing conversion anchors can assert **different owners**, so
+  "the anchor's owner slot" names no single signer acceptable to
+  clients holding both roots — accepting either branch's owner lets
+  that branch resolve its own conflict; and a successor carrying a
+  fresh manifest would let the owner unilaterally replace a
+  **democratic** roster precisely when governance evidence is
+  ambiguous (membership changes there require proposals — the door
+  would have bypassed the governance arm entirely). A security-root
+  transition earns its own phase, canonical and review, or it does not
+  exist. **"Recreate the channel" is the sole documented fork exit**,
+  offered alongside the surfaced fork evidence; forks are exceptional,
+  already loud, and never block other channels. The anchor's `era`
+  byte is frozen at `1` — any other value is `malformed` — and remains
+  in the canonical purely so a future successor-anchor phase can exist
+  without reshaping the anchor.
 
 ### The policy chain (mode and ownership facts)
 
@@ -529,7 +712,8 @@ for admissions, union for removals** —
   continue receiving flaps normally; and
 - the latch clears only the legitimate way — a *new* admit at the
   target's next `n`, chained past the removal, valid under the retained
-  common policy or under a post-resolution (`era + 1`, above) state.
+  common policy (fork resolution being recreation, no post-resolution
+  state exists in this phase — P83-A-F5-01).
 
 A policy ambiguity is surfaced per affected target/transition; it never
 re-discloses content to a departed member, and ordinary messages to the
@@ -611,8 +795,12 @@ no server input and no new signed artifact: apply §A.4's latches
 (admissions intersected, removals unioned under forks), and if the
 valid sum still exceeds 64, **shed to exactly 64 in a frozen order —
 active guest admissions before member admissions, and within each
-class descending `SHA-256(canonical)` of the admit** — the content
-hash, deliberately not `cert_hash` (the eighth review's Note 2):
+class descending `SHA-256(canonical)` of the admit**. The order names
+what is **shed**, not what is retained (P83-A-F5-02's wording item):
+every guest admission is shed before any member admission is touched,
+and within each class the admission with the numerically highest
+content hash is shed first, until exactly 64 remain. The key is the
+content hash, deliberately not `cert_hash` (the eighth review's Note 2):
 `cert_hash` covers `canonical || sig64` and Ed25519 signing may be
 randomized, so a minting actor could grind `sig64` to steer their own
 admission below the shed line; the content hash has no grindable
@@ -639,6 +827,31 @@ Shedding gates **flap emission only**: a shed target's own messages
 still pass the acceptance rule below (their chain validly ends in
 admit), so the shed state is exactly the withheld-flap shape of the
 stale-view residual — never a freeze, never silent.
+
+**A shed participant cannot originate while shed (P83-A-F5-02).** The
+frozen format admits no honest alternative: an envelope must carry
+exactly one self-flap, the effective roster already fills all 64
+slots with others, and silently swapping itself in for an effective
+recipient would omit a participant the frozen roster says must
+receive the message. So the honest-client behavior is itself frozen:
+
+- while its own admission is shed, a client **does not send** suite-2
+  objects — the composer is paused with the same *"admitted — waiting
+  for room"* state, and the draft is kept;
+- it reactivates and sends normally, automatically, the moment the
+  deterministic recomputation gives it a slot (a departure, a
+  revocation, a lapse) — no ceremony, no new certificate, no reload;
+- its **incoming** artifacts are untouched: acceptance (below) keys on
+  a verified chain currently ending in admit, which a shed target's
+  does, so shed status hands a malicious server nothing that resembles
+  a removal; and
+- A-6's vectors cover the shed sender's refusal to originate and its
+  automatic reactivation alongside the shed itself.
+
+This is the honest cost of a hard 64-flap wire format, and it is
+scoped exactly as the review scoped it: one participant, in a rare
+concurrent-mint race, paused loudly until a slot opens — never a
+channel-wide freeze.
 
 **Receive:** own flap → DH → unwrap → decrypt → parse → derive
 `K_mac(claimed_sender→me)` from the pinned identity → recompute tag →
@@ -927,7 +1140,13 @@ applies here):
 - `create_channel` gains `channel_id` (client-minted UUID), `anchor`
   (the signed `channel_anchor` bytes) and `manifest` (the full member
   manifest). The client durably persists a **pending-op record**
-  (id + anchor + adoption intent) *before* sending.
+  *before* sending, and it holds the **complete canonical request**
+  (the fifth independent review's retry item): `channel_id`, the
+  signed anchor bytes, the full manifest, the member list and roles,
+  `chan_kind`/mode, plus the adoption intent — enough immutable bytes
+  to replay the byte-identical request after a crash or reload, so a
+  lost ack never costs the user a channel or produces a
+  different-anchor error against their own retry.
 - The server validates agreement before touching the database: caller =
   anchor owner; payload `channel_id` = the anchor's; manifest hash =
   the anchor's; manifest members/roles = the payload member list +
@@ -1029,18 +1248,45 @@ pages   double-buffered namespaces (P83-A-R4-02):
 
 merge   keyed by (channel, anchor_hash) — NEVER by channel alone, and
         policy sequence never orders competing roots (P83-A-R4-01):
-        - same (channel, anchor_hash): higher rev wins; equal rev,
-          identical bytes: one record; equal rev, different bytes: keep
-          both and surface (a genuine same-identity write race), with a
-          tombstone winning an equal-rev tie — hiding a channel is
-          reversible, re-disclosure is not;
+        - same (channel, anchor_hash): rev orders only records from ONE
+          device's linear history. Two devices of one identity routinely
+          both advance rev N to different N+1 states — one adopts while
+          the other observes a leave — which is an ordinary sync race,
+          not an authority fork, and must converge silently
+          (P83-A-F5-05). The join is FIELD-WISE, deterministic on both
+          devices, and emits one merged record at max(rev) + 1:
+            flags   bit0 (era-adopted) and bit1 (conflict observed)
+                    join by OR — monotonic observations, never undone
+                    by a merge;
+            bit2    (tombstone) is derived state, never last-writer:
+                    at repack it is recomputed from the refetched,
+                    verified chain (a leave/removal newer than any
+                    admit sets it; a verified re-admit clears it).
+                    Before chains verify, a disagreement at equal rev
+                    keeps the tombstone — hiding is reversible,
+                    re-disclosure is not;
+            policy  the latch (policy_head, policy_p) joins by chain
+                    ancestry, never by p alone: both candidates are
+                    validated under the record's own anchor from the
+                    refetched chain, and the verified descendant wins.
+                    Two verified heads at one p, neither descending
+                    from the other, is a GENUINE policy fork — only
+                    then do two records survive, keyed by policy_head,
+                    surfaced as §A.4 fork evidence (never as a device
+                    sync warning), with validation on the last common
+                    policy per §A.4;
+            floor   the rollback floor restored from policy_p joins by
+                    max, and only after its chain verifies (unchanged
+                    below);
+          no device identifier ever decides a security field — at most
+          it serializes byte-identical writes;
         - one channel, live records under different anchor_hashes: BOTH
           are retained with bit1 set and surfaced as a channel-conversion
           fork — regardless of either record's policy_p or rev. A device
           with a locally trusted anchor keeps using it and refuses
           transitions rooted in the competitor; a fresh device with no
           prior local basis makes only that channel read-only until the
-          conflict resolves (§A.4's era door, or recreation). Other
+          conflict resolves (recreation — §A.4). Other
           channels are untouched;
         - policy_p is consulted only after the refetched policy chain
           validates under the record's own anchor, as the restored
@@ -1207,14 +1453,40 @@ device; presence stays UI-only and is **never load-bearing here**:
   existing instance-heartbeat interval, so a dropped notification delays
   enforcement by at most one heartbeat, never indefinitely;
 - the instance row (already heartbeat-maintained, already reaped when
-  stale) gains an `acked_era` column, bumped when the instance has
+  stale) gains an `acked_era` column, set when the instance has
   observed the epoch and upgraded or disconnected every pre-F session it
   owns. **The barrier: the epoch is *enforced* only when every live
   instance row carries `acked_era ≥` the epoch** — computed in one
-  transaction over rows with fresh heartbeats. A dead row leaves the
-  barrier by expiring; an instance wedged enough to stop heartbeating is
-  wedged enough to deliver nothing new (delivery and heartbeat share the
-  process), and its sockets die with their reaped row;
+  transaction over rows with fresh heartbeats;
+- **the ack is a renewable lease with local self-fencing
+  (P83-A-F5-03).** An expired row is *not* proof of a dead process —
+  the sixth revision's premise ("its sockets die with their reaped
+  row") contradicted the runtime it ships in: today's heartbeat loop
+  deliberately survives a reaping — it logs, re-registers and
+  re-asserts presence for every connection it still holds
+  (`HeartbeatLoop` / `reassertLocalPresence`) — so a process whose
+  database path fails can keep sockets and pubsub delivery alive long
+  after its row is gone, and deleting a row kills no sockets.
+  Therefore the safety comes from the process fencing itself, not
+  from the row expiring:
+  - an instance renews `acked_era` with its heartbeat and tracks the
+    last renewal it has **confirmed** (the write returned);
+  - its fencing deadline is frozen **shorter than the janitor's
+    stale-row threshold**: when the last confirmed renewal is older
+    than the deadline, the instance must assume its row may already
+    be excluded, and **self-fences locally, before the barrier can
+    advance without it** — it closes the three gates from its own
+    memory (hello admission, send acceptance, fanout delivery), then
+    disconnects or upgrades the sessions it holds;
+  - fencing clears only forward: re-read the durable epoch, re-check
+    every remaining connection's era, re-register, confirm a renewal —
+    then the gates reopen. The reap-and-re-register reclaim path
+    re-enters through this same sequence;
+  - users on a fenced instance see this section's banner and the
+    draft-preserving path, never an error; and a healthy control
+    plane never fences — it takes a lease that cannot confirm writes
+    for a full deadline, exactly the state in which the old premise
+    was unsound;
 - **conversion and fanout emission begin only behind the barrier**: the
   welcome advertises `era` plus `era_enforced`, and a build-F client
   neither converts nor emits suite 2 until the latter is true — staleness
@@ -1235,7 +1507,11 @@ device; presence stays UI-only and is **never load-bearing here**:
   downgrade; and
 - the acceptance test is explicitly hostile: two instances, an old and a
   new tab on one device (drafts surviving), a **dropped pubsub
-  notification**, an **instance crash and reclaim** mid-cutover, and an
+  notification**, an **instance crash and reclaim** mid-cutover, a
+  **partitioned lease** — the heartbeat/database path down while the
+  process, its sockets and pubsub delivery all stay live, expected
+  result: local self-fencing *before* the cluster barrier advances
+  (P83-A-F5-03) — and an
   **unattended timer-driven update** — the deploy completes with no
   operator present and sending resumes on its own.
 
@@ -1252,14 +1528,14 @@ not a larger cap."*
 | Slice | Content (dark until Gate F) |
 |---|---|
 | A-1 | Pairwise HKDF tree (incl. `K_history`); flaps; HMAC tags; frozen parser + full vectors; WebCrypto disposal rules |
-| A-2 | Anchors (converter/owner split) + manifest + `manifest_admit_ref` + complete policy artifacts + membership/guest certificates (`lookup16`, expiry rules): canonicals (`sig64`/`gov_record` conventions + mutation vectors), pure state machine, server tables (per-channel anchor CAS; `(channel,target,n)` and `(channel,p)` idempotency), rollback latches, policy-fork behavior + the monotonic removal latch, the era-door re-anchor bytes |
-| A-3 | Canonical envelope reuse; verify policy; typed results incl. `granted` |
+| A-2 | Anchors (converter/owner split) + manifest + `manifest_admit_ref` + complete policy artifacts + membership/guest certificates (`lookup16`, expiry rules): canonicals (`sig64`/`gov_record` conventions + mutation vectors), pure state machine, server tables (per-channel anchor CAS; `(channel,target,n)` and `(channel,p)` idempotency), rollback latches, policy-fork behavior + the monotonic removal latch (the `era` byte frozen at 1 — no door this phase, P83-A-F5-01) |
+| A-3 | The §A.3 canonical envelope, exactly as frozen in this plan (P83-A-F5-04 — encoders, total parser, the three adaptations, full vectors); verify policy; typed results incl. `granted` |
 | A-4 | Suite-2 send/receive; self-flap; the sender-acceptance rule (`unauthorized-sender`/`former-member`, the live/backfill boundary, canonical-only sender provenance, directional assurance) + its vectors; the first-seen replay rule; `key_version` exemptions per inventory |
 | A-5 | Edits, reactions (sealed clear), attachments-in-envelope, voice pairwise sealing |
 | A-6 | Guests: `0x04` fragment form, guest certs, fragment-anchored verification; the atomic mint/revoke wire (advertised caps, absolute signed expiry, one-transaction storage, idempotent retry); cap accounting at mint + the deterministic overflow shed |
 | A-7 | Grantor-attested history: grant wire, storage/quota/expiry, auto-grant + paging + knob, `granted` UI |
 | A-8 | Adoption state machine (restore/verify/convert/read-only); the client-minted-ID creation wire (anchor + manifest in `create_channel`, one-transaction insert, idempotent retry, pending-op records, the DM rule); `channel_security_enc` backup (93-byte records, generation-committed double-buffered pages, the `repack_seq` floor, anchor-keyed merge); read-only legacy rendering; era capability + `client_upgrade_required` |
-| A-9 | **Gate F**: the required-era epoch raised at build-F startup + instance-ack barrier (`acked_era`, the interregnum banner, the hostile two-instance test); emission on; conversion rollout; over-limit handling; `CHALK_FAN_REQUIRED` + `chalkctl fanout status`; threat-model staging move (incl. the frozen 64-participant sentence) |
+| A-9 | **Gate F**: the required-era epoch raised at build-F startup + instance-ack barrier (`acked_era` as a renewable lease with local self-fencing — P83-A-F5-03 — the interregnum banner, the hostile two-instance + partitioned-lease test); emission on; conversion rollout; over-limit handling; `CHALK_FAN_REQUIRED` + `chalkctl fanout status`; threat-model staging move (incl. the frozen 64-participant sentence) |
 | A-10 | Legacy retirement: wrapsig secure default; cert-gated legacy reshares; pre-F sunset |
 
 ---
@@ -1292,7 +1568,7 @@ The comparison that decided it:
 |---|---|---|---|
 | Departure freeze | until creator acts | seconds | none |
 | Creator crypto role | load-bearing | none | anchor signer only (once) |
-| Review state | 6 revisions, Gate 0 never passed | unreviewed delta | 8 rounds, **Gate 0 passed** |
+| Review state | 6 revisions, Gate 0 never passed | unreviewed delta | 10 reads + an external review series; passed at the sixth revision, **re-opened at the seventh — re-review pending** |
 | Membership | transcript (fork proofs) | transcript (fork proofs) | anchors + policy chain + per-target chains, rollback latch |
 | Deniability | no | no | **yes** ("authenticated for you") |
 | New-member history | as today | as today | grantor-attested (explicit, labelled) |
@@ -1302,8 +1578,10 @@ The comparison that decided it:
 
 The costs in the last three rows are accepted deliberately (§A.8): they
 buy the only deniable, freeze-free, coordinator-free design on the
-table. Gate 0 reviewed this document across eight rounds and passed at
-the sixth revision.
+table. Gate 0 passed at the sixth revision after eight review rounds;
+the external fifth independent review re-opened it (2026-08-09) with
+five blockers, all answered in the seventh revision, whose delta
+awaits independent re-review before any slice lands.
 
 ## Prior-art sources
 

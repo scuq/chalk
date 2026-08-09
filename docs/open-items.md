@@ -57,15 +57,21 @@ recorded in its decision section and preserved in git history), and
 Both build on the identity anchor phase 82 already paid for; the certificate
 layer should copy `web/src/voice/signal-crypto.ts`, which already does
 canonical-encode → Ed25519 sign → fail-closed verify correctly. **Gate 0
-passed** at the sixth revision: the eighth review
-([audits/security-phase-83-eighth-review-2026-08-08.md](audits/security-phase-83-eighth-review-2026-08-08.md))
-verified the R6-01/R6-02/R7-01 delta closed and cleared slice A-1 to land.
-Its three non-blocking notes are folded into the design text (2026-08-08);
-Note 2 was taken as the hardening — the overflow-shed order keys on the
-admit's content hash, not `cert_hash` — which is the one normative delta
-since the gate and re-opens it for that sentence only. Any further
-normative change to the design re-opens the gate for the changed text
-only.
+is re-opened.** It passed at the sixth revision (the eighth review,
+[audits/security-phase-83-eighth-review-2026-08-08.md](audits/security-phase-83-eighth-review-2026-08-08.md)),
+but the external fifth independent review
+([audits/security-phase-83-option-a-fifth-review-2026-08-09.md](audits/security-phase-83-option-a-fifth-review-2026-08-09.md),
+2026-08-09) found five blockers at that state: the fork era door
+under-specified and over-powered, the shed sender unable to form a valid
+envelope, Gate F's expired-row premise contradicting the runtime's
+reclaim behavior, the message canonical absent from the plan, and the
+backup's scalar `rev` non-convergent across two devices. The seventh
+revision answers all five — the era door is **removed** (recreation is
+the sole fork exit; a successor-anchor protocol would be its own phase),
+the canonical is frozen in the plan itself, `acked_era` became a
+self-fencing lease, the shed sender pauses loudly, and the backup merge
+is field-wise. **No slice lands until an independent re-review of that
+delta closes the gate again.**
 
 ## Phase 85 — operational logging
 
