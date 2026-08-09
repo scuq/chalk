@@ -19,11 +19,18 @@ design at git `731eac5`). The claims are now exactly these:
    protocol as written — store faithfully, deliver to the right
    members, assert membership and ordering truthfully. chalk makes
    **no** claim against a chalkd that actively lies.
-2. **The host is not trusted.** The machine chalkd runs on may carry
-   malicious code with access to the database, disk, backups and
-   process memory — and there must be **no easy way for it to read
-   already-sent messages**. No plaintext, message keys, or identity
-   private keys ever exist server-side.
+2. **The host is not trusted for confidentiality or stored-data
+   integrity.** The machine chalkd runs on may carry malicious code
+   that reads the database, disk, backups and process memory, and
+   modifies persistent data — and there must be **no easy way for it
+   to read already-sent messages**. No message plaintext, message
+   keys, channel space keys, or *user* identity private keys ever
+   exist server-side; chalkd necessarily holds its own
+   server-identity private key (claim 3), whose theft impersonates
+   the server but opens no history. The model does not preserve
+   protocol correctness against an attacker who alters chalkd's
+   executable code or live control flow — that is a malicious chalkd,
+   claim 1's boundary.
 3. **A client can detect a MITM toward its home server.** The network
    path is untrusted even with valid TLS; the client pins the server
    identity it registered with (phase 83, planned).

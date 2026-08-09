@@ -9,6 +9,25 @@ reviews, and the R11–R14 delta series). This document replaces it and
 does not carry its Gate-0 process forward; it gets its own review
 before slice 1 lands.
 
+**Review record.** First review of this design (R16, 2026-08-09 —
+`docs/audits/security-phase-83-r16-review-2026-08-09.md`):
+architecture endorsed — *"Gate 0 open, but much closer"*, no new
+canonical-format blocker, the R15 split-view problem gone by design —
+with two High findings, **both folded in this second revision**:
+identity generations now chain cryptographically (R16-1 — the
+`chalk-idgen.v1` cert, so a database row alone can never mint a
+"retired identity of Alice"; D.1), and rotation is one atomic server
+transaction with a `rotation_required` send gate (R16-2 — the version
+ceiling serialized the version number, not which key became it; D.2).
+Its completion items are also in: the claim-1/claim-2 boundary made
+explicit (process control = malicious chalkd), the server-key wording
+corrected (*user* keys never server-side; chalkd holds its own), and
+the inner-channel session construction frozen (D.3). The R15 review
+of the fanout design — the pivot's trigger — is backfilled to
+`docs/audits/security-phase-83-r15-review-2026-08-09.md` so the
+decision record's citation resolves. **Gate 0 stays open pending
+re-review of this delta.**
+
 **Tag:** `#msgsig`.
 
 ---
@@ -22,12 +41,23 @@ in this phase (threat-model.md carries the user-facing version):
    as written: it stores what it is given, delivers to whom it should,
    and asserts membership and ordering truthfully. chalk no longer
    claims any property against a chalkd that lies.
-2. **The machine chalkd runs on is not trusted.** Malicious code may
-   run beside it — reading the database, the disk, backups, even
-   process memory. **There must be no easy way for such code to read
-   already-sent messages.** Nothing the host stores or observes may
-   yield message plaintext: no plaintext at rest, no message keys at
-   rest, no identity private keys at rest, ever.
+2. **The machine chalkd runs on is not trusted for confidentiality or
+   stored-data integrity.** Malicious code beside chalkd may read
+   server storage (database, disk, backups), read process memory, and
+   **modify persistent server data**. **There must be no easy way for
+   such code to read already-sent messages.** Nothing the host stores
+   or observes may yield message plaintext: no plaintext at rest, no
+   message keys, no channel space keys, and no *user* identity private
+   keys ever exist server-side (chalkd necessarily holds its **own**
+   server-identity private key — claim 3's signer; stealing it
+   impersonates the server, it opens no history). The boundary with
+   claim 1, made explicit (the R16 review): the model does **not**
+   attempt to preserve protocol correctness if the attacker alters
+   chalkd's executable code or live control flow — that is equivalent
+   to a malicious chalkd and falls under claim 1. Claim 2 defends
+   against what real host compromises overwhelmingly are: reading and
+   tampering with *data*, and D.1's signatures are what make the
+   tampering detectable.
 3. **A client can detect a MITM toward the server it originally
    registered with.** The network path between client and server is
    not trusted even with valid TLS (CA mis-issuance, DNS takeover);
@@ -185,17 +215,47 @@ fetch) / `unsigned` (legacy pre-83 object, rendered uniformly as
 such). Content is displayed even when attribution fails, under an
 unmistakable warning.
 
-**Identity generations:** the sealed `sender_ed25519_fp` names the
-signing generation. Verification resolves it via a new
-fingerprint-keyed lookup — `(user_id, ed25519_fp)`, serving retired
-generations too (the store already retains them with `retired_at`;
-today's `fetch_identity` serves only the active one) — checks the
-Ed25519→X25519 self-signature, and requires: the **current** pin for
-`verified`; a server-attested retired generation of the same user for
-`verified-former-identity`. A fingerprint that resolves to nothing or
-to another user is `forged`. Under claim 1 the server's generation
-history is trusted; the pin still catches substitution of the
-*current* key, which is where live traffic lives.
+**Identity generations are a signed chain, never database rows
+(R16-1).** The sealed `sender_ed25519_fp` names the signing
+generation, and the first review of this design caught the hole a
+server-attested lookup would open: under claim 2 the host can *write*
+the database, so a fabricated "retired generation of Alice" row
+carrying an attacker key would convert DB tampering into historical
+impersonation, laundered through an honest chalkd truthfully serving
+its own poisoned table. So generations chain cryptographically — each
+rotation is signed by the key it retires:
+
+```
+generation_cert canonical = utf8("chalk-idgen.v1")
+  || uuid16(user) || u32be(generation)          // 2, 3, …
+  || h32(new_ed25519_fp) || h32(sha256(new_x25519_pub))
+  || h32(prev_generation_hash)                  // gen 2: the gen-1
+                                                //   self-sig record hash
+  || sig64                                      // by the PREVIOUS
+                                                //   generation's Ed25519
+generation_hash = SHA-256(canonical || sig64)
+```
+
+Generation 1's trust is what it always was: the TOFU pin, upgradeable
+by picture-word. A normal rotation holds the old identity in hand and
+signs the successor as part of the same action; the server stores the
+cert beside the retired row and serves it with the fingerprint-keyed
+lookup — `(user_id, ed25519_fp)`, retired generations included (the
+store already retains them with `retired_at`; today's `fetch_identity`
+serves only the active one). Verification then requires: the
+Ed25519→X25519 self-signature, plus the **current** pin for
+`verified`, or membership of the fingerprint in the **verified chain
+ending at the currently pinned generation** for
+`verified-former-identity` — a database row alone proves nothing. A
+fingerprint that resolves to nothing, to another user, or to a chain
+that does not reach the pin is `forged`. **A chain break is a wall:**
+a rotation that cannot sign with the old key (lost seed — the
+recovery case) starts a new chain, surfaces as the existing
+identity-changed wall, and history signed by pre-break generations
+becomes `unpinned`-class ("an earlier identity that cannot be linked
+to this user's current key") until an out-of-band comparison
+re-attests it — honest, loud, and exactly the semantics key loss
+deserves.
 
 **Edits are append-only** (reverses 0044, as decided 2026-08-07): the
 server moves the displaced ciphertext + its `key_version` into
@@ -224,15 +284,47 @@ material going forward:
 - On any membership shrink (remove, leave, guest revoke) the server
   marks the channel *rotation due, version v+1*.
 - **The next member to send rotates first**: mint space key v+1, wrap
-  to every current member with signed wraps, upload, then send under
+  to every current member with signed wraps, commit, then send under
   v+1. One actor, zero coordination, no ceremony — the first-responder
   pattern, safe now because the server is a trusted coordinator.
 - Nobody special is required: any member can be the next sender. The
   owner leaving is nothing — the next sender rotates. A 2-person
   channel: the remaining member rotates on their next message.
-- Concurrent rotation attempts serialize on the server's version
-  ceiling (already enforced, `ws.go` version checks): first commit
-  wins, the loser re-wraps under the winner's key — invisible.
+- **Rotation is one atomic transaction (R16-2)** — the first review
+  caught that a version ceiling serializes the version *number*, not
+  which key becomes it: two responders uploading per-recipient wraps
+  independently can hand different recipients different keys for the
+  same version, and only then race the version bump. So wraps are
+  never published piecemeal. One request carries everything:
+
+  ```
+  rotate_channel_key { channel_id, expected_version,
+                       wraps: [ per-recipient signed_wrap(K_new) … ] }
+
+  server, in one transaction: lock the channel row;
+    require member(caller) ∧ rotation_due
+        ∧ current_key_version == expected_version;
+    validate exactly the current roster is represented, every wrap
+        suite 2 with channel / version = expected+1 / recipient /
+        signer = caller consistent;
+    insert all wraps; current_key_version += 1; rotation_due = false.
+  ```
+
+  The winner commits; the loser gets `stale_key_version(current)`,
+  fetches the winner's wrap, and proceeds — a mixed key generation
+  cannot exist in any interleaving. At ≤ 64 members and ~188-byte
+  signed wraps, one request is small; this is *simpler* than the
+  existing multi-step reshare, not heavier.
+- **And the send gate is frozen with it (R16-2)**: while
+  `rotation_due`, an ordinary send under the current or an older key
+  is rejected with `rotation_required` — otherwise a sender who has
+  not yet observed the shrink sends under the old key and defeats
+  "the next sender rotates first". The client's flow on that error is
+  automatic: rotate atomically (above), retry the original send under
+  the new key — the user's send stays one action. (The existing
+  in-flight tolerance for old-key sends *across an ordinary
+  completed rotation* is unchanged; the gate exists only in the
+  rotation-due window.)
 - Members who were offline pick up v+1 via the existing signed-wrap
   fetch path; old messages stay readable under retained old versions,
   exactly as today.
@@ -252,14 +344,21 @@ generated by `chalkctl init`, env-provisioned like other secrets — the
 - **The inner channel:** browsers cannot read TLS certificates or
   exporters, so application-level channel binding is built instead of
   assumed: at WebSocket open, the client sends an ephemeral X25519 key
-  and a nonce; the server responds with its own ephemeral, plus an
-  Ed25519 signature under `chalk-server-id.v1` over the handshake
-  transcript (both ephemerals, the nonce, the server identity key).
-  Both sides derive session keys (HKDF over the ECDH secrets) and
-  **every subsequent frame is sealed** (AES-256-GCM, per-direction
-  nonce counters). A TLS-terminating MITM with a valid certificate can
-  relay the handshake but cannot read or modify a single inner frame —
-  it holds neither ephemeral secret, and it cannot re-sign a modified
+  and a fresh 32-byte nonce; the server responds with its own
+  ephemeral plus an Ed25519 signature under `chalk-server-id.v1` over
+  the **transcript hash**, frozen (per the R16 review) as
+  `SHA-256(u8(proto_version = 1) || client_eph_pub(32) ||
+  server_eph_pub(32) || client_nonce(32) || server_ed25519_pub(32))`.
+  Session keys are domain-separated per direction:
+  `K_c2s = HKDF(ss, salt "chalk-inner-salt-v1",
+  info "chalk-inner-c2s-v1" || transcript_hash)` and `K_s2c`
+  likewise with `"chalk-inner-s2c-v1"` — and **every subsequent frame
+  is sealed** (AES-256-GCM) under an independent, strictly
+  monotonically increasing 64-bit per-direction nonce counter; a
+  repeated or out-of-order counter closes the connection. A
+  TLS-terminating MITM with a valid certificate can relay the
+  handshake but cannot read or modify a single inner frame — it holds
+  neither ephemeral secret, and it cannot re-sign a modified
   transcript against the pin.
 - **Pin mismatch is a wall**, like the identity-changed wall: the
   client refuses the session and says what it means. A legitimate
@@ -327,9 +426,9 @@ half-claimed. L-01 — unchanged, separate account-recovery work.
 | 83-1 | Canonical envelope: encoders (exported helpers + `uuid16`), sign/verify, typed results, total parser, full mutation/replay vector suite |
 | 83-2 | Send/receive integration: sign-then-seal, verify-fail-closed rendering incl. `unsigned` legacy label, replay dedup store (`idb.ts` bump), send-flow reorder |
 | 83-3 | Append-only edits: `message_revisions` migration + atomic edit transaction, `fetch_revisions`, client ancestry classification; signed sealed reaction clears (delete the unencrypted-clear branch) |
-| 83-4 | Identity generations: `(user_id, ed25519_fp)` fetch incl. retired, sealed `sender_ed25519_fp` resolution, `verified-former-identity` labelling |
-| 83-5 | Rotation-due: server marks on shrink, next-sender mints v+1 with signed wraps, version-ceiling serialization test (incl. owner-leave and 2-person channels) |
-| 83-6 | Server identity: chalkctl-provisioned keypair, registration pin + prefs backup, the inner sealed channel handshake, mismatch wall, re-pin flow |
+| 83-4 | Identity generations: the `chalk-idgen.v1` chain cert minted at rotation (R16-1), `(user_id, ed25519_fp)` fetch incl. retired + certs, chain-to-pin verification, `verified-former-identity` labelling, the chain-break wall |
+| 83-5 | Rotation-due: server marks on shrink; the atomic `rotate_channel_key` transaction + `rotation_required` send gate (R16-2); tests incl. owner-leave, 2-person channels, and the two-concurrent-responders race (no mixed generation in any interleaving) |
+| 83-6 | Server identity: chalkctl-provisioned keypair, registration pin + prefs backup, the inner sealed channel exactly as frozen in D.3 (transcript hash, directional HKDF domains, monotonic counters, close-on-violation), mismatch wall, re-pin flow |
 | 83-7 | Docs + enforcement end-state: threat-model.md final wording, minimum-signing-build advertisement, CHANGELOG |
 
 Each slice is independently verifiable; 83-1 through 83-4 are pure
