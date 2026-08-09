@@ -117,6 +117,12 @@ interface Props {
   // would throw up the on-screen keyboard); it also re-arms the focus, so
   // closing a thread hands the cursor back.
   focusKey?: string | null;
+  // 99-3: a quote the parent wants spliced in at the caret. `key` changes on
+  // every pick rather than identifying the quoted message, because quoting
+  // the same message twice has to insert twice -- keying on the message id
+  // would make the second pick a no-op. Nothing here rewrites the draft: the
+  // text arrives as ordinary characters the user can edit or delete.
+  quote?: { key: string; text: string } | null;
   // 43-7: called on every keystroke with "the draft has text in it". The
   // parent decides whether that becomes a ping -- it owns the rate limit and
   // the pref. Only the feed composer passes this; a thread reply doesn't
@@ -238,7 +244,7 @@ function IconCode() {
   );
 }
 
-export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast, focusKey, onTyping, mentionHandles, linkPreviewEnabled, linkPreviewPref, linkPreviewDomains, onRequestEnableLinkPreview }: Props) {
+export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast, focusKey, quote, onTyping, mentionHandles, linkPreviewEnabled, linkPreviewPref, linkPreviewDomains, onRequestEnableLinkPreview }: Props) {
   const icons = toolStyle === "icons";
   // 94-1/94-3: the phone differs from the desktop in two ways the composer
   // owns -- the tool labels are initials, and Enter is a newline.
@@ -514,6 +520,34 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     setDraft(value);
     setCaretSoon(caret);
   };
+
+  // 99-3: splice a quote in at the caret, the emoji path with two
+  // differences -- it starts on its own line, and it leaves a blank line
+  // under itself with the caret on it, because the point of quoting is to
+  // then write the answer.
+  //
+  // Keyed on quote.key rather than on the object: the parent rebuilds props
+  // every render, and depending on identity would re-insert forever.
+  const quoteKey = quote?.key ?? null;
+  const quotedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (quoteKey === null || !quote || quote.text === "") return;
+    if (quotedFor.current === quoteKey) return;
+    quotedFor.current = quoteKey;
+    const el = textareaRef.current;
+    const start = el?.selectionStart ?? draft.length;
+    const end = el?.selectionEnd ?? draft.length;
+    // A quote is a block: it may not begin halfway along someone's sentence.
+    const lead = start > 0 && draft[start - 1] !== "\n" ? "\n" : "";
+    const { value, caret } = insertAtCursor(draft, lead + quote.text + "\n\n", start, end);
+    if (value.length > MAX_LEN) return; // don't silently blow the cap
+    undoEmoticon.current = null;
+    setDraft(value);
+    setCaretSoon(caret);
+    // quoteKey alone: the draft is read here, not tracked. Listing it would
+    // re-run the effect on every keystroke, and the ref guard would be the
+    // only thing between that and a composer that quotes forever.
+  }, [quoteKey]);
 
   // 56-1: re-derive the mention token from the draft and caret. Called from
   // every path that moves either: typing (onInput), clicking, and the

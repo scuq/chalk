@@ -16,6 +16,7 @@ export const QUICK_REACTIONS = ["👍", "😄", "🎉", "❤️", "👀", "🚀"
 export type MessageMenuItem =
   | { kind: "react" }
   | { kind: "reply" }
+  | { kind: "quote" }
   | { kind: "copy" }
   | { kind: "edit" }
   | { kind: "delete"; label: string };
@@ -24,6 +25,10 @@ export interface MessageMenuOpts {
   deleted: boolean;
   canReact: boolean;
   canReply: boolean;
+  /** 99-3: is there anything a quote could carry? A separate question from
+   *  hasText, which asks about the raw body: a gif's body is not empty, but
+   *  what its sender SAID is, and quoting "" helps nobody. */
+  canQuote: boolean;
   hasText: boolean;
   canEdit: boolean;
   canDelete: boolean;
@@ -40,6 +45,9 @@ export function buildMessageMenu(opts: MessageMenuOpts): MessageMenuItem[] {
   const items: MessageMenuItem[] = [];
   if (opts.canReact) items.push({ kind: "react" });
   if (opts.canReply) items.push({ kind: "reply" });
+  // Above copy: "reply in thread" and "quote" are the two ways to answer,
+  // and they belong together. Copy is not an answer, it is an exit.
+  if (opts.canQuote) items.push({ kind: "quote" });
   if (opts.hasText) items.push({ kind: "copy" });
   if (opts.canEdit) items.push({ kind: "edit" });
   if (opts.canDelete) items.push({ kind: "delete", label: opts.deleteLabel ?? "delete" });
