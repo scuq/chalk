@@ -39,7 +39,7 @@ import {
 } from "../voice/session";
 import { useVoiceSession } from "./VoiceDock";
 import { ChannelGlyph } from "./Sidebar";
-import type { VoiceDiagnostics } from "../voice/call";
+import type { VoiceSessionDiagnostics } from "../voice/session";
 import { useNetPrefs } from "../voice/net-prefs";
 import {
   closeTilePopout,
@@ -138,7 +138,7 @@ export function VoiceCallPanel({
   // not by this panel: a pop-out outlives the panel (browse to a text channel
   // and this unmounts), so the panel only mirrors the module's set.
   const [popped, setPopped] = useState<string[]>(() => popoutKeys());
-  const [diag, setDiag] = useState<VoiceDiagnostics | null>(null);
+  const [diag, setDiag] = useState<VoiceSessionDiagnostics | null>(null);
   const [copied, setCopied] = useState(false);
   // Per-device transport knobs. Saving pushes them into the live call (the
   // session subscribes for as long as a call runs).
@@ -195,11 +195,19 @@ export function VoiceCallPanel({
   const rttByKey = useMemo(() => {
     const out: Record<string, number> = {};
     if (!showLatency) return out;
-    for (const p of diag?.peers ?? []) {
+    for (const p of diag?.call?.peers ?? []) {
       if (typeof p.pair?.rttMs === "number") out[p.key] = p.pair.rttMs;
     }
     return out;
   }, [showLatency, diag]);
+
+  // 97-1: the drawer's two halves -- the live call's config/stats (null while
+  // idle) and the session-level event ring that outlives every call.
+  const callDiag = diag?.call ?? null;
+  const adaptive = callDiag?.adaptive;
+  const blurDiag = callDiag?.blur;
+  const peerDiags = callDiag?.peers ?? [];
+  const diagEvents = diag?.events ?? [];
 
   const join = () =>
     void voiceSession.join({
@@ -223,14 +231,18 @@ export function VoiceCallPanel({
   useEffect(() => setLocalNote(null), [hereInCall, channel.id]);
 
   const copyDiagnostics = async () => {
+    // 97-1: the blob is never null now, and its events span the session --
+    // a report copied after a reconnect still shows what led up to it.
     const blob = await voiceSession.diagnostics();
     const report = {
       generatedAt: new Date().toISOString(),
+      channelID: channel.id,
       channelName: channel.name,
+      self: selfKey,
       phase: snap.phase,
       durationMs: snap.joinedAt ? Date.now() - snap.joinedAt : 0,
       roster,
-      ...(blob ?? { channelID: channel.id, self: selfKey }),
+      ...blob,
     };
     try {
       await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
@@ -675,8 +687,8 @@ export function VoiceCallPanel({
                   no lan
                 </button>
                 <span class="chalk-voice-note" data-testid="voice-knob-effective">
-                  {diag ? `ice policy: ${diag.net.effectivePolicy}` : "ice policy: —"}
-                  {diag?.forceRelay && " (server-forced)"}
+                  {callDiag ? `ice policy: ${callDiag.net.effectivePolicy}` : "ice policy: —"}
+                  {callDiag?.forceRelay && " (server-forced)"}
                 </span>
                 <button
                   class="chalk-btn chalk-voice-ctl"
@@ -688,40 +700,51 @@ export function VoiceCallPanel({
                 </button>
               </div>
               <div class="chalk-voice-drawer-stats">
-                {diag?.adaptive && (
+                {/* 97-1: how often this session has been dropped and rejoined,
+                    and when it last happened -- the first thing to read when
+                    someone says "it reconnected on me". */}
+                {diag && diag.reconnects > 0 && (
+                  <div class="chalk-voice-drawer-pair" data-testid="voice-reconnect-line">
+                    <span class="chalk-voice-drawer-peer">reconnects</span>{" "}
+                    {diag.reconnects}
+                    {diag.lastDrop &&
+                      ` · last ${new Date(diag.lastDrop.t).toTimeString().slice(0, 8)} (${diag.lastDrop.cause})`}
+                  </div>
+                )}
+                {adaptive && (
                   <div class="chalk-voice-drawer-pair" data-testid="voice-adaptive-line">
                     <span class="chalk-voice-drawer-peer">adaptive</span>{" "}
-                    uplink≈{diag.adaptive.uplinkKbps}kbps
-                    {diag.adaptive.probeKbps !== null && ` (probe ${diag.adaptive.probeKbps})`}
-                    {" · "}video {diag.adaptive.videoBudgetKbps}kbps
-                    {diag.adaptive.screenTier !== null && (
+                    uplink≈{adaptive.uplinkKbps}kbps
+                    {adaptive.probeKbps !== null && ` (probe ${adaptive.probeKbps})`}
+                    {" · "}video {adaptive.videoBudgetKbps}kbps
+                    {adaptive.screenTier !== null && (
                       <>
-                        {" · "}screen {diag.adaptive.screenTier} @
-                        {diag.adaptive.perScreenKbps}kbps
+                        {" · "}screen {adaptive.screenTier} @
+                        {adaptive.perScreenKbps}kbps
                       </>
                     )}
-                    {diag.adaptive.perCameraKbps > 0 &&
-                      ` · cam ${diag.adaptive.perCameraKbps}kbps`}
+                    {adaptive.perCameraKbps > 0 &&
+                      ` · cam ${adaptive.perCameraKbps}kbps`}
                   </div>
                 )}
                 {/* 52-3: what the blur is costing, and whether it has had to
                     thin out its segmentation to fit. The first place to look
                     when someone reports choppy video with blur on. */}
-                {diag?.blur && (
+                {blurDiag && (
                   <div class="chalk-voice-drawer-pair" data-testid="voice-blur-line">
                     <span class="chalk-voice-drawer-peer">blur</span>{" "}
-                    {diag.blur.costMs}ms/frame
+                    {blurDiag.costMs}ms/frame
                     {" · "}
-                    {diag.blur.every === 1
+                    {blurDiag.every === 1
                       ? "every frame"
-                      : `every ${diag.blur.every} frames`}
-                    {diag.blur.gaveUp && " · gave up (too slow)"}
+                      : `every ${blurDiag.every} frames`}
+                    {blurDiag.gaveUp && " · gave up (too slow)"}
                   </div>
                 )}
-                {(!diag || diag.peers.length === 0) && (
+                {peerDiags.length === 0 && (
                   <div class="chalk-voice-note">no live peer connections</div>
                 )}
-                {diag?.peers.map((p) => (
+                {peerDiags.map((p) => (
                   <div class="chalk-voice-drawer-pair" key={p.key}>
                     <span class="chalk-voice-drawer-peer">
                       {handleFor(p.key.split(":")[0])}
@@ -750,10 +773,10 @@ export function VoiceCallPanel({
                 ))}
               </div>
               <div class="chalk-voice-drawer-events" data-testid="voice-debug-events">
-                {(!diag || diag.events.length === 0) && (
+                {diagEvents.length === 0 && (
                   <div class="chalk-voice-note">no events yet</div>
                 )}
-                {diag?.events
+                {diagEvents
                   .slice()
                   .reverse()
                   .map((e) => (

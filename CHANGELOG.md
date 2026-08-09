@@ -12,6 +12,15 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **A voice call that reconnects can now tell you why.** The call's debug
+  drawer used to lose its event log in a reconnect — the record of what went
+  wrong was wiped by the recovery. The log now survives for the whole browser
+  session, notes when the connection dropped and came back (with a reconnect
+  counter in the drawer), and captures a snapshot of the network path at the
+  moment a connection starts degrading. "copy report" after a bad call now
+  shows what led up to it, even from a call that is already over.
+
 ### Changed
 - **The phone's `@ voice` row says who is in a room, not just how many.** Open
   it and a live room lists the people in it under its name, with the same

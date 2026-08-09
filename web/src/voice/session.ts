@@ -27,6 +27,7 @@ import { loadIdentity } from "../crypto/idb";
 import { notifySounds } from "../notify";
 import { voiceBus } from "./bus";
 import { VoiceCall, type VoiceDiagnostics, type ScreenShareMode } from "./call";
+import { VoiceDiagRing, type VoiceDiagEvent } from "./diag";
 import { subscribeMicPrefs } from "./mic-prefs";
 import { subscribeNetPrefs } from "./net-prefs";
 import { subscribeDevicePrefs } from "./device-prefs";
@@ -222,6 +223,21 @@ export interface VoiceSessionSnap {
   speaking: Record<string, boolean>;
 }
 
+/** 97-1: the session-level diagnostics blob. The event ring is HERE rather
+ * than in the call because a reconnect (ws drop -> auto-rejoin) tears the
+ * VoiceCall down and builds a new one -- a per-call ring died with exactly
+ * the evidence a "why did it reconnect" question needs. */
+export interface VoiceSessionDiagnostics {
+  /** ws-drop episodes while in a call, this page load. */
+  reconnects: number;
+  /** When the last such drop happened, and what it was. */
+  lastDrop: { t: number; cause: string } | null;
+  /** The page-lifetime event ring: session edges + every call's events. */
+  events: VoiceDiagEvent[];
+  /** The live call's config + per-peer stats; null while idle. */
+  call: VoiceDiagnostics | null;
+}
+
 export interface JoinArgs {
   channelID: string;
   channelName: string;
@@ -234,6 +250,12 @@ export interface JoinArgs {
 
 class VoiceSessionImpl {
   private call: VoiceCall | null = null;
+  /** 97-1: the diagnostics ring, session-owned so it survives each call --
+   * handed into every VoiceCall this session creates. */
+  private readonly diagRing = new VoiceDiagRing();
+  /** 97-1: ws-drop episodes while in a call, and the latest one. */
+  private reconnects = 0;
+  private lastDrop: { t: number; cause: string } | null = null;
   /** Unsubscribes from the mic and transport prefs, live only for the
    * duration of a call. */
   private prefsUnsubs: (() => void)[] = [];
@@ -376,6 +398,7 @@ class VoiceSessionImpl {
         ]),
       ),
     });
+    this.diagRing.push(`session: joining "${a.channelName}"`);
     try {
       const ident = await loadIdentity(a.selfUserID);
       if (!ident) throw new Error("no local identity — complete identity setup first");
@@ -383,6 +406,7 @@ class VoiceSessionImpl {
         channelID: a.channelID,
         selfUserID: a.selfUserID,
         selfDeviceID: a.selfDeviceID,
+        diag: this.diagRing,
         transport: {
           request: (t, p) => a.client.current!.request(t, p),
           send: (t, p, r) => a.client.current!.send(t, p, r),
@@ -510,6 +534,9 @@ class VoiceSessionImpl {
         deafened: g.deafened,
         joinedAt: Date.now(),
       });
+      this.diagRing.push(
+        `session: in-call (relay=${call.relayOnly} video=${call.joinedWithVideo})`,
+      );
       // 71-1: you're in. Deliberately after the snapshot flip, so the sound
       // and the dock appearing are the same moment.
       notifySounds().playCall("call_join");
@@ -519,6 +546,7 @@ class VoiceSessionImpl {
       if (this.s.rejoinHint) this.set({ rejoinHint: null });
     } catch (err) {
       const raw = String(err instanceof Error ? err.message : err);
+      this.diagRing.push(`session: join failed: ${raw}`);
       const dead = this.call;
       this.call = null;
       this.stopPrefsWatch();
@@ -586,6 +614,7 @@ class VoiceSessionImpl {
     // Only meaningful while deafened, which now outlives the call.
     if (!this.global.deafened) this.mutedBeforeDeafen = false;
     if (call) {
+      this.diagRing.push(`session: left room (${userInitiated ? "user" : "app"})`);
       // 71-1: only when there was a live call -- leave() is idempotent and
       // is also the logout and teardown path. Before the await, so the
       // sound doesn't wait for the peer connections to tear down. This
@@ -607,6 +636,11 @@ class VoiceSessionImpl {
    * already unlocked audio playback. */
   handleWsDown(): void {
     if (this.s.phase === "idle") return;
+    // 97-1: the drop is the event the whole ring exists for -- count it and
+    // stamp it before the teardown starts writing its own entries.
+    this.reconnects++;
+    this.lastDrop = { t: Date.now(), cause: "ws drop" };
+    this.diagRing.push("session: ws drop — leaving the room, auto-rejoin armed");
     const channelID = this.s.channelID;
     const channelName = this.s.channelName;
     // leave(false) keeps the sessionStorage hint; the synchronous part of
@@ -624,6 +658,7 @@ class VoiceSessionImpl {
   leaveIfChannelGone(liveChannelIDs: ReadonlySet<string>): void {
     const cid = this.s.channelID;
     if (cid !== null && !liveChannelIDs.has(cid)) {
+      this.diagRing.push("session: room gone from the channel list — leaving");
       void this.leave();
       this.set({ error: "you are no longer a member of that voice room" });
     }
@@ -775,6 +810,9 @@ class VoiceSessionImpl {
     if (!h) return null;
     clearRejoinHint();
     if (this.s.rejoinHint) this.set({ rejoinHint: null });
+    this.diagRing.push(
+      `session: rejoin hint consumed (${h.wsDrop ? "ws drop" : "page reload"})`,
+    );
     return h;
   }
 
@@ -841,11 +879,16 @@ class VoiceSessionImpl {
     }
   }
 
-  /** Passthrough to the live call's 30-4c diagnostics blob (config +
-   * per-peer selected-pair stats + the bounded event ring). null when
-   * idle -- the ring lives in the call and dies with it, by design. */
-  diagnostics(): Promise<VoiceDiagnostics | null> {
-    return this.call ? this.call.diagnostics() : Promise.resolve(null);
+  /** 97-1: the session blob -- the page-lifetime event ring, the reconnect
+   * count, and (while a call is live) the call's config + per-peer stats.
+   * Never null: "copy report" after the call died is the whole point. */
+  async diagnostics(): Promise<VoiceSessionDiagnostics> {
+    return {
+      reconnects: this.reconnects,
+      lastDrop: this.lastDrop,
+      events: this.diagRing.events(),
+      call: this.call ? await this.call.diagnostics() : null,
+    };
   }
 }
 

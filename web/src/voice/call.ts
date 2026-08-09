@@ -142,6 +142,8 @@ import {
   type NetPrefs,
 } from "./net-prefs";
 import { cameraConstraints, loadDevicePrefs, type DevicePrefs } from "./device-prefs";
+import { VoiceDiagRing, describePair } from "./diag";
+export type { VoiceDiagEvent } from "./diag";
 import { SpeakingTracker, SPEAKING_POLL_MS } from "./speaking";
 import { listAudioInputs, resolveDeviceId, resolveMicPrefs } from "./device-resolve";
 
@@ -219,6 +221,10 @@ export interface VoiceCallOptions {
    * device untouched (indicator dark); the camera button then acquires one
    * mid-call through enableCameraMidCall. */
   startWithVideo: boolean;
+  /** 97-1: the diagnostics ring, normally the session's page-lifetime one so
+   * events survive this call's teardown. Absent (guest room), the call makes
+   * a private ring and behaves like the 30-4c original. */
+  diag?: VoiceDiagRing;
   callbacks: VoiceCallCallbacks;
 }
 
@@ -244,6 +250,9 @@ interface Peer {
   cameraStreamID: string | null;
   /** Remote streams that arrived before their screen_add announce. */
   pendingStreams: Map<string, MediaStream>;
+  /** 97-2: the last ICE trouble state a stats snapshot was taken for, so one
+   * episode logs each state once. Reset when the link recovers. */
+  troubleSnap: string | null;
 }
 
 /** screen_add / screen_remove control body (rides encrypted, like SDP/ICE). */
@@ -294,12 +303,11 @@ export function describeMediaError(device: "microphone" | "camera", err: unknown
 // getStats() snapshot collector. The VoiceCallPanel's "debug" drawer renders
 // both, and "copy diagnostics" produces a pasteable JSON blob. Cheap: the
 // ring is bounded and stats run only while the drawer is open.
-
-/** One timestamped diagnostics event. */
-export interface VoiceDiagEvent {
-  t: number; // unix millis
-  msg: string;
-}
+//
+// 97-1: the ring itself moved to ./diag and is normally OWNED BY THE SESSION
+// (VoiceCallOptions.diag), so it survives the call teardown a reconnect is.
+// The blob here is therefore config + live stats only; the session composes
+// it with the ring's events (VoiceSessionDiagnostics).
 
 /** A per-peer live snapshot extracted from RTCPeerConnection.getStats(). */
 export interface VoicePeerDiag {
@@ -333,7 +341,9 @@ export interface VoiceAdaptiveDiag {
   screenTier: string | null;
 }
 
-/** The full copyable diagnostics blob. */
+/** The live call's half of the copyable diagnostics blob: config + stats.
+ * 97-1: the event ring is no longer in here -- it outlives the call, so the
+ * session carries it (VoiceSessionDiagnostics in ./session). */
 export interface VoiceDiagnostics {
   channelID: string;
   self: string;
@@ -342,15 +352,12 @@ export interface VoiceDiagnostics {
   net: NetPrefs & { effectivePolicy: RTCIceTransportPolicy };
   iceServerURLs: string[]; // URLs only -- never the short-lived credentials
   peers: VoicePeerDiag[];
-  events: VoiceDiagEvent[];
   adaptive?: VoiceAdaptiveDiag;
   /** 52-3: present only while our own background blur is running. Absent means
    *  blur is off, or the camera is doing it (which costs us nothing to report
    *  on because it costs us nothing at all). */
   blur?: BlurStats;
 }
-
-const DIAG_RING_MAX = 150;
 
 export class VoiceCall {
   private readonly o: VoiceCallOptions;
@@ -418,12 +425,14 @@ export class VoiceCall {
   private readonly identities = new Map<string, { ed25519Public: Uint8Array } | null>();
   /** Concurrent-join fallback timers by peer key. */
   private readonly glareTimers = new Map<string, number>();
-  /** 30-4c: bounded diagnostics event ring (see VoiceDiagEvent). */
-  private readonly diagEvents: VoiceDiagEvent[] = [];
+  /** 30-4c/97-1: the bounded diagnostics event ring -- the session's when one
+   * was handed in, else private (guest room). */
+  private readonly ring: VoiceDiagRing;
 
   constructor(o: VoiceCallOptions) {
     this.o = o;
     this.selfKey = peerKey(o.selfUserID, o.selfDeviceID);
+    this.ring = o.diag ?? new VoiceDiagRing();
   }
 
   get isJoined(): boolean {
@@ -450,16 +459,12 @@ export class VoiceCall {
 
   // ---- diagnostics surface (30-4c) ----------------------------------------
 
-  /** diag records one event into the bounded ring (and mirrors to debug log). */
+  /** diag records one event into the ring (which mirrors to the debug log). */
   private diag(msg: string): void {
-    this.diagEvents.push({ t: Date.now(), msg });
-    if (this.diagEvents.length > DIAG_RING_MAX) {
-      this.diagEvents.splice(0, this.diagEvents.length - DIAG_RING_MAX);
-    }
-    console.debug("[voice]", msg);
+    this.ring.push(msg);
   }
 
-  /** diagnostics returns the copyable blob: config + events + last stats. */
+  /** diagnostics returns the call's half of the blob: config + last stats. */
   async diagnostics(): Promise<VoiceDiagnostics> {
     return {
       channelID: this.o.channelID,
@@ -473,7 +478,6 @@ export class VoiceCall {
         Array.isArray(s.urls) ? s.urls : [s.urls as string],
       ),
       peers: await this.collectPeerStats(),
-      events: [...this.diagEvents],
       adaptive: this.adaptiveDiag(),
       blur: this.blurStats?.(),
     };
@@ -976,6 +980,7 @@ export class VoiceCall {
       screenStreamIDs: new Set(),
       cameraStreamID: null,
       pendingStreams: new Map(),
+      troubleSnap: null,
     };
     this.peers.set(key, peer);
 
@@ -1022,10 +1027,28 @@ export class VoiceCall {
       const body: IceSignal = { candidate: e.candidate ? e.candidate.toJSON() : null };
       void this.sendSignal(peer, "ice", body);
     };
+    // 97-2: the ICE layer's own transitions, logged independently.
+    // "disconnected" often precedes a failure (or a recovery) by seconds and
+    // is the moment worth a stats snapshot -- the pc is still open, so the
+    // selected pair (relay vs direct, rtt, byte counters) is still readable;
+    // by the time connectionState says "failed" it is often already gone.
+    pc.oniceconnectionstatechange = () => {
+      const st = pc.iceConnectionState;
+      this.diag(`ice state ${key} = ${st}`);
+      if (st === "disconnected" || st === "failed") {
+        this.snapshotTroublePair(peer, st);
+      } else if (st === "connected" || st === "completed") {
+        peer.troubleSnap = null; // recovered -- the next episode snapshots again
+      }
+    };
     pc.onconnectionstatechange = () => {
       this.diag(`conn state ${key} = ${pc.connectionState} (ice=${pc.iceConnectionState})`);
       this.o.callbacks.onPeerState(key, pc.connectionState);
       if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+        // 97-2: last chance to read the stats -- dropPeer closes the pc.
+        // The getStats call is issued synchronously here; the troubleSnap
+        // guard makes this a no-op when the ICE handler already took it.
+        if (pc.connectionState === "failed") this.snapshotTroublePair(peer, "failed");
         // v1 reconnection policy (design §9): no automatic ICE restart;
         // the peer either re-offers (rejoin) or the roster push removes it.
         this.dropPeer(key, true);
@@ -1036,12 +1059,33 @@ export class VoiceCall {
     return peer;
   }
 
+  /** 97-2: one-shot getStats when a peer link degrades. The drawer's live
+   * stats only run while it is open, and nobody has it open when a call
+   * unexpectedly dies -- so the ring itself records what the path looked
+   * like at that moment. Deduped per state per episode via troubleSnap. */
+  private snapshotTroublePair(peer: Peer, state: string): void {
+    if (peer.troubleSnap === state) return;
+    peer.troubleSnap = state;
+    void peer.pc.getStats().then(
+      (report) => {
+        const pair = extractSelectedPair(report);
+        this.diag(
+          pair
+            ? `pair at ${state} for ${peer.key}: ${describePair(pair)}`
+            : `pair at ${state} for ${peer.key}: none selected`,
+        );
+      },
+      () => this.diag(`pair at ${state} for ${peer.key}: stats unavailable`),
+    );
+  }
+
   private dropPeer(key: string, notify: boolean): void {
     const peer = this.peers.get(key);
     if (!peer) return;
     this.peers.delete(key);
     peer.pc.ontrack = null;
     peer.pc.onicecandidate = null;
+    peer.pc.oniceconnectionstatechange = null;
     peer.pc.onconnectionstatechange = null;
     try {
       peer.pc.close();
