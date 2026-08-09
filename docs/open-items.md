@@ -67,7 +67,15 @@ deliberately small:
 
 Membership stays server-asserted **by design** — an accepted, visible
 property of the trust model, no longer an unmet guarantee
-([threat-model.md](threat-model.md) carries the full statement).
+([threat-model.md](threat-model.md) carries the full statement). The
+R18 review then caught that claim 2 as first written ("host may modify
+persistent data") contradicted exactly that: a database write into a
+roster would make honest clients wrap keys to an intruder. The claim
+was **lowered** — host compromise is defended for *reads*; writing the
+authorization tables is a real, stated, undefended threat — and two
+mitigations were commissioned: D.6's client-derived roster-change
+notices (a membership change is announced in-channel even when it was
+a pure database insert) and phase 99's credential hardening (below).
 Phase 98 (big rooms) was gated on fanout's membership layer and needs
 a re-sketch against this design before its own review.
 
@@ -111,6 +119,12 @@ same space.
   its own review, before any code.
 - **The SFU seam** (voice design Slice I) for rooms too large for a mesh.
 - **Governance `set_config` proposals.**
+- **Database-credential hardening** (99, [phases/PHASE-99-DBCREDS.md](phases/PHASE-99-DBCREDS.md)):
+  move the DB secrets out of the env file and `/proc/environ` into
+  encrypted systemd credentials (or eliminate the app password via
+  peer auth — the phase's first question), zeroize in-memory copies,
+  one-command rotation. Commissioned as the R18 mitigation alongside
+  phase 83's D.6 roster notices.
 
 Two deliberate exclusions:
 

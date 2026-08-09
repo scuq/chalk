@@ -46,6 +46,24 @@ change; phase 82's canonical stays frozen). **Gate 0 stays open
 pending re-review of exactly this delta — the reviewer's stated
 expectation is a pass.**
 
+Third review (R18, 2026-08-09 —
+`docs/audits/security-phase-83-r18-review-2026-08-09.md`): R17-01
+verified closed; one Critical trust-model contradiction (P83-A-R18-01)
+— claim 2 permitted the host to *modify* persistent data, but
+membership is server-asserted, so a database write inserting a
+principal makes honest clients wrap keys to it, contradicting "host
+compromise opens nothing". **Resolved in this fourth revision by
+narrowing the claim, as recommended** (no membership crypto brought
+back): claim 2 now covers host *reads*, and altering the
+authorization tables is placed on the malicious-chalkd side of the
+boundary. Per scuq's direction the lowered claim ships with two
+mitigations rather than bare wording — **D.6**, client-derived
+roster-change notices that fire even for a pure database insert, and
+**phase 99** (`PHASE-99-DBCREDS.md`), hardening the database
+credentials at rest and in chalkd's memory. Stored *cryptographic*
+objects stay tamper-evident; only the authorization tables' integrity
+is trusted. **Gate 0 stays open pending re-review of this delta.**
+
 **Tag:** `#msgsig`.
 
 ---
@@ -59,23 +77,40 @@ in this phase (threat-model.md carries the user-facing version):
    as written: it stores what it is given, delivers to whom it should,
    and asserts membership and ordering truthfully. chalk no longer
    claims any property against a chalkd that lies.
-2. **The machine chalkd runs on is not trusted for confidentiality or
-   stored-data integrity.** Malicious code beside chalkd may read
-   server storage (database, disk, backups), read process memory, and
-   **modify persistent server data**. **There must be no easy way for
-   such code to read already-sent messages.** Nothing the host stores
-   or observes may yield message plaintext: no plaintext at rest, no
-   message keys, no channel space keys, and no *user* identity private
-   keys ever exist server-side (chalkd necessarily holds its **own**
-   server-identity private key — claim 3's signer; stealing it
-   impersonates the server, it opens no history). The boundary with
-   claim 1, made explicit (the R16 review): the model does **not**
-   attempt to preserve protocol correctness if the attacker alters
-   chalkd's executable code or live control flow — that is equivalent
-   to a malicious chalkd and falls under claim 1. Claim 2 defends
-   against what real host compromises overwhelmingly are: reading and
-   tampering with *data*, and D.1's signatures are what make the
-   tampering detectable.
+2. **The machine chalkd runs on is not trusted for confidentiality —
+   the claim covers *reading*, and only reading (narrowed
+   2026-08-09, P83-A-R18-01).** Malicious code beside chalkd may read
+   server storage (database, disk, backups) and process memory, and
+   **such access must not yield already-sent messages**: no plaintext
+   at rest, no message keys, no channel space keys, and no *user*
+   identity private keys ever exist server-side (chalkd necessarily
+   holds its **own** server-identity private key — claim 3's signer;
+   stealing it impersonates the server, it opens no history). Two
+   boundaries with claim 1, both explicit:
+   - altering chalkd's executable code or live control flow is a
+     malicious chalkd (the R16 boundary); and
+   - **altering the authorization state chalkd consumes — above all
+     the membership tables — is equivalent to a malicious chalkd
+     too** (the R18 boundary). Membership is server-asserted by
+     design, so a database write that inserts a principal makes
+     honest clients wrap keys to it: three claims that could not all
+     hold, resolved by narrowing this one. **Database manipulation
+     is a real threat and chalk does not defend authorization state
+     against it** — it is stated, not defended, and met with two
+     mitigations rather than a pretended guarantee: every membership
+     change is announced *client-derived* in the channel itself
+     (D.6 — the notice fires off the roster diff clients observe, so
+     even a pure database insert is announced to every member), and
+     phase 99 (`PHASE-99-DBCREDS.md`) hardens how the database
+     credentials themselves are stored, raising the cost of the
+     write.
+
+   What claim 2 still defends against *tampering*: stored
+   cryptographic objects. Corrupted or substituted ciphertexts,
+   wraps and identity records fail closed — D.1's signatures, phase
+   82's wrap signatures and the idgen chain are exactly the
+   detectors — so opportunistic stored-object corruption is caught;
+   it is the *authorization tables* whose integrity is trusted.
 3. **A client can detect a MITM toward the server it originally
    registered with.** The network path between client and server is
    not trusted even with valid TLS (CA mis-issuance, DNS takeover);
@@ -317,8 +352,10 @@ delivery, so key rotation is defense in depth for claim 2 — it bounds
 what a *stored* old key opens, and cuts off a departed member's key
 material going forward:
 
-- On any membership shrink (remove, leave, guest revoke) the server
-  marks the channel *rotation due, version v+1*.
+- On any membership shrink (remove, leave, guest revoke) at current
+  version `v`, the server stores `rotation_due.from_version = v`; the
+  required successor is therefore exactly `v + 1` (the R18 editorial
+  note — the prose and the stored structure now say the same thing).
 - **The next member to send rotates first**: mint space key v+1, wrap
   to every current member with signed wraps, commit, then send under
   v+1. One actor, zero coordination, no ceremony — the first-responder
@@ -436,6 +473,49 @@ inside the existing sealing, so old and new coexist:
   server cannot see inside the seal — the boundary is client
   rendering.
 
+### D.6 Client-derived roster-change notices
+
+Membership is server-asserted and its integrity is trusted (claim 1,
+narrowed by R18-01) — but a database write is a real threat the trust
+model does not defend, so the one thing that must never happen is a
+membership change nobody sees. chalk already posts a join notice
+(82-8), but it is emitted by the server off its own event stream: a
+direct database insert produces no event and therefore no notice.
+D.6 makes the notice **client-derived** so it fires regardless of how
+the roster changed:
+
+- Each client persists, per channel, the last roster it observed —
+  the set of `(member, current identity fingerprint)` it has seen.
+- On every roster it fetches (channel open, reconnect, the periodic
+  refresh that already runs), it **diffs** against that stored set.
+  Any addition, removal, or identity-fingerprint change that it did
+  not already render from a normal membership event is surfaced as an
+  in-channel notice — *"<user> was added to the channel"* /
+  *"<user> was removed"* / *"<user>'s identity key changed"* — marked
+  **observed**, distinct from an event-sourced notice, because its
+  provenance is the roster diff, not a signed action.
+- The notice is local UI, not a message: it is not signed, not sent,
+  and not attributable to an actor (the whole point is that no
+  trustworthy actor record exists for a DB insert). It says *what*
+  changed in the membership the client now sees, never *who* did it.
+- A member added by database manipulation therefore cannot arrive
+  silently: the moment any existing client refreshes the roster, the
+  addition is announced to that user, and the key-wrap that would
+  hand the intruder the space key is something the user has been told
+  about rather than something that happened invisibly. It is
+  detection and disclosure, not prevention — consistent with the
+  narrowed claim, and the honest most a server-asserted-membership
+  design can offer.
+- Consistency with the identity chain: a fingerprint-change notice
+  reuses D.1's generation verification — an *unlinked* fingerprint
+  change (no valid idgen chain to the prior pin) is the louder
+  identity-changed wall, a *chained* one is the softer "rotated their
+  key" line.
+
+This is deliberately cheap: no new server endpoint (the roster fetch
+exists), no wire change, no signature. It converts "membership is
+server-asserted" from a silent trust into a visible one.
+
 ### D.5 Costs and accepted residuals
 
 Envelope overhead: 64-byte signature + ~200 bytes of canonical fields
@@ -446,7 +526,8 @@ Ed25519 op per object.
 | Residual | Treatment |
 |---|---|
 | Malicious/compelled chalkd | **Out of the trust model** (claim 1, decided 2026-08-09): a server that lies about membership is handed channel keys by honest clients. Visible (join notices, wrap provenance), not prevented. Federation stays gated on this (PHASE-88). |
-| Host compromise | Reads all metadata (rosters, timing, sizes, edit/reaction graphs) and every ciphertext; opens nothing (claim 2). Can steal the server identity key → impersonate the server, not read history. TOTP secrets decrypt on the host (`CHALK_TOTP_ENC_KEY`) → account access ≠ message plaintext (the encryption phrase never reaches the server). |
+| Host compromise (read) | Reads all metadata (rosters, timing, sizes, edit/reaction graphs) and every ciphertext; **reading opens nothing** (claim 2). Can steal the server identity key → impersonate the server, not read history. TOTP secrets decrypt on the host (`CHALK_TOTP_ENC_KEY`) → account access ≠ message plaintext (the encryption phrase never reaches the server). |
+| Host compromise (write to authorization state) | **A real, undefended threat (P83-A-R18-01)**: a database write that inserts a principal into a roster makes honest clients wrap the channel key to it — no signature fails, because membership is server-asserted by design and the tables' integrity sits inside the claim-1 trust boundary. Mitigations, not guarantees: the client-derived roster-diff notice (D.6) announces the change in the channel — a silent membership edit is impossible even for a pure DB insert — and phase 99 hardens the database credentials that make the write cheap. Stored *cryptographic* objects (ciphertexts, wraps, identity records) stay tamper-evident and fail closed. |
 | First contact | Registration MITM wins that device's pins (server and peers alike); picture-word comparison remains the out-of-band upgrade. |
 | Bundle delivery | A web client cannot verify its own code; a bundle-serving MITM is endpoint compromise. PWA caching narrows, does not close. |
 | Deniability | Gone, deliberately: signatures are transferable proof of authorship. The fanout design's "authenticated for you" was the deniable alternative and retired with its threat model. |
@@ -473,10 +554,11 @@ half-claimed. L-01 — unchanged, separate account-recovery work.
 | 83-4 | Identity generations: the `chalk-idgen.v1` chain cert minted at rotation (R16-1), `(user_id, ed25519_fp)` fetch incl. retired + certs, chain-to-pin verification, `verified-former-identity` labelling, the chain-break wall |
 | 83-5 | Rotation-due: server marks on shrink; the atomic `rotate_channel_key` transaction + `rotation_required` send gate (R16-2); tests incl. owner-leave, 2-person channels, and the two-concurrent-responders race (no mixed generation in any interleaving) |
 | 83-6 | Server identity: chalkctl-provisioned keypair, registration pin + prefs backup, the inner sealed channel exactly as frozen in D.3 (transcript hash, directional HKDF domains, monotonic counters, close-on-violation), mismatch wall, re-pin flow |
-| 83-7 | Docs + enforcement end-state: threat-model.md final wording, minimum-signing-build advertisement, CHANGELOG |
+| 83-7 | Client-derived roster-change notices (D.6): per-channel observed-roster store, the diff on every fetch, the observed add/remove/key-change notice distinct from event-sourced ones, fingerprint-change reusing the idgen verification |
+| 83-8 | Docs + enforcement end-state: threat-model.md final wording, minimum-signing-build advertisement, CHANGELOG |
 
-Each slice is independently verifiable; 83-1 through 83-4 are pure
-client + one migration; 83-5/83-6 touch chalkd and chalkctl.
+Each slice is independently verifiable; 83-1 through 83-4 and 83-7 are
+pure client (plus one migration); 83-5/83-6 touch chalkd and chalkctl.
 
 ## The decision record (2026-08-09)
 

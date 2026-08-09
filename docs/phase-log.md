@@ -90,6 +90,7 @@ as-built rather than a contemporaneous plan.
 | 96 | the call's layout, and the share's own volume | [PHASE-96-CALLSTAGE.md](phases/PHASE-96-CALLSTAGE.md) |
 | 97 | voice reconnect diagnostics | [PHASE-97-VOICEDIAG.md](phases/PHASE-97-VOICEDIAG.md) |
 | 98 | large rooms: per-sender streams past the 64 cap — **planned, not started** | [PHASE-98-BIGROOMS.md](phases/PHASE-98-BIGROOMS.md) |
+| 99 | database-credential hardening at rest and in chalkd memory (the R18 mitigation) — **planned, not started** | [PHASE-99-DBCREDS.md](phases/PHASE-99-DBCREDS.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
@@ -704,8 +705,8 @@ access log (85).
 
 **Not started.** 65 (web push), 83 (signed sealed envelopes, rotation and
 the server pin under the 2026-08-09 revised trust model), 86 (ties), 87
-(message reminders) and 90 (a local
-idle agent) — each planned in its own `PHASE-*.md`, and each marked
+(message reminders), 90 (a local idle agent) and 99 (database-credential
+hardening, the R18 mitigation) — each planned in its own `PHASE-*.md`, and each marked
 *planned, not started* in the index above. [open-items.md](open-items.md) is the
 authority on what is open; this log only records what shipped.
 
