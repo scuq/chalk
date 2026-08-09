@@ -1,7 +1,7 @@
 # Phase 83 — MSGSIG: envelope fanout
 
-**Status: the phase-83 plan — planned, not started; eleventh revision.
-**Gate 0 re-opened** and held open by five external reviews: the
+**Status: the phase-83 plan — planned, not started; twelfth revision.
+**Gate 0 re-opened** and held open by six external reviews: the
 fifth independent review (2026-08-09, five blockers → seventh
 revision), the R11 review (two membership-state-machine blockers →
 eighth), the R12 delta review (two blockers in the replacement text →
@@ -14,7 +14,12 @@ the owner-zero resolver — the then-uncommitted tenth revision had
 independently already fixed via R13; the rest, above all the
 cross-target ordering hole, answered in this revision). **No slice
 lands until an independent re-review of the accumulated delta closes
-the gate again**. Decided
+the gate again**. The sixth is the R14 delta review (of `3d9aa45`,
+the tenth+eleventh) — it verified R13-01/02 and the F6 fixes closed,
+and found one Critical blocker in the new control chain itself: the
+CAS trusted the server as sequencer, which the threat model forbids;
+answered in this revision by the in-band gossip witness (decided
+2026-08-09) plus the honestly-stated zero-state residual. Decided
 2026-08-08: envelope fanout
 (formerly "option A" of `PHASE-83-MSGSIG-ALTERNATIVE.md`, this file's
 previous name) supersedes the original transcript design that lived at
@@ -241,6 +246,31 @@ flow recorded as an explicit Gate-F release dependency. **This
 eleventh revision incorporates all of it**; the gate stays open
 pending independent re-review of the accumulated delta.
 
+An **R14 delta review** (2026-08-09, external, of the tenth+eleventh
+revisions at `3d9aa45` —
+`docs/audits/security-phase-83-r14-review-2026-08-09.md`) **verified
+R13-01/02, F6-02, F6-03 and F6-04 closed** and found one Critical
+blocker in the eleventh revision's own control chain: **the CAS
+trusted the server as sequencer** (P83-A-R14-01). A hash chain gives
+tamper evidence within a branch, not branch uniqueness — a malicious
+server keeps advertising a stale head to removed-Alice, banks her
+Mallory-admit on a hidden sibling branch, and serves a fresh Carol
+only that branch as a perfectly linear chain; fork surfacing never
+fires because no client sees both branches. The "minting requires
+holding the head" claim is retired (a client only ever holds a head
+the server *presented*). The answer, decided 2026-08-09 over
+residual-only and quorum co-signing: **the in-band witness** — every
+suite-2 object and grant seals its sender's
+`(control position, control head)` inside the MAC'd canonical
+(adaptation 6), receivers cross-check against their own chain, and
+divergence is surfaced fork evidence the server cannot strip. The
+hidden universe then survives only a permanent, total partition from
+honest traffic — denial-class, loud — and the zero-state window
+before first honest contact is stated as an §A.8 residual, because
+no mechanism can close it (the server is a fresh device's only
+window). **This twelfth revision incorporates it**; the gate stays
+open pending independent re-review of the accumulated delta.
+
 **Tag:** `#msgsig`.
 
 ---
@@ -373,6 +403,15 @@ all remaining findings answered in this eleventh revision:
 | P83-A-F6-03 (High) | `0x02`/`0x03` carried no `writer_scope`/`client_msg_id` while the frozen replay rule keyed every object by them — unimplementable as written, and reactions' `actor_user_id` didn't even match the triple's field name | §A.3 (adaptation 5: both fields in edits and reactions; the uniform `(actor, writer_scope, client_msg_id)` triple; identical first-seen/duplicate/retry semantics for all three types; replay-under-new-server-id vectors for all three) |
 | P83-A-F6-04 (High) | The commit key rode the LWW prefs store — two acked concurrent repacks, one silently discarded; the field-wise join never sees a record the storage dropped, and the "self-heals, do not add locking" note assumed the loser survives | §A.7 (**Note 3 retracted**; immutable per-generation page namespaces + a conditional commit head — a dedicated row CAS'd on the one plaintext `repack_seq`; losers fetch, join, retry under a fresh generation; GC keeps new + previous; the five sixth-review tests) |
 | Completion items | Owner-zero resolver (already fixed, R13-01); the policy-fork record key stated but absent from key/sort; bare "recreate the channel" not a usable owner recovery | §A.7 (fork-record key frozen `(channel, anchor_hash, policy_head)`, in the writer's sort); §A.4 + `docs/open-items.md` (the assisted one-action recreation flow is an explicit Gate-F release dependency — without it the owner-replacement UI stays hidden) |
+
+R14 delta review (2026-08-09, external, of the tenth+eleventh
+revisions at `3d9aa45` —
+`docs/audits/security-phase-83-r14-review-2026-08-09.md`; it verified
+R13-01/02 and F6-02/03/04 closed), answered in this twelfth revision:
+
+| Finding | Was | Resolved in |
+|---|---|---|
+| P83-A-R14-01 (Critical) | The control chain's CAS trusted the server as sequencer — but a malicious server enforces nothing: it advertises a stale head to a removed insider, banks her post-removal admit on a hidden sibling branch, and serves a fresh device only that branch as a linear chain; fork surfacing needs both branches seen, and "minting requires holding the head" confused a *presented* head with a unique one | §A.4 (the CAS demoted to race arbitration + honest-server ordering, explicitly never the security boundary; the attack recorded; the "holding the head" claim retired); §A.3/§A.6 (**adaptation 6 — the in-band witness**: every object and grant seals the sender's `(control_p, control_head)` inside the MAC'd canonical; the receive cross-check in §A.5's five-step order — divergence is surfaced fork evidence, never a delivery block); §A.8 (the zero-state residual stated: detection at first honest contact, prevention before it impossible; sustaining the false universe = permanent total partition, denial-class); the R14 litmus vector + cross-check vectors in A-2/A-4 |
 
 ---
 
@@ -592,7 +631,7 @@ from it. `sender_ts` — the sender's clock, display only (§A.8). The
 durable object identity is `(sender_user_id, writer_scope,
 client_msg_id)` — the replay triple above, sealed in the canonical.
 
-**The five fanout adaptations** (each frozen; violating any is
+**The six fanout adaptations** (each frozen; violating any is
 `malformed`):
 
 1. **`key_version` is `0`.** Suite 2 has no space-key context — the
@@ -639,12 +678,24 @@ client_msg_id)` — the replay triple above, sealed in the canonical.
    byte-identical resend dedups by triple and re-renders nothing; a
    duplicate triple under a different server id is a replay, rendered
    once.
+6. **Every object gossips its sender's control head
+   (P83-A-R14-01).** `u64be(control_p) || h32(control_head)` — the
+   sender's verified §A.4 control-chain position and head at send
+   time — immediately follows `actor_admit_ref` in all three types.
+   It is the in-band anti-equivocation witness: the server relays it
+   inside the MAC'd canonical and can neither strip nor alter it, so
+   a concealed control branch survives only total partition from
+   honest traffic (§A.4's witness rule; §A.8's residual). The
+   receive-side cross-check classifies and never blocks: an older
+   head must lie on the receiver's chain, a newer one must extend it,
+   and any mismatch is surfaced control-fork evidence.
 
 `0x01` — message:
 
 ```
 uuid16(channel_id) || u32be(key_version = 0) || uuid16(sender_user_id)
 || h32(actor_admit_ref)                 // fanout adaptation 4
+|| u64be(control_p) || h32(control_head)   // adaptation 6 (R14-01)
 || uuid16(writer_scope) || uuid16(client_msg_id) || u64be(sender_ts)
 || u64be(wseq)
 || uuid16(par_sender) || uuid16(par_scope) || uuid16(par_client_msg_id)
@@ -668,6 +719,7 @@ att_binding = uuid16(attachment_id) || u32be(att_key_version = 0)
 ```
 uuid16(channel_id) || u32be(key_version = 0) || uuid16(sender_user_id)
 || h32(actor_admit_ref)                 // fanout adaptation 4
+|| u64be(control_p) || h32(control_head)   // adaptation 6 (R14-01)
 || uuid16(writer_scope) || uuid16(client_msg_id)   // adaptation 5 (F6-03)
 || uuid16(tgt_sender) || uuid16(tgt_scope) || uuid16(tgt_client_msg_id)
 || h32(prev_rev_hash)
@@ -691,6 +743,7 @@ re-stated in full so the current revision is self-sufficient.
 ```
 uuid16(channel_id) || u32be(key_version = 0) || uuid16(actor_user_id)
 || h32(actor_admit_ref)                 // fanout adaptation 4
+|| u64be(control_p) || h32(control_head)   // adaptation 6 (R14-01)
 || uuid16(writer_scope) || uuid16(client_msg_id)   // adaptation 5 (F6-03)
 || uuid16(tgt_sender) || uuid16(tgt_scope) || uuid16(tgt_client_msg_id)
 || h32(tgt_env_hash)
@@ -713,11 +766,12 @@ all three types.
 
 **Vectors (A-3):** per-field mutation across all three types;
 cross-object type confusion (an edit's bytes presented as a message);
-trailing bytes; absent-vs-zero optional fields; the five adaptations
+trailing bytes; absent-vs-zero optional fields; the six adaptations
 violated (nonzero `key_version`, nonzero checkpoint, missing or short
 `att_key`, a zero or foreign `actor_admit_ref` — one referencing an
-admission whose target is not the object's actor — and missing replay
-fields in an edit or reaction);
+admission whose target is not the object's actor — missing replay
+fields in an edit or reaction, and a truncated or absent gossip
+head);
 replay-under-a-new-server-id for **all three** object types (F6-03);
 oversize `body_text`/`att_count`/`emoji_count`/emoji;
 a reply naming a legacy parent (all-zero binding); an edit whose
@@ -1024,18 +1078,58 @@ authenticated total order per channel.**
   re-signs, and retries — the same transparent re-sign-and-retry shape
   the guest mint already froze (P83-A-R4-03). **Only the rare
   control plane serializes; messages never wait on it, never
-  reference it, and never freeze behind it.**
+  freeze behind it.** And the CAS is **race arbitration and
+  honest-server ordering, never the security boundary**
+  (P83-A-R14-01 — a malicious server enforces nothing, here as
+  everywhere): nothing stops a malicious server from advertising a
+  stale head to a chosen signer and banking a hidden sibling branch.
+  What defends against that is the witness rule below, not the CAS.
 - **Validation is in control order.** Clients verify the control chain
   linearly from the anchor (or from their persisted control floor),
   and actor authority is evaluated **at the artifact's control
   position**: the actor's own chain state, as of everything preceding
-  this artifact in the control chain, must be admitted. A cert minted
-  after its actor's removal must chain *past* that removal — it
-  cannot be inserted before it, because minting requires holding the
-  head, and the removal already holds an earlier position — so it is
-  invalid on **every** device, in **every** fetch order. The
-  first-seen observed-removal rule remains as defense in depth, but it
-  is no longer load-bearing for fresh devices.
+  this artifact in the control chain, must be admitted. Within any
+  one presented branch, order is authenticated and retro-insertion is
+  impossible: against an honest sequencer, a cert minted after its
+  actor's removal must chain *past* the removal, which already
+  occupies an earlier position, so it is invalid on every device in
+  every fetch order. **A client never holds "the" head — it holds a
+  head the server presented** (the R14 correction; the earlier
+  "minting requires holding the head" claim is retired): branch
+  *uniqueness* is not a hash chain's to give, and comes only from the
+  witness rule below. The first-seen observed-removal rule remains as
+  defense in depth.
+- **Equivocation, and the in-band witness (P83-A-R14-01, decided
+  2026-08-09).** The R14 attack, recorded so its shape is never
+  rediscovered: honest members advance `H → R` (remove Alice); the
+  malicious server keeps advertising `H` to Alice, who signs
+  `M = admit Mallory` at `prev = H` with her old valid
+  `actor_admit_ref`; the server serves a fresh Carol only `H → M` —
+  a perfectly linear chain on which Alice was never removed — and
+  never reveals `R`. Fork surfacing is useless when no client sees
+  both branches. **No mechanism makes a zero-state fresh device
+  immune** — the server is its only window — so the design buys
+  detection and containment through the witness network chalk already
+  has, the members' own sealed envelopes: **every suite-2 object and
+  every grant seals its sender's verified
+  `(control position, control head)` inside the MAC'd canonical**
+  (§A.3 adaptation 6; §A.6) — relayed by the server, strippable and
+  alterable by no one. On receive, after the MAC verifies: a sealed
+  position at or below the local chain's length must equal the local
+  artifact hash at that position; a sealed position beyond it makes
+  the client fetch the extension and verify it chains from its head;
+  **any failure is control-fork evidence**, surfaced channel-level
+  under the fork rules above (last common control state retained,
+  transitions on either branch refused, recreation the exit). A stale
+  sender's older head passes the prefix check; the cross-check
+  classifies, it never blocks delivery. Consequence for the R14
+  attack: Carol's false universe survives only while she receives
+  **no authenticated object sealed past the concealed removal** — no
+  message, edit, reaction, backfill page or grant from any honest
+  member, ever. Sustaining it is a permanent, total partition of
+  honest traffic — a loud silence in a live channel, denial-class —
+  and the first honest contact converts the universe into surfaced
+  fork evidence (§A.8 states the residual).
 - **Forks:** two valid control artifacts naming one
   `prev_control_head` are a **control fork** — the policy fork is now
   simply its policy-cert case, and the handling is the frozen policy
@@ -1058,7 +1152,16 @@ authenticated total order per channel.**
   backed-up control floor refusing a truncated chain; a fresh device
   with no backup on a truncated chain (accepts the prefix — the stated
   residual — but can never accept a reordering); a control fork; a
-  lost mint race retried.
+  lost mint race retried; **the R14 litmus vector**: `H`, honest
+  `R = remove-Alice` at `H`, Alice's `M = admit-Mallory` at `H` on the
+  concealed branch, fresh Carol served only `H → M` — Mallory renders
+  `CURRENT` **until** the first honest object whose sealed head lies
+  past `R` arrives, at which point the fork surfaces and Mallory's
+  admission is refused under the fork rules — evidence, never silent;
+  plus the cross-check cases: a stale sender's older sealed head
+  (passes), a sealed head not on the receiver's chain (fork), a
+  sealed position beyond the local head with a valid extension
+  (extends, then passes).
 
 ### One membership predicate, one identity binding (P83-A-R11-01/02/03)
 
@@ -1430,8 +1533,10 @@ it selects the pairwise key and nothing more. `member_state` answers
 *"may this person speak as a current member now?"*. The pipeline asks
 both, independently: (1) resolve the producing identity via
 `authorized_fp_at(sender, ref)`; (2) verify the MAC under it; (3)
-evaluate current `member_state(sender)`; (4) classify by the
-live/backfill boundary. A removed member's old-identity message,
+**cross-check the sealed gossip head against the local control chain**
+(§A.4's witness rule — divergence is surfaced control-fork evidence,
+never a delivery block; P83-A-R14-01); (4) evaluate current
+`member_state(sender)`; (5) classify by the live/backfill boundary. A removed member's old-identity message,
 served as new by a malicious server, therefore *verifies* under step 2
 and is still **`unauthorized-sender`** at step 4 — an admission
 reference is never a ticket back in, and the R11 predicate fix is
@@ -1582,6 +1687,8 @@ grant canonical = utf8("chalk-history-grant.v1")
                                                // (P83-A-R13-02) — selects
                                                // the K_history identity
                                                // via authorized_fp_at
+  || u64be(control_p) || h32(control_head)     // the §A.3 adaptation-6
+                                               // gossip head (R14-01)
   || u64be(grantee_admit_n) || h32(grantee_admit_cert_hash)
   || u64be(range_from_ms) || u64be(range_to_ms)   // absolute, half-open
   || u32be(chunk_index) || u32be(chunk_count)     // fixed per grant_id
@@ -1645,6 +1752,7 @@ sealed chunk = nonce(12) || AES-256-GCM(K_history(grantor→grantee),
     || uuid16(channel) || uuid16(grantor) || uuid16(grantee)
     || uuid16(grant_id)
     || h32(grantor_admit_ref)                  // as the history grant's
+    || u64be(control_p) || h32(control_head)   // as the history grant's
     || u64be(grantee_admit_n) || h32(grantee_admit_cert_hash)
     || u32be(key_version_era) || space_key(32)
   ```
@@ -1994,6 +2102,7 @@ frozen fact rather than folklore.
 | Guest identity = link possession | the guest keypair is a pure function of the fragment secret — every link holder, the minting owner included, is the same cryptographic principal; consistent with "authenticated for you" plus the guest label |
 | `era_enforced` withheld | a server advertising `era_enforced = false` forever holds build-F clients read-only — denial only (no-suite-1 means no downgrade), visible in the §A.9 banner |
 | Backup generation rollback | closed by `repack_seq` for devices with prior state; a fresh device cannot distinguish a complete older generation — inside the fresh-device residual |
+| Control-plane equivocation | a malicious server can serve a **zero-state fresh device** a concealed control branch — a removed insider's post-removal mint on a hidden fork (the R14 attack). §A.4's in-band witness bounds it: the false universe survives only while the victim receives *no* authenticated object sealed past the concealed artifact — every post-removal message, edit, reaction, backfill page and grant from any honest member exposes it as surfaced fork evidence — so sustaining it is a permanent total partition from honest traffic, denial-class and loud in any live channel. Prevention *before* first honest contact is impossible for a zero-state device (the server is its only window); stated, accepted |
 | No per-message roster commitment | a recipient can verify only its **own** flap (the other flaps' recipient ids are visible, their contents unverifiable), so a malicious **sender** — not just the server — can hand Bob and Carol disjoint flap sets for the "same" message, or exclude one member. With the server choosing delivery it is undetectable; against an honest broadcast the excluded view gets at most an unattributable `mismatch` artifact. Detection would take cross-recipient comparison — a transcript, the design this phase retired — and a sender-signed roster commitment would be transferable proof, un-doing deniability; accepted. Do not over-read "authenticated for you" as "everyone saw this" |
 
 **Audit coverage:** C-01 — no server-substitutable group key for fanout
@@ -2122,11 +2231,11 @@ not a larger cap."*
 |---|---|
 | A-1 | Pairwise HKDF tree (incl. `K_history`); flaps; HMAC tags; frozen parser + full vectors; WebCrypto disposal rules |
 | A-2 | Anchors (converter/owner split) + manifest + `manifest_admit_ref` + complete policy artifacts + membership/guest certificates (`lookup16`, expiry rules): canonicals (`sig64`/`gov_record` conventions + mutation vectors), pure state machine, server tables (per-channel anchor CAS; `(channel,target,n)` and `(channel,p)` idempotency), rollback latches, policy-fork behavior + the monotonic removal latch (the `era` byte frozen at 1 — no door this phase, P83-A-F5-01); **the membership-control chain** (`prev_control_head`, the per-channel CAS head, control-order validation, the control floor — P83-A-F6-01); the one `member_state` module with the split `authorized_fp_current`/`authorized_fp_at` resolvers and its reference-model vectors (P83-A-R11-01/02/03, P83-A-R12-01/02); the `(user_id, ed25519_fp)` historical identity fetch |
-| A-3 | The §A.3 canonical envelope, exactly as frozen in this plan (P83-A-F5-04 — encoders, total parser, the five adaptations incl. `actor_admit_ref` and the uniform replay fields, full vectors); verify policy; typed results incl. `granted` and `former-identity` |
-| A-4 | Suite-2 send/receive; self-flap; the sender-acceptance rule (`unauthorized-sender`/`former-member`, the live/backfill boundary, canonical-only sender provenance, directional assurance) consuming §A.4's one predicate and identity binding (`identity-mismatch` — P83-A-R11-01/02) + its vectors; the first-seen replay rule; `key_version` exemptions per inventory |
+| A-3 | The §A.3 canonical envelope, exactly as frozen in this plan (P83-A-F5-04 — encoders, total parser, the six adaptations incl. `actor_admit_ref`, the uniform replay fields and the gossiped control head, full vectors); verify policy; typed results incl. `granted` and `former-identity` |
+| A-4 | Suite-2 send/receive; self-flap; the sender-acceptance rule (`unauthorized-sender`/`former-member`/`former-identity`, the live/backfill boundary, canonical-only sender provenance, directional assurance) consuming §A.4's one predicate and identity binding (`identity-mismatch` — P83-A-R11-01/02); the gossip-head cross-check (P83-A-R14-01) + its vectors incl. the litmus vector; the first-seen replay rule; `key_version` exemptions per inventory |
 | A-5 | Edits, reactions (sealed clear), attachments-in-envelope, voice pairwise sealing |
 | A-6 | Guests: `0x04` fragment form, guest certs, fragment-anchored verification; the atomic mint/revoke wire (advertised caps, absolute signed expiry, one-transaction storage, idempotent retry); cap accounting at mint + the deterministic overflow shed |
-| A-7 | Grantor-attested history: grant wire (incl. `grantor_admit_ref` — P83-A-R13-02), storage/quota/expiry, auto-grant + paging + knob, `granted` UI |
+| A-7 | Grantor-attested history: grant wire (incl. `grantor_admit_ref` — P83-A-R13-02 — and the gossip head — R14-01), storage/quota/expiry, auto-grant + paging + knob, `granted` UI |
 | A-8 | Adoption state machine (restore/verify/convert/read-only); the client-minted-ID creation wire (anchor + manifest in `create_channel`, one-transaction insert, idempotent retry, pending-op records, the DM rule); `channel_security_enc` backup (133-byte records incl. the control floor, immutable per-generation pages + the conditional commit head — P83-A-F6-04 — the `repack_seq` floor, anchor-keyed field-wise merge, rotation rekey, the five concurrency tests); read-only legacy rendering; era capability + `client_upgrade_required` |
 | A-9 | **Gate F**: the required-era epoch raised at build-F startup + instance-ack barrier (`acked_era` as a renewable lease with local self-fencing — P83-A-F5-03 — the interregnum banner, the hostile two-instance + partitioned-lease test); emission on; conversion rollout; over-limit handling; `CHALK_FAN_REQUIRED` + `chalkctl fanout status`; threat-model staging move (incl. the frozen 64-participant sentence) |
 | A-10 | Legacy retirement: wrapsig secure default; cert-gated legacy reshares; pre-F sunset |
@@ -2161,7 +2270,7 @@ The comparison that decided it:
 |---|---|---|---|
 | Departure freeze | until creator acts | seconds | none |
 | Creator crypto role | load-bearing | none | anchor signer only (once) |
-| Review state | 6 revisions, Gate 0 never passed | unreviewed delta | 10 reads + five external reviews; passed at the sixth revision, **re-opened — re-review of the seventh–eleventh delta pending** |
+| Review state | 6 revisions, Gate 0 never passed | unreviewed delta | 10 reads + six external reviews; passed at the sixth revision, **re-opened — re-review of the seventh–twelfth delta pending** |
 | Membership | transcript (fork proofs) | transcript (fork proofs) | anchors + policy chain + per-target chains, rollback latch |
 | Deniability | no | no | **yes** ("authenticated for you") |
 | New-member history | as today | as today | grantor-attested (explicit, labelled) |
@@ -2183,8 +2292,11 @@ identity references in messages and grants (→ tenth), and the sixth
 independent review's four — above all the cross-target ordering hole
 answered by the membership-control chain, plus the replay-field gap
 and the backup's non-convergent commit (→ eleventh; its other two
-findings had already converged with R13's fixes). The accumulated
-delta awaits independent re-review before any slice lands.
+findings had already converged with R13's fixes), and the R14 delta
+review's one Critical — the control chain's CAS trusted the server as
+sequencer, answered by the in-band gossip witness and the stated
+zero-state residual (→ twelfth). The accumulated delta awaits
+independent re-review before any slice lands.
 
 ## Prior-art sources
 

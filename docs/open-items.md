@@ -108,11 +108,20 @@ per channel; messages never behind it), fixes the edit/reaction replay
 fields, replaces the backup's LWW commit with immutable generations +
 a conditional head (the "do not add locking" note retracted), adds the
 `former-identity` verdict and rotation backup-rekey, and freezes the
-policy-fork record key. **Two release dependencies are now explicit:
-the assisted owner-recreation (break-glass) flow must exist before the
-identity-replacement UI ships at Gate F, and backup rekey rides the
-rotation action. No slice lands until an independent re-review of the
-accumulated delta closes the gate again.**
+policy-fork record key. The R14 delta review
+([audits/security-phase-83-r14-review-2026-08-09.md](audits/security-phase-83-r14-review-2026-08-09.md))
+then caught the control chain's own flaw — its CAS trusted the server
+as sequencer, so a hidden fork could serve a fresh device a universe
+where a removed member still acts. The twelfth revision answers with
+the in-band witness: every object and grant seals the sender's control
+head inside the MAC'd canonical, receivers cross-check, and the hidden
+universe survives only a permanent total partition from honest traffic
+— with the zero-state first-contact window stated as an accepted
+residual, since no mechanism can close it. **Two release dependencies
+are now explicit: the assisted owner-recreation (break-glass) flow must
+exist before the identity-replacement UI ships at Gate F, and backup
+rekey rides the rotation action. No slice lands until an independent
+re-review of the accumulated delta closes the gate again.**
 
 ## Phase 85 — operational logging
 
