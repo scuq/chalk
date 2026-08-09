@@ -1,9 +1,15 @@
 # Phase 98 — BIGROOMS: per-sender streams past the 64 cap
 
-**Status: planned, not started — a sketch, not a frozen design.** Gated
-twice: on phase 83 (envelope fanout, `PHASE-83-MSGSIG.md`) shipping through
-Gate F, because this phase reuses its membership layer wholesale; and on an
-independent Gate-0-style review of its own before any code. Written
+**Status: planned, not started — a sketch, not a frozen design, and
+stale since 2026-08-09:** the envelope-fanout design this sketch builds
+on (its §A.4 membership layer, its §A.5 acceptance rule) was retired
+with the trust-model revision — fanout's final text is at git
+`731eac5`, and phase 83 is now the much smaller signed-sealed-envelope
+design. This sketch **needs a re-sketch against the new phase 83 and
+the revised trust model** before its gating review; its rejected
+rotating-key analysis and its cost observations remain valid. Gated
+twice as before: on phase 83 shipping, and on an independent
+Gate-0-style review of its own before any code. Written
 2026-08-09, out of the question "can rotating the room key every Nth message
 lift the 64-participant cap?" — the answer to that question is recorded
 below as this phase's first rejected design.

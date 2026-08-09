@@ -5,7 +5,32 @@ intended guarantees are **not yet met**. Every claim below is meant to be
 checkable against the code; where a guarantee is aspirational it says so
 rather than rounding up.
 
-Last reviewed: phase 82 (signed channel-key wraps).
+Last reviewed: 2026-08-09 (the trust-model revision).
+
+## The trust model (revised 2026-08-09)
+
+chalk's claims were re-scoped by scuq after the phase-83 fanout design's
+review series established what defending against an actively malicious
+server actually costs (the decision record in
+[phases/PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md); the retired
+design at git `731eac5`). The claims are now exactly these:
+
+1. **chalkd is honest.** The server software is trusted to run the
+   protocol as written — store faithfully, deliver to the right
+   members, assert membership and ordering truthfully. chalk makes
+   **no** claim against a chalkd that actively lies.
+2. **The host is not trusted.** The machine chalkd runs on may carry
+   malicious code with access to the database, disk, backups and
+   process memory — and there must be **no easy way for it to read
+   already-sent messages**. No plaintext, message keys, or identity
+   private keys ever exist server-side.
+3. **A client can detect a MITM toward its home server.** The network
+   path is untrusted even with valid TLS; the client pins the server
+   identity it registered with (phase 83, planned).
+
+An operator (or intruder) who makes chalkd itself misbehave is
+therefore outside the model — that is claim 1's boundary, stated here
+once and referenced below rather than hedged in every section.
 
 ## What is actually built
 
@@ -74,14 +99,21 @@ applies only to a deployment that predates phase 82:
 > do, this guarantee is not met on your deployment.** `chalkctl wrapsig disable`
 > puts it back if someone is stranded.
 
-**What remains unmet even with the flag on.** Channel membership is asserted by
-the server and signed by nobody, and any key holder auto-reshares the key to
-whoever appears in the roster. A server that adds a principal it controls is
-therefore handed the key by a legitimate member's client. Signing a wrap proves
-who *sent* a key, not who *deserved* one. The client makes this visible rather
-than silent (a join notice, and a per-key provenance line in the members
-panel); the fix is phase 83's anchored membership — a signed per-channel
-authority root plus certificate chains, checked at both send and receive.
+**Where this guarantee's edge now sits (revised 2026-08-09).** Channel
+membership is asserted by the server and signed by nobody, and any key
+holder auto-reshares the key to whoever appears in the roster. A server
+that adds a principal it controls is therefore handed the key by a
+legitimate member's client — signing a wrap proves who *sent* a key,
+not who *deserved* one. Under the revised trust model this is an
+**accepted property, not a gap**: claim 1 trusts chalkd not to do it,
+and the client keeps it visible rather than silent (a join notice, and
+a per-key provenance line in the members panel). What phase 82's
+signatures + pins defend, and defend well under claim 2, is the *host*:
+malware that tampers with stored wraps or substitutes key material in
+the database is caught by verify-then-decrypt against pinned
+identities. The former plan to authenticate membership itself (anchored
+certificate chains) was retired with the malicious-server claim —
+record in [phases/PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md).
 
 TOFU's own limit is also worth stating plainly: a server that lies from the
 *very first* fetch of a peer gets its key pinned, and only the out-of-band
@@ -105,25 +137,30 @@ Two consequences:
   alone cannot prove which member wrote it. An honest server enforces
   attribution from the authenticated connection; a dishonest one need not.
 
-The fix is phase 83's envelope fanout: each message carries a per-recipient
-MAC over the canonical sender-meaningful fields — sender, the sender's own
-timestamp, parent/thread, body, and attachment digests — for messages, edits,
-and reactions alike, keyed from the pairwise secret of the two identities
-("authenticated for you"; deliberately deniable to anyone else). Server-minted
-message ID, timestamp, and sequence deliberately stay *outside* the
-authenticated canonical and are demoted to untrusted receipt metadata; replay
-and re-dating become detectable rather than prevented. The expensive half —
-the identity anchor the pairwise keys derive from — was already paid for by
-phase 82.
+The fix is phase 83's signed sealed envelope (planned): the body
+plaintext becomes a canonical, Ed25519-signed envelope — sender, the
+signing identity generation, the sender's own timestamp, parent/thread,
+body, and attachment digests — for messages, edits, and reactions
+alike, signed then sealed under the existing space-key encryption.
+Server-minted message ID, timestamp, and sequence stay *outside* the
+signature as untrusted receipt metadata; replay and re-dating become
+detectable (and under claim 1, trusted not to happen). Signatures are
+transferable proof of authorship — the earlier fanout design's
+deniability was retired with its threat model. The identity anchor the
+signatures verify against was already paid for by phase 82.
 
 ## Adversaries chalk does defend against
 
 ### Network attackers (passive and active)
 
 All traffic is TLS 1.3. Message-layer encryption sits inside it, so breaking
-TLS does not by itself yield message bodies — subject to the malicious-server
-section above, since a TLS-breaking active attacker occupies the server's
-position and inherits whatever that position can still do on your deployment.
+TLS does not by itself yield message bodies. An active attacker with a valid
+certificate (CA mis-issuance, DNS takeover) occupies the server's *network*
+position; phase 83 (planned) adds the server-identity pin and an inner sealed
+channel so a client detects that someone other than its registered home
+server is answering — with two honestly-stated limits: a MITM present at
+first registration wins that device's pin, and a MITM that serves the SPA
+bundle itself is endpoint compromise no in-page mechanism can detect.
 
 ### A server reading message content *by accident*
 
@@ -219,13 +256,22 @@ proxy and the limits collapse into one shared bucket.
 An attacker with live access to your unlocked device reads everything you
 read. No E2E system defends against this.
 
-### Malicious server, for membership — see above
+### An actively malicious chalkd — by decision, not omission
 
-Listed here as well so it is not missed. Channel *content* is defended once
-`CHALK_WRAP_SIG_REQUIRED` is on; channel *membership* is not defended at all
-yet, and a server that adds a principal it controls will be handed the key by
-a member's client. The client makes that visible, which is not the same as
-preventing it. Phase 83.
+The revised trust model (top of this document) trusts the server
+software. A chalkd made to lie — by its operator, by compulsion, or by
+an intruder who fully controls the running process — can misassert
+membership (and be handed channel keys by honest clients), reorder and
+replay, withhold, and partition. The client keeps membership changes
+visible (join notices, wrap provenance), which is not prevention and is
+not claimed to be. What even a lying chalkd never gets: message
+plaintext it was not legitimately sent, or the ability to substitute
+stored key material undetected (phase 82's wraps + pins hold
+regardless, because they bind to client-side identities it does not
+control). The retired fanout design and its audit trail
+(`docs/audits/`, git `731eac5`) document exactly what closing this
+would take — quorum or witness machinery — if the claim is ever
+revisited.
 
 ### Traffic analysis
 
@@ -240,12 +286,14 @@ problem (Cloudflare or similar).
 ### Compelled access to the server
 
 A subpoena yields metadata, ciphertext, wrapped keys, and credential hashes —
-not plaintext message bodies. An operator compelled to *act*, as opposed to
-hand over data, is the malicious-server case above: with
-`CHALK_WRAP_SIG_REQUIRED` on they cannot substitute a channel key, but they can
-still add a principal to a channel and be handed the key by a member's client,
-because membership is not yet authenticated (phase 83). Treat legal compulsion
-as covered for *past* messages and not yet for *future* ones.
+not plaintext message bodies. This is claim 2 doing its job, and it covers
+the common compelled case (hand over the data) and the common intrusion case
+(read the machine). An operator compelled to *act* — to make chalkd lie — is
+the actively-malicious-chalkd case above, outside the revised trust model:
+they cannot substitute a channel key (`CHALK_WRAP_SIG_REQUIRED`), but they can
+add a principal and be handed the key by a member's client. Treat legal
+compulsion as covered for *past* messages; *future* ones depend on the
+operator staying honest, which is claim 1 stated in legal terms.
 
 ### Guest links
 
@@ -261,11 +309,12 @@ canonical origin.
 
 ## Out of scope
 
-- Federation (server-to-server, à la Matrix) — considered and declined, and
-  gated on phase 83 if it is ever reconsidered: membership and sender
-  attribution are server-asserted today, so federating multiplies that trust
-  across servers the operator does not run. Reasoning, and what *does* work
-  across deployments, in [phases/PHASE-88-FEDERATION.md](phases/PHASE-88-FEDERATION.md).
+- Federation (server-to-server, à la Matrix) — considered and declined,
+  and under the revised trust model effectively closed: claim 1 trusts
+  *your own* chalkd, and membership is server-asserted by design, so
+  federating would extend that full trust to servers the operator does
+  not run. Reasoning, and what *does* work across deployments, in
+  [phases/PHASE-88-FEDERATION.md](phases/PHASE-88-FEDERATION.md).
 - Anonymity (no Tor integration, no IP hiding)
 - Anti-spam beyond rate limits
 - Forward secrecy and post-quantum security — explicit non-goals of the

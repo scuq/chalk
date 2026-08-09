@@ -169,7 +169,11 @@ new work. Shipped history is `docs/phase-log.md` (engineering) and
 version number in the repo, everything else is stamped from the git tag.
 
 **Before making any claim about chalk's security properties**, read
-`docs/threat-model.md` and `docs/open-items.md`. Two guarantees are unmet —
-messages carry no sender signature, and membership is server-asserted (both are
-phase 83, planned) — and the phase-81 audit's C-01 is closed only where
-`CHALK_WRAP_SIG_REQUIRED` is on, so it is never "fixed unconditionally".
+`docs/threat-model.md` and `docs/open-items.md`. The trust model was revised
+2026-08-09: chalkd itself is trusted, the host it runs on is not (stored state
+must never yield sent messages), and a MITM toward the registered home server
+must be detectable. Under it: messages carry no sender signature yet (phase 83,
+planned — signed sealed envelopes); membership is server-asserted **by
+design**, an accepted property, not a gap; and the phase-81 audit's C-01 is
+closed only where `CHALK_WRAP_SIG_REQUIRED` is on, so it is never "fixed
+unconditionally".

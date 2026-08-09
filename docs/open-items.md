@@ -32,96 +32,44 @@ Two follow-ups remain open:
   before a release carries this.
 - The guest path: links minted before 82-7 stay unsigned until they expire.
 
-## Phase 83 — the open security gap
+## Phase 83 — sender signing, redesigned under the revised trust model
 
-Confirmed by the phase-81 audit and reconfirmed by its 2026-08-05 follow-up. The
-design is **envelope fanout**, chosen 2026-08-08 after five review rounds; the
-whole plan lives in [phases/PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md)
-(**planned, not started**; the retired transcript design and option B are
-recorded in its decision section and preserved in git history), and
-[threat-model.md](threat-model.md) states both halves as unmet guarantees.
+**The trust model was revised by scuq on 2026-08-09** — chalkd is
+trusted to run the protocol honestly; the *host* it runs on is not (no
+stored state may yield already-sent messages); and a client must be
+able to detect a MITM toward its registered home server. The
+malicious-server claim was dropped: the envelope-fanout design
+(twelve revisions, ten internal reads, six external reviews — the
+audit series in [audits/](audits/), final text at git `731eac5`)
+established that its last gap, membership branch uniqueness against an
+equivocating server, is closable only with quorum certificates or
+witness infrastructure (P83-A-R15-01). Rather than adopt consensus
+machinery or ship a half-claim, the claim went.
 
-- **Messages carry no sender signature.** The AEAD associated data is only
-  suite/channel/key-version, so sender, message ID and timestamp are
-  unauthenticated server-supplied metadata, and any key holder can be
-  impersonated. Fanout's answer: no group key at all — every message wraps its
-  own key once per member over pairwise-derived secrets, with a per-recipient
-  MAC binding sender, channel and body ("authenticated for you"; deliberately
-  deniable), covering edits and reactions alike.
-- **Membership is server-asserted**, so a server that adds a principal it
-  controls gets the key handed to it by a member's auto-reshare. 82-8 makes that
-  visible (the join notice) but cannot prevent it. Fanout's answer: a signed
-  per-channel authority anchor, a small policy chain, and per-target membership
-  certificate chains — enforced at both flap emission and message acceptance.
+The new plan in [phases/PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md)
+(**planned, not started** — needs its own review before slice 1) is
+deliberately small:
 
-Both build on the identity anchor phase 82 already paid for; the certificate
-layer should copy `web/src/voice/signal-crypto.ts`, which already does
-canonical-encode → Ed25519 sign → fail-closed verify correctly. **Gate 0
-is re-opened.** It passed at the sixth revision (the eighth review,
-[audits/security-phase-83-eighth-review-2026-08-08.md](audits/security-phase-83-eighth-review-2026-08-08.md)),
-but the external fifth independent review
-([audits/security-phase-83-option-a-fifth-review-2026-08-09.md](audits/security-phase-83-option-a-fifth-review-2026-08-09.md),
-2026-08-09) found five blockers at that state: the fork era door
-under-specified and over-powered, the shed sender unable to form a valid
-envelope, Gate F's expired-row premise contradicting the runtime's
-reclaim behavior, the message canonical absent from the plan, and the
-backup's scalar `rev` non-convergent across two devices. The seventh
-revision answers all five — the era door is **removed** (recreation is
-the sole fork exit; a successor-anchor protocol would be its own phase),
-the canonical is frozen in the plan itself, `acked_era` became a
-self-fencing lease, the shed sender pauses loudly, and the backup merge
-is field-wise. A second external review of that seventh revision
-([audits/security-phase-83-r11-review-2026-08-09.md](audits/security-phase-83-r11-review-2026-08-09.md))
-confirmed the cryptographic core but found two more blockers in the
-membership state machine — the acceptance predicate's manifest arm let a
-*removed founding member* keep passing, and nothing bound an admission's
-fingerprint to the runtime identity actually used — both frozen in the
-eighth revision as one `member_state` predicate plus the
-`authorized_fp`/`identity-mismatch` binding. The R12 delta review
-([audits/security-phase-83-r12-review-2026-08-09.md](audits/security-phase-83-r12-review-2026-08-09.md))
-verified those closed and caught two blockers in the eighth revision's
-own replacement text — the fingerprint resolver ignored the
-non-retroactive temporal model (historical certificates would fail after
-an identity rotation) and owner replacement was impossible by
-construction — both frozen in the ninth revision: a state-relative
-`authorized_fp_current`/`authorized_fp_at` split with a
-fingerprint-keyed historical identity fetch, and owner identity
-replacement declared unsupported this phase (recreate the channel).
-The R13 delta review
-([audits/security-phase-83-r13-review-2026-08-09.md](audits/security-phase-83-r13-review-2026-08-09.md))
-verified those closed and found the fix's own two blockers — the
-owner's zero `actor_admit_ref` had no resolver arm, and messages and
-grants sealed no historical identity reference at all, so a sender's
-legitimate rotation broke first-fetch verification of their entire
-history — both frozen in the tenth revision: the `(actor, ref)`
-resolver with the owner arm, `actor_admit_ref` in every suite-2
-canonical, `grantor_admit_ref` in both grant canonicals, and the
-four-step verify-then-authorize order. The sixth independent review
-([audits/security-phase-83-option-a-sixth-review-2026-08-09.md](audits/security-phase-83-option-a-sixth-review-2026-08-09.md),
-of the ninth revision — two of its four blockers had already converged
-with R13's fixes) found the deepest hole yet: per-target chains gave no
-authenticated order *between* targets, so a removed member plus the
-server could plant an admission on fresh devices via fetch order. The
-eleventh revision answers it with the membership-control chain (every
-control artifact seals `prev_control_head`; one CAS-serialized order
-per channel; messages never behind it), fixes the edit/reaction replay
-fields, replaces the backup's LWW commit with immutable generations +
-a conditional head (the "do not add locking" note retracted), adds the
-`former-identity` verdict and rotation backup-rekey, and freezes the
-policy-fork record key. The R14 delta review
-([audits/security-phase-83-r14-review-2026-08-09.md](audits/security-phase-83-r14-review-2026-08-09.md))
-then caught the control chain's own flaw — its CAS trusted the server
-as sequencer, so a hidden fork could serve a fresh device a universe
-where a removed member still acts. The twelfth revision answers with
-the in-band witness: every object and grant seals the sender's control
-head inside the MAC'd canonical, receivers cross-check, and the hidden
-universe survives only a permanent total partition from honest traffic
-— with the zero-state first-contact window stated as an accepted
-residual, since no mechanism can close it. **Two release dependencies
-are now explicit: the assisted owner-recreation (break-glass) flow must
-exist before the identity-replacement UI ships at Gate F, and backup
-rekey rides the rotation action. No slice lands until an independent
-re-review of the accumulated delta closes the gate again.**
+- **Signed sealed envelopes** — the phase-81 audit's H-01, still real:
+  a canonical Ed25519-signed envelope (messages, edits, reactions)
+  inside the existing space-key encryption, verified fail-closed
+  against pinned identities, with the fanout series' hard-won lessons
+  kept: uniform replay triple in every object type, the signing
+  generation sealed in the canonical, append-only edit revisions.
+- **First-responder rotation** — on any membership shrink the next
+  sender mints the new key with phase 82's signed wraps; no owner
+  role, no freeze, works identically for 2-, 3- and 64-member
+  channels.
+- **The server pin** — server identity pinned at registration, an
+  inner sealed channel over the WebSocket so a TLS-terminating MITM
+  can neither read nor modify frames against the pin; bundle-serving
+  MITM stated as the endpoint-compromise limit it is.
+
+Membership stays server-asserted **by design** — an accepted, visible
+property of the trust model, no longer an unmet guarantee
+([threat-model.md](threat-model.md) carries the full statement).
+Phase 98 (big rooms) was gated on fanout's membership layer and needs
+a re-sketch against this design before its own review.
 
 ## Phase 85 — operational logging
 
@@ -157,9 +105,10 @@ same space.
   blob so the server never learns a reminder exists, and no server code at all.
 - **A local idle agent** (90, [phases/PHASE-90-IDLEEXT.md](phases/PHASE-90-IDLEEXT.md)).
 - **Large rooms** (98, [phases/PHASE-98-BIGROOMS.md](phases/PHASE-98-BIGROOMS.md)):
-  per-sender streams on 83's membership layer for rooms past the 64 cap —
-  gated on phase 83 shipping and on its own review before any code.
-  Non-deniable by design; fanout stays the ≤64 layer.
+  per-sender streams for rooms past the 64 cap — **stale since the
+  2026-08-09 trust-model revision** (it was sketched against fanout's
+  membership layer); needs a re-sketch against the new phase 83, then
+  its own review, before any code.
 - **The SFU seam** (voice design Slice I) for rooms too large for a mesh.
 - **Governance `set_config` proposals.**
 
