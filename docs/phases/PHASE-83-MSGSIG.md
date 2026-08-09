@@ -616,7 +616,7 @@ half-claimed. L-01 — unchanged, separate account-recovery work.
 |---|---|
 | 83-1 | Canonical envelope: encoders (exported helpers + `uuid16`), sign/verify, typed results, total parser, full mutation/replay vector suite — **landed 2026-08-09** (`web/src/crypto/envelope.ts`; see the slice record below) |
 | 83-2 | Send/receive integration: sign-then-seal, verify-fail-closed rendering incl. `unsigned` legacy label, replay dedup store (`idb.ts` bump), send-flow reorder — **landed 2026-08-09** (see the slice record) |
-| 83-3 | Append-only edits: `message_revisions` migration + atomic edit transaction, `fetch_revisions`, client ancestry classification; signed sealed reaction clears (delete the unencrypted-clear branch) |
+| 83-3 | Append-only edits: `message_revisions` migration + atomic edit transaction, `fetch_revisions`, client ancestry classification; signed sealed reaction clears (delete the unencrypted-clear branch) — **landed 2026-08-09** (see the slice record) |
 | 83-4 | Identity generations: the `chalk-idgen.v1` chain cert minted at rotation (R16-1), `(user_id, ed25519_fp)` fetch incl. retired + certs, chain-to-pin verification, `verified-former-identity` labelling, the chain-break wall |
 | 83-5 | Rotation-due: server marks on shrink; the atomic `rotate_channel_key` transaction + `rotation_required` send gate (R16-2); tests incl. owner-leave, 2-person channels, and the two-concurrent-responders race (no mixed generation in any interleaving) |
 | 83-6 | Server identity: chalkctl-provisioned keypair, registration pin + prefs backup, the inner sealed channel exactly as frozen in D.3 (transcript hash, directional HKDF domains, monotonic counters, close-on-violation), mismatch wall, re-pin flow |
@@ -700,8 +700,49 @@ made here:
   re-anchors on it).
 - **Open caveat: guest sends (GuestRoom) are still unsigned** and
   render as `(unsigned)` for members. Guests derive an identity from
-  the link secret, so signing them is possible — folded into 83-3 or
-  a follow-up slice, to be decided.
+  the link secret, so signing them is possible — folded into a
+  follow-up slice, to be decided.
+
+**83-3 (landed 2026-08-09)** — append-only edits (migration 0051 +
+the atomic displace-then-overwrite in `store.EditMessage`,
+`fetch_revisions`, tombstone purge), signed 0x02 edits and signed
+0x03 reaction sets end to end, and the revision-chain walk
+(`crypto/revisions.ts`). Decisions made here:
+
+- **The revision cap refuses, never drops** (`MaxMessageRevisions =
+  64`, the 65th edit errors): dropping rev 1 would orphan the chain
+  from its original — the evidence the table exists to keep. rev_seq
+  1 is the original body; N is what the Nth edit displaced.
+- **Edit envelopes re-sign text only** (`attachments: []`): the
+  attachment bindings stay anchored in the original envelope, which
+  remains verifiable through the chain. Re-binding attachments in
+  edits needs the original binding data client-side and is deferred.
+- **Ancestry is three-valued** (`verified` / `forked` / `unknown`,
+  `crypto/revisions.ts`): a live edit extending the held head
+  verifies by hash comparison alone; history rows carrying an 0x02
+  body start `unknown` (honest unverified-recency, amber `(edited)`
+  marker) and upgrade via one background `fetch_revisions` + chain
+  walk per row per session. A signature-valid edit applied to a row
+  whose triple it does not target renders `mismatch`/`forked`. A
+  verified chain also recovers the ORIGINAL envelope's hash, which
+  re-anchors `sigObjectHash` so replies bind to the message, not its
+  latest edit. Chain signatures verify under the sender's current
+  resolved key; a mid-chain generation rotation reads `unknown`
+  until 83-4's chain walk.
+- **Reactions**: a signed target gets signed 0x03 sets — a clear is
+  a signed sealed EMPTY set with a key version, so the server stores
+  a row and never learns the set emptied. The unencrypted `""` clear
+  verb survives only for legacy targets (pre-83 messages with no
+  triple to bind), and the server's empty-body delete branch stays
+  for old clients. Verification failures render as NO reactions
+  (reactions have no warning surface; a bare unattributable tally is
+  not worth showing), legacy sealed-JSON sets still open labelled
+  unsigned, and a signed set whose target triple does not match the
+  row it arrives on is refused (anti-relocation). `prev_set_hash` is
+  best-effort chain metadata: empty sets are stored as absence, so a
+  clear restarts the actor's chain — a verifier reads exactly that.
+- **Edits and reactions are not replay-bound** (the 83-2 guard stays
+  0x01-only): re-applying either converges by construction.
 
 ## The decision record (2026-08-09)
 

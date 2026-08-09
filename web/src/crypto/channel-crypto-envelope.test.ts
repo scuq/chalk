@@ -147,7 +147,7 @@ test("sign-then-seal round trip: bob verifies alice's message", async () => {
   const bob = await makeUser(server, BOB);
   await bootChannel([alice, bob], [ALICE, BOB]);
 
-  const enc = await alice.cc.signAndEncryptMessage(CH, (keyVersion, fp) =>
+  const enc = await alice.cc.signAndEncryptEnvelope(CH, (keyVersion, fp) =>
     makeEnv(ALICE, fp, keyVersion, { bodyText: "hello bob" }),
   );
   assert.equal(enc.kind, "encrypted");
@@ -172,7 +172,7 @@ test("replay: the same envelope under a new server row renders once", async () =
   const bob = await makeUser(server, BOB);
   await bootChannel([alice, bob], [ALICE, BOB]);
 
-  const enc = await alice.cc.signAndEncryptMessage(CH, (v, fp) => makeEnv(ALICE, fp, v));
+  const enc = await alice.cc.signAndEncryptEnvelope(CH, (v, fp) => makeEnv(ALICE, fp, v));
   assert.equal(enc.kind, "encrypted");
   if (enc.kind !== "encrypted") return;
 
@@ -209,7 +209,7 @@ test("server frame relabeling yields mismatch (signature still valid)", async ()
   const bob = await makeUser(server, BOB);
   await bootChannel([alice, bob], [ALICE, BOB]);
 
-  const enc = await alice.cc.signAndEncryptMessage(CH, (v, fp) => makeEnv(ALICE, fp, v));
+  const enc = await alice.cc.signAndEncryptEnvelope(CH, (v, fp) => makeEnv(ALICE, fp, v));
   assert.equal(enc.kind, "encrypted");
   if (enc.kind !== "encrypted") return;
   // the server claims EVE sent it; the envelope says (and proves) ALICE
@@ -227,13 +227,13 @@ test("member-on-member impersonation is forged", async () => {
   await bootChannel([alice, bob, eve], [ALICE, BOB, EVE]);
 
   // bob pins alice by verifying one honest message first
-  const honest = await alice.cc.signAndEncryptMessage(CH, (v, fp) => makeEnv(ALICE, fp, v));
+  const honest = await alice.cc.signAndEncryptEnvelope(CH, (v, fp) => makeEnv(ALICE, fp, v));
   assert.equal(honest.kind, "encrypted");
   if (honest.kind !== "encrypted") return;
   await bob.cc.openMessageForChannel(CH, honest.keyVersion, honest.body, { serverMsgID: "row-0", senderUserID: ALICE });
 
   // eve (a member, holds the key) claims to be alice, signing with her own key
-  const forged = await eve.cc.signAndEncryptMessage(CH, (v, fp) => makeEnv(ALICE, fp, v, { bodyText: "im alice trust me" }));
+  const forged = await eve.cc.signAndEncryptEnvelope(CH, (v, fp) => makeEnv(ALICE, fp, v, { bodyText: "im alice trust me" }));
   assert.equal(forged.kind, "encrypted");
   if (forged.kind !== "encrypted") return;
   const opened = await bob.cc.openMessageForChannel(CH, forged.keyVersion, forged.body, { serverMsgID: "row-1", senderUserID: ALICE });
@@ -270,7 +270,7 @@ test("own echo verifies via self-resolution (no pin record for self)", async () 
   const alice = await makeUser(server, ALICE);
   await bootChannel([alice], [ALICE]);
 
-  const enc = await alice.cc.signAndEncryptMessage(CH, (v, fp) => makeEnv(ALICE, fp, v));
+  const enc = await alice.cc.signAndEncryptEnvelope(CH, (v, fp) => makeEnv(ALICE, fp, v));
   assert.equal(enc.kind, "encrypted");
   if (enc.kind !== "encrypted") return;
   const opened = await alice.cc.openMessageForChannel(CH, enc.keyVersion, enc.body, { serverMsgID: "row-1", senderUserID: ALICE });
@@ -283,7 +283,7 @@ test("decryptForChannel flattens an envelope to display text (previews/search)",
   const alice = await makeUser(server, ALICE);
   await bootChannel([alice], [ALICE]);
 
-  const enc = await alice.cc.signAndEncryptMessage(CH, (v, fp) => makeEnv(ALICE, fp, v, { bodyText: "preview me" }));
+  const enc = await alice.cc.signAndEncryptEnvelope(CH, (v, fp) => makeEnv(ALICE, fp, v, { bodyText: "preview me" }));
   assert.equal(enc.kind, "encrypted");
   if (enc.kind !== "encrypted") return;
   assert.equal(await alice.cc.decryptForChannel(CH, enc.keyVersion, enc.body), "preview me");
@@ -304,4 +304,166 @@ test("a non-message envelope in a message slot fails closed", async () => {
   const opened = await bob.cc.openMessageForChannel(CH, 1, body, { serverMsgID: "row-1", senderUserID: ALICE });
   assert.equal(opened.verify, "unsigned"); // D.4: renders as unsigned...
   assert.equal(opened.text, PLACEHOLDER_FAILED); // ...but never its bytes as prose
+});
+
+// ---- 83-3: edits and reactions ------------------------------------------
+
+import { OBJ_EDIT, OBJ_REACTION_SET, type EditEnvelope, type ReactionSetEnvelope } from "./envelope";
+
+function makeEditEnv(
+  sender: string,
+  fp: Uint8Array,
+  keyVersion: number,
+  prevRevHash: Uint8Array | null,
+  body: string,
+): EditEnvelope {
+  return {
+    objType: OBJ_EDIT,
+    channelID: CH,
+    keyVersion,
+    senderUserID: sender,
+    senderEd25519Fp: fp,
+    writerScope: SCOPE,
+    clientMsgID: crypto.randomUUID(),
+    targetSender: sender,
+    targetScope: SCOPE,
+    targetClientMsgID: "cccccccc-0000-4000-8000-00000000000c",
+    prevRevHash,
+    senderTs: Date.now(),
+    bodyText: body,
+    attachments: [],
+  };
+}
+
+function makeReactionEnv(
+  actor: string,
+  fp: Uint8Array,
+  keyVersion: number,
+  emoji: string[],
+): ReactionSetEnvelope {
+  return {
+    objType: OBJ_REACTION_SET,
+    channelID: CH,
+    keyVersion,
+    actorUserID: actor,
+    senderEd25519Fp: fp,
+    writerScope: SCOPE,
+    clientMsgID: crypto.randomUUID(),
+    targetSender: ALICE,
+    targetScope: SCOPE,
+    targetClientMsgID: "cccccccc-0000-4000-8000-00000000000c",
+    targetEnvHash: null,
+    prevSetHash: null,
+    senderTs: Date.now(),
+    emoji,
+  };
+}
+
+test("83-3: an edited message's current body (0x02) opens in the message feed", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const alice = await makeUser(server, ALICE);
+  const bob = await makeUser(server, BOB);
+  await bootChannel([alice, bob], [ALICE, BOB]);
+
+  const enc = await alice.cc.signAndEncryptEnvelope(CH, (v, fp) =>
+    makeEditEnv(ALICE, fp, v, new Uint8Array(32).fill(9), "edited text"),
+  );
+  assert.equal(enc.kind, "encrypted");
+  if (enc.kind !== "encrypted") return;
+  const opened = await bob.cc.openMessageForChannel(CH, enc.keyVersion, enc.body, {
+    serverMsgID: "row-1",
+    senderUserID: ALICE,
+  });
+  assert.equal(opened.verify, "verified");
+  assert.equal(opened.text, "edited text");
+  assert.equal(opened.env?.objType, OBJ_EDIT);
+  assert.ok(opened.raw); // the chain walk needs the envelope bytes
+});
+
+test("83-3: openEditForChannel verifies without an outer sender claim", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const alice = await makeUser(server, ALICE);
+  const bob = await makeUser(server, BOB);
+  await bootChannel([alice, bob], [ALICE, BOB]);
+
+  const enc = await alice.cc.signAndEncryptEnvelope(CH, (v, fp) =>
+    makeEditEnv(ALICE, fp, v, null, "legacy-original edit"),
+  );
+  assert.equal(enc.kind, "encrypted");
+  if (enc.kind !== "encrypted") return;
+  const opened = await bob.cc.openEditForChannel(CH, enc.keyVersion, enc.body);
+  assert.equal(opened.verify, "verified");
+  assert.equal(opened.text, "legacy-original edit");
+  // and a reaction envelope is refused in this slot
+  const rx = await alice.cc.signAndEncryptEnvelope(CH, (v, fp) => makeReactionEnv(ALICE, fp, v, ["x"]));
+  assert.equal(rx.kind, "encrypted");
+  if (rx.kind !== "encrypted") return;
+  const wrongSlot = await bob.cc.openEditForChannel(CH, rx.keyVersion, rx.body);
+  assert.equal(wrongSlot.verify, "unsigned");
+  assert.equal(wrongSlot.text, PLACEHOLDER_FAILED);
+});
+
+test("83-3: signed reaction sets round trip, incl. the sealed empty-set clear", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const alice = await makeUser(server, ALICE);
+  const bob = await makeUser(server, BOB);
+  await bootChannel([alice, bob], [ALICE, BOB]);
+
+  const set = await bob.cc.signAndEncryptEnvelope(CH, (v, fp) => makeReactionEnv(BOB, fp, v, ["👍", "🎉"]));
+  assert.equal(set.kind, "encrypted");
+  if (set.kind !== "encrypted") return;
+  const opened = await alice.cc.openReactionSetForChannel(CH, set.keyVersion, set.body, BOB);
+  assert.deepEqual(opened.emoji, ["👍", "🎉"]);
+  assert.equal(opened.verify, "verified");
+  assert.equal(opened.env?.actorUserID, BOB);
+  assert.equal(opened.objectHashHex?.length, 64);
+
+  // the clear: a signed sealed EMPTY set -- still verified, still hashed
+  const clear = await bob.cc.signAndEncryptEnvelope(CH, (v, fp) => makeReactionEnv(BOB, fp, v, []));
+  assert.equal(clear.kind, "encrypted");
+  if (clear.kind !== "encrypted") return;
+  const openedClear = await alice.cc.openReactionSetForChannel(CH, clear.keyVersion, clear.body, BOB);
+  assert.deepEqual(openedClear.emoji, []);
+  assert.equal(openedClear.verify, "verified");
+  assert.equal(openedClear.objectHashHex?.length, 64);
+});
+
+test("83-3: a legacy sealed-JSON reaction set still opens, labelled unsigned", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const alice = await makeUser(server, ALICE);
+  await bootChannel([alice], [ALICE]);
+
+  const sealed = await alice.cc.sealJSONForChannel(CH, ["👍"]);
+  assert.equal(sealed.kind, "encrypted");
+  if (sealed.kind !== "encrypted") return;
+  const opened = await alice.cc.openReactionSetForChannel(CH, sealed.keyVersion, sealed.body, ALICE);
+  assert.deepEqual(opened.emoji, ["👍"]);
+  assert.equal(opened.verify, "unsigned");
+});
+
+test("83-3: a reaction set signed by an impersonating member renders as nothing", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const alice = await makeUser(server, ALICE);
+  const bob = await makeUser(server, BOB);
+  const eve = await makeUser(server, EVE);
+  await bootChannel([alice, bob, eve], [ALICE, BOB, EVE]);
+
+  // bob pins alice first (one honest message)
+  const honest = await alice.cc.signAndEncryptEnvelope(CH, (v, fp) => makeEnv(ALICE, fp, v));
+  assert.equal(honest.kind, "encrypted");
+  if (honest.kind !== "encrypted") return;
+  await bob.cc.openMessageForChannel(CH, honest.keyVersion, honest.body, { serverMsgID: "r0", senderUserID: ALICE });
+
+  // eve signs a set claiming ALICE as actor
+  const forged = await eve.cc.signAndEncryptEnvelope(CH, (v, fp) => makeReactionEnv(ALICE, fp, v, ["💀"]));
+  assert.equal(forged.kind, "encrypted");
+  if (forged.kind !== "encrypted") return;
+  const opened = await bob.cc.openReactionSetForChannel(CH, forged.keyVersion, forged.body, ALICE);
+  assert.deepEqual(opened.emoji, []); // no warning surface for reactions: fail to nothing
+  assert.equal(opened.verify, "forged");
 });

@@ -6,7 +6,7 @@ import { strict as assert } from "node:assert";
 import { applyOpened, sigValid, verifyLabel, verifyTitle, hexToBytes, bytesToHex } from "./verify";
 import type { Message } from "../state/types";
 import type { OpenedMessage } from "../crypto/channel-crypto";
-import { OBJ_MESSAGE, type MessageEnvelope } from "../crypto/envelope";
+import { OBJ_MESSAGE, OBJ_EDIT, type MessageEnvelope } from "../crypto/envelope";
 
 const ALICE = "aaaaaaaa-0000-0000-0000-000000000001";
 const EVE = "eeeeeeee-0000-0000-0000-000000000001";
@@ -63,6 +63,39 @@ test("applyOpened: forged/unpinned keep the server frame's sender claim", () => 
     assert.equal(m.senderUserID, EVE, verify); // rendered under the warning label
     assert.equal(m.verify, verify);
   }
+});
+
+test("83-3: applyOpened on an edit envelope anchors the ORIGINAL's triple, not the edit's", () => {
+  const editEnv = {
+    objType: OBJ_EDIT,
+    channelID: "ch",
+    keyVersion: 1,
+    senderUserID: ALICE,
+    senderEd25519Fp: new Uint8Array(32).fill(1),
+    writerScope: "11111111-0000-0000-0000-000000000011", // the EDIT's own scope
+    clientMsgID: "22222222-0000-0000-0000-000000000022", // fresh per edit
+    targetSender: ALICE,
+    targetScope: SCOPE, // the original's triple
+    targetClientMsgID: CMID,
+    prevRevHash: new Uint8Array(32).fill(4),
+    senderTs: 9,
+    bodyText: "edited",
+    attachments: [],
+  } as const;
+  const m = applyOpened(row(), {
+    text: "edited",
+    verify: "verified",
+    env: editEnv as unknown as import("../crypto/envelope").EditEnvelope,
+    objectHashHex: "1234",
+  });
+  assert.equal(m.sigActor, ALICE);
+  assert.equal(m.sigScope, SCOPE); // original's, not the edit's writer scope
+  assert.equal(m.sigClientMsgID, CMID);
+  assert.equal(m.sigObjectHash, undefined); // original's hash unknown until the chain verifies
+  assert.equal(m.editHeadHash, "1234"); // the edit envelope's own hash is the chain head
+  assert.equal(m.editPrevRevHash, "04".repeat(32));
+  assert.equal(m.editAncestry, "unknown"); // honest default until verified
+  assert.equal(m.senderUserID, ALICE); // inner wins
 });
 
 test("applyOpened: unsigned legacy body carries no sig fields", () => {

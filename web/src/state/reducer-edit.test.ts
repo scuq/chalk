@@ -80,6 +80,53 @@ test("83-2: an edit downgrades the verification verdict to unsigned, keeping the
   assert.equal(row.sigObjectHash, "abcd");
 });
 
+test("83-3: a signed edit applies its verdict and chain state instead of downgrading", () => {
+  let s = baseState();
+  s = reducer(s, {
+    kind: "message",
+    message: msg({ id: "m1", verify: "verified", editHeadHash: "old-head" }),
+  });
+  s = reducer(s, {
+    kind: "message_edited",
+    channelID: "chan-1",
+    messageID: "m1",
+    body: "hello",
+    keyVersion: 2,
+    editedAt: EDITED,
+    verify: "verified",
+    editHeadHash: "new-head",
+    editPrevRevHash: "old-head",
+    editAncestry: "verified",
+  });
+  const row = s.messages["chan-1"]![0]!;
+  assert.equal(row.verify, "verified");
+  assert.equal(row.editHeadHash, "new-head");
+  assert.equal(row.editPrevRevHash, "old-head");
+  assert.equal(row.editAncestry, "verified");
+});
+
+test("83-3: the edit_ancestry action upgrades ancestry and anchors the original hash", () => {
+  let s = baseState();
+  s = reducer(s, {
+    kind: "message",
+    message: msg({ id: "m1", editAncestry: "unknown" }),
+  });
+  s = reducer(s, {
+    kind: "edit_ancestry",
+    channelID: "chan-1",
+    messageID: "m1",
+    ancestry: "verified",
+    originalHashHex: "orig-hash",
+  });
+  const row = s.messages["chan-1"]![0]!;
+  assert.equal(row.editAncestry, "verified");
+  assert.equal(row.sigObjectHash, "orig-hash");
+  // and an unknown id leaves the state reference untouched
+  const before = s;
+  s = reducer(s, { kind: "edit_ancestry", channelID: "chan-1", messageID: "nope", ancestry: "verified" });
+  assert.equal(s, before);
+});
+
 test("edit does not move the message or disturb its neighbours", () => {
   let s = baseState();
   s = reducer(s, { kind: "message", message: msg({ id: "m1", seq: 1 }) });

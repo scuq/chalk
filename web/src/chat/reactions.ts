@@ -9,6 +9,10 @@
 export interface ReactionSet {
   userID: string;
   emoji: string[];
+  /** 83-3: object hash of the signed set envelope this state came from --
+   *  what the member's NEXT set links to via prev_set_hash. Absent for
+   *  legacy (unsigned JSON) sets. */
+  setHashHex?: string;
 }
 
 /** One chip: an emoji, how many people picked it, and whether you did. */

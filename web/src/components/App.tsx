@@ -48,6 +48,7 @@ import {
   TypeMessageEdited,
   TypeSetReactions,
   TypeReactionUpdate,
+  TypeFetchRevisions,
   TypeFetchReactions,
   TypeFetchReactionsAck,
   // Phase 11b-2: MLS welcome + commit_bundle
@@ -117,6 +118,8 @@ import {
   type SendAckPayload,
   type MessageDeletedPayload,
   type MessageEditedPayload,
+  type FetchRevisionsPayload,
+  type FetchRevisionsAckPayload,
   type ReactionUpdatePayload,
   type FetchReactionsAckPayload,
   // gov-2:
@@ -310,11 +313,23 @@ import {
   type ChannelKeyStatus,
   type KeyProvenance,
 } from "../crypto/channel-crypto";
-// 83-2: signed sealed envelopes -- envelope field types for the send path,
-// the writer sequence, and the pure verdict-into-row merge.
-import { OBJ_MESSAGE, type AttachmentBinding, type ReplyBinding } from "../crypto/envelope";
+// 83-2/83-3: signed sealed envelopes -- envelope field types for the send
+// paths, the writer sequence, the pure verdict-into-row merge, and the
+// revision-chain walk.
+import {
+  OBJ_MESSAGE,
+  OBJ_EDIT,
+  OBJ_REACTION_SET,
+  type AttachmentBinding,
+  type ReplyBinding,
+  type MessageEnvelope,
+  type EditEnvelope,
+  type ReactionSetEnvelope,
+} from "../crypto/envelope";
 import { nextWseq } from "../crypto/wseq";
-import { applyOpened, hexToBytes, bytesToHex } from "../chat/verify";
+import { applyOpened, hexToBytes, bytesToHex, sigValid } from "../chat/verify";
+import { verifyRevisionChain, classifyLiveEdit, type EditAncestry } from "../crypto/revisions";
+import { base64ToBytes as b64ToBytes } from "../attachments/base64";
 // att-2: attachment pipeline (send-side upload + receive-side controller),
 // the transport list query for history backfill, and the ciphertext cache
 // teardown (logout / settings "clear cached images").
@@ -1465,27 +1480,62 @@ export function App() {
   // Sending an edit is the same encrypt-then-frame path as a send, minus the
   // optimistic append: we wait for the authoritative message_edited push so
   // every device (including this one) converges on what the server stored.
+  //
+  // 83-3: an edit of a SIGNED original is itself a signed 0x02 envelope --
+  // fresh client_msg_id, the original's replay triple as target, and
+  // prev_rev_hash linking to the envelope currently displayed (the head of
+  // the revision chain). A legacy original has no triple to target, so its
+  // edits stay legacy sealed text (and render unsigned, as before).
   const submitEdit = useCallback(
     async (target: { id: string; body: string } | null, body: string): Promise<boolean> => {
       const cid = state.activeChannelID;
       const c = clientRef.current;
-      if (!target || !cid || !c || !c.isOpen() || !ccRef.current) return false;
+      if (!target || !cid || !c || !c.isOpen() || !ccRef.current || !state.user) return false;
       const source =
         (state.messages[cid] ?? []).find((m) => m.id === target.id) ??
         Object.values(state.threadMessages)
           .flat()
           .find((m) => m.id === target.id);
       if (!source) return false;
-      const enc = await ccRef.current.encryptForChannel(cid, body);
-      if (enc.kind !== "encrypted") return false; // key vanished; leave the editor open
+      let sendBody: string;
+      let sendKeyVersion: number;
       try {
+        if (source.sigActor && source.sigScope && source.sigClientMsgID) {
+          const prevHex = source.editHeadHash ?? source.sigObjectHash;
+          const senderTs = Date.now();
+          const deviceID = getOrCreateDeviceId();
+          const res = await ccRef.current.signAndEncryptEnvelope(cid, (keyVersion, fp): EditEnvelope => ({
+            objType: OBJ_EDIT,
+            channelID: cid,
+            keyVersion,
+            senderUserID: state.user!.id,
+            senderEd25519Fp: fp,
+            writerScope: deviceID,
+            clientMsgID: randomUuid(), // fresh per edit
+            targetSender: source.sigActor!,
+            targetScope: source.sigScope!,
+            targetClientMsgID: source.sigClientMsgID!,
+            prevRevHash: prevHex ? hexToBytes(prevHex) : null,
+            senderTs,
+            bodyText: body,
+            attachments: [], // 83-3 caveat: edits re-sign text only; bindings stay anchored in the original
+          }));
+          if (res.kind !== "encrypted") return false; // key vanished; leave the editor open
+          sendBody = res.body;
+          sendKeyVersion = res.keyVersion;
+        } else {
+          const enc = await ccRef.current.encryptForChannel(cid, body);
+          if (enc.kind !== "encrypted") return false;
+          sendBody = enc.body;
+          sendKeyVersion = enc.keyVersion;
+        }
         await editMessage(
           { request: (t, p) => c.request(t, p) },
           cid,
           source.id,
           source.ts.getTime(),
-          enc.body,
-          enc.keyVersion,
+          sendBody,
+          sendKeyVersion,
         );
         return true;
       } catch (err) {
@@ -1493,7 +1543,7 @@ export function App() {
         return false;
       }
     },
-    [state.activeChannelID, state.messages, state.threadMessages],
+    [state.activeChannelID, state.messages, state.threadMessages, state.user],
   );
 
   // ---- 37-5: reactions ---------------------------------------------------
@@ -1514,12 +1564,47 @@ export function App() {
       const c = clientRef.current;
       const cc = ccRef.current;
       if (!cid || !c || !c.isOpen() || !cc || !state.user) return;
-      const current = ownSet(state.reactions[m.id] ?? [], state.user.id);
+      const sets = state.reactions[m.id] ?? [];
+      const current = ownSet(sets, state.user.id);
       const next = toggle(current, emoji);
       try {
+        // 83-3: a reaction on a SIGNED message is a signed 0x03 envelope
+        // carrying the actor's whole set -- and a CLEAR is the same envelope
+        // with an empty set, sealed and signed like any other (the
+        // unencrypted "" clear verb is legacy-target-only now). prev_set_hash
+        // links to the actor's previous set when this device knows it; after
+        // a clear the chain restarts, which a verifier reads as exactly that.
+        if (m.sigActor && m.sigScope && m.sigClientMsgID) {
+          const own = sets.find((r) => r.userID === state.user!.id);
+          const res = await cc.signAndEncryptEnvelope(cid, (keyVersion, fp): ReactionSetEnvelope => ({
+            objType: OBJ_REACTION_SET,
+            channelID: cid,
+            keyVersion,
+            actorUserID: state.user!.id,
+            senderEd25519Fp: fp,
+            writerScope: getOrCreateDeviceId(),
+            clientMsgID: randomUuid(), // fresh per set
+            targetSender: m.sigActor!,
+            targetScope: m.sigScope!,
+            targetClientMsgID: m.sigClientMsgID!,
+            targetEnvHash: m.sigObjectHash ? hexToBytes(m.sigObjectHash) : null,
+            prevSetHash: own?.setHashHex ? hexToBytes(own.setHashHex) : null,
+            senderTs: Date.now(),
+            emoji: next,
+          }));
+          if (res.kind !== "encrypted") return; // no key: fail closed
+          await c.request(TypeSetReactions, {
+            channel_id: cid,
+            message_id: m.id,
+            ts: m.ts.getTime(),
+            body: res.body,
+            key_version: res.keyVersion,
+          });
+          return;
+        }
+        // Legacy target (pre-83 message, no signed triple to bind to): the
+        // pre-83-3 sealed-JSON path, including the unencrypted clear verb.
         if (next.length === 0) {
-          // Empty body is the "clear mine" verb; nothing to seal, and the
-          // server deletes the row rather than storing a sealed empty array.
           await c.request(TypeSetReactions, {
             channel_id: cid,
             message_id: m.id,
@@ -2000,6 +2085,47 @@ export function App() {
   // read). 83-2: each row also gets its verification verdict + signed triple
   // (applyOpened), and a row whose envelope replay-triple is already bound to
   // a DIFFERENT server row is dropped -- rendered once, per D.1.
+  // 83-3: one revision-chain walk per edited row per session. The walk is
+  // fired from decryptAll (the only moment the decrypted envelope bytes are
+  // in hand) and resolves into an edit_ancestry dispatch; failures leave the
+  // honest default, "unknown" (rendered as unverified recency).
+  const ancestryTriedRef = useRef<Set<string>>(new Set());
+  function queueAncestryVerify(channelID: string, messageID: string, tsMs: number, currentBody: Uint8Array, env: EditEnvelope) {
+    if (ancestryTriedRef.current.has(messageID)) return;
+    ancestryTriedRef.current.add(messageID);
+    void (async () => {
+      const c = clientRef.current;
+      const cc = ccRef.current;
+      if (!c || !cc || !c.isOpen()) return;
+      try {
+        const ack = await c.request<FetchRevisionsPayload, FetchRevisionsAckPayload>(TypeFetchRevisions, {
+          channel_id: channelID,
+          message_id: messageID,
+          ts: tsMs,
+        });
+        const revs: Uint8Array[] = [];
+        for (const r of ack.revisions ?? []) {
+          if (!r.key_version || !r.body) return; // legacy plaintext revision: honestly unverifiable
+          const pt = await cc.decryptBytesForChannel(channelID, r.key_version, b64ToBytes(r.body));
+          if (!pt) return; // key not held: leave unknown
+          revs.push(pt);
+        }
+        const pub = await cc.resolveEnvelopeSignerKey(env.senderUserID, env.senderEd25519Fp);
+        if (!pub) return;
+        const res = await verifyRevisionChain(revs, currentBody, pub);
+        dispatch({
+          kind: "edit_ancestry",
+          channelID,
+          messageID,
+          ancestry: res.ok ? "verified" : "unknown",
+          originalHashHex: res.originalHashHex,
+        });
+      } catch {
+        // revisions unavailable: the row stays at unverified recency
+      }
+    })();
+  }
+
   async function decryptAll(msgs: Message[]): Promise<Message[]> {
     const cc = ccRef.current;
     const opened = await Promise.all(
@@ -2013,6 +2139,11 @@ export function App() {
           senderUserID: m.senderUserID,
         });
         if (op.duplicate) return null; // replay: this envelope already renders under another row
+        if (op.env?.objType === OBJ_EDIT && op.raw && sigValid(op.verify)) {
+          // An edited message's current body: walk its revision chain in the
+          // background so "unknown" ancestry can upgrade to verified.
+          queueAncestryVerify(m.channelID, m.id, m.ts.getTime(), op.raw, op.env);
+        }
         const next = applyOpened(m, op);
         // Decrypt the thread last-reply preview too (it's separate ciphertext
         // with its own key version), so the preview shows plaintext, not
@@ -2130,18 +2261,30 @@ export function App() {
   // which renders as "this person reacts with nothing" rather than as a
   // broken chip. Reaction sets are not worth a placeholder the way a message
   // body is.
+  //
+  // 83-3: sets are signed 0x03 envelopes now (legacy sealed-JSON still
+  // opens, labelled unsigned inside the crypto layer). A signed set whose
+  // TARGET triple does not match the message row it is attached to is
+  // dropped -- a valid reaction relocated onto a different message is the
+  // same relabeling attack the message frame check catches.
   async function openReactionSet(
     channelID: string,
-    r: { body?: string; key_version?: number },
-  ): Promise<string[]> {
-    if (!r.body || !ccRef.current) return [];
-    const opened = await ccRef.current.openJSONForChannel<unknown>(
-      channelID,
-      r.key_version,
-      r.body,
-    );
-    if (!Array.isArray(opened)) return [];
-    return opened.filter((e): e is string => typeof e === "string");
+    r: { body?: string; key_version?: number; user_id: string; message_id: string },
+  ): Promise<{ emoji: string[]; setHashHex?: string }> {
+    if (!r.body || !ccRef.current) return { emoji: [] };
+    const op = await ccRef.current.openReactionSetForChannel(channelID, r.key_version, r.body, r.user_id);
+    if (op.env) {
+      const row = (messagesRef.current[channelID] ?? []).find((m) => m.id === r.message_id);
+      if (
+        row?.sigActor &&
+        (op.env.targetSender !== row.sigActor ||
+          op.env.targetScope !== row.sigScope ||
+          op.env.targetClientMsgID !== row.sigClientMsgID)
+      ) {
+        return { emoji: [] }; // signed for a different message: refuse the relocation
+      }
+    }
+    return { emoji: op.emoji, setHashHex: op.objectHashHex };
   }
 
   function handleFrame(f: Frame) {
@@ -2270,6 +2413,11 @@ export function App() {
         // own message would badge you for mentioning yourself. An edit that
         // introduces a new mention therefore doesn't raise the badge -- a
         // small gap, and the honest one until the push carries a sender.
+        //
+        // 83-3: the body may be a signed 0x02 envelope. Verify it, hold its
+        // signed TARGET against the row it is being applied to (a valid edit
+        // of a different message relabeled onto this row is a frame
+        // mismatch), and classify ancestry against the head we hold.
         const applyEdited = (body: string) => {
           dispatch({
             kind: "message_edited",
@@ -2281,9 +2429,53 @@ export function App() {
           });
         };
         if (ccRef.current) {
-          void ccRef.current
-            .decryptForChannel(p.channel_id, p.key_version, p.body)
-            .then(applyEdited);
+          void ccRef.current.openEditForChannel(p.channel_id, p.key_version, p.body).then((op) => {
+            if (op.env?.objType !== OBJ_EDIT) {
+              applyEdited(op.text); // legacy edit (or placeholder); reducer downgrades to unsigned
+              return;
+            }
+            const e = op.env;
+            const row =
+              (messagesRef.current[p.channel_id] ?? []).find((m) => m.id === p.message_id) ??
+              Object.values(threadMessagesRef.current)
+                .flat()
+                .find((m) => m.id === p.message_id);
+            let verify = op.verify;
+            let editHeadHash: string | undefined;
+            let editPrevRevHash: string | undefined;
+            let editAncestry: EditAncestry | undefined;
+            if (sigValid(op.verify)) {
+              if (
+                row?.sigActor &&
+                (e.targetSender !== row.sigActor ||
+                  e.targetScope !== row.sigScope ||
+                  e.targetClientMsgID !== row.sigClientMsgID)
+              ) {
+                // Signed edit of some OTHER message, applied to this row.
+                verify = "mismatch";
+                editAncestry = "forked";
+              } else {
+                editHeadHash = op.objectHashHex;
+                editPrevRevHash = e.prevRevHash ? bytesToHex(e.prevRevHash) : undefined;
+                editAncestry = classifyLiveEdit(
+                  editPrevRevHash ?? null,
+                  row?.editHeadHash ?? row?.sigObjectHash,
+                );
+              }
+            }
+            dispatch({
+              kind: "message_edited",
+              channelID: p.channel_id,
+              messageID: p.message_id,
+              body: op.text,
+              keyVersion: p.key_version || undefined,
+              editedAt: new Date(p.edited_at),
+              verify,
+              editHeadHash,
+              editPrevRevHash,
+              editAncestry,
+            });
+          });
         } else {
           applyEdited("[encrypted message -- key not available yet]");
         }
@@ -2292,12 +2484,13 @@ export function App() {
 
       case TypeReactionUpdate: {
         const p = f.payload as ReactionUpdatePayload;
-        void openReactionSet(p.channel_id, p.reaction).then((emoji) => {
+        void openReactionSet(p.channel_id, p.reaction).then(({ emoji, setHashHex }) => {
           dispatch({
             kind: "reaction_set",
             messageID: p.reaction.message_id,
             userID: p.reaction.user_id,
             emoji,
+            setHashHex,
           });
         });
         break;
@@ -2310,15 +2503,16 @@ export function App() {
         void Promise.all(
           p.reactions.map(async (r) => ({
             r,
-            emoji: await openReactionSet(p.channel_id, r),
+            opened: await openReactionSet(p.channel_id, r),
           })),
         ).then((rows) => {
           const byMessageID: Record<string, ReactionSet[]> = {};
-          for (const { r, emoji } of rows) {
-            if (emoji.length === 0) continue;
+          for (const { r, opened } of rows) {
+            if (opened.emoji.length === 0) continue;
             (byMessageID[r.message_id] ??= []).push({
               userID: r.user_id,
-              emoji,
+              emoji: opened.emoji,
+              setHashHex: opened.setHashHex,
             });
           }
           if (Object.keys(byMessageID).length > 0) {
@@ -3674,7 +3868,7 @@ export function App() {
     // pre-83 encrypt did (the composer is also disabled in that state),
     // BEFORE the optimistic append, so nothing is shown that won't be sent.
     const senderTs = Date.now();
-    const enc = await ccRef.current.signAndEncryptMessage(cid, (keyVersion, fp) => ({
+    const enc = await ccRef.current.signAndEncryptEnvelope(cid, (keyVersion, fp): MessageEnvelope => ({
       objType: OBJ_MESSAGE,
       channelID: cid,
       keyVersion,

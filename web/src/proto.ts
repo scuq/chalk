@@ -748,6 +748,33 @@ export interface FetchReactionsAckPayload {
   reactions: ReactionWire[];
 }
 
+// ---- 83-3: append-only edit revisions ------------------------------
+
+export const TypeFetchRevisions = "fetch_revisions";
+export const TypeFetchRevisionsAck = "fetch_revisions_ack";
+
+// fetch_revisions returns one edited message's displaced ciphertexts,
+// oldest first (rev_seq 1 = the original body), so the client can verify
+// the signed revision chain back to the original.
+export interface FetchRevisionsPayload {
+  channel_id: string;
+  message_id: string;
+  ts: number; // unix-millis of the target message
+}
+
+export interface RevisionWire {
+  rev_seq: number;
+  body: string; // base64 ciphertext, exactly as the message body was stored
+  key_version?: number; // absent for a displaced pre-encryption plaintext row
+  displaced_at: number; // server unix-millis
+}
+
+export interface FetchRevisionsAckPayload {
+  channel_id: string;
+  message_id: string;
+  revisions: RevisionWire[];
+}
+
 // ---- gov-2: governance (mode + proposal lifecycle) -----------------
 //
 // Wire types mirroring internal/proto/governance.go. gov-2-1 wires the client

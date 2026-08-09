@@ -99,12 +99,23 @@ export interface Message {
   // wins over the server frame), so renderers need no second field.
   verify?: import("../crypto/envelope").VerifyStatus;
   // 83-2: the signed replay triple + object hash, present when this row
-  // carried a well-formed envelope. What a reply (par_*) -- and, in 83-3, an
-  // edit or reaction -- binds to.
+  // carried a well-formed envelope. What a reply (par_*), an edit or a
+  // reaction binds to. For an edited row (83-3) the triple is the ORIGINAL
+  // message's (recovered from the edit envelope's signed target), and
+  // sigObjectHash is set only when the original's hash is actually known
+  // (own send, live-opened original, or a verified revision chain).
   sigActor?: string;
   sigScope?: string;
   sigClientMsgID?: string;
   sigObjectHash?: string; // hex SHA-256(canonical || lp(sig64))
+  // 83-3: append-only edit chain state. editHeadHash is the object hash of
+  // the envelope currently displayed (original or latest edit) -- what the
+  // NEXT edit must link to via prev_rev_hash. editPrevRevHash is the current
+  // edit envelope's link; editAncestry is the chain verdict
+  // (crypto/revisions.ts): verified / forked / unknown.
+  editHeadHash?: string;
+  editPrevRevHash?: string;
+  editAncestry?: import("../crypto/revisions").EditAncestry;
 }
 
 // 42-7: one row of the thread inbox. camelCase mirror of proto.ThreadInboxEntry.
@@ -1167,10 +1178,26 @@ export type Action =
       body: string;
       keyVersion?: number;
       editedAt: Date;
+      // 83-3: verdict + chain state of the opened edit envelope. Absent for
+      // a legacy (unsigned) edit -- the reducer then downgrades to unsigned.
+      verify?: import("../crypto/envelope").VerifyStatus;
+      editHeadHash?: string;
+      editPrevRevHash?: string;
+      editAncestry?: import("../crypto/revisions").EditAncestry;
+    }
+  // 83-3: the async revision-chain walk finished for one edited row.
+  | {
+      kind: "edit_ancestry";
+      channelID: string;
+      messageID: string;
+      ancestry: import("../crypto/revisions").EditAncestry;
+      originalHashHex?: string;
     }
   // 37-5: one member's decrypted reaction set for one message changed. An
-  // empty emoji array means they cleared their reactions.
-  | { kind: "reaction_set"; messageID: string; userID: string; emoji: string[] }
+  // empty emoji array means they cleared their reactions. 83-3: setHashHex
+  // carries the signed set envelope's object hash (the actor's next set
+  // links to it via prev_set_hash); absent for legacy JSON sets.
+  | { kind: "reaction_set"; messageID: string; userID: string; emoji: string[]; setHashHex?: string }
   // 37-5: backfill decrypted sets for a batch of messages after a history
   // fetch. Replaces whatever was cached for each message id present.
   | { kind: "reactions_merged"; byMessageID: Record<string, ReactionSet[]> }

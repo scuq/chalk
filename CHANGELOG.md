@@ -13,6 +13,15 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **Editing a message no longer erases the evidence of what it said before.**
+  Each edit is now signed like a fresh message and linked to the exact version
+  it replaced, and the replaced versions are kept (encrypted, up to 64 per
+  message) so your devices can check that an edited message really is a
+  straight line of the author's own edits. An "(edited)" marker whose history
+  can't be verified says so instead of pretending; deleting a message still
+  removes every stored version. Reactions are signed the same way now — including
+  taking a reaction back, which used to be visible to the server as a "cleared"
+  signal and is now just another sealed update it can't read.
 - **Messages now carry your cryptographic signature, and chalk checks it on
   every message you read.** Each message you send is signed with your identity
   key inside the encryption, so the people you chat with can tell it really

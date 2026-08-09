@@ -14,7 +14,7 @@
 //     search) say the same words.
 
 import type { OpenedMessage } from "../crypto/channel-crypto";
-import type { VerifyStatus } from "../crypto/envelope";
+import { OBJ_MESSAGE, OBJ_EDIT, type VerifyStatus } from "../crypto/envelope";
 import type { Message } from "../state/types";
 
 /** sigValid reports whether a verdict means "the signature checked out". */
@@ -25,17 +25,37 @@ export function sigValid(v: VerifyStatus | undefined): boolean {
 /**
  * applyOpened merges one opened body into its message row. Pure -- the
  * caller dispatches the result.
+ *
+ * 83-3: an edited message's current body opens as its latest 0x02 edit
+ * envelope. The row's sig triple then comes from the edit's TARGET (the
+ * original's replay triple -- the message's identity), while sigObjectHash
+ * stays unset: it anchors replies to the ORIGINAL envelope, and only a
+ * verified revision-chain walk can recover that hash on a fresh device.
+ * The edit's own hash + link go to editHeadHash/editPrevRevHash, and
+ * ancestry starts "unknown" (unverified recency) until the chain verifies.
  */
 export function applyOpened(m: Message, opened: OpenedMessage): Message {
   const next: Message = { ...m, body: opened.text, verify: opened.verify };
-  if (opened.env) {
-    next.sigActor = opened.env.senderUserID;
-    next.sigScope = opened.env.writerScope;
-    next.sigClientMsgID = opened.env.clientMsgID;
+  const env = opened.env;
+  if (env && env.objType === OBJ_MESSAGE) {
+    next.sigActor = env.senderUserID;
+    next.sigScope = env.writerScope;
+    next.sigClientMsgID = env.clientMsgID;
     next.sigObjectHash = opened.objectHashHex;
+    next.editHeadHash = opened.objectHashHex; // the chain head is the original itself
     if (sigValid(opened.verify)) {
       // Inner wins: the signed sender is the truth this row renders under.
-      next.senderUserID = opened.env.senderUserID;
+      next.senderUserID = env.senderUserID;
+    }
+  } else if (env && env.objType === OBJ_EDIT) {
+    next.sigActor = env.targetSender;
+    next.sigScope = env.targetScope;
+    next.sigClientMsgID = env.targetClientMsgID;
+    next.editHeadHash = opened.objectHashHex;
+    next.editPrevRevHash = env.prevRevHash ? bytesToHex(env.prevRevHash) : undefined;
+    next.editAncestry = "unknown";
+    if (sigValid(opened.verify)) {
+      next.senderUserID = env.senderUserID; // == targetSender, parser-enforced
     }
   }
   return next;

@@ -584,6 +584,13 @@ const (
 	TypeFetchReactions    = "fetch_reactions"
 	TypeFetchReactionsAck = "fetch_reactions_ack"
 
+	// 83-3: append-only edit revisions. fetch_revisions returns the displaced
+	// ciphertexts of one edited message, oldest first, so a client can verify
+	// the signed revision chain (each edit envelope's prev_rev_hash) back to
+	// the original. Read-only; the write side is the edit transaction itself.
+	TypeFetchRevisions    = "fetch_revisions"
+	TypeFetchRevisionsAck = "fetch_revisions_ack"
+
 	// Phase 33-1: read cursors. mark_read raises the caller's cursor for a
 	// channel; read_state is the push that carries the new cursor to the
 	// same user's OTHER connections so the unread dot clears everywhere.
@@ -906,6 +913,35 @@ type ReactionUpdatePayload struct {
 type FetchReactionsPayload struct {
 	ChannelID  string   `json:"channel_id"`
 	MessageIDs []string `json:"message_ids"`
+}
+
+// FetchRevisionsPayload requests the displaced bodies of one edited message
+// (83-3). TS is the message's server timestamp in unix-millis, needed to
+// address the ts-partitioned row exactly like EditMessagePayload.
+type FetchRevisionsPayload struct {
+	ChannelID string `json:"channel_id"`
+	MessageID string `json:"message_id"`
+	TS        int64  `json:"ts"`
+}
+
+// RevisionWire is one displaced ciphertext. RevSeq counts from 1 in
+// displacement order (1 = the original body). Body is base64 ciphertext
+// exactly as the message body was stored; KeyVersion 0 means the displaced
+// row was pre-encryption legacy plaintext.
+type RevisionWire struct {
+	RevSeq      int    `json:"rev_seq"`
+	Body        string `json:"body"`
+	KeyVersion  int    `json:"key_version,omitempty"`
+	DisplacedAt int64  `json:"displaced_at"` // server unix-millis
+}
+
+// FetchRevisionsAckPayload returns the revisions oldest-first. An empty list
+// means the message has never been edited (or its revisions were purged with
+// its tombstone).
+type FetchRevisionsAckPayload struct {
+	ChannelID string         `json:"channel_id"`
+	MessageID string         `json:"message_id"`
+	Revisions []RevisionWire `json:"revisions"`
 }
 
 // FetchReactionsAckPayload returns every reaction row for the requested

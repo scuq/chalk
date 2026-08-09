@@ -673,6 +673,9 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleSetReactions(ctx, c, conn, f)
 		case proto.TypeFetchReactions:
 			h.handleFetchReactions(ctx, c, conn, f)
+		// 83-3: append-only edit revisions.
+		case proto.TypeFetchRevisions:
+			h.handleFetchRevisions(ctx, c, conn, f)
 
 		// 80-7: ephemeral guest invites (owner-only).
 		case proto.TypeEphemeralInviteMint:
@@ -3856,6 +3859,12 @@ func (h *WSHandler) handleEditMessage(
 		case errors.Is(eErr, store.ErrMessageNotFound):
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeMessageNotFound, "message not found")
 			return
+		case errors.Is(eErr, store.ErrTooManyRevisions):
+			// 83-3: the revision cap refuses the edit rather than dropping
+			// evidence; see store.MaxMessageRevisions.
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeEditForbidden,
+				"this message has been edited too many times")
+			return
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "edit message: "+eErr.Error())
 			return
@@ -4095,6 +4104,84 @@ func (h *WSHandler) handleFetchReactions(
 // maxReactionFetch caps one backfill request. History pages at 200, so a
 // window's worth of messages fits in a single round trip.
 const maxReactionFetch = 200
+
+// handleFetchRevisions returns one edited message's displaced ciphertexts,
+// oldest first (83-3). Authz mirrors handleFetchReactions: any member of the
+// channel may read them -- revisions are the same conversation content the
+// member could already have read live, retained so the signed revision chain
+// stays verifiable. The store's channel_id match makes a guessed message id
+// from another channel return nothing.
+func (h *WSHandler) handleFetchRevisions(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.FetchRevisionsPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	channelID, err := uuid.Parse(p.ChannelID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
+		return
+	}
+	messageID, err := uuid.Parse(p.MessageID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "message_id not a UUID")
+		return
+	}
+	deviceID, err := uuid.Parse(conn.DeviceID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
+		return
+	}
+	callerID := h.lookupUserForDevice(ctx, deviceID)
+	if callerID == uuid.Nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "unknown user")
+		return
+	}
+	isMember, mErr := h.store.IsMember(ctx, channelID, callerID)
+	if mErr != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "membership check: "+mErr.Error())
+		return
+	}
+	if !isMember {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of channel")
+		return
+	}
+
+	rows, lErr := h.store.ListRevisions(ctx, time.UnixMilli(p.TS), messageID, channelID)
+	if lErr != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "list revisions: "+lErr.Error())
+		return
+	}
+	out := make([]proto.RevisionWire, 0, len(rows))
+	for _, r := range rows {
+		w := proto.RevisionWire{
+			RevSeq:      r.RevSeq,
+			Body:        string(r.Body),
+			DisplacedAt: r.DisplacedAt.UnixMilli(),
+		}
+		if r.KeyVersion != nil {
+			w.KeyVersion = *r.KeyVersion
+		}
+		out = append(out, w)
+	}
+	ack, _ := proto.NewFrame(proto.TypeFetchRevisionsAck, f.Ref, proto.FetchRevisionsAckPayload{
+		ChannelID: p.ChannelID,
+		MessageID: p.MessageID,
+		Revisions: out,
+	})
+	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("fetch_revisions_ack write: %v", err)
+	}
+}
 
 // reactionWireOf renders a stored reaction for the wire. Body is base64'd by
 // the JSON encoder (Go marshals []byte that way), matching how message bodies

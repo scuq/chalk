@@ -9,6 +9,7 @@ import type {
   ChannelSummary,
   ChannelUnread,
   Message,
+  ReactionSet,
   ThreadInboxRow,
 } from "./types";
 // Phase 09d-2b: runtime import for the admin panel's initial state
@@ -1039,11 +1040,15 @@ export function reducer(state: AppState, action: Action): AppState {
               body: action.body,
               keyVersion: action.keyVersion,
               editedAt: action.editedAt,
-              // 83-2: edits are not signed until 83-3, so the displayed body
-              // no longer carries the original's signature -- the verdict
-              // honestly downgrades. The sig* triple stays: it identifies the
-              // message (and 83-3's revision chain re-anchors on it).
-              verify: "unsigned",
+              // 83-3: a signed edit carries its verdict + chain state; a
+              // legacy edit carries none and honestly downgrades to
+              // unsigned (the displayed body no longer carries any
+              // signature). The sig* triple stays either way: it
+              // identifies the message.
+              verify: action.verify ?? "unsigned",
+              editHeadHash: action.editHeadHash ?? m.editHeadHash,
+              editPrevRevHash: action.editPrevRevHash ?? m.editPrevRevHash,
+              editAncestry: action.editAncestry ?? (action.verify ? m.editAncestry : undefined),
             }
           : m;
 
@@ -1117,16 +1122,50 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     }
 
+    // 83-3: the async revision-chain walk finished. Upgrade (or honestly
+    // refuse to upgrade) the row's ancestry, and -- when the chain verified
+    // back to the original -- anchor sigObjectHash to the recovered original
+    // hash so replies bind to the message, not to its latest edit.
+    case "edit_ancestry": {
+      const applyAncestry = (m: Message): Message =>
+        m.id === action.messageID
+          ? {
+              ...m,
+              editAncestry: action.ancestry,
+              sigObjectHash:
+                action.ancestry === "verified" && action.originalHashHex
+                  ? action.originalHashHex
+                  : m.sigObjectHash,
+            }
+          : m;
+      const list = state.messages[action.channelID];
+      let nextMessages = state.messages;
+      if (list?.some((m) => m.id === action.messageID)) {
+        nextMessages = { ...state.messages, [action.channelID]: list.map(applyAncestry) };
+      }
+      let nextThreadMessages = state.threadMessages;
+      const rewritten: Record<string, Message[]> = {};
+      let hit = false;
+      for (const [tid, tlist] of Object.entries(state.threadMessages)) {
+        if (tlist.some((m) => m.id === action.messageID)) {
+          rewritten[tid] = tlist.map(applyAncestry);
+          hit = true;
+        }
+      }
+      if (hit) nextThreadMessages = { ...state.threadMessages, ...rewritten };
+      if (nextMessages === state.messages && !hit) return state;
+      return { ...state, messages: nextMessages, threadMessages: nextThreadMessages };
+    }
+
     case "reaction_set": {
       const existing = state.reactions[action.messageID] ?? [];
       const without = existing.filter((r) => r.userID !== action.userID);
       // An empty set is stored as ABSENCE, mirroring the server (which deletes
       // the row rather than keeping a sealed empty array). That keeps "did
       // anyone react" a length check at every layer.
-      const next =
-        action.emoji.length > 0
-          ? [...without, { userID: action.userID, emoji: action.emoji }]
-          : without;
+      const mine: ReactionSet = { userID: action.userID, emoji: action.emoji };
+      if (action.setHashHex) mine.setHashHex = action.setHashHex; // 83-3: signed sets only
+      const next = action.emoji.length > 0 ? [...without, mine] : without;
 
       if (next.length === 0) {
         if (existing.length === 0) return state; // nothing was there either

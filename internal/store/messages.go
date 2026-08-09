@@ -301,7 +301,15 @@ func (s *Store) DeleteMessage(
 		// "who reacted to this, and with what (for anyone holding the key)"
 		// on the server for content that is supposed to be gone from it.
 		// Same transaction as the tombstone: both or neither.
-		return ScrubReactionsForMessageTx(ctx, tx, m.TS, id)
+		if err := ScrubReactionsForMessageTx(ctx, tx, m.TS, id); err != nil {
+			return err
+		}
+		// 83-3: revisions go with the body too, or the tombstone's "the
+		// ciphertext is gone from the server" would be silently false --
+		// exactly the objection 0044 raised against a revision table, and the
+		// reason the purge lives in this transaction. (The FK cascade only
+		// fires on real DELETEs; the tombstone is an UPDATE.)
+		return PurgeRevisionsForMessageTx(ctx, tx, m.TS, id)
 	})
 	if err != nil {
 		return Message{}, err
@@ -347,6 +355,67 @@ func (s *Store) EditMessage(
 ) (Message, error) {
 	var m Message
 	err := s.withTx(ctx, func(tx pgx.Tx) error {
+		// 83-3: append-only revisions. Lock the row and read the body this
+		// edit displaces BEFORE overwriting it -- the displaced ciphertext is
+		// the signed evidence the revision chain (prev_rev_hash) points at,
+		// and moving it into message_revisions in the SAME transaction is
+		// what makes "edited" and "evidence retained" one atomic fact.
+		var displacedTS time.Time
+		var displacedBody []byte
+		var displacedVer *int
+		if err := tx.QueryRow(ctx,
+			`SELECT ts, body, key_version FROM messages
+			  WHERE id = $2 AND channel_id = $3
+			    AND ts >= $1 AND ts < $1 + interval '1 millisecond'
+			    AND deleted_at IS NULL
+			  FOR UPDATE`,
+			ts, id, channelID,
+		).Scan(&displacedTS, &displacedBody, &displacedVer); err != nil {
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+			// fall through to the shared not-found/tombstone diagnosis below
+			// via the UPDATE's zero-row path -- but without a lock there is
+			// nothing to update, so diagnose here directly.
+			var exists bool
+			if e2 := tx.QueryRow(ctx,
+				`SELECT EXISTS(
+				   SELECT 1 FROM messages
+				    WHERE id = $2 AND channel_id = $3
+				      AND ts >= $1 AND ts < $1 + interval '1 millisecond'
+				 )`,
+				ts, id, channelID,
+			).Scan(&exists); e2 != nil {
+				return e2
+			}
+			if exists {
+				return ErrAlreadyDeleted
+			}
+			return ErrMessageNotFound
+		}
+		var maxRev int
+		if err := tx.QueryRow(ctx,
+			`SELECT COALESCE(MAX(rev_seq), 0) FROM message_revisions
+			  WHERE message_id = $1 AND message_ts = $2`,
+			id, displacedTS,
+		).Scan(&maxRev); err != nil {
+			return err
+		}
+		// The cap REFUSES the edit rather than dropping old revisions:
+		// dropping rev_seq 1 would orphan the chain from its original, which
+		// is exactly the evidence the table exists to keep. 64 edits of one
+		// message inside the 15-minute window is nobody's typo correction.
+		if maxRev >= MaxMessageRevisions {
+			return ErrTooManyRevisions
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO message_revisions
+			   (message_id, message_ts, rev_seq, channel_id, body, key_version)
+			 VALUES ($1, $2, $3, $4, $5, $6)`,
+			id, displacedTS, maxRev+1, channelID, displacedBody, displacedVer,
+		); err != nil {
+			return fmt.Errorf("displace revision: %w", err)
+		}
 		row := tx.QueryRow(ctx,
 			`UPDATE messages
 			    SET body = $4,

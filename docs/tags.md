@@ -62,7 +62,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #chalkctl       72 73 82  internal/chalkctl/ cmd/chalkctl/ test/integration/backup_restore_test.go docs/deployment.md docs/phases/PHASE-72-BACKUP.md docs/phases/PHASE-73-METRICS.md
 #ephemeral      80        internal/chalkctl/ migrations/ internal/store/ internal/server/ internal/auth/ internal/proto/ internal/config/ web/src/crypto/ web/src/components/ web/src/chat/
 #hardening      81        internal/auth/ internal/ratelimit/ internal/store/ internal/chalkctl/ docs/threat-model.md docs/phases/PHASE-81-SECAUDIT.md
-#msgsig         83        web/src/crypto/ web/src/chat/verify.ts web/src/components/ web/src/state/ web/src/attachments/pipeline.ts docs/phases/PHASE-83-MSGSIG.md docs/audits/ docs/threat-model.md
+#msgsig         83        web/src/crypto/ web/src/chat/verify.ts web/src/components/ web/src/state/ web/src/attachments/pipeline.ts internal/store/ internal/server/ internal/proto/ migrations/ docs/phases/PHASE-83-MSGSIG.md docs/audits/ docs/threat-model.md
 #bigrooms       -         docs/phases/PHASE-98-BIGROOMS.md
 #dbcreds        -         docs/phases/PHASE-99-DBCREDS.md internal/chalkctl/ docs/threat-model.md
 #signedwrap     82        web/src/crypto/ web/src/components/ web/src/chat/keyprovenance.ts web/src/state/ internal/proto/ internal/server/ internal/store/ internal/config/ internal/chalkctl/ internal/auth/join_http.go docs/phases/PHASE-82-SIGNEDWRAP.md docs/design/crypto-agility.md docs/threat-model.md

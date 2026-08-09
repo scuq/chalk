@@ -4914,6 +4914,13 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-weight: 600;
 }
 
+/* 83-3: an (edited) marker whose revision chain did not verify. Quietly
+   distinct -- the tooltip carries the words; the color says "look". */
+.chalk-message-edited-unverified {
+  color: var(--chalk-warn);
+  opacity: 0.9;
+}
+
 /* 37-3: the row whose message is currently open in the composer. A left
    accent rail rather than a background wash, so the body text keeps its
    normal contrast while the row is unmistakably the one being edited. */

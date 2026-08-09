@@ -1229,9 +1229,26 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                   this marks that the text changed after it was sent
                   without offering any history to look at. */}
               {!m.deleted && m.editedAt && (
+                // 83-3: the marker also carries the revision-chain verdict.
+                // "verified" needs no extra chrome; anything else renders the
+                // honest unverified-recency hint rather than false trust.
                 <span
-                  class="chalk-message-edited"
-                  title={`edited ${fmtTimeAs(m.editedAt, display_.timestampFormat, now)}`}
+                  class={
+                    "chalk-message-edited" +
+                    (m.editAncestry && m.editAncestry !== "verified"
+                      ? " chalk-message-edited-unverified"
+                      : "")
+                  }
+                  title={
+                    `edited ${fmtTimeAs(m.editedAt, display_.timestampFormat, now)}` +
+                    (m.editAncestry === "verified"
+                      ? " — edit history verified"
+                      : m.editAncestry === "forked"
+                        ? " — ⚠ this edit does not extend the version previously shown"
+                        : m.editAncestry === "unknown"
+                          ? " — edit history not verified"
+                          : "")
+                  }
                   data-testid={`message-edited-${m.id}`}
                 >
                   (edited)

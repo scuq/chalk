@@ -50,9 +50,11 @@ import {
   loadVerification,
   type KeyProvenance,
 } from "./idb";
-// 83-2: the signed sealed envelope rides INSIDE the message ciphertext.
+// 83-2/83-3: the signed sealed envelope rides INSIDE the message ciphertext.
 import {
   OBJ_MESSAGE,
+  OBJ_EDIT,
+  OBJ_REACTION_SET,
   parseEnvelope,
   classifyEnvelope,
   signEnvelope,
@@ -60,7 +62,9 @@ import {
   ed25519Fingerprint,
   envelopeActor,
   replayIdentity,
+  type Envelope,
   type MessageEnvelope,
+  type ReactionSetEnvelope,
   type SignerResolution,
   type VerifyStatus,
 } from "./envelope";
@@ -108,16 +112,17 @@ export type EncryptResult =
   | { kind: "waiting" };
 
 /**
- * 83-2: what signAndEncryptMessage hands back. The envelope and its
+ * 83-2/83-3: what signAndEncryptEnvelope hands back. The envelope and its
  * object_hash ride along so the send path can stamp the optimistic row with
- * the signed replay triple + hash (what a later reply binds to).
+ * the signed replay triple + hash (what a later reply, edit or reaction
+ * binds to).
  */
-export type SignedEncryptResult =
+export type SignedEncryptResult<E extends Envelope = Envelope> =
   | {
       kind: "encrypted";
       body: string; // base64 ciphertext of (canonical || lp(sig64))
       keyVersion: number;
-      envelope: MessageEnvelope;
+      envelope: E;
       objectHash: Uint8Array;
     }
   | { kind: "waiting" };
@@ -131,13 +136,30 @@ export type SignedEncryptResult =
  * the seal guarantees it). `duplicate` marks a signature-valid envelope whose
  * replay triple is already bound to a different server row -- the caller
  * renders the first row and drops this one.
+ *
+ * 83-3: `env` widened to the Envelope union -- an edited message's CURRENT
+ * body is the latest edit's 0x02 envelope, and the message feed must open it
+ * as such (text = the edited body text, sig fields from its target triple).
  */
 export interface OpenedMessage {
   text: string;
   verify?: VerifyStatus;
   duplicate?: boolean;
-  env?: MessageEnvelope;
+  env?: Envelope;
   /** hex SHA-256(canonical || lp(sig64)); what replies/edits bind to. */
+  objectHashHex?: string;
+  /** 83-3: the decrypted envelope bytes, present only for well-formed
+   *  envelopes -- what the revision-chain walk hashes and links against
+   *  (re-deriving them later is impossible once the row holds display
+   *  text). */
+  raw?: Uint8Array;
+}
+
+/** 83-3: one opened reaction set (see openReactionSetForChannel). */
+export interface OpenedReactionSet {
+  emoji: string[];
+  verify?: VerifyStatus;
+  env?: ReactionSetEnvelope;
   objectHashHex?: string;
 }
 
@@ -960,17 +982,17 @@ export class ChannelCrypto {
   }
 
   /**
-   * signAndEncryptMessage is the 83-2 send path: build -> sign -> seal, in
-   * that order (the envelope must know the key version it will seal under,
-   * so the builder callback receives it along with our fingerprint).
-   * Returns "waiting" when no usable key is held -- same fail-closed rule as
-   * encryptForChannel, checked BEFORE signing so no signed envelope exists
-   * that was never sealed.
+   * signAndEncryptEnvelope is the signed send path for every object type:
+   * build -> sign -> seal, in that order (the envelope must know the key
+   * version it will seal under, so the builder callback receives it along
+   * with our fingerprint). Returns "waiting" when no usable key is held --
+   * same fail-closed rule as encryptForChannel, checked BEFORE signing so no
+   * signed envelope exists that was never sealed.
    */
-  async signAndEncryptMessage(
+  async signAndEncryptEnvelope<E extends Envelope>(
     channelID: string,
-    make: (keyVersion: number, senderEd25519Fp: Uint8Array) => MessageEnvelope,
-  ): Promise<SignedEncryptResult> {
+    make: (keyVersion: number, senderEd25519Fp: Uint8Array) => E,
+  ): Promise<SignedEncryptResult<E>> {
     const v = this.currentVersion(channelID);
     const sk = await this.getKey(channelID, v);
     if (!sk) return { kind: "waiting" };
@@ -982,23 +1004,130 @@ export class ChannelCrypto {
   }
 
   /**
-   * openMessageForChannel is the 83-2 receive path for the message feed:
+   * openMessageForChannel is the receive path for the message feed:
    * decrypt, then parse + verify the envelope fail-closed and check the
    * replay binding. Placeholders and the decrypt preamble mirror
    * decryptForChannel exactly; what differs is that the verdict comes back
    * typed instead of being flattened into text.
    *
+   * Accepts 0x01 (a message) and -- since 83-3 -- 0x02 (an edited message's
+   * current body IS the latest edit envelope). A reaction envelope in a
+   * message slot stays refused.
+   *
    * The replay triple is bound to `serverMsgID` only for SIGNATURE-VALID
-   * envelopes (see replay.ts on why binding a forgery would be a gift), and
-   * a triple already bound to a different row comes back duplicate -- the
-   * caller drops it, so the same envelope renders once no matter how many
-   * server rows carry it.
+   * 0x01 envelopes (see replay.ts on why binding a forgery would be a
+   * gift); edits are idempotent by construction (re-applying one converges),
+   * so they are not replay-bound. A triple already bound to a different row
+   * comes back duplicate -- the caller drops it, so the same envelope
+   * renders once no matter how many server rows carry it.
    */
   async openMessageForChannel(
     channelID: string,
     keyVersion: number | undefined,
     body: string,
     outer: { serverMsgID: string; senderUserID: string },
+  ): Promise<OpenedMessage> {
+    const opened = await this.openSealedObject(channelID, keyVersion, body, {
+      expect: [OBJ_MESSAGE, OBJ_EDIT],
+      senderUserID: outer.senderUserID,
+    });
+    if (!opened.env) return opened;
+    const sigValid =
+      opened.verify === "verified" ||
+      opened.verify === "verified-former-identity" ||
+      opened.verify === "mismatch";
+    if (sigValid && opened.env.objType === OBJ_MESSAGE) {
+      const verdict = await this.replayGuard.bind(replayIdentity(opened.env), outer.serverMsgID, channelID);
+      if (verdict === "duplicate") opened.duplicate = true;
+    }
+    return opened;
+  }
+
+  /**
+   * openEditForChannel opens a message_edited push body (83-3). The push
+   * carries no sender claim, so the outer-frame comparison covers channel +
+   * key version only; who may edit is enforced by the envelope itself (the
+   * parser refuses an edit whose sender differs from its target's sender)
+   * plus the caller's target-triple match against the row being edited.
+   */
+  async openEditForChannel(
+    channelID: string,
+    keyVersion: number | undefined,
+    body: string,
+  ): Promise<OpenedMessage> {
+    return this.openSealedObject(channelID, keyVersion, body, { expect: [OBJ_EDIT] });
+  }
+
+  /**
+   * openReactionSetForChannel opens one member's sealed reaction set (83-3).
+   *
+   * Three shapes come out of the seal: a signed 0x03 envelope (this build), a
+   * legacy JSON array (pre-83-3 builds -- rendered, labelled unsigned), and
+   * garbage. Fail-closed WITHOUT a warning surface: reactions have no room
+   * for a verdict label, so a set that fails verification renders as NO
+   * reactions rather than as unattributed ones -- forged/foreign/unpinned all
+   * collapse to empty. (Messages get the opposite treatment -- content under
+   * a warning -- because message content is worth reading even unattributed;
+   * a bare emoji tally is not.)
+   */
+  async openReactionSetForChannel(
+    channelID: string,
+    keyVersion: number | undefined,
+    body: string,
+    outerUserID: string,
+  ): Promise<OpenedReactionSet> {
+    if (!keyVersion || keyVersion < 1 || !body) return { emoji: [] };
+    let bytes: Uint8Array;
+    try {
+      bytes = base64ToBytes(body);
+    } catch {
+      return { emoji: [] };
+    }
+    const pt = await this.decryptBytesForChannel(channelID, keyVersion, bytes);
+    if (!pt) return { emoji: [] };
+    const parsed = parseEnvelope(pt);
+    if (parsed.kind === "legacy") {
+      // Pre-83-3 sealed JSON array.
+      try {
+        const arr = JSON.parse(new TextDecoder().decode(pt));
+        if (Array.isArray(arr)) {
+          return { emoji: arr.filter((e): e is string => typeof e === "string"), verify: "unsigned" };
+        }
+      } catch {
+        // fall through
+      }
+      return { emoji: [] };
+    }
+    if (parsed.kind === "malformed" || parsed.env.objType !== OBJ_REACTION_SET) {
+      return { emoji: [] };
+    }
+    const cls = await classifyEnvelope(
+      parsed,
+      { channelID, keyVersion, senderUserID: outerUserID },
+      (actor, fp) => this.resolveEnvelopeSigner(actor, fp),
+    );
+    const env = parsed.env as ReactionSetEnvelope;
+    const sigValid = cls.status === "verified" || cls.status === "verified-former-identity";
+    if (!sigValid) return { emoji: [], verify: cls.status };
+    return {
+      emoji: env.emoji,
+      verify: cls.status,
+      env,
+      objectHashHex: bytesToHex(await envelopeObjectHash(pt)),
+    };
+  }
+
+  // openSealedObject is the shared decrypt + parse + classify core. `expect`
+  // lists the objTypes legal in this slot; anything else renders as
+  // unsigned-with-placeholder (slot confusion only the sender can produce).
+  // When the outer frame carries no sender claim (edit pushes), the
+  // envelope's own actor stands in and the sender-mismatch check is
+  // vacuous -- channel and key version are still held to the frame.
+  private async openSealedObject(
+    channelID: string,
+    keyVersion: number | undefined,
+    body: string,
+    opts: { expect: number[]; senderUserID?: string },
   ): Promise<OpenedMessage> {
     if (!keyVersion || keyVersion < 1) return { text: PLACEHOLDER_PLAINTEXT_BLOCKED };
     let sk = await this.getKey(channelID, keyVersion);
@@ -1027,32 +1156,34 @@ export class ChannelCrypto {
       // placeholder stands in rather than envelope bytes decoded as prose.
       return { text: PLACEHOLDER_FAILED, verify: "unsigned" };
     }
-    if (parsed.env.objType !== OBJ_MESSAGE) {
-      // A signed edit/reaction envelope sealed into a MESSAGE slot: slot
-      // confusion only the sender can construct. Same rendering rule as
-      // malformed -- and never its body as message text.
+    if (!opts.expect.includes(parsed.env.objType) || parsed.env.objType === OBJ_REACTION_SET) {
       return { text: PLACEHOLDER_FAILED, verify: "unsigned" };
     }
 
+    const env = parsed.env;
     const cls = await classifyEnvelope(
       parsed,
-      { channelID, keyVersion, senderUserID: outer.senderUserID },
+      { channelID, keyVersion, senderUserID: opts.senderUserID ?? envelopeActor(env) },
       (actor, fp) => this.resolveEnvelopeSigner(actor, fp),
     );
-    const env = parsed.env as MessageEnvelope;
-    const opened: OpenedMessage = {
-      text: env.bodyText,
+    return {
+      text: env.objType === OBJ_MESSAGE || env.objType === OBJ_EDIT ? env.bodyText : PLACEHOLDER_FAILED,
       verify: cls.status,
       env,
       objectHashHex: bytesToHex(await envelopeObjectHash(pt)),
+      raw: pt,
     };
-    const sigValid =
-      cls.status === "verified" || cls.status === "verified-former-identity" || cls.status === "mismatch";
-    if (sigValid) {
-      const verdict = await this.replayGuard.bind(replayIdentity(env), outer.serverMsgID, channelID);
-      if (verdict === "duplicate") opened.duplicate = true;
-    }
-    return opened;
+  }
+
+  /**
+   * resolveEnvelopeSignerKey exposes the resolver's answer as a bare public
+   * key for callers that verify signatures OUTSIDE classification -- the
+   * revision-chain walk (crypto/revisions.ts). Null when the fingerprint
+   * does not resolve to a believed key for this actor.
+   */
+  async resolveEnvelopeSignerKey(actorUserID: string, fp: Uint8Array): Promise<Uint8Array | null> {
+    const r = await this.resolveEnvelopeSigner(actorUserID, fp);
+    return r.kind === "current" || r.kind === "retired" ? r.ed25519Public : null;
   }
 
   /**
