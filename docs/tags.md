@@ -42,7 +42,8 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #composer       91 94     web/src/chat/composer-height.ts web/src/chat/composer-keys.ts web/src/components/ComposerResizer.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-91-COMPOSERSIZE.md docs/phases/PHASE-94-PHONECOMPOSER.md
 #linkpreview    57 67     internal/linkpreview/ web/src/linkpreview/ web/src/chat/links.ts docs/phases/PHASE-57-LINKPREVIEW.md docs/phases/PHASE-67-LINKLABELS.md
 #code           74        web/src/code/ web/src/chat/bodytext.ts web/src/components/CodeModal.tsx web/src/components/CodeBlockView.tsx docs/phases/PHASE-74-CODEBLOCKS.md
-#nanomd         77        web/src/chat/nanomd.ts web/src/components/MessageList.tsx web/src/theme.css docs/phases/PHASE-77-NANOMD.md
+#nanomd         77 99     web/src/chat/nanomd.ts web/src/components/MessageList.tsx web/src/theme.css docs/phases/PHASE-77-NANOMD.md docs/phases/PHASE-99-QUOTE.md
+#quote          99        web/src/chat/quote.ts web/src/chat/nanomd.ts web/src/chat/message-menu.ts web/src/components/MessageList.tsx web/src/components/MessageMenu.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-99-QUOTE.md
 #search         61        web/src/chat/ web/src/components/ docs/phases/PHASE-61-SEARCH.md
 #reactions      37 58 75  web/src/chat/reactions.ts web/src/chat/press.ts web/src/chat/editpolicy.ts web/src/state/ web/src/components/ReactionBar.tsx docs/phases/PHASE-37-EDITREACT.md docs/phases/PHASE-58-EDITWINDOW.md docs/phases/PHASE-75-REACTORS.md
 #typing         43        internal/server/ web/src/state/ docs/phases/PHASE-43-TYPING.md

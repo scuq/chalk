@@ -90,6 +90,7 @@ as-built rather than a contemporaneous plan.
 | 96 | the call's layout, and the share's own volume | [PHASE-96-CALLSTAGE.md](phases/PHASE-96-CALLSTAGE.md) |
 | 97 | voice reconnect diagnostics | [PHASE-97-VOICEDIAG.md](phases/PHASE-97-VOICEDIAG.md) |
 | 98 | large rooms: per-sender streams past the 64 cap — **planned, not started** | [PHASE-98-BIGROOMS.md](phases/PHASE-98-BIGROOMS.md) |
+| 99 | quoting a message | [PHASE-99-QUOTE.md](phases/PHASE-99-QUOTE.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
@@ -701,6 +702,13 @@ with TOFU identity pinning, a self-healing re-sign sweep and `chalkctl wrapsig`
 (82); identity-pin backup sealed under the identity key (84); operational
 logging — security events, opt-in connection snapshot, slow requests, Caddy
 access log (85).
+
+**99 — quoting a message.** A "quote" row action that pastes the message into
+the composer as `> ` lines under an attribution line, and receive-side
+rendering of those lines as a nested quote block under the existing nano
+markdown pref. No server change; the send side stays literal characters. It
+reverses phase 77's "no quotes" and contradicts phase 86's premise, and both
+documents carry a note saying so.
 
 **Not started.** 65 (web push), 83 (signed message envelope plus authenticated
 channel-state transcript), 86 (ties), 87 (message reminders) and 90 (a local

@@ -117,7 +117,10 @@ same space.
 - **Ties** (86, [phases/PHASE-86-TIES.md](phases/PHASE-86-TIES.md)): say "this
   answers that" across an interleaved channel without quoting — a sealed
   per-user side record on the reactions pattern, drawn as a gutter mark plus a
-  hover connector.
+  hover connector. Still open, but read its 9 August 2026 note first: phase 99
+  shipped quoting, so the document's framing as *the alternative to* quoting is
+  out of date. What a tie does that a quote cannot — point at a message too far
+  back to reprint — is unchanged, and is the reason it is still on this list.
 - **Message reminders** (87, [phases/PHASE-87-REMINDERS.md](phases/PHASE-87-REMINDERS.md)):
   bring one message back later — 1h/24h/weekend/custom from the row menu, a
   badged Reminders entry above the parking lot, the whole set in a sealed prefs

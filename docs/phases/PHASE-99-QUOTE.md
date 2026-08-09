@@ -1,7 +1,7 @@
 # Phase 99 — quoting a message
 
-**Status:** 99-1 shipped (the rules, pure). 99-2 render, 99-3 the action,
-99-4 the record.
+**Status:** shipped. 99-1 the rules, 99-2 the render, 99-3 the action, 99-4
+this record. Nothing left open beyond [Left open](#left-open).
 
 **Tag:** `#quote` → `tools/where.sh -g quote`.
 
