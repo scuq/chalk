@@ -29,9 +29,11 @@ Verified against the current code (2026-08-09):
   config for the life of the process; nothing prevents it from
   reaching logs, error chains, or a core dump.
 
-Under phase 83's claim 2 the host may be read by malicious code; one
-0600 file read (or one `/proc` read) currently yields a credential
-that grants exactly the database write the R18 attack needs.
+Phase 83's claim 2 promises that a persistent-storage breach opens no
+messages — but today one 0600 file read (or one `/proc/environ` read)
+yields a credential granting exactly the database write that R18
+classifies as a lost trusted endpoint. This phase exists to keep a
+mere storage read from escalating into that.
 
 ## The goal, honestly bounded
 

@@ -64,6 +64,24 @@ credentials at rest and in chalkd's memory. Stored *cryptographic*
 objects stay tamper-evident; only the authorization tables' integrity
 is trusted. **Gate 0 stays open pending re-review of this delta.**
 
+Fourth review (R19, 2026-08-09 —
+`docs/audits/security-phase-83-r19-review-2026-08-09.md`): R18
+verified closed, every protocol area green, and one Critical claim
+mismatch from combining claims 2 and 3 (P83-A-R19-01): claim 2
+permitted reading chalkd's *process memory*, which exfiltrates the
+server identity key — whose holder passes the D.3 handshake, presents
+any roster, and is auto-reshared channel keys. **Resolved in this
+fifth revision by the reviewer's Option A — no protocol change**:
+claim 2 is a *persistent-storage* breach claim (DB dumps, disks,
+backups, logs open nothing), and live process compromise — memory,
+the server key, execution — joins code-tampering and
+authorization-table writes on the malicious-chalkd side, giving the
+four-line model frozen in the claim. D.6's overclaim is corrected to
+the precise property (a persisted change is surfaced at next
+observation) and the diff-before-reshare ordering is frozen so the
+notice really does precede any wrap. **Gate 0 stays open pending what
+the reviewer expects to be the final claim-consistency pass.**
+
 **Tag:** `#msgsig`.
 
 ---
@@ -77,33 +95,43 @@ in this phase (threat-model.md carries the user-facing version):
    as written: it stores what it is given, delivers to whom it should,
    and asserts membership and ordering truthfully. chalk no longer
    claims any property against a chalkd that lies.
-2. **The machine chalkd runs on is not trusted for confidentiality —
-   the claim covers *reading*, and only reading (narrowed
-   2026-08-09, P83-A-R18-01).** Malicious code beside chalkd may read
-   server storage (database, disk, backups) and process memory, and
+2. **The host is not trusted for confidentiality of persistent
+   storage — a server-side data breach must not reveal message
+   contents (narrowed 2026-08-09 twice: P83-A-R18-01, then
+   P83-A-R19-01 to its final form).** An attacker may read the
+   database, filesystem data, backups, logs and snapshots — and
    **such access must not yield already-sent messages**: no plaintext
    at rest, no message keys, no channel space keys, and no *user*
-   identity private keys ever exist server-side (chalkd necessarily
-   holds its **own** server-identity private key — claim 3's signer;
-   stealing it impersonates the server, it opens no history). Two
-   boundaries with claim 1, both explicit:
-   - altering chalkd's executable code or live control flow is a
-     malicious chalkd (the R16 boundary); and
-   - **altering the authorization state chalkd consumes — above all
-     the membership tables — is equivalent to a malicious chalkd
-     too** (the R18 boundary). Membership is server-asserted by
-     design, so a database write that inserts a principal makes
-     honest clients wrap keys to it: three claims that could not all
-     hold, resolved by narrowing this one. **Database manipulation
-     is a real threat and chalk does not defend authorization state
-     against it** — it is stated, not defended, and met with two
-     mitigations rather than a pretended guarantee: every membership
-     change is announced *client-derived* in the channel itself
-     (D.6 — the notice fires off the roster diff clients observe, so
-     even a pure database insert is announced to every member), and
-     phase 99 (`PHASE-99-DBCREDS.md`) hardens how the database
-     credentials themselves are stored, raising the cost of the
-     write.
+   identity private keys ever exist server-side. Three boundaries
+   with claim 1, all explicit, all the same rule — *these are
+   equivalent to a malicious chalkd and outside this claim*:
+   - altering chalkd's executable code or live control flow (the R16
+     boundary);
+   - **altering the authorization state chalkd consumes** — above
+     all the membership tables (the R18 boundary): membership is
+     server-asserted by design, so a database write that inserts a
+     principal makes honest clients wrap keys to it. **Database
+     manipulation is a real threat and chalk does not defend
+     authorization state against it** — stated, not defended, and
+     met with two mitigations rather than a pretended guarantee:
+     D.6's client-derived roster-change notices, and phase 99
+     (`PHASE-99-DBCREDS.md`) hardening the database credentials that
+     make the write cheap; and
+   - **live compromise of chalkd's process — including its memory
+     and its server-identity private key** (the R19 boundary): the
+     server key is claim 3's signer, so its holder *is* the server
+     to every pinned client, and phase 82 auto-reshares to whatever
+     roster the server presents — a memory read that exfiltrates the
+     key is therefore a lost trusted endpoint, not a survivable
+     breach, and claiming otherwise made claims 2 and 3 contradict.
+     The clean model that results:
+
+     ```
+     DB dump / stolen disk / backup      → E2EE holds
+     live chalkd compromise              → trusted endpoint lost
+     authorization DB modification      → trusted endpoint lost
+     server identity private-key theft  → trusted endpoint lost
+     ```
 
    What claim 2 still defends against *tampering*: stored
    cryptographic objects. Corrupted or substituted ciphertexts,
@@ -447,10 +475,13 @@ generated by `chalkctl init`, env-provisioned like other secrets — the
 - **What this does not cover, stated plainly:** a MITM that serves the
   SPA *bundle* itself delivers malicious code — endpoint compromise,
   unfixable from inside the page (an installed PWA with a cached
-  bundle narrows the window; it does not close it). And host malware
-  that steals the server identity key can impersonate the server —
-  which under claim 2 still yields no message plaintext; it yields the
-  server's own legitimate position.
+  bundle narrows the window; it does not close it). And theft of the
+  server identity key is a **lost trusted endpoint** (claim 2's R19
+  boundary): its holder passes this handshake as the server, presents
+  any roster, and is auto-reshared channel keys — which is exactly
+  why the key lives only in chalkd's live process, never in the
+  storage claim 2 covers, and why exfiltrating it is classified with
+  malicious chalkd rather than survivable breach.
 
 ### D.4 Migration
 
@@ -498,14 +529,21 @@ the roster changed:
   and not attributable to an actor (the whole point is that no
   trustworthy actor record exists for a DB insert). It says *what*
   changed in the membership the client now sees, never *who* did it.
-- A member added by database manipulation therefore cannot arrive
-  silently: the moment any existing client refreshes the roster, the
-  addition is announced to that user, and the key-wrap that would
-  hand the intruder the space key is something the user has been told
-  about rather than something that happened invisibly. It is
+- The property, stated precisely (the R19 review's correction — not
+  "silent changes are impossible"): **a persisted unauthorized
+  membership change is surfaced when an existing client next observes
+  a roster containing it.** An attacker who inserts and removes a
+  principal entirely between two observations is not caught by this
+  mechanism, and visibility timing follows refresh flows. It is
   detection and disclosure, not prevention — consistent with the
   narrowed claim, and the honest most a server-asserted-membership
   design can offer.
+- **The ordering is frozen so the notice really does precede the
+  key** (R19's inexpensive hardening): fetch roster → compute the
+  diff → persist and surface additions → **only then** may
+  auto-reshare wrap to the new roster. A member added by manipulation
+  is therefore told about *before* any client of yours hands over a
+  wrap — the wrap follows the warning, never the other way around.
 - Consistency with the identity chain: a fingerprint-change notice
   reuses D.1's generation verification — an *unlinked* fingerprint
   change (no valid idgen chain to the prior pin) is the louder
@@ -526,8 +564,9 @@ Ed25519 op per object.
 | Residual | Treatment |
 |---|---|
 | Malicious/compelled chalkd | **Out of the trust model** (claim 1, decided 2026-08-09): a server that lies about membership is handed channel keys by honest clients. Visible (join notices, wrap provenance), not prevented. Federation stays gated on this (PHASE-88). |
-| Host compromise (read) | Reads all metadata (rosters, timing, sizes, edit/reaction graphs) and every ciphertext; **reading opens nothing** (claim 2). Can steal the server identity key → impersonate the server, not read history. TOTP secrets decrypt on the host (`CHALK_TOTP_ENC_KEY`) → account access ≠ message plaintext (the encryption phrase never reaches the server). |
-| Host compromise (write to authorization state) | **A real, undefended threat (P83-A-R18-01)**: a database write that inserts a principal into a roster makes honest clients wrap the channel key to it — no signature fails, because membership is server-asserted by design and the tables' integrity sits inside the claim-1 trust boundary. Mitigations, not guarantees: the client-derived roster-diff notice (D.6) announces the change in the channel — a silent membership edit is impossible even for a pure DB insert — and phase 99 hardens the database credentials that make the write cheap. Stored *cryptographic* objects (ciphertexts, wraps, identity records) stay tamper-evident and fail closed. |
+| Host compromise (storage read) | Reads all metadata (rosters, timing, sizes, edit/reaction graphs) and every ciphertext; **a storage breach opens nothing** (claim 2 — DB dumps, stolen disks, backups, logs). TOTP secrets decrypt on the host (`CHALK_TOTP_ENC_KEY`) → account access ≠ message plaintext (the encryption phrase never reaches the server). |
+| Host compromise (live process) | **Outside claim 2 (P83-A-R19-01)**: reading chalkd's memory can exfiltrate the server identity key, whose holder passes the D.3 handshake, presents any roster, and is auto-reshared channel keys — so live-process compromise, like authorization-table writes, is a lost trusted endpoint, classified with malicious chalkd. Phase 99's in-memory hygiene raises the bar; it does not move the boundary. |
+| Host compromise (write to authorization state) | **A real, undefended threat (P83-A-R18-01)**: a database write that inserts a principal into a roster makes honest clients wrap the channel key to it — no signature fails, because membership is server-asserted by design and the tables' integrity sits inside the claim-1 trust boundary. Mitigations, not guarantees: the client-derived roster-diff notice (D.6) surfaces a persisted change when a client next observes it — diffed and announced *before* any auto-reshare wraps to the new roster — and phase 99 hardens the database credentials that make the write cheap. Stored *cryptographic* objects (ciphertexts, wraps, identity records) stay tamper-evident and fail closed. |
 | First contact | Registration MITM wins that device's pins (server and peers alike); picture-word comparison remains the out-of-band upgrade. |
 | Bundle delivery | A web client cannot verify its own code; a bundle-serving MITM is endpoint compromise. PWA caching narrows, does not close. |
 | Deniability | Gone, deliberately: signatures are transferable proof of authorship. The fanout design's "authenticated for you" was the deniable alternative and retired with its threat model. |
@@ -554,7 +593,7 @@ half-claimed. L-01 — unchanged, separate account-recovery work.
 | 83-4 | Identity generations: the `chalk-idgen.v1` chain cert minted at rotation (R16-1), `(user_id, ed25519_fp)` fetch incl. retired + certs, chain-to-pin verification, `verified-former-identity` labelling, the chain-break wall |
 | 83-5 | Rotation-due: server marks on shrink; the atomic `rotate_channel_key` transaction + `rotation_required` send gate (R16-2); tests incl. owner-leave, 2-person channels, and the two-concurrent-responders race (no mixed generation in any interleaving) |
 | 83-6 | Server identity: chalkctl-provisioned keypair, registration pin + prefs backup, the inner sealed channel exactly as frozen in D.3 (transcript hash, directional HKDF domains, monotonic counters, close-on-violation), mismatch wall, re-pin flow |
-| 83-7 | Client-derived roster-change notices (D.6): per-channel observed-roster store, the diff on every fetch, the observed add/remove/key-change notice distinct from event-sourced ones, fingerprint-change reusing the idgen verification |
+| 83-7 | Client-derived roster-change notices (D.6): per-channel observed-roster store, the diff on every fetch, the observed add/remove/key-change notice distinct from event-sourced ones, fingerprint-change reusing the idgen verification, **the frozen diff-before-reshare ordering** |
 | 83-8 | Docs + enforcement end-state: threat-model.md final wording, minimum-signing-build advertisement, CHANGELOG |
 
 Each slice is independently verifiable; 83-1 through 83-4 and 83-7 are

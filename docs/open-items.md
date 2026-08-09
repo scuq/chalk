@@ -74,8 +74,17 @@ roster would make honest clients wrap keys to an intruder. The claim
 was **lowered** — host compromise is defended for *reads*; writing the
 authorization tables is a real, stated, undefended threat — and two
 mitigations were commissioned: D.6's client-derived roster-change
-notices (a membership change is announced in-channel even when it was
-a pure database insert) and phase 99's credential hardening (below).
+notices (a persisted membership change — a pure database insert
+included — is surfaced at the next roster observation, before any
+auto-reshare wraps to it) and phase 99's credential hardening (below).
+The R19 review then caught the last mismatch: claim 2 still allowed
+reading chalkd's *process memory*, where the server-identity key
+lives — and its holder is the server to every pinned client. Final
+form: **claim 2 is a persistent-storage breach claim** (dumps, disks,
+backups open nothing); live process compromise, like
+authorization-table writes, is a lost trusted endpoint. Every
+protocol area is green in R19; the gate awaits the final
+claim-consistency pass.
 Phase 98 (big rooms) was gated on fanout's membership layer and needs
 a re-sketch against this design before its own review.
 

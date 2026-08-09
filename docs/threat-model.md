@@ -19,32 +19,34 @@ design at git `731eac5`). The claims are now exactly these:
    protocol as written — store faithfully, deliver to the right
    members, assert membership and ordering truthfully. chalk makes
    **no** claim against a chalkd that actively lies.
-2. **The host is not trusted for confidentiality — the claim covers
-   *reading*, and only reading** (narrowed 2026-08-09 after the R18
-   review). The machine chalkd runs on may carry malicious code that
-   reads the database, disk, backups and process memory — and there
-   must be **no easy way for it to read already-sent messages**. No
-   message plaintext, message keys, channel space keys, or *user*
-   identity private keys ever exist server-side; chalkd necessarily
-   holds its own server-identity private key (claim 3), whose theft
-   impersonates the server but opens no history. Two boundaries with
-   claim 1: altering chalkd's executable code or live control flow is
-   a malicious chalkd, and so is **altering the authorization state
-   chalkd consumes** — membership is server-asserted, so a database
-   write that inserts a principal into a roster makes honest clients
-   wrap the channel key to it, with no signature to fail. **Database
+2. **The host is not trusted for confidentiality of persistent
+   storage — a server-side data breach must not reveal message
+   contents** (narrowed 2026-08-09 twice, R18 then R19, to this final
+   form). An attacker may read the database, filesystem data,
+   backups, logs and snapshots, and such access yields **no** message
+   plaintext, message keys, channel space keys, or *user* identity
+   private keys — none ever exist server-side. Three things are
+   explicitly **equivalent to a malicious chalkd** and outside this
+   claim: altering chalkd's executable code or live control flow;
+   **altering the authorization state chalkd consumes** (membership
+   is server-asserted, so a database write that inserts a principal
+   makes honest clients wrap the channel key to it — **database
    manipulation is a real threat and chalk does not defend
-   authorization state against it.** It is stated and mitigated
-   rather than pretended away: every membership change is announced
-   in the channel by a *client-derived* roster diff (phase 83's D.6 —
-   a pure database insert is announced the moment any member's client
-   refreshes the roster), and phase 99
-   ([phases/PHASE-99-DBCREDS.md](phases/PHASE-99-DBCREDS.md)) hardens
-   how the database credentials are stored, raising the cost of the
-   write. Stored *cryptographic* objects — ciphertexts, wraps,
-   identity records — remain tamper-evident and fail closed under
-   phase 82's and 83's signatures; it is the authorization tables
-   whose integrity is trusted.
+   authorization state against it**, mitigated by phase 83's
+   client-derived roster-diff notices, which surface a persisted
+   change before any auto-reshare wraps to it, and by phase 99's
+   credential hardening,
+   [phases/PHASE-99-DBCREDS.md](phases/PHASE-99-DBCREDS.md)); and
+   **live compromise of chalkd's process, memory included** — the
+   server-identity private key lives there, its holder *is* the
+   server to every pinned client, and clients auto-reshare to the
+   roster the server presents (the R19 finding). The clean model:
+   a DB dump, stolen disk or backup opens nothing; live chalkd
+   compromise, authorization-table modification, or server-key theft
+   is a lost trusted endpoint. Stored *cryptographic* objects —
+   ciphertexts, wraps, identity records — remain tamper-evident and
+   fail closed under phase 82's and 83's signatures; it is the
+   authorization tables whose integrity is trusted.
 3. **A client can detect a MITM toward its home server.** The network
    path is untrusted even with valid TLS; the client pins the server
    identity it registered with (phase 83, planned).
@@ -281,9 +283,10 @@ read. No E2E system defends against this.
 
 The revised trust model (top of this document) trusts the server
 software *and the authorization state it consumes*. A chalkd made to
-lie — by its operator, by compulsion, by an intruder who fully
-controls the running process, **or by anyone who can write its
-database's membership tables** (claim 2's R18 boundary) — can
+lie — by its operator, by compulsion, by an intruder who reads or
+controls the running process (the server-identity key lives in its
+memory — claim 2's R19 boundary), **or by anyone who can write its
+database's membership tables** (the R18 boundary) — can
 misassert membership (and be handed channel keys by honest clients),
 reorder and replay, withhold, and partition. The client keeps membership changes
 visible (join notices, wrap provenance), which is not prevention and is
@@ -311,7 +314,7 @@ problem (Cloudflare or similar).
 A subpoena yields metadata, ciphertext, wrapped keys, and credential hashes —
 not plaintext message bodies. This is claim 2 doing its job, and it covers
 the common compelled case (hand over the data) and the common intrusion case
-(read the machine). An operator compelled to *act* — to make chalkd lie — is
+(read the storage). An operator compelled to *act* — to make chalkd lie — is
 the actively-malicious-chalkd case above, outside the revised trust model:
 they cannot substitute a channel key (`CHALK_WRAP_SIG_REQUIRED`), but they can
 add a principal and be handed the key by a member's client. Treat legal
