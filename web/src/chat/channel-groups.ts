@@ -54,6 +54,25 @@ export function canonicalizeGroup(input: string, known: string[]): string {
   return match ?? trimmed;
 }
 
+// ---- 100-1: the voice section ----------------------------------------------
+
+// Partition the visible roster by channel kind. Voice rooms render in their
+// own sidebar section above "channels", flat and ungrouped -- a room you join
+// is a different thing from a feed you read, and there are rarely more than a
+// handful. Text channels keep the whole 54-3 grouping machinery. Order within
+// each half is the input order, untouched.
+export function splitVoice(channels: ChannelSummary[]): {
+  voice: ChannelSummary[];
+  text: ChannelSummary[];
+} {
+  const voice: ChannelSummary[] = [];
+  const text: ChannelSummary[] = [];
+  for (const ch of channels) {
+    (ch.channelType === "voice" ? voice : text).push(ch);
+  }
+  return { voice, text };
+}
+
 // ---- 54-3: grouped roster --------------------------------------------------
 
 // One rendered group. key is the lower-cased name -- the identity groups

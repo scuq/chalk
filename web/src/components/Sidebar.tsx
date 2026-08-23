@@ -7,6 +7,8 @@
 // Occupancy is reducer-owned (voiceRosters): seeded by a voice_roster
 // request per voice channel after the channel list loads, kept current by
 // joined/left/state pushes.
+// 100-1: voice rooms render in their own "voice" section directly above the
+// channels list; only text channels stay in the grouped/filtered roster.
 
 import { useState, useRef, useEffect } from "preact/hooks";
 import {
@@ -27,6 +29,7 @@ import {
   knownGroups,
   loadCollapsedGroups,
   saveCollapsedGroups,
+  splitVoice,
 } from "../chat/channel-groups";
 import type { RosterGroup } from "../chat/channel-groups";
 import { splitHidden } from "../chat/channel-hide";
@@ -365,6 +368,10 @@ export function Sidebar({
     hiddenEntries,
     lastSeqOf,
   );
+  // 100-1: voice rooms come out of the roster and into their own section
+  // above "channels" -- flat, ungrouped, unfiltered. Hidden channels already
+  // left the list, so the shelf keeps holding both kinds.
+  const { voice: voiceChannels, text: textChannels } = splitVoice(groupChannels);
   const [showHidden, setShowHidden] = useState(false);
   // 53-1: the active channel is still pointed at while parked, but it isn't on
   // screen -- so no row claims to be the one you are reading.
@@ -462,17 +469,22 @@ export function Sidebar({
   );
   const showFilter = showRosterFilter(sortedFriends.length);
 
-  const visibleChannels = filterRoster(groupChannels, channelFilter, (ch) => ch.name);
-  const showChannelFilter = showRosterFilter(groupChannels.length);
+  const visibleChannels = filterRoster(textChannels, channelFilter, (ch) => ch.name);
+  const showChannelFilter = showRosterFilter(textChannels.length);
 
   // 54-3: grouped view. An active filter always renders flat -- a match
   // hidden inside a collapsed group would read as "filter is broken" -- and
   // a single group draws no headers. Collapse state is per-machine.
-  const channelGroups = groupRoster(groupChannels, overrides);
+  const channelGroups = groupRoster(textChannels, overrides);
   const groupedView =
     groupingEnabled && channelFilter.trim() === "" && channelGroups.length > 1;
   // 54-4: datalist + canonicalization target for the menu's group row.
-  const groupNames = knownGroups(channels, overrides);
+  // 100-1: voice rooms are out of the grouped roster, so their (now inert)
+  // group suggestions stop feeding the datalist.
+  const groupNames = knownGroups(
+    channels.filter((ch) => ch.channelType !== "voice"),
+    overrides,
+  );
 
   // Commit the menu's group draft: canonicalize against the groups the user
   // already sees; landing back on the creator's suggestion CLEARS the
@@ -551,6 +563,136 @@ export function Sidebar({
       }
     }
   }
+
+  // 100-1: one channel row, shared by the voice section and the channels
+  // list below it. The JSX is large (badges, occupants, long-press) and must
+  // not fork between the two lists.
+  const channelRow = (ch: ChannelSummary, hidden = false) => {
+    const isVoice = ch.channelType === "voice";
+    const roster = isVoice ? (voiceRosters[ch.id] ?? []) : [];
+    const u = unread[ch.id];
+    // 45-3: my own presence in the room decides whether the scratchpad
+    // may show a dot. Read off the roster rather than the call session:
+    // the server owns who is in the room, and this is the same list the
+    // occupant sublist below renders.
+    const inRoom = !!ownUserID && roster.some((p) => p.userID === ownUserID);
+    const showUnread = countsAsUnread(u, ch.channelType, inRoom);
+    return (
+      <li
+        key={ch.id}
+        class={`chalk-sidebar-item ${isVoice ? "chalk-sidebar-item--voicech" : ""} ${ch.id === activeRow ? "chalk-sidebar-item--active" : ""} ${showUnread ? "chalk-sidebar-item--unread" : ""} ${hidden ? "chalk-sidebar-item--hidden" : ""}`}
+        data-testid="sidebar-item"
+        data-channel-id={ch.id}
+        data-hidden={hidden ? "true" : "false"}
+        data-channel-type={isVoice ? "voice" : "text"}
+        data-active={ch.id === activeRow ? "true" : "false"}
+        onClick={(e) => {
+          // 50-5: same long-press/click interplay as the friend rows.
+          if (longPressFired.current) {
+            longPressFired.current = false;
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          onSelect(ch.id);
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openChannelMenu(ch, e.clientX, e.clientY);
+        }}
+        onPointerDown={(e) => {
+          if (e.pointerType === "mouse") return; // right-click covers desktop
+          cancelLongPress();
+          const x = e.clientX;
+          const y = e.clientY;
+          longPressTimer.current = window.setTimeout(() => {
+            longPressFired.current = true;
+            openChannelMenu(ch, x, y);
+          }, 500);
+        }}
+        onPointerUp={cancelLongPress}
+        onPointerLeave={cancelLongPress}
+        onPointerCancel={cancelLongPress}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onSelect(ch.id);
+          }
+        }}
+      >
+        <span class="chalk-sidebar-item-row">
+          <span
+            class={`chalk-chglyph ${isVoice ? "chalk-chglyph--voice" : "chalk-chglyph--text"}`}
+          >
+            <ChannelGlyph type={isVoice ? "voice" : "text"} />
+          </span>
+          <span class="chalk-sidebar-item-name">{ch.name}</span>
+          {/* 80-14: the ephemeral room's remaining life. Urgency is
+              a class, never an inline style (CSP style-src 'self'). */}
+          {ch.expiresAt != null && countdownNow != null && (
+            <span
+              class={
+                "chalk-expiry-badge" +
+                (countdownUrgent(ch.expiresAt - countdownNow) ? " chalk-expiry-badge--urgent" : "")
+              }
+              data-testid="sidebar-expiry"
+              title="this room and everything in it disappear when the timer runs out"
+            >
+              {formatCountdown(ch.expiresAt - countdownNow)}
+            </span>
+          )}
+          {isVoice && roster.length > 0 && (
+            <span
+              class="chalk-sidebar-voicecount"
+              data-testid="sidebar-voice-count"
+              title={`${roster.length} in voice`}
+            >
+              {roster.length}
+            </span>
+          )}
+          {showUnread && <UnreadDot mention={u.mention} />}
+        </span>
+        {/* 30-5: live occupant sublist. Rendered inside the channel
+            <li> (still one click target); pointer events fall through
+            to the channel select. */}
+        {isVoice && roster.length > 0 && (
+          <ul
+            class="chalk-sidebar-occupants"
+            data-testid="sidebar-voice-occupants"
+          >
+            {roster.map((p) => {
+              const isOwn = !!ownUserID && p.userID === ownUserID;
+              const handle = occupantHandle(ch, p.userID);
+              const hue = isOwn
+                ? (selfHue ?? null)
+                : handle
+                  ? (hueForHandle?.(handle) ?? null)
+                  : null;
+              return (
+                <li
+                  class="chalk-sidebar-occupant"
+                  key={p.userID + ":" + p.deviceID}
+                  data-user-id={p.userID}
+                >
+                  <span
+                    class={`chalk-sidebar-occupant-name ${hue !== null ? "chalk-nick-tinted" : ""}`}
+                    style={hue !== null ? nickTintStyle(hue) : undefined}
+                  >
+                    {occupantName(ch, ownUserID, p.userID)}
+                  </span>
+                  {p.muted && <MicOffIcon />}
+                  {p.videoOn && <CamIcon />}
+                  {p.screenOn && <ScreenIcon />}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </li>
+    );
+  };
 
   // 92-1: everything the open card draws, resolved once. Null when no card is
   // open, or when its friend left the roster while it was up. The relative
@@ -779,12 +921,36 @@ export function Sidebar({
         </div>
       )}
 
+      {/* ---- voice section (100-1) ----
+           Voice rooms sit in their own section directly above the channel
+           list: a room you join is a different thing from a feed you read,
+           and mixed into the grouped roster the two kinds blur. Flat on
+           purpose -- there are rarely more than a handful -- and the channel
+           filter below does not reach up here. The section only exists while
+           there is a room to show; hidden voice rooms stay on the hidden
+           shelf with everything else. */}
+      {voiceChannels.length > 0 && (
+        <div class="chalk-sidebar-section chalk-sidebar-section--voice">
+          <div class="chalk-sidebar-header chalk-sidebar-header--voice">
+            <span class="chalk-sidebar-title">
+              voice <span class="chalk-sidebar-count">({voiceChannels.length})</span>
+            </span>
+          </div>
+          <ul
+            class="chalk-sidebar-list chalk-sidebar-list--voice"
+            data-testid="sidebar-voice-list"
+          >
+            {voiceChannels.map((ch) => channelRow(ch))}
+          </ul>
+        </div>
+      )}
+
       {/* ---- channels section ---- */}
       <div class="chalk-sidebar-section chalk-sidebar-section--channels">
         <div class="chalk-sidebar-header chalk-sidebar-header--channels">
           <span class="chalk-sidebar-title">
-            channels {groupChannels.length > 0 && (
-              <span class="chalk-sidebar-count">({groupChannels.length})</span>
+            channels {textChannels.length > 0 && (
+              <span class="chalk-sidebar-count">({textChannels.length})</span>
             )}
           </span>
           <button
@@ -818,7 +984,7 @@ export function Sidebar({
           {groupChannels.length === 0 && hiddenList.length === 0 && (
             <li class="chalk-sidebar-empty">no channels yet</li>
           )}
-          {groupChannels.length > 0 && visibleChannels.length === 0 && (
+          {textChannels.length > 0 && visibleChannels.length === 0 && (
             <li class="chalk-sidebar-empty">no matches</li>
           )}
           {rosterRows.map((row) => {
@@ -882,131 +1048,7 @@ export function Sidebar({
                 </li>
               );
             }
-            const ch = row.ch;
-            const isVoice = ch.channelType === "voice";
-            const roster = isVoice ? (voiceRosters[ch.id] ?? []) : [];
-            const u = unread[ch.id];
-            // 45-3: my own presence in the room decides whether the scratchpad
-            // may show a dot. Read off the roster rather than the call session:
-            // the server owns who is in the room, and this is the same list the
-            // occupant sublist below renders.
-            const inRoom = !!ownUserID && roster.some((p) => p.userID === ownUserID);
-            const showUnread = countsAsUnread(u, ch.channelType, inRoom);
-            return (
-              <li
-                key={ch.id}
-                class={`chalk-sidebar-item ${isVoice ? "chalk-sidebar-item--voicech" : ""} ${ch.id === activeRow ? "chalk-sidebar-item--active" : ""} ${showUnread ? "chalk-sidebar-item--unread" : ""} ${row.hidden ? "chalk-sidebar-item--hidden" : ""}`}
-                data-testid="sidebar-item"
-                data-channel-id={ch.id}
-                data-hidden={row.hidden ? "true" : "false"}
-                data-channel-type={isVoice ? "voice" : "text"}
-                data-active={ch.id === activeRow ? "true" : "false"}
-                onClick={(e) => {
-                  // 50-5: same long-press/click interplay as the friend rows.
-                  if (longPressFired.current) {
-                    longPressFired.current = false;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                  }
-                  onSelect(ch.id);
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  openChannelMenu(ch, e.clientX, e.clientY);
-                }}
-                onPointerDown={(e) => {
-                  if (e.pointerType === "mouse") return; // right-click covers desktop
-                  cancelLongPress();
-                  const x = e.clientX;
-                  const y = e.clientY;
-                  longPressTimer.current = window.setTimeout(() => {
-                    longPressFired.current = true;
-                    openChannelMenu(ch, x, y);
-                  }, 500);
-                }}
-                onPointerUp={cancelLongPress}
-                onPointerLeave={cancelLongPress}
-                onPointerCancel={cancelLongPress}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onSelect(ch.id);
-                  }
-                }}
-              >
-                <span class="chalk-sidebar-item-row">
-                  <span
-                    class={`chalk-chglyph ${isVoice ? "chalk-chglyph--voice" : "chalk-chglyph--text"}`}
-                  >
-                    <ChannelGlyph type={isVoice ? "voice" : "text"} />
-                  </span>
-                  <span class="chalk-sidebar-item-name">{ch.name}</span>
-                  {/* 80-14: the ephemeral room's remaining life. Urgency is
-                      a class, never an inline style (CSP style-src 'self'). */}
-                  {ch.expiresAt != null && countdownNow != null && (
-                    <span
-                      class={
-                        "chalk-expiry-badge" +
-                        (countdownUrgent(ch.expiresAt - countdownNow) ? " chalk-expiry-badge--urgent" : "")
-                      }
-                      data-testid="sidebar-expiry"
-                      title="this room and everything in it disappear when the timer runs out"
-                    >
-                      {formatCountdown(ch.expiresAt - countdownNow)}
-                    </span>
-                  )}
-                  {isVoice && roster.length > 0 && (
-                    <span
-                      class="chalk-sidebar-voicecount"
-                      data-testid="sidebar-voice-count"
-                      title={`${roster.length} in voice`}
-                    >
-                      {roster.length}
-                    </span>
-                  )}
-                  {showUnread && <UnreadDot mention={u.mention} />}
-                </span>
-                {/* 30-5: live occupant sublist. Rendered inside the channel
-                    <li> (still one click target); pointer events fall through
-                    to the channel select. */}
-                {isVoice && roster.length > 0 && (
-                  <ul
-                    class="chalk-sidebar-occupants"
-                    data-testid="sidebar-voice-occupants"
-                  >
-                    {roster.map((p) => {
-                      const isOwn = !!ownUserID && p.userID === ownUserID;
-                      const handle = occupantHandle(ch, p.userID);
-                      const hue = isOwn
-                        ? (selfHue ?? null)
-                        : handle
-                          ? (hueForHandle?.(handle) ?? null)
-                          : null;
-                      return (
-                        <li
-                          class="chalk-sidebar-occupant"
-                          key={p.userID + ":" + p.deviceID}
-                          data-user-id={p.userID}
-                        >
-                          <span
-                            class={`chalk-sidebar-occupant-name ${hue !== null ? "chalk-nick-tinted" : ""}`}
-                            style={hue !== null ? nickTintStyle(hue) : undefined}
-                          >
-                            {occupantName(ch, ownUserID, p.userID)}
-                          </span>
-                          {p.muted && <MicOffIcon />}
-                          {p.videoOn && <CamIcon />}
-                          {p.screenOn && <ScreenIcon />}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </li>
-            );
+            return channelRow(row.ch, row.hidden);
           })}
         </ul>
       </div>
@@ -1126,6 +1168,9 @@ export function Sidebar({
           {onSetChannelGroup && (() => {
             const ch = channels.find((c) => c.id === channelMenu.channelID);
             if (!ch) return null;
+            // 100-1: voice rooms live in their own section; groups no longer
+            // apply to them, so offering a move here would be a lie.
+            if (ch.channelType === "voice") return null;
             const overridden = overrides[ch.id] !== undefined;
             const suggested = ch.groupName.trim() || DEFAULT_GROUP;
             return (

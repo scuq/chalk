@@ -12,6 +12,12 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Changed
+- **Voice rooms now have their own "voice" section in the sidebar**, directly
+  above the channel list, instead of being mixed in with text channels. The
+  section appears only when you have a voice room, and text channels keep
+  their groups and filter to themselves.
+
 ### Added
 - **You can now see your server's identity fingerprint in settings, any time.**
   Account settings has a new "server identity" section showing the fingerprint

@@ -8,6 +8,7 @@ import {
   groupRoster,
   knownGroups,
   loadCollapsedGroups,
+  splitVoice,
 } from "./channel-groups";
 import type { ChannelSummary } from "../state/types";
 
@@ -155,6 +156,27 @@ test("knownGroups sees the roster through overrides", () => {
     { a: "Ops" }
   );
   assert.deepEqual(got, [DEFAULT_GROUP, "Ops"]);
+});
+
+test("splitVoice partitions by kind, keeps order within each half", () => {
+  const got = splitVoice([
+    channel({ id: "t1" }),
+    channel({ id: "v1", channelType: "voice" }),
+    channel({ id: "t2" }),
+    channel({ id: "v2", channelType: "voice" }),
+  ]);
+  assert.deepEqual(got.voice.map((c) => c.id), ["v1", "v2"]);
+  assert.deepEqual(got.text.map((c) => c.id), ["t1", "t2"]);
+});
+
+test("splitVoice files the blank default kind under text", () => {
+  const got = splitVoice([channel({ id: "a", channelType: "" })]);
+  assert.deepEqual(got.voice, []);
+  assert.deepEqual(got.text.map((c) => c.id), ["a"]);
+});
+
+test("splitVoice of nothing is two empty halves", () => {
+  assert.deepEqual(splitVoice([]), { voice: [], text: [] });
 });
 
 test("loadCollapsedGroups without a window is an empty set", () => {

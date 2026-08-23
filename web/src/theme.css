@@ -3557,6 +3557,24 @@ body.chalk-resizing-y .chalk-composer-resizer {
   min-height: 0;
 }
 
+/* 100-1: the voice section sits directly above channels. Like friends it
+   sizes to its content (a few rooms plus their live occupant sublists)
+   under a viewport cap with internal scroll, so the channel list below
+   keeps the remaining space. */
+.chalk-sidebar-section--voice {
+  flex-shrink: 0;
+  max-height: 35vh;
+  /* Same separated-section treatment as threads above it. */
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--chalk-border, #1f2a1f);
+}
+
+.chalk-sidebar-list--voice {
+  flex: 0 1 auto;
+  overflow-y: auto;
+}
+
 /* The friends list within the friends section: scroll INSIDE the
    section when content overflows the 40vh cap. Override the base
    .chalk-sidebar-list `flex: 1` (which would cause both sections to
