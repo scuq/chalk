@@ -187,3 +187,35 @@ func TestUpgradeFromPre83Schema(t *testing.T) {
 		t.Fatalf("displaced key_version: %+v", revs[0].KeyVersion)
 	}
 }
+
+// Found by the phase-83 stress run: a password-method seed wrap (nil
+// CredentialID) must store as the EMPTY credential id, not NULL.
+func TestPutIdentitySeedWrapPasswordMethod(t *testing.T) {
+	pool := openProbeDB(t, "chalk_probe_seedwrap")
+	s := &Store{Pool: pool}
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO users (id, handle, username, display_name, email)
+		    VALUES ($1,'sw_a','sw_a','A','sw_a@x.test')`, mcUser); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutIdentitySeedWrap(ctx, IdentitySeedWrap{
+		UserID: mcUser, Method: "password", Generation: 1, WrapSuite: 1, WrapBlob: []byte("wrap"),
+	}); err != nil {
+		t.Fatalf("password seed wrap must store: %v", err)
+	}
+	// idempotent upsert on the same (user, method, '', generation) key
+	if err := s.PutIdentitySeedWrap(ctx, IdentitySeedWrap{
+		UserID: mcUser, Method: "password", Generation: 1, WrapSuite: 1, WrapBlob: []byte("wrap2"),
+	}); err != nil {
+		t.Fatalf("re-put: %v", err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM identity_seed_wrap WHERE user_id = $1 AND credential_id = ''::bytea`, mcUser).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("want exactly one empty-credential row, got %d", n)
+	}
+}

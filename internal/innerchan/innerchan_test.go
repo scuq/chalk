@@ -239,3 +239,84 @@ func TestConcurrentSealCountersAreDense(t *testing.T) {
 		}
 	}
 }
+
+// Intense: both directions hammered concurrently. Many goroutines seal in
+// each direction; delivery happens in per-direction counter order (what the
+// ws.go writer mutex and the client's recv chain guarantee); every frame
+// must open, and the two directions' counters must never interfere.
+func TestBidirectionalSealStorm(t *testing.T) {
+	b64, _ := GenerateServerKey()
+	priv, _ := ParseServerKey(b64)
+	clientEph, _ := ecdh.X25519().GenerateKey(rand.Reader)
+	nonce := make([]byte, 32)
+	rand.Read(nonce)
+	res, err := ServerHandshake(priv, clientEph.PublicKey().Bytes(), nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := playClient(t, clientEph, nonce, res)
+	server := res.Session
+
+	const n = 200
+	s2c := make([][]byte, n)
+	c2s := make([][]byte, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(2)
+		go func(i int) {
+			defer wg.Done()
+			f, err := server.SealToClient([]byte{0x51, byte(i)})
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			s2c[i] = f
+		}(i)
+		go func(i int) {
+			defer wg.Done()
+			f, err := client.SealFromClient([]byte{0x52, byte(i)})
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			c2s[i] = f
+		}(i)
+	}
+	wg.Wait()
+
+	sort.Slice(s2c, func(a, b int) bool {
+		return binary.BigEndian.Uint64(s2c[a][:8]) < binary.BigEndian.Uint64(s2c[b][:8])
+	})
+	sort.Slice(c2s, func(a, b int) bool {
+		return binary.BigEndian.Uint64(c2s[a][:8]) < binary.BigEndian.Uint64(c2s[b][:8])
+	})
+	// fresh receivers with zeroed counters, fed in delivery order
+	rxClient := playClient(t, clientEph, nonce, res)
+	rxServer, err := DeriveSession(mustECDH(t, clientEph, res.ServerEphPub), TranscriptHash(clientEph.PublicKey().Bytes(), res.ServerEphPub, nonce, res.ServerEdPub))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, f := range s2c {
+		if _, err := rxClient.OpenToClient(f); err != nil {
+			t.Fatalf("s2c frame %d: %v", i, err)
+		}
+	}
+	for i, f := range c2s {
+		if _, err := rxServer.OpenFromClient(f); err != nil {
+			t.Fatalf("c2s frame %d: %v", i, err)
+		}
+	}
+}
+
+func mustECDH(t *testing.T, priv *ecdh.PrivateKey, peerPub []byte) []byte {
+	t.Helper()
+	peer, err := ecdh.X25519().NewPublicKey(peerPub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ss, err := priv.ECDH(peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ss
+}

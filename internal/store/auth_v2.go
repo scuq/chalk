@@ -233,6 +233,15 @@ func (s *Store) PutIdentitySeedWrap(ctx context.Context, w IdentitySeedWrap) err
 	if w.Generation < 1 {
 		w.Generation = 1
 	}
+	// A nil CredentialID (the password method's normal case -- the handler
+	// never sets one) must reach Postgres as the EMPTY bytea the schema
+	// keys on, not as NULL: pgx encodes nil []byte as NULL, an explicit
+	// NULL overrides the column default, and the NOT NULL then rejects the
+	// row. This 500'd every password-method seed-wrap upload since 31-6
+	// (found by the phase-83 stress run's server-log sweep).
+	if w.CredentialID == nil {
+		w.CredentialID = []byte{}
+	}
 	_, err := s.Pool.Exec(ctx,
 		`INSERT INTO identity_seed_wrap
 		     (user_id, method, credential_id, generation, wrap_suite, wrap_blob)

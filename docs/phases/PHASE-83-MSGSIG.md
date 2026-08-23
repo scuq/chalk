@@ -1005,6 +1005,32 @@ tests, plus one hardening:
   frame's 24-byte framing slack, so a frame that fit plaintext is
   never dropped for having been sealed.
 
+**Intense run (2026-08-23)** — concurrency storms with `-race`
+(`TestRotationStorm`: 5 rounds × 8 responders, one winner each, no
+mixed generation; `TestConcurrentEditStorm`: 30 concurrent edits of
+one message → revisions dense 1..30, the original preserved, each
+write displaced exactly once; `TestBidirectionalSealStorm`: 200
+frames each way from concurrent sealers, all open in counter order)
+plus a 21/21 browser stress probe: a 60-message burst received
+complete and in order (the load that exercises the seal+write mutex
+and the client's receive chain), 40-message crossfire converging both
+sides, a 10-deep edit storm whose chain verifies live AND by the
+receiver's background walk, 8 reaction flaps ending consistent, and a
+chalkd restart under both live clients — clean reconnect, fresh
+sealed handshakes, no walls, traffic resumed. Zero verify badges and
+zero page errors across the whole run.
+
+The run's server-log sweep also surfaced a PRE-EXISTING auth-v2 bug
+(not phase 83; present since 31-6): every password-method
+identity-seed-wrap upload 500'd — pgx encodes the handler's nil
+credential id as NULL, overriding the column default past the NOT
+NULL — so the wrap behind "a new device restores the encryption
+identity from the password" was never stored, silently (the client
+treats the upload as best-effort). Fixed in
+`store.PutIdentitySeedWrap` (nil → empty bytea, the value the schema
+keys on) with a regression test, and confirmed live: the wrap row now
+lands at registration.
+
 Known residuals accepted and stated (none load-bearing): for up to
 60 s after a peer's identity rotation, their new-generation messages
 can transiently read `forged` (the resolver's chain cache; heals on
