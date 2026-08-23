@@ -10,7 +10,22 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.1 — 24 August 2026 — Sound themes, the picture tile grid and the sidebar's voice section
+
+### Added
+- **Sound themes.** Notification sounds are now recorded cues, and you pick
+  the set: *chalk* (scrapes, taps and dust on a board — the default),
+  *gamegirl* (classic-handheld bleeps) or *runestone* (horns, bells, parchment
+  and portals). The picker sits in profile → notifications next to the
+  volume, plays the message cue as soon as you choose, and the play buttons
+  below it preview every noise in the chosen theme. Like the volume, the
+  choice stays on the device.
+- **You can now see your server's identity fingerprint in settings, any time.**
+  Account settings has a new "server identity" section showing the fingerprint
+  your device pinned — in the same format your server's operator sees with
+  `chalkctl serverkey show`, so you can compare the two and confirm nobody is
+  impersonating your server. It also says how the identity was pinned and
+  whether your current connection is running over the extra sealed channel.
 
 ### Changed
 - **Sending several pictures in one message now shows them as a compact tile
@@ -22,14 +37,6 @@ The engineering-level history (which slice shipped what) lives in
   above the channel list, instead of being mixed in with text channels. The
   section appears only when you have a voice room, and text channels keep
   their groups and filter to themselves.
-
-### Added
-- **You can now see your server's identity fingerprint in settings, any time.**
-  Account settings has a new "server identity" section showing the fingerprint
-  your device pinned — in the same format your server's operator sees with
-  `chalkctl serverkey show`, so you can compare the two and confirm nobody is
-  impersonating your server. It also says how the identity was pinned and
-  whether your current connection is running over the extra sealed channel.
 
 ---
 
