@@ -41,8 +41,9 @@ import {
   fetchChannelKeyRecipients,
   type ChannelKeyRecipients,
 } from "./spacekey-sync";
-import { fetchIdentity } from "./identity-sync";
+import { fetchIdentity, fetchVerifiedChain } from "./identity-sync";
 import { fetchTrustedIdentity, resolveSigner } from "./trust";
+import { chainStanding, type VerifiedGeneration } from "./idgen"; // 83-4
 import {
   loadSpaceKey,
   saveSpaceKey,
@@ -275,6 +276,11 @@ export class ChannelCrypto {
   // envelope signer this session, so an unpinned sender costs one fetch, not
   // one per message.
   private readonly envelopeFetchTried = new Set<string>();
+  // 83-4: verified generation chains per actor, fetched on the first
+  // fingerprint that is not the pinned key. Re-fetched when a lookup fails
+  // and the cached walk is older than CHAIN_TTL_MS, so a rotation that lands
+  // mid-session is picked up without a reload.
+  private readonly chains = new Map<string, { at: number; chain: VerifiedGeneration[] }>();
 
   constructor(
     transport: CryptoTransport,
@@ -1199,10 +1205,12 @@ export class ChannelCrypto {
    */
   private async resolveEnvelopeSigner(actorUserID: string, fp: Uint8Array): Promise<SignerResolution> {
     // Ourselves: our key is the belief; the pin store has no self record.
+    // Our own retired generations resolve through the chain like anyone's.
     if (actorUserID === this.identity.userID) {
-      return bytesEqual(await this.ownFp(), fp)
-        ? { kind: "current", ed25519Public: this.identity.ed25519Public }
-        : { kind: "foreign" };
+      if (bytesEqual(await this.ownFp(), fp)) {
+        return { kind: "current", ed25519Public: this.identity.ed25519Public };
+      }
+      return this.resolveViaChain(actorUserID, this.identity.ed25519Public, fp);
     }
     let rec = await loadVerification(actorUserID);
     if (!rec?.ed25519PubB64 && !this.envelopeFetchTried.has(actorUserID)) {
@@ -1217,7 +1225,41 @@ export class ChannelCrypto {
     if (!rec?.ed25519PubB64) return { kind: "unpinned" };
     const pinned = base64ToBytes(rec.ed25519PubB64);
     const pinnedFp = await ed25519Fingerprint(pinned);
-    return bytesEqual(pinnedFp, fp) ? { kind: "current", ed25519Public: pinned } : { kind: "foreign" };
+    if (bytesEqual(pinnedFp, fp)) return { kind: "current", ed25519Public: pinned };
+    return this.resolveViaChain(actorUserID, pinned, fp);
+  }
+
+  /**
+   * resolveViaChain (83-4) answers a fingerprint that is NOT the pinned key
+   * by walking the actor's verified generation chain: an earlier generation
+   * linked to the pin is "retired" (history, labelled as such); a later one
+   * the pin chains forward to is "current"; anything the chain does not
+   * reach -- or a chain that never reaches the pin -- is foreign, rendered
+   * forged. A database row alone proves nothing here: only the walk does.
+   */
+  private async resolveViaChain(actorUserID: string, pinned: Uint8Array, fp: Uint8Array): Promise<SignerResolution> {
+    const fpHex = bytesToHex(fp);
+    const standing = (chain: VerifiedGeneration[]): SignerResolution => {
+      const st = chainStanding(chain, pinned, fpHex);
+      if (st.kind === "retired") return { kind: "retired", ed25519Public: st.generation!.ed25519Public };
+      if (st.kind === "current") return { kind: "current", ed25519Public: st.generation!.ed25519Public };
+      return { kind: "foreign" };
+    };
+    const cached = this.chains.get(actorUserID);
+    if (cached) {
+      const r = standing(cached.chain);
+      if (r.kind !== "foreign" || Date.now() - cached.at < CHAIN_TTL_MS) return r;
+    }
+    let chain: VerifiedGeneration[] = [];
+    try {
+      chain = await fetchVerifiedChain(this.transport, actorUserID);
+    } catch {
+      // offline: whatever we cached (or nothing) decides
+      if (cached) return standing(cached.chain);
+      return { kind: "foreign" };
+    }
+    this.chains.set(actorUserID, { at: Date.now(), chain });
+    return standing(chain);
   }
 
   /** envelopeActorOf exposes envelope.ts's actor rule without the caller
@@ -1324,6 +1366,11 @@ export class ChannelCrypto {
     return decryptMessage(sk, channelID, keyVersion, ciphertext);
   }
 }
+
+// 83-4: how long a cached (failed) chain walk is trusted before a foreign
+// fingerprint triggers a re-fetch. Long enough that a forged flood cannot
+// turn into a fetch flood; short enough that a live rotation is seen soon.
+const CHAIN_TTL_MS = 60_000;
 
 // ---- 83-2 display helpers ------------------------------------------------
 

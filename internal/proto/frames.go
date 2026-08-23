@@ -541,6 +541,11 @@ const (
 
 	TypeFetchIdentity    = "fetch_identity"
 	TypeFetchIdentityAck = "fetch_identity_ack"
+	// 83-4: every generation of a user's identity, retired ones included,
+	// with the chalk-idgen.v1 certs that link them -- the chain a client
+	// walks from generation 1 to the key it has pinned.
+	TypeFetchIdentityChain    = "fetch_identity_chain"
+	TypeFetchIdentityChainAck = "fetch_identity_chain_ack"
 
 	TypePublishChannelKey    = "publish_channel_key"
 	TypePublishChannelKeyAck = "publish_channel_key_ack"
@@ -1002,6 +1007,11 @@ type PublishIdentityPayload struct {
 	X25519Pub  string `json:"x25519_pub"`           // b64, 32 bytes
 	Ed25519Pub string `json:"ed25519_pub"`          // b64, 32 bytes
 	SelfSig    string `json:"self_sig"`             // b64, 64 bytes (Ed25519 over x25519_pub)
+	// GenCert (83-4): b64 of the 64-byte chalk-idgen.v1 cert signed by the
+	// generation being retired. REQUIRED for generation >= 2 -- the publish
+	// is then an atomic rotation (store.RotateIdentityKey); ignored for
+	// generation 1.
+	GenCert string `json:"gen_cert,omitempty"`
 }
 
 // PublishIdentityAckPayload confirms the stored generation.
@@ -1024,6 +1034,33 @@ type FetchIdentityAckPayload struct {
 	X25519Pub  string `json:"x25519_pub,omitempty"`
 	Ed25519Pub string `json:"ed25519_pub,omitempty"`
 	SelfSig    string `json:"self_sig,omitempty"`
+}
+
+// FetchIdentityChainPayload asks for every generation of one user's identity
+// (83-4).
+type FetchIdentityChainPayload struct {
+	UserID string `json:"user_id"`
+}
+
+// IdentityGenerationWire is one generation of the chain. GenCert is empty
+// for generation 1 (a chain root) and for a generation that started a new
+// chain after key loss; RetiredAt is 0 for the active generation.
+type IdentityGenerationWire struct {
+	Generation int    `json:"generation"`
+	X25519Pub  string `json:"x25519_pub"`
+	Ed25519Pub string `json:"ed25519_pub"`
+	SelfSig    string `json:"self_sig"`
+	GenCert    string `json:"gen_cert,omitempty"`
+	RetiredAt  int64  `json:"retired_at,omitempty"` // unix-millis
+}
+
+// FetchIdentityChainAckPayload returns the generations oldest first. Found
+// is false when the user has published nothing. The client verifies the
+// chain itself; the server never does.
+type FetchIdentityChainAckPayload struct {
+	Found       bool                     `json:"found"`
+	UserID      string                   `json:"user_id"`
+	Generations []IdentityGenerationWire `json:"generations"`
 }
 
 // PrefsGetPayload is empty -- the calling user is identified by the

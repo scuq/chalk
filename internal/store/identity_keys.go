@@ -30,8 +30,13 @@ type IdentityKey struct {
 	X25519Pub  []byte // 32 bytes
 	Ed25519Pub []byte // 32 bytes
 	SelfSig    []byte // 64 bytes, Ed25519 over X25519Pub
-	CreatedAt  time.Time
-	RetiredAt  time.Time // zero if active
+	// GenCert (83-4) is the chalk-idgen.v1 cert: 64 bytes, Ed25519 by
+	// generation N-1's key admitting this generation. Nil for generation 1
+	// (a chain root) and for a generation that starts a new chain after key
+	// loss. Stored and relayed, never verified here.
+	GenCert   []byte
+	CreatedAt time.Time
+	RetiredAt time.Time // zero if active
 }
 
 // IsRetired reports whether this identity generation has been rotated out.
@@ -81,11 +86,11 @@ func (s *Store) GetActiveIdentityKey(ctx context.Context, userID uuid.UUID) (Ide
 	var k IdentityKey
 	var retiredAt *time.Time
 	err := s.Pool.QueryRow(ctx,
-		`SELECT user_id, generation, x25519_pub, ed25519_pub, self_sig, created_at, retired_at
+		`SELECT user_id, generation, x25519_pub, ed25519_pub, self_sig, gen_cert, created_at, retired_at
 		   FROM identity_keys
 		  WHERE user_id = $1 AND retired_at IS NULL`,
 		userID,
-	).Scan(&k.UserID, &k.Generation, &k.X25519Pub, &k.Ed25519Pub, &k.SelfSig, &k.CreatedAt, &retiredAt)
+	).Scan(&k.UserID, &k.Generation, &k.X25519Pub, &k.Ed25519Pub, &k.SelfSig, &k.GenCert, &k.CreatedAt, &retiredAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return IdentityKey{}, ErrNotFound
 	}
@@ -120,4 +125,92 @@ func (s *Store) GetActiveIdentityKeyAny(ctx context.Context, userID uuid.UUID) (
 	}
 	k.Generation = 1
 	return k, nil
+}
+
+// ErrRotationOutOfSequence is returned by RotateIdentityKey when the new
+// generation is not exactly the active generation plus one.
+var ErrRotationOutOfSequence = errors.New("identity rotation out of sequence")
+
+// RotateIdentityKey retires the caller's active identity and inserts the
+// next generation, in ONE transaction (83-4). Requirements, all enforced
+// here: k.Generation >= 2; k.GenCert is exactly 64 bytes (the server cannot
+// verify it, but a rotation without a cert is not a rotation -- a chain
+// root after key loss goes through the recovery path, not here); and the
+// currently active generation is exactly k.Generation-1, so two devices
+// racing a rotation cannot both succeed and cannot skip a number. The row
+// lock on the active generation serializes concurrent rotations.
+func (s *Store) RotateIdentityKey(ctx context.Context, k IdentityKey) error {
+	if k.Generation < 2 {
+		return fmt.Errorf("RotateIdentityKey: generation must be >= 2, got %d", k.Generation)
+	}
+	if len(k.GenCert) != 64 {
+		return fmt.Errorf("RotateIdentityKey: gen_cert must be 64 bytes, got %d", len(k.GenCert))
+	}
+	if len(k.X25519Pub) != 32 || len(k.Ed25519Pub) != 32 || len(k.SelfSig) != 64 {
+		return errors.New("RotateIdentityKey: malformed key material")
+	}
+	return s.withTx(ctx, func(tx pgx.Tx) error {
+		var active int
+		err := tx.QueryRow(ctx,
+			`SELECT generation FROM identity_keys
+			  WHERE user_id = $1 AND retired_at IS NULL
+			  FOR UPDATE`,
+			k.UserID,
+		).Scan(&active)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock active identity: %w", err)
+		}
+		if active != k.Generation-1 {
+			return ErrRotationOutOfSequence
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE identity_keys SET retired_at = now()
+			  WHERE user_id = $1 AND generation = $2`,
+			k.UserID, active,
+		); err != nil {
+			return fmt.Errorf("retire identity: %w", err)
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO identity_keys
+			   (user_id, generation, x25519_pub, ed25519_pub, self_sig, gen_cert, created_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, now())`,
+			k.UserID, k.Generation, k.X25519Pub, k.Ed25519Pub, k.SelfSig, k.GenCert,
+		); err != nil {
+			return fmt.Errorf("insert identity generation: %w", err)
+		}
+		return nil
+	})
+}
+
+// ListIdentityKeys returns every generation of a user's identity, retired
+// ones included, oldest first -- the chain a client walks (83-4). Empty when
+// the user has published nothing.
+func (s *Store) ListIdentityKeys(ctx context.Context, userID uuid.UUID) ([]IdentityKey, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT user_id, generation, x25519_pub, ed25519_pub, self_sig, gen_cert, created_at, retired_at
+		   FROM identity_keys
+		  WHERE user_id = $1
+		  ORDER BY generation ASC`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list identity keys: %w", err)
+	}
+	defer rows.Close()
+	out := []IdentityKey{}
+	for rows.Next() {
+		var k IdentityKey
+		var retiredAt *time.Time
+		if err := rows.Scan(&k.UserID, &k.Generation, &k.X25519Pub, &k.Ed25519Pub, &k.SelfSig, &k.GenCert, &k.CreatedAt, &retiredAt); err != nil {
+			return nil, err
+		}
+		if retiredAt != nil {
+			k.RetiredAt = *retiredAt
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
 }

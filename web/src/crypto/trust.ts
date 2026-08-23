@@ -26,8 +26,10 @@
 // have ever seen the peer.
 
 import { loadVerification, saveVerification } from "./idb";
-import { fetchIdentity, type IdentityTransport, type PeerIdentity } from "./identity-sync";
+import { fetchIdentity, fetchVerifiedChain, type IdentityTransport, type PeerIdentity } from "./identity-sync";
 import type { VerificationRecord } from "./safety-number";
+import { chainStanding } from "./idgen"; // 83-4
+import { ed25519Fingerprint } from "./envelope";
 
 /**
  * PinState is the trust standing of an identity key we just saw.
@@ -130,7 +132,78 @@ export async function fetchTrustedIdentity(
   const stored = await loadVerification(userID);
   const { pin, write } = pinStateFor(stored, userID, identity.ed25519Public, identity.generation, Date.now());
   if (write) await saveVerification(write);
+  if (pin === "changed" && stored?.ed25519PubB64) {
+    // 83-4: a key that is not the pin is one of two things. A CHAINED
+    // rotation -- the new key admitted by a chalk-idgen.v1 cert signed by
+    // the key we pinned -- rolls the pin forward: the old identity vouched
+    // for the new one, which is precisely what a pin is for. Anything else
+    // is the wall (no write; "changed" stands).
+    const rolled = await rollPinForward(ws, userID, stored, identity);
+    if (rolled) return { identity, pin: rolled };
+  }
   return { identity, pin };
+}
+
+/**
+ * rollPinForward (83-4) walks the peer's generation chain and, if the key
+ * we pinned links forward to the key now active, re-pins the active key.
+ * Returns the new pin state, or null when the chain does not link them
+ * (the identity-changed wall stays up).
+ *
+ * What carries over: `source` -- a TOFU pin stays TOFU, a manual pin stays
+ * manual, because the cert is the old key attesting the new one and the
+ * old key is what the user compared. What does NOT carry over: the
+ * safety-number digest, which is a function of the key bytes and is now
+ * different; it is cleared so the members panel shows "pinned" until the
+ * user compares again rather than a stale "verified".
+ */
+async function rollPinForward(
+  ws: IdentityTransport,
+  userID: string,
+  stored: VerificationRecord,
+  identity: PeerIdentity,
+): Promise<PinState | null> {
+  let pinned: Uint8Array;
+  try {
+    pinned = fromB64(stored.ed25519PubB64!);
+  } catch {
+    return null;
+  }
+  let chain;
+  try {
+    chain = await fetchVerifiedChain(ws, userID);
+  } catch {
+    return null; // offline: no roll-forward without evidence
+  }
+  const fpHex = toHex(await ed25519Fingerprint(identity.ed25519Public));
+  const st = chainStanding(chain, pinned, fpHex);
+  // "current" from chainStanding means: the active key is the pinned
+  // generation OR a later one the pin chains forward to. The pinned key is
+  // by definition not the active one here, so this is the forward case.
+  if (st.kind !== "current" || !st.generation) return null;
+  await saveVerification({
+    ...stored,
+    ed25519PubB64: toB64(identity.ed25519Public),
+    generation: st.generation.generation,
+    digestHex: "",
+    verifiedAt: 0,
+    source: stored.source ?? "manual",
+    pinnedAt: Date.now(),
+  });
+  return (stored.source ?? "manual") === "manual" ? "manually_verified" : "pinned";
+}
+
+function fromB64(s: string): Uint8Array {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function toHex(b: Uint8Array): string {
+  let s = "";
+  for (const x of b) s += x.toString(16).padStart(2, "0");
+  return s;
 }
 
 /**

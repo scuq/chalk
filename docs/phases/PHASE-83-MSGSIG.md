@@ -1,6 +1,6 @@
 # Phase 83 — MSGSIG: the signed sealed envelope
 
-**Status: in progress — slice 83-1 landed 2026-08-09 (scuq opened
+**Status: in progress — slices 83-1 … 83-4 landed 2026-08-09 (scuq opened
 implementation on the R20-conditioned pass, all four of its items
 being complete in the sixth revision). A fresh design under the
 revised trust model (decided by scuq, 2026-08-09), superseding the
@@ -617,7 +617,7 @@ half-claimed. L-01 — unchanged, separate account-recovery work.
 | 83-1 | Canonical envelope: encoders (exported helpers + `uuid16`), sign/verify, typed results, total parser, full mutation/replay vector suite — **landed 2026-08-09** (`web/src/crypto/envelope.ts`; see the slice record below) |
 | 83-2 | Send/receive integration: sign-then-seal, verify-fail-closed rendering incl. `unsigned` legacy label, replay dedup store (`idb.ts` bump), send-flow reorder — **landed 2026-08-09** (see the slice record) |
 | 83-3 | Append-only edits: `message_revisions` migration + atomic edit transaction, `fetch_revisions`, client ancestry classification; signed sealed reaction clears (delete the unencrypted-clear branch) — **landed 2026-08-09** (see the slice record) |
-| 83-4 | Identity generations: the `chalk-idgen.v1` chain cert minted at rotation (R16-1), `(user_id, ed25519_fp)` fetch incl. retired + certs, chain-to-pin verification, `verified-former-identity` labelling, the chain-break wall |
+| 83-4 | Identity generations: the `chalk-idgen.v1` chain cert minted at rotation (R16-1), `(user_id, ed25519_fp)` fetch incl. retired + certs, chain-to-pin verification, `verified-former-identity` labelling, the chain-break wall — **landed 2026-08-09** (see the slice record) |
 | 83-5 | Rotation-due: server marks on shrink; the atomic `rotate_channel_key` transaction + `rotation_required` send gate (R16-2); tests incl. owner-leave, 2-person channels, and the two-concurrent-responders race (no mixed generation in any interleaving) |
 | 83-6 | Server identity: chalkctl-provisioned keypair, registration pin + prefs backup, the inner sealed channel exactly as frozen in D.3 (transcript hash, directional HKDF domains, monotonic counters, close-on-violation), mismatch wall, re-pin flow |
 | 83-7 | Client-derived roster-change notices (D.6): per-channel observed-roster store, the diff on every fetch, the observed add/remove/key-change notice distinct from event-sourced ones, fingerprint-change reusing the idgen verification, **the frozen diff-before-reshare ordering** |
@@ -743,6 +743,51 @@ the atomic displace-then-overwrite in `store.EditMessage`,
   clear restarts the actor's chain — a verifier reads exactly that.
 - **Edits and reactions are not replay-bound** (the 83-2 guard stays
   0x01-only): re-applying either converges by construction.
+
+**83-4 (landed 2026-08-09)** — the generation chain
+(`crypto/idgen.ts`: root hash, cert canonical, minting, the walk,
+`chainStanding`), the server rotation primitive (migration 0052
+`identity_keys.gen_cert`; `store.RotateIdentityKey` retires the
+active generation and inserts the next in one transaction, requiring
+the cert and exactly active+1; `fetch_identity_chain`), the
+resolver's chain walk (`verified-former-identity` for a linked earlier
+generation, forward resolution for a later one), and the pin
+roll-forward vs. wall in `trust.ts`. Decisions made here:
+
+- **No rotation existed before this slice** — `PutIdentityKey` only
+  ever upserted, nothing set `retired_at`, and `deriveIdentity`'s HKDF
+  does not mix the generation in, so a new generation means a new
+  phrase (seed). 83-4 builds the *primitive*
+  (`identity-sync.publishRotatedIdentity`) and everything that
+  verifies its output; the user-facing phrase-rotation flow (new 24
+  words, re-wrap every channel key to the new X25519 key, re-wrap the
+  auth identity seed) is separate work, not started. Nothing calls the
+  primitive in production yet.
+- **The fetch shape is the whole chain**, not a per-fingerprint lookup:
+  `fetch_identity_chain {user_id}` returns every generation with
+  certs, and the client resolves the fingerprint locally after the
+  walk. A user has a handful of generations; one request per actor per
+  session (cached, re-walked after 60 s only when a lookup fails).
+- **Publishing generation ≥ 2 IS the rotation**: the server requires
+  `gen_cert` and refuses out-of-sequence numbers; re-publishing the
+  already-active generation with the same key is idempotent (a second
+  device after rotation). The server stores the cert blind — it is the
+  party the cert defends against.
+- **Pin roll-forward**: when `fetchTrustedIdentity` sees a key that is
+  not the pin, it walks the chain; if the pinned key links forward to
+  the active key the pin is rewritten (source carries over — the old
+  key vouched for the new one; the safety-number digest is cleared, so
+  the members panel reads "pinned" until the user compares again).
+  Anything else is the existing identity-changed wall, untouched: a
+  chain that does not reach the pinned key (the lost-seed new-root
+  case, or a database write inserting an unlinked generation) rolls
+  nothing, and messages signed by that key are `forged`.
+- **A generation-1 root is bound to its user only through its hash**:
+  the walk accepts any self-consistent root (that is TOFU's domain),
+  but the root hash includes `uuid16(user)`, so a chain transplanted to
+  another user id breaks at its first cert.
+- **Our own retired generations** resolve through the same walk with
+  our current key as the pin.
 
 ## The decision record (2026-08-09)
 

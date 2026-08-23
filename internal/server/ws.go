@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -653,6 +654,8 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handlePublishIdentity(ctx, c, conn, f)
 		case proto.TypeFetchIdentity:
 			h.handleFetchIdentity(ctx, c, conn, f)
+		case proto.TypeFetchIdentityChain: // 83-4
+			h.handleFetchIdentityChain(ctx, c, conn, f)
 		case proto.TypePublishChannelKey:
 			h.handlePublishChannelKey(ctx, c, conn, f)
 		case proto.TypeFetchChannelKey:
@@ -2981,7 +2984,42 @@ func (h *WSHandler) handlePublishIdentity(
 	if gen < 1 {
 		gen = 1
 	}
-	if err := h.store.PutIdentityKey(ctx, store.IdentityKey{
+	if gen >= 2 {
+		// 83-4: a generation >= 2 is a ROTATION and must carry the cert the
+		// retiring generation signed; the store retires-and-inserts
+		// atomically. The server stores the cert blind -- it is what clients
+		// verify, and the server is the party it defends against.
+		cert, cErr := base64.StdEncoding.DecodeString(p.GenCert)
+		if cErr != nil || len(cert) != 64 {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "gen_cert must be base64 of 64 bytes for generation >= 2")
+			return
+		}
+		rErr := h.store.RotateIdentityKey(ctx, store.IdentityKey{
+			UserID:     userID,
+			Generation: gen,
+			X25519Pub:  x,
+			Ed25519Pub: ed,
+			SelfSig:    sig,
+			GenCert:    cert,
+		})
+		if errors.Is(rErr, store.ErrRotationOutOfSequence) {
+			// Idempotent re-publish of the already-active generation (another
+			// device, a reload): same key material, nothing to do.
+			if active, aErr := h.store.GetActiveIdentityKey(ctx, userID); aErr == nil &&
+				active.Generation == gen && bytes.Equal(active.Ed25519Pub, ed) {
+				rErr = nil
+			}
+		}
+		if rErr != nil {
+			switch {
+			case errors.Is(rErr, store.ErrRotationOutOfSequence), errors.Is(rErr, store.ErrNotFound):
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "identity rotation out of sequence")
+			default:
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "rotate identity: "+rErr.Error())
+			}
+			return
+		}
+	} else if err := h.store.PutIdentityKey(ctx, store.IdentityKey{
 		UserID:     userID,
 		Generation: gen,
 		X25519Pub:  x,
@@ -3047,6 +3085,70 @@ func (h *WSHandler) handleFetchIdentity(
 	})
 	data, _ := json.Marshal(ack)
 	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
+}
+
+// handleFetchIdentityChain returns every generation of a user's identity,
+// oldest first, with the chalk-idgen.v1 certs (83-4). Any authenticated
+// connection may ask -- the same surface fetch_identity already exposes,
+// widened to retired generations so history signed by a rotated-out key
+// stays verifiable on a fresh device. The client walks the chain from
+// generation 1 to its pin; a row the walk does not reach proves nothing.
+// Guests (ephemeral identities) never rotate and answer as a single root.
+func (h *WSHandler) handleFetchIdentityChain(
+	ctx context.Context,
+	c *websocket.Conn,
+	conn *Conn,
+	f proto.Frame,
+) {
+	if h.store == nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "no store configured")
+		return
+	}
+	var p proto.FetchIdentityChainPayload
+	if err := f.DecodePayload(&p); err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, err.Error())
+		return
+	}
+	targetID, err := uuid.Parse(p.UserID)
+	if err != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "user_id not a UUID")
+		return
+	}
+	keys, lErr := h.store.ListIdentityKeys(ctx, targetID)
+	if lErr != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "list identity: "+lErr.Error())
+		return
+	}
+	if len(keys) == 0 {
+		// ephemeral guest fallback, as fetch_identity does (80-9)
+		if k, gErr := h.store.GetActiveIdentityKeyAny(ctx, targetID); gErr == nil {
+			keys = []store.IdentityKey{k}
+		}
+	}
+	out := make([]proto.IdentityGenerationWire, 0, len(keys))
+	for _, k := range keys {
+		w := proto.IdentityGenerationWire{
+			Generation: k.Generation,
+			X25519Pub:  base64.StdEncoding.EncodeToString(k.X25519Pub),
+			Ed25519Pub: base64.StdEncoding.EncodeToString(k.Ed25519Pub),
+			SelfSig:    base64.StdEncoding.EncodeToString(k.SelfSig),
+		}
+		if len(k.GenCert) == 64 {
+			w.GenCert = base64.StdEncoding.EncodeToString(k.GenCert)
+		}
+		if k.IsRetired() {
+			w.RetiredAt = k.RetiredAt.UnixMilli()
+		}
+		out = append(out, w)
+	}
+	ack, _ := proto.NewFrame(proto.TypeFetchIdentityChainAck, f.Ref, proto.FetchIdentityChainAckPayload{
+		Found:       len(out) > 0,
+		UserID:      p.UserID,
+		Generations: out,
+	})
+	if err := writeFrame(ctx, c, ack, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("fetch_identity_chain_ack write: %v", err)
+	}
 }
 
 // checkWrapPublish is the pure policy half of handlePublishChannelKey (82-6),
