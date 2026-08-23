@@ -628,6 +628,7 @@ half-claimed. L-01 — unchanged, separate account-recovery work.
 | 83-6 | Server identity: chalkctl-provisioned keypair, registration pin + prefs backup, the inner sealed channel exactly as frozen in D.3 (transcript hash, directional HKDF domains, monotonic counters, close-on-violation), mismatch wall, re-pin flow — **landed 2026-08-09** (see the slice record) |
 | 83-7 | Client-derived roster-change notices (D.6): per-channel observed-roster store, the diff on every fetch, the observed add/remove/key-change notice distinct from event-sourced ones, fingerprint-change reusing the idgen verification, **the frozen diff-before-reshare ordering** — **landed 2026-08-09** (see the slice record) |
 | 83-8 | Docs + enforcement end-state: threat-model.md final wording, minimum-signing-build advertisement, CHANGELOG — **landed 2026-08-23** (see the slice record) |
+| 83-9 | Server-identity card: the pinned fingerprint, its provenance, and the live sealed status in settings — a post-release addendum so the pin ceremony works outside the wall — **landed 2026-08-23** |
 
 Each slice is independently verifiable; 83-1 through 83-4 and 83-7 are
 pure client (plus one migration); 83-5/83-6 touch chalkd and chalkctl.
@@ -1065,6 +1066,24 @@ themselves ("⚠ sender mismatch", "(edited)", OBSERVED) are visible
 text and carry the essential signal; and a D.6 notice for a member
 whose handle the client has never seen names the raw user id (the
 unambiguous identifier, just not the friendly one).
+
+**83-9 (landed 2026-08-23, post-v0.8.0 addendum)** — a
+**server-identity card** in settings (Account → Server identity,
+`ServerIdentityCard`). It shows the pinned fingerprint in the exact
+grouped-hex `chalkctl serverkey show` prints, so a user can compare it
+to the operator's announcement at a calm moment rather than only
+mid-alarm; states HOW it was pinned (registration / first-login TOFU /
+explicit re-pin, honestly ranked, with the date); and reports whether
+the LIVE connection actually runs the sealed channel
+(`WSClient.isSealed()`, new getter — true only with a session, false
+on a plaintext dev server). Deliberately NO unpin/edit control:
+re-pinning stays the wall's compare-and-trust flow, never a setting to
+fiddle with (which would also be a social-engineering target). A
+keyless server shows the honest "no server identity is pinned" note.
+Its own search-indexed settings section (keywords: fingerprint, pin,
+sealed, mitm, …). Verified live: the card's fingerprint equals
+`/api/server-identity`, over a connection that went binary after the
+handshake.
 
 Known residuals accepted and stated (none load-bearing): for up to
 60 s after a peer's identity rotation, their new-generation messages

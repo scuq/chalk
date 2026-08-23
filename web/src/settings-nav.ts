@@ -22,6 +22,7 @@ export type SectionId =
   | "email"
   | "recovery"
   | "security"
+  | "serveridentity"
   | "passkeys"
   | "pins"
   | "about"
@@ -76,6 +77,21 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       "totp",
       "authenticator",
       "encryption phrase",
+    ],
+  },
+  {
+    id: "serveridentity",
+    tab: "account",
+    title: "server identity",
+    keywords: [
+      "server",
+      "identity",
+      "fingerprint",
+      "pin",
+      "sealed",
+      "mitm",
+      "man in the middle",
+      "certificate",
     ],
   },
   {

@@ -10120,3 +10120,21 @@ body.chalk-resizing-y .chalk-composer-resizer {
   padding: 0 0.2rem;
   font: inherit;
 }
+
+/* 83-9: the server-identity card in the security tab. The fingerprint is
+   the artifact users compare against the operator's announcement, so it
+   gets monospace, generous spacing and selectability. */
+.chalk-server-identity-fp code {
+  display: inline-block;
+  font-family: var(--chalk-mono, monospace);
+  font-size: 1.05em;
+  letter-spacing: 0.06em;
+  padding: 0.35em 0.55em;
+  border: 1px solid var(--chalk-fg-dim);
+  border-radius: 6px;
+  user-select: all;
+  word-break: break-all;
+}
+.chalk-server-identity-explain code {
+  font-family: var(--chalk-mono, monospace);
+}

@@ -10,6 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **You can now see your server's identity fingerprint in settings, any time.**
+  Account settings has a new "server identity" section showing the fingerprint
+  your device pinned — in the same format your server's operator sees with
+  `chalkctl serverkey show`, so you can compare the two and confirm nobody is
+  impersonating your server. It also says how the identity was pinned and
+  whether your current connection is running over the extra sealed channel.
+
+---
+
 ## v0.8.0 — 23 August 2026 — Signed messages, a pinned server identity, and keys that rotate themselves
 
 ### Added

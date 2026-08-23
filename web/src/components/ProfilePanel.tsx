@@ -64,7 +64,8 @@ import {
   systemIdleSupported,
   type SystemIdlePermission,
 } from "../presence/system-idle";
-import { SecurityPanel } from "./SecurityPanel"; // 31-8
+import { SecurityPanel } from "./SecurityPanel";
+import { ServerIdentityCard } from "./ServerIdentityCard"; // 83-9 // 31-8
 import { StepUpPrompt } from "./StepUpPrompt"; // 81-2
 import type { StepUpProof } from "../auth/stepup";
 import { VersionLink } from "./VersionLink"; // 39-1
@@ -74,6 +75,8 @@ import { RecoveryScreen } from "../auth/RecoveryScreen";
 interface Props {
   me: MeResponse;
   emailChange: EmailChangeState;
+  /** 83-9: whether the live connection runs the sealed inner channel. */
+  serverSealed?: boolean;
   onClose: () => void;
   onEmailChangeDraft: (value: string) => void;
   onEmailChangeSubmit: () => void;
@@ -193,6 +196,7 @@ interface Props {
 export function ProfilePanel({
   me,
   emailChange,
+  serverSealed,
   theme,
   onSetTheme,
   chatPrefs,
@@ -1615,6 +1619,8 @@ export function ProfilePanel({
               phrase, which is client-only and unlocks message history. */}
           {/* 31-8: password / two-factor / phrase-link management. */}
           {show("security") && <SecurityPanel username={me.username} />}
+          {/* 83-9: the pinned server identity, readable outside the wall. */}
+          {show("serveridentity") && <ServerIdentityCard sealed={!!serverSealed} />}
 
           {show("passkeys") && (
             <section class="chalk-profile-passkeys" data-testid="profile-passkeys">

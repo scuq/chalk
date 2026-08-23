@@ -132,6 +132,16 @@ export class WSClient {
     return this.state === "open";
   }
 
+  /**
+   * isSealed reports whether the CURRENT connection runs the 83-6 inner
+   * sealed channel -- the server proved the pinned identity at handshake and
+   * every frame since is sealed. False on a plaintext (keyless dev server)
+   * session and while not connected. Read by the 83-9 server-identity card.
+   */
+  isSealed(): boolean {
+    return this.state === "open" && this.session !== null;
+  }
+
   // Phase 11a: request() -- send a frame and resolve with the matching
   // ack's payload. Uses the existing ref-based correlation in send().
   // The returned promise rejects on "error" type acks or when the

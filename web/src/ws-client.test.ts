@@ -206,3 +206,18 @@ test("a burst of sealed frames opens in order on one chain (no false counter vio
   assert.deepEqual(dispatched.filter((t) => t.startsWith("burst-")), ["burst-1", "burst-2"]);
   assert.equal(client.isOpen(), true, "no hard fail from a false counter violation");
 });
+
+// ---- 83-9: the sealed-status getter ---------------------------------
+
+test("isSealed reflects the inner channel, not just being open", async () => {
+  reset();
+  const states: StateEvent[] = [];
+  const { client } = await openClient(states); // dev path: inner_unavailable -> plaintext
+  assert.equal(client.isOpen(), true);
+  assert.equal(client.isSealed(), false, "a plaintext session is open but not sealed");
+  // with a session present (as after a real inner_ack), sealed reads true
+  (client as unknown as { session: unknown }).session = { open: async () => new Uint8Array() };
+  assert.equal(client.isSealed(), true);
+  client.stop();
+  assert.equal(client.isSealed(), false, "not sealed when not open");
+});

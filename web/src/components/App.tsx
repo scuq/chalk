@@ -6338,6 +6338,7 @@ export function App() {
         <ProfilePanel
           me={state.me}
           emailChange={state.emailChange}
+          serverSealed={clientRef.current?.isSealed() ?? false}
           onClose={() => dispatch({ kind: "close_panel" })}
           onEmailChangeDraft={(value) =>
             dispatch({ kind: "email_change_draft_change", value })

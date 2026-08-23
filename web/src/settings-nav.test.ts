@@ -52,10 +52,12 @@ test("no match yields an empty set, not null", () => {
   assert.equal(hits.size, 0);
 });
 
-test("registry: 18 unique sections, valid tabs, keywords present", () => {
-  assert.equal(SETTINGS_SECTIONS.length, 18);
+test("registry: 19 unique sections, valid tabs, keywords present", () => {
+  assert.equal(SETTINGS_SECTIONS.length, 19);
   const ids = new Set(SETTINGS_SECTIONS.map((s) => s.id));
   assert.equal(ids.size, SETTINGS_SECTIONS.length);
+  // 83-9: the server-identity section belongs to the account tab
+  assert.equal(SECTION_TAB["serveridentity"], "account");
   const tabs = new Set(SETTINGS_TABS.map((t) => t.id));
   for (const s of SETTINGS_SECTIONS) {
     assert.ok(tabs.has(s.tab), `section ${s.id} has unknown tab ${s.tab}`);
