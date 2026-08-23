@@ -462,6 +462,8 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	welcomePayload.VoiceEnabled = h.cfg.Voice.Enabled
 	// 82-6: whether unsigned channel-key wraps must be refused on read.
 	welcomePayload.WrapSigRequired = h.cfg.WrapSigRequired
+	// 83-8: advertise the signing floor (a nudge, never a gate -- see proto).
+	welcomePayload.MinSigningBuild = proto.MinSigningBuild
 	// 39-1: what build is serving this session, for the header version badge.
 	welcomePayload.ServerVersion = version.Version
 	welcomePayload.ServerCommit = version.Commit

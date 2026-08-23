@@ -28,6 +28,7 @@ import {
   PASSWORD_MIN_LENGTH,
 } from "../crypto/authkdf";
 import { setKEK } from "./kek-holder";
+import { fetchAndPinServerIdentity } from "../crypto/server-pin"; // 83-6
 
 interface Props {
   config: AuthConfig;
@@ -155,6 +156,12 @@ export function SignupWizardScreen({
       // Stash the KEK so IdentitySetupScreen can upload the seed wrap once
       // the encryption phrase exists. In-memory only; consumed once.
       setKEK(kek);
+      // 83-6: pin the home server's identity at registration -- the trust
+      // anchor claim 3 names, fetched over the signup TLS session. Awaited
+      // so the pin is written with source "registration" BEFORE the first
+      // WebSocket connect could TOFU it; best-effort beyond that (a dev
+      // stack without a server key pins nothing and says so).
+      await fetchAndPinServerIdentity();
       onRegistered(result);
     } catch (e) {
       if (e instanceof SignupApiError) {

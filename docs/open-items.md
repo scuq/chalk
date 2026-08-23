@@ -32,69 +32,40 @@ Two follow-ups remain open:
   before a release carries this.
 - The guest path: links minted before 82-7 stay unsigned until they expire.
 
-## Phase 83 — sender signing, redesigned under the revised trust model
+## Phase 83 — signed sealed envelopes: COMPLETE, with recorded caveats
 
-**The trust model was revised by scuq on 2026-08-09** — chalkd is
-trusted to run the protocol honestly; the *host* it runs on is not (no
-stored state may yield already-sent messages); and a client must be
-able to detect a MITM toward its registered home server. The
-malicious-server claim was dropped: the envelope-fanout design
-(twelve revisions, ten internal reads, six external reviews — the
-audit series in [audits/](audits/), final text at git `731eac5`)
-established that its last gap, membership branch uniqueness against an
-equivocating server, is closable only with quorum certificates or
-witness infrastructure (P83-A-R15-01). Rather than adopt consensus
-machinery or ship a half-claim, the claim went.
+83-1 … 83-8, record in [phases/PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md)
+(the trust-model revision, the six-revision review series with Gate 0 opened
+on the R20-conditioned pass, and a per-slice record of every decision).
+Under the revised model — chalkd honest, the host untrusted for persistent
+storage, MITM-toward-home detectable — the phase delivers: signed sealed
+envelopes for messages, edits and reactions with fail-closed typed verdicts;
+append-only edit revisions with client-verified chains; identity generations
+linked by signed certs; atomic first-responder key rotation with the
+`rotation_required` send gate; the server-identity pin with the inner sealed
+channel and re-pin wall; and D.6's client-observed roster notices with the
+frozen diff-before-reshare ordering. Closed 2026-08-23 after a 16/16
+full-stack smoke run.
 
-The new plan in [phases/PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md)
-(**in progress** — slices 83-1 … 83-7 landed 2026-08-09 after the
-R20 review conditioned Gate 0 PASS on four items, all in the sixth
-revision; slice 83-8 remains, plus the caveats recorded in
-the slice record: guest sends are still unsigned and cannot clear
-the rotation gate, edit envelopes re-sign text only, reactions are
-not gated, and the user-facing phrase-rotation flow behind 83-4's
-rotation primitive is not built) is deliberately small:
+Caveats that remain open (all in the phase doc's slice record):
 
-- **Signed sealed envelopes** — the phase-81 audit's H-01, still real:
-  a canonical Ed25519-signed envelope (messages, edits, reactions)
-  inside the existing space-key encryption, verified fail-closed
-  against pinned identities, with the fanout series' hard-won lessons
-  kept: uniform replay triple in every object type, the signing
-  generation sealed in the canonical, append-only edit revisions.
-- **First-responder rotation** — on any membership shrink the next
-  sender mints the new key with phase 82's signed wraps; no owner
-  role, no freeze, works identically for 2-, 3- and 64-member
-  channels.
-- **The server pin** — server identity pinned at registration, an
-  inner sealed channel over the WebSocket so a TLS-terminating MITM
-  can neither read nor modify frames against the pin; bundle-serving
-  MITM stated as the endpoint-compromise limit it is.
+- **Guest sends are unsigned** (render `(unsigned)`), and a guest cannot
+  clear the rotation gate — a member's next send does.
+- **Edit envelopes re-sign text only**; attachment bindings stay anchored in
+  the original envelope through the revision chain.
+- **Reactions are not rotation-gated** (an emoji re-sealed under the old key
+  in the due window is an accepted residual).
+- **The user-facing phrase-rotation flow is not built** — 83-4 shipped the
+  primitive (`publishRotatedIdentity`) and all verification, but nothing
+  calls it in production yet: rotating means a new phrase, re-wrapping every
+  channel key and the auth seed. Its own phase when wanted.
+- `proto.MinSigningBuild` is pinned to `v0.8.0` — the release that ships
+  phase 83 must actually get that tag, or the constant needs the one-line
+  fix before cutting it.
 
-Membership stays server-asserted **by design** — an accepted, visible
-property of the trust model, no longer an unmet guarantee
-([threat-model.md](threat-model.md) carries the full statement). The
-R18 review then caught that claim 2 as first written ("host may modify
-persistent data") contradicted exactly that: a database write into a
-roster would make honest clients wrap keys to an intruder. The claim
-was **lowered** — host compromise is defended for *reads*; writing the
-authorization tables is a real, stated, undefended threat — and two
-mitigations were commissioned: D.6's client-derived roster-change
-notices (a persisted membership change — a pure database insert
-included — is surfaced at the next roster observation, before any
-auto-reshare wraps to it) and phase 99's credential hardening (below).
-The R19 review then caught the last mismatch: claim 2 still allowed
-reading chalkd's *process memory*, where the server-identity key
-lives — and its holder is the server to every pinned client. Final
-form: **claim 2 is a persistent-storage breach claim** (dumps, disks,
-backups open nothing); live process compromise, like
-authorization-table writes, is a lost trusted endpoint. The R20 final
-pass confirmed every protocol area green and conditioned Gate 0 PASS
-on four claim/documentation items — all four are applied (the last
-two: the "Server-storage disclosure" rename and D.6's guarantee in
-the reviewer's exact words). **The gate awaits the reviewer's PASS
-confirmation, nothing else.**
-Phase 98 (big rooms) was gated on fanout's membership layer and needs
-a re-sketch against this design before its own review.
+Phase 98 (big rooms) stays gated: it was sketched against fanout's
+membership layer and needs a re-sketch against this design, then its own
+review, before any code.
 
 ## Phase 85 — operational logging
 

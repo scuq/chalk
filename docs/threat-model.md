@@ -49,7 +49,8 @@ design at git `731eac5`). The claims are now exactly these:
    authorization tables whose integrity is trusted.
 3. **A client can detect a MITM toward its home server.** The network
    path is untrusted even with valid TLS; the client pins the server
-   identity it registered with (phase 83, planned).
+   identity it registered with and proves it at every connection
+   through an inner sealed channel (phase 83, built).
 
 An operator (or intruder) who makes chalkd itself misbehave is
 therefore outside the model — that is claim 1's boundary, stated here
@@ -70,6 +71,29 @@ once and referenced below rather than hedged in every section.
   verified before media flows (`web/src/voice/signal-crypto.ts`).
 - **Transport** is TLS 1.3; the SPA is served with a restrictive CSP
   (`default-src 'self'`, `object-src 'none'`, `frame-ancestors 'none'`).
+- **Every message, edit and reaction is a signed sealed envelope**
+  (phase 83): a canonical Ed25519-signed object inside the existing
+  space-key encryption, verified fail-closed against pinned identities
+  with typed verdicts (`verified` / `verified-former-identity` /
+  `mismatch` / `forged` / `unpinned` / `unsigned`), a replay-triple
+  dedup, append-only edit revisions whose chain is verified back to
+  the original, and identity generations linked by signed
+  `chalk-idgen.v1` certs so a database row alone can never mint a
+  "retired identity" (`web/src/crypto/envelope.ts`, `idgen.ts`,
+  `revisions.ts`).
+- **Key rotation on membership shrink is first-responder and atomic**
+  (83-5): the next sender uploads every member's signed wrap and the
+  version bump in one transaction; sends are gated (`rotation_required`)
+  until it commits, so content is never sealed under a key a removed
+  member still holds.
+- **The home server's identity is pinned** at registration and proven
+  at every connect through an inner sealed channel over the WebSocket
+  (83-6, `internal/innerchan`, `web/src/crypto/innerchan.ts`); a
+  changed key stops the client at a fingerprint-comparison wall.
+- **Roster changes are client-observed** (83-7, D.6): each device
+  diffs the membership it sees against the set it last persisted and
+  surfaces additions, removals and key changes as "observed" notices
+  — recorded before any auto-reshare wraps to a newcomer.
 
 ## Guarantees not met, or not met unconditionally
 
@@ -143,34 +167,34 @@ TOFU's own limit is also worth stating plainly: a server that lies from the
 picture-word comparison ever detects that. What pinning closes is every *later*
 substitution.
 
-### Sender authenticity — **NOT met**
+### Sender authenticity — **met (phase 83), with stated residuals**
 
-Message ciphertext carries no sender signature, and the AEAD associated data
-is only `suite + channel ID + key version`
-(`web/src/crypto/spacekey.ts`). Sender, device, message ID, timestamp, and
-thread relationship are all plaintext metadata attached by the server,
-*outside* what the encryption authenticates.
+Since phase 83 the body plaintext of every message, edit and reaction is
+a canonical, Ed25519-signed envelope — sender, the signing identity
+generation, the sender's own timestamp, parent/thread binding, body, and
+attachment digests — signed then sealed under the existing space-key
+encryption. Verification is fail-closed and typed: a server that
+relabels the outer frame yields `mismatch` (the signed values win and
+are what renders), a member forging another member's speech yields
+`forged`, and content is displayed under an unmistakable warning rather
+than dropped. The signing generation is sealed into every envelope and
+resolved through the signed `chalk-idgen.v1` generation chain, so
+history stays verifiable across key rotations and a fabricated
+"retired identity" database row proves nothing.
 
-Two consequences:
+Residuals, stated plainly:
 
-- A malicious server can replay a ciphertext it has seen under a different
-  sender, timestamp, or thread, and the recipient's decryption still
-  succeeds.
-- Every member of a channel holds the same symmetric key, so the ciphertext
-  alone cannot prove which member wrote it. An honest server enforces
-  attribution from the authenticated connection; a dishonest one need not.
-
-The fix is phase 83's signed sealed envelope (planned): the body
-plaintext becomes a canonical, Ed25519-signed envelope — sender, the
-signing identity generation, the sender's own timestamp, parent/thread,
-body, and attachment digests — for messages, edits, and reactions
-alike, signed then sealed under the existing space-key encryption.
-Server-minted message ID, timestamp, and sequence stay *outside* the
-signature as untrusted receipt metadata; replay and re-dating become
-detectable (and under claim 1, trusted not to happen). Signatures are
-transferable proof of authorship — the earlier fanout design's
-deniability was retired with its threat model. The identity anchor the
-signatures verify against was already paid for by phase 82.
+- Server-minted message ID, timestamp and sequence stay *outside* the
+  signature as receipt metadata: replay and re-dating are
+  **detectable** (the replay triple renders once; the signed
+  `sender_ts` is shown alongside receipt time), not prevented — and
+  under claim 1 the server is trusted not to do them.
+- Messages sent by builds predating phase 83 render uniformly as
+  **`(unsigned)`** — one quiet label, no alarm, no false claim.
+- Guest sends and pre-83 sealed reaction sets remain unsigned
+  (recorded caveats in the phase doc).
+- Signatures are transferable proof of authorship — the earlier fanout
+  design's deniability was retired with its threat model.
 
 ## Adversaries chalk does defend against
 
@@ -179,11 +203,16 @@ signatures verify against was already paid for by phase 82.
 All traffic is TLS 1.3. Message-layer encryption sits inside it, so breaking
 TLS does not by itself yield message bodies. An active attacker with a valid
 certificate (CA mis-issuance, DNS takeover) occupies the server's *network*
-position; phase 83 (planned) adds the server-identity pin and an inner sealed
-channel so a client detects that someone other than its registered home
-server is answering — with two honestly-stated limits: a MITM present at
-first registration wins that device's pin, and a MITM that serves the SPA
-bundle itself is endpoint compromise no in-page mechanism can detect.
+position; phase 83's server-identity pin and inner sealed channel detect
+someone other than the registered home server answering: the client pins the
+server's Ed25519 identity at registration, every connection proves it over a
+signed handshake, and every frame after it is sealed under per-direction
+keys a TLS-terminating MITM does not hold. A changed key stops the client at
+a fingerprint-comparison wall that only an explicit human choice clears. Two
+honestly-stated limits: a MITM present at first registration wins that
+device's pin, and a MITM that serves the SPA bundle itself is endpoint
+compromise no in-page mechanism can detect (an installed PWA's cached bundle
+narrows that window; it does not close it).
 
 ### A server reading message content *by accident*
 

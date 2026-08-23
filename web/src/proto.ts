@@ -51,6 +51,10 @@ export interface WelcomePayload {
   // channel-key wraps must be refused on read. Absent from older servers ->
   // the soft window stays open (the safe-for-continuity default).
   wrap_sig_required?: boolean;
+  // 83-8: the oldest release whose sends are signed -- advisory only. Any
+  // build able to read this field already signs; a cached pre-83 bundle
+  // cannot read it, and its reload nudge is the phase-46 update notice.
+  min_signing_build?: string;
 }
 
 export interface SendPayload {

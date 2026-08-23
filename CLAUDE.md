@@ -172,8 +172,10 @@ version number in the repo, everything else is stamped from the git tag.
 `docs/threat-model.md` and `docs/open-items.md`. The trust model was revised
 2026-08-09: chalkd itself is trusted, the host it runs on is not (stored state
 must never yield sent messages), and a MITM toward the registered home server
-must be detectable. Under it: messages carry no sender signature yet (phase 83,
-planned — signed sealed envelopes); membership is server-asserted **by
-design**, an accepted property, not a gap; and the phase-81 audit's C-01 is
-closed only where `CHALK_WRAP_SIG_REQUIRED` is on, so it is never "fixed
-unconditionally".
+must be detectable. Under it: every message, edit and reaction is a signed
+sealed envelope verified fail-closed against pinned identities (phase 83,
+built — caveats in its slice record: guest sends unsigned, no phrase-rotation
+UI); membership is server-asserted **by design**, an accepted property, not a
+gap, made visible by D.6's observed roster notices; and the phase-81 audit's
+C-01 is closed only where `CHALK_WRAP_SIG_REQUIRED` is on, so it is never
+"fixed unconditionally".

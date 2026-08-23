@@ -1,10 +1,16 @@
 # Phase 83 — MSGSIG: the signed sealed envelope
 
-**Status: in progress — slices 83-1 … 83-7 landed 2026-08-09 (scuq opened
-implementation on the R20-conditioned pass, all four of its items
-being complete in the sixth revision). A fresh design under the
-revised trust model (decided by scuq, 2026-08-09), superseding the
-envelope-fanout design in its entirety.** The fanout plan's final text (twelve
+**Status: COMPLETE — slices 83-1 … 83-7 landed 2026-08-09, 83-8
+(docs + enforcement end-state) closed the phase 2026-08-23 after a
+full-stack smoke run (16/16 checks: sealed channel, registration pin,
+verified send/edit/reaction round trips on both sides, revision-chain
+verification, no walls). Implementation opened on the R20-conditioned
+pass, all four of its items complete in the sixth revision. Open
+caveats live in the slice record: guest sends unsigned, edit envelopes
+re-sign text only, reactions not rotation-gated, and the user-facing
+phrase-rotation flow behind 83-4's primitive is not built. A fresh
+design under the revised trust model (decided by scuq, 2026-08-09),
+superseding the envelope-fanout design in its entirety.** The fanout plan's final text (twelve
 revisions) is preserved in git history at `731eac5`; its external audit
 trail lives on in `docs/audits/` (the fifth and sixth independent
 reviews, and the R11–R14 delta series). This document replaces it and
@@ -621,7 +627,7 @@ half-claimed. L-01 — unchanged, separate account-recovery work.
 | 83-5 | Rotation-due: server marks on shrink; the atomic `rotate_channel_key` transaction + `rotation_required` send gate (R16-2); tests incl. owner-leave, 2-person channels, and the two-concurrent-responders race (no mixed generation in any interleaving) — **landed 2026-08-09** (see the slice record) |
 | 83-6 | Server identity: chalkctl-provisioned keypair, registration pin + prefs backup, the inner sealed channel exactly as frozen in D.3 (transcript hash, directional HKDF domains, monotonic counters, close-on-violation), mismatch wall, re-pin flow — **landed 2026-08-09** (see the slice record) |
 | 83-7 | Client-derived roster-change notices (D.6): per-channel observed-roster store, the diff on every fetch, the observed add/remove/key-change notice distinct from event-sourced ones, fingerprint-change reusing the idgen verification, **the frozen diff-before-reshare ordering** — **landed 2026-08-09** (see the slice record) |
-| 83-8 | Docs + enforcement end-state: threat-model.md final wording, minimum-signing-build advertisement, CHANGELOG |
+| 83-8 | Docs + enforcement end-state: threat-model.md final wording, minimum-signing-build advertisement, CHANGELOG — **landed 2026-08-23** (see the slice record) |
 
 Each slice is independently verifiable; 83-1 through 83-4 and 83-7 are
 pure client (plus one migration); 83-5/83-6 touch chalkd and chalkctl.
@@ -910,6 +916,34 @@ and never an actor. Decisions:
 - **Observation failure never blocks messaging** (a broken idb must
   not take chat down) but is loud in the console; detection degrades,
   wraps proceed — consistent with detection-not-prevention.
+
+**83-8 (landed 2026-08-23)** — the closing pass, gated on a
+full-stack smoke run (`.claude/skills/run-chalk` driver + a 16-check
+probe over a server with `CHALK_SERVER_ID_KEY` set: registration
+pin with source `registration` on both users, verified-quiet
+send/edit/reaction round trips sender- AND receiver-side, the
+revision chain verifying via live-extend and via the background
+walk, sealed clears, no walls, no page errors — which caught and
+fixed one real bug: the registration pin hook sat on the legacy
+passkey screens instead of the auth-v2 signup wizard).
+
+- **threat-model.md final wording**: sender authenticity moves to
+  *met (phase 83), with stated residuals* (replay/re-dating
+  detectable not prevented, `(unsigned)` legacy label, guest sends,
+  transferable signatures); the built list gains the envelope, the
+  atomic rotation, the server pin and D.6; claim 3 reads *built*.
+- **The enforcement end-state, stated**: a build-83 client always
+  signs — there is no flag to send unsigned; the server cannot see
+  inside the seal, so the boundary is and stays CLIENT RENDERING
+  (the typed verdicts). `CHALK_WRAP_SIG_REQUIRED` remains phase 82's
+  boundary, untouched. No new server flag exists.
+- **Minimum-signing-build advertisement**:
+  `welcome.min_signing_build` (proto const `MinSigningBuild =
+  "v0.8.0"` — the /release cutting the phase-83 release must match
+  it, then it never moves). A nudge, never a gate — and honestly a
+  forward-compatibility field: any build able to read it already
+  signs, and the reload nudge for cached pre-83 bundles is the
+  existing phase-46 server-update notice.
 
 ## The decision record (2026-08-09)
 

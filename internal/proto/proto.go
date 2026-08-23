@@ -126,6 +126,11 @@ type HelloPayload struct {
 // stays for transitional wire compatibility -- the SPA may consult
 // either handle or username depending on which sub-phase its build
 // targeted. New SPA code should prefer username.
+// MinSigningBuild is the first release that always signs (phase 83 ships in
+// it). The /release run that cuts the phase-83 release must match this tag;
+// after that it is history and never moves again.
+const MinSigningBuild = "v0.8.0"
+
 type WelcomePayload struct {
 	UserID   string   `json:"user_id"`
 	DeviceID string   `json:"device_id"`
@@ -155,6 +160,13 @@ type WelcomePayload struct {
 	// VoiceEnabled: the client needs the policy before its first key fetch,
 	// not after a doomed round-trip.
 	WrapSigRequired bool `json:"wrap_sig_required,omitempty"`
+	// MinSigningBuild (83-8) advertises the oldest release whose sends are
+	// signed sealed envelopes -- a NUDGE, never a gate (D.4): the server
+	// cannot see inside the seal, so there is nothing for it to enforce, and
+	// a bundle old enough to matter cannot read this field anyway (its
+	// reload nudge is the existing phase-46 server-update notice). Carried
+	// so future builds can reason about the floor without a wire change.
+	MinSigningBuild string `json:"min_signing_build,omitempty"`
 }
 
 // SendPayload is a plaintext message in phase 04. From phase 10 onwards the
