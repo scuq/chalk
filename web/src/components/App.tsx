@@ -3984,6 +3984,14 @@ export function App() {
     const cmid = randomUuid();
     const localID = "local-" + cmid;
 
+    // 83-5 (order corrected by the edge audit): the rotation-due gate runs
+    // BEFORE the attachment uploads, not just before the body seal -- an
+    // attachment encrypted in the due window would otherwise be sealed
+    // under the key the removed member still holds, which is exactly what
+    // the gate exists to prevent. Any member can rotate; the retry backstop
+    // below covers a shrink landing after this check.
+    if (!(await rotateIfDue(cid))) return false;
+
     // att-2: upload any pending attachments BEFORE the optimistic append + send
     // frame. Each is encrypted under the channel key, chunk-uploaded over HTTP,
     // then finalized; we carry the ids on the send frame and the refs on the
@@ -4045,13 +4053,6 @@ export function App() {
       }
     }
 
-    // 83-5: the rotation-due gate, client half. A shrink nobody has rotated
-    // yet means the current key is one the removed member still holds --
-    // rotate first (any member can), then seal under the new version. The
-    // server refuses the send with rotation_required otherwise; see the
-    // retry backstop below for the race where the shrink lands in between.
-    if (!(await rotateIfDue(cid))) return false;
-
     // Build -> sign -> seal. "waiting" blocks the send exactly as the
     // pre-83 encrypt did (the composer is also disabled in that state),
     // BEFORE the optimistic append, so nothing is shown that won't be sent.
@@ -4072,7 +4073,17 @@ export function App() {
         bodyText: body,
         attachments: attachmentBindings,
       }));
-    const enc = await signAndSeal();
+    let enc: Awaited<ReturnType<typeof signAndSeal>>;
+    try {
+      enc = await signAndSeal();
+    } catch (err) {
+      // Edge audit: the canonical encoder THROWS on out-of-format input --
+      // above all a pasted body over the frozen 65,536-byte cap (pre-83
+      // there was no cap short of the 1 MiB frame). Failing the send
+      // beats an unhandled rejection; the composer keeps the draft.
+      console.error("send: envelope build failed (body too large?):", err);
+      return false;
+    }
     if (enc.kind !== "encrypted") return false; // "waiting": blocked until key arrives
     const sendBody = enc.body;
     const sendKeyVersion: number = enc.keyVersion;

@@ -1031,6 +1031,41 @@ treats the upload as best-effort). Fixed in
 keys on) with a regression test, and confirmed live: the wrap row now
 lands at registration.
 
+**Mobile + edge audit (2026-08-23)** — a phone-shaped pass (iPhone 14
+emulation: coarse pointer, long-press menus) plus deliberate edge
+cases, 19/19 checks. Verified on mobile: signed send both ways,
+long-press quick-react and the sealed clear, EDIT through the touch
+menu (no ArrowUp on a phone) with the verified chain, a signed thread
+reply with its reply binding, and the pin wall rendering, fitting and
+recovering on a 390 px viewport. The centerpiece: **the D.6 attack
+run for real** — a principal inserted into `channel_members` by a raw
+SQL write (no server event) was surfaced on the phone as the
+red-bordered OBSERVED notice at the next observation, before any
+reshare. Two code fixes came out of the edge review:
+
+- **The rotation-due gate now runs before attachment uploads**, not
+  just before the body seal — an attachment encrypted in the due
+  window was sealed under the key the removed member still holds,
+  which is the exact thing the gate exists to prevent.
+- **The send path no longer throws out of `onSend`** when the
+  canonical encoder rejects out-of-format input; the composer keeps
+  the draft. In practice the composer's 4,000-char cap makes the
+  envelope's 64 KiB body cap unreachable from the text path; the one
+  reachable overflow is a code block of ~17k+ four-byte code points
+  (its cap counts code points, not bytes), which now fails gracefully
+  instead of rejecting unhandled.
+
+Audit honesty notes: the earlier intense run's reaction-flap check
+was vacuous (a probe selector scoped chips inside the message row;
+ReactionBar is its sibling) — the corrected checks in this pass are
+the authoritative ones, and the reactions were in fact working. Two
+small residuals stated: on touch there is no hover, so the verdict
+and ancestry *explanations* (title text) are unreachable — the labels
+themselves ("⚠ sender mismatch", "(edited)", OBSERVED) are visible
+text and carry the essential signal; and a D.6 notice for a member
+whose handle the client has never seen names the raw user id (the
+unambiguous identifier, just not the friendly one).
+
 Known residuals accepted and stated (none load-bearing): for up to
 60 s after a peer's identity rotation, their new-generation messages
 can transiently read `forged` (the resolver's chain cache; heals on
