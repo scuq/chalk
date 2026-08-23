@@ -707,6 +707,11 @@ export interface AppState {
   // SILENTLY. Session-scoped and local: this is a "look what just happened",
   // not an audit log.
   recentJoins: Record<string, Array<{ userID: string; handle: string }>>;
+  // 83-7 (D.6): OBSERVED roster-change notices per channel -- derived by
+  // diffing the roster the client sees against the one it last persisted,
+  // so they fire even for a change that produced no server event (a direct
+  // database write). Distinct from recentJoins, which is event-sourced.
+  rosterNotices: Record<string, import("../chat/roster-observe").RosterNotice[]>;
 
   // 39-1: the build we're talking to (welcome.server_version/_commit), shown
   // as the header version badge. Empty until the welcome frame lands.
@@ -1020,6 +1025,7 @@ export const initialState: AppState = {
   voiceEnabled: false,
   wrapSigRequired: false,
   recentJoins: {},
+  rosterNotices: {},
   serverVersion: "",
   serverCommit: "",
   serverBuildAtLoad: null,
@@ -1134,6 +1140,9 @@ export type Action =
   | { kind: "channel_member_added"; channelID: string; userID: string; handle: string }
   // 82-8: dismiss the "who joined" notice for one channel.
   | { kind: "joins_dismissed"; channelID: string }
+  // 83-7: the observed-roster diff produced (or reloaded) notices.
+  | { kind: "roster_notices_set"; channelID: string; notices: import("../chat/roster-observe").RosterNotice[] }
+  | { kind: "roster_notices_dismissed"; channelID: string }
   | { kind: "channel_member_removed"; channelID: string; userID: string }
   | { kind: "set_active_channel"; channelID: string | null }
   // 53-1: park (hide the conversation pane) or leave the parking lot. Picking

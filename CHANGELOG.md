@@ -13,6 +13,16 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **Your device now notices membership changes on its own — even ones the
+  server never announced.** Each device remembers who was in every channel
+  (and under which identity key) and compares on every look; anyone added,
+  removed, or changing keys since last time is called out in the channel,
+  tagged "observed" to say your device derived it itself rather than being
+  told. Crucially, the notice is recorded before your device would hand the
+  channel key to any newcomer — so a member smuggled into the member list
+  can never be silently keyed in. A key change that the member's own old key
+  vouched for reads as a normal rotation; one that can't be linked reads as
+  the warning it is.
 - **Your device now remembers which server it signed up with, and can tell
   when something else answers in its place.** At registration chalk pins the
   server's cryptographic identity, and from then on every connection proves

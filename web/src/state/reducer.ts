@@ -390,6 +390,23 @@ export function reducer(state: AppState, action: Action): AppState {
       };
     }
 
+    // 83-7: observed roster notices replace wholesale (the observer returns
+    // the full undismissed set) and clear on dismissal.
+    case "roster_notices_set": {
+      const cur = state.rosterNotices[action.channelID] ?? [];
+      if (action.notices.length === 0 && cur.length === 0) return state;
+      return {
+        ...state,
+        rosterNotices: { ...state.rosterNotices, [action.channelID]: action.notices },
+      };
+    }
+    case "roster_notices_dismissed": {
+      if (!state.rosterNotices[action.channelID]?.length) return state;
+      const next = { ...state.rosterNotices };
+      delete next[action.channelID];
+      return { ...state, rosterNotices: next };
+    }
+
     // 82-8: the user has seen who joined; drop the notice for that channel.
     case "joins_dismissed": {
       if (!state.recentJoins[action.channelID]) return state;

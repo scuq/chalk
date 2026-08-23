@@ -1,6 +1,6 @@
 # Phase 83 — MSGSIG: the signed sealed envelope
 
-**Status: in progress — slices 83-1 … 83-6 landed 2026-08-09 (scuq opened
+**Status: in progress — slices 83-1 … 83-7 landed 2026-08-09 (scuq opened
 implementation on the R20-conditioned pass, all four of its items
 being complete in the sixth revision). A fresh design under the
 revised trust model (decided by scuq, 2026-08-09), superseding the
@@ -620,7 +620,7 @@ half-claimed. L-01 — unchanged, separate account-recovery work.
 | 83-4 | Identity generations: the `chalk-idgen.v1` chain cert minted at rotation (R16-1), `(user_id, ed25519_fp)` fetch incl. retired + certs, chain-to-pin verification, `verified-former-identity` labelling, the chain-break wall — **landed 2026-08-09** (see the slice record) |
 | 83-5 | Rotation-due: server marks on shrink; the atomic `rotate_channel_key` transaction + `rotation_required` send gate (R16-2); tests incl. owner-leave, 2-person channels, and the two-concurrent-responders race (no mixed generation in any interleaving) — **landed 2026-08-09** (see the slice record) |
 | 83-6 | Server identity: chalkctl-provisioned keypair, registration pin + prefs backup, the inner sealed channel exactly as frozen in D.3 (transcript hash, directional HKDF domains, monotonic counters, close-on-violation), mismatch wall, re-pin flow — **landed 2026-08-09** (see the slice record) |
-| 83-7 | Client-derived roster-change notices (D.6): per-channel observed-roster store, the diff on every fetch, the observed add/remove/key-change notice distinct from event-sourced ones, fingerprint-change reusing the idgen verification, **the frozen diff-before-reshare ordering** |
+| 83-7 | Client-derived roster-change notices (D.6): per-channel observed-roster store, the diff on every fetch, the observed add/remove/key-change notice distinct from event-sourced ones, fingerprint-change reusing the idgen verification, **the frozen diff-before-reshare ordering** — **landed 2026-08-09** (see the slice record) |
 | 83-8 | Docs + enforcement end-state: threat-model.md final wording, minimum-signing-build advertisement, CHANGELOG |
 
 Each slice is independently verifiable; 83-1 through 83-4 and 83-7 are
@@ -873,6 +873,43 @@ TOFU). Decisions:
   handshake against a real chalkd, sealed hello/welcome, violation
   closes) needs the dev Postgres and skips without
   `CHALK_TEST_PGURL`.
+
+**83-7 (landed 2026-08-09)** — D.6 exactly as stated.
+`chat/roster-observe.ts` owns the pure diff and the observer
+(injected fingerprint/chain/storage deps); `observed_rosters` (idb
+v7) persists, per channel, the last (member, fingerprint) set seen
+plus its undismissed notices in ONE record, so the baseline and the
+diff it produced commit together. `RosterNoticeBar` renders the
+notices above the composer beside the 82-8 join notice, tagged
+**observed** with the provenance in the tooltip, naming every change
+and never an actor. Decisions:
+
+- **The frozen ordering is enforced at every wrap path**: channel-open
+  ensure, the member_added reshare, the manual reshare button, the
+  add-member flow, and the atomic rotation all `await observe()`
+  first, and observe() resolves only after the record is persisted —
+  the record precedes the key in every interleaving (asserted by a
+  test that races the save against resolution).
+- **The first observation of a channel baselines silently** — there is
+  no prior observation to have changed from, and flooding "added"
+  notices for every existing channel on upgrade would train users to
+  dismiss the one notice that matters.
+- **Event-sourced changes stay quiet in the observed diff**
+  (`expectChange`): the join notice already said it, and "distinct
+  from an event-sourced notice" cuts both ways. The expectation is
+  consumed on use, so a later silent re-insert of the same user IS
+  surfaced.
+- **Fingerprint changes classify through 83-4's chain**: old and new
+  fingerprint both in the verified chain, in order → the softer
+  "rotated their identity key"; anything else → the louder
+  "cannot be linked" line. An unresolvable fingerprint (offline, no
+  identity) is kept as the previous value, never read as a change.
+- **Every `list_channels` is an observation** (channel open,
+  reconnect, the periodic refresh) — no wraps happen there, and it
+  buys early detection for channels the user has not opened.
+- **Observation failure never blocks messaging** (a broken idb must
+  not take chat down) but is loud in the console; detection degrades,
+  wraps proceed — consistent with detection-not-prevention.
 
 ## The decision record (2026-08-09)
 

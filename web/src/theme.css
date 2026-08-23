@@ -10078,3 +10078,45 @@ body.chalk-resizing-y .chalk-composer-resizer {
   background: var(--chalk-error);
   color: var(--chalk-bg);
 }
+
+/* 83-7: observed roster-change notices. Mirrors the join notice's shape;
+   the "observed" tag marks the provenance (client-derived diff, not a server
+   event), and the alarm variant fires for additions and unlinked key
+   changes -- the two shapes a database write takes. */
+.chalk-roster-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  border-left: 2px solid var(--chalk-warn, #ffcc66);
+  background: color-mix(in srgb, var(--chalk-warn, #ffcc66) 7%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.chalk-roster-notice--alarm {
+  border-left-color: var(--chalk-error);
+  background: color-mix(in srgb, var(--chalk-error) 8%, transparent);
+}
+.chalk-roster-notice-tag {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-fg-dim);
+  border-radius: 4px;
+  padding: 0 0.3em;
+  align-self: center;
+  cursor: help;
+}
+.chalk-roster-notice-text {
+  flex: 1;
+  color: var(--chalk-fg, #c8ffc8);
+}
+.chalk-roster-notice-dismiss {
+  background: none;
+  border: none;
+  color: var(--chalk-fg-dim);
+  cursor: pointer;
+  padding: 0 0.2rem;
+  font: inherit;
+}

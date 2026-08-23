@@ -47,9 +47,9 @@ witness infrastructure (P83-A-R15-01). Rather than adopt consensus
 machinery or ship a half-claim, the claim went.
 
 The new plan in [phases/PHASE-83-MSGSIG.md](phases/PHASE-83-MSGSIG.md)
-(**in progress** — slices 83-1 … 83-6 landed 2026-08-09 after the
+(**in progress** — slices 83-1 … 83-7 landed 2026-08-09 after the
 R20 review conditioned Gate 0 PASS on four items, all in the sixth
-revision; slices 83-7 … 83-8 remain, plus the caveats recorded in
+revision; slice 83-8 remains, plus the caveats recorded in
 the slice record: guest sends are still unsigned and cannot clear
 the rotation gate, edit envelopes re-sign text only, reactions are
 not gated, and the user-facing phrase-rotation flow behind 83-4's

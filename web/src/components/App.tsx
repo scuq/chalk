@@ -210,6 +210,7 @@ import { ConfirmModal } from "./ConfirmModal";
 import { Composer } from "./Composer";
 import { TypingLine } from "./TypingLine";
 import { JoinNotice } from "./JoinNotice"; // 82-8
+import { RosterNoticeBar } from "./RosterNoticeBar"; // 83-7
 // Phase 11c-2 PR 4: member-management modal.
 import { ThreadPanel } from "./ThreadPanel";
 // Phase 9.6d: heavy panels are lazy-loaded so the initial bundle
@@ -345,7 +346,10 @@ import type { AttachmentRef, PendingAttachment } from "../attachments/types";
 import { EncryptionIndicator } from "./EncryptionIndicator";
 import { ServerPinWall } from "./ServerPinWall"; // 83-6
 import { pinServerKey } from "../crypto/server-pin"; // 83-6
-import { loadServerPin, saveServerPin } from "../crypto/idb"; // 83-6
+import { loadServerPin, saveServerPin, loadObservedRoster, saveObservedRoster } from "../crypto/idb"; // 83-6, 83-7
+import { RosterObserver } from "../chat/roster-observe"; // 83-7
+import { fetchVerifiedChain } from "../crypto/identity-sync"; // 83-7
+import { ed25519Fingerprint } from "../crypto/envelope"; // 83-7
 
 // 83-6: local b64 decode for the server-pin backup seam.
 function b64ToBytesApp(s: string): Uint8Array {
@@ -1044,6 +1048,83 @@ export function App() {
   // 38-3: shared by the channel-open effect below and the key_available push,
   // which is what rescues a channel that settled as "waiting" because we asked
   // for the key before a holder had deposited our wrap.
+  // 83-7 (D.6): the roster observer. One instance for the session; its deps
+  // read through refs so construction cost is one closure. resolveFp prefers
+  // the pinned key (an idb read); an unpinned member costs one identity
+  // fetch per session; our own fingerprint is computed from our own
+  // identity, never from a pin record.
+  const rosterObserverRef = useRef<RosterObserver | null>(null);
+  const rosterFpFetchedRef = useRef<Set<string>>(new Set());
+  const ownFpHexRef = useRef<string | null>(null);
+  function rosterObserver(): RosterObserver {
+    if (!rosterObserverRef.current) {
+      rosterObserverRef.current = new RosterObserver({
+        resolveFp: async (uid) => {
+          try {
+            if (uid === userRef.current?.id) {
+              if (!ownFpHexRef.current) {
+                const id = await loadIdentity(uid);
+                if (!id) return "";
+                ownFpHexRef.current = bytesToHex(await ed25519Fingerprint(id.ed25519Public));
+              }
+              return ownFpHexRef.current;
+            }
+            let rec = await loadVerification(uid);
+            if (!rec?.ed25519PubB64 && !rosterFpFetchedRef.current.has(uid)) {
+              rosterFpFetchedRef.current.add(uid);
+              const c = clientRef.current;
+              if (c && c.isOpen()) {
+                await fetchTrustedIdentity({ request: (t, pl) => c.request(t, pl) }, uid).catch(() => null);
+                rec = await loadVerification(uid);
+              }
+            }
+            if (!rec?.ed25519PubB64) return "";
+            return bytesToHex(await ed25519Fingerprint(b64ToBytesApp(rec.ed25519PubB64)));
+          } catch {
+            return "";
+          }
+        },
+        chainFor: async (uid) => {
+          const c = clientRef.current;
+          if (!c || !c.isOpen()) return [];
+          return fetchVerifiedChain({ request: (t, pl) => c.request(t, pl) }, uid);
+        },
+        load: loadObservedRoster,
+        save: saveObservedRoster,
+      });
+    }
+    return rosterObserverRef.current;
+  }
+
+  // observeRosterFor runs the D.6 diff for one channel and surfaces its
+  // notices. EVERY wrap path awaits it first -- the frozen ordering: the
+  // observer persists the diff before resolving, so the record precedes the
+  // key in every interleaving. Failures never block the wrap (observation is
+  // detection; a broken idb must not take messaging down) but are loud.
+  const observeRosterFor = useCallback(async (cid: string, memberIDs?: string[]) => {
+    try {
+      const ch = channelsRef.current[cid];
+      const members = memberIDs ?? ch?.memberIDs;
+      if (!members || members.length === 0) return;
+      const handles = new Map((ch?.members ?? []).map((m) => [m.userID, m.handle]));
+      const notices = await rosterObserver().observe(cid, members, handles);
+      dispatch({ kind: "roster_notices_set", channelID: cid, notices });
+    } catch (err) {
+      console.error("roster observation failed:", err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const dismissRosterNotices = useCallback(async (cid: string) => {
+    dispatch({ kind: "roster_notices_dismissed", channelID: cid });
+    try {
+      await rosterObserver().dismiss(cid);
+    } catch (err) {
+      console.error("dismiss roster notices failed:", err);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const ensureKeyFor = useCallback(async (cid: string) => {
     const cc = ccRef.current;
     const ch = channelsRef.current[cid];
@@ -1055,6 +1136,9 @@ export function App() {
       // Phase 25: tell ChannelCrypto the channel's current key version (from
       // the server) before ensuring the key, so new sends encrypt under it.
       cc.setCurrentKeyVersion(cid, ch.currentKeyVersion);
+      // 83-7: the frozen ordering -- diff and persist the observed roster
+      // BEFORE ensureChannelKey may auto-reshare wraps to it.
+      await observeRosterFor(cid, ch.memberIDs);
       const status = await cc.ensureChannelKey(cid, ch.memberIDs, ch.createdBy);
       setKeyStatus((s) => ({ ...s, [cid]: status }));
       // Phase 23g backstop: if the key is ready and we already have history for
@@ -1072,7 +1156,7 @@ export function App() {
     } catch (err) {
       console.error("ensureChannelKey failed:", err);
     }
-  }, []);
+  }, [observeRosterFor]);
 
   // When a channel becomes active (and on membership changes), ensure its key.
   useEffect(() => {
@@ -1242,6 +1326,7 @@ export function App() {
     if (!cid || !ch || !ccRef.current) return;
     setResharing(true);
     try {
+      await observeRosterFor(cid, ch.memberIDs); // 83-7: record before key
       await ccRef.current.reshareKey(cid, ch.memberIDs);
       await refreshMemberKeyStatus();
     } catch (err) {
@@ -1269,6 +1354,9 @@ export function App() {
       if (rotatingChannelsRef.current.has(cid)) return false;
       rotatingChannelsRef.current.add(cid);
       try {
+        // 83-7: a rotation wraps the whole roster -- the observed diff is
+        // persisted and surfaced first, same frozen ordering as a reshare.
+        await observeRosterFor(cid, members);
         const res = await ccRef.current.rotateChannelKeyAtomic(cid, members, currentVersion);
         if (res.kind === "failed") return false;
         const ch = channelsRef.current[cid];
@@ -1290,7 +1378,7 @@ export function App() {
         rotatingChannelsRef.current.delete(cid);
       }
     },
-    [],
+    [observeRosterFor],
   );
 
   // 83-5: the send gate's client half. Called before signing any new content
@@ -1335,6 +1423,7 @@ export function App() {
           targetID,
         );
         dispatch({ kind: "channel_member_removed", channelID: cid, userID: targetID });
+        rosterObserver().expectChange(cid, "rm", targetID); // 83-7: we did this
         dispatch({ kind: "channel_rotation_pending_set", channelID: cid, pending: true });
         await refreshMemberKeyStatus();
       } catch (err) {
@@ -1358,9 +1447,14 @@ export function App() {
           targetID,
         );
         dispatch({ kind: "channel_member_added", channelID: cid, userID: targetID, handle });
+        // 83-7: this addition is event-sourced (we made it); the observed
+        // diff stays quiet about it, but still persists the new baseline
+        // BEFORE the reshare wraps to it.
+        rosterObserver().expectChange(cid, "add", targetID);
         if (ccRef.current) {
           const ch = state.channels[cid];
           const members = ch ? [...ch.memberIDs, targetID] : [targetID];
+          await observeRosterFor(cid, members);
           await ccRef.current.reshareKey(cid, members);
         }
         await refreshMemberKeyStatus();
@@ -2674,6 +2768,16 @@ export function App() {
       case TypeListChannelsAck: {
         const p = f.payload as ListChannelsAckPayload;
         const channels = (p.channels ?? []).map(wireToChannel);
+        // 83-7: every listing is an observation -- channel open, reconnect,
+        // the periodic refresh. No wraps happen on this path, so ordering is
+        // trivial; what it buys is early detection for channels the user has
+        // not opened. Sequential and background: pinned members cost one idb
+        // read each.
+        void (async () => {
+          for (const ch of channels) {
+            await observeRosterFor(ch.id, ch.memberIDs);
+          }
+        })();
         // 62-3: stash newest-message ciphertext for the Zuckermode preview
         // pass before dispatching -- metadata renders immediately, previews
         // fill in as each channel's key settles. A re-listing (reconnect)
@@ -2860,11 +2964,14 @@ export function App() {
                   userID: id,
                   handle: handles.get(id) ?? "",
                 });
+                // 83-7: event-sourced -- the join notice above already says it.
+                rosterObserver().expectChange(cid, "add", id);
               }
             }
             if (ccRef.current) {
-              void ccRef.current
-                .reshareKey(cid, p.channel.member_ids ?? [])
+              // 83-7: persist the observed roster BEFORE the reshare wraps.
+              void observeRosterFor(cid, p.channel.member_ids ?? [])
+                .then(() => ccRef.current!.reshareKey(cid, p.channel.member_ids ?? []))
                 .then(() => refreshMemberKeyStatus())
                 .catch((err) => console.error("reshare on member_added failed:", err));
             }
@@ -2890,9 +2997,11 @@ export function App() {
             for (const id of before.memberIDs) {
               if (!after.has(id)) {
                 dispatch({ kind: "channel_member_removed", channelID: cid, userID: id });
+                rosterObserver().expectChange(cid, "rm", id); // 83-7: event-sourced
               }
             }
           }
+          void observeRosterFor(cid, p.channel.member_ids ?? []); // 83-7: adopt the baseline
           dispatch({
             kind: "channel_rotation_pending_set",
             channelID: cid,
@@ -5841,6 +5950,12 @@ export function App() {
               onDismiss={() =>
                 dispatch({ kind: "joins_dismissed", channelID: state.activeChannelID! })
               }
+            />
+          )}
+          {state.activeChannelID && (state.rosterNotices[state.activeChannelID]?.length ?? 0) > 0 && (
+            <RosterNoticeBar
+              notices={state.rosterNotices[state.activeChannelID]!}
+              onDismiss={() => void dismissRosterNotices(state.activeChannelID!)}
             />
           )}
           <TypingLine

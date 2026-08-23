@@ -46,13 +46,18 @@ const DB_NAME = "chalk";
 // v6 (83-6): adds the server_pin store -- the home server's Ed25519 identity
 // this device pinned at registration (or TOFU'd at first post-update login),
 // compared at every WebSocket open.
-const DB_VERSION = 6;
+// v7 (83-7): adds the observed_rosters store -- the last (member, identity
+// fingerprint) set this client saw per channel, plus its undismissed
+// notices. The D.6 diff runs against it on every roster observation, and
+// persisting the diff BEFORE any auto-reshare wrap is the frozen ordering.
+const DB_VERSION = 7;
 const STORE = "identity";
 const SPACE_KEY_STORE = "space_keys";
 const VERIFICATION_STORE = "verifications";
 const ATTACHMENT_CACHE_STORE = "attachment_cache";
 const REPLAY_STORE = "replay_ids";
 const SERVER_PIN_STORE = "server_pin";
+const OBSERVED_ROSTER_STORE = "observed_rosters";
 
 /** A loaded identity record, with both private keys as usable CryptoKeys. */
 export interface StoredIdentity {
@@ -98,6 +103,9 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(SERVER_PIN_STORE)) {
         db.createObjectStore(SERVER_PIN_STORE, { keyPath: "origin" });
+      }
+      if (!db.objectStoreNames.contains(OBSERVED_ROSTER_STORE)) {
+        db.createObjectStore(OBSERVED_ROSTER_STORE, { keyPath: "channelID" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -682,6 +690,60 @@ export async function clearServerPin(origin: string): Promise<void> {
   const db = await openDB();
   try {
     await tx(db, "readwrite", (s) => s.delete(origin), SERVER_PIN_STORE);
+  } finally {
+    db.close();
+  }
+}
+
+// ---- observed rosters (83-7) --------------------------------------------
+
+/**
+ * The last roster this client observed for one channel -- who was in it and
+ * under which identity fingerprint -- plus the undismissed notices its
+ * diffs have produced. One record per channel; the notices ride the same
+ * record so "persist the diff" and "persist the baseline it was computed
+ * against" are one atomic write.
+ */
+export interface ObservedRosterRecord {
+  channelID: string;
+  members: Array<{ userID: string; fpHex: string }>;
+  notices: Array<{
+    kind: "added" | "removed" | "key-rotated" | "key-changed";
+    userID: string;
+    handle?: string;
+    at: number; // epoch ms
+  }>;
+  observedAt: number;
+}
+
+export async function loadObservedRoster(channelID: string): Promise<ObservedRosterRecord | null> {
+  const db = await openDB();
+  try {
+    const rec = await tx<ObservedRosterRecord | undefined>(
+      db,
+      "readonly",
+      (s) => s.get(channelID),
+      OBSERVED_ROSTER_STORE,
+    );
+    return rec ?? null;
+  } finally {
+    db.close();
+  }
+}
+
+export async function saveObservedRoster(record: ObservedRosterRecord): Promise<void> {
+  const db = await openDB();
+  try {
+    await tx(db, "readwrite", (s) => s.put(record), OBSERVED_ROSTER_STORE);
+  } finally {
+    db.close();
+  }
+}
+
+export async function clearObservedRosters(): Promise<void> {
+  const db = await openDB();
+  try {
+    await tx(db, "readwrite", (s) => s.clear(), OBSERVED_ROSTER_STORE);
   } finally {
     db.close();
   }
