@@ -174,6 +174,11 @@ func NewServer(opts Options) (*Server, error) {
 	s.wsh = wsh                      // gov-1b-2: retained for the governance sweeper
 	wsh.guestStore = opts.GuestStore // 80-9: nil = guest connections refused
 	mux.Handle("GET /ws", wsh)
+	// 83-6: the server identity for the registration-time pin. Public by
+	// design (it is the key every client compares against); served over the
+	// same TLS the signup form uses, so first contact is exactly as strong as
+	// TOFU always is and no stronger -- stated in the phase doc.
+	mux.HandleFunc("GET /api/server-identity", wsh.serveServerIdentity)
 
 	// Phase 09b sub-step 3: registration endpoints. Mounted before
 	// the SPA's "/" catch-all (http.ServeMux's longest-prefix-wins

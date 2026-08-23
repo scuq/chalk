@@ -13,6 +13,16 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **Your device now remembers which server it signed up with, and can tell
+  when something else answers in its place.** At registration chalk pins the
+  server's cryptographic identity, and from then on every connection proves
+  it — inside the encryption, beyond what the browser's padlock checks — with
+  the whole conversation stream additionally sealed against tampering en
+  route. If a different key ever answers, chalk stops with a full-screen
+  warning showing both fingerprints; you continue only if your server's
+  operator announced the change (they run `chalkctl serverkey show` to tell
+  you the right one). The pin travels in your encrypted settings backup, so
+  your other devices inherit it.
 - **When someone is removed from a channel, the key now rotates on the next
   message — from anyone.** It used to wait for the channel owner to be online
   and click through; now whoever sends next does it automatically, in one

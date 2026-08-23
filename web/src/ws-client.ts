@@ -24,8 +24,16 @@ import {
   SUBPROTOCOL,
   TypeHello,
   TypeWelcome,
+  TypeInnerHello,
+  TypeInnerAck,
+  TypeInnerUnavailable,
+  type InnerHelloPayload,
+  type InnerAckPayload,
   newFrame,
 } from "./proto";
+// 83-6: the inner sealed channel.
+import { startClientHandshake, InnerSession, type ClientHandshake } from "./crypto/innerchan";
+import { loadPinnedServerKey, pinServerKey } from "./crypto/server-pin";
 
 export type ConnectionState = "connecting" | "open" | "closed" | "error";
 
@@ -41,6 +49,12 @@ export interface WSClientOptions {
   onFrame: (f: Frame) => void;
   // logger is optional; defaults to console.
   logger?: { log: (...a: unknown[]) => void; warn: (...a: unknown[]) => void };
+  // 83-6: onServerPinWall fires when the server proves a DIFFERENT identity
+  // than the one this device pinned -- a MITM toward home, or an operator
+  // rotation. The connection is refused and not retried; the UI shows the
+  // wall (the fingerprint seen vs. pinned) and offers re-pin. Absent = the
+  // pin mismatch just closes the socket as a policy error.
+  onServerPinWall?: (info: { seenFingerprint: string; pinnedFingerprint: string; seenPub: Uint8Array }) => void;
 }
 
 const BACKOFF_INITIAL_MS = 250;
@@ -54,6 +68,12 @@ export class WSClient {
   private reconnectTimer: number | null = null;
   private stopped = false;
   private logger: NonNullable<WSClientOptions["logger"]>;
+  // 83-6: inner-channel handshake state. `handshake` holds the client half
+  // between inner_hello and inner_ack; `session` is set once the channel is
+  // sealed. Both reset on every (re)connect.
+  private handshake: ClientHandshake | null = null;
+  private session: InnerSession | null = null;
+  private innerReady = false;
   // Phase 11a: in-flight requests waiting for an ack-by-ref. Populated
   // by request(); drained by onMessage() before onFrame() dispatch.
   private pending: Map<string, { resolve: (v: unknown) => void; reject: (e: unknown) => void }> = new Map();
@@ -86,9 +106,27 @@ export class WSClient {
     if (this.state !== "open" || !this.ws) {
       throw new Error(`WSClient.send called while state=${this.state}`);
     }
-    const frame = newFrame(type, payload, ref);
-    this.ws.send(JSON.stringify(frame));
+    this.writeFrame(newFrame(type, payload, ref));
   }
+
+  // writeFrame serializes a frame and, when the inner channel is sealed,
+  // encrypts it (binary) instead of sending plaintext JSON. Async sealing is
+  // queued so counters stay strictly ordered even under concurrent sends.
+  private writeFrame(frame: Frame): void {
+    const json = JSON.stringify(frame);
+    if (!this.session) {
+      this.ws!.send(json);
+      return;
+    }
+    this.sealQueue = this.sealQueue
+      .then(async () => {
+        if (!this.session || !this.ws) return;
+        const sealed = await this.session.seal(new TextEncoder().encode(json));
+        this.ws.send(sealed);
+      })
+      .catch((e) => this.logger.warn("WSClient: seal failed:", e));
+  }
+  private sealQueue: Promise<void> = Promise.resolve();
 
   isOpen(): boolean {
     return this.state === "open";
@@ -121,8 +159,13 @@ export class WSClient {
   private connect(): void {
     if (this.stopped) return;
     this.setState("connecting");
+    this.handshake = null;
+    this.session = null;
+    this.innerReady = false;
+    this.sealQueue = Promise.resolve();
     try {
       this.ws = new WebSocket(this.opts.url, [SUBPROTOCOL]);
+      this.ws.binaryType = "arraybuffer";
     } catch (err) {
       this.logger.warn("WSClient: dial threw:", err);
       this.scheduleReconnect();
@@ -145,23 +188,154 @@ export class WSClient {
       this.ws.close(1002, "subprotocol mismatch");
       return;
     }
-    // Send hello immediately. Server expects it as the first frame; we
-    // can't enter "open" until welcome arrives.
-    const hello = newFrame<HelloPayload>(TypeHello, {
-      device_id: this.opts.deviceId,
-      device_type: this.opts.deviceType,
-    });
-    this.ws.send(JSON.stringify(hello));
+    // 83-6: negotiate the inner sealed channel BEFORE hello, so hello and
+    // everything after travel sealed. inner_hello is plaintext JSON; the
+    // server answers inner_ack (or inner_unavailable on a dev stack).
+    void this.beginInnerHandshake();
+  }
+
+  private async beginInnerHandshake(): Promise<void> {
+    try {
+      this.handshake = await startClientHandshake();
+      const payload: InnerHelloPayload = {
+        proto_version: 1,
+        client_eph_pub: bytesToB64(this.handshake.hello.clientEphPub),
+        client_nonce: bytesToB64(this.handshake.hello.clientNonce),
+      };
+      if (this.ws && this.state === "connecting") {
+        this.ws.send(JSON.stringify(newFrame(TypeInnerHello, payload)));
+      }
+    } catch (err) {
+      this.logger.warn("WSClient: inner handshake start failed:", err);
+      this.hardFail("inner handshake failed");
+    }
+  }
+
+  private sendHello(): void {
+    this.innerReady = true;
+    this.writeFrame(
+      newFrame<HelloPayload>(TypeHello, {
+        device_id: this.opts.deviceId,
+        device_type: this.opts.deviceType,
+      }),
+    );
+  }
+
+  // Handle inner_ack / inner_unavailable. Returns true if the frame was part
+  // of the handshake (consumed here), false to fall through to normal routing.
+  private async handleInnerFrame(frame: Frame): Promise<boolean> {
+    if (this.innerReady) return false;
+    if (frame.type === TypeInnerUnavailable) {
+      // Dev stack with no server identity. If we hold a pin, this is a wall:
+      // a real MITM would strip the inner channel to run plaintext, and our
+      // registered server had one. With no pin, proceed (TOFU'd nothing yet).
+      const pinned = await loadPinnedServerKey();
+      if (pinned) {
+        this.hardFail("server identity unavailable but a pin exists");
+        return true;
+      }
+      this.handshake = null;
+      this.sendHello();
+      return true;
+    }
+    if (frame.type === TypeInnerAck && this.handshake) {
+      const p = frame.payload as InnerAckPayload;
+      let serverEphPub: Uint8Array, serverEdPub: Uint8Array, sig: Uint8Array;
+      try {
+        serverEphPub = b64ToBytes(p.server_eph_pub);
+        serverEdPub = b64ToBytes(p.server_ed25519_pub);
+        sig = b64ToBytes(p.sig);
+      } catch {
+        this.hardFail("malformed inner_ack");
+        return true;
+      }
+      const pinned = await loadPinnedServerKey();
+      try {
+        // finish() verifies the signature (a MITM cannot re-sign the
+        // transcript against the pinned key) THEN, when a pin exists,
+        // requires the proven key to equal it. It throws "...not the pinned
+        // key" for a valid signature under a different key (the wall) and a
+        // different message for an invalid signature (a MITM's own key).
+        this.session = await this.handshake.finish(serverEphPub, serverEdPub, sig, pinned);
+      } catch (err) {
+        this.handshake = null;
+        if (pinned && err instanceof Error && err.message.includes("not the pinned key")) {
+          // Valid signature, key is not the pin: operator rotation or a MITM
+          // that somehow signed a valid transcript (it cannot without the
+          // key). Surface both fingerprints so the user can compare + re-pin.
+          void this.raiseWall(serverEdPub, pinned);
+        } else {
+          // Invalid signature: a MITM presenting its own key. No trustworthy
+          // comparison to show -- hard failure.
+          this.hardFail("server signature did not verify");
+        }
+        return true;
+      }
+      this.handshake = null;
+      if (!pinned) {
+        // First contact after an update (an account that predates phase 83):
+        // TOFU the key, stated as such (D.4).
+        await pinServerKey(serverEdPub, "tofu");
+      }
+      this.sendHello();
+      return true;
+    }
+    return false;
+  }
+
+  private async raiseWall(seenPub: Uint8Array, pinnedPub: Uint8Array): Promise<void> {
+    this.stopped = true;
+    const { serverFingerprint } = await import("./crypto/innerchan");
+    const info = {
+      seenFingerprint: await serverFingerprint(seenPub),
+      pinnedFingerprint: await serverFingerprint(pinnedPub),
+      seenPub,
+    };
+    this.setState("error", "server identity changed");
+    this.opts.onServerPinWall?.(info);
+    this.ws?.close(1008, "server identity changed");
+  }
+
+  private hardFail(detail: string): void {
+    this.stopped = true;
+    this.setState("error", detail);
+    this.ws?.close(1008, detail);
   }
 
   private onMessage(e: MessageEvent): void {
+    void this.onMessageAsync(e);
+  }
+
+  private async onMessageAsync(e: MessageEvent): Promise<void> {
+    let text: string;
+    if (typeof e.data === "string") {
+      // Plaintext frame: only legal before the session is sealed (the
+      // handshake frames) or on an unsealed dev connection.
+      text = e.data;
+    } else {
+      // 83-6: a sealed binary frame. Open it under the session; a counter or
+      // authentication violation is a MITM tampering with the stream -- wall.
+      if (!this.session) {
+        this.logger.warn("WSClient: binary frame before session");
+        return;
+      }
+      try {
+        const pt = await this.session.open(new Uint8Array(e.data as ArrayBuffer));
+        text = new TextDecoder().decode(pt);
+      } catch (err) {
+        this.logger.warn("WSClient: inner channel violation:", err);
+        this.hardFail("inner channel violation");
+        return;
+      }
+    }
     let frame: Frame;
     try {
-      frame = JSON.parse(e.data as string) as Frame;
+      frame = JSON.parse(text) as Frame;
     } catch (err) {
-      this.logger.warn("WSClient: bad json:", err, e.data);
+      this.logger.warn("WSClient: bad json:", err);
       return;
     }
+    if (await this.handleInnerFrame(frame)) return;
     if (frame.type === TypeWelcome) {
       // Transition to open. Reset backoff -- we're back in business.
       this.backoff = BACKOFF_INITIAL_MS;
@@ -255,6 +429,19 @@ const DEVICE_ID_KEY = "chalk.deviceId";
 // devices, so Math.random is acceptable.
 function randomDeviceId(): string {
   return randomUuid();
+}
+
+// 83-6: base64 helpers for the inner-handshake frames.
+function bytesToB64(b: Uint8Array): string {
+  let s = "";
+  for (const x of b) s += String.fromCharCode(x);
+  return btoa(s);
+}
+function b64ToBytes(s: string): Uint8Array {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 /**

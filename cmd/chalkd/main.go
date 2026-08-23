@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"log"
@@ -20,6 +21,7 @@ import (
 	"github.com/scuq/chalk/internal/config"
 	"github.com/scuq/chalk/internal/friends"
 	"github.com/scuq/chalk/internal/giphy"
+	"github.com/scuq/chalk/internal/innerchan"
 	"github.com/scuq/chalk/internal/linkpreview"
 	"github.com/scuq/chalk/internal/mail"
 	"github.com/scuq/chalk/internal/migrate"
@@ -271,6 +273,19 @@ func run(args []string) error {
 	// 82-6: signed-wrap enforcement. 82-10 made it the default, so the OFF
 	// case is now the one worth saying out loud -- it is the weaker setting,
 	// and an operator reading a quiet log should not have to infer it.
+	// 83-6: the server identity key behind the inner sealed channel. Unset
+	// is loud: every client that has pinned this server will refuse to
+	// connect, and every new client runs plaintext frames.
+	if cfg.ServerIDKey != "" {
+		key, kerr := innerchan.ParseServerKey(cfg.ServerIDKey)
+		if kerr != nil {
+			log.Fatalf("CHALK_SERVER_ID_KEY: %v", kerr)
+		}
+		wsCfg.ServerIDKey = key
+		log.Printf("server identity: inner sealed channel ON, fingerprint %s", innerchan.Fingerprint(key.Public().(ed25519.PublicKey)))
+	} else {
+		log.Printf("server identity: CHALK_SERVER_ID_KEY unset -- inner sealed channel OFF; pinned clients will refuse this server (run `chalkctl update` to provision one)")
+	}
 	wsCfg.WrapSigRequired = cfg.WrapSigRequired
 	if cfg.WrapSigRequired {
 		log.Printf("channel keys: signed wraps REQUIRED (CHALK_WRAP_SIG_REQUIRED=true); unsigned publishes refused")

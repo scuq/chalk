@@ -757,6 +757,23 @@ export interface FetchReactionsAckPayload {
 export const TypeFetchRevisions = "fetch_revisions";
 export const TypeFetchRevisionsAck = "fetch_revisions_ack";
 
+// ---- 83-6: the inner sealed channel handshake ----------------------
+export const TypeInnerHello = "inner_hello";
+export const TypeInnerAck = "inner_ack";
+export const TypeInnerUnavailable = "inner_unavailable";
+
+export interface InnerHelloPayload {
+  proto_version: number;
+  client_eph_pub: string; // b64, 32 bytes
+  client_nonce: string; // b64, 32 bytes
+}
+
+export interface InnerAckPayload {
+  server_eph_pub: string; // b64, 32 bytes
+  server_ed25519_pub: string; // b64, 32 bytes -- what the client pins
+  sig: string; // b64, 64 bytes over "chalk-server-id.v1" || transcript_hash
+}
+
 // fetch_revisions returns one edited message's displaced ciphertexts,
 // oldest first (rev_seq 1 = the original body), so the client can verify
 // the signed revision chain back to the original.

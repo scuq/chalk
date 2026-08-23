@@ -85,9 +85,19 @@ export function pinsAesKey(scalar: Uint8Array): Promise<CryptoKey> {
  */
 export type PackedPin = [string, string, number, number, number, string?];
 
+/**
+ * 83-6: the HOME SERVER's pinned identity rides the same sealed blob:
+ * [ed25519PubB64, source, pinnedAtSecs]. Optional -- blobs sealed by older
+ * builds lack it, and older builds ignore (and on their next re-seal drop)
+ * it; the transition cost is a fresh device TOFU-ing instead of restoring,
+ * never a wrong pin.
+ */
+export type PackedServerPin = [string, "registration" | "tofu" | "repin", number];
+
 interface PinBlob {
   v: number;
   pins: PackedPin[];
+  srv?: PackedServerPin;
 }
 
 function b64decode(s: string): Uint8Array | null {
@@ -352,8 +362,42 @@ export function canonicalPins(records: VerificationRecord[]): string {
   );
 }
 
-export function sealPins(key: CryptoKey, records: VerificationRecord[]): Promise<string> {
-  return sealJSON(key, { v: VERSION, pins: records.map(packPin) });
+export function sealPins(
+  key: CryptoKey,
+  records: VerificationRecord[],
+  serverPin?: PackedServerPin | null,
+): Promise<string> {
+  const blob: PinBlob = { v: VERSION, pins: records.map(packPin) };
+  if (serverPin) blob.srv = serverPin;
+  return sealJSON(key, blob);
+}
+
+/** unpackServerPin validates the optional srv field of a decrypted blob. */
+export function unpackServerPin(value: unknown): PackedServerPin | null {
+  const blob = value as PinBlob | null;
+  const srv = blob?.srv;
+  if (!Array.isArray(srv) || srv.length !== 3) return null;
+  const [pub, source, at] = srv;
+  if (typeof pub !== "string" || !b64decode(pub) || b64decode(pub)!.length !== 32) return null;
+  if (source !== "registration" && source !== "tofu" && source !== "repin") return null;
+  if (typeof at !== "number" || !Number.isFinite(at)) return null;
+  return [pub, source, at];
+}
+
+/**
+ * chooseServerPin (83-6) merges two claims about the home server's key.
+ * Source rank decides -- registration (the anchor) > repin (a human compared
+ * fingerprints) > tofu (adopted unseen) -- and on equal rank the EARLIER pin
+ * wins: first sight is the whole idea. A backed-up registration pin
+ * therefore overrides a fresh device's TOFU, which is exactly the case the
+ * backup exists for (the TOFU'd key could be the MITM's).
+ */
+export function chooseServerPin(a: PackedServerPin | null, b: PackedServerPin | null): PackedServerPin | null {
+  if (!a) return b;
+  if (!b) return a;
+  const rank = { registration: 3, repin: 2, tofu: 1 } as const;
+  if (rank[a[1]] !== rank[b[1]]) return rank[a[1]] > rank[b[1]] ? a : b;
+  return a[2] <= b[2] ? a : b;
 }
 
 /** Total over garbage: bad base64, wrong key, tampering, unknown version. */
@@ -365,4 +409,16 @@ export async function openPins(
   const packed = unpackPins(await openJSON(key, blob));
   if (!packed) return null;
   return hydratePins(packed, ownEd25519Pub);
+}
+
+/** openPinBlob is openPins plus the 83-6 server pin, in one decryption. */
+export async function openPinBlob(
+  key: CryptoKey,
+  blob: string,
+  ownEd25519Pub: Uint8Array,
+): Promise<{ records: VerificationRecord[]; serverPin: PackedServerPin | null } | null> {
+  const value = await openJSON(key, blob);
+  const packed = unpackPins(value);
+  if (!packed) return null;
+  return { records: await hydratePins(packed, ownEd25519Pub), serverPin: unpackServerPin(value) };
 }

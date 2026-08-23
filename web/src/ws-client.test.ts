@@ -16,6 +16,7 @@ class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
   url: string;
   protocol = SUBPROTOCOL; // as if the server negotiated it
+  binaryType = "blob";
   sent: string[] = [];
   closed: { code?: number; reason?: string } | null = null;
   onopen: (() => void) | null = null;
@@ -27,8 +28,8 @@ class FakeWebSocket {
     this.url = url;
     FakeWebSocket.instances.push(this);
   }
-  send(data: string): void {
-    this.sent.push(data);
+  send(data: string | ArrayBuffer): void {
+    if (typeof data === "string") this.sent.push(data);
   }
   close(code?: number, reason?: string): void {
     this.closed = { code, reason };
@@ -50,6 +51,7 @@ let scheduled: ScheduledTimer[] = [];
     return scheduled.length;
   },
   clearTimeout: () => {},
+  location: { origin: "http://test" },
 };
 (globalThis as { WebSocket?: unknown }).WebSocket = FakeWebSocket;
 
@@ -71,15 +73,25 @@ function newClient(states: StateEvent[]) {
   });
 }
 
-// Drive a fresh client to the "open" state: connect, negotiate, welcome.
-function openClient(states: StateEvent[]) {
+// Drive a fresh client to the "open" state: connect, run the 83-6 inner
+// handshake (dev-stack path: no server key -> inner_unavailable -> plaintext),
+// then welcome. Async because the client mints an X25519 ephemeral before
+// sending inner_hello.
+async function flush() {
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+}
+async function openClient(states: StateEvent[]) {
   const client = newClient(states);
   client.start();
   const ws = FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
   ws.onopen!();
+  await flush(); // inner_hello is sent
+  ws.onmessage!({ data: JSON.stringify({ type: "inner_unavailable" }) });
+  await flush(); // plaintext hello is sent
   ws.onmessage!({
     data: JSON.stringify({ type: TypeWelcome, payload: { user_id: "u", device_id: "d", handle: "h", channels: [] } }),
   });
+  await flush();
   assert.equal(client.isOpen(), true);
   return { client, ws };
 }
@@ -91,10 +103,10 @@ function reset() {
 
 // ---- the policy ----------------------------------------------------
 
-test("ping timeout (4008) schedules a reconnect", () => {
+test("ping timeout (4008) schedules a reconnect", async () => {
   reset();
   const states: StateEvent[] = [];
-  const { ws } = openClient(states);
+  const { ws } = await openClient(states);
 
   ws.onclose!({ code: 4008, reason: "ping timeout" });
 
@@ -109,10 +121,10 @@ test("ping timeout (4008) schedules a reconnect", () => {
   assert.equal(FakeWebSocket.instances.length, before + 1);
 });
 
-test("policy violation (1008) stops for good", () => {
+test("policy violation (1008) stops for good", async () => {
   reset();
   const states: StateEvent[] = [];
-  const { ws } = openClient(states);
+  const { ws } = await openClient(states);
 
   ws.onclose!({ code: 1008, reason: "session expired" });
 
@@ -122,10 +134,10 @@ test("policy violation (1008) stops for good", () => {
   assert.match(last.detail ?? "", /session expired/);
 });
 
-test("protocol error (1002) stops for good", () => {
+test("protocol error (1002) stops for good", async () => {
   reset();
   const states: StateEvent[] = [];
-  const { ws } = openClient(states);
+  const { ws } = await openClient(states);
 
   ws.onclose!({ code: 1002, reason: "" });
 
@@ -133,10 +145,10 @@ test("protocol error (1002) stops for good", () => {
   assert.equal(states[states.length - 1].state, "error");
 });
 
-test("abnormal closure (1006) schedules a reconnect", () => {
+test("abnormal closure (1006) schedules a reconnect", async () => {
   reset();
   const states: StateEvent[] = [];
-  const { ws } = openClient(states);
+  const { ws } = await openClient(states);
 
   ws.onclose!({ code: 1006, reason: "" });
 

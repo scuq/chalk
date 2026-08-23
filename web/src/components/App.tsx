@@ -343,6 +343,17 @@ import { listAttachments } from "../attachments/transport";
 import { clearCache as clearAttachmentCache } from "../attachments/cache";
 import type { AttachmentRef, PendingAttachment } from "../attachments/types";
 import { EncryptionIndicator } from "./EncryptionIndicator";
+import { ServerPinWall } from "./ServerPinWall"; // 83-6
+import { pinServerKey } from "../crypto/server-pin"; // 83-6
+import { loadServerPin, saveServerPin } from "../crypto/idb"; // 83-6
+
+// 83-6: local b64 decode for the server-pin backup seam.
+function b64ToBytesApp(s: string): Uint8Array {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
 import { ModeBadge } from "./ModeBadge";
 import {
   logout as logoutAPI,
@@ -537,6 +548,15 @@ export function App() {
   // doesn't come back as a stuck overlay after a resize.
   const isMobile = useIsMobile();
   const [navOpen, setNavOpen] = useState(false);
+  // 83-6: the server-identity wall. Set when the server proves a key other
+  // than the one this device pinned; blocks the whole app until the user
+  // compares fingerprints and chooses to trust the new key (operator
+  // rotation) or bails (a MITM toward home).
+  const [serverPinWall, setServerPinWall] = useState<{
+    seenFingerprint: string;
+    pinnedFingerprint: string;
+    seenPub: Uint8Array;
+  } | null>(null);
 
   // 62-6: Zuckermode. When the synced pref says "zucker" AND we're on a
   // phone, the unified conversation list replaces the drawer navigation:
@@ -976,6 +996,24 @@ export function App() {
             list: listVerifications,
             save: saveVerification,
             subscribe: subscribeVerifications,
+            // 83-6: the home-server pin rides the same sealed blob. Packed
+            // as [pubB64, source, pinnedAtSecs]; a restored registration
+            // pin overrides a fresh device's TOFU (chooseServerPin).
+            loadServerPin: async () => {
+              const rec = await loadServerPin(window.location.origin);
+              return rec ? [rec.ed25519PubB64, rec.source, Math.floor(rec.pinnedAt / 1000)] : null;
+            },
+            saveServerPin: async (pin) => {
+              const pub = b64ToBytesApp(pin[0]);
+              const { serverFingerprint } = await import("../crypto/innerchan");
+              await saveServerPin({
+                origin: window.location.origin,
+                ed25519PubB64: pin[0],
+                fingerprint: await serverFingerprint(pub),
+                source: pin[1],
+                pinnedAt: pin[2] * 1000,
+              });
+            },
           },
           setPinStatus,
         );
@@ -1968,6 +2006,7 @@ export function App() {
           serverCommit: w.server_commit,
         }),
       onFrame: (f: Frame) => handleFrame(f),
+      onServerPinWall: (info) => setServerPinWall(info), // 83-6
     });
     clientRef.current = client;
     client.start();
@@ -4390,6 +4429,19 @@ export function App() {
   // of the chat UI. Once authStage flips to "authed", the chat UI
   // renders. The WS connect effect above is gated on authStage too
   // so we don't open a WS until the user is authenticated.
+  if (serverPinWall) {
+    return (
+      <ServerPinWall
+        wall={serverPinWall}
+        onTrust={async () => {
+          await pinServerKey(serverPinWall.seenPub, "repin");
+          setServerPinWall(null);
+          clientRef.current?.start();
+        }}
+      />
+    );
+  }
+
   if (state.authStage !== "authed") {
     return (
       <AuthGate

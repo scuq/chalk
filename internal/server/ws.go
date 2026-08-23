@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -13,8 +14,10 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/scuq/chalk/internal/innerchan"
 
 	"github.com/scuq/chalk/internal/auth"
 	"github.com/scuq/chalk/internal/friends"
@@ -66,6 +69,12 @@ type WSConfig struct {
 	// config.Default(). See internal/config/config.go for why.
 	// accepted (the soft window).
 	WrapSigRequired bool
+	// ServerIDKey (83-6) is chalkd's long-term Ed25519 identity, from
+	// CHALK_SERVER_ID_KEY. Nil disables the inner sealed channel: clients
+	// are told inner_unavailable and run plaintext WebSocket frames (over
+	// TLS) as before -- acceptable for a dev stack, and the client refuses
+	// it the moment it holds a pin for this server.
+	ServerIDKey ed25519.PrivateKey
 }
 
 // EphemeralWSConfig carries the phase-80 knobs the WS handlers enforce:
@@ -198,8 +207,21 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
+	// 83-6: the inner sealed channel is negotiated BEFORE hello, so hello
+	// itself -- and everything after -- travels sealed. The first frame is
+	// either inner_hello (new clients) or a plaintext hello (pre-83 bundles
+	// still cached as a PWA). Registered per *websocket.Conn so the one
+	// writeOne and the reads pick the session up without touching the
+	// hundred call sites that only hold the conn.
 	helloCtx, helloCancel := context.WithTimeout(ctx, 5*time.Second)
-	hello, err := readHello(helloCtx, c)
+	first, err := h.innerHandshake(helloCtx, c)
+	if err == nil {
+		defer innerSessions.Delete(c)
+	}
+	var hello *proto.HelloPayload
+	if err == nil {
+		hello, err = parseHello(first)
+	}
 	helloCancel()
 	if err != nil {
 		_ = c.Close(websocket.StatusPolicyViolation, "hello required")
@@ -542,12 +564,106 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	<-doneW
 }
 
-// readHello reads the first frame and asserts it's a hello.
-func readHello(ctx context.Context, c *websocket.Conn) (*proto.HelloPayload, error) {
+// serveServerIdentity answers GET /api/server-identity with the public key
+// a registering client pins (83-6). 404 when the server has no identity key.
+func (h *WSHandler) serveServerIdentity(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.ServerIDKey == nil {
+		http.Error(w, "server identity not configured", http.StatusNotFound)
+		return
+	}
+	pub := h.cfg.ServerIDKey.Public().(ed25519.PublicKey)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"ed25519_pub": base64.StdEncoding.EncodeToString(pub),
+		"fingerprint": innerchan.Fingerprint(pub),
+	})
+}
+
+// innerSessions maps a live connection to its 83-6 sealed session. Absent
+// means a plaintext (legacy) session.
+var innerSessions sync.Map // *websocket.Conn -> *innerchan.Session
+
+// innerHandshake consumes the first frame. If it is inner_hello it performs
+// the 83-6 handshake (or answers inner_unavailable when no server key is
+// configured) and then returns the NEXT frame, opened; otherwise it returns
+// the first frame as-is (legacy plaintext hello).
+func (h *WSHandler) innerHandshake(ctx context.Context, c *websocket.Conn) ([]byte, error) {
 	_, data, err := c.Read(ctx)
 	if err != nil {
 		return nil, err
 	}
+	var f proto.Frame
+	if err := json.Unmarshal(data, &f); err != nil {
+		return nil, err
+	}
+	if f.Type != proto.TypeInnerHello {
+		return data, nil
+	}
+	if h.cfg.ServerIDKey == nil {
+		un, _ := proto.NewFrame(proto.TypeInnerUnavailable, f.Ref, struct{}{})
+		ub, _ := json.Marshal(un)
+		if err := writeOne(ctx, c, ub, h.cfg.WriteTimeout); err != nil {
+			return nil, err
+		}
+		_, next, err := c.Read(ctx) // plaintext hello follows
+		return next, err
+	}
+	var p proto.InnerHelloPayload
+	if err := f.DecodePayload(&p); err != nil {
+		return nil, err
+	}
+	if p.ProtoVersion != innerchan.ProtoVersion {
+		return nil, fmt.Errorf("inner_hello: unsupported proto_version %d", p.ProtoVersion)
+	}
+	eph, err := base64.StdEncoding.DecodeString(p.ClientEphPub)
+	if err != nil {
+		return nil, errors.New("inner_hello: client_eph_pub not base64")
+	}
+	nonce, err := base64.StdEncoding.DecodeString(p.ClientNonce)
+	if err != nil {
+		return nil, errors.New("inner_hello: client_nonce not base64")
+	}
+	res, err := innerchan.ServerHandshake(h.cfg.ServerIDKey, eph, nonce)
+	if err != nil {
+		return nil, err
+	}
+	ack, _ := proto.NewFrame(proto.TypeInnerAck, f.Ref, proto.InnerAckPayload{
+		ServerEphPub:     base64.StdEncoding.EncodeToString(res.ServerEphPub),
+		ServerEd25519Pub: base64.StdEncoding.EncodeToString(res.ServerEdPub),
+		Sig:              base64.StdEncoding.EncodeToString(res.Sig),
+	})
+	ab, _ := json.Marshal(ack)
+	if err := writeOne(ctx, c, ab, h.cfg.WriteTimeout); err != nil {
+		return nil, err
+	}
+	innerSessions.Store(c, res.Session)
+	return readFrame(ctx, c) // the sealed hello
+}
+
+// readFrame reads one inbound frame and opens it when the connection has a
+// sealed session. A counter or authentication violation is terminal: the
+// connection is closed with a policy-violation status and the error
+// returned, so the caller's loop ends.
+func readFrame(ctx context.Context, c *websocket.Conn) ([]byte, error) {
+	_, data, err := c.Read(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sess, ok := innerSessions.Load(c)
+	if !ok {
+		return data, nil
+	}
+	pt, err := sess.(*innerchan.Session).OpenFromClient(data)
+	if err != nil {
+		_ = c.Close(websocket.StatusPolicyViolation, "inner channel violation")
+		return nil, err
+	}
+	return pt, nil
+}
+
+// parseHello asserts a (possibly opened) first frame is a hello.
+func parseHello(data []byte) (*proto.HelloPayload, error) {
 	var f proto.Frame
 	if err := json.Unmarshal(data, &f); err != nil {
 		return nil, err
@@ -569,7 +685,7 @@ func readHello(ctx context.Context, c *websocket.Conn) (*proto.HelloPayload, err
 // responsible for sending its own ack/error frame.
 func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn) {
 	for {
-		_, data, err := c.Read(ctx)
+		data, err := readFrame(ctx, c) // 83-6: opened when sealed
 		if err != nil {
 			return
 		}
@@ -1093,6 +1209,16 @@ func (h *WSHandler) sendError(ctx context.Context, c *websocket.Conn, ref, code,
 func writeOne(ctx context.Context, c *websocket.Conn, data []byte, timeout time.Duration) error {
 	wctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	// 83-6: a connection with a sealed session writes binary sealed frames;
+	// the session serializes its own counter, so concurrent writers (the
+	// write loop, handlers, the pubsub fan-out) stay strictly ordered.
+	if sess, ok := innerSessions.Load(c); ok {
+		sealed, err := sess.(*innerchan.Session).SealToClient(data)
+		if err != nil {
+			return err
+		}
+		return c.Write(wctx, websocket.MessageBinary, sealed)
+	}
 	return c.Write(wctx, websocket.MessageText, data)
 }
 

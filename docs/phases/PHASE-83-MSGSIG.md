@@ -1,6 +1,6 @@
 # Phase 83 — MSGSIG: the signed sealed envelope
 
-**Status: in progress — slices 83-1 … 83-5 landed 2026-08-09 (scuq opened
+**Status: in progress — slices 83-1 … 83-6 landed 2026-08-09 (scuq opened
 implementation on the R20-conditioned pass, all four of its items
 being complete in the sixth revision). A fresh design under the
 revised trust model (decided by scuq, 2026-08-09), superseding the
@@ -619,7 +619,7 @@ half-claimed. L-01 — unchanged, separate account-recovery work.
 | 83-3 | Append-only edits: `message_revisions` migration + atomic edit transaction, `fetch_revisions`, client ancestry classification; signed sealed reaction clears (delete the unencrypted-clear branch) — **landed 2026-08-09** (see the slice record) |
 | 83-4 | Identity generations: the `chalk-idgen.v1` chain cert minted at rotation (R16-1), `(user_id, ed25519_fp)` fetch incl. retired + certs, chain-to-pin verification, `verified-former-identity` labelling, the chain-break wall — **landed 2026-08-09** (see the slice record) |
 | 83-5 | Rotation-due: server marks on shrink; the atomic `rotate_channel_key` transaction + `rotation_required` send gate (R16-2); tests incl. owner-leave, 2-person channels, and the two-concurrent-responders race (no mixed generation in any interleaving) — **landed 2026-08-09** (see the slice record) |
-| 83-6 | Server identity: chalkctl-provisioned keypair, registration pin + prefs backup, the inner sealed channel exactly as frozen in D.3 (transcript hash, directional HKDF domains, monotonic counters, close-on-violation), mismatch wall, re-pin flow |
+| 83-6 | Server identity: chalkctl-provisioned keypair, registration pin + prefs backup, the inner sealed channel exactly as frozen in D.3 (transcript hash, directional HKDF domains, monotonic counters, close-on-violation), mismatch wall, re-pin flow — **landed 2026-08-09** (see the slice record) |
 | 83-7 | Client-derived roster-change notices (D.6): per-channel observed-roster store, the diff on every fetch, the observed add/remove/key-change notice distinct from event-sourced ones, fingerprint-change reusing the idgen verification, **the frozen diff-before-reshare ordering** |
 | 83-8 | Docs + enforcement end-state: threat-model.md final wording, minimum-signing-build advertisement, CHANGELOG |
 
@@ -828,6 +828,51 @@ the catch-up effect no longer gated on the owner. Decisions:
   one winner, every v+1 wrap the winner's) and the client race test
   (`rotation-atomic.test.ts`) cover the two-concurrent-responders
   property from both sides.
+
+**83-6 (landed 2026-08-09)** — the server identity and the inner
+sealed channel, D.3 exactly as frozen. `internal/innerchan` (Go) and
+`crypto/innerchan.ts` (browser) implement the handshake — transcript
+hash over `u8(1) || ephs || nonce || server key`, the
+`chalk-server-id.v1` signature, directional HKDF domains, the frozen
+`u32be(0) || u64be(counter)` nonce, close-on-violation — and a
+known-answer test pins both to byte-identical output from fixed
+inputs. `CHALK_SERVER_ID_KEY` follows the `CHALK_TOTP_ENC_KEY`
+pattern end to end (init generates, `--force` preserves absolutely,
+`update` backfills, restore CARRIES it — a restored server keeps its
+identity or every client walls). `chalkctl serverkey show|rotate
+--yes` is the operator surface and the re-pin flow's authority: the
+wall shows the pinned vs. presented fingerprints and the user
+compares against what the operator announced. Registration pins via
+`GET /api/server-identity`; existing accounts TOFU at first
+post-update login (D.4); the pin rides the phase-84 sealed prefs
+blob (`srv` field; registration > repin > tofu, first sight wins
+ties, so a restored registration anchor overrides a fresh device's
+TOFU). Decisions:
+
+- **The whole frame stream is sealed** after the handshake (binary
+  frames, per-direction counters), through exactly two seams: the
+  server's one `writeOne`/read path (session registry keyed by conn)
+  and the client's one send/onmessage pair. Control pings are
+  WebSocket-level and stay outside, carrying no application data.
+- **A server without a key answers `inner_unavailable`** (dev
+  stacks): a client with NO pin proceeds in plaintext; a client WITH
+  a pin refuses — a real MITM would strip the handshake, and the
+  registered server had a key. This is the anti-downgrade rule.
+- **Legacy plaintext hello stays accepted** server-side (a cached PWA
+  bundle predating 83 must still connect); the enforcement end-state
+  belongs to 83-8's advertisement, and the boundary remains client
+  rendering + the client-side downgrade refusal above.
+- **Wall semantics**: signature valid but key ≠ pin → the re-pin wall
+  with both fingerprints; signature invalid → hard failure with no
+  comparison shown (nothing trustworthy to compare). Counter or
+  authentication violations mid-session close the connection on both
+  sides.
+- **Guests** ride the same client transport: TOFU on their origin,
+  same sealing.
+- The end-to-end proof (`test/integration/innerchan_test.go`:
+  handshake against a real chalkd, sealed hello/welcome, violation
+  closes) needs the dev Postgres and skips without
+  `CHALK_TEST_PGURL`.
 
 ## The decision record (2026-08-09)
 

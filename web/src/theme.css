@@ -10019,3 +10019,62 @@ body.chalk-resizing-y .chalk-composer-resizer {
     display: none;
   }
 }
+
+/* 83-6: the server-identity wall. Full-screen, deliberately stark -- it is
+   the loudest thing in the product, on the level of the identity-changed
+   wall it mirrors. */
+.chalk-pinwall {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: var(--chalk-bg);
+  z-index: 1000;
+}
+.chalk-pinwall-card {
+  max-width: 34rem;
+  border: 2px solid var(--chalk-error);
+  border-radius: 10px;
+  padding: 1.5rem 1.75rem;
+  background: var(--chalk-surface, var(--chalk-bg));
+}
+.chalk-pinwall-card h1 {
+  color: var(--chalk-error);
+  margin-top: 0;
+  font-size: 1.3rem;
+}
+.chalk-pinwall-fps {
+  margin: 1.25rem 0;
+}
+.chalk-pinwall-fps dt {
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+  margin-top: 0.75rem;
+}
+.chalk-pinwall-fps dd {
+  margin: 0.15rem 0 0;
+}
+.chalk-pinwall-fps code {
+  font-family: var(--chalk-mono, monospace);
+  letter-spacing: 0.03em;
+  word-break: break-all;
+}
+.chalk-pinwall-guidance {
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+}
+.chalk-pinwall-trust {
+  margin-top: 0.5rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--chalk-error);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--chalk-error);
+  cursor: pointer;
+  font: inherit;
+}
+.chalk-pinwall-trust:hover {
+  background: var(--chalk-error);
+  color: var(--chalk-bg);
+}

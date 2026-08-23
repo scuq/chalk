@@ -27,6 +27,7 @@ type InitParams struct {
 	PGGuestPassword     string // secret -> env file only (80-1: chalk_guest role)
 	TurnSecret          string // secret -> env file only (voice)
 	TOTPEncKey          string // secret -> env file only (auth v2 TOTP at-rest key)
+	ServerIDKey         string // secret -> env file only (83-6 server identity seed)
 	AuthDecoyKey        string // secret -> env file only (81-3: stable prelogin decoys)
 	AdminBootstrapToken string // secret -> env file only (one-shot admin claim)
 	ChalkctlPath        string // absolute path to this binary (update timer)

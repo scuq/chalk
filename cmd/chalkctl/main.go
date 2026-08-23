@@ -71,6 +71,8 @@ func run(args []string) error {
 		return runEphemeral(args[1:])
 	case "wrapsig":
 		return runWrapSig(args[1:])
+	case "serverkey":
+		return runServerKey(args[1:])
 	case "self-update", "rollback", "logs":
 		return fmt.Errorf("%q is not implemented yet in this build (arrives in a later ops slice)", cmd)
 	default:
@@ -593,6 +595,37 @@ func runWrapSig(args []string) error {
 	}
 }
 
+// runServerKey: the operator surface for the server identity (83-6).
+func runServerKey(args []string) error {
+	fs := flag.NewFlagSet("serverkey", flag.ContinueOnError)
+	var (
+		envPath = fs.String("env", chalkctl.DefaultEnvPath, "env file path")
+		yes     = fs.Bool("yes", false, "with `rotate`: really replace the key (walls every client until re-pinned)")
+	)
+	rest, err := parsePositional(fs, args)
+	if err != nil {
+		return err
+	}
+	sub := "show"
+	if len(rest) == 1 {
+		sub = rest[0]
+	} else if len(rest) > 1 {
+		return fmt.Errorf("usage: chalkctl serverkey [show|rotate --yes]")
+	}
+	if err := chalkctl.RequireRoot(); err != nil {
+		return err
+	}
+	opts := chalkctl.ServerKeyOptions{EnvPath: *envPath, Out: os.Stdout}
+	switch sub {
+	case "show":
+		return chalkctl.ServerKeyShow(opts)
+	case "rotate":
+		return chalkctl.ServerKeyRotate(opts, *yes)
+	default:
+		return fmt.Errorf("usage: chalkctl serverkey [show|rotate --yes]")
+	}
+}
+
 func runMetrics(args []string) error {
 	fs := flag.NewFlagSet("metrics", flag.ContinueOnError)
 	var (
@@ -654,6 +687,7 @@ Commands:
   metrics      what postgres knows about its own performance (read-only)
   ephemeral    list | purge [--channel <id>] | disable -- guest voice rooms
   wrapsig      status | enable [--force] | disable -- require signed channel keys
+  serverkey    show | rotate --yes                -- the server identity clients pin (phase 83)
   self-update  update the chalkctl binary itself
   rollback     re-pin the previous chalk image
   logs         tail the stack's logs

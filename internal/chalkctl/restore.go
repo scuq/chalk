@@ -28,10 +28,15 @@ import (
 // carriedEnvKeys are the values restore copies out of the archived env file
 // into the live one, overwriting what init generated.
 //
-// Only CHALK_TOTP_ENC_KEY qualifies, and it does so absolutely: every TOTP
-// secret in the dump is AES-GCM ciphertext under the OLD host's key, so
-// keeping the new host's freshly generated one would lock every account out at
-// the second factor with no way back.
+// CHALK_TOTP_ENC_KEY qualifies absolutely: every TOTP secret in the dump is
+// AES-GCM ciphertext under the OLD host's key, so keeping the new host's
+// freshly generated one would lock every account out at the second factor
+// with no way back.
+//
+// CHALK_SERVER_ID_KEY (83-6) qualifies for the mirror reason: every client in
+// the dump has PINNED the old host's server identity, and a restored server
+// answering with a fresh key walls all of them at once. The restore is the
+// same server moving house, so it keeps its name.
 //
 // Everything else is deliberately left as init generated it:
 //   - CHALK_PG_PASSWORD / POSTGRES_PASSWORD / CHALK_DB_URL belong to the new
@@ -41,7 +46,7 @@ import (
 //   - CHALK_RP_ID / CHALK_RP_ORIGINS must match the domain actually being
 //     served, not the one the backup came from;
 //   - CHALK_ADMIN_* only seed a first-boot row that the restore replaces.
-var carriedEnvKeys = []string{"CHALK_TOTP_ENC_KEY"}
+var carriedEnvKeys = []string{"CHALK_TOTP_ENC_KEY", "CHALK_SERVER_ID_KEY"}
 
 // RestoreWipeSQL is prepended to the dump so the load starts from a clean
 // schema. Dropping it beats relying on a dump's own DROP statements: if this

@@ -126,6 +126,12 @@ type Config struct {
 	// anchor to verify against, and refusing them here would kill every
 	// guest link outright rather than harden anything.
 	WrapSigRequired bool
+	// ServerIDKey (83-6) is chalkd's long-term Ed25519 identity: standard
+	// base64 of the 32-byte seed, from CHALK_SERVER_ID_KEY (chalkctl init
+	// generates it; `chalkctl serverkey show` prints its fingerprint).
+	// Empty disables the inner sealed channel -- clients that hold a pin
+	// for this server refuse to connect, so production always sets it.
+	ServerIDKey string
 
 	// Governance holds the server-wide DEFAULTS for per-channel governance
 	// config (gov-1a). A channel snapshots these into its own columns at
@@ -362,6 +368,10 @@ func (c *Config) applyEnv() {
 	// 82-6: signed-wrap enforcement flag.
 	if v := os.Getenv("CHALK_WRAP_SIG_REQUIRED"); v != "" {
 		c.WrapSigRequired = parseBool(v)
+	}
+	// 83-6: the server identity key.
+	if v := os.Getenv("CHALK_SERVER_ID_KEY"); v != "" {
+		c.ServerIDKey = strings.TrimSpace(v)
 	}
 
 	// gov-1a: governance defaults (spec H14). String mode + int knobs.

@@ -19,12 +19,14 @@ import {
   BLOB_BUDGET_BYTES,
   canonicalPins,
   fitPins,
+  chooseServerPin,
   mergePins,
-  openPins,
+  openPinBlob,
   pinsAesKey,
   scalarFromX25519,
   sealPins,
   PINS_PREFS_KEY,
+  type PackedServerPin,
 } from "./pin-backup";
 import type { VerificationRecord } from "./safety-number";
 
@@ -39,6 +41,10 @@ export interface PinStorage {
   list(): Promise<VerificationRecord[]>;
   save(record: VerificationRecord): Promise<void>;
   subscribe(fn: () => void): () => void;
+  /** 83-6: the home-server pin, carried in the same blob. Optional so
+   *  existing embeds/tests keep working; absent = peer pins only. */
+  loadServerPin?(): Promise<PackedServerPin | null>;
+  saveServerPin?(pin: PackedServerPin): Promise<void>;
 }
 
 export interface PinSyncStatus {
@@ -113,8 +119,9 @@ export class PinSync {
     if (blob === this.lastBlob) return;
     this.lastBlob = blob;
 
-    const remote = await openPins(this.key, blob, this.ownEd25519Pub);
-    if (!remote) {
+    const opened = await openPinBlob(this.key, blob, this.ownEd25519Pub);
+    const remote = opened?.records ?? null;
+    if (!remote || !opened) {
       // Keep the local pins and leave the server's copy alone. An unreadable
       // blob is not a reason to destroy it -- it may be a newer format this
       // build does not know, and pins are not cheap to re-establish.
@@ -126,10 +133,23 @@ export class PinSync {
     const result = mergePins(local, remote);
     for (const r of result.writes) await this.storage.save(r);
 
+    // 83-6: merge the server pin the same directionless way. A restored
+    // registration pin overrides a local TOFU (see chooseServerPin); the
+    // next connect then compares the server against the anchor, not the
+    // possibly-blind local adoption.
+    if (this.storage.loadServerPin && this.storage.saveServerPin) {
+      const localSrv = await this.storage.loadServerPin();
+      const winner = chooseServerPin(localSrv, opened.serverPin);
+      if (winner && JSON.stringify(winner) !== JSON.stringify(localSrv)) {
+        await this.storage.saveServerPin(winner);
+        console.info("pin-sync: restored the server identity pin from backup");
+      }
+    }
+
     // What the server holds, as content. Setting it here is what keeps a device
     // that learned nothing new from re-sealing the same set under a fresh nonce
     // and handing the other devices a "change" to answer.
-    this.lastJSON = canonicalPins(remote);
+    this.lastJSON = canonicalPins(remote) + (opened.serverPin ? "|" + JSON.stringify(opened.serverPin) : "");
 
     this.status = {
       ...this.status,
@@ -174,9 +194,11 @@ export class PinSync {
           `${dropped.length} did not fit and are this device only`,
       );
     }
-    if (json === this.lastJSON) return;
-    this.lastJSON = json;
-    const blob = await sealPins(this.key, kept);
+    const srv = (await this.storage?.loadServerPin?.()) ?? null;
+    const jsonWithSrv = json + (srv ? "|" + JSON.stringify(srv) : "");
+    if (jsonWithSrv === this.lastJSON) return;
+    this.lastJSON = jsonWithSrv;
+    const blob = await sealPins(this.key, kept, srv);
     this.lastBlob = blob;
     this.transport.send({ [PINS_PREFS_KEY]: blob });
   }

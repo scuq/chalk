@@ -109,6 +109,11 @@ func Update(o UpdateOptions) error {
 	if _, err := ensureTOTPEncKey(o.EnvPath, o.Out); err != nil {
 		return fmt.Errorf("ensure CHALK_TOTP_ENC_KEY: %w", err)
 	}
+	// 83-6: the server identity key. Same shape: append-only, never
+	// overwrites a present key (clients have pinned it).
+	if _, err := ensureServerIDKey(o.EnvPath, o.Out); err != nil {
+		return fmt.Errorf("ensure CHALK_SERVER_ID_KEY: %w", err)
+	}
 	// 80-1: phase 80 upgrade path. chalkd >= v0.7 connects as chalk_app and
 	// needs chalk_guest for the ephemeral-guest pool. Backfill the env keys
 	// and assert the roles in the running Postgres BEFORE the swap, so both

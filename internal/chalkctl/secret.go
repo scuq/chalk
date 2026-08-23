@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"github.com/scuq/chalk/internal/innerchan"
 	"io"
 	"os"
 )
@@ -28,6 +29,25 @@ func genTOTPEncKey() (string, error) {
 		return "", fmt.Errorf("generate TOTP enc key: %w", err)
 	}
 	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// genServerIDKey returns a fresh CHALK_SERVER_ID_KEY value (83-6): the
+// 32-byte Ed25519 seed of chalkd's long-term identity, standard base64.
+func genServerIDKey() (string, error) {
+	return innerchan.GenerateServerKey()
+}
+
+// ensureServerIDKey backfills CHALK_SERVER_ID_KEY into an existing env file
+// if (and only if) it is absent -- the upgrade path for deployments
+// initialized before phase 83. A PRESENT key is never touched: every client
+// has pinned it. Returns whether a key was added.
+func ensureServerIDKey(envPath string, log io.Writer) (bool, error) {
+	key, err := genServerIDKey()
+	if err != nil {
+		return false, err
+	}
+	return appendEnvVar(envPath, "CHALK_SERVER_ID_KEY", key,
+		"phase 83 server identity (backfilled by chalkctl; clients pin this -- never regenerate casually)", log)
 }
 
 // genDecoyKey returns a fresh CHALK_AUTH_DECOY_KEY value: 32 bytes of CSPRNG

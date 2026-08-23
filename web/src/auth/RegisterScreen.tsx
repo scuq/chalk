@@ -23,6 +23,7 @@
 import { useState } from "preact/hooks";
 import type { RegistrationForm, AuthConfig, RegistrationResult } from "./types";
 import { registerBegin, registerFinish, ApiError } from "./api";
+import { fetchAndPinServerIdentity } from "../crypto/server-pin"; // 83-6
 import { performRegistration, WebAuthnError } from "../webauthn";
 
 interface Props {
@@ -103,6 +104,10 @@ export function RegisterScreen({
       });
       const att = await performRegistration(opts);
       const result = await registerFinish(att);
+      // 83-6: pin the home server's identity at registration -- the trust
+      // anchor claim 3 names. Best-effort: fetched over the signup TLS
+      // session, never blocks the account being created.
+      await fetchAndPinServerIdentity();
       onRegistered(result);
     } catch (err) {
       if (err instanceof ApiError) {

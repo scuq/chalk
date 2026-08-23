@@ -58,6 +58,7 @@ All flags are also available as `CHALK_*` env vars (e.g. `--listen` ↔ `CHALK_L
 | `--log-format` | `CHALK_LOG_FORMAT` | `console` | `console` / `json` |
 | `--shutdown-grace` | `CHALK_SHUTDOWN_GRACE` | `20s` | |
 | `--instance-id` | `CHALK_INSTANCE_ID` | (auto UUID) | |
+| — | `CHALK_SERVER_ID_KEY` | (chalkctl-generated) | phase 83 server identity (Ed25519 seed, b64); see “Server identity” below |
 | | `CHALK_VOICE_ENABLED` | `false` | phase 30: master switch for voice/video |
 | | `CHALK_VOICE_MAX_PARTICIPANTS` | `5` | mesh room cap (2..16) |
 | | `CHALK_VOICE_FORCE_RELAY` | `false` | test knob: clients use relay-only ICE |
@@ -174,6 +175,28 @@ chalkctl ephemeral disable                 # feature off + all links revoked
 Purge works by expiring the room; chalkd's minutely janitor performs the
 hard delete (one audited deletion path) and pushes the removal to connected
 clients, kicking any guests still in the call.
+
+## Server identity (phase 83)
+
+Every client pins the server's Ed25519 identity — at registration for new
+accounts, at first post-update login for existing ones — and proves it at
+every connection through the inner sealed channel, so a MITM with a valid
+TLS certificate still cannot answer for the server. The key is
+`CHALK_SERVER_ID_KEY` in the env file: `chalkctl init` generates it,
+`--force` preserves it, `update` backfills it on old deployments, and
+`restore` carries it to a new host (a restored server must keep its
+identity or every client stops at the pin wall).
+
+    chalkctl serverkey show           # the fingerprint clients compare against
+
+**Rotating it is an operator ceremony, never routine.** `chalkctl serverkey
+rotate --yes` writes a fresh key and prints the new fingerprint; announce it
+to your users out of band (not through chalk — the channel being re-keyed is
+the one in doubt), then restart chalkd. Every client stops at a full-screen
+wall showing the fingerprint it pinned and the one now presented; each user
+compares the presented one against your announcement and chooses to trust
+it. A client that sees a changed key you did NOT announce is looking at an
+interception — that is the wall doing its job.
 
 ## Backups
 

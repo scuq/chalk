@@ -556,6 +556,16 @@ const (
 	TypeFetchIdentityChain    = "fetch_identity_chain"
 	TypeFetchIdentityChainAck = "fetch_identity_chain_ack"
 
+	// 83-6: the inner sealed channel handshake. inner_hello is the client's
+	// FIRST frame (plaintext JSON); inner_ack is the server's answer, after
+	// which every frame in both directions is a sealed BINARY message
+	// (internal/innerchan). inner_unavailable is the answer of a server
+	// running without CHALK_SERVER_ID_KEY (dev stacks): the client proceeds
+	// in plaintext only if it holds no pin for this server.
+	TypeInnerHello       = "inner_hello"
+	TypeInnerAck         = "inner_ack"
+	TypeInnerUnavailable = "inner_unavailable"
+
 	TypePublishChannelKey    = "publish_channel_key"
 	TypePublishChannelKeyAck = "publish_channel_key_ack"
 
@@ -1060,6 +1070,23 @@ type FetchIdentityAckPayload struct {
 	X25519Pub  string `json:"x25519_pub,omitempty"`
 	Ed25519Pub string `json:"ed25519_pub,omitempty"`
 	SelfSig    string `json:"self_sig,omitempty"`
+}
+
+// InnerHelloPayload opens the 83-6 handshake: the client's ephemeral X25519
+// public key and a fresh 32-byte nonce, both standard base64.
+type InnerHelloPayload struct {
+	ProtoVersion int    `json:"proto_version"`
+	ClientEphPub string `json:"client_eph_pub"`
+	ClientNonce  string `json:"client_nonce"`
+}
+
+// InnerAckPayload answers it: the server's ephemeral, its long-term Ed25519
+// identity (what the client pins), and the signature under
+// "chalk-server-id.v1" over the transcript hash.
+type InnerAckPayload struct {
+	ServerEphPub     string `json:"server_eph_pub"`
+	ServerEd25519Pub string `json:"server_ed25519_pub"`
+	Sig              string `json:"sig"`
 }
 
 // FetchIdentityChainPayload asks for every generation of one user's identity

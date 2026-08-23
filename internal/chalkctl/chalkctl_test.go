@@ -185,7 +185,7 @@ func TestRenderAllTemplates(t *testing.T) {
 		PostgresTag: "18-alpine", CaddyTag: "2-alpine",
 		VoiceEnabled: true, PGPassword: "PGSECRET", TurnSecret: "TURNSECRET",
 		PGAppPassword: "APPSECRET", PGGuestPassword: "GUESTSECRET",
-		TOTPEncKey: "TOTPKEYX", AdminBootstrapToken: "ADMINBOOTX",
+		TOTPEncKey: "TOTPKEYX", ServerIDKey: "SERVERIDX", AdminBootstrapToken: "ADMINBOOTX",
 		ChalkctlPath:  "/usr/local/bin/chalkctl",
 		AdminUsername: "admin", AdminEmail: "admin@example.org", OpenRegistration: true,
 		CoturnTag: "4.14.0-r0-alpine", TurnVerbose: true,
@@ -219,6 +219,7 @@ func TestRenderAllTemplates(t *testing.T) {
 	if !strings.Contains(string(env), "CHALK_PG_PASSWORD=PGSECRET") ||
 		!strings.Contains(string(env), "CHALK_TURN_SECRET=TURNSECRET") ||
 		!strings.Contains(string(env), "CHALK_TOTP_ENC_KEY=TOTPKEYX") ||
+		!strings.Contains(string(env), "CHALK_SERVER_ID_KEY=SERVERIDX") ||
 		!strings.Contains(string(env), "CHALK_ADMIN_BOOTSTRAP_TOKEN=ADMINBOOTX") {
 		t.Error("env file missing secrets")
 	}

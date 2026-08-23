@@ -245,3 +245,40 @@ test("a pin whose key will not decode is dropped, not kept as a keyless one", as
   const blob = await sealPins(key, [tofu("bob", "AAAA", 1000)]);
   assert.deepEqual(await openPins(key, blob, OWN_PUB), []);
 });
+
+// ---- 83-6: the server pin in the blob ------------------------------------
+
+import { sealPins as sealPins836, openPinBlob, chooseServerPin, unpackServerPin, pinsAesKey as key836 } from "./pin-backup";
+
+test("83-6: the server pin rides the sealed blob and comes back intact", async () => {
+  const key = await key836(new Uint8Array(32).fill(5));
+  const own = new Uint8Array(32).fill(9);
+  const srv: import("./pin-backup").PackedServerPin = ["QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=", "registration", 1754730000];
+  const blob = await sealPins836(key, [], srv);
+  const opened = await openPinBlob(key, blob, own);
+  assert.ok(opened);
+  assert.deepEqual(opened!.serverPin, srv);
+  // a blob without one opens with null (older builds)
+  const legacy = await sealPins836(key, []);
+  assert.equal((await openPinBlob(key, legacy, own))!.serverPin, null);
+});
+
+test("83-6: chooseServerPin ranks registration > repin > tofu, then first sight", () => {
+  const reg: import("./pin-backup").PackedServerPin = ["QQ==", "registration", 2000];
+  const tofu: import("./pin-backup").PackedServerPin = ["Qg==", "tofu", 1000];
+  const repin: import("./pin-backup").PackedServerPin = ["Qw==", "repin", 1500];
+  assert.equal(chooseServerPin(tofu, reg), reg); // the backup's anchor beats a fresh TOFU
+  assert.equal(chooseServerPin(repin, tofu), repin);
+  assert.equal(chooseServerPin(reg, repin), reg);
+  const regLater: import("./pin-backup").PackedServerPin = ["RA==", "registration", 3000];
+  assert.equal(chooseServerPin(regLater, reg), reg); // equal rank: earlier wins
+  assert.equal(chooseServerPin(null, tofu), tofu);
+  assert.equal(chooseServerPin(reg, null), reg);
+});
+
+test("83-6: unpackServerPin is total over garbage", () => {
+  assert.equal(unpackServerPin(null), null);
+  assert.equal(unpackServerPin({ v: 1, pins: [] }), null);
+  assert.equal(unpackServerPin({ v: 1, pins: [], srv: ["x", "registration", 1] }), null); // not 32 bytes
+  assert.equal(unpackServerPin({ v: 1, pins: [], srv: ["QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=", "bogus", 1] }), null);
+});

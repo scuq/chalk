@@ -141,7 +141,7 @@ func Init(o InitOptions) error {
 	//   - --force WITHOUT --drop-db: PRESERVE the existing secrets from the
 	//     current env file, or the running DB (with its old password) would
 	//     reject the newly-generated one.
-	var pg, appPw, guestPw, turn, totp, decoy, adminBoot string
+	var pg, appPw, guestPw, turn, totp, decoy, adminBoot, serverKey string
 	preserve := o.Force && initialized && !o.DropDB
 	if preserve {
 		existing, rerr := readEnvSecrets(o.EnvPath)
@@ -198,6 +198,17 @@ func Init(o InitOptions) error {
 				return err
 			}
 		}
+		// 83-6: the server identity key. PRESERVED absolutely when present --
+		// every client has pinned it, and a regenerated key walls them all.
+		// Absent only on deployments initialized before phase 83: generate
+		// one, which those clients TOFU-pin at their next login (D.4).
+		serverKey = existing["CHALK_SERVER_ID_KEY"]
+		if serverKey == "" {
+			if serverKey, err = genServerIDKey(); err != nil {
+				return err
+			}
+			o.logf("generating CHALK_SERVER_ID_KEY (phase 83 server identity)")
+		}
 	} else {
 		if pg, err = genSecret(24); err != nil {
 			return err
@@ -220,6 +231,9 @@ func Init(o InitOptions) error {
 			return err
 		}
 		if adminBoot, err = genSecret(24); err != nil {
+			return err
+		}
+		if serverKey, err = genServerIDKey(); err != nil {
 			return err
 		}
 	}
@@ -259,6 +273,7 @@ func Init(o InitOptions) error {
 		PGGuestPassword:     guestPw,
 		TurnSecret:          turn,
 		TOTPEncKey:          totp,
+		ServerIDKey:         serverKey,
 		AuthDecoyKey:        decoy,
 		AdminBootstrapToken: adminBoot,
 		ChalkctlPath:        self,

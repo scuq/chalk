@@ -43,12 +43,16 @@ const DB_NAME = "chalk";
 // triple (actor/writer_scope/client_msg_id) to the FIRST server row id it was
 // seen under, so the same envelope re-delivered under a new server id renders
 // once (PHASE-83-MSGSIG.md D.1).
-const DB_VERSION = 5;
+// v6 (83-6): adds the server_pin store -- the home server's Ed25519 identity
+// this device pinned at registration (or TOFU'd at first post-update login),
+// compared at every WebSocket open.
+const DB_VERSION = 6;
 const STORE = "identity";
 const SPACE_KEY_STORE = "space_keys";
 const VERIFICATION_STORE = "verifications";
 const ATTACHMENT_CACHE_STORE = "attachment_cache";
 const REPLAY_STORE = "replay_ids";
+const SERVER_PIN_STORE = "server_pin";
 
 /** A loaded identity record, with both private keys as usable CryptoKeys. */
 export interface StoredIdentity {
@@ -91,6 +95,9 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(REPLAY_STORE)) {
         db.createObjectStore(REPLAY_STORE, { keyPath: "triple" });
+      }
+      if (!db.objectStoreNames.contains(SERVER_PIN_STORE)) {
+        db.createObjectStore(SERVER_PIN_STORE, { keyPath: "origin" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -627,6 +634,54 @@ export async function clearReplayRecords(): Promise<void> {
   const db = await openDB();
   try {
     await tx(db, "readwrite", (s) => s.clear(), REPLAY_STORE);
+  } finally {
+    db.close();
+  }
+}
+
+// ---- server pin (83-6) ---------------------------------------------------
+
+/**
+ * The home server's pinned identity. Keyed by origin so a browser profile
+ * that has used two chalk servers keeps both pins apart.
+ *
+ *   registration  pinned during signup, the trust anchor D.3 names
+ *   tofu          pinned at the first post-83 login of a pre-existing
+ *                 account (D.4: adopted, stated as TOFU)
+ *   repin         the user compared fingerprints at the wall and chose to
+ *                 trust the new key (operator rotation)
+ */
+export interface ServerPinRecord {
+  origin: string;
+  ed25519PubB64: string;
+  fingerprint: string;
+  source: "registration" | "tofu" | "repin";
+  pinnedAt: number;
+}
+
+export async function loadServerPin(origin: string): Promise<ServerPinRecord | null> {
+  const db = await openDB();
+  try {
+    const rec = await tx<ServerPinRecord | undefined>(db, "readonly", (s) => s.get(origin), SERVER_PIN_STORE);
+    return rec ?? null;
+  } finally {
+    db.close();
+  }
+}
+
+export async function saveServerPin(record: ServerPinRecord): Promise<void> {
+  const db = await openDB();
+  try {
+    await tx(db, "readwrite", (s) => s.put(record), SERVER_PIN_STORE);
+  } finally {
+    db.close();
+  }
+}
+
+export async function clearServerPin(origin: string): Promise<void> {
+  const db = await openDB();
+  try {
+    await tx(db, "readwrite", (s) => s.delete(origin), SERVER_PIN_STORE);
   } finally {
     db.close();
   }

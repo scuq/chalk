@@ -188,11 +188,19 @@ func TestNextMemberRejectsWrongOrder(t *testing.T) {
 	}
 }
 
-// The whole point of the restore's env handling: the TOTP key comes across,
-// and the credentials belonging to the NEW host never do.
-func TestCarriedEnvKeysAreTOTPOnly(t *testing.T) {
-	if len(carriedEnvKeys) != 1 || carriedEnvKeys[0] != "CHALK_TOTP_ENC_KEY" {
+// The whole point of the restore's env handling: the TOTP key and (83-6)
+// the server identity key come across -- the two values clients and stored
+// ciphertext are bound to -- and the credentials belonging to the NEW host
+// never do.
+func TestCarriedEnvKeysAreIdentityOnly(t *testing.T) {
+	want := []string{"CHALK_TOTP_ENC_KEY", "CHALK_SERVER_ID_KEY"}
+	if len(carriedEnvKeys) != len(want) {
 		t.Fatalf("carriedEnvKeys = %v; carrying anything else moves the old host's credentials onto the new one", carriedEnvKeys)
+	}
+	for i, k := range want {
+		if carriedEnvKeys[i] != k {
+			t.Fatalf("carriedEnvKeys = %v, want %v", carriedEnvKeys, want)
+		}
 	}
 }
 
