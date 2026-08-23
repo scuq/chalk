@@ -1,7 +1,10 @@
 # Phase 71 — call sounds and the chalk-stroke grain
 
 *Backfilled record.* Written after the fact from the commit history and the
-changelog. The authority on the numbers is `SOUND_SPECS` in
+changelog. **Partly superseded by phase 102:** the four call *categories*, the
+gate's call floor and the `voice/session.ts` call sites all stand; the synth
+specs and the bench this record describes were removed with the synthesizer
+— see [PHASE-102-SOUNDTHEMES.md](PHASE-102-SOUNDTHEMES.md). The authority on the numbers is `SOUND_SPECS` in
 `web/src/notify/synth.ts` and its comments; see also
 [notification-sounds.md](../notification-sounds.md).
 

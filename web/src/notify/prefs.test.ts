@@ -27,9 +27,18 @@ test("normalize keeps a valid pref untouched", () => {
     master: true,
     volume: 0.7,
     dnd: true,
+    theme: "gamegirl" as const,
     categories: { ...DEFAULT_SOUND_PREFS.categories, presence: true },
   };
   assert.deepEqual(normalizeSoundPrefs(prefs), prefs);
+});
+
+// 102-1: the theme is a string the user can edit and a build can retire.
+test("normalize keeps a known theme and falls back on an unknown one", () => {
+  assert.equal(normalizeSoundPrefs({ theme: "runestone" }).theme, "runestone");
+  for (const bad of [undefined, "", "synth", 3, null, {}]) {
+    assert.equal(normalizeSoundPrefs({ theme: bad }).theme, DEFAULT_SOUND_PREFS.theme);
+  }
 });
 
 test("normalize falls back on junk input", () => {

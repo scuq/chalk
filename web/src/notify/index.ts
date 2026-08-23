@@ -2,9 +2,9 @@
 //
 // Holds the three pieces together: the device's prefs (prefs.ts), the
 // decision about whether to make a noise at all (gate.ts), and the
-// chalk-stroke pack that makes it (synth.ts). Nothing here decides *which*
-// category an event is -- that's the caller's job, because it needs app
-// state -- and nothing here touches app state.
+// theme player that makes it (player.ts, themes.ts). Nothing here decides
+// *which* category an event is -- that's the caller's job, because it needs
+// app state -- and nothing here touches app state.
 //
 // Deliberately not a hook and not in the reducer. The reducer is pure by
 // contract, and its "message" case also runs for optimistic self-sends and
@@ -13,14 +13,22 @@
 
 import { decideSound, type GateVerdict } from "./gate";
 import { loadSoundPrefs, subscribeSoundPrefs } from "./prefs";
-import { SoundPlayer } from "./synth";
+import { SoundPlayer } from "./player";
 import { loadDevicePrefs, subscribeDevicePrefs } from "../voice/device-prefs";
 import { isCallCategory, type CallCategory, type SoundCategory, type SoundPrefs } from "./types";
+import type { SoundThemeId } from "./themes";
 
 export * from "./types";
 export { decideSound, MIN_GAP_ANY_MS, MIN_GAP_CALL_MS, MIN_GAP_CATEGORY_MS } from "./gate";
 export { loadSoundPrefs, saveSoundPrefs, normalizeSoundPrefs, useSoundPrefs } from "./prefs";
-export { SOUND_SPECS, type StrokeSpec } from "./synth";
+export {
+  SOUND_THEMES,
+  DEFAULT_SOUND_THEME,
+  CUE_FOR,
+  isSoundThemeId,
+  type SoundThemeId,
+  type ThemeCue,
+} from "./themes";
 
 // What the caller knows about the moment the sound is for. Kept to the
 // facts the suppression rules need, so that adding a category later
@@ -42,10 +50,11 @@ export class NotifySounds {
 
   constructor() {
     this.prefs = loadSoundPrefs();
-    this.player = new SoundPlayer(this.prefs.volume);
+    this.player = new SoundPlayer(this.prefs.volume, this.prefs.theme);
     this.unsubscribe = subscribeSoundPrefs((next) => {
       this.prefs = next;
       this.player.setVolume(next.volume);
+      this.player.setTheme(next.theme);
     });
     // 44-9: the chosen output device is a machine setting, so the sounds
     // follow the same speakers the call does.
@@ -107,7 +116,13 @@ export class NotifySounds {
   // looking straight at the app, which is the exact situation every
   // suppression rule exists to prevent. It does not skip the unlock,
   // because clicking the button *is* the gesture that grants it.
-  preview(category: SoundCategory): void {
+  //
+  // 102-1: the theme picker passes the theme it has just chosen, because
+  // the pref write it made lands in this object through a Preact state
+  // updater -- possibly after this call. Saying it outright is simpler
+  // than reasoning about that ordering.
+  preview(category: SoundCategory, theme?: SoundThemeId): void {
+    if (theme) this.player.setTheme(theme);
     void this.player.unlock().then(() => this.player.play(category));
   }
 

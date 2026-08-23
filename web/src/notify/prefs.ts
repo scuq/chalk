@@ -18,12 +18,17 @@ import {
   type MachineCategory,
   type SoundPrefs,
 } from "./types";
+import { isSoundThemeId } from "./themes";
 
 // v2: the chat categories moved out to the rules engine (phase 50), so
 // prefs now hold only master/volume/dnd plus the machine noises. v1 is
 // still read as a fallback -- normalize simply ignores the chat keys --
 // and left in place, both so a downgrade keeps working and because the
 // rules store seeds its one-time migration from it.
+//
+// 102-1 added `theme` to the same entry rather than bumping to v3: an old
+// entry without it simply gets the default, and an unknown theme id (a
+// downgrade, or a theme retired later) falls back the same way.
 const STORAGE_KEY = "chalk.notify.v2";
 const V1_STORAGE_KEY = "chalk.notify.v1";
 
@@ -57,6 +62,7 @@ export function normalizeSoundPrefs(raw: unknown): SoundPrefs {
     master: typeof o.master === "boolean" ? o.master : DEFAULT_SOUND_PREFS.master,
     volume,
     dnd: typeof o.dnd === "boolean" ? o.dnd : DEFAULT_SOUND_PREFS.dnd,
+    theme: isSoundThemeId(o.theme) ? o.theme : DEFAULT_SOUND_PREFS.theme,
     categories,
   };
 }

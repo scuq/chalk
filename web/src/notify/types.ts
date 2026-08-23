@@ -5,8 +5,10 @@
 //
 //   dnd_schedule  a time-window scheduler is its own slice; shipping a
 //                 dead field is worse than omitting it
-//   pack          there is exactly one pack, and a discriminator with one
-//                 value is an abstraction with nothing to discriminate
+//
+// (A second refusal used to sit here: "there is exactly one pack, and a
+// discriminator with one value discriminates nothing". 102-1 gave it
+// three values -- `theme`, see themes.ts -- and the discriminator with it.)
 //
 // Phase 50 split the categories in two. The notification event types
 // (rules.ts) go through the rules engine, which decides per event
@@ -23,6 +25,7 @@
 // wrong on a phone in a room with other people.
 
 import { EVENT_TYPE_LABELS, NOTIFY_EVENT_TYPES, type NotifyEventType } from "./rules";
+import { DEFAULT_SOUND_THEME, type SoundThemeId } from "./themes";
 
 // 71-1: the four sounds a call makes about itself -- you arriving and
 // leaving, and anyone else doing the same while you're in the room. They
@@ -39,7 +42,7 @@ export type MachineCategory =
   | "error"
   | CallCategory;
 
-// Everything the synth can play: the rules-routed event types plus the
+// Everything the player can play: the rules-routed event types plus the
 // machine noises.
 export type SoundCategory = NotifyEventType | MachineCategory;
 
@@ -90,6 +93,9 @@ export interface SoundPrefs {
   master: boolean;
   volume: number; // 0..1
   dnd: boolean;
+  // 102-1: which sound theme this device plays. Per-device like the rest:
+  // a theme is a taste, and the phone and the desk may differ.
+  theme: SoundThemeId;
   categories: Record<MachineCategory, boolean>;
 }
 
@@ -119,9 +125,9 @@ export const DEFAULT_CATEGORIES: Record<MachineCategory, boolean> = {
   error: true,
 };
 
-// On out of the box. Volume sits low: the pack is audible at 0.4 without
-// being the loudest thing on the desktop, and the suppression rules
-// already keep it quiet for whatever channel the user is actually
+// On out of the box. Volume sits low: the themes are audible at 0.4
+// without being the loudest thing on the desktop, and the suppression
+// rules already keep it quiet for whatever channel the user is actually
 // reading.
 //
 // Nothing can actually sound until the user has interacted with the page
@@ -131,5 +137,6 @@ export const DEFAULT_SOUND_PREFS: SoundPrefs = {
   master: true,
   volume: 0.4,
   dnd: false,
+  theme: DEFAULT_SOUND_THEME,
   categories: { ...DEFAULT_CATEGORIES },
 };

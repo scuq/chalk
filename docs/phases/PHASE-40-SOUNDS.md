@@ -1,7 +1,11 @@
 # Phase 40 — notification sounds
 
 *Backfilled record.* Written after the fact from the commit history and the
-changelog. The tuning rationale — why each number in `SOUND_SPECS` is what it is
+changelog. **Superseded by phase 102:** the synthesizer this records
+(`synth.ts`, `SOUND_SPECS`, `tools/sound-bench.mjs`) was removed and replaced
+by recorded sound themes — see
+[PHASE-102-SOUNDTHEMES.md](PHASE-102-SOUNDTHEMES.md). What follows is the
+design as it shipped, kept as history. The tuning rationale — why each number in `SOUND_SPECS` is what it is
 — lives in [notification-sounds.md](../notification-sounds.md) and in the source
 comments, which are the authority.
 

@@ -113,6 +113,9 @@ const buildOpts = {
     ".ttf": "file",
     ".svg": "file",
     ".png": "file",
+    // 102-1: the sound themes (assets/sounds/<theme>/*.wav), imported by
+    // notify/theme-assets.ts. Content-hashed like every other file asset.
+    ".wav": "file",
   },
   logLevel: "info",
 };

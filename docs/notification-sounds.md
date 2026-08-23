@@ -16,7 +16,7 @@ frame handlers ──normalize──▶ bus (NotifyEvent) ──▶ resolvePrior
                        ┌──────────────────────────────────┼─────────────────────┐
                        ▼                                  ▼                     ▼
                  sound sink                        banner sink             blink sink
-             (synth.ts, gate.ts)                  (banners.ts)             (title.ts)
+            (player.ts, gate.ts)                  (banners.ts)             (title.ts)
 
 read cursors / thread inbox / friend requests ──▶ badge (badge.ts; independent of all of the above)
 ```
@@ -35,8 +35,8 @@ Two indirections, both deliberate:
 Modules: `web/src/notify/` — `bus.ts` (event stream), `rules.ts` (the pure
 engine + edit helpers), `rules-store.ts` (persistence), `classify.ts` (which
 event a message is), `events.ts` (which event a non-message frame is),
-`gate.ts` (moment-level suppression for sounds and banners), `synth.ts`,
-`banners.ts`, `title.ts`, `badge.ts`, `rules-sync.ts`. The one consumer that
+`gate.ts` (moment-level suppression for sounds and banners), `player.ts` +
+`themes.ts` + `theme-assets.ts` (the sound themes, 102), `banners.ts`, `title.ts`, `badge.ts`, `rules-sync.ts`. The one consumer that
 ties bus to sinks lives in `App.tsx`.
 
 ## Event types
@@ -63,7 +63,7 @@ Default action profiles: P1/P2 `{sound}`, P3 `{sound, blink}`, P4
 
 ## Sinks
 
-**Sound** — the chalk-stroke pack, unchanged from phase 40 (design notes
+**Sound** — a cue from the device's chosen sound theme (design notes
 below). The gate (`decideSound`) applies moment-level suppression with named
 verdicts: already-watching (tab focused + relevant surface open + not idle),
 DND, 2 s global / 5 s per-category rate floors, audio-unlock. The per-category
@@ -122,7 +122,7 @@ not hiding what's waiting.
 Two stores, split on purpose:
 
 - **Device-local** (`chalk.notify.v2` in localStorage): master, volume, DND,
-  and the machine-noise toggles (`presence`, the four call sounds,
+  the sound theme (102), and the machine-noise toggles (`presence`, the four call sounds,
   `connect`, `disconnect`, `send_confirm`, `error` — sounds about chalk
   itself; no rule should ever banner them). Volume is a property of the
   machine; the phone and the desk can disagree. v1 entries are still read;
@@ -145,77 +145,58 @@ switched off becomes a muted event type — the closest pre-rules equivalent.
 
 ## Sound design
 
-The app is called chalk, so every sound is a **chalk stroke on a board** — the
-warm, big-piece-of-chalk kind, never the screech. That is not an oscillator: a
-bell is a pitched tone that gets struck and decays, chalk is friction, which
-means broadband noise shaped by what you take out of it.
+Since phase 102 chalk plays **recorded sound themes**, not a synthesizer. A
+theme is ten WAV cues (48 kHz, 16-bit, stereo, each under a second) in
+`web/assets/sounds/<theme>/`, with a `MANIFEST.md` beside them describing each
+cue and the theme's grammar. Three ship — all authored by scuq in a DAW:
 
-```
-  bell / chime          chalk stroke
-  |\____                 __---____
-  struck, decays         contact, drag, lift
-```
-
-Six parameters carry the whole design, in `web/src/notify/synth.ts`:
-
-| | |
+| Theme | Character |
 |---|---|
-| `lowpassHz` | The anti-screech ceiling. Nails-on-a-blackboard is stick-slip resonance at roughly 2–8 kHz, so nothing here goes near it. If a sound ever turns sharp, this is the knob. Enforced against `SCREECH_FLOOR_HZ` by the tests, at both ends of the sweep. |
-| `q` | Bandpass width. Narrow bands make noise ring at their centre and the stroke becomes a beep; everything stays wide. Capped at `MAX_Q`. |
-| `sweep` | How far the band travels while the stroke sounds. The movement is what makes it a swish rather than a hiss — a sweep of 1 is a bug. |
-| `body` | A quieter layer an octave down, following the same sweep. This is how big the piece of chalk is. |
-| `grainHz` / `grain` | The stick-slip rasp: chalk advances in thousands of tiny slips, and that irregular 20–100 Hz amplitude wobble is the difference between a solid dragging over a rough surface and air coming out of a vent. Rate and depth. |
-| `tick` | The light contact transient where the chalk lands, `TICK_MS` long and under the same ceiling as the stroke. It gives a stroke a beginning instead of a fade-in. |
+| `chalk` (default) | chalk on a board: scrapes, taps, dust. Upward scrapes are arrival or connection, downward ones departure or loss; taps confirm actions. |
+| `gamegirl` | classic-handheld bleeps: 25 % pulse waves, stepped envelopes, hard gates, one noise-channel accent. Same up/down grammar. |
+| `runestone` | fantasy UI: horn-and-bell presence, portal open/close for your own call state, wooden knocks for other people, chain and drum for the connection. |
 
-The source is **pink** noise, not white: friction energy falls off with
-frequency, and a flat source under bands this wide piles up at the top of the
-passband — the one direction this pack must not go. It is normalized to
-white's RMS rather than to a peak of 1, since pink is much peakier and
-peak-normalizing would make the colour change a volume change as well.
+The theme is a **per-device** preference (`theme` in `chalk.notify.v2`, next to
+the volume), picked in profile → notifications; the per-cue play buttons
+preview in whichever theme is selected. Nothing about it reaches the server.
 
-That tilt costs the bright categories energy and hands it to the dark ones, so
-the `gain` column was re-derived after the change by rendering each sound
-offline and matching its RMS back to the pre-grain pack. A gain is therefore a
-trim against the measured output of its own band, not a number to compare
-across rows.
+**Cues vs categories.** chalk has seventeen sound categories but a theme has
+ten cues: the eight rules-routed event types (`mention`, `dm`, `thread_reply`,
+`message`, `voice`, `channel_added`, `friend_request`, `governance`) all play
+the theme's *new message* cue, and each machine noise has a cue of its own.
+That is deliberate — the themes were authored for the ten events a listener
+can tell apart, and a mention is told from a plain message by the banner and
+the badge. The mapping is `CUE_FOR` in `web/src/notify/themes.ts`, the only
+place it lives; a theme that later grows a distinct mention cue changes that
+row and nothing else.
 
-Two traps the tests hold shut. The grain modulator is **random, not an LFO** —
-a periodic one at these rates has a pitch you can hum, which is a buzz, and
-this pack does not do pitch — and it is interpolated rather than stepped,
-because a hard step in a gain is a click. And a stroke must fit at least
-`MIN_SLIPS_PER_STROKE` slips, or the modulation lands as one dip in the middle
-rather than as texture; that is the trap a "make this one shorter" edit falls
-into.
+**Files, not synthesis.** Each WAV is imported by `theme-assets.ts` through
+esbuild's file loader, so it ships content-hashed in `dist/` and is served
+immutable like every other asset — a changed cue is a new URL. The player
+(`player.ts`) keeps the `AudioContext` the synth had, and with it everything
+built on that: the master gain the volume slider drives, the 44-9 output-device
+routing via `setSinkId`, and the unlock model below. Cues are fetched and
+decoded lazily, once per theme and cue, and warmed on unlock so the first real
+notification is not late by a round trip; a cue that fails to load is silent
+and remembered, never retried per message.
 
-There are **no oscillators anywhere in the pack**. An early version put a quiet
-sine under the noise so each category had a nameable pitch; it made everything
-peep. Categories are told apart by brightness, length, sweep direction and
-stroke count instead.
+**Tests** (`themes.test.ts`) hold the contract between the table and the
+folders: every category maps to a cue, every theme folder holds every cue as a
+well-formed 48 kHz 16-bit PCM WAV under a second, and no stray file sits in a
+theme folder. Whether a theme sounds *good* is not a unit test; it is the ear
+in the DAW, and the files are the recording of it.
 
-Two-tone categories are two separate strokes, not a glide. Direction carries
-meaning: **rising = something arrived for you, falling = something went wrong.**
+**Adding a theme** is: a folder of the ten cues plus a manifest under
+`web/assets/sounds/`, thirty-line-of-imports entry in `theme-assets.ts`, an id
+in `SoundThemeId` and a row in `SOUND_THEMES` (`themes.ts`). The test tells you
+what you forgot.
 
-The call sounds are two mirrored pairs, held to that by the tests: yours
-(`call_join` / `call_leave`) is a warm two-stroke pair with real mass
-behind it, everyone else's (`peer_join` / `peer_leave`) is one short, light
-stroke from a fixed place on the board. Within each pair only the direction
-changes, so coming and going are told apart the way this pack tells
-anything apart.
-
-`disconnect` deliberately breaks the pattern — it is an eraser sweep, the
-widest, dullest, longest and heaviest thing in the pack. Losing the connection
-should sound like the board being wiped, and the tests hold it to that.
-
-The numbers in `SOUND_SPECS` were tuned by ear. Treat the table as a recording
-of that session rather than as arithmetic: changing one means listening again.
-
-`node tools/sound-bench.mjs` builds the bench for that listening pass —
-a single self-contained page with every category, the real `stroke()` graph
-and the live spec table extracted from the source (so the bench can never
-drift from what chalk plays), a slider per parameter, A/B against the
-committed version, and the invariants above enforced as live warnings. Its
-"copy tuned specs" block goes straight back into the table; the prose
-comments go with it.
+**History.** Phases 40 and 71 built a chalk-stroke *synthesizer* — pink noise
+through swept bandpass filters, a stick-slip grain modulator, no oscillators,
+seventeen hand-tuned specs and a listening bench (`tools/sound-bench.mjs`).
+Their records ([PHASE-40-SOUNDS.md](phases/PHASE-40-SOUNDS.md),
+[PHASE-71-CALLSOUNDS.md](phases/PHASE-71-CALLSOUNDS.md)) keep the design; the
+code is gone with phase 102, and the `chalk` theme carries its grammar forward.
 
 ## Unlocking
 
@@ -241,8 +222,9 @@ once. Voice reconnects are safe the same way: roster seeding arrives as
 
 - **`dnd_schedule`** — a time-window scheduler. The `dnd` boolean exists; the
   schedule is its own slice.
-- **A sample-based pack.** There is one pack, and a discriminator with one
-  value discriminates nothing.
+- **User-supplied themes.** The three themes are built in; there is no way to
+  drop a folder of WAVs into a running chalk. A theme is code (an import
+  table) on purpose, so it is content-hashed and cached like everything else.
 - **True push (service worker + Web Push).** Banners need an open tab or
   installed PWA; with chalk closed, nothing arrives. A service worker would
   also need channel-key access to show decrypted previews — its own design

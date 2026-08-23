@@ -13,7 +13,6 @@
       "Bash(npx tsc --noEmit)",
       "Bash(node test.mjs *)",
       "Bash(node build.mjs *)",
-      "Bash(node tools/sound-bench.mjs)",
       "Bash(./tools/where.sh *)",
       "Bash(rg *)",
       "Bash(node .claude/skills/run-chalk/probes/ui.mjs)",

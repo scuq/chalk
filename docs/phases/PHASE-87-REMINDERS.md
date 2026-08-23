@@ -318,8 +318,8 @@ the blob. Worth an assertion in a test rather than a discovery.
   the rules engine, not `MachineCategory`, because a person's message is behind
   it — across the exhaustive sites in `notify/rules.ts` (`:21`, `:33`, `:44`,
   `:105`) and a `case "reminder":` in `bannerContent` (`notify/banners.ts:50`).
-  `SOUND_SPECS` (`notify/synth.ts:151`) must gain an entry or `synth.test.ts`
-  goes red; see the open item below.
+  `CUE_FOR` (`notify/themes.ts`) must gain a row or `themes.test.ts` goes
+  red; see the open item below.
 - **87-7 — the record.** `docs/tags.md` gains its `#reminders` phase numbers and
   paths; `docs/phase-log.md`'s index row loses *planned, not started*;
   `docs/threat-model.md` gains the line that reminders add **no** new
@@ -348,11 +348,12 @@ the blob. Worth an assertion in a test rather than a discovery.
 
 ## Open items the design leaves
 
-- **The sound is not designed.** `SOUND_SPECS` is a recording of a listening
-  session, tuned by ear and never derived (CLAUDE.md, and the comments in
-  `synth.ts` say why each number is what it is). 87-6 lands a spec marked
-  provisional so the build stays green, and the phase is not finished until scuq
-  runs `node tools/sound-bench.mjs`, listens, and pastes the tuned block back.
+- **The sound is not designed.** Since phase 102 a sound is a recorded cue
+  per theme (`web/assets/sounds/<theme>/`), authored by scuq in a DAW. 87-6
+  maps `reminder` to an existing cue (`10_new_message` is the obvious
+  provisional choice) so the build stays green; a reminder cue of its own means
+  a new file in each of the three themes and a `ThemeCue` entry, and the phase
+  is not finished until those exist.
 - **The ceiling is ~35–50 reminders.** Enforced visibly at the point of setting
   one. If real use pushes against it, revisit the table decision — arguing the
   leak again rather than assuming it away.

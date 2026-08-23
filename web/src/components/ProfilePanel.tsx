@@ -51,6 +51,7 @@ import { useIsMobile } from "../mobile";
 import { notifySounds } from "../notify";
 import { useSoundPrefs } from "../notify/prefs";
 import { CATEGORY_LABELS, MACHINE_CATEGORIES } from "../notify/types";
+import { SOUND_THEMES, isSoundThemeId } from "../notify/themes";
 import { useIdlePrefs } from "../presence/idle-prefs";
 import {
   SECTION_TAB,
@@ -1193,8 +1194,8 @@ export function ProfilePanel({
 
           {/* 40-3: notification sounds. Per-device, so this section talks to
               localStorage through useSoundPrefs directly rather than taking
-              props -- nothing here goes near the server. Every control is a
-              chalk stroke you can hear before you commit to it. */}
+              props -- nothing here goes near the server. Every cue has a play
+              button, so you can hear a setting before you commit to it. */}
           {show("notifications") && (
             <section class="chalk-profile-notifications" data-testid="notify-settings">
               <h3>notifications</h3>
@@ -1247,6 +1248,40 @@ export function ProfilePanel({
                     <span class="chalk-profile-theme-desc">(silence everything, keep the badges)</span>
                   </span>
                 </label>
+              </div>
+
+              {/* 102-1: the sound theme. Per-device, like the volume. The
+                  rows below preview in whichever theme is selected here, so
+                  choosing one is: pick, then press play on a few. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-label" for="notify-theme">
+                  sound theme{" "}
+                  <span class="chalk-profile-theme-desc">
+                    ({SOUND_THEMES.find((t) => t.id === sound.theme)?.desc})
+                  </span>
+                </label>
+                <select
+                  id="notify-theme"
+                  class="chalk-profile-select"
+                  value={sound.theme}
+                  disabled={!sound.master}
+                  onChange={(e) => {
+                    const v = (e.target as HTMLSelectElement).value;
+                    if (isSoundThemeId(v)) {
+                      setSound({ theme: v });
+                      // Hear it at once: the change is the gesture that unlocks
+                      // audio, and the message cue is the one you'll hear most.
+                      notifySounds().preview("message", v);
+                    }
+                  }}
+                  data-testid="notify-theme"
+                >
+                  {SOUND_THEMES.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* 50-4: everything about people -- which events matter, who is
