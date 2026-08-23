@@ -167,7 +167,9 @@ function base64ToBytes(b64: string): Uint8Array {
 
 interface RotateChannelKeyPayload {
   channel_id: string;
-  new_version: number;
+  new_version?: number; // pre-83 two-step form
+  expected_version?: number; // 83-5 atomic form
+  wraps?: Array<{ recipient_id: string; wrap_suite: number; blob: string }>;
 }
 interface RotateChannelKeyAck {
   channel_id: string;
@@ -191,6 +193,39 @@ export async function commitRotation(
     { channel_id: channelID, new_version: newVersion },
   );
   return ack.current_key_version;
+}
+
+/**
+ * rotateChannelKeyAtomic (83-5) is the first-responder rotation: every
+ * member's SIGNED wrap of the new key in one request, committed in one
+ * server transaction against `expectedVersion`. Resolves with the new
+ * current version; rejects with an Error whose message starts with
+ * "stale_key_version" (naming the current version) when another responder
+ * won -- the caller then fetches the winner's wrap instead of retrying.
+ */
+export async function rotateChannelKeyAtomic(
+  ws: ChannelKeyTransport,
+  channelID: string,
+  expectedVersion: number,
+  wraps: Array<{ recipientID: string; wrap: WrappedKey }>,
+): Promise<number> {
+  const ack = await ws.request<RotateChannelKeyPayload, RotateChannelKeyAck>(TYPE_ROTATE_CHANNEL_KEY, {
+    channel_id: channelID,
+    expected_version: expectedVersion,
+    wraps: wraps.map((w) => ({
+      recipient_id: w.recipientID,
+      wrap_suite: w.wrap.suite,
+      blob: bytesToBase64(w.wrap.blob),
+    })),
+  });
+  return ack.current_key_version;
+}
+
+/** staleRotationVersion extracts the current version a stale_key_version
+ *  rejection names, or null when the error is something else. */
+export function staleRotationVersion(err: unknown): number | null {
+  const m = err instanceof Error ? /stale_key_version.*?(\d+)/.exec(err.message) : null;
+  return m ? Number(m[1]) : null;
 }
 
 interface RemoveMemberPayload {

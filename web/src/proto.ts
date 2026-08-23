@@ -305,6 +305,10 @@ export interface ChannelSummaryWire {
   members?: ChannelMemberWire[]; // phase 08c; optional for backward compat
   current_key_version?: number; // phase 25; absent from older servers -> 1
   rotation_pending?: boolean; // member removal; absent from older servers -> false
+  // 83-5: the key version a membership shrink happened at; absent when no
+  // rotation is due. Equals current_key_version whenever present (the send
+  // gate freezes the version), so the client rotates from currentKeyVersion.
+  rotation_due_from?: number;
   governance_mode?: string; // gov-2; "dictator" | "democratic"; absent -> "dictator"
   channel_type?: string; // 30-4; "text" | "voice"; absent from older servers -> "text"
   group_name?: string; // 54-2; creator's grouping suggestion; absent -> "General"

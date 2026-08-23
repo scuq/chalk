@@ -39,6 +39,8 @@ import {
   publishChannelKey,
   fetchChannelKey,
   fetchChannelKeyRecipients,
+  rotateChannelKeyAtomic,
+  staleRotationVersion,
   type ChannelKeyRecipients,
 } from "./spacekey-sync";
 import { fetchIdentity, fetchVerifiedChain } from "./identity-sync";
@@ -442,6 +444,64 @@ export class ChannelCrypto {
     // adopt the new version locally (monotonic)
     this.setCurrentKeyVersion(channelID, newVersion);
     return true;
+  }
+
+  /**
+   * rotateChannelKeyAtomic is the 83-5 first-responder rotation: mint the
+   * next space key, wrap it -- signed -- for EVERY current member including
+   * ourselves, and commit all wraps plus the version bump in one server
+   * transaction against `expectedVersion`. Nobody special is required; any
+   * member holding the key can be the next sender.
+   *
+   *   rotated  we won; the new version is adopted locally
+   *   stale    another responder won first (current = their version); the
+   *            caller fetches that version's wrap through the normal path
+   *   failed   a member's identity could not be fetched, or the request
+   *            failed for another reason -- nothing was committed
+   *
+   * Wraps are built BEFORE the request and never published piecemeal: that
+   * is what makes a mixed key generation impossible (R16-2).
+   */
+  async rotateChannelKeyAtomic(
+    channelID: string,
+    members: string[],
+    expectedVersion: number,
+  ): Promise<{ kind: "rotated"; version: number } | { kind: "stale"; current: number | null } | { kind: "failed" }> {
+    const newVersion = expectedVersion + 1;
+    const sk = generateSpaceKey();
+    const wraps: Array<{ recipientID: string; wrap: WrappedKey }> = [];
+    const seen = new Set<string>();
+    for (const m of members) {
+      if (seen.has(m)) continue;
+      seen.add(m);
+      let pub: Uint8Array | undefined;
+      try {
+        pub = m === this.identity.userID ? this.identity.x25519Public : (await fetchIdentity(this.transport, m))?.x25519Public;
+      } catch {
+        pub = undefined;
+      }
+      if (!pub) return { kind: "failed" }; // the roster must be covered exactly
+      wraps.push({
+        recipientID: m,
+        wrap: await wrapSpaceKey(sk, pub, { channelID, keyVersion: newVersion, recipientID: m }, this.signer),
+      });
+    }
+    let confirmed: number;
+    try {
+      confirmed = await rotateChannelKeyAtomic(this.transport, channelID, expectedVersion, wraps);
+    } catch (err) {
+      const current = staleRotationVersion(err);
+      if (current !== null || (err instanceof Error && err.message.includes("stale_key_version"))) {
+        // The winner's wraps are on the server; adopt their version number and
+        // let getKey fetch our wrap lazily.
+        if (current !== null) this.setCurrentKeyVersion(channelID, current);
+        return { kind: "stale", current };
+      }
+      return { kind: "failed" };
+    }
+    if (!(await this.adopt(channelID, confirmed, sk, SELF_MINTED))) return { kind: "failed" };
+    this.setCurrentKeyVersion(channelID, confirmed);
+    return { kind: "rotated", version: confirmed };
   }
 
   /**

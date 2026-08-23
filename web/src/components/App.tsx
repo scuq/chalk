@@ -307,7 +307,7 @@ import { fetchTrustedIdentity, markManuallyVerified, memberTrust } from "../cryp
 import { computeSafetyNumber, digestToHex } from "../crypto/safety-number";
 import type { MemberVerifyInfo } from "./MembersPanel";
 import { describeKeyProvenance } from "../chat/keyprovenance"; // 82-8
-import { commitRotation, removeMember, addMember, deleteMessage, editMessage } from "../crypto/spacekey-sync";
+import { removeMember, addMember, deleteMessage, editMessage } from "../crypto/spacekey-sync";
 import {
   ChannelCrypto,
   type ChannelKeyStatus,
@@ -504,6 +504,10 @@ export function App() {
   const attControllerRef = useRef<AttachmentController | null>(null);
   // Per-channel key status ("ready" | "waiting" | "plaintext") gating the composer.
   const [keyStatus, setKeyStatus] = useState<Record<string, ChannelKeyStatus>>({});
+  // 83-5: ref mirror so the rotate-before-send gate reads the live value from
+  // callbacks without re-creating them on every key-status change.
+  const keyStatusRef = useRef(keyStatus);
+  keyStatusRef.current = keyStatus;
   // Phase 23e: members-panel key-status (who has a wrapped key). Fetched via
   // ChannelCrypto when the panel opens; not reducer-owned.
   const [memberRecipients, setMemberRecipients] = useState<Set<string>>(new Set());
@@ -1213,42 +1217,56 @@ export function App() {
   // the given members (ChannelCrypto), then commit the version bump on the
   // server. Shared by the manual rotate button, the rotate_needed push, and the
   // rotation_pending catch-up. Only the owner (key holder) can actually rotate.
+  // 83-5: the rotation is ATOMIC and any member may perform it -- the
+  // first-responder pattern. Every member's signed wrap travels in one
+  // request and the server commits them with the version bump in one
+  // transaction, so two responders can never produce a mixed key generation:
+  // one wins, the other learns the current version and fetches the winner's
+  // wrap. The creator-only, upload-then-bump flow is gone.
   const rotateChannelKeyFor = useCallback(
     async (cid: string, members: string[], currentVersion: number): Promise<boolean> => {
       if (!ccRef.current || !clientRef.current) return false;
-      // In-flight guard: if a rotation for this channel is already running,
-      // don't start a second one (it would race and be rejected as stale).
+      // In-flight guard: a second concurrent rotation from this device would
+      // only lose the race.
       if (rotatingChannelsRef.current.has(cid)) return false;
       rotatingChannelsRef.current.add(cid);
       try {
-        const newVersion = currentVersion + 1;
-        const ok = await ccRef.current.rotateChannelKey(cid, members, newVersion);
-        if (!ok) return false; // we don't hold the key / not a forward step
-        let confirmed: number;
-        try {
-          confirmed = await commitRotation(
-            { request: (t, p) => clientRef.current!.request(t, p) },
-            cid,
-            newVersion,
-          );
-        } catch (err) {
-          // Backstop: if another rotation (e.g. a second owner device) advanced
-          // the version under us, the server rejects with stale_key_version.
-          // That's not a failure -- the rotation we wanted already happened; the
-          // key_rotated push will sync us to the new version. Swallow it.
-          if (err instanceof Error && err.message.includes("stale_key_version")) {
-            return true;
+        const res = await ccRef.current.rotateChannelKeyAtomic(cid, members, currentVersion);
+        if (res.kind === "failed") return false;
+        const ch = channelsRef.current[cid];
+        if (res.kind === "stale") {
+          // Someone else rotated first. Adopt their version and pull our
+          // wrap through the normal path; the key_rotated push does the same.
+          if (res.current !== null) {
+            dispatch({ kind: "channel_key_version_updated", channelID: cid, currentKeyVersion: res.current });
           }
-          throw err;
+          if (ch) {
+            const status = await ccRef.current.ensureChannelKey(cid, ch.memberIDs, ch.createdBy);
+            setKeyStatus((s) => ({ ...s, [cid]: status }));
+          }
+          return true;
         }
-        dispatch({ kind: "channel_key_version_updated", channelID: cid, currentKeyVersion: confirmed });
-        ccRef.current.setCurrentKeyVersion(cid, confirmed);
+        dispatch({ kind: "channel_key_version_updated", channelID: cid, currentKeyVersion: res.version });
         return true;
       } finally {
         rotatingChannelsRef.current.delete(cid);
       }
     },
     [],
+  );
+
+  // 83-5: the send gate's client half. Called before signing any new content
+  // for a channel: if a membership shrink is unrotated, rotate first so the
+  // content is sealed under a key the removed member never held. Returns
+  // false only when rotation was needed and could not be done.
+  const rotateIfDue = useCallback(
+    async (cid: string): Promise<boolean> => {
+      const ch = channelsRef.current[cid];
+      if (!ch || !ch.rotationPending) return true;
+      if (keyStatusRef.current[cid] !== "ready") return false; // cannot rotate without the key
+      return rotateChannelKeyFor(cid, ch.memberIDs, ch.currentKeyVersion);
+    },
+    [rotateChannelKeyFor],
   );
 
   const onRotateKey = useCallback(async () => {
@@ -1500,6 +1518,9 @@ export function App() {
       let sendBody: string;
       let sendKeyVersion: number;
       try {
+        // 83-5: rotate first if a shrink is unrotated; the server would
+        // refuse the edit with rotation_required otherwise.
+        if (!(await rotateIfDue(cid))) return false;
         if (source.sigActor && source.sigScope && source.sigClientMsgID) {
           const prevHex = source.editHeadHash ?? source.sigObjectHash;
           const senderTs = Date.now();
@@ -1543,7 +1564,7 @@ export function App() {
         return false;
       }
     },
-    [state.activeChannelID, state.messages, state.threadMessages, state.user],
+    [state.activeChannelID, state.messages, state.threadMessages, state.user, rotateIfDue],
   );
 
   // ---- 37-5: reactions ---------------------------------------------------
@@ -1677,10 +1698,9 @@ export function App() {
   useEffect(() => {
     const cid = state.activeChannelID;
     const ch = cid ? state.channels[cid] : undefined;
-    const myID = state.user?.id ?? null;
     if (!cid || !ch || !ccRef.current) return;
     if (!ch.rotationPending) return;
-    if (ch.createdBy !== myID) return; // only the owner rotates
+    // 83-5: any member holding the key rotates -- the owner is nothing special.
     if (keyStatus[cid] !== "ready") return; // need our key first
     let cancelled = false;
     (async () => {
@@ -1711,6 +1731,9 @@ export function App() {
   const userRef = useRef(state.user);
   userRef.current = state.user;
   const channelsRef = useRef(state.channels);
+  // 83-5: sends awaiting an ack, keyed by frame ref, each with a rotate-and-
+  // resend closure for the rotation_required rejection. Cleared on send_ack.
+  const pendingSendsRef = useRef<Map<string, () => Promise<void>>>(new Map());
   channelsRef.current = state.channels;
   // 30-6: handleFrame gates roster seeding on the voice flag; same
   // stale-closure caveat as userRef above, so it reads through a ref.
@@ -2308,6 +2331,7 @@ export function App() {
         // connection and history carries no client_msg_id, so this ack is the
         // only authoritative signal that our optimistic row is now persisted.
         const p = f.payload as SendAckPayload;
+        pendingSendsRef.current.delete("send-" + p.client_msg_id); // 83-5: committed, no retry
         dispatch({
           kind: "send_ack",
           channelID: p.channel_id,
@@ -2586,6 +2610,15 @@ export function App() {
       }
       case TypeError: {
         const e = f.payload as ErrorPayload;
+        // 83-5: a send refused because a membership shrink was unrotated.
+        // Rotate (atomically, any member) and re-send once; the retry
+        // closure is registered by onSend under the send's ref.
+        if (e.code === "rotation_required" && f.ref && pendingSendsRef.current.has(f.ref)) {
+          const retry = pendingSendsRef.current.get(f.ref)!;
+          pendingSendsRef.current.delete(f.ref);
+          void retry().catch((err) => console.error("rotation_required retry failed:", err));
+          break;
+        }
         // Phase 07 surfaced errors in a banner; phase 08b drops them
         // into the console for now. A toast component is a polish
         // pass.
@@ -3864,24 +3897,34 @@ export function App() {
       }
     }
 
+    // 83-5: the rotation-due gate, client half. A shrink nobody has rotated
+    // yet means the current key is one the removed member still holds --
+    // rotate first (any member can), then seal under the new version. The
+    // server refuses the send with rotation_required otherwise; see the
+    // retry backstop below for the race where the shrink lands in between.
+    if (!(await rotateIfDue(cid))) return false;
+
     // Build -> sign -> seal. "waiting" blocks the send exactly as the
     // pre-83 encrypt did (the composer is also disabled in that state),
     // BEFORE the optimistic append, so nothing is shown that won't be sent.
     const senderTs = Date.now();
-    const enc = await ccRef.current.signAndEncryptEnvelope(cid, (keyVersion, fp): MessageEnvelope => ({
-      objType: OBJ_MESSAGE,
-      channelID: cid,
-      keyVersion,
-      senderUserID: state.user!.id,
-      senderEd25519Fp: fp,
-      writerScope: deviceID,
-      clientMsgID: cmid,
-      senderTs,
-      wseq: nextWseq(deviceID),
-      reply,
-      bodyText: body,
-      attachments: attachmentBindings,
-    }));
+    const wseq = nextWseq(deviceID);
+    const signAndSeal = () =>
+      ccRef.current!.signAndEncryptEnvelope(cid, (keyVersion, fp): MessageEnvelope => ({
+        objType: OBJ_MESSAGE,
+        channelID: cid,
+        keyVersion,
+        senderUserID: state.user!.id,
+        senderEd25519Fp: fp,
+        writerScope: deviceID,
+        clientMsgID: cmid,
+        senderTs,
+        wseq,
+        reply,
+        bodyText: body,
+        attachments: attachmentBindings,
+      }));
+    const enc = await signAndSeal();
     if (enc.kind !== "encrypted") return false; // "waiting": blocked until key arrives
     const sendBody = enc.body;
     const sendKeyVersion: number = enc.keyVersion;
@@ -3949,7 +3992,20 @@ export function App() {
     if (parentID) payload.parent_id = parentID;
     if (attachmentIDs.length > 0) payload.attachment_ids = attachmentIDs;
     payload.client_msg_id = cmid;
-    c.send(TypeSend, payload);
+    // 83-5: the send carries a ref so a rotation_required rejection can be
+    // matched to THIS send and retried once under the rotated key -- same
+    // envelope triple (nothing persisted), re-signed, re-sealed. The user's
+    // send stays one action.
+    const ref = "send-" + cmid;
+    pendingSendsRef.current.set(ref, async () => {
+      const ch = channelsRef.current[cid];
+      if (!ch || !ccRef.current) return;
+      if (!(await rotateChannelKeyFor(cid, ch.memberIDs, ch.currentKeyVersion))) return;
+      const again = await signAndSeal();
+      if (again.kind !== "encrypted") return;
+      c.send(TypeSend, { ...payload, body: again.body, key_version: again.keyVersion }, ref);
+    });
+    c.send(TypeSend, payload, ref);
     return true;
   };
 

@@ -13,6 +13,13 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **When someone is removed from a channel, the key now rotates on the next
+  message — from anyone.** It used to wait for the channel owner to be online
+  and click through; now whoever sends next does it automatically, in one
+  step the server either commits whole or not at all, so two people rotating
+  at once can never hand the channel two different keys. Until that happens,
+  sending is held off rather than sealed under a key the removed person still
+  has.
 - **Editing a message no longer erases the evidence of what it said before.**
   Each edit is now signed like a fresh message and linked to the exact version
   it replaced, and the replaced versions are kept (encrypted, up to 64 per

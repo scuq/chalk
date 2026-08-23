@@ -28,6 +28,11 @@ type Channel struct {
 	// rotated yet (removal sets it; the next rotation clears it). Surfaced so the
 	// pending revocation is visible.
 	RotationPending bool
+	// RotationDueFrom (83-5) is the key version a membership shrink happened
+	// at, nil when no rotation is due. While set, sends under that version
+	// (or older) are refused and the atomic rotation must present it as
+	// expected_version; rotation_pending == (RotationDueFrom != nil).
+	RotationDueFrom *int
 	// GovernanceMode is the channel's governance mode ("dictator"|"democratic",
 	// gov-1a). Surfaced in the summary so the client can render the mode and
 	// gate unilateral vs proposal-based actions (gov-2).
@@ -230,12 +235,12 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 			    quorum_percent, pass_percent, supermajority_percent, repropose_cooldown_hours,
 			    channel_type, group_name, expires_at)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-			 RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, governance_mode, channel_type, group_name, expires_at`,
+			 RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, rotation_due_from, governance_mode, channel_type, group_name, expires_at`,
 			strings.TrimSpace(in.Name), in.IsDM, in.CreatedBy,
 			mode, gd.VoteWindowDays, gd.VoteExpiryHours, gd.MinEligible,
 			gd.QuorumPercent, gd.PassPercent, gd.SupermajorityPercent, gd.ReproposeCooldownHours,
 			channelType, groupName, in.ExpiresAt,
-		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName, &ch.ExpiresAt)
+		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.RotationDueFrom, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName, &ch.ExpiresAt)
 		if err != nil {
 			return fmt.Errorf("insert channel: %w", err)
 		}
@@ -285,10 +290,10 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 func (s *Store) GetChannel(ctx context.Context, channelID uuid.UUID) (Channel, error) {
 	var ch Channel
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, governance_mode, channel_type, group_name, expires_at
+		`SELECT id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, rotation_due_from, governance_mode, channel_type, group_name, expires_at
 		   FROM channels WHERE id = $1`,
 		channelID,
-	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName, &ch.ExpiresAt)
+	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.RotationDueFrom, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName, &ch.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Channel{}, ErrChannelNotFound
 	}
@@ -328,7 +333,7 @@ func (s *Store) IsMember(ctx context.Context, channelID, userID uuid.UUID) (bool
 // and the member-count cardinality is small (a few users per channel).
 func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]ChannelWithMembers, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.governance_mode, c.channel_type, c.group_name, c.expires_at,
+		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.rotation_due_from, c.governance_mode, c.channel_type, c.group_name, c.expires_at,
 		        GREATEST(COALESCE(cs.next_seq, 1) - 1, 0), COALESCE(cr.last_read_seq, 0),
 		        ca.last_msg_id, ca.last_msg_ts, COALESCE(ca.last_msg_seq, 0), ca.last_sender_id,
 		        m.body, m.key_version, m.deleted_at
@@ -358,7 +363,7 @@ func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]Ch
 		var lastMsgTS, deletedAt *time.Time
 		var lastMsgBody []byte
 		var lastMsgKeyVersion *int
-		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.GovernanceMode, &c.ChannelType, &c.GroupName, &c.ExpiresAt, &lastSeq, &lastReadSeq,
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.RotationDueFrom, &c.GovernanceMode, &c.ChannelType, &c.GroupName, &c.ExpiresAt, &lastSeq, &lastReadSeq,
 			&lastMsgID, &lastMsgTS, &lastMsgSeq, &lastSender, &lastMsgBody, &lastMsgKeyVersion, &deletedAt); err != nil {
 			return nil, err
 		}
@@ -683,7 +688,8 @@ func (s *Store) AdvanceChannelKeyVersion(
 	tag, err := s.Pool.Exec(ctx,
 		`UPDATE channels
 		    SET current_key_version = $3,
-		        rotation_pending = FALSE
+		        rotation_pending = FALSE,
+		        rotation_due_from = NULL
 		  WHERE id = $1
 		    AND created_by = $2
 		    AND current_key_version = $3 - 1`,
@@ -775,8 +781,15 @@ func (s *Store) RemoveMember(ctx context.Context, channelID, targetID uuid.UUID)
 		); err != nil {
 			return err
 		}
+		// 83-5: a shrink marks the channel due FROM its current version --
+		// the one the removed member could still open. The send gate freezes
+		// the version until the next sender rotates to +1, so a repeated
+		// shrink while pending re-marks the same value.
 		if _, err := tx.Exec(ctx,
-			`UPDATE channels SET rotation_pending = TRUE WHERE id = $1`, channelID,
+			`UPDATE channels
+			    SET rotation_pending = TRUE,
+			        rotation_due_from = current_key_version
+			  WHERE id = $1`, channelID,
 		); err != nil {
 			return err
 		}

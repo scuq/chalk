@@ -820,6 +820,15 @@ func (h *WSHandler) handleSend(
 				"key_version is ahead of the channel's current version")
 			return
 		}
+		// 83-5: the rotation-due send gate. While a membership shrink is
+		// unrotated, a send under the current or an older key would reach
+		// the removed member's stored key -- refuse it; the client rotates
+		// atomically and retries (the user's send stays one action).
+		if _, dueFrom, sErr := h.store.ChannelKeyState(ctx, channelID); sErr == nil && dueFrom != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeRotationRequired,
+				fmt.Sprintf("rotation_required: rotate the channel key from version %d before sending", *dueFrom))
+			return
+		}
 	}
 
 	// Phase 10a: thread reply support.
@@ -1976,6 +1985,7 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 		Members:           members,
 		CurrentKeyVersion: c.CurrentKeyVersion,
 		RotationPending:   c.RotationPending,
+		RotationDueFrom:   c.RotationDueFrom,
 		GovernanceMode:    c.GovernanceMode,
 		ChannelType:       c.ChannelType,
 		GroupName:         c.GroupName,
@@ -3476,10 +3486,6 @@ func (h *WSHandler) handleRotateChannelKey(
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
 		return
 	}
-	if p.NewVersion < 2 {
-		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "new_version must be >= 2")
-		return
-	}
 	deviceID, err := uuid.Parse(conn.DeviceID)
 	if err != nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "device_id not a UUID")
@@ -3491,8 +3497,57 @@ func (h *WSHandler) handleRotateChannelKey(
 		return
 	}
 
-	// Atomic + monotonic + creator-only: a single UPDATE that only advances
-	// from NewVersion-1 to NewVersion when created_by == caller.
+	// 83-5: the atomic first-responder form -- every wrap in one request,
+	// any member, one transaction. See store.RotateChannelKeyAtomic.
+	if len(p.Wraps) > 0 {
+		if p.ExpectedVersion < 1 {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "expected_version must be >= 1")
+			return
+		}
+		wraps := make([]store.RotationWrap, 0, len(p.Wraps))
+		for _, w := range p.Wraps {
+			rid, perr := uuid.Parse(w.RecipientID)
+			if perr != nil {
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "wrap recipient_id not a UUID")
+				return
+			}
+			blob, berr := base64.StdEncoding.DecodeString(w.Blob)
+			if berr != nil {
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "wrap blob not base64")
+				return
+			}
+			wraps = append(wraps, store.RotationWrap{RecipientID: rid, WrapSuite: w.WrapSuite, Blob: blob})
+		}
+		newVersion, rErr := h.store.RotateChannelKeyAtomic(ctx, channelID, callerID, p.ExpectedVersion, wraps, maxWrapBlobBytes)
+		if rErr != nil {
+			var stale *store.StaleRotationError
+			switch {
+			case errors.As(rErr, &stale):
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeStaleKeyVersion,
+					fmt.Sprintf("stale_key_version: current_key_version is %d", stale.Current))
+			case errors.Is(rErr, store.ErrNotAMember):
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeNotAMember, "not a member of channel")
+			case errors.Is(rErr, store.ErrChannelNotFound):
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeChannelNotFound, "channel not found")
+			case errors.Is(rErr, store.ErrRosterMismatch), errors.Is(rErr, store.ErrWrapUnsigned):
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, rErr.Error())
+			default:
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "rotate: "+rErr.Error())
+			}
+			return
+		}
+		h.finishRotation(ctx, c, f, channelID, p.ChannelID, newVersion)
+		return
+	}
+
+	if p.NewVersion < 2 {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "new_version must be >= 2")
+		return
+	}
+
+	// Pre-83 two-step form. Atomic + monotonic + creator-only: a single
+	// UPDATE that only advances from NewVersion-1 to NewVersion when
+	// created_by == caller.
 	ok, err := h.store.AdvanceChannelKeyVersion(ctx, channelID, callerID, p.NewVersion)
 	if err != nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "rotate: "+err.Error())
@@ -3515,9 +3570,22 @@ func (h *WSHandler) handleRotateChannelKey(
 		return
 	}
 
+	h.finishRotation(ctx, c, f, channelID, p.ChannelID, p.NewVersion)
+}
+
+// finishRotation acks a committed rotation and pushes key_rotated to every
+// member (shared by the atomic and the legacy form).
+func (h *WSHandler) finishRotation(
+	ctx context.Context,
+	c *websocket.Conn,
+	f proto.Frame,
+	channelID uuid.UUID,
+	channelIDStr string,
+	newVersion int,
+) {
 	ack, _ := proto.NewFrame(proto.TypeRotateChannelKeyAck, f.Ref, proto.RotateChannelKeyAckPayload{
-		ChannelID:         p.ChannelID,
-		CurrentKeyVersion: p.NewVersion,
+		ChannelID:         channelIDStr,
+		CurrentKeyVersion: newVersion,
 	})
 	data, _ := json.Marshal(ack)
 	_ = writeOne(ctx, c, data, h.cfg.WriteTimeout)
@@ -3914,6 +3982,12 @@ func (h *WSHandler) handleEditMessage(
 	if p.KeyVersion > curVer {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeStaleKeyVersion,
 			"key_version is ahead of the channel's current version")
+		return
+	}
+	// 83-5: same rotation-due gate as a send -- an edit is new content.
+	if _, dueFrom, sErr := h.store.ChannelKeyState(ctx, channelID); sErr == nil && dueFrom != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeRotationRequired,
+			fmt.Sprintf("rotation_required: rotate the channel key from version %d before editing", *dueFrom))
 		return
 	}
 

@@ -284,6 +284,10 @@ type ChannelSummary struct {
 	// RotationPending is true when a removal hasn't been followed by a rotation
 	// yet (the removed member still holds the old key until then).
 	RotationPending bool `json:"rotation_pending"`
+	// RotationDueFrom (83-5): the key version a membership shrink happened
+	// at, absent when no rotation is due. The atomic rotate_channel_key must
+	// present it as expected_version; sends are gated while it is set.
+	RotationDueFrom *int `json:"rotation_due_from,omitempty"`
 	// GovernanceMode is the channel's governance mode ("dictator"|"democratic",
 	// gov-1a/gov-2). Lets the client render the mode and gate unilateral vs
 	// proposal-based actions. Absent from older servers -> treat as "dictator".
@@ -445,6 +449,11 @@ const (
 	// Phase 25 (rotation):
 	ErrCodeNotChannelCreator = "not_channel_creator"
 	ErrCodeStaleKeyVersion   = "stale_key_version"
+	// 83-5: a membership shrink left the channel due for rotation; sends
+	// under the current (or an older) key are refused until the next
+	// sender rotates atomically. The message names the version to rotate
+	// from; the summary carries it as rotation_due_from.
+	ErrCodeRotationRequired = "rotation_required"
 	// Member removal:
 	ErrCodeCannotRemoveOwner = "cannot_remove_owner"
 	ErrCodeDMNoRemoval       = "dm_no_removal"
@@ -757,8 +766,25 @@ type PublishChannelKeyAckPayload struct {
 // NewVersion must be exactly current+1. The new-version wraps must already be
 // uploaded via publish_channel_key before this is sent.
 type RotateChannelKeyPayload struct {
-	ChannelID  string `json:"channel_id"`
-	NewVersion int    `json:"new_version"`
+	ChannelID string `json:"channel_id"`
+	// NewVersion is the pre-83 two-step form: wraps already parked at
+	// new_version via publish_channel_key, creator-only. Still accepted from
+	// old clients; new clients use the atomic form below.
+	NewVersion int `json:"new_version,omitempty"`
+	// 83-5: the atomic form. ExpectedVersion is the current version the
+	// responder built against; Wraps carries one SIGNED wrap of the new key
+	// per current member -- exactly the roster, no more, no fewer. The
+	// server inserts them all and advances to expected+1 in one transaction,
+	// or refuses with stale_key_version naming the current version.
+	ExpectedVersion int                `json:"expected_version,omitempty"`
+	Wraps           []RotationWrapWire `json:"wraps,omitempty"`
+}
+
+// RotationWrapWire is one recipient's wrap inside the atomic rotation.
+type RotationWrapWire struct {
+	RecipientID string `json:"recipient_id"`
+	WrapSuite   int    `json:"wrap_suite"`
+	Blob        string `json:"blob"` // b64
 }
 
 // RotateChannelKeyAckPayload reports the channel's current key version after a

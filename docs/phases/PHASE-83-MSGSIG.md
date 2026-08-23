@@ -1,6 +1,6 @@
 # Phase 83 — MSGSIG: the signed sealed envelope
 
-**Status: in progress — slices 83-1 … 83-4 landed 2026-08-09 (scuq opened
+**Status: in progress — slices 83-1 … 83-5 landed 2026-08-09 (scuq opened
 implementation on the R20-conditioned pass, all four of its items
 being complete in the sixth revision). A fresh design under the
 revised trust model (decided by scuq, 2026-08-09), superseding the
@@ -618,7 +618,7 @@ half-claimed. L-01 — unchanged, separate account-recovery work.
 | 83-2 | Send/receive integration: sign-then-seal, verify-fail-closed rendering incl. `unsigned` legacy label, replay dedup store (`idb.ts` bump), send-flow reorder — **landed 2026-08-09** (see the slice record) |
 | 83-3 | Append-only edits: `message_revisions` migration + atomic edit transaction, `fetch_revisions`, client ancestry classification; signed sealed reaction clears (delete the unencrypted-clear branch) — **landed 2026-08-09** (see the slice record) |
 | 83-4 | Identity generations: the `chalk-idgen.v1` chain cert minted at rotation (R16-1), `(user_id, ed25519_fp)` fetch incl. retired + certs, chain-to-pin verification, `verified-former-identity` labelling, the chain-break wall — **landed 2026-08-09** (see the slice record) |
-| 83-5 | Rotation-due: server marks on shrink; the atomic `rotate_channel_key` transaction + `rotation_required` send gate (R16-2); tests incl. owner-leave, 2-person channels, and the two-concurrent-responders race (no mixed generation in any interleaving) |
+| 83-5 | Rotation-due: server marks on shrink; the atomic `rotate_channel_key` transaction + `rotation_required` send gate (R16-2); tests incl. owner-leave, 2-person channels, and the two-concurrent-responders race (no mixed generation in any interleaving) — **landed 2026-08-09** (see the slice record) |
 | 83-6 | Server identity: chalkctl-provisioned keypair, registration pin + prefs backup, the inner sealed channel exactly as frozen in D.3 (transcript hash, directional HKDF domains, monotonic counters, close-on-violation), mismatch wall, re-pin flow |
 | 83-7 | Client-derived roster-change notices (D.6): per-channel observed-roster store, the diff on every fetch, the observed add/remove/key-change notice distinct from event-sourced ones, fingerprint-change reusing the idgen verification, **the frozen diff-before-reshare ordering** |
 | 83-8 | Docs + enforcement end-state: threat-model.md final wording, minimum-signing-build advertisement, CHANGELOG |
@@ -788,6 +788,46 @@ roll-forward vs. wall in `trust.ts`. Decisions made here:
   another user id breaks at its first cert.
 - **Our own retired generations** resolve through the same walk with
   our current key as the pin.
+
+**83-5 (landed 2026-08-09)** — migration 0053
+`channels.rotation_due_from` (set by every shrink to the current
+version; `rotation_pending` kept equal to `IS NOT NULL` for old
+clients and the badge), `store.RotateChannelKeyAtomic` (row lock;
+member; `current == expected` and, when due, `due == expected`;
+wraps name exactly the roster, all signed, within the blob cap; all
+inserted at expected+1 then the bump and the clear — one
+transaction), the `rotation_required` gate on `send` and
+`edit_message`, and the client: `ChannelCrypto.rotateChannelKeyAtomic`
+(every wrap built before the request, never published piecemeal),
+rotate-before-send/edit (`rotateIfDue`), the ref-keyed
+rotate-and-resend backstop for a `rotation_required` rejection, and
+the catch-up effect no longer gated on the owner. Decisions:
+
+- **The legacy two-step form stays accepted** (`new_version` without
+  `wraps`, creator-only, clears the due mark too) so pre-83 clients can
+  still rotate; the new client never uses it.
+- **`rotation_due_from == current_key_version` is an invariant** while
+  due — the gate freezes the version — so the client rotates from
+  `currentKeyVersion` and the summary's `rotation_due_from` is carried
+  for the record (R17-N2), not consumed.
+- **Reactions are not gated.** An emoji set re-sealed under the old key
+  in the due window is the accepted residual; gating it would need a
+  rotate-and-retry path for a non-content write.
+- **Owner-leave** reduces to any-member rotation: the existing
+  cannot-remove-owner rule still forbids the owner's own removal, so
+  "the owner leaving" is governed there, not here. A 2-person channel
+  rotates with a single wrap (tested).
+- **Guest revoke is not a shrink site today**: `RevokeEphemeralInvite`
+  only voids the link; a redeemed guest stays a member until the room
+  expires. If a guest-removal path is added it must call
+  `RemoveMember` (or mark due the same way).
+- **Guest senders cannot clear the gate** (GuestRoom has no rotate
+  path); a guest's send in the due window fails until a member's next
+  send rotates. Accepted — rare, and the member path clears it.
+- The store race test (`TestRotateChannelKeyAtomic`: two goroutines,
+  one winner, every v+1 wrap the winner's) and the client race test
+  (`rotation-atomic.test.ts`) cover the two-concurrent-responders
+  property from both sides.
 
 ## The decision record (2026-08-09)
 
