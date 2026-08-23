@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.2 — 24 August 2026 — Camera off done properly, remote video on a camera-off join
 
 ### Changed
 - **Turning your camera off now really turns it off.** The browser's camera
