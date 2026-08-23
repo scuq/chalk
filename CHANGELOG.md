@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.0 — 23 August 2026 — Signed messages, a pinned server identity, and keys that rotate themselves
 
 ### Added
 - **Your device now notices membership changes on its own — even ones the
