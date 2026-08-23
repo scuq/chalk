@@ -467,3 +467,17 @@ test("83-3: a reaction set signed by an impersonating member renders as nothing"
   assert.deepEqual(opened.emoji, []); // no warning surface for reactions: fail to nothing
   assert.equal(opened.verify, "forged");
 });
+
+test("third audit: previews of an EDITED message show its text, not a failure", async () => {
+  await freshDevice();
+  const server = makeServer();
+  const alice = await makeUser(server, ALICE);
+  await bootChannel([alice], [ALICE]);
+  const enc = await alice.cc.signAndEncryptEnvelope(CH, (v, fp) =>
+    makeEditEnv(ALICE, fp, v, new Uint8Array(32).fill(3), "edited preview text"),
+  );
+  assert.equal(enc.kind, "encrypted");
+  if (enc.kind !== "encrypted") return;
+  // the display-text path previews use (thread last-reply, conversation list)
+  assert.equal(await alice.cc.decryptForChannel(CH, enc.keyVersion, enc.body), "edited preview text");
+});

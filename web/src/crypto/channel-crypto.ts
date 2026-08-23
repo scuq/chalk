@@ -1444,8 +1444,12 @@ const CHAIN_TTL_MS = 60_000;
 function envelopeDisplayText(pt: Uint8Array): string {
   const parsed = parseEnvelope(pt);
   if (parsed.kind === "legacy") return new TextDecoder().decode(pt);
-  if (parsed.kind === "envelope" && parsed.env.objType === OBJ_MESSAGE) {
-    return (parsed.env as MessageEnvelope).bodyText;
+  // 83-3: an EDITED message's current body is its latest 0x02 envelope, and
+  // previews must show its text like any message's (third-audit fix: this
+  // used to fall through to the failure placeholder, breaking thread and
+  // conversation-list previews of every edited message).
+  if (parsed.kind === "envelope" && (parsed.env.objType === OBJ_MESSAGE || parsed.env.objType === OBJ_EDIT)) {
+    return parsed.env.bodyText;
   }
   return PLACEHOLDER_FAILED;
 }

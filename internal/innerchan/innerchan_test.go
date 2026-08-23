@@ -5,8 +5,11 @@ import (
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"sort"
+	"sync"
 	"testing"
 )
 
@@ -189,5 +192,50 @@ func TestKnownAnswer(t *testing.T) {
 	// reproducible (counter 1, 8-byte prefix, 16-byte tag).
 	if frame[7] != 1 || len(frame) != 8+len("known answer")+16 {
 		t.Fatalf("frame shape: %x", frame)
+	}
+}
+
+// Third audit: N goroutines sealing concurrently must mint frames that,
+// ordered by their counters, all open -- the per-session mutex hands out
+// counters exactly once each. (Ordering counter-to-WIRE is the writer
+// mutex in ws.go's writeOne: seal+write are one critical section there.)
+func TestConcurrentSealCountersAreDense(t *testing.T) {
+	b64, _ := GenerateServerKey()
+	priv, _ := ParseServerKey(b64)
+	clientEph, _ := ecdh.X25519().GenerateKey(rand.Reader)
+	nonce := make([]byte, 32)
+	rand.Read(nonce)
+	res, err := ServerHandshake(priv, clientEph.PublicKey().Bytes(), nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := playClient(t, clientEph, nonce, res)
+
+	const n = 64
+	frames := make([][]byte, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			f, err := res.Session.SealToClient([]byte{byte(i)})
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			frames[i] = f
+		}(i)
+	}
+	wg.Wait()
+	sort.Slice(frames, func(a, b int) bool {
+		return binary.BigEndian.Uint64(frames[a][:8]) < binary.BigEndian.Uint64(frames[b][:8])
+	})
+	for i, f := range frames {
+		if got := binary.BigEndian.Uint64(f[:8]); got != uint64(i+1) {
+			t.Fatalf("counters not dense: frame %d has counter %d", i, got)
+		}
+		if _, err := client.OpenToClient(f); err != nil {
+			t.Fatalf("frame with counter %d failed to open: %v", i+1, err)
+		}
 	}
 }

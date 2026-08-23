@@ -202,7 +202,11 @@ func (h *WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = c.Close(websocket.StatusPolicyViolation, "subprotocol required: "+proto.Subprotocol)
 		return
 	}
-	c.SetReadLimit(proto.MaxFrameBytes)
+	// 83-6 third audit: a sealed frame carries 24 bytes of framing overhead
+	// (8-byte counter + 16-byte GCM tag) around the same JSON payload, so
+	// the read limit gets exactly that slack -- a frame that fit plaintext
+	// must not be dropped for having been sealed.
+	c.SetReadLimit(proto.MaxFrameBytes + 32)
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
@@ -582,9 +586,22 @@ func (h *WSHandler) serveServerIdentity(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// innerSessions maps a live connection to its 83-6 sealed session. Absent
-// means a plaintext (legacy) session.
-var innerSessions sync.Map // *websocket.Conn -> *innerchan.Session
+// innerSessions maps a live connection to its 83-6 sealed session state.
+// Absent means a plaintext (legacy) session.
+//
+// innerConn exists for one invariant (third-audit fix): SEAL AND WRITE MUST
+// BE ONE CRITICAL SECTION. The session's own mutex orders the counters, but
+// writeOne is called from several goroutines (the read-loop handlers, the
+// write loop, the pubsub fan-out), and sealing n then losing the race to
+// write would deliver n+1 first -- which the client correctly treats as a
+// counter violation and closes on. wmu extends the counter's ordering to
+// the socket.
+type innerConn struct {
+	sess *innerchan.Session
+	wmu  sync.Mutex
+}
+
+var innerSessions sync.Map // *websocket.Conn -> *innerConn
 
 // innerHandshake consumes the first frame. If it is inner_hello it performs
 // the 83-6 handshake (or answers inner_unavailable when no server key is
@@ -639,7 +656,7 @@ func (h *WSHandler) innerHandshake(ctx context.Context, c *websocket.Conn) ([]by
 	if err := writeOne(ctx, c, ab, h.cfg.WriteTimeout); err != nil {
 		return nil, err
 	}
-	innerSessions.Store(c, res.Session)
+	innerSessions.Store(c, &innerConn{sess: res.Session})
 	return readFrame(ctx, c) // the sealed hello
 }
 
@@ -652,11 +669,11 @@ func readFrame(ctx context.Context, c *websocket.Conn) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	sess, ok := innerSessions.Load(c)
+	ic, ok := innerSessions.Load(c)
 	if !ok {
 		return data, nil
 	}
-	pt, err := sess.(*innerchan.Session).OpenFromClient(data)
+	pt, err := ic.(*innerConn).sess.OpenFromClient(data)
 	if err != nil {
 		_ = c.Close(websocket.StatusPolicyViolation, "inner channel violation")
 		return nil, err
@@ -1211,11 +1228,15 @@ func (h *WSHandler) sendError(ctx context.Context, c *websocket.Conn, ref, code,
 func writeOne(ctx context.Context, c *websocket.Conn, data []byte, timeout time.Duration) error {
 	wctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	// 83-6: a connection with a sealed session writes binary sealed frames;
-	// the session serializes its own counter, so concurrent writers (the
-	// write loop, handlers, the pubsub fan-out) stay strictly ordered.
-	if sess, ok := innerSessions.Load(c); ok {
-		sealed, err := sess.(*innerchan.Session).SealToClient(data)
+	// 83-6: a connection with a sealed session writes binary sealed frames.
+	// Seal + write are ONE critical section (wmu): the counter must reach the
+	// wire in the order it was minted, or the client's strict counter check
+	// reads a concurrent writer's interleave as tampering.
+	if v, ok := innerSessions.Load(c); ok {
+		ic := v.(*innerConn)
+		ic.wmu.Lock()
+		defer ic.wmu.Unlock()
+		sealed, err := ic.sess.SealToClient(data)
 		if err != nil {
 			return err
 		}

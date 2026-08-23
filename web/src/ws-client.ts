@@ -163,6 +163,7 @@ export class WSClient {
     this.session = null;
     this.innerReady = false;
     this.sealQueue = Promise.resolve();
+    this.recvChain = Promise.resolve();
     try {
       this.ws = new WebSocket(this.opts.url, [SUBPROTOCOL]);
       this.ws.binaryType = "arraybuffer";
@@ -305,8 +306,16 @@ export class WSClient {
   }
 
   private onMessage(e: MessageEvent): void {
-    void this.onMessageAsync(e);
+    // Third-audit fix: inbound frames are processed on ONE promise chain.
+    // Opening a sealed frame awaits WebCrypto, and InnerSession.open checks
+    // the counter before that await -- two unserialized opens from a burst
+    // of pushes would interleave and read a correct counter as a violation.
+    // The chain also keeps dispatch order identical to arrival order.
+    this.recvChain = this.recvChain
+      .then(() => this.onMessageAsync(e))
+      .catch((err) => this.logger.warn("WSClient: frame handling failed:", err));
   }
+  private recvChain: Promise<void> = Promise.resolve();
 
   private async onMessageAsync(e: MessageEvent): Promise<void> {
     let text: string;

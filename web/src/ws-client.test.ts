@@ -155,3 +155,54 @@ test("abnormal closure (1006) schedules a reconnect", async () => {
   assert.equal(scheduled.length, 1, "expected a reconnect timer");
   assert.equal(states[states.length - 1].state, "closed");
 });
+
+// ---- 83-6 third audit: inbound frames are serialized -----------------
+
+test("a burst of sealed frames opens in order on one chain (no false counter violation)", async () => {
+  reset();
+  const states: StateEvent[] = [];
+  const client = newClient(states);
+  const dispatched: string[] = [];
+  (client as unknown as { opts: { onFrame: (f: unknown) => void } }).opts.onFrame =
+    (f: unknown) => dispatched.push((f as { type: string }).type);
+  // drive THIS client to open (the shared openClient helper builds its own)
+  client.start();
+  {
+    const w = FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
+    w.onopen!();
+    await flush();
+    w.onmessage!({ data: JSON.stringify({ type: "inner_unavailable" }) });
+    await flush();
+    w.onmessage!({
+      data: JSON.stringify({ type: TypeWelcome, payload: { user_id: "u", device_id: "d", handle: "h", channels: [] } }),
+    });
+    await flush();
+    assert.equal(client.isOpen(), true);
+  }
+  // Inject a fake session whose first open is SLOW: without the recv chain,
+  // frame 2's counter check would run during frame 1's await and read a
+  // correct counter as out-of-order.
+  let ctr = 0n;
+  const session = {
+    open: async (frame: Uint8Array) => {
+      const n = new DataView(frame.buffer, frame.byteOffset, 8).getBigUint64(0);
+      if (n !== ctr + 1n) throw new Error("innerchan: repeated or out-of-order counter");
+      if (n === 1n) await new Promise((r) => setTimeout(r, 30)); // slow first open
+      ctr = n;
+      return new TextEncoder().encode(JSON.stringify({ type: `burst-${n}` }));
+    },
+  };
+  (client as unknown as { session: unknown }).session = session;
+  const ws = FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
+  const frame = (n: number) => {
+    const b = new Uint8Array(9);
+    new DataView(b.buffer).setBigUint64(0, BigInt(n));
+    return b.buffer;
+  };
+  // two binary frames delivered back-to-back, synchronously
+  ws.onmessage!({ data: frame(1) } as unknown as { data: string });
+  ws.onmessage!({ data: frame(2) } as unknown as { data: string });
+  await new Promise((r) => setTimeout(r, 120));
+  assert.deepEqual(dispatched.filter((t) => t.startsWith("burst-")), ["burst-1", "burst-2"]);
+  assert.equal(client.isOpen(), true, "no hard fail from a false counter violation");
+});

@@ -979,6 +979,42 @@ path, tested by three methods beyond the unit suites:
   server-pin backup merge restored the pre-rotation pin over a fresh
   repin (the wall loop; merge rule corrected above).
 
+**Third audit (2026-08-23)** — an adversarial re-read after the
+migration pass found three more real bugs, all fixed with regression
+tests, plus one hardening:
+
+- *Previews of edited messages broke*: the display-text path treated
+  an 0x02 body as undecryptable, so thread and conversation-list
+  previews of any edited message read "[could not decrypt]". Now an
+  edit envelope previews as its body text.
+- *Server counter-ordering race*: `writeOne` sealed under the session
+  mutex but wrote outside it — a handler ack racing a pubsub push
+  could put counters on the wire out of mint order, which the
+  client's strict check correctly reads as tampering and closes on.
+  Seal + write are now one critical section per connection
+  (`innerConn.wmu`); `TestConcurrentSealCountersAreDense` runs under
+  `-race`.
+- *Client inbound race, the mirror image*: sealed frames were opened
+  on unserialized async handlers, and `InnerSession.open` checks the
+  counter before awaiting WebCrypto — a burst of pushes could
+  manufacture a false violation and hard-fail the connection. All
+  inbound frames now process on one promise chain (which also pins
+  dispatch order to arrival order); regression-tested with a
+  slow-first-open burst.
+- *Hardening*: the server's WebSocket read limit gets the sealed
+  frame's 24-byte framing slack, so a frame that fit plaintext is
+  never dropped for having been sealed.
+
+Known residuals accepted and stated (none load-bearing): for up to
+60 s after a peer's identity rotation, their new-generation messages
+can transiently read `forged` (the resolver's chain cache; heals on
+the next failed-lookup refetch — rotation is not yet user-triggerable
+at all); a channel containing a member who never published an
+identity cannot complete an atomic rotation (that channel was already
+permanently "waiting" for that member pre-83); and dismissing roster
+notices can race a concurrent observation and briefly resurrect them
+(re-dismiss clears).
+
 **Stated mixed-window impacts** (an old cached PWA bundle against an
 upgraded server — untestable here, bounded by the phase-46 reload
 nudge and honestly listed): a pre-83 bundle renders NEW clients'
