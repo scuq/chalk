@@ -13,6 +13,11 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Changed
+- **Sending several pictures in one message now shows them as a compact tile
+  grid**, like the messengers you know — two side by side, larger sets as a
+  2×2 with a "+N" tile that reveals the rest — instead of a tall stack of
+  full-width images. Clicking a tile still opens the full picture, and files
+  sent alongside keep their own rows.
 - **Voice rooms now have their own "voice" section in the sidebar**, directly
   above the channel list, instead of being mixed in with text channels. The
   section appears only when you have a voice room, and text channels keep

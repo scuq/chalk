@@ -24,11 +24,14 @@ interface Props {
   channelID: string;
   att: AttachmentRef;
   controller: AttachmentController;
+  /** 101-1: rendered as a grid tile -- the tile's CSS crop owns the box, so
+   *  the inline natural-size style must stay off. Lightbox is unchanged. */
+  tile?: boolean;
 }
 
 type LoadState = "loading" | "ready" | "locked";
 
-export function AttachmentView({ channelID, att, controller }: Props) {
+export function AttachmentView({ channelID, att, controller, tile }: Props) {
   const [meta, setMeta] = useState<AttachmentMeta | null>(null);
   const [metaState, setMetaState] = useState<LoadState>("loading");
   const [previewURL, setPreviewURL] = useState<string | null>(null);
@@ -240,7 +243,8 @@ export function AttachmentView({ channelID, att, controller }: Props) {
             // 33-5: when both dimensions are known the box is sized before
             // the bytes decode (see imageBox). width:100% doesn't enlarge
             // anything -- max-width already caps at the natural width.
-            style={imageBox}
+            // 101-1: in a tile the grid cell is the box; cover-crop via CSS.
+            style={tile ? undefined : imageBox}
             onClick={() => setExpanded(true)}
             // 64-9: with the CSS -webkit-user-drag opt-out, keeps a drag
             // that starts on the picture from stealing the swipe-back touch.
@@ -251,7 +255,7 @@ export function AttachmentView({ channelID, att, controller }: Props) {
           <div
             class="chalk-attachment-img-placeholder"
             data-testid="attachment-img-placeholder"
-            style={imageBox}
+            style={tile ? undefined : imageBox}
           />
         )}
         {expanded && shownURL && (

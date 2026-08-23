@@ -21,7 +21,7 @@ import type { AttachmentController } from "../attachments/pipeline";
 import type { AttachmentRef } from "../attachments/types";
 import type { LinkPreviewPayload } from "../linkpreview/linkpreview";
 import { LINKPREVIEW_THUMB_PREFIX } from "../linkpreview/fetch";
-import { AttachmentView } from "./AttachmentView";
+import { AttachmentGroup } from "./AttachmentGroup";
 
 interface Props {
   payload: LinkPreviewPayload;
@@ -119,11 +119,11 @@ export function LinkPreviewView({ payload, channelID, attachments, controller }:
           <span class="chalk-linkpreview-host">{hostOf(payload.url)}</span>
         </span>
       </a>
+      {/* 101-1: the leftover attachments group the same way as a plain
+          message's -- extra images tile, files stay rows. */}
       {controller && split !== null && split.rest.length > 0 && (
         <div class="chalk-message-attachments" data-testid="message-attachments">
-          {split.rest.map((att) => (
-            <AttachmentView key={att.id} channelID={channelID} att={att} controller={controller} />
-          ))}
+          <AttachmentGroup channelID={channelID} attachments={split.rest} controller={controller} />
         </div>
       )}
     </>

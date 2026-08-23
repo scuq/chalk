@@ -1497,6 +1497,74 @@ html {
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);
 }
+/* -- 101-1: tile grid for multi-image messages -------------------- */
+/* Two columns of square cover-crops, WhatsApp-style. The grid caps its own
+   width well under the single-image 720px: crops are glanceable thumbnails,
+   the lightbox is where a picture gets seen properly. */
+.chalk-attachment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--chalk-s1);
+  width: 100%;
+  max-width: min(480px, 100%);
+}
+.chalk-attachment-tile {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: var(--chalk-radius);
+}
+/* Odd tile count: the first spans both columns at 2:1 (3 reads as
+   big-plus-pair, 5 as big-plus-2x2) so no row is left ragged. */
+.chalk-attachment-grid--widefirst .chalk-attachment-tile:first-child {
+  grid-column: 1 / -1;
+  aspect-ratio: 2 / 1;
+}
+/* Inside a tile every state fills the cell; images crop to cover. The
+   component drops its inline natural-size style in tile mode, so these
+   descendant rules own the box. */
+.chalk-attachment-tile .chalk-attachment,
+.chalk-attachment-tile .chalk-attachment--image {
+  width: 100%;
+  height: 100%;
+}
+.chalk-attachment-tile .chalk-attachment-img,
+.chalk-attachment-tile .chalk-attachment-img-placeholder {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  object-fit: cover;
+  border: 1px solid var(--chalk-border);
+}
+.chalk-attachment-tile .chalk-attachment--loading,
+.chalk-attachment-tile .chalk-attachment--locked {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+/* "+N" overlay on the last collapsed tile; clicking expands the grid. */
+.chalk-attachment-tile-more {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: var(--chalk-size-title);
+  font-weight: 600;
+  border: 0;
+  border-radius: var(--chalk-radius);
+  cursor: pointer;
+}
+.chalk-attachment-tile-more:hover {
+  background: rgba(0, 0, 0, 0.65);
+}
+
 .chalk-attachment--file {
   display: inline-flex;
   align-items: center;

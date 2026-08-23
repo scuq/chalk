@@ -20,7 +20,7 @@ import { verifyLabel, verifyTitle } from "../chat/verify"; // 83-2
 import { LONG_PRESS_MS, pressWandered } from "../chat/press";
 import { MessageMenu } from "./MessageMenu";
 import { ReactionBar } from "./ReactionBar";
-import { AttachmentView } from "./AttachmentView";
+import { AttachmentGroup } from "./AttachmentGroup";
 import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
 import { decideLinkPreviewRender } from "../linkpreview/linkpreview";
@@ -1296,17 +1296,15 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
             )}
             {/* att-2: encrypted attachments. Each decrypts independently and
                 fails closed to a locked placeholder if the key is missing.
-                Suppressed on deleted rows. */}
+                Suppressed on deleted rows. 101-1: two or more images tile
+                into a grid (AttachmentGroup); files keep their rows. */}
             {!m.deleted && !lpPreview && attachmentController && m.attachments && m.attachments.length > 0 && (
               <div class="chalk-message-attachments" data-testid="message-attachments">
-                {m.attachments.map((att) => (
-                  <AttachmentView
-                    key={att.id}
-                    channelID={m.channelID}
-                    att={att}
-                    controller={attachmentController}
-                  />
-                ))}
+                <AttachmentGroup
+                  channelID={m.channelID}
+                  attachments={m.attachments}
+                  controller={attachmentController}
+                />
               </div>
             )}
           </div>
