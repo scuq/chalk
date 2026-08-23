@@ -94,6 +94,7 @@ as-built rather than a contemporaneous plan.
 | 100 | the sidebar's voice section | [PHASE-100-VOICESECTION.md](phases/PHASE-100-VOICESECTION.md) |
 | 101 | the multi-image tile grid | [PHASE-101-TILEGRID.md](phases/PHASE-101-TILEGRID.md) |
 | 102 | sound themes — recorded cues replace the synthesizer | [PHASE-102-SOUNDTHEMES.md](phases/PHASE-102-SOUNDTHEMES.md) |
+| 103 | camera off: negotiated even when off, released when off | [PHASE-103-CAMERAOFF.md](phases/PHASE-103-CAMERAOFF.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

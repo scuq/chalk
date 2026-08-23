@@ -132,6 +132,8 @@ export class CameraChain {
   private timer: number | null = null;
   private active = true;
   private closed = false;
+  /** 103-2: the raw device is stopped while the published track lives on. */
+  private released = false;
   /** 52-1: the effect in the draw step, if any. */
   private processor: FrameProcessor | null = null;
   /** True between a render starting and settling; the next tick is dropped. */
@@ -338,6 +340,8 @@ export class CameraChain {
   async setBackgroundBlur(on: boolean): Promise<boolean> {
     if (this.closed) return false;
     this.blur = on;
+    // 103-2: no device to ask while released; recapture re-applies the wish.
+    if (this.released) return true;
     return applyNativeBlur(this.raw.getVideoTracks()[0], on);
   }
 
@@ -349,10 +353,9 @@ export class CameraChain {
    * device feeding a canvas nobody is sending, which is pure waste otherwise:
    * a 1080p draw thirty times a second for frames that go nowhere.
    *
-   * As with MicChain.setMuted, the device stays OPEN while gated. Releasing
-   * it on every toggle would make turning the camera back on slow and racy,
-   * and the browser's own camera indicator is the honest signal for whether
-   * the device is held.
+   * As with MicChain.setMuted, this alone leaves the device OPEN. The call
+   * pairs it with releaseDevice() (103-2) so that "camera off" also puts the
+   * indicator light out -- users read the light, not our button.
    */
   setActive(on: boolean): void {
     if (this.closed || this.active === on) return;
@@ -371,6 +374,23 @@ export class CameraChain {
   }
 
   /**
+   * releaseDevice (103-2) stops the real camera and keeps everything else:
+   * the canvas, its published track and the processor stay, so no peer
+   * connection notices. recapture() is the way back. Idempotent.
+   */
+  releaseDevice(): void {
+    if (this.closed || this.released) return;
+    this.released = true;
+    for (const t of this.raw.getTracks()) t.stop();
+    this.video.srcObject = null;
+  }
+
+  /** Whether the real camera is currently released (103-2). */
+  get deviceReleased(): boolean {
+    return this.released;
+  }
+
+  /**
    * recapture swaps in a new camera without disturbing the published track:
    * capture first, and only tear the old one down once the new one is in
    * hand, so a camera that is gone or busy leaves the user still visible.
@@ -385,6 +405,7 @@ export class CameraChain {
     }
     const old = this.raw;
     this.raw = next;
+    this.released = false;
     this.video.srcObject = next;
     this.play();
     // A fresh capture always starts enabled; carry the on/off state across.
