@@ -201,6 +201,9 @@ export interface VoiceCallCallbacks {
   onPeerScreenGone(key: string): void;
   /** Non-fatal, user-visible problem (peer aborted, signal failed, ...). */
   onError(message: string): void;
+  /** 63-3: an earlier onError message no longer applies (the missing mic came
+   * back). The receiver clears it only if it is still the one showing. */
+  onErrorResolved?(message: string): void;
   /** 41-5: the transmit gate opened or closed (VAD / push-to-talk). */
   onMicGate?(open: boolean): void;
   /** 63-2: the set of peers currently audible changed (sorted peer keys).
@@ -414,6 +417,9 @@ export class VoiceCall {
   private deviceWatchOff: (() => void) | null = null;
   private deviceWatchTimer: number | null = null;
   private micSwitching = false;
+  /** 63-3: the fallback notice raised at join when the chosen mic was absent,
+   * retracted once the device watch recaptures onto it. */
+  private micFallbackNotice: string | null = null;
   // 63-2: speaking detection (the green audio dot).
   private speakTimer: number | null = null;
   private readonly speakTracker = new SpeakingTracker();
@@ -555,7 +561,9 @@ export class VoiceCall {
       this.diag(
         `chosen mic not present (${this.micPrefs.deviceLabel || this.micPrefs.deviceId}); using system default`,
       );
-      this.o.callbacks.onError("chosen microphone not found — using the system default");
+      const name = this.micPrefs.deviceLabel ? ` "${this.micPrefs.deviceLabel}"` : "";
+      this.micFallbackNotice = `chosen microphone${name} not found — using the system default`;
+      this.o.callbacks.onError(this.micFallbackNotice);
     }
     const audio = micConstraints(resolvedMic);
     let captured: MediaStream;
@@ -1707,9 +1715,14 @@ export class VoiceCall {
     this.micSwitching = true;
     try {
       await this.micChain.recapture(prefs);
-      this.diag(
-        `devicechange: mic recaptured (now=${this.micChain.currentDeviceId() ?? "?"}, target=${target || "default"})`,
-      );
+      const now = this.micChain.currentDeviceId();
+      this.diag(`devicechange: mic recaptured (now=${now ?? "?"}, target=${target || "default"})`);
+      // The chosen mic is back and captured: the join-time fallback notice
+      // would otherwise sit on screen for the rest of the call.
+      if (this.micFallbackNotice !== null && target !== "" && now === target) {
+        this.o.callbacks.onErrorResolved?.(this.micFallbackNotice);
+        this.micFallbackNotice = null;
+      }
     } catch (err) {
       this.diag(`devicechange: mic recapture failed: ${String(err)}`);
     } finally {

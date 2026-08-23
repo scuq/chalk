@@ -491,6 +491,9 @@ class VoiceSessionImpl {
             }
           },
           onError: (msg) => this.set({ error: msg }),
+          onErrorResolved: (msg) => {
+            if (this.s.error === msg) this.set({ error: null });
+          },
           onMicGate: (open) => this.set({ micOpen: open }),
           onSpeaking: (keys) =>
             this.set({ speaking: Object.fromEntries(keys.map((k) => [k, true])) }),

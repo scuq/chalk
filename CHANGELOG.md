@@ -10,6 +10,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- The "chosen microphone not found — using the system default" notice in a
+  voice call now names the missing microphone, and goes away on its own once
+  it comes back (a Bluetooth headset switched on again, for instance) and the
+  call has moved onto it. It used to stay on screen for the rest of the call.
+
 ## v0.8.1 — 24 August 2026 — Sound themes, the picture tile grid and the sidebar's voice section
 
 ### Added

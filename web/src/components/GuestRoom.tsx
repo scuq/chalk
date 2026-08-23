@@ -297,6 +297,7 @@ export function GuestRoom({ ctx }: { ctx: GuestContext }) {
         },
         onPeerScreenGone: (key) => setPeers((prev) => prev.filter((p) => p.key !== key + ":screen")),
         onError: (msg) => setCallError(msg),
+        onErrorResolved: (msg) => setCallError((cur) => (cur === msg ? null : cur)),
       },
     });
     callRef.current = call;
