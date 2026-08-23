@@ -495,6 +495,8 @@ class VoiceSessionImpl {
             if (this.s.error === msg) this.set({ error: null });
           },
           onMicGate: (open) => this.set({ micOpen: open }),
+          // 103-2: the device would not come back; keep the button honest.
+          onCameraLost: () => this.setGlobal({ camOn: false }),
           onSpeaking: (keys) =>
             this.set({ speaking: Object.fromEntries(keys.map((k) => [k, true])) }),
         },

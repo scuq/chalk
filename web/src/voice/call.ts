@@ -206,6 +206,9 @@ export interface VoiceCallCallbacks {
   onErrorResolved?(message: string): void;
   /** 41-5: the transmit gate opened or closed (VAD / push-to-talk). */
   onMicGate?(open: boolean): void;
+  /** 103-2: turning the camera back on could not reopen the device; the
+   * call is now camera-off and the session's toggle should say so. */
+  onCameraLost?(): void;
   /** 63-2: the set of peers currently audible changed (sorted peer keys).
    * Fires only on change, a few times a second at most. */
   onSpeaking?(keys: string[]): void;
@@ -417,6 +420,8 @@ export class VoiceCall {
   private deviceWatchOff: (() => void) | null = null;
   private deviceWatchTimer: number | null = null;
   private micSwitching = false;
+  /** 103-2: a camera reopen (off -> on) in flight; a second "on" waits for it. */
+  private cameraReopening = false;
   /** 63-3: the fallback notice raised at join when the chosen mic was absent,
    * retracted once the device watch recaptures onto it. */
   private micFallbackNotice: string | null = null;
@@ -770,6 +775,13 @@ export class VoiceCall {
     // no stable published track to swap behind. A fresh join reads the pref
     // outright either way.
     if (!this.cameraChain) return;
+    // 103-2: camera off means the device is released; the reopen reads the
+    // pref when the camera comes back, and opening it now just to honour a
+    // picker change would light the indicator behind an "off" button.
+    if (this.cameraChain.deviceReleased) {
+      this.diag(`camera pref changed while off: device=${next.cameraId || "default"} (applied on reopen)`);
+      return;
+    }
 
     try {
       await this.cameraChain.recapture(next);
@@ -874,23 +886,79 @@ export class VoiceCall {
   }
 
   /**
-   * setVideoEnabled flips the pre-acquired camera track on/off (instant --
-   * the track is already in the published stream, 30-5h). Returns false only
-   * when the join degraded to audio-only, i.e. there is no camera track
-   * (adding one mid-call needs renegotiation, 30-7).
+   * setVideoEnabled flips the camera track on/off without renegotiating: the
+   * published track is the graph's canvas capture and stays in every pc
+   * (30-5h). Returns false only when the join degraded to audio-only, i.e.
+   * there is no camera track (adding one mid-call needs renegotiation, 30-7).
+   *
+   * 103-2: "off" now also RELEASES the device. Disabling the published track
+   * turns the far end black; parking the graph stops the draw loop; and
+   * stopping the raw capture puts the camera indicator out, which is the
+   * only signal a user trusts (66-2 made the same call for the join). "On"
+   * reopens the device behind the still-published canvas track, so the far
+   * end sees black for the reacquire's few hundred ms and then frames --
+   * no offer/answer either way. Only the raw-publish fallback (no graph)
+   * keeps holding the device while disabled: there is no canvas to hide
+   * behind.
    */
   setVideoEnabled(on: boolean): boolean {
     if (!this.hasVideo) return false;
     this.videoEnabled = on;
-    // Two halves: disabling the PUBLISHED track is what turns the far end
-    // black, and parking the graph stops the draw loop feeding a canvas
-    // nobody is sending. The device itself stays open either way -- see
-    // CameraChain.setActive.
     for (const t of this.localStream?.getVideoTracks() ?? []) t.enabled = on;
-    this.cameraChain?.setActive(on);
+    if (this.cameraChain) {
+      if (on) {
+        void this.reopenCamera(this.cameraChain);
+      } else {
+        this.cameraChain.setActive(false);
+        this.cameraChain.releaseDevice();
+      }
+    }
     this.applyBudget(); // 30-8: camera copies enter/leave the divider
     this.broadcastState();
     return true;
+  }
+
+  /**
+   * reopenCamera (103-2) brings a released device back for setVideoEnabled.
+   * Toggles during the reacquire are honoured by reading videoEnabled once
+   * it lands: off again -> release again, still on -> un-park the graph. A
+   * reacquire that fails (device unplugged, taken by another app) leaves the
+   * camera off and tells the session so its button follows.
+   */
+  private async reopenCamera(chain: CameraChain): Promise<void> {
+    if (!chain.deviceReleased) {
+      chain.setActive(true);
+      return;
+    }
+    if (this.cameraReopening) return;
+    this.cameraReopening = true;
+    let failed: unknown = null;
+    try {
+      await chain.recapture(this.devicePrefs);
+    } catch (err) {
+      failed = err ?? new Error("camera reopen failed");
+    } finally {
+      this.cameraReopening = false;
+    }
+    if (this.closed || this.cameraChain !== chain) return;
+    if (failed !== null) {
+      this.diag(`camera reopen failed: ${String(failed)}`);
+      this.videoEnabled = false;
+      for (const t of this.localStream?.getVideoTracks() ?? []) t.enabled = false;
+      this.o.callbacks.onError(describeMediaError("camera", failed) + " — camera stays off");
+      this.o.callbacks.onCameraLost?.();
+      this.applyBudget();
+      this.broadcastState();
+      return;
+    }
+    if (!this.videoEnabled) {
+      chain.releaseDevice();
+      return;
+    }
+    chain.setActive(true);
+    // The fresh device knows nothing about the blur preference (52-1).
+    void this.applyBackgroundBlur(this.devicePrefs.backgroundBlur);
+    this.diag("camera reopened");
   }
 
   get joinedWithVideo(): boolean {
@@ -994,6 +1062,17 @@ export class VoiceCall {
 
     for (const track of this.localStream?.getTracks() ?? []) {
       pc.addTrack(track, this.localStream!);
+    }
+    // 103-1: a camera-off join publishes no video track (66-2), so without
+    // this our OFFER carries no video m-line -- and an answer cannot add one.
+    // The far side's camera sender then never gets negotiated in until WE
+    // turn a camera on (enableCameraMidCall's offer finally has the m-line),
+    // which is the "I only see them once my own cam is on" bug. A recvonly
+    // transceiver gives every offer the m-line; their sender associates with
+    // it and answers sendonly. addTrack later reuses this transceiver, so the
+    // mid-call camera add still costs one renegotiation and no extra m-line.
+    if ((this.localStream?.getVideoTracks().length ?? 0) === 0) {
+      pc.addTransceiver("video", { direction: "recvonly" });
     }
 
     pc.ontrack = (e) => {

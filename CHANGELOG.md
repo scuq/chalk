@@ -12,7 +12,17 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Changed
+- **Turning your camera off now really turns it off.** The browser's camera
+  indicator (and the hardware LED) go out as soon as you switch the camera
+  off during a call; it used to stay lit because the device was kept open
+  for a faster toggle. Switching back on takes a moment longer while the
+  camera reopens — nobody has to reconnect.
+
 ### Fixed
+- Joining or rejoining a voice room with your camera off no longer hides the
+  cameras that are already on in there. Their picture used to appear only
+  once you switched your own camera on.
 - The "chosen microphone not found — using the system default" notice in a
   voice call now names the missing microphone, and goes away on its own once
   it comes back (a Bluetooth headset switched on again, for instance) and the
