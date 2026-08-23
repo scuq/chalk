@@ -263,15 +263,24 @@ test("83-6: the server pin rides the sealed blob and comes back intact", async (
   assert.equal((await openPinBlob(key, legacy, own))!.serverPin, null);
 });
 
-test("83-6: chooseServerPin ranks registration > repin > tofu, then first sight", () => {
+test("83-6: chooseServerPin — a newer repin supersedes; registration beats tofu; else first sight", () => {
   const reg: import("./pin-backup").PackedServerPin = ["QQ==", "registration", 2000];
   const tofu: import("./pin-backup").PackedServerPin = ["Qg==", "tofu", 1000];
-  const repin: import("./pin-backup").PackedServerPin = ["Qw==", "repin", 1500];
-  assert.equal(chooseServerPin(tofu, reg), reg); // the backup's anchor beats a fresh TOFU
+  const repin: import("./pin-backup").PackedServerPin = ["Qw==", "repin", 2500];
+  const oldRepin: import("./pin-backup").PackedServerPin = ["RQ==", "repin", 1500];
+  // the human at the wall wins over everything older -- including the
+  // registration anchor (an operator rotation IS the anchor moving)
+  assert.equal(chooseServerPin(repin, reg), repin);
+  assert.equal(chooseServerPin(reg, repin), repin);
   assert.equal(chooseServerPin(repin, tofu), repin);
-  assert.equal(chooseServerPin(reg, repin), reg);
+  // two repins: the newer decision wins (the wall-loop fix)
+  assert.equal(chooseServerPin(oldRepin, repin), repin);
+  assert.equal(chooseServerPin(repin, oldRepin), repin);
+  // no repin in play: the anchor beats blind adoption regardless of age
+  assert.equal(chooseServerPin(tofu, reg), reg);
+  // equal rank: earlier wins
   const regLater: import("./pin-backup").PackedServerPin = ["RA==", "registration", 3000];
-  assert.equal(chooseServerPin(regLater, reg), reg); // equal rank: earlier wins
+  assert.equal(chooseServerPin(regLater, reg), reg);
   assert.equal(chooseServerPin(null, tofu), tofu);
   assert.equal(chooseServerPin(reg, null), reg);
 });

@@ -386,16 +386,28 @@ export function unpackServerPin(value: unknown): PackedServerPin | null {
 
 /**
  * chooseServerPin (83-6) merges two claims about the home server's key.
- * Source rank decides -- registration (the anchor) > repin (a human compared
- * fingerprints) > tofu (adopted unseen) -- and on equal rank the EARLIER pin
- * wins: first sight is the whole idea. A backed-up registration pin
- * therefore overrides a fresh device's TOFU, which is exactly the case the
- * backup exists for (the TOFU'd key could be the MITM's).
+ *
+ *   - A REPIN in play: the NEWEST pin wins. A repin is a human who stood at
+ *     the wall, compared fingerprints against the operator's announcement
+ *     and chose -- a decision that SUPERSEDES earlier state, the
+ *     registration anchor included (that is what an operator key rotation
+ *     is). Without this, the backup restores the pre-rotation pin right
+ *     after the user trusted the new key, and the wall loops forever
+ *     (found by the stage-3/4 migration probe).
+ *   - Otherwise source rank decides: registration (the anchor) beats tofu
+ *     (adopted unseen) regardless of age -- a backed-up registration pin
+ *     overriding a fresh device's TOFU is exactly the case the backup
+ *     exists for (the TOFU'd key could be the MITM's).
+ *   - Equal rank: the EARLIER pin wins -- first sight is TOFU's whole idea.
  */
 export function chooseServerPin(a: PackedServerPin | null, b: PackedServerPin | null): PackedServerPin | null {
   if (!a) return b;
   if (!b) return a;
-  const rank = { registration: 3, repin: 2, tofu: 1 } as const;
+  if (a[1] === "repin" || b[1] === "repin") {
+    if (a[2] !== b[2]) return a[2] > b[2] ? a : b;
+    return a[1] === "repin" ? a : b; // same instant: the human decision wins
+  }
+  const rank = { registration: 2, tofu: 1 } as const;
   if (rank[a[1]] !== rank[b[1]]) return rank[a[1]] > rank[b[1]] ? a : b;
   return a[2] <= b[2] ? a : b;
 }

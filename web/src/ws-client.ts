@@ -293,13 +293,15 @@ export class WSClient {
     };
     this.setState("error", "server identity changed");
     this.opts.onServerPinWall?.(info);
-    this.ws?.close(1008, "server identity changed");
+    // 4003: app-level refusal. A client-initiated close may only use 1000 or
+    // 3000-4999 (the 1008 policy code is server-side vocabulary).
+    this.ws?.close(4003, "server identity changed");
   }
 
   private hardFail(detail: string): void {
     this.stopped = true;
     this.setState("error", detail);
-    this.ws?.close(1008, detail);
+    this.ws?.close(4003, detail); // client closes may not use 1008
   }
 
   private onMessage(e: MessageEvent): void {

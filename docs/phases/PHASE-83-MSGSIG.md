@@ -851,9 +851,13 @@ wall shows the pinned vs. presented fingerprints and the user
 compares against what the operator announced. Registration pins via
 `GET /api/server-identity`; existing accounts TOFU at first
 post-update login (D.4); the pin rides the phase-84 sealed prefs
-blob (`srv` field; registration > repin > tofu, first sight wins
-ties, so a restored registration anchor overrides a fresh device's
-TOFU). Decisions:
+blob (`srv` field). Merge rule, corrected 2026-08-23 by the migration
+probe: a REPIN in play → the newest pin wins (the human at the wall
+supersedes everything earlier, the registration anchor included — an
+operator rotation IS the anchor moving; without this the backup
+restores the pre-rotation pin right after the user trusts the new
+key, and the wall loops); otherwise registration beats tofu
+regardless of age, and equal rank goes to first sight. Decisions:
 
 - **The whole frame stream is sealed** after the handshake (binary
   frames, per-direction counters), through exactly two seams: the
@@ -944,6 +948,45 @@ passkey screens instead of the auth-v2 signup wizard).
   forward-compatibility field: any build able to read it already
   signs, and the reload nudge for cached pre-83 bundles is the
   existing phase-46 server-update notice.
+
+**Migration verification (2026-08-23)** — the pre-83 → 83 upgrade
+path, tested by three methods beyond the unit suites:
+
+- *Staged SQL migration* (`TestUpgradeFromPre83Schema`): a database
+  built at the 0050 schema, populated with pre-83 data (a channel
+  mid-`rotation_pending` from an old removal, a gen-1 identity, a
+  sealed message, an in-place-edited message, a sealed-JSON reaction),
+  then 0051–0053 applied over it. Nothing lost; the 0053 backfill
+  converts the stale removal to `rotation_due_from = current`; the
+  new code paths work on the old rows — the atomic rotation clears
+  the backfilled due, and editing a pre-83 message displaces its
+  ORIGINAL body (with its old key_version) as revision 1.
+- *IndexedDB v4 → v7* (`idb-upgrade.test.ts`): a hand-built v4
+  profile (identity, space keys, pins, attachment cache) upgrades in
+  place — every record survives, the three new stores work. Additive
+  only; a user never notices.
+- *Live upgrade rehearsal* (persistent-profile probe across chalkd
+  restarts): pre-83 world (no server key) → register + chat; upgrade
+  day (key provisioned) → the existing user reloads, silently
+  TOFU-pins, old history renders, sends work — **zero user impact**;
+  operator key rotation → wall with fingerprints, explicit trust,
+  chat resumes; a backfilled rotation-due channel → the next send is
+  ONE action (auto-rotate + retry), version bumps, gate clears.
+
+  The rehearsal caught two real bugs, both fixed: the wall path
+  closed the WebSocket with code 1008, which a browser refuses from
+  the client side (`InvalidAccessError`; now 4003), and the
+  server-pin backup merge restored the pre-rotation pin over a fresh
+  repin (the wall loop; merge rule corrected above).
+
+**Stated mixed-window impacts** (an old cached PWA bundle against an
+upgraded server — untestable here, bounded by the phase-46 reload
+nudge and honestly listed): a pre-83 bundle renders NEW clients'
+envelope messages as unreadable envelope text until reloaded, and in
+a rotation-due channel its sends are refused (`rotation_required` is
+vocabulary it lacks) until reloaded or until any new-build member
+sends. Fresh page loads always get the new bundle — the window is
+exactly the PWA cache.
 
 ## The decision record (2026-08-09)
 
