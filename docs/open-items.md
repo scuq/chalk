@@ -86,14 +86,12 @@ real test of the Windows and macOS runners. Open:
 
 - **One-click self-update (phase 105) is built** — signed sums and the
   verifier, the side-by-side updater on all three platforms, preferences,
-  check-now, resume after a quit, rollback. Not yet exercised on a real Mac
-  or Windows box; the phase's own checklist says what to try first. **The release key does not exist yet** —
-  `tools/make-release-key.sh`, pin the hex in `desktop/src/selfupdate/key.ts`,
-  set `RELEASE_SIGN_KEY_B64`; until then the app only announces a newer
-  release and links to it. The Windows shortcut retarget has not been run
-  by hand.
-- Windows needs the signing secrets set once (`tools/make-signing-cert.sh`)
-  or the exes ship unsigned; macOS is unsigned/ad-hoc (right-click → Open);
+  check-now, resume after a quit, rollback. The release key is made and
+  pinned; the first signed release is the next tag. Not yet exercised on a
+  real Mac or Windows box; the phase's own checklist says what to try first.
+  The Windows shortcut retarget has not been run by hand.
+- Windows needs the signing secrets set once (`tools/make-signing-cert.sh`;
+  not set as of 2026-08-25) or the exes ship unsigned; macOS is unsigned/ad-hoc (right-click → Open);
   macOS passkeys need a native module; Linux reports no screen lock; GNOME
   shows no tray without an AppIndicator extension.
 - The 104-1…3 manual lists in the phase doc have only been run on Linux.

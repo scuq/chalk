@@ -5,11 +5,11 @@ verifier, 105-2 the updater core and the Windows hand-over, 105-3 macOS,
 105-4 Linux, 105-5 preferences, check-now, resume-after-quit and rollback.
 Linux is what the probe exercises live; the Windows shortcut retarget and
 the macOS swap are tested at the layout level (an injected extractor stands
-in for `ditto`) and by hand on nobody's Mac yet. The phase closes when the
-release key exists and one real update has landed on each platform. **The release key is not made yet** — until
-scuq runs `tools/make-release-key.sh`, pins the hex in
-`desktop/src/selfupdate/key.ts` and sets `RELEASE_SIGN_KEY_B64`, the
-verifier refuses everything by design and nothing changes for users.
+in for `ditto`) and by hand on nobody's Mac yet. The release key exists (made
+2026-08-24, pinned in `key.ts` 2026-08-25, `RELEASE_SIGN_KEY_B64` set); the
+phase closes when one real update has landed on each platform. (A fork
+without a pinned key gets the verifier's refusal by design: the app then
+only announces and links.)
 
 **Tag:** `#selfupdate` → `tools/where.sh -g selfupdate` (`desktop/src/selfupdate/`,
 `tools/make-release-key.sh`, the signing step in `.github/workflows/release.yml`).

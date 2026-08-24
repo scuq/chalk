@@ -114,3 +114,17 @@ test("interop: an openssl pkeyutl -rawin signature verifies", async () => {
   sums[0] ^= 1;
   assert.equal(await verifySums(sums, sig, pub), null, "a flipped byte in the sums fails");
 });
+
+// The pinned release key (key.ts) verifies a sums file signed with the real
+// private key on 2026-08-25 -- the same file RELEASE_SIGN_KEY_B64 was set
+// from. If this fails after a key rotation, key.ts and the secret disagree.
+test("the pinned release key matches the signing key", async () => {
+  const { RELEASE_PUBLIC_KEY_HEX } = await import("./key");
+  const pub = releaseKey(RELEASE_PUBLIC_KEY_HEX);
+  assert.ok(pub, "no release key pinned");
+  const sig = hexToBytes("02aab25b7dcfa6dc2c2b3a173efb5d7dfc37d62a73470bf4d72a90170495b43bbfd29ea4343ca60dbf8254842bc0bae5dc6a46ddd3e55a91fa4fac63adbaf20f")!;
+  const sums = new Uint8Array(Buffer.from("ODVhNThkZTJjZTlkY2E4YjBmODcyYzMyNWZmNjg0N2E1M2NiYmZmYzE1MjljZTA1MTZiNjNkNWY4YmRjMGUwYiAgY2hhbGstZGVza3RvcC0wLjAuMC1saW51eC14NjQudGFyLmd6Cg==", "base64")) as Uint8Array<ArrayBuffer>;
+  const table = await verifySums(sums, sig, pub);
+  assert.ok(table, "the pinned key does not verify a signature from signing/chalk-release.key");
+  assert.equal(table.size, 1);
+});
