@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.3 — 25 August 2026 — The desktop app, with self-update
 
 ### Added
 - **chalk as a desktop app for Windows, macOS and Linux.** Every release now
