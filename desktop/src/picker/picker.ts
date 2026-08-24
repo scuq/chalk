@@ -79,6 +79,29 @@ async function serverMode(): Promise<void> {
 
   await render();
   input.focus();
+
+  // 105-5: the shell's own preferences and the update state.
+  const prefs = el<HTMLElement>("prefs");
+  const tray = el<HTMLInputElement>("pref-tray");
+  const updates = el<HTMLInputElement>("pref-updates");
+  const status = el<HTMLSpanElement>("update-status");
+  const version = el<HTMLParagraphElement>("version");
+  const show = (p: Awaited<ReturnType<PickerBridge["prefs"]>>) => {
+    tray.checked = p.closeToTray;
+    updates.checked = p.checkUpdates;
+    version.textContent =
+      `chalk desktop ${p.version}` +
+      (p.update ? ` — ${p.update.version} ${p.update.ready ? "is ready; restart from the tray or the chalk menu" : "is available"}` : "");
+    prefs.hidden = false;
+  };
+  show(await bridge.prefs());
+  tray.addEventListener("change", async () => show(await bridge.setPrefs({ closeToTray: tray.checked })));
+  updates.addEventListener("change", async () => show(await bridge.setPrefs({ checkUpdates: updates.checked })));
+  el<HTMLButtonElement>("check-updates").addEventListener("click", async () => {
+    status.textContent = "checking…";
+    status.textContent = await bridge.checkUpdates();
+    show(await bridge.prefs());
+  });
 }
 
 // --- share mode -----------------------------------------------------------

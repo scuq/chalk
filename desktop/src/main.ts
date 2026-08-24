@@ -12,8 +12,17 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from "electron";
 import { join } from "node:path";
 import { installDesktopEntry } from "./linux-desktop";
-import { restartInto } from "./selfupdate/apply";
-import { bundleOf, cleanupOldVersions, installRoot, prepareUpdate, runningDir, type Prepared } from "./selfupdate/updater";
+import { restartInto, rollbackInto } from "./selfupdate/apply";
+import {
+  bundleOf,
+  cleanupOldVersions,
+  findPrepared,
+  installRoot,
+  prepareUpdate,
+  previousVersion,
+  runningDir,
+  type Prepared,
+} from "./selfupdate/updater";
 import { hexToBytes, releaseKey } from "./selfupdate/verify";
 import {
   CHECK_EVERY_MS,
@@ -324,6 +333,24 @@ function wireIPC(): void {
     if (!isPickerSender(event)) return [];
     return pendingSources ?? [];
   });
+  // 105-5: the shell's own preferences, editable from the picker page.
+  ipcMain.handle("picker:prefs", (event) => {
+    if (!isPickerSender(event)) return null;
+    return pickerPrefs();
+  });
+  ipcMain.handle("picker:setPrefs", (event, patch: unknown) => {
+    if (!isPickerSender(event) || typeof patch !== "object" || patch === null) return null;
+    const p = patch as { closeToTray?: unknown; checkUpdates?: unknown };
+    const next: DesktopConfig = { ...cfg };
+    if (typeof p.closeToTray === "boolean") next.closeToTray = p.closeToTray;
+    if (typeof p.checkUpdates === "boolean") next.checkUpdates = p.checkUpdates;
+    persist(next);
+    return pickerPrefs();
+  });
+  ipcMain.handle("picker:checkUpdates", (event) => {
+    if (!isPickerSender(event)) return "refused";
+    return checkForUpdates(true);
+  });
 }
 
 // --- updates (104-4) -------------------------------------------------------
@@ -451,26 +478,107 @@ function announceUpdate(info: ReleaseInfo): void {
     });
 }
 
-function startUpdateChecks(): void {
-  if (cfg.checkUpdates === false) return;
-  if (isDevBuild(VERSION) && !args.updateApi) return;
-  const check = async () => {
-    const latest = await fetchLatestRelease(fetch, `chalk-desktop/${VERSION}`, args.updateApi ?? RELEASES_API);
-    if (latest && isNewer(VERSION, latest.version) && update?.version !== latest.version) {
-      announceUpdate(latest);
-    }
-  };
-  setTimeout(() => void check(), FIRST_CHECK_MS);
-  setInterval(() => void check(), CHECK_EVERY_MS);
+function checksEnabled(): boolean {
+  if (cfg.checkUpdates === false) return false;
+  return !isDevBuild(VERSION) || args.updateApi !== null;
 }
 
-/** 105-2: from the version now running, drop the ones it replaced. */
+/**
+ * checkForUpdates (105-5) runs one check. `manual` is a menu/tray/picker
+ * request and gets an answer either way; the scheduled checks stay quiet
+ * unless there is something to say. Returns the one-line result.
+ */
+async function checkForUpdates(manual: boolean): Promise<string> {
+  if (!manual && !checksEnabled()) return "checks are off";
+  if (isDevBuild(VERSION) && !args.updateApi) return "this is a development build; it does not update";
+  const latest = await fetchLatestRelease(fetch, `chalk-desktop/${VERSION}`, args.updateApi ?? RELEASES_API);
+  if (!latest) return "could not reach the release list";
+  if (!isNewer(VERSION, latest.version)) return `chalk ${VERSION} is the latest release`;
+  if (latest.version === cfg.skippedVersion) return `${latest.version} is available, but you rolled back from it; a later release will be offered`;
+  if (update?.version !== latest.version) announceUpdate(latest);
+  return prepared?.version === latest.version
+    ? `chalk ${latest.version} is ready — restart to update`
+    : canSelfUpdate()
+      ? `chalk ${latest.version} is available and being prepared`
+      : `chalk ${latest.version} is available — the release page is open in the tray and the chalk menu`;
+}
+
+function startUpdateChecks(): void {
+  if (!checksEnabled()) return;
+  setTimeout(() => void checkForUpdates(false), FIRST_CHECK_MS);
+  setInterval(() => void checkForUpdates(false), CHECK_EVERY_MS);
+}
+
+function manualCheck(): void {
+  void checkForUpdates(true).then((text) => {
+    void showMessage({ type: "info", title: "chalk update", message: text, buttons: ["Close"] });
+  });
+}
+
+function installRootNow(): string | null {
+  return installRoot(process.execPath, join(app.getPath("userData"), "versions"));
+}
+
+/** 105-2/105-5: from the version now running, drop the ones it replaced --
+ * keeping the one it came from as the rollback target -- and the one it
+ * rolled back from, if any. */
 function cleanupOldInstalls(): void {
   if (isDevBuild(VERSION) && !args.updateApi) return;
-  const root = installRoot(process.execPath, join(app.getPath("userData"), "versions"));
+  const root = installRootNow();
   if (!root) return;
-  const removed = cleanupOldVersions(root, VERSION, runningDir(process.execPath, process.platform));
+  const removed = cleanupOldVersions(root, VERSION, runningDir(process.execPath, process.platform), {
+    rejected: cfg.skippedVersion,
+  });
   for (const r of removed) console.log(`chalk-desktop update: removed ${r}`);
+}
+
+/** 105-5: an update prepared before a quit is picked up at the next start
+ * and offered in the tray and menu -- no dialog, it was shown once already. */
+function resumePrepared(): void {
+  if (!canSelfUpdate()) return;
+  const root = installRootNow();
+  if (!root) return;
+  const found = findPrepared(root, VERSION, process.platform);
+  if (!found || found.version === cfg.skippedVersion) return;
+  prepared = found;
+  update = { version: found.version, url: `https://github.com/scuq/chalk/releases/tag/v${found.version}` };
+  tray?.setUpdate({ ...update, ready: true });
+  buildMenu();
+}
+
+/** 105-5: back to the version this one replaced; that version then removes
+ * this one at its next start and never offers it again. */
+function rollback(): void {
+  const root = installRootNow();
+  const prev = root ? previousVersion(root, VERSION, process.platform) : null;
+  if (!prev) return;
+  void showMessage({
+    type: "question",
+    title: "chalk rollback",
+    message: `Go back to chalk ${prev.version === "previous" ? "the previous version" : prev.version}?`,
+    detail: `chalk ${VERSION} will be removed and not offered again; the next release after it will be. Your settings and identity are untouched.`,
+    buttons: ["Roll back and restart", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+  }).then((r) => {
+    if (r.response !== 0) return;
+    persist({ ...cfg, skippedVersion: VERSION, notifiedVersion: VERSION });
+    if (!rollbackInto(prev, join(__dirname, "assets", "icon.png"))) {
+      void showMessage({ type: "warning", title: "chalk rollback", message: "Could not start the previous version", detail: prev.dir, buttons: ["Close"] });
+      return;
+    }
+    app.quit();
+  });
+}
+
+function pickerPrefs() {
+  return {
+    closeToTray: closeToTray(),
+    checkUpdates: cfg.checkUpdates !== false,
+    version: VERSION,
+    update: update ? { version: update.version, ready: prepared !== null } : null,
+    canSelfUpdate: canSelfUpdate(),
+  };
 }
 
 // --- menu -----------------------------------------------------------------
@@ -486,9 +594,13 @@ function buildMenu(): void {
         prepared
           ? { label: `Restart to update to ${update.version}`, click: () => restartToUpdate() }
           : { label: `Update to ${update.version}…`, click: () => openUpdate(update!.url) },
-        { type: "separator" },
       ]
-    : [];
+    : [{ label: "Check for updates…", click: manualCheck }];
+  const root = installRootNow();
+  if (root && previousVersion(root, VERSION, process.platform)) {
+    updateItems.push({ label: "Roll back to the previous version…", click: rollback });
+  }
+  updateItems.push({ type: "separator" });
   const template: MenuItemConstructorOptions[] = [];
   if (process.platform === "darwin") {
     template.push({
@@ -588,10 +700,12 @@ void app.whenReady().then(() => {
       quit: () => app.quit(),
       update: openUpdate,
       restart: restartToUpdate,
+      check: manualCheck,
     },
     VERSION,
   );
   cleanupOldInstalls();
+  resumePrepared();
   // 104-3: the OS idle clock for presence, pushed to whatever the window
   // shows; only the server page has the bridge to hear it.
   const stopIdle = startIdlePublisher(() => win);

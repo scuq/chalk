@@ -1,11 +1,12 @@
 # Phase 105 — one-click self-update for the desktop app
 
-**Status:** 105-1 (signed sums, the verifier), 105-2 (the updater core and
-the Windows hand-over), 105-4 (Linux) and 105-3 (macOS bundle swap) built
-2026-08-25. Linux is what the probe exercises live; the Windows shortcut
-retarget and the macOS swap are tested at the layout level (an injected
-extractor stands in for `ditto`) and by hand on nobody's Mac yet. 105-5
-(settings, rollback entry) designed below, not started. **The release key is not made yet** — until
+**Status:** all five slices built 2026-08-25 — 105-1 signed sums and the
+verifier, 105-2 the updater core and the Windows hand-over, 105-3 macOS,
+105-4 Linux, 105-5 preferences, check-now, resume-after-quit and rollback.
+Linux is what the probe exercises live; the Windows shortcut retarget and
+the macOS swap are tested at the layout level (an injected extractor stands
+in for `ditto`) and by hand on nobody's Mac yet. The phase closes when the
+release key exists and one real update has landed on each platform. **The release key is not made yet** — until
 scuq runs `tools/make-release-key.sh`, pins the hex in
 `desktop/src/selfupdate/key.ts` and sets `RELEASE_SIGN_KEY_B64`, the
 verifier refuses everything by design and nothing changes for users.
@@ -133,8 +134,25 @@ every desktop that updates. Same posture as `CHALK_WRAP_SIG_REQUIRED`.
   check would otherwise refuse the swapped bundle.
 - **105-4 — Linux** dir swap. Built with 105-2 (same code; `--install-desktop-entry`
   is re-run for the new path when an entry exists).
-- **105-5 — settings**: "check now", opt out (already `checkUpdates`), and
-  a "downloaded, restart when convenient" state that survives close-to-tray.
+- **105-5 — preferences, check-now, resume, rollback.** Built.
+  - The picker page gained a *Preferences* block: close-to-tray and the
+    daily check as checkboxes (`picker:prefs` / `picker:setPrefs`, the two
+    knobs that so far lived only in `desktop.json`), the shell version, the
+    update state, and a *Check for updates* button. "Check for updates…"
+    also sits in the chalk menu and the tray while nothing is pending; a
+    manual check always answers (latest / available / ready / being
+    prepared / dev build / unreachable / rolled-back-from).
+  - **Resume:** `findPrepared` at start picks up a version prepared before a
+    quit — no second download, no second dialog, straight to "Restart to
+    update" in the tray and menu.
+  - **Rollback:** `cleanupOldVersions` now keeps the highest older version
+    (`chalk.app.old` on macOS) as the rollback target; "Roll back to the
+    previous version…" appears in the chalk menu when one exists, confirms,
+    records the current version as `skippedVersion` in `desktop.json`, hands
+    over (`rollbackInto`: `rollbackMacBundle` + `open` on macOS, a plain
+    restart elsewhere), and the previous version removes the rejected one at
+    its next start. A skipped version is never offered again; the release
+    after it is. Cost: one extra copy on disk (the previous version).
 
 ## Checklist
 
@@ -149,6 +167,13 @@ a packaged build against a local fake release):
       once-per-version offer ✔
 - [x] an OpenSSL `pkeyutl -rawin` signature verifies under WebCrypto ✔
 
+- [x] a prepared version is found again at start and offered without a
+      dialog; an older/unready/rolled-back-from one is not ✔ (`findPrepared`)
+- [x] cleanup keeps the rollback target and drops a rejected version ✔
+- [x] macOS: rollback swaps `.old` back and the rejected bundle is cleaned ✔
+- [x] the picker's preferences round-trip through `desktop.json`; a manual
+      check answers ✔ (probe)
+
 By hand, still open:
 
 - [ ] restart → the new version runs, the old directory is gone after the
@@ -157,6 +182,9 @@ By hand, still open:
 - [ ] Windows: the Start-menu shortcut points at the new exe and toasts
       now say "chalk"
 - [ ] update while hidden to the tray; the restart prompt waits for the user
+- [ ] roll back on each platform: the previous version starts, the rejected
+      directory/bundle is gone after its start, the same version is not
+      offered again, the next one is
 - [ ] the fallback root (`userData/versions`) when the unpacked directory is
       read-only
 - [ ] macOS, by hand: the swap at `/Applications` or `~/Applications`, the

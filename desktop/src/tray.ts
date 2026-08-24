@@ -33,6 +33,8 @@ export interface TrayHandlers {
   update(url: string): void;
   /** 105-2: restart into a prepared version. */
   restart(): void;
+  /** 105-5: check for updates now. */
+  check(): void;
 }
 
 export interface TrayUpdate {
@@ -88,6 +90,7 @@ export function createTray(h: TrayHandlers, version: string): TrayHandle {
           : { label: `Update to ${update.version}…`, click: () => h.update(update.url) },
       );
     }
+    if (!update) items.push({ type: "separator" }, { label: "Check for updates…", click: () => h.check() });
     items.push({ type: "separator" });
     items.push({ label: "Quit chalk", click: () => h.quit() });
     tray.setContextMenu(Menu.buildFromTemplate(items));

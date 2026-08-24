@@ -103,6 +103,11 @@ test("parseConfig: update fields", () => {
   assert.equal("notifiedVersion" in bad, false);
 });
 
+test("parseConfig: skippedVersion must look like a version", () => {
+  assert.equal(parseConfig(JSON.stringify({ skippedVersion: "1.2.3" })).skippedVersion, "1.2.3");
+  assert.equal("skippedVersion" in parseConfig(JSON.stringify({ skippedVersion: "latest" })), false);
+});
+
 test("hostLabel", () => {
   assert.equal(hostLabel("https://chat.example.org:8443/"), "chat.example.org:8443");
   assert.equal(hostLabel("junk"), "junk");

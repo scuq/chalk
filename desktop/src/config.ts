@@ -39,6 +39,9 @@ export interface DesktopConfig {
   /** 104-4: the version the "update available" box was last shown for, so
    * it shows once per version and not once per launch. */
   notifiedVersion?: string;
+  /** 105-5: a version the user rolled back from; never offered again (a
+   * later one is). */
+  skippedVersion?: string;
 }
 
 export const DEFAULT_BOUNDS: WindowBounds = { width: 1280, height: 820 };
@@ -141,6 +144,9 @@ export function parseConfig(text: string): DesktopConfig {
   if (typeof r.checkUpdates === "boolean") cfg.checkUpdates = r.checkUpdates;
   if (typeof r.notifiedVersion === "string" && r.notifiedVersion.length <= 64) {
     cfg.notifiedVersion = r.notifiedVersion;
+  }
+  if (typeof r.skippedVersion === "string" && /^\d+\.\d+\.\d+$/.test(r.skippedVersion)) {
+    cfg.skippedVersion = r.skippedVersion;
   }
   const b = r.bounds as Partial<WindowBounds> | undefined;
   if (

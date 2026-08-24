@@ -16,12 +16,27 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { ShareSource } from "./screenshare";
 import type { ServerEntry } from "./config";
 
+export interface PickerPrefs {
+  closeToTray: boolean;
+  checkUpdates: boolean;
+  version: string;
+  /** 105-5: the update the shell knows about, if any. */
+  update: { version: string; ready: boolean } | null;
+  /** Whether the shell can install updates itself (key pinned, platform). */
+  canSelfUpdate: boolean;
+}
+
 export interface PickerBridge {
   servers(): Promise<{ servers: ServerEntry[]; last: string | null }>;
   connect(url: string): Promise<string | null>;
   forget(url: string): Promise<void>;
   sources(): Promise<ShareSource[]>;
   choose(id: string | null): void;
+  /** 105-5: the shell's own preferences and update state. */
+  prefs(): Promise<PickerPrefs>;
+  setPrefs(patch: { closeToTray?: boolean; checkUpdates?: boolean }): Promise<PickerPrefs>;
+  /** Runs a check now; resolves to a one-line human result. */
+  checkUpdates(): Promise<string>;
 }
 
 export interface DesktopIdleState {
@@ -50,6 +65,9 @@ if (location.protocol === "file:") {
     forget: (url) => ipcRenderer.invoke("picker:forget", url),
     sources: () => ipcRenderer.invoke("picker:sources"),
     choose: (id) => ipcRenderer.send("picker:choose", id),
+    prefs: () => ipcRenderer.invoke("picker:prefs"),
+    setPrefs: (patch) => ipcRenderer.invoke("picker:setPrefs", patch),
+    checkUpdates: () => ipcRenderer.invoke("picker:checkUpdates"),
   };
   contextBridge.exposeInMainWorld("chalkPicker", bridge);
 } else {

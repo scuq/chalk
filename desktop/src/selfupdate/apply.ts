@@ -19,7 +19,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { installDesktopEntry } from "../linux-desktop";
-import { activateMacBundle } from "./updater";
+import { activateMacBundle, rollbackMacBundle, type PreviousVersion } from "./updater";
 
 export const APP_USER_MODEL_ID = "org.chalk.desktop";
 
@@ -86,4 +86,30 @@ export function restartInto(exe: string, dir: string, iconSource: string): boole
   } catch {
     return false;
   }
+}
+
+/**
+ * rollbackInto (105-5) hands over to the previous version. macOS swaps
+ * `chalk.app.old` back to the live path first; elsewhere the older
+ * directory is simply started, and the one being left is removed by it at
+ * its next start (cleanupOldVersions with `rejected`).
+ */
+export function rollbackInto(prev: PreviousVersion, iconSource: string): boolean {
+  if (process.platform === "darwin") {
+    let bundle: string;
+    try {
+      bundle = rollbackMacBundle(dirname(prev.dir));
+    } catch {
+      return false;
+    }
+    app.releaseSingleInstanceLock();
+    try {
+      const child = spawn("open", ["-n", bundle], { detached: true, stdio: "ignore" });
+      child.unref();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return restartInto(prev.exe, prev.dir, iconSource);
 }

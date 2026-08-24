@@ -21,7 +21,8 @@ The engineering-level history (which slice shipped what) lives in
   machine (idle time, and the screen lock on Windows and macOS) with no
   permission prompt. It updates itself on all three: a newer release is
   downloaded, checked against chalk's release signature and installed
-  beside the running one — *Restart to update* switches over. Details and the per-platform notes are in the README
+  beside the running one — *Restart to update* switches over, and *Roll back*
+  brings the previous version back if the new one disappoints. Details and the per-platform notes are in the README
   under "Desktop app".
 - **A fourth sound theme: *empir*.** Medieval real-time-strategy sounds —
   horns, timber, blacksmith metal and war drums, with a chant-and-horn

@@ -366,19 +366,139 @@ export function activateMacBundle(root: string): string {
 }
 
 /**
- * cleanupOldVersions runs at start, from the version now running: removes
- * `chalk-<semver>` siblings older than `currentVersion` and any leftover
- * `.partial` / `.download-*`. Never the running directory, never a name it
- * does not recognise (the first zip's `chalk-linux-x64/` stays; the README
- * says so). Returns what it removed.
+ * findPrepared (105-5) is what makes a downloaded update survive a quit: at
+ * start, a prepared version newer than the running one is picked up again
+ * without a second download, and offered without a second dialog.
  */
-export function cleanupOldVersions(root: string, currentVersion: string, running: string): string[] {
+export function findPrepared(
+  root: string,
+  currentVersion: string,
+  platform: string,
+): (Prepared & { ok: true }) | null {
+  if (platform === "darwin") {
+    try {
+      const v = readFileSync(join(root, MAC_NEXT_MARKER), "utf8").trim();
+      const dir = join(root, `${MAC_BUNDLE}.next`);
+      const exe = join(dir, "Contents", "MacOS", "chalk");
+      if (/^\d+\.\d+\.\d+$/.test(v) && cmpVersion(v, currentVersion) > 0 && existsSync(exe)) {
+        return { ok: true, version: v, dir, exe };
+      }
+    } catch {
+      // no marker
+    }
+    return null;
+  }
+  let best: (Prepared & { ok: true }) | null = null;
+  let entries: string[];
+  try {
+    entries = readdirSync(root);
+  } catch {
+    return null;
+  }
+  for (const name of entries) {
+    const v = parseVersionDir(name);
+    if (!v || cmpVersion(v, currentVersion) <= 0) continue;
+    const dir = join(root, name);
+    const exe = join(dir, exeName(platform));
+    try {
+      if (readFileSync(join(dir, ".ready"), "utf8").trim() !== v || !existsSync(exe)) continue;
+    } catch {
+      continue;
+    }
+    if (!best || cmpVersion(v, best.version) > 0) best = { ok: true, version: v, dir, exe };
+  }
+  return best;
+}
+
+export interface PreviousVersion {
+  /** The version, or "previous" on macOS where the old bundle carries none. */
+  version: string;
+  dir: string;
+  exe: string;
+}
+
+/** previousVersion (105-5) is the rollback target: the highest older
+ * versioned directory that still has its executable, or `chalk.app.old`. */
+export function previousVersion(root: string, currentVersion: string, platform: string): PreviousVersion | null {
+  if (platform === "darwin") {
+    const dir = join(root, `${MAC_BUNDLE}.old`);
+    const exe = join(dir, "Contents", "MacOS", "chalk");
+    return existsSync(exe) ? { version: "previous", dir, exe } : null;
+  }
+  let best: PreviousVersion | null = null;
+  let entries: string[];
+  try {
+    entries = readdirSync(root);
+  } catch {
+    return null;
+  }
+  for (const name of entries) {
+    const v = parseVersionDir(name);
+    if (!v || cmpVersion(v, currentVersion) >= 0) continue;
+    const exe = join(root, name, exeName(platform));
+    if (!existsSync(exe)) continue;
+    if (!best || cmpVersion(v, best.version) > 0) best = { version: v, dir: join(root, name), exe };
+  }
+  return best;
+}
+
+/**
+ * rollbackMacBundle (105-5) is activateMacBundle in reverse: the running
+ * bundle becomes `chalk.app.rejected`, `chalk.app.old` becomes `chalk.app`.
+ * The rejected bundle is removed at the next start.
+ */
+export function rollbackMacBundle(root: string): string {
+  const live = join(root, MAC_BUNDLE);
+  const old = join(root, `${MAC_BUNDLE}.old`);
+  const rejected = join(root, `${MAC_BUNDLE}.rejected`);
+  if (!existsSync(join(old, "Contents", "MacOS", "chalk"))) throw new Error("no previous bundle");
+  rmSync(rejected, { recursive: true, force: true });
+  const hadLive = existsSync(live);
+  if (hadLive) renameSync(live, rejected);
+  try {
+    renameSync(old, live);
+  } catch (e) {
+    if (hadLive) renameSync(rejected, live);
+    throw e;
+  }
+  return live;
+}
+
+export interface CleanupOptions {
+  /** Keep the highest older version as the rollback target (default true). */
+  keepPrevious?: boolean;
+  /** A version rolled back from: its directory goes even though it is newer. */
+  rejected?: string;
+}
+
+/**
+ * cleanupOldVersions runs at start, from the version now running: removes
+ * `chalk-<semver>` siblings older than `currentVersion` -- except the
+ * highest of them, kept as the rollback target (105-5) -- and any leftover
+ * `.partial` / `.download-*` / rejected bundle. Never the running directory,
+ * never a name it does not recognise (the first zip's `chalk-linux-x64/`
+ * stays; the README says so). Returns what it removed.
+ */
+export function cleanupOldVersions(
+  root: string,
+  currentVersion: string,
+  running: string,
+  opts: CleanupOptions = {},
+): string[] {
   const removed: string[] = [];
   let entries: string[];
   try {
     entries = readdirSync(root);
   } catch {
     return removed;
+  }
+  const keepPrevious = opts.keepPrevious !== false;
+  let keep: string | null = null;
+  if (keepPrevious) {
+    for (const name of entries) {
+      const v = parseVersionDir(name);
+      if (v && cmpVersion(v, currentVersion) < 0 && (keep === null || cmpVersion(v, keep) > 0)) keep = v;
+    }
   }
   // A prepared-but-never-activated macOS bundle is stale once the running
   // version is at or past it.
@@ -394,10 +514,12 @@ export function cleanupOldVersions(root: string, currentVersion: string, running
     if (full === running) continue;
     const ver = parseVersionDir(name);
     const stale =
-      (ver !== null && cmpVersion(ver, currentVersion) < 0) ||
+      (ver !== null && cmpVersion(ver, currentVersion) < 0 && ver !== keep) ||
+      (ver !== null && opts.rejected !== undefined && ver === opts.rejected) ||
       /^chalk-\d+\.\d+\.\d+\.partial$/.test(name) ||
       /^\.download-/.test(name) ||
-      name === `${MAC_BUNDLE}.old` ||
+      (!keepPrevious && name === `${MAC_BUNDLE}.old`) ||
+      name === `${MAC_BUNDLE}.rejected` ||
       name === `${MAC_BUNDLE}.partial` ||
       (staleNext && (name === `${MAC_BUNDLE}.next` || name === MAC_NEXT_MARKER));
     if (!stale) continue;

@@ -236,9 +236,12 @@ modified; the new version lands next to it (or under the app's data directory
 if that place is read-only). On macOS the new `chalk.app` replaces the old
 one at the same path, so a Dock pin keeps working. Wherever verification is
 not possible, the app only tells you and links to the release page.
-`"checkUpdates": false` in `desktop.json` (under the app's config directory,
-`chalk-desktop/`) turns the check off; `"closeToTray": false` makes the close
-button quit.
+The version you came from is kept, and *Roll back to the previous version…*
+in the *chalk* menu takes you back (that release is then never offered
+again; the next one is). *Check for updates…* is in the menu and the tray.
+Both switches — close-to-tray and the daily check — are on the server picker
+page (`Ctrl/Cmd+Shift+S`) under *Preferences*, or in `desktop.json` under the
+app's config directory (`chalk-desktop/`).
 
 ## Architecture
 

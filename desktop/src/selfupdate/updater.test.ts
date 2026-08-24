@@ -170,15 +170,20 @@ test("cleanupOldVersions removes older versions and leftovers only", () => {
     mkdirSync(join(root, n));
   }
   const removed = cleanupOldVersions(root, "1.2.0", join(root, "chalk-1.2.0")).sort();
-  assert.deepEqual(removed, [".download-1.1.5", "chalk-1.0.0", "chalk-1.1.0", "chalk-1.1.5.partial"]);
-  for (const n of ["chalk-1.2.0", "chalk-2.0.0", "chalk-linux-x64", "notes"]) assert.ok(existsSync(join(root, n)), n);
+  // 105-5: the highest older version (1.1.0) stays as the rollback target.
+  assert.deepEqual(removed, [".download-1.1.5", "chalk-1.0.0", "chalk-1.1.5.partial"]);
+  for (const n of ["chalk-1.1.0", "chalk-1.2.0", "chalk-2.0.0", "chalk-linux-x64", "notes"]) assert.ok(existsSync(join(root, n)), n);
+  // A rejected (rolled-back-from) version goes even though it is newer; with
+  // keepPrevious off the older one goes too.
+  const r2 = cleanupOldVersions(root, "1.2.0", join(root, "chalk-1.2.0"), { rejected: "2.0.0", keepPrevious: false }).sort();
+  assert.deepEqual(r2, ["chalk-1.1.0", "chalk-2.0.0"]);
 });
 
 // ---- 105-3: the macOS bundle swap, driven on any OS with an injected
 // extractor (the real one is ditto; the layout logic is what is under test).
 
 import { execFileSync as _exec } from "node:child_process";
-import { activateMacBundle, bundleOf, runningDir } from "./updater";
+import { activateMacBundle, bundleOf, findPrepared, previousVersion, rollbackMacBundle, runningDir } from "./updater";
 
 const MAC_ARCHIVE = `chalk-desktop-${VERSION}-macos-${ARCH}.zip`;
 
@@ -253,9 +258,16 @@ test("macOS: prepareUpdate unpacks to chalk.app.next with the marker outside the
   assert.equal(existsSync(join(inst.root, ".chalk-next")), false);
   assert.equal(existsSync(join(inst.root, "chalk.app.next")), false);
 
-  // Next start: the old bundle goes.
-  const removed = cleanupOldVersions(inst.root, VERSION, live);
-  assert.deepEqual(removed, ["chalk.app.old"]);
+  // Next start: the old bundle stays as the rollback target (105-5) …
+  assert.deepEqual(cleanupOldVersions(inst.root, VERSION, live), []);
+  assert.ok(existsSync(join(inst.root, "chalk.app.old")));
+  // … and rollback swaps it back, leaving the rejected one for cleanup.
+  const prev = previousVersion(inst.root, VERSION, "darwin");
+  assert.ok(prev && prev.dir === join(inst.root, "chalk.app.old"));
+  assert.equal(rollbackMacBundle(inst.root), live);
+  assert.ok(existsSync(join(live, "Contents", "old-marker")), "old bundle is live again");
+  assert.ok(existsSync(join(inst.root, "chalk.app.rejected", "Contents", "Info.plist")));
+  assert.deepEqual(cleanupOldVersions(inst.root, "1.0.0", live), ["chalk.app.rejected"]);
 });
 
 test("macOS: not running from a bundle is unsupported; a stale .next is cleaned", () => {
@@ -279,4 +291,36 @@ test("macOS: unsupported when not in a bundle", async () => {
   });
   assert.equal(r.ok, false);
   if (!r.ok) assert.equal(r.stage, "unsupported");
+});
+
+// ---- 105-5: a prepared update survives a quit; rollback has a target ------
+
+test("findPrepared picks the newest ready version dir, ignores unready or older ones", () => {
+  const root = mkdtempSync(join(tmpdir(), "chalk-fp-"));
+  for (const [v, ready, exe] of [["1.1.0", true, true], ["1.3.0", true, true], ["1.4.0", false, true], ["1.5.0", true, false], ["1.2.5", true, true]] as const) {
+    mkdirSync(join(root, `chalk-${v}`));
+    if (ready) writeFileSync(join(root, `chalk-${v}`, ".ready"), `${v}\n`);
+    if (exe) writeFileSync(join(root, `chalk-${v}`, "chalk"), "x");
+  }
+  const p = findPrepared(root, "1.2.0", "linux");
+  assert.ok(p);
+  assert.equal(p.version, "1.3.0");
+  assert.equal(findPrepared(root, "1.3.0", "linux"), null);
+  const mroot = mkdtempSync(join(tmpdir(), "chalk-fp-mac-"));
+  mkdirSync(join(mroot, "chalk.app.next", "Contents", "MacOS"), { recursive: true });
+  writeFileSync(join(mroot, "chalk.app.next", "Contents", "MacOS", "chalk"), "x");
+  writeFileSync(join(mroot, ".chalk-next"), "2.0.0\n");
+  assert.equal(findPrepared(mroot, "1.0.0", "darwin")?.version, "2.0.0");
+  assert.equal(findPrepared(mroot, "2.0.0", "darwin"), null);
+});
+
+test("previousVersion is the highest older dir with an executable", () => {
+  const root = mkdtempSync(join(tmpdir(), "chalk-pv-"));
+  for (const [v, exe] of [["1.0.0", true], ["1.1.0", false], ["1.2.0", true], ["2.0.0", true]] as const) {
+    mkdirSync(join(root, `chalk-${v}`));
+    if (exe) writeFileSync(join(root, `chalk-${v}`, "chalk"), "x");
+  }
+  assert.equal(previousVersion(root, "1.3.0", "linux")?.version, "1.2.0");
+  assert.equal(previousVersion(root, "1.2.0", "linux")?.version, "1.0.0");
+  assert.equal(previousVersion(root, "1.0.0", "linux"), null);
 });

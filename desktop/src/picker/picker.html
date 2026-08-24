@@ -20,6 +20,17 @@
         <button type="submit">Connect</button>
       </form>
       <p class="hint">Only https servers, except a local dev stack on 127.0.0.1.</p>
+
+      <section id="prefs" class="prefs" hidden>
+        <h2>Preferences</h2>
+        <label class="pref"><input id="pref-tray" type="checkbox" /> <span>keep chalk running in the tray when the window is closed</span></label>
+        <label class="pref"><input id="pref-updates" type="checkbox" /> <span>check for a newer release once a day</span></label>
+        <div class="row">
+          <button id="check-updates" type="button">Check for updates</button>
+          <span id="update-status" class="status"></span>
+        </div>
+        <p id="version" class="hint"></p>
+      </section>
     </main>
 
     <main id="share" hidden>
