@@ -62,6 +62,7 @@
 // wrapSpaceKeySigned); parse/verify/classify never throw on attacker input.
 
 import { bytesEqual, concat, lengthPrefixed, utf8, writeU32BE } from "./spacekey";
+import { asBytes } from "./bytes";
 
 // ---- constants -----------------------------------------------------------
 
@@ -247,7 +248,7 @@ export async function ed25519Fingerprint(ed25519Public: Uint8Array): Promise<Uin
   if (ed25519Public.length !== 32) {
     throw new Error(`envelope: ed25519 public key must be 32 bytes, got ${ed25519Public.length}`);
   }
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", ed25519Public));
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", asBytes(ed25519Public)));
 }
 
 // ---- canonical encoding --------------------------------------------------
@@ -474,7 +475,7 @@ export function encodeEnvelopeCanonical(env: Envelope): Uint8Array {
  */
 export async function signEnvelope(env: Envelope, ed25519Private: CryptoKey): Promise<Uint8Array> {
   const canonical = encodeEnvelopeCanonical(env);
-  const sig = new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, ed25519Private, canonical));
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, ed25519Private, asBytes(canonical)));
   if (sig.length !== SIG_BYTES) {
     throw new Error(`envelope: unexpected Ed25519 signature length ${sig.length}`);
   }
@@ -487,7 +488,7 @@ export async function signEnvelope(env: Envelope, ed25519Private: CryptoKey): Pr
  * value reply bindings, prev_rev_hash and tgt_env_hash carry.
  */
 export async function envelopeObjectHash(signedEnvelope: Uint8Array): Promise<Uint8Array> {
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", signedEnvelope));
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", asBytes(signedEnvelope)));
 }
 
 // ---- strict total parser -------------------------------------------------
@@ -759,8 +760,8 @@ export async function verifyEnvelopeSig(
 ): Promise<boolean> {
   try {
     if (sig.length !== SIG_BYTES || ed25519Public.length !== 32) return false;
-    const key = await crypto.subtle.importKey("raw", ed25519Public, { name: "Ed25519" }, false, ["verify"]);
-    return await crypto.subtle.verify({ name: "Ed25519" }, key, sig, canonical);
+    const key = await crypto.subtle.importKey("raw", asBytes(ed25519Public), { name: "Ed25519" }, false, ["verify"]);
+    return await crypto.subtle.verify({ name: "Ed25519" }, key, asBytes(sig), asBytes(canonical));
   } catch {
     return false;
   }

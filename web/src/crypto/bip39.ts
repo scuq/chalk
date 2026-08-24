@@ -18,6 +18,7 @@
 // (entropy<->mnemonic, checksum, and the PBKDF2 seed parameters).
 
 import { WORDLIST } from "./wordlist";
+import { asBytes } from "./bytes";
 
 const ENTROPY_BITS_24_WORDS = 256;
 
@@ -35,7 +36,7 @@ function bytesToBits(bytes: Uint8Array): string {
 }
 
 async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", asBytes(bytes)));
 }
 
 // deriveChecksumBits returns the leading (entropyBytes*8 / 32) bits of

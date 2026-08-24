@@ -21,6 +21,8 @@
 // the DTLS handshake is authenticated by the fingerprint binding alone, which
 // is exactly what the signatures pin down. Candidates still ride encrypted.
 
+import { asBytes, type Bytes } from "../crypto/bytes";
+
 // ---- envelope --------------------------------------------------------------
 
 /**
@@ -175,7 +177,7 @@ export async function signFingerprints(
     throw new Error("voice: SDP carries no DTLS fingerprint to sign");
   }
   const msg = canonicalFingerprintMessage(ctx, fingerprints);
-  const sig = new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, ed25519Private, msg));
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, ed25519Private, asBytes(msg)));
   return bytesToBase64(sig);
 }
 
@@ -212,7 +214,7 @@ export async function verifyFingerprints(
   }
   const msg = canonicalFingerprintMessage(ctx, fingerprints);
   try {
-    return await crypto.subtle.verify({ name: "Ed25519" }, key, sig as BufferSource, msg);
+    return await crypto.subtle.verify({ name: "Ed25519" }, key, asBytes(sig), asBytes(msg));
   } catch {
     return false;
   }
@@ -226,7 +228,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return btoa(s);
 }
 
-export function base64ToBytes(b64: string): Uint8Array {
+export function base64ToBytes(b64: string): Bytes {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);

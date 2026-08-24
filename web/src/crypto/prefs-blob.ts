@@ -16,6 +16,8 @@
 // plaintext object is each caller's own (version field included), so an
 // existing sealed blob still opens.
 
+import { asBytes } from "./bytes";
+
 const NONCE_BYTES = 12;
 
 function b64encode(bytes: Uint8Array): string {
@@ -53,7 +55,7 @@ export async function blobKey(
   info: string,
 ): Promise<CryptoKey> {
   const enc = new TextEncoder();
-  const root = await crypto.subtle.importKey("raw", scalar, "HKDF", false, ["deriveBits"]);
+  const root = await crypto.subtle.importKey("raw", asBytes(scalar), "HKDF", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
     { name: "HKDF", hash: "SHA-256", salt: enc.encode(salt), info: enc.encode(info) },
     root,

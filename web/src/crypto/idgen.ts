@@ -45,6 +45,7 @@
 import { uuid16, ed25519Fingerprint, verifyEnvelopeSig } from "./envelope";
 import { verifyIdentitySelfSig } from "./identity";
 import { concat, utf8, writeU32BE } from "./spacekey";
+import { asBytes } from "./bytes";
 
 const CERT_DOMAIN = utf8("chalk-idgen.v1");
 const ROOT_DOMAIN = utf8("chalk-idgen-root.v1");
@@ -71,7 +72,7 @@ export interface VerifiedGeneration {
 }
 
 async function sha256(b: Uint8Array): Promise<Uint8Array> {
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", b));
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", asBytes(b)));
 }
 
 function hex(b: Uint8Array): string {
@@ -81,7 +82,7 @@ function hex(b: Uint8Array): string {
 }
 
 function join(parts: Uint8Array[]): Uint8Array {
-  let out = new Uint8Array(0);
+  let out: Uint8Array = new Uint8Array(0);
   for (const p of parts) out = concat(out, p);
   return out;
 }
@@ -154,7 +155,7 @@ export async function mintGenerationCert(
   prevGenerationHash: Uint8Array,
 ): Promise<Uint8Array> {
   const canonical = await generationCertCanonical(userID, generation, newEd25519Public, newX25519Public, prevGenerationHash);
-  const sig = new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, prevEd25519Private, canonical));
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, prevEd25519Private, asBytes(canonical)));
   if (sig.length !== SIG_BYTES) throw new Error(`idgen: unexpected signature length ${sig.length}`);
   return sig;
 }

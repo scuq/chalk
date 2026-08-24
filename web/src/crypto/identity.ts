@@ -30,6 +30,8 @@
 // IndexedDB persistence and the publish/fetch wiring live in phase 22c-3;
 // this module is the pure, deterministic crypto core (Node-testable).
 
+import { asBytes, type Bytes } from "./bytes";
+
 const PKCS8_X25519_PREFIX = hexToBytes("302e020100300506032b656e04220420");
 const PKCS8_ED25519_PREFIX = hexToBytes("302e020100300506032b657004220420");
 
@@ -177,7 +179,7 @@ export async function verifyIdentitySelfSig(
       false,
       ["verify"],
     );
-    return await crypto.subtle.verify({ name: "Ed25519" }, verifyKey, selfSig, x25519Public);
+    return await crypto.subtle.verify({ name: "Ed25519" }, verifyKey, asBytes(selfSig), asBytes(x25519Public));
   } catch {
     return false;
   }
@@ -186,9 +188,9 @@ export async function verifyIdentitySelfSig(
 // ---- internals ----------------------------------------------------------
 
 async function hkdf32(seed: Uint8Array, info: Uint8Array): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey("raw", seed, "HKDF", false, ["deriveBits"]);
+  const key = await crypto.subtle.importKey("raw", asBytes(seed), "HKDF", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
-    { name: "HKDF", hash: "SHA-256", salt: HKDF_SALT, info },
+    { name: "HKDF", hash: "SHA-256", salt: HKDF_SALT, info: asBytes(info) },
     key,
     256,
   );
@@ -199,7 +201,7 @@ async function hkdf32(seed: Uint8Array, info: Uint8Array): Promise<Uint8Array> {
 // private key to be extractable: ECDH(priv, basepoint) == priv * 9 == the
 // public key (RFC 7748). Validated against an independent X25519
 // implementation.
-async function x25519PublicFromPrivate(priv: CryptoKey): Promise<Uint8Array> {
+async function x25519PublicFromPrivate(priv: CryptoKey): Promise<Bytes> {
   const basepointKey = await crypto.subtle.importKey("raw", X25519_BASEPOINT, { name: "X25519" }, false, []);
   const pub = await crypto.subtle.deriveBits({ name: "X25519", public: basepointKey }, priv, 256);
   return new Uint8Array(pub);
@@ -208,7 +210,7 @@ async function x25519PublicFromPrivate(priv: CryptoKey): Promise<Uint8Array> {
 // ed25519PublicFromSeed imports the seed transiently as extractable just to
 // read the public key out of the JWK; the key object is discarded. The
 // signing key used for storage is imported separately as non-extractable.
-async function ed25519PublicFromSeed(ed25519Seed: Uint8Array): Promise<Uint8Array> {
+async function ed25519PublicFromSeed(ed25519Seed: Uint8Array): Promise<Bytes> {
   const tmp = await crypto.subtle.importKey(
     "pkcs8",
     concat(PKCS8_ED25519_PREFIX, ed25519Seed),
@@ -221,18 +223,18 @@ async function ed25519PublicFromSeed(ed25519Seed: Uint8Array): Promise<Uint8Arra
   return base64urlToBytes(jwk.x);
 }
 
-function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
+function concat(a: Uint8Array, b: Uint8Array): Bytes {
   const out = new Uint8Array(a.length + b.length);
   out.set(a, 0);
   out.set(b, a.length);
   return out;
 }
 
-function utf8(s: string): Uint8Array {
+function utf8(s: string): Bytes {
   return new TextEncoder().encode(s);
 }
 
-function hexToBytes(hex: string): Uint8Array {
+function hexToBytes(hex: string): Bytes {
   const out = new Uint8Array(hex.length / 2);
   for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
   return out;
@@ -244,7 +246,7 @@ function bytesToBase64url(bytes: Uint8Array): string {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function base64urlToBytes(s: string): Uint8Array {
+function base64urlToBytes(s: string): Bytes {
   const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
   const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
   const bin = atob(b64 + pad);

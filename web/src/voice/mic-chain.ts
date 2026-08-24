@@ -41,7 +41,7 @@ export class MicChain {
   /** The transmit gate: 1 while open, 0 while closed. */
   private readonly gateNode: GainNode;
   private readonly dest: MediaStreamAudioDestinationNode;
-  private readonly samples: Float32Array;
+  private readonly samples: Float32Array<ArrayBuffer>;
   /** The live getUserMedia stream. Held so it is not garbage-collected. */
   private raw: MediaStream;
   private source: MediaStreamAudioSourceNode;

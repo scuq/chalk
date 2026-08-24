@@ -22,6 +22,8 @@
 // an unverified transcript would let a TLS-terminating MITM with its own
 // ephemeral finish the handshake. Verify, compare to the pin, THEN derive.
 
+import { asBytes, type Bytes } from "./bytes";
+
 const PROTO_VERSION = 1;
 const SIG_DOMAIN = new TextEncoder().encode("chalk-server-id.v1");
 const HKDF_SALT = new TextEncoder().encode("chalk-inner-salt-v1");
@@ -49,7 +51,7 @@ export class InnerSession {
     this.sendCtr++;
     const ctr = u64be(this.sendCtr);
     const ct = new Uint8Array(
-      await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonceFor(ctr) }, this.c2s, plaintext),
+      await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonceFor(ctr) }, this.c2s, asBytes(plaintext)),
     );
     const out = new Uint8Array(8 + ct.length);
     out.set(ctr, 0);
@@ -67,7 +69,11 @@ export class InnerSession {
     if (ctr !== this.recvCtr + 1n) throw new Error("innerchan: repeated or out-of-order counter");
     let pt: ArrayBuffer;
     try {
-      pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonceFor(frame.subarray(0, 8)) }, this.s2c, frame.subarray(8));
+      pt = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: nonceFor(frame.subarray(0, 8)) },
+        this.s2c,
+        asBytes(frame.subarray(8)),
+      );
     } catch {
       throw new Error("innerchan: frame does not authenticate");
     }
@@ -116,7 +122,7 @@ export async function startClientHandshake(test?: { ephSeed: Uint8Array; nonce: 
       if (expectedServerEdPub && !bytesEqual(expectedServerEdPub, serverEdPub)) {
         throw new Error("innerchan: server key is not the pinned key");
       }
-      const peer = await crypto.subtle.importKey("raw", serverEphPub, { name: "X25519" }, false, []);
+      const peer = await crypto.subtle.importKey("raw", asBytes(serverEphPub), { name: "X25519" }, false, []);
       const ss = new Uint8Array(await crypto.subtle.deriveBits({ name: "X25519", public: peer }, priv, 256));
       return deriveSession(ss, th);
     },
@@ -140,18 +146,18 @@ export async function transcriptHash(
 
 export async function verifyServerSignature(serverEdPub: Uint8Array, th: Uint8Array, sig: Uint8Array): Promise<boolean> {
   try {
-    const key = await crypto.subtle.importKey("raw", serverEdPub, { name: "Ed25519" }, false, ["verify"]);
+    const key = await crypto.subtle.importKey("raw", asBytes(serverEdPub), { name: "Ed25519" }, false, ["verify"]);
     const msg = new Uint8Array(SIG_DOMAIN.length + th.length);
     msg.set(SIG_DOMAIN, 0);
     msg.set(th, SIG_DOMAIN.length);
-    return await crypto.subtle.verify({ name: "Ed25519" }, key, sig, msg);
+    return await crypto.subtle.verify({ name: "Ed25519" }, key, asBytes(sig), msg);
   } catch {
     return false;
   }
 }
 
 export async function deriveSession(ss: Uint8Array, th: Uint8Array): Promise<InnerSession> {
-  const base = await crypto.subtle.importKey("raw", ss, "HKDF", false, ["deriveKey"]);
+  const base = await crypto.subtle.importKey("raw", asBytes(ss), "HKDF", false, ["deriveKey"]);
   const mk = (info: Uint8Array, usage: KeyUsage) => {
     const full = new Uint8Array(info.length + th.length);
     full.set(info, 0);
@@ -172,14 +178,14 @@ export async function deriveSession(ss: Uint8Array, th: Uint8Array): Promise<Inn
  * hex SHA-256 of the raw key, first 128 bits, grouped in fours.
  */
 export async function serverFingerprint(pub: Uint8Array): Promise<string> {
-  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", pub)).subarray(0, 16);
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", asBytes(pub))).subarray(0, 16);
   const hex = [...h].map((b) => b.toString(16).padStart(2, "0")).join("");
   return hex.match(/.{4}/g)!.join(" ");
 }
 
 // ---- internals -----------------------------------------------------------
 
-function nonceFor(ctr: Uint8Array): Uint8Array {
+function nonceFor(ctr: Uint8Array): Bytes {
   const n = new Uint8Array(12);
   n.set(ctr, 4);
   return n;
@@ -210,7 +216,7 @@ const X25519_BASEPOINT = (() => {
 const PKCS8_X25519_PREFIX = Uint8Array.from([
   0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x04, 0x22, 0x04, 0x20,
 ]);
-function pkcs8X25519(scalar: Uint8Array): Uint8Array {
+function pkcs8X25519(scalar: Uint8Array): Bytes {
   const out = new Uint8Array(PKCS8_X25519_PREFIX.length + 32);
   out.set(PKCS8_X25519_PREFIX, 0);
   out.set(scalar, PKCS8_X25519_PREFIX.length);

@@ -34,6 +34,7 @@ import {
 // 83-6: the inner sealed channel.
 import { startClientHandshake, InnerSession, type ClientHandshake } from "./crypto/innerchan";
 import { loadPinnedServerKey, pinServerKey } from "./crypto/server-pin";
+import { asBytes } from "./crypto/bytes";
 
 export type ConnectionState = "connecting" | "open" | "closed" | "error";
 
@@ -122,7 +123,7 @@ export class WSClient {
       .then(async () => {
         if (!this.session || !this.ws) return;
         const sealed = await this.session.seal(new TextEncoder().encode(json));
-        this.ws.send(sealed);
+        this.ws.send(asBytes(sealed));
       })
       .catch((e) => this.logger.warn("WSClient: seal failed:", e));
   }

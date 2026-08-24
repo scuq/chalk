@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { AttachmentController } from "../attachments/pipeline";
 import { type AttachmentMeta, type AttachmentRef, humanSize } from "../attachments/types";
 import { useSwipeBack } from "../chat/use-swipe-back";
+import { asBytes } from "../crypto/bytes";
 
 interface Props {
   channelID: string;
@@ -75,7 +76,7 @@ export function AttachmentView({ channelID, att, controller, tile }: Props) {
     let alive = true;
     void controller.loadPreviewBytes(channelID, att).then((bytes) => {
       if (!alive || !bytes) return;
-      const url = trackURL(URL.createObjectURL(new Blob([bytes], { type: meta.mime })));
+      const url = trackURL(URL.createObjectURL(new Blob([asBytes(bytes)], { type: meta.mime })));
       setPreviewURL(url);
     });
     return () => {
@@ -97,7 +98,7 @@ export function AttachmentView({ channelID, att, controller, tile }: Props) {
       fetched = true;
       void controller.loadFullBytes(channelID, att).then((bytes) => {
         if (!alive || !bytes) return;
-        const url = trackURL(URL.createObjectURL(new Blob([bytes], { type: meta.mime })));
+        const url = trackURL(URL.createObjectURL(new Blob([asBytes(bytes)], { type: meta.mime })));
         setFullURL(url);
       });
     };
@@ -176,7 +177,7 @@ export function AttachmentView({ channelID, att, controller, tile }: Props) {
     let alive = true;
     void controller.loadFullBytes(channelID, att).then((bytes) => {
       if (!alive || !bytes) return;
-      const url = trackURL(URL.createObjectURL(new Blob([bytes], { type: meta.mime })));
+      const url = trackURL(URL.createObjectURL(new Blob([asBytes(bytes)], { type: meta.mime })));
       setFullURL(url);
     });
     return () => {

@@ -22,6 +22,7 @@ import type { ChannelCrypto } from "../crypto/channel-crypto";
 import type { AttachmentRefWireBase } from "../proto";
 import { type AttachmentMeta, type AttachmentRef } from "./types";
 import { bytesToBase64, base64ToBytes } from "./base64";
+import { asBytes } from "../crypto/bytes";
 import { makePreview, buildMeta, encodeMeta, decodeMeta } from "./preview";
 import {
   initUpload,
@@ -141,7 +142,7 @@ export async function uploadAttachment(
 }
 
 async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", asBytes(bytes)));
 }
 
 /** wireRefToRef converts a server AttachmentRefWire into the client ref shape. */
@@ -220,7 +221,7 @@ function safeDecode(b64: string): Uint8Array | null {
 
 /** saveBytesToDisk triggers a browser "save as" for decrypted bytes. */
 function saveBytesToDisk(bytes: Uint8Array, filename: string, mime: string): void {
-  const blob = new Blob([bytes], { type: mime });
+  const blob = new Blob([asBytes(bytes)], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

@@ -123,6 +123,8 @@ export function describeSuites(): SuiteDescription {
   };
 }
 
+import { asBytes, type Bytes } from "./bytes";
+
 const HKDF_SALT = utf8("chalk-spacekey-hkdf-salt-v1");
 const HKDF_INFO = utf8("chalk-spacekey-wrap-v1");
 
@@ -367,7 +369,7 @@ export async function wrapSpaceKeySigned(
     slot.recipientID,
   );
   const msg = canonicalWrapMessage(suite, slot, signerUserID, sealed);
-  const sig = new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, signerEd25519Private, msg));
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, signerEd25519Private, asBytes(msg)));
   if (sig.length !== ED25519_SIG_BYTES) {
     throw new Error(`spacekey: unexpected Ed25519 signature length ${sig.length}`);
   }
@@ -406,11 +408,11 @@ export async function unwrapSpaceKeySigned(
     // constant-time requirement.
     if (!bytesEqual(claimedPub, signerEd25519Public)) return null;
 
-    const verifyKey = await crypto.subtle.importKey("raw", signerEd25519Public, { name: "Ed25519" }, false, [
+    const verifyKey = await crypto.subtle.importKey("raw", asBytes(signerEd25519Public), { name: "Ed25519" }, false, [
       "verify",
     ]);
     const msg = canonicalWrapMessage(wrap.suite, slot, signerUserID, sealed);
-    const ok = await crypto.subtle.verify({ name: "Ed25519" }, verifyKey, sig, msg);
+    const ok = await crypto.subtle.verify({ name: "Ed25519" }, verifyKey, asBytes(sig), asBytes(msg));
     if (!ok) return null;
 
     return await openBox(
@@ -490,15 +492,15 @@ async function sealBox(
     "deriveBits",
   ])) as CryptoKeyPair;
   const ephemeralPub = new Uint8Array(await crypto.subtle.exportKey("raw", eph.publicKey));
-  const recipientPub = await crypto.subtle.importKey("raw", recipientX25519Pub, { name: "X25519" }, false, []);
+  const recipientPub = await crypto.subtle.importKey("raw", asBytes(recipientX25519Pub), { name: "X25519" }, false, []);
   const shared = await crypto.subtle.deriveBits({ name: "X25519", public: recipientPub }, eph.privateKey, 256);
   const wrapKey = await hkdfWrapKey(shared, ["encrypt"]);
   const nonce = randomNonce();
   const wrapped = new Uint8Array(
     await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: nonce, additionalData: wrapAAD(suite, channelID, keyVersion, recipientID) },
+      { name: "AES-GCM", iv: asBytes(nonce), additionalData: wrapAAD(suite, channelID, keyVersion, recipientID) },
       wrapKey,
-      spaceKey,
+      asBytes(spaceKey),
     ),
   );
   return concat(ephemeralPub, concat(nonce, wrapped));
@@ -517,14 +519,14 @@ async function openBox(
     const ephemeralPubBytes = sealed.subarray(0, X25519_PUB_BYTES);
     const nonce = sealed.subarray(X25519_PUB_BYTES, X25519_PUB_BYTES + NONCE_BYTES);
     const wrapped = sealed.subarray(X25519_PUB_BYTES + NONCE_BYTES);
-    const ephemeralPub = await crypto.subtle.importKey("raw", ephemeralPubBytes, { name: "X25519" }, false, []);
+    const ephemeralPub = await crypto.subtle.importKey("raw", asBytes(ephemeralPubBytes), { name: "X25519" }, false, []);
     const shared = await crypto.subtle.deriveBits({ name: "X25519", public: ephemeralPub }, ownX25519Private, 256);
     const wrapKey = await hkdfWrapKey(shared, ["decrypt"]);
     const spaceKey = new Uint8Array(
       await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: nonce, additionalData: wrapAAD(suite, channelID, keyVersion, recipientID) },
+        { name: "AES-GCM", iv: asBytes(nonce), additionalData: wrapAAD(suite, channelID, keyVersion, recipientID) },
         wrapKey,
-        wrapped,
+        asBytes(wrapped),
       ),
     );
     return spaceKey.length === SPACE_KEY_BYTES ? spaceKey : null;
@@ -553,9 +555,9 @@ async function encMsgV1(
   const nonce = randomNonce();
   const ct = new Uint8Array(
     await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: nonce, additionalData: msgAAD(MSG_SUITE_AESGCM, channelID, keyVersion) },
+      { name: "AES-GCM", iv: asBytes(nonce), additionalData: msgAAD(MSG_SUITE_AESGCM, channelID, keyVersion) },
       key,
-      plaintext,
+      asBytes(plaintext),
     ),
   );
   return concat(nonce, ct);
@@ -573,9 +575,9 @@ async function decMsgV1(
     const nonce = inner.subarray(0, NONCE_BYTES);
     const ct = inner.subarray(NONCE_BYTES);
     const pt = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: nonce, additionalData: msgAAD(MSG_SUITE_AESGCM, channelID, keyVersion) },
+      { name: "AES-GCM", iv: asBytes(nonce), additionalData: msgAAD(MSG_SUITE_AESGCM, channelID, keyVersion) },
       key,
-      ct,
+      asBytes(ct),
     );
     return new Uint8Array(pt);
   } catch {
@@ -603,24 +605,24 @@ async function hkdfWrapKey(shared: ArrayBuffer, usages: KeyUsage[]): Promise<Cry
 }
 
 function importSpaceKey(spaceKey: Uint8Array, usages: KeyUsage[]): Promise<CryptoKey> {
-  return crypto.subtle.importKey("raw", spaceKey, { name: "AES-GCM" }, false, usages);
+  return crypto.subtle.importKey("raw", asBytes(spaceKey), { name: "AES-GCM" }, false, usages);
 }
 
-function wrapAAD(suite: number, channelID: string, keyVersion: number, recipientID: string): Uint8Array {
+function wrapAAD(suite: number, channelID: string, keyVersion: number, recipientID: string): Bytes {
   return utf8(`chalk-wrap-s${suite}:${channelID}:${keyVersion}:${recipientID}`);
 }
 
-function msgAAD(suite: number, channelID: string, keyVersion: number): Uint8Array {
+function msgAAD(suite: number, channelID: string, keyVersion: number): Bytes {
   return utf8(`chalk-msg-s${suite}:${channelID}:${keyVersion}`);
 }
 
-function randomNonce(): Uint8Array {
+function randomNonce(): Bytes {
   const n = new Uint8Array(NONCE_BYTES);
   crypto.getRandomValues(n);
   return n;
 }
 
-export function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
+export function concat(a: Uint8Array, b: Uint8Array): Bytes {
   const out = new Uint8Array(a.length + b.length);
   out.set(a, 0);
   out.set(b, a.length);
@@ -635,7 +637,7 @@ export function writeU32BE(buf: Uint8Array, offset: number, n: number): void {
 }
 
 /** lengthPrefixed returns u32be(x.length) || x -- the injectivity primitive. */
-export function lengthPrefixed(x: Uint8Array): Uint8Array {
+export function lengthPrefixed(x: Uint8Array): Bytes {
   const out = new Uint8Array(4 + x.length);
   writeU32BE(out, 0, x.length);
   out.set(x, 4);
@@ -650,6 +652,6 @@ export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
-export function utf8(s: string): Uint8Array {
+export function utf8(s: string): Bytes {
   return new TextEncoder().encode(s);
 }

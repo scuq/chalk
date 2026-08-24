@@ -49,7 +49,7 @@ type Stage =
   | { kind: "room"; ctx: GuestContext }
   | { kind: "gone"; why: string };
 
-function b64ToBytes(b64: string): Uint8Array {
+function b64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);

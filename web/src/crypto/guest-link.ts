@@ -40,6 +40,7 @@ import {
   type WrappedKey,
   type WrapSlot,
 } from "./spacekey";
+import { asBytes, type Bytes } from "./bytes";
 
 const LOOKUP_PREFIX = utf8("chalk/join-lookup");
 const IDENTITY_HKDF_SALT = utf8("chalk-guest-hkdf-salt-v1");
@@ -73,7 +74,7 @@ export async function deriveGuestLink(secret: Uint8Array): Promise<GuestLinkMate
   );
   const lookupHex = bytesToHex(digest.subarray(0, GUEST_LOOKUP_BYTES));
 
-  const key = await crypto.subtle.importKey("raw", secret, "HKDF", false, ["deriveBits"]);
+  const key = await crypto.subtle.importKey("raw", asBytes(secret), "HKDF", false, ["deriveBits"]);
   const seed = new Uint8Array(
     await crypto.subtle.deriveBits(
       { name: "HKDF", hash: "SHA-256", salt: IDENTITY_HKDF_SALT, info: IDENTITY_HKDF_INFO },
@@ -215,11 +216,11 @@ export async function openGuestWrap(
 
 // ---- byte helpers (local; identity.ts keeps its own private) -------------
 
-function utf8(s: string): Uint8Array {
+function utf8(s: string): Bytes {
   return new TextEncoder().encode(s);
 }
 
-function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
+function concat(a: Uint8Array, b: Uint8Array): Bytes {
   const out = new Uint8Array(a.length + b.length);
   out.set(a, 0);
   out.set(b, a.length);
@@ -233,7 +234,7 @@ function bytesToHex(bytes: Uint8Array): string {
 }
 
 /** hexToBytes decodes the lookup's hex form back to bytes (mint payload). */
-export function hexToBytes(hex: string): Uint8Array {
+export function hexToBytes(hex: string): Bytes {
   const out = new Uint8Array(hex.length / 2);
   for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
   return out;
@@ -252,7 +253,7 @@ export function bytesToBase64url(bytes: Uint8Array): string {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-export function base64urlToBytes(s: string): Uint8Array {
+export function base64urlToBytes(s: string): Bytes {
   const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
   const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
   const bin = atob(b64 + pad);

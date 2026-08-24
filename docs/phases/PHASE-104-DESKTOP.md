@@ -195,6 +195,36 @@ identity.
 
 Per-OS builds (104-4) repeat the list on real Windows, macOS and Linux.
 
+## Keeping the engine current
+
+The shell's browser engine is whatever Chromium the pinned Electron embeds,
+and that is the only place it can be set. Electron's stable line trails
+Chrome stable by one major on purpose: on 2026-08-24, Chrome stable was 152,
+Electron `latest` 43.4.1 embedded Chromium 150.0.7871.224 (Node 24.18.1),
+and the 44 beta already carried 152.0.7977.30 (read
+`chromium_version` in Electron's `DEPS` at a tag to check). A beta is not
+what to ship. The rule for `desktop/package.json`:
+
+- pin `electron` to the registry's `latest` dist-tag (`npm view electron
+  dist-tags`), exact version, and take every patch release — those carry the
+  Chromium security backports;
+- move to the next major the week it goes stable (Electron ships one every
+  eight weeks); 104-4's monthly bump job is where that becomes routine;
+- same for esbuild and typescript: exact pins at the current stable.
+
+`npm outdated` under npm 10 can report a *lower* "latest" for electron than
+the dist-tag says; trust `npm view electron dist-tags`.
+
+`web/` was brought to the same standard in the same change set (esbuild
+0.28, TypeScript 7, preact 10.29, qrcode-generator 2.0, tasks-vision 1.0.1).
+The one migration TypeScript ≥5.7 forced is `web/src/crypto/bytes.ts`:
+typed arrays became generic over their buffer and the DOM lib now wants
+`ArrayBuffer`-backed views for `BufferSource`/`BlobPart`, so the WebCrypto,
+Blob and `ws.send` call sites wrap their bytes in `asBytes()` and the
+module-local byte producers (`concat`, `utf8`, `hexToBytes`, the base64
+decoders, `wrapAAD`/`msgAAD`, `nonceFor`) declare `Bytes`. Types only;
+esbuild strips them and the 1373 tests are unchanged.
+
 ## Gotchas met on the way
 
 - **Electron 43 needs Node ≥ 22.12 for `npm install`.** On a Node 20 box

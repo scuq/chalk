@@ -22,6 +22,7 @@ import type { AttachmentRef } from "../attachments/types";
 import type { LinkPreviewPayload } from "../linkpreview/linkpreview";
 import { LINKPREVIEW_THUMB_PREFIX } from "../linkpreview/fetch";
 import { AttachmentGroup } from "./AttachmentGroup";
+import { asBytes } from "../crypto/bytes";
 
 interface Props {
   payload: LinkPreviewPayload;
@@ -78,7 +79,7 @@ export function LinkPreviewView({ payload, channelID, attachments, controller }:
     let alive = true;
     void controller.loadPreviewBytes(channelID, thumbRef).then((bytes) => {
       if (!alive || !bytes) return;
-      const url = URL.createObjectURL(new Blob([bytes]));
+      const url = URL.createObjectURL(new Blob([asBytes(bytes)]));
       urlsRef.current.push(url);
       setThumbURL(url);
     });
