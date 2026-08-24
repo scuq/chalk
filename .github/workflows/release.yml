@@ -356,6 +356,35 @@ jobs:
             --output-certificate dist/desktop/SHA256SUMS.desktop.pem \
             dist/desktop/SHA256SUMS.desktop
 
+      # 105-1: the signature the desktop app itself verifies, Ed25519 with
+      # the key from tools/make-release-key.sh, pinned in
+      # desktop/src/selfupdate/key.ts. Raw 64-byte signature over the sums
+      # file's exact bytes. Skipped when the secret is absent (forks, and this
+      # repo until the key is made): the app then keeps announcing without
+      # installing. A second secret, RELEASE_SIGN_KEY_B64_NEXT, signs a
+      # ".ed25519.next" copy during a key rotation.
+      - name: Sign desktop sums for the self-updater
+        if: env.RELEASE_SIGN_KEY_B64 != ''
+        env:
+          RELEASE_SIGN_KEY_B64: ${{ secrets.RELEASE_SIGN_KEY_B64 }}
+          RELEASE_SIGN_KEY_B64_NEXT: ${{ secrets.RELEASE_SIGN_KEY_B64_NEXT }}
+        run: |
+          set -euo pipefail
+          [ -f dist/desktop/SHA256SUMS.desktop ] || { echo "no desktop sums to sign"; exit 0; }
+          sign() {
+            key="$(mktemp)"
+            printf '%s' "$1" | base64 -d > "$key"
+            openssl pkeyutl -sign -inkey "$key" -rawin \
+              -in dist/desktop/SHA256SUMS.desktop -out "dist/desktop/SHA256SUMS.desktop.$2"
+            openssl pkey -in "$key" -pubout -outform DER | tail -c 32 | xxd -p | tr -d '\n' > "$key.hex"
+            echo "signed with key $(cat "$key.hex") -> SHA256SUMS.desktop.$2"
+            rm -f "$key" "$key.hex"
+          }
+          sign "$RELEASE_SIGN_KEY_B64" ed25519
+          if [ -n "${RELEASE_SIGN_KEY_B64_NEXT:-}" ]; then
+            sign "$RELEASE_SIGN_KEY_B64_NEXT" ed25519.next
+          fi
+
       - name: Create GitHub Release (image + binaries + desktop)
         uses: softprops/action-gh-release@v2
         with:

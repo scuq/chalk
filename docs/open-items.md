@@ -9,7 +9,7 @@ Latest release: **v0.8.2** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 104 is the newest work; 105 is the newest plan. The phase-doc index at the top of
+Phase 105 is the newest work. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
 
@@ -84,9 +84,12 @@ Verified on Linux against the dev stack and the packaged binary; **no tag
 has run the desktop job yet**, so the first `v*` release after this is the
 real test of the Windows and macOS runners. Open:
 
-- **One-click self-update is phase 105** (planned, not started): side-by-side
-  versioned installs behind Ed25519-signed sums, Windows first. Until then
-  the app only announces a newer release and links to it.
+- **One-click self-update is phase 105**: 105-1 (the signed sums and the
+  fail-closed verifier) is built; 105-2 (Windows side-by-side install), 105-3
+  macOS, 105-4 Linux, 105-5 settings are designed, not started. **The
+  release key does not exist yet** — `tools/make-release-key.sh`, pin the
+  hex in `desktop/src/selfupdate/key.ts`, set `RELEASE_SIGN_KEY_B64`; until
+  then the app only announces a newer release and links to it.
 - Windows needs the signing secrets set once (`tools/make-signing-cert.sh`)
   or the exes ship unsigned; macOS is unsigned/ad-hoc (right-click → Open);
   macOS passkeys need a native module; Linux reports no screen lock; GNOME

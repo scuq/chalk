@@ -1,9 +1,13 @@
 # Phase 105 — one-click self-update for the desktop app
 
-**Status:** planned, not started. Designed 2026-08-25 while 104-4 shipped the
-update *notice*; nothing below has code behind it.
+**Status:** 105-1 (signed sums, the verifier) built 2026-08-25; 105-2 … 105-5
+designed below, not started. **The release key is not made yet** — until
+scuq runs `tools/make-release-key.sh`, pins the hex in
+`desktop/src/selfupdate/key.ts` and sets `RELEASE_SIGN_KEY_B64`, the
+verifier refuses everything by design and nothing changes for users.
 
-**Tag:** `#selfupdate` (this doc only until built; then `desktop/src/selfupdate/`).
+**Tag:** `#selfupdate` → `tools/where.sh -g selfupdate` (`desktop/src/selfupdate/`,
+`tools/make-release-key.sh`, the signing step in `.github/workflows/release.yml`).
 
 ## The problem
 
@@ -76,10 +80,19 @@ every desktop that updates. Same posture as `CHALK_WRAP_SIG_REQUIRED`.
 
 ## Slices
 
-- **105-1 — signed sums.** `tools/make-release-key.sh` (Ed25519, minisign-
-  style), the workflow signs `SHA256SUMS.desktop` with the secret, the
-  public key lands in `desktop/src/selfupdate/key.ts`; `verify.ts` checks
-  signature + sum + version with WebCrypto. Tested with a throwaway key.
+- **105-1 — signed sums.** Built. `tools/make-release-key.sh` makes an
+  Ed25519 key with OpenSSL and prints the raw public key hex to pin in
+  `desktop/src/selfupdate/key.ts`; the release job signs
+  `SHA256SUMS.desktop` with `openssl pkeyutl -rawin` from the
+  `RELEASE_SIGN_KEY_B64` secret (raw 64-byte signature as
+  `SHA256SUMS.desktop.ed25519`, plus a `.next` twin from
+  `RELEASE_SIGN_KEY_B64_NEXT` during a rotation), skipped when the secret is
+  absent. `desktop/src/selfupdate/verify.ts` is the fail-closed chain —
+  `verifySums` (WebCrypto Ed25519 over the file's exact bytes; no pinned key
+  = refused), `expectedArchive` (the release naming), `verifyArchive`
+  (SHA-256 of the download against the verified table) — tested against a
+  throwaway key including wrong key, short signature, tampered file, signed
+  garbage, one flipped byte.
 - **105-2 — Windows.** Download to a temp file, verify, unpack beside the
   running dir, `.ready`, shortcut retarget, "Restart to update" in the
   dialog/tray/menu (replacing 104-4's "Download"), old-dir cleanup on start.
