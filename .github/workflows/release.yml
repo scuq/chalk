@@ -295,6 +295,12 @@ jobs:
           V="${GITHUB_REF_NAME#v}"
           mkdir -p ../dist-desktop
           for arch in ${{ matrix.archs }}; do
+            # Ad-hoc signature: no Apple identity, but a valid seal, which is
+            # what Apple Silicon requires to run at all and what the
+            # self-updater's bundle swap (105-3) preserves by never touching
+            # the bundle's contents.
+            codesign --force --deep --sign - "out/chalk-darwin-$arch/chalk.app"
+            codesign --verify --deep --strict "out/chalk-darwin-$arch/chalk.app"
             ditto -c -k --keepParent "out/chalk-darwin-$arch/chalk.app" "../dist-desktop/chalk-desktop-$V-macos-$arch.zip"
           done
 

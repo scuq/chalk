@@ -9,12 +9,17 @@
 //
 // Linux: same without the shortcut; --install-desktop-entry re-points the
 // launcher entry to the new path when it exists.
+//
+// macOS (105-3): swap the bundle at its own path (activateMacBundle), then
+// `open -n` the new one -- LaunchServices, not a bare spawn, so the Dock and
+// the running-app bookkeeping see a normal launch.
 
 import { app, shell } from "electron";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { installDesktopEntry } from "../linux-desktop";
+import { activateMacBundle } from "./updater";
 
 export const APP_USER_MODEL_ID = "org.chalk.desktop";
 
@@ -46,6 +51,22 @@ function retargetShortcuts(exe: string, dir: string): void {
  * to spawn; on success the caller quits.
  */
 export function restartInto(exe: string, dir: string, iconSource: string): boolean {
+  if (process.platform === "darwin") {
+    let bundle: string;
+    try {
+      bundle = activateMacBundle(dirname(dir));
+    } catch {
+      return false;
+    }
+    app.releaseSingleInstanceLock();
+    try {
+      const child = spawn("open", ["-n", bundle], { detached: true, stdio: "ignore" });
+      child.unref();
+      return true;
+    } catch {
+      return false;
+    }
+  }
   if (process.platform === "win32") retargetShortcuts(exe, dir);
   if (process.platform === "linux") {
     const entry = join(process.env.XDG_DATA_HOME || join(app.getPath("home"), ".local", "share"), "applications", "chalk.desktop");

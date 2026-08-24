@@ -85,9 +85,11 @@ has run the desktop job yet**, so the first `v*` release after this is the
 real test of the Windows and macOS runners. Open:
 
 - **One-click self-update is phase 105**: 105-1 (signed sums, the
-  verifier), 105-2 (the side-by-side updater, Windows hand-over) and 105-4
-  (Linux) are built; 105-3 macOS and 105-5 settings/rollback are designed,
-  not started. **The release key does not exist yet** —
+  verifier), 105-2 (the side-by-side updater, Windows hand-over), 105-4
+  (Linux) and 105-3 (macOS bundle swap) are built; 105-5 settings/rollback
+  is designed, not started. The macOS swap and the Windows shortcut retarget
+  have only been exercised at the layout level, not on a Mac or a Windows
+  box. **The release key does not exist yet** —
   `tools/make-release-key.sh`, pin the hex in `desktop/src/selfupdate/key.ts`,
   set `RELEASE_SIGN_KEY_B64`; until then the app only announces a newer
   release and links to it. The Windows shortcut retarget has not been run

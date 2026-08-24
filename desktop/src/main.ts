@@ -13,7 +13,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstruc
 import { join } from "node:path";
 import { installDesktopEntry } from "./linux-desktop";
 import { restartInto } from "./selfupdate/apply";
-import { cleanupOldVersions, installRoot, prepareUpdate, type Prepared } from "./selfupdate/updater";
+import { bundleOf, cleanupOldVersions, installRoot, prepareUpdate, runningDir, type Prepared } from "./selfupdate/updater";
 import { hexToBytes, releaseKey } from "./selfupdate/verify";
 import {
   CHECK_EVERY_MS,
@@ -347,14 +347,14 @@ function showAbout(): void {
   });
 }
 
-/** 105-2: the shell can install itself where a key is pinned and the
- * platform's swap is built (Windows, Linux). Elsewhere 104-4's link stays. */
+/** 105-2/105-3: the shell can install itself where a key is pinned (and,
+ * on macOS, when it runs from a .app bundle). Elsewhere 104-4's link stays. */
 function updateKey(): Uint8Array<ArrayBuffer> | null {
   return args.updateKey ? hexToBytes(args.updateKey) : releaseKey();
 }
 
 function canSelfUpdate(): boolean {
-  return (process.platform === "win32" || process.platform === "linux") && updateKey() !== null;
+  return updateKey() !== null && (process.platform !== "darwin" || bundleOf(process.execPath) !== null);
 }
 
 function showMessage(opts: Electron.MessageBoxOptions): Promise<Electron.MessageBoxReturnValue> {
@@ -469,7 +469,7 @@ function cleanupOldInstalls(): void {
   if (isDevBuild(VERSION) && !args.updateApi) return;
   const root = installRoot(process.execPath, join(app.getPath("userData"), "versions"));
   if (!root) return;
-  const removed = cleanupOldVersions(root, VERSION, join(process.execPath, ".."));
+  const removed = cleanupOldVersions(root, VERSION, runningDir(process.execPath, process.platform));
   for (const r of removed) console.log(`chalk-desktop update: removed ${r}`);
 }
 

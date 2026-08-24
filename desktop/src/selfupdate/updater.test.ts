@@ -173,3 +173,110 @@ test("cleanupOldVersions removes older versions and leftovers only", () => {
   assert.deepEqual(removed, [".download-1.1.5", "chalk-1.0.0", "chalk-1.1.0", "chalk-1.1.5.partial"]);
   for (const n of ["chalk-1.2.0", "chalk-2.0.0", "chalk-linux-x64", "notes"]) assert.ok(existsSync(join(root, n)), n);
 });
+
+// ---- 105-3: the macOS bundle swap, driven on any OS with an injected
+// extractor (the real one is ditto; the layout logic is what is under test).
+
+import { execFileSync as _exec } from "node:child_process";
+import { activateMacBundle, bundleOf, runningDir } from "./updater";
+
+const MAC_ARCHIVE = `chalk-desktop-${VERSION}-macos-${ARCH}.zip`;
+
+async function fakeMacRelease() {
+  const work = mkdtempSync(join(tmpdir(), "chalk-mac-rel-"));
+  mkdirSync(join(work, "chalk.app", "Contents", "MacOS"), { recursive: true });
+  writeFileSync(join(work, "chalk.app", "Contents", "MacOS", "chalk"), "#!/bin/sh\necho fake\n", { mode: 0o755 });
+  writeFileSync(join(work, "chalk.app", "Contents", "Info.plist"), "<plist/>");
+  mkdirSync(join(work, "__MACOSX"));
+  writeFileSync(join(work, "__MACOSX", "._junk"), "x");
+  // A tar.gz served under the zip's name; the injected extractor untars it.
+  _exec("tar", ["-czf", join(work, MAC_ARCHIVE), "-C", work, "chalk.app", "__MACOSX"]);
+  let archive = new Uint8Array(readFileSync(join(work, MAC_ARCHIVE))) as Uint8Array<ArrayBuffer>;
+  const sums = new TextEncoder().encode(`${await sha256Hex(archive)}  ${MAC_ARCHIVE}\n`) as Uint8Array<ArrayBuffer>;
+  const key = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
+  const pub = new Uint8Array(await crypto.subtle.exportKey("raw", key.publicKey)) as Uint8Array<ArrayBuffer>;
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, key.privateKey, sums)) as Uint8Array<ArrayBuffer>;
+  const files = new Map<string, Uint8Array>([
+    [`${BASE}/v${VERSION}/SHA256SUMS.desktop`, sums],
+    [`${BASE}/v${VERSION}/SHA256SUMS.desktop.ed25519`, sig],
+    [`${BASE}/v${VERSION}/${MAC_ARCHIVE}`, archive],
+  ]);
+  const fetchStub = (async (input: string | URL | Request) => {
+    const body = files.get(String(input));
+    if (!body) return new Response(null, { status: 404 });
+    return new Response(body as unknown as BodyInit, { status: 200, headers: { "content-length": String(body.length) } });
+  }) as typeof fetch;
+  return { pub, fetchStub };
+}
+
+function fakeMacInstall() {
+  const root = mkdtempSync(join(tmpdir(), "chalk-mac-root-"));
+  const bundle = join(root, "chalk.app");
+  mkdirSync(join(bundle, "Contents", "MacOS"), { recursive: true });
+  writeFileSync(join(bundle, "Contents", "MacOS", "chalk"), "#!/bin/sh\n", { mode: 0o755 });
+  writeFileSync(join(bundle, "Contents", "old-marker"), "1.0.0");
+  return { root, bundle, execPath: join(bundle, "Contents", "MacOS", "chalk") };
+}
+
+test("bundleOf / runningDir see the .app on macOS and the dir elsewhere", () => {
+  assert.equal(bundleOf("/Applications/chalk.app/Contents/MacOS/chalk"), "/Applications/chalk.app");
+  assert.equal(bundleOf("/opt/chalk-1.0.0/chalk"), null);
+  assert.equal(runningDir("/Applications/chalk.app/Contents/MacOS/chalk", "darwin"), "/Applications/chalk.app");
+  assert.equal(runningDir("/opt/chalk-1.0.0/chalk", "linux"), "/opt/chalk-1.0.0");
+});
+
+test("macOS: prepareUpdate unpacks to chalk.app.next with the marker outside the bundle", async () => {
+  const rel = await fakeMacRelease();
+  const inst = fakeMacInstall();
+  const extract = async (archive: string, dest: string) => {
+    _exec("tar", ["-xf", archive, "-C", dest]);
+  };
+  const r = await prepareUpdate(VERSION, {
+    platform: "darwin", arch: ARCH, execPath: inst.execPath, fallbackRoot: join(inst.root, "fb"),
+    publicKey: rel.pub, fetch: rel.fetchStub, downloadBase: BASE, extract,
+  });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  if (!r.ok) return;
+  assert.equal(r.dir, join(inst.root, "chalk.app.next"));
+  assert.ok(existsSync(join(r.dir, "Contents", "Info.plist")));
+  assert.equal(existsSync(join(r.dir, ".ready")), false, "no marker inside the bundle");
+  assert.equal(readFileSync(join(inst.root, ".chalk-next"), "utf8"), "9.9.9\n");
+  assert.equal(existsSync(join(inst.root, "chalk.app.partial")), false);
+  assert.equal(existsSync(join(inst.root, "__MACOSX")), false);
+  assert.ok(existsSync(join(inst.bundle, "Contents", "old-marker")), "the running bundle is untouched");
+
+  // Activation swaps at the same path and keeps the old one for rollback.
+  const live = activateMacBundle(inst.root);
+  assert.equal(live, inst.bundle);
+  assert.ok(existsSync(join(live, "Contents", "Info.plist")), "new bundle at the live path");
+  assert.ok(existsSync(join(inst.root, "chalk.app.old", "Contents", "old-marker")), "old bundle kept");
+  assert.equal(existsSync(join(inst.root, ".chalk-next")), false);
+  assert.equal(existsSync(join(inst.root, "chalk.app.next")), false);
+
+  // Next start: the old bundle goes.
+  const removed = cleanupOldVersions(inst.root, VERSION, live);
+  assert.deepEqual(removed, ["chalk.app.old"]);
+});
+
+test("macOS: not running from a bundle is unsupported; a stale .next is cleaned", () => {
+  const root = mkdtempSync(join(tmpdir(), "chalk-mac-clean-"));
+  mkdirSync(join(root, "chalk.app.next"));
+  writeFileSync(join(root, ".chalk-next"), "1.0.0\n");
+  mkdirSync(join(root, "chalk.app"));
+  const removed = cleanupOldVersions(root, "1.2.0", join(root, "chalk.app")).sort();
+  assert.deepEqual(removed, [".chalk-next", "chalk.app.next"]);
+  const root2 = mkdtempSync(join(tmpdir(), "chalk-mac-clean-"));
+  mkdirSync(join(root2, "chalk.app.next"));
+  writeFileSync(join(root2, ".chalk-next"), "2.0.0\n");
+  assert.deepEqual(cleanupOldVersions(root2, "1.2.0", join(root2, "chalk.app")), [], "a newer prepared bundle stays");
+});
+
+test("macOS: unsupported when not in a bundle", async () => {
+  const rel = await fakeMacRelease();
+  const r = await prepareUpdate(VERSION, {
+    platform: "darwin", arch: ARCH, execPath: "/opt/chalk-1.0.0/chalk", fallbackRoot: mkdtempSync(join(tmpdir(), "fb-")),
+    publicKey: rel.pub, fetch: rel.fetchStub, downloadBase: BASE,
+  });
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.equal(r.stage, "unsupported");
+});

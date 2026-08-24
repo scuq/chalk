@@ -233,8 +233,9 @@ ever installed) and unpacked *beside* the running version; a dialog, the tray
 and the *chalk* menu then offer **Restart to update**, which starts the new
 version and drops the old one on its next start. Your unpacked copy is never
 modified; the new version lands next to it (or under the app's data directory
-if that place is read-only). On macOS, and wherever verification is not
-possible, the app only tells you and links to the release page.
+if that place is read-only). On macOS the new `chalk.app` replaces the old
+one at the same path, so a Dock pin keeps working. Wherever verification is
+not possible, the app only tells you and links to the release page.
 `"checkUpdates": false` in `desktop.json` (under the app's config directory,
 `chalk-desktop/`) turns the check off; `"closeToTray": false` makes the close
 button quit.

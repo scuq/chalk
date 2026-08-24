@@ -1,10 +1,11 @@
 # Phase 105 — one-click self-update for the desktop app
 
 **Status:** 105-1 (signed sums, the verifier), 105-2 (the updater core and
-the Windows hand-over) and 105-4 (Linux) built 2026-08-25 — the core is one
-directory swap, so Linux came with Windows and is what the probe exercises;
-the Windows shortcut retarget is untested by hand. 105-3 (macOS) and 105-5
-(settings) designed below, not started. **The release key is not made yet** — until
+the Windows hand-over), 105-4 (Linux) and 105-3 (macOS bundle swap) built
+2026-08-25. Linux is what the probe exercises live; the Windows shortcut
+retarget and the macOS swap are tested at the layout level (an injected
+extractor stands in for `ditto`) and by hand on nobody's Mac yet. 105-5
+(settings, rollback entry) designed below, not started. **The release key is not made yet** — until
 scuq runs `tools/make-release-key.sh`, pins the hex in
 `desktop/src/selfupdate/key.ts` and sets `RELEASE_SIGN_KEY_B64`, the
 verifier refuses everything by design and nothing changes for users.
@@ -116,7 +117,20 @@ every desktop that updates. Same posture as `CHALK_WRAP_SIG_REQUIRED`.
   `--update-api/--update-base/--update-key` flags. Rollback (delete the
   newest dir, relaunch the previous) is a manual step for now; 105-5 gives
   it a menu entry.
-- **105-3 — macOS** bundle swap. Not started.
+- **105-3 — macOS** bundle swap. Built. `bundleOf`/`runningDir` treat the
+  `.app` as the running version; `prepareUpdate` unpacks with `ditto -x -k`
+  into `chalk.app.partial`, drops a `__MACOSX` sidecar, moves the bundle to
+  `<root>/chalk.app.next` and writes `<root>/.chalk-next` (the marker stays
+  outside the bundle: a file added inside would break its code seal);
+  `activateMacBundle` renames running → `chalk.app.old`, `.next` →
+  `chalk.app` (undoing the first rename if the second fails), and `apply.ts`
+  then `open -n`s the new bundle. The Dock pin survives because the path
+  does. `cleanupOldVersions` removes `chalk.app.old` and a prepared bundle
+  the running version has caught up with. The release job now ad-hoc
+  `codesign`s the bundle before zipping so what ships and what the updater
+  swaps in carry the same (identity-less) seal; **if the app is ever
+  notarized, updates must be signed with that identity too** — the seal
+  check would otherwise refuse the swapped bundle.
 - **105-4 — Linux** dir swap. Built with 105-2 (same code; `--install-desktop-entry`
   is re-run for the new path when an entry exists).
 - **105-5 — settings**: "check now", opt out (already `checkUpdates`), and
@@ -145,3 +159,7 @@ By hand, still open:
 - [ ] update while hidden to the tray; the restart prompt waits for the user
 - [ ] the fallback root (`userData/versions`) when the unpacked directory is
       read-only
+- [ ] macOS, by hand: the swap at `/Applications` or `~/Applications`, the
+      Dock pin still opens the new version, Gatekeeper does not re-prompt (no
+      quarantine on bytes Node wrote), `chalk.app.old` gone after the second
+      start
