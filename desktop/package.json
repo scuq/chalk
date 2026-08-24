@@ -1,0 +1,20 @@
+{
+  "name": "chalk-desktop",
+  "productName": "chalk-desktop",
+  "version": "0.0.0-dev",
+  "private": true,
+  "license": "BSD-3-Clause",
+  "description": "chalk desktop shell — the web client in its own window",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node build.mjs && electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "node test.mjs"
+  },
+  "devDependencies": {
+    "electron": "43.4.1",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}
