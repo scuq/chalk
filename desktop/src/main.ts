@@ -12,9 +12,13 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from "electron";
 import { join } from "node:path";
 import { installDesktopEntry } from "./linux-desktop";
+import { restartInto } from "./selfupdate/apply";
+import { cleanupOldVersions, installRoot, prepareUpdate, type Prepared } from "./selfupdate/updater";
+import { hexToBytes, releaseKey } from "./selfupdate/verify";
 import {
   CHECK_EVERY_MS,
   FIRST_CHECK_MS,
+  RELEASES_API,
   fetchLatestRelease,
   isDevBuild,
   isNewer,
@@ -45,6 +49,12 @@ interface Args {
   devtools: boolean;
   version: boolean;
   installDesktopEntry: boolean;
+  /** 105-2 test hooks, honoured only together with --insecure: point the
+   * update check and the download base at a fake release and pin a
+   * throwaway key. Never for real use; the flags say so in --help terms. */
+  updateApi: string | null;
+  updateBase: string | null;
+  updateKey: string | null;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -54,15 +64,28 @@ function parseArgs(argv: string[]): Args {
     devtools: false,
     version: false,
     installDesktopEntry: false,
+    updateApi: null,
+    updateBase: null,
+    updateKey: null,
   };
+  const value = (a: string, name: string): string | null =>
+    a.startsWith(`--${name}=`) ? a.slice(name.length + 3) : null;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--server" && i + 1 < argv.length) out.server = argv[++i];
-    else if (a.startsWith("--server=")) out.server = a.slice("--server=".length);
+    else if (value(a, "server") !== null) out.server = value(a, "server");
     else if (a === "--insecure") out.insecure = true;
     else if (a === "--devtools") out.devtools = true;
     else if (a === "--version" || a === "-v") out.version = true;
     else if (a === "--install-desktop-entry") out.installDesktopEntry = true;
+    else if (value(a, "update-api") !== null) out.updateApi = value(a, "update-api");
+    else if (value(a, "update-base") !== null) out.updateBase = value(a, "update-base");
+    else if (value(a, "update-key") !== null) out.updateKey = value(a, "update-key");
+  }
+  if (!out.insecure) {
+    out.updateApi = null;
+    out.updateBase = null;
+    out.updateKey = null;
   }
   return out;
 }
@@ -118,6 +141,9 @@ let quitting = false;
 let tray: TrayHandle | null = null;
 /** 104-4: the newer release, once a check has found one. */
 let update: ReleaseInfo | null = null;
+/** 105-2: that release, unpacked and verified beside the running one. */
+let prepared: (Prepared & { ok: true }) | null = null;
+let preparing = false;
 
 function closeToTray(): boolean {
   return cfg.closeToTray !== false;
@@ -321,37 +347,130 @@ function showAbout(): void {
   });
 }
 
-function announceUpdate(info: ReleaseInfo): void {
-  update = info;
-  tray?.setUpdate(info);
-  buildMenu();
+/** 105-2: the shell can install itself where a key is pinned and the
+ * platform's swap is built (Windows, Linux). Elsewhere 104-4's link stays. */
+function updateKey(): Uint8Array<ArrayBuffer> | null {
+  return args.updateKey ? hexToBytes(args.updateKey) : releaseKey();
+}
+
+function canSelfUpdate(): boolean {
+  return (process.platform === "win32" || process.platform === "linux") && updateKey() !== null;
+}
+
+function showMessage(opts: Electron.MessageBoxOptions): Promise<Electron.MessageBoxReturnValue> {
+  return win && !win.isDestroyed() ? dialog.showMessageBox(win, opts) : dialog.showMessageBox(opts);
+}
+
+/** restartToUpdate hands over to the prepared version and quits. */
+function restartToUpdate(): void {
+  if (!prepared) return;
+  const ok = restartInto(prepared.exe, prepared.dir, join(__dirname, "assets", "icon.png"));
+  if (!ok) {
+    void showMessage({
+      type: "warning",
+      title: "chalk update",
+      message: `Could not start chalk ${prepared.version}`,
+      detail: `It is unpacked at ${prepared.dir}; start it from there, or download the release by hand.`,
+      buttons: ["Close"],
+    });
+    return;
+  }
+  app.quit();
+}
+
+/** offerDownload is 104-4's behaviour: a link, once per version. */
+function offerDownload(info: ReleaseInfo, why: string | null): void {
   if (!shouldAnnounce(cfg.notifiedVersion, info.version)) return;
   persist({ ...cfg, notifiedVersion: info.version });
-  const opts: Electron.MessageBoxOptions = {
+  void showMessage({
     type: "info",
     title: "chalk update",
     message: `chalk ${info.version} is available`,
-    detail: `You have ${VERSION}. Download opens the release page in your browser; the tray and the chalk menu keep the link until you do.`,
+    detail:
+      `You have ${VERSION}. Download opens the release page in your browser; the tray and the chalk menu keep the link until you do.` +
+      (why ? `\n\n(Automatic install was not possible: ${why}.)` : ""),
     buttons: ["Download", "Later"],
     defaultId: 0,
     cancelId: 1,
-  };
-  const p = win && !win.isDestroyed() ? dialog.showMessageBox(win, opts) : dialog.showMessageBox(opts);
-  void p.then((r) => {
+  }).then((r) => {
     if (r.response === 0) openUpdate(info.url);
   });
 }
 
+/** offerRestart is 105-2's: the new version is in place, restart when ready. */
+function offerRestart(info: ReleaseInfo): void {
+  if (!shouldAnnounce(cfg.notifiedVersion, info.version)) return;
+  persist({ ...cfg, notifiedVersion: info.version });
+  void showMessage({
+    type: "info",
+    title: "chalk update",
+    message: `chalk ${info.version} is ready to install`,
+    detail: `It was downloaded and verified against chalk's release key. Restart now to switch; Later keeps the entry in the tray and the chalk menu.`,
+    buttons: ["Restart now", "Later"],
+    defaultId: 0,
+    cancelId: 1,
+  }).then((r) => {
+    if (r.response === 0) restartToUpdate();
+  });
+}
+
+function announceUpdate(info: ReleaseInfo): void {
+  update = info;
+  tray?.setUpdate(info);
+  buildMenu();
+  if (!canSelfUpdate()) {
+    offerDownload(info, null);
+    return;
+  }
+  if (preparing) return;
+  preparing = true;
+  const env = {
+    platform: process.platform,
+    arch: process.arch,
+    execPath: process.execPath,
+    fallbackRoot: join(app.getPath("userData"), "versions"),
+    publicKey: updateKey(),
+    fetch,
+    log: (line: string) => console.log(`chalk-desktop update: ${line}`),
+    ...(args.updateBase ? { downloadBase: args.updateBase } : {}),
+  };
+  void prepareUpdate(info.version, env)
+    .then((r) => {
+      if (r.ok) {
+        prepared = r;
+        tray?.setUpdate({ ...info, ready: true });
+        buildMenu();
+        offerRestart(info);
+      } else {
+        console.log(`chalk-desktop update: ${r.stage}: ${r.reason}`);
+        offerDownload(info, r.reason);
+      }
+    })
+    .finally(() => {
+      preparing = false;
+    });
+}
+
 function startUpdateChecks(): void {
-  if (cfg.checkUpdates === false || isDevBuild(VERSION)) return;
+  if (cfg.checkUpdates === false) return;
+  if (isDevBuild(VERSION) && !args.updateApi) return;
   const check = async () => {
-    const latest = await fetchLatestRelease(fetch, `chalk-desktop/${VERSION}`);
+    const latest = await fetchLatestRelease(fetch, `chalk-desktop/${VERSION}`, args.updateApi ?? RELEASES_API);
     if (latest && isNewer(VERSION, latest.version) && update?.version !== latest.version) {
       announceUpdate(latest);
     }
   };
   setTimeout(() => void check(), FIRST_CHECK_MS);
   setInterval(() => void check(), CHECK_EVERY_MS);
+}
+
+/** 105-2: from the version now running, drop the ones it replaced. */
+function cleanupOldInstalls(): void {
+  if (isDevBuild(VERSION) && !args.updateApi) return;
+  const root = installRoot(process.execPath, join(app.getPath("userData"), "versions"));
+  if (!root) return;
+  const removed = cleanupOldVersions(root, VERSION, join(process.execPath, ".."));
+  for (const r of removed) console.log(`chalk-desktop update: removed ${r}`);
 }
 
 // --- menu -----------------------------------------------------------------
@@ -363,7 +482,12 @@ function buildMenu(): void {
     click: () => showPicker(),
   };
   const updateItems: MenuItemConstructorOptions[] = update
-    ? [{ label: `Update to ${update.version}…`, click: () => openUpdate(update!.url) }, { type: "separator" }]
+    ? [
+        prepared
+          ? { label: `Restart to update to ${update.version}`, click: () => restartToUpdate() }
+          : { label: `Update to ${update.version}…`, click: () => openUpdate(update!.url) },
+        { type: "separator" },
+      ]
     : [];
   const template: MenuItemConstructorOptions[] = [];
   if (process.platform === "darwin") {
@@ -463,9 +587,11 @@ void app.whenReady().then(() => {
       },
       quit: () => app.quit(),
       update: openUpdate,
+      restart: restartToUpdate,
     },
     VERSION,
   );
+  cleanupOldInstalls();
   // 104-3: the OS idle clock for presence, pushed to whatever the window
   // shows; only the server page has the bridge to hear it.
   const stopIdle = startIdlePublisher(() => win);

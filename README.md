@@ -226,12 +226,18 @@ the picker.
   --install-desktop-entry` writes a launcher entry and icon under
   `~/.local/share` pointing at wherever you unpacked it.
 
-**Updates.** The app checks GitHub once a day and tells you when a newer
-release exists (a one-time dialog, then an entry in the tray and the *chalk*
-menu) — the link opens the release page; installing is still by hand. One-click
-self-update is planned as phase 105. `"checkUpdates": false` in `desktop.json`
-(under the app's config directory, `chalk-desktop/`) turns the check off;
-`"closeToTray": false` makes the close button quit.
+**Updates.** The app checks GitHub once a day. On Windows and Linux a newer
+release is downloaded in the background, verified against chalk's release
+key (an Ed25519 signature over the release's checksums — nothing unsigned is
+ever installed) and unpacked *beside* the running version; a dialog, the tray
+and the *chalk* menu then offer **Restart to update**, which starts the new
+version and drops the old one on its next start. Your unpacked copy is never
+modified; the new version lands next to it (or under the app's data directory
+if that place is read-only). On macOS, and wherever verification is not
+possible, the app only tells you and links to the release page.
+`"checkUpdates": false` in `desktop.json` (under the app's config directory,
+`chalk-desktop/`) turns the check off; `"closeToTray": false` makes the close
+button quit.
 
 ## Architecture
 

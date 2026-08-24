@@ -362,6 +362,34 @@ WebAuthn binds a passkey to the chalk origin, so a passkey registered on a
 fake origin belongs to that origin. Mitigated by correct RP-ID locking to the
 canonical origin.
 
+## The desktop app's update channel (phase 105)
+
+The desktop app (`desktop/`, phase 104) can replace itself: it downloads a
+newer release, unpacks it beside the running version and restarts into it
+(105-2). That makes the update channel the highest-privilege input the app
+has — whoever controls it runs code on every desktop that updates — so it is
+gated on a signature, not on where the bytes came from:
+
+- The release workflow signs `SHA256SUMS.desktop` with an **Ed25519 release
+  key** (`tools/make-release-key.sh`; private half a GitHub Actions secret,
+  public half pinned in `desktop/src/selfupdate/key.ts`). The app verifies
+  that signature with WebCrypto, then the archive's SHA-256 against the
+  signed sums, then unpacks; the running version is never modified.
+- Anything short of a full verification degrades to "a newer release
+  exists, here is the link" — never to a retry with weaker checks, never to
+  a silent install. No pinned key (a fork, or this repo before the key is
+  made) means the app never installs anything.
+- **What this trusts:** scuq's release key. Compromise of that key, of the
+  CI secret holding it, or of the machine that generated it is compromise
+  of every desktop that updates. GitHub itself is *not* trusted: release
+  write access alone cannot produce a signature. Same posture as
+  `CHALK_WRAP_SIG_REQUIRED` — the trust anchor is a key scuq holds, and the
+  check fails closed.
+- **What it does not defend against:** a malicious release signed with the
+  real key (that is the key holder), and downgrade to an older *signed*
+  release is prevented only by the version comparison (`isNewer`), not by a
+  signed timestamp — a future rotation note in the phase doc.
+
 ## Out of scope
 
 - Federation (server-to-server, à la Matrix) — considered and declined,

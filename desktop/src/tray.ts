@@ -31,11 +31,20 @@ export interface TrayHandlers {
   quit(): void;
   /** 104-4: open the release page for a newer version. */
   update(url: string): void;
+  /** 105-2: restart into a prepared version. */
+  restart(): void;
+}
+
+export interface TrayUpdate {
+  version: string;
+  url: string;
+  /** 105-2: the version is unpacked and verified; the entry restarts. */
+  ready?: boolean;
 }
 
 export interface TrayHandle {
-  /** setUpdate adds (or removes, with null) the "Update to vX…" entry. */
-  setUpdate(info: { version: string; url: string } | null): void;
+  /** setUpdate adds (or removes, with null) the update entry. */
+  setUpdate(info: TrayUpdate | null): void;
   destroy(): void;
 }
 
@@ -61,15 +70,23 @@ export function createTray(h: TrayHandlers, version: string): TrayHandle {
   const icon = base.isEmpty() ? base : base.resize({ width: size, height: size });
   const tray = new Tray(icon);
 
-  const render = (update: { version: string; url: string } | null) => {
-    tray.setToolTip(update ? `chalk ${version} — ${update.version} available` : `chalk ${version}`);
+  const render = (update: TrayUpdate | null) => {
+    tray.setToolTip(
+      update
+        ? `chalk ${version} — ${update.version} ${update.ready ? "ready, restart to update" : "available"}`
+        : `chalk ${version}`,
+    );
     const items: Electron.MenuItemConstructorOptions[] = [
       { label: "Open chalk", click: () => h.show() },
       { label: "Switch server…", click: () => h.pick() },
     ];
     if (update) {
       items.push({ type: "separator" });
-      items.push({ label: `Update to ${update.version}…`, click: () => h.update(update.url) });
+      items.push(
+        update.ready
+          ? { label: `Restart to update to ${update.version}`, click: () => h.restart() }
+          : { label: `Update to ${update.version}…`, click: () => h.update(update.url) },
+      );
     }
     items.push({ type: "separator" });
     items.push({ label: "Quit chalk", click: () => h.quit() });

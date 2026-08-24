@@ -1,7 +1,10 @@
 # Phase 105 — one-click self-update for the desktop app
 
-**Status:** 105-1 (signed sums, the verifier) built 2026-08-25; 105-2 … 105-5
-designed below, not started. **The release key is not made yet** — until
+**Status:** 105-1 (signed sums, the verifier), 105-2 (the updater core and
+the Windows hand-over) and 105-4 (Linux) built 2026-08-25 — the core is one
+directory swap, so Linux came with Windows and is what the probe exercises;
+the Windows shortcut retarget is untested by hand. 105-3 (macOS) and 105-5
+(settings) designed below, not started. **The release key is not made yet** — until
 scuq runs `tools/make-release-key.sh`, pins the hex in
 `desktop/src/selfupdate/key.ts` and sets `RELEASE_SIGN_KEY_B64`, the
 verifier refuses everything by design and nothing changes for users.
@@ -62,7 +65,7 @@ channel in the app. It verifies before it touches a byte:
    manually" — never to a silent install, never to a retry with weaker
    checks.
 
-Recorded in `docs/threat-model.md` when built: the desktop trusts scuq's
+Recorded in `docs/threat-model.md` (105-2): the desktop trusts scuq's
 release key; compromise of that key (or of the CI secret) is compromise of
 every desktop that updates. Same posture as `CHALK_WRAP_SIG_REQUIRED`.
 
@@ -93,19 +96,52 @@ every desktop that updates. Same posture as `CHALK_WRAP_SIG_REQUIRED`.
   (SHA-256 of the download against the verified table) — tested against a
   throwaway key including wrong key, short signature, tampered file, signed
   garbage, one flipped byte.
-- **105-2 — Windows.** Download to a temp file, verify, unpack beside the
-  running dir, `.ready`, shortcut retarget, "Restart to update" in the
-  dialog/tray/menu (replacing 104-4's "Download"), old-dir cleanup on start.
-  Rollback = delete the newest dir and relaunch the previous.
-- **105-3 — macOS** bundle swap. **105-4 — Linux** dir swap.
+- **105-2 — the core, and Windows.** Built. `desktop/src/selfupdate/updater.ts`
+  (no Electron in it): `installRoot` (the running dir's parent when writable,
+  else `userData/versions`), signed sums → archive hash → unpack with the
+  OS's `tar` (Windows 10+ ships `tar.exe`, which reads zips; no zip/tar
+  parser of our own) into `chalk-<ver>.partial`, hoist a lone top directory,
+  check the exe exists, rename, write `.ready`; `cleanupOldVersions` at the
+  next start from the new version. `apply.ts` is the Electron half:
+  retarget the Start-menu (and Desktop, if present) `chalk.lnk` with
+  `shell.writeShortcutLink` carrying the AppUserModelID, release the
+  single-instance lock, spawn the new exe detached, quit. `main.ts`: a newer
+  release now *prepares* in the background where a key is pinned and the
+  platform swap exists; the dialog becomes "ready to install — Restart now /
+  Later", the tray and menu entry "Restart to update to X"; any failure
+  degrades to 104-4's "Download" with the reason. Tested end to end against
+  a fake release (real tar.gz, real signature from a throwaway key, a fetch
+  stub) in `updater.test.ts`, and live in the probe with a packaged Linux
+  build and a local fake release server behind the `--insecure`-gated
+  `--update-api/--update-base/--update-key` flags. Rollback (delete the
+  newest dir, relaunch the previous) is a manual step for now; 105-5 gives
+  it a menu entry.
+- **105-3 — macOS** bundle swap. Not started.
+- **105-4 — Linux** dir swap. Built with 105-2 (same code; `--install-desktop-entry`
+  is re-run for the new path when an entry exists).
 - **105-5 — settings**: "check now", opt out (already `checkUpdates`), and
   a "downloaded, restart when convenient" state that survives close-to-tray.
 
-## Manual checklist (when built)
+## Checklist
 
-- [ ] a tampered archive (one flipped byte) is refused and the notice falls
-      back to "download manually"
-- [ ] a sums file signed with the wrong key is refused
-- [ ] update → restart → the new version runs, the old directory is gone
-      after the second start, `desktop.json` and the identity are intact
+Machine-checked (Linux, 2026-08-25 — `updater.test.ts`, and the probe with
+a packaged build against a local fake release):
+
+- [x] a tampered archive is refused at the hash step, nothing left on disk ✔
+- [x] a sums file with a bad signature is refused before any download ✔
+- [x] no pinned key → nothing fetched ✔; unsupported platform → nothing fetched ✔
+- [x] the live shell fetches api → sums → signature → archive, unpacks beside
+      itself, writes `.ready`, leaves no `.download`/`.partial`, records the
+      once-per-version offer ✔
+- [x] an OpenSSL `pkeyutl -rawin` signature verifies under WebCrypto ✔
+
+By hand, still open:
+
+- [ ] restart → the new version runs, the old directory is gone after the
+      second start, `desktop.json` and the identity are intact (Linux and
+      Windows)
+- [ ] Windows: the Start-menu shortcut points at the new exe and toasts
+      now say "chalk"
 - [ ] update while hidden to the tray; the restart prompt waits for the user
+- [ ] the fallback root (`userData/versions`) when the unpacked directory is
+      read-only

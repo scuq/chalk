@@ -84,12 +84,14 @@ Verified on Linux against the dev stack and the packaged binary; **no tag
 has run the desktop job yet**, so the first `v*` release after this is the
 real test of the Windows and macOS runners. Open:
 
-- **One-click self-update is phase 105**: 105-1 (the signed sums and the
-  fail-closed verifier) is built; 105-2 (Windows side-by-side install), 105-3
-  macOS, 105-4 Linux, 105-5 settings are designed, not started. **The
-  release key does not exist yet** — `tools/make-release-key.sh`, pin the
-  hex in `desktop/src/selfupdate/key.ts`, set `RELEASE_SIGN_KEY_B64`; until
-  then the app only announces a newer release and links to it.
+- **One-click self-update is phase 105**: 105-1 (signed sums, the
+  verifier), 105-2 (the side-by-side updater, Windows hand-over) and 105-4
+  (Linux) are built; 105-3 macOS and 105-5 settings/rollback are designed,
+  not started. **The release key does not exist yet** —
+  `tools/make-release-key.sh`, pin the hex in `desktop/src/selfupdate/key.ts`,
+  set `RELEASE_SIGN_KEY_B64`; until then the app only announces a newer
+  release and links to it. The Windows shortcut retarget has not been run
+  by hand.
 - Windows needs the signing secrets set once (`tools/make-signing-cert.sh`)
   or the exes ship unsigned; macOS is unsigned/ad-hoc (right-click → Open);
   macOS passkeys need a native module; Linux reports no screen lock; GNOME
