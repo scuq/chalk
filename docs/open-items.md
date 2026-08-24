@@ -73,17 +73,20 @@ Shipped (85-1 … 85-4, record in [phases/PHASE-85-OPLOG.md](phases/PHASE-85-OPL
 with two items left at the end of that record: the live-stack run of the
 connection snapshot, and the missing off switch for Caddy's access log.
 
-## Phase 104 — the desktop app: 104-1 built, three slices open
+## Phase 104 — the desktop app: 104-1 and 104-2 built, two slices open
 
 An Electron shell around the server's own page, record in
 [phases/PHASE-104-DESKTOP.md](phases/PHASE-104-DESKTOP.md). 104-1 (window,
 server picker, link routing to the system browser, permission policy,
-screen-share chooser) runs from `desktop/` against the dev stack; nothing is
-packaged yet, so there is no download and no CHANGELOG entry. Open:
+screen-share chooser) and 104-2 (tray, close-to-tray) run from `desktop/`
+against the dev stack; nothing is packaged yet, so there is no download and
+no CHANGELOG entry. Open:
 
-- **104-2 close-to-tray**, **104-3 system idle → presence** (the desktop
-  answer to phase 90's problem; that doc gets a note when it lands),
-  **104-4 packaging + release workflow** (after `~/f9`'s).
+- **104-3 system idle → presence** (the desktop answer to phase 90's
+  problem; that doc gets a note when it lands), **104-4 packaging + release
+  workflow** (after `~/f9`'s).
+- 104-2's tray itself is untested by hand (the probe cannot click a tray);
+  GNOME shows none without an AppIndicator extension.
 - Known gaps the design accepts for now: macOS passkeys need a native module
   (password + TOTP works); Linux lock detection; system audio in a screen
   share is Windows-only; no auto-update.

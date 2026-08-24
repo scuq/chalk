@@ -1,7 +1,8 @@
 # Phase 104 — a desktop app
 
-**Status:** 104-1 (the shell) built. 104-2 tray, 104-3 system idle and 104-4
-packaging are designed below and not started. Research done 2026-08-24.
+**Status:** 104-1 (the shell) and 104-2 (tray, close-to-tray) built. 104-3
+system idle and 104-4 packaging are designed below and not started. Research
+done 2026-08-24.
 
 **Tag:** `#desktop` → `tools/where.sh -g desktop` (the 104-* comments live in
 `desktop/src/`; 104-3 will add `web/src/presence/desktop-idle.ts`).
@@ -143,10 +144,17 @@ Rejected along the way:
 - **104-1 — the shell.** Built. Window, server picker, single instance,
   link routing, permission policy, screen-share chooser, `npm start`
   against the dev stack.
-- **104-2 — tray + close-to-tray.** `Tray` with Open / Switch server / Quit;
-  `close` hides unless quitting; tray click restores; macOS keeps the dock
-  icon; Windows `AppUserModelID` so toasts say "chalk". `window-all-closed`
-  stops quitting.
+- **104-2 — tray + close-to-tray.** Built. `desktop/src/tray.ts`: a `Tray`
+  (the app icon resized at runtime, 18/16/22 px) with Open / Switch server… /
+  Quit; the window's `close` hides it unless `before-quit` has run (menu,
+  Cmd/Ctrl+Q, tray Quit) or `desktop.json` says `"closeToTray": false`; tray
+  click, dock click (`activate`) and a second launch all `showWindow`. The
+  hidden page stays connected, so notifications and presence keep working
+  with "chalk closed". Windows gets `app.setAppUserModelId("org.chalk.desktop")`
+  — toasts read "chalk" only once 104-4's installer creates a shortcut with
+  that id. GNOME needs an AppIndicator extension to show any tray at all;
+  without it the window still hides and comes back via the launcher (see the
+  header of `tray.ts`).
 - **104-3 — system idle → presence.** Main polls
   `powerMonitor.getSystemIdleTime()` every 15 s and listens for
   `lock-screen`/`unlock-screen`; the preload exposes
@@ -192,6 +200,17 @@ identity.
       `about:blank`; the print itself not driven)
 - [ ] second launch focuses the running window
 - [ ] Ctrl/Cmd+Shift+S returns to the picker; the previous server is listed
+
+104-2, same probe (Linux, 2026-08-25):
+
+- [x] close hides the window; it is neither destroyed nor a second window ✔
+- [x] the page is still mounted while hidden ✔; show brings the same window
+      back ✔
+- [ ] tray icon visible with Open / Switch server… / Quit (needs a hand on a
+      real desktop; the probe cannot click a tray)
+- [ ] a message arriving while hidden produces a toast
+- [ ] Quit from the tray ends the process; `"closeToTray": false` makes the
+      close button quit
 
 Per-OS builds (104-4) repeat the list on real Windows, macOS and Linux.
 

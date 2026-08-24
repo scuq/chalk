@@ -29,6 +29,11 @@ export interface DesktopConfig {
   /** The server to open on launch; always one of `servers`. */
   last?: string;
   bounds?: WindowBounds;
+  /**
+   * 104-2: closing the window hides it to the tray (the default) or quits.
+   * No UI for this yet; edit desktop.json. Absent means true.
+   */
+  closeToTray?: boolean;
 }
 
 export const DEFAULT_BOUNDS: WindowBounds = { width: 1280, height: 820 };
@@ -127,6 +132,7 @@ export function parseConfig(text: string): DesktopConfig {
     const norm = normalizeServerURL(r.last, true);
     if (norm && servers.some((e) => e.url === norm)) cfg.last = norm;
   }
+  if (typeof r.closeToTray === "boolean") cfg.closeToTray = r.closeToTray;
   const b = r.bounds as Partial<WindowBounds> | undefined;
   if (
     typeof b === "object" &&

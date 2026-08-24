@@ -87,6 +87,13 @@ test("parseConfig: last must be a known server, bounds must be sane", () => {
   assert.deepEqual(cfg, { servers: [{ url: "https://a/" }] });
 });
 
+test("parseConfig: closeToTray is kept only as a boolean", () => {
+  assert.equal(parseConfig(JSON.stringify({ closeToTray: false })).closeToTray, false);
+  assert.equal(parseConfig(JSON.stringify({ closeToTray: true })).closeToTray, true);
+  assert.equal("closeToTray" in parseConfig(JSON.stringify({ closeToTray: "no" })), false);
+  assert.equal("closeToTray" in parseConfig("{}"), false);
+});
+
 test("hostLabel", () => {
   assert.equal(hostLabel("https://chat.example.org:8443/"), "chat.example.org:8443");
   assert.equal(hostLabel("junk"), "junk");

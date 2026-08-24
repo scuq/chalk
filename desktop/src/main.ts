@@ -23,6 +23,7 @@ import {
 import { classifyLink, originOf } from "./links";
 import { originOfURL, permissionAllowed } from "./permissions";
 import { installDisplayMediaHandler, shellSession, type ShareSource } from "./screenshare";
+import { createTray } from "./tray";
 import { childWindowOptions, createChooser, createMainWindow, loadPicker } from "./window";
 
 // --- command line ---------------------------------------------------------
@@ -53,6 +54,11 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 }
 
+// 104-2: Windows attributes toasts and taskbar grouping to this id. It only
+// says "chalk" once an installer has created a Start-menu shortcut carrying
+// the same id (104-4); until then the toast header is Electron's.
+if (process.platform === "win32") app.setAppUserModelId("org.chalk.desktop");
+
 // --- state ----------------------------------------------------------------
 
 const CONFIG_PATH = join(app.getPath("userData"), "desktop.json");
@@ -64,6 +70,22 @@ let serverOrigin: string | null = null;
 /** What the main window's title bar says; re-applied whenever the page
  * tries to set its own (see wireNavigation). */
 let windowTitle = "chalk";
+/** 104-2: set by before-quit so the window's close handler lets it go. */
+let quitting = false;
+/** 104-2: held for the app's lifetime; a collected Tray vanishes. */
+let tray: Electron.Tray | null = null;
+
+function closeToTray(): boolean {
+  return cfg.closeToTray !== false;
+}
+
+/** showWindow brings the one window back from hidden or minimised. */
+function showWindow(): void {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
 
 function persist(next: DesktopConfig): void {
   cfg = next;
@@ -270,17 +292,22 @@ function buildMenu(): void {
 
 // --- lifecycle ------------------------------------------------------------
 
-app.on("second-instance", () => {
-  if (!win) return;
-  if (win.isMinimized()) win.restore();
-  win.show();
-  win.focus();
+app.on("second-instance", () => showWindow());
+
+// macOS dock click with the window hidden.
+app.on("activate", () => showWindow());
+
+app.on("before-quit", () => {
+  quitting = true;
+  tray?.destroy();
+  tray = null;
 });
 
 app.on("window-all-closed", () => {
-  // 104-2 turns this into close-to-tray; until then closing the window ends
-  // the app on every platform, macOS included -- a dock icon with no window
-  // and no tray would be a chalk that is silently still connected.
+  // With close-to-tray on, the window is hidden rather than closed, so this
+  // only fires on a real quit (or with closeToTray: false), and then the app
+  // ends on every platform, macOS included -- a dock icon with no window and
+  // no tray would be a chalk that is silently still connected.
   app.quit();
 });
 
@@ -299,8 +326,24 @@ void app.whenReady().then(() => {
   wireIPC();
   win = createMainWindow(cfg.bounds);
   wireNavigation(win);
+  // 104-2: the close button hides; the page stays connected, keeps its keys
+  // warm and keeps delivering notifications. Quit is the tray's, the menu's
+  // and Cmd/Ctrl+Q's -- all of which set `quitting` first.
+  win.on("close", (event) => {
+    if (quitting || !closeToTray()) return;
+    event.preventDefault();
+    win?.hide();
+  });
   win.on("closed", () => {
     win = null;
+  });
+  tray = createTray({
+    show: showWindow,
+    pick: () => {
+      showWindow();
+      showPicker();
+    },
+    quit: () => app.quit(),
   });
   if (args.devtools) win.webContents.openDevTools({ mode: "detach" });
 
