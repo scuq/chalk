@@ -13,6 +13,15 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **chalk as a desktop app for Windows, macOS and Linux.** Every release now
+  carries `chalk-desktop-…` archives: unpack, run, point it at your server.
+  It is your server's own chalk in its own window, plus what a browser tab
+  cannot do — links open in your system default browser, closing the window
+  keeps chalk connected in the tray, and *away* is judged from the whole
+  machine (idle time, and the screen lock on Windows and macOS) with no
+  permission prompt. It tells you when a newer release is out; installing it
+  is still by hand. Details and the per-platform notes are in the README
+  under "Desktop app".
 - **A fourth sound theme: *empir*.** Medieval real-time-strategy sounds —
   horns, timber, blacksmith metal and war drums, with a chant-and-horn
   fanfare when you join a call. Pick it in profile → notifications, like the

@@ -186,6 +186,53 @@ on a bare 502. `/healthz` still reaches chalkd, so `update` and `restore` can
 tell a healthy app from a hidden one, and `init --force` preserves the mode
 rather than putting the site back in front of users mid-repair.
 
+## Desktop app
+
+chalk also ships as a desktop app for **Windows, macOS and Linux** (phase
+104, record in [docs/phases/PHASE-104-DESKTOP.md](docs/phases/PHASE-104-DESKTOP.md)).
+It is an Electron shell around your server's own page — nothing of chalk is
+bundled into it, so it is always exactly as current as the server it opens —
+plus the things a browser tab cannot do:
+
+- **links open in your system default browser**, whatever the app is built on;
+- **close to tray**: closing the window keeps chalk connected, notifications
+  keep arriving, the tray icon brings it back; *Quit* is in the tray and the menu;
+- **away detection that sees the whole desktop** (how long since you touched
+  the machine, and the screen lock on Windows and macOS), with no browser
+  permission prompt;
+- calls, screen sharing (its own picker), passkeys, notifications and the
+  output-device picker work as in Chrome, because it *is* Chromium.
+
+**Download.** Every release carries `chalk-desktop-<version>-<os>-<arch>`
+archives — `windows-x64`/`windows-arm64` (zip), `macos-arm64`/`macos-x64`
+(zip with `chalk.app`), `linux-x64`/`linux-arm64` (tar.gz) — next to
+`SHA256SUMS.desktop`, which is cosign keyless-signed like the other assets.
+Unpack anywhere and run `chalk`; it asks for your server the first time
+(`https://…` only — the session cookie is `Secure`), remembers it, and
+`Ctrl/Cmd+Shift+S` switches. `chalk --server https://chat.example.org` skips
+the picker.
+
+- **Windows** warns about an unknown publisher: the exe is signed with
+  chalk's own self-signed certificate (`chalk-codesign.cer` is in the zip;
+  import it into *Trusted Publishers* to silence SmartScreen). Toasts are
+  attributed to "chalk" only after an installer exists; until then they say
+  Electron.
+- **macOS** is not notarized (no Apple developer account): the first launch
+  needs right-click → *Open*. Passkeys need a native module the shell does
+  not have yet; password + TOTP works.
+- **Linux** needs a tray host for the icon (KDE, XFCE, MATE have one; GNOME
+  needs an AppIndicator extension — without it the window still hides on
+  close and comes back by launching `chalk` again). `chalk
+  --install-desktop-entry` writes a launcher entry and icon under
+  `~/.local/share` pointing at wherever you unpacked it.
+
+**Updates.** The app checks GitHub once a day and tells you when a newer
+release exists (a one-time dialog, then an entry in the tray and the *chalk*
+menu) — the link opens the release page; installing is still by hand. One-click
+self-update is planned as phase 105. `"checkUpdates": false` in `desktop.json`
+(under the app's config directory, `chalk-desktop/`) turns the check off;
+`"closeToTray": false` makes the close button quit.
+
 ## Architecture
 
 See [docs/architecture.md](docs/architecture.md). In short: a stateless

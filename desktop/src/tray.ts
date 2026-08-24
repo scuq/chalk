@@ -29,6 +29,14 @@ export interface TrayHandlers {
   pick(): void;
   /** Really quit, bypassing close-to-tray. */
   quit(): void;
+  /** 104-4: open the release page for a newer version. */
+  update(url: string): void;
+}
+
+export interface TrayHandle {
+  /** setUpdate adds (or removes, with null) the "Update to vX…" entry. */
+  setUpdate(info: { version: string; url: string } | null): void;
+  destroy(): void;
 }
 
 function traySize(): number {
@@ -47,23 +55,34 @@ function traySize(): number {
  * Tray referenced for the app's lifetime -- Electron drops a garbage-collected
  * Tray from the bar.
  */
-export function createTray(h: TrayHandlers): Tray {
+export function createTray(h: TrayHandlers, version: string): TrayHandle {
   const base = nativeImage.createFromPath(ICON);
   const size = traySize();
   const icon = base.isEmpty() ? base : base.resize({ width: size, height: size });
   const tray = new Tray(icon);
-  tray.setToolTip("chalk");
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
+
+  const render = (update: { version: string; url: string } | null) => {
+    tray.setToolTip(update ? `chalk ${version} — ${update.version} available` : `chalk ${version}`);
+    const items: Electron.MenuItemConstructorOptions[] = [
       { label: "Open chalk", click: () => h.show() },
       { label: "Switch server…", click: () => h.pick() },
-      { type: "separator" },
-      { label: "Quit chalk", click: () => h.quit() },
-    ]),
-  );
+    ];
+    if (update) {
+      items.push({ type: "separator" });
+      items.push({ label: `Update to ${update.version}…`, click: () => h.update(update.url) });
+    }
+    items.push({ type: "separator" });
+    items.push({ label: "Quit chalk", click: () => h.quit() });
+    tray.setContextMenu(Menu.buildFromTemplate(items));
+  };
+  render(null);
+
   // Left click opens on Windows and Linux; macOS opens the menu on any click
   // and ignores this, which matches how menu-bar items behave there.
   tray.on("click", () => h.show());
   tray.on("double-click", () => h.show());
-  return tray;
+  return {
+    setUpdate: (info) => render(info),
+    destroy: () => tray.destroy(),
+  };
 }

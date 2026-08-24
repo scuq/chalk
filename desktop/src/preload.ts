@@ -53,8 +53,9 @@ if (location.protocol === "file:") {
   };
   contextBridge.exposeInMainWorld("chalkPicker", bridge);
 } else {
+  const versionArg = process.argv.find((a) => a.startsWith("--chalk-desktop-version="));
   const bridge: DesktopBridge = {
-    shell: `chalk-desktop/${process.env.CHALK_DESKTOP_VERSION ?? "dev"}`,
+    shell: `chalk-desktop/${versionArg ? versionArg.slice("--chalk-desktop-version=".length) : "dev"}`,
     platform: process.platform,
     idle: {
       get: () => ipcRenderer.invoke("chalk:idle:get"),

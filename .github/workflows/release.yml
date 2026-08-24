@@ -182,9 +182,146 @@ jobs:
           path: dist/*
           retention-days: 1
 
-  # ---- One Release carrying both ------------------------------------------
+  # ---- Desktop app (phase 104-4) ------------------------------------------
+  # The Electron shell from desktop/, one runner per OS, both CPU
+  # architectures per runner (@electron/packager fetches the other arch's
+  # Electron). Windows exes are Authenticode-signed with the repo's
+  # self-signed certificate when the secrets exist (tools/make-signing-cert.sh);
+  # macOS is unsigned/ad-hoc (no Apple developer account -- README says how to
+  # open it). A desktop failure must not block the server release: the
+  # release job tolerates missing desktop artifacts.
+  desktop:
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: linux,   runner: ubuntu-latest,  archs: "x64 arm64" }
+          - { os: macos,   runner: macos-latest,   archs: "arm64 x64" }
+          - { os: windows, runner: windows-latest, archs: "x64 arm64" }
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install, stamp, build, test
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm version --no-git-tag-version "${GITHUB_REF_NAME#v}"
+          npm run build
+          npm test
+          npm run typecheck
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.os }}" in
+            linux)   platform=linux ;;
+            macos)   platform=darwin ;;
+            windows) platform=win32 ;;
+          esac
+          for arch in ${{ matrix.archs }}; do
+            node package.mjs --platform "$platform" --arch "$arch"
+          done
+          ls out
+
+      # See f9's release.yml for the origin of this step. Skipped when the
+      # secrets are absent, so forks still release (unsigned) desktop zips.
+      - name: Sign (windows)
+        if: matrix.os == 'windows' && env.WIN_SIGN_PFX_B64 != ''
+        shell: pwsh
+        env:
+          WIN_SIGN_PFX_B64: ${{ secrets.WIN_SIGN_PFX_B64 }}
+          WIN_SIGN_PFX_PASSWORD: ${{ secrets.WIN_SIGN_PFX_PASSWORD }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $pfx = Join-Path $env:RUNNER_TEMP "chalk-codesign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_SIGN_PFX_B64))
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\*\signtool.exe" |
+            Where-Object { $_.Directory.Name -in @("x64", "arm64") } |
+            Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) { throw "signtool.exe not found in the Windows SDK" }
+          $cert = Get-PfxCertificate -FilePath $pfx -Password (ConvertTo-SecureString $env:WIN_SIGN_PFX_PASSWORD -AsPlainText -Force)
+          [IO.File]::WriteAllBytes("chalk-codesign.cer", $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+          certutil -addstore -f Root chalk-codesign.cer | Out-Null
+          certutil -addstore -f TrustedPublisher chalk-codesign.cer | Out-Null
+          foreach ($exe in Get-ChildItem "out\chalk-win32-*\chalk.exe") {
+            $ok = $false
+            foreach ($tsa in @("http://timestamp.digicert.com", "http://timestamp.sectigo.com")) {
+              & $signtool sign /f $pfx /p $env:WIN_SIGN_PFX_PASSWORD /fd SHA256 /tr $tsa /td SHA256 /d "chalk" $exe.FullName
+              if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            }
+            if (-not $ok) {
+              Write-Warning "timestamping failed; signing without a timestamp"
+              & $signtool sign /f $pfx /p $env:WIN_SIGN_PFX_PASSWORD /fd SHA256 /d "chalk" $exe.FullName
+              if ($LASTEXITCODE -ne 0) { throw "signtool failed" }
+            }
+            & $signtool verify /pa /v $exe.FullName
+            if ($LASTEXITCODE -ne 0) { throw "signature verification failed for $($exe.FullName)" }
+            Copy-Item chalk-codesign.cer $exe.Directory.FullName
+          }
+          Remove-Item $pfx -Force
+          "SHA-256 fingerprint: " + (($cert.GetCertHash("SHA256") | ForEach-Object { $_.ToString("X2") }) -join ":")
+
+      - name: Archive (linux)
+        if: matrix.os == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${GITHUB_REF_NAME#v}"
+          mkdir -p ../dist-desktop
+          for arch in ${{ matrix.archs }}; do
+            tar czf "../dist-desktop/chalk-desktop-$V-linux-$arch.tar.gz" -C out "chalk-linux-$arch"
+          done
+
+      - name: Archive (macos)
+        if: matrix.os == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${GITHUB_REF_NAME#v}"
+          mkdir -p ../dist-desktop
+          for arch in ${{ matrix.archs }}; do
+            ditto -c -k --keepParent "out/chalk-darwin-$arch/chalk.app" "../dist-desktop/chalk-desktop-$V-macos-$arch.zip"
+          done
+
+      - name: Archive (windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $V = $env:GITHUB_REF_NAME -replace '^v', ''
+          New-Item -ItemType Directory -Force ../dist-desktop | Out-Null
+          foreach ($arch in "${{ matrix.archs }}".Split(" ")) {
+            Compress-Archive -Path "out/chalk-win32-$arch/*" -DestinationPath "../dist-desktop/chalk-desktop-$V-windows-$arch.zip"
+          }
+
+      - name: Upload desktop archives for the release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: dist-desktop/*
+          retention-days: 1
+          if-no-files-found: error
+
+  # ---- One Release carrying all of it -------------------------------------
   release:
-    needs: [image, binaries]
+    needs: [image, binaries, desktop]
+    # The desktop job may fail or be skipped without holding the server
+    # release hostage; image and binaries must both have succeeded.
+    if: always() && needs.image.result == 'success' && needs.binaries.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Download chalkctl binaries
@@ -193,7 +330,33 @@ jobs:
           name: chalkctl-dist
           path: dist
 
-      - name: Create GitHub Release (image + binaries)
+      - name: Download desktop archives (tolerated when absent)
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: dist/desktop
+          merge-multiple: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      # A separate sums file for the desktop archives, keyless-signed like the
+      # chalkctl one. Phase 105's self-updater is what will verify it.
+      - name: Sum and sign desktop archives
+        run: |
+          set -euo pipefail
+          if ! ls dist/desktop/chalk-desktop-* >/dev/null 2>&1; then
+            echo "no desktop archives in this release"; exit 0
+          fi
+          ( cd dist/desktop && sha256sum chalk-desktop-* > SHA256SUMS.desktop )
+          cat dist/desktop/SHA256SUMS.desktop
+          cosign sign-blob --yes \
+            --output-signature dist/desktop/SHA256SUMS.desktop.sig \
+            --output-certificate dist/desktop/SHA256SUMS.desktop.pem \
+            dist/desktop/SHA256SUMS.desktop
+
+      - name: Create GitHub Release (image + binaries + desktop)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
@@ -204,8 +367,11 @@ jobs:
             dist/SHA256SUMS
             dist/*.sig
             dist/*.pem
+            dist/desktop/*
           body: |
-            **chalk ${{ needs.image.outputs.version }}** — app image + chalkctl manager, one version.
+            **chalk ${{ needs.image.outputs.version }}** — app image + chalkctl manager + desktop app, one version.
+
+            **Desktop app** (`chalk-desktop-<version>-<os>-<arch>`): Windows and Linux x64/arm64, macOS Apple Silicon and Intel. Unpack and run `chalk` — it asks for your server on first start. Windows warns about an unknown publisher (self-signed; `chalk-codesign.cer` is in the zip), macOS needs right-click → Open the first time. Details in the README under "Desktop app". Sums in `SHA256SUMS.desktop`, keyless-signed like the rest.
 
             **App image** (chalkd + web bundle):
             `${{ env.IMAGE }}:${{ needs.image.outputs.version }}`

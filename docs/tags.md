@@ -69,7 +69,8 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #oplog          85        internal/config/oplog.go internal/server/oplog.go internal/auth/security_log.go internal/chalkctl/secret.go internal/chalkctl/templates/Caddyfile.tmpl cmd/chalkd/main.go docs/deployment.md docs/phases/PHASE-85-OPLOG.md
 #pinbackup      84        web/src/crypto/pin-backup.ts web/src/crypto/pin-sync.ts web/src/crypto/idb.ts web/src/components/ProfilePanel.tsx web/src/components/App.tsx web/src/settings-nav.ts web/src/state/types.ts docs/phases/PHASE-84-PINBACKUP.md docs/threat-model.md
 #tilegrid       101       web/src/attachments/tiles.ts web/src/components/AttachmentGroup.tsx web/src/components/AttachmentView.tsx web/src/components/MessageList.tsx web/src/components/LinkPreviewView.tsx web/src/theme.css docs/phases/PHASE-101-TILEGRID.md
-#desktop        104       desktop/ web/src/presence/desktop-idle.ts docs/phases/PHASE-104-DESKTOP.md
+#desktop        104       desktop/ web/src/presence/desktop-idle.ts tools/make-signing-cert.sh .github/workflows/release.yml docs/phases/PHASE-104-DESKTOP.md
+#selfupdate     -         docs/phases/PHASE-105-SELFUPDATE.md
 
 ## Phase docs
 

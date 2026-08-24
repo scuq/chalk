@@ -94,6 +94,15 @@ test("parseConfig: closeToTray is kept only as a boolean", () => {
   assert.equal("closeToTray" in parseConfig("{}"), false);
 });
 
+test("parseConfig: update fields", () => {
+  const cfg = parseConfig(JSON.stringify({ checkUpdates: false, notifiedVersion: "0.9.1" }));
+  assert.equal(cfg.checkUpdates, false);
+  assert.equal(cfg.notifiedVersion, "0.9.1");
+  const bad = parseConfig(JSON.stringify({ checkUpdates: "no", notifiedVersion: "x".repeat(65) }));
+  assert.equal("checkUpdates" in bad, false);
+  assert.equal("notifiedVersion" in bad, false);
+});
+
 test("hostLabel", () => {
   assert.equal(hostLabel("https://chat.example.org:8443/"), "chat.example.org:8443");
   assert.equal(hostLabel("junk"), "junk");

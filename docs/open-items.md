@@ -9,7 +9,7 @@ Latest release: **v0.8.2** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 100 is the newest work. The phase-doc index at the top of
+Phase 104 is the newest work; 105 is the newest plan. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
 
@@ -73,25 +73,25 @@ Shipped (85-1 … 85-4, record in [phases/PHASE-85-OPLOG.md](phases/PHASE-85-OPL
 with two items left at the end of that record: the live-stack run of the
 connection snapshot, and the missing off switch for Caddy's access log.
 
-## Phase 104 — the desktop app: 104-1 … 104-3 built, packaging open
+## Phase 104 — the desktop app: built, first release pending
 
 An Electron shell around the server's own page, record in
-[phases/PHASE-104-DESKTOP.md](phases/PHASE-104-DESKTOP.md). 104-1 (window,
-server picker, link routing to the system browser, permission policy,
-screen-share chooser), 104-2 (tray, close-to-tray) and 104-3 (the OS idle
-clock as the presence source, the desktop answer to phase 90's problem) run
-from `desktop/` against the dev stack; nothing is packaged yet, so there is
-no download and no CHANGELOG entry. Open:
+[phases/PHASE-104-DESKTOP.md](phases/PHASE-104-DESKTOP.md). All four slices
+are in: window + server picker + link routing + permission policy +
+screen-share chooser, tray and close-to-tray, the OS idle clock as the
+presence source, packaging + the `desktop` release job + the update notice.
+Verified on Linux against the dev stack and the packaged binary; **no tag
+has run the desktop job yet**, so the first `v*` release after this is the
+real test of the Windows and macOS runners. Open:
 
-- **104-4 packaging + release workflow** (after `~/f9`'s).
-- 104-3 on Linux is idle-time only: `powerMonitor` reports no lock there.
-- 104-2's tray itself is untested by hand (the probe cannot click a tray);
-  GNOME shows none without an AppIndicator extension.
-- Known gaps the design accepts for now: macOS passkeys need a native module
-  (password + TOTP works); Linux lock detection; system audio in a screen
-  share is Windows-only; no auto-update.
-- The 104-1 manual checklist in the phase doc has not been run on Windows or
-  macOS — only Linux has a build so far.
+- **One-click self-update is phase 105** (planned, not started): side-by-side
+  versioned installs behind Ed25519-signed sums, Windows first. Until then
+  the app only announces a newer release and links to it.
+- Windows needs the signing secrets set once (`tools/make-signing-cert.sh`)
+  or the exes ship unsigned; macOS is unsigned/ad-hoc (right-click → Open);
+  macOS passkeys need a native module; Linux reports no screen lock; GNOME
+  shows no tray without an AppIndicator extension.
+- The 104-1…3 manual lists in the phase doc have only been run on Linux.
 
 ## Phase 93-3 — the resizable thread pane: designed, not started
 

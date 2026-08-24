@@ -70,3 +70,8 @@ node
 /chalkctl
 
 chalk-web@0.0.0-dev
+# Electron packager output (desktop/, phase 104-4)
+desktop/out/
+
+# Windows code-signing material from tools/make-signing-cert.sh -- never commit
+/signing/

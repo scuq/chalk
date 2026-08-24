@@ -27,6 +27,23 @@ of mid-2026) in exchange for zero bundled crypto — no JS/WASM crypto ships
 in chalk; every primitive is native WebCrypto. The window widens naturally
 as Chrome 137+ proliferates (expected to be broadly safe to assume ~2027).
 
+## The desktop app
+
+The desktop app (`desktop/`, phase 104) is an Electron shell around the
+server's page, so its engine is whatever Chromium the pinned Electron embeds —
+Electron 43 carries Chromium 150, above the floor by a wide margin — and the
+support question there is the platform, not the browser:
+
+| Platform | Builds | Everything works? |
+|---|---|---|
+| Windows 10/11 | x64, arm64 | yes (passkeys via Windows Hello) |
+| macOS 12+ | Apple Silicon, Intel | yes except passkeys (needs a native module, not yet) |
+| Linux (glibc, X11 or Wayland) | x64, arm64 | yes; tray needs a StatusNotifier host, screen lock is not reported |
+
+The floor moves with Electron's stable line, one Chromium major behind
+Chrome stable by design; `docs/phases/PHASE-104-DESKTOP.md` records the
+bump policy.
+
 ## Required APIs
 
 - WebSocket (RFC 6455) — universal

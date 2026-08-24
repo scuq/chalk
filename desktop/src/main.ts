@@ -9,8 +9,18 @@
 // Later slices: 104-2 tray + close-to-tray, 104-3 system idle → presence,
 // 104-4 packaging.
 
-import { app, BrowserWindow, ipcMain, Menu, shell, type MenuItemConstructorOptions } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from "electron";
 import { join } from "node:path";
+import { installDesktopEntry } from "./linux-desktop";
+import {
+  CHECK_EVERY_MS,
+  FIRST_CHECK_MS,
+  fetchLatestRelease,
+  isDevBuild,
+  isNewer,
+  shouldAnnounce,
+  type ReleaseInfo,
+} from "./update";
 import {
   forgetServer,
   hostLabel,
@@ -24,7 +34,7 @@ import { classifyLink, originOf } from "./links";
 import { originOfURL, permissionAllowed } from "./permissions";
 import { startIdlePublisher } from "./idle";
 import { installDisplayMediaHandler, shellSession, type ShareSource } from "./screenshare";
-import { createTray } from "./tray";
+import { createTray, type TrayHandle } from "./tray";
 import { childWindowOptions, createChooser, createMainWindow, loadPicker } from "./window";
 
 // --- command line ---------------------------------------------------------
@@ -33,21 +43,52 @@ interface Args {
   server: string | null;
   insecure: boolean;
   devtools: boolean;
+  version: boolean;
+  installDesktopEntry: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
-  const out: Args = { server: null, insecure: false, devtools: false };
+  const out: Args = {
+    server: null,
+    insecure: false,
+    devtools: false,
+    version: false,
+    installDesktopEntry: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--server" && i + 1 < argv.length) out.server = argv[++i];
     else if (a.startsWith("--server=")) out.server = a.slice("--server=".length);
     else if (a === "--insecure") out.insecure = true;
     else if (a === "--devtools") out.devtools = true;
+    else if (a === "--version" || a === "-v") out.version = true;
+    else if (a === "--install-desktop-entry") out.installDesktopEntry = true;
   }
   return out;
 }
 
 const args = parseArgs(process.argv.slice(1));
+const VERSION = app.getVersion();
+
+// 104-4: the two flags that never open a window.
+if (args.version) {
+  process.stdout.write(`chalk-desktop ${VERSION} (electron ${process.versions.electron}, chromium ${process.versions.chrome})\n`);
+  app.exit(0);
+} else if (args.installDesktopEntry) {
+  if (process.platform !== "linux") {
+    process.stderr.write("--install-desktop-entry is for Linux; other platforms register the app themselves\n");
+    app.exit(2);
+  } else {
+    try {
+      const path = installDesktopEntry(process.execPath, join(__dirname, "assets", "icon.png"));
+      process.stdout.write(`wrote ${path}\n`);
+      app.exit(0);
+    } catch (e) {
+      process.stderr.write(`could not install the desktop entry: ${String(e)}\n`);
+      app.exit(1);
+    }
+  }
+}
 
 // --- single instance ------------------------------------------------------
 
@@ -74,7 +115,9 @@ let windowTitle = "chalk";
 /** 104-2: set by before-quit so the window's close handler lets it go. */
 let quitting = false;
 /** 104-2: held for the app's lifetime; a collected Tray vanishes. */
-let tray: Electron.Tray | null = null;
+let tray: TrayHandle | null = null;
+/** 104-4: the newer release, once a check has found one. */
+let update: ReleaseInfo | null = null;
 
 function closeToTray(): boolean {
   return cfg.closeToTray !== false;
@@ -257,6 +300,60 @@ function wireIPC(): void {
   });
 }
 
+// --- updates (104-4) -------------------------------------------------------
+
+function openUpdate(url: string): void {
+  void shell.openExternal(url);
+}
+
+function showAbout(): void {
+  void dialog.showMessageBox({
+    type: "info",
+    title: "About chalk",
+    message: `chalk ${VERSION}`,
+    detail: `Electron ${process.versions.electron}, Chromium ${process.versions.chrome}\n${
+      update ? `Update available: ${update.version}` : "This is the latest release chalk knows about."
+    }`,
+    buttons: update ? ["Download update", "Close"] : ["Close"],
+    defaultId: 0,
+  }).then((r) => {
+    if (update && r.response === 0) openUpdate(update.url);
+  });
+}
+
+function announceUpdate(info: ReleaseInfo): void {
+  update = info;
+  tray?.setUpdate(info);
+  buildMenu();
+  if (!shouldAnnounce(cfg.notifiedVersion, info.version)) return;
+  persist({ ...cfg, notifiedVersion: info.version });
+  const opts: Electron.MessageBoxOptions = {
+    type: "info",
+    title: "chalk update",
+    message: `chalk ${info.version} is available`,
+    detail: `You have ${VERSION}. Download opens the release page in your browser; the tray and the chalk menu keep the link until you do.`,
+    buttons: ["Download", "Later"],
+    defaultId: 0,
+    cancelId: 1,
+  };
+  const p = win && !win.isDestroyed() ? dialog.showMessageBox(win, opts) : dialog.showMessageBox(opts);
+  void p.then((r) => {
+    if (r.response === 0) openUpdate(info.url);
+  });
+}
+
+function startUpdateChecks(): void {
+  if (cfg.checkUpdates === false || isDevBuild(VERSION)) return;
+  const check = async () => {
+    const latest = await fetchLatestRelease(fetch, `chalk-desktop/${VERSION}`);
+    if (latest && isNewer(VERSION, latest.version) && update?.version !== latest.version) {
+      announceUpdate(latest);
+    }
+  };
+  setTimeout(() => void check(), FIRST_CHECK_MS);
+  setInterval(() => void check(), CHECK_EVERY_MS);
+}
+
 // --- menu -----------------------------------------------------------------
 
 function buildMenu(): void {
@@ -265,14 +362,33 @@ function buildMenu(): void {
     accelerator: "CmdOrCtrl+Shift+S",
     click: () => showPicker(),
   };
+  const updateItems: MenuItemConstructorOptions[] = update
+    ? [{ label: `Update to ${update.version}…`, click: () => openUpdate(update!.url) }, { type: "separator" }]
+    : [];
   const template: MenuItemConstructorOptions[] = [];
   if (process.platform === "darwin") {
     template.push({
       label: app.name,
-      submenu: [{ role: "about" }, { type: "separator" }, switchServer, { type: "separator" }, { role: "quit" }],
+      submenu: [
+        { label: "About chalk", click: showAbout },
+        { type: "separator" },
+        ...updateItems,
+        switchServer,
+        { type: "separator" },
+        { role: "quit" },
+      ],
     });
   } else {
-    template.push({ label: "chalk", submenu: [switchServer, { type: "separator" }, { role: "quit" }] });
+    template.push({
+      label: "chalk",
+      submenu: [
+        ...updateItems,
+        switchServer,
+        { type: "separator" },
+        { label: "About chalk", click: showAbout },
+        { role: "quit" },
+      ],
+    });
   }
   template.push({ role: "editMenu" });
   template.push({
@@ -325,7 +441,7 @@ void app.whenReady().then(() => {
   buildMenu();
   wireSession();
   wireIPC();
-  win = createMainWindow(cfg.bounds);
+  win = createMainWindow(cfg.bounds, VERSION);
   wireNavigation(win);
   // 104-2: the close button hides; the page stays connected, keeps its keys
   // warm and keeps delivering notifications. Quit is the tray's, the menu's
@@ -338,18 +454,23 @@ void app.whenReady().then(() => {
   win.on("closed", () => {
     win = null;
   });
-  tray = createTray({
-    show: showWindow,
-    pick: () => {
-      showWindow();
-      showPicker();
+  tray = createTray(
+    {
+      show: showWindow,
+      pick: () => {
+        showWindow();
+        showPicker();
+      },
+      quit: () => app.quit(),
+      update: openUpdate,
     },
-    quit: () => app.quit(),
-  });
+    VERSION,
+  );
   // 104-3: the OS idle clock for presence, pushed to whatever the window
   // shows; only the server page has the bridge to hear it.
   const stopIdle = startIdlePublisher(() => win);
   app.on("will-quit", stopIdle);
+  startUpdateChecks();
   if (args.devtools) win.webContents.openDevTools({ mode: "detach" });
 
   const first = args.server ?? cfg.last ?? null;

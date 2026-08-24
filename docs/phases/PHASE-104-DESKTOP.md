@@ -1,7 +1,9 @@
 # Phase 104 — a desktop app
 
-**Status:** 104-1 (the shell), 104-2 (tray, close-to-tray) and 104-3 (system
-idle → presence) built. 104-4 packaging is designed below and not started.
+**Status:** all four slices built — 104-1 the shell, 104-2 tray and
+close-to-tray, 104-3 system idle → presence, 104-4 packaging, release
+workflow and the update notice. The first release that carries desktop
+archives closes the phase; one-click self-update is phase 105 (planned).
 Research done 2026-08-24.
 
 **Tag:** `#desktop` → `tools/where.sh -g desktop` (the 104-* comments live in
@@ -170,14 +172,34 @@ Rejected along the way:
   through `powerMonitor` — idle time only, the same gap phase 90 records for
   wlroots. Nothing crosses the network that did not before: the page sends
   the same `presence_update`.
-- **104-4 — packaging.** `@electron/packager` zips for win/mac/linux ×
-  x64/arm64; `.github/workflows/desktop-release.yml` after
-  `~/f9/.github/workflows/release.yml` (per-platform runners, Windows
-  self-signed Authenticode, unsigned macOS like f9); README "Desktop app";
-  `docs/browser-support.md` desktop row; CHANGELOG entry.
+- **104-4 — packaging, release, update notice.** Built.
+  - `desktop/package.mjs` drives `@electron/packager` (20.3, pure-JS
+    `resedit` for the Windows metadata — no wine) into
+    `out/chalk-<platform>-<arch>/`, asar-packed, pruned to `dist/`,
+    `assets/`, `package.json`. `desktop/icons/gen.mjs` renders the SVG mark
+    with the run-chalk Playwright and hand-packs PNG-in-ICO and PNG-in-ICNS
+    (committed outputs, regenerate when the mark changes).
+  - A `desktop` job in `.github/workflows/release.yml` (one runner per OS,
+    both arches per runner, Node 24, `npm version` stamps the tag), Windows
+    Authenticode with the self-signed cert from `tools/make-signing-cert.sh`
+    (secrets `WIN_SIGN_PFX_B64` / `WIN_SIGN_PFX_PASSWORD`, skipped when
+    absent), macOS unsigned like f9. The release job downloads whatever
+    desktop artifacts exist, writes and cosign-signs `SHA256SUMS.desktop`,
+    and **does not fail when the desktop job did** — the server release is
+    never held hostage by a runner problem.
+  - `desktop/src/update.ts`: once 20 s after launch and then daily, the
+    shell reads `releases/latest`, and when it is newer shows a one-time
+    dialog (per version, `notifiedVersion` in `desktop.json`) and keeps an
+    "Update to vX…" entry in the tray and the chalk menu; both open the
+    release page in the system browser. No download, no execution — that is
+    phase 105, behind signed sums. Dev builds and `"checkUpdates": false`
+    never ask. `chalk --version` prints shell, Electron and Chromium versions;
+    `chalk --install-desktop-entry` (Linux) writes the `.desktop` file and
+    icon under `XDG_DATA_HOME`.
 
-Deferred to their own phases: auto-update, the macOS passkey module, unread
-count on the tray icon, Linux lock via logind, msi/dmg/deb installers.
+Deferred to their own phases: one-click self-update (105), the macOS
+passkey module, unread count on the tray icon, Linux lock via logind,
+msi/dmg/deb installers.
 
 ## Manual checklist (104-1)
 
@@ -228,7 +250,20 @@ identity.
 - [ ] ten minutes untouched → away; first input → online
 - [ ] the away toggle in settings turns the source off and on
 
-Per-OS builds (104-4) repeat the list on real Windows, macOS and Linux.
+104-4 (Linux, 2026-08-25):
+
+- [x] `node package.mjs` produces `out/chalk-linux-arm64/` (313 MB unpacked);
+      the asar holds only `dist/`, `assets/`, `package.json` ✔
+- [x] the packaged binary answers `--version` and `--install-desktop-entry`
+      (entry + icon under a scratch `XDG_DATA_HOME`) ✔
+- [x] the full probe passes against the packaged binary
+      (`CHALK_PROBE_EXE=desktop/out/chalk-linux-arm64/chalk`) ✔
+- [ ] the release workflow's `desktop` job on a real tag: three runners,
+      six archives, Windows signature verifies, `SHA256SUMS.desktop` signed
+- [ ] the update dialog and menu entry against a real newer release (a dev
+      build never checks; stamp a lower version to see it)
+
+Per-OS builds repeat the 104-1…3 lists on real Windows, macOS and Linux.
 
 ## Keeping the engine current
 

@@ -14,7 +14,7 @@ export const PRELOAD = join(__dirname, "preload.js");
 const PICKER_HTML = join(__dirname, "picker.html");
 const ICON = join(__dirname, "assets", "icon.png");
 
-export function createMainWindow(bounds: WindowBounds | undefined): BrowserWindow {
+export function createMainWindow(bounds: WindowBounds | undefined, version: string): BrowserWindow {
   const b = bounds ?? DEFAULT_BOUNDS;
   const win = new BrowserWindow({
     width: b.width,
@@ -35,6 +35,9 @@ export function createMainWindow(bounds: WindowBounds | undefined): BrowserWindo
       nodeIntegration: false,
       sandbox: true,
       spellcheck: true,
+      // 104-4: the preload reads this off process.argv; a sandboxed preload
+      // has no other channel to the main process before the page loads.
+      additionalArguments: [`--chalk-desktop-version=${version}`],
     },
   });
   win.once("ready-to-show", () => win.show());

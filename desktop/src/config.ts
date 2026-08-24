@@ -34,6 +34,11 @@ export interface DesktopConfig {
    * No UI for this yet; edit desktop.json. Absent means true.
    */
   closeToTray?: boolean;
+  /** 104-4: ask GitHub for a newer release daily. Absent means true. */
+  checkUpdates?: boolean;
+  /** 104-4: the version the "update available" box was last shown for, so
+   * it shows once per version and not once per launch. */
+  notifiedVersion?: string;
 }
 
 export const DEFAULT_BOUNDS: WindowBounds = { width: 1280, height: 820 };
@@ -133,6 +138,10 @@ export function parseConfig(text: string): DesktopConfig {
     if (norm && servers.some((e) => e.url === norm)) cfg.last = norm;
   }
   if (typeof r.closeToTray === "boolean") cfg.closeToTray = r.closeToTray;
+  if (typeof r.checkUpdates === "boolean") cfg.checkUpdates = r.checkUpdates;
+  if (typeof r.notifiedVersion === "string" && r.notifiedVersion.length <= 64) {
+    cfg.notifiedVersion = r.notifiedVersion;
+  }
   const b = r.bounds as Partial<WindowBounds> | undefined;
   if (
     typeof b === "object" &&
