@@ -290,6 +290,7 @@ import {
   systemIdlePermission,
   type SystemIdlePermission,
 } from "../presence/system-idle";
+import { desktopIdlePresent, startDesktopIdle } from "../presence/desktop-idle";
 import { AuthGate } from "../auth/AuthGate";
 import { IdentitySetupScreen } from "../auth/IdentitySetupScreen";
 import { UnsupportedBrowserScreen } from "../auth/UnsupportedBrowserScreen";
@@ -3633,10 +3634,26 @@ export function App() {
       live = false;
     };
   }, []);
+  // 104-3: inside the desktop shell the OS clock comes over the preload
+  // bridge -- no prompt, every platform -- and it is the ONE system source:
+  // IdleDetector stays off so two opinions of one fact never reach setSystem.
+  // Same pref, so "notice when you leave the machine" means the same thing
+  // in a browser and in the app.
+  const desktopIdle = desktopIdlePresent();
+  useEffect(() => {
+    if (!desktopIdle || !idlePrefs.systemIdle) return;
+    const r = startDesktopIdle((s) => idleWatchRef.current?.setSystem(s));
+    return () => {
+      r?.stop();
+      idleWatchRef.current?.setSystem({});
+    };
+  }, [desktopIdle, idlePrefs.systemIdle]);
+
   // Collapsed to one boolean on purpose: with the three inputs as separate
   // dependencies, the first click would flip hadGesture under an already-
   // running detector and tear it down to build the same thing again.
   const mayWatchSystemIdle =
+    !desktopIdle &&
     idlePrefs.systemIdle &&
     (systemIdlePerm === "granted" || (systemIdlePerm === "prompt" && hadGesture));
   useEffect(() => {

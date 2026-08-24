@@ -22,6 +22,7 @@ import {
 } from "./config";
 import { classifyLink, originOf } from "./links";
 import { originOfURL, permissionAllowed } from "./permissions";
+import { startIdlePublisher } from "./idle";
 import { installDisplayMediaHandler, shellSession, type ShareSource } from "./screenshare";
 import { createTray } from "./tray";
 import { childWindowOptions, createChooser, createMainWindow, loadPicker } from "./window";
@@ -345,6 +346,10 @@ void app.whenReady().then(() => {
     },
     quit: () => app.quit(),
   });
+  // 104-3: the OS idle clock for presence, pushed to whatever the window
+  // shows; only the server page has the bridge to hear it.
+  const stopIdle = startIdlePublisher(() => win);
+  app.on("will-quit", stopIdle);
   if (args.devtools) win.webContents.openDevTools({ mode: "detach" });
 
   const first = args.server ?? cfg.last ?? null;

@@ -46,7 +46,7 @@ interface IdleDetectorCtor {
  * still reports immediately through screenState, which is the one signal that
  * deserves no grace at all.
  */
-const THRESHOLD_MS = 600_000;
+export const THRESHOLD_MS = 600_000;
 
 export interface SystemIdleState {
   idle: boolean;

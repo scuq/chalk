@@ -1,8 +1,8 @@
 # Phase 104 — a desktop app
 
-**Status:** 104-1 (the shell) and 104-2 (tray, close-to-tray) built. 104-3
-system idle and 104-4 packaging are designed below and not started. Research
-done 2026-08-24.
+**Status:** 104-1 (the shell), 104-2 (tray, close-to-tray) and 104-3 (system
+idle → presence) built. 104-4 packaging is designed below and not started.
+Research done 2026-08-24.
 
 **Tag:** `#desktop` → `tools/where.sh -g desktop` (the 104-* comments live in
 `desktop/src/`; 104-3 will add `web/src/presence/desktop-idle.ts`).
@@ -155,14 +155,21 @@ Rejected along the way:
   that id. GNOME needs an AppIndicator extension to show any tray at all;
   without it the window still hides and comes back via the launcher (see the
   header of `tray.ts`).
-- **104-3 — system idle → presence.** Main polls
-  `powerMonitor.getSystemIdleTime()` every 15 s and listens for
-  `lock-screen`/`unlock-screen`; the preload exposes
-  `chalkDesktop.idle.subscribe`. Web side: `presence/desktop-idle.ts` with
-  `startSystemIdle`'s contract feeding `idleWatch.setSystem`, precedence
-  desktop → (phase 90 agent) → `IdleDetector`, settings copy in
-  `ProfilePanel`. PHASE-90 gets a note that the shell is source #0 and needs
-  none of its CSP/token machinery.
+- **104-3 — system idle → presence.** Built. `desktop/src/idle.ts` reads
+  `powerMonitor.getSystemIdleTime()` (and `getSystemIdleState` for the lock)
+  every 15 s and on `lock-screen`/`unlock-screen`/`resume`, and pushes raw
+  `{idleMs, locked}` to the window; the preload exposes
+  `chalkDesktop.idle.get()/subscribe()` and the page can pull its opening
+  value over `chalk:idle:get` (answered only to the main window's own
+  webContents). Web side: `web/src/presence/desktop-idle.ts` applies
+  `system-idle.ts`'s `THRESHOLD_MS` (now exported) and feeds
+  `idleWatch.setSystem` with the same `{idle, locked}` contract; `App.tsx`
+  makes the shell the one system source (`mayWatchSystemIdle` gains
+  `!desktopIdle`) under the existing `systemIdle` pref; `ProfilePanel` shows
+  the away toggle in the shell with its own copy. Linux reports no lock
+  through `powerMonitor` — idle time only, the same gap phase 90 records for
+  wlroots. Nothing crosses the network that did not before: the page sends
+  the same `presence_update`.
 - **104-4 — packaging.** `@electron/packager` zips for win/mac/linux ×
   x64/arm64; `.github/workflows/desktop-release.yml` after
   `~/f9/.github/workflows/release.yml` (per-platform runners, Windows
@@ -211,6 +218,15 @@ identity.
 - [ ] a message arriving while hidden produces a toast
 - [ ] Quit from the tray ends the process; `"closeToTray": false` makes the
       close button quit
+
+104-3, same probe (Linux, 2026-08-25):
+
+- [x] `chalkDesktop.idle.get()` answers `{idleMs, locked}` ✔
+- [x] a `lock-screen` event (emitted on `powerMonitor` from the probe) flips
+      the header to *away* at once; `unlock-screen` brings *online* back ✔
+- [ ] a real lock on Windows/macOS does the same (Linux cannot report it)
+- [ ] ten minutes untouched → away; first input → online
+- [ ] the away toggle in settings turns the source off and on
 
 Per-OS builds (104-4) repeat the list on real Windows, macOS and Linux.
 

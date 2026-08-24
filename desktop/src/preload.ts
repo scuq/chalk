@@ -24,10 +24,23 @@ export interface PickerBridge {
   choose(id: string | null): void;
 }
 
+export interface DesktopIdleState {
+  idleMs: number;
+  locked: boolean;
+}
+
 export interface DesktopBridge {
   /** "chalk-desktop/<version>" -- lets the page know the shell is present. */
   shell: string;
   platform: NodeJS.Platform;
+  /** 104-3: the OS idle clock (src/idle.ts). The page applies the threshold. */
+  idle: {
+    /** The current state, or null while the shell has no answer. */
+    get(): Promise<DesktopIdleState | null>;
+    /** Pushed every 15 s and immediately on lock/unlock/resume. Returns the
+     * unsubscribe function. */
+    subscribe(cb: (state: DesktopIdleState) => void): () => void;
+  };
 }
 
 if (location.protocol === "file:") {
@@ -43,6 +56,16 @@ if (location.protocol === "file:") {
   const bridge: DesktopBridge = {
     shell: `chalk-desktop/${process.env.CHALK_DESKTOP_VERSION ?? "dev"}`,
     platform: process.platform,
+    idle: {
+      get: () => ipcRenderer.invoke("chalk:idle:get"),
+      subscribe: (cb) => {
+        // Only the two fields cross the bridge: the event object stays here.
+        const listener = (_event: Electron.IpcRendererEvent, state: DesktopIdleState) =>
+          cb({ idleMs: state.idleMs, locked: state.locked });
+        ipcRenderer.on("chalk:idle", listener);
+        return () => ipcRenderer.removeListener("chalk:idle", listener);
+      },
+    },
   };
   contextBridge.exposeInMainWorld("chalkDesktop", bridge);
 }

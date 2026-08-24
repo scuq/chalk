@@ -9,6 +9,16 @@ below it has been built.
 **Status:** design only, written 6 August 2026. Supersedes an earlier draft of
 this phase that proposed a WebExtension; why it was dropped is under
 [Rejected: the extension](#rejected-the-extension).
+
+**2026-08-25, phase 104-3:** the desktop app now delivers this signal for
+its own users — `desktop/src/idle.ts` reads the OS clock in the Electron
+main process and `web/src/presence/desktop-idle.ts` feeds
+`idleWatch.setSystem` through the preload bridge, so it needs none of the
+CSP, token or pairing machinery below. It is **source #0** ahead of the
+agent and `IdleDetector`: when this phase is built, 90-4's precedence
+becomes shell → agent → `IdleDetector`, and `agentIdlePresent` sits beside
+the `desktopIdle` flag `App.tsx` already has. `chalkidle` remains the answer
+for people in a browser; nothing else in this design changes.
 **Tag:** `#presence` → `tools/where.sh -g presence` (phases 34, 45, 60, and this
 one once it lands).
 

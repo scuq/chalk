@@ -65,6 +65,7 @@ import {
   systemIdleSupported,
   type SystemIdlePermission,
 } from "../presence/system-idle";
+import { desktopIdlePresent } from "../presence/desktop-idle";
 import { SecurityPanel } from "./SecurityPanel";
 import { ServerIdentityCard } from "./ServerIdentityCard"; // 83-9 // 31-8
 import { StepUpPrompt } from "./StepUpPrompt"; // 81-2
@@ -1355,7 +1356,7 @@ export function ProfilePanel({
               it, and a switch that cannot do anything is worse than no switch.
               Per-device for the same reason the sounds are: the permission
               belongs to this browser and cannot follow you to your phone. */}
-          {show("away") && systemIdleSupported() && (
+          {show("away") && (systemIdleSupported() || desktopIdlePresent()) && (
             <section class="chalk-profile-notifications" data-testid="idle-settings">
               <h3>away detection</h3>
               <div class="chalk-profile-field">
@@ -1371,13 +1372,23 @@ export function ProfilePanel({
                   <span>
                     notice when you leave the machine{" "}
                     <span class="chalk-profile-theme-desc">
-                      (asks the browser once; chrome and edge only)
+                      {desktopIdlePresent()
+                        ? "(the chalk app reads it from the system; no prompt)"
+                        : "(asks the browser once; chrome and edge only)"}
                     </span>
                   </span>
                 </label>
               </div>
               <p class="chalk-profile-hint">
-                {idlePerm === "denied" ? (
+                {desktopIdlePresent() ? (
+                  <>
+                    with this on, the chalk app tells reading a long thread from having
+                    walked away by how long the whole machine has been untouched, and
+                    marks you away the moment the screen locks where the system reports
+                    it. with it off, away is guessed from what you do in the window.
+                    either way nothing about it leaves this device.
+                  </>
+                ) : idlePerm === "denied" ? (
                   <>
                     your browser has blocked this for chalk, so away is guessed from
                     activity in the tab instead. the site permissions for this page are
