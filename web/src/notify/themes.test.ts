@@ -41,7 +41,23 @@ test("the default theme is one of the themes, and ids are unique", () => {
   assert.ok(!isSoundThemeId("synth"));
 });
 
-test("every theme folder holds every cue as a 48 kHz 16-bit PCM WAV", () => {
+// duration walks the RIFF chunk list to the data chunk: measuring the
+// whole file would bill the header (and any LIST/INFO chunk a DAW export
+// carries) as audio, which is exactly the error that matters at a cue
+// sitting right on the ceiling.
+function wavDataSeconds(bytes: Buffer): number {
+  const bytesPerSec = bytes.readUInt32LE(28);
+  let at = 12;
+  while (at + 8 <= bytes.length) {
+    const chunkId = bytes.toString("ascii", at, at + 4);
+    const size = bytes.readUInt32LE(at + 4);
+    if (chunkId === "data") return size / bytesPerSec;
+    at += 8 + size + (size % 2);
+  }
+  throw new Error("no data chunk");
+}
+
+test("every theme folder holds every cue as a 48 kHz PCM WAV", () => {
   for (const { id } of SOUND_THEMES) {
     const dir = join(SOUNDS_DIR, id);
     const files = readdirSync(dir);
@@ -55,11 +71,16 @@ test("every theme folder holds every cue as a 48 kHz 16-bit PCM WAV", () => {
       assert.equal(bytes.toString("ascii", 12, 16), "fmt ", `${id}/${name} has no fmt chunk`);
       assert.equal(bytes.readUInt16LE(20), 1, `${id}/${name} is not PCM`);
       assert.equal(bytes.readUInt32LE(24), 48000, `${id}/${name} is not 48 kHz`);
-      assert.equal(bytes.readUInt16LE(34), 16, `${id}/${name} is not 16-bit`);
-      // A cue is a cue, not a jingle: under a second, so a notification
-      // never outlasts the moment it is about.
-      const bytesPerSec = bytes.readUInt32LE(28);
-      assert.ok(bytes.length / bytesPerSec < 1, `${id}/${name} is longer than a second`);
+      // 16-bit is the themes' stated format; 24 appears where a DAW
+      // re-export (102-2's two synthesized empir cues) came out that way.
+      // Browsers decode both through the same decodeAudioData.
+      const bits = bytes.readUInt16LE(34);
+      assert.ok(bits === 16 || bits === 24, `${id}/${name} is ${bits}-bit, not 16 or 24`);
+      // A cue is a cue, not a jingle: short, so a notification never
+      // outlasts the moment it is about. The ceiling is two seconds --
+      // 102-2: empir's join fanfare sits exactly on it, and your own
+      // call join is the one event that can afford it.
+      assert.ok(wavDataSeconds(bytes) <= 2, `${id}/${name} is longer than two seconds`);
     }
     // And nothing the table doesn't know about, so a stray file can't
     // ship unreferenced (it would never be imported, but it would be

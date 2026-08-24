@@ -1,6 +1,6 @@
 # Phase 102 — sound themes
 
-**Status:** 102-1 shipped. One slice; the phase is closed unless a follow-up
+**Status:** 102-1 and 102-2 shipped; the phase is closed unless a follow-up
 under [Left open](#left-open) is taken up.
 
 **Tag:** `#notify` → `tools/where.sh -g notify` (shared with 40, 50 and 71).
@@ -93,6 +93,18 @@ replaced by them.
   prefs; the picker in `ProfilePanel.tsx`; `.wav` loaders in `build.mjs` and
   `test.mjs`; `synth.ts`, `synth.test.ts`, `tools/sound-bench.mjs` and its
   template removed; docs and CLAUDE.md rewritten.
+- **102-2** — a fourth theme, *empir* (medieval RTS: horns, timber,
+  blacksmith metal, war drums; the id is scuq's spelling, not the source
+  folder's "empire"). New folder + `SoundThemeId` + `SOUND_THEMES` row +
+  import block, exactly the "adding a theme" recipe above. The test's cue
+  ceiling moved from one second to two for its join fanfare, its bit-depth
+  pin widened to 16-or-24 (the two DAW re-exports are 24-bit), and duration
+  is measured from the WAV's data chunk rather than the file size.
+  **Rights caveat, closed at landing:** the two cues that first arrived
+  derived from supplied recordings (an AoE2 "wololo", a YouTube excerpt) were
+  replaced by scuq with synthesized versions before the theme ever shipped in
+  a release; nothing source-derived is in the repo's history past this slice's
+  landing, and the theme's MANIFEST records the replacement.
 
 ## Manual checklist
 

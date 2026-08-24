@@ -21,7 +21,7 @@
 
 import type { SoundCategory } from "./types";
 
-export type SoundThemeId = "chalk" | "gamegirl" | "runestone";
+export type SoundThemeId = "chalk" | "gamegirl" | "runestone" | "empir";
 
 // The ten cues every theme ships. The names are the file stems the theme
 // folders use, so a folder listing and this list can be checked against
@@ -87,6 +87,9 @@ export const SOUND_THEMES: SoundThemeInfo[] = [
   { id: "chalk", label: "chalk", desc: "chalk on a board — scrapes, taps and dust" },
   { id: "gamegirl", label: "gamegirl", desc: "classic-handheld bleeps, pulse waves and hard gates" },
   { id: "runestone", label: "runestone", desc: "fantasy UI — horns, bells, parchment and portals" },
+  // 102-2. The id is "empir" -- scuq's name for it, not a typo of the
+  // source folder's "empire".
+  { id: "empir", label: "empir", desc: "medieval RTS — horns, timber, blacksmith metal and drums" },
 ];
 
 export const DEFAULT_SOUND_THEME: SoundThemeId = "chalk";

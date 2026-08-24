@@ -148,13 +148,14 @@ switched off becomes a muted event type — the closest pre-rules equivalent.
 Since phase 102 chalk plays **recorded sound themes**, not a synthesizer. A
 theme is ten WAV cues (48 kHz, 16-bit, stereo, each under a second) in
 `web/assets/sounds/<theme>/`, with a `MANIFEST.md` beside them describing each
-cue and the theme's grammar. Three ship — all authored by scuq in a DAW:
+cue and the theme's grammar. Four ship — authored by scuq in a DAW:
 
 | Theme | Character |
 |---|---|
 | `chalk` (default) | chalk on a board: scrapes, taps, dust. Upward scrapes are arrival or connection, downward ones departure or loss; taps confirm actions. |
 | `gamegirl` | classic-handheld bleeps: 25 % pulse waves, stepped envelopes, hard gates, one noise-channel accent. Same up/down grammar. |
 | `runestone` | fantasy UI: horn-and-bell presence, portal open/close for your own call state, wooden knocks for other people, chain and drum for the connection. |
+| `empir` | medieval RTS: horns, timber, blacksmith metal and war drums; a chant-and-horn fanfare for your own call join. All cues synthesized. |
 
 The theme is a **per-device** preference (`theme` in `chalk.notify.v2`, next to
 the volume), picked in profile → notifications; the per-cue play buttons

@@ -10,6 +10,16 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **A fourth sound theme: *empir*.** Medieval real-time-strategy sounds —
+  horns, timber, blacksmith metal and war drums, with a chant-and-horn
+  fanfare when you join a call. Pick it in profile → notifications, like the
+  others.
+
+---
+
 ## v0.8.2 — 24 August 2026 — Camera off done properly, remote video on a camera-off join
 
 ### Changed

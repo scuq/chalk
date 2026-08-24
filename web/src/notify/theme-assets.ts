@@ -44,6 +44,17 @@ import runestone08 from "../../assets/sounds/runestone/08_send_confirmed.wav";
 import runestone09 from "../../assets/sounds/runestone/09_error.wav";
 import runestone10 from "../../assets/sounds/runestone/10_new_message.wav";
 
+import empir01 from "../../assets/sounds/empir/01_friend_online.wav";
+import empir02 from "../../assets/sounds/empir/02_you_join_call.wav";
+import empir03 from "../../assets/sounds/empir/03_you_leave_call.wav";
+import empir04 from "../../assets/sounds/empir/04_someone_joins.wav";
+import empir05 from "../../assets/sounds/empir/05_someone_leaves.wav";
+import empir06 from "../../assets/sounds/empir/06_connected.wav";
+import empir07 from "../../assets/sounds/empir/07_disconnected.wav";
+import empir08 from "../../assets/sounds/empir/08_send_confirmed.wav";
+import empir09 from "../../assets/sounds/empir/09_error.wav";
+import empir10 from "../../assets/sounds/empir/10_new_message.wav";
+
 export const THEME_URLS: Record<SoundThemeId, Record<ThemeCue, string>> = {
   chalk: {
     "01_friend_online": chalk01,
@@ -80,5 +91,17 @@ export const THEME_URLS: Record<SoundThemeId, Record<ThemeCue, string>> = {
     "08_send_confirmed": runestone08,
     "09_error": runestone09,
     "10_new_message": runestone10,
+  },
+  empir: {
+    "01_friend_online": empir01,
+    "02_you_join_call": empir02,
+    "03_you_leave_call": empir03,
+    "04_someone_joins": empir04,
+    "05_someone_leaves": empir05,
+    "06_connected": empir06,
+    "07_disconnected": empir07,
+    "08_send_confirmed": empir08,
+    "09_error": empir09,
+    "10_new_message": empir10,
   },
 };
