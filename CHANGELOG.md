@@ -10,6 +10,16 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## v0.8.5 — 25 August 2026 — The Windows desktop build, second attempt
+
+### Fixed
+- **The Windows desktop app is now built.** v0.8.4 got past the `tar`
+  problem and then stopped on a test that checked a Unix execute bit —
+  which NTFS does not have. The check is now Linux/macOS-only; nothing in
+  the app itself changed.
+
+---
+
 ## v0.8.4 — 25 August 2026 — The Windows desktop build
 
 ### Fixed
