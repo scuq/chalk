@@ -10,6 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## v0.8.4 — 25 August 2026 — The Windows desktop build
+
+### Fixed
+- **The Windows desktop app is now built.** v0.8.3's release carried only
+  the Linux and macOS archives: the Windows build job failed in its tests
+  because the runner's Git-for-Windows `tar` misreads `C:\…` paths. The
+  app's own updater now calls Windows' built-in `tar.exe` outright and
+  never hands a drive-letter path to it, so this cannot recur on a user's
+  machine either.
+
+---
+
 ## v0.8.3 — 25 August 2026 — The desktop app, with self-update
 
 ### Added
