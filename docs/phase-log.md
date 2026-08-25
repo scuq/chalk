@@ -97,7 +97,7 @@ as-built rather than a contemporaneous plan.
 | 103 | camera off: negotiated even when off, released when off | [PHASE-103-CAMERAOFF.md](phases/PHASE-103-CAMERAOFF.md) |
 | 104 | desktop app — an Electron shell around the server's page | [PHASE-104-DESKTOP.md](phases/PHASE-104-DESKTOP.md) |
 | 105 | desktop self-update | [PHASE-105-SELFUPDATE.md](phases/PHASE-105-SELFUPDATE.md) *(built; awaiting the release key and a real update per platform)* |
-| 106 | channel names — distinct group headers, rename, short names | [PHASE-106-CHANNELNAMES.md](phases/PHASE-106-CHANNELNAMES.md) *(built; awaiting the live-stack checklist)* |
+| 106 | channel names — distinct group headers, rename, short names | [PHASE-106-CHANNELNAMES.md](phases/PHASE-106-CHANNELNAMES.md) *(v0.8.6; part of the live checklist still open)* |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

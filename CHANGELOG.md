@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.6 — 25 August 2026 — Channel rename, short names and clearer groups
 
 ### Added
 - **Channels can be renamed.** The channel's owner right-clicks (or

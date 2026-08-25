@@ -1,7 +1,9 @@
 # Phase 106 — channel names: distinct groups, rename, short names
 
-**Status:** 106-1 … 106-3 built 2026-08-25; awaiting the live-stack checklist
-under [Left open](#left-open).
+**Status:** shipped, v0.8.6 (2026-08-25). The live-stack checklist under
+[Left open](#left-open) was run in part the same evening against the dev
+stack (a seeded roster of three users and eleven channels, checked in the
+browser and the Electron shell); the unticked items are still open.
 
 **Tag:** `#channelnames` → `tools/where.sh -g channelnames` (106-1 is roster
 work and is also listed under `#roster`).
@@ -137,8 +139,8 @@ toggle is not worth the split. If it turns out to be wanted per device, the
   needs it.
 - **Live-stack checklist** (the store's update path has no DB-backed test;
   `TestNormalizeShortName` covers the rule, not the row):
-  - [ ] migration 0054 applies on the dev database; existing channels read
-        with `short_name = ''`
+  - [x] migration 0054 applies on the dev database; existing channels read
+        with `short_name = ''` (2026-08-25, `tools/dev.sh` migrate)
   - [ ] owner renames from the context menu; every member's roster and the
         channel header follow without a reload; a second tab of the owner
         follows too
@@ -146,11 +148,14 @@ toggle is not worth the split. If it turns out to be wanted per device, the
         `not_channel_creator`
   - [ ] a democratic channel answers `unilateral_forbidden`; a DM answers
         `invalid_channel`
-  - [ ] short name set at creation and from the menu; the eleventh
-        character is refused in the input, and by the server if sent
-  - [ ] settings → channel list → *short name*: the sidebar and the phone's
-        conversation list switch, the header does not; rows without a short
-        name are unchanged; the tooltip carries the full name
+  - [x] short name set at creation (eleven channels through the real modal,
+        one deliberately without); from the menu, and the eleventh
+        character, still to check
+  - [x] settings → channel list → *short name*: the sidebar switches, and
+        the pref reached a second device (the Electron shell) as short
+        names; rows without a short name unchanged. Header, phone list and
+        tooltip still to eyeball
   - [ ] the filter finds a channel by its short name
-  - [ ] groups: the first group has no rule, the others do; rows indent
-        under their header; the flat (filtered) list does not
+  - [x] groups: the first group has no rule, the others do; rows indent
+        under their header (browser and Electron screenshots). Flat
+        filtered list still to check
