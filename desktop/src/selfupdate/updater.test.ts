@@ -94,7 +94,8 @@ test("prepareUpdate: fetches, verifies, unpacks beside the running version, mark
   assert.equal(r.dir, join(inst.root, "chalk-9.9.9"));
   assert.equal(readFileSync(join(r.dir, ".ready"), "utf8"), "9.9.9\n");
   assert.ok(existsSync(join(r.dir, "resources", "app.asar")), "hoisted out of the tar's top dir");
-  assert.ok(statSync(r.exe).mode & 0o111, "exe bit kept");
+  // NTFS has no execute bit; Windows runs chalk.exe regardless.
+  if (process.platform !== "win32") assert.ok(statSync(r.exe).mode & 0o111, "exe bit kept");
   assert.equal(existsSync(join(inst.root, ".download-9.9.9")), false, "download removed");
   assert.equal(existsSync(join(inst.root, "chalk-9.9.9.partial")), false);
   assert.deepEqual(rel.fetched.map((u) => u.split("/").pop()), ["SHA256SUMS.desktop", "SHA256SUMS.desktop.ed25519", ARCHIVE]);

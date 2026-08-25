@@ -164,6 +164,10 @@ every desktop that updates. Same posture as `CHALK_WRAP_SIG_REQUIRED`.
   bsdtar on win32 and runs tar *in* the destination with a relative archive
   path, so no drive-letter path reaches tar anywhere; the tests build their
   fixtures the same way.
+- **v0.8.4:** the Windows job then ran every updater test green — the
+  extractor works there — and failed on one assertion of my own: "exe bit
+  kept", a Unix mode check NTFS cannot satisfy. Now Linux/macOS-only
+  (v0.8.5).
 
 ## Checklist
 

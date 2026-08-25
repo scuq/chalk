@@ -262,7 +262,9 @@ identity.
       macOS archives published, `SHA256SUMS.desktop` cosign- and
       Ed25519-signed (verified locally against the pinned key) ✔; the
       Windows job failed in `npm test` (Git for Windows' GNU tar on the
-      runner reads `C:\…` as host:path) — fixed, first Windows run is v0.8.4
+      runner reads `C:\…` as host:path) — fixed for v0.8.4, which then
+      tripped a Unix-only execute-bit assertion in a test; v0.8.5 is the
+      first tag whose Windows job can reach packaging
 - [ ] the Windows archives and their Authenticode signature (needs the
       `WIN_SIGN_*` secrets, still unset)
 - [ ] the update dialog and menu entry against a real newer release (a dev
