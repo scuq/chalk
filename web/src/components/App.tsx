@@ -64,6 +64,8 @@ import {
   TypeCreateChannel,
   TypeCreateChannelAck,
   TypeChannelEvent,
+  TypeUpdateChannel, // 106-2
+  TypeUpdateChannelAck,
   TypeSubscribeChannel,
   TypeFriendList,
   TypeFriendListAck,
@@ -147,6 +149,8 @@ import {
   type CreateChannelPayload,
   type CreateChannelAckPayload,
   type ChannelEventPayload,
+  type UpdateChannelPayload, // 106-2
+  type UpdateChannelAckPayload,
   type SubscribeChannelPayload,
   type FriendListPayload,
   type FriendEventPayload,
@@ -261,6 +265,7 @@ const EmojiPicker = lazyComponent(() =>
 );
 import { CreateChannelModal } from "./CreateChannelModal";
 import { DEFAULT_GROUP, knownGroups } from "../chat/channel-groups";
+import { rosterLabel } from "../chat/channel-names"; // 106-3
 import { pruneHidden, splitHidden } from "../chat/channel-hide";
 import { HISTORY_PAGE_SIZE, pageMarksComplete } from "../chat/history-paging";
 // 61-3: the full-history search crawl.
@@ -403,6 +408,7 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
     governanceMode: w.governance_mode ?? "dictator",
     channelType: w.channel_type ?? "text", // 30-4
     groupName: w.group_name ?? "General", // 54-2
+    shortName: w.short_name ?? "", // 106-3
     lastSeq: w.last_seq ?? 0, // 33-1
     lastReadSeq: w.last_read_seq ?? 0, // 33-1
     // 62-3: activity metadata only -- the ciphertext body stays out of the
@@ -651,7 +657,11 @@ export function App() {
       zuckerVoiceRoomID,
       (ch) => {
         const full = state.channels[ch.id];
-        return full ? displayName(full, state.user?.id ?? null) : ch.id;
+        if (!full) return ch.id;
+        // 106-3: the list honours the same name style as the sidebar; DMs
+        // keep rendering from the other member.
+        if (full.isDM) return displayName(full, state.user?.id ?? null);
+        return rosterLabel(full, selectRosterPrefs(state.prefs).nameStyle);
       },
       (userID) => zuckerHandles[userID] ?? userID.slice(-8),
     );
@@ -2913,6 +2923,19 @@ export function App() {
         inboxPagingRef.current = false;
         break;
       }
+      case TypeUpdateChannelAck: {
+        // 106-2: the requesting tab's copy of the rename. The push
+        // (channel_event{updated}) reaches this tab too; the reducer folds
+        // the second one as a no-op.
+        const p = f.payload as UpdateChannelAckPayload;
+        dispatch({
+          kind: "channel_updated",
+          channelID: p.channel.id,
+          name: p.channel.name,
+          shortName: p.channel.short_name ?? "",
+        });
+        break;
+      }
       case TypeCreateChannelAck: {
         const p = f.payload as CreateChannelAckPayload;
         dispatch({ kind: "channel_added", channel: wireToChannel(p.channel) });
@@ -3040,6 +3063,18 @@ export function App() {
               .then((status) => setKeyStatus((s) => ({ ...s, [cid]: status })))
               .catch((err) => console.error("post-rotation ensureChannelKey failed:", err));
           }
+          break;
+        }
+        if (p.kind === "updated" && p.channel) {
+          // 106-2: a rename (or short-name change) by the owner. Only the
+          // names are adopted -- the summary is built without a user scope,
+          // so its read seed is zeros and must not touch the row otherwise.
+          dispatch({
+            kind: "channel_updated",
+            channelID: p.channel.id,
+            name: p.channel.name,
+            shortName: p.channel.short_name ?? "",
+          });
           break;
         }
         if (p.kind === "added" && p.channel) {
@@ -4185,7 +4220,7 @@ export function App() {
     return true;
   };
 
-  const onCreateChannel = (name: string, isDM: boolean, memberIDs: string[], voice: boolean, group?: string, ttlSecs?: number) => {
+  const onCreateChannel = (name: string, isDM: boolean, memberIDs: string[], voice: boolean, group?: string, ttlSecs?: number, shortName?: string) => {
     const c = clientRef.current;
     if (!c || !c.isOpen()) return;
     const payload: CreateChannelPayload = {
@@ -4193,6 +4228,9 @@ export function App() {
       is_dm: isDM,
       member_ids: memberIDs,
     };
+    // 106-3: the abbreviation, omitted when blank so the payload stays
+    // byte-compatible with pre-106 servers.
+    if (shortName && shortName.trim()) payload.short_name = shortName.trim();
     // 30-4: only stamp channel_type when it's a voice room -- omitting it
     // keeps the payload byte-compatible with older servers for text channels.
     if (voice) payload.channel_type = "voice";
@@ -5497,6 +5535,19 @@ export function App() {
           // per-user, prefs-synced, and rebuilt on every write so entries for
           // channels you have left -- and watermarks a message has already
           // passed -- don't pile up.
+          // 106-3: which name each row shows. 106-2: the owner's rename /
+          // short-name edit, from the same context menu. The ack and the
+          // channel_event push carry the result; nothing is applied
+          // optimistically, so a refused rename leaves the row untouched.
+          nameStyle={selectRosterPrefs(state.prefs).nameStyle}
+          onUpdateChannel={(channelID, patch) => {
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            const payload: UpdateChannelPayload = { channel_id: channelID };
+            if (patch.name !== undefined) payload.name = patch.name;
+            if (patch.shortName !== undefined) payload.short_name = patch.shortName;
+            c.send<UpdateChannelPayload>(TypeUpdateChannel, payload, "upch-" + Date.now());
+          }}
           hiddenChannels={selectRosterPrefs(state.prefs).hidden}
           onSetChannelHidden={(channelID, mode) => {
             const c = clientRef.current;
@@ -6416,6 +6467,15 @@ export function App() {
             if (!c || !c.isOpen()) return;
             const current = selectRosterPrefs(state.prefs);
             c.send(TypePrefsSet, { patch: { roster: { ...current, groupingEnabled: enabled } } });
+          }}
+          // 106-3: full vs short channel names in the roster. Whole roster
+          // object over the wire, as above.
+          rosterNameStyle={selectRosterPrefs(state.prefs).nameStyle}
+          onSetRosterNameStyle={(style) => {
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            const current = selectRosterPrefs(state.prefs);
+            c.send(TypePrefsSet, { patch: { roster: { ...current, nameStyle: style } } });
           }}
           zuckerEnabled={selectRosterPrefs(state.prefs).viewMode === "zucker"}
           onSetZucker={(enabled) => {

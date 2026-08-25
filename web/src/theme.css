@@ -3710,6 +3710,38 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color: var(--chalk-fg);
 }
 
+/* 106-1: a group has to read as a heading, not as one more row. Three
+   cues, none of them colour (the channel names stay the loudest text):
+   air above each group, a hairline across the column, and the same
+   letter-spacing the section titles use. The first group sits directly
+   under the filter and skips the rule; the hidden shelf (78-2) shares the
+   class and so gets the same treatment, which is right -- it is a heading
+   too. */
+.chalk-sidebar-group {
+  margin-top: 0.9rem;
+}
+.chalk-sidebar-group:first-child {
+  margin-top: 0.15rem;
+}
+.chalk-sidebar-group .chalk-sidebar-group-header {
+  margin-top: 0;
+  padding-top: 0.45rem;
+  padding-bottom: 0.3rem;
+  border-top: 1px solid var(--chalk-border, #1f2a1f);
+  letter-spacing: 0.08em;
+}
+.chalk-sidebar-group:first-child .chalk-sidebar-group-header {
+  border-top: none;
+  padding-top: 0.25rem;
+}
+
+/* The rows under a header step in by the width of the fold arrow plus its
+   gap, so they hang beneath the group name rather than lining up with it.
+   Only grouped rows: the flat list keeps the pre-106 alignment. */
+.chalk-sidebar-item--grouped {
+  padding-left: calc(var(--chalk-s2) + 0.8em + 0.35rem);
+}
+
 .chalk-sidebar-group-arrow {
   flex-shrink: 0;
   width: 0.8em;
@@ -4475,6 +4507,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color: var(--chalk-fg-dim);
   font-size: var(--chalk-size-small);
   margin-right: var(--chalk-s1);
+}
+
+/* 106-3: the short-name row's character count, trailing the input. */
+.chalk-nick-menu-hint {
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Phase 41-3: the mic level meter, sharing the row shape (and the preview

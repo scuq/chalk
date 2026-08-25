@@ -9,9 +9,21 @@ Latest release: **v0.8.5** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 105 is the newest work. The phase-doc index at the top of
+Phase 106 is the newest work. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
+
+## Phase 106 — channel names: built, awaiting the live-stack checklist
+
+106-1 … 106-3, record in [phases/PHASE-106-CHANNELNAMES.md](phases/PHASE-106-CHANNELNAMES.md).
+Two items stay open there:
+
+- **A democratic channel cannot be renamed.** `update_channel` is owner-only
+  and answers `unilateral_forbidden` in democratic mode; the `rename`
+  proposal type is not built.
+- **The live-stack checklist** at the end of the phase doc — the store's
+  rename path has no DB-backed test, so the migration and the push to every
+  member are only proven against a running stack.
 
 ## Phase 82 — signed channel-key wraps: COMPLETE, but conditionally
 

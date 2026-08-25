@@ -97,6 +97,7 @@ as-built rather than a contemporaneous plan.
 | 103 | camera off: negotiated even when off, released when off | [PHASE-103-CAMERAOFF.md](phases/PHASE-103-CAMERAOFF.md) |
 | 104 | desktop app — an Electron shell around the server's page | [PHASE-104-DESKTOP.md](phases/PHASE-104-DESKTOP.md) |
 | 105 | desktop self-update | [PHASE-105-SELFUPDATE.md](phases/PHASE-105-SELFUPDATE.md) *(built; awaiting the release key and a real update per platform)* |
+| 106 | channel names — distinct group headers, rename, short names | [PHASE-106-CHANNELNAMES.md](phases/PHASE-106-CHANNELNAMES.md) *(built; awaiting the live-stack checklist)* |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
@@ -713,6 +714,11 @@ Signed sealed envelopes, first-responder key rotation, the pinned
 server identity with an inner sealed channel, and client-observed
 roster notices, all under the 2026-08-09 revised trust model (83,
 complete 2026-08-23 — caveats in its slice record).
+
+Channel names (106, 2026-08-25): group headers that read as headings,
+an owner-only `update_channel` rename pushed to every member, and a
+ten-character short name per channel with an account pref for which of
+the two the roster shows.
 
 **Not started.** 65 (web push), 86 (ties), 87
 (message reminders), 90 (a local idle agent) and 99 (database-credential

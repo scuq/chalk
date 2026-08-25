@@ -290,6 +290,23 @@ export function reducer(state: AppState, action: Action): AppState {
         activeChannelID: nextActive,
       };
     }
+    case "channel_updated": {
+      // 106-2: adopt the new names in place. Unknown channel: nothing to
+      // rename (the row arrives with its names on the next listing anyway).
+      // Same names: same state, so the ack and the push both being folded
+      // costs no render.
+      const ch = state.channels[action.channelID];
+      if (!ch) return state;
+      if (ch.name === action.name && (ch.shortName ?? "") === action.shortName) return state;
+      return {
+        ...state,
+        channels: {
+          ...state.channels,
+          [action.channelID]: { ...ch, name: action.name, shortName: action.shortName },
+        },
+      };
+    }
+
     case "channel_key_version_updated": {
       // Phase 25: a rotation advanced the channel's current key version. Update
       // it (monotonic; ignore a stale lower value). A completed rotation also

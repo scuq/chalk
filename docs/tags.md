@@ -35,7 +35,8 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #notify         40 50 71 102  web/src/notify/ web/assets/sounds/ web/src/components/ProfilePanel.tsx docs/notification-sounds.md docs/phases/PHASE-40-SOUNDS.md docs/phases/PHASE-50-NOTIFYRULES.md docs/phases/PHASE-71-CALLSOUNDS.md docs/phases/PHASE-102-SOUNDTHEMES.md
 #push           -         docs/phases/PHASE-65-PUSH.md
 #parking        53        web/src/parking.ts web/src/parking-hotkey.ts web/src/state/ web/src/components/ docs/phases/PHASE-53-PARKING.md
-#roster         54 78 92 100  web/src/chat/ web/src/components/Sidebar.tsx web/src/components/HoverCard.tsx web/src/components/ZuckerList.tsx web/src/components/CreateChannelModal.tsx web/src/theme.css docs/phases/PHASE-54-ROSTER.md docs/phases/PHASE-78-HIDECHANNELS.md docs/phases/PHASE-92-HOVERCARD.md docs/phases/PHASE-100-VOICESECTION.md
+#roster         54 78 92 100 106  web/src/chat/ web/src/components/Sidebar.tsx web/src/components/HoverCard.tsx web/src/components/ZuckerList.tsx web/src/components/CreateChannelModal.tsx web/src/theme.css docs/phases/PHASE-54-ROSTER.md docs/phases/PHASE-78-HIDECHANNELS.md docs/phases/PHASE-92-HOVERCARD.md docs/phases/PHASE-100-VOICESECTION.md
+#channelnames   106       migrations/0054_channel_short_name.sql internal/store/channel_names.go internal/store/channels.go internal/store/guest_data.go internal/proto/frames.go internal/server/channel_names_ws.go internal/server/ws.go web/src/chat/channel-names.ts web/src/components/Sidebar.tsx web/src/components/CreateChannelModal.tsx web/src/components/ProfilePanel.tsx web/src/components/App.tsx web/src/state/ web/src/proto.ts web/src/theme.css docs/phases/PHASE-106-CHANNELNAMES.md
 #zucker         62 64 78 95  web/src/chat/zucker.ts web/src/components/ZuckerList.tsx web/src/theme.css docs/phases/PHASE-62-ZUCKER.md docs/phases/PHASE-78-HIDECHANNELS.md docs/phases/PHASE-95-PHONEVOICE.md
 #history        55 69 79  internal/store/ web/src/chat/ web/src/components/MessageList.tsx docs/phases/PHASE-55-HISTORY.md docs/phases/PHASE-69-PINNEDHEADER.md docs/phases/PHASE-79-LANDING.md
 #mentions       56        web/src/chat/ web/src/components/Composer.tsx docs/phases/PHASE-56-MENTIONS.md
@@ -85,7 +86,7 @@ Phase numbers that appear in the source but are not claimed above. Left here
 rather than guessed at, so the legend stays trustworthy; move one into a tag
 line when its topic is clear.
 
-    (none — 25 through 102 are all claimed)
+    (none — 25 through 106 are all claimed)
 
 Phases below 25 predate the tagging convention and carry no `// NN-n:` comments
 to find. They are recorded in `docs/phases/PHASE-00-29-FOUNDATION.md` instead —

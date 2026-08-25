@@ -180,6 +180,10 @@ export interface ChannelSummary {
   // a channel actually renders under is per-user (override prefs, 54-4);
   // this is only the seed. "General" for DMs and pre-54 channels.
   groupName: string;
+  // 106-3: the optional abbreviation (≤10 chars); ""/absent when none.
+  // Which of name / shortName the roster shows is prefs.roster.nameStyle.
+  // Optional like expiresAt so pre-106 fixtures and summaries still type.
+  shortName?: string;
   // 33-1: read-state SEED only, as of the frame that delivered this summary.
   // Live unread state is state.unread[channelID] -- render from there, never
   // from these. A channel_event summary carries zeros because the server
@@ -522,6 +526,9 @@ export interface RosterPrefs {
   // style conversation list (Zuckermode). Synced account-wide but consumed
   // only on mobile -- the chat.sidebarWidth precedent: desktop ignores it.
   viewMode?: "classic" | "zucker";
+  // 106-3: "short" renders each channel's short name in the roster where
+  // one is set; anything else (and absent) is the full name.
+  nameStyle?: "full" | "short";
 }
 
 // Phase 9.7d: resolved chat prefs (all fields required + defaulted).
@@ -599,6 +606,8 @@ export interface ResolvedRosterPrefs {
   // 78-1: channel id -> hide entry, junk dropped. Whether an entry actually
   // hides the channel depends on live unread state -- see isHidden.
   hidden: Record<string, HiddenChannel>;
+  // 106-3: anything but the exact string "short" resolves to full.
+  nameStyle: "full" | "short";
 }
 
 export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterPrefs {
@@ -616,6 +625,7 @@ export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterP
     groupOverrides: overrides,
     viewMode: r.viewMode === "zucker" ? "zucker" : "classic",
     hidden: normalizeHidden(r.hidden),
+    nameStyle: r.nameStyle === "short" ? "short" : "full",
   };
 }
 
@@ -1126,6 +1136,10 @@ export type Action =
   | { kind: "channels_loaded"; channels: ChannelSummary[] }
   | { kind: "channel_added"; channel: ChannelSummary }
   | { kind: "channel_removed"; channelID: string }
+  // 106-2: the owner renamed the channel and/or changed its short name.
+  // Carries only the two names: a channel_event summary is built without
+  // a user scope, so folding the whole row would zero the read seed.
+  | { kind: "channel_updated"; channelID: string; name: string; shortName: string }
   | { kind: "channel_key_version_updated"; channelID: string; currentKeyVersion: number }
   // ---- Phase 30 (30-4): voice room occupancy --------------------------
   | { kind: "voice_roster_set"; channelID: string; roster: VoiceParticipant[] }

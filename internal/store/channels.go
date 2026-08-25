@@ -45,6 +45,11 @@ type Channel struct {
 	// at creation, never updated: per-user regrouping happens client-side in
 	// prefs. 'General' for pre-54 channels and DMs.
 	GroupName string
+	// ShortName is the channel's optional abbreviation (106-3), at most ten
+	// characters (migration 0054's CHECK counts characters). Empty means
+	// none; readers fall back to Name. Set at creation and by the owner's
+	// update_channel.
+	ShortName string
 	// ExpiresAt is when the channel and everything it holds are destroyed
 	// (80-6). Nil for permanent channels; non-nil only on ephemeral voice
 	// channels (the 0050 CHECK forces voice + non-DM). Set once at creation.
@@ -128,6 +133,9 @@ type CreateChannelInput struct {
 	// GroupName is the roster-grouping suggestion (54-2). Empty means
 	// 'General'. Trimmed; same 80-char cap as the channel name.
 	GroupName string
+	// ShortName is the optional abbreviation (106-3). Trimmed; at most
+	// MaxShortNameLen characters; empty means none.
+	ShortName string
 	// ExpiresAt makes the channel ephemeral (80-6): it must be a non-DM
 	// voice channel, and its governance is forced to 'dictator' -- a room
 	// that dies with its FKs cannot run week-long votes, and guests are
@@ -210,6 +218,12 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 	if len(groupName) > 80 {
 		return ChannelWithMembers{}, errors.New("group_name too long (max 80)")
 	}
+	// 106-3: the short name is optional; only its length is fenced here
+	// (the 0054 CHECK would refuse it too, but as a constraint error).
+	shortName, err := NormalizeShortName(in.ShortName)
+	if err != nil {
+		return ChannelWithMembers{}, err
+	}
 
 	var result ChannelWithMembers
 	// gov-1a: seed this channel's governance columns from the server-wide
@@ -218,7 +232,7 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 	// column DEFAULTs match these; seeding explicitly is what makes a changed
 	// CHALK_VOTE_* env affect channels created AFTERWARD.
 	gd := s.GovDefaults.withDefaults()
-	err := s.withTx(ctx, func(tx pgx.Tx) error {
+	err = s.withTx(ctx, func(tx pgx.Tx) error {
 		// 1. Insert channel.
 		var ch Channel
 		// 80-6: an ephemeral room's governance is forced to 'dictator'
@@ -233,14 +247,14 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 			   (name, is_dm, created_by,
 			    governance_mode, vote_window_days, vote_expiry_hours, min_eligible,
 			    quorum_percent, pass_percent, supermajority_percent, repropose_cooldown_hours,
-			    channel_type, group_name, expires_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-			 RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, rotation_due_from, governance_mode, channel_type, group_name, expires_at`,
+			    channel_type, group_name, expires_at, short_name)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			 RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, rotation_due_from, governance_mode, channel_type, group_name, expires_at, short_name`,
 			strings.TrimSpace(in.Name), in.IsDM, in.CreatedBy,
 			mode, gd.VoteWindowDays, gd.VoteExpiryHours, gd.MinEligible,
 			gd.QuorumPercent, gd.PassPercent, gd.SupermajorityPercent, gd.ReproposeCooldownHours,
-			channelType, groupName, in.ExpiresAt,
-		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.RotationDueFrom, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName, &ch.ExpiresAt)
+			channelType, groupName, in.ExpiresAt, shortName,
+		).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.RotationDueFrom, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName, &ch.ExpiresAt, &ch.ShortName)
 		if err != nil {
 			return fmt.Errorf("insert channel: %w", err)
 		}
@@ -290,10 +304,10 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 func (s *Store) GetChannel(ctx context.Context, channelID uuid.UUID) (Channel, error) {
 	var ch Channel
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, rotation_due_from, governance_mode, channel_type, group_name, expires_at
+		`SELECT id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, rotation_due_from, governance_mode, channel_type, group_name, expires_at, short_name
 		   FROM channels WHERE id = $1`,
 		channelID,
-	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.RotationDueFrom, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName, &ch.ExpiresAt)
+	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.RotationDueFrom, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName, &ch.ExpiresAt, &ch.ShortName)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Channel{}, ErrChannelNotFound
 	}
@@ -333,7 +347,7 @@ func (s *Store) IsMember(ctx context.Context, channelID, userID uuid.UUID) (bool
 // and the member-count cardinality is small (a few users per channel).
 func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]ChannelWithMembers, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.rotation_due_from, c.governance_mode, c.channel_type, c.group_name, c.expires_at,
+		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.rotation_due_from, c.governance_mode, c.channel_type, c.group_name, c.expires_at, c.short_name,
 		        GREATEST(COALESCE(cs.next_seq, 1) - 1, 0), COALESCE(cr.last_read_seq, 0),
 		        ca.last_msg_id, ca.last_msg_ts, COALESCE(ca.last_msg_seq, 0), ca.last_sender_id,
 		        m.body, m.key_version, m.deleted_at
@@ -363,7 +377,7 @@ func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]Ch
 		var lastMsgTS, deletedAt *time.Time
 		var lastMsgBody []byte
 		var lastMsgKeyVersion *int
-		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.RotationDueFrom, &c.GovernanceMode, &c.ChannelType, &c.GroupName, &c.ExpiresAt, &lastSeq, &lastReadSeq,
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.RotationDueFrom, &c.GovernanceMode, &c.ChannelType, &c.GroupName, &c.ExpiresAt, &c.ShortName, &lastSeq, &lastReadSeq,
 			&lastMsgID, &lastMsgTS, &lastMsgSeq, &lastSender, &lastMsgBody, &lastMsgKeyVersion, &deletedAt); err != nil {
 			return nil, err
 		}

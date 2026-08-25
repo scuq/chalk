@@ -290,6 +290,9 @@ export const TypeListChannelsAck = "list_channels_ack";
 export const TypeFetchHistory = "fetch_history";
 export const TypeFetchHistoryAck = "fetch_history_ack";
 export const TypeChannelEvent = "channel_event";
+// 106-2: rename a channel / set its short name (owner only, dictator mode).
+export const TypeUpdateChannel = "update_channel";
+export const TypeUpdateChannelAck = "update_channel_ack";
 
 // phase 08c: ChannelMember pairs a user_id with their handle. The
 // server populates `handle` from the users table; empty when unknown.
@@ -316,6 +319,7 @@ export interface ChannelSummaryWire {
   governance_mode?: string; // gov-2; "dictator" | "democratic"; absent -> "dictator"
   channel_type?: string; // 30-4; "text" | "voice"; absent from older servers -> "text"
   group_name?: string; // 54-2; creator's grouping suggestion; absent -> "General"
+  short_name?: string; // 106-3; optional abbreviation (≤10 chars); absent -> none
   // 80-6: when the channel self-destructs, unix-millis. Absent -> permanent.
   expires_at?: number;
   last_seq?: number; // 33-1; highest seq in the channel; absent from older servers -> 0
@@ -346,6 +350,8 @@ export interface CreateChannelPayload {
   // server clamps to its CHALK_EPHEMERAL_MAX_TTL_HOURS cap and answers with
   // the resulting absolute expires_at in the summary.
   ttl_secs?: number;
+  // 106-3: optional abbreviation, ≤10 characters. Omitted -> none.
+  short_name?: string;
 }
 
 export interface CreateChannelAckPayload {
@@ -429,9 +435,22 @@ export interface FetchHistoryAckPayload {
 
 export interface ChannelEventPayload {
   // "added" | "removed" | "member_added" | "member_removed" | "rotate_needed"
-  // | "key_rotated" | "key_available". For "key_available" (38-3) the summary
-  // carries only id + current_key_version.
+  // | "key_rotated" | "key_available" | "updated". For "key_available" (38-3)
+  // the summary carries only id + current_key_version. For "updated" (106-2)
+  // it is the full row after a rename / short-name change.
   kind: string;
+  channel: ChannelSummaryWire;
+}
+
+// 106-2: update_channel. An omitted field is left alone; a present one is
+// written after trimming (short_name "" clears it).
+export interface UpdateChannelPayload {
+  channel_id: string;
+  name?: string;
+  short_name?: string;
+}
+
+export interface UpdateChannelAckPayload {
   channel: ChannelSummaryWire;
 }
 

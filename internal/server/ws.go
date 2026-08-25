@@ -803,6 +803,8 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleRemoveMember(ctx, c, conn, f)
 		case proto.TypeAddMember:
 			h.handleAddMember(ctx, c, conn, f)
+		case proto.TypeUpdateChannel: // 106-2
+			h.handleUpdateChannel(ctx, c, conn, f)
 		case proto.TypeDeleteMessage:
 			h.handleDeleteMessage(ctx, c, conn, f)
 		case proto.TypeEditMessage:
@@ -2138,6 +2140,7 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 		GovernanceMode:    c.GovernanceMode,
 		ChannelType:       c.ChannelType,
 		GroupName:         c.GroupName,
+		ShortName:         c.ShortName, // 106-3
 		LastSeq:           c.LastSeq,
 		LastReadSeq:       c.LastReadSeq,
 	}
@@ -2198,6 +2201,11 @@ func (h *WSHandler) handleCreateChannel(
 	if len(strings.TrimSpace(p.GroupName)) > 80 {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel,
 			"group_name too long (max 80)")
+		return
+	}
+	// 106-3: the short name is optional; ten characters at most.
+	if _, sErr := store.NormalizeShortName(p.ShortName); sErr != nil {
+		h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel, sErr.Error())
 		return
 	}
 	if h.store == nil {
@@ -2349,10 +2357,15 @@ func (h *WSHandler) handleCreateChannel(
 		ChannelType: p.ChannelType,
 		GroupName:   p.GroupName,
 		ExpiresAt:   expiresAt,
+		ShortName:   p.ShortName, // 106-3
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrDMCardinality) {
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeDMCardinality, err.Error())
+			return
+		}
+		if errors.Is(err, store.ErrShortNameTooLong) {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel, err.Error())
 			return
 		}
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "create channel: "+err.Error())

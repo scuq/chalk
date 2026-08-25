@@ -10,6 +10,30 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Channels can be renamed.** The channel's owner right-clicks (or
+  long-presses) it in the sidebar and edits the name in place; everyone in
+  the channel sees the new name at once, history and keys untouched. Not
+  for DMs (they are named after the other person), and not yet in
+  democratic channels, where a rename would need a vote that does not
+  exist yet.
+- **Channels have an optional short name** — up to ten characters, set
+  when creating a channel or later by its owner from the same menu. In
+  settings → chat → channel list you choose whether your sidebar (and the
+  phone's conversation list) shows full names or short ones; channels
+  without a short name show their full name either way, the channel
+  header always does, and the sidebar filter finds a channel by either.
+
+### Changed
+- **Channel groups are easier to tell apart.** Each group in the sidebar
+  now sits under its own heading with space and a thin rule above it, and
+  the channels inside step in beneath it, so four groups no longer read
+  as one long list.
+
+---
+
 ## v0.8.5 — 25 August 2026 — The Windows desktop build, second attempt
 
 ### Fixed

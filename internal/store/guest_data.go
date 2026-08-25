@@ -78,7 +78,7 @@ func (g *Guest) ChannelSummary(ctx context.Context, guestUser, guestChannel uuid
 		var lastMsgKeyVersion *int
 		err := tx.QueryRow(ctx,
 			`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version,
-			        c.rotation_pending, c.rotation_due_from, c.governance_mode, c.channel_type, c.group_name, c.expires_at,
+			        c.rotation_pending, c.rotation_due_from, c.governance_mode, c.channel_type, c.group_name, c.expires_at, c.short_name,
 			        GREATEST(COALESCE(cs.next_seq, 1) - 1, 0), COALESCE(cr.last_read_seq, 0),
 			        ca.last_msg_id, ca.last_msg_ts, COALESCE(ca.last_msg_seq, 0), ca.last_sender_id,
 			        m.body, m.key_version, m.deleted_at
@@ -90,7 +90,7 @@ func (g *Guest) ChannelSummary(ctx context.Context, guestUser, guestChannel uuid
 			  WHERE c.id = $1`,
 			guestChannel, guestUser,
 		).Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion,
-			&c.RotationPending, &c.RotationDueFrom, &c.GovernanceMode, &c.ChannelType, &c.GroupName, &c.ExpiresAt,
+			&c.RotationPending, &c.RotationDueFrom, &c.GovernanceMode, &c.ChannelType, &c.GroupName, &c.ExpiresAt, &c.ShortName,
 			&lastSeq, &lastReadSeq,
 			&lastMsgID, &lastMsgTS, &lastMsgSeq, &lastSender, &lastMsgBody, &lastMsgKeyVersion, &deletedAt)
 		if errors.Is(err, pgx.ErrNoRows) {

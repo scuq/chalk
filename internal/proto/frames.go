@@ -261,6 +261,14 @@ const (
 
 	// Server → client (push, no ref).
 	TypeChannelEvent = "channel_event"
+
+	// 106-2: update_channel renames a channel and/or sets its short name.
+	// Owner only, dictator mode only, never a DM. The ack carries the
+	// channel as it now reads; every member (the caller's other devices
+	// included) also gets channel_event{kind="updated"} with the same
+	// summary.
+	TypeUpdateChannel    = "update_channel"
+	TypeUpdateChannelAck = "update_channel_ack"
 )
 
 // ---- Channel summary -----------------------------------------------------
@@ -298,6 +306,9 @@ type ChannelSummary struct {
 	// GroupName is the creator's roster-grouping suggestion (54-2). Absent
 	// from older servers -> treat as "General".
 	GroupName string `json:"group_name,omitempty"`
+	// ShortName is the channel's optional abbreviation (106-3), at most
+	// ten characters. Absent/empty -> none; the client falls back to Name.
+	ShortName string `json:"short_name,omitempty"`
 	// ExpiresAt (unix-millis) is when an ephemeral channel is destroyed
 	// (80-6). Absent/0 = permanent. The client renders the countdown from
 	// this; the server's janitor is what actually enforces it.
@@ -361,11 +372,37 @@ type CreateChannelPayload struct {
 	// server clamps it to CHALK_EPHEMERAL_MAX_TTL_HOURS and forces
 	// governance to 'dictator'.
 	TTLSecs int64 `json:"ttl_secs,omitempty"`
+	// ShortName is the optional abbreviation (106-3). Trimmed; at most ten
+	// characters; empty means none.
+	ShortName string `json:"short_name,omitempty"`
 }
 
 // CreateChannelAckPayload includes the full ChannelSummary so the client
 // can add the new channel to its sidebar without a second roundtrip.
 type CreateChannelAckPayload struct {
+	Channel ChannelSummary `json:"channel"`
+}
+
+// ---- update_channel (106-2, 106-3) ---------------------------------------
+
+// UpdateChannelPayload changes a channel's name and/or short name. A field
+// that is absent (JSON null / omitted) is left alone; a present one is
+// written after trimming. Name must be 1-80 chars after trim; ShortName
+// at most ten characters, and "" clears it.
+//
+// Server rules:
+//   - Caller must be the channel's owner (role='owner').
+//   - The channel must be in dictator mode; democratic mode answers
+//     unilateral_forbidden (a rename proposal type is not built).
+//   - DMs are not renameable: their name renders from the other member.
+type UpdateChannelPayload struct {
+	ChannelID string  `json:"channel_id"`
+	Name      *string `json:"name,omitempty"`
+	ShortName *string `json:"short_name,omitempty"`
+}
+
+// UpdateChannelAckPayload returns the channel as it now reads.
+type UpdateChannelAckPayload struct {
 	Channel ChannelSummary `json:"channel"`
 }
 
@@ -436,6 +473,9 @@ type FetchHistoryAckPayload struct {
 //     (38-3). Summary carries only ID + CurrentKeyVersion --
 //     enough to re-run the key fetch, nothing to fold into
 //     the channel row.
+//   - "updated":        the owner renamed the channel or changed its short
+//     name (106-2). The summary is the full row as it now
+//     reads; clients adopt name and short_name from it.
 type ChannelEventPayload struct {
 	Kind    string         `json:"kind"`
 	Channel ChannelSummary `json:"channel"`

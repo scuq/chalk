@@ -34,6 +34,14 @@ import {
 import type { RosterGroup } from "../chat/channel-groups";
 import { splitHidden } from "../chat/channel-hide";
 import type { HideMode, HiddenChannel } from "../chat/channel-hide";
+import {
+  MAX_SHORT_NAME_LEN,
+  filterText,
+  labelIsAbbreviated,
+  rosterLabel,
+  shortNameLength,
+} from "../chat/channel-names";
+import type { NameStyle } from "../chat/channel-names";
 import { withChannelRule, withUserRule } from "../notify/rules";
 import { useRulesConfig } from "../notify/rules-store";
 import { countsAsUnread, hasUnread } from "../state/types";
@@ -196,6 +204,16 @@ interface Props {
   // bottom of the list. Optional, same as the group pair above.
   hiddenChannels?: Record<string, HiddenChannel>;
   onSetChannelHidden?: (channelID: string, mode: HideMode | null) => void;
+  // 106-3: which of a channel's names the rows show (resolved prefs;
+  // "short" falls back to the full name where none is set).
+  nameStyle?: NameStyle;
+  // 106-2: rename / short-name edit from the context menu. Only the owner
+  // of a non-DM, dictator-mode channel sees the rows; the server enforces
+  // the same rule. An undefined field is left alone; shortName "" clears.
+  onUpdateChannel?: (
+    channelID: string,
+    patch: { name?: string; shortName?: string },
+  ) => void;
   // 53-1: the parking lot. A pseudo-channel that shows nothing -- one click
   // and the conversation pane is a logo. null hides the row (the setting), and
   // parked highlights it the way an open channel is highlighted.
@@ -345,6 +363,8 @@ export function Sidebar({
   onSetChannelGroup,
   hiddenChannels,
   onSetChannelHidden,
+  nameStyle = "full",
+  onUpdateChannel,
   parkingName,
   parked = false,
   onPark,
@@ -391,6 +411,9 @@ export function Sidebar({
   // draft (seeded on open, committed explicitly).
   const overrides = groupOverrides ?? {};
   const [groupDraft, setGroupDraft] = useState("");
+  // 106-2/106-3: the rename rows' drafts, seeded when the menu opens.
+  const [nameDraft, setNameDraft] = useState("");
+  const [shortDraft, setShortDraft] = useState("");
   // 92-1: the roster hover card. Held by userID rather than by value so a
   // presence push that lands while the card is open is reflected on the next
   // render. 92-4: the state, the timer and the placement live in the hook the
@@ -431,7 +454,35 @@ export function Sidebar({
     // 54-4: the group row edits a draft seeded with what the menu opened on
     // (the user's effective group), committed on Enter/blur/datalist pick.
     setGroupDraft(effectiveGroup(ch, overrides));
+    // 106-2/106-3: the rename rows, seeded the same way.
+    setNameDraft(ch.name);
+    setShortDraft(ch.shortName ?? "");
     setChannelMenu({ channelID: ch.id, name: ch.name, ...at });
+  };
+
+  // 106-2: commit a rename row. Nothing is sent when the draft equals what
+  // the channel already has (blur after a no-op edit stays silent), and a
+  // blank name is not a rename -- the draft snaps back instead.
+  const commitNameDraft = () => {
+    if (!channelMenu || !onUpdateChannel) return;
+    const ch = channels.find((c) => c.id === channelMenu.channelID);
+    if (!ch) return;
+    const next = nameDraft.trim();
+    if (!next) {
+      setNameDraft(ch.name);
+      return;
+    }
+    if (next === ch.name) return;
+    onUpdateChannel(ch.id, { name: next });
+  };
+  const commitShortDraft = () => {
+    if (!channelMenu || !onUpdateChannel) return;
+    const ch = channels.find((c) => c.id === channelMenu.channelID);
+    if (!ch) return;
+    const next = shortDraft.trim();
+    if (shortNameLength(next) > MAX_SHORT_NAME_LEN) return; // the input caps this; belt and braces
+    if (next === (ch.shortName ?? "")) return;
+    onUpdateChannel(ch.id, { shortName: next });
   };
 
   const cancelLongPress = () => {
@@ -469,7 +520,9 @@ export function Sidebar({
   );
   const showFilter = showRosterFilter(sortedFriends.length);
 
-  const visibleChannels = filterRoster(textChannels, channelFilter, (ch) => ch.name);
+  // 106-3: the filter matches either name -- the one on screen and the
+  // one it stands for.
+  const visibleChannels = filterRoster(textChannels, channelFilter, filterText);
   const showChannelFilter = showRosterFilter(textChannels.length);
 
   // 54-3: grouped view. An active filter always renders flat -- a match
@@ -558,7 +611,7 @@ export function Sidebar({
   if (hiddenList.length > 0) {
     rosterRows.push({ kind: "hidden-header" });
     if (showHidden) {
-      for (const ch of filterRoster(hiddenList, channelFilter, (c) => c.name)) {
+      for (const ch of filterRoster(hiddenList, channelFilter, filterText)) {
         rosterRows.push({ kind: "channel", ch, hidden: true });
       }
     }
@@ -567,7 +620,9 @@ export function Sidebar({
   // 100-1: one channel row, shared by the voice section and the channels
   // list below it. The JSX is large (badges, occupants, long-press) and must
   // not fork between the two lists.
-  const channelRow = (ch: ChannelSummary, hidden = false) => {
+  // 106-1: grouped is true for rows under a group header, which indent a
+  // step so the header reads as their parent rather than a sibling.
+  const channelRow = (ch: ChannelSummary, hidden = false, grouped = false) => {
     const isVoice = ch.channelType === "voice";
     const roster = isVoice ? (voiceRosters[ch.id] ?? []) : [];
     const u = unread[ch.id];
@@ -580,7 +635,7 @@ export function Sidebar({
     return (
       <li
         key={ch.id}
-        class={`chalk-sidebar-item ${isVoice ? "chalk-sidebar-item--voicech" : ""} ${ch.id === activeRow ? "chalk-sidebar-item--active" : ""} ${showUnread ? "chalk-sidebar-item--unread" : ""} ${hidden ? "chalk-sidebar-item--hidden" : ""}`}
+        class={`chalk-sidebar-item ${isVoice ? "chalk-sidebar-item--voicech" : ""} ${ch.id === activeRow ? "chalk-sidebar-item--active" : ""} ${showUnread ? "chalk-sidebar-item--unread" : ""} ${hidden ? "chalk-sidebar-item--hidden" : ""} ${grouped ? "chalk-sidebar-item--grouped" : ""}`}
         data-testid="sidebar-item"
         data-channel-id={ch.id}
         data-hidden={hidden ? "true" : "false"}
@@ -628,7 +683,14 @@ export function Sidebar({
           >
             <ChannelGlyph type={isVoice ? "voice" : "text"} />
           </span>
-          <span class="chalk-sidebar-item-name">{ch.name}</span>
+          {/* 106-3: the short name where the pref asks for it and one is
+              set; the full name rides as the tooltip so nothing is lost. */}
+          <span
+            class="chalk-sidebar-item-name"
+            title={labelIsAbbreviated(ch, nameStyle) ? ch.name : undefined}
+          >
+            {rosterLabel(ch, nameStyle)}
+          </span>
           {/* 80-14: the ephemeral room's remaining life. Urgency is
               a class, never an inline style (CSP style-src 'self'). */}
           {ch.expiresAt != null && countdownNow != null && (
@@ -1048,7 +1110,9 @@ export function Sidebar({
                 </li>
               );
             }
-            return channelRow(row.ch, row.hidden);
+            // 106-1: rows under a group header (and on the opened hidden
+            // shelf) indent beneath it; the flat, ungrouped list does not.
+            return channelRow(row.ch, row.hidden, groupedView || row.hidden === true);
           })}
         </ul>
       </div>
@@ -1214,6 +1278,81 @@ export function Sidebar({
                   ))}
                 </datalist>
               </div>
+            );
+          })()}
+          {/* 106-2/106-3: rename, and the short name. Owner only, never a
+              DM (its name is the other member's), and not in democratic
+              mode (no rename proposal exists) -- the server refuses all
+              three anyway; hiding the rows just keeps the menu honest.
+              Unlike the group row above, these change what EVERY member
+              sees, so they commit on Enter or blur only when the draft
+              differs, and nothing is applied until the server answers. */}
+          {onUpdateChannel && (() => {
+            const ch = channels.find((c) => c.id === channelMenu.channelID);
+            if (!ch || ch.isDM) return null;
+            if (!ownUserID || ch.createdBy !== ownUserID) return null;
+            if (ch.governanceMode === "democratic") return null;
+            const shortLen = shortNameLength(shortDraft);
+            return (
+              <>
+                <div class="chalk-nick-menu-row">
+                  <span class="chalk-nick-menu-label">name</span>
+                  <input
+                    type="text"
+                    class="chalk-nick-menu-group-input"
+                    data-testid="channel-menu-name"
+                    value={nameDraft}
+                    maxLength={80}
+                    onInput={(e) => setNameDraft((e.target as HTMLInputElement).value)}
+                    onChange={commitNameDraft}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        commitNameDraft();
+                        setChannelMenu(null);
+                      }
+                    }}
+                    aria-label="rename channel"
+                  />
+                </div>
+                <div class="chalk-nick-menu-row">
+                  <span class="chalk-nick-menu-label">short</span>
+                  <input
+                    type="text"
+                    class="chalk-nick-menu-group-input"
+                    data-testid="channel-menu-short"
+                    value={shortDraft}
+                    onInput={(e) => {
+                      // Cap by characters, not UTF-16 units: maxLength would
+                      // let five emoji through and then the server refuses.
+                      const v = (e.target as HTMLInputElement).value;
+                      setShortDraft(
+                        shortNameLength(v) > MAX_SHORT_NAME_LEN
+                          ? Array.from(v.trim()).slice(0, MAX_SHORT_NAME_LEN).join("")
+                          : v,
+                      );
+                    }}
+                    onChange={commitShortDraft}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        commitShortDraft();
+                        setChannelMenu(null);
+                      }
+                    }}
+                    placeholder="none"
+                    title={`up to ${MAX_SHORT_NAME_LEN} characters; blank clears it`}
+                    aria-label="channel short name"
+                  />
+                  <span
+                    class="chalk-nick-menu-hint"
+                    data-testid="channel-menu-short-count"
+                    aria-hidden="true"
+                  >
+                    {shortLen}/{MAX_SHORT_NAME_LEN}
+                  </span>
+                </div>
+              </>
             );
           })()}
           {/* 78-2: take the channel off the roster. Two ways out of a list

@@ -156,7 +156,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     id: "roster",
     tab: "chat",
     title: "channel list",
-    keywords: ["grouping", "groups", "zuckermode", "channels"],
+    keywords: ["grouping", "groups", "zuckermode", "channels", "short name", "channel names"],
   },
   {
     id: "shortcuts",

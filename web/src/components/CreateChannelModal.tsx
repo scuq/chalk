@@ -14,6 +14,7 @@ import { useEffect, useState } from "preact/hooks";
 import type { Friend } from "../state/types";
 import { FriendPicker } from "./FriendPicker";
 import { DEFAULT_GROUP, canonicalizeGroup } from "../chat/channel-groups";
+import { MAX_SHORT_NAME_LEN, shortNameLength } from "../chat/channel-names"; // 106-3
 
 interface Props {
   friends: Friend[];
@@ -35,7 +36,8 @@ interface Props {
   // param is kept so the App-level wire mapping stays unchanged.
   // 54-2: group is the canonicalized grouping suggestion, never empty.
   // 80-12: ttlSecs > 0 makes the voice room ephemeral (0 = permanent).
-  onSubmit: (name: string, isDM: boolean, memberIDs: string[], voice: boolean, group: string, ttlSecs: number) => void;
+  // 106-3: shortName is the optional abbreviation, "" for none.
+  onSubmit: (name: string, isDM: boolean, memberIDs: string[], voice: boolean, group: string, ttlSecs: number, shortName: string) => void;
 }
 
 // 54-5: the <option> value that reveals the new-group input. Leading and
@@ -56,6 +58,7 @@ const TTL_CHOICES: Array<{ label: string; secs: number }> = [
 
 export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEnabled, knownGroups, onClose, onSubmit }: Props) {
   const [name, setName] = useState("");
+  const [shortName, setShortName] = useState(""); // 106-3
   // 54-5: the picked group, or NEW_GROUP_OPTION while naming a new one.
   const [group, setGroup] = useState(knownGroups[0] ?? DEFAULT_GROUP);
   const [newGroup, setNewGroup] = useState("");
@@ -89,6 +92,10 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEn
       setError("name too long (max 80)");
       return;
     }
+    if (shortNameLength(shortName) > MAX_SHORT_NAME_LEN) {
+      setError(`short name too long (max ${MAX_SHORT_NAME_LEN})`);
+      return;
+    }
     // Falling back to the default group here would silently ignore the
     // deliberate "new group" pick, so say so instead.
     if (namingNewGroup && !newGroup.trim()) {
@@ -108,7 +115,7 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEn
     // second DM between the same pair would strand the first one's history.
     onSubmit(trimmed, false, Array.from(selected), voice,
       canonicalizeGroup(namingNewGroup ? newGroup : group, knownGroups),
-      voice ? ttlSecs : 0);
+      voice ? ttlSecs : 0, shortName.trim());
   };
 
   return (
@@ -144,6 +151,33 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEn
               autoFocus
               maxLength={80}
               placeholder="general"
+            />
+          </label>
+
+          {/* 106-3: the optional abbreviation. Ten characters, counted the
+              way the server counts them (code points), so the cap is
+              applied in onInput rather than through maxLength. */}
+          <label class="chalk-field">
+            <span class="chalk-field-label">
+              short name{" "}
+              <span class="chalk-field-hint" data-testid="create-modal-short-count">
+                ({shortNameLength(shortName)}/{MAX_SHORT_NAME_LEN}, optional)
+              </span>
+            </span>
+            <input
+              type="text"
+              class="chalk-field-input"
+              data-testid="create-modal-short"
+              value={shortName}
+              onInput={(e) => {
+                const v = (e.target as HTMLInputElement).value;
+                setShortName(
+                  shortNameLength(v) > MAX_SHORT_NAME_LEN
+                    ? Array.from(v.trim()).slice(0, MAX_SHORT_NAME_LEN).join("")
+                    : v,
+                );
+              }}
+              placeholder="gen"
             />
           </label>
 

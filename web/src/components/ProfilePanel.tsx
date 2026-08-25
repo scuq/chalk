@@ -46,6 +46,7 @@ import {
   parkingLotName,
 } from "../parking";
 import { PARKING_HOTKEY_LABEL } from "../parking-hotkey";
+import { NAME_STYLE_CHOICES, type NameStyle } from "../chat/channel-names"; // 106-3
 import { composerHelp, isMacPlatform } from "../chat/composer-keys";
 import { useIsMobile } from "../mobile";
 import { notifySounds } from "../notify";
@@ -189,6 +190,9 @@ interface Props {
   // Account pref, so the roster reads the same on every device.
   rosterGroupingEnabled?: boolean;
   onSetRosterGrouping?: (enabled: boolean) => void;
+  // 106-3: full or short channel names in the roster. Account pref.
+  rosterNameStyle?: NameStyle;
+  onSetRosterNameStyle?: (style: NameStyle) => void;
   // 62-5: Zuckermode -- the phone's unified conversation list. Synced
   // account-wide, consumed only on mobile.
   zuckerEnabled?: boolean;
@@ -222,6 +226,8 @@ export function ProfilePanel({
   onSetParkingLot,
   rosterGroupingEnabled,
   onSetRosterGrouping,
+  rosterNameStyle,
+  onSetRosterNameStyle,
   zuckerEnabled,
   onSetZucker,
   onClose,
@@ -1052,6 +1058,38 @@ export function ProfilePanel({
                   </span>
                 </label>
               </div>
+              {/* 106-3: full vs short channel names. The short name is set
+                  per channel (at creation, or by its owner from the channel
+                  menu); this picks which one the list shows. Channels
+                  without one show their full name either way. */}
+              {rosterNameStyle !== undefined && onSetRosterNameStyle && (
+                <div class="chalk-profile-field">
+                  <label class="chalk-profile-label" for="roster-name-style">
+                    channel names
+                  </label>
+                  <select
+                    id="roster-name-style"
+                    class="chalk-profile-select"
+                    value={rosterNameStyle}
+                    onChange={(e) =>
+                      onSetRosterNameStyle(
+                        (e.target as HTMLSelectElement).value as NameStyle,
+                      )
+                    }
+                    data-testid="roster-name-style"
+                  >
+                    {NAME_STYLE_CHOICES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label} — {c.desc}
+                      </option>
+                    ))}
+                  </select>
+                  <span class="chalk-profile-theme-desc">
+                    (in the sidebar and the conversation list; the channel
+                    header always shows the full name)
+                  </span>
+                </div>
+              )}
               {/* 62-5: Zuckermode. Rendered inside the channel-list section
                   because it is a roster-presentation choice; the pref is
                   synced but only phones act on it. */}
