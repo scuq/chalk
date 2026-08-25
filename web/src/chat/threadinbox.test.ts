@@ -162,10 +162,10 @@ test("matching is case-insensitive in both directions", () => {
 });
 
 test("terms are ANDed and order-independent", () => {
-  const hay = "[CORE] General blade the deploy broke again";
-  assert.equal(threadRowMatches(hay, threadQueryTerms("deploy blade")), true);
-  assert.equal(threadRowMatches(hay, threadQueryTerms("blade deploy")), true);
-  assert.equal(threadRowMatches(hay, threadQueryTerms("blade rollback")), false);
+  const hay = "[CORE] General carol the deploy broke again";
+  assert.equal(threadRowMatches(hay, threadQueryTerms("deploy carol")), true);
+  assert.equal(threadRowMatches(hay, threadQueryTerms("carol deploy")), true);
+  assert.equal(threadRowMatches(hay, threadQueryTerms("carol rollback")), false);
 });
 
 test("terms match inside words", () => {

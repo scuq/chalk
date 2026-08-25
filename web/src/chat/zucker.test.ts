@@ -279,9 +279,9 @@ test("buildVoiceOccupants names each occupant, own entry as you", () => {
   const out = buildVoiceOccupants(
     { r1: [dev(ME, "d1"), dev("u2", "d2")] },
     ME,
-    (_cid, u) => (u === "u2" ? "blade" : "?"),
+    (_cid, u) => (u === "u2" ? "carol" : "?"),
   );
-  assert.deepEqual(out.r1.map((o) => o.name), ["you", "blade"]);
+  assert.deepEqual(out.r1.map((o) => o.name), ["you", "carol"]);
 });
 
 test("buildVoiceOccupants resolves names per channel", () => {
@@ -330,6 +330,6 @@ test("buildVoiceOccupants keeps empty rooms as empty lists", () => {
 });
 
 test("buildVoiceOccupants with no viewer names every entry", () => {
-  const out = buildVoiceOccupants({ r1: [dev(ME, "d1")] }, null, () => "nowx");
-  assert.equal(out.r1[0].name, "nowx");
+  const out = buildVoiceOccupants({ r1: [dev(ME, "d1")] }, null, () => "dave");
+  assert.equal(out.r1[0].name, "dave");
 });

@@ -29,7 +29,7 @@ test("hueFromString is stable, case-insensitive, and in range", () => {
 });
 
 test("hueFromString separates typical handles", () => {
-  const hues = ["alice9", "craigtester", "andowin", "scuq"].map(hueFromString);
+  const hues = ["alice9", "craigtester", "carol", "dave"].map(hueFromString);
   assert.equal(new Set(hues).size, hues.length, "no collisions on these");
 });
 

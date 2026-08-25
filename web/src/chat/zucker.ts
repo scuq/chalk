@@ -225,7 +225,7 @@ interface RosterEntry {
 // buildVoiceOccupants reshapes the live rosters into per-room name lists.
 //
 // One row per *person*, not per device: the sidebar lists both of someone's
-// devices because a desktop column can afford to, but on a phone two "blade"
+// devices because a desktop column can afford to, but on a phone two "carol"
 // lines in a row read as a bug. Merging them means deciding what the badges
 // say for a person who is in twice -- muted only when every one of their
 // devices is (one open mic is an open mic), sending video or screen when any
