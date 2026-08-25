@@ -41,7 +41,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { expectedArchive, verifyArchive, verifySums } from "./verify";
@@ -215,9 +215,9 @@ export async function downloadTo(
   }
 }
 
-function run(cmd: string, argv: string[]): Promise<void> {
+function run(cmd: string, argv: string[], cwd?: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, argv, { stdio: ["ignore", "ignore", "pipe"] });
+    const p = spawn(cmd, argv, { stdio: ["ignore", "ignore", "pipe"], cwd });
     let err = "";
     p.stderr?.on("data", (d) => (err += String(d)));
     p.on("error", reject);
@@ -225,11 +225,23 @@ function run(cmd: string, argv: string[]): Promise<void> {
   });
 }
 
+/** windowsTar is the OS's bsdtar (reads zips, accepts drive letters). A
+ * GNU tar from Git for Windows earlier on PATH reads `C:\…` as host:path
+ * and fails with "Cannot connect to C", so the System32 one is named
+ * outright. */
+function windowsTar(): string {
+  const sys = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+  return existsSync(sys) ? sys : "tar";
+}
+
 function defaultExtract(platform: string, tar: string): (archive: string, dest: string) => Promise<void> {
   // ditto restores a bundle exactly (symlinks, modes, the resource fork
-  // sequestering of a ditto-made zip); bsdtar/GNU tar for the rest.
+  // sequestering of a ditto-made zip); bsdtar/GNU tar for the rest. The
+  // archive is named relative to the destination and tar runs there, so no
+  // path with a drive letter ever reaches tar's argument parser.
   if (platform === "darwin") return (archive, dest) => run("ditto", ["-x", "-k", archive, dest]);
-  return (archive, dest) => run(tar, ["-xf", archive, "-C", dest]);
+  const bin = platform === "win32" && tar === "tar" ? windowsTar() : tar;
+  return (archive, dest) => run(bin, ["-xf", relative(dest, archive)], dest);
 }
 
 /** hoistSingleDir: a Linux tar.gz carries one top-level directory, a Windows

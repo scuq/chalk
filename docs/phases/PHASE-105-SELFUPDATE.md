@@ -154,6 +154,17 @@ every desktop that updates. Same posture as `CHALK_WRAP_SIG_REQUIRED`.
     its next start. A skipped version is never offered again; the release
     after it is. Cost: one extra copy on disk (the previous version).
 
+## Field notes
+
+- **v0.8.3 (2026-08-25):** first release with a signed `SHA256SUMS.desktop`;
+  the `.ed25519` verified locally against `chalk-release.pub` and the pinned
+  key. The Windows desktop job failed before packaging: in the runner's
+  `bash`, Git for Windows' GNU `tar` shadows `System32\tar.exe` and treats a
+  `C:\…` argument as `host:path`. `defaultExtract` now names the System32
+  bsdtar on win32 and runs tar *in* the destination with a relative archive
+  path, so no drive-letter path reaches tar anywhere; the tests build their
+  fixtures the same way.
+
 ## Checklist
 
 Machine-checked (Linux, 2026-08-25 — `updater.test.ts`, and the probe with

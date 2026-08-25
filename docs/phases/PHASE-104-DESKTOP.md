@@ -258,8 +258,13 @@ identity.
       (entry + icon under a scratch `XDG_DATA_HOME`) ✔
 - [x] the full probe passes against the packaged binary
       (`CHALK_PROBE_EXE=desktop/out/chalk-linux-arm64/chalk`) ✔
-- [ ] the release workflow's `desktop` job on a real tag: three runners,
-      six archives, Windows signature verifies, `SHA256SUMS.desktop` signed
+- [x] the release workflow's `desktop` job on a real tag — v0.8.3: Linux and
+      macOS archives published, `SHA256SUMS.desktop` cosign- and
+      Ed25519-signed (verified locally against the pinned key) ✔; the
+      Windows job failed in `npm test` (Git for Windows' GNU tar on the
+      runner reads `C:\…` as host:path) — fixed, first Windows run is v0.8.4
+- [ ] the Windows archives and their Authenticode signature (needs the
+      `WIN_SIGN_*` secrets, still unset)
 - [ ] the update dialog and menu entry against a real newer release (a dev
       build never checks; stamp a lower version to see it)
 

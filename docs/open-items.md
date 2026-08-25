@@ -5,7 +5,7 @@ What is **not** done. Shipped history lives in [phase-log.md](phase-log.md)
 is the authority on what is still open, and `CLAUDE.md` points here rather than
 carrying it.
 
-Latest release: **v0.8.3** — keep this in step with the topmost `## vX.Y.Z`
+Latest release: **v0.8.4** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
@@ -73,16 +73,18 @@ Shipped (85-1 … 85-4, record in [phases/PHASE-85-OPLOG.md](phases/PHASE-85-OPL
 with two items left at the end of that record: the live-stack run of the
 connection snapshot, and the missing off switch for Caddy's access log.
 
-## Phase 104 — the desktop app: built, first release pending
+## Phase 104 — the desktop app: released in v0.8.3, Windows in v0.8.4
 
 An Electron shell around the server's own page, record in
 [phases/PHASE-104-DESKTOP.md](phases/PHASE-104-DESKTOP.md). All four slices
 are in: window + server picker + link routing + permission policy +
 screen-share chooser, tray and close-to-tray, the OS idle clock as the
 presence source, packaging + the `desktop` release job + the update notice.
-Verified on Linux against the dev stack and the packaged binary; **no tag
-has run the desktop job yet**, so the first `v*` release after this is the
-real test of the Windows and macOS runners. Open:
+Verified on Linux against the dev stack and the packaged binary. v0.8.3
+was the first tag to run the desktop job: Linux and macOS archives and the
+signed `SHA256SUMS.desktop` published; the Windows job failed on the
+runner's GNU tar (fixed for v0.8.4, whose run is the first Windows
+evidence). Open:
 
 - **One-click self-update (phase 105) is built** — signed sums and the
   verifier, the side-by-side updater on all three platforms, preferences,

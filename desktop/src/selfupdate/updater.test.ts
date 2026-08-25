@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import {
   cleanupOldVersions,
   hoistSingleDir,
@@ -31,7 +31,9 @@ async function fakeRelease(tamper: "none" | "archive" | "signature" = "none") {
   writeFileSync(join(appDir, "chalk"), "#!/bin/sh\necho fake chalk\n", { mode: 0o755 });
   mkdirSync(join(appDir, "resources"));
   writeFileSync(join(appDir, "resources", "app.asar"), "not really");
-  execFileSync("tar", ["-czf", join(work, ARCHIVE), "-C", work, `chalk-linux-${ARCH}`]);
+  // Relative paths and cwd: GNU tar on a Windows runner reads "C:\\…" as
+  // host:path (the very bug 0.8.3's Windows build failed on).
+  execFileSync("tar", ["-czf", ARCHIVE, `chalk-linux-${ARCH}`], { cwd: work });
   let archive = new Uint8Array(readFileSync(join(work, ARCHIVE))) as Uint8Array<ArrayBuffer>;
   const sumsText = `${await sha256Hex(archive)}  ${ARCHIVE}\n`;
   if (tamper === "archive") archive = new Uint8Array([...archive, 0]) as Uint8Array<ArrayBuffer>;
@@ -195,7 +197,7 @@ async function fakeMacRelease() {
   mkdirSync(join(work, "__MACOSX"));
   writeFileSync(join(work, "__MACOSX", "._junk"), "x");
   // A tar.gz served under the zip's name; the injected extractor untars it.
-  _exec("tar", ["-czf", join(work, MAC_ARCHIVE), "-C", work, "chalk.app", "__MACOSX"]);
+  _exec("tar", ["-czf", MAC_ARCHIVE, "chalk.app", "__MACOSX"], { cwd: work });
   let archive = new Uint8Array(readFileSync(join(work, MAC_ARCHIVE))) as Uint8Array<ArrayBuffer>;
   const sums = new TextEncoder().encode(`${await sha256Hex(archive)}  ${MAC_ARCHIVE}\n`) as Uint8Array<ArrayBuffer>;
   const key = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
@@ -234,7 +236,7 @@ test("macOS: prepareUpdate unpacks to chalk.app.next with the marker outside the
   const rel = await fakeMacRelease();
   const inst = fakeMacInstall();
   const extract = async (archive: string, dest: string) => {
-    _exec("tar", ["-xf", archive, "-C", dest]);
+    _exec("tar", ["-xf", relative(dest, archive)], { cwd: dest });
   };
   const r = await prepareUpdate(VERSION, {
     platform: "darwin", arch: ARCH, execPath: inst.execPath, fallbackRoot: join(inst.root, "fb"),
