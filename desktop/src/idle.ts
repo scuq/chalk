@@ -14,13 +14,17 @@
 // minutes system-idle.ts uses), so policy stays where it already lives and
 // this file is a clock. Nothing here leaves the machine: the page turns it
 // into the same presence_update it already sends.
+//
+// 104-5: `locked` is derived on every read (idle-clock.ts says why a latch
+// stuck a sleeping Mac on away), and the shell logs each power event and
+// each change in what the OS answers, so the next stuck dot is readable off
+// stdout instead of guessed at.
 
 import { ipcMain, powerMonitor, type BrowserWindow } from "electron";
+import { formatReading, readIdle, readingChanged } from "./idle-clock";
+import type { IdleClockDeps, IdleReading, IdleState } from "./idle-clock";
 
-export interface IdleState {
-  idleMs: number;
-  locked: boolean;
-}
+export type { IdleState } from "./idle-clock";
 
 export const IDLE_CHANNEL = "chalk:idle";
 export const IDLE_GET = "chalk:idle:get";
@@ -29,50 +33,63 @@ export const IDLE_GET = "chalk:idle:get";
  * page's own EVALUATE_INTERVAL_MS; a finer tick buys nothing. */
 const POLL_MS = 15_000;
 
+const deps: IdleClockDeps = {
+  idleSeconds: () => powerMonitor.getSystemIdleTime(),
+  idleState: () => powerMonitor.getSystemIdleState(60),
+};
+
 /**
- * startIdlePublisher reads the OS clock on a timer and on lock/unlock, and
- * pushes to the window the caller returns (null while there is none). The
- * page can also pull the current state over IDLE_GET when it subscribes, so
- * it never waits a full tick for its opening value.
+ * startIdlePublisher reads the OS clock on a timer and on lock/unlock/resume,
+ * and pushes to the window the caller returns (null while there is none).
+ * The page can also pull the current state over IDLE_GET when it subscribes,
+ * so it never waits a full tick for its opening value.
  */
 export function startIdlePublisher(target: () => BrowserWindow | null): () => void {
-  let locked = false;
+  // The shell's own lock edge; the only thing remembered between reads.
+  let eventLocked = false;
+  let last: IdleReading | null = null;
 
-  const read = (): IdleState => {
-    // getSystemIdleState knows about the lock on the platforms that report
-    // it; the events below keep `locked` current in between reads.
-    const state = powerMonitor.getSystemIdleState(60);
-    if (state === "locked") locked = true;
-    return { idleMs: powerMonitor.getSystemIdleTime() * 1000, locked };
+  const read = (why: string): IdleState => {
+    const r = readIdle(deps, eventLocked);
+    if (why !== "tick" || readingChanged(last, r)) {
+      console.log(`chalk-desktop idle: ${formatReading(why, r)}`);
+    }
+    last = r;
+    return { idleMs: r.idleMs, locked: r.locked };
   };
 
-  const publish = () => {
+  const publish = (why: string) => {
     const win = target();
     if (!win || win.isDestroyed()) return;
-    win.webContents.send(IDLE_CHANNEL, read());
+    win.webContents.send(IDLE_CHANNEL, read(why));
   };
 
   const onLock = () => {
-    locked = true;
-    publish();
+    eventLocked = true;
+    publish("lock-screen");
   };
   const onUnlock = () => {
-    locked = false;
-    publish();
+    eventLocked = false;
+    publish("unlock-screen");
   };
   // Waking from sleep: the idle clock may say hours; say so at once rather
   // than at the next tick.
-  const onResume = () => publish();
+  const onResume = () => publish("resume");
+  // Logged only: what the OS answered on the way down is half of any
+  // wake-up diagnosis.
+  const onSuspend = () => read("suspend");
+  const onTick = () => publish("tick");
 
   powerMonitor.on("lock-screen", onLock);
   powerMonitor.on("unlock-screen", onUnlock);
   powerMonitor.on("resume", onResume);
-  const timer = setInterval(publish, POLL_MS);
+  powerMonitor.on("suspend", onSuspend);
+  const timer = setInterval(onTick, POLL_MS);
 
   ipcMain.handle(IDLE_GET, (event) => {
     const win = target();
     if (!win || win.isDestroyed() || event.sender !== win.webContents) return null;
-    return read();
+    return read("get");
   });
 
   return () => {
@@ -80,6 +97,7 @@ export function startIdlePublisher(target: () => BrowserWindow | null): () => vo
     powerMonitor.off("lock-screen", onLock);
     powerMonitor.off("unlock-screen", onUnlock);
     powerMonitor.off("resume", onResume);
+    powerMonitor.off("suspend", onSuspend);
     ipcMain.removeHandler(IDLE_GET);
   };
 }

@@ -110,6 +110,10 @@ can reach packaging). Open:
   macOS passkeys need a native module; Linux reports no screen lock; GNOME
   shows no tray without an AppIndicator extension.
 - The 104-1…3 manual lists in the phase doc have only been run on Linux.
+- 104-5 (2026-08-26) fixed the shell staying *away* after a Mac slept —
+  `locked` is derived per read instead of latched — from source reading
+  alone; the phase doc's 104-5 checklist is the confirmation on a real
+  Mac, and its log lines are what to read if it recurs.
 
 ## Phase 93-3 — the resizable thread pane: designed, not started
 

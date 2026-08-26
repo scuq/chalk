@@ -10,6 +10,16 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- **The desktop app no longer stays "away" after the Mac sleeps.** The
+  shell treated one report of a locked screen as permanent until an
+  unlock event arrived, and after sleep (or a screensaver with no
+  password) that event never came, so no amount of typing brought you
+  back online. The lock is now re-read every time, and a lock the OS
+  still reports while you are visibly typing is ignored as stale.
+
 ## v0.8.6 — 25 August 2026 — Channel rename, short names and clearer groups
 
 ### Added

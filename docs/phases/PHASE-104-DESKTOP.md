@@ -2,7 +2,8 @@
 
 **Status:** all four slices built — 104-1 the shell, 104-2 tray and
 close-to-tray, 104-3 system idle → presence, 104-4 packaging, release
-workflow and the update notice. The first release that carries desktop
+workflow and the update notice; 104-5 (2026-08-26) fixed the idle clock
+latching *locked* across a Mac sleep. The first release that carries desktop
 archives closes the phase; one-click self-update is phase 105 (planned).
 Research done 2026-08-24.
 
@@ -172,6 +173,32 @@ Rejected along the way:
   through `powerMonitor` — idle time only, the same gap phase 90 records for
   wlroots. Nothing crosses the network that did not before: the page sends
   the same `presence_update`.
+- **104-5 — locked is derived, and the clock logs.** Built. Bug from a Mac
+  that slept and woke: the shell stayed *away* until restarted. `idle.ts`
+  latched `locked = true` on one `getSystemIdleState() == "locked"` and
+  cleared it only on `unlock-screen`. Two ways that sticks on macOS.
+  Chromium's "locked" (`ui/base/idle/idle_mac.mm`) is itself a pair of
+  notification latches — `screensaverRunning || screenLocked`, set by
+  `com.apple.screensaver.didstart` / `screenIsLocked`, cleared by `didstop`
+  / `screenIsUnlocked`, never re-queried, no wake handling — and a Mac that
+  sleeps through the screensaver does not reliably post `didstop` on wake,
+  so every 15 s tick re-latched what the unlock had just cleared. And a
+  screensaver with no password produces no `unlock-screen` at all, so the
+  latch had nothing to clear it. A third hazard: `onUnlock` published via
+  `read()`, and Electron's observer and Chromium's observer of the same
+  `screenIsUnlocked` notification run in unspecified order, so the unlock
+  handler could re-latch inside itself. Fix: `desktop/src/idle-clock.ts`
+  (pure, tested) derives `locked` on every read as `eventLocked ||
+  (osState == "locked" && idleMs >= STALE_LOCK_MS)` — the shell's own
+  lock/unlock edge stays immediate, and an OS lock only counts on its own
+  after 30 s without input, since input is what ends a screensaver. The
+  publisher logs every power event (`lock-screen`, `unlock-screen`,
+  `suspend`, `resume`) and every tick on which the OS answer or the verdict
+  changed, as `chalk-desktop idle: <why>: os=… idle=…s events=… ->
+  locked=…` on stdout. The reconnect path was checked and is not involved:
+  chalkd sets *online* on connect and the page re-sends `presence_update`
+  when the socket reopens. Not yet confirmed on a real Mac — the checklist
+  below says what to watch.
 - **104-4 — packaging, release, update notice.** Built.
   - `desktop/package.mjs` drives `@electron/packager` (20.3, pure-JS
     `resedit` for the Windows metadata — no wine) into
@@ -249,6 +276,18 @@ identity.
 - [ ] a real lock on Windows/macOS does the same (Linux cannot report it)
 - [ ] ten minutes untouched → away; first input → online
 - [ ] the away toggle in settings turns the source off and on
+
+104-5 (needs a Mac; not yet run):
+
+- [ ] run the shell from a terminal, sleep the Mac (lid or menu), wake,
+      unlock: the `chalk-desktop idle:` lines show `suspend`, `resume`,
+      `unlock-screen`; within one tick of the first keystroke the last line
+      says `locked=false` and the header is *online*
+- [ ] if `os=locked` keeps appearing on later ticks while `idle=` is small,
+      that is Chromium's stale screensaver latch — the fix is doing its job;
+      note it here
+- [ ] screensaver with "require password" off: it starts, it stops on
+      input, the header goes *online* without an `unlock-screen` line
 
 104-4 (Linux, 2026-08-25):
 
