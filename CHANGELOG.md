@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.7 — 26 August 2026 — Desktop presence after sleep
 
 ### Fixed
 - **The desktop app no longer stays "away" after the Mac sleeps.** The
