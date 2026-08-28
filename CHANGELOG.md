@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.8 — 29 August 2026 — Quoting a message, and desktop pop-outs
 
 ### Added
 - **Quote a message you are answering.** The row menu has a new "quote": it
@@ -25,6 +25,14 @@ The engineering-level history (which slice shipped what) lives in
   and quoting a quote nests. As with the rest of nano markdown this is your
   setting alone: leave it off and you see the plain `>` characters, which read
   as a quote anyway, and nothing you send is ever changed by it.
+
+### Fixed
+- **Popping a video out in the desktop app works again.** Clicking "popout"
+  on a call tile used to freeze the whole app: the desktop shell has no
+  floating picture-in-picture window, chalk asked for one anyway and never
+  got an answer. The shell now says so up front, and the tile opens in an
+  ordinary window of its own — shaped like the video and placed where chalk
+  asked, instead of one fixed portrait window for everything.
 
 ## v0.8.7 — 26 August 2026 — Desktop presence after sleep
 

@@ -5,7 +5,7 @@ What is **not** done. Shipped history lives in [phase-log.md](phase-log.md)
 is the authority on what is still open, and `CLAUDE.md` points here rather than
 carrying it.
 
-Latest release: **v0.8.7** — keep this in step with the topmost `## vX.Y.Z`
+Latest release: **v0.8.8** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
@@ -114,6 +114,11 @@ can reach packaging). Open:
   `locked` is derived per read instead of latched — from source reading
   alone; the phase doc's 104-5 checklist is the confirmation on a real
   Mac, and its log lines are what to read if it recurs.
+- 104-6 (2026-08-29): the pop-out call window froze the shell (Electron has
+  no Document Picture-in-Picture; the feature is now switched off so the
+  page takes its plain pop-up path) — reproduced and fixed with the
+  Playwright-Electron probe on Linux; the shaped-window part is unverified
+  in a real call on macOS/Windows.
 
 ## Phase 93-3 — the resizable thread pane: designed, not started
 
