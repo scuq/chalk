@@ -12,6 +12,12 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Changed
+- **A popped-out tile rests in the app.** While a face or a shared screen is
+  showing in its own window, its tile in the call no longer plays the same
+  video a second time: it shows the person's initial and says "popped out"
+  until the window is closed, from either side.
+
 ### Fixed
 - **A popped-out video can live on a second screen.** In the desktop app
   the pop-out window was tied to the main window, so on a Mac dragging it

@@ -6782,6 +6782,23 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-size: calc(44px * var(--chalk-font-scale));
 }
 
+/* 47-11: the tile's video is showing in a window of its own; the tile keeps
+   the avatar and says so, in the pop-out button's own voice, above the
+   initial so neither covers the other. */
+.chalk-voice-peer-out {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: calc(11px * var(--chalk-font-scale));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--chalk-fg-muted);
+  pointer-events: none;
+  user-select: none;
+}
+
 /* 63-2: sound is arriving from this tile right now. Top-right so it reads
    against video without covering the bottom label bar. */
 .chalk-voice-speak-dot {

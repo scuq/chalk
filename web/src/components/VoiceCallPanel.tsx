@@ -898,7 +898,8 @@ function StagePeer({
           : grid
             ? " chalk-voice-peer--grid"
             : " chalk-voice-peer--strip") +
-        (tile.isSelf ? " chalk-voice-peer--self" : "")
+        (tile.isSelf ? " chalk-voice-peer--self" : "") +
+        (poppedOut ? " chalk-voice-peer--out" : "")
       }
       data-testid={big ? "voice-tile-big" : "voice-tile"}
       data-peer={tile.key}
@@ -917,7 +918,11 @@ function StagePeer({
       }
       title={big ? shownLabel : `${shownLabel} — click to focus`}
     >
-      {tile.stream ? (
+      {/* 47-11: a tile showing in its own window rests here. The <video> is
+          unmounted, not overlaid: the point is to stop painting the same
+          frames twice, and the remount flicker on the way back is the cost
+          of a deliberate close, not of a camera blinking. */}
+      {tile.stream && !poppedOut ? (
         <>
           <VideoSurface stream={tile.stream} mirrored={tile.isSelf && !tile.isScreen} />
           {!tile.hasLiveVideo && (
@@ -930,6 +935,11 @@ function StagePeer({
         <div class="chalk-voice-avatar" aria-hidden="true">
           {(label === "you" ? handleForSelfInitial(channel, selfUserID) : label).slice(0, 1).toUpperCase()}
         </div>
+      )}
+      {poppedOut && (
+        <span class="chalk-voice-peer-out" data-testid="voice-tile-out" title={`${shownLabel} is showing in its own window`}>
+          ⧉ popped out
+        </span>
       )}
       {audible && (
         <span

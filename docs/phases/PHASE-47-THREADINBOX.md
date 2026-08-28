@@ -3,7 +3,7 @@
 *Backfilled record.* Written after the fact from the commit history and the
 changelog; the design notes are as-built, not a contemporaneous plan.
 
-**Status:** shipped, v0.3.48 – v0.3.51.
+**Status:** shipped, v0.3.48 – v0.3.51; 47-11 added 2026-08-29.
 **Tags:** `#threads`, `#voice` → `tools/where.sh -g threads`
 
 ## Why
@@ -38,6 +38,14 @@ A grab-bag phase, held together by "the thing on screen is lying to you":
 - **47-8** — the thread filter searches every message of a thread this device
   has decrypted, and a matching row previews the line that matched.
 - **47-9** — darkord theme; azeroth goes forest green.
+- **47-11** (2026-08-29, long after the rest) — a tile whose video is showing
+  in its own window rests in the app: its `<video>` is unmounted and the
+  avatar carries a "⧉ popped out" caption until the window closes from
+  either side. Asked for from the desktop shell, where the same frames were
+  being painted twice; applies to every browser. The `<video>` is unmounted
+  rather than overlaid (the overlay trick in `.chalk-voice-avatar--overlay`
+  exists to avoid remount flicker when a camera blinks) because not painting
+  is the point, and the flicker on the way back follows a deliberate close.
 
 ## Where it lives
 
