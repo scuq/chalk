@@ -10,6 +10,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- **A popped-out video can live on a second screen.** In the desktop app
+  the pop-out window was tied to the main window, so on a Mac dragging it
+  to another display snapped it straight back. It is now a window of its
+  own: put it wherever you like, and it stays there.
+
 ## v0.8.8 — 29 August 2026 — Quoting a message, and desktop pop-outs
 
 ### Added

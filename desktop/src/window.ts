@@ -93,13 +93,16 @@ export function createChooser(parent: BrowserWindow): BrowserWindow {
  * 104-6: the size and place come from the window.open() features when the
  * page gave them (a pop-out is shaped like its video, and several cascade);
  * the fixed portrait default is what the recovery print wants.
+ *
+ * 104-7: no `parent`. A child window is bound to its parent's display and
+ * Space on macOS (NSWindow addChildWindow), so a pop-out dragged to a
+ * second screen snapped back beside the app. Nothing needed the link: the
+ * page closes its pop-outs itself (voice/pip.ts, on pagehide), and a
+ * share still showing while chalk is closed to the tray is what the tray
+ * is for. The chooser keeps its parent; that one is a dialog.
  */
-export function childWindowOptions(
-  parent: BrowserWindow,
-  geometry: PopupGeometry = {},
-): Electron.BrowserWindowConstructorOptions {
+export function childWindowOptions(geometry: PopupGeometry = {}): Electron.BrowserWindowConstructorOptions {
   return {
-    parent,
     width: geometry.width ?? 520,
     height: geometry.height ?? 680,
     // The page asked for a viewport, as window.open() features mean it, not

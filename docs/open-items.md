@@ -119,6 +119,9 @@ can reach packaging). Open:
   page takes its plain pop-up path) — reproduced and fixed with the
   Playwright-Electron probe on Linux; the shaped-window part is unverified
   in a real call on macOS/Windows.
+- 104-7 (2026-08-29): pop-outs are top-level windows (no `parent`), so a
+  Mac can keep one on a second display — the two-screen check in the phase
+  doc is still to run.
 
 ## Phase 93-3 — the resizable thread pane: designed, not started
 

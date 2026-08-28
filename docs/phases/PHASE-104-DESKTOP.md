@@ -4,7 +4,8 @@
 close-to-tray, 104-3 system idle → presence, 104-4 packaging, release
 workflow and the update notice; 104-5 (2026-08-26) fixed the idle clock
 latching *locked* across a Mac sleep; 104-6 (2026-08-29) fixed the pop-out
-call window freezing the shell. The first release that carries desktop
+call window freezing the shell, 104-7 (same day) let it move to a second
+screen. The first release that carries desktop
 archives closes the phase; one-click self-update is phase 105 (planned).
 Research done 2026-08-24.
 
@@ -221,6 +222,21 @@ Rejected along the way:
   passes the geometry through, with `useContentSize` so the numbers mean
   the viewport as they do in a browser; the portrait default stays for a
   pop-up that names no size.
+- **104-7 — pop-outs are top-level windows.** Built. Found on a Mac with
+  two displays right after v0.8.8: a pop-out dragged to the second screen
+  snapped back beside the app. `childWindowOptions` set `parent`, inherited
+  from the recovery-print window, and on macOS a child window is bound to
+  its parent's display and Space (`NSWindow addChildWindow`; Electron's
+  docs say the child "keeps the relative position to the parent" there —
+  on Windows and Linux it does not move with it, which is why the Linux
+  probe never showed this). Dropped `parent` for both kinds of pop-up:
+  nothing needed it — `pip.ts` closes its windows on `pagehide`, and a
+  share still showing while chalk is closed to the tray is what the tray
+  is for. Consequences accepted: the pop-out is no longer forced above the
+  main window and does not float above other apps (`alwaysOnTop` was
+  considered and left off; a share read beside a terminal should not pin
+  itself over it). The share-source chooser keeps its `parent` — that one
+  is a dialog.
 - **104-4 — packaging, release, update notice.** Built.
   - `desktop/package.mjs` drives `@electron/packager` (20.3, pure-JS
     `resedit` for the Windows metadata — no wine) into
@@ -322,6 +338,12 @@ identity.
 - [ ] in a real call on macOS/Windows: "popout" on a tile opens a window
       shaped like the video, a second one cascades, leaving the call closes
       them
+
+104-7 (needs two displays):
+
+- [ ] macOS: drag a pop-out to the second screen, it stays; move the main
+      window, it does not follow; close chalk to the tray, it stays open
+- [x] Linux probe: the pop-up still opens at the requested 400×300 ✔
 
 104-4 (Linux, 2026-08-25):
 

@@ -227,7 +227,7 @@ function wireNavigation(w: BrowserWindow): void {
         // video), not one fixed portrait window for everything.
         return {
           action: "allow",
-          overrideBrowserWindowOptions: childWindowOptions(w, parseWindowFeatures(features)),
+          overrideBrowserWindowOptions: childWindowOptions(parseWindowFeatures(features)),
         };
       case "in-app":
         // A same-origin target=_blank (a join link someone pasted into the
