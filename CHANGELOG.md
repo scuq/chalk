@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.10 — 29 August 2026 — Using the computer keeps you online
 
 ### Changed
 - **Using the computer keeps you online, even with chalk out of sight.** The
@@ -22,7 +22,16 @@ The engineering-level history (which slice shipped what) lives in
   quiet or locks, not when chalk leaves the screen. Firefox and Safari, which
   cannot see activity outside the tab, behave as before.
 
+### Fixed
+- **The release image builds again.** v0.8.9's build hung for hours in the
+  arm64 half of the container image and never published. The image is now
+  cross-compiled instead of built under emulation, and a build that stalls
+  fails after half an hour instead of sitting there.
+
 ## v0.8.9 — 29 August 2026 — Pop-outs on any screen, and a resting tile
+
+*Never published: its release build hung and was cancelled twice. Everything
+listed here shipped in v0.8.10.*
 
 ### Changed
 - **A popped-out tile rests in the app.** While a face or a shared screen is
