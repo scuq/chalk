@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.9 — 29 August 2026 — Pop-outs on any screen, and a resting tile
 
 ### Changed
 - **A popped-out tile rests in the app.** While a face or a shared screen is
