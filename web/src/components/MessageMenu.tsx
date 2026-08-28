@@ -31,6 +31,7 @@ interface Props {
 const LABELS: Record<MessageMenuItem["kind"], string> = {
   react: "react...",
   reply: "reply in thread",
+  quote: "quote",
   copy: "copy text",
   edit: "edit",
   delete: "delete",

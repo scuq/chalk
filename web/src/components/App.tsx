@@ -1623,6 +1623,27 @@ export function App() {
   const [editingFeed, setEditingFeed] = useState<{ id: string; body: string } | null>(null);
   const [editingThread, setEditingThread] = useState<{ id: string; body: string } | null>(null);
 
+  // ---- 107-3: quoting -----------------------------------------------------
+  //
+  // Two again, and for the same reason: quoting inside the thread panel fills
+  // the thread's composer, not the channel's. `key` is a counter, not the
+  // quoted message's id -- quoting the same message twice has to insert
+  // twice. Once handed over, the text is an ordinary draft; nothing here
+  // remembers what was quoted or tells the server anything about it.
+  const quoteSeq = useRef(0);
+  const [quoteFeed, setQuoteFeed] = useState<{ key: string; text: string } | null>(null);
+  const [quoteThread, setQuoteThread] = useState<{ key: string; text: string } | null>(null);
+  const quoteInto = useCallback(
+    (set: (q: { key: string; text: string }) => void) => (text: string) => {
+      if (text === "") return;
+      quoteSeq.current += 1;
+      set({ key: String(quoteSeq.current), text });
+    },
+    [],
+  );
+  const onQuoteFeed = useMemo(() => quoteInto(setQuoteFeed), [quoteInto]);
+  const onQuoteThread = useMemo(() => quoteInto(setQuoteThread), [quoteInto]);
+
   const canEditMessageOf = useCallback(
     (m: Message) => canEditMessage(m, state.user?.id ?? null, Date.now()),
     [state.user?.id],
@@ -5873,6 +5894,7 @@ export function App() {
                   threadID,
                 });
               }}
+              onQuoteMessage={onQuoteFeed}
               empty={!state.historyLoaded[activeChannel.id]
                 ? "loading history..."
                 : activeChannel.channelType === "voice"
@@ -5954,6 +5976,8 @@ export function App() {
             onToggleReaction={(m, emoji) => void toggleReaction(m, emoji)}
             onPickReaction={(m) => setReactionPickerFor(m)}
             editing={editingThread}
+            quote={quoteThread}
+            onQuoteMessage={onQuoteThread}
             onEditSubmit={async (body) => {
               const ok = await submitEdit(editingThread, body);
               if (ok) setEditingThread(null);
@@ -6060,6 +6084,7 @@ export function App() {
             onSend={(body, pending, opts) => onSend(body, undefined, pending, opts)}
             onTyping={notifyTyping}
             editing={editingFeed}
+            quote={quoteFeed}
             onEditSubmit={async (body) => {
               const ok = await submitEdit(editingFeed, body);
               if (ok) setEditingFeed(null);

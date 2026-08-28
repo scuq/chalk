@@ -5,9 +5,28 @@ channel, without reprinting the message being answered. Designed against
 v0.7.2. **NOT IMPLEMENTED — no code exists.** This document is the plan and
 nothing below it has been built.
 
-**Status:** design only, written 4 August 2026 from a design session.
+**Status:** design only, written 4 August 2026 from a design session. Still
+planned, still unbuilt.
 **Tag:** `#ties` → `tools/where.sh -g ties` (which today finds this file and
 nothing else, because there is nothing else).
+
+> **Note, 9 August 2026 — chalk quotes now.** Phase 107 shipped a "quote" row
+> action and receive-side rendering of `> ` lines, so "chalk is not doing
+> that" in [The problem](#the-problem) below no longer holds, and the passage
+> around it should be read as a comparison rather than as a decision.
+>
+> This does not retire ties. The two answer different questions. A quote
+> carries a copy of something near enough to still be on screen; a tie points
+> at a message hundreds of rows back **without reprinting it**, which is the
+> case this document was written about and the case a quote cannot serve. The
+> objection to quoting recorded below — that a channel where it catches on is
+> twice as long as the conversation in it — is a real cost that 107 accepted
+> knowingly, and if it shows up in practice, that is an argument *for*
+> building this, not against it.
+>
+> One thing 107 settled that this document left open: `> ` is now a rendered
+> construct, so a tie must not reuse it for anything. Full record:
+> [PHASE-107-QUOTE.md](PHASE-107-QUOTE.md).
 
 ## The problem
 

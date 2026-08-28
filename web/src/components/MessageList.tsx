@@ -1,5 +1,5 @@
 import { Fragment, type ComponentChildren } from "preact";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import {
   anchorWatchTargets,
   autoPagingAllowed,
@@ -25,10 +25,11 @@ import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
 import { decideLinkPreviewRender } from "../linkpreview/linkpreview";
 import { decideCodeRender } from "../code/code";
-import { clipboardText } from "../chat/bodytext";
+import { clipboardText, messageText } from "../chat/bodytext";
 import { DEFAULT_SELF_HUE, nickTintStyle, resolveNickHue } from "../chat/nickcolor";
 import { linkDisplayText, splitBodyParts } from "../chat/links";
-import { splitBodyNano, type NanoPart } from "../chat/nanomd";
+import { splitBodyBlocks, splitBodyNano, type NanoPart } from "../chat/nanomd";
+import { buildQuote, hasQuoteLine } from "../chat/quote";
 import { fmtRelative } from "../chat/reltime";
 import { senderCardInfo } from "../chat/hovercard";
 import { HOVER_CARD_DELAY_MS, PersonCard, useHoverCard } from "./HoverCard";
@@ -58,6 +59,12 @@ const CodeBlockView = lazyComponent(() =>
 // characters and hands back substrings; the <code>/<strong>/<em> around a
 // piece are elements this function creates, never markup parsed out of a
 // message.
+//
+// 107-2: quoted lines add the one block construct. splitBodyBlocks hands back
+// runs of lines at a quote depth, and the depth becomes N nested spans this
+// function creates -- still nothing parsed out of a message. The span is
+// display:block rather than a <blockquote> because this all renders inside
+// <span class="chalk-message-body">, which has to stay a valid inline tree.
 const marked = (seg: NanoPart) => !!(seg.code || seg.bold || seg.italic);
 
 function MessageBody({
@@ -73,6 +80,21 @@ function MessageBody({
   shortenLinks?: boolean;
   nanoMarkdown?: boolean;
 }) {
+  if (nanoMarkdown && hasQuoteLine(body)) {
+    return (
+      <>
+        {splitBodyBlocks(body, known).map((block, i) => {
+          let out: ComponentChildren = (
+            <RenderParts parts={block.parts} ownHandle={ownHandle} shortenLinks={shortenLinks} />
+          );
+          for (let d = 0; d < block.depth; d++) {
+            out = <span class="chalk-body-quote">{out}</span>;
+          }
+          return <Fragment key={i}>{out}</Fragment>;
+        })}
+      </>
+    );
+  }
   const segments: NanoPart[] = nanoMarkdown
     ? splitBodyNano(body, known)
     : splitBodyParts(body, known);
@@ -84,10 +106,22 @@ function MessageBody({
   ) {
     return <>{body}</>;
   }
+  return <RenderParts parts={segments} ownHandle={ownHandle} shortenLinks={shortenLinks} />;
+}
+
+function RenderParts({
+  parts,
+  ownHandle,
+  shortenLinks,
+}: {
+  parts: NanoPart[];
+  ownHandle?: string | null;
+  shortenLinks?: boolean;
+}) {
   const me = ownHandle ? ownHandle.toLowerCase() : null;
   return (
     <>
-      {segments.map((seg, i) => {
+      {parts.map((seg, i) => {
         // 67-1: a long URL's visible text collapses to "link to <host>";
         // href and title keep the full address, so hover and the native
         // "copy link address" stay honest.
@@ -386,6 +420,10 @@ interface Props {
   // parentID is the message clicked; the parent itself doesn't have
   // to be the thread head, the caller resolves that.
   onOpenThread?: (parentID: string, resolvedThreadID: string) => void;
+  // 107-3: the menu's "quote". Receives the finished "> " text -- this list
+  // knows the sender label and the body, the caller knows which composer it
+  // belongs in. Absent means the item is not offered.
+  onQuoteMessage?: (text: string) => void;
   // Phase 10d: per-thread "last seen reply seq" map. Used to compute
   // the unread badge ("↳ 5 replies · 2 new"). Optional -- callers
   // that don't care (e.g. the thread panel rendering its head)
@@ -476,7 +514,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return fmtRelative(d, now);
 }
 
-export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, presence, lastSeen, displayNames, empty, display, isDM, onOpenThread, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy, linkPreviewHide, ephemeral, flashMessageID, onFlashDone, onLoadOlder, historyComplete, oldestSeq }: Props) {
+export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, presence, lastSeen, displayNames, empty, display, isDM, onOpenThread, onQuoteMessage, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy, linkPreviewHide, ephemeral, flashMessageID, onFlashDone, onLoadOlder, historyComplete, oldestSeq }: Props) {
   const messages = ephemeral ? allMessages.slice(-EPHEMERAL_MAX_ROWS) : allMessages;
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -536,12 +574,42 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
         deleted: Boolean(m.deleted),
         canReact: Boolean(onPickReaction),
         canReply: Boolean(onOpenThread),
+        canQuote: Boolean(onQuoteMessage) && messageText(m.body).trim().length > 0,
         hasText: m.body.trim().length > 0,
         canEdit: Boolean(canEditMessage?.(m) && onEditMessage),
         canDelete: Boolean(canDeleteMessage?.(m) && onDeleteMessage),
         deleteLabel: deleteLabelFor?.(m),
       }),
-    [onPickReaction, onOpenThread, canEditMessage, onEditMessage, canDeleteMessage, onDeleteMessage, deleteLabelFor],
+    [onPickReaction, onOpenThread, onQuoteMessage, canEditMessage, onEditMessage, canDeleteMessage, onDeleteMessage, deleteLabelFor],
+  );
+
+  // Phase 9.6i: one userID → handle lookup instead of re-scanning members per
+  // row. 107-3 lifted it out of the render body so senderLabelOf can share it.
+  const handleByUser = useMemo(() => {
+    const byUser = new Map<string, string>();
+    for (const mem of members ?? []) {
+      if (mem.userID && mem.handle) byUser.set(mem.userID, mem.handle);
+    }
+    return byUser;
+  }, [members]);
+
+  // 107-3: the name this message renders under, resolved outside the row map
+  // so the menu -- which lives at the bottom of the list, not inside a row --
+  // can quote with the same label the reader sees. The row and the
+  // sender-column measurement call it too; the expression existed twice
+  // already and quoting would have made three copies of it.
+  const senderLabelOf = useCallback(
+    (m: Message): string => {
+      const ownByUser =
+        ownUserID != null && m.senderUserID !== "" && m.senderUserID === ownUserID;
+      if (ownByUser || (ownDevice != null && m.sender === ownDevice)) {
+        return ownHandle && ownHandle.length > 0 ? ownHandle : "you";
+      }
+      const h = m.senderUserID ? handleByUser.get(m.senderUserID) : undefined;
+      if (h) return h;
+      return m.sender === "" ? "[unknown]" : m.sender.slice(-8);
+    },
+    [handleByUser, ownHandle, ownUserID, ownDevice],
   );
 
   const openMenu = useCallback((m: Message, x: number, y: number) => {
@@ -945,16 +1013,6 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     <div ref={rootRef} class={`chalk-messages ${display_.compactMode ? "chalk-messages--compact" : ""} ${display_.showTimestamps ? "" : "chalk-messages--no-time"} ${ephemeral ? "chalk-messages--ephemeral" : ""}`} data-testid="messages">
       {pagingRow}
       {(() => {
-        // Phase 9.6i: build a userID → handle lookup once per render
-        // pass instead of re-scanning members for every message row.
-        const handleByUser = new Map<string, string>();
-        if (members) {
-          for (const mem of members) {
-            if (mem.userID && mem.handle) {
-              handleByUser.set(mem.userID, mem.handle);
-            }
-          }
-        }
         // 33-3: the handles a mention may resolve to in this channel. Only
         // members get highlighted, so "@nobody" reads as ordinary text
         // instead of implying someone was pinged.
@@ -980,19 +1038,12 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
         // rather than pushing the body arbitrarily far right. Min 4ch so a
         // channel of only "you" still has a sane gutter.
         //
-        // Computed from the labels we're about to render: own -> ownHandle,
-        // others -> their handle, else the device-id slice (8).
+        // Computed from the labels we're about to render, via the same
+        // senderLabelOf the rows and the menu use -- three copies of this
+        // expression is how the column and the name drift apart.
         let maxNameLen = 4;
         for (const mm of messages) {
-          const isOwn =
-            (ownUserID != null && mm.senderUserID !== "" && mm.senderUserID === ownUserID) ||
-            (ownDevice != null && mm.sender === ownDevice);
-          let label: string;
-          if (isOwn) label = (ownHandle && ownHandle.length > 0) ? ownHandle : "you";
-          else {
-            const hh = mm.senderUserID ? handleByUser.get(mm.senderUserID) : undefined;
-            label = hh ?? (mm.sender === "" ? "[unknown]" : mm.sender.slice(-8));
-          }
+          const label = senderLabelOf(mm);
           if (label.length > maxNameLen) maxNameLen = label.length;
         }
         // Cap so an outlier name wraps instead of shoving every body right.
@@ -1009,17 +1060,13 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
         const own = ownByUser || ownByDevice;
         // Sender label: prefer member handle (resolved via
         // sender_user_id), fall back to device-id slice for legacy
-        // / purged-user messages.
+        // / purged-user messages. `handle` is still wanted on its own for
+        // the colour rules and the hover card, which key off the real
+        // handle and must not see a device-id fallback.
         const handle = m.senderUserID
           ? handleByUser.get(m.senderUserID)
           : undefined;
-        const senderLabel = own
-          ? (ownHandle && ownHandle.length > 0 ? ownHandle : "you")
-          : handle
-          ? handle
-          : m.sender === ""
-          ? "[unknown]"
-          : m.sender.slice(-8);
+        const senderLabel = senderLabelOf(m);
         // 33-4: highlight only what was unread on arrival. The upper bound
         // is what stops messages arriving while you read from joining the
         // highlighted block.
@@ -1413,6 +1460,13 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                   break;
                 case "reply":
                   onOpenThread?.(m.id, m.threadID ?? m.id);
+                  break;
+                case "quote":
+                  // 107-3: the "> " text is built here, where the sender
+                  // label lives; the caller only decides which composer it
+                  // lands in. Nothing is sent -- this is a paste the user
+                  // can still edit or delete.
+                  onQuoteMessage?.(buildQuote(senderLabelOf(m), m.body));
                   break;
                 case "copy":
                   // 74-4: through clipboardText -- the raw body of a snippet,

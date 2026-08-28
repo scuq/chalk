@@ -10,6 +10,22 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Quote a message you are answering.** The row menu has a new "quote": it
+  drops the message into your message box as indented lines under
+  "alice wrote:", with the cursor waiting on a blank line below, so the answer
+  arrives with the question attached. It is ordinary text — you can edit it,
+  trim it to the sentence you actually mean, or delete it before sending. A
+  long message is shortened with a "…" so there is still room to reply. Inside
+  a thread the quote goes to the thread's reply box.
+- **Quoted lines can now read as a quote.** With nano markdown on (settings →
+  chat), any run of lines starting with `>` renders indented behind a rule,
+  and quoting a quote nests. As with the rest of nano markdown this is your
+  setting alone: leave it off and you see the plain `>` characters, which read
+  as a quote anyway, and nothing you send is ever changed by it.
+
 ## v0.8.7 — 26 August 2026 — Desktop presence after sleep
 
 ### Fixed
@@ -183,9 +199,6 @@ The engineering-level history (which slice shipped what) lives in
   from before this build are marked "(unsigned)" quietly, with no alarm. A
   message the server delivers twice under different identities now renders
   only once.
-
----
-
 ## v0.7.10 — 9 August 2026 — A card on every name, and calls that remember what went wrong
 
 ### Added

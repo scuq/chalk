@@ -98,6 +98,7 @@ as-built rather than a contemporaneous plan.
 | 104 | desktop app — an Electron shell around the server's page | [PHASE-104-DESKTOP.md](phases/PHASE-104-DESKTOP.md) |
 | 105 | desktop self-update | [PHASE-105-SELFUPDATE.md](phases/PHASE-105-SELFUPDATE.md) *(built; awaiting the release key and a real update per platform)* |
 | 106 | channel names — distinct group headers, rename, short names | [PHASE-106-CHANNELNAMES.md](phases/PHASE-106-CHANNELNAMES.md) *(v0.8.6; part of the live checklist still open)* |
+| 107 | quoting a message | [PHASE-107-QUOTE.md](phases/PHASE-107-QUOTE.md) *(merged from PR #9, whose commits say 99)* |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
@@ -719,6 +720,13 @@ Channel names (106, 2026-08-25): group headers that read as headings,
 an owner-only `update_channel` rename pushed to every member, and a
 ten-character short name per channel with an account pref for which of
 the two the roster shows.
+
+**107 — quoting a message.** A "quote" row action that pastes the message into
+the composer as `> ` lines under an attribution line, and receive-side
+rendering of those lines as a nested quote block under the existing nano
+markdown pref. No server change; the send side stays literal characters. It
+reverses phase 77's "no quotes" and contradicts phase 86's premise, and both
+documents carry a note saying so.
 
 **Not started.** 65 (web push), 86 (ties), 87
 (message reminders), 90 (a local idle agent) and 99 (database-credential

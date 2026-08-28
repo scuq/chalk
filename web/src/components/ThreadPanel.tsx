@@ -79,6 +79,11 @@ interface Props {
   onEditSubmit?: (body: string) => void | Promise<boolean | void>;
   onEditCancel?: () => void;
   onEditLast?: () => void;
+  // 107-3: quoting, forwarded to both lists and to the panel's own composer.
+  // A quote picked inside a thread belongs in the thread's reply box, not in
+  // the channel feed's, which is why App keeps two of these.
+  quote?: { key: string; text: string } | null;
+  onQuoteMessage?: (text: string) => void;
   // Forwarded to the reply composer: opening a thread puts the caret in it.
   // See Composer's focusKey.
   focusKey?: string | null;
@@ -149,6 +154,8 @@ export function ThreadPanel({
   onEditSubmit,
   onEditCancel,
   onEditLast,
+  quote,
+  onQuoteMessage,
   focusKey,
   title,
   onShowParent,
@@ -246,6 +253,7 @@ export function ThreadPanel({
               reactions={reactions}
               onToggleReaction={onToggleReaction}
               onPickReaction={onPickReaction}
+              onQuoteMessage={onQuoteMessage}
               attachmentController={attachmentController}
               giphyPref={giphyPref}
               onRequestEnableGiphy={onRequestEnableGiphy}
@@ -289,6 +297,7 @@ export function ThreadPanel({
             reactions={reactions}
             onToggleReaction={onToggleReaction}
             onPickReaction={onPickReaction}
+            onQuoteMessage={onQuoteMessage}
             attachmentController={attachmentController}
             giphyPref={giphyPref}
             onRequestEnableGiphy={onRequestEnableGiphy}
@@ -319,6 +328,7 @@ export function ThreadPanel({
           onEditSubmit={onEditSubmit}
           onEditCancel={onEditCancel}
           onEditLast={onEditLast}
+          quote={quote}
           focusKey={focusKey}
           mentionHandles={members.map((m) => m.handle)}
         />

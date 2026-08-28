@@ -6351,9 +6351,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   content: "]";
 }
 
-/* 77-3: nano markdown. Three inline marks and no block-level rules, because
-   there is no block-level markdown -- inline code, bold and italic is the
-   whole feature.
+/* 77-3: nano markdown. Three inline marks, and since 107-2 exactly one
+   block-level one -- inline code, bold, italic and quoted lines.
 
    The tint is what carries inline code, not the face: --chalk-font defaults
    to the mono stack, so for most readers a monospace <code> would look
@@ -6374,6 +6373,27 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-body-em {
   font-style: italic;
+}
+
+/* 107-2: quoted lines. display:block on a span, not a <blockquote>: this
+   renders inside .chalk-message-body, which is a <span> and has to stay a
+   valid inline tree.
+
+   The rule carries it, dimmed text seconds it, and neither indents far --
+   a quote nests, and four levels of a generous indent would push the answer
+   off a phone. No background tint: the row already has one when it is
+   unread, hovered or menu-open, and a second would fight all three. */
+.chalk-body-quote {
+  display: block;
+  border-left: 2px solid var(--chalk-border);
+  padding-left: var(--chalk-s2);
+  margin: 2px 0;
+  color: var(--chalk-fg-dim);
+}
+/* Nested quotes share one outer margin -- consecutive levels would otherwise
+   stack 2px of air per level between the rules. */
+.chalk-body-quote .chalk-body-quote {
+  margin: 0;
 }
 
 /* Live occupant sublist under a voice channel. Indented past the glyph

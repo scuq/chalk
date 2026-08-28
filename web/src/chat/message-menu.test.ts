@@ -13,6 +13,7 @@ function opts(over: Partial<MessageMenuOpts> = {}): MessageMenuOpts {
     deleted: false,
     canReact: true,
     canReply: true,
+    canQuote: true,
     hasText: true,
     canEdit: true,
     canDelete: true,
@@ -23,7 +24,7 @@ function opts(over: Partial<MessageMenuOpts> = {}): MessageMenuOpts {
 const kinds = (o: Partial<MessageMenuOpts>) => buildMessageMenu(opts(o)).map((i) => i.kind);
 
 test("full menu is in display order", () => {
-  assert.deepEqual(kinds({}), ["react", "reply", "copy", "edit", "delete"]);
+  assert.deepEqual(kinds({}), ["react", "reply", "quote", "copy", "edit", "delete"]);
 });
 
 test("a deleted message offers nothing at all", () => {
@@ -36,15 +37,26 @@ test("a deleted message offers nothing at all", () => {
 });
 
 test("the thread panel drops reply and keeps the rest", () => {
-  assert.deepEqual(kinds({ canReply: false }), ["react", "copy", "edit", "delete"]);
+  assert.deepEqual(kinds({ canReply: false }), ["react", "quote", "copy", "edit", "delete"]);
 });
 
 test("someone else's message offers neither edit nor delete", () => {
-  assert.deepEqual(kinds({ canEdit: false, canDelete: false }), ["react", "reply", "copy"]);
+  assert.deepEqual(kinds({ canEdit: false, canDelete: false }), [
+    "react",
+    "reply",
+    "quote",
+    "copy",
+  ]);
 });
 
 test("a body-less row (attachment or gif only) offers no copy", () => {
-  assert.deepEqual(kinds({ hasText: false }), ["react", "reply", "edit", "delete"]);
+  assert.deepEqual(kinds({ hasText: false }), ["react", "reply", "quote", "edit", "delete"]);
+});
+
+test("a row with nothing said on it offers no quote", () => {
+  // 107-3: a gif has a body but no speech, so copy (which takes the URL) is
+  // still worth offering where quote is not.
+  assert.deepEqual(kinds({ canQuote: false }), ["react", "reply", "copy", "edit", "delete"]);
 });
 
 test("the delete label passes through, defaulting to 'delete'", () => {
@@ -56,7 +68,14 @@ test("the delete label passes through, defaulting to 'delete'", () => {
 test("a caller with no callbacks wired gets an empty menu", () => {
   assert.deepEqual(
     buildMessageMenu(
-      opts({ canReact: false, canReply: false, hasText: false, canEdit: false, canDelete: false }),
+      opts({
+        canReact: false,
+        canReply: false,
+        canQuote: false,
+        hasText: false,
+        canEdit: false,
+        canDelete: false,
+      }),
     ),
     [],
   );
