@@ -99,6 +99,7 @@ as-built rather than a contemporaneous plan.
 | 105 | desktop self-update | [PHASE-105-SELFUPDATE.md](phases/PHASE-105-SELFUPDATE.md) *(built; awaiting the release key and a real update per platform)* |
 | 106 | channel names — distinct group headers, rename, short names | [PHASE-106-CHANNELNAMES.md](phases/PHASE-106-CHANNELNAMES.md) *(v0.8.6; part of the live checklist still open)* |
 | 107 | quoting a message | [PHASE-107-QUOTE.md](phases/PHASE-107-QUOTE.md) *(merged from PR #9, whose commits say 99)* |
+| 108 | the image cross-compiles — no QEMU in the release build | [PHASE-108-CROSSBUILD.md](phases/PHASE-108-CROSSBUILD.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
@@ -727,6 +728,11 @@ rendering of those lines as a nested quote block under the existing nano
 markdown pref. No server change; the send side stays literal characters. It
 reverses phase 77's "no quotes" and contradicts phase 86's premise, and both
 documents carry a note saying so.
+
+**108 — the image cross-compiles** (2026-08-29). v0.8.9's release hung for
+hours in the emulated arm64 half of the image build (node crashed under
+QEMU, npm never returned); every stage that runs anything now runs on the
+build platform and Go cross-compiles, with a 30-minute cap on the job.
 
 **Not started.** 65 (web push), 86 (ties), 87
 (message reminders), 90 (a local idle agent) and 99 (database-credential

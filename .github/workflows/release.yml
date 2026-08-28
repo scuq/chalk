@@ -53,6 +53,10 @@ jobs:
   # ---- App image (chalkd + web bundle) ------------------------------------
   image:
     runs-on: ubuntu-latest
+    # 108-1: the whole job took seven minutes when healthy and sat for two
+    # hours when the emulated arm64 stage hung. A hang is now a failed job
+    # `gh run rerun --failed` can pick up, not a wait for the six-hour default.
+    timeout-minutes: 30
     outputs:
       digest: ${{ steps.build.outputs.digest }}
       version: ${{ steps.meta.outputs.version }}

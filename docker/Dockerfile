@@ -9,7 +9,13 @@
 #   runtime:  distroless image containing only the binary
 
 # ---- Frontend stage ------------------------------------------------------
-FROM node:20-alpine AS frontend
+# 108-1: every stage that RUNs anything runs on the build machine's own
+# platform. The bundle is architecture-independent and Go cross-compiles,
+# so nothing needs QEMU; the arm64 image used to be built under emulation,
+# where node crashed ("uncaught target signal 4") and npm ci then hung the
+# release for hours. Only the runtime stage is per target platform, and it
+# runs nothing.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend
 
 WORKDIR /web
 COPY web/package.json web/package-lock.json* ./
@@ -19,7 +25,11 @@ COPY web/ ./
 RUN npm run build
 
 # ---- Build stage ---------------------------------------------------------
-FROM golang:1.25-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+
+# Set by buildx per target platform (linux/amd64, linux/arm64).
+ARG TARGETOS=linux
+ARG TARGETARCH
 
 WORKDIR /src
 
@@ -51,7 +61,7 @@ ARG BUILD_DATE=unknown
 
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    CGO_ENABLED=0 GOOS=linux GOARCH=$(go env GOARCH) \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH:-$(go env GOHOSTARCH)} \
     go build -trimpath \
       -ldflags="-s -w \
         -X github.com/scuq/chalk/internal/version.Version=${VERSION} \
@@ -59,8 +69,12 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
         -X github.com/scuq/chalk/internal/version.BuildDate=${BUILD_DATE}" \
       -o /out/chalkd ./cmd/chalkd
 
-# Verify the binary actually runs in the build stage.
-RUN /out/chalkd --version
+# Verify the artifact: a Go binary for the target arch, and -- when the
+# target is the build machine's own arch -- one that actually runs. A
+# cross-compiled binary is not executed here; that would need QEMU again.
+RUN go version -m /out/chalkd | grep -q "GOARCH=${TARGETARCH:-$(go env GOHOSTARCH)}"
+RUN if [ "${TARGETARCH:-$(go env GOHOSTARCH)}" = "$(go env GOHOSTARCH)" ]; then /out/chalkd --version; \
+    else echo "cross-compiled for ${TARGETARCH}: run check skipped"; fi
 
 # ---- Runtime stage -------------------------------------------------------
 FROM gcr.io/distroless/static-debian12:nonroot
