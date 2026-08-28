@@ -9,6 +9,7 @@
 import { BrowserWindow, nativeImage } from "electron";
 import { join } from "node:path";
 import { DEFAULT_BOUNDS, type WindowBounds } from "./config";
+import type { PopupGeometry } from "./links";
 
 export const PRELOAD = join(__dirname, "preload.js");
 const PICKER_HTML = join(__dirname, "picker.html");
@@ -85,15 +86,26 @@ export function createChooser(parent: BrowserWindow): BrowserWindow {
 }
 
 /**
- * createChildWindow is for the page's own about:blank pop-ups (recovery
+ * childWindowOptions is for the page's own about:blank pop-ups (recovery
  * print, pop-out call). Same hardening as the main window; the page writes
  * into the window itself, so there is nothing to load.
+ *
+ * 104-6: the size and place come from the window.open() features when the
+ * page gave them (a pop-out is shaped like its video, and several cascade);
+ * the fixed portrait default is what the recovery print wants.
  */
-export function childWindowOptions(parent: BrowserWindow): Electron.BrowserWindowConstructorOptions {
+export function childWindowOptions(
+  parent: BrowserWindow,
+  geometry: PopupGeometry = {},
+): Electron.BrowserWindowConstructorOptions {
   return {
     parent,
-    width: 520,
-    height: 680,
+    width: geometry.width ?? 520,
+    height: geometry.height ?? 680,
+    // The page asked for a viewport, as window.open() features mean it, not
+    // an outer frame that loses the title bar's height from the inside.
+    useContentSize: true,
+    ...(geometry.x !== undefined && geometry.y !== undefined ? { x: geometry.x, y: geometry.y } : {}),
     autoHideMenuBar: true,
     backgroundColor: "#ffffff",
     webPreferences: {

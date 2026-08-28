@@ -43,7 +43,7 @@ import {
   saveConfig,
   type DesktopConfig,
 } from "./config";
-import { classifyLink, originOf } from "./links";
+import { classifyLink, originOf, parseWindowFeatures } from "./links";
 import { originOfURL, permissionAllowed } from "./permissions";
 import { startIdlePublisher } from "./idle";
 import { installDisplayMediaHandler, shellSession, type ShareSource } from "./screenshare";
@@ -220,10 +220,15 @@ function wireNavigation(w: BrowserWindow): void {
   });
 
   // window.open / target=_blank.
-  wc.setWindowOpenHandler(({ url }) => {
+  wc.setWindowOpenHandler(({ url, features }) => {
     switch (classifyLink(url, serverOrigin)) {
       case "child":
-        return { action: "allow", overrideBrowserWindowOptions: childWindowOptions(w) };
+        // 104-6: sized as the page asked (a pop-out is shaped like its
+        // video), not one fixed portrait window for everything.
+        return {
+          action: "allow",
+          overrideBrowserWindowOptions: childWindowOptions(w, parseWindowFeatures(features)),
+        };
       case "in-app":
         // A same-origin target=_blank (a join link someone pasted into the
         // chat, say) is better in the window we have than in a second one.
@@ -672,6 +677,13 @@ app.on("web-contents-created", (_event, contents) => {
     event.preventDefault();
   });
 });
+
+// 104-6: Electron has no Document Picture-in-Picture (electron/electron#39633,
+// open since 2023): the API is present, but requestWindow() opens an empty
+// window and never settles, and the renderer freezes with it -- the first
+// "popout" on a call tile hung the whole app. With the feature off the page
+// sees no API and voice/pip.ts takes its plain pop-up path, which works here.
+app.commandLine.appendSwitch("disable-blink-features", "DocumentPictureInPictureAPI");
 
 void app.whenReady().then(() => {
   buildMenu();

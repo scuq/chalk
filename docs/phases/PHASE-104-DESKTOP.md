@@ -3,7 +3,8 @@
 **Status:** all four slices built — 104-1 the shell, 104-2 tray and
 close-to-tray, 104-3 system idle → presence, 104-4 packaging, release
 workflow and the update notice; 104-5 (2026-08-26) fixed the idle clock
-latching *locked* across a Mac sleep. The first release that carries desktop
+latching *locked* across a Mac sleep; 104-6 (2026-08-29) fixed the pop-out
+call window freezing the shell. The first release that carries desktop
 archives closes the phase; one-click self-update is phase 105 (planned).
 Research done 2026-08-24.
 
@@ -199,6 +200,27 @@ Rejected along the way:
   chalkd sets *online* on connect and the page re-sends `presence_update`
   when the socket reopens. Not yet confirmed on a real Mac — the checklist
   below says what to watch.
+- **104-6 — pop-outs: no Document PiP, pop-ups sized as asked.** Built.
+  "popout" on a call tile froze the shell. `voice/pip.ts` tries Document
+  Picture-in-Picture first wherever `documentPictureInPicture` exists and
+  only falls back to `window.open` when `requestWindow()` rejects; Electron
+  exposes the API but does not implement it (electron/electron#39633, open
+  since 2023) — measured with the Playwright-Electron probe against the dev
+  server: our `setWindowOpenHandler` sees an empty-URL `child` request and
+  allows it, Electron creates a BrowserWindow with no document, the promise
+  never settles and the renderer stops answering input and `evaluate`. Fix
+  in the shell, not the page: `app.commandLine.appendSwitch
+  ("disable-blink-features", "DocumentPictureInPictureAPI")` before
+  `whenReady`, so the page sees no API and takes its plain path, which the
+  same probe showed working (child window, content in ~550 ms). That fixes
+  every chalkd version the shell is pointed at; shells before this one keep
+  the bug until they update. The probe also showed every pop-up coming out
+  520×643 — `childWindowOptions` was sized for the recovery print and
+  ignored the `features` string — so `links.ts` gains `parseWindowFeatures`
+  (pure, tested: width/height/left/top, bounded 100–8192) and the handler
+  passes the geometry through, with `useContentSize` so the numbers mean
+  the viewport as they do in a browser; the portrait default stays for a
+  pop-up that names no size.
 - **104-4 — packaging, release, update notice.** Built.
   - `desktop/package.mjs` drives `@electron/packager` (20.3, pure-JS
     `resedit` for the Windows metadata — no wine) into
@@ -288,6 +310,18 @@ identity.
       note it here
 - [ ] screensaver with "require password" off: it starts, it stops on
       input, the header goes *online* without an `unlock-screen` line
+
+104-6, probe (Linux, 2026-08-29):
+
+- [x] with the switch, `typeof documentPictureInPicture` is `undefined` in
+      the page ✔
+- [x] `window.open("", name, "popup=yes,width=400,height=300,…")` from a
+      click opens a child window, the page writes into it, and the viewport
+      is the 400×300 it asked for ✔ (`useContentSize`: features mean the
+      content area, Electron's default meant the outer frame — 400×263)
+- [ ] in a real call on macOS/Windows: "popout" on a tile opens a window
+      shaped like the video, a second one cascades, leaving the call closes
+      them
 
 104-4 (Linux, 2026-08-25):
 
