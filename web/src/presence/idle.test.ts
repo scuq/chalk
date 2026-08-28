@@ -59,7 +59,7 @@ test("system-wide idle is away", () => {
   });
 });
 
-// Rule 3.
+// Rule 4 (rule 3 until 45-7).
 test("a hidden tab goes away once, after the grace period", () => {
   const hidden = (ago: number) =>
     decideIdle(input({ tabVisible: false, hiddenSince: NOW - ago }));
@@ -74,7 +74,7 @@ test("a visible tab ignores a stale hiddenSince", () => {
   assert.equal(decideIdle(input({ tabVisible: true, hiddenSince: NOW - 3_600_000 })).idle, false);
 });
 
-// Rule 4 -- the reason the Chromium layer is worth having at all.
+// Rule 3 -- the reason the Chromium layer is worth having at all.
 test("known system activity beats every in-page timeout", () => {
   // Reading a long thread for twenty minutes without touching anything, with
   // the OS confirming input is happening somewhere.
@@ -89,6 +89,28 @@ test("known system activity beats every in-page timeout", () => {
     ),
     { idle: false, reason: "system_active" },
   );
+});
+
+// 45-7: a hidden window on a machine that is known to be in use.
+test("known system activity beats the hidden grace too", () => {
+  // The desktop shell in the tray, or minimized under a fullscreen game,
+  // while the OS reports input every tick: not away.
+  const hiddenLong = { tabVisible: false, hiddenSince: NOW - 2 * AWAY_AFTER_HIDDEN_MS };
+  assert.deepEqual(decideIdle(input({ ...hiddenLong, systemIdle: false })), {
+    idle: false,
+    reason: "system_active",
+  });
+  // The same window with the machine untouched for the threshold: away, and
+  // for the system reason, which the hidden rule never gets to override.
+  assert.deepEqual(decideIdle(input({ ...hiddenLong, systemIdle: true })), {
+    idle: true,
+    reason: "system_idle",
+  });
+  // And with no system signal at all the hidden rule is exactly as before.
+  assert.deepEqual(decideIdle(input({ ...hiddenLong, systemIdle: undefined })), {
+    idle: true,
+    reason: "hidden",
+  });
 });
 
 test("a locked screen still wins over known system activity", () => {

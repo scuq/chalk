@@ -10,6 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **Using the computer keeps you online, even with chalk out of sight.** The
+  desktop app in the tray or minimized behind a game used to flip you to
+  away after six minutes, although it could see you typing the whole time.
+  Now, wherever chalk can tell that you are active on the machine — the
+  desktop app, or Chrome, Edge and Brave with the away detection allowed —
+  that wins over the window being hidden; you go away when the machine goes
+  quiet or locks, not when chalk leaves the screen. Firefox and Safari, which
+  cannot see activity outside the tab, behave as before.
+
 ## v0.8.9 — 29 August 2026 — Pop-outs on any screen, and a resting tile
 
 ### Changed

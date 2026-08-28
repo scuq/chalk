@@ -37,7 +37,7 @@ export const IDLE_AFTER_UNFOCUSED_MS = 1_380_000;
 /** Visible AND focused AND untouched. Long, because a focused window in front
  * of you is weak evidence of absence -- you may just be reading, and a long
  * thread or a call you are listening to takes no input at all. Only reachable
- * without IdleDetector; with it, rule 4 answers this case properly. */
+ * without IdleDetector; with it, rule 3 answers this case properly. */
 export const IDLE_AFTER_FOCUSED_MS = 2_100_000;
 
 /** How often the verdict is recomputed while nothing happens. */
@@ -96,17 +96,26 @@ export function decideIdle(i: IdleInput): IdleVerdict {
   //    timeout on top of it here.
   if (i.systemIdle === true) return { idle: true, reason: "system_idle" };
 
-  // 3. Today's rule, kept intact for the hidden case.
+  // 3. The upgrade: the OS says input is happening somewhere, so no in-page
+  //    timeout applies. This is what stops "reading a long thread without
+  //    touching the mouse" from being reported as away.
+  //
+  //    45-7: this now sits ABOVE the hidden rule. It used to sit below it,
+  //    and the desktop shell showed why that was wrong: close-to-tray and a
+  //    minimized window both read as hidden, so six minutes into a game the
+  //    machine you were hammering on went away while the shell was
+  //    reporting input every fifteen seconds. The hidden grace is an
+  //    in-page timeout like the two below, and the same principle applies.
+  //    Where there is no system signal (Firefox, Safari, the toggle off)
+  //    systemIdle is undefined and the hidden rule is unchanged.
+  if (i.systemIdle === false) return { idle: false, reason: "system_active" };
+
+  // 4. The pre-45 rule, for a hidden tab on a machine we know nothing about.
   if (!i.tabVisible && i.hiddenSince !== undefined) {
     if (i.now - i.hiddenSince >= i.awayAfterHiddenMs) {
       return { idle: true, reason: "hidden" };
     }
   }
-
-  // 4. The upgrade: the OS says input is happening somewhere, so no in-page
-  //    timeout applies. This is what stops "reading a long thread without
-  //    touching the mouse" from being reported as away.
-  if (i.systemIdle === false) return { idle: false, reason: "system_active" };
 
   const quietFor = i.now - i.lastActivityAt;
   if (!i.windowFocused && quietFor >= i.idleAfterUnfocusedMs) {

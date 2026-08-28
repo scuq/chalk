@@ -3,7 +3,7 @@
 *Backfilled record.* Written after the fact from the commit history and the
 changelog; the design notes are as-built, not a contemporaneous plan.
 
-**Status:** shipped, v0.3.46 (45-1…45-2), v0.4.3 (45-3…45-4), 45-6 unreleased.
+**Status:** shipped, v0.3.46 (45-1…45-2), v0.4.3 (45-3…45-4), 45-6 later; 45-7 added 2026-08-29.
 **Tags:** `#voice`, `#unread`, `#threads` → `tools/where.sh -g voice`
 
 ## Why
@@ -42,6 +42,14 @@ reconnect and refuse to clear.
   system-wide idle on Chromium.
 - **45-6** — the system-idle threshold raised off the API's 60s floor to 10
   minutes.
+- **45-7** (2026-08-29) — known system activity now beats the hidden-tab
+  grace, not only the two focus timeouts. The desktop shell made the old
+  order visible: close-to-tray and a minimized window both read as hidden,
+  so a PC in the middle of a game went away after six minutes while the
+  shell was reporting input every tick — and with the notebook away too,
+  the max-precedence aggregate followed. `decideIdle` rules 3 and 4 swapped;
+  where `systemIdle` is undefined (Firefox, Safari, the toggle off) the
+  hidden rule is unchanged. Tests in `idle.test.ts` pin all three cases.
 
 ## Where it lives
 
