@@ -36,8 +36,10 @@ Modules: `web/src/notify/` — `bus.ts` (event stream), `rules.ts` (the pure
 engine + edit helpers), `rules-store.ts` (persistence), `classify.ts` (which
 event a message is), `events.ts` (which event a non-message frame is),
 `gate.ts` (moment-level suppression for sounds and banners), `player.ts` +
-`themes.ts` + `theme-assets.ts` (the sound themes, 102), `banners.ts`, `title.ts`, `badge.ts`, `rules-sync.ts`. The one consumer that
-ties bus to sinks lives in `App.tsx`.
+`themes.ts` + `theme-assets.ts` (the sound themes, 102; the classic one is
+rendered by `tools/render-classic-theme.mjs`), `banners.ts`, `title.ts`,
+`badge.ts`, `rules-sync.ts`. The one consumer that ties bus to sinks lives in
+`App.tsx`.
 
 ## Event types
 
@@ -145,14 +147,16 @@ switched off becomes a muted event type — the closest pre-rules equivalent.
 
 ## Sound design
 
-Since phase 102 chalk plays **recorded sound themes**, not a synthesizer. A
-theme is ten WAV cues (48 kHz, 16-bit, stereo, each under a second) in
-`web/assets/sounds/<theme>/`, with a `MANIFEST.md` beside them describing each
-cue and the theme's grammar. Four ship — authored by scuq in a DAW:
+Since phase 102 chalk plays **sound themes as files**, not a live
+synthesizer. A theme is ten WAV cues (48 kHz, 16-bit, stereo, each under a
+second) in `web/assets/sounds/<theme>/`, with a `MANIFEST.md` beside them
+describing each cue and the theme's grammar. Five ship: four authored by scuq
+in a DAW, and one rendered from the deleted synthesizer.
 
 | Theme | Character |
 |---|---|
 | `chalk` (default) | chalk on a board: scrapes, taps, dust. Upward scrapes are arrival or connection, downward ones departure or loss; taps confirm actions. |
+| `chalk-classic` | the phase-40/71 synthesizer's own output (102-3): pink noise through a swept bandpass, a stick-slip rasp, a contact tick, no oscillator anywhere. Same grammar; not authored in a DAW but rendered — see below. |
 | `gamegirl` | classic-handheld bleeps: 25 % pulse waves, stepped envelopes, hard gates, one noise-channel accent. Same up/down grammar. |
 | `runestone` | fantasy UI: horn-and-bell presence, portal open/close for your own call state, wooden knocks for other people, chain and drum for the connection. |
 | `empir` | medieval RTS: horns, timber, blacksmith metal and war drums; a chant-and-horn fanfare for your own call join. All cues synthesized. |
@@ -192,12 +196,26 @@ in the DAW, and the files are the recording of it.
 in `SoundThemeId` and a row in `SOUND_THEMES` (`themes.ts`). The test tells you
 what you forgot.
 
+**The classic theme is rendered, not recorded** (102-3).
+`tools/render-classic-theme.mjs` is the deleted `synth.ts` reimplemented once,
+offline: the same `StrokeSpec` table, the same graph — pink noise, swept
+bandpass, octave-down body band, stick-slip grain, contact tick,
+attack/drag/lift envelope — evaluated per sample and written to WAVs. It is
+deterministic (one seeded PRNG per cue), so re-running it reproduces the
+committed files byte for byte, and `--spectrum` reports each cue's energy by
+octave plus the share at or above 5200 Hz, which is the measurement the
+synth's `SCREECH_FLOOR_HZ` test was a proxy for. One trim scales all ten cues
+together so the specs' hand-tuned balance survives; it puts the loudest at
+−6.4 dBFS, matching the `chalk` theme's ceiling. Nothing about the client
+changed — no filters came back, the theme is files like the other four.
+
 **History.** Phases 40 and 71 built a chalk-stroke *synthesizer* — pink noise
 through swept bandpass filters, a stick-slip grain modulator, no oscillators,
 seventeen hand-tuned specs and a listening bench (`tools/sound-bench.mjs`).
 Their records ([PHASE-40-SOUNDS.md](phases/PHASE-40-SOUNDS.md),
 [PHASE-71-CALLSOUNDS.md](phases/PHASE-71-CALLSOUNDS.md)) keep the design; the
-code is gone with phase 102, and the `chalk` theme carries its grammar forward.
+code is gone with phase 102, the `chalk` theme carries its grammar forward,
+and since 102-3 `chalk-classic` carries the sound itself.
 
 ## Unlocking
 

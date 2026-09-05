@@ -10,6 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **The old notification sounds are back, as a theme.** Before chalk had sound
+  themes it made every notification itself — noise swept through a filter, a
+  dry stick-slip rasp, and no pitch anywhere, so that a message sounded like a
+  stroke of chalk on a board rather than a beep. Choosing **chalk classic** in
+  profile → notifications plays exactly those sounds again, at the same
+  loudness as the other themes.
+
+---
+
 ## v0.8.11 — 5 September 2026 — Pictures that page and zoom, and the deafened badge
 
 ### Added

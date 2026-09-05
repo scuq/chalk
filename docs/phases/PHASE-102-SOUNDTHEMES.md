@@ -1,7 +1,7 @@
 # Phase 102 — sound themes
 
-**Status:** 102-1 and 102-2 shipped; the phase is closed unless a follow-up
-under [Left open](#left-open) is taken up.
+**Status:** 102-1, 102-2 and 102-3 shipped; the phase is closed unless a
+follow-up under [Left open](#left-open) is taken up.
 
 **Tag:** `#notify` → `tools/where.sh -g notify` (shared with 40, 50 and 71).
 
@@ -71,6 +71,8 @@ replaced by them.
 - **Keeping the synth as a fourth theme.** It would have kept 700 lines, the
   bench, the CLAUDE.md gotcha and the `SCREECH_FLOOR_HZ` invariants alive for
   a theme the *chalk* WAVs already replace with the same grammar. Gone.
+  **102-3 revisits the conclusion, not the reasoning:** the synth's *sound*
+  came back as a fifth theme, and none of the code did. See the slice.
 - **Distinct cues per event type** (mention vs dm vs message). The themes
   were not authored that way, and the banner and badge already carry that
   distinction. The mapping is one table row per category, so a theme that
@@ -105,6 +107,61 @@ replaced by them.
   replaced by scuq with synthesized versions before the theme ever shipped in
   a release; nothing source-derived is in the repo's history past this slice's
   landing, and the theme's MANIFEST records the replacement.
+- **102-3** — a fifth theme, *chalk classic*: the deleted synthesizer's own
+  output, rendered offline to ten WAVs. See below.
+
+## 102-3 — the synth, as a theme
+
+102-1 rejected "keep the synth as a fourth theme" because of what keeping it
+would cost the client: 700 lines of filter graph, the bench page, the
+`SCREECH_FLOOR_HZ` invariants and their tests, and a CLAUDE.md gotcha, all to
+produce sounds the recorded *chalk* theme already covers with the same
+grammar. Every one of those costs is about **code in the client**. None of
+them is about the sound, and the sound is the one thing the table could not
+be re-derived into: warm friction with no pitch anywhere in it, tuned by ear
+across two phases against a bench that no longer exists.
+
+So 102-3 separates the two. `tools/render-classic-theme.mjs` reimplements the
+deleted `synth.ts` once — the pink-noise source, the swept bandpass, the
+octave-down body band, the stick-slip grain modulator, the contact tick, the
+attack/drag/lift envelope, and the `StrokeSpec` table copied verbatim with the
+comments that defend each number — evaluates the whole graph per sample under
+a seeded PRNG, and writes ten WAVs into `web/assets/sounds/chalk-classic/`.
+From there it is an ordinary theme: a folder, an import block, a
+`SoundThemeId`, a `SOUND_THEMES` row. The client gained no filters, no
+`AudioContext` graph and no invariants; `themes.test.ts` covers the new folder
+the same way it covers the other four.
+
+Decisions worth keeping:
+
+- **Deterministic render.** The synth called `Math.random` four times per
+  stroke — the noise, the grain, and two read offsets — so that repeats were
+  never bit-identical, "because real chalk never is". A file in git has to
+  be, so the tool seeds one PRNG per category. Re-running it reproduces the
+  committed files byte for byte, which is what makes the tool a check on the
+  files rather than a story about them.
+- **One trim for the theme, not one per cue.** The specs' `gain` column is a
+  balance *between* the ten sounds, re-derived once by RMS-matching when pink
+  noise replaced white; per-file normalization would throw exactly that away.
+  Every cue is scaled by the same factor, set so the loudest lands at
+  −6.4 dBFS — the *chalk* theme's ceiling to the decibel, which also puts the
+  mean per-cue RMS within 0.2 dB of chalk's. The synth ran an order of
+  magnitude below full scale and the authored themes do not, so an untrimmed
+  render would have made this theme a switch to near-silence.
+- **The screech ceiling is checked on audio now, not on the table.** The
+  synth's tests asserted `lowpassHz < SCREECH_FLOOR_HZ` and `q <= MAX_Q` over
+  a spec table that is no longer code. The tool's `--spectrum` mode replaces
+  them with the measurement they were a proxy for: energy by octave, and the
+  share at or above 5200 Hz. It is 0.00 % for all ten cues.
+- **Seven specs are not rendered.** `mention`, `dm`, `thread_reply`, `voice`,
+  `channel_added`, `friend_request` and `governance` all map to
+  *new message* in `CUE_FOR`, so they have nowhere to sound. `message` — the
+  shortest and quietest spec, the one written for the category that fires all
+  day — becomes `10_new_message`. The seven remain in the tool, unrendered,
+  and would be the material for the "distinct mention cue" follow-up below,
+  which for this theme is a re-run rather than a recording session.
+- **Stereo from a mono synth.** Both channels carry the same samples; the
+  theme format is stereo and the synth was not.
 
 ## Manual checklist
 
@@ -121,6 +178,17 @@ yet heard in a browser by this change set:
       default needs to move, it moves in `DEFAULT_SOUND_PREFS` only.
 - [ ] a reload keeps the theme; an old `chalk.notify.v2` entry without one
       falls back to *chalk*.
+
+102-3 adds one, and it is the only thing about that slice a test cannot
+answer:
+
+- [ ] *chalk classic* is heard against the synth as it was. The render is
+      the same arithmetic as the WebAudio graph, but "the same arithmetic"
+      is a claim about biquad conventions (the spec reads Q in decibels for
+      lowpass and highpass, linearly for bandpass) and about a per-sample
+      sweep against Chrome's per-quantum one. If a cue sounds wrong, the
+      tool prints its levels and its spectrum; the spec table is not the
+      suspect.
 
 ## Left open
 

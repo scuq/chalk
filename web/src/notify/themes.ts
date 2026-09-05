@@ -18,10 +18,15 @@
 //
 // This module is pure -- ids, labels, the mapping -- so it can be tested
 // under node. The WAV imports live in theme-assets.ts, next door.
+//
+// 102-3 adds a fifth theme, chalk-classic, which is the deleted synth's
+// own output: its spec table and signal path were reimplemented once in
+// tools/render-classic-theme.mjs and rendered to ten WAVs. Nothing about
+// the client changes -- no filters came back, the theme is files.
 
 import type { SoundCategory } from "./types";
 
-export type SoundThemeId = "chalk" | "gamegirl" | "runestone" | "empir";
+export type SoundThemeId = "chalk" | "chalk-classic" | "gamegirl" | "runestone" | "empir";
 
 // The ten cues every theme ships. The names are the file stems the theme
 // folders use, so a folder listing and this list can be checked against
@@ -85,6 +90,14 @@ export interface SoundThemeInfo {
 // dust, the same grammar the synth had (up = arrival, down = departure).
 export const SOUND_THEMES: SoundThemeInfo[] = [
   { id: "chalk", label: "chalk", desc: "chalk on a board — scrapes, taps and dust" },
+  // 102-3. The synth is still gone; this is what it sounded like, rendered
+  // once offline by tools/render-classic-theme.mjs and shipped as files
+  // like every other theme.
+  {
+    id: "chalk-classic",
+    label: "chalk classic",
+    desc: "the original synthesizer — swept noise, stick-slip grain, no pitch",
+  },
   { id: "gamegirl", label: "gamegirl", desc: "classic-handheld bleeps, pulse waves and hard gates" },
   { id: "runestone", label: "runestone", desc: "fantasy UI — horns, bells, parchment and portals" },
   // 102-2. The id is "empir" -- scuq's name for it, not a typo of the

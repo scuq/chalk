@@ -138,12 +138,15 @@ serially and each unique string misses the allowlist and prompts.
   in `internal/auth/http.go`).
 - **npm audit** is clean in `web/` and `test/e2e/`. Keep it that way; never run
   `npm audit fix --force`.
-- **Notification sounds are recorded themes, not code.** The WAVs under
+- **Notification sounds are files, not code.** The WAVs under
   `web/assets/sounds/<theme>/` are scuq's DAW work; never regenerate, resample
-  or "normalize" them. A theme is ten cues and chalk has seventeen categories
-  — the mapping is `CUE_FOR` in `web/src/notify/themes.ts`, and
-  `themes.test.ts` holds table and folders to each other. Details in
-  `docs/notification-sounds.md`.
+  or "normalize" them. The one exception is `chalk-classic`, which is the
+  deleted phase-40 synthesizer rendered offline by
+  `tools/render-classic-theme.mjs` — that folder is reproduced by re-running
+  the tool and never edited by hand. A theme is ten cues and chalk has
+  seventeen categories — the mapping is `CUE_FOR` in
+  `web/src/notify/themes.ts`, and `themes.test.ts` holds table and folders to
+  each other. Details in `docs/notification-sounds.md`.
 
 ## Auth model (v2, complete — full record in `docs/phases/PHASE-31-AUTHV2.md`)
 

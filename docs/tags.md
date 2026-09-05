@@ -32,7 +32,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #reminders      -         docs/phases/PHASE-87-REMINDERS.md
 #federation     -         docs/phases/PHASE-88-FEDERATION.md docs/threat-model.md
 #unread         33 62 76 79  web/src/chat/ web/src/state/ web/src/components/MessageList.tsx web/src/components/ZuckerList.tsx web/src/theme.css docs/phases/PHASE-33-UNREAD.md docs/phases/PHASE-79-LANDING.md
-#notify         40 50 71 102  web/src/notify/ web/assets/sounds/ web/src/components/ProfilePanel.tsx docs/notification-sounds.md docs/phases/PHASE-40-SOUNDS.md docs/phases/PHASE-50-NOTIFYRULES.md docs/phases/PHASE-71-CALLSOUNDS.md docs/phases/PHASE-102-SOUNDTHEMES.md
+#notify         40 50 71 102  web/src/notify/ web/assets/sounds/ web/src/components/ProfilePanel.tsx tools/render-classic-theme.mjs docs/notification-sounds.md docs/phases/PHASE-40-SOUNDS.md docs/phases/PHASE-50-NOTIFYRULES.md docs/phases/PHASE-71-CALLSOUNDS.md docs/phases/PHASE-102-SOUNDTHEMES.md
 #push           -         docs/phases/PHASE-65-PUSH.md
 #parking        53        web/src/parking.ts web/src/parking-hotkey.ts web/src/state/ web/src/components/ docs/phases/PHASE-53-PARKING.md
 #roster         54 78 92 100 106  web/src/chat/ web/src/components/Sidebar.tsx web/src/components/HoverCard.tsx web/src/components/ZuckerList.tsx web/src/components/CreateChannelModal.tsx web/src/theme.css docs/phases/PHASE-54-ROSTER.md docs/phases/PHASE-78-HIDECHANNELS.md docs/phases/PHASE-92-HOVERCARD.md docs/phases/PHASE-100-VOICESECTION.md

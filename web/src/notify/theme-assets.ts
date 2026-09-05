@@ -22,6 +22,17 @@ import chalk08 from "../../assets/sounds/chalk/08_send_confirmed.wav";
 import chalk09 from "../../assets/sounds/chalk/09_error.wav";
 import chalk10 from "../../assets/sounds/chalk/10_new_message.wav";
 
+import classic01 from "../../assets/sounds/chalk-classic/01_friend_online.wav";
+import classic02 from "../../assets/sounds/chalk-classic/02_you_join_call.wav";
+import classic03 from "../../assets/sounds/chalk-classic/03_you_leave_call.wav";
+import classic04 from "../../assets/sounds/chalk-classic/04_someone_joins.wav";
+import classic05 from "../../assets/sounds/chalk-classic/05_someone_leaves.wav";
+import classic06 from "../../assets/sounds/chalk-classic/06_connected.wav";
+import classic07 from "../../assets/sounds/chalk-classic/07_disconnected.wav";
+import classic08 from "../../assets/sounds/chalk-classic/08_send_confirmed.wav";
+import classic09 from "../../assets/sounds/chalk-classic/09_error.wav";
+import classic10 from "../../assets/sounds/chalk-classic/10_new_message.wav";
+
 import gamegirl01 from "../../assets/sounds/gamegirl/01_friend_online.wav";
 import gamegirl02 from "../../assets/sounds/gamegirl/02_you_join_call.wav";
 import gamegirl03 from "../../assets/sounds/gamegirl/03_you_leave_call.wav";
@@ -67,6 +78,18 @@ export const THEME_URLS: Record<SoundThemeId, Record<ThemeCue, string>> = {
     "08_send_confirmed": chalk08,
     "09_error": chalk09,
     "10_new_message": chalk10,
+  },
+  "chalk-classic": {
+    "01_friend_online": classic01,
+    "02_you_join_call": classic02,
+    "03_you_leave_call": classic03,
+    "04_someone_joins": classic04,
+    "05_someone_leaves": classic05,
+    "06_connected": classic06,
+    "07_disconnected": classic07,
+    "08_send_confirmed": classic08,
+    "09_error": classic09,
+    "10_new_message": classic10,
   },
   gamegirl: {
     "01_friend_online": gamegirl01,
