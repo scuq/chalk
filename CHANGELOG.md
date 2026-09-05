@@ -19,6 +19,14 @@ The engineering-level history (which slice shipped what) lives in
   deafened person's tile now carries a **D** instead of the usual **M**, and
   hovering it says they cannot hear the room. The silencing itself is still
   entirely on your own machine.
+- **Opened photos now step from one to the next, and zoom in.** When somebody
+  sends several pictures at once, opening one gives you the whole set: arrows
+  on either side, the left and right keys, a swipe on a phone, and a "3 / 5"
+  count so you know where you are — including the pictures still hidden behind
+  the "+2" on the grid, which you can now reach without expanding it first.
+  Any opened picture also zooms: scroll or double-click with a mouse, pinch on
+  a phone, then drag to move around inside it. Double-click again, or zoom all
+  the way out, to fit it back to the screen. Swiping right still leaves.
 
 ### Fixed
 - **A busy scratchpad no longer squeezes the call.** In a voice room the

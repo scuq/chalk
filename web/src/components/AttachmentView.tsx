@@ -11,6 +11,11 @@
 //   * fail-closed: if the channel key isn't held (decrypt returns null), show a
 //     "locked attachment" placeholder, never raw bytes.
 //
+// 110-1: the expanded view moved out to Lightbox.tsx, which shows a *set*.
+// In a tile grid AttachmentGroup owns the gallery and passes `onOpen`, so a
+// tile only reports which image was clicked; a lone image has no group above
+// it and opens its own one-image gallery, which behaves exactly as before.
+//
 // All crypto/transport goes through the AttachmentController; this component is
 // pure rendering + object-URL lifecycle. No node test (DOM/observer heavy); the
 // pipeline/controller it drives are covered by the round-trip tests.
@@ -18,8 +23,8 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { AttachmentController } from "../attachments/pipeline";
 import { type AttachmentMeta, type AttachmentRef, humanSize } from "../attachments/types";
-import { useSwipeBack } from "../chat/use-swipe-back";
 import { asBytes } from "../crypto/bytes";
+import { Lightbox } from "./Lightbox";
 
 interface Props {
   channelID: string;
@@ -28,11 +33,14 @@ interface Props {
   /** 101-1: rendered as a grid tile -- the tile's CSS crop owns the box, so
    *  the inline natural-size style must stay off. Lightbox is unchanged. */
   tile?: boolean;
+  /** 110-1: a group above us owns the gallery -- report the click instead of
+   *  opening a lightbox of our own. */
+  onOpen?: () => void;
 }
 
 type LoadState = "loading" | "ready" | "locked";
 
-export function AttachmentView({ channelID, att, controller, tile }: Props) {
+export function AttachmentView({ channelID, att, controller, tile, onOpen }: Props) {
   const [meta, setMeta] = useState<AttachmentMeta | null>(null);
   const [metaState, setMetaState] = useState<LoadState>("loading");
   const [previewURL, setPreviewURL] = useState<string | null>(null);
@@ -42,14 +50,7 @@ export function AttachmentView({ channelID, att, controller, tile }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Track object URLs so we always revoke exactly what we created.
   const urlsRef = useRef<string[]>([]);
-  // 64-9: swipe right closes the lightbox -- the same "back" gesture as the
-  // conversation, one level at a time. The overlay owns its touches
-  // (stopPropagation), so the app-level swipe can't switch the screen out
-  // from under a modal.
   const closeLightbox = useCallback(() => setExpanded(false), []);
-  const lightboxSwipe = useSwipeBack(expanded, closeLightbox, {
-    stopPropagation: true,
-  });
 
   const trackURL = (url: string): string => {
     urlsRef.current.push(url);
@@ -159,32 +160,6 @@ export function AttachmentView({ channelID, att, controller, tile }: Props) {
     };
   }, []);
 
-  // Lightbox: Escape closes it.
-  useEffect(() => {
-    if (!expanded) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setExpanded(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [expanded]);
-
-  // Lightbox: if the user opens an image whose full-res hasn't loaded yet
-  // (e.g. an off-screen history image clicked before scrolling to it), fetch it
-  // now so the modal shows the original rather than the soft preview.
-  useEffect(() => {
-    if (!expanded || fullURL || metaState !== "ready" || meta?.kind !== "image") return;
-    let alive = true;
-    void controller.loadFullBytes(channelID, att).then((bytes) => {
-      if (!alive || !bytes) return;
-      const url = trackURL(URL.createObjectURL(new Blob([asBytes(bytes)], { type: meta.mime })));
-      setFullURL(url);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [expanded, fullURL, metaState, meta, channelID, att, controller]);
-
   const onDownload = () => {
     if (downloading) return;
     setDownloading(true);
@@ -246,7 +221,7 @@ export function AttachmentView({ channelID, att, controller, tile }: Props) {
             // anything -- max-width already caps at the natural width.
             // 101-1: in a tile the grid cell is the box; cover-crop via CSS.
             style={tile ? undefined : imageBox}
-            onClick={() => setExpanded(true)}
+            onClick={() => (onOpen ? onOpen() : setExpanded(true))}
             // 64-9: with the CSS -webkit-user-drag opt-out, keeps a drag
             // that starts on the picture from stealing the swipe-back touch.
             draggable={false}
@@ -259,34 +234,15 @@ export function AttachmentView({ channelID, att, controller, tile }: Props) {
             style={tile ? undefined : imageBox}
           />
         )}
-        {expanded && shownURL && (
-          <div
-            class={`chalk-attachment-lightbox${lightboxSwipe.offset !== null ? " chalk-swipe-x" : ""}${lightboxSwipe.settling ? " chalk-swipe-x--settling" : ""}`}
-            style={
-              lightboxSwipe.offset !== null
-                ? `--chalk-swipe-x:${lightboxSwipe.offset}px`
-                : undefined
-            }
-            role="dialog"
-            aria-modal="true"
-            aria-label={meta.name}
-            onClick={closeLightbox}
-            onTouchStart={lightboxSwipe.onTouchStart}
-            onTouchMove={lightboxSwipe.onTouchMove}
-            onTouchEnd={lightboxSwipe.onTouchEnd}
-            onTouchCancel={lightboxSwipe.onTouchCancel}
-            data-testid="attachment-lightbox"
-          >
-            <img
-              class="chalk-attachment-lightbox-img"
-              src={fullURL ?? shownURL}
-              alt={meta.name}
-              draggable={false}
-            />
-            <div class="chalk-attachment-lightbox-caption">
-              {meta.name} ({humanSize(meta.size)}) — click anywhere or press Esc to close
-            </div>
-          </div>
+        {expanded && (
+          <Lightbox
+            channelID={channelID}
+            images={[att]}
+            index={0}
+            controller={controller}
+            onIndex={() => undefined}
+            onClose={closeLightbox}
+          />
         )}
       </div>
     );

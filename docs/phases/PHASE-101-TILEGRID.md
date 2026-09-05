@@ -1,7 +1,8 @@
 # Phase 101 — the multi-image tile grid
 
-**Status:** 101-1 shipped. One slice; the phase is closed unless the follow-ups
-under [Left open](#left-open) are taken up.
+**Status:** 101-1 shipped. One slice; the phase is closed. Of the two
+follow-ups under [Left open](#left-open), the gallery lightbox became phase
+110; the tile placeholder is still open.
 
 **Tag:** `#tilegrid` → `tools/where.sh -g tilegrid`.
 
@@ -56,8 +57,11 @@ layout to know kinds — the preview-presence signal makes that unnecessary.
 
 ## Left open
 
-- The lightbox is still per-image: no prev/next arrows or swipe between the
-  images of one message. A gallery lightbox would lift the expanded state out
-  of `AttachmentView` into `AttachmentGroup`.
+- ~~The lightbox is still per-image: no prev/next arrows or swipe between the
+  images of one message.~~ **Taken up as phase 110**
+  ([PHASE-110-GALLERY.md](PHASE-110-GALLERY.md)), which lifted the expanded
+  state into `AttachmentGroup` exactly as sketched here, and added zoom on the
+  way. The "+N" images are in the gallery too, so paging reaches them without
+  expanding the grid.
 - Locked/loading tiles show the full label text centered in a small square;
   it wraps but is transient. An icon-only tile state would be tidier.

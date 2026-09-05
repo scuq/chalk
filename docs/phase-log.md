@@ -101,6 +101,7 @@ as-built rather than a contemporaneous plan.
 | 107 | quoting a message | [PHASE-107-QUOTE.md](phases/PHASE-107-QUOTE.md) *(merged from PR #9, whose commits say 99)* |
 | 108 | the image cross-compiles — no QEMU in the release build | [PHASE-108-CROSSBUILD.md](phases/PHASE-108-CROSSBUILD.md) |
 | 109 | the room can see you are deafened | [PHASE-109-DEAFENED.md](phases/PHASE-109-DEAFENED.md) |
+| 110 | the gallery lightbox — paging and zoom | [PHASE-110-GALLERY.md](phases/PHASE-110-GALLERY.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

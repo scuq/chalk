@@ -1480,10 +1480,19 @@ html {
   padding: var(--chalk-s4);
   background: rgba(0, 0, 0, 0.92);
   cursor: zoom-out;
+  /* 110-2: every touch on this surface is ours -- pinch, pan, page. Leaving
+     the browser its defaults would let a pinch zoom the whole page and a
+     drag scroll the feed underneath instead. */
+  touch-action: none;
+  /* A zoomed image is deliberately bigger than the screen; clip it here
+     rather than growing the document and producing scrollbars. */
+  overflow: hidden;
 }
 .chalk-attachment-lightbox-img {
   max-width: 95vw;
-  max-height: 95vh;
+  /* 110-1: leave the caption its own band. At 95vh the picture ran under it
+     and the counter and hints were unreadable over the image. */
+  max-height: calc(100dvh - 5rem);
   object-fit: contain;
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);
@@ -1493,11 +1502,132 @@ html {
   left: 0;
   right: 0;
   bottom: var(--chalk-s3);
+  z-index: 1;
   text-align: center;
   color: var(--chalk-fg-muted);
   font-size: var(--chalk-size-small);
   pointer-events: none;
 }
+/* 110-1: the text sits on its own ground rather than on the picture. The
+   band hugs the text instead of spanning the screen, so it stays a caption
+   and not a toolbar. */
+.chalk-lightbox-caption-inner {
+  display: inline-block;
+  max-width: 92vw;
+  padding: var(--chalk-s1) var(--chalk-s3);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.75);
+}
+
+/* -- 110-1: the gallery lightbox ---------------------------------- */
+/* The stage is what a swipe moves, so the image can travel while the
+   backdrop, the chrome and the fixed caption stay put. Same rule as
+   .chalk-swipe-x above: the transform only exists mid-gesture, because a
+   resting translateX(0) would make this element the containing block for
+   every position:fixed descendant. */
+.chalk-lightbox-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  max-height: 100%;
+}
+.chalk-lightbox-stage--dragging {
+  transform: translateX(var(--chalk-lightbox-x, 0px));
+}
+.chalk-lightbox-stage--settling {
+  transition: transform 160ms ease-out;
+}
+/* The soft inline preview, standing in until the original decrypts. It is
+   marked as provisional rather than passed off as the picture itself. */
+.chalk-attachment-lightbox-img--preview {
+  filter: blur(2px);
+}
+.chalk-lightbox-loading,
+.chalk-lightbox-locked {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  padding: var(--chalk-s4);
+}
+
+/* Chrome sits above the backdrop's click-to-close and below nothing else.
+   44px is the tap-target floor 60-1 set for every control on a phone. */
+.chalk-lightbox-close,
+.chalk-lightbox-nav {
+  position: fixed;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--chalk-border);
+  border-radius: 999px;
+  /* Opaque enough to read as a control over a white screenshot, which is
+     what most of these pictures are. */
+  background: rgba(0, 0, 0, 0.75);
+  color: var(--chalk-fg);
+  cursor: pointer;
+  line-height: 1;
+}
+.chalk-lightbox-close:hover:not(:disabled),
+.chalk-lightbox-nav:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.8);
+}
+.chalk-lightbox-close:disabled,
+.chalk-lightbox-nav:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.chalk-lightbox-close {
+  top: var(--chalk-s3);
+  right: var(--chalk-s3);
+  font-size: var(--chalk-size-body);
+}
+.chalk-lightbox-nav {
+  top: 50%;
+  transform: translateY(-50%);
+  /* The glyphs are single chevrons; they need the size to read as controls. */
+  font-size: 2rem;
+  padding-bottom: 0.2em;
+}
+.chalk-lightbox-nav--prev {
+  left: var(--chalk-s3);
+}
+.chalk-lightbox-nav--next {
+  right: var(--chalk-s3);
+}
+/* On a phone the swipe is the gesture, and two 44px circles parked over a
+   370px-wide picture cost more than they give. The counter still says there
+   is more than one. The ✕ stays: swiping right only leaves from the first
+   image, so there has to be a way out from every other one. */
+@media (hover: none), (max-width: 640px) {
+  .chalk-lightbox-nav {
+    display: none;
+  }
+}
+.chalk-lightbox-counter {
+  display: inline-block;
+  margin-right: var(--chalk-s2);
+  color: var(--chalk-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* -- 110-2: zoom -------------------------------------------------- */
+/* The picture is the one thing the backdrop's click-to-close doesn't cover,
+   so say what it does instead: magnify, then move. */
+.chalk-attachment-lightbox-img {
+  cursor: zoom-in;
+  transform-origin: center center;
+}
+.chalk-attachment-lightbox--zoomed .chalk-attachment-lightbox-img {
+  cursor: grab;
+}
+.chalk-attachment-lightbox--zoomed .chalk-attachment-lightbox-img:active {
+  cursor: grabbing;
+}
+
 .chalk-attachment-img-placeholder {
   /* 33-5: aspect-ratio rather than a fixed height, so the inline box the
      component computes from the real image dimensions can override it. A
