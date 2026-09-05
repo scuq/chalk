@@ -5,11 +5,11 @@ What is **not** done. Shipped history lives in [phase-log.md](phase-log.md)
 is the authority on what is still open, and `CLAUDE.md` points here rather than
 carrying it.
 
-Latest release: **v0.8.10** — keep this in step with the topmost `## vX.Y.Z`
+Latest release: **v0.8.11** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 106 is the newest work. The phase-doc index at the top of
+Phase 110 is the newest work. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
 

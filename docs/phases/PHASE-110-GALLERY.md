@@ -1,7 +1,8 @@
 # Phase 110 — the gallery lightbox: paging and zoom
 
-**Status:** built, 110-1 and 110-2 (2026-09-05). Unreleased. One manual
-checklist under [Left open](#left-open) is not covered by tests.
+**Status:** built, 110-1 and 110-2 (2026-09-05), shipped in v0.8.11.
+Verified against a running stack on desktop and an emulated phone; what that
+does and does not prove is under [Left open](#left-open).
 **Tags:** `#gallery` → `tools/where.sh -g gallery`
 
 ## The problem
@@ -113,11 +114,18 @@ usual split for this codebase.
 
 ## Left open
 
-- **Not covered by tests, and worth a pass by hand on a phone:** pinch-zoom
-  and swipe-to-page not fighting each other; a pinch that lifts one finger
-  becoming a pan rather than dying; and swipe-right at the first image still
-  leaving the overlay the way it did before 110. The pure rules under both are
-  tested, but the touch plumbing that feeds them is not.
+- **The touch plumbing has no committed regression cover.** `gallery.ts` and
+  `zoom.ts` are node-tested, but the listeners that feed them are not, and
+  `web/test.mjs` has no DOM. Both were driven once through the run-chalk
+  probe against a running stack — an emulated iPhone 14, synthesized
+  `TouchEvent`s — and all of it held: swipe left and right page, a mostly
+  vertical drag does not, a pinch zooms, the same horizontal drag pans once
+  zoomed instead of paging, pinching back to fit drops the transform
+  entirely, and swipe-right at the first image still leaves. That probe is
+  `probes/ui.mjs`, which is gitignored and rewritten per investigation, so
+  none of it is cover against a regression. Worth keeping as a named script
+  beside `readme-shots.mjs` if this area is touched again — and worth a pass
+  on real glass, since a synthesized `TouchEvent` is not a finger.
 - No double-tap-to-zoom on touch: `dblclick` is a mouse event and the touch
   path has no tap-timing of its own. Pinch covers it; a tap timer would be the
   slice that adds it.

@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.11 — 5 September 2026 — Pictures that page and zoom, and the deafened badge
 
 ### Added
 - **The room can see when you have deafened yourself.** Deafening silences
