@@ -12,6 +12,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **The room can see when you have deafened yourself.** Deafening silences
+  everyone and mutes you, but until now the others only saw the mute — which
+  looks like someone listening quietly, so people kept talking to you. A
+  deafened person's tile now carries a **D** instead of the usual **M**, and
+  hovering it says they cannot hear the room. The silencing itself is still
+  entirely on your own machine.
+
 ### Fixed
 - **A busy scratchpad no longer squeezes the call.** In a voice room the
   video shrank as notes piled up under it: with a call full of people the

@@ -525,7 +525,10 @@ class VoiceSessionImpl {
       // default participant row), so only a differing global needs applying --
       // and setMuted/setVideoEnabled broadcast the corrected voice_state.
       const g = this.global;
-      if (g.muted) call.setMuted(true);
+      // 109-1: deafened implies muted (normalised on load), so this one branch
+      // covers both -- and it is the frame that tells the room you joined
+      // already deafened.
+      if (g.muted) call.setAudioState(true, g.deafened);
       // A join that degraded to audio-only has no camera track to enable; the
       // global stands for the next room that does.
       const camOn = g.camOn && call.joinedWithVideo && call.setVideoEnabled(true);
@@ -685,11 +688,12 @@ class VoiceSessionImpl {
    */
   toggleMute(): void {
     const next = !this.s.muted;
-    this.call?.setMuted(next);
     // Unmuting while deafened is the usual way people discover they are still
     // deafened, so let it lift the deafen rather than leaving them talking into
     // a room they cannot hear.
-    this.setGlobal({ muted: next, deafened: next ? this.s.deafened : false });
+    const deafened = next ? this.s.deafened : false;
+    this.call?.setAudioState(next, deafened);
+    this.setGlobal({ muted: next, deafened });
   }
 
   /**
@@ -697,17 +701,19 @@ class VoiceSessionImpl {
    * standard pairing, and the honest one: staying audible in a conversation you
    * have stopped listening to is worse than being off entirely.
    *
-   * Receive-side deafening is a flag the dock's AudioSinks read; it is not
-   * signaled, so nobody else's client needs to know or agree.
+   * Receive-side deafening is a flag the dock's AudioSinks read; no peer acts
+   * on it, so nobody else's client needs to agree. 109-1 does broadcast it,
+   * purely so the room can see that talking to you right now goes nowhere --
+   * the mute alone said "their mic is off", which is a different fact.
    */
   toggleDeafen(): void {
     const next = !this.s.deafened;
     if (next) {
       this.mutedBeforeDeafen = this.s.muted;
-      this.call?.setMuted(true);
+      this.call?.setAudioState(true, true);
       this.setGlobal({ deafened: true, muted: true });
     } else {
-      this.call?.setMuted(this.mutedBeforeDeafen);
+      this.call?.setAudioState(this.mutedBeforeDeafen, false);
       this.setGlobal({ deafened: false, muted: this.mutedBeforeDeafen });
     }
   }

@@ -21,7 +21,7 @@ import (
 
 // VoiceParticipant is one row of live room occupancy: a (user, device) that is
 // currently in a voice channel, plus its broadcast media state (self-mute /
-// camera / screen-share flags shown in the roster).
+// camera / screen-share / self-deafen flags shown in the roster).
 type VoiceParticipant struct {
 	ChannelID uuid.UUID
 	UserID    uuid.UUID
@@ -31,6 +31,9 @@ type VoiceParticipant struct {
 	Muted     bool
 	VideoOn   bool
 	ScreenOn  bool
+	// 109-1: self-deafen, broadcast to the room as an indicator. The
+	// silencing is client-side; this row only says so.
+	Deafened bool
 }
 
 // --- Errors ----------------------------------------------------------------
@@ -139,7 +142,8 @@ func (s *Store) JoinVoice(
 			       joined_at = now(),
 			       muted     = false,
 			       video_on  = false,
-			       screen_on = false`,
+			       screen_on = false,
+			       deafened  = false`,
 			channelID, userID, deviceID, connID,
 		); err != nil {
 			return fmt.Errorf("insert participant: %w", err)
@@ -191,7 +195,7 @@ func (s *Store) EvictVoiceByUser(
 	rows, err := s.Pool.Query(ctx,
 		`DELETE FROM voice_participants
 		  WHERE channel_id = $1 AND user_id = $2
-		  RETURNING channel_id, user_id, device_id, conn_id, joined_at, muted, video_on, screen_on`,
+		  RETURNING channel_id, user_id, device_id, conn_id, joined_at, muted, video_on, screen_on, deafened`,
 		channelID, userID,
 	)
 	if err != nil {
@@ -208,7 +212,7 @@ func (s *Store) EvictVoiceByUser(
 // participant, design §4).
 func (s *Store) VoiceRoster(ctx context.Context, channelID uuid.UUID) ([]VoiceParticipant, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT channel_id, user_id, device_id, conn_id, joined_at, muted, video_on, screen_on
+		`SELECT channel_id, user_id, device_id, conn_id, joined_at, muted, video_on, screen_on, deafened
 		   FROM voice_participants
 		  WHERE channel_id = $1
 		  ORDER BY joined_at ASC`,
@@ -224,7 +228,7 @@ func (s *Store) VoiceRoster(ctx context.Context, channelID uuid.UUID) ([]VoicePa
 // voiceRosterTx is VoiceRoster inside an existing transaction.
 func voiceRosterTx(ctx context.Context, tx pgx.Tx, channelID uuid.UUID) ([]VoiceParticipant, error) {
 	rows, err := tx.Query(ctx,
-		`SELECT channel_id, user_id, device_id, conn_id, joined_at, muted, video_on, screen_on
+		`SELECT channel_id, user_id, device_id, conn_id, joined_at, muted, video_on, screen_on, deafened
 		   FROM voice_participants
 		  WHERE channel_id = $1
 		  ORDER BY joined_at ASC`,
@@ -243,7 +247,7 @@ func scanVoiceParticipants(rows pgx.Rows) ([]VoiceParticipant, error) {
 		var p VoiceParticipant
 		if err := rows.Scan(
 			&p.ChannelID, &p.UserID, &p.DeviceID, &p.ConnID,
-			&p.JoinedAt, &p.Muted, &p.VideoOn, &p.ScreenOn,
+			&p.JoinedAt, &p.Muted, &p.VideoOn, &p.ScreenOn, &p.Deafened,
 		); err != nil {
 			return nil, err
 		}
@@ -258,19 +262,19 @@ func scanVoiceParticipants(rows pgx.Rows) ([]VoiceParticipant, error) {
 // --- UpdateVoiceState -------------------------------------------------------
 
 // UpdateVoiceState sets the broadcast media flags (self-mute / camera /
-// screen-share) for a participant. Returns false when the participant row
+// screen-share / self-deafen) for a participant. Returns false when the participant row
 // doesn't exist (not in the room) -- the 30-2 handler maps that to an error
 // rather than upserting, since state without presence is meaningless.
 func (s *Store) UpdateVoiceState(
 	ctx context.Context,
 	channelID, userID, deviceID uuid.UUID,
-	muted, videoOn, screenOn bool,
+	muted, videoOn, screenOn, deafened bool,
 ) (bool, error) {
 	tag, err := s.Pool.Exec(ctx,
 		`UPDATE voice_participants
-		    SET muted = $4, video_on = $5, screen_on = $6
+		    SET muted = $4, video_on = $5, screen_on = $6, deafened = $7
 		  WHERE channel_id = $1 AND user_id = $2 AND device_id = $3`,
-		channelID, userID, deviceID, muted, videoOn, screenOn,
+		channelID, userID, deviceID, muted, videoOn, screenOn, deafened,
 	)
 	if err != nil {
 		return false, fmt.Errorf("update voice state: %w", err)
@@ -291,7 +295,7 @@ func (s *Store) DeleteVoiceParticipantsByConn(
 	rows, err := s.Pool.Query(ctx,
 		`DELETE FROM voice_participants
 		  WHERE conn_id = $1
-		  RETURNING channel_id, user_id, device_id, conn_id, joined_at, muted, video_on, screen_on`,
+		  RETURNING channel_id, user_id, device_id, conn_id, joined_at, muted, video_on, screen_on, deafened`,
 		connID,
 	)
 	if err != nil {

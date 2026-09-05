@@ -6903,7 +6903,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   white-space: nowrap;
 }
 
-/* Single-letter state flags (m/c/s) -- terminal-terse; title expands. */
+/* Single-letter state flags (m/c/s/d) -- terminal-terse; title expands. */
 .chalk-voice-peer-flag {
   flex: 0 0 auto;
   border: 1px solid var(--voice-on-video-line);
@@ -6911,6 +6911,15 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-size: calc(10px * var(--chalk-font-scale));
   text-transform: uppercase;
   color: var(--voice-on-video-dim);
+}
+
+/* 109-1: d (deafened) replaces m on the tile and carries more weight than it.
+   Warn, not alert: alert is reserved for the local-mute M below, which is YOUR
+   doing -- this is theirs, and the point of the colour is that it is worth
+   noticing before you start talking, not that anything is wrong. */
+.chalk-voice-peer-flag--deaf {
+  color: var(--voice-on-video-warn);
+  border-color: var(--voice-on-video-warn);
 }
 
 .chalk-voice-peer-conn {

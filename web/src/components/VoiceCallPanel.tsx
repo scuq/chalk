@@ -990,7 +990,24 @@ function StagePeer({
             {big || grid ? (poppedOut ? "⧉ close" : "⧉ popout") : "⧉"}
           </button>
         )}
-        {tile.part?.muted && <span class="chalk-voice-peer-flag" title="muted">m</span>}
+        {/* 109-1: deafened stands IN PLACE OF muted, not beside it. Deafening
+            mutes you with it, so a deafened peer always broadcasts both, and
+            two flags saying overlapping things is one flag of noise -- d is
+            the stronger claim and the tooltip carries the rest. */}
+        {tile.part?.deafened ? (
+          <span
+            class="chalk-voice-peer-flag chalk-voice-peer-flag--deaf"
+            title="deafened — they cannot hear the room, and are muted with it"
+          >
+            d
+          </span>
+        ) : (
+          tile.part?.muted && (
+            <span class="chalk-voice-peer-flag" title="muted">
+              m
+            </span>
+          )
+        )}
         {tile.part?.videoOn && <span class="chalk-voice-peer-flag" title="camera on">c</span>}
         {tile.part?.screenOn && (
           <span class="chalk-voice-peer-flag" title="sharing screen">s</span>

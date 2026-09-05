@@ -941,6 +941,9 @@ export interface VoiceParticipantWire {
   muted: boolean;
   video_on: boolean;
   screen_on: boolean;
+  // 109-1: self-deafen. Absent from a client that predates it; read as false,
+  // which is what such a client means.
+  deafened?: boolean;
 }
 
 // Mirrors proto.ICEServer -- the RTCIceServer dictionary as handed to a
@@ -1023,6 +1026,7 @@ export interface VoiceStatePayload {
   muted: boolean;
   video_on: boolean;
   screen_on: boolean;
+  deafened: boolean; // 109-1
 }
 
 export interface VoiceStateAckPayload {
@@ -1048,6 +1052,7 @@ export interface VoiceParticipantStatePayload {
   muted: boolean;
   video_on: boolean;
   screen_on: boolean;
+  deafened?: boolean; // 109-1
 }
 
 // 45-1: the last participant left, so the server destroyed everything typed

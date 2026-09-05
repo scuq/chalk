@@ -390,6 +390,9 @@ export class VoiceCall {
   private closed = false;
   private hasVideo = false;
   private muted = false;
+  /** 109-1: self-deafen, carried here only so voice_state can broadcast it.
+   * The silencing itself is VoiceDock's, on the receive side. */
+  private deafened = false;
   private videoEnabled = false;
   /** 30-7a: the local getDisplayMedia stream while sharing, else null. */
   private screenStream: MediaStream | null = null;
@@ -724,6 +727,19 @@ export class VoiceCall {
   }
 
   /**
+   * setAudioState (109-1) sets mute and deafen together, in one broadcast.
+   *
+   * Deafening always moves both -- it mutes you with it, and un-deafening
+   * restores the mute you had before -- so setting them separately would put
+   * a frame on the wire claiming a state that existed for no time at all
+   * (deafened but still unmuted). Everything mute-only stays on setMuted.
+   */
+  setAudioState(muted: boolean, deafened: boolean): void {
+    this.deafened = deafened;
+    this.setMuted(muted);
+  }
+
+  /**
    * applyMicPrefs (41-4) pushes a profile-panel change into the live call.
    *
    * Gain is a graph parameter and applies instantly. The device and the
@@ -973,6 +989,7 @@ export class VoiceCall {
         muted: this.muted,
         video_on: this.hasVideo && this.videoEnabled,
         screen_on: this.screenStream !== null, // 30-7a
+        deafened: this.deafened, // 109-1
       })
       .catch((err) => console.warn("voice_state:", err));
   }

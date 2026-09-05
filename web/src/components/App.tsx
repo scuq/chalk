@@ -2854,6 +2854,7 @@ export function App() {
                     muted: !!w.muted,
                     videoOn: !!w.video_on,
                     screenOn: !!w.screen_on,
+                    deafened: !!w.deafened,
                   })),
                 });
               })
@@ -3299,6 +3300,7 @@ export function App() {
               muted: !!p.muted,
               videoOn: !!p.video_on,
               screenOn: !!p.screen_on,
+              deafened: !!p.deafened,
             },
           });
         }

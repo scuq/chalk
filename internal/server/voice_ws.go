@@ -141,6 +141,7 @@ func voiceRosterView(rows []store.VoiceParticipant) []proto.VoiceParticipantView
 			Muted:    p.Muted,
 			VideoOn:  p.VideoOn,
 			ScreenOn: p.ScreenOn,
+			Deafened: p.Deafened,
 		})
 	}
 	return out
@@ -347,7 +348,7 @@ func (h *WSHandler) handleVoiceState(
 		return
 	}
 	updated, err := h.store.UpdateVoiceState(ctx, channelID, userID, deviceID,
-		p.Muted, p.VideoOn, p.ScreenOn)
+		p.Muted, p.VideoOn, p.ScreenOn, p.Deafened)
 	if err != nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "state: "+err.Error())
 		return
@@ -369,6 +370,7 @@ func (h *WSHandler) handleVoiceState(
 		Muted:     p.Muted,
 		VideoOn:   p.VideoOn,
 		ScreenOn:  p.ScreenOn,
+		Deafened:  p.Deafened,
 	})
 }
 

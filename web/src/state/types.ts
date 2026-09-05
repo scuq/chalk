@@ -285,6 +285,9 @@ export interface VoiceParticipant {
   muted: boolean;
   videoOn: boolean;
   screenOn: boolean;
+  // 109-1: they have deafened themselves -- muted AND not listening. Always
+  // accompanied by muted, since deafening mutes (see session.toggleDeafen).
+  deafened: boolean;
 }
 
 // gov-2: a governance proposal as the client tracks it. Counts-only tally

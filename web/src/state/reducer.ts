@@ -490,6 +490,7 @@ export function reducer(state: AppState, action: Action): AppState {
           muted: false,
           videoOn: false,
           screenOn: false,
+          deafened: false,
         },
       ];
       return {

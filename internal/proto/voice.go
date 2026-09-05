@@ -53,6 +53,9 @@ type VoiceParticipantView struct {
 	Muted    bool   `json:"muted"`
 	VideoOn  bool   `json:"video_on"`
 	ScreenOn bool   `json:"screen_on"`
+	// 109-1: self-deafen. Omitted by clients that predate it, which read as
+	// not deafened -- the same thing they broadcast today.
+	Deafened bool `json:"deafened"`
 }
 
 // ICEServer mirrors the WebRTC RTCIceServer dictionary as handed to a joining
@@ -95,13 +98,20 @@ type VoiceSignalPayload struct {
 }
 
 // VoiceStatePayload broadcasts the sender's media flags (self-mute / camera /
-// screen) so rosters render them. Distinct from per-viewer LOCAL controls
-// (design Addendum A1), which never touch the server.
+// screen / self-deafen) so rosters render them. Distinct from per-viewer LOCAL
+// controls (design Addendum A1), which never touch the server.
+//
+// 109-1: deafen is the odd one out -- it changes nothing about what this
+// client SENDS, and the silencing it names happens entirely in the deafened
+// browser. It is broadcast so the room can see that talking to this person is
+// pointless right now, and for nothing else: no peer changes its behaviour on
+// it, so a client that lies about it or never sets it costs nobody anything.
 type VoiceStatePayload struct {
 	ChannelID string `json:"channel_id"`
 	Muted     bool   `json:"muted"`
 	VideoOn   bool   `json:"video_on"`
 	ScreenOn  bool   `json:"screen_on"`
+	Deafened  bool   `json:"deafened"` // 109-1
 }
 
 // ---- server -> client (acks) ----------------------------------------------
@@ -174,6 +184,7 @@ type VoiceParticipantStatePayload struct {
 	Muted     bool   `json:"muted"`
 	VideoOn   bool   `json:"video_on"`
 	ScreenOn  bool   `json:"screen_on"`
+	Deafened  bool   `json:"deafened"` // 109-1
 }
 
 // VoicePurgedPayload announces that the last participant left channelID's room

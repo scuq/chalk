@@ -100,6 +100,7 @@ as-built rather than a contemporaneous plan.
 | 106 | channel names — distinct group headers, rename, short names | [PHASE-106-CHANNELNAMES.md](phases/PHASE-106-CHANNELNAMES.md) *(v0.8.6; part of the live checklist still open)* |
 | 107 | quoting a message | [PHASE-107-QUOTE.md](phases/PHASE-107-QUOTE.md) *(merged from PR #9, whose commits say 99)* |
 | 108 | the image cross-compiles — no QEMU in the release build | [PHASE-108-CROSSBUILD.md](phases/PHASE-108-CROSSBUILD.md) |
+| 109 | the room can see you are deafened | [PHASE-109-DEAFENED.md](phases/PHASE-109-DEAFENED.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
