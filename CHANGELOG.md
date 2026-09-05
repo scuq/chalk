@@ -10,7 +10,15 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.12 — 5 September 2026 — New default sounds, and the old synthesizer as a theme
+
+### Changed
+- **New notification sounds by default.** chalk now opens with **arcade** — a
+  set of short, bright cabinet bleeps, from the MIT-licensed
+  [uisfx](https://github.com/romainsimon/uisfx) pack, with thanks to its
+  author. It replaces the old *chalk* board-scrape theme, which has left the
+  picker; if that is the sound you want, **chalk classic** below is it. Any
+  other theme you had chosen is untouched.
 
 ### Added
 - **The old notification sounds are back, as a theme.** Before chalk had sound
