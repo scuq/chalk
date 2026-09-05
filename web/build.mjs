@@ -113,9 +113,12 @@ const buildOpts = {
     ".ttf": "file",
     ".svg": "file",
     ".png": "file",
-    // 102-1: the sound themes (assets/sounds/<theme>/*.wav), imported by
+    // 102-1: the sound themes (assets/sounds/<theme>/*), imported by
     // notify/theme-assets.ts. Content-hashed like every other file asset.
+    // 102-4: .mp3 joins .wav -- the arcade theme ships upstream's own files
+    // and upstream publishes MP3, so nothing is transcoded on the way in.
     ".wav": "file",
+    ".mp3": "file",
   },
   logLevel: "info",
 };

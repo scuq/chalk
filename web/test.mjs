@@ -74,11 +74,11 @@ for (const t of tests) {
     // test executes, and bundling it into every test build would cost seconds
     // per run to inline code that never gets called.
     external: ["preact", "@mediapipe/tasks-vision"],
-    // 102-1: the sound themes' WAVs reach some test bundles through
+    // 102-1: the sound themes' cue files reach some test bundles through
     // notify/index.ts. No test plays them, so they bundle as nothing --
     // the theme *table* (themes.ts) is what the theme tests read, and it
-    // imports no files.
-    loader: { ".wav": "empty" },
+    // imports no files. The theme tests open the folders themselves.
+    loader: { ".wav": "empty", ".mp3": "empty" },
     sourcemap: "inline",
     logLevel: "warning",
   });

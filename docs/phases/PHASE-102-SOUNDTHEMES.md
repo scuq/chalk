@@ -1,7 +1,7 @@
 # Phase 102 — sound themes
 
-**Status:** 102-1, 102-2 and 102-3 shipped; the phase is closed unless a
-follow-up under [Left open](#left-open) is taken up.
+**Status:** 102-1 … 102-4 shipped; the phase is closed unless a follow-up
+under [Left open](#left-open) is taken up.
 
 **Tag:** `#notify` → `tools/where.sh -g notify` (shared with 40, 50 and 71).
 
@@ -27,8 +27,8 @@ replaced by them.
 ## The design
 
 - **Recorded cues, shipped as assets.** `web/assets/sounds/<theme>/` holds ten
-  WAVs (48 kHz, 16-bit, stereo, each under a second) plus the theme's own
-  `MANIFEST.md`. `notify/theme-assets.ts` imports every one; esbuild's file
+  cue files (WAV since 102-1, MP3 also since 102-4; each under two seconds)
+  plus the theme's own `MANIFEST.md`. `notify/theme-assets.ts` imports every one; esbuild's file
   loader (a `.wav` entry in `build.mjs`) emits each content-hashed into
   `dist/`, so `spa.go` serves them immutable like every other asset and a
   changed cue is a new URL. ~2 MB in the image, nothing at runtime until a
@@ -109,6 +109,11 @@ replaced by them.
   landing, and the theme's MANIFEST records the replacement.
 - **102-3** — a fifth theme, *chalk classic*: the deleted synthesizer's own
   output, rendered offline to ten WAVs. See below.
+- **102-4** — *arcade* replaces the recorded *chalk* theme and becomes the
+  default; the cues are romainsimon/uisfx's MIT-licensed arcade pack, shipped
+  as upstream's own MP3s. `.mp3` loaders in `build.mjs` and `test.mjs`, an
+  MPEG frame walker in `themes.test.ts`, `audio/mpeg` in `contentTypeFor`.
+  See below.
 
 ## 102-3 — the synth, as a theme
 
@@ -163,6 +168,71 @@ Decisions worth keeping:
 - **Stereo from a mono synth.** Both channels carry the same samples; the
   theme format is stereo and the synth was not.
 
+## 102-4 — arcade, and the end of the recorded chalk theme
+
+scuq asked for a theme built from [romainsimon/uisfx](https://github.com/romainsimon/uisfx)'s
+*arcade* pack, to replace *chalk*. Replace literally: `web/assets/sounds/chalk/`
+is deleted, the id is gone from `SoundThemeId`, and `arcade` is the new
+`DEFAULT_SOUND_THEME`. A device whose stored pref still says `"chalk"` gets the
+default back through `normalizeSoundPrefs`'s unknown-id fallback — the path
+102-1 built for exactly this and had never yet needed.
+
+Decisions worth keeping:
+
+- **Upstream's files, unmodified.** uisfx publishes MP3 and OGG, not WAV, and
+  there is no ffmpeg, sox or any other decoder on the build box. Rather than
+  add a system dependency, or drive the e2e Chromium's `decodeAudioData` to
+  transcode, the MP3s ship exactly as published: byte for byte, no resample,
+  no re-level. That is also the better answer on the merits — MIT wants its
+  notice to travel with *the files*, and the ones chalk serves are then
+  literally the ones the licence was granted for. 45 KB against the ~600 KB a
+  WAV transcode would have cost, and no lossy→PCM generation step.
+- **A cue file is now WAV *or* MP3.** `.mp3` joins the esbuild file loader in
+  `build.mjs` and the empty loader in `test.mjs`; `player.ts` needed nothing,
+  since it fetches bytes and hands them to `decodeAudioData`, which takes both
+  and resamples to the context's rate. `contentTypeFor` in `spa.go` gains
+  `audio/mpeg` — not load-bearing (a fetch ignores the type, and upstream's
+  files carry an ID3 tag that Go's sniffer recognises anyway), but a re-export
+  without that tag would quietly become `application/octet-stream`.
+- **The duration ceiling holds, by walking MPEG frames.** An MP3 has no length
+  field, so `themes.test.ts` sums frames × 1152 samples and divides by the
+  header's rate. It is restricted to MPEG-1 Layer III and throws on anything
+  else rather than measure it against the wrong bitrate table: a silently
+  mismeasured duration would be worse than a failing test. Walking the frames
+  is also the only check that the file is whole, which a WAV gets for free
+  from its data-chunk size. The sample-rate and bit-depth pins do **not**
+  apply to MP3 cues — arcade's are 44.1 kHz mono, and pinning a publisher's
+  encode would be pinning something chalk does not control.
+- **The mapping is the only editorial act.** uisfx names its sounds for a
+  shopping-and-dashboard vocabulary chalk has no use for, so scuq gave the
+  ten: `success` → friend online, `add-to-cart`/`remove-from-cart` → your own
+  call join and leave, `wake`/`sleep` → other people arriving and leaving,
+  `connect`/`disconnect`, `typing` → send confirmed, `error`, `notification` →
+  new message. The pack's connection cue is called `connect`, not `connected`.
+  The folder's `MANIFEST.md` records each cue's upstream filename so the
+  mapping is legible without a checkout of uisfx.
+- **Attribution in the repo, not only in a doc.** `LICENSE.uisfx` sits in the
+  theme folder, so it is in the image and beside the files it covers. The
+  manifest and `docs/notification-sounds.md` both name the project and thank
+  it.
+- **chalk-classic keeps its id.** With the recorded *chalk* theme gone it is
+  the only theme left with the chalk-on-a-board grammar, which makes the name
+  more accurate rather than less. Its manifest's level note used to cite
+  chalk's ceiling; it now cites the family's, which is the same −6.4 dBFS
+  (empir) and −6.2 (runestone). The trim constant does not move — re-deriving
+  it would rewrite ten committed files to change nothing.
+
+### Rejected in 102-4
+
+- **Transcoding to WAV** (via an installed ffmpeg, or the e2e Chromium).
+  Either would have kept the folders uniform at the cost of a build-box
+  dependency, a lossy→PCM step, and an attribution that covers files nobody
+  published.
+- **Shipping the OGGs instead.** Smaller again, and their duration is easier
+  to read (the last page's granule position). But Safari's `decodeAudioData`
+  has never reliably taken Ogg Vorbis, and chalk runs on iPhones.
+- **Keeping `chalk` alongside `arcade`.** Asked for and answered: replace.
+
 ## Manual checklist
 
 Verified by the chain (tsc, `node test.mjs`, `node build.mjs`, Go chain); not
@@ -179,8 +249,8 @@ yet heard in a browser by this change set:
 - [ ] a reload keeps the theme; an old `chalk.notify.v2` entry without one
       falls back to *chalk*.
 
-102-3 adds one, and it is the only thing about that slice a test cannot
-answer:
+102-3 and 102-4 add these, and they are the only things about those slices a
+test cannot answer:
 
 - [ ] *chalk classic* is heard against the synth as it was. The render is
       the same arithmetic as the WebAudio graph, but "the same arithmetic"
@@ -189,6 +259,11 @@ answer:
       sweep against Chrome's per-quantum one. If a cue sounds wrong, the
       tool prints its levels and its spectrum; the spec table is not the
       suspect.
+- [ ] *arcade* is the theme a fresh device gets, and a device whose stored
+      pref still says `chalk` lands on it too rather than on silence.
+- [ ] the arcade cues sit at a sane level against the other four at the
+      default volume. They were not re-levelled — upstream's mastering is
+      whatever it is, and nothing in the repo measures an MP3.
 
 ## Left open
 
@@ -198,4 +273,6 @@ answer:
   the same `decodeAudioData`.
 - **A distinct mention cue.** One new file per theme plus a `ThemeCue`; the
   `CUE_FOR` rows for `mention` and `dm` move. Same shape as phase 87's
-  reminder cue.
+  reminder cue. Cheapest it has ever been: uisfx publishes a `mention.mp3`,
+  and chalk-classic has an unrendered `mention` spec waiting in the render
+  tool. The three DAW themes are the ones that would need a session.

@@ -34,9 +34,10 @@ here has a pitch, and nothing reaches the 2–8 kHz stick-slip band that makes
 chalk screech — `--spectrum` in the render tool checks that on the audio.
 
 Levels: one trim for the whole theme, so the specs' hand-tuned balance
-between the ten sounds survives. It puts the loudest cue at −6.4 dBFS, which
-is the *chalk* theme's ceiling to the decibel, and lands the mean per-cue RMS
-within 0.2 dB of it — the volume slider means the same thing in both.
+between the ten sounds survives. It puts the loudest cue at −6.4 dBFS. That
+figure was matched to the *chalk* theme, which 102-4 has since replaced with
+*arcade*; it remains the family's ceiling — empir peaks at the same −6.4 and
+runestone at −6.2 — so the volume slider means the same thing across themes.
 
 Seven of chalk's seventeen sound categories have no cue of their own (see
 `CUE_FOR` in `web/src/notify/themes.ts`): mention, dm, thread reply, voice,

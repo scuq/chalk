@@ -229,6 +229,15 @@ func contentTypeFor(name string) string {
 		// No registered type exists. Being explicit stops the sniffer from
 		// deciding a model file is text and stops nosniff from blocking it.
 		return "application/octet-stream"
+	case ".mp3":
+		// 102-4: the arcade theme's cues. Go's own table has no .mp3, and
+		// ServeContent's sniffer only recognises one because upstream's
+		// files happen to carry an ID3 tag -- a re-export without one
+		// would silently become application/octet-stream. Nothing breaks
+		// today either way (the player fetches bytes and hands them to
+		// decodeAudioData, which ignores the type), but a correct header
+		// costs one line and a wrong one is confusing in a network log.
+		return "audio/mpeg"
 	default:
 		return ""
 	}

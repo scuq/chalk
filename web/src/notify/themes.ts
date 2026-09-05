@@ -19,14 +19,21 @@
 // This module is pure -- ids, labels, the mapping -- so it can be tested
 // under node. The WAV imports live in theme-assets.ts, next door.
 //
-// 102-3 adds a fifth theme, chalk-classic, which is the deleted synth's
-// own output: its spec table and signal path were reimplemented once in
+// 102-3 adds chalk-classic, which is the deleted synth's own output: its
+// spec table and signal path were reimplemented once in
 // tools/render-classic-theme.mjs and rendered to ten WAVs. Nothing about
 // the client changes -- no filters came back, the theme is files.
+//
+// 102-4 replaces the recorded *chalk* theme with *arcade*, and makes it the
+// default. A cue file is now a WAV or an MP3: arcade is romainsimon/uisfx's
+// arcade pack under MIT, shipped byte for byte as upstream publishes it
+// rather than transcoded, so the attribution covers the actual files. A
+// device still set to "chalk" gets the default back through
+// normalizeSoundPrefs, the same path a downgrade takes.
 
 import type { SoundCategory } from "./types";
 
-export type SoundThemeId = "chalk" | "chalk-classic" | "gamegirl" | "runestone" | "empir";
+export type SoundThemeId = "arcade" | "chalk-classic" | "gamegirl" | "runestone" | "empir";
 
 // The ten cues every theme ships. The names are the file stems the theme
 // folders use, so a folder listing and this list can be checked against
@@ -85,14 +92,16 @@ export interface SoundThemeInfo {
   desc: string;
 }
 
-// Order is the picker's order. chalk first because it is the default: the
-// app is called chalk, and these are chalk on a board -- scrapes, taps and
-// dust, the same grammar the synth had (up = arrival, down = departure).
+// Order is the picker's order, default first.
 export const SOUND_THEMES: SoundThemeInfo[] = [
-  { id: "chalk", label: "chalk", desc: "chalk on a board — scrapes, taps and dust" },
+  // 102-4. Replaces the *chalk* theme as the default and in the repo; the
+  // cues are romainsimon/uisfx's arcade pack (MIT), shipped as the MP3s
+  // upstream publishes. See the folder's MANIFEST.md and LICENSE.uisfx.
+  { id: "arcade", label: "arcade", desc: "cabinet bleeps — bright, short, unmistakable" },
   // 102-3. The synth is still gone; this is what it sounded like, rendered
   // once offline by tools/render-classic-theme.mjs and shipped as files
-  // like every other theme.
+  // like every other theme. Since 102-4 removed the recorded *chalk*
+  // theme, this is the only place chalk-on-a-board still sounds.
   {
     id: "chalk-classic",
     label: "chalk classic",
@@ -105,7 +114,7 @@ export const SOUND_THEMES: SoundThemeInfo[] = [
   { id: "empir", label: "empir", desc: "medieval RTS — horns, timber, blacksmith metal and drums" },
 ];
 
-export const DEFAULT_SOUND_THEME: SoundThemeId = "chalk";
+export const DEFAULT_SOUND_THEME: SoundThemeId = "arcade";
 
 export function isSoundThemeId(v: unknown): v is SoundThemeId {
   return typeof v === "string" && SOUND_THEMES.some((t) => t.id === v);

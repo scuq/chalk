@@ -148,15 +148,21 @@ switched off becomes a muted event type — the closest pre-rules equivalent.
 ## Sound design
 
 Since phase 102 chalk plays **sound themes as files**, not a live
-synthesizer. A theme is ten WAV cues (48 kHz, 16-bit, stereo, each under a
-second) in `web/assets/sounds/<theme>/`, with a `MANIFEST.md` beside them
-describing each cue and the theme's grammar. Five ship: four authored by scuq
-in a DAW, and one rendered from the deleted synthesizer.
+synthesizer. A theme is ten cue files under two seconds each, in
+`web/assets/sounds/<theme>/`, with a `MANIFEST.md` beside them describing each
+cue and the theme's grammar. Most are 48 kHz 16-bit stereo WAV; *arcade* is
+MP3, because that is the form its upstream publishes and its files ship
+unmodified. Both reach the player through the same `decodeAudioData`, which
+resamples to the `AudioContext`'s rate, so the format is a fact about where a
+theme came from and not about how it plays.
+
+Five ship: three authored by scuq in a DAW, one rendered from the deleted
+synthesizer, and one taken from an MIT-licensed pack.
 
 | Theme | Character |
 |---|---|
-| `chalk` (default) | chalk on a board: scrapes, taps, dust. Upward scrapes are arrival or connection, downward ones departure or loss; taps confirm actions. |
-| `chalk-classic` | the phase-40/71 synthesizer's own output (102-3): pink noise through a swept bandpass, a stick-slip rasp, a contact tick, no oscillator anywhere. Same grammar; not authored in a DAW but rendered — see below. |
+| `arcade` (default) | cabinet bleeps: bright, short, unmistakable. Not authored for chalk — it is the *arcade* pack from [romainsimon/uisfx](https://github.com/romainsimon/uisfx) (MIT), shipped byte for byte. 102-4; see below. |
+| `chalk-classic` | the phase-40/71 synthesizer's own output (102-3): pink noise through a swept bandpass, a stick-slip rasp, a contact tick, no oscillator anywhere. Chalk on a board — scrapes, taps and dust — which since 102-4 is the only theme carrying that grammar. Not authored in a DAW but rendered; see below. |
 | `gamegirl` | classic-handheld bleeps: 25 % pulse waves, stepped envelopes, hard gates, one noise-channel accent. Same up/down grammar. |
 | `runestone` | fantasy UI: horn-and-bell presence, portal open/close for your own call state, wooden knocks for other people, chain and drum for the connection. |
 | `empir` | medieval RTS: horns, timber, blacksmith metal and war drums; a chant-and-horn fanfare for your own call join. All cues synthesized. |
@@ -187,14 +193,31 @@ and remembered, never retried per message.
 
 **Tests** (`themes.test.ts`) hold the contract between the table and the
 folders: every category maps to a cue, every theme folder holds every cue as a
-well-formed 48 kHz 16-bit PCM WAV under a second, and no stray file sits in a
-theme folder. Whether a theme sounds *good* is not a unit test; it is the ear
+well-formed audio file under two seconds — a 48 kHz PCM WAV read through its
+RIFF chunk list, or an MPEG-1 Layer III MP3 whose frames are walked to sum its
+samples, which is also the only check that the file is whole — and no stray
+file sits in a theme folder. Whether a theme sounds *good* is not a unit test; it is the ear
 in the DAW, and the files are the recording of it.
 
 **Adding a theme** is: a folder of the ten cues plus a manifest under
 `web/assets/sounds/`, thirty-line-of-imports entry in `theme-assets.ts`, an id
 in `SoundThemeId` and a row in `SOUND_THEMES` (`themes.ts`). The test tells you
-what you forgot.
+what you forgot. Cue files may be WAV or MP3; a third format means a loader
+entry in `build.mjs` and `test.mjs`, a duration reader in `themes.test.ts`,
+and a case in `contentTypeFor` (`spa.go`).
+
+**The arcade theme is borrowed, not authored** (102-4). It replaced the
+recorded *chalk* theme, and it is the default. The ten cues are
+[romainsimon/uisfx](https://github.com/romainsimon/uisfx)'s *arcade* pack —
+MIT, © 2026 Yuki Capital — copied in unmodified rather than transcoded or
+re-levelled, so the attribution covers the actual bytes chalk serves. The
+licence travels with them as `web/assets/sounds/arcade/LICENSE.uisfx`, since
+MIT requires that notice to accompany the files, and the folder's
+`MANIFEST.md` records which upstream sound each cue is: uisfx names its
+sounds for a shopping-and-dashboard vocabulary (`add-to-cart`,
+`remove-from-cart`, `wake`, `sleep`), and the mapping onto chalk's ten events
+is the only editorial decision in that folder. **Thanks to Romain Simon and
+the uisfx project.**
 
 **The classic theme is rendered, not recorded** (102-3).
 `tools/render-classic-theme.mjs` is the deleted `synth.ts` reimplemented once,
@@ -206,16 +229,19 @@ committed files byte for byte, and `--spectrum` reports each cue's energy by
 octave plus the share at or above 5200 Hz, which is the measurement the
 synth's `SCREECH_FLOOR_HZ` test was a proxy for. One trim scales all ten cues
 together so the specs' hand-tuned balance survives; it puts the loudest at
-−6.4 dBFS, matching the `chalk` theme's ceiling. Nothing about the client
-changed — no filters came back, the theme is files like the other four.
+−6.4 dBFS — matched in 102-3 to the then-current `chalk` theme, and still the
+family's ceiling now that 102-4 has removed it (empir peaks at the same −6.4,
+runestone at −6.2). Nothing about the client changed — no filters came back,
+the theme is files like the other four.
 
 **History.** Phases 40 and 71 built a chalk-stroke *synthesizer* — pink noise
 through swept bandpass filters, a stick-slip grain modulator, no oscillators,
 seventeen hand-tuned specs and a listening bench (`tools/sound-bench.mjs`).
 Their records ([PHASE-40-SOUNDS.md](phases/PHASE-40-SOUNDS.md),
 [PHASE-71-CALLSOUNDS.md](phases/PHASE-71-CALLSOUNDS.md)) keep the design; the
-code is gone with phase 102, the `chalk` theme carries its grammar forward,
-and since 102-3 `chalk-classic` carries the sound itself.
+code is gone with phase 102. The recorded `chalk` theme carried its grammar
+forward until 102-4 replaced it with `arcade`; `chalk-classic` has carried the
+sound itself since 102-3, and now carries the grammar too.
 
 ## Unlocking
 

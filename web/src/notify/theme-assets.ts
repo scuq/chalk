@@ -1,26 +1,31 @@
 // chalk-web -- the sound themes' files.
 //
-// 102-1: every WAV goes through esbuild's file loader, so each lands in
+// 102-1: every cue file goes through esbuild's file loader, so each lands in
 // dist/ under a content-hashed name and spa.go serves it immutable for a
 // year -- the same contract every other asset keeps (build.mjs). A changed
 // cue is a changed URL, never a stale cache.
 //
 // Kept apart from themes.ts so the theme *table* can be imported under
-// node without a WAV loader in the way. Nothing here is tested; it is a
+// node without a file loader in the way. Nothing here is tested; it is a
 // lookup.
+//
+// 102-4: extensions differ per theme and that is deliberate. The four
+// authored themes and the rendered classic one are WAV; arcade is MP3
+// because that is what romainsimon/uisfx publishes, and shipping its files
+// unmodified is what keeps the MIT attribution honest.
 
 import type { SoundThemeId, ThemeCue } from "./themes";
 
-import chalk01 from "../../assets/sounds/chalk/01_friend_online.wav";
-import chalk02 from "../../assets/sounds/chalk/02_you_join_call.wav";
-import chalk03 from "../../assets/sounds/chalk/03_you_leave_call.wav";
-import chalk04 from "../../assets/sounds/chalk/04_someone_joins.wav";
-import chalk05 from "../../assets/sounds/chalk/05_someone_leaves.wav";
-import chalk06 from "../../assets/sounds/chalk/06_connected.wav";
-import chalk07 from "../../assets/sounds/chalk/07_disconnected.wav";
-import chalk08 from "../../assets/sounds/chalk/08_send_confirmed.wav";
-import chalk09 from "../../assets/sounds/chalk/09_error.wav";
-import chalk10 from "../../assets/sounds/chalk/10_new_message.wav";
+import arcade01 from "../../assets/sounds/arcade/01_friend_online.mp3";
+import arcade02 from "../../assets/sounds/arcade/02_you_join_call.mp3";
+import arcade03 from "../../assets/sounds/arcade/03_you_leave_call.mp3";
+import arcade04 from "../../assets/sounds/arcade/04_someone_joins.mp3";
+import arcade05 from "../../assets/sounds/arcade/05_someone_leaves.mp3";
+import arcade06 from "../../assets/sounds/arcade/06_connected.mp3";
+import arcade07 from "../../assets/sounds/arcade/07_disconnected.mp3";
+import arcade08 from "../../assets/sounds/arcade/08_send_confirmed.mp3";
+import arcade09 from "../../assets/sounds/arcade/09_error.mp3";
+import arcade10 from "../../assets/sounds/arcade/10_new_message.mp3";
 
 import classic01 from "../../assets/sounds/chalk-classic/01_friend_online.wav";
 import classic02 from "../../assets/sounds/chalk-classic/02_you_join_call.wav";
@@ -67,17 +72,17 @@ import empir09 from "../../assets/sounds/empir/09_error.wav";
 import empir10 from "../../assets/sounds/empir/10_new_message.wav";
 
 export const THEME_URLS: Record<SoundThemeId, Record<ThemeCue, string>> = {
-  chalk: {
-    "01_friend_online": chalk01,
-    "02_you_join_call": chalk02,
-    "03_you_leave_call": chalk03,
-    "04_someone_joins": chalk04,
-    "05_someone_leaves": chalk05,
-    "06_connected": chalk06,
-    "07_disconnected": chalk07,
-    "08_send_confirmed": chalk08,
-    "09_error": chalk09,
-    "10_new_message": chalk10,
+  arcade: {
+    "01_friend_online": arcade01,
+    "02_you_join_call": arcade02,
+    "03_you_leave_call": arcade03,
+    "04_someone_joins": arcade04,
+    "05_someone_leaves": arcade05,
+    "06_connected": arcade06,
+    "07_disconnected": arcade07,
+    "08_send_confirmed": arcade08,
+    "09_error": arcade09,
+    "10_new_message": arcade10,
   },
   "chalk-classic": {
     "01_friend_online": classic01,

@@ -524,6 +524,9 @@ function readWav(path) {
   throw new Error(`${path}: no data chunk`);
 }
 
+// Only WAV themes are measured. 102-4's arcade ships upstream's MP3s and
+// nothing here decodes MP3 -- it is reported as unmeasured rather than as
+// silent, which is what a zero would have looked like.
 function measureThemes() {
   const rows = [];
   for (const theme of readdirSync(SOUNDS_DIR).sort()) {
@@ -537,7 +540,7 @@ function measureThemes() {
       rmsSum += l.rms;
       n++;
     }
-    rows.push({ theme, peak, meanRms: rmsSum / n, cues: n });
+    rows.push({ theme, peak, meanRms: n ? rmsSum / n : 0, cues: n });
   }
   return rows;
 }
@@ -590,14 +593,17 @@ function spectrum(samples) {
 // normalizing each file separately would throw it away. Every cue is
 // scaled by the same factor, derived so the loudest of them lands here.
 //
-// -6.4 dBFS, which is the *chalk* theme's loudest cue to the decibel. The
-// synth ran an order of magnitude below full scale -- its raw peak here is
-// -9.6 dBFS and its quietest cue far below that -- and the authored themes
-// do not, so rendering it untrimmed would make switching to this theme a
-// switch to near-silence. Matching chalk's ceiling also lands the mean
-// per-cue RMS within 0.2 dB of chalk's, so the volume slider means the
-// same thing in both. The level report below is how that was checked;
-// re-run it if a cue moves.
+// -6.4 dBFS. The synth ran an order of magnitude below full scale -- its
+// raw peak here is -9.6 dBFS and its quietest cue far below that -- and the
+// authored themes do not, so rendering it untrimmed would make switching to
+// this theme a switch to near-silence.
+//
+// The figure was derived in 102-3 against the *chalk* theme, whose loudest
+// cue sat at -6.4 dBFS and whose mean per-cue RMS this lands within 0.2 dB
+// of. 102-4 removed that theme, and the value stays: empir peaks at the
+// same -6.4 and runestone at -6.2, so it is still the family's ceiling, and
+// re-deriving it would rewrite ten committed files to move nothing. The
+// level report below is how that is checked; re-run it if a cue moves.
 const TARGET_PEAK = 0.48;
 
 const measureOnly = process.argv.includes("--measure");
@@ -650,6 +656,10 @@ if (showSpectrum) {
 
 console.log("\ntheme levels (max peak, mean per-cue rms):");
 for (const r of measureThemes()) {
+  if (!r.cues) {
+    console.log(`  ${r.theme.padEnd(14)} not WAV — not measured here`);
+    continue;
+  }
   console.log(
     `  ${r.theme.padEnd(14)} ${r.cues} cues  peak ${db(r.peak).padStart(6)} dB` +
       `  rms ${db(r.meanRms).padStart(6)} dB`,
