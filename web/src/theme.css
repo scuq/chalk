@@ -549,9 +549,16 @@ html {
   overflow: hidden;
 }
 
+/* 45-8: and the stage clips. Squeezing it moves the control bar up, but the
+   grid inside it cannot follow -- its tiles take their height from their width
+   through aspect-ratio, so the rows stay put and spill out the bottom. Without
+   this the bar and the scratchpad rule were painted on top of the last row of
+   faces instead of below them. Cropping the picture is the documented trade
+   above: what gives up height is the video, never the controls under it. */
 .chalk-main--voice .chalk-voice-stage {
   flex: 0 1 auto;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* The big tile is stretched by this row, so squeezing the stage squeezes the
@@ -595,7 +602,14 @@ html {
    line sits on the bottom edge, and each one that arrives pushes the oldest
    past the top of the frame, where it is clipped and unreachable. */
 .chalk-messages--ephemeral {
-  flex: 1 1 auto;
+  /* 45-8: basis 0, not auto. `auto` makes the feed bid for its own content
+     height, and a call's scratchpad fills up: sixty rows of base size against
+     the call panel's four hundred, both shrinkable, so the deficit was split
+     between them and the call lost a third of its height to text that is
+     clipped anyway. The call holds the top and the feed takes what is left --
+     that only works if the feed asks for nothing to start with. min-height
+     below is its floor; past four in the room, 63-1 halves it. */
+  flex: 1 1 0;
   min-height: 6em;
   overflow: hidden;
   justify-content: flex-end;

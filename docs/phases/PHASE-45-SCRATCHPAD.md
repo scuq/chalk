@@ -3,7 +3,7 @@
 *Backfilled record.* Written after the fact from the commit history and the
 changelog; the design notes are as-built, not a contemporaneous plan.
 
-**Status:** shipped, v0.3.46 (45-1…45-2), v0.4.3 (45-3…45-4), 45-6 later; 45-7 added 2026-08-29.
+**Status:** shipped, v0.3.46 (45-1…45-2), v0.4.3 (45-3…45-4), 45-6 later; 45-7 added 2026-08-29; 45-8 added 2026-09-05.
 **Tags:** `#voice`, `#unread`, `#threads` → `tools/where.sh -g voice`
 
 ## Why
@@ -50,6 +50,58 @@ reconnect and refuse to clear.
   the max-precedence aggregate followed. `decideIdle` rules 3 and 4 swapped;
   where `systemIdle` is undefined (Firefox, Safari, the toggle off) the
   hidden rule is unchanged. Tests in `idle.test.ts` pin all three cases.
+- **45-8** (2026-09-05) — the scratchpad stopped bidding for the call's
+  height. Reported from a four-person call: the bottom row of tiles cut in
+  half, the control bar drawn across a face. Two separate faults, both in
+  `theme.css` — see *The height split* below.
+
+## The height split (45-8)
+
+The voice pane is a flex column that clips rather than scrolls, and the
+declared priority (45-3) is that the call holds the top, the scratchpad takes
+what is left, and what gives up height when the pane runs short is the video,
+never the controls under it. Neither half of that was true.
+
+**The feed was bidding.** `.chalk-messages--ephemeral` was `flex: 1 1 auto`,
+and `auto` means "my flex base size is my content height". A call's scratchpad
+holds up to sixty rows (`EPHEMERAL_MAX_ROWS`), so the feed walked into the
+sizing with a base of ~1500px against the call panel's ~545px. Both are
+shrinkable, so flex split the deficit between them in proportion to those
+bases — and the call, which is the one thing in the pane that cannot afford to
+lose height, gave up two thirds of it. Measured in a real browser at 1440×1000
+with four tiles: an empty scratchpad left the panel at 545px, twenty rows took
+it to 398px, sixty rows to 208px. `flex: 1 1 0` is the fix; the feed now asks
+for nothing and takes only leftovers, which costs it nothing, because
+everything above the fold is clipped and unreachable anyway.
+
+**The stage was spilling.** Squeezing `.chalk-voice-stage` moves the control
+bar up, but the grid inside it does not follow: `.chalk-voice-peer--grid` takes
+its height from its width through `aspect-ratio`, so the rows keep their size
+and overflow the stage box. The bar and the scratchpad rule are laid out after
+the stage, so they landed on top of the last row of faces. `overflow: hidden`
+on the stage makes the overflow crop instead — the documented trade, video
+before controls.
+
+Rejected: making the tiles shrink with the stage. `%` heights need a definite
+container height and the stage has none, so it would take either a viewport
+`calc()` against a hand-measured constant for everything else in the pane
+(~390px, and wrong the moment the font scale moves) or a ResizeObserver
+feeding a custom property. Both were more machinery than the bug warranted.
+
+**Still open.** Below roughly 850px of window height a four-tile call does not
+fit even with an empty scratchpad, and the bottom of the grid is now cropped:
+43px at 1440×800, 88px at 1440×700. Nothing overlaps and no control is lost,
+but the picture is cut. The fix if it becomes worth doing is to scale the grid
+down instead of cropping it — cap `.chalk-voice-grid`'s `max-width` from the
+height the pane can spare, which keeps the tiles at 16:9 and all four whole;
+a probe run of that variant gave 360×203 tiles at 800px and 272×153 at 700px
+with no crop. It needs the constant above, hence the deferral.
+
+**How it was measured.** jsdom has no layout, so `web/test.mjs` cannot see any
+of this; the numbers came from a Playwright probe that renders the real
+`theme.css` around a synthetic voice pane and reads back the boxes. What the
+suite *can* hold is the two declarations themselves, which is
+`theme-voice-pane.test.ts`.
 
 ## Where it lives
 
@@ -57,6 +109,9 @@ reconnect and refuse to clear.
 `web/src/state/reducer.ts` (and `reducer-voice-purge.test.ts`),
 `web/src/chat/threadinbox.ts`, `web/src/notify/gate.ts`,
 `web/src/components/VoiceCallPanel.tsx`, `web/src/presence/`.
+The pane's height rules are `.chalk-main--voice` and
+`.chalk-messages--ephemeral` in `web/src/theme.css`, held by
+`web/src/theme-voice-pane.test.ts`.
 
 ## Notes
 

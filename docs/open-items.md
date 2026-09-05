@@ -208,6 +208,15 @@ Two deliberate exclusions:
   camera toggles are there, the exit is not. Found while probing 95-1, which
   did not cause it: the controls band never carried a leave button either.
   Verified in the running app, and the last check in the 95 probe records it.
+- **A four-tile call does not fit a window under ~850px tall.** 45-8 stopped
+  the scratchpad stealing the call's height and stopped the control bar being
+  painted over the video, but the tiles still cannot shrink with the stage —
+  `aspect-ratio` sizes them from their width — so what does not fit is now
+  cropped: 43px off the bottom at 1440×800, 88px at 1440×700. Fix is to cap
+  `.chalk-voice-grid`'s `max-width` from the height the pane can spare, which
+  scales all four tiles whole; it needs a hand-measured constant for the rest
+  of the pane (~390px), which is why it was deferred. Numbers and the rejected
+  alternatives are in `docs/phases/PHASE-45-SCRATCHPAD.md`.
 - `docker/Dockerfile`'s frontend stage runs `npm run build` without
   `NODE_ENV=production`, so released images ship unminified bundles with inline
   sourcemaps. Costlier since 52-2 (the MediaPipe chunk is 153 KB minified vs

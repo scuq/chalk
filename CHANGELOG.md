@@ -10,6 +10,16 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- **A busy scratchpad no longer squeezes the call.** In a voice room the
+  video shrank as notes piled up under it: with a call full of people the
+  bottom row of faces was cut in half and the mute and leave buttons ended
+  up drawn across somebody's picture. The call now keeps its size whatever
+  is typed below it, and the scratchpad takes the room that is left — which
+  is all it ever showed, since its older lines scroll away regardless.
+
 ## v0.8.10 — 29 August 2026 — Using the computer keeps you online
 
 ### Changed
