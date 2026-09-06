@@ -7,13 +7,17 @@
 // normalized on the way in -- an out-of-range zoom or an unknown bleed name
 // becomes the default rather than a broken header.
 
-/** How the picture meets the band. */
-export type BannerFit = "fill" | "fit";
+/** How the picture meets the band. "poster" (111-12) puts it at band height
+ *  at one end and gives the rest to the bleed -- box art on a backdrop, for
+ *  the tall pictures that neither of the other two can flatter. */
+export type BannerFit = "fill" | "fit" | "poster";
 /** How tall the band is. Names, not pixels: the CSS decides what they mean,
  *  and it means something different on a phone. */
 export type BannerHeight = "short" | "normal" | "tall";
-/** What fills the space beside a fitted picture. */
-export type BannerBleed = "edge" | "blur" | "none";
+/** What fills the space beside the picture. 111-11 replaced the old "edge"
+ *  (the picture's own edge columns, stretched sideways) with the wash: the
+ *  columns streaked on anything with a hard horizontal edge in it. */
+export type BannerBleed = "wash" | "blur" | "none";
 
 export interface BannerLayout {
   /** the attachment id of the picture; "" is not a valid layout */
@@ -38,12 +42,12 @@ export const DEFAULT_BANNER: Omit<BannerLayout, "attachmentID"> = {
   focusY: 50,
   zoom: 100,
   height: "normal",
-  bleed: "edge",
+  bleed: "wash",
 };
 
-const FITS: BannerFit[] = ["fill", "fit"];
+const FITS: BannerFit[] = ["fill", "fit", "poster"];
 const HEIGHTS: BannerHeight[] = ["short", "normal", "tall"];
-const BLEEDS: BannerBleed[] = ["edge", "blur", "none"];
+const BLEEDS: BannerBleed[] = ["wash", "blur", "none"];
 
 function clamp(n: unknown, lo: number, hi: number, fallback: number): number {
   const v = typeof n === "number" ? n : Number(n);
@@ -67,8 +71,12 @@ export function normalizeBanner(raw: unknown): BannerLayout | null {
   const height = HEIGHTS.includes(o.height as BannerHeight)
     ? (o.height as BannerHeight)
     : DEFAULT_BANNER.height;
-  const bleed = BLEEDS.includes(o.bleed as BannerBleed)
-    ? (o.bleed as BannerBleed)
+  // 111-11: a channel saved before the rename says "edge"; it meant the
+  // thing the wash replaced, so read it as the wash rather than silently
+  // resetting someone's choice to the default.
+  const rawBleed = o.bleed === "edge" ? "wash" : o.bleed;
+  const bleed = BLEEDS.includes(rawBleed as BannerBleed)
+    ? (rawBleed as BannerBleed)
     : DEFAULT_BANNER.bleed;
   return {
     attachmentID: id,

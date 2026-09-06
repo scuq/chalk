@@ -53,7 +53,12 @@ interface Props {
 
 const FITS: { value: BannerFit; label: string; hint: string }[] = [
   { value: "fill", label: "fill", hint: "crop the picture to span the whole band" },
-  { value: "fit", label: "fit", hint: "show all of it, and fill the sides" },
+  { value: "fit", label: "fit", hint: "show all of it, centred, and fill the sides" },
+  {
+    value: "poster",
+    label: "poster",
+    hint: "box art at one end, colour across the rest — for pictures taller than they are wide",
+  },
 ];
 
 const HEIGHTS: { value: BannerHeight; label: string }[] = [
@@ -63,7 +68,7 @@ const HEIGHTS: { value: BannerHeight; label: string }[] = [
 ];
 
 const BLEEDS: { value: BannerBleed; label: string; hint: string }[] = [
-  { value: "edge", label: "edges", hint: "continue the picture's own edges outward" },
+  { value: "wash", label: "colour", hint: "an even wash of the picture's own colours" },
   { value: "blur", label: "blur", hint: "a blurred blow-up of the picture behind it" },
   { value: "none", label: "plain", hint: "nothing but the theme background" },
 ];
@@ -119,8 +124,10 @@ export function BannerEditor({
 
   // Dragging only means something while something is cropped: fill always
   // crops (the band is wider than any picture is short), fit only once zoom
-  // has pushed the picture past the band.
-  const cropped = layout.fit === "fill" || layout.zoom > 100;
+  // has pushed the picture past the band, and poster never -- showing the
+  // art whole is the entire point of that shape.
+  const poster = layout.fit === "poster";
+  const cropped = !poster && (layout.fit === "fill" || layout.zoom > 100);
 
   return (
     <div
@@ -184,9 +191,11 @@ export function BannerEditor({
           )}
         </div>
         <p class="chalk-profile-hint">
-          {cropped
-            ? "drag the picture to choose what stays in the band."
-            : "the whole picture fits, so there is nothing to crop — zoom in to reframe it."}
+          {poster
+            ? "the art is shown whole at one end, with its colours across the rest."
+            : cropped
+              ? "drag the picture to choose what stays in the band."
+              : "the whole picture fits, so there is nothing to crop — zoom in to reframe it."}
         </p>
 
         <div class="chalk-banner-editor-controls">
@@ -227,6 +236,7 @@ export function BannerEditor({
             </span>
           </div>
 
+          {!poster && (
           <div class="chalk-banner-editor-row">
             <span class="chalk-banner-editor-label">zoom</span>
             <input
@@ -255,10 +265,11 @@ export function BannerEditor({
               </button>
             )}
           </div>
+          )}
 
-          {/* Only fitted pictures have sides to fill; in fill mode the row
-              would be a control with nothing to control. */}
-          {layout.fit === "fit" && (
+          {/* Only the shapes that leave room beside the picture have sides
+              to fill; in fill mode the row would control nothing. */}
+          {(layout.fit === "fit" || poster) && (
             <div class="chalk-banner-editor-row">
               <span class="chalk-banner-editor-label">sides</span>
               <span class="chalk-nick-menu-seg">

@@ -4,7 +4,12 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { columnGradient, edgeColumnsFromPixels } from "./banner-edges";
+import {
+  columnGradient,
+  edgeColumnsFromPixels,
+  washColorsFromPixels,
+  washGradient,
+} from "./banner-edges";
 
 // Builds a row-major RGBA buffer from a per-pixel function.
 function pixels(w: number, h: number, f: (x: number, y: number) => number[]) {
@@ -82,4 +87,57 @@ test("the gradient carries every row, in order, top first", () => {
   // Evenly spaced stops are the browser's default; no positions are written,
   // so the same column renders correctly at any band height.
   assert.ok(!g.includes("%"));
+});
+
+// ---- 111-11: the wash ------------------------------------------------
+
+test("the wash takes the picture's two most common colours", () => {
+  // Two thirds red, one third blue, one stray green pixel.
+  const w = 3, h = 3;
+  const buf = pixels(w, h, (x, y) => {
+    if (x === 0 && y === 0) return [0, 255, 0, 255];
+    return x < 2 ? [200, 20, 20, 255] : [20, 20, 200, 255];
+  });
+  const got = washColorsFromPixels(buf, w, h);
+  assert.equal(got?.[0], "rgb(200, 20, 20)");
+  assert.equal(got?.[1], "rgb(20, 20, 200)");
+});
+
+test("a second colour too close to the first is skipped, not used", () => {
+  // Dominant red, then a near-identical red, then a real blue further down
+  // the ranking: the wash must reach past the near-duplicate for contrast.
+  const w = 4, h = 2;
+  const buf = pixels(w, h, (x) => {
+    if (x < 2) return [200, 20, 20, 255];
+    if (x === 2) return [204, 24, 24, 255];
+    return [20, 20, 200, 255];
+  });
+  const got = washColorsFromPixels(buf, w, h);
+  assert.equal(got?.[0], "rgb(200, 20, 20)");
+  assert.equal(got?.[1], "rgb(20, 20, 200)");
+});
+
+test("a one-colour picture washes flat rather than inventing contrast", () => {
+  const buf = pixels(4, 4, () => [120, 40, 80, 255]);
+  const got = washColorsFromPixels(buf, 4, 4);
+  assert.deepEqual(got, ["rgb(120, 40, 80)", "rgb(120, 40, 80)"]);
+});
+
+test("transparent pixels are not part of what the picture is", () => {
+  // Three transparent black pixels would dominate by count if they counted.
+  const w = 4, h = 1;
+  const buf = pixels(w, h, (x) => (x < 3 ? [0, 0, 0, 0] : [200, 20, 20, 255]));
+  assert.deepEqual(washColorsFromPixels(buf, w, h), ["rgb(200, 20, 20)", "rgb(200, 20, 20)"]);
+  // And with nothing opaque at all there is no wash to paint.
+  assert.equal(washColorsFromPixels(pixels(2, 2, () => [10, 10, 10, 0]), 2, 2), null);
+});
+
+test("a buffer smaller than it claims is refused here too", () => {
+  assert.equal(washColorsFromPixels(new Uint8ClampedArray(4), 10, 10), null);
+});
+
+test("both sides mirror each other, dominant colour against the picture", () => {
+  const c: [string, string] = ["rgb(1, 1, 1)", "rgb(2, 2, 2)"];
+  assert.equal(washGradient(c, "left"), "linear-gradient(to left, rgb(1, 1, 1), rgb(2, 2, 2))");
+  assert.equal(washGradient(c, "right"), "linear-gradient(to right, rgb(1, 1, 1), rgb(2, 2, 2))");
 });

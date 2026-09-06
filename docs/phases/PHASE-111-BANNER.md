@@ -1,9 +1,9 @@
 # Phase 111 — the channel banner
 
-**Status:** built, 111-1 … 111-9 (2026-09-06). Verified against a running
+**Status:** built, 111-1 … 111-12 (2026-09-06). Verified against a running
 stack, desktop and emulated phone — 18/18 checks for 111-1…4, 12/12 for
-111-5, 23/23 for the editor; what that covers and what it does not is under
-[Left open](#left-open).
+111-5, 34/34 for the editor, the bleeds and the poster shape; what that
+covers and what it does not is under [Left open](#left-open).
 **Tags:** `#banner` → `tools/where.sh -g banner`
 
 ## The problem
@@ -161,6 +161,47 @@ renderer clamps whatever arrives to something drawable
 (`web/src/state/banner.ts`), because by the time a summary reaches a header
 the write is long done and a band that will not draw helps nobody.
 
+**The blur bleed sits behind, and that took a z-index (111-10).** The layer
+is absolutely positioned and the picture is not, and a positioned element
+paints above a static one however the markup is ordered — so the first cut
+covered the picture with its own blurred copy and the whole band looked out of
+focus. The picture and the fades now carry `z-index: 1` unconditionally, so
+nothing can slip on top of them later, and the probe asks the browser rather
+than the stylesheet: `elementFromPoint` at the middle of the band must return
+the sharp image, and only the backdrop may carry a `filter`.
+
+**A wash, not the picture's edges (111-11).** 111-6's edge columns are
+seamless when a picture's edge is smooth and stripey when it is not: a poster
+with a horizon in it has a black ridge on one row and a red sky on the next,
+and stretching those rows sideways paints exactly the bands it sounds like.
+The wash replaces them with two colours taken from the *whole* picture — a
+32×32 sample, quantised to 5 bits a channel, most common colour first and then
+the most common colour far enough away to be visibly different — painted as an
+even gradient, mirrored on both sides. It has no structure in it to streak,
+and it reads as a surface the picture sits on. `edge` is gone from the client
+and migration 0059 rewrote the rows; the store still answers "edge" with the
+wash, so a client built before the rename is not refused over a renamed style.
+
+**The third shape, for pictures taller than they are wide (111-12).** A band
+is about twelve times wider than it is tall. Fill a poster into it and you get
+a strip of its middle; fit it and you get a thumbnail with colour beside it.
+Neither looks like a choice anyone made. `poster` stops trying: the art sits
+at band height at the left with a little air and a soft drop shadow, and the
+wash runs the whole width behind it — box art on a coloured backdrop, which is
+what every storefront does with exactly this problem. Nothing is cropped, so
+zoom and the focal point are not offered there, and the editor hides the zoom
+row rather than leaving a control that does nothing.
+
+**Tall means tall (111-11).** 132px made a fitted poster 99px wide. `tall` is
+200px on a desktop and 120px on a phone, which is where box art becomes
+readable; it is opt-in per channel, so the rooms that do not want the space
+never pay for it.
+
+**The blur backdrop is mirrored and barely darkened (111-11).** At
+`brightness(0.72)` it read as a dimmed copy sitting behind the picture. At
+0.86 with a wider radius, mirrored so its features do not line up with the
+sharp picture, it reads as the picture's own light spilling outward.
+
 **Fail-closed like every other attachment.** No key held, a decrypt that
 returns null, a 404 from a blob that is no longer there: the band renders
 nothing and the header is what it was before 111. A missing banner is never an
@@ -186,14 +227,25 @@ the band never mounts, so it costs no fetch and no decrypt, not merely
 | 111-7 | the layout model: migration 0058 (focus, zoom, height, bleed), the `banner` object replacing the flat wire fields, the store's fences and the client's normalizer |
 | 111-8 | the band renders the layout: `BannerBand` (shared with the editor's preview), `useBannerImage`, height/focus/zoom/bleed CSS |
 | 111-9 | the editor: preview, drag-to-focus, zoom, height, shape and sides; opened by an upload or the menu's `edit` row; the menu's fill/fit toggle retired |
+| 111-10 | the blur bleed paints *behind* the picture — a z-index fix, and the probe checks that now ask the browser what is on top |
+| 111-11 | the wash replaces the edge bleed (migration 0059), `tall` becomes 200px, and the blur is mirrored and lightened |
+| 111-12 | `poster`: the art at band height at one end, the wash across the rest — the shape for pictures taller than they are wide |
 
 ## Left open
 
-- **The bleed samples two columns, not a palette.** A picture whose edges
-  differ from its body (a dark border around a bright image) bleeds the
-  border's colour. A dominant-colour extraction would be the richer answer and
-  is a lot more code for a strip of gradient; the `blur` bleed is the escape
-  hatch when the edges are unhelpful.
+- **The wash is two colours, not a palette.** A picture with three equal
+  colours in it gets the two most common; a busy photograph can wash to
+  something duller than it looks. The `blur` bleed is the escape hatch when
+  that happens.
+- **The edge-column bleed is gone, not hidden.** It was genuinely better for
+  pictures with soft edges (a photograph that fades to dark) and worse for
+  everything else. Keeping both would have been a fourth option on a row that
+  already has three; if the wash ever disappoints on a photograph, it is a
+  small amount of code to bring back (`columnGradient` is still there and
+  still tested).
+- **`poster` puts the art at the left, always.** No right-hand or centred
+  variant, and no text beside it. Both are easy additions if the left gets
+  boring.
 - **Zoom past the band does nothing in `fit`.** The picture's box is capped at
   the band width, where fitted has become filled; the slider keeps moving and
   the preview stops changing. Visible, harmless, and not worth a second rule.
@@ -240,6 +292,12 @@ it is the *method* that is recorded here, not the file.
       save pins exactly what the preview showed (shape, bleed and focal point
       compared field by field); `edit` reopens on the saved layout; cancel
       writes nothing; the layout survives a reload.
+- [x] 111-11/111-12, on the same portrait poster: the wash is a two-stop
+      gradient sampled from the picture (and visibly not the streaky edge
+      bleed it replaced); `poster` puts the art at the left of a genuinely
+      tall band (≥180px measured), shown whole (`object-fit: contain`) and
+      wide enough to read; the editor hides the zoom control the shape
+      cannot use; and the saved band reports the wash it was given.
 - [ ] **A hand-sent `update_channel` from a non-owner** — the menu hides the
       row, and the handler refuses it, but only the hidden row is exercised.
 - [ ] **The band across a channel key rotation.** The banner is encrypted at

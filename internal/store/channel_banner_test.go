@@ -30,6 +30,9 @@ func TestNormalizeBannerFit(t *testing.T) {
 	// "cover" and "contain" are the CSS words for the same two things and
 	// are exactly what a future caller would guess. Still refused: the
 	// column's CHECK only knows fill and fit.
+	if got, err := NormalizeBannerFit("poster"); err != nil || got != BannerFitPoster {
+		t.Errorf("poster: got %q, %v", got, err)
+	}
 	for _, in := range []string{"cover", "contain", "FILL", "stretch", "none"} {
 		if _, err := NormalizeBannerFit(in); !errors.Is(err, ErrBannerFitInvalid) {
 			t.Errorf("%q: expected ErrBannerFitInvalid, got %v", in, err)
@@ -62,10 +65,12 @@ func TestNormalizeBannerHeight(t *testing.T) {
 
 func TestNormalizeBannerBleed(t *testing.T) {
 	for _, c := range []struct{ in, want string }{
-		{"", BannerBleedEdge},
-		{"edge", BannerBleedEdge},
+		{"", BannerBleedWash},
+		{"wash", BannerBleedWash},
 		{"blur", BannerBleedBlur},
 		{"none", BannerBleedNone},
+		// 111-11: a client built before the rename means the wash.
+		{"edge", BannerBleedWash},
 	} {
 		got, err := NormalizeBannerBleed(c.in)
 		if err != nil {
@@ -76,7 +81,7 @@ func TestNormalizeBannerBleed(t *testing.T) {
 			t.Errorf("%q: got %q want %q", c.in, got, c.want)
 		}
 	}
-	for _, in := range []string{"mirror", "gradient", "off"} {
+	for _, in := range []string{"mirror", "gradient", "off", "columns"} {
 		if _, err := NormalizeBannerBleed(in); !errors.Is(err, ErrBannerBleedInvalid) {
 			t.Errorf("%q: expected ErrBannerBleedInvalid, got %v", in, err)
 		}
@@ -121,7 +126,7 @@ func TestDefaultBannerLayoutIsThePreEditorBehaviour(t *testing.T) {
 		t.Error("default layout should carry no picture")
 	}
 	if d.Fit != BannerFitFill || d.FocusX != 50 || d.FocusY != 50 ||
-		d.Zoom != 100 || d.Height != BannerHeightNormal || d.Bleed != BannerBleedEdge {
+		d.Zoom != 100 || d.Height != BannerHeightNormal || d.Bleed != BannerBleedWash {
 		t.Errorf("defaults drifted: %+v", d)
 	}
 	// Every default must survive its own fence.

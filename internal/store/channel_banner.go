@@ -24,10 +24,15 @@ import (
 // trim is the one spelling of "a value with spaces around it is that value".
 func trim(s string) string { return strings.TrimSpace(s) }
 
-// Banner fit modes (111-5), mirroring migration 0057's CHECK.
+// Banner fit modes (111-5, 111-12), mirroring migration 0057/0059's CHECK.
 const (
 	BannerFitFill = "fill"
 	BannerFitFit  = "fit"
+	// BannerFitPoster shows the picture at band height at one end and
+	// fills the rest with the wash -- box art on a coloured backdrop,
+	// which is what a band twelve times wider than it is tall can do with
+	// a portrait picture and still look deliberate.
+	BannerFitPoster = "poster"
 )
 
 // Banner heights (111-7). Names, not pixels: what a "tall" band measures is
@@ -38,9 +43,12 @@ const (
 	BannerHeightTall   = "tall"
 )
 
-// Banner bleeds (111-7): how a fitted banner fills the space beside itself.
+// Banner bleeds (111-7, 111-11): how a banner fills the space beside its
+// picture. 'edge' (the picture's own edge columns, stretched sideways) was
+// replaced by 'wash' in 111-11 -- it streaked on any picture with a hard
+// horizontal edge in it, and migration 0059 rewrote the rows.
 const (
-	BannerBleedEdge = "edge" // the image's own edge columns, stretched + faded
+	BannerBleedWash = "wash" // an even gradient of the picture's two main colours
 	BannerBleedBlur = "blur" // a blurred blow-up of the picture behind it
 	BannerBleedNone = "none" // theme background, nothing else
 )
@@ -75,18 +83,19 @@ func DefaultBannerLayout() BannerLayout {
 		FocusY: 50,
 		Zoom:   100,
 		Height: BannerHeightNormal,
-		Bleed:  BannerBleedEdge,
+		Bleed:  BannerBleedWash,
 	}
 }
 
 // Errors for the fences below. Each is mapped to invalid_channel by the
 // handler, so a client learns which value it got wrong.
 var (
-	ErrBannerFitInvalid    = fmt.Errorf("banner fit must be %q or %q", BannerFitFill, BannerFitFit)
+	ErrBannerFitInvalid = fmt.Errorf("banner fit must be %q, %q or %q",
+		BannerFitFill, BannerFitFit, BannerFitPoster)
 	ErrBannerHeightInvalid = fmt.Errorf("banner height must be %q, %q or %q",
 		BannerHeightShort, BannerHeightNormal, BannerHeightTall)
 	ErrBannerBleedInvalid = fmt.Errorf("banner bleed must be %q, %q or %q",
-		BannerBleedEdge, BannerBleedBlur, BannerBleedNone)
+		BannerBleedWash, BannerBleedBlur, BannerBleedNone)
 	ErrBannerZoomRange  = fmt.Errorf("banner zoom must be %d-%d", BannerZoomMin, BannerZoomMax)
 	ErrBannerFocusRange = fmt.Errorf("banner focus must be 0-100")
 )
@@ -101,6 +110,8 @@ func NormalizeBannerFit(s string) (string, error) {
 		return BannerFitFill, nil
 	case BannerFitFit:
 		return BannerFitFit, nil
+	case BannerFitPoster:
+		return BannerFitPoster, nil
 	default:
 		return "", ErrBannerFitInvalid
 	}
@@ -122,9 +133,14 @@ func NormalizeBannerHeight(s string) (string, error) {
 func NormalizeBannerBleed(s string) (string, error) {
 	switch trim(s) {
 	case "":
-		return BannerBleedEdge, nil
-	case BannerBleedEdge, BannerBleedBlur, BannerBleedNone:
+		return BannerBleedWash, nil
+	case BannerBleedWash, BannerBleedBlur, BannerBleedNone:
 		return trim(s), nil
+	case "edge":
+		// 111-11 replaced the edge bleed with the wash. A client built
+		// before that still says "edge"; answer with what it meant rather
+		// than refusing an update over a renamed style.
+		return BannerBleedWash, nil
 	default:
 		return "", ErrBannerBleedInvalid
 	}

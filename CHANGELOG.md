@@ -33,9 +33,14 @@ The engineering-level history (which slice shipped what) lives in
   the band short, normal or tall for everyone in the channel. **zoom** moves
   in, and you can **drag the picture** in the preview to choose which part
   stays in frame. A fitted picture also chooses what fills the space beside
-  it: its own colours continuing outward, a soft blur of itself, or plain
+  it: an even wash of its own colours, a soft blur of itself, or plain
   background. Come back to any of it later with **image → edit** in the
   channel menu.
+- **A shape for box art and posters.** A picture taller than it is wide has
+  no good showing in a band twelve times wider than it is tall — cropped it
+  is a strip of its middle, centred it is a thumbnail. **poster** puts the
+  art at full height at one end with its colours across the rest, the way a
+  storefront shows a game, and **tall** gives it the room to be read.
 
 ---
 

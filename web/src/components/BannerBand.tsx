@@ -16,23 +16,26 @@
 //           -- the picture grows and the band crops it vertically. Nothing is
 //           measured for either: the aspect ratio comes off the decoded image
 //           and CSS does the arithmetic.
-//   bleed   what sits beside a fitted picture -- its own edge columns
-//           (111-6), a blurred blow-up of it, or the theme background.
+//   bleed   what sits beside the picture -- a wash of its two main colours
+//           (111-11), a blurred blow-up of it, or the theme background.
 //
-// The edge bleed is why this component decodes the image a second time: the
-// columns are read off a 24x24 canvas draw (banner-edges.ts) and become two
-// vertical gradients, so where the bleed meets the picture it IS the picture's
-// edge and there is no seam. Sampling is an effect keyed on the URL and the
-// mode rather than an onLoad handler: switching fill -> fit re-renders the
-// same <img> with the same src, so no second load event ever fires, and the
-// bleed would stay empty for exactly the case it exists for.
+// "poster" (111-12) is the third shape and the answer to a picture taller
+// than it is wide: the art at band height at one end, the wash across the
+// rest. A band is about twelve times wider than it is tall; filling it with a
+// poster shows a strip of the poster's middle, fitting it makes a thumbnail
+// in the centre, and neither looks like anything anyone chose. Box art on a
+// coloured backdrop does, which is what every storefront does with exactly
+// this problem.
+//
+// The bleed is why this component decodes the image a second time: the wash
+// colours come off a 32x32 canvas draw (banner-edges.ts). Sampling is an
+// effect keyed on the URL and the mode rather than an onLoad handler:
+// switching shape re-renders the same <img> with the same src, so no second
+// load event ever fires, and the bleed would stay empty for exactly the case
+// it exists for.
 
 import { useEffect, useRef, useState } from "preact/hooks";
-import {
-  type EdgeColumns,
-  columnGradient,
-  sampleEdgeColumns,
-} from "../attachments/banner-edges";
+import { sampleWashColors, washGradient } from "../attachments/banner-edges";
 import type { BannerLayout } from "../state/banner";
 
 interface Props {
@@ -49,27 +52,31 @@ interface Props {
 export function BannerBand({ url, layout, alt = "channel banner", onClick, variant = "header" }: Props) {
   const { fit, focusX, focusY, zoom, height, bleed } = layout;
   const fitted = fit === "fit";
+  const poster = fit === "poster";
+  // Both shapes that leave room beside the picture take a bleed; filling
+  // leaves none, so its bleed setting is remembered but not drawn.
+  const bled = fitted || poster;
   const [aspect, setAspect] = useState<number | null>(null);
-  const [edges, setEdges] = useState<EdgeColumns | null>(null);
+  const [wash, setWash] = useState<[string, string] | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
 
   // One decode answers both questions: how wide the picture is relative to
-  // its height (for the fitted box) and what its edges look like (for the
-  // bleed). Sampling is skipped when nothing would read it.
+  // its height (for the fitted box) and what colours it is made of (for the
+  // wash). Sampling is skipped when nothing would read it.
   useEffect(() => {
     let alive = true;
-    setEdges(null);
+    setWash(null);
     if (!url) {
       setAspect(null);
       return;
     }
-    const wantEdges = fitted && bleed === "edge";
+    const wantWash = bled && bleed === "wash";
     const read = (img: HTMLImageElement) => {
       if (!alive) return;
       if (img.naturalWidth > 0 && img.naturalHeight > 0) {
         setAspect(img.naturalWidth / img.naturalHeight);
       }
-      if (wantEdges) setEdges(sampleEdgeColumns(img));
+      if (wantWash) setWash(sampleWashColors(img));
     };
     const el = imgRef.current;
     if (el && el.complete && el.naturalWidth > 0) {
@@ -83,12 +90,16 @@ export function BannerBand({ url, layout, alt = "channel banner", onClick, varia
       alive = false;
       probe.onload = null;
     };
-  }, [url, fitted, bleed]);
+  }, [url, bled, bleed]);
 
   const focus = `${focusX}% ${focusY}%`;
   const scale = zoom / 100;
   const imgStyle: Record<string, string> = { objectPosition: focus };
-  if (fitted) {
+  if (poster) {
+    // The art is shown whole, at band height, and never cropped -- that is
+    // the point of the shape. Zoom and focus have nothing to do here.
+    if (aspect) imgStyle.aspectRatio = String(aspect);
+  } else if (fitted) {
     // A box wider than the picture's own aspect, under object-fit: cover,
     // scales the picture up and crops it vertically -- which is what zoom
     // means here. max-width in the CSS caps it at the band, where fitted
@@ -99,15 +110,19 @@ export function BannerBand({ url, layout, alt = "channel banner", onClick, varia
     imgStyle.transformOrigin = focus;
   }
 
-  const fadeLeft = edges ? { backgroundImage: columnGradient(edges.left) } : undefined;
-  const fadeRight = edges ? { backgroundImage: columnGradient(edges.right) } : undefined;
-  const showEdges = fitted && bleed === "edge";
+  // The wash runs from the picture's dominant colour where it meets the art
+  // out to the second colour at the far end, mirrored on both sides so the
+  // band reads as one surface. Poster art sits at the left, so it has only
+  // one side and the gradient simply runs the width of the band.
+  const showWash = bled && bleed === "wash" && !!wash;
+  const washLeft = showWash ? { backgroundImage: washGradient(wash!, "left") } : undefined;
+  const washRight = showWash ? { backgroundImage: washGradient(wash!, "right") } : undefined;
 
   return (
     <div
       class={`chalk-channel-banner ${fitted ? "chalk-channel-banner--fit" : ""} ${
-        variant === "preview" ? "chalk-channel-banner--preview" : ""
-      }`}
+        poster ? "chalk-channel-banner--poster" : ""
+      } ${variant === "preview" ? "chalk-channel-banner--preview" : ""}`}
       data-testid={variant === "preview" ? "banner-preview" : "channel-banner"}
       data-fit={fit}
       data-height={height}
@@ -116,13 +131,13 @@ export function BannerBand({ url, layout, alt = "channel banner", onClick, varia
       {/* A blurred blow-up of the same picture, behind everything. Cheap
           (the browser already has the bitmap) and it fills the band edge to
           edge, so the sharp picture appears to float in its own colours. */}
-      {fitted && bleed === "blur" && (
+      {bled && bleed === "blur" && (
         <img src={url} alt="" aria-hidden="true" class="chalk-channel-banner-blur" />
       )}
-      {showEdges && (
+      {showWash && !poster && (
         <span
           class="chalk-channel-banner-fade chalk-channel-banner-fade--left"
-          style={fadeLeft}
+          style={washLeft}
           aria-hidden="true"
         />
       )}
@@ -135,10 +150,10 @@ export function BannerBand({ url, layout, alt = "channel banner", onClick, varia
         onClick={onClick}
         title={onClick ? "open the full image" : undefined}
       />
-      {showEdges && (
+      {showWash && (
         <span
           class="chalk-channel-banner-fade chalk-channel-banner-fade--right"
-          style={fadeRight}
+          style={washRight}
           aria-hidden="true"
         />
       )}

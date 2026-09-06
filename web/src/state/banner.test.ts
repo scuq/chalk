@@ -58,6 +58,21 @@ test("unknown enum values fall back rather than reaching the CSS", () => {
   assert.equal(b?.bleed, DEFAULT_BANNER.bleed);
 });
 
+test("the shapes and bleeds this build knows all survive", () => {
+  for (const fit of ["fill", "fit", "poster"]) {
+    assert.equal(normalizeBanner({ attachment_id: "a", fit })?.fit, fit);
+  }
+  for (const bleed of ["wash", "blur", "none"]) {
+    assert.equal(normalizeBanner({ attachment_id: "a", bleed })?.bleed, bleed);
+  }
+});
+
+// 111-11: a channel saved before the rename chose the thing the wash
+// replaced. Reading it as the default would silently reset someone's pick.
+test("a pre-111-11 \"edge\" bleed reads as the wash", () => {
+  assert.equal(normalizeBanner({ attachment_id: "a", bleed: "edge" })?.bleed, "wash");
+});
+
 test("numbers are clamped into range, and junk becomes the default", () => {
   const wild = normalizeBanner({
     attachment_id: "att-1",

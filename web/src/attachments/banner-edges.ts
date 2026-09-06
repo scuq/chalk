@@ -127,3 +127,122 @@ export function sampleEdgeColumns(img: CanvasImageSource): EdgeColumns | null {
 export function columnGradient(column: string[]): string {
   return `linear-gradient(to bottom, ${column.join(", ")})`;
 }
+
+// ---- 111-11: the colour wash -----------------------------------------
+//
+// The edge-column bleed (above) continues a picture perfectly when its edges
+// are smooth, and paints horizontal bands when they are not: a poster with a
+// hard horizon in it has a black ridge on one row and a red sky on the next,
+// and stretching those rows sideways is exactly as stripey as it sounds.
+//
+// So the default bleed became a wash instead: two colours taken from the
+// whole picture, not its edges, painted as an even gradient. It cannot streak
+// -- there is no structure in it to streak -- and it reads as a surface the
+// picture is sitting on rather than a smeared copy of it.
+//
+// The quantiser is deliberately crude: 5 bits of colour per channel (32
+// levels, 32768 buckets) over a 32x32 sample. Anything finer would separate
+// shades nobody can tell apart and hand back two colours that make a gradient
+// with no visible movement in it.
+
+/** Sample grid for the wash. Bigger than the edge sample: this one is about
+ *  the whole picture, so it needs enough pixels for a minority colour to
+ *  survive. 32x32 is 1024 of them, which is plenty and still instant. */
+export const WASH_SAMPLE = 32;
+
+/** How far apart two colours must be (RGB distance) to count as different
+ *  enough to be worth putting at opposite ends of a gradient. */
+const MIN_SEPARATION = 60;
+
+interface Bucket {
+  r: number;
+  g: number;
+  b: number;
+  weight: number;
+}
+
+/**
+ * washColorsFromPixels returns the two colours to build the wash from: the
+ * picture's most common colour first, then the most common colour far enough
+ * from it to be visibly different. A picture with only one colour in it gets
+ * that colour twice, which paints a flat wash -- correct, and better than
+ * inventing contrast that is not in the image.
+ *
+ * Alpha below half is skipped rather than weighted: unlike the edge bleed,
+ * this is about what the picture IS, and a mostly transparent pixel is not
+ * part of that.
+ */
+export function washColorsFromPixels(
+  data: Uint8ClampedArray | number[],
+  width: number,
+  height: number,
+): [string, string] | null {
+  if (width <= 0 || height <= 0) return null;
+  if (data.length < width * height * 4) return null;
+
+  const buckets = new Map<number, Bucket>();
+  for (let i = 0; i < width * height * 4; i += 4) {
+    if (data[i + 3] < 128) continue;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+    const cur = buckets.get(key);
+    if (cur) {
+      cur.r += r;
+      cur.g += g;
+      cur.b += b;
+      cur.weight++;
+    } else {
+      buckets.set(key, { r, g, b, weight: 1 });
+    }
+  }
+  if (buckets.size === 0) return null;
+
+  const ranked = [...buckets.values()].sort((a, b) => b.weight - a.weight);
+  const mean = (x: Bucket) => [x.r / x.weight, x.g / x.weight, x.b / x.weight] as const;
+  const first = mean(ranked[0]);
+  let second = first;
+  for (const cand of ranked.slice(1)) {
+    const c = mean(cand);
+    const d = Math.hypot(c[0] - first[0], c[1] - first[1], c[2] - first[2]);
+    if (d >= MIN_SEPARATION) {
+      second = c;
+      break;
+    }
+  }
+  const css = (c: readonly [number, number, number]) =>
+    `rgb(${Math.round(c[0])}, ${Math.round(c[1])}, ${Math.round(c[2])})`;
+  return [css(first), css(second)];
+}
+
+/**
+ * sampleWashColors draws an already-decoded image into a small canvas and
+ * reads its two wash colours. Null whenever the browser will not play along,
+ * exactly like sampleEdgeColumns -- the caller then paints plain theme
+ * background.
+ */
+export function sampleWashColors(img: CanvasImageSource): [string, string] | null {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = WASH_SAMPLE;
+    canvas.height = WASH_SAMPLE;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, WASH_SAMPLE, WASH_SAMPLE);
+    const { data } = ctx.getImageData(0, 0, WASH_SAMPLE, WASH_SAMPLE);
+    return washColorsFromPixels(data, WASH_SAMPLE, WASH_SAMPLE);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * washGradient paints one side of the band: the picture's dominant colour
+ * where it meets the picture, the second colour at the far end. `toward` is
+ * the direction away from the picture, so both sides mirror each other and
+ * the band reads as one surface rather than two panels.
+ */
+export function washGradient(colors: [string, string], toward: "left" | "right"): string {
+  return `linear-gradient(to ${toward}, ${colors[0]}, ${colors[1]})`;
+}

@@ -2186,8 +2186,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
   height: 56px;
 }
 
+/* 111-11: tall means tall. At 132px a fitted poster was 99px wide -- a
+   thumbnail with a lot of colour beside it. 200px is where box art becomes
+   readable, and it is opt-in per channel, so the rooms that do not want the
+   space never pay for it. */
 .chalk-channel-banner[data-height="tall"] {
-  height: 132px;
+  height: 200px;
 }
 
 .chalk-channel-banner-img {
@@ -2264,19 +2268,74 @@ body.chalk-resizing-y .chalk-composer-resizer {
   );
 }
 
-/* 111-7: the blur bleed -- the same picture, blown up behind the sharp one.
+/* 111-7: the blur bleed -- the same picture, blown up BEHIND the sharp one.
    scale(1.1) keeps the blur's own soft edge outside the band, and the
    brightness knock-down stops a bright photo from turning the header into a
-   lightbox. It is inert: the sharp image above it takes the clicks. */
+   lightbox. It is inert: the sharp image takes the clicks.
+
+   z-index is load-bearing, not decoration. This layer is positioned and the
+   sharp image is not, and a positioned element paints above a static one no
+   matter which came first in the markup -- so without these two rules the
+   blur covers the picture and the whole band looks blurred. That is exactly
+   the bug 111-10 fixed. */
 .chalk-channel-banner-blur {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: blur(18px) brightness(0.72) saturate(1.1);
-  transform: scale(1.1);
+  /* 111-11: less darkening and more blur than the first cut. At
+     brightness(0.72) the backdrop read as a dimmed copy sitting behind the
+     picture; at 0.86 with a wider radius it reads as the picture's own light
+     spilling outward. scaleX(-1) mirrors it so its features do not line up
+     with the sharp picture -- an aligned blur looks like a printing error. */
+  filter: blur(26px) brightness(0.86) saturate(1.15);
+  transform: scale(1.15) scaleX(-1);
   pointer-events: none;
+  z-index: 0;
+}
+
+/* 111-12: the poster shape. The art sits at band height at the left with a
+   little air around it, and the wash runs the whole width behind it, so the
+   picture reads as placed on a surface rather than stuck to a corner. A
+   picture taller than it is wide has no good answer inside a 12:1 band; this
+   stops trying to give it one and frames it instead. */
+.chalk-channel-banner--poster {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: var(--chalk-s2) 0 var(--chalk-s2) var(--chalk-s4);
+  gap: var(--chalk-s3);
+}
+
+.chalk-channel-banner--poster .chalk-channel-banner-img {
+  width: auto;
+  max-width: 45%;
+  height: 100%;
+  flex: 0 0 auto;
+  object-fit: contain;
+  /* The art is a card on the wash: a soft drop shadow is what separates it
+     from a backdrop made of its own colours. */
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+}
+
+/* The wash spans the whole band behind the art rather than flanking it. */
+.chalk-channel-banner--poster .chalk-channel-banner-fade {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.chalk-channel-banner--poster .chalk-channel-banner-blur {
+  z-index: 0;
+}
+
+/* The picture itself, above any bleed layer. Only fitted bands have one,
+   but the rule is unconditional so nothing can slip underneath later. */
+.chalk-channel-banner-img,
+.chalk-channel-banner-fade {
+  position: relative;
+  z-index: 1;
 }
 
 /* -- The banner editor (111-9) ------------------------------------- */
@@ -9212,7 +9271,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   }
 
   .chalk-channel-banner[data-height="tall"] {
-    height: 88px;
+    height: 120px;
   }
 
   .chalk-channel-header-name {
