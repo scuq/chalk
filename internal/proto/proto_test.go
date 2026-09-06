@@ -224,3 +224,40 @@ func TestChannelSummaryOmitsAbsentBanner(t *testing.T) {
 		}
 	}
 }
+
+// 112-1: an avatar frame carries ids and nothing else -- the picture is
+// ciphertext fetched separately. Clearing one is an empty attachment id, so
+// the field must survive the round trip as "" rather than vanishing into an
+// omitempty on the way in.
+func TestAvatarFrames(t *testing.T) {
+	var set SetAvatarPayload
+	if err := json.Unmarshal([]byte(`{"channel_id":"c1","attachment_id":""}`), &set); err != nil {
+		t.Fatalf("unmarshal set: %v", err)
+	}
+	if set.ChannelID != "c1" || set.AttachmentID != "" {
+		t.Errorf("set: %+v", set)
+	}
+
+	// The ack and the push both omit an empty id: a receiver reads presence
+	// as "there is a picture", and "" would be a picture at no address.
+	out, err := json.Marshal(AvatarUpdatePayload{ChannelID: "c1", UserID: "u1"})
+	if err != nil {
+		t.Fatalf("marshal update: %v", err)
+	}
+	if strings.Contains(string(out), "attachment_id") {
+		t.Errorf("a removal carried an attachment id: %s", out)
+	}
+
+	// A listing of a channel with no pictures is an empty list, never null:
+	// the client iterates it without checking.
+	listed, err := json.Marshal(ListAvatarsAckPayload{
+		ChannelID: "c1",
+		Avatars:   []AvatarWire{},
+	})
+	if err != nil {
+		t.Fatalf("marshal list: %v", err)
+	}
+	if !strings.Contains(string(listed), `"avatars":[]`) {
+		t.Errorf("empty listing did not serialize as a list: %s", listed)
+	}
+}

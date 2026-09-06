@@ -805,6 +805,10 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleAddMember(ctx, c, conn, f)
 		case proto.TypeUpdateChannel: // 106-2
 			h.handleUpdateChannel(ctx, c, conn, f)
+		case proto.TypeSetAvatar: // 112-1
+			h.handleSetAvatar(ctx, c, conn, f)
+		case proto.TypeListAvatars: // 112-1
+			h.handleListAvatars(ctx, c, conn, f)
 		case proto.TypeDeleteMessage:
 			h.handleDeleteMessage(ctx, c, conn, f)
 		case proto.TypeEditMessage:

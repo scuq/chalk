@@ -103,6 +103,7 @@ as-built rather than a contemporaneous plan.
 | 109 | the room can see you are deafened | [PHASE-109-DEAFENED.md](phases/PHASE-109-DEAFENED.md) |
 | 110 | the gallery lightbox — paging and zoom | [PHASE-110-GALLERY.md](phases/PHASE-110-GALLERY.md) |
 | 111 | the channel banner — an image pinned under the channel title | [PHASE-111-BANNER.md](phases/PHASE-111-BANNER.md) |
+| 112 | profile pictures — encrypted per channel, one line tall | [PHASE-112-AVATARS.md](phases/PHASE-112-AVATARS.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

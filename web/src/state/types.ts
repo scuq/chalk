@@ -695,6 +695,11 @@ export interface AppState {
   // out-of-ChannelSummary reasoning as unread above; merges are
   // seq-monotonic.
   activity: Record<string, ChannelActivity>;
+  // 112-3: profile pictures, by channel then by user, holding the attachment
+  // id of that member's picture in that channel -- they are encrypted per
+  // channel, so the same face has a different id in each. An absent channel
+  // means "not listed yet"; an absent user means "no picture".
+  avatars: Record<string, Record<string, string>>;
 
   // 33-4: frozen unread window driving the "new messages" divider and the
   // highlighted rows. Only ever holds the channel currently being viewed --
@@ -1041,6 +1046,7 @@ export const initialState: AppState = {
   historyComplete: {},
   unread: {},
   activity: {},
+  avatars: {},
   unreadMarks: {},
   proposals: {},
   voiceRosters: {},
@@ -1151,6 +1157,20 @@ export type Action =
   // 106-2: the owner renamed the channel and/or changed its short name.
   // Carries only the two names: a channel_event summary is built without
   // a user scope, so folding the whole row would zero the read seed.
+  | {
+      // 112-3: a channel's pictures, as listed. Replaces the channel's map
+      // wholesale -- the listing is the truth for that channel.
+      kind: "avatars_loaded";
+      channelID: string;
+      avatars: { userID: string; attachmentID: string }[];
+    }
+  | {
+      // 112-3: one member's picture changed. "" removes it.
+      kind: "avatar_updated";
+      channelID: string;
+      userID: string;
+      attachmentID: string;
+    }
   | {
       kind: "channel_updated";
       channelID: string;

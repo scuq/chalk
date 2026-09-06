@@ -21,6 +21,7 @@ import { LONG_PRESS_MS, pressWandered } from "../chat/press";
 import { MessageMenu } from "./MessageMenu";
 import { ReactionBar } from "./ReactionBar";
 import { AttachmentGroup } from "./AttachmentGroup";
+import { Avatar } from "./Avatar"; // 112-3
 import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
 import { decideLinkPreviewRender } from "../linkpreview/linkpreview";
@@ -383,6 +384,13 @@ interface Props {
   presence?: PresenceMap;
   lastSeen?: LastSeenMap;
   displayNames?: DisplayNameMap;
+  // 112-3: profile pictures. avatarFor resolves a sender to their picture in
+  // THIS channel (they are stored per channel, encrypted under its key);
+  // showAvatars says whether the column has the slot at all, which it does
+  // only when somebody in the channel has set one -- so a channel where
+  // nobody has looks exactly as it did before 112.
+  avatarFor?: (userID: string) => string | null;
+  showAvatars?: boolean;
   // empty is the text shown when messages.length === 0.
   empty?: string;
   // Phase 9.7d: chat display settings (timestamps + compact mode).
@@ -514,7 +522,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return fmtRelative(d, now);
 }
 
-export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, presence, lastSeen, displayNames, empty, display, isDM, onOpenThread, onQuoteMessage, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, giphyPref, onRequestEnableGiphy, linkPreviewHide, ephemeral, flashMessageID, onFlashDone, onLoadOlder, historyComplete, oldestSeq }: Props) {
+export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, presence, lastSeen, displayNames, empty, display, isDM, onOpenThread, onQuoteMessage, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, avatarFor, showAvatars = false, giphyPref, onRequestEnableGiphy, linkPreviewHide, ephemeral, flashMessageID, onFlashDone, onLoadOlder, historyComplete, oldestSeq }: Props) {
   const messages = ephemeral ? allMessages.slice(-EPHEMERAL_MAX_ROWS) : allMessages;
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1047,7 +1055,10 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
           if (label.length > maxNameLen) maxNameLen = label.length;
         }
         // Cap so an outlier name wraps instead of shoving every body right.
-        const senderColCh = Math.min(maxNameLen, 10);
+        // 112-3: the picture sits in this column too, so it needs about two
+        // more characters of room -- otherwise every handle ellipsises the
+        // moment somebody in the channel sets one.
+        const senderColCh = Math.min(maxNameLen, 10) + (showAvatars ? 2 : 0);
 
         return messages.map((m, mi) => {
         // "Own" detection prefers user_id matching when both sides
@@ -1251,6 +1262,25 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                   onPointerLeave={closeSenderCard}
                   onPointerDown={closeSenderCard}
                 >
+                  {/* 112-3: inside the sender cell, never beside it. The
+                      row is a three-column grid (time | sender | body); a
+                      fourth child of it lands in a column of its own and
+                      shoves the message text out of the layout. One line
+                      tall, and an empty box of the same width when this
+                      sender has no picture, so names stay in a straight
+                      column. */}
+                  {showAvatars && (
+                    <Avatar
+                      channelID={channelID ?? ""}
+                      attachmentID={
+                        m.senderUserID && avatarFor ? avatarFor(m.senderUserID) : null
+                      }
+                      controller={attachmentController ?? null}
+                      alt=""
+                      size="line"
+                      reserve
+                    />
+                  )}
                   {senderLabel}
                 </span>
               );
@@ -1490,6 +1520,22 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
           that scrolls out from under it. */}
       {senderCard && (
         <PersonCard
+          avatar={(() => {
+            // 112-4: the feed's card knows its channel, so it uses that
+            // channel's copy directly.
+            const id =
+              senderCard.data.userID && avatarFor ? avatarFor(senderCard.data.userID) : null;
+            if (!id) return null;
+            return (
+              <Avatar
+                channelID={channelID ?? ""}
+                attachmentID={id}
+                controller={attachmentController ?? null}
+                alt=""
+                size="card"
+              />
+            );
+          })()}
           x={senderCard.x}
           y={senderCard.y}
           info={senderCardInfo({

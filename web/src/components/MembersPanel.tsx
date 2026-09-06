@@ -31,6 +31,8 @@
 // Presentational: App owns the crypto, fetches recipients + computes each
 // member's safety number / trust state / key provenance, and passes them in.
 
+import { Avatar } from "./Avatar"; // 112-4
+import type { AttachmentController } from "../attachments/pipeline"; // 112-4
 import { useEffect, useState } from "preact/hooks";
 import { nickTintStyle } from "../chat/nickcolor";
 import type { ChannelMember, Friend } from "../state/types";
@@ -50,6 +52,12 @@ export interface MemberVerifyInfo {
 
 interface Props {
   channelName: string;
+  // 112-4: profile pictures. The panel is always about one channel, and a
+  // picture is encrypted under that channel's key, so this is the map for
+  // this channel only -- no lookup, no cross-channel guessing.
+  channelID?: string;
+  avatars?: Record<string, string>;
+  attachmentController?: AttachmentController;
   members: ChannelMember[];
   recipients: Set<string>;
   ownUserID: string | null;
@@ -128,6 +136,9 @@ function verifyBadgeTitle(s: MemberVerifyState): string {
 
 export function MembersPanel({
   channelName,
+  channelID, // 112-4
+  avatars,
+  attachmentController,
   members,
   recipients,
   ownUserID,
@@ -297,6 +308,16 @@ export function MembersPanel({
                         : null;
                     return (
                       <li key={m.userID} class="chalk-members-row">
+                        {/* 112-4: this channel's picture for this member. */}
+                        {channelID && (
+                          <Avatar
+                            channelID={channelID}
+                            attachmentID={avatars?.[m.userID] ?? null}
+                            controller={attachmentController ?? null}
+                            alt=""
+                            size="row"
+                          />
+                        )}
                         <span
                           class={`chalk-members-handle ${hue !== null ? "chalk-nick-tinted" : ""}`}
                           style={hue !== null ? nickTintStyle(hue) : undefined}

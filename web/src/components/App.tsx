@@ -66,6 +66,11 @@ import {
   TypeChannelEvent,
   TypeUpdateChannel, // 106-2
   TypeUpdateChannelAck,
+  TypeSetAvatar, // 112-1
+  TypeSetAvatarAck,
+  TypeListAvatars,
+  TypeListAvatarsAck,
+  TypeAvatarUpdate,
   TypeSubscribeChannel,
   TypeFriendList,
   TypeFriendListAck,
@@ -151,6 +156,11 @@ import {
   type ChannelEventPayload,
   type UpdateChannelPayload, // 106-2
   type UpdateChannelAckPayload,
+  type ListAvatarsAckPayload, // 112-3
+  type ListAvatarsPayload,
+  type AvatarUpdatePayload,
+  type SetAvatarAckPayload,
+  type SetAvatarPayload,
   type SubscribeChannelPayload,
   type FriendListPayload,
   type FriendEventPayload,
@@ -352,6 +362,8 @@ import { listAttachments } from "../attachments/transport";
 import { prepareBanner } from "../attachments/banner"; // 111-2
 import { type BannerLayout, DEFAULT_BANNER, normalizeBanner } from "../state/banner"; // 111-7
 import { BannerEditor } from "./BannerEditor"; // 111-9
+import { BannerCropper } from "./BannerCropper"; // 112-2 reuses the cropper
+import { avatarRejectReason, prepareAvatar } from "../attachments/avatar"; // 112-2
 import { clearCache as clearAttachmentCache } from "../attachments/cache";
 import type { AttachmentRef, PendingAttachment } from "../attachments/types";
 import { EncryptionIndicator } from "./EncryptionIndicator";
@@ -1182,6 +1194,20 @@ export function App() {
     if (!state.channels[cid]) return;
     void ensureKeyFor(cid);
   }, [state.activeChannelID, state.wsState, state.channels, ccReady, ensureKeyFor]);
+
+  // 112-3: ask a channel for its profile pictures when it becomes the one on
+  // screen. Once per channel per connection: the listing is a small answer,
+  // pushes keep it current afterwards, and a reconnect re-lists because the
+  // ref is cleared with the socket.
+  const avatarsAskedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const cid = state.activeChannelID;
+    const c = clientRef.current;
+    if (!cid || !c || !c.isOpen()) return;
+    if (avatarsAskedRef.current.has(cid)) return;
+    avatarsAskedRef.current.add(cid);
+    c.send<ListAvatarsPayload>(TypeListAvatars, { channel_id: cid }, "lsav-" + Date.now());
+  }, [state.activeChannelID, state.wsState]);
 
   // att-2: backfill attachment refs for the active channel via the window list
   // query, merged onto matching messages by id. History pages now carry their
@@ -2951,6 +2977,43 @@ export function App() {
         inboxPagingRef.current = false;
         break;
       }
+      // 112-3: the channel's pictures, and the pushes that change them.
+      case TypeListAvatarsAck: {
+        const p = f.payload as ListAvatarsAckPayload;
+        dispatch({
+          kind: "avatars_loaded",
+          channelID: p.channel_id,
+          avatars: (p.avatars ?? []).map((a) => ({
+            userID: a.user_id,
+            attachmentID: a.attachment_id,
+          })),
+        });
+        break;
+      }
+      case TypeAvatarUpdate: {
+        const p = f.payload as AvatarUpdatePayload;
+        dispatch({
+          kind: "avatar_updated",
+          channelID: p.channel_id,
+          userID: p.user_id,
+          attachmentID: p.attachment_id ?? "",
+        });
+        break;
+      }
+      case TypeSetAvatarAck: {
+        // The push settles every other device; this settles the tab that
+        // asked, without waiting for its own echo.
+        const p = f.payload as SetAvatarAckPayload;
+        if (state.user?.id) {
+          dispatch({
+            kind: "avatar_updated",
+            channelID: p.channel_id,
+            userID: state.user.id,
+            attachmentID: p.attachment_id ?? "",
+          });
+        }
+        break;
+      }
       case TypeUpdateChannelAck: {
         // 106-2: the requesting tab's copy of the rename. The push
         // (channel_event{updated}) reaches this tab too; the reducer folds
@@ -3354,6 +3417,7 @@ export function App() {
     // hello-time loop re-subscribes from scratch, and we should
     // forget what we'd previously asked for at the protocol layer.
     subscribeSentRef.current = new Set();
+    avatarsAskedRef.current = new Set(); // 112-3: re-list pictures on reconnect
     historyRequestedRef.current = new Set();
     markReadSentRef.current = new Map(); // 33-1
     markThreadReadSentRef.current = new Map(); // 42-4
@@ -3455,6 +3519,54 @@ export function App() {
     },
     [state.user?.device],
   );
+  // 112-2: the profile picture. Picking a file opens the same cropper the
+  // banner uses -- choosing which square of a photograph is your face is the
+  // same question -- and the fan-out happens on apply.
+  const [avatarPick, setAvatarPick] = useState<{ url: string } | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState<string | null>(null);
+
+  // The fan-out. A picture is encrypted under a CHANNEL key, so the same
+  // face is uploaded once per channel and pointed at by one set_avatar each.
+  // Channels whose key this device does not hold are skipped rather than
+  // failed: the upload would block on a key that may never arrive, and the
+  // next attempt from a device that has it will cover them.
+  const fanOutAvatar = useCallback(
+    async (file: File | null) => {
+      const c = clientRef.current;
+      const cc = ccRef.current;
+      const deviceID = state.user?.device;
+      if (!c || !c.isOpen() || !cc || !deviceID) {
+        setAvatarBusy(null);
+        return;
+      }
+      const channels = Object.values(state.channels);
+      let done = 0;
+      for (const ch of channels) {
+        setAvatarBusy(`${file ? "sending" : "removing"} ${done + 1}/${channels.length}…`);
+        try {
+          if (!file) {
+            c.send<SetAvatarPayload>(TypeSetAvatar, {
+              channel_id: ch.id,
+              attachment_id: "",
+            });
+          } else {
+            const res = await uploadAttachment(cc, ch.id, deviceID, file);
+            if (res.kind !== "uploaded") continue; // no key here yet
+            c.send<SetAvatarPayload>(TypeSetAvatar, {
+              channel_id: ch.id,
+              attachment_id: res.ref.id,
+            });
+          }
+        } catch (err) {
+          console.warn("avatar fan-out failed for", ch.id, err);
+        }
+        done++;
+      }
+      setAvatarBusy(null);
+    },
+    [state.channels, state.user?.device],
+  );
+
   const closeBannerEditor = useCallback(() => {
     setBannerEditor((cur) => {
       if (cur?.localURL) URL.revokeObjectURL(cur.localURL);
@@ -5654,6 +5766,9 @@ export function App() {
               "upch-" + Date.now(),
             );
           }}
+          // 112-4: the roster draws whichever shared channel's copy is to hand.
+          avatars={state.avatars}
+          attachmentController={attControllerRef.current ?? undefined}
           hiddenChannels={selectRosterPrefs(state.prefs).hidden}
           onSetChannelHidden={(channelID, mode) => {
             const c = clientRef.current;
@@ -5935,6 +6050,9 @@ export function App() {
                 roster={state.voiceRosters[activeChannel.id] ?? []}
                 keyReady={keyStatus[activeChannel.id] === "ready"}
                 showLatency={!!voicePrefs.showLatency}
+                // 112-4: this channel's pictures fill the tiles' circles.
+                avatars={state.avatars[activeChannel.id] ?? {}}
+                attachmentController={attControllerRef.current ?? undefined}
               />
             )}
             <MessageList
@@ -5955,6 +6073,11 @@ export function App() {
                   : null
               }
               onFlashDone={() => setFlashMessage(null)}
+              // 112-3: the channel's pictures. The slot exists only when
+              // somebody in the room has one, so a channel where nobody has
+              // looks exactly as it did before 112.
+              avatarFor={(userID) => state.avatars[activeChannel.id]?.[userID] ?? null}
+              showAvatars={Object.keys(state.avatars[activeChannel.id] ?? {}).length > 0}
               ownDevice={state.user?.device ?? null}
               ownUserID={state.user?.id ?? null}
               ownHandle={state.me?.username ?? null}
@@ -6446,6 +6569,9 @@ export function App() {
       )}
       {state.openPanel === "members" && activeChannel && (
         <MembersPanel
+          channelID={state.activeChannelID ?? ""}
+          avatars={state.activeChannelID ? (state.avatars[state.activeChannelID] ?? {}) : {}}
+          attachmentController={attControllerRef.current ?? undefined}
           channelName={displayName(activeChannel, state.user?.id ?? null)}
           members={activeChannel.members ?? []}
           recipients={memberRecipients}
@@ -6570,6 +6696,70 @@ export function App() {
         />
       )}
 
+      {/* 112-2: choosing which square of a picture is your face, in the
+          cropper 111-13 already built. Applying prepares a 96x96 square and
+          fans it out to every channel. */}
+      {avatarPick && (
+        <div
+          class="chalk-modal-backdrop chalk-modal-backdrop--over"
+          data-testid="avatar-crop-backdrop"
+        >
+          <div
+            class="chalk-modal chalk-modal--wide"
+            role="dialog"
+            aria-label="profile picture"
+            data-testid="avatar-crop"
+          >
+            <header class="chalk-modal-header">
+              <h2>profile picture</h2>
+              <button
+                type="button"
+                class="chalk-modal-close"
+                aria-label="close"
+                data-testid="avatar-crop-close"
+                onClick={() => {
+                  URL.revokeObjectURL(avatarPick.url);
+                  setAvatarPick(null);
+                }}
+              >
+                ×
+              </button>
+            </header>
+            <div class="chalk-modal-body">
+              <BannerCropper
+                url={avatarPick.url}
+                busy={!!avatarBusy}
+                onCancel={() => {
+                  URL.revokeObjectURL(avatarPick.url);
+                  setAvatarPick(null);
+                }}
+                onApply={(rect) => {
+                  const url = avatarPick.url;
+                  setAvatarBusy("preparing…");
+                  void (async () => {
+                    try {
+                      const img = new Image();
+                      await new Promise<void>((resolve, reject) => {
+                        img.onload = () => resolve();
+                        img.onerror = () => reject(new Error("could not read that image"));
+                        img.src = url;
+                      });
+                      const square = await prepareAvatar(img, rect);
+                      URL.revokeObjectURL(url);
+                      setAvatarPick(null);
+                      await fanOutAvatar(square);
+                    } catch (err) {
+                      setAvatarBusy(err instanceof Error ? err.message : "failed");
+                      window.setTimeout(() => setAvatarBusy(null), 4000);
+                    }
+                  })();
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {state.openPanel === "profile" && state.me && (
         <ProfilePanel
           me={state.me}
@@ -6596,6 +6786,23 @@ export function App() {
             if (!c || !c.isOpen()) return;
             c.send(TypePrefsSet, { patch: { theme: t } });
           }}
+          // 112-2: the picture. The panel picks; App crops, encrypts per
+          // channel and fans out.
+          onPickAvatar={(file) => {
+            const reason = avatarRejectReason(file.type, file.size);
+            if (reason) {
+              setAvatarBusy(reason);
+              window.setTimeout(() => setAvatarBusy(null), 4000);
+              return;
+            }
+            setAvatarPick({ url: URL.createObjectURL(file) });
+          }}
+          onRemoveAvatar={() => void fanOutAvatar(null)}
+          avatarSet={
+            !!state.user?.id &&
+            Object.values(state.avatars).some((m) => !!m[state.user!.id])
+          }
+          avatarBusy={avatarBusy}
           chatPrefs={selectChatPrefs(state.prefs)}
           onSetChatPref={(key, value) => {
             // Phase 9.7d: merge a single chat-pref key. The patch is

@@ -17,6 +17,7 @@
 // (9.7f), and in the feed a long press is already the message menu; a tooltip
 // has nothing to add to a gesture budget that is spent.
 
+import type { ComponentChildren } from "preact"; // 112-4
 import { useEffect, useRef, useState } from "preact/hooks";
 import { nickTintStyle } from "../chat/nickcolor";
 import { presenceClass } from "../chat/presence";
@@ -123,11 +124,17 @@ export function PersonCard({
   y,
   info,
   testID,
+  avatar,
 }: {
   x: number;
   y: number;
   info: PersonCardInfo;
   testID: string;
+  /** 112-4: the card is the one place a picture can be worth looking at, so
+   *  it gets a real one -- 44px, beside the name. The caller resolves which
+   *  channel's copy to use (pickAvatar), because a card is about a person
+   *  and a picture is encrypted per channel. */
+  avatar?: ComponentChildren;
 }) {
   return (
     <div
@@ -136,6 +143,7 @@ export function PersonCard({
       data-testid={testID}
       role="tooltip"
     >
+      {avatar && <div class="chalk-friend-card-avatar">{avatar}</div>}
       <div
         class={`chalk-friend-card-name ${info.hue !== null ? "chalk-nick-tinted" : ""}`}
         style={info.hue !== null ? nickTintStyle(info.hue) : undefined}

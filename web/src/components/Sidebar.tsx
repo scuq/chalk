@@ -10,6 +10,9 @@
 // 100-1: voice rooms render in their own "voice" section directly above the
 // channels list; only text channels stay in the grouped/filtered roster.
 
+import { Avatar } from "./Avatar"; // 112-4
+import { pickAvatar } from "../avatars/pick"; // 112-4
+import type { AttachmentController } from "../attachments/pipeline"; // 112-4
 import { useState, useRef, useEffect } from "preact/hooks";
 import {
   DEFAULT_SELF_HUE,
@@ -219,6 +222,12 @@ interface Props {
   // crypto), the editor, and the update_channel that follows. Picking a
   // file resolves once the upload is done and the editor is open -- it
   // rejects with something worth showing when it is not.
+  // 112-4: profile pictures. A roster row is about a person, not a channel,
+  // and a picture is encrypted per channel -- so the row draws whichever
+  // shared channel's copy is to hand (pickAvatar), preferring the one on
+  // screen because its key and bytes are most likely already decrypted.
+  avatars?: Record<string, Record<string, string>>;
+  attachmentController?: AttachmentController;
   onPickChannelBanner?: (channelID: string, file: File) => Promise<void>;
   onEditChannelBanner?: (channelID: string) => void;
   onClearChannelBanner?: (channelID: string) => void;
@@ -373,6 +382,8 @@ export function Sidebar({
   onSetChannelHidden,
   nameStyle = "full",
   onUpdateChannel,
+  avatars, // 112-4
+  attachmentController,
   onPickChannelBanner,
   onEditChannelBanner,
   onClearChannelBanner,
@@ -942,6 +953,22 @@ export function Sidebar({
                   class={`chalk-presence-dot ${dotClass}`}
                   aria-label={dotLabel}
                 />
+                {/* 112-4: whichever shared channel's copy is to hand. Rows
+                    here are taller than a feed line, so a fixed 16px box
+                    costs no height either. */}
+                {(() => {
+                  const pick = avatars ? pickAvatar(avatars, friend.userID, activeID) : null;
+                  if (!pick) return null;
+                  return (
+                    <Avatar
+                      channelID={pick.channelID}
+                      attachmentID={pick.attachmentID}
+                      controller={attachmentController ?? null}
+                      alt=""
+                      size="row"
+                    />
+                  );
+                })()}
                 <span
                   class={`chalk-sidebar-item-name ${nickHue !== null ? "chalk-nick-tinted" : ""}`}
                   style={nickHue !== null ? nickTintStyle(nickHue) : undefined}
@@ -1148,6 +1175,21 @@ export function Sidebar({
           y={hoverCard.y}
           info={hoverInfo}
           testID="friend-hover-card"
+          avatar={(() => {
+            // 112-4: a card is about a person, so any shared channel's copy
+            // of their picture will do.
+            const pick = avatars ? pickAvatar(avatars, hoverCard.data, activeID) : null;
+            if (!pick) return null;
+            return (
+              <Avatar
+                channelID={pick.channelID}
+                attachmentID={pick.attachmentID}
+                controller={attachmentController ?? null}
+                alt=""
+                size="card"
+              />
+            );
+          })()}
         />
       )}
 

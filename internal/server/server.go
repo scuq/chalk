@@ -531,6 +531,9 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 	case "typing":
 		// 43-3: someone is composing; tell the channel's other members.
 		s.handleTypingEvent(ev)
+	case "avatar":
+		// 112-1: a member's picture in this channel changed.
+		s.handleAvatarEvent(ev)
 	}
 }
 

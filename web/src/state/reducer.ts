@@ -291,6 +291,26 @@ export function reducer(state: AppState, action: Action): AppState {
         activeChannelID: nextActive,
       };
     }
+    case "avatars_loaded": {
+      // 112-3: the listing is the channel's whole truth, so it replaces
+      // rather than merges -- a picture removed while this tab was away is
+      // absent from the answer and must end up absent here.
+      const next: Record<string, string> = {};
+      for (const a of action.avatars) {
+        if (a.attachmentID) next[a.userID] = a.attachmentID;
+      }
+      return { ...state, avatars: { ...state.avatars, [action.channelID]: next } };
+    }
+
+    case "avatar_updated": {
+      const cur = state.avatars[action.channelID] ?? {};
+      if ((cur[action.userID] ?? "") === action.attachmentID) return state;
+      const next = { ...cur };
+      if (action.attachmentID) next[action.userID] = action.attachmentID;
+      else delete next[action.userID];
+      return { ...state, avatars: { ...state.avatars, [action.channelID]: next } };
+    }
+
     case "channel_updated": {
       // 106-2: adopt the new names in place. Unknown channel: nothing to
       // rename (the row arrives with its names on the next listing anyway).

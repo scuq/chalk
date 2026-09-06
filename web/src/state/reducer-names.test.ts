@@ -189,3 +189,53 @@ test("channel_updated carries the banner layout", () => {
   });
   assert.equal(twice, renamed);
 });
+
+// 112-3: the per-channel avatar map. A listing is that channel's whole
+// truth; a push is one member's change.
+test("avatars_loaded replaces a channel's map, avatar_updated edits it", () => {
+  const loadedState = reducer(loaded(), {
+    kind: "avatars_loaded",
+    channelID: "ch-1",
+    avatars: [
+      { userID: "u-1", attachmentID: "att-1" },
+      { userID: "u-2", attachmentID: "att-2" },
+    ],
+  });
+  assert.deepEqual(loadedState.avatars["ch-1"], { "u-1": "att-1", "u-2": "att-2" });
+  // Another channel is untouched by this one's listing.
+  assert.equal(loadedState.avatars["ch-2"], undefined);
+
+  // A listing that no longer mentions someone removes them: the picture was
+  // taken down while this tab was away.
+  const relisted = reducer(loadedState, {
+    kind: "avatars_loaded",
+    channelID: "ch-1",
+    avatars: [{ userID: "u-2", attachmentID: "att-2" }],
+  });
+  assert.deepEqual(relisted.avatars["ch-1"], { "u-2": "att-2" });
+
+  // A push adds, replaces, and removes.
+  const added = reducer(relisted, {
+    kind: "avatar_updated",
+    channelID: "ch-1",
+    userID: "u-3",
+    attachmentID: "att-3",
+  });
+  assert.equal(added.avatars["ch-1"]["u-3"], "att-3");
+  const removed = reducer(added, {
+    kind: "avatar_updated",
+    channelID: "ch-1",
+    userID: "u-3",
+    attachmentID: "",
+  });
+  assert.equal(removed.avatars["ch-1"]["u-3"], undefined);
+
+  // The same push twice is the same state: the ack and the push both land.
+  const again = reducer(removed, {
+    kind: "avatar_updated",
+    channelID: "ch-1",
+    userID: "u-3",
+    attachmentID: "",
+  });
+  assert.equal(again, removed);
+});

@@ -489,6 +489,50 @@ export interface UpdateChannelAckPayload {
 
 // --- Phase 08b: subscribe_channel ----------------------------------
 
+// --- 112-1: profile pictures ---------------------------------------
+//
+// A picture is encrypted under a CHANNEL key, so it exists once per channel:
+// the same face uploaded separately to each room. These frames move ids only.
+export const TypeSetAvatar = "set_avatar";
+export const TypeSetAvatarAck = "set_avatar_ack";
+export const TypeListAvatars = "list_avatars";
+export const TypeListAvatarsAck = "list_avatars_ack";
+export const TypeAvatarUpdate = "avatar_update";
+
+export interface SetAvatarPayload {
+  channel_id: string;
+  /** "" removes the caller's picture from this channel */
+  attachment_id: string;
+}
+
+export interface SetAvatarAckPayload {
+  channel_id: string;
+  attachment_id?: string;
+}
+
+export interface ListAvatarsPayload {
+  channel_id: string;
+}
+
+export interface AvatarWire {
+  user_id: string;
+  attachment_id: string;
+  key_version: number;
+}
+
+export interface ListAvatarsAckPayload {
+  channel_id: string;
+  avatars: AvatarWire[];
+}
+
+export interface AvatarUpdatePayload {
+  channel_id: string;
+  user_id: string;
+  /** absent when the picture was removed */
+  attachment_id?: string;
+  key_version?: number;
+}
+
 export const TypeSubscribeChannel = "subscribe_channel";
 export const TypeSubscribeChannelAck = "subscribe_channel_ack";
 

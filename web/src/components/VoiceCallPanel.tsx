@@ -27,6 +27,8 @@
 // camera variant, for retry after errors, and to rejoin after leaving
 // without switching channels first.
 
+import { Avatar } from "./Avatar"; // 112-4
+import type { AttachmentController } from "../attachments/pipeline"; // 112-4
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ChannelSummary, VoiceParticipant } from "../state/types";
 import type { WSClient } from "../ws-client";
@@ -55,6 +57,11 @@ import { gridPlan, isCrowded, resolveGridMode, type VoiceLayout } from "../voice
 const DEBUG_STATS_INTERVAL_MS = 2_000;
 
 interface Props {
+  // 112-4: this channel's profile pictures, by user. A call tile already
+  // draws a circle with an initial in it; the picture fills that circle
+  // instead when there is one.
+  avatars?: Record<string, string>;
+  attachmentController?: AttachmentController;
   channel: ChannelSummary;
   selfUserID: string;
   selfDeviceID: string;
@@ -118,6 +125,8 @@ export function VoiceCallPanel({
   roster,
   keyReady,
   showLatency,
+  avatars, // 112-4
+  attachmentController,
 }: Props) {
   const snap = useVoiceSession();
   // 30-5 stage focus: null = automatic; a key = user-pinned. View-local --
@@ -527,6 +536,8 @@ export function VoiceCallPanel({
                     snap={snap}
                     channel={channel}
                     selfUserID={selfUserID}
+                    avatars={avatars}
+                    attachmentController={attachmentController}
                   />
                 ))}
                 {Array.from({ length: grid.dummies }, (_, i) => (
@@ -553,6 +564,8 @@ export function VoiceCallPanel({
                       snap={snap}
                       channel={channel}
                       selfUserID={selfUserID}
+                      avatars={avatars}
+                      attachmentController={attachmentController}
                     />
                   </div>
                 )}
@@ -570,6 +583,8 @@ export function VoiceCallPanel({
                         snap={snap}
                         channel={channel}
                         selfUserID={selfUserID}
+                        avatars={avatars}
+                        attachmentController={attachmentController}
                       />
                     ))}
                   </div>
@@ -861,6 +876,8 @@ function StagePeer({
   snap,
   channel,
   selfUserID,
+  avatars, // 112-4
+  attachmentController,
 }: {
   tile: StageTile;
   label: string;
@@ -878,6 +895,9 @@ function StagePeer({
   snap: VoiceSessionSnap;
   channel: ChannelSummary;
   selfUserID: string;
+  /** 112-4: this channel's pictures, by user. */
+  avatars?: Record<string, string>;
+  attachmentController?: AttachmentController;
 }) {
   // 96-3: a screen tile now has prefs of its own (the share's program audio),
   // so it reads the same row -- just the other pair of fields.
@@ -885,6 +905,8 @@ function StagePeer({
   const screenMuted = !!pref?.screenMuted;
   const screenVolume = pref?.screenVolume ?? 1;
   const shownLabel = tile.isScreen ? `${label} — screen` : label;
+  // 112-4: a screen share is not a person, so it keeps the initial.
+  const avatarID = tile.isScreen ? null : (avatars?.[tile.userID] ?? null);
   // 63-2: green dot = sound arriving from this tile right now. Camera tiles
   // only (a share's audio, when any, belongs to the person's camera tile);
   // self runs off the transmit gate -- the honest "what others hear".
@@ -927,13 +949,35 @@ function StagePeer({
           <VideoSurface stream={tile.stream} mirrored={tile.isSelf && !tile.isScreen} />
           {!tile.hasLiveVideo && (
             <div class="chalk-voice-avatar chalk-voice-avatar--overlay" aria-hidden="true">
-              {(label === "you" ? handleForSelfInitial(channel, selfUserID) : label).slice(0, 1).toUpperCase()}
+              {avatarID ? (
+                <Avatar
+                  channelID={channel.id}
+                  attachmentID={avatarID}
+                  controller={attachmentController ?? null}
+                  size="tile"
+                />
+              ) : (
+                (label === "you" ? handleForSelfInitial(channel, selfUserID) : label)
+                  .slice(0, 1)
+                  .toUpperCase()
+              )}
             </div>
           )}
         </>
       ) : (
         <div class="chalk-voice-avatar" aria-hidden="true">
-          {(label === "you" ? handleForSelfInitial(channel, selfUserID) : label).slice(0, 1).toUpperCase()}
+          {avatarID ? (
+            <Avatar
+              channelID={channel.id}
+              attachmentID={avatarID}
+              controller={attachmentController ?? null}
+              size="tile"
+            />
+          ) : (
+            (label === "you" ? handleForSelfInitial(channel, selfUserID) : label)
+              .slice(0, 1)
+              .toUpperCase()
+          )}
         </div>
       )}
       {poppedOut && (

@@ -459,6 +459,68 @@ type UpdateChannelAckPayload struct {
 	Channel ChannelSummary `json:"channel"`
 }
 
+// ---- avatars (112-1) -----------------------------------------------------
+
+// A profile picture is encrypted under a CHANNEL key, so it exists once per
+// channel: the same face, uploaded separately to each room, and the server
+// holds one opaque blob per (channel, member). These frames move only ids.
+const (
+	TypeSetAvatar      = "set_avatar"
+	TypeSetAvatarAck   = "set_avatar_ack"
+	TypeListAvatars    = "list_avatars"
+	TypeListAvatarsAck = "list_avatars_ack"
+	TypeAvatarUpdate   = "avatar_update"
+)
+
+// SetAvatarPayload points the caller's picture in one channel at an
+// attachment, or clears it with an empty AttachmentID.
+//
+// Server rules:
+//   - The caller must be a member of the channel.
+//   - The attachment must be complete and belong to the SAME channel, and
+//     must have been uploaded by the caller -- otherwise anyone could wear
+//     somebody else's picture as their own.
+type SetAvatarPayload struct {
+	ChannelID    string `json:"channel_id"`
+	AttachmentID string `json:"attachment_id"`
+}
+
+// SetAvatarAckPayload echoes what the row now says, so the sending tab can
+// settle without waiting for its own push.
+type SetAvatarAckPayload struct {
+	ChannelID    string `json:"channel_id"`
+	AttachmentID string `json:"attachment_id,omitempty"`
+}
+
+// ListAvatarsPayload asks for every member's picture in one channel.
+type ListAvatarsPayload struct {
+	ChannelID string `json:"channel_id"`
+}
+
+// AvatarWire is one member's picture in one channel.
+type AvatarWire struct {
+	UserID       string `json:"user_id"`
+	AttachmentID string `json:"attachment_id"`
+	KeyVersion   int    `json:"key_version"`
+}
+
+// ListAvatarsAckPayload answers with the channel's pictures. Members only:
+// a non-member gets an empty list rather than a map of who has a face on
+// file.
+type ListAvatarsAckPayload struct {
+	ChannelID string       `json:"channel_id"`
+	Avatars   []AvatarWire `json:"avatars"`
+}
+
+// AvatarUpdatePayload is the push: one member's picture in one channel
+// changed. An empty AttachmentID means it was removed.
+type AvatarUpdatePayload struct {
+	ChannelID    string `json:"channel_id"`
+	UserID       string `json:"user_id"`
+	AttachmentID string `json:"attachment_id,omitempty"`
+	KeyVersion   int    `json:"key_version,omitempty"`
+}
+
 // ---- list_channels -------------------------------------------------------
 
 // ListChannelsPayload takes no parameters in phase 08; the server returns

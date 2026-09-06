@@ -10,6 +10,24 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Profile pictures.** Set one in **settings → account → picture**: choose an
+  image, crop it to the square you want, and it appears beside your name in
+  the conversation, in the roster and members list, on the card that pops up
+  over a name, and in call tiles. **remove** takes it away again.
+- It is drawn at exactly one line of text and changes nothing about how the
+  conversation is spaced — no row is taller than it was, and a channel where
+  nobody has set a picture looks exactly as it did.
+- Your picture is encrypted like everything else you send, and the encryption
+  is per channel: only people in a channel with you can see it, and the server
+  storing it cannot. That is also why setting one takes a moment — it sends a
+  small copy to each channel you are in — and why someone you share no channel
+  with sees no picture of you.
+
+---
+
 ## v0.8.13 — 6 September 2026 — Channel images, and an editor to frame them
 
 ### Added

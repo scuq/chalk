@@ -19,7 +19,7 @@ import {
   SIDEBAR_WIDTH_MIN,
   clampSidebarWidth,
 } from "../chat/sidebar-width";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { EmailChangeState, MeResponse } from "../auth/types";
 import type { LinkPreviewDomainPrefs } from "../state/types";
 import type { PinSyncStatus } from "../crypto/pin-sync"; // 84-3
@@ -90,6 +90,14 @@ interface Props {
   onRefresh?: () => void;
   // 50-4: opens the notification rules panel (replaces this one).
   onOpenNotificationRules?: () => void;
+  // 112-2: the profile picture. The panel picks a file and reports it; App
+  // owns the crop dialog, the per-channel encryption and the fan-out, since
+  // all three need the channel crypto. `avatarSet` is whether one exists
+  // anywhere, so the panel can offer "remove".
+  onPickAvatar?: (file: File) => void;
+  onRemoveAvatar?: () => void;
+  avatarSet?: boolean;
+  avatarBusy?: string | null;
   refreshing?: boolean;
   // 39-1: the running build, for the "about" section. From the welcome
   // frame, so empty until the socket is up.
@@ -236,6 +244,10 @@ export function ProfilePanel({
   onEmailChangeDismiss,
   onRefresh,
   onOpenNotificationRules,
+  onPickAvatar, // 112-2
+  onRemoveAvatar,
+  avatarSet = false,
+  avatarBusy = null,
   refreshing,
   serverVersion,
   serverCommit,
@@ -281,6 +293,7 @@ export function ProfilePanel({
   // Font family + size. Device-local, so unlike theme these aren't
   // threaded down from App -- the hook reads and persists them itself.
   const [display, setDisplay] = useDisplayPrefs();
+  const avatarInputRef = useRef<HTMLInputElement | null>(null); // 112-2
   const [sound, setSound, setSoundCategory] = useSoundPrefs();
 
   // 45-4: away detection. The pref is this device's wish; the permission is
@@ -557,6 +570,62 @@ export function ProfilePanel({
                 <dt>session</dt>
                 <dd>expires {formatTimestamp(me.sessionExpiresAt)}</dd>
               </dl>
+
+              {/* 112-2: the profile picture. It is encrypted per channel, so
+                  setting one uploads it to each channel you are in -- the
+                  progress line says so rather than looking stuck. */}
+              {onPickAvatar && (
+                <div class="chalk-profile-field">
+                  <label class="chalk-profile-label" for="avatar-pick">picture</label>
+                  <input
+                    id="avatar-pick"
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    data-testid="profile-avatar-input"
+                    onChange={(e) => {
+                      const input = e.target as HTMLInputElement;
+                      const file = input.files?.[0] ?? null;
+                      input.value = ""; // same file twice still fires
+                      if (file) onPickAvatar(file);
+                    }}
+                  />
+                  <div class="chalk-profile-avatar-row">
+                    <button
+                      type="button"
+                      class="chalk-button"
+                      data-testid="profile-avatar-set"
+                      disabled={!!avatarBusy}
+                      onClick={() => avatarInputRef.current?.click()}
+                    >
+                      {avatarSet ? "replace" : "choose a picture"}
+                    </button>
+                    {avatarSet && onRemoveAvatar && (
+                      <button
+                        type="button"
+                        class="chalk-button"
+                        data-testid="profile-avatar-remove"
+                        disabled={!!avatarBusy}
+                        onClick={onRemoveAvatar}
+                      >
+                        remove
+                      </button>
+                    )}
+                    {avatarBusy && (
+                      <span class="chalk-profile-hint" data-testid="profile-avatar-busy">
+                        {avatarBusy}
+                      </span>
+                    )}
+                  </div>
+                  <p class="chalk-profile-hint">
+                    your picture is encrypted for each channel separately, like
+                    everything else you send — so setting one sends a small
+                    copy to each channel you are in, and nobody outside them
+                    (the server included) can see it.
+                  </p>
+                </div>
+              )}
             </section>
           )}
 

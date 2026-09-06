@@ -2379,6 +2379,73 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-size: var(--chalk-size-small);
 }
 
+/* -- Profile pictures (112-3) --------------------------------------- */
+
+/* The rule this whole block exists for: in the feed a picture must not cost
+   a pixel of vertical space. The box is 1em square inside a line box that is
+   1.4em tall, vertically centred, so it cannot make a row taller than the
+   text already does. Square with sharp corners, because everything else in
+   the feed is a rectangle on a grid.
+
+   object-fit: cover is belt and braces -- what is uploaded is already a 96x96
+   square (attachments/avatar.ts) -- and costs nothing. */
+.chalk-avatar {
+  display: inline-block;
+  flex: 0 0 auto;
+  object-fit: cover;
+  vertical-align: middle;
+  background: var(--chalk-bg-elev-2, transparent);
+}
+
+.chalk-avatar--line {
+  width: 1em;
+  height: 1em;
+  /* The gap to the name, in the same em as the box, so it tracks font size. */
+  margin-right: 0.4em;
+}
+
+/* A member with no picture keeps the box, empty: without it the names in a
+   channel where only some people have one sit at different indents and the
+   column reads as broken. Invisible, not merely transparent -- an outline
+   here would be a row of empty squares down the feed. */
+.chalk-avatar--empty {
+  background: transparent;
+}
+
+/* Rows in the roster and the members panel are taller than a feed line, so
+   the picture can be a fixed box without any risk to their height. */
+.chalk-avatar--row {
+  width: 16px;
+  height: 16px;
+  margin-right: var(--chalk-s2);
+}
+
+/* The hover card is the one place a picture can be worth looking at. */
+.chalk-avatar--card {
+  width: 44px;
+  height: 44px;
+}
+
+/* Call tiles: the picture fills the circle the tile already draws. */
+.chalk-avatar--tile {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+
+/* 112-4: the picture on a hover card, above the name it belongs to. */
+.chalk-friend-card-avatar {
+  margin-bottom: var(--chalk-s2);
+}
+
+/* 112-2: the settings row that sets one. */
+.chalk-profile-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  flex-wrap: wrap;
+}
+
 /* -- The cropper (111-13) ------------------------------------------ */
 
 .chalk-banner-cropper {
@@ -2612,6 +2679,13 @@ body.chalk-resizing-y .chalk-composer-resizer {
   align-items: center;
   justify-content: center;
   z-index: 100;
+}
+
+/* 112-2: a dialog opened FROM a dialog. The profile panel stays open behind
+   the avatar cropper -- it is where the progress and the remove button live
+   -- so the cropper has to paint above it whatever the DOM order says. */
+.chalk-modal-backdrop--over {
+  z-index: 120;
 }
 
 .chalk-modal {
