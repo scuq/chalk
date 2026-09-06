@@ -15,6 +15,7 @@
 //   PUT    /api/attachments/{id}/chunk?seq=N  (octet-stream body) -> 204
 //   POST   /api/attachments/{id}/finalize    -> { byte_len, status }
 //   GET    /api/attachments/{id}             -> octet-stream ciphertext
+//   GET    /api/attachments/{id}/ref         -> one ref, no ciphertext (111-1)
 //   GET    /api/attachments?channel_id=&since_hours=N -> { attachments: [...] }
 
 import type { AttachmentListItemWire } from "../proto";
@@ -147,4 +148,23 @@ export async function listAttachments(
   if (!resp.ok) throw await toError(resp);
   const body = (await resp.json()) as { attachments?: AttachmentListItemWire[] };
   return body.attachments ?? [];
+}
+
+/**
+ * fetchAttachmentRef returns one attachment's ref -- key version and the small
+ * encrypted blobs, no ciphertext (111-1). The feed never needs this: refs ride
+ * on the message, or come from listAttachments' window. The channel banner
+ * does, because its id lives on the channel row, is linked to no message, and
+ * is usually older than any lookback window.
+ *
+ * Throws AttachmentHTTPError with status 404 when the blob is gone or the
+ * caller is not a member -- the two are deliberately indistinguishable.
+ */
+export async function fetchAttachmentRef(id: string): Promise<AttachmentListItemWire> {
+  const resp = await fetch(`/api/attachments/${encodeURIComponent(id)}/ref`, {
+    method: "GET",
+    credentials: "same-origin",
+  });
+  if (!resp.ok) throw await toError(resp);
+  return (await resp.json()) as AttachmentListItemWire;
 }

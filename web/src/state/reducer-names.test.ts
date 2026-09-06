@@ -123,3 +123,44 @@ test("clearing the short name is a change; an absent short name reads as cleared
   });
   assert.equal(same, legacy);
 });
+
+// 111-1: the banner rides channel_updated with the names. Setting it is a
+// change, clearing it is a change, and a summary that never had one must not
+// look like a change to a row that never had one either.
+test("channel_updated carries the banner, and clearing it is a change", () => {
+  const set = reducer(loaded(), {
+    kind: "channel_updated",
+    channelID: "ch-1",
+    name: "[Gaming] General",
+    shortName: "",
+    bannerAttachmentID: "att-1",
+  });
+  assert.equal(set.channels["ch-1"].bannerAttachmentID, "att-1");
+
+  const cleared = reducer(set, {
+    kind: "channel_updated",
+    channelID: "ch-1",
+    name: "[Gaming] General",
+    shortName: "",
+    bannerAttachmentID: "",
+  });
+  assert.equal(cleared.channels["ch-1"].bannerAttachmentID, "");
+
+  // A rename on a bannerless channel is still a no-op: absent and "" are
+  // the same thing, exactly as they are for the short name.
+  const before = loaded();
+  const same = reducer(before, {
+    kind: "channel_updated",
+    channelID: "ch-1",
+    name: "[Gaming] General",
+    shortName: "",
+  });
+  const twice = reducer(same, {
+    kind: "channel_updated",
+    channelID: "ch-1",
+    name: "[Gaming] General",
+    shortName: "",
+    bannerAttachmentID: "",
+  });
+  assert.equal(twice, same);
+});

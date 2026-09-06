@@ -295,14 +295,27 @@ export function reducer(state: AppState, action: Action): AppState {
       // rename (the row arrives with its names on the next listing anyway).
       // Same names: same state, so the ack and the push both being folded
       // costs no render.
+      // 111-1: the banner rides the same update, and is compared the same
+      // way -- a cleared banner is "" on both sides, never undefined.
       const ch = state.channels[action.channelID];
       if (!ch) return state;
-      if (ch.name === action.name && (ch.shortName ?? "") === action.shortName) return state;
+      if (
+        ch.name === action.name &&
+        (ch.shortName ?? "") === action.shortName &&
+        (ch.bannerAttachmentID ?? "") === (action.bannerAttachmentID ?? "")
+      ) {
+        return state;
+      }
       return {
         ...state,
         channels: {
           ...state.channels,
-          [action.channelID]: { ...ch, name: action.name, shortName: action.shortName },
+          [action.channelID]: {
+            ...ch,
+            name: action.name,
+            shortName: action.shortName,
+            bannerAttachmentID: action.bannerAttachmentID ?? "",
+          },
         },
       };
     }

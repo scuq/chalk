@@ -39,7 +39,15 @@ test("normalize keeps a valid pref untouched", () => {
       hideScrollbars: true,
       appWidth: "full",
     }),
-    { font: "serif", scale: 1.1, hideScrollbars: true, appWidth: "full" },
+    {
+      font: "serif",
+      scale: 1.1,
+      hideScrollbars: true,
+      appWidth: "full",
+      // 111-4: absent in a pre-111 stored pref, and the default is on --
+      // upgrading shows channel images rather than hiding them.
+      showChannelBanner: true,
+    },
   );
 });
 
@@ -55,13 +63,27 @@ test("normalize keeps the good half of a partially bad pref", () => {
     scale: DEFAULT_DISPLAY_PREFS.scale,
     hideScrollbars: DEFAULT_DISPLAY_PREFS.hideScrollbars,
     appWidth: DEFAULT_DISPLAY_PREFS.appWidth,
+    showChannelBanner: DEFAULT_DISPLAY_PREFS.showChannelBanner,
   });
   assert.deepEqual(normalizeDisplayPrefs({ font: "wingdings", scale: 1.25 }), {
     font: DEFAULT_DISPLAY_PREFS.font,
     scale: 1.25,
     hideScrollbars: DEFAULT_DISPLAY_PREFS.hideScrollbars,
     appWidth: DEFAULT_DISPLAY_PREFS.appWidth,
+    showChannelBanner: DEFAULT_DISPLAY_PREFS.showChannelBanner,
   });
+  // 111-4: a non-boolean is the default, like hideScrollbars above it.
+  assert.equal(
+    normalizeDisplayPrefs({ font: "mono", scale: 1, showChannelBanner: "yes" })
+      .showChannelBanner,
+    DEFAULT_DISPLAY_PREFS.showChannelBanner,
+  );
+  // An explicit false survives: turning banners off is the whole point.
+  assert.equal(
+    normalizeDisplayPrefs({ font: "mono", scale: 1, showChannelBanner: false })
+      .showChannelBanner,
+    false,
+  );
   assert.equal(
     normalizeDisplayPrefs({ font: "mono", scale: 1, hideScrollbars: "yes" }).hideScrollbars,
     DEFAULT_DISPLAY_PREFS.hideScrollbars,

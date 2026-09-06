@@ -320,6 +320,11 @@ export interface ChannelSummaryWire {
   channel_type?: string; // 30-4; "text" | "voice"; absent from older servers -> "text"
   group_name?: string; // 54-2; creator's grouping suggestion; absent -> "General"
   short_name?: string; // 106-3; optional abbreviation (≤10 chars); absent -> none
+  // 111-1: the channel's header image -- an attachment id, absent when the
+  // channel has none. Only the id: the ref (key version + enc_meta) comes
+  // from GET /api/attachments/{id}/ref, the bytes from the download
+  // endpoint, both cache-first, and only for the channel on screen.
+  banner_attachment_id?: string;
   // 80-6: when the channel self-destructs, unix-millis. Absent -> permanent.
   expires_at?: number;
   last_seq?: number; // 33-1; highest seq in the channel; absent from older servers -> 0
@@ -444,10 +449,13 @@ export interface ChannelEventPayload {
 
 // 106-2: update_channel. An omitted field is left alone; a present one is
 // written after trimming (short_name "" clears it).
+// 111-1: banner_attachment_id sets the header image; "" clears it. Omit it
+// on a rename -- a "" would clear a banner nobody asked to clear.
 export interface UpdateChannelPayload {
   channel_id: string;
   name?: string;
   short_name?: string;
+  banner_attachment_id?: string;
 }
 
 export interface UpdateChannelAckPayload {

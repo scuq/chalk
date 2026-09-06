@@ -214,6 +214,11 @@ interface Props {
     channelID: string,
     patch: { name?: string; shortName?: string },
   ) => void;
+  // 111-2: set or clear the channel's header image. The sidebar only picks
+  // the file; App owns the upload (it holds the channel crypto) and the
+  // update_channel that follows it. Resolves when the banner is set, or
+  // rejects with something to show. null clears.
+  onSetChannelBanner?: (channelID: string, file: File | null) => Promise<void>;
   // 53-1: the parking lot. A pseudo-channel that shows nothing -- one click
   // and the conversation pane is a logo. null hides the row (the setting), and
   // parked highlights it the way an open channel is highlighted.
@@ -365,6 +370,7 @@ export function Sidebar({
   onSetChannelHidden,
   nameStyle = "full",
   onUpdateChannel,
+  onSetChannelBanner,
   parkingName,
   parked = false,
   onPark,
@@ -414,6 +420,13 @@ export function Sidebar({
   // 106-2/106-3: the rename rows' drafts, seeded when the menu opens.
   const [nameDraft, setNameDraft] = useState("");
   const [shortDraft, setShortDraft] = useState("");
+  // 111-2: the banner row's state. "uploading" while the blob is going up
+  // (the menu stays open, so there is somewhere to show it), and an error
+  // string when it did not land -- a picture that silently failed to
+  // become a banner is the worst outcome here.
+  const [bannerBusy, setBannerBusy] = useState(false);
+  const [bannerError, setBannerError] = useState<string | null>(null);
+  const bannerInputRef = useRef<HTMLInputElement | null>(null);
   // 92-1: the roster hover card. Held by userID rather than by value so a
   // presence push that lands while the card is open is reflected on the next
   // render. 92-4: the state, the timer and the placement live in the hook the
@@ -457,6 +470,9 @@ export function Sidebar({
     // 106-2/106-3: the rename rows, seeded the same way.
     setNameDraft(ch.name);
     setShortDraft(ch.shortName ?? "");
+    // 111-2: a fresh menu never opens still showing the last upload's error.
+    setBannerBusy(false);
+    setBannerError(null);
     setChannelMenu({ channelID: ch.id, name: ch.name, ...at });
   };
 
@@ -1353,6 +1369,79 @@ export function Sidebar({
                   </span>
                 </div>
               </>
+            );
+          })()}
+          {/* 111-2: the channel's header image, set where its other metadata
+              is set. Same gate as the rename rows above -- owner, non-DM,
+              dictator mode -- because a banner rewrites what every member
+              sees at the top of the room. The picker uploads through the
+              ordinary attachment pipeline (encrypted under the channel key,
+              never linked to a message); only the resulting id travels in
+              update_channel. */}
+          {onSetChannelBanner && (() => {
+            const ch = channels.find((c) => c.id === channelMenu.channelID);
+            if (!ch || ch.isDM) return null;
+            if (!ownUserID || ch.createdBy !== ownUserID) return null;
+            if (ch.governanceMode === "democratic") return null;
+            const has = !!ch.bannerAttachmentID;
+            const pick = (file: File | null) => {
+              setBannerError(null);
+              setBannerBusy(true);
+              void onSetChannelBanner(ch.id, file)
+                .then(() => {
+                  setBannerBusy(false);
+                  setChannelMenu(null);
+                })
+                .catch((err: unknown) => {
+                  setBannerBusy(false);
+                  setBannerError(err instanceof Error ? err.message : "upload failed");
+                });
+            };
+            return (
+              <div class="chalk-nick-menu-row">
+                <span class="chalk-nick-menu-label">image</span>
+                <input
+                  ref={bannerInputRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  data-testid="channel-menu-banner-input"
+                  onChange={(e) => {
+                    const input = e.target as HTMLInputElement;
+                    const file = input.files?.[0] ?? null;
+                    // Clear the input so picking the same file twice still
+                    // fires a change event.
+                    input.value = "";
+                    if (file) pick(file);
+                  }}
+                />
+                <button
+                  type="button"
+                  class="chalk-nick-menu-btn"
+                  data-testid="channel-menu-banner-set"
+                  disabled={bannerBusy}
+                  title={has ? "replace the header image" : "pin an image to the header"}
+                  onClick={() => bannerInputRef.current?.click()}
+                >
+                  {bannerBusy ? "…" : has ? "replace" : "set"}
+                </button>
+                {has && !bannerBusy && (
+                  <button
+                    type="button"
+                    class="chalk-nick-menu-btn"
+                    data-testid="channel-menu-banner-clear"
+                    title="remove the header image"
+                    onClick={() => pick(null)}
+                  >
+                    clear
+                  </button>
+                )}
+                {bannerError && (
+                  <span class="chalk-nick-menu-hint" data-testid="channel-menu-banner-error">
+                    {bannerError}
+                  </span>
+                )}
+              </div>
             );
           })()}
           {/* 78-2: take the channel off the roster. Two ways out of a list

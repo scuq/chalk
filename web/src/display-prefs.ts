@@ -37,6 +37,12 @@ export interface DisplayPrefs {
   scale: number;
   hideScrollbars: boolean;
   appWidth: AppWidth;
+  // 111-4: whether a channel's pinned header image is drawn. On by
+  // default, and per-device for the reason the whole file is per-device:
+  // 88px of picture is a fair trade on a monitor and a real loss on a
+  // phone. Off means the band never mounts -- no fetch, no decrypt --
+  // rather than a hidden element.
+  showChannelBanner: boolean;
 }
 
 export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
@@ -44,9 +50,16 @@ export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
   scale: 1,
   hideScrollbars: false,
   appWidth: "centered",
+  showChannelBanner: true,
 };
 
 const STORAGE_KEY = "chalk.display.v1";
+
+// 111-4: the same-tab counterpart to the storage event. localStorage only
+// notifies OTHER tabs, and from 111 two components in one tab read these
+// prefs -- the appearance picker that writes them and the channel header
+// that renders by them -- so a write announces itself here as well.
+const CHANGE_EVENT = "chalk:display-prefs";
 
 // Clamp bounds rather than an enum: the stored value only ever comes
 // from the steps below, but a hand-edited localStorage entry shouldn't
@@ -107,7 +120,13 @@ export function normalizeDisplayPrefs(raw: unknown): DisplayPrefs {
       ? o.hideScrollbars
       : DEFAULT_DISPLAY_PREFS.hideScrollbars;
   const appWidth = isAppWidth(o.appWidth) ? o.appWidth : DEFAULT_DISPLAY_PREFS.appWidth;
-  return { font, scale, hideScrollbars, appWidth };
+  // A device that stored its prefs before 111 has no key here, and the
+  // default is on -- so upgrading turns banners on rather than off.
+  const showChannelBanner =
+    typeof o.showChannelBanner === "boolean"
+      ? o.showChannelBanner
+      : DEFAULT_DISPLAY_PREFS.showChannelBanner;
+  return { font, scale, hideScrollbars, appWidth, showChannelBanner };
 }
 
 // The subset of HTMLElement applyDisplayPrefs needs, so the unit tests
@@ -151,6 +170,14 @@ export function saveDisplayPrefs(prefs: DisplayPrefs): void {
   } catch {
     // Same as above: the setting just won't survive a reload.
   }
+  // Announce it in-tab even if the write failed: the other readers should
+  // still follow the setting for this session.
+  try {
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+  } catch {
+    // No CustomEvent (an ancient webview, a test stub): other readers in
+    // this tab catch up on their next render.
+  }
 }
 
 // useDisplayPrefs owns the setting for whatever component renders the
@@ -170,17 +197,26 @@ export function useDisplayPrefs(): [DisplayPrefs, (next: Partial<DisplayPrefs>) 
   }, []);
 
   // A second tab on the same device is the same device: follow its
-  // changes rather than letting the two disagree until reload.
+  // changes rather than letting the two disagree until reload. The
+  // in-tab event does the same for a second reader in THIS tab, which
+  // the storage event never fires for.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== STORAGE_KEY) return;
+    const reload = () => {
       const next = loadDisplayPrefs();
       applyDisplayPrefs(next);
       setPrefs(next);
     };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY) return;
+      reload();
+    };
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener(CHANGE_EVENT, reload);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(CHANGE_EVENT, reload);
+    };
   }, []);
 
   return [prefs, update];

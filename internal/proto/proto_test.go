@@ -105,3 +105,55 @@ func TestDecodePayloadBadJSON(t *testing.T) {
 		t.Fatal("expected decode error")
 	}
 }
+
+// 111-1: update_channel's banner field has three states on the wire and the
+// handler reads all three off the pointer, so the JSON shape is what has to
+// hold: absent leaves the banner alone, "" clears it, an id sets it. A
+// non-pointer field would collapse the first two into each other.
+func TestUpdateChannelBannerThreeStates(t *testing.T) {
+	cases := []struct {
+		name    string
+		wire    string
+		present bool
+		value   string
+	}{
+		{"absent", `{"channel_id":"c1"}`, false, ""},
+		{"clear", `{"channel_id":"c1","banner_attachment_id":""}`, true, ""},
+		{"set", `{"channel_id":"c1","banner_attachment_id":"a-1"}`, true, "a-1"},
+	}
+	for _, c := range cases {
+		var p UpdateChannelPayload
+		if err := json.Unmarshal([]byte(c.wire), &p); err != nil {
+			t.Fatalf("%s: unmarshal: %v", c.name, err)
+		}
+		if (p.BannerAttachmentID != nil) != c.present {
+			t.Errorf("%s: present = %v, want %v", c.name, p.BannerAttachmentID != nil, c.present)
+		}
+		if c.present && *p.BannerAttachmentID != c.value {
+			t.Errorf("%s: value = %q, want %q", c.name, *p.BannerAttachmentID, c.value)
+		}
+	}
+
+	// A rename that says nothing about the banner must not serialize the
+	// field at all -- the server would read a "" as "clear the banner".
+	name := "lounge"
+	out, err := json.Marshal(UpdateChannelPayload{ChannelID: "c1", Name: &name})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(out), "banner_attachment_id") {
+		t.Errorf("name-only update carried a banner field: %s", out)
+	}
+}
+
+// A channel with no banner must not carry an empty id on the wire: the client
+// treats presence as "there is a banner" and would fetch a ref for "".
+func TestChannelSummaryOmitsEmptyBanner(t *testing.T) {
+	out, err := json.Marshal(ChannelSummary{ID: "c1", Name: "general"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(out), "banner_attachment_id") {
+		t.Errorf("summary carried an empty banner field: %s", out)
+	}
+}

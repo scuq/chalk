@@ -381,6 +381,43 @@ func (s *Store) ListAttachmentsForChannelWindow(
 	return scanAttachmentListRows(rows)
 }
 
+// GetAttachmentRefForUser returns one completed attachment WITHOUT its
+// ciphertext, when requesterUserID is a member of its channel. Same authz and
+// same indistinguishability as GetAttachmentForDownload -- a non-member and a
+// missing row both get ErrAttachmentNotFound -- but it carries only the small
+// blobs (enc_meta, enc_preview), so it is the cheap "what is this attachment?"
+// probe.
+//
+// 111-1 added it for the channel banner, which needs a ref for an id that the
+// window-bounded list query cannot reach: a banner set months ago is outside
+// every CHALK_ATTACH_FETCH_WINDOW_HOURS lookback, and it is not linked to a
+// message either. The same handler uses it to validate a banner before writing
+// it to the channel row.
+func (s *Store) GetAttachmentRefForUser(ctx context.Context, id, requesterUserID uuid.UUID) (Attachment, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT `+attachmentListColumns+`
+		   FROM attachments a
+		  WHERE a.id = $1
+		    AND a.status = 'complete'
+		    AND EXISTS (
+		      SELECT 1 FROM channel_members cm
+		       WHERE cm.channel_id = a.channel_id AND cm.user_id = $2
+		    )`,
+		id, requesterUserID,
+	)
+	if err != nil {
+		return Attachment{}, err
+	}
+	out, err := scanAttachmentListRows(rows)
+	if err != nil {
+		return Attachment{}, err
+	}
+	if len(out) == 0 {
+		return Attachment{}, ErrAttachmentNotFound
+	}
+	return out[0], nil
+}
+
 // ListAttachmentRefsForMessage returns the completed attachments linked to one
 // message, oldest first. Used to attach refs to a live message push. Cheap
 // indexed probe (attachments_message_idx); returns an empty slice for the

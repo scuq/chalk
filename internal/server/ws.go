@@ -2149,6 +2149,12 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 	if c.ExpiresAt != nil {
 		s.ExpiresAt = c.ExpiresAt.UnixMilli()
 	}
+	// 111-1: the banner id, on every path that delivers the channel. Only
+	// the read queries that select the column populate it; a create ack
+	// carries none, which is right -- a new channel has no banner.
+	if c.BannerAttachmentID != nil {
+		s.BannerAttachmentID = c.BannerAttachmentID.String()
+	}
 	// 62-2: activity fields only when the listing query found a newest
 	// message (seq starts at 1, so 0 means "no activity row"). The body
 	// join can still come back NULL if the message's partition was

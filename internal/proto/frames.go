@@ -309,6 +309,11 @@ type ChannelSummary struct {
 	// ShortName is the channel's optional abbreviation (106-3), at most
 	// ten characters. Absent/empty -> none; the client falls back to Name.
 	ShortName string `json:"short_name,omitempty"`
+	// BannerAttachmentID is the channel's header image (111-1), or absent
+	// when it has none. Only the id: the client resolves it through
+	// GET /api/attachments/{id}/ref and the download endpoint, so a
+	// listing of fifty channels does not carry fifty encrypted blobs.
+	BannerAttachmentID string `json:"banner_attachment_id,omitempty"`
 	// ExpiresAt (unix-millis) is when an ephemeral channel is destroyed
 	// (80-6). Absent/0 = permanent. The client renders the countdown from
 	// this; the server's janitor is what actually enforces it.
@@ -385,10 +390,17 @@ type CreateChannelAckPayload struct {
 
 // ---- update_channel (106-2, 106-3) ---------------------------------------
 
-// UpdateChannelPayload changes a channel's name and/or short name. A field
-// that is absent (JSON null / omitted) is left alone; a present one is
-// written after trimming. Name must be 1-80 chars after trim; ShortName
+// UpdateChannelPayload changes a channel's name, short name and/or banner.
+// A field that is absent (JSON null / omitted) is left alone; a present one
+// is written after trimming. Name must be 1-80 chars after trim; ShortName
 // at most ten characters, and "" clears it.
+//
+// BannerAttachmentID (111-1) is the channel's header image: the id of a
+// completed attachment in THIS channel, uploaded through the ordinary
+// attachment pipeline and never linked to a message. "" clears the banner.
+// The server checks that the id names a complete attachment of the same
+// channel; it cannot check that it is an image, because the kind lives
+// inside enc_meta and only members can read that.
 //
 // Server rules:
 //   - Caller must be the channel's owner (role='owner').
@@ -396,9 +408,10 @@ type CreateChannelAckPayload struct {
 //     unilateral_forbidden (a rename proposal type is not built).
 //   - DMs are not renameable: their name renders from the other member.
 type UpdateChannelPayload struct {
-	ChannelID string  `json:"channel_id"`
-	Name      *string `json:"name,omitempty"`
-	ShortName *string `json:"short_name,omitempty"`
+	ChannelID          string  `json:"channel_id"`
+	Name               *string `json:"name,omitempty"`
+	ShortName          *string `json:"short_name,omitempty"`
+	BannerAttachmentID *string `json:"banner_attachment_id,omitempty"`
 }
 
 // UpdateChannelAckPayload returns the channel as it now reads.

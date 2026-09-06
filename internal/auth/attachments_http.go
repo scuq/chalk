@@ -30,6 +30,7 @@ import (
 //	PUT    /api/attachments/{id}/chunk?seq=N -> stage one ciphertext chunk (octet-stream body)
 //	POST   /api/attachments/{id}/finalize    -> assemble + verify + mark complete
 //	GET    /api/attachments/{id}             -> stream ciphertext (member-of-channel only)
+//	GET    /api/attachments/{id}/ref         -> one ref, no ciphertext (111-1)
 //	GET    /api/attachments?channel_id=&since_hours= -> list recent refs in a channel
 //
 // The server is a blind store: name/mime/kind/dimensions live inside the
@@ -62,6 +63,9 @@ func (d *HTTPDeps) MountAttachments(mux *http.ServeMux) error {
 	mux.HandleFunc("PUT /api/attachments/{id}/chunk", RequireSession(d.Store, d.handleAttachChunk))
 	mux.HandleFunc("POST /api/attachments/{id}/finalize", RequireSession(d.Store, d.handleAttachFinalize))
 	mux.HandleFunc("GET /api/attachments/{id}", RequireSession(d.Store, d.handleAttachDownload))
+	// 111-1: the ref alone (no ciphertext), for an id the window-bounded
+	// list query cannot reach -- today, a channel banner.
+	mux.HandleFunc("GET /api/attachments/{id}/ref", RequireSession(d.Store, d.handleAttachRef))
 	mux.HandleFunc("GET /api/attachments", RequireSession(d.Store, d.handleAttachList))
 	return nil
 }
@@ -325,6 +329,31 @@ func (d *HTTPDeps) handleAttachList(w http.ResponseWriter, r *http.Request, su *
 		out.Attachments = append(out.Attachments, attachToRefJSON(a))
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// ---- ref (111-1) ------------------------------------------------------
+
+// handleAttachRef returns one attachment's ref -- the small blobs and the key
+// version, never the ciphertext. The feed never needs this (refs ride on the
+// message, or come from the windowed list); the channel banner does: its id
+// lives on the channels row, is not linked to any message, and can be older
+// than any lookback window.
+//
+// Authz is GetAttachmentForDownload's, so a non-member cannot use it to probe
+// which attachment ids exist.
+func (d *HTTPDeps) handleAttachRef(w http.ResponseWriter, r *http.Request, su *SessionUser) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "bad_id", "attachment id must be a UUID")
+		return
+	}
+	a, err := d.Store.GetAttachmentRefForUser(r.Context(), id, su.UserID)
+	if err != nil {
+		d.writeAttachStoreErr(w, "ref", err)
+		return
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	writeJSON(w, http.StatusOK, attachToRefJSON(a))
 }
 
 // ---- helpers ----------------------------------------------------------

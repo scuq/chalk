@@ -528,7 +528,8 @@ html {
   overflow: hidden;
 }
 
-.chalk-main--voice .chalk-channel-header {
+.chalk-main--voice .chalk-channel-header,
+.chalk-main--voice .chalk-channel-headwrap {
   flex: none;
 }
 
@@ -2135,6 +2136,56 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color: var(--chalk-fg-bright);
   font-weight: 400;
 }
+
+/* 111-3: the header BLOCK -- the title row plus the channel's pinned image.
+   The pinning moved out here from .chalk-channel-header so the band under
+   the title is pinned with it rather than scrolling out from under it; the
+   offsets are the ones the header carried, unchanged, so a channel with no
+   banner renders exactly as it did before 111. The title row keeps its own
+   flex layout and gives up only the properties that were about pinning.
+   (The parking header still uses the bare .chalk-channel-header rule.) */
+.chalk-channel-headwrap {
+  position: sticky;
+  top: calc(-1 * var(--chalk-s4));
+  margin-top: calc(-1 * var(--chalk-s4));
+  margin-bottom: var(--chalk-s3);
+  border-bottom: 1px solid var(--chalk-border);
+  background: var(--chalk-bg);
+  box-shadow: 0 var(--chalk-s3) var(--chalk-bg);
+  z-index: 5;
+}
+
+.chalk-channel-headwrap .chalk-channel-header {
+  position: static;
+  top: auto;
+  margin-top: 0;
+  margin-bottom: 0;
+  border-bottom: none;
+  box-shadow: none;
+  z-index: auto;
+}
+
+/* The band itself. Fixed height and `cover` rather than a fitted image:
+   the height is what keeps a picture from eating the feed, and cropping is
+   what lets a wide screenshot and a square piece of box art read as the
+   same shape. object-position stays centred -- there is no reposition
+   control yet (recorded in PHASE-111-BANNER.md). */
+.chalk-channel-banner {
+  height: 88px;
+  overflow: hidden;
+  margin-bottom: var(--chalk-s2);
+  background: var(--chalk-bg-elevated, var(--chalk-bg));
+}
+
+.chalk-channel-banner-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  cursor: zoom-in;
+}
+
 
 /* -- Encryption indicator + hover popover (phase 23g/23h) ---------- */
 
@@ -8957,6 +9008,22 @@ body.chalk-resizing-y .chalk-composer-resizer {
     padding-top: var(--chalk-s2);
     margin-top: 0;
     box-shadow: 0 var(--chalk-s2) var(--chalk-bg);
+  }
+
+  /* 111-3: the block's pinning offsets follow the header's, for the same
+     reason -- .chalk-main's padding is s2 here, not s4. The band is
+     shorter: 88px of picture is a fair trade on a monitor and a third of
+     a phone's feed. */
+  .chalk-channel-headwrap {
+    top: calc(-1 * var(--chalk-s2));
+    margin-top: 0;
+    margin-bottom: var(--chalk-s2);
+    box-shadow: 0 var(--chalk-s2) var(--chalk-bg);
+  }
+
+  .chalk-channel-banner {
+    height: 56px;
+    margin-bottom: var(--chalk-s1);
   }
 
   .chalk-channel-header-name {

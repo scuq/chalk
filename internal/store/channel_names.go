@@ -1,12 +1,15 @@
 package store
 
 // 106-2 / 106-3: renaming a channel and its optional short name.
+// 111-1: the same write path carries the channel banner.
 //
-// Both are plain metadata writes on the channels row: the name is what
-// the server already holds in the clear, so a rename has no key or
+// All three are plain metadata writes on the channels row: the name is
+// what the server already holds in the clear, so a rename has no key or
 // envelope implications -- nothing the client signs binds the channel
-// name. Authorization (owner only, dictator mode only, never a DM) is the
-// handler's job; the store only knows how to normalize and write.
+// name. The banner adds only a uuid pointing at an attachments row whose
+// bytes the server cannot read. Authorization (owner only, dictator mode
+// only, never a DM) is the handler's job; the store only knows how to
+// normalize and write.
 
 import (
 	"context"
@@ -40,10 +43,18 @@ func NormalizeShortName(s string) (string, error) {
 // UpdateChannelNamesInput names what changes. A nil field is left alone;
 // a non-nil one is written (after normalization). Name may not be blank;
 // ShortName may be, which clears it.
+//
+// 111-1: the banner needs three states where a *uuid.UUID gives two, so
+// SetBanner is the "touch this column" flag and BannerAttachmentID is
+// what to write -- nil with the flag set clears the banner. The handler
+// has already checked that the id names a complete attachment of this
+// channel; the store does not re-check.
 type UpdateChannelNamesInput struct {
-	ChannelID uuid.UUID
-	Name      *string
-	ShortName *string
+	ChannelID          uuid.UUID
+	Name               *string
+	ShortName          *string
+	SetBanner          bool
+	BannerAttachmentID *uuid.UUID
 }
 
 // ErrChannelNameRequired is returned when a rename would leave the name
@@ -70,14 +81,18 @@ func (s *Store) UpdateChannelNames(ctx context.Context, in UpdateChannelNamesInp
 		short = &t
 	}
 	var ch Channel
+	// The banner column cannot use COALESCE the way the two names do:
+	// NULL is a value it takes (clearing it), not "leave alone". The flag
+	// carries that apart.
 	err := s.Pool.QueryRow(ctx,
 		`UPDATE channels
 		    SET name = COALESCE($2, name),
-		        short_name = COALESCE($3, short_name)
+		        short_name = COALESCE($3, short_name),
+		        banner_attachment_id = CASE WHEN $4 THEN $5 ELSE banner_attachment_id END
 		  WHERE id = $1
-		  RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, rotation_due_from, governance_mode, channel_type, group_name, expires_at, short_name`,
-		in.ChannelID, name, short,
-	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.RotationDueFrom, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName, &ch.ExpiresAt, &ch.ShortName)
+		  RETURNING id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, rotation_due_from, governance_mode, channel_type, group_name, expires_at, short_name, banner_attachment_id`,
+		in.ChannelID, name, short, in.SetBanner, in.BannerAttachmentID,
+	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.RotationDueFrom, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName, &ch.ExpiresAt, &ch.ShortName, &ch.BannerAttachmentID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Channel{}, ErrChannelNotFound
 	}

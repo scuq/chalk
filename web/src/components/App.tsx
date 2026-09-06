@@ -210,6 +210,8 @@ import { messageText } from "../chat/bodytext";
 // 64-3/64-4/64-10: swipe right = back, on every screen that has a "back".
 import { useSwipeBack } from "../chat/use-swipe-back";
 import { MessageList } from "./MessageList";
+import { ChannelBanner } from "./ChannelBanner"; // 111-3
+import { useDisplayPrefs } from "../display-prefs"; // 111-4
 import { ConfirmModal } from "./ConfirmModal";
 import { Composer } from "./Composer";
 import { TypingLine } from "./TypingLine";
@@ -347,6 +349,7 @@ import {
   type AttachmentController,
 } from "../attachments/pipeline";
 import { listAttachments } from "../attachments/transport";
+import { prepareBanner } from "../attachments/banner"; // 111-2
 import { clearCache as clearAttachmentCache } from "../attachments/cache";
 import type { AttachmentRef, PendingAttachment } from "../attachments/types";
 import { EncryptionIndicator } from "./EncryptionIndicator";
@@ -409,6 +412,7 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
     channelType: w.channel_type ?? "text", // 30-4
     groupName: w.group_name ?? "General", // 54-2
     shortName: w.short_name ?? "", // 106-3
+    bannerAttachmentID: w.banner_attachment_id ?? "", // 111-1
     lastSeq: w.last_seq ?? 0, // 33-1
     lastReadSeq: w.last_read_seq ?? 0, // 33-1
     // 62-3: activity metadata only -- the ciphertext body stays out of the
@@ -2955,6 +2959,7 @@ export function App() {
           channelID: p.channel.id,
           name: p.channel.name,
           shortName: p.channel.short_name ?? "",
+          bannerAttachmentID: p.channel.banner_attachment_id ?? "", // 111-1
         });
         break;
       }
@@ -3096,6 +3101,7 @@ export function App() {
             channelID: p.channel.id,
             name: p.channel.name,
             shortName: p.channel.short_name ?? "",
+            bannerAttachmentID: p.channel.banner_attachment_id ?? "", // 111-1
           });
           break;
         }
@@ -3411,6 +3417,11 @@ export function App() {
 
   // The server's JSONB merge is shallow, so `voice` has to go up whole: read
   // the current object and write the patch over it, the way the chat prefs do.
+  // 111-4: the appearance pref that draws (or does not draw) the channel's
+  // pinned header image. Per-device, so it comes from localStorage rather
+  // than the account's prefs; the hook follows the picker in this tab and
+  // in any other.
+  const [{ showChannelBanner }] = useDisplayPrefs();
   const voicePrefs = selectVoicePrefs(state.prefs);
   const voicePrefsRef = useRef(voicePrefs);
   voicePrefsRef.current = voicePrefs;
@@ -5571,6 +5582,34 @@ export function App() {
             if (patch.shortName !== undefined) payload.short_name = patch.shortName;
             c.send<UpdateChannelPayload>(TypeUpdateChannel, payload, "upch-" + Date.now());
           }}
+          // 111-2: the banner. The menu picks a file; the upload belongs
+          // here, where the channel crypto is -- the blob is encrypted under
+          // the channel key exactly like a posted image, and only its id
+          // travels in update_channel. Nothing is applied optimistically:
+          // the ack (and the push to every other member) carries the row.
+          // A rejection is shown in the menu, so every failure path throws
+          // something a person can read.
+          onSetChannelBanner={async (channelID, file) => {
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) throw new Error("not connected");
+            let bannerID = "";
+            if (file) {
+              const cc = ccRef.current;
+              const deviceID = state.user?.device;
+              if (!cc || !deviceID) throw new Error("not ready");
+              // Fail-closed like every other upload: no channel key, no
+              // ciphertext leaves the device.
+              const scaled = await prepareBanner(file);
+              const res = await uploadAttachment(cc, channelID, deviceID, scaled);
+              if (res.kind !== "uploaded") throw new Error("waiting for the channel key");
+              bannerID = res.ref.id;
+            }
+            c.send<UpdateChannelPayload>(
+              TypeUpdateChannel,
+              { channel_id: channelID, banner_attachment_id: bannerID },
+              "upch-" + Date.now(),
+            );
+          }}
           hiddenChannels={selectRosterPrefs(state.prefs).hidden}
           onSetChannelHidden={(channelID, mode) => {
             const c = clientRef.current;
@@ -5762,58 +5801,75 @@ export function App() {
           </>
         ) : activeChannel ? (
           <>
-            <div class="chalk-channel-header" data-testid="channel-header">
-              {/* 62-6: Zuckermode's way back to the list. Sits in the sticky
-                  header, so it is reachable however deep the scrollback. */}
-              {zuckerActive && (
+            {/* 111-3: the header block -- the title row and, under it, the
+                channel's pinned image. The wrapper is what sticks now, so
+                the band stays with the title instead of scrolling out from
+                under it; with no banner it renders exactly as before. */}
+            <div class="chalk-channel-headwrap">
+              <div class="chalk-channel-header" data-testid="channel-header">
+                {/* 62-6: Zuckermode's way back to the list. Sits in the sticky
+                    header, so it is reachable however deep the scrollback. */}
+                {zuckerActive && (
+                  <button
+                    type="button"
+                    class="chalk-zucker-back"
+                    aria-label="back to conversations"
+                    data-testid="zucker-back"
+                    onClick={() => setZuckerScreen("list")}
+                  >
+                    ‹
+                  </button>
+                )}
+                {/* 30-5: channel-kind glyph -- text vs voice, matching the
+                    sidebar. DMs keep their textual tag instead. */}
+                {!activeChannel.isDM && (
+                  <span
+                    class={`chalk-chglyph chalk-chglyph--header ${activeChannel.channelType === "voice" ? "chalk-chglyph--voice" : "chalk-chglyph--text"}`}
+                  >
+                    <ChannelGlyph
+                      type={activeChannel.channelType === "voice" ? "voice" : "text"}
+                    />
+                  </span>
+                )}
+                <span class="chalk-channel-header-name">
+                  {displayName(activeChannel, state.user?.id ?? null)}
+                </span>
+                {activeChannel.isDM && <span class="chalk-channel-header-tag">dm</span>}
+                {!activeChannel.isDM && (
+                  <ModeBadge
+                    mode={activeChannel.governanceMode}
+                    onClick={() => dispatch({ kind: "open_panel", panel: "governance" })}
+                  />
+                )}
+                <EncryptionIndicator
+                  status={
+                    state.activeChannelID ? keyStatus[state.activeChannelID] : undefined
+                  }
+                  onClick={() => dispatch({ kind: "open_panel", panel: "members" })}
+                />
+                {/* 61-2: message search. Also on Ctrl/Cmd+K. */}
                 <button
                   type="button"
-                  class="chalk-zucker-back"
-                  aria-label="back to conversations"
-                  data-testid="zucker-back"
-                  onClick={() => setZuckerScreen("list")}
+                  class="chalk-channel-search"
+                  onClick={() => dispatch({ kind: "open_panel", panel: "search" })}
+                  title="search messages (Ctrl+K)"
+                  aria-label="search messages"
+                  data-testid="channel-search-button"
                 >
-                  ‹
+                  search
                 </button>
-              )}
-              {/* 30-5: channel-kind glyph -- text vs voice, matching the
-                  sidebar. DMs keep their textual tag instead. */}
-              {!activeChannel.isDM && (
-                <span
-                  class={`chalk-chglyph chalk-chglyph--header ${activeChannel.channelType === "voice" ? "chalk-chglyph--voice" : "chalk-chglyph--text"}`}
-                >
-                  <ChannelGlyph
-                    type={activeChannel.channelType === "voice" ? "voice" : "text"}
-                  />
-                </span>
-              )}
-              <span class="chalk-channel-header-name">
-                {displayName(activeChannel, state.user?.id ?? null)}
-              </span>
-              {activeChannel.isDM && <span class="chalk-channel-header-tag">dm</span>}
-              {!activeChannel.isDM && (
-                <ModeBadge
-                  mode={activeChannel.governanceMode}
-                  onClick={() => dispatch({ kind: "open_panel", panel: "governance" })}
+              </div>
+              {/* Renders nothing without a banner, without the channel key,
+                  or with the appearance pref off -- and when the pref is off
+                  the component never mounts, so it costs no fetch and no
+                  decrypt rather than being hidden. */}
+              {showChannelBanner && activeChannel.bannerAttachmentID && attControllerRef.current && (
+                <ChannelBanner
+                  channelID={activeChannel.id}
+                  attachmentID={activeChannel.bannerAttachmentID}
+                  controller={attControllerRef.current}
                 />
               )}
-              <EncryptionIndicator
-                status={
-                  state.activeChannelID ? keyStatus[state.activeChannelID] : undefined
-                }
-                onClick={() => dispatch({ kind: "open_panel", panel: "members" })}
-              />
-              {/* 61-2: message search. Also on Ctrl/Cmd+K. */}
-              <button
-                type="button"
-                class="chalk-channel-search"
-                onClick={() => dispatch({ kind: "open_panel", panel: "search" })}
-                title="search messages (Ctrl+K)"
-                aria-label="search messages"
-                data-testid="channel-search-button"
-              >
-                search
-              </button>
             </div>
             {/* Phase 30 (30-4): the minimal call surface for voice channels.
                 Key by channel id so switching rooms unmounts (and thereby

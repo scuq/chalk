@@ -1,7 +1,7 @@
 package server
 
 // 106-2 / 106-3: update_channel -- rename a channel, set or clear its
-// short name.
+// short name. 111-1: and set or clear its banner.
 //
 // Authorization is deliberately the narrowest of the membership handlers:
 // the OWNER, in dictator mode, on a non-DM channel. add_member lets any
@@ -13,7 +13,11 @@ package server
 //
 // Nothing cryptographic binds the channel name (envelopes sign message
 // bodies and their channel ID, never the row's metadata), so a rename has
-// no key or signature consequences.
+// no key or signature consequences. The banner is the same class of
+// change: the server stores a uuid pointing at ciphertext it cannot read,
+// and the image itself is an ordinary attachment encrypted under the
+// channel key -- so a banner is exactly as private as a posted image, and
+// no more.
 
 import (
 	"context"
@@ -48,7 +52,7 @@ func (h *WSHandler) handleUpdateChannel(
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
 		return
 	}
-	if p.Name == nil && p.ShortName == nil {
+	if p.Name == nil && p.ShortName == nil && p.BannerAttachmentID == nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "nothing to update")
 		return
 	}
@@ -63,6 +67,19 @@ func (h *WSHandler) handleUpdateChannel(
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel, nErr.Error())
 			return
 		}
+	}
+	// 111-1: "" clears the banner; anything else must parse as a UUID
+	// before any database work. Whether it names a usable attachment is
+	// checked below, once we know the caller may write here at all.
+	var bannerID *uuid.UUID
+	if p.BannerAttachmentID != nil && strings.TrimSpace(*p.BannerAttachmentID) != "" {
+		bid, bErr := uuid.Parse(strings.TrimSpace(*p.BannerAttachmentID))
+		if bErr != nil {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload,
+				"banner_attachment_id not a UUID")
+			return
+		}
+		bannerID = &bid
 	}
 
 	deviceID, err := uuid.Parse(conn.DeviceID)
@@ -89,7 +106,7 @@ func (h *WSHandler) handleUpdateChannel(
 	}
 	if role != "owner" {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeNotChannelCreator,
-			"only the channel owner can rename it")
+			"only the channel owner can rename it or set its banner")
 		return
 	}
 
@@ -113,10 +130,36 @@ func (h *WSHandler) handleUpdateChannel(
 		return
 	}
 
+	// 111-1: the banner must be a completed attachment of THIS channel.
+	// Anything else -- another channel's blob, an upload that never
+	// finalized, an id that was never issued -- is refused rather than
+	// written, so a banner that resolves to nothing cannot be created
+	// through this frame. What it depicts is unknowable here: kind and
+	// mime live inside enc_meta, which only members can decrypt.
+	if bannerID != nil {
+		att, aErr := h.store.GetAttachmentRefForUser(ctx, *bannerID, callerID)
+		if aErr != nil {
+			if errors.Is(aErr, store.ErrAttachmentNotFound) {
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel,
+					"banner attachment not found")
+				return
+			}
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "banner lookup: "+aErr.Error())
+			return
+		}
+		if att.ChannelID != channelID {
+			h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel,
+				"banner attachment belongs to another channel")
+			return
+		}
+	}
+
 	updated, uErr := h.store.UpdateChannelNames(ctx, store.UpdateChannelNamesInput{
-		ChannelID: channelID,
-		Name:      p.Name,
-		ShortName: p.ShortName,
+		ChannelID:          channelID,
+		Name:               p.Name,
+		ShortName:          p.ShortName,
+		SetBanner:          p.BannerAttachmentID != nil,
+		BannerAttachmentID: bannerID,
 	})
 	if uErr != nil {
 		switch {

@@ -54,6 +54,13 @@ type Channel struct {
 	// (80-6). Nil for permanent channels; non-nil only on ephemeral voice
 	// channels (the 0050 CHECK forces voice + non-DM). Set once at creation.
 	ExpiresAt *time.Time
+	// BannerAttachmentID is the channel's header image (111-1): an
+	// attachments row, encrypted under a channel key version, never linked
+	// to a message. Nil means no banner. Not a foreign key (attachments is
+	// partitioned, so id alone is not unique) -- a dangling id resolves to
+	// no banner rather than an error. Populated by the read paths that need
+	// it: GetChannel, ListChannelsForUser and the update's RETURNING.
+	BannerAttachmentID *uuid.UUID
 }
 
 // ChannelWithMembers couples a Channel with its full member set.
@@ -304,10 +311,10 @@ func (s *Store) CreateChannel(ctx context.Context, in CreateChannelInput) (Chann
 func (s *Store) GetChannel(ctx context.Context, channelID uuid.UUID) (Channel, error) {
 	var ch Channel
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, rotation_due_from, governance_mode, channel_type, group_name, expires_at, short_name
+		`SELECT id, name, is_dm, created_by, created_at, current_key_version, rotation_pending, rotation_due_from, governance_mode, channel_type, group_name, expires_at, short_name, banner_attachment_id
 		   FROM channels WHERE id = $1`,
 		channelID,
-	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.RotationDueFrom, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName, &ch.ExpiresAt, &ch.ShortName)
+	).Scan(&ch.ID, &ch.Name, &ch.IsDM, &ch.CreatedBy, &ch.CreatedAt, &ch.CurrentKeyVersion, &ch.RotationPending, &ch.RotationDueFrom, &ch.GovernanceMode, &ch.ChannelType, &ch.GroupName, &ch.ExpiresAt, &ch.ShortName, &ch.BannerAttachmentID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Channel{}, ErrChannelNotFound
 	}
@@ -347,7 +354,7 @@ func (s *Store) IsMember(ctx context.Context, channelID, userID uuid.UUID) (bool
 // and the member-count cardinality is small (a few users per channel).
 func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]ChannelWithMembers, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.rotation_due_from, c.governance_mode, c.channel_type, c.group_name, c.expires_at, c.short_name,
+		`SELECT c.id, c.name, c.is_dm, c.created_by, c.created_at, c.current_key_version, c.rotation_pending, c.rotation_due_from, c.governance_mode, c.channel_type, c.group_name, c.expires_at, c.short_name, c.banner_attachment_id,
 		        GREATEST(COALESCE(cs.next_seq, 1) - 1, 0), COALESCE(cr.last_read_seq, 0),
 		        ca.last_msg_id, ca.last_msg_ts, COALESCE(ca.last_msg_seq, 0), ca.last_sender_id,
 		        m.body, m.key_version, m.deleted_at
@@ -377,7 +384,7 @@ func (s *Store) ListChannelsForUser(ctx context.Context, userID uuid.UUID) ([]Ch
 		var lastMsgTS, deletedAt *time.Time
 		var lastMsgBody []byte
 		var lastMsgKeyVersion *int
-		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.RotationDueFrom, &c.GovernanceMode, &c.ChannelType, &c.GroupName, &c.ExpiresAt, &c.ShortName, &lastSeq, &lastReadSeq,
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsDM, &c.CreatedBy, &c.CreatedAt, &c.CurrentKeyVersion, &c.RotationPending, &c.RotationDueFrom, &c.GovernanceMode, &c.ChannelType, &c.GroupName, &c.ExpiresAt, &c.ShortName, &c.BannerAttachmentID, &lastSeq, &lastReadSeq,
 			&lastMsgID, &lastMsgTS, &lastMsgSeq, &lastSender, &lastMsgBody, &lastMsgKeyVersion, &deletedAt); err != nil {
 			return nil, err
 		}

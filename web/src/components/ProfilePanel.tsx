@@ -700,8 +700,31 @@ export function ProfilePanel({
                 </label>
                 <p class="chalk-profile-hint">
                   with the bars hidden the wheel, trackpad and keyboard still
-                  scroll. font, text size, layout width and this are stored on
-                  this device only, so your phone and your desktop can differ.
+                  scroll.
+                </p>
+              </div>
+
+              {/* 111-4: the channel banner's off switch. Per-device like the
+                  knobs above it -- a strip of picture is worth more of a
+                  monitor than of a phone. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={display.showChannelBanner}
+                    onChange={(e) =>
+                      setDisplay({ showChannelBanner: (e.target as HTMLInputElement).checked })
+                    }
+                    data-testid="display-channel-banner"
+                  />
+                  <span>show channel images</span>
+                </label>
+                <p class="chalk-profile-hint">
+                  a channel's owner can pin an image under its name; turning
+                  this off hides the band and never downloads the picture.
+                  font, text size, layout width, scrollbars and this are stored
+                  on this device only, so your phone and your desktop can
+                  differ.
                 </p>
               </div>
             </section>

@@ -10,6 +10,24 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **A channel can carry a picture.** The owner of a channel can pin an image
+  under its name — box art for the game the room is about, a poster, a map —
+  and everyone in the channel sees it at the top of the conversation, where it
+  stays put as the messages scroll. Set it from the channel's right-click menu
+  in the sidebar (**image → set**), replace it there, and **clear** takes it
+  away again. The picture is encrypted like everything else you send: the
+  server stores it and cannot see it.
+- It is drawn as a short band rather than a full-size picture, so it costs
+  little of the conversation; click it to see the whole image. If you would
+  rather not have it at all, **settings → appearance → show channel images**
+  turns it off — that setting is per device, so it can be on at your desk and
+  off on your phone.
+
+---
+
 ## v0.8.12 — 5 September 2026 — New default sounds, and the old synthesizer as a theme
 
 ### Changed

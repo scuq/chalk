@@ -184,6 +184,10 @@ export interface ChannelSummary {
   // Which of name / shortName the roster shows is prefs.roster.nameStyle.
   // Optional like expiresAt so pre-106 fixtures and summaries still type.
   shortName?: string;
+  // 111-1: the channel's header image, as an attachment id; ""/absent when
+  // there is none. The band that renders it resolves the id itself
+  // (ChannelBanner) -- nothing here holds bytes or keys.
+  bannerAttachmentID?: string;
   // 33-1: read-state SEED only, as of the frame that delivered this summary.
   // Live unread state is state.unread[channelID] -- render from there, never
   // from these. A channel_event summary carries zeros because the server
@@ -1142,7 +1146,17 @@ export type Action =
   // 106-2: the owner renamed the channel and/or changed its short name.
   // Carries only the two names: a channel_event summary is built without
   // a user scope, so folding the whole row would zero the read seed.
-  | { kind: "channel_updated"; channelID: string; name: string; shortName: string }
+  | {
+      kind: "channel_updated";
+      channelID: string;
+      name: string;
+      shortName: string;
+      // 111-1: the banner from the same summary. Optional because every
+      // dispatch site fills it from a full channel row, where absent and
+      // "" both mean "no banner" -- there is no "leave it alone" state to
+      // confuse it with.
+      bannerAttachmentID?: string;
+    }
   | { kind: "channel_key_version_updated"; channelID: string; currentKeyVersion: number }
   // ---- Phase 30 (30-4): voice room occupancy --------------------------
   | { kind: "voice_roster_set"; channelID: string; roster: VoiceParticipant[] }
