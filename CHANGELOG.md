@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.13 — 6 September 2026 — Channel images, and an editor to frame them
 
 ### Added
 - **A channel can carry a picture.** The owner of a channel can pin an image
