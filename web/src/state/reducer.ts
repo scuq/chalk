@@ -16,6 +16,7 @@ import type {
 // (used by the route_to_chat handler to reset the panel cleanly).
 // 33-1 adds emptyUnread, the zero value for a channel's unread state.
 import { emptyUnread, initialAdminPanelState } from "./types";
+import { sameBanner } from "./banner"; // 111-7
 // 42-7: dedupe is shared with the panel's grouping so the two agree about what
 // counts as the same thread.
 import { dedupeThreadRows } from "../chat/threadinbox";
@@ -302,7 +303,7 @@ export function reducer(state: AppState, action: Action): AppState {
       if (
         ch.name === action.name &&
         (ch.shortName ?? "") === action.shortName &&
-        (ch.bannerAttachmentID ?? "") === (action.bannerAttachmentID ?? "")
+        sameBanner(ch.banner ?? null, action.banner ?? null)
       ) {
         return state;
       }
@@ -314,7 +315,7 @@ export function reducer(state: AppState, action: Action): AppState {
             ...ch,
             name: action.name,
             shortName: action.shortName,
-            bannerAttachmentID: action.bannerAttachmentID ?? "",
+            banner: action.banner ?? null,
           },
         },
       };

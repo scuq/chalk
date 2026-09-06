@@ -158,6 +158,8 @@ export interface ThreadInboxRow {
 export type { ReactionSet } from "../chat/reactions";
 import type { ReactionSet } from "../chat/reactions";
 
+import type { BannerLayout } from "./banner"; // 111-7
+
 // phase 08c: ChannelMember pairs a user_id with their handle.
 export interface ChannelMember {
   userID: string;
@@ -187,7 +189,10 @@ export interface ChannelSummary {
   // 111-1: the channel's header image, as an attachment id; ""/absent when
   // there is none. The band that renders it resolves the id itself
   // (ChannelBanner) -- nothing here holds bytes or keys.
-  bannerAttachmentID?: string;
+  // 111-1/111-7: the header image and how it is framed, null when the
+  // channel has none. Normalized on the way in (state/banner.ts), so a
+  // renderer can use every field without checking it first.
+  banner?: BannerLayout | null;
   // 33-1: read-state SEED only, as of the frame that delivered this summary.
   // Live unread state is state.unread[channelID] -- render from there, never
   // from these. A channel_event summary carries zeros because the server
@@ -1155,7 +1160,10 @@ export type Action =
       // dispatch site fills it from a full channel row, where absent and
       // "" both mean "no banner" -- there is no "leave it alone" state to
       // confuse it with.
-      bannerAttachmentID?: string;
+      // 111-7: the banner as the summary carried it; null when there is
+      // none. Every dispatch site fills this from a full channel row, so
+      // there is no "leave it alone" state to confuse null with.
+      banner: BannerLayout | null;
     }
   | { kind: "channel_key_version_updated"; channelID: string; currentKeyVersion: number }
   // ---- Phase 30 (30-4): voice room occupancy --------------------------

@@ -2149,11 +2149,22 @@ func channelSummaryFromStore(c store.ChannelWithMembers, handles map[uuid.UUID]s
 	if c.ExpiresAt != nil {
 		s.ExpiresAt = c.ExpiresAt.UnixMilli()
 	}
-	// 111-1: the banner id, on every path that delivers the channel. Only
-	// the read queries that select the column populate it; a create ack
-	// carries none, which is right -- a new channel has no banner.
-	if c.BannerAttachmentID != nil {
-		s.BannerAttachmentID = c.BannerAttachmentID.String()
+	// 111-1/111-7: the banner, on every path that delivers the channel,
+	// and only when there is one. The layout rides with it so the
+	// renderer needs no second lookup -- it is five small scalars, not a
+	// second round trip. Only the read queries that select the columns
+	// populate it; a create ack carries none, which is right: a new
+	// channel has no banner.
+	if c.Banner.AttachmentID != nil {
+		s.Banner = &proto.BannerWire{
+			AttachmentID: c.Banner.AttachmentID.String(),
+			Fit:          c.Banner.Fit,
+			FocusX:       c.Banner.FocusX,
+			FocusY:       c.Banner.FocusY,
+			Zoom:         c.Banner.Zoom,
+			Height:       c.Banner.Height,
+			Bleed:        c.Banner.Bleed,
+		}
 	}
 	// 62-2: activity fields only when the listing query found a newest
 	// message (seq starts at 1, so 0 means "no activity row"). The body

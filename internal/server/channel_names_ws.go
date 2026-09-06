@@ -52,7 +52,7 @@ func (h *WSHandler) handleUpdateChannel(
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "channel_id not a UUID")
 		return
 	}
-	if p.Name == nil && p.ShortName == nil && p.BannerAttachmentID == nil {
+	if p.Name == nil && p.ShortName == nil && p.Banner == nil {
 		h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload, "nothing to update")
 		return
 	}
@@ -68,18 +68,70 @@ func (h *WSHandler) handleUpdateChannel(
 			return
 		}
 	}
-	// 111-1: "" clears the banner; anything else must parse as a UUID
-	// before any database work. Whether it names a usable attachment is
-	// checked below, once we know the caller may write here at all.
-	var bannerID *uuid.UUID
-	if p.BannerAttachmentID != nil && strings.TrimSpace(*p.BannerAttachmentID) != "" {
-		bid, bErr := uuid.Parse(strings.TrimSpace(*p.BannerAttachmentID))
-		if bErr != nil {
-			h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload,
-				"banner_attachment_id not a UUID")
-			return
+	// 111-7: the banner layout is fenced here, before any database work.
+	// Every value the editor can send has a rule, and the rule is checked
+	// in the store as well as in migration 0058's CHECKs -- a bad write
+	// must be an answer the client can act on, not a 500 from a
+	// constraint, and not a shape pushed to every member's renderer.
+	var bannerPatch *store.BannerPatch
+	if p.Banner != nil {
+		bp := &store.BannerPatch{
+			Fit:    p.Banner.Fit,
+			FocusX: p.Banner.FocusX,
+			FocusY: p.Banner.FocusY,
+			Zoom:   p.Banner.Zoom,
+			Height: p.Banner.Height,
+			Bleed:  p.Banner.Bleed,
 		}
-		bannerID = &bid
+		if p.Banner.Fit != nil {
+			if _, fErr := store.NormalizeBannerFit(*p.Banner.Fit); fErr != nil {
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel, fErr.Error())
+				return
+			}
+		}
+		if p.Banner.Height != nil {
+			if _, hErr := store.NormalizeBannerHeight(*p.Banner.Height); hErr != nil {
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel, hErr.Error())
+				return
+			}
+		}
+		if p.Banner.Bleed != nil {
+			if _, bErr := store.NormalizeBannerBleed(*p.Banner.Bleed); bErr != nil {
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel, bErr.Error())
+				return
+			}
+		}
+		if p.Banner.Zoom != nil {
+			if zErr := store.CheckBannerZoom(*p.Banner.Zoom); zErr != nil {
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel, zErr.Error())
+				return
+			}
+		}
+		for _, v := range []*int{p.Banner.FocusX, p.Banner.FocusY} {
+			if v == nil {
+				continue
+			}
+			if fErr := store.CheckBannerFocus(*v); fErr != nil {
+				h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel, fErr.Error())
+				return
+			}
+		}
+		// "" clears the picture; anything else must parse as a UUID. Whether
+		// it names a usable attachment is checked below, once we know the
+		// caller may write here at all.
+		if p.Banner.AttachmentID != nil {
+			bp.SetAttachment = true
+			if id := strings.TrimSpace(*p.Banner.AttachmentID); id != "" {
+				bid, bErr := uuid.Parse(id)
+				if bErr != nil {
+					h.sendError(ctx, c, f.Ref, proto.ErrCodeBadPayload,
+						"banner attachment_id not a UUID")
+					return
+				}
+				bp.AttachmentID = &bid
+			}
+		}
+		bannerPatch = bp
 	}
 
 	deviceID, err := uuid.Parse(conn.DeviceID)
@@ -136,8 +188,8 @@ func (h *WSHandler) handleUpdateChannel(
 	// written, so a banner that resolves to nothing cannot be created
 	// through this frame. What it depicts is unknowable here: kind and
 	// mime live inside enc_meta, which only members can decrypt.
-	if bannerID != nil {
-		att, aErr := h.store.GetAttachmentRefForUser(ctx, *bannerID, callerID)
+	if bannerPatch != nil && bannerPatch.AttachmentID != nil {
+		att, aErr := h.store.GetAttachmentRefForUser(ctx, *bannerPatch.AttachmentID, callerID)
 		if aErr != nil {
 			if errors.Is(aErr, store.ErrAttachmentNotFound) {
 				h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel,
@@ -155,17 +207,19 @@ func (h *WSHandler) handleUpdateChannel(
 	}
 
 	updated, uErr := h.store.UpdateChannelNames(ctx, store.UpdateChannelNamesInput{
-		ChannelID:          channelID,
-		Name:               p.Name,
-		ShortName:          p.ShortName,
-		SetBanner:          p.BannerAttachmentID != nil,
-		BannerAttachmentID: bannerID,
+		ChannelID: channelID,
+		Name:      p.Name,
+		ShortName: p.ShortName,
+		Banner:    bannerPatch,
 	})
 	if uErr != nil {
 		switch {
 		case errors.Is(uErr, store.ErrChannelNotFound):
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeChannelNotFound, "channel not found")
-		case errors.Is(uErr, store.ErrShortNameTooLong), errors.Is(uErr, store.ErrChannelNameRequired):
+		case errors.Is(uErr, store.ErrShortNameTooLong), errors.Is(uErr, store.ErrChannelNameRequired),
+			errors.Is(uErr, store.ErrBannerFitInvalid), errors.Is(uErr, store.ErrBannerHeightInvalid),
+			errors.Is(uErr, store.ErrBannerBleedInvalid), errors.Is(uErr, store.ErrBannerZoomRange),
+			errors.Is(uErr, store.ErrBannerFocusRange):
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeInvalidChannel, uErr.Error())
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeInternal, "update channel: "+uErr.Error())

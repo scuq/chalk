@@ -11,6 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { reducer } from "./reducer.ts";
 import { initialState, type ChannelSummary, type AppState } from "./types.ts";
+import { normalizeBanner } from "./banner.ts";
 
 function channel(over: Partial<ChannelSummary> = {}): ChannelSummary {
   return {
@@ -124,43 +125,67 @@ test("clearing the short name is a change; an absent short name reads as cleared
   assert.equal(same, legacy);
 });
 
-// 111-1: the banner rides channel_updated with the names. Setting it is a
-// change, clearing it is a change, and a summary that never had one must not
-// look like a change to a row that never had one either.
-test("channel_updated carries the banner, and clearing it is a change", () => {
+// 111-1/111-7: the banner rides channel_updated with the names, as one
+// normalized layout. Setting it is a change, clearing it is a change, and a
+// summary that never had one must not look like a change to a row that never
+// had one either.
+test("channel_updated carries the banner layout", () => {
   const set = reducer(loaded(), {
     kind: "channel_updated",
     channelID: "ch-1",
     name: "[Gaming] General",
     shortName: "",
-    bannerAttachmentID: "att-1",
+    banner: normalizeBanner({ attachment_id: "att-1", fit: "fit", zoom: 150 }),
   });
-  assert.equal(set.channels["ch-1"].bannerAttachmentID, "att-1");
+  assert.equal(set.channels["ch-1"].banner?.attachmentID, "att-1");
+  assert.equal(set.channels["ch-1"].banner?.fit, "fit");
+  assert.equal(set.channels["ch-1"].banner?.zoom, 150);
+
+  // The same layout again is the same state: the ack and the push both
+  // land, and only one of them may cost a render.
+  const again = reducer(set, {
+    kind: "channel_updated",
+    channelID: "ch-1",
+    name: "[Gaming] General",
+    shortName: "",
+    banner: normalizeBanner({ attachment_id: "att-1", fit: "fit", zoom: 150 }),
+  });
+  assert.equal(again, set);
+
+  // One knob moved is a change, even with the same picture.
+  const zoomed = reducer(set, {
+    kind: "channel_updated",
+    channelID: "ch-1",
+    name: "[Gaming] General",
+    shortName: "",
+    banner: normalizeBanner({ attachment_id: "att-1", fit: "fit", zoom: 200 }),
+  });
+  assert.equal(zoomed.channels["ch-1"].banner?.zoom, 200);
 
   const cleared = reducer(set, {
     kind: "channel_updated",
     channelID: "ch-1",
     name: "[Gaming] General",
     shortName: "",
-    bannerAttachmentID: "",
+    banner: null,
   });
-  assert.equal(cleared.channels["ch-1"].bannerAttachmentID, "");
+  assert.equal(cleared.channels["ch-1"].banner, null);
 
-  // A rename on a bannerless channel is still a no-op: absent and "" are
-  // the same thing, exactly as they are for the short name.
+  // And a rename on a channel that never had a banner stays a no-op.
   const before = loaded();
-  const same = reducer(before, {
+  const renamed = reducer(before, {
     kind: "channel_updated",
     channelID: "ch-1",
     name: "[Gaming] General",
     shortName: "",
+    banner: null,
   });
-  const twice = reducer(same, {
+  const twice = reducer(renamed, {
     kind: "channel_updated",
     channelID: "ch-1",
     name: "[Gaming] General",
     shortName: "",
-    bannerAttachmentID: "",
+    banner: null,
   });
-  assert.equal(twice, same);
+  assert.equal(twice, renamed);
 });

@@ -1,8 +1,9 @@
 # Phase 111 — the channel banner
 
-**Status:** built, 111-1 … 111-4 (2026-09-06). Verified against a running
-stack, desktop and emulated phone — 18/18 checks in the UI probe; what that
-covers and what it does not is under [Left open](#left-open).
+**Status:** built, 111-1 … 111-9 (2026-09-06). Verified against a running
+stack, desktop and emulated phone — 18/18 checks for 111-1…4, 12/12 for
+111-5, 23/23 for the editor; what that covers and what it does not is under
+[Left open](#left-open).
 **Tags:** `#banner` → `tools/where.sh -g banner`
 
 ## The problem
@@ -83,6 +84,83 @@ March is outside every window by April. The ref carries `key_version` and
 uses, cache-first against IndexedDB, so switching back to a channel repaints
 its banner with no network at all.
 
+**Two ways to meet the band, and the owner picks (111-5).** `fill` is the
+original behaviour — crop to cover — and it is right for a wide capture and
+wrong for box art: a portrait poster covers an 88px band with a slice of its
+own middle and says nothing. `fit` shows the whole picture at band height and
+fills what is left on either side with a gradient running from the image's own
+edge colour out to the theme background, so the picture ends *in* the page
+rather than against an edge.
+
+Choosing automatically was considered and rejected. Any rule is a rule about
+aspect ratios, and aspect ratio does not say what the picture is *of*: a
+16:9 screenshot of a landscape crops beautifully and a 16:9 screenshot of a
+menu crops to nothing, at identical dimensions. The owner can see which they
+have; a threshold cannot. The mode is channel state — it survives replacing
+the image, so someone who has settled on `fit` for their box art does not
+re-pick it every time.
+
+**The bleed is the picture's own edge, not one colour (111-6).** The first
+cut averaged each edge into a single colour and ran a gradient from it to the
+theme background. That left a hard vertical seam wherever the edge was not
+flat — a red sky over a black ridge met one muddy red, and the join was a line
+you could point at in a screenshot. The fix is a colour per *row*: the edge
+column becomes a `linear-gradient(to bottom, …)` of 24 stops, stretched
+sideways and masked out toward the far end, so sky continues into sky and
+ridge into ridge and there is no join to see. Sampling is a 24×24 canvas draw
+(`banner-edges.ts`), alpha-aware so a transparent-edged PNG bleeds its own
+colour and not black, and nothing about it is stored or transmitted: every
+viewer samples the picture they already decrypted.
+
+**The rest of the dial, and the editor that turns it (111-7 … 111-9).** Two
+shapes were not enough once the first real poster went in: it wanted a
+different part of itself visible, and more room than 88px. So the layout grew
+to five values — fit, focal point, zoom, band height, bleed style — stored as
+columns beside the picture (migration 0058) and carried as one `banner` object
+on the wire, because the editor saves them together and half a layout is not a
+state anyone chose.
+
+**They live in a dialog, not in the menu.** The channel menu is a list of
+one-click actions beside a sidebar row; framing a picture is not a one-click
+action, because you cannot predict a crop — you have to see it. So picking a
+file uploads it and opens an editor whose preview *is the real band*
+(`BannerBand`, shared with the header) at the real height. An editor that
+lies about the result would be worse than none. The menu keeps `set` /
+`replace`, gains `edit`, keeps `clear`, and gave up the fill/fit toggle:
+one place to change the framing, and it is the place that shows you what you
+changed.
+
+**Nothing is written until Save.** The upload happens when the file is picked
+— the blob is encrypted and stored — but no channel row points at it, so
+cancelling leaves an orphan and changes nothing anyone can see. Save is one
+`update_channel` carrying the whole layout.
+
+**The focal point is dragged on the preview**, not typed into two number
+fields, because "which part of this picture do I keep" is a question about the
+picture. It is offered only while something is actually cropped — fill always,
+fit only once zoomed past the band — and the hint under the preview says which
+case you are in rather than leaving a dead control.
+
+**Zoom is the same idea in both shapes, spelled two ways.** Filling, it is a
+`transform: scale` about the focal point. Fitted, it widens the picture's box
+past its own aspect ratio, which under `object-fit: cover` scales the picture
+up and crops it vertically — the same result with the layout width still true,
+so the bleed either side keeps its real size. Neither measures anything: the
+aspect ratio comes off the decoded image and CSS does the rest.
+
+**Heights are names, not pixels.** `short`/`normal`/`tall` are 56/88/132 on a
+desktop and 40/56/88 on a phone, because a third of a phone's feed is not what
+"normal" should mean. Everyone in the channel sees the same name — it changes
+the shape of the room, which is the owner's call — while whether a band is
+drawn at all stays the per-device switch from 111-4.
+
+**The client repairs what the server refuses.** Both ends validate, and they
+do it differently on purpose: the server refuses an out-of-range value so the
+client learns about its bug (`internal/store/channel_banner.go`), and the
+renderer clamps whatever arrives to something drawable
+(`web/src/state/banner.ts`), because by the time a summary reaches a header
+the write is long done and a band that will not draw helps nobody.
+
 **Fail-closed like every other attachment.** No key held, a decrypt that
 returns null, a 404 from a blob that is no longer there: the band renders
 nothing and the header is what it was before 111. A missing banner is never an
@@ -103,12 +181,26 @@ the band never mounts, so it costs no fetch and no decrypt, not merely
 | 111-2 | client: set and clear from the sidebar's channel menu — file picker, upload through the attachment pipeline, `update_channel` |
 | 111-3 | client: the band itself — `ChannelBanner`, decrypt, lightbox on click, the `.chalk-channel-headwrap` sticky block, desktop + phone CSS |
 | 111-4 | the off switch: `showChannelBanner` in display prefs, appearance tab, default on |
+| 111-5 | fill vs fit: migration 0057 (`channels.banner_fit`), `banner_fit` on `update_channel` and the summary, the menu's two-button toggle, the contained render and the sampled edge fade |
+| 111-6 | the seam: the bleed becomes the image's own edge column per row (`banner-edges.ts`), masked instead of a colour stop |
+| 111-7 | the layout model: migration 0058 (focus, zoom, height, bleed), the `banner` object replacing the flat wire fields, the store's fences and the client's normalizer |
+| 111-8 | the band renders the layout: `BannerBand` (shared with the editor's preview), `useBannerImage`, height/focus/zoom/bleed CSS |
+| 111-9 | the editor: preview, drag-to-focus, zoom, height, shape and sides; opened by an upload or the menu's `edit` row; the menu's fill/fit toggle retired |
 
 ## Left open
 
-- **No crop or reposition UI.** The band is `object-position: center`; an image
-  whose subject sits at the top crops to its middle. A position control (or
-  three fixed choices) is the obvious follow-up if it bites.
+- **The bleed samples two columns, not a palette.** A picture whose edges
+  differ from its body (a dark border around a bright image) bleeds the
+  border's colour. A dominant-colour extraction would be the richer answer and
+  is a lot more code for a strip of gradient; the `blur` bleed is the escape
+  hatch when the edges are unhelpful.
+- **Zoom past the band does nothing in `fit`.** The picture's box is capped at
+  the band width, where fitted has become filled; the slider keeps moving and
+  the preview stops changing. Visible, harmless, and not worth a second rule.
+- **The editor has no undo and no "revert to saved".** Cancel is the undo, and
+  it is all-or-nothing.
+- **No cropping proper.** The focal point moves the frame; it never trims the
+  picture. A banner is always the whole uploaded image, shown less of.
 - **No per-channel collapse.** The pref is global on/off across every channel,
   not "hide this one banner".
 - **Democratic channels cannot have one**, for the same reason they cannot be
@@ -135,6 +227,19 @@ it is the *method* that is recorded here, not the file.
 - [x] Clear removes it for the owner and for the other member.
 - [x] The appearance switch is on by default, and turning it off removes the
       band without a reload (the in-tab prefs event, 111-4).
+- [x] 111-5, on a portrait poster: a replaced banner keeps the channel's fit;
+      the toggle switches it; fitted, the image is a narrow centred panel at
+      the same band height, flanked by two gradients whose far end is the
+      theme background and whose near end is the sampled edge colour; the
+      mode survives a reload; back to `fill` restores the full-width crop and
+      removes the fade elements.
+- [x] 111-7…111-9, on a portrait poster: a first pin starts from the
+      defaults; every control moves the preview (shape, all three heights —
+      measured, not assumed — zoom, and all three bleed styles); the preview
+      is the real band at the real height; dragging moves the focal point;
+      save pins exactly what the preview showed (shape, bleed and focal point
+      compared field by field); `edit` reopens on the saved layout; cancel
+      writes nothing; the layout survives a reload.
 - [ ] **A hand-sent `update_channel` from a non-owner** — the menu hides the
       row, and the handler refuses it, but only the hidden row is exercised.
 - [ ] **The band across a channel key rotation.** The banner is encrypted at

@@ -214,11 +214,14 @@ interface Props {
     channelID: string,
     patch: { name?: string; shortName?: string },
   ) => void;
-  // 111-2: set or clear the channel's header image. The sidebar only picks
-  // the file; App owns the upload (it holds the channel crypto) and the
-  // update_channel that follows it. Resolves when the banner is set, or
-  // rejects with something to show. null clears.
-  onSetChannelBanner?: (channelID: string, file: File | null) => Promise<void>;
+  // 111-2/111-9: the channel's header image. The sidebar only picks the
+  // file and names the action; App owns the upload (it holds the channel
+  // crypto), the editor, and the update_channel that follows. Picking a
+  // file resolves once the upload is done and the editor is open -- it
+  // rejects with something worth showing when it is not.
+  onPickChannelBanner?: (channelID: string, file: File) => Promise<void>;
+  onEditChannelBanner?: (channelID: string) => void;
+  onClearChannelBanner?: (channelID: string) => void;
   // 53-1: the parking lot. A pseudo-channel that shows nothing -- one click
   // and the conversation pane is a logo. null hides the row (the setting), and
   // parked highlights it the way an open channel is highlighted.
@@ -370,7 +373,9 @@ export function Sidebar({
   onSetChannelHidden,
   nameStyle = "full",
   onUpdateChannel,
-  onSetChannelBanner,
+  onPickChannelBanner,
+  onEditChannelBanner,
+  onClearChannelBanner,
   parkingName,
   parked = false,
   onPark,
@@ -1371,23 +1376,24 @@ export function Sidebar({
               </>
             );
           })()}
-          {/* 111-2: the channel's header image, set where its other metadata
-              is set. Same gate as the rename rows above -- owner, non-DM,
-              dictator mode -- because a banner rewrites what every member
-              sees at the top of the room. The picker uploads through the
-              ordinary attachment pipeline (encrypted under the channel key,
-              never linked to a message); only the resulting id travels in
-              update_channel. */}
-          {onSetChannelBanner && (() => {
+          {/* 111-2/111-9: the channel's header image, set where its other
+              metadata is set. Same gate as the rename rows above -- owner,
+              non-DM, dictator mode -- because a banner rewrites what every
+              member sees at the top of the room. The menu only starts
+              things: picking a file uploads it (encrypted under the channel
+              key, never linked to a message) and hands it to the editor,
+              which is where every choice about framing is made and the only
+              thing that writes. */}
+          {onPickChannelBanner && (() => {
             const ch = channels.find((c) => c.id === channelMenu.channelID);
             if (!ch || ch.isDM) return null;
             if (!ownUserID || ch.createdBy !== ownUserID) return null;
             if (ch.governanceMode === "democratic") return null;
-            const has = !!ch.bannerAttachmentID;
-            const pick = (file: File | null) => {
+            const has = !!ch.banner;
+            const pick = (file: File) => {
               setBannerError(null);
               setBannerBusy(true);
-              void onSetChannelBanner(ch.id, file)
+              void onPickChannelBanner(ch.id, file)
                 .then(() => {
                   setBannerBusy(false);
                   setChannelMenu(null);
@@ -1425,13 +1431,30 @@ export function Sidebar({
                 >
                   {bannerBusy ? "…" : has ? "replace" : "set"}
                 </button>
-                {has && !bannerBusy && (
+                {has && !bannerBusy && onEditChannelBanner && (
+                  <button
+                    type="button"
+                    class="chalk-nick-menu-btn"
+                    data-testid="channel-menu-banner-edit"
+                    title="how the picture sits in the band"
+                    onClick={() => {
+                      onEditChannelBanner(ch.id);
+                      setChannelMenu(null);
+                    }}
+                  >
+                    edit
+                  </button>
+                )}
+                {has && !bannerBusy && onClearChannelBanner && (
                   <button
                     type="button"
                     class="chalk-nick-menu-btn"
                     data-testid="channel-menu-banner-clear"
                     title="remove the header image"
-                    onClick={() => pick(null)}
+                    onClick={() => {
+                      onClearChannelBanner(ch.id);
+                      setChannelMenu(null);
+                    }}
                   >
                     clear
                   </button>

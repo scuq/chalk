@@ -2170,11 +2170,24 @@ body.chalk-resizing-y .chalk-composer-resizer {
    what lets a wide screenshot and a square piece of box art read as the
    same shape. object-position stays centred -- there is no reposition
    control yet (recorded in PHASE-111-BANNER.md). */
+/* The band. Its height is one of three names (111-7) rather than a number:
+   what "tall" measures is a different pixel count on a phone, and everyone
+   in the channel sees the same name. `cover` and a focal point do the
+   cropping, so a picture is never squashed -- only ever shown less of. */
 .chalk-channel-banner {
+  position: relative;
   height: 88px;
   overflow: hidden;
   margin-bottom: var(--chalk-s2);
-  background: var(--chalk-bg-elevated, var(--chalk-bg));
+  background: var(--chalk-bg);
+}
+
+.chalk-channel-banner[data-height="short"] {
+  height: 56px;
+}
+
+.chalk-channel-banner[data-height="tall"] {
+  height: 132px;
 }
 
 .chalk-channel-banner-img {
@@ -2186,6 +2199,157 @@ body.chalk-resizing-y .chalk-composer-resizer {
   cursor: zoom-in;
 }
 
+/* 111-5: "fit" -- the whole picture at band height, centred, with the space
+   on either side filled by the bleed. The image keeps its aspect ratio (the
+   inline aspect-ratio, widened by zoom), so a portrait poster is a narrow
+   panel with wide sides and a near-panoramic capture is a wide one with
+   almost none; both end in the page rather than against an edge. */
+.chalk-channel-banner--fit {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.chalk-channel-banner--fit .chalk-channel-banner-img {
+  width: auto;
+  max-width: 100%;
+  flex: 0 0 auto;
+}
+
+/* 111-6: the edge bleed. Its background is an inline gradient built from the
+   image's own edge column (banner-edges.ts), stretched across the span, so
+   where it meets the picture it IS the picture's edge -- no seam. The mask
+   is what turns it into a fade: opaque against the image, gone by the far
+   end, eased so most of the colour stays near the picture instead of washing
+   the whole half-width. With no sample the span paints nothing and the
+   band's theme background shows through. */
+.chalk-channel-banner-fade {
+  flex: 1 1 0;
+  min-width: 0;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+}
+
+.chalk-channel-banner-fade--left {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(0, 0, 0, 0.25) 45%,
+    rgba(0, 0, 0, 0.7) 75%,
+    #000 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(0, 0, 0, 0.25) 45%,
+    rgba(0, 0, 0, 0.7) 75%,
+    #000 100%
+  );
+}
+
+.chalk-channel-banner-fade--right {
+  -webkit-mask-image: linear-gradient(
+    to left,
+    transparent 0%,
+    rgba(0, 0, 0, 0.25) 45%,
+    rgba(0, 0, 0, 0.7) 75%,
+    #000 100%
+  );
+  mask-image: linear-gradient(
+    to left,
+    transparent 0%,
+    rgba(0, 0, 0, 0.25) 45%,
+    rgba(0, 0, 0, 0.7) 75%,
+    #000 100%
+  );
+}
+
+/* 111-7: the blur bleed -- the same picture, blown up behind the sharp one.
+   scale(1.1) keeps the blur's own soft edge outside the band, and the
+   brightness knock-down stops a bright photo from turning the header into a
+   lightbox. It is inert: the sharp image above it takes the clicks. */
+.chalk-channel-banner-blur {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(18px) brightness(0.72) saturate(1.1);
+  transform: scale(1.1);
+  pointer-events: none;
+}
+
+/* -- The banner editor (111-9) ------------------------------------- */
+
+.chalk-banner-editor-preview {
+  border: 1px solid var(--chalk-border);
+  /* The band inside carries its own height; this only frames it. The
+     band's own bottom margin is the header's spacing to the feed and
+     has no business inside a dialog. */
+  overflow: hidden;
+}
+
+.chalk-banner-editor-preview .chalk-channel-banner {
+  margin-bottom: 0;
+}
+
+/* The drag surface. grab, not crosshair: what moves is the picture, and
+   only when something is actually cropped. */
+.chalk-banner-editor-preview--draggable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.chalk-banner-editor-preview--draggable:active {
+  cursor: grabbing;
+}
+
+/* Inside the dialog the picture is not a link to anything -- clicking it
+   drags rather than opening a lightbox. */
+.chalk-channel-banner--preview .chalk-channel-banner-img {
+  cursor: inherit;
+  /* A drag that starts on the image must not become a browser image drag. */
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.chalk-banner-editor-loading {
+  padding: var(--chalk-s4);
+  text-align: center;
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+}
+
+.chalk-banner-editor-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+.chalk-banner-editor-row {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+}
+
+.chalk-banner-editor-label {
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+  min-width: 5em;
+}
+
+.chalk-banner-editor-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--chalk-accent);
+}
+
+.chalk-banner-editor-value {
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+  min-width: 4em;
+  text-align: right;
+}
 
 /* -- Encryption indicator + hover popover (phase 23g/23h) ---------- */
 
@@ -8278,6 +8442,21 @@ body.chalk-resizing-y .chalk-composer-resizer {
   background: var(--chalk-bg-elev-2);
 }
 
+/* 111-5: a two-button segment (the banner's fill/fit), where one of the two
+   is always the state. The pressed one is filled rather than merely
+   highlighted, so which mode is on reads without hovering. */
+.chalk-nick-menu-seg {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.chalk-nick-menu-btn--on,
+.chalk-nick-menu-btn--on:hover {
+  color: var(--chalk-bg);
+  background: var(--chalk-accent);
+  border-color: var(--chalk-accent);
+}
+
 /* ---- the hover card (92-1; shared with the message feed in 92-4) ----
    Same surface as the menu above it -- the two open on the same rows and
    would look unrelated otherwise. pointer-events:none is load-bearing: the
@@ -9021,9 +9200,19 @@ body.chalk-resizing-y .chalk-composer-resizer {
     box-shadow: 0 var(--chalk-s2) var(--chalk-bg);
   }
 
+  /* The band on a phone: the same three names, fewer pixels each -- a
+     third of a phone's feed is not what "normal" should mean. */
   .chalk-channel-banner {
     height: 56px;
     margin-bottom: var(--chalk-s1);
+  }
+
+  .chalk-channel-banner[data-height="short"] {
+    height: 40px;
+  }
+
+  .chalk-channel-banner[data-height="tall"] {
+    height: 88px;
   }
 
   .chalk-channel-header-name {

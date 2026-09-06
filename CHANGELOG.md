@@ -25,6 +25,17 @@ The engineering-level history (which slice shipped what) lives in
   rather not have it at all, **settings → appearance → show channel images**
   turns it off — that setting is per device, so it can be on at your desk and
   off on your phone.
+- **An editor for how the picture sits.** Picking an image opens a preview of
+  the real band with the controls under it, and nothing is pinned until you
+  say so. **shape** is *fill* (crop it to span the whole width, right for a
+  wide screenshot) or *fit* (show the whole picture, right for a poster or box
+  art, which cropping would reduce to a strip of nothing). **height** makes
+  the band short, normal or tall for everyone in the channel. **zoom** moves
+  in, and you can **drag the picture** in the preview to choose which part
+  stays in frame. A fitted picture also chooses what fills the space beside
+  it: its own colours continuing outward, a soft blur of itself, or plain
+  background. Come back to any of it later with **image → edit** in the
+  channel menu.
 
 ---
 

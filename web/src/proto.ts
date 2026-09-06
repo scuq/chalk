@@ -320,11 +320,12 @@ export interface ChannelSummaryWire {
   channel_type?: string; // 30-4; "text" | "voice"; absent from older servers -> "text"
   group_name?: string; // 54-2; creator's grouping suggestion; absent -> "General"
   short_name?: string; // 106-3; optional abbreviation (≤10 chars); absent -> none
-  // 111-1: the channel's header image -- an attachment id, absent when the
-  // channel has none. Only the id: the ref (key version + enc_meta) comes
-  // from GET /api/attachments/{id}/ref, the bytes from the download
-  // endpoint, both cache-first, and only for the channel on screen.
-  banner_attachment_id?: string;
+  // 111-1: see banner below.
+  // 111-7: the header image and its whole layout, absent when the channel
+  // has none. Only the attachment id, never the blobs -- the client
+  // resolves it through GET /api/attachments/{id}/ref and the download
+  // endpoint, so a listing of fifty channels carries no pictures.
+  banner?: BannerWire;
   // 80-6: when the channel self-destructs, unix-millis. Absent -> permanent.
   expires_at?: number;
   last_seq?: number; // 33-1; highest seq in the channel; absent from older servers -> 0
@@ -455,7 +456,31 @@ export interface UpdateChannelPayload {
   channel_id: string;
   name?: string;
   short_name?: string;
-  banner_attachment_id?: string;
+  // 111-7: the editor's save. Every field optional, an absent one left
+  // alone; attachment_id "" clears the picture and keeps the layout.
+  banner?: BannerPatchWire;
+}
+
+// 111-7: the banner as the server stores it. Sent whole on a summary, so a
+// renderer never has to guess a default.
+export interface BannerWire {
+  attachment_id: string;
+  fit: string;
+  focus_x: number;
+  focus_y: number;
+  zoom: number;
+  height: string;
+  bleed: string;
+}
+
+export interface BannerPatchWire {
+  attachment_id?: string;
+  fit?: string;
+  focus_x?: number;
+  focus_y?: number;
+  zoom?: number;
+  height?: string;
+  bleed?: string;
 }
 
 export interface UpdateChannelAckPayload {

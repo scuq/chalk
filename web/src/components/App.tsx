@@ -350,6 +350,8 @@ import {
 } from "../attachments/pipeline";
 import { listAttachments } from "../attachments/transport";
 import { prepareBanner } from "../attachments/banner"; // 111-2
+import { type BannerLayout, DEFAULT_BANNER, normalizeBanner } from "../state/banner"; // 111-7
+import { BannerEditor } from "./BannerEditor"; // 111-9
 import { clearCache as clearAttachmentCache } from "../attachments/cache";
 import type { AttachmentRef, PendingAttachment } from "../attachments/types";
 import { EncryptionIndicator } from "./EncryptionIndicator";
@@ -412,7 +414,7 @@ function wireToChannel(w: ChannelSummaryWire): ChannelSummary {
     channelType: w.channel_type ?? "text", // 30-4
     groupName: w.group_name ?? "General", // 54-2
     shortName: w.short_name ?? "", // 106-3
-    bannerAttachmentID: w.banner_attachment_id ?? "", // 111-1
+    banner: normalizeBanner(w.banner), // 111-1/111-7
     lastSeq: w.last_seq ?? 0, // 33-1
     lastReadSeq: w.last_read_seq ?? 0, // 33-1
     // 62-3: activity metadata only -- the ciphertext body stays out of the
@@ -2959,7 +2961,7 @@ export function App() {
           channelID: p.channel.id,
           name: p.channel.name,
           shortName: p.channel.short_name ?? "",
-          bannerAttachmentID: p.channel.banner_attachment_id ?? "", // 111-1
+          banner: normalizeBanner(p.channel.banner), // 111-7
         });
         break;
       }
@@ -3101,7 +3103,7 @@ export function App() {
             channelID: p.channel.id,
             name: p.channel.name,
             shortName: p.channel.short_name ?? "",
-            bannerAttachmentID: p.channel.banner_attachment_id ?? "", // 111-1
+            banner: normalizeBanner(p.channel.banner), // 111-7
           });
           break;
         }
@@ -3422,6 +3424,22 @@ export function App() {
   // than the account's prefs; the hook follows the picker in this tab and
   // in any other.
   const [{ showChannelBanner }] = useDisplayPrefs();
+  // 111-9: the banner editor, open on one channel at a time. localURL is
+  // the just-uploaded file's bytes, so a fresh pin previews instantly
+  // instead of round-tripping its own ciphertext back out of the cache;
+  // it is revoked when the editor closes.
+  const [bannerEditor, setBannerEditor] = useState<{
+    channelID: string;
+    fresh: boolean;
+    layout: BannerLayout;
+    localURL: string | null;
+  } | null>(null);
+  const closeBannerEditor = useCallback(() => {
+    setBannerEditor((cur) => {
+      if (cur?.localURL) URL.revokeObjectURL(cur.localURL);
+      return null;
+    });
+  }, []);
   const voicePrefs = selectVoicePrefs(state.prefs);
   const voicePrefsRef = useRef(voicePrefs);
   voicePrefsRef.current = voicePrefs;
@@ -5582,31 +5600,45 @@ export function App() {
             if (patch.shortName !== undefined) payload.short_name = patch.shortName;
             c.send<UpdateChannelPayload>(TypeUpdateChannel, payload, "upch-" + Date.now());
           }}
-          // 111-2: the banner. The menu picks a file; the upload belongs
-          // here, where the channel crypto is -- the blob is encrypted under
-          // the channel key exactly like a posted image, and only its id
-          // travels in update_channel. Nothing is applied optimistically:
-          // the ack (and the push to every other member) carries the row.
-          // A rejection is shown in the menu, so every failure path throws
-          // something a person can read.
-          onSetChannelBanner={async (channelID, file) => {
+          // 111-2/111-9: the banner. The menu picks a file or asks to edit;
+          // the upload belongs here, where the channel crypto is -- the blob
+          // is encrypted under the channel key exactly like a posted image.
+          // What the menu never does is write: picking a file uploads it and
+          // opens the editor, and only the editor's save sends anything. So
+          // cancelling leaves an orphaned blob and nothing anyone can see.
+          onPickChannelBanner={async (channelID, file) => {
             const c = clientRef.current;
             if (!c || !c.isOpen()) throw new Error("not connected");
-            let bannerID = "";
-            if (file) {
-              const cc = ccRef.current;
-              const deviceID = state.user?.device;
-              if (!cc || !deviceID) throw new Error("not ready");
-              // Fail-closed like every other upload: no channel key, no
-              // ciphertext leaves the device.
-              const scaled = await prepareBanner(file);
-              const res = await uploadAttachment(cc, channelID, deviceID, scaled);
-              if (res.kind !== "uploaded") throw new Error("waiting for the channel key");
-              bannerID = res.ref.id;
-            }
+            const cc = ccRef.current;
+            const deviceID = state.user?.device;
+            if (!cc || !deviceID) throw new Error("not ready");
+            // Fail-closed like every other upload: no channel key, no
+            // ciphertext leaves the device.
+            const scaled = await prepareBanner(file);
+            const res = await uploadAttachment(cc, channelID, deviceID, scaled);
+            if (res.kind !== "uploaded") throw new Error("waiting for the channel key");
+            const current = state.channels[channelID]?.banner ?? null;
+            setBannerEditor({
+              channelID,
+              fresh: true,
+              // A new picture inherits the framing the channel already
+              // uses: someone who settled on a tall fitted band does not
+              // want to set it again for every image.
+              layout: { ...(current ?? DEFAULT_BANNER), attachmentID: res.ref.id },
+              localURL: URL.createObjectURL(scaled),
+            });
+          }}
+          onEditChannelBanner={(channelID) => {
+            const current = state.channels[channelID]?.banner;
+            if (!current) return;
+            setBannerEditor({ channelID, fresh: false, layout: current, localURL: null });
+          }}
+          onClearChannelBanner={(channelID) => {
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
             c.send<UpdateChannelPayload>(
               TypeUpdateChannel,
-              { channel_id: channelID, banner_attachment_id: bannerID },
+              { channel_id: channelID, banner: { attachment_id: "" } },
               "upch-" + Date.now(),
             );
           }}
@@ -5863,10 +5895,10 @@ export function App() {
                   or with the appearance pref off -- and when the pref is off
                   the component never mounts, so it costs no fetch and no
                   decrypt rather than being hidden. */}
-              {showChannelBanner && activeChannel.bannerAttachmentID && attControllerRef.current && (
+              {showChannelBanner && activeChannel.banner && attControllerRef.current && (
                 <ChannelBanner
                   channelID={activeChannel.id}
-                  attachmentID={activeChannel.bannerAttachmentID}
+                  layout={activeChannel.banner}
                   controller={attControllerRef.current}
                 />
               )}
@@ -6485,6 +6517,46 @@ export function App() {
           onClose={() => dispatch({ kind: "close_panel" })}
         />
       )}
+      {/* 111-9: the banner editor. Sits with the other modals rather than
+          inside the sidebar that opens it -- it outlives the context menu,
+          and its save is an ordinary update_channel from here. */}
+      {bannerEditor && attControllerRef.current && (
+        <BannerEditor
+          key={bannerEditor.channelID + bannerEditor.layout.attachmentID}
+          channelID={bannerEditor.channelID}
+          initial={bannerEditor.layout}
+          localURL={bannerEditor.localURL}
+          controller={attControllerRef.current}
+          fresh={bannerEditor.fresh}
+          onCancel={closeBannerEditor}
+          onSave={(layout) => {
+            const c = clientRef.current;
+            if (c && c.isOpen()) {
+              // The whole layout in one frame: the editor is a single
+              // decision, and half-saving it would leave a picture framed
+              // by a mixture of two people's choices.
+              c.send<UpdateChannelPayload>(
+                TypeUpdateChannel,
+                {
+                  channel_id: bannerEditor.channelID,
+                  banner: {
+                    attachment_id: layout.attachmentID,
+                    fit: layout.fit,
+                    focus_x: layout.focusX,
+                    focus_y: layout.focusY,
+                    zoom: layout.zoom,
+                    height: layout.height,
+                    bleed: layout.bleed,
+                  },
+                },
+                "upch-" + Date.now(),
+              );
+            }
+            closeBannerEditor();
+          }}
+        />
+      )}
+
       {state.openPanel === "profile" && state.me && (
         <ProfilePanel
           me={state.me}

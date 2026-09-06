@@ -309,11 +309,12 @@ type ChannelSummary struct {
 	// ShortName is the channel's optional abbreviation (106-3), at most
 	// ten characters. Absent/empty -> none; the client falls back to Name.
 	ShortName string `json:"short_name,omitempty"`
-	// BannerAttachmentID is the channel's header image (111-1), or absent
-	// when it has none. Only the id: the client resolves it through
-	// GET /api/attachments/{id}/ref and the download endpoint, so a
-	// listing of fifty channels does not carry fifty encrypted blobs.
-	BannerAttachmentID string `json:"banner_attachment_id,omitempty"`
+	// Banner is the channel's header image and its layout (111-1, 111-7),
+	// absent when the channel has none. Only the attachment id, never the
+	// blobs: the client resolves it through GET /api/attachments/{id}/ref
+	// and the download endpoint, so a listing of fifty channels does not
+	// carry fifty encrypted pictures.
+	Banner *BannerWire `json:"banner,omitempty"`
 	// ExpiresAt (unix-millis) is when an ephemeral channel is destroyed
 	// (80-6). Absent/0 = permanent. The client renders the countdown from
 	// this; the server's janitor is what actually enforces it.
@@ -395,12 +396,11 @@ type CreateChannelAckPayload struct {
 // is written after trimming. Name must be 1-80 chars after trim; ShortName
 // at most ten characters, and "" clears it.
 //
-// BannerAttachmentID (111-1) is the channel's header image: the id of a
-// completed attachment in THIS channel, uploaded through the ordinary
-// attachment pipeline and never linked to a message. "" clears the banner.
-// The server checks that the id names a complete attachment of the same
-// channel; it cannot check that it is an image, because the kind lives
-// inside enc_meta and only members can read that.
+// Banner (111-7) is the whole header-image layout as one object, because
+// that is how the editor saves it: one frame carries the picture and every
+// choice about how it sits. Its attachment id must name a completed
+// attachment of THIS channel; the server cannot check that it is an image,
+// because the kind lives inside enc_meta and only members can read that.
 //
 // Server rules:
 //   - Caller must be the channel's owner (role='owner').
@@ -408,10 +408,50 @@ type CreateChannelAckPayload struct {
 //     unilateral_forbidden (a rename proposal type is not built).
 //   - DMs are not renameable: their name renders from the other member.
 type UpdateChannelPayload struct {
-	ChannelID          string  `json:"channel_id"`
-	Name               *string `json:"name,omitempty"`
-	ShortName          *string `json:"short_name,omitempty"`
-	BannerAttachmentID *string `json:"banner_attachment_id,omitempty"`
+	ChannelID string           `json:"channel_id"`
+	Name      *string          `json:"name,omitempty"`
+	ShortName *string          `json:"short_name,omitempty"`
+	Banner    *BannerPatchWire `json:"banner,omitempty"`
+}
+
+// BannerWire is a channel's header image and how it is framed (111-1,
+// 111-5, 111-7). Everything but the id is presentation the server stores
+// and never interprets:
+//
+//	fit     "fill" crops the image to cover the band; "fit" shows all of
+//	        it at band height and lets the client fill the sides.
+//	focus   which part of the picture stays visible when the band crops
+//	        it, as percentages; 50/50 is the middle.
+//	zoom    percent, 100-300. 100 is the picture at its natural fit.
+//	height  "short" | "normal" | "tall". What those measure is the
+//	        client's business and differs between desktop and phone.
+//	bleed   how a fitted banner fills the space beside itself: "edge"
+//	        (the image's own edge columns), "blur", or "none".
+//
+// On a ChannelSummary it is present only when the channel has a banner,
+// and carries the whole layout so the renderer needs no second lookup.
+type BannerWire struct {
+	AttachmentID string `json:"attachment_id"`
+	Fit          string `json:"fit"`
+	FocusX       int    `json:"focus_x"`
+	FocusY       int    `json:"focus_y"`
+	Zoom         int    `json:"zoom"`
+	Height       string `json:"height"`
+	Bleed        string `json:"bleed"`
+}
+
+// BannerPatchWire is the editor's save: every field optional, an absent
+// one left alone. attachment_id "" clears the picture (and keeps the
+// layout -- clearing an image is not a reason to forget how the last one
+// was framed).
+type BannerPatchWire struct {
+	AttachmentID *string `json:"attachment_id,omitempty"`
+	Fit          *string `json:"fit,omitempty"`
+	FocusX       *int    `json:"focus_x,omitempty"`
+	FocusY       *int    `json:"focus_y,omitempty"`
+	Zoom         *int    `json:"zoom,omitempty"`
+	Height       *string `json:"height,omitempty"`
+	Bleed        *string `json:"bleed,omitempty"`
 }
 
 // UpdateChannelAckPayload returns the channel as it now reads.
