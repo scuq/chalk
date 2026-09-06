@@ -36,6 +36,11 @@ The engineering-level history (which slice shipped what) lives in
   it: an even wash of its own colours, a soft blur of itself, or plain
   background. Come back to any of it later with **image → edit** in the
   channel menu.
+- **A cropper.** The editor can cut away part of the picture before it is
+  pinned: **crop** shows the whole image, you drag a box over what to keep,
+  and everything outside it is discarded. **revert** puts back the picture it
+  replaced as long as the editor is still open. Cropping first and framing
+  afterwards is usually the shortest way to a header that looks right.
 - **A shape for box art and posters.** A picture taller than it is wide has
   no good showing in a band twelve times wider than it is tall — cropped it
   is a strip of its middle, centred it is a thumbnail. **poster** puts the

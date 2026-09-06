@@ -2379,6 +2379,91 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-size: var(--chalk-size-small);
 }
 
+/* -- The cropper (111-13) ------------------------------------------ */
+
+.chalk-banner-cropper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+}
+
+/* The whole picture, as large as the dialog allows. A plain ground: what
+   matters here is the picture's own edges, and a busy backdrop would compete
+   with the crop rectangle. */
+.chalk-banner-cropper-surface {
+  position: relative;
+  align-self: center;
+  max-width: 100%;
+  max-height: 46vh;
+  line-height: 0;
+  cursor: crosshair;
+  /* A drag on a picture is a drag, not a browser image-drag or a text
+     selection, and on a phone it must not scroll the dialog. */
+  touch-action: none;
+  user-select: none;
+  border: 1px solid var(--chalk-border);
+  background: var(--chalk-bg);
+}
+
+.chalk-banner-cropper-img {
+  display: block;
+  max-width: 100%;
+  max-height: 46vh;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* The kept region. The outward shadow is what dims everything else: one
+   element rather than four, so the dimming can never disagree with the
+   rectangle's own edges. */
+.chalk-banner-cropper-rect {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--chalk-accent);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.62);
+  cursor: move;
+}
+
+.chalk-banner-cropper-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: var(--chalk-accent);
+  /* Sit half outside the rectangle so a corner is grabbable from either
+     side of the line, including on a touchscreen. */
+  margin: -7px;
+}
+
+.chalk-banner-cropper-handle--nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+.chalk-banner-cropper-handle--ne {
+  right: 0;
+  top: 0;
+  cursor: nesw-resize;
+}
+.chalk-banner-cropper-handle--sw {
+  left: 0;
+  bottom: 0;
+  cursor: nesw-resize;
+}
+.chalk-banner-cropper-handle--se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+/* The cropper's buttons sit at the right of its own row rather than in the
+   dialog's footer -- the footer belongs to the layout, and cropping is a
+   detour with its own way back. */
+.chalk-banner-cropper-actions {
+  display: flex;
+  gap: var(--chalk-s2);
+  margin-left: auto;
+}
+
 .chalk-banner-editor-controls {
   display: flex;
   flex-direction: column;

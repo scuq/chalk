@@ -1,9 +1,9 @@
 # Phase 111 — the channel banner
 
-**Status:** built, 111-1 … 111-12 (2026-09-06). Verified against a running
+**Status:** built, 111-1 … 111-13 (2026-09-06). Verified against a running
 stack, desktop and emulated phone — 18/18 checks for 111-1…4, 12/12 for
-111-5, 34/34 for the editor, the bleeds and the poster shape; what that
-covers and what it does not is under [Left open](#left-open).
+111-5, 43/43 for the editor, the bleeds, the poster shape and the cropper;
+what that covers and what it does not is under [Left open](#left-open).
 **Tags:** `#banner` → `tools/where.sh -g banner`
 
 ## The problem
@@ -202,6 +202,32 @@ never pay for it.
 0.86 with a wider radius, mirrored so its features do not line up with the
 sharp picture, it reads as the picture's own light spilling outward.
 
+**And a cropper, because framing is not cropping (111-13).** Everything above
+chooses what the band *shows* of a picture; none of it changes the picture. A
+crop does, and the editor draws the same line: the band preview answers "how
+does this sit in the header", the cropper answers "what is this a picture
+of" — so it gets its own screen, showing the whole image, because a crop
+chosen against an already-framed preview would be a guess.
+
+**The crop is destructive, deliberately.** A rectangle stored beside the
+layout would be re-editable forever, at the price of four more columns and a
+renderer that composes crop × fit × zoom × focus across three shapes. What
+goes up instead is the cropped picture: a canvas draw of the chosen region,
+re-encoded and uploaded like any other banner. The renderer learns nothing new,
+every member downloads only the part that was kept, and the editor holds the
+pre-crop picture while it is open, so **revert** is a button rather than an
+impossibility. Cropping twice crops the result of the first, which is what
+"crop again" should mean.
+
+Rectangles are percentages of the source, never pixels — the cropper draws the
+picture at whatever size the dialog allows, and a fraction survives that where
+a pixel count would not. One bug the live run caught and the unit tests could
+not: while the box is the whole picture it covers the surface, so a drag
+inside it was swallowed by a no-op *move* instead of drawing the box the user
+was trying to draw. The box body ignores pointers in that state; its corner
+handles stay live, because trimming an edge off the whole picture is a real
+thing to want.
+
 **Fail-closed like every other attachment.** No key held, a decrypt that
 returns null, a 404 from a blob that is no longer there: the band renders
 nothing and the header is what it was before 111. A missing banner is never an
@@ -230,6 +256,7 @@ the band never mounts, so it costs no fetch and no decrypt, not merely
 | 111-10 | the blur bleed paints *behind* the picture — a z-index fix, and the probe checks that now ask the browser what is on top |
 | 111-11 | the wash replaces the edge bleed (migration 0059), `tall` becomes 200px, and the blur is mirrored and lightened |
 | 111-12 | `poster`: the art at band height at one end, the wash across the rest — the shape for pictures taller than they are wide |
+| 111-13 | the cropper: a second screen in the editor, drag/move/resize a region, apply uploads the cropped picture, revert restores the one before it |
 
 ## Left open
 
@@ -251,8 +278,13 @@ the band never mounts, so it costs no fetch and no decrypt, not merely
   the preview stops changing. Visible, harmless, and not worth a second rule.
 - **The editor has no undo and no "revert to saved".** Cancel is the undo, and
   it is all-or-nothing.
-- **No cropping proper.** The focal point moves the frame; it never trims the
-  picture. A banner is always the whole uploaded image, shown less of.
+- **A crop cannot be undone after Save.** Revert only reaches back to the
+  picture the editor opened with; once saved, the cropped picture is the
+  channel's picture and getting the original back means uploading it again.
+- **The cropper has no aspect lock.** Free-form only, so matching the band's
+  shape exactly is done by eye. A "band shape" toggle is the obvious addition.
+- **Every crop leaves an orphan**, like every replacement does: the pre-crop
+  blob stays a finalized, unlinked attachment nothing points at.
 - **No per-channel collapse.** The pref is global on/off across every channel,
   not "hide this one banner".
 - **Democratic channels cannot have one**, for the same reason they cannot be
@@ -298,6 +330,12 @@ it is the *method* that is recorded here, not the file.
       tall band (≥180px measured), shown whole (`object-fit: contain`) and
       wide enough to read; the editor hides the zoom control the shape
       cannot use; and the saved band reports the wash it was given.
+- [x] 111-13, the cropper: it opens on its own screen showing the whole
+      picture (no band preview); apply is refused while the box is the whole
+      picture and offered once it is not; a drag draws a box, a second drag
+      moves it without resizing it or leaving the picture; applying replaces
+      the picture with a genuine region of it (neither dimension grows, at
+      least one shrinks); revert restores exactly the picture it replaced.
 - [ ] **A hand-sent `update_channel` from a non-owner** — the menu hides the
       row, and the handler refuses it, but only the hidden row is exercised.
 - [ ] **The band across a channel key rotation.** The banner is encrypted at

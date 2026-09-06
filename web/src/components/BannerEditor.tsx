@@ -17,6 +17,13 @@
 // Nothing is written until Save, which sends one update_channel carrying the
 // whole layout. Cancel sends nothing at all.
 //
+// 111-13: it has a second view. The controls here frame the picture -- they
+// choose what the band shows of it -- and none of them change the picture.
+// Cropping does, so it gets its own screen (BannerCropper) showing the whole
+// image, and applying one uploads the cropped picture as a new attachment.
+// The pre-crop picture is held for as long as the dialog is open, so "revert"
+// undoes a crop that turned out wrong without a re-upload.
+//
 // The focal point is dragged on the preview itself rather than set with two
 // number fields, because "which part of this picture do I keep" is a question
 // about the picture. It only does anything when the band actually crops --
@@ -34,7 +41,10 @@ import {
   ZOOM_MAX,
   ZOOM_MIN,
 } from "../state/banner";
+import type { CropRect } from "../attachments/crop";
+import { cropImage } from "../attachments/crop";
 import { BannerBand } from "./BannerBand";
+import { BannerCropper } from "./BannerCropper";
 
 interface Props {
   channelID: string;
@@ -47,6 +57,10 @@ interface Props {
   /** true when this opened straight after an upload -- the wording changes,
    *  and cancelling means the picture was never pinned */
   fresh?: boolean;
+  /** 111-13: upload a cropped picture and hand back what it became. The
+   *  editor never talks to the network itself -- App holds the channel
+   *  crypto, exactly as it does for the first upload. */
+  onUpload: (file: File) => Promise<{ id: string; url: string }>;
   onSave: (layout: BannerLayout) => void;
   onCancel: () => void;
 }
@@ -79,18 +93,54 @@ export function BannerEditor({
   localURL,
   controller,
   fresh = false,
+  onUpload,
   onSave,
   onCancel,
 }: Props) {
   const [layout, setLayout] = useState<BannerLayout>(initial);
   const dragging = useRef(false);
   const previewRef = useRef<HTMLDivElement | null>(null);
+  // 111-13: the cropper's screen, and what it produced. `cropped` holds the
+  // picture a crop made; `preCrop` is what it replaced, so revert is a swap
+  // rather than an upload.
+  const [cropping, setCropping] = useState(false);
+  const [cropBusy, setCropBusy] = useState(false);
+  const [cropError, setCropError] = useState<string | null>(null);
+  const [cropped, setCropped] = useState<{ id: string; url: string } | null>(null);
+  const [preCrop, setPreCrop] = useState<{ id: string; url: string | null } | null>(null);
 
   // A fresh upload already has its bytes in hand; an edit resolves them the
   // way the header does. Calling the hook either way keeps the hook order
   // stable -- it simply has nothing to do when a local URL was passed.
-  const resolved = useBannerImage(channelID, localURL ? "" : layout.attachmentID, controller);
-  const url = localURL ?? resolved.url;
+  const resolvedID = cropped ? "" : localURL ? "" : layout.attachmentID;
+  const resolved = useBannerImage(channelID, resolvedID, controller);
+  const url = cropped?.url ?? localURL ?? resolved.url;
+
+  // Cropping needs the decoded pixels of whatever is on screen now, so a
+  // second crop crops the first one's result.
+  const applyCrop = async (rect: CropRect) => {
+    if (!url) return;
+    setCropBusy(true);
+    setCropError(null);
+    try {
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("could not read that image"));
+        img.src = url;
+      });
+      const file = await cropImage(img, rect);
+      const up = await onUpload(file);
+      setPreCrop({ id: layout.attachmentID, url: cropped?.url ?? localURL ?? resolved.url });
+      setCropped(up);
+      setLayout((l) => ({ ...l, attachmentID: up.id }));
+      setCropping(false);
+    } catch (err) {
+      setCropError(err instanceof Error ? err.message : "crop failed");
+    } finally {
+      setCropBusy(false);
+    }
+  };
 
   const set = (patch: Partial<BannerLayout>) => setLayout((l) => ({ ...l, ...patch }));
 
@@ -127,7 +177,7 @@ export function BannerEditor({
   // has pushed the picture past the band, and poster never -- showing the
   // art whole is the entire point of that shape.
   const poster = layout.fit === "poster";
-  const cropped = !poster && (layout.fit === "fill" || layout.zoom > 100);
+  const framesCrop = !poster && (layout.fit === "fill" || layout.zoom > 100);
 
   return (
     <div
@@ -158,14 +208,23 @@ export function BannerEditor({
         </header>
 
         <div class="chalk-modal-body">
+        {cropping && url ? (
+          <BannerCropper
+            url={url}
+            busy={cropBusy}
+            onApply={(rect) => void applyCrop(rect)}
+            onCancel={() => setCropping(false)}
+          />
+        ) : (
+          <>
         {/* The preview is the real band, at the real height, so what is
             agreed here is what every member sees. */}
         <div
           ref={previewRef}
-          class={`chalk-banner-editor-preview ${cropped ? "chalk-banner-editor-preview--draggable" : ""}`}
+          class={`chalk-banner-editor-preview ${framesCrop ? "chalk-banner-editor-preview--draggable" : ""}`}
           data-testid="banner-editor-preview"
           onPointerDown={(e) => {
-            if (!cropped) return;
+            if (!framesCrop) return;
             dragging.current = true;
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
             focusFromEvent(e as unknown as PointerEvent);
@@ -193,7 +252,7 @@ export function BannerEditor({
         <p class="chalk-profile-hint">
           {poster
             ? "the art is shown whole at one end, with its colours across the rest."
-            : cropped
+            : framesCrop
               ? "drag the picture to choose what stays in the band."
               : "the whole picture fits, so there is nothing to crop — zoom in to reframe it."}
         </p>
@@ -267,6 +326,46 @@ export function BannerEditor({
           </div>
           )}
 
+          {/* 111-13: the picture itself, as opposed to how it sits. Crop is
+              the one control here that changes what everyone downloads, so
+              it is a screen of its own and a revert away from permanent. */}
+          <div class="chalk-banner-editor-row">
+            <span class="chalk-banner-editor-label">picture</span>
+            <button
+              type="button"
+              class="chalk-nick-menu-btn"
+              data-testid="banner-editor-crop"
+              disabled={!url || cropBusy}
+              title="cut away part of the picture"
+              onClick={() => {
+                setCropError(null);
+                setCropping(true);
+              }}
+            >
+              crop
+            </button>
+            {preCrop && (
+              <button
+                type="button"
+                class="chalk-nick-menu-btn"
+                data-testid="banner-editor-uncrop"
+                title="back to the picture before the crop"
+                onClick={() => {
+                  setCropped(null);
+                  setLayout((l) => ({ ...l, attachmentID: preCrop.id }));
+                  setPreCrop(null);
+                }}
+              >
+                revert
+              </button>
+            )}
+            {cropError && (
+              <span class="chalk-nick-menu-hint" data-testid="banner-editor-crop-error">
+                {cropError}
+              </span>
+            )}
+          </div>
+
           {/* Only the shapes that leave room beside the picture have sides
               to fill; in fill mode the row would control nothing. */}
           {(layout.fit === "fit" || poster) && (
@@ -290,9 +389,11 @@ export function BannerEditor({
             </div>
           )}
         </div>
-
+          </>
+        )}
         </div>
 
+        {!cropping && (
         <footer class="chalk-modal-footer">
           <button
             type="button"
@@ -312,6 +413,7 @@ export function BannerEditor({
             {fresh ? "pin it" : "save"}
           </button>
         </footer>
+        )}
       </div>
     </div>
   );

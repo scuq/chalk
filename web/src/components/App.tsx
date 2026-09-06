@@ -3434,6 +3434,27 @@ export function App() {
     layout: BannerLayout;
     localURL: string | null;
   } | null>(null);
+  // 111-2/111-13: one upload path for every banner picture -- the file the
+  // menu picked, and the cropped picture the editor produces. Downscaled and
+  // encrypted under the channel key exactly like a posted image, and it
+  // hands back a local object URL so the editor previews the bytes it just
+  // sent rather than fetching its own ciphertext back.
+  const uploadBannerImage = useCallback(
+    async (channelID: string, file: File): Promise<{ id: string; url: string }> => {
+      const c = clientRef.current;
+      if (!c || !c.isOpen()) throw new Error("not connected");
+      const cc = ccRef.current;
+      const deviceID = state.user?.device;
+      if (!cc || !deviceID) throw new Error("not ready");
+      const scaled = await prepareBanner(file);
+      // Fail-closed like every other upload: no channel key, no ciphertext
+      // leaves the device.
+      const res = await uploadAttachment(cc, channelID, deviceID, scaled);
+      if (res.kind !== "uploaded") throw new Error("waiting for the channel key");
+      return { id: res.ref.id, url: URL.createObjectURL(scaled) };
+    },
+    [state.user?.device],
+  );
   const closeBannerEditor = useCallback(() => {
     setBannerEditor((cur) => {
       if (cur?.localURL) URL.revokeObjectURL(cur.localURL);
@@ -5607,16 +5628,7 @@ export function App() {
           // opens the editor, and only the editor's save sends anything. So
           // cancelling leaves an orphaned blob and nothing anyone can see.
           onPickChannelBanner={async (channelID, file) => {
-            const c = clientRef.current;
-            if (!c || !c.isOpen()) throw new Error("not connected");
-            const cc = ccRef.current;
-            const deviceID = state.user?.device;
-            if (!cc || !deviceID) throw new Error("not ready");
-            // Fail-closed like every other upload: no channel key, no
-            // ciphertext leaves the device.
-            const scaled = await prepareBanner(file);
-            const res = await uploadAttachment(cc, channelID, deviceID, scaled);
-            if (res.kind !== "uploaded") throw new Error("waiting for the channel key");
+            const up = await uploadBannerImage(channelID, file);
             const current = state.channels[channelID]?.banner ?? null;
             setBannerEditor({
               channelID,
@@ -5624,8 +5636,8 @@ export function App() {
               // A new picture inherits the framing the channel already
               // uses: someone who settled on a tall fitted band does not
               // want to set it again for every image.
-              layout: { ...(current ?? DEFAULT_BANNER), attachmentID: res.ref.id },
-              localURL: URL.createObjectURL(scaled),
+              layout: { ...(current ?? DEFAULT_BANNER), attachmentID: up.id },
+              localURL: up.url,
             });
           }}
           onEditChannelBanner={(channelID) => {
@@ -6528,6 +6540,7 @@ export function App() {
           localURL={bannerEditor.localURL}
           controller={attControllerRef.current}
           fresh={bannerEditor.fresh}
+          onUpload={(file) => uploadBannerImage(bannerEditor.channelID, file)}
           onCancel={closeBannerEditor}
           onSave={(layout) => {
             const c = clientRef.current;
