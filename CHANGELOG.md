@@ -10,13 +10,21 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.14 — 7 September 2026 — Profile pictures, one line tall
 
 ### Added
 - **Profile pictures.** Set one in **settings → account → picture**: choose an
   image, crop it to the square you want, and it appears beside your name in
   the conversation, in the roster and members list, on the card that pops up
   over a name, and in call tiles. **remove** takes it away again.
+- It also appears beside your own name in the top-right corner, so you can
+  see what everyone else sees.
+- You can use a picture as it is or crop it first — the cropper offers
+  **use picture** when you have not drawn a box.
+- **There is no default picture** — someone who has not set one shows nothing,
+  as before. chalk invites you to add one exactly once, the first time you are
+  in a conversation without one, and never asks again whichever way you
+  answer — including on your other devices.
 - It is drawn at exactly one line of text and changes nothing about how the
   conversation is spaced — no row is taller than it was, and a channel where
   nobody has set a picture looks exactly as it did.
