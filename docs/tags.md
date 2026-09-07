@@ -40,6 +40,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #zucker         62 64 78 95  web/src/chat/zucker.ts web/src/components/ZuckerList.tsx web/src/theme.css docs/phases/PHASE-62-ZUCKER.md docs/phases/PHASE-78-HIDECHANNELS.md docs/phases/PHASE-95-PHONEVOICE.md
 #history        55 69 79  internal/store/ web/src/chat/ web/src/components/MessageList.tsx docs/phases/PHASE-55-HISTORY.md docs/phases/PHASE-69-PINNEDHEADER.md docs/phases/PHASE-79-LANDING.md
 #daymarks       113       web/src/chat/daymarks.ts web/src/chat/reltime.ts web/src/components/MessageList.tsx web/src/theme.css docs/phases/PHASE-113-DAYMARKS.md
+#rosterorder    -         docs/phases/PHASE-114-ROSTERORDER.md
 #mentions       56        web/src/chat/ web/src/components/Composer.tsx docs/phases/PHASE-56-MENTIONS.md
 #composer       91 94     web/src/chat/composer-height.ts web/src/chat/composer-keys.ts web/src/components/ComposerResizer.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-91-COMPOSERSIZE.md docs/phases/PHASE-94-PHONECOMPOSER.md
 #linkpreview    57 67     internal/linkpreview/ web/src/linkpreview/ web/src/chat/links.ts docs/phases/PHASE-57-LINKPREVIEW.md docs/phases/PHASE-67-LINKLABELS.md

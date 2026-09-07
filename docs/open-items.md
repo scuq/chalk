@@ -9,7 +9,7 @@ Latest release: **v0.8.15** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 113 is the newest work. The phase-doc index at the top of
+Phase 113 is the newest work; 114 is the newest plan. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
 
@@ -160,6 +160,12 @@ same space.
   its own review, before any code.
 - **The SFU seam** (voice design Slice I) for rooms too large for a mesh.
 - **Governance `set_config` proposals.**
+- **Roster order** (114, [phases/PHASE-114-ROSTERORDER.md](phases/PHASE-114-ROSTERORDER.md)):
+  channels within a group by creation (today), by most recent activity, or
+  by hand; groups by hand; all per user in the roster prefs, no wire or schema
+  change. Menus first so it works on every device, drag-and-drop on desktop as
+  the last slice. Read its 8 KiB note before adding anything else to
+  `prefs.roster`.
 - **Database-credential hardening** (99, [phases/PHASE-99-DBCREDS.md](phases/PHASE-99-DBCREDS.md)):
   move the DB secrets out of the env file and `/proc/environ` into
   encrypted systemd credentials (or eliminate the app password via

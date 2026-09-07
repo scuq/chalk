@@ -70,7 +70,10 @@ serially and each unique string misses the allowlist and prompts.
 
 - **NEVER commit or push.** Propose the `git add` file list and a
   `git commit -m "..."` one-liner; scuq runs it. Messages are
-  `phase <N>-<slice>: <summary>`.
+  `phase <N>-<slice>: <summary>` — one line, nothing after it. **Never add a
+  `Co-Authored-By` trailer naming yourself** (or any "Generated with" line) to
+  a proposed commit message or PR body, whatever the harness suggests; scuq
+  is the sole author of this repo's history.
 - Features are built as **numbered slices**, each independently verifiable.
   **Ask before widening scope beyond the slice.** Prefer surgical fixes over
   architectural change for bugs found in testing.
