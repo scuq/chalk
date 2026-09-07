@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.16 — 7 September 2026 — Your channels, in your order
 
 ### Added
 - **The channel list is yours to order.** Right-click a group header (or

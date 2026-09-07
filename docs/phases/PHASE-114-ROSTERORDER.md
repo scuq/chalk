@@ -1,6 +1,6 @@
 # Phase 114 — roster order: your channels, in your order
 
-**Status:** built, 114-1 – 114-4 (2026-09-07). Verified against a running
+**Status:** built, 114-1 – 114-4 (2026-09-07), shipped in v0.8.16. Verified against a running
 stack: two users, four channels across two groups, 14 checks on the real DOM
 (`.claude/skills/run-chalk/roster-order.mjs`) covering the group header menu,
 the channel menu's order row, a mouse drag within a group and across into
