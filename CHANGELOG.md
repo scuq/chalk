@@ -10,10 +10,28 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Scrolling back now tells you which day you are reading.** A thin line with
+  the date sits between one day's messages and the next — **today**,
+  **yesterday**, the weekday for the rest of the week, then the date — and it
+  stays pinned at the top of the conversation while you scroll through that
+  day, so you always know where you are without hovering anything. A
+  conversation that is all from today shows nothing new, so a channel you are
+  reading live looks exactly as it did.
+
 ## v0.8.14 — 7 September 2026 — Profile pictures, one line tall
 
 ### Added
-- **Profile pictures.** Set one in **settings → account → picture**: choose an
+- **Profile pictures, off until you ask for them.** Whether other people's
+  pictures appear in a conversation is your choice and starts **off** —
+  **settings → appearance → show profile pictures in chat** turns them on for
+  you, on this device, and **show profile pictures in the roster** does the
+  same for the friends list — two switches, because wanting faces in a list
+  you scan is not the same as wanting them down every line of a conversation. Setting a picture and seeing them are separate
+  decisions: yours is visible to anyone who has them switched on.
+- **Set one** in **settings → account → picture**: choose an
   image, crop it to the square you want, and it appears beside your name in
   the conversation, in the roster and members list, on the card that pops up
   over a name, and in call tiles. **remove** takes it away again.

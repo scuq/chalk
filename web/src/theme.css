@@ -1948,6 +1948,69 @@ body.chalk-resizing-y .chalk-composer-resizer {
   white-space: nowrap;
 }
 
+/* ============================================================
+   Phase 113: day marks — which day am I reading?
+   ============================================================ */
+
+/* The same shape as the unread divider (short lead-in, label, rule to the
+   right edge) in the border colour rather than the accent: this is a
+   structural marker, not an event, and it must not compete with "new
+   messages" where the two land on the same row. */
+.chalk-day-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  user-select: none;
+  /* 113-2: pinned, so a reader parked in the middle of a long day still sees
+     which day it is. The offset is written by MessageList from pinnedBottom
+     over the scroller's sticky children -- the channel header's height is not
+     a constant since 111 put a banner inside it -- and defaults to 0 for the
+     panes with nothing pinned over them (thread panel, voice scratchpad). */
+  position: sticky;
+  top: var(--chalk-daymark-top, 0px);
+  /* ABOVE the channel header's z-index, which looks wrong and isn't: the two
+     boxes never overlap (the mark's top edge IS the header's bottom edge, by
+     measurement), but the header paints a background-coloured strip s3 tall
+     BELOW itself to hide the feed in its own margin gap. At a lower z-index
+     the stuck mark sat under that strip and all but ~4px of it -- its label
+     included -- was painted out, so it read as no mark at all. */
+  z-index: 6;
+  background: var(--chalk-bg);
+  /* The feed is a flex column with an s2 gap; while stuck, a clipped line of
+     the row below showed through that gap under the mark. Same offset-shadow
+     trick the channel header uses for its own margin, and it has to match the
+     gap in .chalk-messages. */
+  box-shadow: 0 var(--chalk-s2) var(--chalk-bg);
+  /* 113-2: NOT cosmetic. 79-4's keep-anchor finds the row the reader is
+     holding with elementFromPoint just below the pinned inset -- exactly where
+     this sits once stuck -- and a hit here returns no row, which would quietly
+     switch off the correction that keeps late-loading images from shoving the
+     reader around. A label with nothing to click gives up nothing by being
+     transparent to hit-testing. */
+  pointer-events: none;
+}
+
+.chalk-day-divider::before,
+.chalk-day-divider::after {
+  content: "";
+  height: 1px;
+  background: var(--chalk-border);
+}
+
+.chalk-day-divider::before {
+  flex: 0 0 var(--chalk-s4);
+}
+.chalk-day-divider::after {
+  flex: 1 1 auto;
+}
+
+.chalk-day-divider-label {
+  color: var(--chalk-fg-muted);
+  font-size: var(--chalk-size-small);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
 /* Rows that were unread on arrival. A tint rather than a weight or color
    change, because weight and color are already carrying nick identity and
    the mention chip -- a fourth signal in that space would just be noise.

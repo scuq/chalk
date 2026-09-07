@@ -27,6 +27,7 @@ import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
 import { decideLinkPreviewRender } from "../linkpreview/linkpreview";
 import { decideCodeRender } from "../code/code";
 import { clipboardText, messageText } from "../chat/bodytext";
+import { dayMarkIndices, pinnedBottom } from "../chat/daymarks"; // 113-1
 import { DEFAULT_SELF_HUE, nickTintStyle, resolveNickHue } from "../chat/nickcolor";
 import { linkDisplayText, splitBodyParts } from "../chat/links";
 import { splitBodyBlocks, splitBodyNano, type NanoPart } from "../chat/nanomd";
@@ -259,6 +260,33 @@ function pinnedTopInset(scroller: HTMLElement | null): number {
     inset = Math.max(inset, el.getBoundingClientRect().height);
   }
   return inset;
+}
+
+// 113-2: the sticky boxes pinned over the feed, as {top, height} pairs for
+// pinnedBottom. The same scan as pinnedTopInset, but a day mark needs the
+// stuck box's BOTTOM EDGE rather than its height: chalk's channel header
+// pulls itself up with a negative `top` to swallow the pane's padding, so
+// height alone would push the mark a header-padding too far down.
+//
+// `top` is read from computed style, where the calc() has already resolved to
+// pixels. "auto" (a sticky box pinned on some other edge) reads as NaN and is
+// taken as 0 rather than poisoning the maximum.
+function stickyBoxes(
+  scroller: HTMLElement | null,
+): { top: number; height: number }[] {
+  if (!scroller || typeof window === "undefined") return [];
+  const out: { top: number; height: number }[] = [];
+  for (const child of Array.from(scroller.children)) {
+    const el = child as HTMLElement;
+    const cs = window.getComputedStyle(el);
+    if (cs.position !== "sticky") continue;
+    const top = parseFloat(cs.top);
+    out.push({
+      top: Number.isFinite(top) ? top : 0,
+      height: el.getBoundingClientRect().height,
+    });
+  }
+  return out;
 }
 
 // 79-1: land the divider clear of the pinned header. scrollIntoView can only
@@ -761,6 +789,39 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     return () => ro.disconnect();
   }, [channelID, messages.length > 0, ephemeral]);
 
+  // 113-2: keep --chalk-daymark-top in step with whatever is pinned over the
+  // feed, so a stuck day mark sits just under it instead of behind it.
+  //
+  // Measured rather than declared because the header's height is not a
+  // constant: 111 put a channel banner inside it, and that image resolves
+  // after the feed has already rendered. Watching the sticky boxes themselves
+  // is enough -- nothing else can move the inset -- and where nothing is
+  // pinned (thread panel, voice scratchpad) this measures 0 and the mark
+  // sticks to the top of the pane.
+  //
+  // No feedback loop: the property only changes a sticky offset, and sticky
+  // positioning doesn't change any box's size.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (ephemeral || !el || typeof window === "undefined") return;
+    const apply = () => {
+      el.style.setProperty(
+        "--chalk-daymark-top",
+        `${pinnedBottom(stickyBoxes(scrollParentOf(el)))}px`,
+      );
+    };
+    apply();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(apply);
+    const scroller = scrollParentOf(el);
+    for (const child of scroller ? Array.from(scroller.children) : []) {
+      const box = child as HTMLElement;
+      if (window.getComputedStyle(box).position !== "sticky") continue;
+      ro.observe(box, { box: "border-box" });
+    }
+    return () => ro.disconnect();
+  }, [channelID, messages.length > 0, ephemeral]);
+
   // 33-4: index of the first message that was unread on arrival -- where the
   // "new messages" divider goes. -1 when there's nothing to mark.
   //
@@ -1060,6 +1121,16 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
         // moment somebody in the channel sets one.
         const senderColCh = Math.min(maxNameLen, 10) + (showAvatars ? 2 : 0);
 
+        // 113-1: where the calendar-day boundaries fall in what we are about
+        // to render -- derived from the rows themselves every pass, so paging,
+        // edits and deletions need no bookkeeping. Empty for a feed that is
+        // all from today, which is what keeps a live channel unchanged. Off
+        // entirely in the voice scratchpad: one call's worth of rows, no
+        // history to scroll back through.
+        const dayMarks = ephemeral
+          ? new Map<number, string>()
+          : dayMarkIndices(messages.map((msg) => msg.ts), now);
+
         return messages.map((m, mi) => {
         // "Own" detection prefers user_id matching when both sides
         // are known; falls back to device matching otherwise. This
@@ -1121,6 +1192,15 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
         const noBody = !m.deleted && (isGiphy || displayBody.trim() === "") && !m.editedAt;
         return (
           <Fragment key={m.id}>
+          {/* 113-1: the day mark goes ABOVE the unread divider when both land
+              on the same row -- "new messages" has to stay immediately over
+              the first unread message, because the landing scroll aims at it
+              and the reader reads it as "everything below this is new". */}
+          {dayMarks.has(mi) && (
+            <div class="chalk-day-divider" data-testid="day-divider">
+              <span class="chalk-day-divider-label">{dayMarks.get(mi)}</span>
+            </div>
+          )}
           {mi === dividerIndex && (
             <div
               class="chalk-unread-divider"
