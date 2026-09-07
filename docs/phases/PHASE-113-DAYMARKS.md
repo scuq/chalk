@@ -1,6 +1,6 @@
 # Phase 113 — day marks: which day am I reading?
 
-**Status:** built, 113-1 – 113-3 (2026-09-07). Verified against a running
+**Status:** built, 113-1 – 113-4 (2026-09-07); 113-1 – 113-3 shipped in v0.8.15. Verified against a running
 stack: a channel of twenty messages backdated across four calendar days, 13
 checks on the real DOM (labels, the suppression rule, the measured inset, the
 stacking order and 79-4's keep-anchor probe).
@@ -172,6 +172,14 @@ sticky — the row scrolls away with its message — so it solves half the probl
   settings search. Account-synced like the rest of the chat prefs rather than
   per-device: which time signals a conversation carries is a decision about
   your chalk, not about this browser.
+- **113-4 — the under-strip is the gap, not a constant.** Found on the live
+  server in compact mode within an hour of v0.8.15: the mark's offset shadow
+  (the strip that hides the row sliding under a *stuck* mark) was a fixed
+  `--chalk-s2`, and compact mode's row gap is 1px, so under every *in-flow*
+  mark the strip painted 7px into the next row and clipped its first line.
+  `.chalk-messages` now owns a `--chalk-msg-gap` token that both its `gap` and
+  the strip read, and compact mode overrides the token rather than the gap.
+  The probe measures strip-bottom against next-row-top in both layouts.
 
 ## Left open
 

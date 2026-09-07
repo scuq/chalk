@@ -508,7 +508,10 @@ html {
 .chalk-messages {
   display: flex;
   flex-direction: column;
-  gap: var(--chalk-s2);
+  /* 113-4: the gap is a token so the day mark's under-strip can be exactly
+     this wide and no wider -- compact mode overrides both together. */
+  --chalk-msg-gap: var(--chalk-s2);
+  gap: var(--chalk-msg-gap);
 }
 
 .chalk-messages--empty {
@@ -1976,11 +1979,13 @@ body.chalk-resizing-y .chalk-composer-resizer {
      included -- was painted out, so it read as no mark at all. */
   z-index: 6;
   background: var(--chalk-bg);
-  /* The feed is a flex column with an s2 gap; while stuck, a clipped line of
-     the row below showed through that gap under the mark. Same offset-shadow
-     trick the channel header uses for its own margin, and it has to match the
-     gap in .chalk-messages. */
-  box-shadow: 0 var(--chalk-s2) var(--chalk-bg);
+  /* The feed is a flex column with a gap; while stuck, a clipped line of the
+     row below showed through that gap under the mark. Same offset-shadow trick
+     the channel header uses for its own margin. The offset is the feed's OWN
+     gap token, not a spacing constant: this shipped as a fixed s2 and compact
+     mode's gap is 1px, so the strip painted 7px into the top of every row
+     under an in-flow mark and clipped its first line. */
+  box-shadow: 0 var(--chalk-msg-gap) var(--chalk-bg);
   /* 113-2: NOT cosmetic. 79-4's keep-anchor finds the row the reader is
      holding with elementFromPoint just below the pinned inset -- exactly where
      this sits once stuck -- and a hit here returns no row, which would quietly
@@ -4974,7 +4979,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 /* Compact: tighter gap between messages, smaller per-row padding. */
 .chalk-messages--compact {
-  gap: 1px;
+  --chalk-msg-gap: 1px;
 }
 .chalk-messages--compact .chalk-message {
   /* The shorthand wins over the base rule, so it has to carry the marker
