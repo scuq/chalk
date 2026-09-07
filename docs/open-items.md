@@ -9,9 +9,25 @@ Latest release: **v0.8.15** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 113 is the newest work; 114 is the newest plan. The phase-doc index at the top of
+Phase 114 is the newest work, and there is no newer plan. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
+
+## Phase 114 — roster order: COMPLETE, with one recorded trade-off
+
+114-1 … 114-4, record in [phases/PHASE-114-ROSTERORDER.md](phases/PHASE-114-ROSTERORDER.md).
+Channels within a group by creation, by activity or by hand; groups by hand;
+the menus on every device and drag-and-drop on the desktop. All of it lives in
+`prefs.roster`, with no wire or schema change.
+
+- **Hiding a channel drops it from its group's hand-written order** on the next
+  write, and un-hiding appends it at the bottom. That is the phase's own rule
+  ("the write side never lets a list grow") costing the reader something; the
+  fix, if it grates, is to prune against membership rather than visibility.
+- **Read the phase's 8 KiB note before adding anything else to
+  `prefs.roster`.** `prefs_set` caps a patch at 8 KiB, every roster write
+  ships the whole roster object, and this phase is what put *lists* in there.
+  The write path prunes and size-checks; a new key should not assume room.
 
 ## Phase 106 — channel names: built, awaiting the live-stack checklist
 
@@ -160,12 +176,6 @@ same space.
   its own review, before any code.
 - **The SFU seam** (voice design Slice I) for rooms too large for a mesh.
 - **Governance `set_config` proposals.**
-- **Roster order** (114, [phases/PHASE-114-ROSTERORDER.md](phases/PHASE-114-ROSTERORDER.md)):
-  channels within a group by creation (today), by most recent activity, or
-  by hand; groups by hand; all per user in the roster prefs, no wire or schema
-  change. Menus first so it works on every device, drag-and-drop on desktop as
-  the last slice. Read its 8 KiB note before adding anything else to
-  `prefs.roster`.
 - **Database-credential hardening** (99, [phases/PHASE-99-DBCREDS.md](phases/PHASE-99-DBCREDS.md)):
   move the DB secrets out of the env file and `/proc/environ` into
   encrypted systemd credentials (or eliminate the app password via

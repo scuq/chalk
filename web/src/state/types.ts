@@ -9,6 +9,13 @@
 
 import { DEFAULT_SELF_HUE, clampHue } from "../chat/nickcolor";
 import { normalizeHidden, type HiddenChannel } from "../chat/channel-hide";
+// 114-1: the roster's order model. The resolver lives with the reads it
+// feeds, so what "a valid stored list" means is stated once.
+import {
+  resolveRosterOrder,
+  type AutoSortMode,
+  type ChannelSortMode,
+} from "../chat/roster-order";
 import { SIDEBAR_WIDTH_DEFAULT, clampSidebarWidth } from "../chat/sidebar-width";
 import { clampComposerHeight } from "../chat/composer-height";
 import { parkingLotName } from "../parking";
@@ -554,6 +561,15 @@ export interface RosterPrefs {
   // 106-3: "short" renders each channel's short name in the roster where
   // one is set; anything else (and absent) is the full name.
   nameStyle?: "full" | "short";
+  // 114-1: roster order. channelSort is the account-wide default for the
+  // channels inside a group; groupSort overrides it for one group; each
+  // channelOrder entry is one group's hand-written list of channel ids, and
+  // groupOrder is the reader's own group order. Typed loosely as stored --
+  // resolveRosterOrder owns what a valid entry is.
+  channelSort?: string;
+  groupSort?: Record<string, string>;
+  channelOrder?: Record<string, string[]>;
+  groupOrder?: string[];
 }
 
 // Phase 9.7d: resolved chat prefs (all fields required + defaulted).
@@ -636,6 +652,12 @@ export interface ResolvedRosterPrefs {
   hidden: Record<string, HiddenChannel>;
   // 106-3: anything but the exact string "short" resolves to full.
   nameStyle: "full" | "short";
+  // 114-1: the order half, resolved by resolveRosterOrder. Defaults are
+  // today's roster exactly: "created", no per-group overrides, no lists.
+  channelSort: AutoSortMode;
+  groupSort: Record<string, ChannelSortMode>;
+  channelOrder: Record<string, string[]>;
+  groupOrder: string[];
 }
 
 export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterPrefs {
@@ -654,6 +676,7 @@ export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterP
     viewMode: r.viewMode === "zucker" ? "zucker" : "classic",
     hidden: normalizeHidden(r.hidden),
     nameStyle: r.nameStyle === "short" ? "short" : "full",
+    ...resolveRosterOrder(r),
   };
 }
 

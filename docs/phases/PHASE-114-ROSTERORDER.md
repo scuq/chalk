@@ -1,6 +1,10 @@
 # Phase 114 — roster order: your channels, in your order
 
-**Status:** *planned, not started* (designed 2026-09-07).
+**Status:** built, 114-1 – 114-4 (2026-09-07). Verified against a running
+stack: two users, four channels across two groups, 14 checks on the real DOM
+(`.claude/skills/run-chalk/roster-order.mjs`) covering the group header menu,
+the channel menu's order row, a mouse drag within a group and across into
+another, Escape, the settings picker, and the order surviving a reload.
 **Tags:** `#rosterorder` → `tools/where.sh -g rosterorder`
 
 ## The problem
@@ -189,31 +193,73 @@ purpose). One sort site, on the client, over data it already holds.
 
 ## The slices
 
-- **114-1 — the order model.** `web/src/chat/roster-order.ts` (`orderChannels`,
-  `orderGroups`, `moveInList`, `pruneRosterOrder`, `rosterOrderBytes`) with
-  tests for every drift case above; `prefs.roster.channelSort`,
-  `groupSort` (per-group mode overrides), `channelOrder` and `groupOrder` in
-  `RosterPrefs` / `ResolvedRosterPrefs` with a resolver that tolerates any
-  stored shape; `Sidebar` applies both orderings after `groupRoster` and before
-  the row flatten. **No new UI**: with empty prefs this renders today's roster
-  byte for byte, which is the slice's own check.
-- **114-2 — activity sort and the account default.** The *sort channels by*
-  setting under *channel list*, the settings-search keywords, and the
-  `activity` comparator wired to `state.activity`. Zuckermode's comparator is
-  extracted rather than copied so the two views can never disagree about what
-  "most recent" means.
-- **114-3 — the menus.** The channel menu's *order* row; the new group-header
-  context menu (sort mode, move, reset); the pre-send size check with its
-  hint. After this slice the phase is complete on every device.
-- **114-4 — drag-and-drop on desktop.** Channel rows within and across groups,
-  group headers among groups; insertion line, edge auto-scroll, Escape. Mouse
-  only. Verified with a `run-chalk` probe, since none of it can be asserted
-  without a browser.
+- **114-1 — the order model.** `web/src/chat/roster-order.ts` — `orderChannels`,
+  `orderGroups`, `moveInList`, `placeInList`, `pruneRosterOrder`,
+  `resolveRosterOrder`, `prefsPatchBytes` — with `roster-order.test.ts`
+  covering every drift case above (unknown id appended at the bottom, stale id
+  skipped, duplicate rendered once, and the invariant that the result is
+  always a complete permutation of the input). `channelSort`, `groupSort`,
+  `channelOrder` and `groupOrder` joined `RosterPrefs` /
+  `ResolvedRosterPrefs`, resolved by `resolveRosterOrder`, which trusts
+  nothing in the stored blob. `Sidebar` applies both orderings after
+  `groupRoster` and before the row flatten; `App` grew `writeRosterOrder`, the
+  single write path that prunes and size-checks.
+  - **One thing the plan did not foresee:** a roster with a *single* group
+    draws no header (54-3), and the flat branch that renders it was reading
+    the account default rather than that group's order — so a hand-written
+    order in the commonest roster of all would have been invisible. The flat
+    branch now renders the sole group's channels when grouping is on and no
+    filter is running, and the channel menu carries the group's *reset* beside
+    its move buttons, since there is no header to right-click for it.
+- **114-2 — activity sort and the account default.** *sort channels by* under
+  **settings → chat → channel list**, findable by "sort", "order",
+  "activity" and "reorder" in the settings filter, defaulted to `created` so
+  no existing roster moves. Zuckermode's comparator moved out of
+  `buildConversationList` into `compareByActivity` / `activityWhen` and is now
+  shared rather than copied, so the phone's list and the desktop roster cannot
+  disagree about what "most recent" means. The account default is typed
+  `AutoSortMode` (`created` | `activity`): "manual" is a statement about one
+  group's channels and there is no single list for a flat roster to follow, so
+  a stored `manual` there resolves to `created`.
+- **114-3 — the menus.** The channel menu's *order* row (top · ↑ · ↓ · end,
+  plus *reset* once the group has a list), and the group header's context
+  menu — new; the header only answered a click by collapsing before this.
+  It carries the sort mode (with the account default marked, and picking it
+  clears the override rather than storing a copy), *move* among the groups,
+  and *reset order*, which drops the group's list, its sort override and its
+  place in `groupOrder` in one write. The pre-send size check refuses with a
+  visible hint rather than letting the server bounce the patch.
+  - The ends are labelled **top** and **end**, not `⤒` / `⤓`: those are
+    exactly the kind of glyph 30-5d took out of the roster, and the live probe
+    caught both rendering as something else in chalk's monospace stack.
+- **114-4 — drag-and-drop on desktop.** Hand-rolled on pointer events with
+  pointer capture, mouse only. A channel row drags within its group and across
+  into another; a group header drags among the groups. The drop target is a
+  list of slots read off the DOM (one before each row, one at the end of each
+  group), so a collapsed group is a slot like any other and the end of a list
+  is not a special case; a 2px accent line marks the drop in the list's own
+  scrolled coordinates, the edges auto-scroll, and Escape gives the drag back
+  with nothing moved.
+  - **A cross-group drop is one write, not two.** It is a 54-4 move plus a
+    placement, and the roster object goes over the wire whole — so two
+    `prefs_set` frames in the same tick would race, and the second would ship
+    the pre-move overrides and undo the first. `onMoveChannelToGroup` sets the
+    override and the placement together, and `writeRosterOrder` prunes against
+    the roster *as the change leaves it* rather than as it stands, or the
+    placement it just made would be pruned straight back out.
 
 ## Left open
 
 - **Whether `activity` should be the default after all.** See "What was
-  rejected" — deliberately not, but cheap to flip.
+  rejected" — deliberately not, but cheap to flip (one line in
+  `resolveRosterOrder`).
+- **Hiding a channel drops it from its group's manual list** on the next
+  write, and un-hiding appends it at the bottom rather than restoring where it
+  was. That follows the phase's own rule — the write side never lets a list
+  grow — and it is the one drift case where the rule costs the reader
+  something. If it grates, the fix is to prune against membership rather than
+  visibility, which trades a slightly larger blob for a position that
+  survives.
 - **Deferring re-sorts under the pointer** for activity-sorted groups, if the
   moving target turns out to bother anyone.
 - **The friends list and the voice section** are out of scope. Friends are

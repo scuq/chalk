@@ -198,7 +198,7 @@ import { mintGuestLink, buildJoinURL, hexToBytes as guestHexToBytes, bytesToBase
 import { countdownTickMs } from "../chat/countdown";
 import { WSClient, getOrCreateDeviceId, clearDeviceId, randomUuid } from "../ws-client";
 import { reducer } from "../state/reducer";
-import { hasUnread, initialState, selectChatPrefs, selectJoinMuted, selectParkingLotPrefs, selectRosterPrefs, selectVoicePrefs, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ThreadInboxRow, type VoicePrefs } from "../state/types";
+import { hasUnread, initialState, selectChatPrefs, selectJoinMuted, selectParkingLotPrefs, selectRosterPrefs, selectVoicePrefs, type Message, type ChannelSummary, type ProposalView, type ReactionSet, type ResolvedRosterPrefs, type ThreadInboxRow, type VoicePrefs } from "../state/types";
 import { selectGiphyPref } from "../giphy/giphy";
 import {
   selectLinkPreviewPref,
@@ -276,7 +276,15 @@ const EmojiPicker = lazyComponent(() =>
   import("./EmojiPicker").then((m) => m.EmojiPicker)
 );
 import { CreateChannelModal } from "./CreateChannelModal";
-import { DEFAULT_GROUP, knownGroups } from "../chat/channel-groups";
+import { DEFAULT_GROUP, effectiveGroup, knownGroups } from "../chat/channel-groups";
+// 114: the roster's order model -- the reads live in the Sidebar, the writes
+// (prune, then size-check, then send) live here with the rest of the prefs.
+import {
+  ROSTER_ORDER_FULL_HINT,
+  prefsPatchFits,
+  pruneRosterOrder,
+  type LiveGroup,
+} from "../chat/roster-order";
 import { rosterLabel } from "../chat/channel-names"; // 106-3
 import { pruneHidden, splitHidden } from "../chat/channel-hide";
 import { HISTORY_PAGE_SIZE, pageMarksComplete } from "../chat/history-paging";
@@ -665,6 +673,51 @@ export function App() {
     (ch: { id: string; lastSeq: number }) => state.unread[ch.id]?.lastSeq ?? ch.lastSeq,
     [state.unread],
   );
+  // 114-1: the roster order's write path, in one place.
+  //
+  // Every roster write already ships the WHOLE roster object -- the server's
+  // JSONB merge is shallow -- so this is where the phase's two rules live:
+  // prune before sending, so stale ids can never accumulate in a blob the
+  // server caps at 8 KiB, and check the marshalled size before sending, so
+  // an order that would not fit answers with something to show instead of
+  // being bounced silently. Returns null when the write went out.
+  //
+  // The live roster it prunes against is what actually renders: non-DM, non-
+  // voice, and not hidden (78-1 takes a hidden channel off the roster, so it
+  // is not in a group either).
+  const liveRosterGroups = (current: ResolvedRosterPrefs): LiveGroup[] => {
+    const list = state.channelOrder
+      .map((id) => state.channels[id])
+      .filter(
+        (ch): ch is ChannelSummary =>
+          !!ch && !ch.isDM && ch.channelType !== "voice",
+      );
+    const { visible } = splitHidden(list, current.hidden, lastSeqOfChannel);
+    const byKey = new Map<string, string[]>();
+    for (const ch of visible) {
+      const key = effectiveGroup(ch, current.groupOverrides).toLowerCase();
+      const ids = byKey.get(key);
+      if (ids) ids.push(ch.id);
+      else byKey.set(key, [ch.id]);
+    }
+    return [...byKey].map(([key, channelIDs]) => ({ key, channelIDs }));
+  };
+  const writeRosterOrder = (
+    change: (current: ResolvedRosterPrefs) => ResolvedRosterPrefs,
+  ): string | null => {
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return null;
+    const next = change(selectRosterPrefs(state.prefs));
+    // Prune against the roster AS THE CHANGE LEAVES IT, not as it stands: a
+    // drag across into another group moves the channel and places it in one
+    // write, and pruning against the old grouping would drop the placement
+    // it just made.
+    const patch = { roster: { ...next, ...pruneRosterOrder(next, liveRosterGroups(next)) } };
+    if (!prefsPatchFits(patch)) return ROSTER_ORDER_FULL_HINT;
+    c.send(TypePrefsSet, { patch });
+    return null;
+  };
+
   const zuckerRows = useMemo(() => {
     if (!zuckerActive) return [];
     return buildConversationList(
@@ -5830,6 +5883,69 @@ export function App() {
             }
             c.send(TypePrefsSet, { patch: { roster: { ...current, hidden: next } } });
           }}
+          // 114: what order the roster renders in. The reads are the
+          // Sidebar's; every write goes through writeRosterOrder, which
+          // prunes and size-checks before it sends and hands back a hint
+          // when the order would not fit.
+          channelSort={selectRosterPrefs(state.prefs).channelSort}
+          groupSort={selectRosterPrefs(state.prefs).groupSort}
+          channelOrder={selectRosterPrefs(state.prefs).channelOrder}
+          groupOrder={selectRosterPrefs(state.prefs).groupOrder}
+          activity={state.activity}
+          onSetGroupSort={(groupKey, mode) =>
+            writeRosterOrder((order) => {
+              const groupSort = { ...order.groupSort };
+              // Back to the account default is the absence of an entry, not
+              // a copy of it: change the default later and this group
+              // follows, which is what "default" has to mean.
+              if (mode === null) delete groupSort[groupKey];
+              else groupSort[groupKey] = mode;
+              return { ...order, groupSort };
+            })
+          }
+          onSetChannelOrder={(groupKey, ids) =>
+            writeRosterOrder((order) => {
+              const channelOrder = { ...order.channelOrder };
+              const groupSort = { ...order.groupSort };
+              if (ids === null) {
+                // "reset order": the group forgets its list, its sort
+                // override and its place among the groups, all at once.
+                delete channelOrder[groupKey];
+                delete groupSort[groupKey];
+                return {
+                  ...order,
+                  channelOrder,
+                  groupSort,
+                  groupOrder: order.groupOrder.filter((k) => k !== groupKey),
+                };
+              }
+              // Saying where a channel goes IS choosing your own order, so
+              // the group switches to manual with it.
+              channelOrder[groupKey] = ids;
+              groupSort[groupKey] = "manual";
+              return { ...order, channelOrder, groupSort };
+            })
+          }
+          onSetGroupOrder={(keys) =>
+            writeRosterOrder((order) => ({ ...order, groupOrder: keys ?? [] }))
+          }
+          // 114-4: a drag across into another group. The group override and
+          // the placement are one write because the roster object goes over
+          // whole -- two writes in the same tick would race, and the second
+          // would ship the pre-move overrides and undo the first.
+          onMoveChannelToGroup={(channelID, group, groupKey, ids) =>
+            writeRosterOrder((order) => {
+              const groupOverrides = { ...order.groupOverrides };
+              if (group === null) delete groupOverrides[channelID];
+              else groupOverrides[channelID] = group;
+              return {
+                ...order,
+                groupOverrides,
+                channelOrder: { ...order.channelOrder, [groupKey]: ids },
+                groupSort: { ...order.groupSort, [groupKey]: "manual" },
+              };
+            })
+          }
           activeID={state.activeChannelID}
           ownUserID={state.user?.id ?? null}
           presence={state.presence}
@@ -6930,6 +7046,13 @@ export function App() {
             if (!c || !c.isOpen()) return;
             const current = selectRosterPrefs(state.prefs);
             c.send(TypePrefsSet, { patch: { roster: { ...current, nameStyle: style } } });
+          }}
+          // 114-2: the account default for the order channels come in
+          // inside a group. Goes through writeRosterOrder like the rest of
+          // the order state, so it is pruned and size-checked on the way.
+          rosterChannelSort={selectRosterPrefs(state.prefs).channelSort}
+          onSetRosterChannelSort={(mode) => {
+            writeRosterOrder((order) => ({ ...order, channelSort: mode }));
           }}
           zuckerEnabled={selectRosterPrefs(state.prefs).viewMode === "zucker"}
           onSetZucker={(enabled) => {

@@ -12,6 +12,22 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **The channel list is yours to order.** Right-click a group header (or
+  long-press it on a phone) for a new menu: sort that group's channels by
+  when they were made or by recent activity, move the group up or down among
+  the others, or reset it. A channel's own menu grew an **order** row —
+  top, up, down, end — and using it puts that group in your order and keeps
+  it there.
+- **Sort channels by recent activity**, for every group at once, under
+  settings → chat → channel list. Channels still come newest-first unless you
+  change it, so nothing moves until you ask it to.
+- **Drag to reorder, on a desktop.** Drag a channel within its group or across
+  into another one, or drag a group header among the groups; a line shows
+  where it will land, the list scrolls when you reach its edge, and Escape
+  puts it back. Your order follows your account, so it is the same on every
+  device you read chalk on.
+
 ### Fixed
 - In **compact mode**, the date line between days painted over the top of the
   message right below it, clipping its first line. It no longer does.

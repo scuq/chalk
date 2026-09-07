@@ -105,7 +105,7 @@ as-built rather than a contemporaneous plan.
 | 111 | the channel banner — an image pinned under the channel title | [PHASE-111-BANNER.md](phases/PHASE-111-BANNER.md) |
 | 112 | profile pictures — encrypted per channel, one line tall | [PHASE-112-AVATARS.md](phases/PHASE-112-AVATARS.md) |
 | 113 | day marks — which day am I reading? | [PHASE-113-DAYMARKS.md](phases/PHASE-113-DAYMARKS.md) |
-| 114 | roster order — your channels, in your order — **planned, not started** | [PHASE-114-ROSTERORDER.md](phases/PHASE-114-ROSTERORDER.md) |
+| 114 | roster order — your channels, in your order | [PHASE-114-ROSTERORDER.md](phases/PHASE-114-ROSTERORDER.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
@@ -741,8 +741,8 @@ QEMU, npm never returned); every stage that runs anything now runs on the
 build platform and Go cross-compiles, with a 30-minute cap on the job.
 
 **Not started.** 65 (web push), 86 (ties), 87
-(message reminders), 90 (a local idle agent), 99 (database-credential
-hardening, the R18 mitigation) and 114 (roster order) — each planned in its own `PHASE-*.md`, and each marked
+(message reminders), 90 (a local idle agent) and 99 (database-credential
+hardening, the R18 mitigation) — each planned in its own `PHASE-*.md`, and each marked
 *planned, not started* in the index above. [open-items.md](open-items.md) is the
 authority on what is open; this log only records what shipped.
 

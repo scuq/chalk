@@ -10,6 +10,7 @@ import { parseGiphyBody } from "../giphy/giphy";
 import { parseLinkPreviewBody } from "../linkpreview/linkpreview";
 import { parseCodeBody } from "../code/code";
 import { isUndecryptableBody } from "./search";
+import { compareByActivity } from "./roster-order"; // 114-2
 import {
   countsAsUnread,
   type ChannelActivity,
@@ -178,7 +179,10 @@ export function buildConversationList(
   }
   // Newest first; id tie-break keeps the order stable when timestamps
   // collide (bulk backfills, same-ms sends).
-  rows.sort((a, b) => b.when - a.when || a.id.localeCompare(b.id));
+  // 114-2: the comparator moved to roster-order.ts when the desktop roster
+  // grew an activity sort of its own. Shared rather than copied, so the two
+  // views can never disagree about what "most recent" means.
+  rows.sort(compareByActivity);
   return rows;
 }
 

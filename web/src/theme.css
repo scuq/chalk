@@ -4417,6 +4417,73 @@ body.chalk-resizing-y .chalk-composer-resizer {
   border-color: var(--chalk-fg-bright);
 }
 
+/* 114-3: the group header menu's sort picker. Same family as the group
+   input above -- a menu row is a label and one control, whatever the
+   control happens to be. */
+.chalk-nick-menu-select {
+  flex: 1;
+  min-width: 0;
+  background: var(--chalk-bg-elev, #14201a);
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg);
+  padding: 0.2rem 0.4rem;
+  font-family: inherit;
+  font-size: var(--chalk-size-small);
+  box-sizing: border-box;
+}
+.chalk-nick-menu-select:focus {
+  outline: none;
+  border-color: var(--chalk-fg-bright);
+}
+/* An order button that has nowhere to go says so by dimming, rather than
+   by vanishing and moving the three beside it. */
+.chalk-nick-menu-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.chalk-nick-menu-btn:disabled:hover {
+  color: var(--chalk-fg-dim);
+  border-color: var(--chalk-border);
+  background: transparent;
+}
+
+/* ============================================================
+   Phase 114-4: dragging a row to reorder it
+   ============================================================ */
+
+/* The list is the positioning context for the insertion line, which is
+   placed in the list's own scrolled coordinates so it stays put while the
+   edges auto-scroll under it. */
+.chalk-sidebar-list--channels {
+  position: relative;
+}
+
+/* Nothing is selectable mid-drag: a drag across rows would otherwise leave
+   a trail of highlighted channel names behind it. */
+.chalk-sidebar-list--dragging {
+  user-select: none;
+  cursor: grabbing;
+}
+
+/* Two pixels, the accent, full width: where the row would land. */
+.chalk-sidebar-dropline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--chalk-accent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* The row being carried reads as lifted rather than gone -- it is still
+   where it was until the pointer is let go. */
+.chalk-sidebar-item[data-dragging="true"],
+.chalk-sidebar-group[data-dragging="true"] {
+  opacity: 0.45;
+}
+
 /* ============================================================
    Phase 78-2: hidden channels
    ============================================================ */

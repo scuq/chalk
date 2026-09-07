@@ -35,6 +35,15 @@ import {
   splitVoice,
 } from "../chat/channel-groups";
 import type { RosterGroup } from "../chat/channel-groups";
+import {
+  GROUP_SORT_LABEL,
+  moveInList,
+  orderChannels,
+  orderGroups,
+  placeInList,
+  type ChannelSortMode,
+  type MoveTo,
+} from "../chat/roster-order"; // 114
 import { splitHidden } from "../chat/channel-hide";
 import type { HideMode, HiddenChannel } from "../chat/channel-hide";
 import {
@@ -207,6 +216,35 @@ interface Props {
   // bottom of the list. Optional, same as the group pair above.
   hiddenChannels?: Record<string, HiddenChannel>;
   onSetChannelHidden?: (channelID: string, mode: HideMode | null) => void;
+  // 114: what order the roster renders in (resolved prefs). channelSort is
+  // the account default for the channels inside a group, groupSort overrides
+  // it for one group, channelOrder holds a group's hand-written list and
+  // groupOrder the reader's group order. Empty everything is today's roster.
+  //
+  // The setters write prefs, so they answer: null when the write went out, a
+  // hint to show when it would not fit the 8 KiB the server takes. Passing
+  // null as the list (or the mode) resets that group to the default.
+  channelSort?: ChannelSortMode;
+  groupSort?: Record<string, ChannelSortMode>;
+  channelOrder?: Record<string, string[]>;
+  groupOrder?: string[];
+  onSetGroupSort?: (groupKey: string, mode: ChannelSortMode | null) => string | null;
+  onSetChannelOrder?: (groupKey: string, ids: string[] | null) => string | null;
+  onSetGroupOrder?: (keys: string[] | null) => string | null;
+  // 114-4: a drag that crosses into another group. One call, not a 54-4 move
+  // followed by an order write: the roster prefs go over the wire whole, so
+  // two writes in the same tick would race and the second would undo the
+  // first. group is the name to file the channel under, null to go back to
+  // the creator's suggestion; ids is the target group's new order.
+  onMoveChannelToGroup?: (
+    channelID: string,
+    group: string | null,
+    groupKey: string,
+    ids: string[],
+  ) => string | null;
+  // 114-2: activity per channel (state.activity), for the activity sort.
+  // Only ts is read; the rest of the entry belongs to the message preview.
+  activity?: Record<string, { ts: number }>;
   // 106-3: which of a channel's names the rows show (resolved prefs;
   // "short" falls back to the full name where none is set).
   nameStyle?: NameStyle;
@@ -380,6 +418,15 @@ export function Sidebar({
   onSetChannelGroup,
   hiddenChannels,
   onSetChannelHidden,
+  channelSort = "created",
+  groupSort,
+  channelOrder,
+  groupOrder,
+  onSetGroupSort,
+  onSetChannelOrder,
+  onSetGroupOrder,
+  onMoveChannelToGroup,
+  activity,
   nameStyle = "full",
   onUpdateChannel,
   avatars, // 112-4
@@ -429,6 +476,16 @@ export function Sidebar({
   const [channelMenu, setChannelMenu] = useState<
     { channelID: string; name: string; x: number; y: number } | null
   >(null);
+  // 114-3: the group header's own menu -- sort mode, where the group sits
+  // among the others, and "reset order". The header had no menu before this;
+  // it only answered a click by collapsing.
+  const [groupMenu, setGroupMenu] = useState<
+    { key: string; name: string; x: number; y: number } | null
+  >(null);
+  // What the prefs write said when it refused: the roster's order is the
+  // first thing to put LISTS rather than exceptions in a blob the server
+  // caps at 8 KiB, so a refusal has to be visible rather than silent.
+  const [orderHint, setOrderHint] = useState<string | null>(null);
   // 54-4: the group overrides in play this render, and the menu's group-row
   // draft (seeded on open, committed explicitly).
   const overrides = groupOverrides ?? {};
@@ -473,6 +530,7 @@ export function Sidebar({
   const openNickMenu = (friend: Friend, x: number, y: number) => {
     const at = clampMenu(x, y);
     setChannelMenu(null);
+    setGroupMenu(null);
     closeHoverCard();
     setNickMenu({ userID: friend.userID, handle: friend.handle, ...at });
   };
@@ -480,6 +538,9 @@ export function Sidebar({
   const openChannelMenu = (ch: ChannelSummary, x: number, y: number) => {
     const at = clampMenu(x, y);
     setNickMenu(null);
+    setGroupMenu(null);
+    // 114-3: a fresh menu never opens still showing the last write's refusal.
+    setOrderHint(null);
     // 54-4: the group row edits a draft seeded with what the menu opened on
     // (the user's effective group), committed on Enter/blur/datalist pick.
     setGroupDraft(effectiveGroup(ch, overrides));
@@ -525,10 +586,11 @@ export function Sidebar({
   };
 
   useEffect(() => {
-    if (!nickMenu && !channelMenu) return;
+    if (!nickMenu && !channelMenu && !groupMenu) return;
     const close = () => {
       setNickMenu(null);
       setChannelMenu(null);
+      setGroupMenu(null);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
@@ -541,7 +603,7 @@ export function Sidebar({
       window.removeEventListener("click", close);
       window.removeEventListener("keydown", onKey);
     };
-  }, [nickMenu, channelMenu]);
+  }, [nickMenu, channelMenu, groupMenu]);
 
   const sortedFriends = sortFriends(friends);
 
@@ -554,15 +616,311 @@ export function Sidebar({
 
   // 106-3: the filter matches either name -- the one on screen and the
   // one it stands for.
-  const visibleChannels = filterRoster(textChannels, channelFilter, filterText);
+  // 114-1: the flat list has no groups, so no group can override the sort --
+  // the account default is the only order there is. It still applies, or the
+  // activity setting would silently do nothing for anyone who turned
+  // grouping off.
+  const visibleChannels = orderChannels(
+    filterRoster(textChannels, channelFilter, filterText),
+    channelSort,
+    undefined,
+    activity,
+  );
   const showChannelFilter = showRosterFilter(textChannels.length);
 
   // 54-3: grouped view. An active filter always renders flat -- a match
   // hidden inside a collapsed group would read as "filter is broken" -- and
   // a single group draws no headers. Collapse state is per-machine.
-  const channelGroups = groupRoster(textChannels, overrides);
+  // 114-1: the order the reader asked for goes on here, after grouping and
+  // before the row flatten -- one site, over data the client already holds.
+  // With empty prefs both calls are the identity and the roster is byte for
+  // byte what it was.
+  const groupSorts = groupSort ?? {};
+  const groupLists = channelOrder ?? {};
+  const sortFor = (key: string): ChannelSortMode => groupSorts[key] ?? channelSort;
+  const channelGroups = orderGroups(
+    groupRoster(textChannels, overrides).map((g) => ({
+      ...g,
+      channels: orderChannels(g.channels, sortFor(g.key), groupLists[g.key], activity),
+    })),
+    groupOrder,
+  );
   const groupedView =
     groupingEnabled && channelFilter.trim() === "" && channelGroups.length > 1;
+  // 114-1: with grouping on and only one group there are no headers, but
+  // the list IS that group -- so it renders in that group's order rather
+  // than the account default's. Filtering still renders flat.
+  const soleGroup =
+    groupingEnabled && channelFilter.trim() === "" && channelGroups.length === 1
+      ? channelGroups[0]
+      : null;
+
+  // 114-3: the group a menu row can be reordered inside -- null when what is
+  // on screen is not in group order (grouping off, or a filter running),
+  // because then there is nothing for "up" to mean. A hidden channel is off
+  // the roster and so in no group either.
+  const orderableGroupFor = (ch: ChannelSummary): RosterGroup | null => {
+    if (!onSetChannelOrder || !groupingEnabled || channelFilter.trim() !== "") {
+      return null;
+    }
+    if (ch.isDM || ch.channelType === "voice") return null;
+    const key = effectiveGroup(ch, overrides).toLowerCase();
+    return channelGroups.find((g) => g.key === key) ?? null;
+  };
+  // Every order write seeds its list with what is on screen, which is what
+  // makes "up" mean "up from where I can see it" whichever mode the group
+  // was in before -- and what turns that group manual on the way. The
+  // write answers with a hint when it would not fit; the menu shows it.
+  const moveChannel = (ch: ChannelSummary, to: MoveTo) => {
+    const g = orderableGroupFor(ch);
+    if (!g || !onSetChannelOrder) return;
+    setOrderHint(
+      onSetChannelOrder(
+        g.key,
+        moveInList(
+          g.channels.map((c) => c.id),
+          ch.id,
+          to,
+        ),
+      ),
+    );
+  };
+  const moveGroup = (key: string, to: MoveTo) => {
+    if (!onSetGroupOrder) return;
+    setOrderHint(
+      onSetGroupOrder(
+        moveInList(
+          channelGroups.map((g) => g.key),
+          key,
+          to,
+        ),
+      ),
+    );
+  };
+  // ---- 114-4: drag to reorder ---------------------------------------------
+  //
+  // Hand-rolled on pointer events, the SidebarResizer precedent. Mouse only:
+  // touch already has the long-press menu, and a touch drag would fight the
+  // drawer's swipe for the same gesture. Nothing about the ORDER depends on
+  // this -- it is a faster way to say what the menus above already say.
+  //
+  // The drop target is computed as a list of slots (one before each row, one
+  // at the end of each group) read off the DOM, so a collapsed group is a
+  // slot too and the end of a list is not a special case.
+  const listRef = useRef<HTMLUListElement | null>(null);
+  const dragStart = useRef<
+    { kind: "channel" | "group"; id: string; x: number; y: number } | null
+  >(null);
+  // Consumed by the row's click / the header's collapse, so finishing a drag
+  // on top of a row doesn't also open or fold it.
+  const dragFired = useRef(false);
+  const lastPointer = useRef<{ x: number; y: number } | null>(null);
+  const autoScroll = useRef<number | null>(null);
+  const [drag, setDrag] = useState<{ kind: "channel" | "group"; id: string } | null>(
+    null,
+  );
+  const [dropAt, setDropAt] = useState<
+    { groupKey: string; before: string | null; line: number } | null
+  >(null);
+
+  // The roster is only orderable while it is actually rendering in group
+  // order -- see orderableGroupFor.
+  const rosterInGroupOrder = groupingEnabled && channelFilter.trim() === "";
+  const canDragChannels = !!onSetChannelOrder && rosterInGroupOrder;
+  const canDragGroups = !!onSetGroupOrder && groupedView;
+
+  const endDrag = () => {
+    dragStart.current = null;
+    lastPointer.current = null;
+    if (autoScroll.current !== null) {
+      window.clearInterval(autoScroll.current);
+      autoScroll.current = null;
+    }
+    setDrag(null);
+    setDropAt(null);
+  };
+
+  // Where the insertion line goes for the pointer at (x, y). Slots come off
+  // the DOM in render order: every visible channel row opens a slot before
+  // itself, and every group closes with one at its last row's bottom.
+  const dropFor = (
+    kind: "channel" | "group",
+    y: number,
+  ): { groupKey: string; before: string | null; line: number } | null => {
+    const root = listRef.current;
+    if (!root) return null;
+    const top = root.getBoundingClientRect().top - root.scrollTop;
+    const slots: { groupKey: string; before: string | null; y: number }[] = [];
+    // A single group draws no header (54-3), so the list itself names it.
+    let key = root.getAttribute("data-roster-group");
+    let bottom: number | null = null;
+    const closeGroup = () => {
+      if (key !== null && bottom !== null && kind === "channel") {
+        slots.push({ groupKey: key, before: null, y: bottom });
+      }
+    };
+    for (const el of root.querySelectorAll<HTMLElement>("[data-group],[data-channel-id]")) {
+      const rect = el.getBoundingClientRect();
+      const header = el.getAttribute("data-group");
+      if (header !== null) {
+        closeGroup();
+        key = header;
+        bottom = rect.bottom;
+        if (kind === "group") slots.push({ groupKey: header, before: header, y: rect.top });
+        continue;
+      }
+      if (key === null) continue;
+      if (el.getAttribute("data-hidden") === "true") continue; // the shelf is not a place
+      bottom = rect.bottom;
+      if (kind === "channel") {
+        const id = el.getAttribute("data-channel-id");
+        if (id) slots.push({ groupKey: key, before: id, y: rect.top });
+      }
+    }
+    if (kind === "group") {
+      if (key !== null && bottom !== null) slots.push({ groupKey: key, before: null, y: bottom });
+    } else {
+      closeGroup();
+    }
+    let best: { groupKey: string; before: string | null; y: number } | null = null;
+    for (const slot of slots) {
+      if (!best || Math.abs(slot.y - y) < Math.abs(best.y - y)) best = slot;
+    }
+    return best ? { groupKey: best.groupKey, before: best.before, line: best.y - top } : null;
+  };
+
+  // Near an edge the list scrolls itself, so a drag can reach a group that is
+  // off-screen without letting go.
+  const AUTOSCROLL_EDGE = 28;
+  const AUTOSCROLL_STEP = 10;
+  const trackDrag = (kind: "channel" | "group", x: number, y: number) => {
+    lastPointer.current = { x, y };
+    setDropAt(dropFor(kind, y));
+    const root = listRef.current;
+    if (!root) return;
+    const rect = root.getBoundingClientRect();
+    const dir = y < rect.top + AUTOSCROLL_EDGE ? -1 : y > rect.bottom - AUTOSCROLL_EDGE ? 1 : 0;
+    if (dir === 0) {
+      if (autoScroll.current !== null) {
+        window.clearInterval(autoScroll.current);
+        autoScroll.current = null;
+      }
+      return;
+    }
+    if (autoScroll.current !== null) return;
+    autoScroll.current = window.setInterval(() => {
+      const at = lastPointer.current;
+      if (!at || !listRef.current) return;
+      listRef.current.scrollTop += dir * AUTOSCROLL_STEP;
+      setDropAt(dropFor(kind, at.y));
+    }, 16);
+  };
+
+  // A drag only starts once the pointer has actually travelled, so a click
+  // that wobbles two pixels still selects the channel.
+  const DRAG_THRESHOLD = 4;
+  const onDragPointerDown = (
+    kind: "channel" | "group",
+    id: string,
+    e: PointerEvent,
+  ) => {
+    // A fresh press starts with nothing to consume, so a drag that ended
+    // without a click behind it can never swallow the next one.
+    dragFired.current = false;
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    if (kind === "channel" ? !canDragChannels : !canDragGroups) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragStart.current = { kind, id, x: e.clientX, y: e.clientY };
+  };
+  const onDragPointerMove = (id: string, e: PointerEvent) => {
+    const start = dragStart.current;
+    if (!start || start.id !== id) return;
+    if (!drag) {
+      const moved =
+        Math.abs(e.clientX - start.x) + Math.abs(e.clientY - start.y) >= DRAG_THRESHOLD;
+      if (!moved) return;
+      setDrag({ kind: start.kind, id: start.id });
+    }
+    trackDrag(start.kind, e.clientX, e.clientY);
+  };
+  const onDragPointerUp = (id: string, e: PointerEvent) => {
+    const start = dragStart.current;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    if (!start || start.id !== id) return;
+    const target = dropAt;
+    const dragging = drag;
+    endDrag();
+    if (!dragging || !target) return;
+    dragFired.current = true;
+    if (dragging.kind === "group") {
+      if (!onSetGroupOrder) return;
+      setOrderHint(
+        onSetGroupOrder(
+          placeInList(
+            channelGroups.map((g) => g.key),
+            dragging.id,
+            target.before,
+          ),
+        ),
+      );
+      return;
+    }
+    const ch = channels.find((c) => c.id === dragging.id);
+    const to = channelGroups.find((g) => g.key === target.groupKey);
+    if (!ch || !to || !onSetChannelOrder) return;
+    const ids = placeInList(
+      to.channels.map((c) => c.id),
+      ch.id,
+      target.before,
+    );
+    if (effectiveGroup(ch, overrides).toLowerCase() === to.key) {
+      setOrderHint(onSetChannelOrder(to.key, ids));
+      return;
+    }
+    // Across into another group: that is a 54-4 move plus a placement, and
+    // it has to be ONE write -- the roster object goes over whole, so two
+    // would race and the second would undo the first. Landing back on the
+    // creator's suggestion clears the override rather than storing a copy of
+    // it, exactly as the menu's group row does.
+    if (!onMoveChannelToGroup) return;
+    const suggested = ch.groupName.trim() || DEFAULT_GROUP;
+    setOrderHint(
+      onMoveChannelToGroup(
+        ch.id,
+        to.name.toLowerCase() === suggested.toLowerCase() ? null : to.name,
+        to.key,
+        ids,
+      ),
+    );
+  };
+  // Escape gives the drag back with nothing moved.
+  useEffect(() => {
+    if (!drag) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        dragFired.current = true;
+        endDrag();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drag]);
+  // An unmount mid-drag must not leave the auto-scroll timer running.
+  useEffect(
+    () => () => {
+      if (autoScroll.current !== null) window.clearInterval(autoScroll.current);
+    },
+    [],
+  );
+
+  const openGroupMenu = (g: RosterGroup, x: number, y: number) => {
+    const at = clampMenu(x, y);
+    setNickMenu(null);
+    setChannelMenu(null);
+    setOrderHint(null);
+    setGroupMenu({ key: g.key, name: g.name, ...at });
+  };
+
   // 54-4: datalist + canonicalization target for the menu's group row.
   // 100-1: voice rooms are out of the grouped roster, so their (now inert)
   // group suggestions stop feeding the datalist.
@@ -634,7 +992,9 @@ export function Sidebar({
           ? []
           : g.channels.map((ch): RosterRow => ({ kind: "channel", ch }))),
       ])
-    : visibleChannels.map((ch): RosterRow => ({ kind: "channel", ch }));
+    : (soleGroup ? soleGroup.channels : visibleChannels).map(
+        (ch): RosterRow => ({ kind: "channel", ch }),
+      );
   // 78-2: the hidden shelf, always last and never grouped -- what is on it
   // is a flat "these are put away", not part of the roster's shape.
   // Revealing it is component state, not a pref: a peek that followed you to
@@ -654,7 +1014,12 @@ export function Sidebar({
   // not fork between the two lists.
   // 106-1: grouped is true for rows under a group header, which indent a
   // step so the header reads as their parent rather than a sibling.
-  const channelRow = (ch: ChannelSummary, hidden = false, grouped = false) => {
+  const channelRow = (
+    ch: ChannelSummary,
+    hidden = false,
+    grouped = false,
+    orderable = false,
+  ) => {
     const isVoice = ch.channelType === "voice";
     const roster = isVoice ? (voiceRosters[ch.id] ?? []) : [];
     const u = unread[ch.id];
@@ -673,10 +1038,13 @@ export function Sidebar({
         data-hidden={hidden ? "true" : "false"}
         data-channel-type={isVoice ? "voice" : "text"}
         data-active={ch.id === activeRow ? "true" : "false"}
+        data-dragging={drag?.kind === "channel" && drag.id === ch.id ? "true" : "false"}
         onClick={(e) => {
           // 50-5: same long-press/click interplay as the friend rows.
-          if (longPressFired.current) {
+          // 114-4: and the same for a drag that finished on its own row.
+          if (longPressFired.current || dragFired.current) {
             longPressFired.current = false;
+            dragFired.current = false;
             e.preventDefault();
             e.stopPropagation();
             return;
@@ -688,7 +1056,12 @@ export function Sidebar({
           openChannelMenu(ch, e.clientX, e.clientY);
         }}
         onPointerDown={(e) => {
-          if (e.pointerType === "mouse") return; // right-click covers desktop
+          if (e.pointerType === "mouse") {
+            // 114-4: right-click still opens the menu; only the left button
+            // picks a row up.
+            if (orderable) onDragPointerDown("channel", ch.id, e);
+            return; // right-click covers the desktop menu
+          }
           cancelLongPress();
           const x = e.clientX;
           const y = e.clientY;
@@ -697,9 +1070,18 @@ export function Sidebar({
             openChannelMenu(ch, x, y);
           }, 500);
         }}
-        onPointerUp={cancelLongPress}
+        onPointerMove={(e) => {
+          if (orderable) onDragPointerMove(ch.id, e);
+        }}
+        onPointerUp={(e) => {
+          cancelLongPress();
+          if (orderable) onDragPointerUp(ch.id, e);
+        }}
         onPointerLeave={cancelLongPress}
-        onPointerCancel={cancelLongPress}
+        onPointerCancel={(e) => {
+          cancelLongPress();
+          if (orderable) onDragPointerUp(ch.id, e);
+        }}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => {
@@ -1088,9 +1470,24 @@ export function Sidebar({
         )}
 
         <ul
-          class="chalk-sidebar-list chalk-sidebar-list--channels"
+          ref={listRef}
+          class={`chalk-sidebar-list chalk-sidebar-list--channels${drag ? " chalk-sidebar-list--dragging" : ""}`}
           data-testid="sidebar-list"
+          // 114-4: a lone group draws no header, so the list carries its key
+          // -- otherwise a drag inside it would have no group to land in.
+          data-roster-group={soleGroup?.key}
         >
+          {/* The insertion line. Positioned in the list's own scrolled
+              coordinates, so it stays where it was put while the edges
+              auto-scroll under it. */}
+          {drag && dropAt && (
+            <li
+              class="chalk-sidebar-dropline"
+              style={`top:${dropAt.line}px`}
+              data-testid="sidebar-dropline"
+              aria-hidden="true"
+            />
+          )}
           {groupChannels.length === 0 && hiddenList.length === 0 && (
             <li class="chalk-sidebar-empty">no channels yet</li>
           )}
@@ -1137,7 +1534,13 @@ export function Sidebar({
                 ? rollUp(g.channels)
                 : { anyUnread: false, mention: false };
               return (
-                <li key={"group:" + g.key} class="chalk-sidebar-group">
+                <li
+                  key={"group:" + g.key}
+                  class="chalk-sidebar-group"
+                  data-dragging={
+                    drag?.kind === "group" && drag.id === g.key ? "true" : "false"
+                  }
+                >
                   <button
                     type="button"
                     class="chalk-sidebar-group-header"
@@ -1145,7 +1548,46 @@ export function Sidebar({
                     data-group={g.key}
                     data-collapsed={isCollapsed ? "true" : "false"}
                     aria-expanded={!isCollapsed}
-                    onClick={() => toggleGroup(g.key)}
+                    onClick={() => {
+                      // 114-3: a long-press opened the menu; it must not
+                      // also fold the group on the way back up. Same
+                      // consume-the-flag dance the channel rows do.
+                      // 114-4: a drag that ended here does not fold it
+                      // either.
+                      if (longPressFired.current || dragFired.current) {
+                        longPressFired.current = false;
+                        dragFired.current = false;
+                        return;
+                      }
+                      toggleGroup(g.key);
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      openGroupMenu(g, e.clientX, e.clientY);
+                    }}
+                    onPointerDown={(e) => {
+                      if (e.pointerType === "mouse") {
+                        onDragPointerDown("group", g.key, e); // 114-4
+                        return; // right-click covers desktop
+                      }
+                      cancelLongPress();
+                      const x = e.clientX;
+                      const y = e.clientY;
+                      longPressTimer.current = window.setTimeout(() => {
+                        longPressFired.current = true;
+                        openGroupMenu(g, x, y);
+                      }, 500);
+                    }}
+                    onPointerMove={(e) => onDragPointerMove(g.key, e)}
+                    onPointerUp={(e) => {
+                      cancelLongPress();
+                      onDragPointerUp(g.key, e);
+                    }}
+                    onPointerLeave={cancelLongPress}
+                    onPointerCancel={(e) => {
+                      cancelLongPress();
+                      onDragPointerUp(g.key, e);
+                    }}
                     title={isCollapsed ? `expand ${g.name}` : `collapse ${g.name}`}
                   >
                     <span class="chalk-sidebar-group-arrow" aria-hidden="true">
@@ -1160,7 +1602,14 @@ export function Sidebar({
             }
             // 106-1: rows under a group header (and on the opened hidden
             // shelf) indent beneath it; the flat, ungrouped list does not.
-            return channelRow(row.ch, row.hidden, groupedView || row.hidden === true);
+            return channelRow(
+              row.ch,
+              row.hidden,
+              groupedView || row.hidden === true,
+              // 114-4: the hidden shelf is a place things are put away, not
+              // a place in the order.
+              rosterInGroupOrder && row.hidden !== true,
+            );
           })}
         </ul>
       </div>
@@ -1340,6 +1789,63 @@ export function Sidebar({
                     <option key={g} value={g} />
                   ))}
                 </datalist>
+              </div>
+            );
+          })()}
+          {/* 114-3: where this channel sits in its group. Using any of these
+              says "I have an order", so the group switches to it -- picking
+              a sort mode again from the group's header menu leaves the list
+              in place for when you want it back. Reachable from the
+              keyboard, and the only reorder gesture a phone has. */}
+          {(() => {
+            const ch = channels.find((c) => c.id === channelMenu.channelID);
+            if (!ch) return null;
+            const g = orderableGroupFor(ch);
+            if (!g || !onSetChannelOrder || g.channels.length < 2) return null;
+            const at = g.channels.findIndex((c) => c.id === ch.id);
+            const first = at === 0;
+            const last = at === g.channels.length - 1;
+            // Words for the ends, arrows for the steps: ⤒ and ⤓ are exactly
+            // the kind of glyph 30-5d took out of the roster, drawn
+            // differently (or not at all) by each monospace font.
+            const moves: { to: MoveTo; label: string; title: string; off: boolean }[] = [
+              { to: "top", label: "top", title: `first in ${g.name}`, off: first },
+              { to: "up", label: "↑", title: "up one", off: first },
+              { to: "down", label: "↓", title: "down one", off: last },
+              { to: "bottom", label: "end", title: `last in ${g.name}`, off: last },
+            ];
+            // The way back, for the roster that has no group header to
+            // right-click: one group draws none (54-3), so without this
+            // there would be no undo on a phone-sized roster.
+            const ordered = groupLists[g.key] !== undefined;
+            return (
+              <div class="chalk-nick-menu-row">
+                <span class="chalk-nick-menu-label">order</span>
+                {moves.map((m) => (
+                  <button
+                    key={m.to}
+                    type="button"
+                    class="chalk-nick-menu-btn"
+                    data-testid={"channel-menu-move-" + m.to}
+                    disabled={m.off}
+                    title={m.title}
+                    aria-label={m.title}
+                    onClick={() => moveChannel(ch, m.to)}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+                {ordered && (
+                  <button
+                    type="button"
+                    class="chalk-nick-menu-btn"
+                    data-testid="channel-menu-order-reset"
+                    title={`forget your order for ${g.name}`}
+                    onClick={() => setOrderHint(onSetChannelOrder(g.key, null))}
+                  >
+                    reset
+                  </button>
+                )}
               </div>
             );
           })()}
@@ -1568,6 +2074,118 @@ export function Sidebar({
               </div>
             );
           })()}
+          {orderHint && (
+            <div class="chalk-nick-menu-row">
+              <span class="chalk-nick-menu-hint" data-testid="channel-menu-order-hint">
+                {orderHint}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 114-3: the group header's menu. Right-click on the desktop,
+          long-press on the phone -- the header's plain click still means
+          collapse, which is what it has always meant.
+
+          Three things live here, and only here: what order this group's
+          channels come in (its own, or the account default it inherits),
+          where the group itself sits among the others, and the way back --
+          "reset order" drops this group's hand-written list, its sort
+          override and its place among the groups in one go. */}
+      {groupMenu && (
+        <div
+          class="chalk-nick-menu"
+          style={`left:${groupMenu.x}px;top:${groupMenu.y}px`}
+          onClick={(e) => e.stopPropagation()}
+          data-testid="group-menu"
+          role="dialog"
+          aria-label={`menu for the ${groupMenu.name} group`}
+        >
+          <div class="chalk-nick-menu-title">
+            <span>{groupMenu.name}</span>
+          </div>
+          {onSetGroupSort && (
+            <div class="chalk-nick-menu-row">
+              <span class="chalk-nick-menu-label">sort by</span>
+              <select
+                class="chalk-nick-menu-select"
+                data-testid="group-menu-sort"
+                value={groupSorts[groupMenu.key] ?? channelSort}
+                onChange={(e) => {
+                  const mode = (e.target as HTMLSelectElement).value as ChannelSortMode;
+                  // Landing back on the account default CLEARS the override
+                  // rather than storing a copy of it, so changing the
+                  // default later still moves this group with it.
+                  setOrderHint(
+                    onSetGroupSort(groupMenu.key, mode === channelSort ? null : mode),
+                  );
+                }}
+                aria-label="sort this group's channels by"
+              >
+                {(["created", "activity", "manual"] as ChannelSortMode[]).map((m) => (
+                  <option key={m} value={m}>
+                    {GROUP_SORT_LABEL[m]}
+                    {m === channelSort ? " (default)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {onSetGroupOrder && channelGroups.length > 1 && (() => {
+            const at = channelGroups.findIndex((g) => g.key === groupMenu.key);
+            const first = at === 0;
+            const last = at === channelGroups.length - 1;
+            const moves: { to: MoveTo; label: string; title: string; off: boolean }[] = [
+              { to: "top", label: "top", title: "first group", off: first },
+              { to: "up", label: "↑", title: "up one", off: first },
+              { to: "down", label: "↓", title: "down one", off: last },
+              { to: "bottom", label: "end", title: "last group", off: last },
+            ];
+            return (
+              <div class="chalk-nick-menu-row">
+                <span class="chalk-nick-menu-label">move</span>
+                {moves.map((m) => (
+                  <button
+                    key={m.to}
+                    type="button"
+                    class="chalk-nick-menu-btn"
+                    data-testid={"group-menu-move-" + m.to}
+                    disabled={m.off}
+                    title={m.title}
+                    aria-label={m.title}
+                    onClick={() => moveGroup(groupMenu.key, m.to)}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+          {onSetChannelOrder && (
+            <div class="chalk-nick-menu-row">
+              <span class="chalk-nick-menu-label">order</span>
+              <button
+                type="button"
+                class="chalk-nick-menu-btn"
+                data-testid="group-menu-reset"
+                title="forget this group's own order and where it sits"
+                onClick={() => {
+                  setOrderHint(onSetChannelOrder(groupMenu.key, null));
+                  setGroupMenu(null);
+                }}
+              >
+                reset
+              </button>
+            </div>
+          )}
+          {orderHint && (
+            <div class="chalk-nick-menu-row">
+              <span class="chalk-nick-menu-hint" data-testid="group-menu-order-hint">
+                {orderHint}
+              </span>
+            </div>
+          )}
         </div>
       )}
 

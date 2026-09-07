@@ -47,6 +47,7 @@ import {
 } from "../parking";
 import { PARKING_HOTKEY_LABEL } from "../parking-hotkey";
 import { NAME_STYLE_CHOICES, type NameStyle } from "../chat/channel-names"; // 106-3
+import { CHANNEL_SORT_CHOICES, type AutoSortMode } from "../chat/roster-order"; // 114-2
 import { composerHelp, isMacPlatform } from "../chat/composer-keys";
 import { useIsMobile } from "../mobile";
 import { notifySounds } from "../notify";
@@ -204,6 +205,12 @@ interface Props {
   // 106-3: full or short channel names in the roster. Account pref.
   rosterNameStyle?: NameStyle;
   onSetRosterNameStyle?: (style: NameStyle) => void;
+  // 114-2: the default order for the channels inside a group. Account pref,
+  // like everything else here -- a roster in one order on your laptop and
+  // another on your phone is a roster you cannot learn. A single group can
+  // override it (and hold its own hand-written order) from its header menu.
+  rosterChannelSort?: AutoSortMode;
+  onSetRosterChannelSort?: (mode: AutoSortMode) => void;
   // 62-5: Zuckermode -- the phone's unified conversation list. Synced
   // account-wide, consumed only on mobile.
   zuckerEnabled?: boolean;
@@ -239,6 +246,8 @@ export function ProfilePanel({
   onSetRosterGrouping,
   rosterNameStyle,
   onSetRosterNameStyle,
+  rosterChannelSort,
+  onSetRosterChannelSort,
   zuckerEnabled,
   onSetZucker,
   onClose,
@@ -1248,6 +1257,39 @@ export function ProfilePanel({
                   <span class="chalk-profile-theme-desc">
                     (in the sidebar and the conversation list; the channel
                     header always shows the full name)
+                  </span>
+                </div>
+              )}
+              {/* 114-2: what order the channels inside a group come in.
+                  Defaults to how they have always come -- newest first --
+                  so nobody's roster moves the day this arrives. A single
+                  group can be set differently, or put in your own order by
+                  hand, from its header menu in the sidebar. */}
+              {rosterChannelSort !== undefined && onSetRosterChannelSort && (
+                <div class="chalk-profile-field">
+                  <label class="chalk-profile-label" for="roster-channel-sort">
+                    sort channels by
+                  </label>
+                  <select
+                    id="roster-channel-sort"
+                    class="chalk-profile-select"
+                    value={rosterChannelSort}
+                    onChange={(e) =>
+                      onSetRosterChannelSort(
+                        (e.target as HTMLSelectElement).value as AutoSortMode,
+                      )
+                    }
+                    data-testid="roster-channel-sort"
+                  >
+                    {CHANNEL_SORT_CHOICES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label} — {c.desc}
+                      </option>
+                    ))}
+                  </select>
+                  <span class="chalk-profile-theme-desc">
+                    (one group can be set differently, or ordered by hand,
+                    from its header in the channel list)
                   </span>
                 </div>
               )}
