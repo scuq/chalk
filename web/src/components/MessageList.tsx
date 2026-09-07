@@ -437,6 +437,8 @@ interface Props {
     shortenLinks: boolean;
     // 77-3: render `code`, **bold** and *italic*. Opt-in, per reader.
     nanoMarkdown: boolean;
+    // 113-3: the dated line at each calendar-day boundary. Default ON.
+    dayMarks: boolean;
   };
   // Phase 9.7e: is the active channel a DM? Used to filter scoped color rules.
   isDM?: boolean;
@@ -1022,6 +1024,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     userHues: {} as Record<string, number>,
     shortenLinks: true,
     nanoMarkdown: false,
+    dayMarks: true,
   };
   const now = new Date();
 
@@ -1127,9 +1130,11 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
         // all from today, which is what keeps a live channel unchanged. Off
         // entirely in the voice scratchpad: one call's worth of rows, no
         // history to scroll back through.
-        const dayMarks = ephemeral
-          ? new Map<number, string>()
-          : dayMarkIndices(messages.map((msg) => msg.ts), now);
+        // 113-3: and off for a reader who has turned them off.
+        const dayMarks =
+          ephemeral || !display_.dayMarks
+            ? new Map<number, string>()
+            : dayMarkIndices(messages.map((msg) => msg.ts), now);
 
         return messages.map((m, mi) => {
         // "Own" detection prefers user_id matching when both sides

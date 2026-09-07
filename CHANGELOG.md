@@ -19,7 +19,9 @@ The engineering-level history (which slice shipped what) lives in
   stays pinned at the top of the conversation while you scroll through that
   day, so you always know where you are without hovering anything. A
   conversation that is all from today shows nothing new, so a channel you are
-  reading live looks exactly as it did.
+  reading live looks exactly as it did. If you would rather not have it,
+  **settings → chat → show the date between days** turns it off; it is on to
+  begin with, and the choice follows your account to your other devices.
 
 ## v0.8.14 — 7 September 2026 — Profile pictures, one line tall
 

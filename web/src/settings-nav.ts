@@ -152,6 +152,13 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       "inline code",
       "quote",
       "blockquote",
+      // 113-3: what someone hunting for the day-marks switch would type.
+      "date",
+      "day",
+      "days",
+      "day marks",
+      "divider",
+      "yesterday",
     ],
   },
   {

@@ -129,6 +129,8 @@ interface Props {
     shortenLinks: boolean;
     // 77-2:
     nanoMarkdown: boolean;
+    // 113-3:
+    dayMarks: boolean;
   };
   onSetChatPref?: <
     K extends
@@ -142,7 +144,8 @@ interface Props {
       | "sidebarWidth"
       | "typingIndicators"
       | "shortenLinks"
-      | "nanoMarkdown",
+      | "nanoMarkdown"
+      | "dayMarks",
   >(
     key: K,
     value: K extends "timestampFormat"
@@ -878,6 +881,28 @@ export function ProfilePanel({
                   <option value="hm">22:53 (hh:mm)</option>
                   <option value="relative">5m ago (relative)</option>
                 </select>
+              </div>
+              {/* 113-3: sits with the timestamp settings because it answers
+                  the same question they do -- "when was this?" -- at the other
+                  end of the scale. Not disabled when timestamps are off: with
+                  no time on the rows the day line is the only answer left. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={chatPrefs.dayMarks}
+                    onChange={(e) =>
+                      onSetChatPref("dayMarks", (e.target as HTMLInputElement).checked)
+                    }
+                    data-testid="chat-day-marks"
+                  />
+                  <span>
+                    show the date between days{" "}
+                    <span class="chalk-profile-theme-desc">
+                      (a pinned line when you scroll back)
+                    </span>
+                  </span>
+                </label>
               </div>
               <div class="chalk-profile-field">
                 <label class="chalk-profile-checkbox-label">

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { dayKey, dayLabel, dayMarkIndices, pinnedBottom } from "./daymarks";
+import { selectChatPrefs } from "../state/types.ts";
 
 // Every Date here is built from local components on purpose -- the module is
 // about the reader's calendar day, so a UTC literal would be testing something
@@ -122,4 +123,16 @@ test("pinnedBottom is the lowest stuck edge, and never negative", () => {
   assert.equal(pinnedBottom([]), 0);
   // A box entirely above the scrollport contributes nothing.
   assert.equal(pinnedBottom([{ top: -80, height: 20 }]), 0);
+});
+
+// 113-3: the reader's switch. On unless they have turned it off -- an absent
+// pref, an empty prefs object and a prefs object with no chat block all have
+// to resolve the same way, or an account that predates the setting would land
+// with day marks off.
+test("day marks default on, and only an explicit false turns them off", () => {
+  assert.equal(selectChatPrefs(undefined).dayMarks, true);
+  assert.equal(selectChatPrefs({}).dayMarks, true);
+  assert.equal(selectChatPrefs({ chat: {} }).dayMarks, true);
+  assert.equal(selectChatPrefs({ chat: { dayMarks: true } }).dayMarks, true);
+  assert.equal(selectChatPrefs({ chat: { dayMarks: false } }).dayMarks, false);
 });

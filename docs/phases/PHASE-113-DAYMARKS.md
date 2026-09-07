@@ -1,6 +1,6 @@
 # Phase 113 — day marks: which day am I reading?
 
-**Status:** built, 113-1 and 113-2 (2026-09-07). Verified against a running
+**Status:** built, 113-1 – 113-3 (2026-09-07). Verified against a running
 stack: a channel of twenty messages backdated across four calendar days, 13
 checks on the real DOM (labels, the suppression rule, the measured inset, the
 stacking order and 79-4's keep-anchor probe).
@@ -166,16 +166,21 @@ sticky — the row scrolls away with its message — so it solves half the probl
 - **113-2 — sticky, at the measured inset.** `--chalk-daymark-top` written by a
   ResizeObserver-backed effect from `pinnedBottom` over the scroller's sticky
   children; `position: sticky` and `pointer-events: none` on the mark.
+- **113-3 — the reader's switch.** `chat.dayMarks` in `ChatPrefs` /
+  `ResolvedChatPrefs`, defaulted **on** in `selectChatPrefs`, surfaced as
+  **settings → chat → show the date between days** and reachable from the
+  settings search. Account-synced like the rest of the chat prefs rather than
+  per-device: which time signals a conversation carries is a decision about
+  your chalk, not about this browser.
 
 ## Left open
 
 - **The label is English and hand-rolled.** Deliberate — it matches
   `fmtRelative`, which has the same property, and chalk has no i18n layer for
   either to plug into. A future i18n phase takes both at once or neither.
-- **No preference to switch day marks off.** The suppression rule means a
-  same-day feed already renders none, so the setting would have nothing to do
-  for most readers most of the time. If it is wanted, it belongs beside
-  `showTimestamps` and `timestampFormat` in the display prefs, not on its own.
-- **Timestamps switched off still get day marks.** Arguably right — the mark is
-  the only time signal left, and it is one row per day rather than one per
-  message — but it has not been asked for either way.
+- **Timestamps switched off still get day marks**, and 113-3's switch is
+  deliberately *not* disabled when `showTimestamps` is off (the way the
+  timestamp-format select is). With no time on the rows the day line is the
+  only answer left to "when was this?", so chaining it to the timestamp switch
+  would take away the one signal a reader who wants quiet rows is most likely
+  to still want.

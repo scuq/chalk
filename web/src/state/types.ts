@@ -419,6 +419,11 @@ export interface ChatPrefs {
   // the literal characters always go over the wire and everyone else reads
   // them as typed unless they turn this on too.
   nanoMarkdown?: boolean;
+  // 113-3: the dated line between one calendar day's messages and the next,
+  // pinned while you scroll through that day. Default ON -- it is what tells
+  // you where you are in a scrollback, and it costs one row per day, none at
+  // all in a conversation that is entirely from today.
+  dayMarks?: boolean;
 }
 
 // 53-1: the parking lot's own settings. Account-synced rather than
@@ -578,6 +583,8 @@ export interface ResolvedChatPrefs {
   shortenLinks: boolean;
   // 77-2: defaulted to false -- it is opt-in.
   nanoMarkdown: boolean;
+  // 113-3: defaulted to true.
+  dayMarks: boolean;
 }
 
 // selectChatPrefs takes the (possibly sparse) prefs.chat and fills in
@@ -608,6 +615,7 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
     typingIndicators: c.typingIndicators ?? true,
     shortenLinks: c.shortenLinks ?? true,
     nanoMarkdown: c.nanoMarkdown ?? false,
+    dayMarks: c.dayMarks ?? true,
   };
 }
 
