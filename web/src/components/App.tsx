@@ -3488,7 +3488,9 @@ export function App() {
   // pinned header image. Per-device, so it comes from localStorage rather
   // than the account's prefs; the hook follows the picker in this tab and
   // in any other.
-  const [{ showChannelBanner, showAvatars: showAvatarsPref }] = useDisplayPrefs();
+  const [
+    { showChannelBanner, showAvatars: showAvatarsPref, showRosterAvatars: showRosterAvatarsPref },
+  ] = useDisplayPrefs();
   // 111-9: the banner editor, open on one channel at a time. localURL is
   // the just-uploaded file's bytes, so a fresh pin previews instantly
   // instead of round-tripping its own ciphertext back out of the cache;
@@ -5800,8 +5802,11 @@ export function App() {
               "upch-" + Date.now(),
             );
           }}
-          // 112-4: the roster draws whichever shared channel's copy is to hand.
-          avatars={state.avatars}
+          // 112-4: the roster draws whichever shared channel's copy is to
+          // hand -- 112-9: and only when this reader asked for pictures
+          // there. Withholding the map is the gate: no map, nothing drawn,
+          // in the rows and in the roster's hover card alike.
+          avatars={showRosterAvatarsPref ? state.avatars : undefined}
           attachmentController={attControllerRef.current ?? undefined}
           hiddenChannels={selectRosterPrefs(state.prefs).hidden}
           onSetChannelHidden={(channelID, mode) => {

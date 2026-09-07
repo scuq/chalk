@@ -50,6 +50,12 @@ export interface DisplayPrefs {
   // same reason as the rest of this file, so a phone can stay plain while a
   // desktop shows them.
   showAvatars: boolean;
+  // 112-9: the same switch for the roster, and a separate one on purpose --
+  // the sidebar and the conversation are different reading problems. A
+  // picture in a roster row costs no density (the rows are taller than a
+  // feed line), but it does change a list someone scans by shape, so it is
+  // the reader's call there too. Also off by default.
+  showRosterAvatars: boolean;
 }
 
 export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
@@ -59,6 +65,7 @@ export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
   appWidth: "centered",
   showChannelBanner: true,
   showAvatars: false,
+  showRosterAvatars: false,
 };
 
 const STORAGE_KEY = "chalk.display.v1";
@@ -138,7 +145,19 @@ export function normalizeDisplayPrefs(raw: unknown): DisplayPrefs {
   // stored its prefs before 112 does not suddenly gain pictures.
   const showAvatars =
     typeof o.showAvatars === "boolean" ? o.showAvatars : DEFAULT_DISPLAY_PREFS.showAvatars;
-  return { font, scale, hideScrollbars, appWidth, showChannelBanner, showAvatars };
+  const showRosterAvatars =
+    typeof o.showRosterAvatars === "boolean"
+      ? o.showRosterAvatars
+      : DEFAULT_DISPLAY_PREFS.showRosterAvatars;
+  return {
+    font,
+    scale,
+    hideScrollbars,
+    appWidth,
+    showChannelBanner,
+    showAvatars,
+    showRosterAvatars,
+  };
 }
 
 // The subset of HTMLElement applyDisplayPrefs needs, so the unit tests

@@ -47,9 +47,10 @@ test("normalize keeps a valid pref untouched", () => {
       // 111-4: absent in a pre-111 stored pref, and the default is on --
       // upgrading shows channel images rather than hiding them.
       showChannelBanner: true,
-      // 112-8: and the opposite for profile pictures -- absent means off, so
-      // upgrading does not change how anyone's feed reads.
+      // 112-8/112-9: and the opposite for profile pictures -- absent means
+      // off, so upgrading does not change how anyone's feed or roster reads.
       showAvatars: false,
+      showRosterAvatars: false,
     },
   );
 });
@@ -68,6 +69,7 @@ test("normalize keeps the good half of a partially bad pref", () => {
     appWidth: DEFAULT_DISPLAY_PREFS.appWidth,
     showChannelBanner: DEFAULT_DISPLAY_PREFS.showChannelBanner,
     showAvatars: DEFAULT_DISPLAY_PREFS.showAvatars,
+    showRosterAvatars: DEFAULT_DISPLAY_PREFS.showRosterAvatars,
   });
   assert.deepEqual(normalizeDisplayPrefs({ font: "wingdings", scale: 1.25 }), {
     font: DEFAULT_DISPLAY_PREFS.font,
@@ -76,6 +78,7 @@ test("normalize keeps the good half of a partially bad pref", () => {
     appWidth: DEFAULT_DISPLAY_PREFS.appWidth,
     showChannelBanner: DEFAULT_DISPLAY_PREFS.showChannelBanner,
     showAvatars: DEFAULT_DISPLAY_PREFS.showAvatars,
+    showRosterAvatars: DEFAULT_DISPLAY_PREFS.showRosterAvatars,
   });
   // 111-4: a non-boolean is the default, like hideScrollbars above it.
   assert.equal(
@@ -98,6 +101,13 @@ test("normalize keeps the good half of a partially bad pref", () => {
     normalizeDisplayPrefs({ font: "mono", scale: 1, showAvatars: "yes" }).showAvatars,
     false,
   );
+  // 112-9: the roster's switch is its own -- turning one on says nothing
+  // about the other.
+  const feedOnly = normalizeDisplayPrefs({ font: "mono", scale: 1, showAvatars: true });
+  assert.equal(feedOnly.showRosterAvatars, false);
+  const rosterOnly = normalizeDisplayPrefs({ font: "mono", scale: 1, showRosterAvatars: true });
+  assert.equal(rosterOnly.showAvatars, false);
+  assert.equal(rosterOnly.showRosterAvatars, true);
   assert.equal(
     normalizeDisplayPrefs({ font: "mono", scale: 1, hideScrollbars: "yes" }).hideScrollbars,
     DEFAULT_DISPLAY_PREFS.hideScrollbars,

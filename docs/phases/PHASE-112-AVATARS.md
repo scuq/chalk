@@ -99,11 +99,19 @@ while profile pictures change how *every line* of the feed reads — and that is
 the reader's call, not the setter's. It sits beside the other display prefs, so
 a phone can stay plain while a desktop shows them.
 
-The switch governs the **conversation**. Your own picture in the status-bar
-corner is outside it: that is your own face, shown back to you as confirmation
-of a setting you chose, not somebody else's in your feed. The roster, members
-panel, hover card and call tiles are outside it too — none of them has the
-density cost the switch exists to prevent.
+The switch governs the **conversation**. 112-9 gives the **roster** a second
+switch of its own, also off by default, covering the sidebar's friend rows and
+the card that pops up over a name there. Two switches rather than one because
+they are different reading problems: a picture in a roster row costs no
+density (those rows are taller than a feed line) but does change a list people
+scan by shape, and someone may reasonably want faces in the sidebar without
+wanting them down every line of the feed. The gate is the map itself — the
+roster is handed no pictures when the switch is off, so nothing can slip
+through.
+
+Outside both switches: your own picture in the status-bar corner (your face,
+shown back to you as confirmation of a setting you chose), the members panel,
+and call tiles.
 
 **No default picture, and one invitation.** A member who has not set a picture
 shows *nothing* — no generated initial, no stock face. That is the honest
@@ -130,6 +138,7 @@ someone who set a picture and later removed it is not re-prompted.
 | 112-4 | the other surfaces: roster, members panel, hover card, voice tiles |
 | 112-5 | the status bar's corner — your own picture beside your name |
 | 112-6 | the one-time ask: a person with no picture is invited to set one, once, ever |
+| 112-9 | the roster gets its own switch, also off by default |
 | 112-8 | the reader's switch: profile pictures in the conversation are OFF by default, and each person turns them on for themselves |
 | 112-7 | a picture can be used whole — the cropper's "you must crop something" rule was right for a banner and wrong here |
 
@@ -170,6 +179,13 @@ The probe drove one member's own client end to end; what it covers is ticked.
       straight.
 - [x] Setting one from settings: file → cropper → fan-out → drawn in the feed.
 - [x] Removing one takes it out of the feed and restores the original layout.
+- [x] 112-9: with a friend who has a picture, the roster draws none by
+      default; the switch turns them on there and off again; and the chat
+      switch is unaffected either way.
+- [x] **The cross-client push, at last** — proven as a side effect of 112-9's
+      run: the other member set their picture in a second browser, and it
+      reached this client with no reload. That was the phase's longest-open
+      unticked item.
 - [x] 112-8: with a picture set on the account, the feed draws none until the
       switch is turned on; turning it on draws them with every row exactly as
       tall as before; the choice survives a reload; turning it off removes
@@ -189,9 +205,6 @@ The probe drove one member's own client end to end; what it covers is ticked.
       square, and the status bar's height is unchanged — measured from a
       cleared state, because a "before" taken with a picture already on
       screen makes that comparison say nothing.
-- [ ] **A picture set by one member appears for another without a reload**
-      (the `avatar_update` push across two clients). The push is built and the
-      single-client path is proven; the two-client run is not.
 - [ ] The roster, members panel, hover card and call tiles with a real
       picture — wired and type-checked, but only the feed was driven live.
 - [ ] A member who joins a channel after the picture was set (see Left open:

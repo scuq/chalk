@@ -795,6 +795,28 @@ export function ProfilePanel({
                 </p>
               </div>
 
+              {/* 112-9: the same, for the roster. Separate switch because
+                  the sidebar and the conversation are different reading
+                  problems -- and someone may well want faces in a list they
+                  scan without wanting them down every line of the feed. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={display.showRosterAvatars}
+                    onChange={(e) =>
+                      setDisplay({ showRosterAvatars: (e.target as HTMLInputElement).checked })
+                    }
+                    data-testid="display-show-roster-avatars"
+                  />
+                  <span>show profile pictures in the roster</span>
+                </label>
+                <p class="chalk-profile-hint">
+                  off by default. covers the friends list in the sidebar and
+                  the card that pops up over a name there.
+                </p>
+              </div>
+
               {/* 111-4: the channel banner's off switch. Per-device like the
                   knobs above it -- a strip of picture is worth more of a
                   monitor than of a phone. */}
