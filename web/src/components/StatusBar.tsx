@@ -9,11 +9,20 @@
 // AND me is set (i.e. we have a real session). It closes on outside
 // click, escape, or after the logout fires.
 
+import { Avatar } from "./Avatar"; // 112-5
+import { pickAvatar } from "../avatars/pick"; // 112-5
+import type { AttachmentController } from "../attachments/pipeline"; // 112-5
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ConnectionState } from "../ws-client";
 import type { MeResponse } from "../auth/types";
 
 interface Props {
+  // 112-5: your own profile picture, beside your name in the corner. The
+  // status bar is not inside a channel and a picture is encrypted per
+  // channel, so it draws whichever shared channel's copy is to hand
+  // (pickAvatar) -- the same lookup the roster and the hover card use.
+  avatars?: Record<string, Record<string, string>>;
+  attachmentController?: AttachmentController;
   state: ConnectionState;
   detail: string;
   // phase 08c: handle optional for backward compat
@@ -60,7 +69,20 @@ const labels: Record<ConnectionState, string> = {
   error: "error",
 };
 
-export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenFriends, onOpenAdmin, pendingFriendCount = 0, updateAvailable = false, onReload, onDismissUpdate, serverRestarting = false, presenceMode, effectivePresence, onPresenceModeChange }: Props) {
+export function StatusBar({ avatars, attachmentController, state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenFriends, onOpenAdmin, pendingFriendCount = 0, updateAvailable = false, onReload, onDismissUpdate, serverRestarting = false, presenceMode, effectivePresence, onPresenceModeChange }: Props) {
+  // 112-5: resolved once per render and reused by both spellings of the
+  // corner (the menu trigger, and the plain label when there is no menu).
+  const selfPick = user && avatars ? pickAvatar(avatars, user.id) : null;
+  const selfAvatar = selfPick ? (
+    <Avatar
+      channelID={selfPick.channelID}
+      attachmentID={selfPick.attachmentID}
+      controller={attachmentController ?? null}
+      alt=""
+      size="line"
+    />
+  ) : null;
+
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   // Phase 9.6j: presence picker.
@@ -236,6 +258,7 @@ export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, on
               data-testid="status-user-menu-trigger"
               title={showPending ? pendingLabel : titleAttr}
             >
+              {selfAvatar}
               you ({displayName ?? "—"}) ▾
               {showPending && (
                 <span
@@ -249,6 +272,7 @@ export function StatusBar({ state, detail, user, me, onLogout, onOpenInvites, on
             </button>
           ) : (
             <span class="chalk-status-user" data-testid="status-user">
+              {selfAvatar}
               <span title={titleAttr}>
                 {displayName ? `you (${displayName})` : "you"}
               </span>

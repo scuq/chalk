@@ -81,6 +81,45 @@ a region of a picture, and choosing which part of a photograph is your face is
 the same question. Setting an avatar goes through it, so a wide photo becomes
 a square by choice rather than by centre-crop.
 
+Reusing it brought a rule that did not travel (112-7). The banner's cropper
+disables its confirm button while the box is the whole picture, because
+applying a crop that removes nothing re-encodes and re-uploads an identical
+image for no reason. For an avatar that same rule made the flow *impossible to
+finish without cropping*: the confirm button was the only way out of the
+dialog. So the cropper now takes `allowWhole`, and the avatar passes it — the
+square is cover-cropped from whatever region is chosen, and choosing all of it
+is a normal answer. The button says "use picture" there and "crop" in the
+banner, because "crop" reads wrong when nothing is being cut away.
+
+**Off by default, and the reader decides (112-8).** Whether a picture is drawn
+in the conversation is a per-device display pref (`showAvatars`), and it starts
+**off**. That is deliberately the opposite of the channel image's switch
+(111-4, on by default): a channel image is one picture the room's owner chose,
+while profile pictures change how *every line* of the feed reads — and that is
+the reader's call, not the setter's. It sits beside the other display prefs, so
+a phone can stay plain while a desktop shows them.
+
+The switch governs the **conversation**. Your own picture in the status-bar
+corner is outside it: that is your own face, shown back to you as confirmation
+of a setting you chose, not somebody else's in your feed. The roster, members
+panel, hover card and call tiles are outside it too — none of them has the
+density cost the switch exists to prevent.
+
+**No default picture, and one invitation.** A member who has not set a picture
+shows *nothing* — no generated initial, no stock face. That is the honest
+state, and it is what the reserved-slot rule was designed around. But nobody
+discovers a setting they were never told about, so the first time someone is
+in a channel without a picture, chalk asks — once, ever.
+
+"Once" is the entire specification of 112-6, and it is why the flag
+(`prefs.avatarAsked`) lives in **account prefs rather than localStorage**: a
+per-device flag would ask again on every new browser, which is precisely the
+nagging this is not. The flag is written when the prompt is answered *either
+way* — including dismissing it by clicking away, which is read as "no",
+because that is the safe reading of someone waving off a question they did not
+ask for. It is never cleared, so someone who declined is not asked again, and
+someone who set a picture and later removed it is not re-prompted.
+
 ## Slices
 
 | Slice | What it lands |
@@ -89,6 +128,10 @@ a square by choice rather than by centre-crop.
 | 112-2 | client: preparing a picture (square, 96px), the per-channel fan-out, and the settings UI that drives it |
 | 112-3 | client: the avatar store + hook, and the feed — one line tall, reserved slot, no density change |
 | 112-4 | the other surfaces: roster, members panel, hover card, voice tiles |
+| 112-5 | the status bar's corner — your own picture beside your name |
+| 112-6 | the one-time ask: a person with no picture is invited to set one, once, ever |
+| 112-8 | the reader's switch: profile pictures in the conversation are OFF by default, and each person turns them on for themselves |
+| 112-7 | a picture can be used whole — the cropper's "you must crop something" rule was right for a banner and wrong here |
 
 ## Left open
 
@@ -127,6 +170,25 @@ The probe drove one member's own client end to end; what it covers is ticked.
       straight.
 - [x] Setting one from settings: file → cropper → fan-out → drawn in the feed.
 - [x] Removing one takes it out of the feed and restores the original layout.
+- [x] 112-8: with a picture set on the account, the feed draws none until the
+      switch is turned on; turning it on draws them with every row exactly as
+      tall as before; the choice survives a reload; turning it off removes
+      them again; a second device starts from the default (off), because the
+      pref is per device; and the corner keeps showing your own picture
+      throughout.
+- [x] 112-7: a picture can be set with no crop drawn — the confirm button is
+      offered, labelled "use picture", and the result is square and one line
+      tall. The banner's cropper still refuses a crop that removes nothing,
+      and still says "crop".
+- [x] 112-6, the one-time ask: a person with no picture is asked; declining
+      closes it; a reload does not ask again; **and a second browser profile
+      signed into the same account is not asked either** — the check a
+      localStorage flag would have failed. Also confirmed in passing: with no
+      picture set, nothing at all is drawn.
+- [x] 112-5: your picture appears in the corner beside your name, as a small
+      square, and the status bar's height is unchanged — measured from a
+      cleared state, because a "before" taken with a picture already on
+      screen makes that comparison say nothing.
 - [ ] **A picture set by one member appears for another without a reload**
       (the `avatar_update` push across two clients). The push is built and the
       single-client path is proven; the two-client run is not.

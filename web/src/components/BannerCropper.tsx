@@ -33,6 +33,16 @@ interface Props {
   /** the region to start from; a re-crop opens on the whole picture again */
   initial?: CropRect;
   busy?: boolean;
+  /** 112-7: whether "the whole picture" is a legitimate answer. For a banner
+   *  it is not -- applying a crop that removes nothing re-encodes and
+   *  re-uploads an identical image, so the button stays disabled until a box
+   *  is drawn. For a profile picture it is: the square is taken from
+   *  whatever region is chosen, and choosing all of it is a normal thing to
+   *  want. Without this the only way to set an avatar was to crop one. */
+  allowWhole?: boolean;
+  /** what the confirm button says; "crop" reads wrong when nothing is being
+   *  cut away. */
+  applyLabel?: string;
   onApply: (rect: CropRect) => void;
   onCancel: () => void;
 }
@@ -42,7 +52,15 @@ type Drag =
   | { kind: "resize"; corner: CropCorner }
   | { kind: "new"; anchorX: number; anchorY: number };
 
-export function BannerCropper({ url, initial = FULL_CROP, busy = false, onApply, onCancel }: Props) {
+export function BannerCropper({
+  url,
+  initial = FULL_CROP,
+  busy = false,
+  allowWhole = false,
+  applyLabel,
+  onApply,
+  onCancel,
+}: Props) {
   const [rect, setRect] = useState<CropRect>(initial);
   const drag = useRef<Drag | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
@@ -164,9 +182,9 @@ export function BannerCropper({ url, initial = FULL_CROP, busy = false, onApply,
       </div>
 
       <p class="chalk-profile-hint">
-        drag a box over what to keep; drag inside it to move it, or a corner to
-        resize. what falls outside is discarded — the framing controls come
-        after.
+        {allowWhole
+          ? "drag a box over what to keep, or use the whole picture as it is."
+          : "drag a box over what to keep; drag inside it to move it, or a corner to resize. what falls outside is discarded — the framing controls come after."}
       </p>
 
       <div class="chalk-banner-editor-row">
@@ -194,11 +212,17 @@ export function BannerCropper({ url, initial = FULL_CROP, busy = false, onApply,
             type="button"
             class="chalk-button chalk-button--primary"
             data-testid="banner-cropper-apply"
-            disabled={busy || isFullCrop(rect)}
-            title={isFullCrop(rect) ? "nothing is being cropped away" : "crop to this box"}
+            disabled={busy || (!allowWhole && isFullCrop(rect))}
+            title={
+              isFullCrop(rect)
+                ? allowWhole
+                  ? "use the whole picture"
+                  : "nothing is being cropped away"
+                : "crop to this box"
+            }
             onClick={() => onApply(rect)}
           >
-            {busy ? "cropping…" : "crop"}
+            {busy ? "working…" : (applyLabel ?? "crop")}
           </button>
         </span>
       </div>

@@ -363,6 +363,7 @@ import { prepareBanner } from "../attachments/banner"; // 111-2
 import { type BannerLayout, DEFAULT_BANNER, normalizeBanner } from "../state/banner"; // 111-7
 import { BannerEditor } from "./BannerEditor"; // 111-9
 import { BannerCropper } from "./BannerCropper"; // 112-2 reuses the cropper
+import { AvatarNudge } from "./AvatarNudge"; // 112-6
 import { avatarRejectReason, prepareAvatar } from "../attachments/avatar"; // 112-2
 import { clearCache as clearAttachmentCache } from "../attachments/cache";
 import type { AttachmentRef, PendingAttachment } from "../attachments/types";
@@ -3487,7 +3488,7 @@ export function App() {
   // pinned header image. Per-device, so it comes from localStorage rather
   // than the account's prefs; the hook follows the picker in this tab and
   // in any other.
-  const [{ showChannelBanner }] = useDisplayPrefs();
+  const [{ showChannelBanner, showAvatars: showAvatarsPref }] = useDisplayPrefs();
   // 111-9: the banner editor, open on one channel at a time. localURL is
   // the just-uploaded file's bytes, so a fresh pin previews instantly
   // instead of round-tripping its own ciphertext back out of the cache;
@@ -3524,6 +3525,36 @@ export function App() {
   // same question -- and the fan-out happens on apply.
   const [avatarPick, setAvatarPick] = useState<{ url: string } | null>(null);
   const [avatarBusy, setAvatarBusy] = useState<string | null>(null);
+  // 112-6: the one-time ask. Shown when this person has no picture anywhere,
+  // has a channel to put one in, and has never been asked -- and the answer
+  // (either way) is written to account prefs so it is once per person, not
+  // once per browser.
+  const [nudgeOpen, setNudgeOpen] = useState(false);
+  const nudgeInputRef = useRef<HTMLInputElement | null>(null);
+  const nudgeShownRef = useRef(false);
+  const ownAvatarSet =
+    !!state.user?.id && Object.values(state.avatars).some((m) => !!m[state.user!.id]);
+
+  useEffect(() => {
+    if (nudgeShownRef.current || nudgeOpen) return;
+    // prefsLoaded is the gate that matters: without it, a tab that has not
+    // yet heard the answer would ask a second time.
+    if (!state.prefsLoaded || !state.user?.id) return;
+    if (state.prefs.avatarAsked) return;
+    if (ownAvatarSet) return;
+    // Nothing to fan out to yet, and no feed to see the result in.
+    if (Object.keys(state.channels).length === 0) return;
+    nudgeShownRef.current = true;
+    // A beat after the app settles, so it does not race the first paint.
+    const t = window.setTimeout(() => setNudgeOpen(true), 2500);
+    return () => window.clearTimeout(t);
+  }, [state.prefsLoaded, state.prefs.avatarAsked, state.user?.id, state.channels, ownAvatarSet, nudgeOpen]);
+
+  const answerNudge = useCallback(() => {
+    setNudgeOpen(false);
+    const c = clientRef.current;
+    if (c && c.isOpen()) c.send(TypePrefsSet, { patch: { avatarAsked: true } });
+  }, []);
 
   // The fan-out. A picture is encrypted under a CHANNEL key, so the same
   // face is uploaded once per channel and pointed at by one set_avatar each.
@@ -5630,6 +5661,9 @@ export function App() {
           handleFriendsRefresh();
         }}
           pendingFriendCount={state.pendingIncoming.length}
+          // 112-5: your own picture, beside your name in the corner.
+          avatars={state.avatars}
+          attachmentController={attControllerRef.current ?? undefined}
           onOpenProfile={() => dispatch({ kind: "open_panel", panel: "profile" })}
           onOpenAdmin={() => {
             window.history.pushState({}, "", "/admin");
@@ -6077,7 +6111,11 @@ export function App() {
               // somebody in the room has one, so a channel where nobody has
               // looks exactly as it did before 112.
               avatarFor={(userID) => state.avatars[activeChannel.id]?.[userID] ?? null}
-              showAvatars={Object.keys(state.avatars[activeChannel.id] ?? {}).length > 0}
+              // 112-8: off unless this reader asked for them, and then only
+              // when somebody in the channel actually has one.
+              showAvatars={
+                showAvatarsPref && Object.keys(state.avatars[activeChannel.id] ?? {}).length > 0
+              }
               ownDevice={state.user?.device ?? null}
               ownUserID={state.user?.id ?? null}
               ownHandle={state.me?.username ?? null}
@@ -6696,6 +6734,39 @@ export function App() {
         />
       )}
 
+      {/* 112-6: the one-time ask, and the picker it opens. The input lives
+          here rather than in the dialog so the dialog can close the moment it
+          is answered. */}
+      <input
+        ref={nudgeInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        data-testid="avatar-nudge-input"
+        onChange={(e) => {
+          const input = e.target as HTMLInputElement;
+          const file = input.files?.[0] ?? null;
+          input.value = "";
+          if (!file) return;
+          const reason = avatarRejectReason(file.type, file.size);
+          if (reason) {
+            setAvatarBusy(reason);
+            window.setTimeout(() => setAvatarBusy(null), 4000);
+            return;
+          }
+          setAvatarPick({ url: URL.createObjectURL(file) });
+        }}
+      />
+      {nudgeOpen && (
+        <AvatarNudge
+          onDismiss={answerNudge}
+          onChoose={() => {
+            answerNudge();
+            nudgeInputRef.current?.click();
+          }}
+        />
+      )}
+
       {/* 112-2: choosing which square of a picture is your face, in the
           cropper 111-13 already built. Applying prepares a 96x96 square and
           fans it out to every channel. */}
@@ -6729,6 +6800,12 @@ export function App() {
               <BannerCropper
                 url={avatarPick.url}
                 busy={!!avatarBusy}
+                // 112-7: a picture used whole is a normal answer here -- the
+                // square is cover-cropped from whatever region is chosen,
+                // and requiring a crop made the whole flow impossible to
+                // finish without one.
+                allowWhole
+                applyLabel="use picture"
                 onCancel={() => {
                   URL.revokeObjectURL(avatarPick.url);
                   setAvatarPick(null);
@@ -6798,10 +6875,7 @@ export function App() {
             setAvatarPick({ url: URL.createObjectURL(file) });
           }}
           onRemoveAvatar={() => void fanOutAvatar(null)}
-          avatarSet={
-            !!state.user?.id &&
-            Object.values(state.avatars).some((m) => !!m[state.user!.id])
-          }
+          avatarSet={ownAvatarSet}
           avatarBusy={avatarBusy}
           chatPrefs={selectChatPrefs(state.prefs)}
           onSetChatPref={(key, value) => {

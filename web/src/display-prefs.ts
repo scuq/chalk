@@ -43,6 +43,13 @@ export interface DisplayPrefs {
   // phone. Off means the band never mounts -- no fetch, no decrypt --
   // rather than a hidden element.
   showChannelBanner: boolean;
+  // 112-8: whether profile pictures are drawn in the conversation. Default
+  // OFF, unlike the channel image above it: a picture beside every name is a
+  // change to how the feed reads, and the person reading it decides whether
+  // they want it -- not the person who set the picture. Per-device for the
+  // same reason as the rest of this file, so a phone can stay plain while a
+  // desktop shows them.
+  showAvatars: boolean;
 }
 
 export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
@@ -51,6 +58,7 @@ export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
   hideScrollbars: false,
   appWidth: "centered",
   showChannelBanner: true,
+  showAvatars: false,
 };
 
 const STORAGE_KEY = "chalk.display.v1";
@@ -126,7 +134,11 @@ export function normalizeDisplayPrefs(raw: unknown): DisplayPrefs {
     typeof o.showChannelBanner === "boolean"
       ? o.showChannelBanner
       : DEFAULT_DISPLAY_PREFS.showChannelBanner;
-  return { font, scale, hideScrollbars, appWidth, showChannelBanner };
+  // 112-8: absent means off, which is also the default -- so a device that
+  // stored its prefs before 112 does not suddenly gain pictures.
+  const showAvatars =
+    typeof o.showAvatars === "boolean" ? o.showAvatars : DEFAULT_DISPLAY_PREFS.showAvatars;
+  return { font, scale, hideScrollbars, appWidth, showChannelBanner, showAvatars };
 }
 
 // The subset of HTMLElement applyDisplayPrefs needs, so the unit tests

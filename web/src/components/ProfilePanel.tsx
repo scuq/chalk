@@ -773,6 +773,28 @@ export function ProfilePanel({
                 </p>
               </div>
 
+              {/* 112-8: profile pictures in the conversation. Default OFF,
+                  because a picture beside every name changes how the feed
+                  reads and that is the reader's call, not the setter's. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={display.showAvatars}
+                    onChange={(e) =>
+                      setDisplay({ showAvatars: (e.target as HTMLInputElement).checked })
+                    }
+                    data-testid="display-show-avatars"
+                  />
+                  <span>show profile pictures in chat</span>
+                </label>
+                <p class="chalk-profile-hint">
+                  off by default. when on, a member's picture is drawn beside
+                  their name in the conversation, at exactly one line tall —
+                  no message takes more room than it does now.
+                </p>
+              </div>
+
               {/* 111-4: the channel banner's off switch. Per-device like the
                   knobs above it -- a strip of picture is worth more of a
                   monitor than of a phone. */}

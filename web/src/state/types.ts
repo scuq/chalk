@@ -493,6 +493,14 @@ export interface UserPrefs {
   linkpreviewHideCards?: boolean;
   // 66-1: how a browser that has never been used for voice starts out.
   voice?: VoicePrefs;
+  // 112-6: whether this person has been asked to set a profile picture.
+  // Account-level rather than per-device on purpose: the ask is once per
+  // PERSON, and a per-device flag would ask again on every new browser --
+  // which is what "really only once" rules out. Set when the prompt is
+  // answered either way, and never cleared: someone who said no once is not
+  // asked again, and someone who set a picture and removed it later is not
+  // re-prompted.
+  avatarAsked?: boolean;
   // [extend with more keys in future phases]
 }
 
