@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.15 — 7 September 2026 — Day marks, pinned while you scroll back
 
 ### Added
 - **Scrolling back now tells you which day you are reading.** A thin line with
