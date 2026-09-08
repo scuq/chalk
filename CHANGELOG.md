@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.18 — 9 September 2026 — More frames, moving only while you are here
 
 ### Added
 - **Three more frames for your picture: matrix, frost and gold.** Matrix is
