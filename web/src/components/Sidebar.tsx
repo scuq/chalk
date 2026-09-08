@@ -1365,6 +1365,7 @@ export function Sidebar({
                       alt=""
                       size="row"
                       userID={friend.userID} // 115-6
+                      live={presenceState === "online"} // 115-7
                     />
                   );
                 })()}
@@ -1660,6 +1661,7 @@ export function Sidebar({
                 alt=""
                 size="card"
                 userID={hoverCard.data} // 115-6
+                live={presence[hoverCard.data] === "online"} // 115-7
               />
             );
           })()}

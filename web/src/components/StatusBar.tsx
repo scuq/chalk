@@ -81,6 +81,7 @@ export function StatusBar({ avatars, attachmentController, state, detail, user, 
       alt=""
       size="line"
       frame={me?.avatarFrame ?? ""} // 115-6: your own; the directory omits you
+      live={(effectivePresence ?? "online") === "online"} // 115-7
     />
   ) : null;
 

@@ -37,7 +37,7 @@ import (
 // style is a CSS rule plus a line in each. Order matters only for the
 // picker, which is why the two lists are kept identical rather than merely
 // equal as sets.
-var AvatarFrames = []string{"", "ember", "aurora", "pulse"}
+var AvatarFrames = []string{"", "ember", "aurora", "pulse", "matrix", "frost", "gold"}
 
 // ValidAvatarFrame reports whether v is a frame the server will store.
 func ValidAvatarFrame(v string) bool {

@@ -11251,12 +11251,21 @@ html[data-flair-banner]
   box-sizing: border-box;
 }
 
+/* 115-7: a frame ANIMATES only while its wearer is online -- Avatar sets
+   data-live from the presence the surface knows -- and rests as a static
+   ring otherwise: motion on a picture of someone who is not here says the
+   wrong thing. The picker's swatches always move, since they show what a
+   frame is. Two selectors per frame: the ring (always), the motion (live). */
+
 /* ember: a warm glow that breathes. */
 html[data-flair-frames] .chalk-avatar[data-frame="ember"],
 .chalk-profile-frame-swatch[data-frame="ember"] {
   outline: 2px solid var(--chalk-warn);
   outline-offset: 1px;
   box-shadow: 0 0 6px 1px var(--chalk-warn);
+}
+html[data-flair-frames] .chalk-avatar[data-frame="ember"][data-live],
+.chalk-profile-frame-swatch[data-frame="ember"] {
   animation: chalk-flair-frame-ember 2.4s ease-in-out infinite alternate;
 }
 @keyframes chalk-flair-frame-ember {
@@ -11272,6 +11281,9 @@ html[data-flair-frames] .chalk-avatar[data-frame="aurora"],
   outline: 2px solid #4fd1c5;
   outline-offset: 1px;
   box-shadow: 0 0 5px 1px #4fd1c5;
+}
+html[data-flair-frames] .chalk-avatar[data-frame="aurora"][data-live],
+.chalk-profile-frame-swatch[data-frame="aurora"] {
   animation: chalk-flair-frame-aurora 6s linear infinite;
 }
 @keyframes chalk-flair-frame-aurora {
@@ -11288,12 +11300,73 @@ html[data-flair-frames] .chalk-avatar[data-frame="pulse"],
 .chalk-profile-frame-swatch[data-frame="pulse"] {
   outline: 2px solid var(--chalk-accent);
   outline-offset: 1px;
+}
+html[data-flair-frames] .chalk-avatar[data-frame="pulse"][data-live],
+.chalk-profile-frame-swatch[data-frame="pulse"] {
   animation: chalk-flair-frame-pulse 1.6s ease-in-out infinite;
 }
 @keyframes chalk-flair-frame-pulse {
   0%   { outline-offset: 1px; outline-color: var(--chalk-accent); }
   50%  { outline-offset: 3px; outline-color: color-mix(in srgb, var(--chalk-accent) 55%, transparent); }
   100% { outline-offset: 1px; outline-color: var(--chalk-accent); }
+}
+
+/* 115-7: matrix -- the terminal green, in steps rather than eased, the
+   way a phosphor flickers: the ring snaps between two greens and the glow
+   jumps with it. Fixed hex, because "matrix green" is one colour in every
+   theme, including the light ones. */
+html[data-flair-frames] .chalk-avatar[data-frame="matrix"],
+.chalk-profile-frame-swatch[data-frame="matrix"] {
+  outline: 2px solid #00ff41;
+  outline-offset: 1px;
+  box-shadow: 0 0 6px 1px #00ff41;
+}
+html[data-flair-frames] .chalk-avatar[data-frame="matrix"][data-live],
+.chalk-profile-frame-swatch[data-frame="matrix"] {
+  animation: chalk-flair-frame-matrix 1.4s steps(1, end) infinite;
+}
+@keyframes chalk-flair-frame-matrix {
+  0%   { outline-color: #00ff41; box-shadow: 0 0 6px 1px #00ff41; }
+  35%  { outline-color: #0f8f2f; box-shadow: 0 0 3px 0 #0f8f2f; }
+  45%  { outline-color: #00ff41; box-shadow: 0 0 9px 2px #00ff41; }
+  70%  { outline-color: #12c43f; box-shadow: 0 0 5px 1px #12c43f; }
+  80%  { outline-color: #0f8f2f; box-shadow: 0 0 3px 0 #0f8f2f; }
+  100% { outline-color: #00ff41; box-shadow: 0 0 6px 1px #00ff41; }
+}
+
+/* 115-7: frost -- ice white with a slow cold breath, and the picture
+   itself brightens a touch at the peak. */
+html[data-flair-frames] .chalk-avatar[data-frame="frost"],
+.chalk-profile-frame-swatch[data-frame="frost"] {
+  outline: 2px solid #bfefff;
+  outline-offset: 1px;
+  box-shadow: 0 0 6px 1px #7fd4ff;
+}
+html[data-flair-frames] .chalk-avatar[data-frame="frost"][data-live],
+.chalk-profile-frame-swatch[data-frame="frost"] {
+  animation: chalk-flair-frame-frost 3.2s ease-in-out infinite alternate;
+}
+@keyframes chalk-flair-frame-frost {
+  0%   { box-shadow: 0 0 4px 0 #7fd4ff; filter: brightness(1); }
+  100% { box-shadow: 0 0 12px 3px #bfefff; filter: brightness(1.12); }
+}
+
+/* 115-7: gold -- a warm metal ring that catches the light: the glow
+   swells and the outline goes from brass to bright. */
+html[data-flair-frames] .chalk-avatar[data-frame="gold"],
+.chalk-profile-frame-swatch[data-frame="gold"] {
+  outline: 2px solid #f5c542;
+  outline-offset: 1px;
+  box-shadow: 0 0 5px 1px #c9971c;
+}
+html[data-flair-frames] .chalk-avatar[data-frame="gold"][data-live],
+.chalk-profile-frame-swatch[data-frame="gold"] {
+  animation: chalk-flair-frame-gold 2.8s ease-in-out infinite;
+}
+@keyframes chalk-flair-frame-gold {
+  0%   { outline-color: #c9971c; box-shadow: 0 0 4px 0 #c9971c; }
+  50%  { outline-color: #ffe08a; box-shadow: 0 0 10px 3px #f5c542; }
+  100% { outline-color: #c9971c; box-shadow: 0 0 4px 0 #c9971c; }
 }
 
 /* Call tiles are circles; the ring follows. */
@@ -11310,12 +11383,18 @@ html[data-flair-frames] .chalk-avatar--tile[data-frame] {
   html[data-flair-flame] .chalk-flair-flame-svg,
   html[data-flair-flame] .chalk-flair-flame-inner,
   html[data-flair-wave] .chalk-flair-wave-ch,
-  html[data-flair-frames] .chalk-avatar[data-frame="ember"],
+  html[data-flair-frames] .chalk-avatar[data-frame="ember"][data-live],
   .chalk-profile-frame-swatch[data-frame="ember"],
-  html[data-flair-frames] .chalk-avatar[data-frame="aurora"],
+  html[data-flair-frames] .chalk-avatar[data-frame="aurora"][data-live],
   .chalk-profile-frame-swatch[data-frame="aurora"],
-  html[data-flair-frames] .chalk-avatar[data-frame="pulse"],
+  html[data-flair-frames] .chalk-avatar[data-frame="pulse"][data-live],
   .chalk-profile-frame-swatch[data-frame="pulse"],
+  html[data-flair-frames] .chalk-avatar[data-frame="matrix"][data-live],
+  .chalk-profile-frame-swatch[data-frame="matrix"],
+  html[data-flair-frames] .chalk-avatar[data-frame="frost"][data-live],
+  .chalk-profile-frame-swatch[data-frame="frost"],
+  html[data-flair-frames] .chalk-avatar[data-frame="gold"][data-live],
+  .chalk-profile-frame-swatch[data-frame="gold"],
   html[data-flair-banner]
     .chalk-channel-banner:not(.chalk-channel-banner--preview):not(.chalk-channel-banner--poster)
     .chalk-channel-banner-img,

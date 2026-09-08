@@ -37,7 +37,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "a small flame on any channel where more than a few messages land within a few minutes (four in four by default, both adjustable)",
       "a wave through a friend's name in the roster when they come online or send you a direct message",
       "a slow drift across a channel's pinned image",
-      "a frame around your profile picture -- ember, aurora or pulse -- that everyone with flair on sees, in the roster, the members list, hover cards and call tiles",
+      "a frame around your profile picture -- ember, aurora, pulse, matrix green, frost or gold -- that everyone with flair on sees in the roster, the members list, hover cards and call tiles, moving while you are online",
       "each effect has its own switch, and everything holds still when your system asks for reduced motion",
     ],
     where: "settings → appearance → flair",

@@ -175,6 +175,17 @@ the lazy dots). Real, and out of scope: ask before widening.
   members, and call-tile sites and `frame` at the status bar, the picker in
   the flair section, three frames in CSS.
 
+- **115-7 — live-only frames, and three more of them** (2026-09-09, after
+  v0.8.17). A frame animates only while its wearer is online: `Avatar` gains
+  `live`, rendered as `data-live`, and every frame's rule is split into the
+  ring (always) and the motion (`[data-live]`); the picker's swatches always
+  move. Each surface passes what it knows — the roster and the cards from the
+  presence map, the members panel from a presence map it now receives, a call
+  tile is online by definition, your own corner from your effective presence.
+  A surface that cannot know leaves it out and the ring rests. Plus `matrix`
+  (terminal green in stepped flicker), `frost` (ice white, a slow breath) and
+  `gold` (a metal ring catching the light) on both allowlists.
+
 ## Left open
 
 - **The live-stack checklist** (run 2026-09-09, 31/31), kept here as the

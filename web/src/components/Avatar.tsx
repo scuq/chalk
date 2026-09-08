@@ -18,7 +18,9 @@
 // drawn by CSS on the <img> itself -- outline, box-shadow, filter -- and only
 // under data-flair-frames on <html>, so a reader with flair off sees a plain
 // square. Never at the feed's line size: 112's rule stands, and a ring on a
-// 1em box down every line is noise, not decoration.
+// 1em box down every line is noise, not decoration. 115-7: and it moves only
+// while the wearer is online (`live`, data-live) -- a ring that keeps
+// glowing around someone who has gone says the wrong thing.
 
 import type { AttachmentController } from "../attachments/pipeline";
 import { useAvatarFrame } from "../auth/display-names";
@@ -41,6 +43,9 @@ interface Props {
   userID?: string;
   /** 115-6: the frame, when the caller knows it (your own); wins over the lookup */
   frame?: string;
+  /** 115-7: is this person online right now? A frame moves only while they
+   *  are; a surface that cannot know leaves it out and the ring stays still. */
+  live?: boolean;
 }
 
 export function Avatar({
@@ -52,6 +57,7 @@ export function Avatar({
   reserve = false,
   userID,
   frame,
+  live = false,
 }: Props) {
   const url = useAvatarURL(channelID, attachmentID, controller);
   // Called unconditionally (hooks), ignored for the feed line.
@@ -74,6 +80,7 @@ export function Avatar({
       class={`chalk-avatar chalk-avatar--${size}`}
       data-testid="avatar"
       data-frame={drawn || undefined}
+      data-live={drawn && live ? "" : undefined}
       alt={alt ?? ""}
       loading="lazy"
       draggable={false}

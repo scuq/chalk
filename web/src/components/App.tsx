@@ -6848,6 +6848,7 @@ export function App() {
           channelID={state.activeChannelID ?? ""}
           avatars={state.activeChannelID ? (state.avatars[state.activeChannelID] ?? {}) : {}}
           attachmentController={attControllerRef.current ?? undefined}
+          presence={state.presence} // 115-7
           channelName={displayName(activeChannel, state.user?.id ?? null)}
           members={activeChannel.members ?? []}
           recipients={memberRecipients}

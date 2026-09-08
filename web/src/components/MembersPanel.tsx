@@ -35,7 +35,7 @@ import { Avatar } from "./Avatar"; // 112-4
 import type { AttachmentController } from "../attachments/pipeline"; // 112-4
 import { useEffect, useState } from "preact/hooks";
 import { nickTintStyle } from "../chat/nickcolor";
-import type { ChannelMember, Friend } from "../state/types";
+import type { ChannelMember, Friend, PresenceMap } from "../state/types";
 import type { MemberTrust } from "../crypto/trust";
 import type { KeyProvenanceLine } from "../chat/keyprovenance";
 
@@ -58,6 +58,9 @@ interface Props {
   channelID?: string;
   avatars?: Record<string, string>;
   attachmentController?: AttachmentController;
+  // 115-7: who is online, for the frames. Friends only (that is who the
+  // presence map covers); anyone else's ring stays still.
+  presence?: PresenceMap;
   members: ChannelMember[];
   recipients: Set<string>;
   ownUserID: string | null;
@@ -139,6 +142,7 @@ export function MembersPanel({
   channelID, // 112-4
   avatars,
   attachmentController,
+  presence,
   members,
   recipients,
   ownUserID,
@@ -317,6 +321,7 @@ export function MembersPanel({
                             alt=""
                             size="row"
                             userID={m.userID} // 115-6
+                            live={presence?.[m.userID] === "online"} // 115-7
                           />
                         )}
                         <span

@@ -1619,6 +1619,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                 alt=""
                 size="card"
                 userID={senderCard.data.userID ?? undefined} // 115-6
+                live={presence?.[senderCard.data.userID ?? ""] === "online"} // 115-7
               />
             );
           })()}

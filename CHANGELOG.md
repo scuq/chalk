@@ -12,7 +12,16 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **Three more frames for your picture: matrix, frost and gold.** Matrix is
+  the terminal green, flickering like phosphor; frost is ice white with a
+  slow cold breath; gold is a warm metal ring catching the light. Pick one
+  under settings → appearance → flair.
+
 ### Changed
+- **A frame moves only while its wearer is online.** Around someone who is
+  away or offline it rests as a plain ring, so a glowing picture now means
+  the person is actually there.
 - **The busy-channel flame now sits in front of the channel's name** rather
   than at the row's right edge, so a long name in a narrow sidebar can no
   longer push it out of sight.

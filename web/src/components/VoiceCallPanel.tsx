@@ -956,6 +956,7 @@ function StagePeer({
                   controller={attachmentController ?? null}
                   size="tile"
                   userID={tile.userID} // 115-6
+                  live // 115-7: in the call is online by definition
                 />
               ) : (
                 (label === "you" ? handleForSelfInitial(channel, selfUserID) : label)
@@ -974,6 +975,7 @@ function StagePeer({
               controller={attachmentController ?? null}
               size="tile"
               userID={tile.userID} // 115-6
+              live // 115-7: in the call is online by definition
             />
           ) : (
             (label === "you" ? handleForSelfInitial(channel, selfUserID) : label)
