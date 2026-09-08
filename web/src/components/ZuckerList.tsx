@@ -149,6 +149,8 @@ export function ZuckerList({
           </span>
           <span class="chalk-zucker-row-main">
             <span class="chalk-zucker-row-top">
+              {/* 115-2: before the name, where a narrow screen cannot lose it. */}
+              {hotChannels?.has(r.id) && <Flame channelID={r.id} minutes={burstMinutes} />}
               <span class="chalk-zucker-row-name">{r.name}</span>
               {r.expiresAt != null && countdownNow != null && (
                 <span
@@ -200,7 +202,6 @@ export function ZuckerList({
               </span>
             )}
           </span>
-          {hotChannels?.has(r.id) && <Flame channelID={r.id} minutes={burstMinutes} />}
           {r.unread && <UnreadDot mention={r.mention} />}
         </button>
       </li>

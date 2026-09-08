@@ -1109,6 +1109,10 @@ export function Sidebar({
           >
             <ChannelGlyph type={isVoice ? "voice" : "text"} />
           </span>
+          {/* 115-2: the flame goes BEFORE the name. The name truncates to
+              the sidebar's width, so anything after it is the first thing a
+              narrow sidebar loses -- and a flame nobody sees is no flame. */}
+          {hotChannels?.has(ch.id) && <Flame channelID={ch.id} minutes={burstMinutes} />}
           {/* 106-3: the short name where the pref asks for it and one is
               set; the full name rides as the tooltip so nothing is lost. */}
           <span
@@ -1140,9 +1144,6 @@ export function Sidebar({
               {roster.length}
             </span>
           )}
-          {/* 115-2: the flame sits before the dot -- "busy" is about the
-              room, the dot is about you. */}
-          {hotChannels?.has(ch.id) && <Flame channelID={ch.id} minutes={burstMinutes} />}
           {showUnread && <UnreadDot mention={u.mention} />}
         </span>
         {/* 30-5: live occupant sublist. Rendered inside the channel
@@ -1367,6 +1368,11 @@ export function Sidebar({
                     />
                   );
                 })()}
+                {/* 115-2: a DM is a channel too; its flame sits on the friend,
+                    before the name for the channel row's reason. */}
+                {dm !== null && hotChannels?.has(dm.id) && (
+                  <Flame channelID={dm.id} minutes={burstMinutes} />
+                )}
                 <span
                   class={`chalk-sidebar-item-name ${nickHue !== null ? "chalk-nick-tinted" : ""}`}
                   style={nickHue !== null ? nickTintStyle(nickHue) : undefined}
@@ -1374,10 +1380,6 @@ export function Sidebar({
                   {/* 115-3: plain text until this friend's wave runs. */}
                   <WaveName name={displayName} since={waves?.get(friend.userID) ?? null} />
                 </span>
-                {/* 115-2: a DM is a channel too; its flame sits on the friend. */}
-                {dm !== null && hotChannels?.has(dm.id) && (
-                  <Flame channelID={dm.id} minutes={burstMinutes} />
-                )}
                 {dmUnread && <UnreadDot mention={false} />}
               </li>
             );

@@ -149,9 +149,13 @@ the lazy dots). Real, and out of scope: ask before widening.
     anyone. The test caught it; the store now notifies on the transition it
     records, not the one it recomputes.
 - **115-2 — the flame.** `Flame.tsx` — one inline SVG, the `UnreadDot`
-  precedent — beside the dot in the sidebar row (a busy DM lights it on the
-  friend's row, since a DM is a channel too) and the phone's conversation
-  list, and beside the title in the channel header. Fed at the `TypeMessage`
+  precedent — *before the name* in the sidebar row (a busy DM lights it on
+  the friend's row, since a DM is a channel too) and the phone's conversation
+  list, and beside the title in the channel header.
+  - **Moved to the front after the release probe** (115-2, 2026-09-09): it
+    first sat at the row's right edge beside the dot, and the name is what
+    truncates when the sidebar is narrow — so a long name hid exactly the
+    badge that was meant to be seen. Before the name it cannot be lost. Fed at the `TypeMessage`
   push, cleared with the typing store on a socket drop.
 - **115-3 — the wave.** `wave.ts` (`splitLetters`, `WAVE_MS`,
   `WAVE_MAX_LETTERS`), `wave-store.ts` with `useWaves` (one subscription for

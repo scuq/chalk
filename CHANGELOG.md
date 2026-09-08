@@ -10,6 +10,13 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **The busy-channel flame now sits in front of the channel's name** rather
+  than at the row's right edge, so a long name in a narrow sidebar can no
+  longer push it out of sight.
+
 ## v0.8.17 — 9 September 2026 — Flair, and a note about what's new
 
 ### Added

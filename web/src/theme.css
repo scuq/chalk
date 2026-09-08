@@ -11119,11 +11119,13 @@ body.chalk-resizing-y .chalk-composer-resizer {
   line-height: 1;
 }
 .chalk-flair-flame--row {
-  /* Same right-edge push as the unread dot; the dot then sits beside it. */
-  margin-left: auto;
+  /* Before the name, not after it: the name is what truncates when the
+     sidebar is narrow, so the right edge is exactly where a badge goes
+     unseen. A small gap to the name; the glyph before it has its own. */
+  margin-right: var(--chalk-s1);
 }
-.chalk-flair-flame--row + .chalk-unread-dot {
-  margin-left: 4px;
+.chalk-zucker-row-top .chalk-flair-flame--row {
+  align-self: center;
 }
 .chalk-flair-flame--header {
   margin-left: var(--chalk-s2);
