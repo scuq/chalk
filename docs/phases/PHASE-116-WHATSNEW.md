@@ -1,6 +1,6 @@
 # Phase 116 — what's new: the note after an update, and the ask that never came
 
-**Status:** built, 116-1 – 116-2 (2026-09-09). Verified against a running
+**Status:** built, 116-1 – 116-2 (2026-09-09), shipped in v0.8.17. Verified against a running
 stack: a fresh account plus one friend and one channel, 12 checks on the real
 DOM (the probe in `.claude/skills/run-chalk/probes/ui.mjs` at the time) — the
 note on first load, back on reload unticked, the picture ask following it,

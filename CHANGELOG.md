@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.17 — 9 September 2026 — Flair, and a note about what's new
 
 ### Added
 - **Flair, off until you ask for it.** A new switch under settings →

@@ -1,6 +1,6 @@
 # Phase 115 — flair: an animated chalk, off by default
 
-**Status:** built, 115-1 – 115-6 (2026-09-08). Every slice has unit cover
+**Status:** built, 115-1 – 115-6 (2026-09-08), shipped in v0.8.17. Every slice has unit cover
 (`node test.mjs`), the server slice an end-to-end HTTP test against a database
 (`TestAvatarFrameEndToEnd`), and the seam between the effects and the stylesheet
 its own test (`theme-flair.test.ts`). Verified against a running stack: two
