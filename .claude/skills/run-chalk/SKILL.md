@@ -127,6 +127,7 @@ committed from it would describe whatever question came last.
 | `parking-privacy.mjs` | 53-4/53-5: asks the computed style whether the privacy screen blurs every shell child except the parked pane, and whether F9's guard and the way back behave. 15 checks |
 | `roster-order.mjs` | 114: the roster's order, driven end to end — the group header menu, the channel menu's order row, a mouse drag within a group and across into another, Escape, and the order surviving a reload. Its header carries the two things that make pointer probes work here (the avatar nudge's backdrop, the intermediate mouse move). 14 checks |
 | `thread-refresh.mjs` | 42-10: cuts A's websocket, has B reply in a thread, and asks whether the pane catches up — reopened and left open, desktop and mobile. Its header carries the finding that makes it work: `setOffline()` does not touch an established WebSocket, so it takes `routeWebSocket` to stage this at all. 8 checks |
+| `flair-demo.mjs` | 115: not a probe — a scene. A headed window signed in as you, four bots chatting in bursts, one flipping away/online, one DMing you, three wearing frames; runs until killed. The `flair-demo` skill is its front door |
 
 Each exists because the assertion needs a real browser and `web/test.mjs` has
 no DOM; the pure halves live in `*.test.ts` beside the source.

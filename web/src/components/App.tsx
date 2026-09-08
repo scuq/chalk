@@ -375,6 +375,8 @@ import { type BannerLayout, DEFAULT_BANNER, normalizeBanner } from "../state/ban
 import { BannerEditor } from "./BannerEditor"; // 111-9
 import { BannerCropper } from "./BannerCropper"; // 112-2 reuses the cropper
 import { AvatarNudge } from "./AvatarNudge"; // 112-6
+import { WhatsNewNudge } from "./WhatsNewNudge"; // 116-2
+import { latestWhatsNew, parseWhatsNewRead, unreadWhatsNew } from "../whats-new"; // 116-2
 import { avatarRejectReason, prepareAvatar } from "../attachments/avatar"; // 112-2
 import { clearCache as clearAttachmentCache } from "../attachments/cache";
 import type { AttachmentRef, PendingAttachment } from "../attachments/types";
@@ -3649,6 +3651,29 @@ export function App() {
   const ownAvatarSet =
     !!state.user?.id && Object.values(state.avatars).some((m) => !!m[state.user!.id]);
 
+  // 116-2: the what's-new note. Shown when the account's read mark is below
+  // the newest note, after the same beat as the picture ask, and before it:
+  // two questions on one load is a nag, so the picture ask waits for this
+  // to close. Closing hides it for the session; only the tick writes prefs.
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const whatsNewDismissedRef = useRef(false);
+  const whatsNewRead = parseWhatsNewRead(state.prefs.whatsNewRead);
+  const whatsNewUnread = useMemo(() => unreadWhatsNew(whatsNewRead), [whatsNewRead]);
+  useEffect(() => {
+    if (whatsNewOpen || whatsNewDismissedRef.current) return;
+    if (!state.prefsLoaded || !state.user?.id) return;
+    if (whatsNewUnread.length === 0) return;
+    const t = window.setTimeout(() => setWhatsNewOpen(true), 1500);
+    return () => window.clearTimeout(t);
+  }, [state.prefsLoaded, state.user?.id, whatsNewUnread, whatsNewOpen]);
+  const markWhatsNew = useCallback((read: boolean) => {
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    // Ticked: the newest note is read, and so is everything before it.
+    // Unticked (from the about panel): forget the mark, the note returns.
+    c.send(TypePrefsSet, { patch: { whatsNewRead: read ? latestWhatsNew() : 0 } });
+  }, []);
+
   useEffect(() => {
     if (nudgeShownRef.current || nudgeOpen) return;
     // prefsLoaded is the gate that matters: without it, a tab that has not
@@ -3658,11 +3683,31 @@ export function App() {
     if (ownAvatarSet) return;
     // Nothing to fan out to yet, and no feed to see the result in.
     if (Object.keys(state.channels).length === 0) return;
-    nudgeShownRef.current = true;
+    // 116-1: not on top of the what's-new note, and not before it -- but a
+    // note closed unticked is dealt with for this session, and the ask may
+    // follow it.
+    if (whatsNewOpen || (whatsNewUnread.length > 0 && !whatsNewDismissedRef.current)) return;
     // A beat after the app settles, so it does not race the first paint.
-    const t = window.setTimeout(() => setNudgeOpen(true), 2500);
+    // 116-1: the "shown" mark is set when the ask actually opens, not when
+    // the timer is armed. It used to be set here, and the effect re-runs
+    // whenever the channel list changes -- which it does, several times,
+    // in the first seconds after a load -- so the cleanup cancelled the
+    // timer while the mark stayed set, and the ask never came at all.
+    const t = window.setTimeout(() => {
+      nudgeShownRef.current = true;
+      setNudgeOpen(true);
+    }, 2500);
     return () => window.clearTimeout(t);
-  }, [state.prefsLoaded, state.prefs.avatarAsked, state.user?.id, state.channels, ownAvatarSet, nudgeOpen]);
+  }, [
+    state.prefsLoaded,
+    state.prefs.avatarAsked,
+    state.user?.id,
+    state.channels,
+    ownAvatarSet,
+    nudgeOpen,
+    whatsNewOpen,
+    whatsNewUnread,
+  ]);
 
   const answerNudge = useCallback(() => {
     setNudgeOpen(false);
@@ -6950,6 +6995,19 @@ export function App() {
           setAvatarPick({ url: URL.createObjectURL(file) });
         }}
       />
+      {whatsNewOpen && (
+        <WhatsNewNudge
+          // Opened on its own it shows what is unread; reopened from the
+          // about panel (everything read) it shows the whole list.
+          entries={whatsNewUnread.length > 0 ? whatsNewUnread : unreadWhatsNew(0)}
+          read={whatsNewUnread.length === 0}
+          onRead={markWhatsNew}
+          onClose={() => {
+            whatsNewDismissedRef.current = true;
+            setWhatsNewOpen(false);
+          }}
+        />
+      )}
       {nudgeOpen && (
         <AvatarNudge
           onDismiss={answerNudge}
@@ -7046,6 +7104,7 @@ export function App() {
           refreshing={state.profileRefreshing}
           serverVersion={state.serverVersion} // 39-1
           serverCommit={state.serverCommit}
+          onOpenWhatsNew={() => setWhatsNewOpen(true)} // 116-2
           theme={state.prefs.theme ?? "green"}
           onSetTheme={(t) => {
             // Phase 9.7b: send prefs_set; server merges, acks, and

@@ -11323,3 +11323,27 @@ html[data-flair-frames] .chalk-avatar--tile[data-frame] {
     animation: none;
   }
 }
+
+/* ============================================================
+   Phase 116-2: the what's-new note
+   ============================================================ */
+/* One section per phase inside the standard modal: a title, a plain list,
+   the settings path as a hint. The footer holds the tick on the left and
+   close on the right -- the tick is the answer, close is not. */
+.chalk-whats-new-entry h3 {
+  margin: 0 0 var(--chalk-s2) 0;
+  font-size: var(--chalk-size-body);
+  color: var(--chalk-fg-bright);
+  font-weight: 500;
+}
+.chalk-whats-new-entry ul {
+  margin: 0;
+  padding-left: 1.2em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s1);
+}
+.chalk-whats-new-footer {
+  justify-content: space-between;
+  align-items: center;
+}

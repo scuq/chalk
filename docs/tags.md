@@ -41,6 +41,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #history        55 69 79  internal/store/ web/src/chat/ web/src/components/MessageList.tsx docs/phases/PHASE-55-HISTORY.md docs/phases/PHASE-69-PINNEDHEADER.md docs/phases/PHASE-79-LANDING.md
 #daymarks       113       web/src/chat/daymarks.ts web/src/chat/reltime.ts web/src/components/MessageList.tsx web/src/theme.css docs/phases/PHASE-113-DAYMARKS.md
 #flair          115       web/src/display-prefs.ts web/src/chat/burst-store.ts web/src/chat/wave.ts web/src/chat/wave-store.ts web/src/components/Flame.tsx web/src/components/WaveName.tsx web/src/components/Avatar.tsx web/src/components/Sidebar.tsx web/src/components/ZuckerList.tsx web/src/components/App.tsx web/src/components/ProfilePanel.tsx web/src/settings-nav.ts web/src/avatars/frames.ts web/src/auth/display-names.ts web/src/auth/avatar-frame-api.ts web/src/theme.css web/src/theme-flair.test.ts migrations/0061_avatar_frame.sql internal/store/users.go internal/auth/avatar_frame_http.go internal/auth/user_directory_http.go docs/theming.md docs/phases/PHASE-115-FLAIR.md
+#whatsnew       116       web/src/whats-new.ts web/src/whats-new.test.ts web/src/components/WhatsNewNudge.tsx web/src/components/AvatarNudge.tsx web/src/components/App.tsx web/src/components/ProfilePanel.tsx web/src/settings-nav.ts web/src/state/types.ts web/src/theme.css docs/phases/PHASE-116-WHATSNEW.md
 #rosterorder    114       web/src/chat/roster-order.ts web/src/chat/zucker.ts web/src/components/Sidebar.tsx web/src/components/App.tsx web/src/components/ProfilePanel.tsx web/src/state/types.ts web/src/settings-nav.ts web/src/theme.css docs/phases/PHASE-114-ROSTERORDER.md
 #mentions       56        web/src/chat/ web/src/components/Composer.tsx docs/phases/PHASE-56-MENTIONS.md
 #composer       91 94     web/src/chat/composer-height.ts web/src/chat/composer-keys.ts web/src/components/ComposerResizer.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-91-COMPOSERSIZE.md docs/phases/PHASE-94-PHONECOMPOSER.md
@@ -94,7 +95,7 @@ Phase numbers that appear in the source but are not claimed above. Left here
 rather than guessed at, so the legend stays trustworthy; move one into a tag
 line when its topic is clear.
 
-    (none — 25 through 115 are all claimed)
+    (none — 25 through 116 are all claimed)
 
 Phases below 25 predate the tagging convention and carry no `// NN-n:` comments
 to find. They are recorded in `docs/phases/PHASE-00-29-FOUNDATION.md` instead —

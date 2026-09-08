@@ -107,6 +107,7 @@ as-built rather than a contemporaneous plan.
 | 113 | day marks — which day am I reading? | [PHASE-113-DAYMARKS.md](phases/PHASE-113-DAYMARKS.md) |
 | 114 | roster order — your channels, in your order | [PHASE-114-ROSTERORDER.md](phases/PHASE-114-ROSTERORDER.md) |
 | 115 | flair — the animated mode, off by default | [PHASE-115-FLAIR.md](phases/PHASE-115-FLAIR.md) |
+| 116 | what's new — the note after an update, and the picture ask that never came | [PHASE-116-WHATSNEW.md](phases/PHASE-116-WHATSNEW.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

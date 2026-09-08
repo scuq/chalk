@@ -118,7 +118,8 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     id: "about",
     tab: "account",
     title: "about",
-    keywords: ["version", "changelog", "build"],
+    // 116-2: and the way back to the what's-new note.
+    keywords: ["version", "changelog", "build", "what's new", "whats new", "news", "update"],
   },
   {
     id: "appearance",

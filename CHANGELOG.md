@@ -26,6 +26,17 @@ The engineering-level history (which slice shipped what) lives in
   your account, so everyone who has flair on sees it around your picture in
   the roster, the members list, hover cards and call tiles, and you see
   theirs the same way. The conversation itself stays as it was.
+- **A short "what's new" note after an update.** The first time you open
+  chalk after it changed, a small note says what is new and where to find
+  it. Closing it brings it back next time; ticking "I've read this" puts it
+  away for good, on every device. Settings → account → about reopens it any
+  time.
+
+### Fixed
+- **The "add a picture?" question sometimes never came.** It was being
+  cancelled by the channel list settling in the first seconds after a load,
+  and once cancelled it did not come back. It now asks, once, as intended,
+  after the what's-new note has had its turn.
 
 ## v0.8.16 — 7 September 2026 — Your channels, in your order
 

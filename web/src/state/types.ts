@@ -513,6 +513,10 @@ export interface UserPrefs {
   // asked again, and someone who set a picture and removed it later is not
   // re-prompted.
   avatarAsked?: boolean;
+  // 116-2: the highest phase whose what's-new note this person has ticked
+  // as read (web/src/whats-new.ts). Account-level for 112-6's reason; absent
+  // or junk reads as "nothing read", so the note shows rather than hides.
+  whatsNewRead?: number;
   // [extend with more keys in future phases]
 }
 

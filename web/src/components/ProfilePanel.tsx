@@ -113,6 +113,8 @@ interface Props {
   // frame, so empty until the socket is up.
   serverVersion?: string;
   serverCommit?: string;
+  // 116-2: reopen the what's-new note from the about section.
+  onOpenWhatsNew?: () => void;
   // Phase 9.7b: theme picker.
   theme?: string;
   onSetTheme?: (theme: string) => void;
@@ -273,6 +275,7 @@ export function ProfilePanel({
   refreshing,
   serverVersion,
   serverCommit,
+  onOpenWhatsNew,
 }: Props) {
   // 68-2/68-3: which settings tab is open, and the filter query. Ephemeral
   // view state — the panel unmounts on close, so both reset for free. A
@@ -2294,6 +2297,24 @@ export function ProfilePanel({
               <p class="chalk-profile-hint">
                 opens the changelog for this build on github.
               </p>
+              {/* 116-2: the note this build showed (or would have) on first
+                  load, on demand -- and the place to un-tick it. */}
+              {onOpenWhatsNew && (
+                <div class="chalk-profile-field">
+                  <button
+                    type="button"
+                    class="chalk-button"
+                    data-testid="profile-whats-new"
+                    onClick={onOpenWhatsNew}
+                  >
+                    what's new
+                  </button>
+                  <p class="chalk-profile-hint">
+                    the short note about recent changes, shown once after an
+                    update until you tick it as read.
+                  </p>
+                </div>
+              )}
             </section>
           )}
         </div>

@@ -9,9 +9,19 @@ Latest release: **v0.8.16** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 115 is the newest work, and there is no newer plan. The phase-doc index at the top of
+Phase 116 is the newest work, and there is no newer plan. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
+
+## Phase 116 — what's new: COMPLETE, with one hand step at release time
+
+116-1 … 116-2, record in [phases/PHASE-116-WHATSNEW.md](phases/PHASE-116-WHATSNEW.md).
+The picture ask's timer fix, and the per-phase what's-new note with its
+stored "read" tick. Verified on a live stack (12 checks).
+
+- **`WHATS_NEW` in `web/src/whats-new.ts` is pruned by hand.** It should hold
+  the last release or two; when cutting a release, drop entries older than
+  that. The `/release` skill does not remind you yet.
 
 ## Phase 115 — flair: COMPLETE, with two recorded trade-offs
 
