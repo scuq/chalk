@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.19 — 9 September 2026 — Your own card in the corner
 
 ### Added
 - **Hover your own name in the top-right corner** to see your picture in your
