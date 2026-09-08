@@ -17,6 +17,9 @@ import { resolveNickHue } from "../chat/nickcolor";
 import { threadsNeedingYouCount, type ThreadLine } from "../chat/threadinbox";
 import { TYPING_PING_MS } from "../chat/typing";
 import { typingStore } from "../chat/typing-store";
+import { burstStore, useHotChannels } from "../chat/burst-store"; // 115-2
+import { waveStore, useWaves } from "../chat/wave-store"; // 115-3
+import { Flame } from "./Flame"; // 115-2
 import { mentionsHandle } from "../chat/mentions";
 import { threadTitle, attachmentTitle } from "../chat/threadtitle";
 import { notifySounds, type NotifySounds } from "../notify";
@@ -402,7 +405,8 @@ import {
   ApiError,
 } from "../auth/api";
 import { lookupUser } from "../auth/users";
-import { resetDisplayNames, useDisplayNames } from "../auth/display-names";
+import { refreshDirectory, resetDisplayNames, useDisplayNames } from "../auth/display-names";
+import { setAvatarFrame } from "../auth/avatar-frame-api"; // 115-6
 
 function classifyDevice(): "phone" | "tablet" | "desktop" {
   const ua = navigator.userAgent;
@@ -2160,6 +2164,18 @@ export function App() {
       if (actions.banner && !parkedRef.current) notifyBanners().show(ev, moment);
       // blink() itself declines while the window is visible and focused.
       if (actions.blink && !dnd) titleController().blink();
+      // 115-3: a DM waves its sender's name in the roster. Not while you are
+      // looking at that very conversation -- the message arriving in front
+      // of you is the whole event -- and never through the rules engine:
+      // a wave is not a notification, it is the roster reacting.
+      if (
+        ev.type === "dm" &&
+        ev.senderUserID &&
+        flairWaveRef.current &&
+        !(ev.channelID === activeChannelRef.current && tabVisibleRef.current)
+      ) {
+        waveStore.trigger(ev.senderUserID, Date.now());
+      }
     });
     return () => {
       unsubRules();
@@ -2625,6 +2641,12 @@ export function App() {
         // for the rest of the TTL, which reads as a second message coming.
         // Keyed on the user, not m.sender -- that field is a device id.
         if (m.senderUserID) typingStore.clearUser(m.channelID, m.senderUserID);
+        // 115-2: the flame counts arrivals, readable or not, before the
+        // decrypt -- a message you cannot open yet is still a message. Live
+        // pushes only, for noteSound's reason: history would light every
+        // room on every reload. Gated on the pref so a reader with flair
+        // off keeps no clock running.
+        if (flairFlameRef.current) burstStore.note(m.channelID, Date.now());
         // Phase 23f (fail-closed): always decrypt before dispatch; a null-
         // version or undecryptable body becomes a placeholder, never
         // cleartext. 83-2: the open path also verifies the envelope; the
@@ -3304,6 +3326,10 @@ export function App() {
               userIdle: userIdleRef.current,
               isRelevantSurfaceOpen: false,
             });
+            // 115-3: the same transition, same two guards, waves the name
+            // in the roster. The sound is a pref of its own and off by
+            // default; the wave follows flair instead.
+            if (flairWaveRef.current) waveStore.trigger(pp.user_id, Date.now());
           }
           dispatch({
             kind: "presence_set",
@@ -3472,6 +3498,9 @@ export function App() {
     // forget what we'd previously asked for at the protocol layer.
     subscribeSentRef.current = new Set();
     avatarsAskedRef.current = new Set(); // 112-3: re-list pictures on reconnect
+    // 115-6: re-read the directory too. A friend's changed avatar frame (or
+    // display name) has no push; this is how it reaches you without a reload.
+    void refreshDirectory();
     historyRequestedRef.current = new Set();
     markReadSentRef.current = new Map(); // 33-1
     markThreadReadSentRef.current = new Map(); // 42-4
@@ -3542,8 +3571,38 @@ export function App() {
   // than the account's prefs; the hook follows the picker in this tab and
   // in any other.
   const [
-    { showChannelBanner, showAvatars: showAvatarsPref, showRosterAvatars: showRosterAvatarsPref },
+    {
+      showChannelBanner,
+      showAvatars: showAvatarsPref,
+      showRosterAvatars: showRosterAvatarsPref,
+      flair,
+      flairFlame,
+      flairWave,
+      flairBurstCount,
+      flairBurstMinutes,
+    },
   ] = useDisplayPrefs();
+  // 115-2: which channels are burning. The hook subscribes only while the
+  // flame is on and hands back the same Set at rest, so nothing below
+  // re-renders on the store's sweeps. The ref is for the frame handler,
+  // which must not close over a render's prefs.
+  const flameOn = flair && flairFlame;
+  const flairFlameRef = useRef(flameOn);
+  flairFlameRef.current = flameOn;
+  const flairWaveRef = useRef(flair && flairWave);
+  flairWaveRef.current = flair && flairWave;
+  const hotChannels = useHotChannels(flameOn, flairBurstCount, flairBurstMinutes);
+  useEffect(() => {
+    // Off means out: the store must not keep a stale verdict (or a timer)
+    // for a reader who no longer wants one.
+    if (!flameOn) burstStore.clearAll();
+  }, [flameOn]);
+  // 115-3: the running waves, one subscription for both rosters.
+  const waveOn = flair && flairWave;
+  const waves = useWaves(waveOn);
+  useEffect(() => {
+    if (!waveOn) waveStore.clearAll();
+  }, [waveOn]);
   // 111-9: the banner editor, open on one channel at a time. localURL is
   // the just-uploaded file's bytes, so a fresh pin previews instantly
   // instead of round-tripping its own ciphertext back out of the cache;
@@ -4059,6 +4118,9 @@ export function App() {
       // Same reasoning for typing: names frozen across a drop are worse than
       // none, and over a long one the typist may have left entirely.
       typingStore.clearAll();
+      // 115-2: and for the flame -- a room that was burning before the drop
+      // is a fact about before the drop.
+      burstStore.clearAll();
       return;
     }
     const c = clientRef.current;
@@ -5892,6 +5954,9 @@ export function App() {
           channelOrder={selectRosterPrefs(state.prefs).channelOrder}
           groupOrder={selectRosterPrefs(state.prefs).groupOrder}
           activity={state.activity}
+          hotChannels={hotChannels} // 115-2
+          burstMinutes={flairBurstMinutes}
+          waves={waves} // 115-3
           onSetGroupSort={(groupKey, mode) =>
             writeRosterOrder((order) => {
               const groupSort = { ...order.groupSort };
@@ -6048,6 +6113,9 @@ export function App() {
             voiceOccupants={zuckerVoiceOccupants}
             parkingName={parking.hidden ? null : parking.name}
             threadsUnread={threadsNeedingYou}
+            hotChannels={hotChannels} // 115-2
+            burstMinutes={flairBurstMinutes}
+            waves={waves} // 115-3
             onSelect={(id) => {
               dispatch({ kind: "set_active_channel", channelID: id });
               // 64-8: re-entering the channel that is still active is a
@@ -6148,6 +6216,10 @@ export function App() {
                 <span class="chalk-channel-header-name">
                   {displayName(activeChannel, state.user?.id ?? null)}
                 </span>
+                {/* 115-2: the room you are in can be burning too. */}
+                {hotChannels.has(activeChannel.id) && (
+                  <Flame channelID={activeChannel.id} minutes={flairBurstMinutes} where="header" />
+                )}
                 {activeChannel.isDM && <span class="chalk-channel-header-tag">dm</span>}
                 {!activeChannel.isDM && (
                   <ModeBadge
@@ -6997,6 +7069,12 @@ export function App() {
           }}
           onRemoveAvatar={() => void fanOutAvatar(null)}
           avatarSet={ownAvatarSet}
+          // 115-6: the frame is one PUT and a local patch; the directory
+          // omits the caller, so state.me is the only copy of your own.
+          onSetAvatarFrame={async (frame) => {
+            const stored = await setAvatarFrame(frame);
+            dispatch({ kind: "me_avatar_frame_set", frame: stored });
+          }}
           avatarBusy={avatarBusy}
           chatPrefs={selectChatPrefs(state.prefs)}
           onSetChatPref={(key, value) => {

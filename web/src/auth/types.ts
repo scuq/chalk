@@ -177,6 +177,9 @@ export interface MeResponse {
   // Optional: reducer paths that synthesize a MeResponse from registration/
   // login results omit it; the /me refetch carries the authoritative value.
   authV2Enrolled?: boolean;
+  // 115-6: the frame around your own picture, "" for none. Optional for
+  // the same reason as authV2Enrolled: the synthesized shapes omit it.
+  avatarFrame?: string;
 }
 
 // AuthState is the auth-related slice of AppState. It's spread into
@@ -375,6 +378,8 @@ export type AuthAction =
   | { kind: "auth_invite_dismissed" } // user clicked "register normally" or similar
   | { kind: "auth_verify_email_detected"; token: string }
   | { kind: "auth_verify_email_succeeded"; userID: string; newEmail: string }
+  // 115-6: PUT /api/auth/avatar-frame succeeded; patch me without a refetch.
+  | { kind: "me_avatar_frame_set"; frame: string }
   | { kind: "auth_verify_email_failed"; code: string; message: string }
   | { kind: "auth_verify_email_dismissed" }
   // InvitesPanel (in-chat) - listing + create + revoke:

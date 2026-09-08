@@ -244,6 +244,7 @@ export async function fetchMe(): Promise<MeResponse | null> {
     email_verified_at: string;
     session_expires_at: string;
     auth_v2_enrolled?: boolean;
+    avatar_frame?: string; // 115-6
   }
   const body = await parseResponse<MeRaw>(resp);
   return {
@@ -255,6 +256,7 @@ export async function fetchMe(): Promise<MeResponse | null> {
     emailVerifiedAt: body.email_verified_at,
     sessionExpiresAt: body.session_expires_at,
     authV2Enrolled: body.auth_v2_enrolled ?? true,
+    avatarFrame: body.avatar_frame ?? "",
   };
 }
 

@@ -27,6 +27,7 @@ export type SectionId =
   | "pins"
   | "about"
   | "appearance"
+  | "flair"
   | "chat"
   | "roster"
   | "shortcuts"
@@ -129,6 +130,18 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       // 93-1: what someone hunting for the layout-width pref would type.
       "width", "full width", "wide", "fullscreen", "layout", "column",
       "margins", "ultrawide",
+    ],
+  },
+  {
+    id: "flair",
+    tab: "appearance",
+    title: "flair",
+    keywords: [
+      // 115-1: what someone hunting for the animated mode would type --
+      // the name, the effects, and the words for wanting them off.
+      "flair", "animation", "animated", "animations", "motion", "fancy",
+      "flame", "fire", "hot", "busy", "burst", "wave", "frame", "frames",
+      "avatar frame", "banner", "drift", "reduced motion", "alive",
     ],
   },
   {

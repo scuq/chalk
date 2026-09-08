@@ -11,6 +11,8 @@
 // channels list; only text channels stay in the grouped/filtered roster.
 
 import { Avatar } from "./Avatar"; // 112-4
+import { Flame } from "./Flame"; // 115-2
+import { WaveName } from "./WaveName"; // 115-3
 import { pickAvatar } from "../avatars/pick"; // 112-4
 import type { AttachmentController } from "../attachments/pipeline"; // 112-4
 import { useState, useRef, useEffect } from "preact/hooks";
@@ -245,6 +247,13 @@ interface Props {
   // 114-2: activity per channel (state.activity), for the activity sort.
   // Only ts is read; the rest of the entry belongs to the message preview.
   activity?: Record<string, { ts: number }>;
+  // 115-2: channels currently burning (the burst store's verdict), and the
+  // window it was measured over, for the flame's tooltip. Absent or empty
+  // means flair is off or nothing is busy -- the rows render as before.
+  hotChannels?: ReadonlySet<string>;
+  burstMinutes?: number;
+  // 115-3: friends whose name is waving right now (userID -> wave start).
+  waves?: ReadonlyMap<string, number>;
   // 106-3: which of a channel's names the rows show (resolved prefs;
   // "short" falls back to the full name where none is set).
   nameStyle?: NameStyle;
@@ -427,6 +436,9 @@ export function Sidebar({
   onSetGroupOrder,
   onMoveChannelToGroup,
   activity,
+  hotChannels,
+  burstMinutes = 4,
+  waves,
   nameStyle = "full",
   onUpdateChannel,
   avatars, // 112-4
@@ -1128,6 +1140,9 @@ export function Sidebar({
               {roster.length}
             </span>
           )}
+          {/* 115-2: the flame sits before the dot -- "busy" is about the
+              room, the dot is about you. */}
+          {hotChannels?.has(ch.id) && <Flame channelID={ch.id} minutes={burstMinutes} />}
           {showUnread && <UnreadDot mention={u.mention} />}
         </span>
         {/* 30-5: live occupant sublist. Rendered inside the channel
@@ -1348,6 +1363,7 @@ export function Sidebar({
                       controller={attachmentController ?? null}
                       alt=""
                       size="row"
+                      userID={friend.userID} // 115-6
                     />
                   );
                 })()}
@@ -1355,8 +1371,13 @@ export function Sidebar({
                   class={`chalk-sidebar-item-name ${nickHue !== null ? "chalk-nick-tinted" : ""}`}
                   style={nickHue !== null ? nickTintStyle(nickHue) : undefined}
                 >
-                  {displayName}
+                  {/* 115-3: plain text until this friend's wave runs. */}
+                  <WaveName name={displayName} since={waves?.get(friend.userID) ?? null} />
                 </span>
+                {/* 115-2: a DM is a channel too; its flame sits on the friend. */}
+                {dm !== null && hotChannels?.has(dm.id) && (
+                  <Flame channelID={dm.id} minutes={burstMinutes} />
+                )}
                 {dmUnread && <UnreadDot mention={false} />}
               </li>
             );
@@ -1636,6 +1657,7 @@ export function Sidebar({
                 controller={attachmentController ?? null}
                 alt=""
                 size="card"
+                userID={hoverCard.data} // 115-6
               />
             );
           })()}

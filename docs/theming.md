@@ -63,6 +63,35 @@ tier and the signal colors clear 3:1, and nothing drops below 3:1 on
 `--chalk-bg-elev-2`. `web/src/theme-palette.test.ts` enforces exactly that, and
 also holds the picker and the stylesheet to the same theme names.
 
+## Motion policy
+
+chalk is still by default. Phase 115 added *flair* — the animated mode: a
+flame on a busy channel, a wave through a friend's name, animated frames
+around profile pictures, a slow drift on the channel banner — and with it
+the rules any motion in the sheet follows:
+
+1. **Off unless asked for.** Flair is a per-device switch in
+   `web/src/display-prefs.ts`, default off, written as `data-flair` (and one
+   `data-flair-<effect>` per effect) on `<html>`. Every flair rule is gated on
+   one of those attributes, so with the switch off the section matches
+   nothing. The flair section sits at the end of `web/src/theme.css`.
+2. **Reduced motion wins.** One `@media (prefers-reduced-motion: reduce)`
+   block closes the section and turns every flair animation off, leaving each
+   effect's resting shape: a still flame, letters where plain text sits, a
+   static ring, the banner at its zoom. There is no override for it, and
+   `web/src/theme-flair.test.ts` holds every animated flair selector to that
+   block. The convention predates 115 (the parking-lot drift, the resizers)
+   and is CSS-only; nothing in TypeScript reads the media query.
+3. **Compositor properties only.** Flair animates `transform`, `translate`,
+   `scale`, `opacity`, `outline`, `box-shadow` and `filter` — never a
+   layout property, and never inside the message feed. The banner drift uses
+   the individual `translate`/`scale` properties because `BannerBand` sets
+   `transform` inline for its zoom, and the two compose.
+4. **Colours come from the tokens** (`--chalk-warn` for heat, `--chalk-accent`
+   for the pulse ring) so every theme passes the palette test unchanged. The
+   aurora frame is the one deliberate exception: a spectrum is the same
+   spectrum in every theme.
+
 ## Adding a built-in theme
 
 1. A `[data-theme="yourname"] { ... }` block in `web/src/theme.css` declaring

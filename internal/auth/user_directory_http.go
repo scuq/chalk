@@ -46,6 +46,7 @@ func (d *HTTPDeps) handleUserDirectory(
 			UserID:      u.ID.String(),
 			Username:    u.Username,
 			DisplayName: u.DisplayName,
+			AvatarFrame: u.AvatarFrame,
 		})
 	}
 	writeJSON(w, http.StatusOK, resp)

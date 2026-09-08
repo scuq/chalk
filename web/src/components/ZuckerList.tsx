@@ -21,6 +21,8 @@ import { filterRoster } from "../chat/roster-filter";
 import { fmtRelative } from "../chat/reltime";
 import { formatCountdown, countdownUrgent } from "../chat/countdown";
 import { UnreadDot } from "./UnreadDot";
+import { Flame } from "./Flame"; // 115-2
+import { WaveName } from "./WaveName"; // 115-3
 import { CamIcon, ChannelGlyph, MicOffIcon, ScreenIcon } from "./Sidebar";
 import { presenceClass, presenceLabel } from "../chat/presence";
 
@@ -47,6 +49,11 @@ interface Props {
   onCreateChannel: () => void;
   // 80-14: the App's countdown tick, for ephemeral rooms' expiry badges.
   countdownNow?: number;
+  // 115-2: the burst store's verdict and its window, as the sidebar gets them.
+  hotChannels?: ReadonlySet<string>;
+  burstMinutes?: number;
+  // 115-3: friends whose name is waving right now (userID -> wave start).
+  waves?: ReadonlyMap<string, number>;
 }
 
 export function ZuckerList({
@@ -64,6 +71,9 @@ export function ZuckerList({
   onAddFriend,
   onCreateChannel,
   countdownNow,
+  hotChannels,
+  burstMinutes = 4,
+  waves,
 }: Props) {
   const [friendsOpen, setFriendsOpen] = useState(false);
   // 64-2/64-5: quick filter over the conversation rows, same match rule as
@@ -190,6 +200,7 @@ export function ZuckerList({
               </span>
             )}
           </span>
+          {hotChannels?.has(r.id) && <Flame channelID={r.id} minutes={burstMinutes} />}
           {r.unread && <UnreadDot mention={r.mention} />}
         </button>
       </li>
@@ -277,7 +288,9 @@ export function ZuckerList({
                   class={`chalk-presence-dot ${presenceClass(f.presence)}`}
                   aria-label={presenceLabel(f.presence)}
                 />
-                <span class="chalk-zucker-friend-name">{f.name}</span>
+                <span class="chalk-zucker-friend-name">
+                  <WaveName name={f.name} since={waves?.get(f.userID) ?? null} />
+                </span>
                 <span class="chalk-zucker-friend-state">{f.presence}</span>
               </button>
             </li>

@@ -11,8 +11,18 @@
 // caller's decision (MessageList only reserves it when someone in the channel
 // has a picture), so a channel where nobody has one looks exactly as it did
 // before 112.
+//
+// 115-6: the frame. A picture can carry data-frame="<style>", the wearer's
+// choice, read from the directory by userID (or handed in as `frame` where
+// the caller knows better -- your own, which the directory omits). It is
+// drawn by CSS on the <img> itself -- outline, box-shadow, filter -- and only
+// under data-flair-frames on <html>, so a reader with flair off sees a plain
+// square. Never at the feed's line size: 112's rule stands, and a ring on a
+// 1em box down every line is noise, not decoration.
 
 import type { AttachmentController } from "../attachments/pipeline";
+import { useAvatarFrame } from "../auth/display-names";
+import { normalizeFrame } from "../avatars/frames";
 import { useAvatarURL } from "../avatars/use-avatar";
 
 interface Props {
@@ -27,6 +37,10 @@ interface Props {
   size?: "line" | "row" | "card" | "tile";
   /** keep the empty box when there is no picture, so a column stays straight */
   reserve?: boolean;
+  /** 115-6: whose picture, for the frame lookup */
+  userID?: string;
+  /** 115-6: the frame, when the caller knows it (your own); wins over the lookup */
+  frame?: string;
 }
 
 export function Avatar({
@@ -36,8 +50,13 @@ export function Avatar({
   alt,
   size = "line",
   reserve = false,
+  userID,
+  frame,
 }: Props) {
   const url = useAvatarURL(channelID, attachmentID, controller);
+  // Called unconditionally (hooks), ignored for the feed line.
+  const looked = useAvatarFrame(frame === undefined ? userID : undefined);
+  const drawn = size === "line" ? "" : normalizeFrame(frame ?? looked);
 
   if (!url) {
     if (!reserve) return null;
@@ -54,6 +73,7 @@ export function Avatar({
       src={url}
       class={`chalk-avatar chalk-avatar--${size}`}
       data-testid="avatar"
+      data-frame={drawn || undefined}
       alt={alt ?? ""}
       loading="lazy"
       draggable={false}

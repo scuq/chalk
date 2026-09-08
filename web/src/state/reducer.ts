@@ -1874,6 +1874,14 @@ export function reducer(state: AppState, action: Action): AppState {
           : state.me,
       };
 
+    case "me_avatar_frame_set":
+      // 115-6: the same local patch as the email above. The directory
+      // omits the caller, so this is the only place your own frame lives.
+      return {
+        ...state,
+        me: state.me ? { ...state.me, avatarFrame: action.frame } : state.me,
+      };
+
     case "auth_verify_email_failed":
       return {
         ...state,

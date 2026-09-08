@@ -54,6 +54,12 @@ type User struct {
 	// keep their sender_id and the email stays claimed.
 	BlockedAt time.Time
 	DeletedAt time.Time
+
+	// 115-5: the decorative frame around this user's profile picture, as
+	// they chose it: "" for none, otherwise a style name from the allowlist
+	// in internal/auth/avatar_frame_http.go. Public -- it rides on the
+	// directory -- and drawn only by readers who turned flair on.
+	AvatarFrame string
 }
 
 // HasPendingEmail returns true when a verification is in flight.
@@ -84,7 +90,8 @@ const userCols = `id,
   COALESCE(pending_email_token, ''::bytea),
   COALESCE(pending_email_expires_at, 'epoch'::timestamptz),
   COALESCE(blocked_at, 'epoch'::timestamptz),
-  COALESCE(deleted_at, 'epoch'::timestamptz)`
+  COALESCE(deleted_at, 'epoch'::timestamptz),
+  avatar_frame`
 
 // rowScanner is satisfied by both *pgx.Row and *pgx.Rows.
 type rowScanner interface {
@@ -110,6 +117,7 @@ func scanUserRow(s rowScanner, u *User) error {
 		&pendingExpAt,
 		&blockedAt,
 		&deletedAt,
+		&u.AvatarFrame,
 	)
 	if err != nil {
 		return err
@@ -261,6 +269,23 @@ func (s *Store) UpdateDisplayName(ctx context.Context, userID uuid.UUID, display
 	return nil
 }
 
+// UpdateAvatarFrame sets the user's avatar frame (115-5). The value is the
+// caller's to validate -- the handler holds the allowlist -- and "" clears
+// it. Returns ErrNotFound if the user does not exist.
+func (s *Store) UpdateAvatarFrame(ctx context.Context, userID uuid.UUID, frame string) error {
+	tag, err := s.Pool.Exec(ctx,
+		`UPDATE users SET avatar_frame = $1 WHERE id = $2`,
+		frame, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("update avatar_frame: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // CountUsers is a small helper used by tests and metrics.
 func (s *Store) CountUsers(ctx context.Context) (int64, error) {
 	var n int64
@@ -274,6 +299,7 @@ type DirectoryUser struct {
 	ID          uuid.UUID
 	Username    string
 	DisplayName string
+	AvatarFrame string // 115-5: "" for none
 }
 
 // ListDirectoryUsers returns every active user except the caller,
@@ -281,7 +307,7 @@ type DirectoryUser struct {
 // admin-blocked and soft-deleted accounts are not discoverable.
 func (s *Store) ListDirectoryUsers(ctx context.Context, exclude uuid.UUID) ([]DirectoryUser, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT id, username::text, display_name
+		`SELECT id, username::text, display_name, avatar_frame
 		   FROM users
 		  WHERE id <> $1
 		    AND blocked_at IS NULL
@@ -295,7 +321,7 @@ func (s *Store) ListDirectoryUsers(ctx context.Context, exclude uuid.UUID) ([]Di
 	out := []DirectoryUser{} // never nil so JSON serializes as []
 	for rows.Next() {
 		var u DirectoryUser
-		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.AvatarFrame); err != nil {
 			return nil, fmt.Errorf("scan directory user: %w", err)
 		}
 		out = append(out, u)

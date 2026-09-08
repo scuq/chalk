@@ -80,6 +80,7 @@ export function StatusBar({ avatars, attachmentController, state, detail, user, 
       controller={attachmentController ?? null}
       alt=""
       size="line"
+      frame={me?.avatarFrame ?? ""} // 115-6: your own; the directory omits you
     />
   ) : null;
 

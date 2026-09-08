@@ -316,6 +316,7 @@ export function MembersPanel({
                             controller={attachmentController ?? null}
                             alt=""
                             size="row"
+                            userID={m.userID} // 115-6
                           />
                         )}
                         <span

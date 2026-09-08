@@ -955,6 +955,7 @@ function StagePeer({
                   attachmentID={avatarID}
                   controller={attachmentController ?? null}
                   size="tile"
+                  userID={tile.userID} // 115-6
                 />
               ) : (
                 (label === "you" ? handleForSelfInitial(channel, selfUserID) : label)
@@ -972,6 +973,7 @@ function StagePeer({
               attachmentID={avatarID}
               controller={attachmentController ?? null}
               size="tile"
+              userID={tile.userID} // 115-6
             />
           ) : (
             (label === "you" ? handleForSelfInitial(channel, selfUserID) : label)

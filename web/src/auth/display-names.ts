@@ -1,4 +1,5 @@
-// chalk-web -- userID -> display name, for the hover cards (92-5).
+// chalk-web -- userID -> display name, for the hover cards (92-5); and, from
+// 115-6, userID -> avatar frame, for the pictures.
 //
 // The wire knows people by handle. Nothing that arrives over the websocket --
 // not the friend list, not a channel's member list, not a message's
@@ -18,34 +19,45 @@
 // worth of care about which surfaces may see which name, to deliver a field
 // that two tooltips read.
 //
+// 115-6 put the avatar frame on the same row and the same fetch, for the
+// same reason. It is also why a changed frame reaches other people the way
+// a changed display name does -- on their next fetch, which App triggers on
+// every (re)connect -- and not over a push.
+//
 // WHY THE MAP KEEPS EMPTY NAMES. A user who never set a display name is
 // stored as "" rather than left out, because the two mean different things
 // here: absent is "we have never resolved this person" and triggers a
 // refresh, "" is "we have, and there is nothing to show". Conflating them
 // refetches the directory forever on behalf of everyone who skipped the
-// field at signup.
+// field at signup. The frame map keeps "" for the same reason.
 
 import { useEffect, useState } from "preact/hooks";
 import { listUserDirectory } from "./users";
 
 export type DisplayNameMap = Record<string, string>;
+export type AvatarFrameMap = Record<string, string>;
 
-// Module-level, so the two components that want the map and any remount
-// share one directory rather than racing several.
+// Module-level, so the components that want the maps and any remount share
+// one directory rather than racing several.
 let cache: DisplayNameMap | null = null;
+let frames: AvatarFrameMap | null = null;
 let inflight: Promise<DisplayNameMap> | null = null;
-const listeners = new Set<(m: DisplayNameMap) => void>();
+const listeners = new Set<() => void>();
 
 function refresh(): Promise<DisplayNameMap> {
   if (inflight !== null) return inflight;
   inflight = listUserDirectory()
     .then((users) => {
       const map: DisplayNameMap = {};
+      const fr: AvatarFrameMap = {};
       for (const u of users) {
-        if (u.user_id) map[u.user_id] = u.display_name ?? "";
+        if (!u.user_id) continue;
+        map[u.user_id] = u.display_name ?? "";
+        fr[u.user_id] = u.avatar_frame ?? "";
       }
       cache = map;
-      for (const fn of listeners) fn(map);
+      frames = fr;
+      for (const fn of listeners) fn();
       return map;
     })
     .catch((err) => {
@@ -60,10 +72,19 @@ function refresh(): Promise<DisplayNameMap> {
   return inflight;
 }
 
+// refreshDirectory refetches on demand. 115-6: App calls it on every
+// (re)connect, which is what makes a friend's changed frame or name show
+// up without a reload -- the id-based trigger below only fires for people
+// the map has never heard of.
+export function refreshDirectory(): Promise<void> {
+  return refresh().then(() => undefined);
+}
+
 // resetDisplayNames drops the session cache, so the next account does not
 // inherit the previous one's directory.
 export function resetDisplayNames(): void {
   cache = null;
+  frames = null;
 }
 
 // useDisplayNames returns the map, empty until it arrives.
@@ -85,9 +106,10 @@ export function useDisplayNames(
   const [names, setNames] = useState<DisplayNameMap>(() => cache ?? {});
 
   useEffect(() => {
-    listeners.add(setNames);
+    const fn = () => setNames(cache ?? {});
+    listeners.add(fn);
     return () => {
-      listeners.delete(setNames);
+      listeners.delete(fn);
     };
   }, []);
 
@@ -106,4 +128,29 @@ export function useDisplayNames(
   }, [enabled, wanted]);
 
   return names;
+}
+
+// avatarFrameFor reads one person's frame off the cache: "" until the
+// directory has arrived or when they have none. The hook below is this plus
+// a subscription.
+export function avatarFrameFor(userID: string | undefined): string {
+  return userID && frames ? (frames[userID] ?? "") : "";
+}
+
+// useAvatarFrame returns one person's frame, "" until the directory has
+// arrived or when they have none. It never fetches: the directory is
+// fetched by useDisplayNames (App) and refreshDirectory (reconnect), and a
+// picture has no business triggering a request. It does subscribe, so a
+// picture on screen repaints when the directory lands.
+export function useAvatarFrame(userID: string | undefined): string {
+  const [frame, setFrame] = useState<string>(() => avatarFrameFor(userID));
+  useEffect(() => {
+    const fn = () => setFrame(avatarFrameFor(userID));
+    fn();
+    listeners.add(fn);
+    return () => {
+      listeners.delete(fn);
+    };
+  }, [userID]);
+  return frame;
 }

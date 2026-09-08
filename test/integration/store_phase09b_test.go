@@ -50,6 +50,70 @@ func TestUsersFixtureHas09bColumns(t *testing.T) {
 	if got.HasPendingEmail() {
 		t.Error("fresh fixture user shouldn't have pending email change")
 	}
+	// 115-5: no frame until one is chosen.
+	if got.AvatarFrame != "" {
+		t.Errorf("AvatarFrame = %q, want empty", got.AvatarFrame)
+	}
+}
+
+// 115-5: the avatar frame round-trips through the one-row read path and
+// the directory, and "" clears it.
+func TestUsersUpdateAvatarFrame(t *testing.T) {
+	st := openStore(t)
+	c := ctx(t)
+
+	uid := uuid.New()
+	if _, err := st.CreateUser(c, uid, "throwaway_"+uid.String()[:8]); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	if err := st.UpdateAvatarFrame(c, uid, "ember"); err != nil {
+		t.Fatalf("UpdateAvatarFrame: %v", err)
+	}
+	got, err := st.GetUserByID(c, uid)
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if got.AvatarFrame != "ember" {
+		t.Errorf("AvatarFrame = %q, want ember", got.AvatarFrame)
+	}
+
+	dir, err := st.ListDirectoryUsers(c, aliceID)
+	if err != nil {
+		t.Fatalf("ListDirectoryUsers: %v", err)
+	}
+	found := false
+	for _, u := range dir {
+		if u.ID == uid {
+			found = true
+			if u.AvatarFrame != "ember" {
+				t.Errorf("directory AvatarFrame = %q, want ember", u.AvatarFrame)
+			}
+		}
+	}
+	if !found {
+		t.Error("throwaway user missing from the directory")
+	}
+
+	if err := st.UpdateAvatarFrame(c, uid, ""); err != nil {
+		t.Fatalf("UpdateAvatarFrame(clear): %v", err)
+	}
+	got, err = st.GetUserByID(c, uid)
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if got.AvatarFrame != "" {
+		t.Errorf("AvatarFrame after clear = %q, want empty", got.AvatarFrame)
+	}
+
+	// The column's own guard: longer than 16 is refused by Postgres.
+	if err := st.UpdateAvatarFrame(c, uid, "seventeen-letters"); err == nil {
+		t.Error("a 17-character frame was stored; the length CHECK is missing")
+	}
+
+	if err := st.UpdateAvatarFrame(c, uuid.New(), "ember"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("update ghost: got %v, want ErrNotFound", err)
+	}
 }
 
 func TestUsersGetByUsername(t *testing.T) {

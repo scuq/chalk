@@ -9,9 +9,25 @@ Latest release: **v0.8.16** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 114 is the newest work, and there is no newer plan. The phase-doc index at the top of
+Phase 115 is the newest work, and there is no newer plan. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
+
+## Phase 115 — flair: COMPLETE, with two recorded trade-offs
+
+115-1 … 115-6, record in [phases/PHASE-115-FLAIR.md](phases/PHASE-115-FLAIR.md).
+The animated mode, off by default: flame, wave, avatar frames, banner drift.
+Unit-tested per slice, the server slice end to end against a database, and
+the whole thing verified on a live stack (31 checks, including reduced
+motion).
+
+- **A changed frame reaches other people on their next reconnect or reload,
+  not live.** It rides the user directory, like a display name, and there is
+  no push for it. Recorded as accepted in the phase doc; a `profile_changed`
+  push is the fix if it ever grates.
+- **Frames are drawn on the `<img>` itself** (outline and box-shadow), so a
+  call tile's circular picture gets a circular ring for free but the feed's
+  one-line avatar gets none by rule. Also recorded there.
 
 ## Phase 114 — roster order: COMPLETE, with one recorded trade-off
 

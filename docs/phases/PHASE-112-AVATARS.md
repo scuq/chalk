@@ -161,6 +161,10 @@ someone who set a picture and later removed it is not re-prompted.
   banner or avatar blob.
 - **No animation, no per-channel picture.** One face, every room. Choosing a
   different picture per channel is possible in this schema and is not offered.
+  *Revisited by phase 115:* the picture itself still does not move, but a
+  reader who opts into flair sees a wearer-chosen animated ring around it
+  (`PHASE-115-FLAIR.md`, 115-5 and 115-6). The feed's one-line avatar is
+  excluded there for exactly this phase's reason.
 - **The roster and the hover card draw whichever shared channel's copy is to
   hand.** If you share no channel with someone, you see no picture of them --
   which is also the privacy property: there is no copy you could read.

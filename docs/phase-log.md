@@ -106,6 +106,7 @@ as-built rather than a contemporaneous plan.
 | 112 | profile pictures — encrypted per channel, one line tall | [PHASE-112-AVATARS.md](phases/PHASE-112-AVATARS.md) |
 | 113 | day marks — which day am I reading? | [PHASE-113-DAYMARKS.md](phases/PHASE-113-DAYMARKS.md) |
 | 114 | roster order — your channels, in your order | [PHASE-114-ROSTERORDER.md](phases/PHASE-114-ROSTERORDER.md) |
+| 115 | flair — the animated mode, off by default | [PHASE-115-FLAIR.md](phases/PHASE-115-FLAIR.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

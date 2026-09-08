@@ -1618,6 +1618,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
                 controller={attachmentController ?? null}
                 alt=""
                 size="card"
+                userID={senderCard.data.userID ?? undefined} // 115-6
               />
             );
           })()}

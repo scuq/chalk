@@ -19,6 +19,11 @@
 //
 // Inline styles outrank the :root and [data-theme=...] blocks, so the
 // device preference wins over whatever the active theme sets.
+//
+// 115-1: flair is the exception to "every knob is a custom property". It is
+// written as data-flair (and data-flair-flame/-wave/-frames/-banner) on the
+// same element, because the effects are CSS rules that need to *match* the
+// setting, and a selector can match an attribute but not a property value.
 
 import { useCallback, useEffect, useState } from "preact/hooks";
 
@@ -56,6 +61,22 @@ export interface DisplayPrefs {
   // feed line), but it does change a list someone scans by shape, so it is
   // the reader's call there too. Also off by default.
   showRosterAvatars: boolean;
+  // 115-1: flair -- the animated mode. Off by default, and per-device for a
+  // reason beyond the usual one: motion is a property of the screen you are
+  // looking at, and a flicker that is fun on a monitor is a battery cost and
+  // a distraction on a phone. The master switch gates everything; the four
+  // under it pick which effects run once it is on, and default on so that
+  // "turn on flair" lights the whole thing.
+  flair: boolean;
+  flairFlame: boolean;
+  flairWave: boolean;
+  flairFrames: boolean;
+  flairBanner: boolean;
+  // 115-1: the flame's threshold -- this many live messages inside this many
+  // minutes makes a channel hot. Both clamped rather than validated, like
+  // scale: a hand-edited entry cannot make the flame permanent or impossible.
+  flairBurstCount: number;
+  flairBurstMinutes: number;
 }
 
 export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
@@ -66,7 +87,22 @@ export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
   showChannelBanner: true,
   showAvatars: false,
   showRosterAvatars: false,
+  flair: false,
+  flairFlame: true,
+  flairWave: true,
+  flairFrames: true,
+  flairBanner: true,
+  flairBurstCount: 4,
+  flairBurstMinutes: 4,
 };
+
+// 115-1: the flame's threshold bounds. Two in one minute is the smallest
+// burst that is still a burst; twenty in thirty minutes is the largest that
+// is still about a moment rather than a day.
+export const MIN_BURST_COUNT = 2;
+export const MAX_BURST_COUNT = 20;
+export const MIN_BURST_MINUTES = 1;
+export const MAX_BURST_MINUTES = 30;
 
 const STORAGE_KEY = "chalk.display.v1";
 
@@ -149,6 +185,15 @@ export function normalizeDisplayPrefs(raw: unknown): DisplayPrefs {
     typeof o.showRosterAvatars === "boolean"
       ? o.showRosterAvatars
       : DEFAULT_DISPLAY_PREFS.showRosterAvatars;
+  // 115-1: absent means the default, which is off for the master and on for
+  // the four under it -- so a pre-115 device stays still, and flipping the
+  // master on later lights every effect rather than none.
+  const bool = (key: keyof DisplayPrefs, dflt: boolean): boolean =>
+    typeof o[key] === "boolean" ? (o[key] as boolean) : dflt;
+  const int = (key: keyof DisplayPrefs, dflt: number, min: number, max: number): number => {
+    const v = typeof o[key] === "number" ? (o[key] as number) : Number(o[key]);
+    return Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : dflt;
+  };
   return {
     font,
     scale,
@@ -157,18 +202,55 @@ export function normalizeDisplayPrefs(raw: unknown): DisplayPrefs {
     showChannelBanner,
     showAvatars,
     showRosterAvatars,
+    flair: bool("flair", DEFAULT_DISPLAY_PREFS.flair),
+    flairFlame: bool("flairFlame", DEFAULT_DISPLAY_PREFS.flairFlame),
+    flairWave: bool("flairWave", DEFAULT_DISPLAY_PREFS.flairWave),
+    flairFrames: bool("flairFrames", DEFAULT_DISPLAY_PREFS.flairFrames),
+    flairBanner: bool("flairBanner", DEFAULT_DISPLAY_PREFS.flairBanner),
+    flairBurstCount: int(
+      "flairBurstCount",
+      DEFAULT_DISPLAY_PREFS.flairBurstCount,
+      MIN_BURST_COUNT,
+      MAX_BURST_COUNT,
+    ),
+    flairBurstMinutes: int(
+      "flairBurstMinutes",
+      DEFAULT_DISPLAY_PREFS.flairBurstMinutes,
+      MIN_BURST_MINUTES,
+      MAX_BURST_MINUTES,
+    ),
   };
 }
 
 // The subset of HTMLElement applyDisplayPrefs needs, so the unit tests
-// can hand it a stub instead of standing up a DOM.
+// can hand it a stub instead of standing up a DOM. 115-1: attributes too --
+// flair is gated in CSS by data-flair* on <html>, because a selector can
+// match an attribute and cannot match a custom property's value.
 export interface StyleTarget {
   style: { setProperty(name: string, value: string): void };
+  setAttribute(name: string, value: string): void;
+  removeAttribute(name: string): void;
 }
+
+// 115-1: the flair attributes, in the order they are written. Each sub-effect
+// is an attribute of its own so a rule gates on exactly one; all of them are
+// removed when the master is off, so no rule needs to check both.
+const FLAIR_ATTRS: [keyof DisplayPrefs, string][] = [
+  ["flairFlame", "data-flair-flame"],
+  ["flairWave", "data-flair-wave"],
+  ["flairFrames", "data-flair-frames"],
+  ["flairBanner", "data-flair-banner"],
+];
 
 export function applyDisplayPrefs(prefs: DisplayPrefs, target?: StyleTarget): void {
   const el = target ?? (typeof document !== "undefined" ? document.documentElement : null);
   if (!el) return;
+  if (prefs.flair) el.setAttribute("data-flair", "");
+  else el.removeAttribute("data-flair");
+  for (const [key, attr] of FLAIR_ATTRS) {
+    if (prefs.flair && prefs[key]) el.setAttribute(attr, "");
+    else el.removeAttribute(attr);
+  }
   el.style.setProperty("--chalk-font", `var(--chalk-font-${prefs.font})`);
   el.style.setProperty("--chalk-font-scale", String(prefs.scale));
   el.style.setProperty("--chalk-scrollbar-width", prefs.hideScrollbars ? "none" : "thin");

@@ -12,24 +12,50 @@ import {
   CENTERED_MAX_WIDTH,
   DEFAULT_DISPLAY_PREFS,
   FONT_CHOICES,
+  MAX_BURST_COUNT,
+  MAX_BURST_MINUTES,
   MAX_SCALE,
+  MIN_BURST_COUNT,
+  MIN_BURST_MINUTES,
   MIN_SCALE,
   normalizeDisplayPrefs,
   SCALE_STEPS,
   type StyleTarget,
 } from "./display-prefs.ts";
 
-function styleStub(): StyleTarget & { props: Record<string, string> } {
+function styleStub(): StyleTarget & {
+  props: Record<string, string>;
+  attrs: Record<string, string>;
+} {
   const props: Record<string, string> = {};
+  const attrs: Record<string, string> = {};
   return {
     props,
+    attrs,
     style: {
       setProperty(name: string, value: string) {
         props[name] = value;
       },
     },
+    setAttribute(name: string, value: string) {
+      attrs[name] = value;
+    },
+    removeAttribute(name: string) {
+      delete attrs[name];
+    },
   };
 }
+
+// 115-1: the flair fields as a pre-115 stored pref resolves them.
+const FLAIR_DEFAULTS = {
+  flair: false,
+  flairFlame: true,
+  flairWave: true,
+  flairFrames: true,
+  flairBanner: true,
+  flairBurstCount: 4,
+  flairBurstMinutes: 4,
+};
 
 test("normalize keeps a valid pref untouched", () => {
   assert.deepEqual(
@@ -51,6 +77,7 @@ test("normalize keeps a valid pref untouched", () => {
       // off, so upgrading does not change how anyone's feed or roster reads.
       showAvatars: false,
       showRosterAvatars: false,
+      ...FLAIR_DEFAULTS,
     },
   );
 });
@@ -70,6 +97,7 @@ test("normalize keeps the good half of a partially bad pref", () => {
     showChannelBanner: DEFAULT_DISPLAY_PREFS.showChannelBanner,
     showAvatars: DEFAULT_DISPLAY_PREFS.showAvatars,
     showRosterAvatars: DEFAULT_DISPLAY_PREFS.showRosterAvatars,
+    ...FLAIR_DEFAULTS,
   });
   assert.deepEqual(normalizeDisplayPrefs({ font: "wingdings", scale: 1.25 }), {
     font: DEFAULT_DISPLAY_PREFS.font,
@@ -79,6 +107,7 @@ test("normalize keeps the good half of a partially bad pref", () => {
     showChannelBanner: DEFAULT_DISPLAY_PREFS.showChannelBanner,
     showAvatars: DEFAULT_DISPLAY_PREFS.showAvatars,
     showRosterAvatars: DEFAULT_DISPLAY_PREFS.showRosterAvatars,
+    ...FLAIR_DEFAULTS,
   });
   // 111-4: a non-boolean is the default, like hideScrollbars above it.
   assert.equal(
@@ -203,4 +232,70 @@ test("every offered font survives normalization unchanged", () => {
   for (const { value } of FONT_CHOICES) {
     assert.equal(normalizeDisplayPrefs({ font: value, scale: 1 }).font, value);
   }
+});
+
+// 115-1: flair.
+
+// Pinned on purpose: an animated chalk is something a person asks for, and
+// flipping this to on is a decision someone should have to come here to make.
+test("flair is off by default, and its four effects on", () => {
+  assert.equal(DEFAULT_DISPLAY_PREFS.flair, false);
+  const p = normalizeDisplayPrefs({ font: "mono", scale: 1 });
+  assert.equal(p.flair, false);
+  assert.equal(p.flairFlame, true);
+  assert.equal(p.flairWave, true);
+  assert.equal(p.flairFrames, true);
+  assert.equal(p.flairBanner, true);
+  assert.equal(p.flairBurstCount, 4);
+  assert.equal(p.flairBurstMinutes, 4);
+});
+
+test("flair booleans keep an explicit value and reject a non-boolean", () => {
+  const on = normalizeDisplayPrefs({ flair: true, flairWave: false });
+  assert.equal(on.flair, true);
+  assert.equal(on.flairWave, false);
+  assert.equal(on.flairFlame, true);
+  const junk = normalizeDisplayPrefs({ flair: "yes", flairFlame: 0, flairBanner: null });
+  assert.equal(junk.flair, false);
+  assert.equal(junk.flairFlame, true);
+  assert.equal(junk.flairBanner, true);
+});
+
+test("the burst threshold is clamped, rounded and defaulted, never rejected", () => {
+  assert.equal(normalizeDisplayPrefs({ flairBurstCount: 0 }).flairBurstCount, MIN_BURST_COUNT);
+  assert.equal(normalizeDisplayPrefs({ flairBurstCount: 999 }).flairBurstCount, MAX_BURST_COUNT);
+  assert.equal(normalizeDisplayPrefs({ flairBurstCount: 6.4 }).flairBurstCount, 6);
+  assert.equal(normalizeDisplayPrefs({ flairBurstCount: "7" }).flairBurstCount, 7);
+  assert.equal(normalizeDisplayPrefs({ flairBurstCount: "lots" }).flairBurstCount, 4);
+  assert.equal(
+    normalizeDisplayPrefs({ flairBurstMinutes: -1 }).flairBurstMinutes,
+    MIN_BURST_MINUTES,
+  );
+  assert.equal(
+    normalizeDisplayPrefs({ flairBurstMinutes: 1e9 }).flairBurstMinutes,
+    MAX_BURST_MINUTES,
+  );
+  assert.equal(normalizeDisplayPrefs({ flairBurstMinutes: NaN }).flairBurstMinutes, 4);
+});
+
+// The effects are CSS rules gated on these attributes, so the attribute set
+// IS the feature: nothing on <html> means nothing moves.
+test("apply writes the flair attributes only while the master is on", () => {
+  const off = styleStub();
+  applyDisplayPrefs({ ...DEFAULT_DISPLAY_PREFS }, off);
+  assert.deepEqual(off.attrs, {});
+
+  const on = styleStub();
+  applyDisplayPrefs({ ...DEFAULT_DISPLAY_PREFS, flair: true, flairWave: false }, on);
+  assert.deepEqual(on.attrs, {
+    "data-flair": "",
+    "data-flair-flame": "",
+    "data-flair-frames": "",
+    "data-flair-banner": "",
+  });
+
+  // Turning the master off again removes every sub-attribute, whatever the
+  // sub-switches still say, so a rule never has to check both.
+  applyDisplayPrefs({ ...DEFAULT_DISPLAY_PREFS, flair: false }, on);
+  assert.deepEqual(on.attrs, {});
 });

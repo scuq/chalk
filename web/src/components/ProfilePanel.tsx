@@ -36,6 +36,10 @@ import {
 import {
   APP_WIDTH_CHOICES,
   FONT_CHOICES,
+  MAX_BURST_COUNT,
+  MAX_BURST_MINUTES,
+  MIN_BURST_COUNT,
+  MIN_BURST_MINUTES,
   SCALE_STEPS,
   useDisplayPrefs,
   type AppWidth,
@@ -48,6 +52,7 @@ import {
 import { PARKING_HOTKEY_LABEL } from "../parking-hotkey";
 import { NAME_STYLE_CHOICES, type NameStyle } from "../chat/channel-names"; // 106-3
 import { CHANNEL_SORT_CHOICES, type AutoSortMode } from "../chat/roster-order"; // 114-2
+import { AVATAR_FRAMES, normalizeFrame } from "../avatars/frames"; // 115-6
 import { composerHelp, isMacPlatform } from "../chat/composer-keys";
 import { useIsMobile } from "../mobile";
 import { notifySounds } from "../notify";
@@ -99,6 +104,10 @@ interface Props {
   onRemoveAvatar?: () => void;
   avatarSet?: boolean;
   avatarBusy?: string | null;
+  // 115-6: the frame around your own picture. An account field, not a
+  // device pref: the wearer chooses, everyone with flair on sees it. App
+  // owns the request and the local patch; the panel shows and asks.
+  onSetAvatarFrame?: (frame: string) => Promise<void>;
   refreshing?: boolean;
   // 39-1: the running build, for the "about" section. From the welcome
   // frame, so empty until the socket is up.
@@ -258,6 +267,7 @@ export function ProfilePanel({
   onOpenNotificationRules,
   onPickAvatar, // 112-2
   onRemoveAvatar,
+  onSetAvatarFrame,
   avatarSet = false,
   avatarBusy = null,
   refreshing,
@@ -338,6 +348,9 @@ export function ProfilePanel({
   // inline confirm; deletingId is the id whose delete is in flight.
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // 115-6: the frame picker's in-flight and failure state.
+  const [frameBusy, setFrameBusy] = useState(false);
+  const [frameError, setFrameError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string>("");
 
   useEffect(() => {
@@ -851,6 +864,195 @@ export function ProfilePanel({
                   on this device only, so your phone and your desktop can
                   differ.
                 </p>
+              </div>
+            </section>
+          )}
+
+          {/* 115-1: flair -- the animated mode. Off by default and stored on
+              this device: motion is a property of the screen in front of
+              you. The master switch gates everything; the switches under it
+              choose which effects run once it is on. */}
+          {show("flair") && (
+            <section class="chalk-profile-flair" data-testid="flair-section">
+              <h3>flair</h3>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={display.flair}
+                    onChange={(e) =>
+                      setDisplay({ flair: (e.target as HTMLInputElement).checked })
+                    }
+                    data-testid="flair-on"
+                  />
+                  <span>turn on flair</span>
+                </label>
+                <p class="chalk-profile-hint">
+                  off by default. a flame on a channel that is heating up, a
+                  wave through a friend's name when they arrive or write to
+                  you, animated frames around profile pictures, and a slow
+                  drift on a channel's image. stored on this device only, and
+                  everything holds still when your system asks for reduced
+                  motion.
+                </p>
+              </div>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={display.flairFlame}
+                    disabled={!display.flair}
+                    onChange={(e) =>
+                      setDisplay({ flairFlame: (e.target as HTMLInputElement).checked })
+                    }
+                    data-testid="flair-flame"
+                  />
+                  <span>flame on a busy channel</span>
+                </label>
+                <div class="chalk-profile-flair-threshold">
+                  <input
+                    type="number"
+                    class="chalk-profile-number"
+                    min={MIN_BURST_COUNT}
+                    max={MAX_BURST_COUNT}
+                    step={1}
+                    value={display.flairBurstCount}
+                    disabled={!display.flair || !display.flairFlame}
+                    onChange={(e) =>
+                      setDisplay({
+                        flairBurstCount: Number((e.target as HTMLInputElement).value),
+                      })
+                    }
+                    aria-label="messages"
+                    data-testid="flair-burst-count"
+                  />
+                  <span>messages within</span>
+                  <input
+                    type="number"
+                    class="chalk-profile-number"
+                    min={MIN_BURST_MINUTES}
+                    max={MAX_BURST_MINUTES}
+                    step={1}
+                    value={display.flairBurstMinutes}
+                    disabled={!display.flair || !display.flairFlame}
+                    onChange={(e) =>
+                      setDisplay({
+                        flairBurstMinutes: Number((e.target as HTMLInputElement).value),
+                      })
+                    }
+                    aria-label="minutes"
+                    data-testid="flair-burst-minutes"
+                  />
+                  <span>minutes</span>
+                </div>
+                <p class="chalk-profile-hint">
+                  counts messages as they arrive while you are connected; your
+                  own, sent from here, do not count.
+                </p>
+              </div>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={display.flairWave}
+                    disabled={!display.flair}
+                    onChange={(e) =>
+                      setDisplay({ flairWave: (e.target as HTMLInputElement).checked })
+                    }
+                    data-testid="flair-wave"
+                  />
+                  <span>wave a friend's name when they come online or message you</span>
+                </label>
+              </div>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={display.flairFrames}
+                    disabled={!display.flair}
+                    onChange={(e) =>
+                      setDisplay({ flairFrames: (e.target as HTMLInputElement).checked })
+                    }
+                    data-testid="flair-frames"
+                  />
+                  <span>animated frames around profile pictures</span>
+                </label>
+                {/* 115-6: your own frame. Not behind the master switch: it is
+                    what OTHERS see, and someone who keeps their own screen
+                    still can still wear one. */}
+                {onSetAvatarFrame && (
+                  <>
+                    <div
+                      class="chalk-profile-theme-picker chalk-profile-frame-picker"
+                      role="radiogroup"
+                      aria-label="your frame"
+                      data-testid="frame-picker"
+                    >
+                      {AVATAR_FRAMES.map((f) => {
+                        const current = normalizeFrame(me.avatarFrame);
+                        return (
+                          <label
+                            key={f.value || "none"}
+                            class={`chalk-profile-theme-option ${current === f.value ? "chalk-profile-theme-option--active" : ""}`}
+                          >
+                            <input
+                              type="radio"
+                              name="avatar-frame"
+                              value={f.value}
+                              checked={current === f.value}
+                              disabled={frameBusy}
+                              onChange={() => {
+                                setFrameBusy(true);
+                                setFrameError(null);
+                                onSetAvatarFrame(f.value)
+                                  .catch((err) => {
+                                    setFrameError(
+                                      err instanceof Error ? err.message : "could not save the frame",
+                                    );
+                                  })
+                                  .finally(() => setFrameBusy(false));
+                              }}
+                              data-testid={`frame-option-${f.value || "none"}`}
+                            />
+                            <span class="chalk-profile-theme-swatch">
+                              <span
+                                class="chalk-avatar chalk-avatar--card chalk-profile-frame-swatch"
+                                data-frame={f.value || undefined}
+                                aria-hidden="true"
+                              />
+                              <span class="chalk-profile-theme-name">{f.label}</span>
+                              <span class="chalk-profile-theme-desc">{f.desc}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {frameError && (
+                      <p class="chalk-auth-error" data-testid="frame-error">
+                        {frameError}
+                      </p>
+                    )}
+                    <p class="chalk-profile-hint">
+                      your frame follows your account: everyone who has flair on
+                      sees it around your picture, and you see theirs the same
+                      way. it needs a picture to frame.
+                    </p>
+                  </>
+                )}
+              </div>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={display.flairBanner}
+                    disabled={!display.flair}
+                    onChange={(e) =>
+                      setDisplay({ flairBanner: (e.target as HTMLInputElement).checked })
+                    }
+                    data-testid="flair-banner"
+                  />
+                  <span>slow drift on a channel's image</span>
+                </label>
               </div>
             </section>
           )}

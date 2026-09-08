@@ -10,6 +10,23 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Flair, off until you ask for it.** A new switch under settings →
+  appearance → flair brings chalk to life on this device: a small flame on
+  any channel where more than a few messages land within a few minutes
+  (four in four by default, both adjustable), a wave through a friend's name
+  in the roster when they come online or send you a direct message, and a
+  slow drift across a channel's pinned image. Each effect has its own
+  switch under the main one, everything holds still when your system asks
+  for reduced motion, and nothing changes unless you turn it on.
+- **A frame around your picture.** Pick a ring for your profile picture —
+  ember, aurora or pulse — under settings → appearance → flair. It follows
+  your account, so everyone who has flair on sees it around your picture in
+  the roster, the members list, hover cards and call tiles, and you see
+  theirs the same way. The conversation itself stays as it was.
+
 ## v0.8.16 — 7 September 2026 — Your channels, in your order
 
 ### Added

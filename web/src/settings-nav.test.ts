@@ -52,8 +52,13 @@ test("no match yields an empty set, not null", () => {
   assert.equal(hits.size, 0);
 });
 
-test("registry: 19 unique sections, valid tabs, keywords present", () => {
-  assert.equal(SETTINGS_SECTIONS.length, 19);
+test("registry: 20 unique sections, valid tabs, keywords present", () => {
+  assert.equal(SETTINGS_SECTIONS.length, 20);
+  // 115-1: flair sits on the appearance tab, and the words for wanting
+  // motion *off* find it too.
+  assert.equal(SECTION_TAB["flair"], "appearance");
+  assert.ok(matchSections("reduced motion")!.has("flair"));
+  assert.ok(matchSections("flame")!.has("flair"));
   const ids = new Set(SETTINGS_SECTIONS.map((s) => s.id));
   assert.equal(ids.size, SETTINGS_SECTIONS.length);
   // 83-9: the server-identity section belongs to the account tab

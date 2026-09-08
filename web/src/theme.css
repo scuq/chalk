@@ -11063,3 +11063,263 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-server-identity-explain code {
   font-family: var(--chalk-mono, monospace);
 }
+
+/* ============================================================
+   Phase 115: flair -- the animated mode, off by default.
+   Every rule below is gated on a data-flair* attribute that
+   display-prefs.ts writes on <html>, so with the switch off this
+   section matches nothing. Motion is spent only on transform,
+   translate, scale, opacity, outline, box-shadow and filter (the
+   compositor's properties -- never layout), and the reduced-motion
+   block at the very end of the section turns all of it off again,
+   leaving each effect's static shape in place. docs/theming.md
+   carries the policy.
+   ============================================================ */
+
+/* 115-1: the threshold row under the flame switch -- two small number
+   fields in a sentence. Sized in ch so "20" fits and "200" does not
+   look invited. */
+.chalk-profile-flair-threshold {
+  display: flex;
+  align-items: center;
+  gap: var(--chalk-s2);
+  margin-top: var(--chalk-s2);
+  color: var(--chalk-fg-dim);
+}
+.chalk-profile-number {
+  width: 5ch;
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  padding: var(--chalk-s1) var(--chalk-s2);
+  font: inherit;
+  text-align: right;
+}
+.chalk-profile-number:disabled {
+  color: var(--chalk-fg-muted);
+  cursor: not-allowed;
+}
+.chalk-profile-number:focus-visible {
+  outline: 1px solid var(--chalk-accent);
+  outline-offset: 1px;
+}
+
+/* 115-2: the flame. A 13px glyph in the theme's warn colour -- the one
+   signal colour that reads as heat in every palette -- with the core cut
+   out in the page colour. The flicker is transform and opacity only, from
+   the base of the tongue, and drawn only under data-flair-flame: with the
+   switch off the element is never rendered, so these rules are the whole
+   effect rather than a gate. */
+.chalk-flair-flame {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--chalk-warn);
+  line-height: 1;
+}
+.chalk-flair-flame--row {
+  /* Same right-edge push as the unread dot; the dot then sits beside it. */
+  margin-left: auto;
+}
+.chalk-flair-flame--row + .chalk-unread-dot {
+  margin-left: 4px;
+}
+.chalk-flair-flame--header {
+  margin-left: var(--chalk-s2);
+  align-self: center;
+}
+.chalk-flair-flame-svg {
+  display: block;
+  transform-origin: 50% 100%;
+}
+.chalk-flair-flame-inner {
+  fill: var(--chalk-bg);
+  transform-origin: 50% 100%;
+}
+html[data-flair-flame] .chalk-flair-flame-svg {
+  animation: chalk-flair-flicker 0.9s ease-in-out infinite;
+}
+html[data-flair-flame] .chalk-flair-flame-inner {
+  animation: chalk-flair-flicker-core 0.7s ease-in-out infinite;
+}
+@keyframes chalk-flair-flicker {
+  0%   { transform: scaleY(1) skewX(0deg); opacity: 1; }
+  30%  { transform: scaleY(1.08) skewX(-3deg); opacity: 0.85; }
+  55%  { transform: scaleY(0.94) skewX(2deg); opacity: 1; }
+  80%  { transform: scaleY(1.05) skewX(-1deg); opacity: 0.9; }
+  100% { transform: scaleY(1) skewX(0deg); opacity: 1; }
+}
+@keyframes chalk-flair-flicker-core {
+  0%   { transform: scaleY(1); }
+  50%  { transform: scaleY(1.2) translateY(-1px); }
+  100% { transform: scaleY(1); }
+}
+
+/* 115-3: the wave. A name becomes one inline-block span per letter for
+   WAVE_MS (wave.ts), each rising and settling on its own delay, so the
+   motion travels left to right through the name. The delay is one rule
+   per letter position -- WAVE_MAX_LETTERS of them, and the tail past the
+   cap shares the last -- rather than a custom property set inline, for the
+   reason nickcolor.ts records. Transform only, so a waving name costs no
+   layout; and at rest the letters sit exactly where the plain text did. */
+.chalk-flair-wave {
+  display: inline;
+  white-space: nowrap;
+}
+.chalk-flair-wave-ch {
+  display: inline-block;
+  transform-origin: 50% 100%;
+}
+html[data-flair-wave] .chalk-flair-wave-ch {
+  animation: chalk-flair-wave 0.6s ease-in-out 2;
+}
+@keyframes chalk-flair-wave {
+  0%   { transform: translateY(0) scale(1); }
+  35%  { transform: translateY(-0.28em) scale(1.06); }
+  70%  { transform: translateY(0.06em) scale(1); }
+  100% { transform: translateY(0) scale(1); }
+}
+.chalk-flair-wave-ch:nth-child(1) { animation-delay: 0ms; }
+.chalk-flair-wave-ch:nth-child(2) { animation-delay: 60ms; }
+.chalk-flair-wave-ch:nth-child(3) { animation-delay: 120ms; }
+.chalk-flair-wave-ch:nth-child(4) { animation-delay: 180ms; }
+.chalk-flair-wave-ch:nth-child(5) { animation-delay: 240ms; }
+.chalk-flair-wave-ch:nth-child(6) { animation-delay: 300ms; }
+.chalk-flair-wave-ch:nth-child(7) { animation-delay: 360ms; }
+.chalk-flair-wave-ch:nth-child(8) { animation-delay: 420ms; }
+.chalk-flair-wave-ch:nth-child(9) { animation-delay: 480ms; }
+.chalk-flair-wave-ch:nth-child(10) { animation-delay: 540ms; }
+.chalk-flair-wave-ch:nth-child(11) { animation-delay: 600ms; }
+.chalk-flair-wave-ch:nth-child(12) { animation-delay: 660ms; }
+.chalk-flair-wave-ch:nth-child(13) { animation-delay: 720ms; }
+.chalk-flair-wave-ch:nth-child(14) { animation-delay: 780ms; }
+.chalk-flair-wave-ch:nth-child(15) { animation-delay: 840ms; }
+.chalk-flair-wave-ch:nth-child(16) { animation-delay: 900ms; }
+.chalk-flair-wave-ch--tail { animation-delay: 900ms; }
+
+/* 115-4: the banner drift. The picture wanders a percent or two around its
+   focus point and breathes between 1.00 and 1.04 over forty seconds, back
+   and forth -- a Ken Burns slow enough to be felt rather than watched.
+   Animated on the individual translate/scale properties, NOT transform:
+   BannerBand sets transform: scale(zoom) inline for a filled band, and a
+   transform keyframe would replace it; translate and scale compose with it
+   instead. The band clips (overflow: hidden), so the drift never leaks.
+   The editor's preview is excluded -- it drags the picture to set the
+   focus, and a drifting target would make the focus point lie -- and so is
+   poster art, which is shown whole by definition; its colour wash breathes
+   instead. */
+html[data-flair-banner]
+  .chalk-channel-banner:not(.chalk-channel-banner--preview):not(.chalk-channel-banner--poster)
+  .chalk-channel-banner-img {
+  animation: chalk-flair-banner-drift 40s ease-in-out infinite alternate;
+}
+html[data-flair-banner]
+  .chalk-channel-banner--poster:not(.chalk-channel-banner--preview)
+  .chalk-channel-banner-fade {
+  animation: chalk-flair-banner-breathe 12s ease-in-out infinite alternate;
+}
+@keyframes chalk-flair-banner-drift {
+  0%   { translate: -1.5% 1%; scale: 1.0; }
+  100% { translate: 1.5% -1%; scale: 1.04; }
+}
+@keyframes chalk-flair-banner-breathe {
+  0%   { opacity: 1; }
+  100% { opacity: 0.8; }
+}
+
+/* 115-6: the frames. Drawn on the <img> itself -- an image has no
+   pseudo-elements, and a wrapper would cost the feed its 1em rule -- so a
+   frame is an outline plus a box-shadow, and the motion is on those and
+   on filter: nothing that touches layout. Gated on data-flair-frames on
+   <html>, except in the picker, where the swatch shows what the frame IS
+   whatever the reader's own switch says. The static ring is the resting
+   shape reduced motion falls back to.
+
+   Colours: ember is heat and takes the warn token; pulse is the reader's
+   accent; aurora is the one place a fixed hue set is right, because a
+   spectrum is the same spectrum in every theme. */
+.chalk-profile-frame-picker {
+  margin-top: var(--chalk-s2);
+}
+.chalk-profile-frame-swatch {
+  /* An empty square standing in for the picture: the frame is the point. */
+  background: var(--chalk-bg-elev-2);
+  border: 1px solid var(--chalk-border);
+  box-sizing: border-box;
+}
+
+/* ember: a warm glow that breathes. */
+html[data-flair-frames] .chalk-avatar[data-frame="ember"],
+.chalk-profile-frame-swatch[data-frame="ember"] {
+  outline: 2px solid var(--chalk-warn);
+  outline-offset: 1px;
+  box-shadow: 0 0 6px 1px var(--chalk-warn);
+  animation: chalk-flair-frame-ember 2.4s ease-in-out infinite alternate;
+}
+@keyframes chalk-flair-frame-ember {
+  0%   { box-shadow: 0 0 4px 0 var(--chalk-warn); opacity: 1; }
+  100% { box-shadow: 0 0 10px 3px var(--chalk-warn); opacity: 0.92; }
+}
+
+/* aurora: a ring drifting through the spectrum. hue-rotate on the outline
+   alone is not possible (filter applies to the whole box), so the ring
+   cycles through explicit stops and the picture beneath stays true. */
+html[data-flair-frames] .chalk-avatar[data-frame="aurora"],
+.chalk-profile-frame-swatch[data-frame="aurora"] {
+  outline: 2px solid #4fd1c5;
+  outline-offset: 1px;
+  box-shadow: 0 0 5px 1px #4fd1c5;
+  animation: chalk-flair-frame-aurora 6s linear infinite;
+}
+@keyframes chalk-flair-frame-aurora {
+  0%   { outline-color: #4fd1c5; box-shadow: 0 0 5px 1px #4fd1c5; }
+  25%  { outline-color: #63b3ed; box-shadow: 0 0 5px 1px #63b3ed; }
+  50%  { outline-color: #b794f4; box-shadow: 0 0 5px 1px #b794f4; }
+  75%  { outline-color: #68d391; box-shadow: 0 0 5px 1px #68d391; }
+  100% { outline-color: #4fd1c5; box-shadow: 0 0 5px 1px #4fd1c5; }
+}
+
+/* pulse: a ring in the accent colour, beating. outline-offset is
+   animatable and costs no layout. */
+html[data-flair-frames] .chalk-avatar[data-frame="pulse"],
+.chalk-profile-frame-swatch[data-frame="pulse"] {
+  outline: 2px solid var(--chalk-accent);
+  outline-offset: 1px;
+  animation: chalk-flair-frame-pulse 1.6s ease-in-out infinite;
+}
+@keyframes chalk-flair-frame-pulse {
+  0%   { outline-offset: 1px; outline-color: var(--chalk-accent); }
+  50%  { outline-offset: 3px; outline-color: color-mix(in srgb, var(--chalk-accent) 55%, transparent); }
+  100% { outline-offset: 1px; outline-color: var(--chalk-accent); }
+}
+
+/* Call tiles are circles; the ring follows. */
+html[data-flair-frames] .chalk-avatar--tile[data-frame] {
+  outline-offset: 0;
+}
+
+/* 115: reduced motion wins. Every flair animation off, each effect left
+   in its resting shape: the flame stands still, a waving name sits where
+   plain text sits, a framed picture keeps a static ring, the banner sits
+   at its zoom. This block must stay the last thing in the flair section --
+   theme-flair.test.ts holds every animated flair selector to it. */
+@media (prefers-reduced-motion: reduce) {
+  html[data-flair-flame] .chalk-flair-flame-svg,
+  html[data-flair-flame] .chalk-flair-flame-inner,
+  html[data-flair-wave] .chalk-flair-wave-ch,
+  html[data-flair-frames] .chalk-avatar[data-frame="ember"],
+  .chalk-profile-frame-swatch[data-frame="ember"],
+  html[data-flair-frames] .chalk-avatar[data-frame="aurora"],
+  .chalk-profile-frame-swatch[data-frame="aurora"],
+  html[data-flair-frames] .chalk-avatar[data-frame="pulse"],
+  .chalk-profile-frame-swatch[data-frame="pulse"],
+  html[data-flair-banner]
+    .chalk-channel-banner:not(.chalk-channel-banner--preview):not(.chalk-channel-banner--poster)
+    .chalk-channel-banner-img,
+  html[data-flair-banner]
+    .chalk-channel-banner--poster:not(.chalk-channel-banner--preview)
+    .chalk-channel-banner-fade {
+    animation: none;
+  }
+}

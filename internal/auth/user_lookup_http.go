@@ -38,6 +38,9 @@ type userLookupResponse struct {
 	UserID      string `json:"user_id"`
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
+	// 115-5: the frame around their picture, "" for none. Public by
+	// design; the directory is where every reader learns it.
+	AvatarFrame string `json:"avatar_frame"`
 }
 
 // usernameLookupRegex mirrors the registration-time username
@@ -119,5 +122,6 @@ func (d *HTTPDeps) handleUserLookup(
 		UserID:      user.ID.String(),
 		Username:    user.Username,
 		DisplayName: user.DisplayName,
+		AvatarFrame: user.AvatarFrame,
 	})
 }

@@ -52,6 +52,9 @@ export interface UserLookupResult {
   user_id: string;
   username: string;
   display_name: string;
+  // 115-6: the frame around their picture, "" for none. Optional so a
+  // pre-115 server still parses.
+  avatar_frame?: string;
 }
 
 // lookupUser hits GET /api/users/lookup?username=<name>. Returns the

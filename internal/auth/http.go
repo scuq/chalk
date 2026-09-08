@@ -258,6 +258,8 @@ func (d *HTTPDeps) MountRegistration(mux *http.ServeMux) error {
 	// which username? Lets the SPA open the wizard prefilled.
 	mux.HandleFunc("POST /api/auth/admin-claim/probe", d.handleAdminClaimProbe)
 	mux.HandleFunc("PUT /api/auth/seed-wrap", RequireSession(d.Store, d.handleSeedWrapPut))
+	// 115-5: the frame around your own profile picture.
+	mux.HandleFunc("PUT /api/auth/avatar-frame", RequireSession(d.Store, d.handleAvatarFramePut))
 	mux.HandleFunc("GET /api/auth/seed-wraps", RequireSession(d.Store, d.handleSeedWrapList))
 	// 31-9: hard-cutover migration endpoints.
 	mux.HandleFunc("POST /api/auth/migration/password", RequireSession(d.Store, d.handleMigrationPassword))
@@ -1030,6 +1032,9 @@ type meResponse struct {
 	SessionExpiresAt time.Time `json:"session_expires_at"`
 	// 31-9: drives the SPA migration gate.
 	AuthV2Enrolled bool `json:"auth_v2_enrolled"`
+	// 115-5: the caller's own avatar frame, so the picker shows the current
+	// choice without a directory fetch (which omits the caller anyway).
+	AvatarFrame string `json:"avatar_frame"`
 }
 
 // handleMe returns the current user's identity if logged in, or 401
@@ -1069,6 +1074,7 @@ func (d *HTTPDeps) handleMe(w http.ResponseWriter, r *http.Request) {
 			EmailVerifiedAt:  user.EmailVerifiedAt,
 			SessionExpiresAt: su.Session.ExpiresAt,
 			AuthV2Enrolled:   enrolled,
+			AvatarFrame:      user.AvatarFrame,
 		})
 	})(w, r)
 }
