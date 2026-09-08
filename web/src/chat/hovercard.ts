@@ -100,6 +100,28 @@ export function rosterCardInfo(args: {
   };
 }
 
+// selfCardInfo builds the card for your own name in the status bar's corner
+// (115-8). What it knows is what /me and the presence picker know: the
+// handle, the profile display name, and your effective presence -- and the
+// card exists mostly to show your own picture in its frame, the way the
+// roster shows a friend's. No "last seen" (you are here), no hint.
+export function selfCardInfo(args: {
+  handle: string;
+  hue: number | null;
+  presence: string | undefined;
+  displayName: string | undefined;
+}): PersonCardInfo {
+  return {
+    name: args.handle,
+    hue: args.hue,
+    displayName: displayNameLine(args.handle, args.displayName),
+    state: presenceLabel(args.presence),
+    seen: null,
+    hint: null,
+    meta: "this is you",
+  };
+}
+
 // senderCardInfo builds the card for a sender name in the message feed (92-6).
 //
 // `handle` is null when the channel's member list doesn't name the sender --

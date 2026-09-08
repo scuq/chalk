@@ -186,6 +186,16 @@ the lazy dots). Real, and out of scope: ask before widening.
   (terminal green in stepped flicker), `frost` (ice white, a slow breath) and
   `gold` (a metal ring catching the light) on both allowlists.
 
+- **115-8 — your own card, and the roster card under flair** (2026-09-09,
+  after v0.8.18). Hovering your name in the status bar's corner opens a
+  `PersonCard` (`selfCardInfo` in `hovercard.ts`: handle, display name,
+  effective presence, "this is you") with your picture at card size in your
+  frame, live by your effective presence — mouse only, never while the menu
+  is up. And `Sidebar` gained `cardAvatars`, which App feeds whenever the
+  roster-row switch *or* flair's frames are on, so the card shows a friend's
+  framed picture even with row pictures off: the card is the one place a
+  picture is worth looking at, and a frame nobody can see is no frame.
+
 ## Left open
 
 - **The live-stack checklist** (run 2026-09-09, 31/31), kept here as the

@@ -5,6 +5,7 @@ import {
   displayNameLine,
   lastSeenLine,
   rosterCardInfo,
+  selfCardInfo,
   senderCardInfo,
 } from "./hovercard";
 
@@ -167,4 +168,32 @@ test("a sender with no device at all reads as unknown", () => {
   const info = sender({ handle: null, userID: "", device: "" });
   assert.equal(info.name, "unknown sender");
   assert.equal(info.meta, "unknown sender");
+});
+
+// 115-8: the card over your own name in the corner.
+test("your own card names you, tints you, says where you are, and no more", () => {
+  const info = selfCardInfo({
+    handle: "scuq",
+    hue: 210,
+    presence: "online",
+    displayName: "Scuq the First",
+  });
+  assert.equal(info.name, "scuq");
+  assert.equal(info.hue, 210);
+  assert.equal(info.displayName, "Scuq the First");
+  assert.equal(info.state, "online");
+  assert.equal(info.seen, null, "you are here; there is no last seen");
+  assert.equal(info.hint, null, "nothing to start with yourself");
+  assert.equal(info.meta, "this is you");
+});
+
+test("your own card drops a display name that only repeats the handle", () => {
+  assert.equal(
+    selfCardInfo({ handle: "scuq", hue: null, presence: "away", displayName: "SCUQ" }).displayName,
+    null,
+  );
+  assert.equal(
+    selfCardInfo({ handle: "scuq", hue: null, presence: "away", displayName: "SCUQ" }).state,
+    "away",
+  );
 });

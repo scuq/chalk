@@ -10,6 +10,17 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Hover your own name in the top-right corner** to see your picture in your
+  frame, the way the roster shows a friend's, so you can see what everyone
+  else sees.
+
+### Changed
+- **With flair on, the roster's hover card shows a friend's framed picture**
+  even when pictures in the roster rows are switched off.
+
 ## v0.8.18 — 9 September 2026 — More frames, moving only while you are here
 
 ### Added

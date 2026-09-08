@@ -15,6 +15,8 @@ import type { AttachmentController } from "../attachments/pipeline"; // 112-5
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ConnectionState } from "../ws-client";
 import type { MeResponse } from "../auth/types";
+import { HOVER_CARD_DELAY_MS, PersonCard, useHoverCard } from "./HoverCard"; // 115-8
+import { selfCardInfo } from "../chat/hovercard"; // 115-8
 
 interface Props {
   // 112-5: your own profile picture, beside your name in the corner. The
@@ -60,6 +62,9 @@ interface Props {
   presenceMode?: "auto" | "online" | "away";
   effectivePresence?: "online" | "away" | "offline";
   onPresenceModeChange?: (mode: "auto" | "online" | "away") => void;
+  // 115-8: your nick colour, for the card over your own name. null when
+  // colours are off.
+  selfHue?: number | null;
 }
 
 const labels: Record<ConnectionState, string> = {
@@ -69,10 +74,35 @@ const labels: Record<ConnectionState, string> = {
   error: "error",
 };
 
-export function StatusBar({ avatars, attachmentController, state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenFriends, onOpenAdmin, pendingFriendCount = 0, updateAvailable = false, onReload, onDismissUpdate, serverRestarting = false, presenceMode, effectivePresence, onPresenceModeChange }: Props) {
+export function StatusBar({ avatars, attachmentController, state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenFriends, onOpenAdmin, pendingFriendCount = 0, updateAvailable = false, onReload, onDismissUpdate, serverRestarting = false, presenceMode, effectivePresence, onPresenceModeChange, selfHue = null }: Props) {
   // 112-5: resolved once per render and reused by both spellings of the
   // corner (the menu trigger, and the plain label when there is no menu).
   const selfPick = user && avatars ? pickAvatar(avatars, user.id) : null;
+  // 115-8: the card over your own name -- your picture at card size, in
+  // your frame, moving while you are online: the same look the roster gives
+  // a friend, so you can see what everyone else sees. Mouse only, the
+  // roster's rule; on touch the corner is the menu.
+  const {
+    card: selfCard,
+    arm: armSelfCard,
+    close: closeSelfCard,
+  } = useHoverCard<null>();
+  const selfLive = (effectivePresence ?? "online") === "online";
+  const selfCardHandlers = {
+    onPointerEnter: (e: PointerEvent) => {
+      if (e.pointerType !== "mouse" || !me) return;
+      armSelfCard(null, e.currentTarget as HTMLElement, HOVER_CARD_DELAY_MS, "below");
+    },
+    onPointerLeave: closeSelfCard,
+  };
+  const selfCardInfoNow = me
+    ? selfCardInfo({
+        handle: me.username || user?.handle || "you",
+        hue: selfHue,
+        presence: effectivePresence ?? "online",
+        displayName: me.displayName,
+      })
+    : null;
   const selfAvatar = selfPick ? (
     <Avatar
       channelID={selfPick.channelID}
@@ -81,7 +111,7 @@ export function StatusBar({ avatars, attachmentController, state, detail, user, 
       alt=""
       size="line"
       frame={me?.avatarFrame ?? ""} // 115-6: your own; the directory omits you
-      live={(effectivePresence ?? "online") === "online"} // 115-7
+      live={selfLive} // 115-7
     />
   ) : null;
 
@@ -256,9 +286,13 @@ export function StatusBar({ avatars, attachmentController, state, detail, user, 
               class="chalk-status-menu-trigger"
               aria-expanded={menuOpen}
               aria-haspopup="menu"
-              onClick={() => setMenuOpen((v) => !v)}
+              onClick={() => {
+                closeSelfCard();
+                setMenuOpen((v) => !v);
+              }}
               data-testid="status-user-menu-trigger"
               title={showPending ? pendingLabel : titleAttr}
+              {...selfCardHandlers}
             >
               {selfAvatar}
               you ({displayName ?? "—"}) ▾
@@ -273,12 +307,34 @@ export function StatusBar({ avatars, attachmentController, state, detail, user, 
               )}
             </button>
           ) : (
-            <span class="chalk-status-user" data-testid="status-user">
+            <span class="chalk-status-user" data-testid="status-user" {...selfCardHandlers}>
               {selfAvatar}
               <span title={titleAttr}>
                 {displayName ? `you (${displayName})` : "you"}
               </span>
             </span>
+          )}
+          {/* 115-8: the card over your own name, not while the menu is up. */}
+          {selfCard && !menuOpen && selfCardInfoNow && (
+            <PersonCard
+              x={selfCard.x}
+              y={selfCard.y}
+              info={selfCardInfoNow}
+              testID="self-hover-card"
+              avatar={
+                selfPick ? (
+                  <Avatar
+                    channelID={selfPick.channelID}
+                    attachmentID={selfPick.attachmentID}
+                    controller={attachmentController ?? null}
+                    alt=""
+                    size="card"
+                    frame={me?.avatarFrame ?? ""}
+                    live={selfLive}
+                  />
+                ) : null
+              }
+            />
           )}
           {menuOpen && menuEnabled && (
             <div

@@ -3580,6 +3580,7 @@ export function App() {
       flair,
       flairFlame,
       flairWave,
+      flairFrames,
       flairBurstCount,
       flairBurstMinutes,
     },
@@ -5825,6 +5826,7 @@ export function App() {
           pendingFriendCount={state.pendingIncoming.length}
           // 112-5: your own picture, beside your name in the corner.
           avatars={state.avatars}
+          selfHue={ownNickHue} // 115-8: the card over your own name
           attachmentController={attControllerRef.current ?? undefined}
           onOpenProfile={() => dispatch({ kind: "open_panel", panel: "profile" })}
           onOpenAdmin={() => {
@@ -5967,6 +5969,11 @@ export function App() {
           // there. Withholding the map is the gate: no map, nothing drawn,
           // in the rows and in the roster's hover card alike.
           avatars={showRosterAvatarsPref ? state.avatars : undefined}
+          // 115-8: the hover card shows the framed picture whenever flair's
+          // frames are on, whatever the roster-row switch says -- the card is
+          // the one place a picture is worth looking at, and a frame nobody
+          // can see is no frame.
+          cardAvatars={showRosterAvatarsPref || (flair && flairFrames) ? state.avatars : undefined}
           attachmentController={attControllerRef.current ?? undefined}
           hiddenChannels={selectRosterPrefs(state.prefs).hidden}
           onSetChannelHidden={(channelID, mode) => {
