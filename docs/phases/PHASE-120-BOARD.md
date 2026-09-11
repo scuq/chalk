@@ -1,6 +1,6 @@
 # Phase 120 — the board: the whole call in one window, tiles arranged by hand
 
-**Status:** built, 120-1 (2026-09-12). Unit-tested (`web/src/voice/board.test.ts`:
+**Status:** built, 120-1 – 120-2 (2026-09-12); 120-1 shipped in v0.8.20. Unit-tested (`web/src/voice/board.test.ts`:
 the grid, the window's contents, sync, drag bounds and raise, the honest
 failures, the on-top pref). Not yet used in a real call — the checklist below.
 **Tags:** `#voice` → `tools/where.sh -g voice`
@@ -52,6 +52,19 @@ none of them aware of the others.
   closes it. A blocked pop-up does nothing visible beyond the browser's own
   blocked-pop-up notice; the in-app expanded view is a one-tile thing and
   does not stand in for a board.
+
+### 120-2 — a boarded tile rests in the main window
+
+scuq, first use: the board opened but the main window kept painting every
+tile too, where a single pop-out (47-11) unmounts its `<video>` and shows
+"⧉ popped out" in its place. The board now does the same: while it is open,
+every tile it holds (`onBoard` in `VoiceCallPanel.tsx`: live video, on a
+board that is up) renders as popped out — the `<video>` gone, the mark in
+its place — and its per-tile pop-out button goes with it, since the way
+back is the bar's "pop out all", which closes the board for everyone at
+once. A tile that was already in a window of its own stays marked either
+way. The audio path is untouched: the dock's sinks never depended on the
+stage's `<video>` elements.
 
 **Rejected:** an in-app board (a modal canvas). The ask was a window: a
 second monitor, or beside another app, is the point. **Rejected:** a

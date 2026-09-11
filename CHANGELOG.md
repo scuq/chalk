@@ -10,6 +10,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- **"Pop out all" now rests the tiles in the main window**, the way a single
+  pop-out does: each video that is showing in the call window is replaced by
+  a "popped out" mark in the app until the window closes, so the same frames
+  are not decoded and painted twice.
+
 ## v0.8.20 — 12 September 2026 — The whole call in one window, and a quiet person turned up
 
 ### Added

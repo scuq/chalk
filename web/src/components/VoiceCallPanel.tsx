@@ -461,6 +461,15 @@ export function VoiceCallPanel({
     // boardTiles reads stageTiles and the roster of this render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stageTiles, boardUp]);
+  // 120-2: a tile on the board rests in the main window the way a tile in
+  // its own window does (47-11) -- the <video> unmounted, "popped out" in
+  // its place -- so the same frames are not painted twice. Its per-tile
+  // button goes with it: the way back is the bar's "pop out all", which
+  // closes the board for everyone at once.
+  const onBoard = (t: StageTile) => boardUp && !!t.stream && t.hasLiveVideo;
+  const isOut = (t: StageTile) => popped.includes(t.key) || onBoard(t);
+  const popOutFor = (t: StageTile) =>
+    t.hasLiveVideo && !onBoard(t) ? () => popOut(t) : undefined;
 
   const popLabel = (tile: StageTile) =>
     handleFor(tile.userID) + (tile.isScreen ? " — screen" : "");
@@ -563,8 +572,8 @@ export function VoiceCallPanel({
                     label={handleFor(t.userID)}
                     rttMs={rttByKey[t.key]}
                     onClick={() => pinFromGrid(t.key)}
-                    onPopOut={t.hasLiveVideo ? () => popOut(t) : undefined}
-                    poppedOut={popped.includes(t.key)}
+                    onPopOut={popOutFor(t)}
+                    poppedOut={isOut(t)}
                     snap={snap}
                     channel={channel}
                     selfUserID={selfUserID}
@@ -591,8 +600,8 @@ export function VoiceCallPanel({
                       rttMs={rttByKey[focused.key]}
                       big
                       onClick={unpin}
-                      onPopOut={focused.hasLiveVideo ? () => popOut(focused) : undefined}
-                      poppedOut={popped.includes(focused.key)}
+                      onPopOut={popOutFor(focused)}
+                      poppedOut={isOut(focused)}
                       snap={snap}
                       channel={channel}
                       selfUserID={selfUserID}
@@ -610,8 +619,8 @@ export function VoiceCallPanel({
                         label={handleFor(t.userID)}
                         rttMs={rttByKey[t.key]}
                         onClick={() => setPinnedKey(t.key)}
-                        onPopOut={t.hasLiveVideo ? () => popOut(t) : undefined}
-                        poppedOut={popped.includes(t.key)}
+                        onPopOut={popOutFor(t)}
+                        poppedOut={isOut(t)}
                         snap={snap}
                         channel={channel}
                         selfUserID={selfUserID}
