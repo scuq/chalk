@@ -251,7 +251,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     id: "voice",
     tab: "media",
     title: "voice & video",
-    keywords: ["microphone", "mic", "camera", "devices", "call", "speaker"],
+    keywords: ["microphone", "mic", "camera", "devices", "call", "speaker", "pop-out", "popout", "above", "on top", "window"],
   },
   {
     id: "storage",

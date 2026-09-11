@@ -12,6 +12,14 @@
 //     pop-out on Firefox and Safari, which have no document PiP at all. Not
 //     always-on-top, but a window all the same.
 //
+// 118-1: the floating one is only asked for when the person opted in
+// (voice prefs, "keep pop-outs above other windows"). Before that it was
+// taken whenever the browser offered it, which meant that on Windows the
+// first of three pop-outs covered every other window while the other two
+// behaved -- an inconsistency nobody had chosen. Off, every pop-out is a
+// plain window everywhere, which is what macOS and the desktop app (where
+// the API is switched off, 104-6) already did.
+//
 // Neither is guaranteed: PiP can be refused and pop-ups can be blocked, which
 // is why opening reports whether it worked rather than throwing -- the caller
 // falls back to the in-app expanded view.
@@ -98,6 +106,7 @@ export async function openTilePopout(
   stream: MediaStream,
   label: string,
   host: Window = window,
+  opts: { onTop?: boolean } = {},
 ): Promise<boolean> {
   const already = open.get(key);
   if (already) {
@@ -112,7 +121,7 @@ export async function openTilePopout(
   const settings = track.getSettings?.() ?? {};
   const size = pipWindowSize(settings.width, settings.height);
 
-  const pip = api(host);
+  const pip = opts.onTop ? api(host) : null;
   // The floating window goes to whoever asks first; everyone else gets a
   // plain one. Reusing it for a second tile would evict the first.
   if (pip && !pip.window) {

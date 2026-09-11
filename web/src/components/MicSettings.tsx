@@ -938,6 +938,34 @@ export function MicSettings({ tab, voicePrefs, onVoicePrefsChange }: MicSettings
               </span>
             </label>
           </div>
+
+          {/* 118-1: pop-outs are plain windows unless asked otherwise. The
+              floating one is Chromium's document picture-in-picture, of which
+              a page gets exactly one -- so even opted in, only the first
+              pop-out floats; and the desktop app has the API switched off
+              (104-6), so there the box changes nothing. */}
+          <div class="chalk-profile-field">
+            <label class="chalk-profile-checkbox-label">
+              <input
+                type="checkbox"
+                checked={!!voicePrefs.popoutsOnTop}
+                onChange={(e) =>
+                  onVoicePrefsChange({ popoutsOnTop: (e.target as HTMLInputElement).checked })
+                }
+                data-testid="voice-popouts-on-top"
+              />
+              <span>
+                keep a popped-out video above other windows{" "}
+                <span class="chalk-profile-theme-desc">
+                  (off, every pop-out is an ordinary window that other windows can cover.
+                  on, the first pop-out you open floats above everything -- the browser
+                  hands out one floating window per page, so a second and third are
+                  ordinary either way. chrome, edge and brave only; no effect in firefox,
+                  safari or the desktop app)
+                </span>
+              </span>
+            </label>
+          </div>
         </>
       )}
 

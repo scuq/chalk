@@ -530,6 +530,17 @@ export interface VoicePrefs {
   /** 66-5: round-trip time on each remote tile, off by default -- it is a
    * number most calls never need, and a permanent one is a permanent worry. */
   showLatency?: boolean;
+  /** 118-1: may a pop-out float above every other window? Off by default: a
+   * window that covers whatever you switch to is a thing to ask for, not a
+   * thing to be given. Where the browser has a floating window to hand out
+   * (Chromium's document picture-in-picture) it only ever has ONE per page,
+   * so with this on the first pop-out floats and the rest still do not. */
+  popoutsOnTop?: boolean;
+}
+
+/** selectPopoutsOnTop resolves the 118-1 default. Absent = plain windows. */
+export function selectPopoutsOnTop(prefs: UserPrefs | undefined): boolean {
+  return prefs?.voice?.popoutsOnTop === true;
 }
 
 /** selectJoinMuted resolves the 66-1 default. Absent = muted: joining a room

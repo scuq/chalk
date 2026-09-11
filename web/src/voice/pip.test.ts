@@ -254,23 +254,46 @@ test("an audio-only tile has nothing to pop out", async () => {
   assert.equal(opened.length, 0);
 });
 
-test("document PiP takes the first pop-out, plain windows take the rest", async () => {
-  closeAllTilePopouts();
-  const { host, opened, raw } = fakeHost();
+// 118-1: the floating window is opt-in.
+function fakePipHost() {
+  const h = fakeHost();
   const pipWin = fakeWin("pip");
   const pip = {
     window: null as FakeWin | null,
+    requests: 0,
     requestWindow: async () => {
+      pip.requests++;
       pip.window = pipWin;
       return pipWin as unknown as Window;
     },
   };
-  (raw as unknown as { documentPictureInPicture: unknown }).documentPictureInPicture = pip;
+  (h.raw as unknown as { documentPictureInPicture: unknown }).documentPictureInPicture = pip;
+  return { ...h, pip, pipWin };
+}
 
-  await openTilePopout("a", fakeStream("a").stream, "a", host);
-  await openTilePopout("b", fakeStream("b").stream, "b", host);
+test("opted in, document PiP takes the first pop-out and plain windows take the rest", async () => {
+  closeAllTilePopouts();
+  const { host, opened, pipWin } = fakePipHost();
+  await openTilePopout("a", fakeStream("a").stream, "a", host, { onTop: true });
+  await openTilePopout("b", fakeStream("b").stream, "b", host, { onTop: true });
   assert.equal(opened.length, 1); // only "b" needed a plain window
   assert.equal(pipWin.document.title, "a");
   assert.deepEqual(popoutKeys().sort(), ["a", "b"]);
+  closeAllTilePopouts();
+});
+
+test("not opted in, every pop-out is a plain window even where PiP exists", async () => {
+  closeAllTilePopouts();
+  const { host, opened, pip } = fakePipHost();
+  // The default (no opts) and an explicit false both leave the floating
+  // window alone: this is the Windows "first of three covers everything"
+  // report, and the fix is that nobody floats unless they asked.
+  await openTilePopout("a", fakeStream("a").stream, "a", host);
+  await openTilePopout("b", fakeStream("b").stream, "b", host, { onTop: false });
+  await openTilePopout("c", fakeStream("c").stream, "c", host, {});
+  assert.equal(pip.requests, 0);
+  assert.equal(pip.window, null);
+  assert.equal(opened.length, 3);
+  assert.deepEqual(popoutKeys().sort(), ["a", "b", "c"]);
   closeAllTilePopouts();
 });

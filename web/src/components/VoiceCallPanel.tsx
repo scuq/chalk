@@ -74,6 +74,8 @@ interface Props {
   keyReady: boolean;
   /** 66-5: round-trip time in the corner of each remote tile (prefs.voice). */
   showLatency: boolean;
+  /** 118-1: may a pop-out take the browser's floating window? Off = plain. */
+  popoutsOnTop?: boolean;
 }
 
 /**
@@ -125,6 +127,7 @@ export function VoiceCallPanel({
   roster,
   keyReady,
   showLatency,
+  popoutsOnTop,
   avatars, // 112-4
   attachmentController,
 }: Props) {
@@ -443,7 +446,9 @@ export function VoiceCallPanel({
       closeTilePopout(tile.key);
       return;
     }
-    void openTilePopout(tile.key, tile.stream, popLabel(tile)).then((opened) => {
+    void openTilePopout(tile.key, tile.stream, popLabel(tile), window, {
+      onTop: !!popoutsOnTop,
+    }).then((opened) => {
       if (!opened) setExpandedKey(tile.key);
     });
   };

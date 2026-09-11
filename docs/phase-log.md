@@ -109,6 +109,7 @@ as-built rather than a contemporaneous plan.
 | 115 | flair — the animated mode, off by default | [PHASE-115-FLAIR.md](phases/PHASE-115-FLAIR.md) |
 | 116 | what's new — the note after an update, and the picture ask that never came | [PHASE-116-WHATSNEW.md](phases/PHASE-116-WHATSNEW.md) |
 | 117 | the name colour picker — a hue strip, since hue is all that is kept | [PHASE-117-HUESTRIP.md](phases/PHASE-117-HUESTRIP.md) |
+| 118 | pop-outs stay ordinary windows unless asked to float | [PHASE-118-POPOUTTOP.md](phases/PHASE-118-POPOUTTOP.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

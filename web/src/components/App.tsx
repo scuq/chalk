@@ -6329,6 +6329,7 @@ export function App() {
                 roster={state.voiceRosters[activeChannel.id] ?? []}
                 keyReady={keyStatus[activeChannel.id] === "ready"}
                 showLatency={!!voicePrefs.showLatency}
+                popoutsOnTop={!!voicePrefs.popoutsOnTop} // 118-1
                 // 112-4: this channel's pictures fill the tiles' circles.
                 avatars={state.avatars[activeChannel.id] ?? {}}
                 attachmentController={attControllerRef.current ?? undefined}

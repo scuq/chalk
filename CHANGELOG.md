@@ -12,6 +12,15 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Fixed
+- **A popped-out video no longer floats above every other window unless you
+  ask it to.** In Chrome, Edge and Brave the first pop-out you opened stayed
+  on top of everything while the second and third behaved like ordinary
+  windows, and on macOS none of them floated. Now every pop-out is an
+  ordinary window everywhere. A new box in voice & video settings, under
+  calls, brings the floating window back for those who want it. The browser
+  hands out one per page, so even then only the first pop-out floats.
+
 ### Changed
 - **The name colour picker is now a hue strip.** chalk only ever keeps the
   hue of a name colour (the theme supplies the rest, so one colour reads on
