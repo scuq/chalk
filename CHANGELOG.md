@@ -13,6 +13,13 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- **"Pop out all" puts the whole call in a window of its own.** A new button
+  on the call bar opens one window with every video tile in it, laid out as
+  a grid to start. Drag a tile by its name to move it, drag its corner to
+  resize it, and click one to bring it to the front, so the shared screen
+  can be big and the faces small, or whatever you like. People joining and
+  leaving come and go from the window on their own. It sits beside the
+  per-tile pop-out, which is still there for one video on its own.
 - **Turn a quiet person up past 100%.** The per-person volume sliders on a
   call tile, and the one on a shared screen's sound, now run to 200%. Above
   100% chalk amplifies their audio on your side only, so someone with a soft

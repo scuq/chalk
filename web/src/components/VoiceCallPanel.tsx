@@ -44,6 +44,7 @@ import { ChannelGlyph } from "./Sidebar";
 import type { VoiceSessionDiagnostics } from "../voice/session";
 import { useNetPrefs } from "../voice/net-prefs";
 import { MAX_PEER_VOLUME } from "../voice/boost"; // 119-1
+import { boardOpen, closeBoard, openBoard, subscribeBoard, syncBoard } from "../voice/board"; // 120-1
 import {
   closeTilePopout,
   openTilePopout,
@@ -436,6 +437,31 @@ export function VoiceCallPanel({
 
   useEffect(() => subscribePopouts(() => setPopped(popoutKeys())), []);
 
+  // 120-1: the board -- every video tile in one window, arranged by hand.
+  const [boardUp, setBoardUp] = useState(() => boardOpen());
+  useEffect(() => subscribeBoard(() => setBoardUp(boardOpen())), []);
+  const boardTiles = () =>
+    stageTiles
+      .filter((t) => t.stream && t.hasLiveVideo)
+      .map((t) => ({
+        key: t.key,
+        stream: t.stream as MediaStream,
+        label: popLabel(t),
+        mirrored: t.isSelf && !t.isScreen,
+      }));
+  const toggleBoard = () => {
+    if (boardUp) {
+      closeBoard();
+      return;
+    }
+    void openBoard(boardTiles(), window, { onTop: !!popoutsOnTop });
+  };
+  useEffect(() => {
+    if (boardUp) syncBoard(boardTiles());
+    // boardTiles reads stageTiles and the roster of this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stageTiles, boardUp]);
+
   const popLabel = (tile: StageTile) =>
     handleFor(tile.userID) + (tile.isScreen ? " — screen" : "");
 
@@ -641,6 +667,25 @@ export function VoiceCallPanel({
                 of them screen-sharing a terminal, or two people who want
                 equal tiles, both want the other layout. Lit when the grid is
                 what you are looking at, whether by rule or by choice. */}
+            {/* 120-1: the whole call in a window of its own, tiles dragged
+                and resized by hand. Lit while the board is open; a second
+                press closes it. Only when there is video to show -- an
+                audio-only board is a window of black. */}
+            {stageTiles.some((t) => t.stream && t.hasLiveVideo) && (
+              <button
+                class={"chalk-btn chalk-voice-ctl" + (boardUp ? " chalk-voice-ctl--on" : "")}
+                onClick={toggleBoard}
+                data-testid="voice-board-toggle"
+                aria-pressed={boardUp ? "true" : "false"}
+                title={
+                  boardUp
+                    ? "close the call window"
+                    : "open every video in one window of its own — drag a tile by its name, resize it by its corner"
+                }
+              >
+                pop out all
+              </button>
+            )}
             {stageTiles.length > 1 && (
               <button
                 class={"chalk-btn chalk-voice-ctl" + (gridMode ? " chalk-voice-ctl--on" : "")}
