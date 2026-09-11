@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.20 — 12 September 2026 — The whole call in one window, and a quiet person turned up
 
 ### Added
 - **"Pop out all" puts the whole call in a window of its own.** A new button
