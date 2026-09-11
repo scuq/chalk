@@ -8770,14 +8770,62 @@ body.chalk-resizing-y .chalk-composer-resizer {
   align-items: center;
   gap: var(--chalk-s2);
 }
-.chalk-nick-menu-row input[type="color"] {
-  width: 34px;
-  height: 22px;
+/* 117-1: the hue strip that replaced <input type="color"> in both pickers.
+   Painted from the theme's own --nick-s / --nick-l, so every point on it is
+   a colour chat can actually render on this theme -- the old picker offered
+   a whole square of saturations and lightnesses that were discarded on
+   pick. Seven stops, hue 0 to 360, because linear-gradient interpolates in
+   RGB and fewer stops would grey out between the primaries. Thumb is a
+   hollow bar so the hue under it stays visible. */
+.chalk-hue-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1 1 120px;
+  min-width: 120px;
+  height: 14px;
   padding: 0;
-  background: transparent;
+  margin: 0;
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);
+  background: linear-gradient(
+    to right,
+    hsl(0 var(--nick-s) var(--nick-l)),
+    hsl(60 var(--nick-s) var(--nick-l)),
+    hsl(120 var(--nick-s) var(--nick-l)),
+    hsl(180 var(--nick-s) var(--nick-l)),
+    hsl(240 var(--nick-s) var(--nick-l)),
+    hsl(300 var(--nick-s) var(--nick-l)),
+    hsl(360 var(--nick-s) var(--nick-l))
+  );
+  outline: none;
   cursor: pointer;
+}
+.chalk-hue-slider:focus-visible {
+  outline: 2px solid var(--chalk-fg-bright);
+  outline-offset: 1px;
+}
+.chalk-hue-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 8px;
+  height: 20px;
+  background: transparent;
+  border: 2px solid var(--chalk-fg-bright);
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  cursor: ew-resize;
+}
+.chalk-hue-slider::-moz-range-thumb {
+  width: 4px;
+  height: 16px;
+  background: transparent;
+  border: 2px solid var(--chalk-fg-bright);
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  cursor: ew-resize;
+}
+.chalk-hue-slider::-moz-range-track {
+  background: transparent;
 }
 .chalk-nick-menu-btn {
   background: transparent;

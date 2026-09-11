@@ -13,7 +13,7 @@
 // takeover early-returns before the main view, so tab and filter state
 // survive the round-trip.
 
-import { hexFromHue, hueFromHex, nickTintStyle } from "../chat/nickcolor";
+import { HueSlider } from "./HueSlider"; // 117-1
 import {
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
@@ -1188,23 +1188,17 @@ export function ProfilePanel({
                   <label class="chalk-profile-label" for="self-color">
                     your color
                   </label>
+                  {/* 117-1: a hue strip, not a full colour picker -- only
+                      the hue is kept, so only the hue is offered. */}
                   <div class="chalk-nick-menu-row">
-                    <input
+                    <HueSlider
                       id="self-color"
-                      type="color"
-                      value={hexFromHue(chatPrefs.selfColorHue)}
-                      onChange={(e) => {
-                        const hue = hueFromHex((e.target as HTMLInputElement).value);
-                        if (hue !== null) onSetChatPref("selfColorHue", hue);
-                      }}
-                      data-testid="chat-self-color"
+                      hue={chatPrefs.selfColorHue}
+                      label="you"
+                      testid="chat-self-color"
+                      ariaLabel="your name hue"
+                      onChange={(hue) => onSetChatPref("selfColorHue", hue)}
                     />
-                    <span
-                      class="chalk-nick-preview"
-                      style={nickTintStyle(chatPrefs.selfColorHue)}
-                    >
-                      you
-                    </span>
                   </div>
                   <p class="chalk-profile-hint">
                     everyone gets an automatic color. right-click (or

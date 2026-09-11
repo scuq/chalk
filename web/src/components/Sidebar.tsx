@@ -16,12 +16,8 @@ import { WaveName } from "./WaveName"; // 115-3
 import { pickAvatar } from "../avatars/pick"; // 112-4
 import type { AttachmentController } from "../attachments/pipeline"; // 112-4
 import { useState, useRef, useEffect } from "preact/hooks";
-import {
-  DEFAULT_SELF_HUE,
-  hexFromHue,
-  hueFromHex,
-  nickTintStyle,
-} from "../chat/nickcolor";
+import { DEFAULT_SELF_HUE, nickTintStyle } from "../chat/nickcolor";
+import { HueSlider } from "./HueSlider"; // 117-1
 import { PrioritySelect } from "./PrioritySelect";
 import { filterRoster, showRosterFilter } from "../chat/roster-filter";
 import { PARKING_HOTKEY_LABEL } from "../parking-hotkey";
@@ -1686,28 +1682,24 @@ export function Sidebar({
           aria-label={`menu for ${nickMenu.handle || "friend"}`}
         >
           <div class="chalk-nick-menu-title">
-            {colorMenuEnabled && nickMenu.handle && (
-              <span
-                class="chalk-nick-swatch"
-                style={nickTintStyle(
-                  hueForHandle?.(nickMenu.handle) ?? DEFAULT_SELF_HUE,
-                  "background",
-                )}
-              />
-            )}
             <span>{nickMenu.handle || nickMenu.userID.slice(-8)}</span>
           </div>
+          {/* 117-1: a hue strip with its live swatch on one row, the
+              buttons under it. Only the hue is kept, so only the hue is
+              offered; the swatch that used to sit in the title moved down
+              beside the strip so it follows the drag. */}
           {colorMenuEnabled && nickMenu.handle && (
             <div class="chalk-nick-menu-row">
-              <input
-                type="color"
-                value={hexFromHue(hueForHandle?.(nickMenu.handle) ?? 210)}
-                data-testid="nick-color-input"
-                onChange={(e) => {
-                  const hue = hueFromHex((e.target as HTMLInputElement).value);
-                  if (hue !== null) onSetFriendHue?.(nickMenu.handle, hue);
-                }}
+              <HueSlider
+                hue={hueForHandle?.(nickMenu.handle) ?? DEFAULT_SELF_HUE}
+                testid="nick-color-input"
+                ariaLabel={`hue for ${nickMenu.handle}`}
+                onChange={(hue) => onSetFriendHue?.(nickMenu.handle, hue)}
               />
+            </div>
+          )}
+          {colorMenuEnabled && nickMenu.handle && (
+            <div class="chalk-nick-menu-row">
               <button
                 type="button"
                 class="chalk-nick-menu-btn"

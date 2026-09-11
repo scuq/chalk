@@ -10,6 +10,16 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- **The name colour picker is now a hue strip.** chalk only ever keeps the
+  hue of a name colour (the theme supplies the rest, so one colour reads on
+  every theme), but the old picker offered a whole square of shades and
+  quietly dropped what you chose: pick a pale peach, reopen, and it sat on a
+  saturated orange. The strip shows exactly the colours chat can render on
+  your theme, with a live preview beside it, and reopens where you left it.
+
 ## v0.8.19 — 9 September 2026 — Your own card in the corner
 
 ### Added
