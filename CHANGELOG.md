@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.21 — 12 September 2026 — The call window rests the tiles behind it
 
 ### Fixed
 - **"Pop out all" now rests the tiles in the main window**, the way a single
