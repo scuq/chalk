@@ -94,7 +94,9 @@ const DEFAULT_PREF = { muted: false, volume: 1, screenMuted: false, screenVolume
 
 test("normalizePeerAudioPref clamps and defaults", () => {
   assert.deepEqual(normalizePeerAudioPref(undefined), DEFAULT_PREF);
-  assert.deepEqual(normalizePeerAudioPref({ volume: 2 }), DEFAULT_PREF);
+  // 119-1: up to 2 is a real level (a boost); past it clamps to the ceiling.
+  assert.deepEqual(normalizePeerAudioPref({ volume: 2 }), { ...DEFAULT_PREF, volume: 2 });
+  assert.deepEqual(normalizePeerAudioPref({ volume: 3 }), { ...DEFAULT_PREF, volume: 2 });
   assert.deepEqual(normalizePeerAudioPref({ volume: -1 }), { ...DEFAULT_PREF, volume: 0 });
   // A NaN volume would silence someone permanently: element.volume = NaN
   // throws, so the slider would be stuck. Falls back to full.
@@ -108,7 +110,10 @@ test("normalizePeerAudioPref clamps and defaults", () => {
 // 96-3: the share's pair gets the same treatment, and a row written before
 // the split (no screen fields at all) reads as "share at full volume".
 test("normalizePeerAudioPref treats the share's pair the same way", () => {
-  assert.deepEqual(normalizePeerAudioPref({ screenVolume: 4 }), DEFAULT_PREF);
+  assert.deepEqual(normalizePeerAudioPref({ screenVolume: 4 }), {
+    ...DEFAULT_PREF,
+    screenVolume: 2,
+  });
   assert.deepEqual(normalizePeerAudioPref({ screenVolume: NaN }), DEFAULT_PREF);
   assert.deepEqual(normalizePeerAudioPref({ screenVolume: -3 }), {
     ...DEFAULT_PREF,

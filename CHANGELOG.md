@@ -12,6 +12,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- **Turn a quiet person up past 100%.** The per-person volume sliders on a
+  call tile, and the one on a shared screen's sound, now run to 200%. Above
+  100% chalk amplifies their audio on your side only, so someone with a soft
+  microphone can be heard without asking them to change anything. The slider
+  thumb changes colour past 100% so a boost is visible at a glance. Your
+  other devices pick the level up through the same synced list.
+
 ### Fixed
 - **A popped-out video no longer floats above every other window unless you
   ask it to.** In Chrome, Edge and Brave the first pop-out you opened stayed

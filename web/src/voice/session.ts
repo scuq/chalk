@@ -40,6 +40,7 @@ import {
   type PeerAudioPref,
   type PeerAudioStore,
 } from "./peer-audio-store";
+import { clampPeerVolume } from "./boost"; // 119-1
 export type { ScreenShareMode } from "./call";
 
 // ---- per-peer local audio prefs (Addendum A: A1 + the element-volume
@@ -849,10 +850,8 @@ class VoiceSessionImpl {
 
   /** A4 subset: playback volume 0..1 for one participant. Persisted. */
   setPeerVolume(userID: string, volume: number): void {
-    this.updatePeerAudio(userID, (p) => ({
-      ...p,
-      volume: Math.min(1, Math.max(0, volume)),
-    }));
+    // 119-1: 0..2; over 1 the dock's sink adds gain (boost.ts).
+    this.updatePeerAudio(userID, (p) => ({ ...p, volume: clampPeerVolume(volume) }));
   }
 
   /** 96-3: locally silence the program audio riding one participant's screen
@@ -861,12 +860,10 @@ class VoiceSessionImpl {
     this.updatePeerAudio(userID, (p) => ({ ...p, screenMuted: muted }));
   }
 
-  /** 96-3: playback volume 0..1 for that shared program audio. Persisted. */
+  /** 96-3: playback volume for that shared program audio, 0..2 since
+   * 119-1. Persisted. */
   setPeerScreenVolume(userID: string, volume: number): void {
-    this.updatePeerAudio(userID, (p) => ({
-      ...p,
-      screenVolume: Math.min(1, Math.max(0, volume)),
-    }));
+    this.updatePeerAudio(userID, (p) => ({ ...p, screenVolume: clampPeerVolume(volume) }));
   }
 
   private updatePeerAudio(

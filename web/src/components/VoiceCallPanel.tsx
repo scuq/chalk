@@ -43,6 +43,7 @@ import { useVoiceSession } from "./VoiceDock";
 import { ChannelGlyph } from "./Sidebar";
 import type { VoiceSessionDiagnostics } from "../voice/session";
 import { useNetPrefs } from "../voice/net-prefs";
+import { MAX_PEER_VOLUME } from "../voice/boost"; // 119-1
 import {
   closeTilePopout,
   openTilePopout,
@@ -1129,10 +1130,12 @@ function StagePeer({
               <>
                 {big && !screenMuted && (
                   <input
-                    class="chalk-voice-volume"
+                    class={
+                      "chalk-voice-volume" + (screenVolume > 1 ? " chalk-voice-volume--boost" : "")
+                    }
                     type="range"
                     min="0"
-                    max="100"
+                    max={MAX_PEER_VOLUME * 100}
                     step="5"
                     value={Math.round(screenVolume * 100)}
                     onInput={(e) =>
@@ -1179,12 +1182,17 @@ function StagePeer({
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           >
+            {/* 119-1: up to 200%. Over 100 the dock's sink adds gain; the
+                thumb changes colour there so a boost reads as a boost. */}
             {big && !pref?.muted && (
               <input
-                class="chalk-voice-volume"
+                class={
+                  "chalk-voice-volume" +
+                  ((pref?.volume ?? 1) > 1 ? " chalk-voice-volume--boost" : "")
+                }
                 type="range"
                 min="0"
-                max="100"
+                max={MAX_PEER_VOLUME * 100}
                 step="5"
                 value={Math.round((pref?.volume ?? 1) * 100)}
                 onInput={(e) =>

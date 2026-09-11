@@ -1,6 +1,7 @@
 // chalk-web -- persistence for the per-peer local audio prefs ("mute for me").
 //
-// Receive-side only: local mute and 0..1 volume applied to OUR playback of a
+// Receive-side only: local mute and 0..2 volume (119-1: over 1 is a Web Audio
+// gain, see boost.ts) applied to OUR playback of a
 // peer -- since 96-3, one pair for their voice and one for the program audio
 // riding their screen share. Never touches the wire -- the peer's uplink and everyone else's ears
 // are unchanged, and nothing is broadcast (unlike self-mute, which rides
@@ -15,16 +16,19 @@
 // comes back down is a decrypted blob written by another device, and it must
 // not be able to put junk in front of the volume sliders.
 
+import { clampPeerVolume } from "./boost";
+
 export interface PeerAudioPref {
   /** Local mute (A1). Independent of volume so unmute restores the level. */
   muted: boolean;
-  /** Playback volume 0..1 (A4 subset; HTMLMediaElement.volume ceiling). */
+  /** Playback volume 0..MAX_PEER_VOLUME. Up to 1 it is the element's own
+   * volume; 119-1 lets it go to 2, the part over 1 applied as gain. */
   volume: number;
   /** 96-3: local mute for this person's SHARED PROGRAM AUDIO (the tab or
    * system sound riding their screen share), separate from their voice.
    * Turning a game down to hear someone talk over it is the whole case. */
   screenMuted: boolean;
-  /** 96-3: playback volume 0..1 for that shared program audio. */
+  /** 96-3: playback volume for that shared program audio, same range. */
   screenVolume: number;
 }
 
@@ -33,12 +37,10 @@ export type PeerAudioStore = Record<string, Record<string, PeerAudioPref>>;
 
 const STORAGE_KEY = "chalk-voice-peer-audio";
 
-/** 0..1, defaulting to full volume for anything that is not a real number --
- * a NaN would silence someone permanently (element.volume = NaN throws). */
-function clampVolume(v: unknown): number {
-  if (typeof v !== "number" || !Number.isFinite(v)) return 1;
-  return Math.min(1, Math.max(0, v));
-}
+// 119-1: the range and its junk handling live with the boost, which is
+// what the top half of the range means. A blob from a device still on the
+// 0..1 range reads a boosted row as 1 there, which is the right fallback.
+const clampVolume = clampPeerVolume;
 
 export function normalizePeerAudioPref(p: Partial<PeerAudioPref> | undefined): PeerAudioPref {
   return {

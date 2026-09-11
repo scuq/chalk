@@ -26,6 +26,16 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { voiceSession, type SessionRemoteTile, type VoiceSessionSnap } from "../voice/session";
 import { closeAllTilePopouts } from "../voice/pip";
 import { applySinkId, useAudioOutput } from "../voice/device-prefs";
+import {
+  boostAvailable,
+  elementVolume,
+  hookBoostResume,
+  isBoostRunning,
+  needsBoost,
+  onBoostState,
+  openBoost,
+  type Boost,
+} from "../voice/boost"; // 119-1
 import { ChannelGlyph } from "./Sidebar";
 
 function fmtDuration(ms: number): string {
@@ -323,32 +333,82 @@ function AudioSink({
   // once globally, because setSinkId IS a property of the element -- and the
   // sinks come and go with the peers.
   const outputId = useAudioOutput();
+
+  // 119-1: over 100% the element cannot carry the level, so the stream goes
+  // through a gain graph (voice/boost.ts) and the element plays the graph's
+  // output at 1. The graph is only trusted while its context is running: a
+  // reload with a stored boost has had no gesture yet, and routing through
+  // a suspended context is silence. Until it runs, the raw stream plays at
+  // 100% and the next pointer or key anywhere resumes it.
+  const boosted = needsBoost(volume);
+  const [ctxRunning, setCtxRunning] = useState(isBoostRunning());
   useEffect(() => {
-    if (ref.current && ref.current.srcObject !== stream) {
-      ref.current.srcObject = stream;
+    if (!boosted || !boostAvailable()) return;
+    setCtxRunning(isBoostRunning());
+    if (!isBoostRunning()) hookBoostResume();
+    return onBoostState(() => setCtxRunning(isBoostRunning()));
+  }, [boosted]);
+  const useGraph = boosted && ctxRunning;
+  const boostRef = useRef<Boost | null>(null);
+  const rawRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let play: MediaStream = stream;
+    if (useGraph) {
+      if (boostRef.current?.raw !== stream) {
+        boostRef.current?.release();
+        boostRef.current = openBoost(stream, volume);
+      }
+      if (boostRef.current) play = boostRef.current.stream;
+    } else if (boostRef.current) {
+      boostRef.current.release();
+      boostRef.current = null;
+    }
+    // Chromium only feeds a remote WebRTC track into Web Audio while some
+    // media element is also playing it, so the raw stream stays attached to
+    // a muted element for as long as the graph is in use.
+    if (rawRef.current) {
+      const keep = useGraph && play !== stream ? stream : null;
+      if (rawRef.current.srcObject !== keep) rawRef.current.srcObject = keep;
+    }
+    if (el.srcObject !== play) {
+      el.srcObject = play;
       // 30-5i: after an auto-rejoin there's been no user gesture, so the
       // browser's autoplay policy may reject playback. Detect it and flag
       // the dock nudge; a global click (below) resumes.
-      const p = ref.current.play?.();
+      const p = el.play?.();
       if (p && typeof p.catch === "function") {
         p.catch(() => voiceSession.notifyAudioBlocked());
       }
     }
-  }, [stream]);
+    // volume is applied by the effect below; this one only decides routing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream, useGraph]);
+  useEffect(() => () => boostRef.current?.release(), []);
+
   // Prefs via properties, not attributes: the muted ATTRIBUTE only sets the
   // default, and volume has no attribute at all.
   useEffect(() => {
     if (ref.current) {
       ref.current.muted = muted;
-      ref.current.volume = Math.min(1, Math.max(0, volume));
+      // While the graph carries the level the element sits at 1.
+      ref.current.volume = useGraph ? 1 : elementVolume(volume);
     }
-  }, [muted, volume]);
+    boostRef.current?.setGain(volume);
+  }, [muted, volume, useGraph]);
   // Re-applied on every new stream too: a sink set before srcObject exists is
   // not carried across in every engine.
   useEffect(() => {
     void applySinkId(ref.current, outputId);
   }, [outputId, stream]);
-  return <audio ref={ref} autoPlay style={{ display: "none" }} />;
+  return (
+    <>
+      <audio ref={ref} autoPlay style={{ display: "none" }} />
+      <audio ref={rawRef} autoPlay muted style={{ display: "none" }} />
+    </>
+  );
 }
 
 function PiPVideo({ stream, mirrored }: { stream: MediaStream | null; mirrored?: boolean }) {

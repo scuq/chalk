@@ -7778,6 +7778,15 @@ body.chalk-resizing-y .chalk-composer-resizer {
   border: none;
   border-radius: 0;
 }
+/* 119-1: the slider runs to 200%, and past 100 the thumb takes the alert
+   colour -- the same one the local-mute button lights up in -- so a boosted
+   person reads as boosted at a glance, not only in the title. */
+.chalk-voice-volume--boost::-webkit-slider-thumb {
+  background: var(--voice-on-video-alert);
+}
+.chalk-voice-volume--boost::-moz-range-thumb {
+  background: var(--voice-on-video-alert);
+}
 
 /* ---- control bar ---- */
 
