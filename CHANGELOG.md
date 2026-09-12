@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.22 — 12 September 2026 — Videos show a preview and play in the chat
 
 ### Added
 - **Videos show a preview and play in the chat.** A video sent as an
