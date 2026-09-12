@@ -20,6 +20,14 @@
 // the picture. That one rule is why pinch-to-zoom and swipe-to-next can share
 // an axis without fighting.
 //
+// 121-2: it plays. A video in a tile grid opens here like its neighbours and
+// shows as a <video controls> in the stage, fitted, with its poster up while
+// the bytes come. The full blob of a video is fetched only when it is the
+// one showing -- prefetching a neighbour's 20 MiB for a page turn that may
+// never come is not worth it, and the poster is already there to page onto.
+// Zoom and pan stay the picture's: a wheel over a video does nothing, and a
+// touch that starts on the player belongs to its controls, not the swipe.
+//
 // Fail-closed is unchanged: no key, no bytes, a locked placeholder instead.
 
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
@@ -50,7 +58,8 @@ import { asBytes } from "../crypto/bytes";
 
 interface Props {
   channelID: string;
-  /** every image of the message, in feed order -- hidden "+N" ones included */
+  /** every image and video of the message, in feed order -- hidden "+N" ones
+   *  included */
   images: AttachmentRef[];
   /** which one is showing; the owner keeps it so it survives a re-render */
   index: number;
@@ -100,6 +109,9 @@ export function Lightbox({ channelID, images, index, controller, onIndex, onClos
   const aliveRef = useRef(true);
   const urlsRef = useRef<string[]>([]);
   const startedRef = useRef(new Set<string>());
+  // 121-2: which videos have had their full blob asked for (images fetch
+  // theirs on first load; a video waits until it is the one showing).
+  const startedFullRef = useRef(new Set<string>());
   const gestureRef = useRef<Gesture | null>(null);
   const mouseRef = useRef<{ x: number; y: number; from: View } | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -125,16 +137,31 @@ export function Lightbox({ channelID, images, index, controller, onIndex, onClos
     setEntries((prev) => ({ ...prev, [id]: { ...(prev[id] ?? EMPTY), ...patch } }));
   }, []);
 
+  const mint = useCallback((bytes: Uint8Array, mime: string): string => {
+    const url = URL.createObjectURL(new Blob([asBytes(bytes)], { type: mime }));
+    urlsRef.current.push(url);
+    return url;
+  }, []);
+
+  // Fetch + decrypt the original once. Images do this as part of load();
+  // videos (121-2) only once they are showing.
+  const loadFull = useCallback(
+    (ref: AttachmentRef, meta: AttachmentMeta) => {
+      if (startedFullRef.current.has(ref.id)) return;
+      startedFullRef.current.add(ref.id);
+      void controller.loadFullBytes(channelID, ref).then((bytes) => {
+        if (!aliveRef.current || !bytes) return;
+        put(ref.id, { full: mint(bytes, meta.mime) });
+      });
+    },
+    [channelID, controller, mint, put],
+  );
+
   // Decrypt one image at most once per open, whatever re-renders happen.
   const load = useCallback(
-    (ref: AttachmentRef) => {
+    (ref: AttachmentRef, current: boolean) => {
       if (startedRef.current.has(ref.id)) return;
       startedRef.current.add(ref.id);
-      const mint = (bytes: Uint8Array, mime: string): string => {
-        const url = URL.createObjectURL(new Blob([asBytes(bytes)], { type: mime }));
-        urlsRef.current.push(url);
-        return url;
-      };
       void controller.decryptMeta(channelID, ref).then((meta) => {
         if (!aliveRef.current) return;
         if (!meta) {
@@ -142,18 +169,15 @@ export function Lightbox({ channelID, images, index, controller, onIndex, onClos
           return;
         }
         put(ref.id, { meta });
-        if (meta.kind !== "image") return;
+        if (meta.kind !== "image" && meta.kind !== "video") return;
         void controller.loadPreviewBytes(channelID, ref).then((bytes) => {
           if (!aliveRef.current || !bytes) return;
           put(ref.id, { preview: mint(bytes, meta.mime) });
         });
-        void controller.loadFullBytes(channelID, ref).then((bytes) => {
-          if (!aliveRef.current || !bytes) return;
-          put(ref.id, { full: mint(bytes, meta.mime) });
-        });
+        if (meta.kind === "image" || current) loadFull(ref, meta);
       });
     },
-    [channelID, controller, put],
+    [channelID, controller, loadFull, mint, put],
   );
 
   // The current image and both neighbours, so a page turn shows bytes rather
@@ -162,9 +186,17 @@ export function Lightbox({ channelID, images, index, controller, onIndex, onClos
   useEffect(() => {
     for (const i of [index, index + 1, index - 1]) {
       const ref = images[i];
-      if (ref) load(ref);
+      if (ref) load(ref, i === index);
     }
   }, [images, index, load]);
+
+  // 121-2: a video whose meta arrived while it was a neighbour fetches its
+  // bytes the moment it becomes the one showing.
+  useEffect(() => {
+    if (!att) return;
+    const e = entries[att.id];
+    if (e?.meta?.kind === "video" && !e.full) loadFull(att, e.meta);
+  }, [att, entries, loadFull]);
 
   const settle = useCallback((to: number, done?: () => void) => {
     if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current);
@@ -256,6 +288,9 @@ export function Lightbox({ channelID, images, index, controller, onIndex, onClos
   const onTouchStart = (e: TouchEvent) => {
     e.stopPropagation();
     gestureRef.current = null;
+    // 121-2: a finger on the player is for its controls (scrubbing is a
+    // horizontal drag too); the backdrop around it still swipes.
+    if ((e.target as HTMLElement | null)?.tagName === "VIDEO") return;
     beginTouch(e);
   };
 
@@ -388,7 +423,8 @@ export function Lightbox({ channelID, images, index, controller, onIndex, onClos
   if (!att) return null;
 
   const shownURL = entry?.full ?? entry?.preview ?? null;
-  const name = entry?.meta?.name ?? "image";
+  const isVideo = entry?.meta?.kind === "video";
+  const name = entry?.meta?.name ?? (isVideo ? "video" : "image");
   const zoomed = isZoomed(view);
 
   return (
@@ -402,7 +438,7 @@ export function Lightbox({ channelID, images, index, controller, onIndex, onClos
         // the first half of a double-click (which zooms) or the end of a pan,
         // and closing on either would make both unusable.
         const t = e.target as HTMLElement | null;
-        if (t && (t.tagName === "IMG" || t.closest("button"))) return;
+        if (t && (t.tagName === "IMG" || t.tagName === "VIDEO" || t.closest("button"))) return;
         onClose();
       }}
       onWheel={onWheel}
@@ -453,6 +489,31 @@ export function Lightbox({ channelID, images, index, controller, onIndex, onClos
           <div class="chalk-lightbox-locked" data-testid="lightbox-locked">
             <span aria-hidden="true">🔒</span> locked attachment — key not available
           </div>
+        ) : isVideo && entry?.full ? (
+          <video
+            class="chalk-attachment-lightbox-video"
+            src={entry.full}
+            poster={entry.preview ?? undefined}
+            controls
+            autoPlay
+            playsInline
+            title={name}
+            data-testid="lightbox-video"
+          />
+        ) : isVideo && entry?.preview ? (
+          // The poster while the bytes come: a still with the spinner over
+          // it, so paging onto a video shows the thing at once.
+          <div class="chalk-lightbox-video-poster" data-testid="lightbox-video-poster">
+            <img
+              class="chalk-attachment-lightbox-img chalk-attachment-lightbox-img--preview"
+              src={entry.preview}
+              alt={name}
+              draggable={false}
+            />
+            <div class="chalk-lightbox-loading chalk-lightbox-loading--over">
+              <span class="chalk-attachment-spinner" aria-hidden="true" /> decrypting…
+            </div>
+          </div>
         ) : shownURL ? (
           <img
             ref={imgRef}
@@ -488,7 +549,13 @@ export function Lightbox({ channelID, images, index, controller, onIndex, onClos
           </span>
         )}
         {entry?.meta ? `${entry.meta.name} (${humanSize(entry.meta.size)})` : name}
-        {zoomed
+        {isVideo
+          ? coarse
+            ? count > 1
+              ? " — swipe beside the video to page"
+              : " — swipe right to close"
+            : " — Esc to close"
+          : zoomed
           ? coarse
             ? ` — ${view.scale.toFixed(1)}× · drag to move, pinch back to fit`
             : ` — ${view.scale.toFixed(1)}× · drag to pan, double-click to fit`
