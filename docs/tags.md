@@ -81,6 +81,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #gallery        110       web/src/attachments/gallery.ts web/src/attachments/zoom.ts web/src/components/Lightbox.tsx web/src/components/AttachmentGroup.tsx web/src/components/AttachmentView.tsx web/src/theme.css docs/phases/PHASE-110-GALLERY.md
 #image          108       docker/ .github/workflows/release.yml docs/phases/PHASE-108-CROSSBUILD.md
 #desktop        104       desktop/ web/src/presence/desktop-idle.ts tools/make-signing-cert.sh .github/workflows/release.yml docs/phases/PHASE-104-DESKTOP.md
+#video          121       web/src/attachments/types.ts web/src/attachments/preview.ts web/src/attachments/tiles.ts web/src/attachments/pipeline.ts web/src/components/AttachmentView.tsx web/src/components/Lightbox.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-121-VIDEO.md
 #selfupdate     105       desktop/src/selfupdate/ tools/make-release-key.sh .github/workflows/release.yml docs/phases/PHASE-105-SELFUPDATE.md
 
 ## Phase docs
@@ -96,7 +97,7 @@ Phase numbers that appear in the source but are not claimed above. Left here
 rather than guessed at, so the legend stays trustworthy; move one into a tag
 line when its topic is clear.
 
-    (none — 25 through 116 are all claimed)
+    (none — 25 through 121 are all claimed)
 
 Phases below 25 predate the tagging convention and carry no `// NN-n:` comments
 to find. They are recorded in `docs/phases/PHASE-00-29-FOUNDATION.md` instead —

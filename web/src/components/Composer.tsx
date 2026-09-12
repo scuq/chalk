@@ -456,7 +456,9 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
     const additions: PendingAttachment[] = files.map((file) => {
       const kind = classifyKind(file.type || "application/octet-stream");
       const item: PendingAttachment = { localID: makeLocalID(), file, kind };
-      if (kind === "image") {
+      // 121-1: a video's chip shows its first frame through a muted <video>
+      // on the same object URL an image's <img> would use.
+      if (kind === "image" || kind === "video") {
         try {
           item.previewURL = URL.createObjectURL(file);
         } catch {
@@ -1130,6 +1132,15 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
                 <div class="chalk-composer-chip" key={p.localID} data-testid="composer-chip">
                   {p.kind === "image" && p.previewURL ? (
                     <img class="chalk-composer-chip-thumb" src={p.previewURL} alt={p.file.name} />
+                  ) : p.kind === "video" && p.previewURL ? (
+                    <video
+                      class="chalk-composer-chip-thumb"
+                      src={p.previewURL}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      title={p.file.name}
+                    />
                   ) : (
                     <span class="chalk-composer-chip-icon" aria-hidden="true">📎</span>
                   )}

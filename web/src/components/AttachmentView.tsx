@@ -6,6 +6,14 @@
 //     decrypt the FULL blob (cache-first) and swap it in. Click opens the full
 //     image larger (a lightbox). Object URLs are minted from decrypted bytes
 //     and revoked on unmount / swap.
+//   * video kinds (121-1): paint the decrypted POSTER frame with a play badge
+//     and the duration. Nothing is fetched until the badge is clicked -- a
+//     video is up to the 20 MiB cap, too much to pull for every row that
+//     scrolls past. On click the full blob is fetched + decrypted (cache-first)
+//     and a <video controls> takes the poster's place, same box, playing. A
+//     file the browser cannot decode says so and offers the download. In a
+//     tile the click is reported upward instead (the group's lightbox plays
+//     it, 121-2), since a square crop is no place to watch anything.
 //   * file kinds: a row with name + size + a download control (fetch + decrypt
 //     + browser "save as" with the real filename).
 //   * fail-closed: if the channel key isn't held (decrypt returns null), show a
@@ -22,7 +30,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { AttachmentController } from "../attachments/pipeline";
-import { type AttachmentMeta, type AttachmentRef, humanSize } from "../attachments/types";
+import {
+  type AttachmentMeta,
+  type AttachmentRef,
+  formatDuration,
+  humanSize,
+} from "../attachments/types";
 import { asBytes } from "../crypto/bytes";
 import { Lightbox } from "./Lightbox";
 
@@ -47,6 +60,12 @@ export function AttachmentView({ channelID, att, controller, tile, onOpen }: Pro
   const [fullURL, setFullURL] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  // 121-1: video only. "poster" until the badge is clicked, "loading" while
+  // the blob is fetched + decrypted, "playing" once the element has it,
+  // "unplayable" when the browser's decoder refuses the file.
+  const [videoState, setVideoState] = useState<"poster" | "loading" | "playing" | "unplayable">(
+    "poster",
+  );
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Track object URLs so we always revoke exactly what we created.
   const urlsRef = useRef<string[]>([]);
@@ -71,9 +90,10 @@ export function AttachmentView({ channelID, att, controller, tile, onOpen }: Pro
     };
   }, [channelID, att, controller]);
 
-  // Image kinds: decrypt the inline preview immediately (no network).
+  // Image and video kinds: decrypt the inline preview immediately (no
+  // network). For a video that is its poster frame.
   useEffect(() => {
-    if (metaState !== "ready" || meta?.kind !== "image") return;
+    if (metaState !== "ready" || (meta?.kind !== "image" && meta?.kind !== "video")) return;
     let alive = true;
     void controller.loadPreviewBytes(channelID, att).then((bytes) => {
       if (!alive || !bytes) return;
@@ -166,6 +186,27 @@ export function AttachmentView({ channelID, att, controller, tile, onOpen }: Pro
     void controller.download(channelID, att).finally(() => setDownloading(false));
   };
 
+  // 121-1: the play badge. A tile hands the click to its group; a lone video
+  // fetches and plays in place. The full bytes are pulled once; the state
+  // machine keeps a second click during the fetch from starting another.
+  const onPlay = () => {
+    if (onOpen) {
+      onOpen();
+      return;
+    }
+    if (videoState !== "poster" || !meta) return;
+    setVideoState("loading");
+    void controller.loadFullBytes(channelID, att).then((bytes) => {
+      if (!bytes) {
+        setVideoState("poster");
+        return;
+      }
+      const url = trackURL(URL.createObjectURL(new Blob([asBytes(bytes)], { type: meta.mime })));
+      setFullURL(url);
+      setVideoState("playing");
+    });
+  };
+
   if (metaState === "loading") {
     return (
       <div class="chalk-attachment chalk-attachment--loading" data-testid="attachment-loading">
@@ -243,6 +284,108 @@ export function AttachmentView({ channelID, att, controller, tile, onOpen }: Pro
             onIndex={() => undefined}
             onClose={closeLightbox}
           />
+        )}
+      </div>
+    );
+  }
+
+  if (meta.kind === "video") {
+    // Same box rule as the image (33-5): size it from the poster's recorded
+    // dimensions so the swap from poster to player costs no layout.
+    const videoBox =
+      meta.width && meta.height
+        ? {
+            width: "100%",
+            maxWidth: `min(${meta.width}px, 720px, 100%)`,
+            aspectRatio: `${meta.width} / ${meta.height}`,
+          }
+        : undefined;
+    const label = `${meta.name} (${humanSize(meta.size)})`;
+    return (
+      <div
+        class={`chalk-attachment chalk-attachment--video${tile ? "" : " chalk-attachment--video-inline"}`}
+        data-testid="attachment-video"
+        ref={containerRef}
+      >
+        <div class="chalk-attachment-video-box" style={tile ? undefined : videoBox}>
+          {videoState === "playing" && fullURL ? (
+            <video
+              class="chalk-attachment-video"
+              src={fullURL}
+              poster={previewURL ?? undefined}
+              controls
+              autoPlay
+              playsInline
+              title={label}
+              // A decoder that will not take the file (HEVC in most browsers,
+              // say) fails here, after the bytes are in hand; say so and
+              // leave the download as the way to see it.
+              onError={() => setVideoState("unplayable")}
+              data-testid="attachment-video-player"
+            />
+          ) : (
+            <>
+              {previewURL ? (
+                <img
+                  class="chalk-attachment-img chalk-attachment-video-poster"
+                  src={previewURL}
+                  alt={meta.name}
+                  draggable={false}
+                  onClick={onPlay}
+                  data-testid="attachment-video-poster"
+                />
+              ) : (
+                <div
+                  class="chalk-attachment-img-placeholder chalk-attachment-video-poster"
+                  onClick={onPlay}
+                  data-testid="attachment-video-placeholder"
+                />
+              )}
+              {videoState === "unplayable" ? (
+                <div class="chalk-attachment-video-unplayable" data-testid="attachment-video-unplayable">
+                  this browser cannot play this video
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  class={`chalk-attachment-video-play${videoState === "loading" ? " chalk-attachment-video-play--loading" : ""}`}
+                  onClick={onPlay}
+                  disabled={videoState === "loading"}
+                  aria-label={videoState === "loading" ? "loading video" : `play ${meta.name}`}
+                  title={label}
+                  data-testid="attachment-video-play"
+                >
+                  {videoState === "loading" ? (
+                    <span class="chalk-attachment-spinner" aria-hidden="true" />
+                  ) : (
+                    <span aria-hidden="true">▶</span>
+                  )}
+                </button>
+              )}
+              {meta.duration !== undefined && (
+                <span class="chalk-attachment-video-duration" data-testid="attachment-video-duration">
+                  {formatDuration(meta.duration)}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        {!tile && (
+          <div class="chalk-attachment-video-caption">
+            <span class="chalk-attachment-file-name" title={meta.name}>
+              {meta.name}
+            </span>
+            <span class="chalk-attachment-file-size">{humanSize(meta.size)}</span>
+            <button
+              type="button"
+              class="chalk-attachment-download"
+              onClick={onDownload}
+              disabled={downloading}
+              data-testid="attachment-download"
+            >
+              {downloading ? "…" : "download"}
+            </button>
+          </div>
         )}
       </div>
     );

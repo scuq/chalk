@@ -5,13 +5,19 @@
 // travels on the ref itself and is minted for image kinds only (spec S3), so
 // its presence is a server-opaque, decrypt-free image signal. That is what
 // lets the grid partition images from files synchronously at render time.
+//
+// 121-1: a video carries a preview too (its poster frame), so it tiles with
+// the pictures. That is the wanted behaviour -- a poster in the grid with a
+// play badge once its meta decrypts -- and it keeps the signal one bit: has a
+// preview, or has not.
 
 import type { AttachmentRef } from "./types";
 
 /** Collapsed grid shows at most this many tiles; the rest sit behind "+N". */
 export const TILE_CAP = 4;
 
-/** True when the ref carries an inline preview, i.e. was sent as an image. */
+/** True when the ref carries an inline preview, i.e. was sent as an image or
+ *  (121-1) a video -- the kinds that show a picture in the feed. */
 export function isImageRef(att: AttachmentRef): boolean {
   return att.previewLen > 0 || !!att.encPreviewB64;
 }

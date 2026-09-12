@@ -112,6 +112,7 @@ as-built rather than a contemporaneous plan.
 | 118 | pop-outs stay ordinary windows unless asked to float | [PHASE-118-POPOUTTOP.md](phases/PHASE-118-POPOUTTOP.md) |
 | 119 | boost — a participant turned up past 100% | [PHASE-119-BOOST.md](phases/PHASE-119-BOOST.md) |
 | 120 | the board — the whole call in one window, tiles arranged by hand | [PHASE-120-BOARD.md](phases/PHASE-120-BOARD.md) |
+| 121 | video attachments — a poster frame in the feed, played on click | [PHASE-121-VIDEO.md](phases/PHASE-121-VIDEO.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

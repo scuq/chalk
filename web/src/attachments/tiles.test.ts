@@ -18,6 +18,8 @@ function ref(over: Partial<AttachmentRef>): AttachmentRef {
 }
 
 test("isImageRef keys off the inline preview, not decrypted meta", () => {
+  // 121-1: a video's poster is a preview too, so a video ref reads the same
+  // way -- it tiles with the pictures. The bit stays one bit.
   assert.equal(isImageRef(ref({ previewLen: 42 })), true);
   assert.equal(isImageRef(ref({ encPreviewB64: "prev" })), true);
   assert.equal(isImageRef(ref({ previewLen: 42, encPreviewB64: "prev" })), true);

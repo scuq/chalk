@@ -71,11 +71,14 @@ export async function uploadAttachment(
   file: File,
   opts: UploadOptions = {},
 ): Promise<UploadResult> {
-  // 1. preview (image kinds only) + meta. Dimensions feed meta + layout.
+  // 1. preview (image kinds; 121-1: a video's poster frame) + meta.
+  //    Dimensions feed meta + layout, a video's duration its badge.
   const preview = await makePreview(file, opts.previewMaxEdge);
   const meta = buildMeta(
     file,
-    preview ? { width: preview.width, height: preview.height } : undefined,
+    preview
+      ? { width: preview.width, height: preview.height, duration: preview.duration }
+      : undefined,
   );
   const metaBytes = encodeMeta(meta);
 

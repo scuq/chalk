@@ -10,6 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- **Videos show a preview and play in the chat.** A video sent as an
+  attachment now shows a still frame from a second in, with a play badge and
+  its length, instead of a bare filename. Click the badge and it plays right
+  there, with the usual controls. The preview is made on the sender's device
+  before encryption, so the server still sees only ciphertext, as with
+  pictures. In a message with several pictures a video takes a tile in the
+  grid and plays in the gallery. A file your browser cannot decode says so and
+  keeps the download button. Videos sent before this release stay as files.
+
 ## v0.8.21 — 12 September 2026 — The call window rests the tiles behind it
 
 ### Fixed

@@ -17,8 +17,9 @@
 // only at decrypt time; this avoids a re-encode round trip and keeps the ref
 // JSON-friendly for app state.
 
-/** kind classifies how the feed renders an attachment. */
-export type AttachmentKind = "image" | "file";
+/** kind classifies how the feed renders an attachment.
+ *  121-1: "video" joins -- a poster frame inline, the file itself on click. */
+export type AttachmentKind = "image" | "video" | "file";
 
 /**
  * AttachmentRef is the client-side descriptor for one attachment carried with a
@@ -35,7 +36,8 @@ export interface AttachmentRef {
   keyVersion: number;
   /** encrypted {name,mime,kind,size,width?,height?}; base64, server-opaque. */
   encMetaB64: string;
-  /** encrypted low-res preview; base64; present for image kinds only. */
+  /** encrypted low-res preview; base64; image and video kinds (121-1: a
+   *  video's is one poster frame, made by the sender before encryption). */
   encPreviewB64?: string;
   /** preview ciphertext length (0 when there is no preview). */
   previewLen: number;
@@ -55,6 +57,8 @@ export interface AttachmentMeta {
   size: number;
   width?: number;
   height?: number;
+  /** 121-1: video kinds only -- length in seconds, read by the sender. */
+  duration?: number;
 }
 
 /**
@@ -68,13 +72,32 @@ export interface PendingAttachment {
   localID: string;
   file: File;
   kind: AttachmentKind;
-  /** object URL for an in-tray thumbnail (image kinds); revoke on removal. */
+  /** object URL for an in-tray thumbnail (image and video kinds); revoke on
+   *  removal. For a video it is the file itself, shown by a muted <video>. */
   previewURL?: string;
 }
 
 /** classifyKind maps a mime type to how the feed should render it. */
 export function classifyKind(mime: string): AttachmentKind {
-  return mime.startsWith("image/") ? "image" : "file";
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  return "file";
+}
+
+/**
+ * 121-1: formatDuration renders seconds as m:ss, or h:mm:ss past an hour --
+ * the badge on a video poster. Whole seconds are floored, as every player's
+ * own clock does, so the badge and the controls agree on a 2.6 s clip. Junk
+ * (NaN, negative, infinite) reads as 0:00 rather than throwing, since a
+ * duration the sender's browser could not read is stored as it reported it.
+ */
+export function formatDuration(seconds: number): string {
+  const total = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  return `${h > 0 ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
 }
 
 /** humanSize renders a byte count as a short human string (e.g. "1.4 MB"). */
