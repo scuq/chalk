@@ -3,12 +3,16 @@
 **Status:** built, 121-1 and 121-2 (2026-09-12). Unit-tested where the code
 is pure (`web/src/attachments/types.test.ts` the kind and the duration badge,
 `preview.test.ts` the meta codec and the seek point). The DOM half — poster
-producer, player, gallery — was driven end to end in headless Chromium by a
-30-check probe (`.claude/skills/run-chalk/probes/ui.mjs` at the time; two
-users, a VP8 webm recorded in the page, sender and receiver, a clip with no
-readable duration, a three-tile grid opening the gallery, a reload playing
-from the cache with no download). The probe is what found the blank-frame
-race below. What it could not reach is the checklist at the end.
+producer, player, gallery — was driven end to end by a ~30-check probe
+(`.claude/skills/run-chalk/probes/ui.mjs` at the time; two users, a clip
+recorded in the page, sender and receiver, a clip with no readable duration,
+a three-tile grid opening the gallery, a reload playing from the cache with
+no download), with the sender in turn **headless Chromium** (VP8 webm),
+**Firefox 153** (VP8 webm) and **the Electron shell** (a real H.264 mp4 from
+its recorder — which headless Chromium on the receiving side cannot decode,
+so that run is also the proof of the "cannot play" overlay). The probe is
+what found the blank-frame race below. What it could not reach is the
+checklist at the end.
 **Tags:** `#video` → `tools/where.sh -g video`
 
 ## The problem
@@ -112,19 +116,21 @@ is enough.
 
 ## Manual checklist
 
-Covered by the probe in headless Chromium with a VP8 `.webm` (Playwright's
-Chromium has no H.264): tray chip, poster at the frame size and not blank,
-badge, no fetch before the click, inline play, receiver's poster and play,
-undurated clip (poster, no badge), two pictures + video as three tiles, the
-tile opening the gallery playing, click on the player not closing it,
-paging away and back, Escape, reload → poster → play from cache with zero
-attachment GETs. Still by hand:
+Covered by the probe, sender in headless Chromium, Firefox and Electron
+(H.264 mp4), receiver in headless Chromium: tray chip, poster at the frame
+size and not blank, badge, no fetch before the click, inline play,
+receiver's poster and play — or, for the mp4 the receiver cannot decode, the
+"cannot play" overlay with the poster and download kept — a recorder clip
+with no duration (poster, no badge; Firefox's recorder writes one, so there
+the badge shows), two pictures + video as three tiles, the tile opening the
+gallery playing, click on the player not closing it, paging away and back,
+Escape, reload → poster → play from cache with zero attachment GETs. Still
+by hand:
 
-- [ ] Send a real `.mp4` (H.264) from desktop Chromium: poster, badge,
-      inline play — the codec path the probe's browser lacks.
-- [ ] Firefox does the same, sending and receiving.
 - [ ] On a phone: a swipe beside the video in the gallery pages, a drag on
       its controls scrubs, and the poster's badge is tappable.
+- [ ] An HEVC `.mov` from an iPhone as the *sender's* file: no poster, a
+      file row (no such file on the dev box).
 - [ ] A file the browser cannot decode (an HEVC `.mov` from an iPhone) sends
       as a file row; if the *receiver* cannot play an `.mp4` the sender
       could, the overlay says so and download still works.
