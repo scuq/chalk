@@ -302,6 +302,7 @@ import {
 // Phase 30 (30-4): the minimal in-call surface + the frame bus that hands
 // voice pushes from handleFrame to the mounted panel's VoiceCall.
 import { VoiceCallPanel } from "./VoiceCallPanel";
+import { ZuckerCallBar } from "./ZuckerCallBar";
 import { VoiceDock } from "./VoiceDock";
 import { VoiceControls } from "./VoiceControls"; // 44-2
 import { MicSettingsDialog } from "./MicSettingsDialog"; // 44-3
@@ -6630,6 +6631,28 @@ export function App() {
             mentionHandles={activeChannel?.members.map((m) => m.handle)}
           />
         </div>
+        {/* 126-2: the phone home screen's own voice bar. VoiceDock cannot
+            reach this screen -- it mounts once inside the sidebar, and
+            Zuckermode hides the sidebar outright -- so this reads the same
+            session snapshot and shows a bar of its own. The mobile footer
+            stacks in column-reverse, so being last here puts the bar at the
+            top of the stack: above the composer on the chat screen, above
+            the voice controls band on the list screen.
+            Going back to the list only switches zuckerScreen -- the active
+            channel still holds the room, so the bar took it to mean you were
+            looking at the room while you stood on the list, and the "▸"
+            hint never showed there. Passing null on the list screen tells
+            the bar that no channel is on screen. */}
+        {zuckerActive && (
+          <ZuckerCallBar
+            activeChannelID={zuckerScreen === "list" ? null : state.activeChannelID}
+            onJumpToChannel={(id) => {
+              dispatch({ kind: "set_active_channel", channelID: id });
+              dispatch({ kind: "unread_mark_refresh", channelID: id });
+              setZuckerScreen("chat");
+            }}
+          />
+        )}
       </footer>
 
 

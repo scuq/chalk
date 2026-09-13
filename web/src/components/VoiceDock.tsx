@@ -21,6 +21,11 @@
 //
 // The focus rule mirrors the panel's stage: first remote with live video,
 // else first remote, else self.
+//
+// 126-2: job 2, the bar, has a phone sibling, ZuckerCallBar. Zuckermode
+// hides this dock inside the sidebar drawer, so the phone's home screen
+// reads the same session snapshot (useVoiceSession, below) and shows its
+// own bar and leave button instead.
 
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { voiceSession, type SessionRemoteTile, type VoiceSessionSnap } from "../voice/session";
@@ -36,17 +41,8 @@ import {
   openBoost,
   type Boost,
 } from "../voice/boost"; // 119-1
+import { fmtDuration } from "../voice/duration"; // 126-2: shared with ZuckerCallBar
 import { ChannelGlyph } from "./Sidebar";
-
-function fmtDuration(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const mm = String(m).padStart(2, "0");
-  const ss = String(s).padStart(2, "0");
-  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-}
 
 /** useVoiceSession: subscribe a component to the session store. */
 export function useVoiceSession(): VoiceSessionSnap {

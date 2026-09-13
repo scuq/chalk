@@ -10456,14 +10456,37 @@ body.chalk-resizing-y .chalk-composer-resizer {
      flex-grow from it and stand as a second growing child beside the
      conversation list -- which splits the column between them and squeezes a
      one-room voice shelf down to less than the 56px its row needs, clipping it
-     mid-line. A shelf is content-sized instead: it never grows, it yields only
-     after the conversation list has given everything it has, and it caps at
-     40vh with its own scroll for the case the friends roster was capped for --
-     a live room with a long occupant list must not swallow the screen. */
+     mid-line. A shelf is content-sized instead, up to its own 40vh cap, with
+     its own scroll past that -- a live room with a long occupant list must
+     not swallow the screen.
+     126-1: flex-shrink was 1 here at first, on the reasoning that the list's
+     far larger flex basis takes the column's overflow before the shelf's
+     does. Flexbox does not work that way -- every child shrinks in
+     proportion to its own flex basis, at the same time. With a 120px shelf
+     and a 1600px list, the shelf still gave up about 7% of the overflow:
+     with two conversations that was almost nothing, but with nine the
+     list's basis spans many screens, the overflow tops a screen, and 7% of
+     it was half the row in the report. Shrink is 0 now: the shelf holds its
+     content size up to the cap and scrolls past it, and the conversation
+     list takes what is left. */
   .chalk-zucker-rows--shelf {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     max-height: 40vh;
     border-bottom: 1px solid var(--chalk-border);
+  }
+
+  /* 126-2: the phone call bar borrows .chalk-voice-dock's own look, but that
+     class carries a margin sized for a column inside the sidebar. Flush
+     against the footer edges is what the phone needs instead, so this zeroes
+     it. The hint is the "▸" arrow shown when the room on screen is not the
+     room you are connected to. */
+  .chalk-zucker-callbar {
+    margin: 0;
+  }
+
+  .chalk-zucker-callbar-hint {
+    color: var(--chalk-fg-dim);
+    flex: none;
   }
 
   .chalk-zucker-row {

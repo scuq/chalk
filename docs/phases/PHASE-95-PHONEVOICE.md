@@ -103,6 +103,12 @@ yields *scrolls* while a column that overflows just loses its bottom rows.
 Flexbox distributes that shrinkage to the list first, since its content-derived
 basis is far larger.
 
+**Correction, from 126-1: the last claim above is wrong.** Flexbox shrinks
+every child in proportion to its own flex basis, at the same time, so the
+shelf did give up part of the overflow — enough, at nine open conversations,
+to clip half its row. `.chalk-zucker-rows--shelf` is `flex: 0 0 auto` since
+126-1. See [PHASE-126-ZUCKERCALL.md](PHASE-126-ZUCKERCALL.md).
+
 ### 95-4 — who is in a live room
 
 The follow-up this phase left open, and half of the same report: the shelf needs

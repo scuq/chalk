@@ -37,6 +37,13 @@ The engineering-level history (which slice shipped what) lives in
   Before, a tap into the message box scrolled the whole page up. The
   header, with its back button, left the screen until the keyboard closed.
   The header now stays visible while you type.
+- **On a phone, opening the list of voice rooms no longer clips a room's
+  row.** Before, a long conversation list left it too little height, and a
+  room's row sometimes ended partway through the line.
+- **On a phone, you can leave a voice call and find your way back to it.**
+  Before, joining a call from the home screen left no way to leave it, and
+  no way back to the room from your conversation list. A bar now shows the
+  room you are in, the call's length, and a leave button, on both screens.
 
 ## v0.8.22 — 12 September 2026 — Videos show a preview and play in the chat
 

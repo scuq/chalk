@@ -117,6 +117,7 @@ as-built rather than a contemporaneous plan.
 | 123 | the sidebar on a short window keeps its channel list — a floor under every section, a shorter call preview | [PHASE-123-SIDEBARFLOOR.md](phases/PHASE-123-SIDEBARFLOOR.md) |
 | 124 | settings dialogs read as rows, not a run of text — group cards, one option per row, switches | [PHASE-124-SETTINGSROWS.md](phases/PHASE-124-SETTINGSROWS.md) |
 | 125 | the channel header survives the phone keyboard | [PHASE-125-KEYBOARD.md](phases/PHASE-125-KEYBOARD.md) |
+| 126 | the zucker voice shelf keeps its row, and a call bar for the phone's home screen | [PHASE-126-ZUCKERCALL.md](phases/PHASE-126-ZUCKERCALL.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
