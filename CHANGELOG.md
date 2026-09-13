@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.23 — 13 September 2026 — Settings in rows, a microphone swap that works, and phone fixes
 
 ### Changed
 - **The profile settings and the voice & video dialog are easier to scan.**
