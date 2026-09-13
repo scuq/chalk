@@ -24,8 +24,8 @@
 //
 // Nothing here weakens E2E: this is all pre-SRTP, on the device.
 
-import { gateConfig, micConstraints, type MicPrefs } from "./mic-prefs";
-import { resolveMicPrefs } from "./device-resolve";
+import { gateConfig, type MicPrefs } from "./mic-prefs";
+import { browserCaptureDeps, captureMic, type CaptureOutcome } from "./mic-capture";
 import { GATE_CLOSED, nextGate, type GateConfig, type GateState } from "./vad";
 
 /** How often the transmit gate re-decides. 20 ms is well under a syllable. */
@@ -47,6 +47,9 @@ export class MicChain {
   private source: MediaStreamAudioSourceNode;
   private muted = false;
   private closed = false;
+  /** 122-1: which recapture is the newest; an older one that finishes
+   * after it is released instead of installed. */
+  private swapSeq = 0;
 
   private cfg: GateConfig;
   private gate: GateState = GATE_CLOSED;
@@ -160,10 +163,11 @@ export class MicChain {
    * threw, so callers can apply their own error phrasing.
    */
   static async open(prefs: MicPrefs): Promise<MicChain> {
-    // 63-3: a stale saved deviceId re-resolves by label before capture, so a
-    // device that changed ids since it was picked is still the one opened.
-    const raw = await navigator.mediaDevices.getUserMedia({
-      audio: micConstraints(await resolveMicPrefs(prefs)),
+    // 122-1: exact device, landing check, retries (mic-capture.ts) -- and no
+    // fallback, so the dialog shows the failure under the dropdown the user
+    // just changed instead of metering the default as if it were the choice.
+    const { stream: raw } = await captureMic(prefs, browserCaptureDeps, {
+      fallbackToDefault: false,
     });
     try {
       return await MicChain.fromStream(raw, prefs);
@@ -248,16 +252,23 @@ export class MicChain {
    * recapture swaps in a new mic without disturbing the published track:
    * capture first, and only tear the old source down once the new one is in
    * hand, so a device that is gone or busy leaves the user still audible.
+   *
+   * 122-1: the capture is exact, checked and retried (mic-capture.ts), and
+   * throws when the chosen device will not open -- the caller keeps the old
+   * mic and says so. Returns what was captured for the caller's diagnostics,
+   * or null when this swap was overtaken: a newer recapture started while
+   * this one was still capturing (a device arrived and the user picked it
+   * inside the same second). The newest request is the one the user means,
+   * so an overtaken result is released rather than installed.
    */
-  async recapture(prefs: MicPrefs): Promise<void> {
-    if (this.closed) return;
-    // 63-3: same label re-resolution as open() -- see device-resolve.ts.
-    const next = await navigator.mediaDevices.getUserMedia({
-      audio: micConstraints(await resolveMicPrefs(prefs)),
-    });
-    if (this.closed) {
+  async recapture(prefs: MicPrefs): Promise<CaptureOutcome | null> {
+    if (this.closed) return null;
+    const seq = ++this.swapSeq;
+    const outcome = await captureMic(prefs, browserCaptureDeps, { fallbackToDefault: false });
+    const next = outcome.stream;
+    if (this.closed || seq !== this.swapSeq) {
       for (const t of next.getTracks()) t.stop();
-      return;
+      return null;
     }
     const oldRaw = this.raw;
     this.source.disconnect();
@@ -267,6 +278,7 @@ export class MicChain {
     // A fresh capture always starts enabled; carry the mute across.
     this.setMuted(this.muted);
     for (const t of oldRaw.getTracks()) t.stop();
+    return outcome;
   }
 
   /** close stops the real mic and releases the audio context. Idempotent. */

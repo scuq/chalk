@@ -127,13 +127,8 @@ import { CameraChain } from "./camera-chain";
 // Static import, but NOT of MediaPipe: camera-blur is a small module that
 // import()s the ~12 MB runtime itself, so nothing heavy reaches this bundle.
 import { applyBlurTo, type BlurStats } from "./camera-blur";
-import {
-  DEFAULT_MIC_PREFS,
-  loadMicPrefs,
-  micConstraints,
-  needsRecapture,
-  type MicPrefs,
-} from "./mic-prefs";
+import { DEFAULT_MIC_PREFS, loadMicPrefs, needsRecapture, type MicPrefs } from "./mic-prefs";
+import { browserCaptureDeps, captureMic, type CaptureOutcome } from "./mic-capture";
 import {
   candidateTypeOf,
   iceTransportPolicyFor,
@@ -145,7 +140,7 @@ import { cameraConstraints, loadDevicePrefs, type DevicePrefs } from "./device-p
 import { VoiceDiagRing, describePair } from "./diag";
 export type { VoiceDiagEvent } from "./diag";
 import { SpeakingTracker, SPEAKING_POLL_MS } from "./speaking";
-import { listAudioInputs, resolveDeviceId, resolveMicPrefs } from "./device-resolve";
+import { listAudioInputs, resolveDeviceId } from "./device-resolve";
 
 // ---- knobs (30-8: video caps are DYNAMIC -- see ./adaptive) ----------------
 //
@@ -280,7 +275,11 @@ const DEVICE_SETTLE_MS = 800;
  * nothing to most users; the fix is almost always a browser permission
  * toggle or a missing/busy device.
  */
-export function describeMediaError(device: "microphone" | "camera", err: unknown): string {
+export function describeMediaError(
+  device: "microphone" | "camera",
+  err: unknown,
+  label = "",
+): string {
   const name = (err as DOMException)?.name ?? "";
   switch (name) {
     case "NotAllowedError":
@@ -293,6 +292,13 @@ export function describeMediaError(device: "microphone" | "camera", err: unknown
     case "TrackStartError":
       return `${device} is busy or unreadable — another app may be using it`;
     case "OverconstrainedError":
+      // 122-1: for the mic this is the exact device id (mic-capture.ts): the
+      // device is listed but would not open, after retries -- usually a
+      // headset that is still settling.
+      if (device === "microphone") {
+        const chosen = label ? ` "${label}"` : "";
+        return `could not open microphone${chosen} — possibly still connecting, try again or rejoin`;
+      }
       return `${device} does not support the requested settings`;
     case "SecurityError":
       return `${device} access blocked — voice needs a secure (https) origin`;
@@ -561,46 +567,42 @@ export class VoiceCall {
     // user's first join. Only the audio half is then handed to the graph.
     this.micPrefs = loadMicPrefs();
     this.devicePrefs = loadDevicePrefs();
-    // 63-3: map the saved mic (id + label) onto today's device list before
-    // capturing; a saved device that is genuinely absent falls back to the
-    // default WITH a note, instead of silently (macOS: the internal mic).
-    const resolvedMic = await resolveMicPrefs(this.micPrefs);
-    if (this.micPrefs.deviceId && !resolvedMic.deviceId) {
-      this.diag(
-        `chosen mic not present (${this.micPrefs.deviceLabel || this.micPrefs.deviceId}); using system default`,
-      );
-      const name = this.micPrefs.deviceLabel ? ` "${this.micPrefs.deviceLabel}"` : "";
-      this.micFallbackNotice = `chosen microphone${name} not found — using the system default`;
-      this.o.callbacks.onError(this.micFallbackNotice);
-    }
-    const audio = micConstraints(resolvedMic);
-    let captured: MediaStream;
+    // 122-1: the audio half goes through captureMic -- the saved mic (id +
+    // label, 63-3) resolved against today's device list, an exact id, a
+    // landing check and retries -- with the default as the last resort, since
+    // a call on the wrong mic beats no call. reportMicCapture then says which
+    // it was: a saved device that is absent, or one that would not open, gets
+    // a notice instead of a silent default (macOS: the internal mic).
+    const capture = (video?: MediaStreamConstraints["video"]) =>
+      captureMic(this.micPrefs, browserCaptureDeps, { fallbackToDefault: true, video });
+    let outcome: CaptureOutcome;
     if (this.o.startWithVideo) {
-      const video = cameraConstraints(this.devicePrefs);
       try {
-        captured = await navigator.mediaDevices.getUserMedia({ audio, video });
-        this.hasVideo = captured.getVideoTracks().length > 0;
+        outcome = await capture(cameraConstraints(this.devicePrefs));
+        this.hasVideo = outcome.stream.getVideoTracks().length > 0;
       } catch (err) {
         // Camera denied/absent but the mic may be fine: degrade to audio-only
         // rather than failing the join (design §8 permission handling). A bare
         // mic-denial still aborts.
         try {
-          captured = await navigator.mediaDevices.getUserMedia({ audio });
+          outcome = await capture();
           this.hasVideo = false;
           this.o.callbacks.onError(describeMediaError("camera", err) + " — joined audio-only");
         } catch (err2) {
-          throw new Error(describeMediaError("microphone", err2));
+          throw new Error(describeMediaError("microphone", err2, this.micPrefs.deviceLabel));
         }
       }
     } else {
       // 66-2: camera off means the camera is never opened.
       try {
-        captured = await navigator.mediaDevices.getUserMedia({ audio });
+        outcome = await capture();
       } catch (err) {
-        throw new Error(describeMediaError("microphone", err));
+        throw new Error(describeMediaError("microphone", err, this.micPrefs.deviceLabel));
       }
       this.hasVideo = false;
     }
+    const captured = outcome.stream;
+    this.reportMicCapture("join", outcome);
 
     // Each graph takes ownership of its half of the capture. If either cannot
     // be built, publish that half raw -- a call without a gain slider or
@@ -756,14 +758,47 @@ export class VoiceCall {
     this.micChain.setGain(next.gain);
     if (!needsRecapture(prev, next)) return;
     try {
-      await this.micChain.recapture(next);
-      this.diag(`mic recaptured: device=${next.deviceId || "default"}`);
+      const outcome = await this.micChain.recapture(next);
+      // null: overtaken by a newer swap, or the call closed. That swap
+      // reports for itself.
+      if (outcome) this.reportMicCapture("swap", outcome);
     } catch (err) {
       this.micPrefs = prev;
       this.o.callbacks.onError(
-        describeMediaError("microphone", err) + " — kept the previous microphone",
+        describeMediaError("microphone", err, next.deviceLabel) + " — kept the previous microphone",
       );
     }
+  }
+
+  /**
+   * reportMicCapture (122-1) logs where a capture landed and tells the user
+   * when it is not the device they chose. Two cases, each with a notice the
+   * devicechange watch retracts once the chosen device is captured:
+   *   - absent: the saved device is not in the list and the default was
+   *     opened in its place (63-3's notice);
+   *   - fell back: the device is listed but would not open after every try,
+   *     and the default was opened instead (a join only -- a swap keeps the
+   *     old mic and reports the error).
+   * The diag line is the one to read in a "copy report" from a machine where
+   * picking a mic does nothing: requested against landed, and how many tries.
+   */
+  private reportMicCapture(where: "join" | "swap", out: CaptureOutcome): void {
+    const prefs = this.micPrefs;
+    this.diag(
+      `mic capture (${where}): requested=${out.requested || "default"} "${prefs.deviceLabel}"` +
+        ` landed=${out.landed ?? "?"} attempts=${out.attempts}` +
+        (out.fellBack ? " fell back to default" : ""),
+    );
+    if (!prefs.deviceId) return;
+    const name = prefs.deviceLabel ? ` "${prefs.deviceLabel}"` : "";
+    let notice: string | null = null;
+    if (out.fellBack) notice = `could not open microphone${name} — using the system default`;
+    else if (out.requested === "") {
+      notice = `chosen microphone${name} not found — using the system default`;
+    }
+    if (notice === null) return;
+    this.micFallbackNotice = notice;
+    this.o.callbacks.onError(notice);
   }
 
   /**

@@ -10,6 +10,17 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- **A microphone you plug in or pair during a call now takes effect when you
+  select it.** Before, the list changed but the call kept the old microphone
+  and showed no message. A rejoin (macOS) or an app restart (Windows) was
+  necessary. chalk now insists on the device you chose, retries for some
+  seconds while a headset connects, and tells you if it still cannot open
+  the device, instead of staying on the default without a message. The same
+  applies to the microphone test in the settings dialog.
+
 ## v0.8.22 — 12 September 2026 — Videos show a preview and play in the chat
 
 ### Added

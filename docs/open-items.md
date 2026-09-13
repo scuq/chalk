@@ -237,6 +237,16 @@ Two deliberate exclusions:
   the mic had before 63-3 (Brave re-randomizes deviceIds per session;
   late-plugged devices unmatched). Fix the same way: persist the label, resolve
   via `voice/device-resolve.ts` at capture time.
+- **122-2 is conditional on a Windows report.** 122-1 makes a mic that will
+  not open a visible, retried, logged failure (`mic capture (...)` lines in
+  the voice diagnostics). If the desktop app on Windows *still* needs a
+  restart before a hot-plugged mic opens, and the report shows
+  `OverconstrainedError` or `landed=<old>` on every try for a device the
+  picker lists, the renderer has done what it can and the cause is the
+  Electron audio service; the candidate is a win32-only
+  `disable-features=AudioServiceSandbox` switch in `desktop/src/main.ts`,
+  to be tried on that machine, not assumed. Record in
+  [phases/PHASE-122-MICSWAP.md](phases/PHASE-122-MICSWAP.md).
 - The client's windowed attachment backfill (App.tsx `listAttachments` effect,
   `GET /api/attachments`, `CHALK_ATTACH_FETCH_WINDOW_HOURS`) is redundant since
   fetch_history started carrying attachment refs on the page itself; drop the

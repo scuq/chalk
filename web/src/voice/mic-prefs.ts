@@ -158,9 +158,15 @@ export function normalizeMicPrefs(raw: unknown): MicPrefs {
  * empty id matches no device and the capture fails outright, where omitting it
  * means "system default", which is what an empty pref means.
  *
- * The device is a plain (non-`exact`) hint on purpose. A saved device that has
- * since been unplugged should fall back to the default rather than fail the
- * join -- losing your good mic shouldn't lock you out of the call.
+ * 122-1: a non-empty device id is `exact`. Callers pass prefs through
+ * resolveMicPrefs first (device-resolve.ts), which maps an absent device to
+ * "" -- so the unplugged-mic case never reaches this constraint, and the id
+ * that does is one the browser listed a moment ago. A plain (ideal) hint let
+ * Chromium answer with the DEFAULT device, and no error, for a device it
+ * listed but could not describe yet (a headset that just paired, an input the
+ * audio service had not caught up with). The user picked a mic and nothing
+ * happened. Exact makes that a visible failure, which mic-capture.ts retries
+ * and then reports.
  *
  * This is also where the "never stack suppressors" rule from Addendum A2 will
  * live: when the RNNoise worklet lands, this must emit noiseSuppression:false
@@ -173,7 +179,7 @@ export function micConstraints(prefs: MicPrefs): MediaTrackConstraints {
     noiseSuppression: prefs.noiseSuppression,
     autoGainControl: prefs.autoGainControl,
   };
-  if (prefs.deviceId) c.deviceId = prefs.deviceId;
+  if (prefs.deviceId) c.deviceId = { exact: prefs.deviceId };
   return c;
 }
 

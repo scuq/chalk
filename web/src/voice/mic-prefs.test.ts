@@ -101,9 +101,12 @@ test("constraints omit the device id when it is the system default", () => {
   assert.equal("deviceId" in c, false, "an exact empty id matches no device at all");
 });
 
-test("constraints carry a chosen device id", () => {
+test("constraints carry a chosen device id as an exact constraint", () => {
+  // 122-1: a plain id is an `ideal`, which Chromium quietly swaps for the
+  // default when it cannot open the device. Exact fails instead, and the
+  // capture helper turns that failure into a retry and a message.
   const c = micConstraints({ ...DEFAULT_MIC_PREFS, deviceId: "yeti" });
-  assert.equal(c.deviceId, "yeti");
+  assert.deepEqual(c.deviceId, { exact: "yeti" });
 });
 
 test("constraints map all three processing flags through", () => {
