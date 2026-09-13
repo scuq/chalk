@@ -27,12 +27,8 @@ gofmt -l .                         # must be empty before commit
 
 # client (from web/)
 npx tsc --noEmit
-node test.mjs                      # node:test suite
+node test.mjs
 node build.mjs
-
-# finding code (repo root) — see below
-tools/where.sh -c parking          # which layers does a feature touch?
-tools/where.sh friend_request      # the chain, both sides of the wire
 
 # dev database
 sudo docker exec -i chalk-dev-pg psql -U chalk -d chalk
@@ -41,30 +37,59 @@ sudo docker exec -i chalk-dev-pg psql -U chalk -d chalk
 **Run the full verify chain — build, vet, gofmt, `go test`, tsc, `node
 test.mjs`, `node build.mjs` — before declaring any change done.**
 
-## Finding code
+## Finding and reading code
 
-Start feature work and bug hunts with `tools/where.sh`, not a bare grep.
-chalk's features cut vertically (schema → wire frame → ws handler → store →
-client proto → reducer → component) and chalk renames at every hop
-(`friend_request` → `TypeFriendRequest` → `handleFriendRequest` →
-`friends.Request`), so a literal grep for the wire string never reaches
-`internal/server/` at all. `where.sh` sweeps every layer in one pass, matches
-across naming conventions, and tags each hit with its enclosing symbol. `-c`
-gives the layer map alone — usually enough to tell server-side from
-client-side before opening anything. `-g <topic>` resolves a topic through
-`docs/tags.md` to the ~650 `// 54-2:` phase comments, which finds code whose
-*name* never mentions the topic. Run it with no arguments for full usage.
+Repository discovery and initial code reading belong to the `codefinder`
+subagent.
 
-It needs ripgrep and says so when missing — ask scuq to install it
-(`sudo apt install ripgrep` on this Debian box) rather than falling back to
-`grep -r`.
+When the relevant implementation is not already known and present in context,
+delegate to `codefinder` before exploring the repository yourself.
 
-When `where.sh` is the wrong shape for the question — one literal string in
-one known file — call `rg` directly; `grep -r` walks `node_modules/` and
-`web/dist/`. To read a known range, use the file-read tool with an offset and
-a line count, never `sed -n`, `head` or `cat`. Issue independent lookups as
-parallel tool calls rather than `;`-chained one-liners: chained commands run
-serially and each unique string misses the allowlist and prompts.
+Use `codefinder` proactively for:
+
+- feature work
+- bug hunts
+- behavior tracing
+- locating an implementation
+- tracing control flow or data flow
+- finding callers, callees, handlers, store methods or client state paths
+- identifying the relevant tests
+- determining which files and symbols a change is likely to touch
+
+`codefinder` owns:
+
+- `tools/where.sh` discovery
+- phase-tag and `docs/tags.md` discovery
+- targeted `rg`, Glob and Read operations
+- tracing Chalk's vertical feature chains
+- reading the relevant implementation ranges
+- locating existing tests
+- identifying the likely edit surface
+- returning a compact CODE CONTEXT packet
+
+The main agent owns:
+
+- interpreting the CODE CONTEXT packet
+- architecture and design decisions
+- deciding what should change
+- writing and editing code
+- deciding whether scope needs to widen
+- verification
+- final explanation
+
+Do not repeat repository exploration already performed by `codefinder` unless:
+
+- its result is incomplete or contradictory
+- the implementation changed after its investigation
+- an exact code range must be re-read immediately before editing
+- verification exposes behavior requiring further investigation
+
+For a trivial lookup in a file already known and already in context, the main
+agent may read it directly instead of spawning `codefinder`.
+
+If further repository exploration becomes necessary during implementation,
+delegate that new question back to `codefinder` rather than turning the main
+agent into the search agent.
 
 ## Working agreements
 
@@ -84,14 +109,14 @@ serially and each unique string misses the allowlist and prompts.
   - `CHANGELOG.md` — a bullet under `## Unreleased` (`### Added` / `###
     Changed` / `### Fixed`) for anything a user would notice; skip refactors,
     tests, docs and internal plumbing; add it when borderline. Write it for a
-    chalk *user*: what they can now do, or what used to go wrong and no longer
-    does — no slice numbers, no file or symbol names. Never invent a version
-    heading.
+    chalk **user**: what they can now do, or what used to go wrong and no
+    longer does — no slice numbers, no file or symbol names. Never invent a
+    version heading.
   - `docs/tags.md` — a new phase number gets a line, or its number appended to
     the topic already listed there; widen a line whenever a search shows a
-    topic living outside its paths. Correct a drifted entry in place, never add
-    a second line for a topic that has one. This legend is the only thing that
-    makes the phase comments findable by topic.
+    topic living outside its paths. Correct a drifted entry in place, never
+    add a second line for a topic that has one. This legend is the only thing
+    that makes the phase comments findable by topic.
   - `docs/phases/PHASE-<N>-<TOPIC>.md` — created with the **first** slice, not
     after the last (topic in caps, one word). It carries what the code cannot:
     the problem, the design and what was rejected, the slice list, and any
@@ -104,21 +129,21 @@ serially and each unique string misses the allowlist and prompts.
   touching any such text in place. That includes the paperwork above. scraibe
   owns the words only: code logic never goes to it.
 - **Read `docs/phase-log.md`'s index before proposing a phase number.** Several
-  phases are designed with no code behind them (marked *planned, not started*).
-  A new idea is often one of them and belongs in its doc rather than a parallel
-  number; those numbers are claimed, so the next free one is past them; and
-  building one means flipping its status header and its index row in the same
-  change set. A plan that turns out wrong gets corrected or retired, never left
-  standing beside code that contradicts it.
+  phases are designed with no code behind them (marked **planned, not
+  started**). A new idea is often one of them and belongs in its doc rather
+  than a parallel number; those numbers are claimed, so the next free one is
+  past them; and building one means flipping its status header and its index
+  row in the same change set. A plan that turns out wrong gets corrected or
+  retired, never left standing beside code that contradicts it.
 - **Cutting a release is the `/release` skill.** Do not do it by hand.
 - **Probes belong in the test suite.** To learn how code behaves, extend a
   `*.test.ts` and run `node test.mjs`, or a `_test.go` and `go test`; both are
   allowlisted, so neither prompts. Never pipe a throwaway script into `node` —
   it is exactly what the permission prompts exist to catch, it cannot be
   allowlisted without granting blanket execution, and the answer evaporates
-  instead of becoming regression cover. Check for an existing test file first;
-  the behaviour is often already asserted. UI probes are the exception, since
-  they need a browser and a running stack: write those to
+  instead of becoming regression cover. Check for an existing test file
+  first; the behaviour is often already asserted. UI probes are the
+  exception, since they need a browser and a running stack: write those to
   `.claude/skills/run-chalk/probes/ui.mjs` and run them from the repo root with
   no `cd`, no `rm` and no pipe.
 - Style: direct, concise, no filler. Explain what changed and why in a few
@@ -127,7 +152,8 @@ serially and each unique string misses the allowlist and prompts.
 ## Gotchas
 
 - **SELECT/scan three-site rule**: RETURNING column count, struct field count
-  and scan argument count must all match. Check all three whenever one changes.
+  and scan argument count must all match. Check all three whenever one
+  changes.
 - **SQL scope**: LATERAL/subquery columns not exposed to the outer SELECT
   compile in Go but fail at runtime in Postgres. `go build` proves nothing
   about SQL — trace column scope by hand.
@@ -137,14 +163,14 @@ serially and each unique string misses the allowlist and prompts.
 - **Client cache vs server**: IndexedDB caches (space keys, identities,
   attachments) can mask or mimic server bugs. Rule out stale client state
   before "fixing" the server.
-- **Env config**: everything is `CHALK_*` env vars. A new server env var is not
-  done until `chalkctl` generates it fresh, preserves it on `--force` and
+- **Env config**: everything is `CHALK_*` env vars. A new server env var is
+  not done until `chalkctl` generates it fresh, preserves it on `--force` and
   backfills it on `update` (pattern: `CHALK_TOTP_ENC_KEY` in
   `internal/chalkctl/init.go`; template `templates/chalk.env.tmpl`).
 - **webauthn**: go-webauthn v0.17 validates credential BE/BS flags, so a
   credential row with zero-value flags fails login against a synced passkey.
-  Any new credential path must persist them (migration 0042, `adoptLegacyFlags`
-  in `internal/auth/http.go`).
+  Any new credential path must persist them (migration 0042,
+  `adoptLegacyFlags` in `internal/auth/http.go`).
 - **npm audit** is clean in `web/` and `test/e2e/`. Keep it that way; never run
   `npm audit fix --force`.
 - **Notification sounds are files, not code**, and each theme under
@@ -167,11 +193,11 @@ serially and each unique string misses the allowlist and prompts.
   wraps the 32-byte identity entropy.
 - **TOTP is mandatory on every login, including the passkey path.** Passkeys
   are a convenience factor, never a bypass.
-- Two separate 24-word phrases — recovery (auth reset) and encryption (identity
-  seed, never leaves the client). Do not conflate them.
-- **Recovery is a reset, not a login**: the phrase plus a live TOTP code sets a
-  new password. Phrase-alone login was deleted in 81-7 and must not come back.
-  Every failure before the phrase verifies answers `recovery_failed`,
+- Two separate 24-word phrases — recovery (auth reset) and encryption
+  (identity seed, never leaves the client). Do not conflate them.
+- **Recovery is a reset, not a login**: the phrase plus a live TOTP code sets
+  a new password. Phrase-alone login was deleted in 81-7 and must not come
+  back. Every failure before the phrase verifies answers `recovery_failed`,
   indistinguishable in body, status and work; only what the phrase proves
   unlocks specific errors.
 

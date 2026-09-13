@@ -19,7 +19,9 @@ scripts, because it needs that directory's Playwright install):
 2. friends everyone, creates the channel **campfire** with all five in it;
 3. turns flair on for you with **3 messages in 1 minute** as the threshold
    (so the flame visibly comes and goes), and roster/feed pictures on;
-4. gives three bots a picture and a frame — ember, aurora, pulse;
+4. gives three bots a picture and a frame — ember, aurora, matrix (the
+   frames move only while their wearer is online, so `dot` going away is
+   also where a ring rests);
 5. runs forever: bursts of chat then ~100 s of quiet (flame on, flame out),
    `dot` away/online every half minute (its name waves), `cid` DMing you
    about once a minute (its name waves; its row flames when DMs pile up).

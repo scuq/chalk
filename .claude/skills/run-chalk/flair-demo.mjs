@@ -112,11 +112,16 @@ async function register(page, username) {
   log('registered', username);
 }
 
+// 116: two modals can sit over a fresh account -- the what's-new note and
+// the picture ask -- and either one's backdrop swallows every click aimed
+// at the sidebar. Clear both before anything that clicks.
 const dismissNudge = async (page) => {
-  const nudge = page.locator("[data-testid='avatar-nudge-later']");
-  if (await nudge.isVisible().catch(() => false)) {
-    await nudge.click();
-    await page.waitForTimeout(400);
+  for (const id of ['whats-new-dismiss', 'avatar-nudge-later']) {
+    const b = page.locator(`[data-testid='${id}']`);
+    if (await b.isVisible().catch(() => false)) {
+      await b.click();
+      await page.waitForTimeout(400);
+    }
   }
 };
 const openChannel = async (page, name) => {
@@ -162,6 +167,11 @@ for (const name of BOTS) {
 log('registering five accounts in parallel (Argon2id: a minute or two)…');
 await Promise.all([register(viewer, VIEWER), ...bots.map((b) => register(b.page, b.name))]);
 writeFileSync(OUT + 'credentials.txt', creds.join('\n') + '\n');
+// The what's-new note opens a beat and a half after prefs land, i.e. after
+// a registration has "finished". Let every page settle, then clear it, or
+// its backdrop lands over whatever panel is open next.
+await sleep(4000);
+for (const p of [viewer, ...bots.map((b) => b.page)]) await dismissNudge(p);
 
 // ---- friends ----------------------------------------------------------------
 await dismissNudge(viewer);
@@ -213,7 +223,9 @@ log('flair on for', VIEWER, '(3 messages in 1 minute)');
 // ---- pictures and frames for three bots --------------------------------------
 const png = OUT + 'face.png';
 await bots[0].page.screenshot({ path: png });
-const frames = ['ember', 'aurora', 'pulse'];
+// 115-7: three of the six, one from each family -- heat, the spectrum, and
+// the terminal's own green.
+const frames = ['ember', 'aurora', 'matrix'];
 for (let i = 0; i < 3; i++) {
   const b = bots[i];
   try {
