@@ -40,7 +40,9 @@ parking and threads:
   section like it removed it from the roster before.
 - **Sizing** mirrors the friends section: the voice section shrinks to its
   content under a 35vh cap with internal scroll, and the channels list keeps
-  `flex: 1` of what remains.
+  `flex: 1` of what remains. Since 123-1, the section also gives way to a
+  `min-height` floor when the column is overfull, instead of the 35vh cap
+  alone — see [PHASE-123-SIDEBARFLOOR.md](PHASE-123-SIDEBARFLOOR.md).
 
 Rejected: a pinned "voice" pseudo-group inside the grouped roster (still one
 list, still one filter — the separation the request was about would be one

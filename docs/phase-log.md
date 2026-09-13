@@ -114,6 +114,7 @@ as-built rather than a contemporaneous plan.
 | 120 | the board — the whole call in one window, tiles arranged by hand | [PHASE-120-BOARD.md](phases/PHASE-120-BOARD.md) |
 | 121 | video attachments — a poster frame in the feed, played on click | [PHASE-121-VIDEO.md](phases/PHASE-121-VIDEO.md) |
 | 122 | a microphone picked during a call takes effect — exact capture, checked and retried | [PHASE-122-MICSWAP.md](phases/PHASE-122-MICSWAP.md) |
+| 123 | the sidebar on a short window keeps its channel list — a floor under every section, a shorter call preview | [PHASE-123-SIDEBARFLOOR.md](phases/PHASE-123-SIDEBARFLOOR.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

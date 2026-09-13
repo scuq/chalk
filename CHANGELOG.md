@@ -20,6 +20,12 @@ The engineering-level history (which slice shipped what) lives in
   seconds while a headset connects, and tells you if it still cannot open
   the device, instead of staying on the default without a message. The same
   applies to the microphone test in the settings dialog.
+- **On a short window, the channel list stays visible.** Before, a voice
+  call's camera preview, or a long friends list, pushed the channel list
+  off the sidebar on a small screen. This happened even in an audio-only
+  call. Every section now keeps a minimum height. On the shortest windows
+  the call preview also shrinks to a short strip, which leaves more room
+  for the channel list.
 
 ## v0.8.22 — 12 September 2026 — Videos show a preview and play in the chat
 

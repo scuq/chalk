@@ -4382,8 +4382,11 @@ body.chalk-resizing-y .chalk-composer-resizer {
    Phase 9.6b tweak: sidebar height + filter
    ============================================================ */
 
-/* Section wrappers — friends shrinks to fit (with a 40vh cap and
-   internal scroll); channels takes the rest. */
+/* Section wrappers. Friends and voice size to their content under a
+   viewport cap. Both scroll inside. Channels takes the rest.
+   123-1: when the column is overfull, friends and voice give way down
+   to a floor. Channels keeps a floor of its own. No section can push
+   another off the screen. */
 .chalk-sidebar-section {
   display: flex;
   flex-direction: column;
@@ -4391,25 +4394,31 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 
 .chalk-sidebar-section--friends {
-  /* Don't grow beyond content + cap. The cap prevents one giant
-     roster from pushing channels off-screen. */
-  flex-shrink: 0;
+  /* The cap limits a large roster. It cannot take over the whole column.
+     123-1: the section also shrinks when the column is overfull, down to
+     its header and one row. The list inside scrolls. */
+  flex: 0 1 auto;
   max-height: 40vh;
+  min-height: 4.5em;
 }
 
 .chalk-sidebar-section--channels {
-  /* Fill the remaining vertical space. */
+  /* Channels fills the remaining vertical space. 123-1: never less than
+     the header, the filter and two rows. Before this phase, this was
+     the only shrinkable section. On a short window it shrank to nothing. */
   flex: 1;
-  min-height: 0;
+  min-height: 9em;
 }
 
-/* 100-1: the voice section sits directly above channels. Like friends it
+/* 100-1: the voice section sits directly above channels. Like friends, it
    sizes to its content (a few rooms plus their live occupant sublists)
-   under a viewport cap with internal scroll, so the channel list below
-   keeps the remaining space. */
+   under a viewport cap, with internal scroll. The channel list below
+   keeps the remaining space. 123-1: like friends it also gives way when
+   the column is overfull, down to its header and one row. */
 .chalk-sidebar-section--voice {
-  flex-shrink: 0;
+  flex: 0 1 auto;
   max-height: 35vh;
+  min-height: 4.5em;
   /* Same separated-section treatment as threads above it. */
   margin-top: 1rem;
   padding-top: 0.5rem;
@@ -4431,8 +4440,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   overflow-y: auto;
 }
 
-/* The channels list keeps the original flex: 1 behavior (inherits
-   from .chalk-sidebar-list); no override needed. */
+/* The channels list keeps the base flex: 1 of .chalk-sidebar-list. Its
+   floor is on the section above, not here. */
 
 /* Filter input — only appears when ≥7 friends. Sits between the
    "friends (N)" header and the list. Inherits the dark theme;
@@ -7499,6 +7508,20 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-voice-pip:hover .chalk-voice-pip-hint {
   opacity: 1;
+}
+
+/* 123-1: on a short window the preview is a strip, not a box. The
+   96px box, plus the dock's rows, cost about 166px. A 13-inch laptop
+   gives the sidebar about 520px, and the channel list paid for the
+   difference. width: 100% with object-fit: cover crops the strip from
+   the center of the frame. The monogram still fits. This is the only
+   max-height media query in the file. The 820px threshold covers a
+   13-inch and a 1440x900 screen under browser chrome, and leaves a
+   1080p desktop alone. */
+@media (max-height: 820px) {
+  .chalk-voice-pip {
+    max-height: 44px;
+  }
 }
 
 /* ---- stage: big tile + filmstrip ---- */
