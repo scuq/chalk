@@ -33,6 +33,10 @@ The engineering-level history (which slice shipped what) lives in
   call. Every section now keeps a minimum height. On the shortest windows
   the call preview also shrinks to a short strip, which leaves more room
   for the channel list.
+- **On a phone, the on-screen keyboard no longer hides the channel header.**
+  Before, a tap into the message box scrolled the whole page up. The
+  header, with its back button, left the screen until the keyboard closed.
+  The header now stays visible while you type.
 
 ## v0.8.22 — 12 September 2026 — Videos show a preview and play in the chat
 

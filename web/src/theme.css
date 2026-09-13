@@ -9924,9 +9924,26 @@ body.chalk-resizing-y .chalk-composer-resizer {
 @media (max-width: 767px) {
   /* -- shell ------------------------------------------------------- */
 
+  /* 125-1: iOS Safari does not shrink 100dvh or the layout viewport when
+     the on-screen keyboard opens, so a document pinned to it stays taller
+     than the visible area and Safari scrolls the page up, taking the
+     channel header with it. --chalk-shell-h, set in web/src/viewport.ts
+     from the visual viewport, tracks what is actually visible; the
+     100dvh fallback keeps this rule harmless wherever that script never
+     runs. min-height:0 replaces the desktop min-height:100dvh so the
+     page can shrink below it instead of just adding to it. */
+  html, body {
+    min-height: 0;
+    height: var(--chalk-shell-h, 100dvh);
+  }
+
   .chalk-app,
   .chalk-app--phase08b,
   .chalk-app--phase08b.chalk-app--thread-open {
+    /* 125-1: same variable as the html/body rule above, so the shell and
+       the page shrink together and neither one leaves room for Safari to
+       scroll into. */
+    height: var(--chalk-shell-h, 100dvh);
     grid-template-columns: 1fr;
     grid-template-areas:
       "header"

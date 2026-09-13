@@ -43,6 +43,7 @@ import { deleteActionFor, deleteLabelFor } from "../chat/deletepolicy";
 import { canEditMessage, lastEditableMessage } from "../chat/editpolicy";
 import { ownSet, toggle } from "../chat/reactions";
 import { useIsMobile } from "../mobile";
+import { useKeyboardSafeShell } from "../viewport";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import {
   TypeMessage,
@@ -591,6 +592,10 @@ export function App() {
   // reset it when we widen so a drawer left open on a phone-sized window
   // doesn't come back as a stuck overlay after a resize.
   const isMobile = useIsMobile();
+  // 125-1: keep the shell's height in sync with the visual viewport on
+  // mobile, so the iOS keyboard can't push the channel header off-screen.
+  // A no-op on desktop; see web/src/viewport.ts.
+  useKeyboardSafeShell(isMobile);
   const [navOpen, setNavOpen] = useState(false);
   // 83-6: the server-identity wall. Set when the server proves a key other
   // than the one this device pinned; blocks the whole app until the user
