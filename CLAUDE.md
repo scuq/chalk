@@ -91,6 +91,15 @@ If further repository exploration becomes necessary during implementation,
 delegate that new question back to `codefinder` rather than turning the main
 agent into the search agent.
 
+## Subagent models
+
+- Run every subagent on the model that its definition file sets in the
+  `model:` frontmatter key.
+- Definition files are in `.claude/agents/<name>.md` and
+  `~/.claude/agents/<name>.md`.
+- Never pass the `model` parameter to the Agent tool.
+- If a definition file has no `model:` key, do not add a model to the call.
+
 ## Working agreements
 
 - **NEVER commit or push.** Propose the `git add` file list and a
