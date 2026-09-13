@@ -97,6 +97,12 @@ serially and each unique string misses the allowlist and prompts.
     the problem, the design and what was rejected, the slice list, and any
     manual checklist a slice leaves open. Keep it current as slices land, and
     add its row to the index at the top of `docs/phase-log.md` once it ships.
+- **Documentation and comments always go through scraibe.** Every README,
+  `docs/` page, `CHANGELOG.md` bullet, phase doc, Go doc comment, TypeScript
+  doc comment, `// 54-2:` phase comment and inline comment is written or
+  revised by the `scraibe` subagent, and the `scraibe` skill is loaded before
+  touching any such text in place. That includes the paperwork above. scraibe
+  owns the words only: code logic never goes to it.
 - **Read `docs/phase-log.md`'s index before proposing a phase number.** Several
   phases are designed with no code behind them (marked *planned, not started*).
   A new idea is often one of them and belongs in its doc rather than a parallel
