@@ -30,6 +30,9 @@ a nuisance if it is not opt-out. Both were designed for:
 - **43-9** (unreleased) — on desktop, the line's text now starts at the same x
   position as a sender's name in a message row, and the line keeps a small gap
   above the composer.
+- **43-10** (unreleased) — the word "typing..." at the end of the line ripples
+  letter by letter for as long as it shows, behind its own preference,
+  independent of flair.
 
 ### 43-9 design notes
 
@@ -54,12 +57,60 @@ gap above the composer. `.chalk-thread-panel-footer`'s padding-top calc
 carries the same term, so the channel composer and the thread composer stay
 level with each other.
 
+### 43-10 design notes
+
+Phase 115's flair already animates a name: it cuts the name into letters and
+moves them (`WaveName`, `wave.ts`). The typing word's ripple reuses that cut,
+`splitLetters`, but keeps its own animation.
+
+The typing store sweeps expired typists once a second, and that re-renders
+the typing line. A letter's key must stay stable across that re-render.
+Otherwise the browser reads each render as a new element, and the animation
+restarts from its first frame. The word itself never changes, so each letter
+keeps the same index-based key on every render.
+
+The ripple has its own preference, `typingWave`, and does not read flair's
+wave setting. A user can turn flair off and leave the ripple on, or the
+reverse. The setting sits in the profile under "show who is typing." The
+ripple's checkbox is disabled when that one is off, since nothing is left to
+animate.
+
+Flair's own wave rule fires only while `data-flair-wave` is set on the page,
+and it sets the whole animation with the shorthand property. The shorthand
+resets `animation-delay` to its default, so a shared class loses its
+per-letter delays whenever flair is also on. For that reason the typing
+ripple keeps its own classes, `chalk-typing-wave` and `chalk-typing-wave-ch`,
+instead of flair's. Its four animation properties stay longhand — name,
+duration, timing function, and iteration count — so the per-letter
+`animation-delay` rules that follow are never reset.
+
+The keyframe moves during the first third of its 1.8-second cycle, then
+holds still for the rest of it. That reads as a ripple that passes and
+pauses, not a constant wobble. Nine `nth-child` rules, one per letter of
+"typing...", stagger the ripple 70ms apart. A `prefers-reduced-motion` query
+turns the animation off and leaves the letters in place.
+
+Rejected: reusing `WaveName`'s classes or flair's classes directly. Flair's
+shorthand rule resets the per-letter delays whenever flair is also on, so a
+shared class breaks under that combination.
+
+Rejected: a wave on the sender names or on the whole line, instead of the
+word alone. The names already carry tint, and flair can wave them too. A
+second wave on the same name layers two animations on one piece of text. A
+wave on the whole line moves the sender names and the punctuation along with
+the word. That reads as noisier than a wave on the word alone.
+
+Rejected: a ripple that is always on, with no switch to turn it off. The
+base typing indicator already has its own settings row (43-8), and the
+ripple follows the same opt-out principle.
+
 ## Where it lives
 
 `internal/server/server.go` (typing fan-out), `web/src/components/Composer.tsx`,
 `web/src/components/App.tsx`, `web/src/state/types.ts`,
 `web/src/components/ProfilePanel.tsx` for the opt-out,
-`web/src/components/TypingLine.tsx` for the line itself, and
+`web/src/components/TypingLine.tsx` for the line itself,
+`web/src/chat/wave.ts` for the per-letter cut, and
 `web/src/theme.css` for its layout.
 
 ## Notes

@@ -137,6 +137,8 @@ interface Props {
     sidebarWidth: number;
     // 43-8:
     typingIndicators: boolean;
+    // 43-10:
+    typingWave: boolean;
     // 67-1:
     shortenLinks: boolean;
     // 77-2:
@@ -155,6 +157,7 @@ interface Props {
       | "emoticons"
       | "sidebarWidth"
       | "typingIndicators"
+      | "typingWave"
       | "shortenLinks"
       | "nanoMarkdown"
       | "dayMarks",
@@ -1269,6 +1272,27 @@ export function ProfilePanel({
                 <p class="chalk-profile-hint">
                   works both ways: turn it off and you stop seeing "alice is
                   typing...", and nobody sees it about you either.
+                </p>
+              </div>
+              {/* 43-10: the ripple, off whenever typingIndicators is off. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={chatPrefs.typingWave}
+                    disabled={!chatPrefs.typingIndicators}
+                    onChange={(e) =>
+                      onSetChatPref(
+                        "typingWave",
+                        (e.target as HTMLInputElement).checked,
+                      )
+                    }
+                    data-testid="chat-typing-wave"
+                  />
+                  <span>wave the word "typing..."</span>
+                </label>
+                <p class="chalk-profile-hint">
+                  the letters ripple for as long as someone types.
                 </p>
               </div>
               {/* 67-1: long URLs collapse to a host label. */}

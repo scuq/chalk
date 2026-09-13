@@ -484,6 +484,60 @@ html {
   }
 }
 
+/* 43-10: the typing wave -- the word "typing..." ripples letter by letter
+   for as long as it shows, behind its own preference (typingWave),
+   independent of flair.
+
+   Flair's rule html[data-flair-wave] .chalk-flair-wave-ch sets the
+   animation with the shorthand property, and the shorthand resets
+   animation-delay. That rule stays on whenever flair is on, so a rule
+   that loops on the same class mixes with it. For that reason, this wave
+   uses its own classes rather than WaveName's. The four animation
+   properties below stay as longhands for the same reason. The shorthand
+   property resets animation-delay, which cancels the per-letter delay
+   rules below.
+
+   The keyframe moves in its first third, then holds still for the rest.
+   That reads as a ripple with a pause, not a constant wobble. The
+   -0.22em peak stays inside the line's 1.6 line-height. For its
+   ellipsis, .chalk-typing clips overflow, and a taller peak cuts a
+   letter's top off.
+
+   One nth-child rule per letter of "typing..." staggers the ripple, each
+   70ms after the last. Reduced motion turns the animation off and leaves
+   the letters still. */
+.chalk-typing-wave {
+  white-space: nowrap;
+}
+.chalk-typing-wave-ch {
+  display: inline-block;
+  animation-name: chalk-typing-wave;
+  animation-duration: 1.8s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+@keyframes chalk-typing-wave {
+  0%   { transform: translateY(0); }
+  12%  { transform: translateY(-0.22em); }
+  24%  { transform: translateY(0.04em); }
+  32%  { transform: translateY(0); }
+  100% { transform: translateY(0); }
+}
+.chalk-typing-wave-ch:nth-child(1) { animation-delay: 0ms; }
+.chalk-typing-wave-ch:nth-child(2) { animation-delay: 70ms; }
+.chalk-typing-wave-ch:nth-child(3) { animation-delay: 140ms; }
+.chalk-typing-wave-ch:nth-child(4) { animation-delay: 210ms; }
+.chalk-typing-wave-ch:nth-child(5) { animation-delay: 280ms; }
+.chalk-typing-wave-ch:nth-child(6) { animation-delay: 350ms; }
+.chalk-typing-wave-ch:nth-child(7) { animation-delay: 420ms; }
+.chalk-typing-wave-ch:nth-child(8) { animation-delay: 490ms; }
+.chalk-typing-wave-ch:nth-child(9) { animation-delay: 560ms; }
+@media (prefers-reduced-motion: reduce) {
+  .chalk-typing-wave-ch {
+    animation: none;
+  }
+}
+
 /* -- StatusBar ---------------------------------------------------- */
 
 .chalk-status {

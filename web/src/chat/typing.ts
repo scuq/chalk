@@ -20,6 +20,11 @@ export const TYPING_PING_MS = 3000;
 // of handles stops being readable at a glance.
 export const TYPING_MAX_NAMES = 5;
 
+// 43-10: the word that ripples when the typingWave preference is on. A
+// single constant lets the render and the CSS test agree on what to split
+// into letters.
+export const TYPING_WAVE_WORD = "typing...";
+
 // liveTypists returns the ids in entries that have not yet expired, in
 // insertion order. An entry expires the instant it reaches its deadline.
 export function liveTypists(entries: Map<string, number>, nowMs: number): string[] {
@@ -33,9 +38,13 @@ export function liveTypists(entries: Map<string, number>, nowMs: number): string
 // A piece of the rendered line. handle is set when the piece IS someone's
 // name, so the UI can tint it the way the message feed tints the same person,
 // and null for the punctuation between names.
+//
+// 43-10: wave marks the one segment that carries the word "typing...". The
+// renderer cuts that segment into letters when the wave preference is on.
 export interface TypingSegment {
   text: string;
   handle: string | null;
+  wave?: boolean;
 }
 
 // typingSegments turns resolved handles into the pieces of the line shown
@@ -57,7 +66,8 @@ export function typingSegments(handles: string[]): TypingSegment[] {
     if (i > 0) out.push({ text: i === handles.length - 1 ? " and " : ", ", handle: null });
     out.push({ text: handle, handle });
   });
-  out.push({ text: handles.length === 1 ? " is typing..." : " are typing...", handle: null });
+  out.push({ text: handles.length === 1 ? " is " : " are ", handle: null });
+  out.push({ text: TYPING_WAVE_WORD, handle: null, wave: true });
   return out;
 }
 

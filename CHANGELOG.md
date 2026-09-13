@@ -12,6 +12,11 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- The word "typing..." in "alice is typing..." now ripples letter by
+  letter for as long as it shows. A new switch in your profile turns the
+  ripple off.
+
 ### Fixed
 - **The typing indicator now aligns with the names in the chat and no longer
   crowds the message box.** On a wide window, its text started under the

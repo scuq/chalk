@@ -9,6 +9,7 @@ import type { JSX } from "preact";
 
 import { nickTintStyle, resolveNickHue } from "../chat/nickcolor";
 import { typingSegments } from "../chat/typing";
+import { splitLetters } from "../chat/wave";
 import { useTypists } from "../chat/typing-store";
 import type { ChannelMember, ResolvedChatPrefs } from "../state/types";
 
@@ -58,6 +59,22 @@ export function TypingLine({ channelID, members, isDM, display }: Props): JSX.El
   return (
     <div class="chalk-typing" aria-live="polite">
       {typingSegments(handles).map((seg, i) => {
+        // 43-10: the word segment renders as one span per letter when the
+        // wave preference is on. The CSS animation then staggers each
+        // letter's delay. The per-letter spans are aria-hidden, and
+        // role="img" with the whole word as the label keeps a screen reader
+        // from reading nine single letters.
+        if (seg.wave && display.typingWave) {
+          return (
+            <span key={i} class="chalk-typing-wave" role="img" aria-label={seg.text}>
+              {splitLetters(seg.text).map((ch, j) => (
+                <span key={j} class="chalk-typing-wave-ch" aria-hidden="true">
+                  {ch}
+                </span>
+              ))}
+            </span>
+          );
+        }
         const hue =
           seg.handle === null
             ? null

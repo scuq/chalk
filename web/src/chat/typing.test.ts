@@ -5,10 +5,14 @@ import {
   TYPING_MAX_NAMES,
   TYPING_PING_MS,
   TYPING_TTL_MS,
+  TYPING_WAVE_WORD,
   formatTypingLine,
   liveTypists,
   typingSegments,
 } from "./typing";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { splitLetters } from "./wave";
 import { selectChatPrefs } from "../state/types";
 
 const CROWD = "many keyboards are on fire 🔥";
@@ -59,12 +63,39 @@ test("segments mark every handle and only the handles", () => {
   const segs = typingSegments(["alice", "bob"]);
   assert.deepEqual(
     segs.map((s) => s.handle),
-    ["alice", null, "bob", null],
+    ["alice", null, "bob", null, null],
   );
   assert.deepEqual(
     segs.map((s) => s.text),
-    ["alice", " and ", "bob", " are typing..."],
+    ["alice", " and ", "bob", " are ", "typing..."],
   );
+});
+
+// Only the trailing word segment carries the wave, so a wave preference
+// never touches a name or the joining words around it.
+test("only the word typing is marked to wave", () => {
+  for (const n of [1, 2, 5]) {
+    const waving = typingSegments(names(n)).filter((s) => s.wave);
+    assert.deepEqual(waving.map((s) => s.text), [TYPING_WAVE_WORD]);
+    assert.equal(waving[0].handle, null);
+  }
+  assert.equal(typingSegments(names(TYPING_MAX_NAMES + 1)).some((s) => s.wave), false);
+});
+
+// The delay-per-letter contract lives in the stylesheet, not in a pure
+// function, so this test reads theme.css directly.
+test("the typing wave carries one delay per letter, in order", () => {
+  const css = readFileSync(join(resolve(process.cwd(), "src"), "theme.css"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  const delays = [...css.matchAll(/\.chalk-typing-wave-ch:nth-child\((\d+)\)\s*\{\s*animation-delay:\s*(\d+)ms/g)]
+    .map((m) => [Number(m[1]), Number(m[2])] as const);
+  assert.equal(delays.length, splitLetters(TYPING_WAVE_WORD).length);
+  for (let i = 0; i < delays.length; i++) {
+    assert.equal(delays[i][0], i + 1);
+    if (i > 0) assert.ok(delays[i][1] > delays[i - 1][1]);
+  }
+  const reduced = /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.chalk-typing-wave-ch\s*\{\s*animation:\s*none;/;
+  assert.ok(reduced.test(css), "reduced motion does not stop the typing wave");
 });
 
 test("the crowd line has no tintable name in it", () => {
@@ -112,4 +143,10 @@ test("typing indicators are on unless turned off", () => {
   assert.equal(selectChatPrefs({}).typingIndicators, true);
   assert.equal(selectChatPrefs({ chat: {} }).typingIndicators, true);
   assert.equal(selectChatPrefs({ chat: { typingIndicators: false } }).typingIndicators, false);
+});
+
+test("the typing wave is on unless turned off", () => {
+  assert.equal(selectChatPrefs(undefined).typingWave, true);
+  assert.equal(selectChatPrefs({ chat: {} }).typingWave, true);
+  assert.equal(selectChatPrefs({ chat: { typingWave: false } }).typingWave, false);
 });

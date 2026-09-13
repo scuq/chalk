@@ -418,6 +418,10 @@ export interface ChatPrefs {
   // this client neither sends pings nor renders anyone else's, so you can't
   // watch without being watched.
   typingIndicators?: boolean;
+  // 43-10: ripple the word "typing..." letter by letter while it shows.
+  // Default ON. When typingIndicators is off, the profile disables this
+  // checkbox, since there is nothing left to animate.
+  typingWave?: boolean;
   // 67-1: render long pasted URLs as a "[link to host]" label. Default ON.
   // Display-only -- the href underneath is always the full raw URL.
   shortenLinks?: boolean;
@@ -610,6 +614,8 @@ export interface ResolvedChatPrefs {
   composerHeight: number;
   // 43-4: defaulted to true.
   typingIndicators: boolean;
+  // 43-10: defaulted to true.
+  typingWave: boolean;
   // 67-1: defaulted to true.
   shortenLinks: boolean;
   // 77-2: defaulted to false -- it is opt-in.
@@ -644,6 +650,7 @@ export function selectChatPrefs(prefs: UserPrefs | undefined): ResolvedChatPrefs
         : clampSidebarWidth(c.sidebarWidth),
     composerHeight: clampComposerHeight(c.composerHeight),
     typingIndicators: c.typingIndicators ?? true,
+    typingWave: c.typingWave ?? true,
     shortenLinks: c.shortenLinks ?? true,
     nanoMarkdown: c.nanoMarkdown ?? false,
     dayMarks: c.dayMarks ?? true,
