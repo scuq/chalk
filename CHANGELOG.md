@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.24 — 13 September 2026 — A typing line that lines up, and a ripple you can turn off
 
 ### Added
 - The word "typing..." in "alice is typing..." now ripples letter by
