@@ -3,7 +3,7 @@
 *Backfilled record.* Written after the fact from the commit history and the
 changelog; the design notes are as-built, not a contemporaneous plan.
 
-**Status:** shipped, v0.3.45.
+**Status:** shipped, v0.3.45. 43-9 and 43-10 shipped in v0.8.24.
 **Tag:** `#typing` → `tools/where.sh -g typing`
 
 ## Why
@@ -27,10 +27,10 @@ a nuisance if it is not opt-out. Both were designed for:
 - **43-1 … 43-8** — typing frames and handlers, client throttle, the indicator
   line above the composer with its own row height (it used to clip the tops and
   tails of letters), the five-name cap, and the reciprocal profile setting.
-- **43-9** (unreleased) — on desktop, the line's text now starts at the same x
+- **43-9** (v0.8.24) — on desktop, the line's text now starts at the same x
   position as a sender's name in a message row, and the line keeps a small gap
   above the composer.
-- **43-10** (unreleased) — the word "typing..." at the end of the line ripples
+- **43-10** (v0.8.24) — the word "typing..." at the end of the line ripples
   letter by letter for as long as it shows, behind its own preference,
   independent of flair.
 
