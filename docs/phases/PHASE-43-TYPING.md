@@ -27,12 +27,40 @@ a nuisance if it is not opt-out. Both were designed for:
 - **43-1 … 43-8** — typing frames and handlers, client throttle, the indicator
   line above the composer with its own row height (it used to clip the tops and
   tails of letters), the five-name cap, and the reciprocal profile setting.
+- **43-9** (unreleased) — on desktop, the line's text now starts at the same x
+  position as a sender's name in a message row, and the line keeps a small gap
+  above the composer.
+
+### 43-9 design notes
+
+Before this slice, the line started at the message pane's left edge, left of
+the timestamp column, and sat directly against the composer below it.
+
+The fix is a `::before` spacer on `.chalk-typing`, as wide as the row's left
+padding plus the message gutter, the time column, and the column gap. `ch`
+resolves against the element's own font, and the typing line runs at
+size-small, so `padding-left` with the same variables falls short: at
+size-small, the same `ch` values resolve narrower than they do in a
+size-base message row, so the padding does not reach the target width. The
+spacer sets its own font-size to base, so its `ch` unit matches the message
+row's.
+
+The rule is desktop only. A phone row carries no left padding and an
+auto-width time column, so the typing line already starts at the timestamp's
+edge there.
+
+`margin-bottom: var(--chalk-s2)` on `.chalk-typing` adds the row's missing
+gap above the composer. `.chalk-thread-panel-footer`'s padding-top calc
+carries the same term, so the channel composer and the thread composer stay
+level with each other.
 
 ## Where it lives
 
 `internal/server/server.go` (typing fan-out), `web/src/components/Composer.tsx`,
 `web/src/components/App.tsx`, `web/src/state/types.ts`,
-`web/src/components/ProfilePanel.tsx` for the opt-out.
+`web/src/components/ProfilePanel.tsx` for the opt-out,
+`web/src/components/TypingLine.tsx` for the line itself, and
+`web/src/theme.css` for its layout.
 
 ## Notes
 

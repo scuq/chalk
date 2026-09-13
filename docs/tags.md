@@ -51,7 +51,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #quote          107       web/src/chat/quote.ts web/src/chat/nanomd.ts web/src/chat/message-menu.ts web/src/components/MessageList.tsx web/src/components/MessageMenu.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-107-QUOTE.md
 #search         61        web/src/chat/ web/src/components/ docs/phases/PHASE-61-SEARCH.md
 #reactions      37 58 75  web/src/chat/reactions.ts web/src/chat/press.ts web/src/chat/editpolicy.ts web/src/state/ web/src/components/ReactionBar.tsx docs/phases/PHASE-37-EDITREACT.md docs/phases/PHASE-58-EDITWINDOW.md docs/phases/PHASE-75-REACTORS.md
-#typing         43        internal/server/ web/src/state/ docs/phases/PHASE-43-TYPING.md
+#typing         43        internal/server/ web/src/state/ web/src/components/TypingLine.tsx web/src/chat/typing.ts web/src/theme.css docs/phases/PHASE-43-TYPING.md
 #presence       34 45 60 92 104  internal/presence/ internal/server/ web/src/chat/hovercard.ts web/src/chat/presence.ts web/src/presence/ web/src/components/HoverCard.tsx web/src/components/MessageList.tsx web/src/auth/display-names.ts web/src/state/ desktop/src/idle.ts desktop/src/idle-clock.ts docs/phases/PHASE-34-PRESENCE.md docs/phases/PHASE-45-SCRATCHPAD.md docs/phases/PHASE-92-HOVERCARD.md docs/phases/PHASE-104-DESKTOP.md
 #spacekeys      25 38     web/src/crypto/ internal/store/ docs/phases/PHASE-38-KEYDELIVERY.md docs/phases/PHASE-00-29-FOUNDATION.md
 #deletion       35        web/src/chat/ web/src/components/ docs/phases/PHASE-35-DELETION.md

@@ -10,6 +10,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- **The typing indicator now aligns with the names in the chat and no longer
+  crowds the message box.** On a wide window, its text started under the
+  timestamps and sat directly against the message box below it. It now
+  starts under the sender's name and keeps a small gap above the box.
+
 ## v0.8.23 — 13 September 2026 — Settings in rows, a microphone swap that works, and phone fixes
 
 ### Changed

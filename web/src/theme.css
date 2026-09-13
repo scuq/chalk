@@ -443,15 +443,45 @@ html {
    The reserved height and the line box are the same number so the row never
    moves, and both leave room around the text: at 1.2 the glyphs filled the
    box edge to edge, so overflow: hidden -- which is there for the ellipsis --
-   shaved ascenders and descenders and the line sat against the composer. */
+   shaved ascenders and descenders and the line sat against the composer.
+   43-9: line-height fixed the clipping. The new margin-bottom rule adds the
+   row's missing bottom gap, so the row no longer sits against the
+   composer's top edge. */
 .chalk-typing {
   min-height: 1.6em;
   line-height: 1.6;
+  margin-bottom: var(--chalk-s2);
   font-size: var(--chalk-size-small);
   color: var(--chalk-fg-dim);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* 43-9: this spacer reserves the row's left padding, the timestamp column,
+   and the column gap. That places the typing text at the same x position
+   as a sender name in a message row.
+
+   The rule uses a ::before instead of a padding-left on .chalk-typing. The
+   column widths are in ch, and ch resolves against the element's own font.
+   The typing line runs at size-small. A message row runs at size-base, so
+   the same ch value differs between them. The spacer sets its own font-size
+   to base, so its ch resolves the same as the row's. This does not change
+   the size of the typing text next to it.
+
+   This spacer runs on desktop only. A phone row has no left padding and an
+   auto-width time column, so the typing line already starts at the
+   timestamp's edge. */
+@media (min-width: 768px) {
+  .chalk-typing::before {
+    content: "";
+    display: inline-block;
+    font-size: var(--chalk-size-base);
+    width: calc(
+      var(--chalk-s2) + var(--chalk-msg-gutter) + var(--chalk-msg-time-col) +
+        var(--chalk-msg-col-gap)
+    );
+  }
 }
 
 /* -- StatusBar ---------------------------------------------------- */
@@ -6375,11 +6405,13 @@ body.chalk-resizing-y .chalk-composer-resizer {
    s2 to line up with the panel body above. The extra padding-top term is the
    typing line's reserved height (.chalk-typing: 1.6em at size-small) -- the
    channel footer carries that row above its composer and this one doesn't,
-   so without it the two border-top lines sit at different heights. */
+   so without it the two border-top lines sit at different heights.
+   43-9: the typing line's margin-bottom adds to that reserved height too,
+   so the calc now carries both terms. */
 .chalk-thread-panel-footer {
   border-top: 1px solid var(--chalk-border);
-  padding: calc(var(--chalk-s3) + 1.6 * var(--chalk-size-small)) var(--chalk-s2)
-    var(--chalk-s4);
+  padding: calc(var(--chalk-s3) + 1.6 * var(--chalk-size-small) + var(--chalk-s2))
+    var(--chalk-s2) var(--chalk-s4);
 }
 
 /* Mobile thread layout lives in the mobile section at the end of this
