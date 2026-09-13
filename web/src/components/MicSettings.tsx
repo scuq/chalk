@@ -684,8 +684,8 @@ export function MicSettings({ tab, voicePrefs, onVoicePrefsChange }: MicSettings
 
           <div class="chalk-profile-field">
             <label class="chalk-profile-label" for="mic-gain">
-              input volume{" "}
-              <span class="chalk-profile-theme-desc">({Math.round(mic.gain * 100)}%)</span>
+              input volume
+              <span class="chalk-profile-desc">{Math.round(mic.gain * 100)}%</span>
             </label>
             <input
               id="mic-gain"
@@ -746,9 +746,9 @@ export function MicSettings({ tab, voicePrefs, onVoicePrefsChange }: MicSettings
           {(mic.mode === "vad" || mic.mode === "ptt") && (
             <div class="chalk-profile-field">
               <label class="chalk-profile-label" for="mic-hold">
-                keep sending for{" "}
-                <span class="chalk-profile-theme-desc">
-                  ({Math.round(mic.holdMs)} ms after you stop)
+                keep sending for
+                <span class="chalk-profile-desc">
+                  {Math.round(mic.holdMs)} ms after you stop
                 </span>
               </label>
               <input
@@ -774,9 +774,9 @@ export function MicSettings({ tab, voicePrefs, onVoicePrefsChange }: MicSettings
                 data-testid="mic-echo-cancellation"
               />
               <span>
-                echo cancellation{" "}
-                <span class="chalk-profile-theme-desc">
-                  (stops others hearing themselves back — leave on unless you wear headphones)
+                echo cancellation
+                <span class="chalk-profile-desc">
+                  stops others hearing themselves back — leave on unless you wear headphones
                 </span>
               </span>
             </label>
@@ -791,10 +791,10 @@ export function MicSettings({ tab, voicePrefs, onVoicePrefsChange }: MicSettings
                 data-testid="mic-noise-suppression"
               />
               <span>
-                noise suppression{" "}
-                <span class="chalk-profile-theme-desc">
-                  (your browser's — it learns steady sounds like fans and hum, so it barely touches
-                  keyboards and door slams. for those, use "when i speak" above)
+                noise suppression
+                <span class="chalk-profile-desc">
+                  your browser's — it learns steady sounds like fans and hum, so it barely touches
+                  keyboards and door slams. for those, use "when i speak" above
                 </span>
               </span>
             </label>
@@ -809,10 +809,10 @@ export function MicSettings({ tab, voicePrefs, onVoicePrefsChange }: MicSettings
                 data-testid="mic-auto-gain"
               />
               <span>
-                automatic gain control{" "}
-                <span class="chalk-profile-theme-desc">
-                  (off by default: it fills your pauses by winding the mic up until the room is as loud
-                  as you were, and it moves the floor the marks above are set against)
+                automatic gain control
+                <span class="chalk-profile-desc">
+                  off by default: it fills your pauses by winding the mic up until the room is as loud
+                  as you were, and it moves the floor the marks above are set against
                 </span>
               </span>
             </label>
@@ -845,10 +845,10 @@ export function MicSettings({ tab, voicePrefs, onVoicePrefsChange }: MicSettings
                 data-testid="camera-background-blur"
               />
               <span>
-                blur my background{" "}
-                <span class="chalk-profile-theme-desc">
-                  (hides the room behind you while your camera is on. takes effect
-                  immediately, mid-call and all)
+                blur my background
+                <span class="chalk-profile-desc">
+                  hides the room behind you while your camera is on. takes effect
+                  immediately, mid-call and all
                 </span>
               </span>
             </label>
@@ -876,11 +876,11 @@ export function MicSettings({ tab, voicePrefs, onVoicePrefsChange }: MicSettings
                 data-testid="voice-join-muted"
               />
               <span>
-                start muted on a new device{" "}
-                <span class="chalk-profile-theme-desc">
-                  (a browser you have not used voice on yet begins muted, so you
+                start muted on a new device
+                <span class="chalk-profile-desc">
+                  a browser you have not used voice on yet begins muted, so you
                   never land in a room live by accident. follows your account; this
-                  machine keeps whatever the mute button is set to)
+                  machine keeps whatever the mute button is set to
                 </span>
               </span>
             </label>
@@ -928,12 +928,12 @@ export function MicSettings({ tab, voicePrefs, onVoicePrefsChange }: MicSettings
                 data-testid="voice-show-latency"
               />
               <span>
-                show latency on video tiles{" "}
-                <span class="chalk-profile-theme-desc">
-                  (the round trip to each person, in milliseconds, in the corner of
+                show latency on video tiles
+                <span class="chalk-profile-desc">
+                  the round trip to each person, in milliseconds, in the corner of
                   their tile. under ~150 ms feels immediate; over ~300 ms is where
                   people start talking over each other. the same number the debug
-                  drawer reports, without opening it)
+                  drawer reports, without opening it
                 </span>
               </span>
             </label>
@@ -955,13 +955,13 @@ export function MicSettings({ tab, voicePrefs, onVoicePrefsChange }: MicSettings
                 data-testid="voice-popouts-on-top"
               />
               <span>
-                keep a popped-out video above other windows{" "}
-                <span class="chalk-profile-theme-desc">
-                  (off, every pop-out is an ordinary window that other windows can cover.
+                keep a popped-out video above other windows
+                <span class="chalk-profile-desc">
+                  off, every pop-out is an ordinary window that other windows can cover.
                   on, the first pop-out you open floats above everything -- the browser
                   hands out one floating window per page, so a second and third are
                   ordinary either way. chrome, edge and brave only; no effect in firefox,
-                  safari or the desktop app)
+                  safari or the desktop app
                 </span>
               </span>
             </label>

@@ -1111,9 +1111,9 @@ export function ProfilePanel({
                     data-testid="chat-day-marks"
                   />
                   <span>
-                    show the date between days{" "}
-                    <span class="chalk-profile-theme-desc">
-                      (a pinned line when you scroll back)
+                    show the date between days
+                    <span class="chalk-profile-desc">
+                      a pinned line when you scroll back
                     </span>
                   </span>
                 </label>
@@ -1128,7 +1128,7 @@ export function ProfilePanel({
                     }
                     data-testid="chat-compact-mode"
                   />
-                  <span>compact mode <span class="chalk-profile-theme-desc">(tighter row spacing)</span></span>
+                  <span>compact mode<span class="chalk-profile-desc">tighter row spacing</span></span>
                 </label>
               </div>
               {/* 33-4: sidebar width. Duplicates the drag handle on the
@@ -1138,9 +1138,9 @@ export function ProfilePanel({
                   the roster is a drawer with its own sizing. */}
               <div class="chalk-profile-field">
                 <label class="chalk-profile-label" for="sidebar-width">
-                  sidebar width{" "}
-                  <span class="chalk-profile-theme-desc">
-                    ({chatPrefs.sidebarWidth}px, desktop only)
+                  sidebar width
+                  <span class="chalk-profile-desc">
+                    {chatPrefs.sidebarWidth}px, desktop only
                   </span>
                 </label>
                 <input
@@ -1322,7 +1322,7 @@ export function ProfilePanel({
               {onSetUserColors && (
                 <div class="chalk-profile-field">
                   <div class="chalk-profile-label">username colors</div>
-                  <p class="chalk-profile-hint" style={{ marginTop: 0 }}>
+                  <p class="chalk-profile-hint">
                     custom display color for specific users in the chat
                     feed (sender label only, not the roster).
                   </p>
@@ -1418,11 +1418,11 @@ export function ProfilePanel({
                     data-testid="roster-grouping"
                   />
                   <span>
-                    group channels{" "}
-                    <span class="chalk-profile-theme-desc">
-                      (collapsible headers in the sidebar, once more than one
+                    group channels
+                    <span class="chalk-profile-desc">
+                      collapsible headers in the sidebar, once more than one
                       group exists; each channel's group is suggested by its
-                      creator)
+                      creator
                     </span>
                   </span>
                 </label>
@@ -1435,6 +1435,10 @@ export function ProfilePanel({
                 <div class="chalk-profile-field">
                   <label class="chalk-profile-label" for="roster-name-style">
                     channel names
+                    <span class="chalk-profile-desc">
+                      in the sidebar and the conversation list; the channel
+                      header always shows the full name
+                    </span>
                   </label>
                   <select
                     id="roster-name-style"
@@ -1453,10 +1457,6 @@ export function ProfilePanel({
                       </option>
                     ))}
                   </select>
-                  <span class="chalk-profile-theme-desc">
-                    (in the sidebar and the conversation list; the channel
-                    header always shows the full name)
-                  </span>
                 </div>
               )}
               {/* 114-2: what order the channels inside a group come in.
@@ -1468,6 +1468,10 @@ export function ProfilePanel({
                 <div class="chalk-profile-field">
                   <label class="chalk-profile-label" for="roster-channel-sort">
                     sort channels by
+                    <span class="chalk-profile-desc">
+                      one group can be set differently, or ordered by hand,
+                      from its header in the channel list
+                    </span>
                   </label>
                   <select
                     id="roster-channel-sort"
@@ -1486,10 +1490,6 @@ export function ProfilePanel({
                       </option>
                     ))}
                   </select>
-                  <span class="chalk-profile-theme-desc">
-                    (one group can be set differently, or ordered by hand,
-                    from its header in the channel list)
-                  </span>
                 </div>
               )}
               {/* 62-5: Zuckermode. Rendered inside the channel-list section
@@ -1507,12 +1507,12 @@ export function ProfilePanel({
                       data-testid="roster-zuckermode"
                     />
                     <span>
-                      Zuckermode{" "}
-                      <span class="chalk-profile-theme-desc">
-                        (phones only: replaces the sidebar with one
+                      Zuckermode
+                      <span class="chalk-profile-desc">
+                        phones only: replaces the sidebar with one
                         WhatsApp-style list of every conversation — people and
                         channels together, newest first, with a preview of the
-                        last message)
+                        last message
                       </span>
                     </span>
                   </label>
@@ -1595,10 +1595,10 @@ export function ProfilePanel({
                     data-testid="parking-visible"
                   />
                   <span>
-                    show it in the sidebar{" "}
-                    <span class="chalk-profile-theme-desc">
-                      (off hides the row; {PARKING_HOTKEY_LABEL} still parks and
-                      unparks)
+                    show it in the sidebar
+                    <span class="chalk-profile-desc">
+                      off hides the row; {PARKING_HOTKEY_LABEL} still parks and
+                      unparks
                     </span>
                   </span>
                 </label>
@@ -1621,11 +1621,11 @@ export function ProfilePanel({
                     data-testid="parking-screen"
                   />
                   <span>
-                    hide the rest of chalk too{" "}
-                    <span class="chalk-profile-theme-desc">
-                      (blurs the channel list, your friends, your own name and
+                    hide the rest of chalk too
+                    <span class="chalk-profile-desc">
+                      blurs the channel list, your friends, your own name and
                       the call bar while parked; the tab stops showing an unread
-                      count and notification sounds go quiet)
+                      count and notification sounds go quiet
                     </span>
                   </span>
                 </label>
@@ -1655,8 +1655,8 @@ export function ProfilePanel({
 
               <div class="chalk-profile-field">
                 <label class="chalk-profile-label" for="notify-volume">
-                  volume{" "}
-                  <span class="chalk-profile-theme-desc">({Math.round(sound.volume * 100)}%)</span>
+                  volume
+                  <span class="chalk-profile-desc">{Math.round(sound.volume * 100)}%</span>
                 </label>
                 <input
                   id="notify-volume"
@@ -1685,8 +1685,8 @@ export function ProfilePanel({
                     data-testid="notify-dnd"
                   />
                   <span>
-                    do not disturb{" "}
-                    <span class="chalk-profile-theme-desc">(silence everything, keep the badges)</span>
+                    do not disturb
+                    <span class="chalk-profile-desc">silence everything, keep the badges</span>
                   </span>
                 </label>
               </div>
@@ -1696,9 +1696,9 @@ export function ProfilePanel({
                   choosing one is: pick, then press play on a few. */}
               <div class="chalk-profile-field">
                 <label class="chalk-profile-label" for="notify-theme">
-                  sound theme{" "}
-                  <span class="chalk-profile-theme-desc">
-                    ({SOUND_THEMES.find((t) => t.id === sound.theme)?.desc})
+                  sound theme
+                  <span class="chalk-profile-desc">
+                    {SOUND_THEMES.find((t) => t.id === sound.theme)?.desc}
                   </span>
                 </label>
                 <select
@@ -1764,7 +1764,7 @@ export function ProfilePanel({
                         <span>
                           {CATEGORY_LABELS[c].label}
                           {CATEGORY_LABELS[c].desc && (
-                            <span class="chalk-profile-theme-desc"> — {CATEGORY_LABELS[c].desc}</span>
+                            <span class="chalk-profile-desc">{CATEGORY_LABELS[c].desc}</span>
                           )}
                         </span>
                       </label>
@@ -1810,11 +1810,11 @@ export function ProfilePanel({
                     data-testid="idle-system"
                   />
                   <span>
-                    notice when you leave the machine{" "}
-                    <span class="chalk-profile-theme-desc">
+                    notice when you leave the machine
+                    <span class="chalk-profile-desc">
                       {desktopIdlePresent()
-                        ? "(the chalk app reads it from the system; no prompt)"
-                        : "(asks the browser once; chrome and edge only)"}
+                        ? "the chalk app reads it from the system; no prompt"
+                        : "asks the browser once; chrome and edge only"}
                     </span>
                   </span>
                 </label>
@@ -1855,13 +1855,13 @@ export function ProfilePanel({
               <div class="chalk-profile-field">
                 <button
                   type="button"
-                  class="chalk-profile-clear-cache"
+                  class="chalk-button"
                   onClick={onOpenMicSettings}
                   data-testid="open-mic-settings"
                 >
                   voice &amp; video settings…
                 </button>
-                <p class="chalk-profile-hint" style={{ marginTop: "0.5rem" }}>
+                <p class="chalk-profile-hint">
                   microphone, camera and output device, level, when to transmit and the voice
                   keys. also on the ⚙ beside the mute button, under your channel list.
                 </p>
@@ -1876,7 +1876,7 @@ export function ProfilePanel({
               <div class="chalk-profile-field">
                 <button
                   type="button"
-                  class="chalk-profile-clear-cache"
+                  class="chalk-button"
                   onClick={() => {
                     void Promise.resolve(onClearImageCache()).then(() => {
                       setImageCacheCleared(true);
@@ -1887,7 +1887,7 @@ export function ProfilePanel({
                 >
                   clear cached images
                 </button>
-                <p class="chalk-profile-hint" style={{ marginTop: "0.5rem" }}>
+                <p class="chalk-profile-hint">
                   {imageCacheCleared
                     ? "cached images cleared."
                     : "removes locally cached attachment data from this device. images re-download from the server on next view."}
@@ -1920,7 +1920,7 @@ export function ProfilePanel({
                   />
                   enable Giphy GIFs
                 </label>
-                <p class="chalk-profile-hint" style={{ marginTop: "0.5rem" }}>
+                <p class="chalk-profile-hint">
                   {giphyPref === "enabled"
                     ? "on: Giphy messages render as GIFs, fetched from Giphy's CDN. Your IP and the GIF you view are visible to Giphy. Per-device; affects only you."
                     : giphyPref === "disabled"
@@ -1957,13 +1957,15 @@ export function ProfilePanel({
                   />
                   build previews for links I send
                 </label>
-                <p class="chalk-profile-hint" style={{ marginTop: "0.5rem" }}>
+                <p class="chalk-profile-hint">
                   {linkPreviewPref === "enabled"
                     ? "on: pasting a whitelisted link asks YOUR server to fetch the page; the preview travels inside the encrypted message. The site sees the server's address, the server sees the link. Nobody else fetches anything."
                     : "off: links you send stay plain text. Previews others send still show (they cost you nothing -- everything is inside the encrypted message)."}
                 </p>
-                {onSetLinkPreviewHide && (
-                  <label class="chalk-profile-checkbox-label" style={{ marginTop: "0.5rem" }}>
+              </div>
+              {onSetLinkPreviewHide && (
+                <div class="chalk-profile-field">
+                  <label class="chalk-profile-checkbox-label">
                     <input
                       type="checkbox"
                       checked={linkPreviewHide === true}
@@ -1972,17 +1974,22 @@ export function ProfilePanel({
                       }
                       data-testid="linkpreview-hide-toggle"
                     />
-                    hide preview cards others send (show plain text)
+                    <span>
+                      hide preview cards others send
+                      <span class="chalk-profile-desc">show plain text instead</span>
+                    </span>
                   </label>
-                )}
-                {onSetLinkPreviewDomains && (
+                </div>
+              )}
+              {onSetLinkPreviewDomains && (
+                <div class="chalk-profile-field">
                   <LinkPreviewDomainEditor
                     serverDomains={linkPreviewServerDomains ?? []}
                     overrides={linkPreviewOverrides}
                     onSet={onSetLinkPreviewDomains}
                   />
-                )}
-              </div>
+                </div>
+              )}
             </section>
           )}
 
@@ -2452,7 +2459,7 @@ function LinkPreviewDomainEditor({
 
   return (
     <div class="chalk-linkpreview-domains" data-testid="linkpreview-domains">
-      <p class="chalk-profile-hint" style={{ marginTop: "0.75rem" }}>
+      <p class="chalk-profile-hint">
         preview links from these sites (and their subdomains):
       </p>
       {serverDomains.map((d) => (

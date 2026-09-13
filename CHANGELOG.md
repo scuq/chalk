@@ -12,6 +12,13 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Changed
+- **The profile settings and the voice & video dialog are easier to scan.**
+  Each section is now a bordered card that groups its options. Each option
+  sits in its own row, with a switch instead of a checkbox. Each option's
+  explanation now has its own line underneath, instead of inside the
+  label.
+
 ### Fixed
 - **A microphone you plug in or pair during a call now takes effect when you
   select it.** Before, the list changed but the call kept the old microphone

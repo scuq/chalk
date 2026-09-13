@@ -56,7 +56,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #spacekeys      25 38     web/src/crypto/ internal/store/ docs/phases/PHASE-38-KEYDELIVERY.md docs/phases/PHASE-00-29-FOUNDATION.md
 #deletion       35        web/src/chat/ web/src/components/ docs/phases/PHASE-35-DELETION.md
 #mobile         32 60 64 76 94  web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/components/ web/src/theme.css docs/phases/PHASE-32-MOBILE.md docs/phases/PHASE-60-MOBILEFIT.md docs/phases/PHASE-64-SWIPEBACK.md docs/phases/PHASE-94-PHONECOMPOSER.md
-#settings       68 70 76  web/src/settings-nav.ts web/src/components/ProfilePanel.tsx docs/phases/PHASE-68-SETTINGSTABS.md docs/phases/PHASE-70-APPEARANCE.md docs/phases/PHASE-76-SHORTCUTS.md
+#settings       68 70 76 124  web/src/settings-nav.ts web/src/components/ProfilePanel.tsx web/src/components/MicSettings.tsx web/src/components/MicSettingsDialog.tsx web/src/theme.css docs/phases/PHASE-68-SETTINGSTABS.md docs/phases/PHASE-70-APPEARANCE.md docs/phases/PHASE-76-SHORTCUTS.md docs/phases/PHASE-124-SETTINGSROWS.md
 #fullwidth      93        web/src/display-prefs.ts web/src/theme.css web/src/components/ProfilePanel.tsx docs/phases/PHASE-93-WIDTH.md
 #themes         -         web/src/theme.css web/src/theme-palette.test.ts web/src/components/ProfilePanel.tsx web/src/chat/nickcolor.ts docs/theming.md
 #nickcolor      117       web/src/chat/nickcolor.ts web/src/components/HueSlider.tsx web/src/components/ProfilePanel.tsx web/src/components/Sidebar.tsx web/src/theme.css docs/phases/PHASE-117-HUESTRIP.md

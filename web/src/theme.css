@@ -3711,6 +3711,280 @@ body.chalk-resizing-y .chalk-composer-resizer {
   border-color: var(--chalk-fg-bright);
 }
 
+/* ---- 124-1: settings dialogs -- group cards, option rows, switches --- */
+/* Scoped under .chalk-modal--settings, which only the profile panel and
+   the voice & video dialog carry. NotificationsPanel, WhatsNewNudge and
+   AvatarNudge reuse .chalk-profile-hint, the sound list and the theme
+   picker markup and keep the earlier look on purpose -- without the scope
+   this restyle would reach all three uninvited.
+
+   Before this phase .chalk-profile-field and .chalk-profile-label had no
+   rule at all. A row's only separation came from the browser's default
+   1em margin under a <p>, so nothing showed where one option ended and
+   the next began. Below, each <section> becomes a bordered card and each
+   row's default layout is a stacked column; a select row is the one case
+   that grids into two columns instead (see further down). */
+
+.chalk-modal--settings .chalk-modal-body > section {
+  padding: var(--chalk-s2) var(--chalk-s3) var(--chalk-s3);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+}
+
+.chalk-modal--settings .chalk-modal-body > section + section {
+  margin-top: 0;
+  padding-top: var(--chalk-s2);
+  border-top: 1px solid var(--chalk-border);
+}
+
+.chalk-modal--settings .chalk-modal-body h3 {
+  margin: 0 0 var(--chalk-s1);
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+  letter-spacing: 0.12em;
+}
+
+.chalk-modal--settings .chalk-modal-body > section > .chalk-profile-hint {
+  margin-top: var(--chalk-s2);
+}
+
+/* A row stacks its children in a column by default, so ranges, pickers,
+   sound lists, the mic meter and button rows need no rule of their own.
+   Only a select row (further down) switches to a two-column grid. */
+.chalk-modal--settings .chalk-profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s2) 0;
+}
+
+/* ~ rather than +: MicSettings puts a plain <p> between two fields (the
+   "press test and talk normally..." paragraph under the meter), and +
+   would let that paragraph swallow the hairline meant for the row after
+   it instead of passing it through to the next .chalk-profile-field. */
+.chalk-modal--settings .chalk-profile-field ~ .chalk-profile-field {
+  border-top: 1px solid var(--chalk-border);
+}
+
+.chalk-modal--settings .chalk-profile-field:last-child {
+  padding-bottom: 0;
+}
+
+/* Retires the ad-hoc margin-top that .chalk-profile-theme-picker,
+   -sound-list, -mic-test, -camera-preview, -flair-threshold,
+   .chalk-user-colors and -frame-picker each carried on their own before
+   this phase. The row's flex gap is the rhythm now. */
+.chalk-modal--settings .chalk-profile-field > * {
+  margin-top: 0;
+}
+
+.chalk-modal--settings .chalk-profile-field > button {
+  align-self: flex-start;
+}
+
+.chalk-modal--settings .chalk-profile-field:has(> .chalk-auth-link) {
+  display: block;
+  font-size: var(--chalk-size-small);
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-modal--settings .chalk-profile-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--chalk-fg);
+}
+
+/* Description (under the label: what the option is) and hint (under the
+   control: what to know) share one rule inside these dialogs: dim, small
+   and upright. Position already tells the two apart, and italic 12px
+   monospace -- .chalk-profile-hint's usual style outside this scope -- is
+   the least legible text in the app on several themes. */
+.chalk-modal--settings .chalk-profile-desc,
+.chalk-modal--settings .chalk-profile-hint {
+  margin: 0;
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+  font-style: normal;
+  line-height: 1.4;
+}
+
+.chalk-modal--settings .chalk-profile-desc {
+  display: block;
+}
+
+/* A select row grids into two columns, label on the left and control on
+   the right, because a trailing .chalk-profile-hint under the control has
+   to span both columns beneath it -- a flex row cannot do that without
+   wrapping the hint in another element. */
+.chalk-modal--settings .chalk-profile-field:has(> .chalk-profile-select) {
+  display: grid;
+  grid-template-columns: minmax(45%, 1fr) minmax(0, auto);
+  column-gap: var(--chalk-s3);
+  row-gap: var(--chalk-s2);
+  align-items: center;
+}
+
+.chalk-modal--settings .chalk-profile-field:has(> .chalk-profile-select) > .chalk-profile-select {
+  justify-self: end;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chalk-modal--settings
+  .chalk-profile-field:has(> .chalk-profile-select)
+  > :not(.chalk-profile-label):not(.chalk-profile-select) {
+  grid-column: 1 / -1;
+}
+
+.chalk-modal--settings .chalk-profile-field:has(> .chalk-profile-select:disabled) > .chalk-profile-label,
+.chalk-modal--settings .chalk-profile-field:has(> .chalk-profile-range:disabled) > .chalk-profile-label {
+  color: var(--chalk-fg-muted);
+}
+
+/* Drawn as a switch below, but still an <input type="checkbox">: every
+   data-testid, keyboard interaction and existing test against it keeps
+   working unchanged. order: 1 on the input, with justify-content:
+   space-between here on the label, moves the switch to the right edge
+   without reordering any JSX -- which is also why the four checkbox
+   labels with no wrapping <span> around their text still read right. */
+.chalk-modal--settings .chalk-profile-checkbox-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--chalk-s3);
+  width: 100%;
+}
+
+.chalk-modal--settings .chalk-profile-checkbox-label > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.chalk-modal--settings .chalk-profile-checkbox-label:has(> input:disabled) {
+  color: var(--chalk-fg-muted);
+  cursor: not-allowed;
+}
+
+.chalk-modal--settings .chalk-profile-checkbox-label > input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  order: 1;
+  flex: none;
+  position: relative;
+  width: 30px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  background: var(--chalk-bg-elev-2);
+  border: 1px solid var(--chalk-fg-muted); /* not --chalk-border: on the dark themes it sits too close to the card fill, and an unchecked switch had no visible outline */
+  border-radius: var(--chalk-radius); /* on LCARS, 10px turns this track and its knob into a pill with no extra rule -- both come from the same token */
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.chalk-modal--settings .chalk-profile-checkbox-label > input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--chalk-radius);
+  background: var(--chalk-fg-dim);
+  transition: transform 120ms ease, background 120ms ease;
+}
+
+.chalk-modal--settings .chalk-profile-checkbox-label > input[type="checkbox"]:hover {
+  border-color: var(--chalk-fg-dim);
+}
+
+.chalk-modal--settings .chalk-profile-checkbox-label > input[type="checkbox"]:checked {
+  background: var(--chalk-accent);
+  border-color: var(--chalk-accent);
+}
+
+.chalk-modal--settings .chalk-profile-checkbox-label > input[type="checkbox"]:checked::before {
+  transform: translateX(14px);
+  background: var(--chalk-bg);
+}
+
+.chalk-modal--settings .chalk-profile-checkbox-label > input[type="checkbox"]:focus-visible {
+  outline: 1px solid var(--chalk-fg-bright);
+  outline-offset: 2px;
+}
+
+.chalk-modal--settings .chalk-profile-checkbox-label > input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Turns off both switch transitions for a reader who asked for less
+   motion. */
+@media (prefers-reduced-motion: reduce) {
+  .chalk-modal--settings .chalk-profile-checkbox-label > input[type="checkbox"],
+  .chalk-modal--settings .chalk-profile-checkbox-label > input[type="checkbox"]::before {
+    transition: none;
+  }
+}
+
+/* Three fills that dissolved once their element sat on a card, all still
+   token-derived. The active theme swatch and the camera button's hover
+   move up a step to --chalk-bg-elev-2 so they still show against the
+   card; the field input drops to --chalk-bg so it reads sunken instead
+   of flush with the card around it. */
+.chalk-modal--settings .chalk-profile-theme-option--active {
+  background: var(--chalk-bg-elev-2);
+}
+
+.chalk-modal--settings .chalk-field-input {
+  background: var(--chalk-bg);
+}
+
+.chalk-modal--settings .chalk-profile-camera-btn:hover,
+.chalk-modal--settings .chalk-profile-camera-btn:focus-visible {
+  background: var(--chalk-bg-elev-2);
+}
+
+.chalk-modal--settings .chalk-profile-sound-list {
+  gap: var(--chalk-s1);
+}
+
+.chalk-modal--settings .chalk-profile-sound-row {
+  gap: var(--chalk-s2);
+  padding: var(--chalk-s1) 0;
+}
+
+/* display: contents drops the label's own box, so its "play" button
+   sibling (.chalk-profile-sound-preview) can join the same flex line as
+   the switch: name and description, then play, then switch. The label
+   stays in the DOM, so it still pairs the checkbox with its text. */
+.chalk-modal--settings .chalk-profile-sound-row > .chalk-profile-checkbox-label {
+  display: contents;
+}
+
+.chalk-modal--settings .chalk-profile-sound-row > span,
+.chalk-modal--settings .chalk-profile-sound-row > .chalk-profile-checkbox-label > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.chalk-modal--settings .chalk-profile-sound-row > .chalk-profile-sound-preview {
+  order: 1;
+}
+
+.chalk-modal--settings .chalk-profile-sound-row > .chalk-profile-checkbox-label > input[type="checkbox"] {
+  order: 2;
+}
+
 /* Inline dismiss-link inside an error banner (used by InvitesPanel
    row-level revoke error). */
 .chalk-auth-error .chalk-auth-link {
@@ -5156,6 +5430,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color-scheme: dark;
 }
 
+/* 124-1: solarized-dark declares --chalk-border the same colour as its own
+   --chalk-bg-elev, so every card border and row hairline from 124-1 would
+   be invisible. This re-points the token to --chalk-bg-elev-2, inside the
+   settings dialogs only. */
+[data-theme="solarized-dark"] .chalk-modal--settings {
+  --chalk-border: var(--chalk-bg-elev-2);
+}
+
 /* Active sidebar item: a low-opacity wash of solarized blue. */
 [data-theme="solarized-dark"] .chalk-sidebar-item--active {
   background: rgba(38, 139, 210, 0.12);
@@ -5215,10 +5497,10 @@ body.chalk-resizing-y .chalk-composer-resizer {
 /* ============================================================
    Phase 9.7d: ProfilePanel chat section
    ============================================================
-   Reuses the existing .chalk-profile-field and .chalk-profile-label
-   utilities from earlier phases. Adds a checkbox-row variant and a
-   select-input variant since the appearance section only had
-   radios.
+   Uses .chalk-profile-field and .chalk-profile-label as class names, but
+   at this point neither carried a CSS rule -- 124-1 is what first gave
+   them one. Adds a checkbox-row variant and a select-input variant since
+   the appearance section only had radios.
    ============================================================ */
 
 .chalk-profile-checkbox-label {
@@ -9969,6 +10251,42 @@ body.chalk-resizing-y .chalk-composer-resizer {
   }
   .chalk-profile-filter {
     padding: var(--chalk-s2) var(--chalk-s3) 0 var(--chalk-s3);
+  }
+
+  /* 124-3: finger room. Rows get extra vertical padding, and the switch
+     grows to 36x20 with a 16px knob travel, both sized for a touch target
+     rather than a pointer. */
+  .chalk-modal--settings .chalk-modal-body > section {
+    padding: var(--chalk-s2);
+  }
+  .chalk-modal--settings .chalk-profile-field {
+    padding: var(--chalk-s3) 0;
+  }
+  .chalk-modal--settings .chalk-profile-checkbox-label > input[type="checkbox"] {
+    width: 36px;
+    height: 20px;
+  }
+  .chalk-modal--settings .chalk-profile-checkbox-label > input[type="checkbox"]::before {
+    width: 14px;
+    height: 14px;
+  }
+  .chalk-modal--settings .chalk-profile-checkbox-label > input[type="checkbox"]:checked::before {
+    transform: translateX(16px);
+  }
+
+  /* 124-3: on a phone the two-column select row is undone, and the
+     dropdown returns to full width beneath its label. At 400px the
+     label's 45% minimum left the dropdown too narrow for a value like
+     "22:53:01 (hh:mm:ss)", which clipped mid-word. A screenshot of the
+     real UI at 400px showed the clip. */
+  .chalk-modal--settings .chalk-profile-field:has(> .chalk-profile-select) {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .chalk-modal--settings .chalk-profile-field:has(> .chalk-profile-select) > .chalk-profile-select {
+    justify-self: auto;
+    width: 100%;
   }
 
   /* -- 62-6: Zuckermode ---------------------------------------------- */
