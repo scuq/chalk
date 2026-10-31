@@ -1,7 +1,7 @@
 # Phase 128 — toolchain and dependency refresh
 
-**Status:** 128-1 and 128-2 built (2026-10-31). These steps passed on go1.27.3
-for both slices:
+**Status:** 128-1, 128-2, and 128-3 built (2026-10-31). These steps passed on
+go1.27.3 for all three slices:
 `go build`, `go vet`, `gofmt -l`, the Go suite without the database
 variables, `tsc --noEmit`, `node test.mjs`, `node build.mjs`, and a docker
 build of `docker/Dockerfile`. With the database variables set, `internal/auth`
@@ -10,7 +10,7 @@ on go1.25.12 against the same dev database. The cause is the dev database,
 not the toolchain: it does not contain the fixture users from
 `fixtures/users.sql`. The test that looks for the bob fixture fails with
 "not found". The same 64 tests failed the same way after 128-2, so the module
-bumps did not change the result. Slices 128-3 to 128-5 are planned, not
+bumps did not change the result. Slices 128-4 and 128-5 are planned, not
 started.
 
 **Tags:** `#toolchain` → `tools/where.sh -g toolchain`
@@ -87,17 +87,79 @@ paths. These changes are worth knowing:
 - Key generation in `crypto` always uses the operating system random source.
 - TLS 1.2 is the minimum version, whatever the `go.mod` version is.
 
+128-3 moves the passkey library only:
+
+- `go-webauthn/webauthn` moves from 0.17.3 to 0.18.2. The indirect modules
+  `go-webauthn/x` (0.2.5 to 0.3.1) and `fxamacker/cbor/v2` (2.9.2 to 2.9.4)
+  follow. `descope/virtualwebauthn` 1.0.5 does not change.
+- Version 0.18.0 (2026-08-27) has a `MIGRATION.md` with breaking changes.
+  `go build` and `go vet` were clean with no code change. chalk sets only
+  `RPID`, `RPDisplayName`, and `RPOrigins` on the config. It uses only the
+  library option `WithAuthenticatorSelection`, so the change that lets an
+  option return an error does not reach it. It passes no extensions and reads
+  no extension outputs. It never imports the `metadata`, `webauthncose`, or
+  `webauthncbor` packages. It stores credentials as explicit columns
+  (`credential_id`, `public_key`, `sign_count`, `transports`, and flags), not
+  as JSON. It keeps the ceremony `SessionData` only in the in-memory
+  `CeremonyCache`. The changed `SessionData` shape and the new
+  `Credential.Extensions` field therefore need no storage change.
+
+The review covered four behavior changes. None needed a code change:
+
+- The library now rejects an `RPID` that is not a domain string. The chalk
+  default is `localhost`, and in production it equals the deployment domain from
+  `chalkctl`. Both pass. An IP address as `RPID` now fails in `webauthn.New`,
+  that is at `chalkd` startup, with a clear error.
+- Registration now also rejects a credential that is not backup-eligible but
+  reports itself backed up. The stored `UserVerified` flag latches on an
+  assertion. The BE/BS persistence (migration 0042, `adoptLegacyFlags`) does
+  not change. `TestSyncedPasskeyLoginEndToEnd` and
+  `TestLegacyPasskeyFlagsAdoptedOnLogin` pass.
+- A credential response must carry `rawId` equal to `id`. Browsers always send
+  both.
+- A ceremony that an older version serialized does not matter. Sessions live
+  only in memory and end with the process.
+
+One change is deliberate. By default, v0.18 rejects any client extension output
+that the relying party did not request. chalk requests no extensions, but the
+web client posts `getClientExtensionResults()` back unchanged. A third-party
+passkey provider (a browser extension or a platform authenticator) can return
+an output such as `credProps` unprompted. The default would fail the passkey
+sign-in of that user and protect nothing, because chalk reads no outputs.
+`internal/auth/service.go` therefore sets `ExtensionsUnsolicitedOutputPolicy`
+to `protocol.UnsolicitedOutputPolicyIgnore` in the `webauthn.Config`.
+
+Revisit this policy when chalk first requests and reads an extension. The
+candidate is the PRF-based passkey KEK described in PHASE-31. Then restore the
+recommended default, which rejects unsolicited outputs.
+
+The new test `TestUnsolicitedExtensionOutputIsIgnored` in
+`internal/auth/passkey_extensions_test.go` registers and then signs in with
+`virtualwebauthn` responses. The `clientExtensionResults` of these responses
+carry an unrequested `credProps` output. The test needs
+`CHALK_TEST_DATABASE_URL`, like the other end-to-end tests. Without the policy
+line it failed with status 400 and the message "Client returned the credProps
+extension output which was not requested". With the policy line it passes.
+
+The real-browser test passed on 2026-10-31. A Playwright probe ran against
+the dev stack and used the Chromium virtual authenticator through the CDP
+WebAuthn domain. It registered a user and added a passkey in the profile panel,
+with a step-up that used the password and a TOTP code.
+`/api/auth/passkeys/add/finish` returned 200. The probe signed out and signed
+in with the passkey. `/api/auth/authenticate/finish` returned 200 with
+`totp_required`. The probe then completed the TOTP step. Seven of seven steps
+passed.
+
 ## Slices
 
 - 128-1 (built): Go 1.27.3 and Node 24 build toolchain, Alpine 3.24 dev
   image, docs updated.
 - 128-2 (built): Go module bumps without breaking changes. `go mod tidy`
   updated the indirect modules.
-- 128-3 (planned): `go-webauthn/webauthn` to 0.18.2. This slice stands alone.
-  Version 0.18.0 (2026-08-27) has large breaking changes, listed in the
-  library file `MIGRATION.md`. It also adds ML-DSA support on Go 1.27. The
-  slice must keep the BE/BS flag handling (migration 0042,
-  `adoptLegacyFlags`) and the rule that TOTP is mandatory on the passkey path.
+- 128-3 (built): `go-webauthn/webauthn` to 0.18.2. This slice stands alone.
+  The BE/BS flag handling (migration 0042, `adoptLegacyFlags`) and the rule
+  that TOTP is mandatory on the passkey path do not change. The one policy
+  change is `ExtensionsUnsolicitedOutputPolicy`, with a test.
 - 128-4 (planned): npm minor bumps. `npm audit` must stay clean in `web/` and
   `test/e2e/`.
 - 128-5 (planned): Electron 43.4.1 to 45.2.1. The 43 line is still supported
@@ -120,8 +182,9 @@ paths. These changes are worth knowing:
 | `golang.org/x/sync` | `go.mod` | 0.21.0 | 0.24.0 | 128-2, built |
 | `golang.org/x/sys` | `go.mod` | 0.44.0 | 0.49.0 | 128-2, built |
 | `golang.org/x/text` | `go.mod` | 0.39.0 | 0.43.0 | 128-2, built |
-| `go-webauthn/webauthn` | `go.mod` | 0.17.3 | 0.18.2 | 128-3, planned |
-| `go-webauthn/x` | `go.mod` | 0.2.5 | 0.3.1 | 128-3, planned |
+| `go-webauthn/webauthn` | `go.mod` | 0.17.3 | 0.18.2 | 128-3, built |
+| `go-webauthn/x` | `go.mod` | 0.2.5 | 0.3.1 | 128-3, built |
+| `fxamacker/cbor/v2` | `go.mod` | 2.9.2 | 2.9.4 | 128-3, built |
 | `@mediapipe/tasks-vision` | `web/package.json` | 1.0.1 | 1.2.0 | 128-4, planned |
 | `fake-indexeddb` | `web/package.json` | 6.2.5 | 6.2.7 | 128-4, planned |
 | `@playwright/test` | `test/e2e/package.json` | 1.56.1 | 1.64.1 | 128-4, planned |
@@ -155,3 +218,6 @@ download can take some time.
 Open: run `test/integration` again on go1.27.3 against a database seeded with
 `fixtures/users.sql`. Until then, the DB-backed integration result is not
 known for this toolchain.
+
+128-3 leaves no open item. The real-browser test is done. The 128-3 block in
+the design section records it.

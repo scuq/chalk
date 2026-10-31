@@ -89,6 +89,11 @@ func NewService(cfg Config) (*Service, error) {
 		RPID:          cfg.RPID,
 		RPDisplayName: cfg.RPDisplayName,
 		RPOrigins:     cfg.RPOrigins,
+		// 128-3: chalk requests no extension and reads no extension output.
+		// Ignore an output that a passkey provider returns unprompted, so
+		// that the provider does not lock the user out. Revisit this policy
+		// when chalk first requests and reads an extension.
+		ExtensionsUnsolicitedOutputPolicy: protocol.UnsolicitedOutputPolicyIgnore,
 		// Phase 09b: UV (User Verification) preference = "preferred"
 		// per plan DECISION 3. We accept biometric/PIN if the
 		// authenticator supports it, but don't require it (security

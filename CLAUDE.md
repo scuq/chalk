@@ -176,7 +176,8 @@ agent into the search agent.
   not done until `chalkctl` generates it fresh, preserves it on `--force` and
   backfills it on `update` (pattern: `CHALK_TOTP_ENC_KEY` in
   `internal/chalkctl/init.go`; template `templates/chalk.env.tmpl`).
-- **webauthn**: go-webauthn v0.17 validates credential BE/BS flags, so a
+- **webauthn**: go-webauthn v0.17 and later validates credential BE/BS flags (v0.18
+  also checks them at registration), so a
   credential row with zero-value flags fails login against a synced passkey.
   Any new credential path must persist them (migration 0042,
   `adoptLegacyFlags` in `internal/auth/http.go`).
