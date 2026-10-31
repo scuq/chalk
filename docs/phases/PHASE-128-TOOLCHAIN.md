@@ -1,7 +1,7 @@
 # Phase 128 — toolchain and dependency refresh
 
-**Status:** 128-1, 128-2, and 128-3 built (2026-10-31). These steps passed on
-go1.27.3 for all three slices:
+**Status:** 128-1, 128-2, 128-3, and 128-4 built (2026-10-31). These steps passed on
+go1.27.3 for the first three slices:
 `go build`, `go vet`, `gofmt -l`, the Go suite without the database
 variables, `tsc --noEmit`, `node test.mjs`, `node build.mjs`, and a docker
 build of `docker/Dockerfile`. With the database variables set, `internal/auth`
@@ -10,7 +10,7 @@ on go1.25.12 against the same dev database. The cause is the dev database,
 not the toolchain: it does not contain the fixture users from
 `fixtures/users.sql`. The test that looks for the bob fixture fails with
 "not found". The same 64 tests failed the same way after 128-2, so the module
-bumps did not change the result. Slices 128-4 and 128-5 are planned, not
+bumps did not change the result. Slice 128-5 is planned, not
 started.
 
 **Tags:** `#toolchain` → `tools/where.sh -g toolchain`
@@ -150,6 +150,47 @@ in with the passkey. `/api/auth/authenticate/finish` returned 200 with
 `totp_required`. The probe then completed the TOTP step. Seven of seven steps
 passed.
 
+128-4 moves the npm pins only:
+
+- In `web/`, `@mediapipe/tasks-vision` moves from 1.0.1 to 1.2.0. It is the
+  segmentation runtime for the video background blur. Releases 1.1.0, 1.1.1,
+  and 1.2.0 ship new WASM binaries and a JavaScript fix that prevents
+  overlapping WASM embedding calls. `fake-indexeddb` moves from 6.2.5 to 6.2.7.
+  It is used only in tests.
+- `web/src/voice/camera-blur.ts` uses `FilesetResolver.forVisionTasks` and
+  `ImageSegmenter.createFromOptions`. Both are unchanged. `web/build.mjs`
+  copies `wasm/vision_wasm_internal.js` and `wasm/vision_wasm_internal.wasm`
+  out of the package. Both files are still at those paths. The `mediapipe-<hash>`
+  directory of the built bundle has a new hash, because the WASM changed.
+- In `test/e2e/`, `@playwright/test` moves from 1.56.1 to 1.64.1, which bundles
+  Chromium 156.0.8078.4. `typescript` moves from 5.6.3 to 7.0.2, the same
+  version as in `web/`. `@types/node` moves from ^22 to ^24.19.2, which matches
+  the Node 24 build image.
+- `test/e2e/tsconfig.json` has one new line: `"types": ["node"]`. TypeScript 7
+  no longer includes every installed `@types` package by itself. Without the
+  line, `tsc --noEmit` reported TS2591 "Cannot find name 'process'" in every
+  spec. TypeScript 5.6.3 passed with the old config.
+- `npm audit` reports 0 vulnerabilities in `web/` and `test/e2e/`.
+
+The web chain passed: `tsc --noEmit`, `node test.mjs`, and `node build.mjs`. A
+docker build of `docker/Dockerfile` passed with the new lockfile. In
+`test/e2e/`, `npx tsc --noEmit` passed after the `tsconfig.json` line. The Go
+build, `go vet`, and `gofmt -l` did not change and are clean.
+
+The e2e suite ran against the dev stack with Playwright 1.64.1. The result was
+7 failed, 3 skipped, and 0 passed. This is the same state as before the bump.
+The browser version is not the cause. The specs predate auth v2:
+
+- `smoke.spec.ts` expects an unauthenticated status bar and never sees one.
+- `mobile.spec.ts` throws on purpose at the sign-in card with "this spec needs
+  an authenticated context".
+- `channels.spec.ts` and `multitab.spec.ts` go to a hard-coded second instance
+  at 127.0.0.1:38679. Nothing serves that address.
+- `admin.spec.ts` skips if `CHALK_ADMIN_BOOTSTRAP_TOKEN` is not set.
+
+The driver and probes in `.claude/skills/run-chalk/` are the working browser
+path.
+
 ## Slices
 
 - 128-1 (built): Go 1.27.3 and Node 24 build toolchain, Alpine 3.24 dev
@@ -160,8 +201,8 @@ passed.
   The BE/BS flag handling (migration 0042, `adoptLegacyFlags`) and the rule
   that TOTP is mandatory on the passkey path do not change. The one policy
   change is `ExtensionsUnsolicitedOutputPolicy`, with a test.
-- 128-4 (planned): npm minor bumps. `npm audit` must stay clean in `web/` and
-  `test/e2e/`.
+- 128-4 (built): npm bumps in `web/` and `test/e2e/`. `npm audit` stays clean
+  in both.
 - 128-5 (planned): Electron 43.4.1 to 45.2.1. The 43 line is still supported
   (43.8.6), but it loses support when Electron 46 ships. Electron 46 is in
   alpha. `docs/browser-support.md` must then say Chromium 156.
@@ -185,11 +226,11 @@ passed.
 | `go-webauthn/webauthn` | `go.mod` | 0.17.3 | 0.18.2 | 128-3, built |
 | `go-webauthn/x` | `go.mod` | 0.2.5 | 0.3.1 | 128-3, built |
 | `fxamacker/cbor/v2` | `go.mod` | 2.9.2 | 2.9.4 | 128-3, built |
-| `@mediapipe/tasks-vision` | `web/package.json` | 1.0.1 | 1.2.0 | 128-4, planned |
-| `fake-indexeddb` | `web/package.json` | 6.2.5 | 6.2.7 | 128-4, planned |
-| `@playwright/test` | `test/e2e/package.json` | 1.56.1 | 1.64.1 | 128-4, planned |
-| `typescript` | `test/e2e/package.json` | 5.6.3 | 7.0.2 | 128-4, planned |
-| `@types/node` | `test/e2e/package.json` | 22 | 24 | 128-4, planned |
+| `@mediapipe/tasks-vision` | `web/package.json` | 1.0.1 | 1.2.0 | 128-4, built |
+| `fake-indexeddb` | `web/package.json` | 6.2.5 | 6.2.7 | 128-4, built |
+| `@playwright/test` | `test/e2e/package.json` | 1.56.1 | 1.64.1 | 128-4, built |
+| `typescript` | `test/e2e/package.json` | 5.6.3 | 7.0.2 | 128-4, built |
+| `@types/node` | `test/e2e/package.json` | 22 | ^24.19.2 | 128-4, built |
 | Electron | `desktop/package.json` | 43.4.1 | 45.2.1 | 128-5, planned |
 
 These pins are current and do not change: `descope/virtualwebauthn` 1.0.5,
@@ -221,3 +262,5 @@ known for this toolchain.
 
 128-3 leaves no open item. The real-browser test is done. The 128-3 block in
 the design section records it.
+
+128-4 leaves no open item.

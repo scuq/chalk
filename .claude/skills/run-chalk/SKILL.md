@@ -17,8 +17,8 @@ All paths are relative to the repo root.
 ## Prerequisites
 
 Docker (for Postgres), Go 1.27, Node 22 — all already present on this
-machine. One-time driver setup (own Playwright install; the repo's
-`test/e2e` pin is too old to reach the chat UI, see Gotchas):
+machine. One-time driver setup (this skill has its own Playwright install, because the
+driver and probes resolve it from the skill directory):
 
 ```bash
 cd .claude/skills/run-chalk && npm install && npx playwright install chromium && cd -
@@ -151,10 +151,11 @@ cd web && npx tsc --noEmit && node test.mjs && node build.mjs   # 815 tests, 0 f
 - **`CHALK_TOTP_ENC_KEY` unset → signup silently 500s.** The wizard shows a
   bare "HTTP 500" banner; chalkd stderr has the real message. `tools/dev.sh`
   never sets it. Keep the key stable across restarts (hence the key file).
-- **The repo's pinned Playwright cannot reach the chat UI.** `test/e2e`
-  pins 1.48 (Chromium 130); the identity gate needs WebCrypto Ed25519
-  (Chromium ≥ 137). That's why this skill has its own newer install.
-  `smoke/mobile.spec.ts` fail at the sign-in card for the same reason.
+- **The `test/e2e` specs cannot get past the sign-in card.** The identity gate
+  needs WebCrypto Ed25519 (Chromium ≥ 137). `test/e2e` now pins Playwright
+  1.64.1 (Chromium 156). Its specs predate auth v2 and need an authenticated
+  context or a second seeded instance, so they fail at the sign-in card or on
+  a hard-coded port. Use this skill's driver for anything past the sign-in card.
 - **A fresh account cannot create a channel.** `create-modal-submit` is
   disabled with zero friends and requires ≥1 member selected. Use
   `--friend`, which does the two-user dance.
@@ -177,7 +178,7 @@ cd web && npx tsc --noEmit && node test.mjs && node build.mjs   # 815 tests, 0 f
 - **`bind: address already in use` on 8443** → a previous chalkd is still
   listening: `lsof -ti:8443 -sTCP:LISTEN | xargs -r kill`.
 - **Stuck at the sign-in card / identity gate in a script** → the browser
-  lacks Ed25519 (Chromium < 137). Use this skill's Playwright, not test/e2e's.
+  lacks Ed25519 (Chromium < 137). Use a Chromium ≥ 137 install such as this skill's.
 - **"postgres did not become ready"** → `docker logs chalk-dev-pg`; the
   container survives reboots stopped — `docker start chalk-dev-pg` or just
   rerun `tools/dev.sh`.
