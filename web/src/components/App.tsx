@@ -226,6 +226,7 @@ import { useSwipeBack } from "../chat/use-swipe-back";
 import { MessageList } from "./MessageList";
 import { ChannelBanner } from "./ChannelBanner"; // 111-3
 import { useDisplayPrefs } from "../display-prefs"; // 111-4
+import { dmChannelsToList } from "../avatars/prefetch"; // 112-10: DMs to list ahead of time
 import { ConfirmModal } from "./ConfirmModal";
 import { Composer } from "./Composer";
 import { TypingLine } from "./TypingLine";
@@ -3591,6 +3592,21 @@ export function App() {
       flairBurstMinutes,
     },
   ] = useDisplayPrefs();
+  // 112-10: A friend row draws the friend's picture from the DM with that friend.
+  // While the roster switch (or flair avatar frames) is on, list the pictures
+  // of every two-person DM, not only of the active channel.
+  // Each channel is listed once per connection, with the same asked set as the
+  // active-channel listing above.
+  // If this device never opened a DM, the decrypt waits for the space key of that DM.
+  useEffect(() => {
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    if (!showRosterAvatarsPref && !(flair && flairFrames)) return;
+    for (const cid of dmChannelsToList(state.channels, avatarsAskedRef.current)) {
+      avatarsAskedRef.current.add(cid);
+      c.send<ListAvatarsPayload>(TypeListAvatars, { channel_id: cid }, "lsav-" + cid);
+    }
+  }, [state.channels, state.wsState, showRosterAvatarsPref, flair, flairFrames]);
   // 115-2: which channels are burning. The hook subscribes only while the
   // flame is on and hands back the same Set at rest, so nothing below
   // re-renders on the store's sweeps. The ref is for the frame handler,

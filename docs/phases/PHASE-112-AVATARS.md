@@ -141,6 +141,7 @@ someone who set a picture and later removed it is not re-prompted.
 | 112-9 | the roster gets its own switch, also off by default |
 | 112-8 | the reader's switch: profile pictures in the conversation are OFF by default, and each person turns them on for themselves |
 | 112-7 | a picture can be used whole — the cropper's "you must crop something" rule was right for a banner and wrong here |
+| 112-10 | client fix: while the roster switch is on, the client lists the pictures of every two-person DM, so a friend row shows its picture before the DM is opened |
 
 ## Left open
 
@@ -213,6 +214,9 @@ The probe drove one member's own client end to end; what it covers is ticked.
       picture — wired and type-checked, but only the feed was driven live.
 - [ ] A member who joins a channel after the picture was set (see Left open:
       they see nothing until the next set).
+- [ ] With the roster switch on, a friend's picture is drawn in the sidebar
+      before you open the DM with that friend. A friend whose DM this device
+      never opened shows no picture until you open it.
 
 ## What the density constraint cost
 
