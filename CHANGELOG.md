@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.26 — 31 October 2026 — Phone conversations that stay at the new-messages line
 
 ### Fixed
 - On a phone, a conversation that opens at the "new messages" line now stays
