@@ -51,7 +51,7 @@ export function AdminSettingsTab({ state, onChange, onRetry }: Props) {
           </label>
           <p class="chalk-profile-hint">
             on by default. around halloween and through the winter holidays a
-            small figure visits the bottom corner of the conversation now and
+            small figure drops in beside the chalk name at the top now and
             then. off here hides it for every account;
             each person can also turn it off for their own device under settings,
             appearance, seasonal. a change reaches other people's screens on their

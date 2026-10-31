@@ -4,10 +4,10 @@
 // and which figures it has. Each visit draws one figure at random, never the
 // figure of the visit before. The schedule in season/peek.ts says when the
 // figure shows.
-// The anchor is a zero-size element at the top-right corner of the footer.
-// The footer is position: relative. So the figure floats over the
-// bottom-right corner of the feed, whatever the length or the scroll
-// position of the feed, and takes no room from it.
+// The anchor is a fixed-size box in the flow of the header brand, after the
+// wordmark. Its size is in em, so it scales with the title. The art is
+// taller than the box and overflows it, so the header keeps the height of
+// the logo and does not reflow when the figure comes and goes.
 // pointer-events: none stops the figure from taking a click.
 // The fade and the bob are CSS, and reduced motion switches them off. The
 // only timer here is one timeout for each schedule step.

@@ -1083,7 +1083,7 @@ export function ProfilePanel({
                 </label>
                 <p class="chalk-profile-hint">
                   on by default. around halloween a pumpkin, a ghost or a
-                  black cat visits the bottom corner of the conversation now
+                  black cat drops in beside the chalk name at the top now
                   and then, and from december into the new year it is a
                   snowman, a fox or a lantern. stored on this device only. the
                   administrator can turn it off for the whole server, and it
