@@ -10,6 +10,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- On a phone, a conversation that opens at the "new messages" line now stays
+  there when you tap the screen and the reactions, pictures, or previews above
+  the line finish loading. Before, the view moved into older messages.
+- On a phone, if you jumped to a message from a search or a thread and then went
+  back to the list, you can now open that conversation again without a jump to
+  that old message.
+
+---
+
 ## v0.8.25 — 31 October 2026 — Current toolchain and libraries, sign-in fields that password managers fill, and roster pictures that show sooner
 
 ### Changed

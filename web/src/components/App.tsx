@@ -5382,6 +5382,14 @@ export function App() {
     // just a stale scroll waiting to happen.
     setFlashMessage((f) => (f && f.channelID !== state.activeChannelID ? null : f));
   }, [state.activeChannelID]);
+  // 79-7: On a phone, the channel stays active under the list. The effect
+  // above does not fire when the reader goes back to the list. The feed
+  // unmounts, and its cleanup cancels the 1600 ms timer that clears the
+  // target. The target stayed armed, and re-entry centered the old row. Clear
+  // the target when the list shows.
+  useEffect(() => {
+    if (zuckerActive && zuckerScreen === "list") setFlashMessage(null);
+  }, [zuckerActive, zuckerScreen]);
 
   // 49-1: the jump target can be older than the loaded history window (the
   // feed loads the newest 50). Page backwards with before_seq -- the reducer's

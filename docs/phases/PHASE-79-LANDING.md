@@ -4,7 +4,7 @@
 changelog; the design notes are as-built, not a contemporaneous plan.
 
 **Status:** shipped, v0.6.4 (79-1), v0.7.0 (79-2), v0.7.1 (79-3),
-v0.7.4 (79-4, 79-5).
+v0.7.4 (79-4, 79-5). Built, not yet released: 79-6, 79-7.
 **Tags:** `#unread`, `#history` → `tools/where.sh -g unread`
 
 ## Why
@@ -39,6 +39,10 @@ further.
 - **79-3** — land the feed flush at the bottom, not a padding short.
 - **79-4** — hold the reader's *own* position through late growth.
 - **79-5** — hold the landing against the whole scrollport, not just the feed.
+- **79-6** — hold a row from the first touch after a landing, so a tap without
+  a scroll cannot let growth above the reader move the view.
+- **79-7** — clear the "show message" jump target when the phone returns to the
+  list, so re-entry does not jump to the old row.
 
 ## The third state (79-4)
 
@@ -96,10 +100,69 @@ inside it. The gate is unchanged — the view moves only while the landing ancho
 is held or the reader is following the end; a reader parked mid-feed is handled
 by 79-4's `keepDrift` and is otherwise untouched.
 
+## The release gap (79-6)
+
+On a phone (Zuckermode, installed app), a channel opened at the "new messages"
+divider ended up showing older history.
+A browser probe confirmed the cause.
+The landing holds the view only while its anchor is held, and the first touch
+releases the anchor.
+The mid-feed corrector from 79-4 (`keepRef`, the row under the top edge) was
+set only in the scroll handler.
+That handler used one hit test, one pixel below the pinned header.
+A tap without a scroll never set it.
+A hit test that landed in the 12 px gap between the header and the divider, on
+a day mark, or between rows found no row and also set nothing.
+
+With no row held, growth above the reader moved the view.
+Reactions for the loaded window arrive after the landing.
+Link previews, GIF embeds, and decrypted bodies also grow after the landing.
+Each of them pushed older rows into the viewport.
+
+The probe numbers before the fix:
+
+- The divider was at 63 px after the landing.
+- After a tap and then ten reactions above the divider, it was at 402 px.
+- The top row was a backlog message six rows above the first unread one.
+
+The fix has two parts:
+
+- The release step in `MessageList.tsx` now sets `keepRef` from `topRowAnchor`
+  at the moment the anchor goes, if the reader is not pinned to the end.
+  The next scroll event replaces it as before.
+- When the hit test finds no row, `topRowAnchor` scans the rows and holds the
+  first row that ends below the probe line.
+  `firstRowBelow` in `history-paging.ts` does the choice.
+  The scan runs only after a miss, so the scroll path stays one hit test.
+
+The same probe on the fixed bundle gave these numbers:
+
+- The divider was at 63 px after the landing.
+- After a tap and the arrival of ten reactions above the divider, it was still
+  at 63 px.
+- The `scrollTop` of the scroller moved from 1810 px to 2149 px, which is the
+  339 px that the rows above grew.
+- The top row was still the first unread message.
+
+A second pass, with a drag instead of a tap, also held.
+The divider was at 115 px before and after the reactions.
+The probe reported no page errors.
+
+## The armed jump target (79-7)
+
+A 1600 ms timer inside the feed clears the "show message" jump target (`flashMessage` in `App.tsx`).
+On the phone, the feed unmounts on the way back to the list, and its cleanup
+cancels the timer.
+The channel stays active under the list, so the effect that clears the target
+on a channel change does not fire.
+The target stayed armed, and re-entry centered the old row.
+A new effect in `App.tsx` clears the target when `zuckerScreen` becomes
+`"list"`.
+
 ## Where it lives
 
-`web/src/chat/history-paging.ts`, `web/src/components/MessageList.tsx`,
-`web/src/theme.css`.
+`web/src/chat/history-paging.ts`, `web/src/components/App.tsx`,
+`web/src/components/MessageList.tsx`, `web/src/theme.css`.
 
 ## Note on the numbering
 

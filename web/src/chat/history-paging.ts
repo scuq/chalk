@@ -133,3 +133,25 @@ export function anchorWatchTargets<T>(
   if (!scroller) return [feed];
   return [...new Set<T>([feed, scroller, ...scrollerChildren])];
 }
+
+// 79-6: firstRowBelow returns the index of the first row whose bottom edge is
+// below line. It returns -1 if every row ends above line.
+//
+// topRowAnchor uses it when the hit test under the top edge finds no row.
+// The hit test probes one point just below the pinned header. That point can
+// be in the gap between the header and the divider after a landing. After a
+// scroll it can be on a day mark or between two rows. Without a held row,
+// growth above the reader pushed older rows into view.
+//
+// rows holds the top and bottom edges of the feed rows in document order.
+// line is the y position of the probe. The returned row is the row the reader
+// sees first.
+export function firstRowBelow(
+  rows: readonly { top: number; bottom: number }[],
+  line: number,
+): number {
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i]!.bottom > line) return i;
+  }
+  return -1;
+}

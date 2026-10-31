@@ -4,6 +4,7 @@ import {
   anchorWatchTargets,
   autoPagingAllowed,
   dividerScrollDelta,
+  firstRowBelow,
   keepDrift,
   landingFillAllowed,
   nextEmptyStreak,
@@ -362,15 +363,27 @@ function topRowAnchor(
   const box = scroller.getBoundingClientRect();
   // Probe below whatever is pinned over that edge: the sticky channel header
   // is not what the reader is reading.
-  const hit = document.elementFromPoint(
-    box.left + box.width / 2,
-    box.top + pinnedTopInset(scroller) + 1,
-  );
-  const row = hit ? hit.closest<HTMLElement>("[data-message-id]") : null;
-  // A modal or a row menu over the feed swallows the probe; so does a gap
-  // between rows. No row means no correction, which is what the feed did
-  // before this existed.
-  if (!row || !root.contains(row)) return null;
+  const line = box.top + pinnedTopInset(scroller) + 1;
+  const hit = document.elementFromPoint(box.left + box.width / 2, line);
+  let row = hit ? hit.closest<HTMLElement>("[data-message-id]") : null;
+  if (row && !root.contains(row)) row = null;
+  // 79-6: The hit test finds no row if the line is in a gap between rows, on
+  // a day mark, or between the pinned header and the divider after a landing.
+  // Then the first row that ends below the line is the row the reader sees
+  // first. The scan runs only after a miss, so the scroll path stays one hit
+  // test.
+  if (!row) {
+    const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-message-id]"));
+    const i = firstRowBelow(
+      rows.map((r) => {
+        const b = r.getBoundingClientRect();
+        return { top: b.top, bottom: b.bottom };
+      }),
+      line,
+    );
+    if (i < 0) return null;
+    row = rows[i]!;
+  }
   return { row, offset: row.getBoundingClientRect().top - box.top };
 }
 
@@ -722,6 +735,14 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     // apart. keydown goes on the window because page-level scroll keys
     // (space, PageDown) are rarely delivered to the scroller itself.
     const release = () => {
+      // 79-6: A reader who taps after a landing, without a scroll, had no
+      // held row. Then growth above the reader pushed older rows into view.
+      // Reactions and previews that load after the landing cause this growth.
+      // Hold the row under the top edge when the anchor is released. The next
+      // scroll event replaces it.
+      if (anchorRef.current !== null && !pinnedRef.current) {
+        keepRef.current = topRowAnchor(rootRef.current, sc);
+      }
       anchorRef.current = null;
     };
     sc.addEventListener("scroll", onScroll, { passive: true });

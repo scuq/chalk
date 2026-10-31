@@ -10,6 +10,7 @@ import {
   DIVIDER_HEADER_GAP_PX,
   anchorWatchTargets,
   dividerScrollDelta,
+  firstRowBelow,
   KEEP_DRIFT_MIN_PX,
   keepDrift,
   landingFillAllowed,
@@ -150,4 +151,32 @@ test("sub-pixel drift is not worth a scroll", () => {
   assert.equal(keepDrift(300, 300.5), 0);
   assert.equal(keepDrift(300, 300 + KEEP_DRIFT_MIN_PX - 0.01), 0);
   assert.equal(keepDrift(300, 300 + KEEP_DRIFT_MIN_PX), KEEP_DRIFT_MIN_PX);
+});
+
+test("the row under the probe line is the held row", () => {
+  const rows = [
+    { top: 0, bottom: 40 },
+    { top: 40, bottom: 90 },
+    { top: 90, bottom: 130 },
+  ];
+  assert.equal(firstRowBelow(rows, 60), 1);
+});
+
+test("a probe line in a gap between rows holds the next row down", () => {
+  // After a landing, the 12px gap between the pinned header and the divider
+  // has no row under the line. A day mark has the same effect. The row that
+  // starts below the line is the row the reader sees first.
+  const rows = [
+    { top: 0, bottom: 40 },
+    { top: 52, bottom: 90 },
+  ];
+  assert.equal(firstRowBelow(rows, 46), 1);
+});
+
+test("a probe line below every row holds nothing", () => {
+  assert.equal(firstRowBelow([{ top: 0, bottom: 40 }], 41), -1);
+});
+
+test("an empty feed holds nothing", () => {
+  assert.equal(firstRowBelow([], 10), -1);
 });

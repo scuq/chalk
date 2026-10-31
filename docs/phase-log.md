@@ -720,7 +720,8 @@ from Postgres' own statistics views (73), code blocks as a first-class message
 kind (74), reactor lists (75), shortcuts moved into settings (76),
 receive-side-only nano markdown (77), hidden channels that never suppress
 notifications (78), and the landing target settled once so late-decrypting
-images cannot drag the reader (79).
+images cannot drag the reader (79). Slices 79-6 and 79-7, unreleased, keep the view on
+the divider after a tap and clear a stale jump target on the phone.
 
 **80–85 — guests, and taking the crypto seriously (v0.7.0 – v0.7.1).**
 Ephemeral voice rooms with guest magic links, a `chalk_guest` RLS fence and
