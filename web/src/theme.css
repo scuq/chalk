@@ -11737,35 +11737,37 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 /* ============================================================
    Phase 129: seasonal -- a figure for the season, on by default.
-   The anchor is a zero-size element pinned to the footer's top-right
-   corner (the footer is the positioned box under the feed), so the
-   glyph floats over the feed's bottom-right corner whatever the
-   feed's length or scroll position, and takes no room from it.
+   The anchor is a fixed-size box in the flow of the header brand,
+   after the wordmark. Its size is in em, so it scales with the title.
+   The art overflows the box, so the header does not reflow when the
+   figure comes and goes.
    Motion uses opacity and transform only. The reduced-motion block
    at the end of this section turns it off and leaves the glyph in
    place.
    This section must stay above the flair section: theme-flair.test.ts
    takes the sheet's last reduced-motion block as flair's.
    ============================================================ */
-/* The anchor: zero size, absolute, with its bottom edge on the footer's
-   top edge. It is not sticky and it is not inside the scroller. */
+/* The anchor: a box with a fixed size, in the flow of the header brand. */
 .chalk-season {
-  position: absolute;
-  bottom: 100%;
-  right: var(--chalk-scroll-lane, var(--chalk-s2));
-  width: 0;
-  height: 0;
+  /* The size is in the em of the title, so the box scales with the title on
+     a phone. The height equals the height of the logo. The art is taller
+     than the box and overflows it on purpose, above and below the
+     letters. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.9em;
+  height: 1.15em;
+  margin-left: 0.15em;
   pointer-events: none;
-  z-index: 1;
+  overflow: visible;
 }
 .chalk-season-figure {
-  position: absolute;
-  right: var(--chalk-s4);
-  bottom: var(--chalk-s2);
   display: block;
   color: var(--chalk-fg-dim);
   opacity: 0;
-  transform: translateY(12px);
+  transform: translateY(6px);
   transition:
     opacity 900ms ease,
     transform 900ms ease;
@@ -11776,8 +11778,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-season-art {
   display: block;
-  width: 56px;
-  height: 56px;
+  width: 1.9em;
+  height: 1.9em;
   object-fit: contain;
   /* A soft shadow separates a pale figure from a light page and a dark
      figure from a dark page. */
@@ -11864,6 +11866,29 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-admin-settings .chalk-profile-hint {
   margin: var(--chalk-s1) 0 0 0;
   color: var(--chalk-fg-dim);
+}
+
+/* 129-6: the night frame over the playback of a video tile.
+   A span follows the <video> in every tile, in the spotlight tile, and in
+   the expanded stage. All of them are positioned boxes.
+   The span stays hidden until <html> has data-season-night.
+   App.tsx sets the attribute in the hours that a season names.
+   The frame is static on purpose, so the reduced-motion block has nothing
+   to switch off.
+   voice/night-frame.ts paints the same frame for the pop-outs and the
+   board, because those documents have no stylesheet. */
+.chalk-voice-night {
+  display: none;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+html[data-season-night="halloween"] .chalk-voice-night {
+  display: block;
+  box-shadow:
+    inset 0 0 0 2px rgba(160, 255, 200, 0.55),
+    inset 0 0 28px 6px rgba(126, 255, 176, 0.45);
 }
 
 /* Reduced motion: the figure still comes and goes, but it jumps rather

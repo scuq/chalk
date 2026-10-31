@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { auraFor, inWindow, pickFigure, seasonFor, SEASONS, type Season } from "./seasons";
+import { auraFor, inHours, inWindow, nightFor, pickFigure, seasonFor, SEASONS, type Season } from "./seasons";
 
 // Local-time constructor, because the registry reads the calendar of the
 // reader.
@@ -85,4 +85,34 @@ test("a visit picks any figure, never the one before, and a bad random source st
   }
   const one: Season = { id: "halloween", from: [1, 1], to: [1, 1], figures: ["only"] };
   assert.equal(pickFigure(one, () => 0.5, "only"), "only");
+});
+
+// 129-6: the night frame on video tiles.
+const atH = (y: number, m: number, d: number, h: number, min = 0) => new Date(y, m - 1, d, h, min, 0);
+
+test("halloween night runs from 18:00 on 31 october until 03:00 on 1 november", () => {
+  assert.equal(nightFor(halloween, atH(2026, 10, 31, 17, 59)), false);
+  assert.equal(nightFor(halloween, atH(2026, 10, 31, 18, 0)), true);
+  assert.equal(nightFor(halloween, atH(2026, 10, 31, 23, 59)), true);
+  assert.equal(nightFor(halloween, atH(2026, 11, 1, 0, 0)), true);
+  assert.equal(nightFor(halloween, atH(2026, 11, 1, 2, 59)), true);
+  assert.equal(nightFor(halloween, atH(2026, 11, 1, 3, 0)), false);
+  assert.equal(nightFor(halloween, atH(2026, 10, 30, 20, 0)), false);
+});
+
+test("winter has no night frame, and a wrapped hour window holds both sides of the year", () => {
+  assert.equal(nightFor(winter, atH(2026, 12, 24, 20, 0)), false);
+  const w = { from: [12, 31, 22] as [number, number, number], to: [1, 1, 2] as [number, number, number] };
+  assert.equal(inHours(atH(2026, 12, 31, 21, 59), w), false);
+  assert.equal(inHours(atH(2026, 12, 31, 22, 0), w), true);
+  assert.equal(inHours(atH(2027, 1, 1, 1, 59), w), true);
+  assert.equal(inHours(atH(2027, 1, 1, 2, 0), w), false);
+});
+
+test("a night window lies inside its season", () => {
+  for (const s of SEASONS) {
+    if (!s.night) continue;
+    assert.ok(inWindow(at(2026, s.night.from[0], s.night.from[1]), s), `${s.id}: night starts outside the season`);
+    assert.ok(inWindow(at(2026, s.night.to[0], s.night.to[1]), s), `${s.id}: night ends outside the season`);
+  }
 });

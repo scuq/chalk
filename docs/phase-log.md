@@ -757,7 +757,7 @@ QEMU, npm never returned); every stage that runs anything now runs on the
 build platform and Go cross-compiles, with a 30-minute cap on the job.
 
 **129 — seasonal** (2026-10-31). Around Halloween (24 October to 1
-November) a small ghost peeks into the bottom-right corner of the feed: it
+November) a small ghost peeks into the header beside the wordmark: it
 shows for 8 s to 15 s, hides for 25 s to 90 s, and repeats. The calendar
 decides (`seasonFor`, local date), and a device switch and a server switch
 must also be on. The server switch is the first row of the generic
@@ -768,6 +768,7 @@ the window edge runs only on 23 to 25 December, through a new `aura` window in
 the registry. 129-5 replaced the single SVG ghost with a set of ten PNG
 figures for each season. Each visit draws one at random and never repeats the
 previous one. `tools/cut-season-sheet.py` cut the figures from an icon sheet.
+129-6 added a green frame on video tiles, pop-outs, and the board on Halloween night, from 18:00 to 03:00 by the clock of the viewer.
 
 **Not started.** 65 (web push), 86 (ties), 87
 (message reminders), 90 (a local idle agent) and 99 (database-credential

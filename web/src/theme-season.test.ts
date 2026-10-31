@@ -100,15 +100,31 @@ test("every light theme gets the aura's darker colours", () => {
   }
 });
 
-test("the anchor takes no room and no clicks, and hangs off the footer's top edge", () => {
+test("the box beside the wordmark is a fixed size and takes no clicks", () => {
   const anchor = /\.chalk-season\s*\{([^}]*)\}/.exec(animated);
   assert.ok(anchor, "no .chalk-season rule");
-  assert.match(anchor![1], /height\s*:\s*0/);
-  assert.match(anchor![1], /width\s*:\s*0/);
+  assert.match(anchor![1], /display\s*:\s*inline-flex/);
+  assert.match(anchor![1], /width\s*:\s*[\d.]+em/);
+  assert.match(anchor![1], /height\s*:\s*[\d.]+em/);
   assert.match(anchor![1], /pointer-events\s*:\s*none/);
-  assert.match(anchor![1], /position\s*:\s*absolute/);
-  assert.match(anchor![1], /bottom\s*:\s*100%/);
-  // The footer is the positioned box it hangs from (91-1 made it so).
-  const footer = /(?:^|\n)\.chalk-footer\s*\{([^}]*)\}/.exec(stripped);
-  assert.ok(footer && /position\s*:\s*relative/.test(footer[1]), "the footer is no longer positioned");
+  assert.ok(!/position\s*:/.test(anchor![1]), "the box is in the header's flow, not positioned");
+});
+
+test("129-6: the night frame is hidden by default and every season with a night has a rule", () => {
+  const base = /\.chalk-voice-night\s*\{([^}]*)\}/.exec(animated);
+  assert.ok(base, "no .chalk-voice-night rule");
+  assert.match(base![1], /display\s*:\s*none/);
+  assert.match(base![1], /pointer-events\s*:\s*none/);
+  assert.match(base![1], /position\s*:\s*absolute/);
+  for (const s of SEASONS) {
+    const re = new RegExp(`html\\[data-season-night="${s.id}"\\] \\.chalk-voice-night\\s*\\{([^}]*)\\}`);
+    const rule = re.exec(animated);
+    if (s.night) {
+      assert.ok(rule, `season ${s.id} has a night but no frame rule`);
+      assert.match(rule![1], /display\s*:\s*block/);
+      assert.match(rule![1], /box-shadow\s*:[^;]*inset/);
+    } else {
+      assert.equal(rule, null, `season ${s.id} has no night but a frame rule`);
+    }
+  }
 });

@@ -15,6 +15,10 @@ The engineering-level history (which slice shipped what) lives in
 ### Added
 - The Halloween visitor is now one of ten figures, and a different one comes each time. The figures include a pumpkin, a ghost, a witch's hat, a black cat, and a bat. They are cut from a single icon set.
 - From 1 December to 6 January, a winter season brings ten winter figures, among them a snowman, an arctic fox, and a pair of mittens. On 23 to 25 December only, an ice-blue glow also runs along the edge of the window.
+- On Halloween night, from 18:00 to 03:00 by the clock of the viewer, every video tile in a call has a green frame. The frame also shows in popped-out windows and on the board.
+
+### Changed
+- The seasonal visitor now appears beside the chalk name at the top of the window, and no longer in the bottom corner of the conversation.
 
 ### Fixed
 - On the light themes (light, snazzy-light, warmwhite, vscode-light, and catppuccin-latte), the green glow along the window edge was too pale to see while the ghost was out. The glow now uses a darker, denser green on these themes.

@@ -23,12 +23,28 @@ export interface Window {
   to: MonthDay;
 }
 
+/** A moment on the calendar to the hour: 1-based month, day, 0-23 hour. */
+export type MonthDayHour = [month: number, day: number, hour: number];
+
+/**
+ * An HourWindow is a span of local hours. If `to` precedes `from`, the span
+ * wraps the year boundary.
+ */
+export interface HourWindow {
+  /** the first hour inside the window */
+  from: MonthDayHour;
+  /** the first hour after the window */
+  to: MonthDayHour;
+}
+
 export interface Season extends Window {
   id: SeasonId;
   /** the figures that visit, by file name under assets/season/<id>/ */
   figures: string[];
   /** the days the window-edge glow runs; absent means the whole season */
   aura?: Window;
+  /** 129-6: the hours of the video-tile frame. Absent means no frame. */
+  night?: HourWindow;
 }
 
 export const SEASONS: Season[] = [
@@ -50,6 +66,8 @@ export const SEASONS: Season[] = [
       "scarecrow",
       "haunted-lantern",
     ],
+    // Halloween night: the video-tile frame runs from 18:00 on 31 October until 03:00 on 1 November.
+    night: { from: [10, 31, 18], to: [11, 1, 3] },
   },
   {
     // Winter runs through the holidays into the new year. The glow runs
@@ -99,6 +117,31 @@ export function seasonFor(now: number | Date, seasons: Season[] = SEASONS): Seas
     if (inWindow(now, s)) return s;
   }
   return null;
+}
+
+function hourKey([month, day, hour]: MonthDayHour): number {
+  return (month * 100 + day) * 100 + hour;
+}
+
+/**
+ * inHours reports whether the local time of `now` lies inside the window.
+ * The `from` hour is inside. The `to` hour is outside.
+ * If `to` precedes `from`, the window wraps the year boundary.
+ */
+export function inHours(now: number | Date, w: HourWindow): boolean {
+  const d = typeof now === "number" ? new Date(now) : now;
+  const k = hourKey([d.getMonth() + 1, d.getDate(), d.getHours()]);
+  const a = hourKey(w.from);
+  const b = hourKey(w.to);
+  return a <= b ? k >= a && k < b : k >= a || k < b;
+}
+
+/**
+ * nightFor reports whether the video-tile frame of the season is on at `now`.
+ * A season without `night` always gives false.
+ */
+export function nightFor(season: Season, now: number | Date): boolean {
+  return season.night ? inHours(now, season.night) : false;
 }
 
 /**

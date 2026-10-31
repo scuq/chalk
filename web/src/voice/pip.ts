@@ -27,6 +27,8 @@
 // Every window is MUTED: remote audio has exactly one output path (VoiceDock's
 // sinks), and a second one would double every voice in the room.
 
+import { mountNightFrame } from "./night-frame"; // 129-6
+
 /** Minimal shape of the Document PiP API (not in lib.dom yet). */
 interface DocumentPiP {
   requestWindow(opts?: { width?: number; height?: number }): Promise<Window>;
@@ -71,6 +73,8 @@ interface Popout {
   stream: MediaStream;
   /** Detaches the end-of-stream watcher for the stream currently shown. */
   unwatch: () => void;
+  /** 129-6: removes the night frame when the window closes. */
+  unframe: () => void;
 }
 
 const open = new Map<string, Popout>();
@@ -192,7 +196,8 @@ function attach(
   video.style.display = "block";
   doc.body.appendChild(video);
 
-  const po: Popout = { win, video, stream, unwatch: () => {} };
+  // 129-6: the body fills the window, so the frame with inset: 0 covers the video.
+  const po: Popout = { win, video, stream, unwatch: () => {}, unframe: mountNightFrame(doc, doc.body) };
   po.unwatch = watchStream(key, stream);
   open.set(key, po);
   win.addEventListener("pagehide", () => {
@@ -220,6 +225,7 @@ function drop(key: string): void {
   const po = open.get(key);
   if (!po) return;
   po.unwatch();
+  po.unframe();
   open.delete(key);
   notify();
 }

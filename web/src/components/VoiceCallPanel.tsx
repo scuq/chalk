@@ -1376,13 +1376,20 @@ function VideoSurface({ stream, mirrored }: { stream: MediaStream; mirrored?: bo
   // ALWAYS muted: remote audio flows exclusively through VoiceDock's sinks
   // (one output path), and self-video must never loop back the mic.
   return (
-    <video
-      ref={ref}
-      class={"chalk-voice-video" + (mirrored ? " chalk-voice-video-mirrored" : "")}
-      autoPlay
-      playsInline
-      muted
-    />
+    <>
+      <video
+        ref={ref}
+        class={"chalk-voice-video" + (mirrored ? " chalk-voice-video-mirrored" : "")}
+        autoPlay
+        playsInline
+        muted
+      />
+      {/* 129-6: the season's frame over the playback. theme.css shows it only
+          while <html> has data-season-night. The tiles, the spotlight tile,
+          and the expanded stage are positioned, so inset: 0 is the box of
+          the video. */}
+      <span class="chalk-voice-night" data-testid="voice-night-frame" aria-hidden="true" />
+    </>
   );
 }
 

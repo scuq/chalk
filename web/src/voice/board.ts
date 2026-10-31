@@ -22,6 +22,8 @@
 // The layout is not remembered across openings yet -- the grid comes back
 // each time. That is the obvious next slice if anyone wants it.
 
+import { mountNightFrame } from "./night-frame"; // 129-6
+
 export interface BoardTile {
   key: string;
   stream: MediaStream;
@@ -93,6 +95,8 @@ interface Placed {
   video: HTMLVideoElement;
   strip: HTMLElement;
   stream: MediaStream;
+  /** 129-6: removes the night frame when the tile goes. */
+  unframe: () => void;
 }
 
 interface Board {
@@ -254,9 +258,12 @@ function place(b: Board, t: BoardTile, rect: Rect): void {
 
   root.appendChild(strip);
   root.appendChild(video);
+  // 129-6: the frame covers the whole tile, including the strip.
+  // The tile root is the positioned box.
+  const unframe = mountNightFrame(doc, root);
   b.stage.appendChild(root);
   wireDrag(b, root, strip);
-  b.tiles.set(t.key, { root, video, strip, stream: t.stream });
+  b.tiles.set(t.key, { root, video, strip, stream: t.stream, unframe });
 }
 
 /** wireDrag moves the tile by its strip and raises whichever tile is
@@ -308,6 +315,7 @@ export function syncBoard(tiles: BoardTile[]): void {
   for (const [key, p] of [...b.tiles]) {
     const t = byKey.get(key);
     if (!t) {
+      p.unframe();
       p.root.remove();
       b.tiles.delete(key);
       continue;

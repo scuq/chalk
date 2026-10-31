@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a figure for the season
 
-**Status:** built, 129-1 – 129-5 (2026-10-31). 129-1 – 129-3 shipped in v0.8.27.
+**Status:** built, 129-1 – 129-6 (2026-10-31). 129-1 – 129-3 shipped in v0.8.27.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -28,7 +28,7 @@ It sets the days on which the window-edge glow runs, and the figures still visit
 The winter aura window is 23 to 25 December, the three days of Christmas.
 Halloween has no aura window, so its glow runs the whole season.
 `auraFor(season, now)` is the check.
-`App.tsx` passes `aura` to the component from the same hourly clock that picks the season.
+`App.tsx` passes `aura` to the component from the same clock that picks the season.
 
 `seasonFor(now)` is a pure function. It takes the clock as a parameter and
 reads the local calendar date of the reader. It ignores the year. If the end of
@@ -103,19 +103,24 @@ Three refinements matter:
 
 ### The mount
 
-`App.tsx` mounts `SeasonFigure` inside `<footer class="chalk-footer">`, before
-the `ComposerResizer`. It mounts only when a text channel is active. It does
-not mount for a parked channel, a voice channel, or the phone's zucker list
-screen.
+`App.tsx` mounts `SeasonFigure` in the header, inside `<div class="chalk-brand">`,
+after the `VersionLink`. The only gate is the season: the figure is there
+whenever the season is on. It does not depend on the active channel, on a
+parked channel, or on the phone's zucker list screen.
 
-The anchor is not sticky and it is not inside the scroller. It is a zero-size
-element with `position: absolute`, pinned to the top-right corner of the footer
-with `bottom: 100%`. The footer is `position: relative` since 91-1. The anchor
-has `pointer-events: none`. The glyph floats over the bottom-right corner of the
-feed, whatever the length of the feed or its scroll position. It takes no room
-from the feed and no clicks.
+The anchor `.chalk-season` is an `inline-flex` box in the flow of the brand.
+It is 1.9em wide and 1.15em high, the height of the logo. It has
+`pointer-events: none` and no `position`. The art `.chalk-season-art` is 1.9em
+square and overflows the box above and below on purpose.
 
-`App.tsx` reads the date again once an hour with `setInterval`. A tab that
+Three reasons set this design:
+
+- The user asked for the figure beside the wordmark.
+- The box has a fixed size, so the header has the same height with and
+  without the figure and does not reflow when the figure comes and goes.
+- The sizes are in em, so the figure scales with the title on a phone.
+
+`App.tsx` reads the date again once a minute with `setInterval`. A tab that
 stays open over midnight crosses the edge of a window without a reload.
 
 ### The motion is CSS only
@@ -154,6 +159,46 @@ It also loops over the registry and requires that every season sets its aura col
 A second test reads every `[data-theme]` block and collects the themes that declare a light scheme.
 For each season in the registry, it requires that the light rule lists exactly those themes.
 So a new light theme cannot ship without an aura colour.
+
+### The night frame on video tiles
+
+129-6 adds a green frame on the playback of video tiles on Halloween night.
+The night runs from 18:00 on 31 October until 03:00 on 1 November, by the clock of each viewer.
+
+`seasons.ts` has a `HourWindow` type.
+Its `from` and `to` are `[month, day, hour]` triples.
+The `from` hour is inside the window and the `to` hour is outside it.
+A window whose end precedes its start wraps the year boundary.
+`inHours(now, window)` is the test.
+A season can carry an optional `night` window, and `nightFor(season, now)` is the check.
+The Halloween night is `{ from: [10, 31, 18], to: [11, 1, 3] }`.
+Winter has no night.
+The night uses the same three gates as the rest of the phase.
+
+`App.tsx` writes `data-season-night="<season id>"` on `<html>` while the night is on.
+It also calls `setNightFrame(colours | null)`.
+
+Tiles in the main document get the frame from CSS.
+`VideoSurface` in `VoiceCallPanel.tsx` renders `<span class="chalk-voice-night">` after every `<video>`.
+The tiles, the big spotlight tile, and the expanded stage are positioned boxes.
+In `theme.css`, `.chalk-voice-night` is `display: none`, `position: absolute`, `inset: 0`, and click-through, with `z-index: 3`.
+The rule `html[data-season-night="halloween"] .chalk-voice-night` shows it.
+It paints an inset box-shadow: a 2 px pale green line and a 28 px glow.
+The rule sits in the "Phase 129: seasonal" section, before the reduced-motion block.
+
+The pop-outs and the board need another path.
+`pip.ts` and `board.ts` build separate documents with no stylesheet.
+The CSP of the opener refuses an injected `<style>`.
+So `web/src/voice/night-frame.ts` paints the same frame as a `div` through the CSSOM.
+`mountNightFrame(doc, container)` adds a click-through frame over a positioned container and returns its remover.
+The container is the body of a pop-out, or the root of a board tile.
+`setNightFrame(colours | null)` repaints every live frame.
+The pop-out and board records have an `unframe` field, and the frame goes with its window or tile.
+The frame sets a `className` and not an attribute, and it guards `remove`.
+The pop-out and board tests use a minimal fake element that has neither `setAttribute` nor `remove`.
+
+The frame is static on purpose.
+A call is not the place for motion, so the reduced-motion block has nothing to switch off.
 
 ### Three gates
 
@@ -232,6 +277,11 @@ and backfill on `update`.
 
 A flair sub-switch. The default is wrong: flair is off and this is on.
 
+The footer anchor (superseded by the header mount in 129-5). It was a
+zero-size element with `position: absolute` and `bottom: 100%` at the top-right
+corner of the footer, so the figure floated over the bottom-right corner of
+the feed. It existed because the scroller could not host the figure.
+
 The channel header as the place for the figure. The header is tight on a
 phone.
 
@@ -259,6 +309,12 @@ switch is off, the component does not mount.
 - **129-5 — the figure set.** The PNG cut-outs, `season/figures.ts`,
   `pickFigure`, the `<img>` in `SeasonFigure.tsx`, `assets.d.ts`, the `.png`
   loader in `test.mjs`, `tools/cut-season-sheet.py`, and `figures.test.ts`.
+- **129-6 — the night frame on video tiles.** `HourWindow`, `night`, `inHours`,
+  and `nightFor` in `seasons.ts`. The minute clock and the `data-season-night`
+  attribute in `App.tsx`. The span in `VideoSurface` and the rules in
+  `theme.css`. `voice/night-frame.ts`, with its use in `pip.ts` and `board.ts`.
+  Tests in `seasons.test.ts`, `voice/night-frame.test.ts`, and
+  `theme-season.test.ts`.
 
 ## Trade-offs
 
@@ -266,8 +322,11 @@ switch is off, the component does not mount.
    `GET /api/auth/config` is cached with `max-age=60`, so the delay is one
    minute at most. A `welcome` payload field or a WebSocket broadcast is a
    later slice if it is wanted.
-2. The date check runs once an hour. A tab can show the figure up to one hour
-   into 2 November, or into 7 January.
+2. The date check runs once a minute, so the 18:00 edge of the night frame is
+   met within the minute. It costs one render a minute. A tab can show the
+   figure up to one minute into 2 November, or into 7 January.
+3. A pop-out opened during the night has its frame at once. A pop-out that
+   stays open across 18:00 is repainted by `setNightFrame`.
 
 ## Verification
 
@@ -281,8 +340,8 @@ A Playwright probe drives the real UI. It lives in the scratch slot
 `.claude/skills/run-chalk/probes/ui.mjs` and is not committed. The probe ran
 against the dev stack on 2026-10-31 and its 32 checks passed:
 
-- Desktop corner geometry with a short feed
-- A long feed, at the bottom and scrolled to the top
+- Desktop header geometry: the figure sits right after the wordmark, and the header has the same height with and without it
+- A long feed, at the bottom and scrolled to the top: the figure keeps its place
 - Reduced motion
 - The device switch
 - The phone layout, with no sideways overflow
@@ -319,18 +378,18 @@ Use two users, Alice and Bob, and a date inside the window.
 
 1. Check that the figure is absent for the first 4 s after a text channel
    opens, and that it shows at some point in the next 12 s.
-2. Check that the figure sits in the bottom-right corner of the feed, and that
-   a click on its position reaches the message under it.
-3. Check that the figure is not present in a voice channel or in a parked
-   channel.
+2. Check that the figure sits in the header beside the wordmark, and that the
+   header has the same height with and without the figure.
+3. Check that the figure stays in the header in a voice channel and in a
+   parked channel.
 4. Emulate reduced motion. Check that the figure comes and goes without a fade
    and without a bob.
 5. Clear the check box under settings, appearance, seasonal. Check that the
    figure does not mount on this device. Check that it stays off after a
    reload.
 6. Check that a device with flair off still shows the figure.
-7. Check the phone layout (400 px wide). Check that the figure does not cover
-   the composer and does not cause sideways overflow.
+7. Check the phone layout (400 px wide). Check that the figure sits in the header
+   after the wordmark and does not cause sideways overflow.
 8. As an administrator, open the settings tab in the admin panel and turn the
    switch off. Check that the figure on the screen of the administrator goes
    away at once.
@@ -348,6 +407,9 @@ Use two users, Alice and Bob, and a date inside the window.
 18. Set the system date to 24 December. Check that the window edge glows ice blue while the figure is out.
 19. On a light theme, for example `warmwhite`, check that the ice-blue glow is visibly darker.
 20. Watch a whole fade-out. Check that the figure does not change until it is gone.
+21. On 31 October after 18:00, join a video call. Check that every tile, the expanded tile, a pop-out window, and the board show the green frame.
+22. At 03:00 on 1 November, check that the green frame goes.
+23. Before 18:00 on 31 October, check that no green frame shows.
 
 ## How to add a season
 
@@ -366,6 +428,10 @@ Use two users, Alice and Bob, and a date inside the window.
    The second pair is for the rule that lists the five light themes.
    The pale glow of a dark theme is invisible on a light page.
 6. Add the keywords of the season to the `seasonal` section in `settings-nav.ts`, if they are not there.
+7. Optional: add a `night` window to the season.
+   A `night` window needs a rule `html[data-season-night="<id>"] .chalk-voice-night` in `theme.css`.
+   It also needs colours in the `setNightFrame` call in `App.tsx`.
+   `theme-season.test.ts` fails if a season has a `night` window and no such rule.
 
 `seasons.test.ts`, `figures.test.ts`, and `theme-season.test.ts` loop over the registry.
 They fail if a figure file, a `FIGURES` entry, or an aura colour is missing.
