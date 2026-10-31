@@ -6,9 +6,10 @@
 // foo.test.ts next to foo.ts and it gets picked up.
 //
 // Why not `node --test src/**/*.test.ts` directly?
-//   - Node 20 (our floor) doesn't strip TS types natively. 22.6+
-//     can with --experimental-strip-types, 23.6+ stable, but we
-//     don't want to require the bleeding edge.
+//   - Node 22 is our floor. On Node 22, type stripping is behind
+//     the --experimental-strip-types flag. It is stable only from
+//     Node 23.6. The runner must work on every supported LTS, so
+//     it transpiles with esbuild.
 //   - tsx as a devDep would add ~30 transitive packages. esbuild
 //     is already in devDependencies, so reuse it.
 //

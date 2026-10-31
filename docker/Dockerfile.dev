@@ -4,7 +4,7 @@
 # Dev image with a shell for debugging. Not for production.
 
 # ---- Frontend stage ------------------------------------------------------
-FROM node:20-alpine AS frontend
+FROM node:24-alpine AS frontend
 WORKDIR /web
 COPY web/package.json web/package-lock.json* ./
 RUN npm ci --prefer-offline --no-audit || npm install
@@ -12,7 +12,7 @@ COPY web/ ./
 RUN npm run build
 
 # ---- Build stage ---------------------------------------------------------
-FROM golang:1.25-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum* ./
 RUN go mod download || true
@@ -25,7 +25,7 @@ COPY --from=frontend /web/dist ./web/dist
 RUN CGO_ENABLED=0 go build -o /out/chalkd ./cmd/chalkd
 
 # ---- Runtime stage -------------------------------------------------------
-FROM alpine:3.20
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates curl tini
 COPY --from=build /out/chalkd /usr/local/bin/chalkd
 EXPOSE 8443

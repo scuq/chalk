@@ -12,10 +12,18 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Changed
+- The server image is built with the current Go release (1.27) and the current
+  Node runtime again. The previous ones no longer received security fixes.
+
 ### Fixed
 - Password managers now recognise the username and password fields on the
   sign-in, sign-up, password-change, and recovery screens. They can fill a
   saved login or offer to save a new one. Enter still submits each step.
+- If the roster pictures switch is on, the profile picture of a friend now
+  shows in the sidebar as soon as the list loads. Before, it showed only after
+  you opened the direct message with that friend. A picture still does not
+  show for a direct message that you never opened on this device.
 
 ---
 

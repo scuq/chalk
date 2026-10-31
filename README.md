@@ -58,7 +58,7 @@ The default theme (six more in settings), on a dev instance:
 
 ## Quick start (development)
 
-Requirements: Go 1.25+, Node 20+, Docker 24+, Bash 5.2+, `make`, `git`.
+Requirements: Go 1.27+, Node 22+, Docker 24+, Bash 5.2+, `make`, `git`.
 
 ```sh
 git clone https://github.com/scuq/chalk

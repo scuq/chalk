@@ -16,7 +16,7 @@ All paths are relative to the repo root.
 
 ## Prerequisites
 
-Docker (for Postgres), Go 1.25, Node 22 — all already present on this
+Docker (for Postgres), Go 1.27, Node 22 — all already present on this
 machine. One-time driver setup (own Playwright install; the repo's
 `test/e2e` pin is too old to reach the chat UI, see Gotchas):
 

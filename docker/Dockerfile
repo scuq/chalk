@@ -15,7 +15,7 @@
 # where node crashed ("uncaught target signal 4") and npm ci then hung the
 # release for hours. Only the runtime stage is per target platform, and it
 # runs nothing.
-FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend
+FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend
 
 WORKDIR /web
 COPY web/package.json web/package-lock.json* ./
@@ -25,7 +25,7 @@ COPY web/ ./
 RUN npm run build
 
 # ---- Build stage ---------------------------------------------------------
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 
 # Set by buildx per target platform (linux/amd64, linux/arm64).
 ARG TARGETOS=linux

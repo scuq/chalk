@@ -7,7 +7,7 @@ manager. This file is only what applies to every session; the detail lives in
 
 ## Stack
 
-- **Server** — Go 1.25, net/http (method-pattern mux), pgx/v5, PostgreSQL.
+- **Server** — Go 1.27, net/http (method-pattern mux), pgx/v5, PostgreSQL.
   `internal/store/` holds all SQL: `s.Pool` for one-shot queries, `s.withTx`
   (store.go) + `FOR UPDATE` for anything needing consistency guarantees.
   `internal/chalkctl/` + `cmd/chalkctl/` is the deployment manager (podman

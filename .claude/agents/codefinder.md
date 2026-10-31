@@ -42,7 +42,7 @@ Example:
 A literal search for one name is therefore usually insufficient.
 
 Server:
-- Go 1.25
+- Go 1.27
 - internal/store/ owns SQL
 - internal/server/ contains server handling
 - internal/chalkctl/ and cmd/chalkctl/ contain deployment management
