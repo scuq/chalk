@@ -1,6 +1,7 @@
 # Phase 128 — toolchain and dependency refresh
 
-**Status:** 128-1 built (2026-10-31). These steps passed on go1.27.3:
+**Status:** 128-1 and 128-2 built (2026-10-31). These steps passed on go1.27.3
+for both slices:
 `go build`, `go vet`, `gofmt -l`, the Go suite without the database
 variables, `tsc --noEmit`, `node test.mjs`, `node build.mjs`, and a docker
 build of `docker/Dockerfile`. With the database variables set, `internal/auth`
@@ -8,7 +9,9 @@ passed and `test/integration` failed 64 tests. The same 64 tests fail at HEAD
 on go1.25.12 against the same dev database. The cause is the dev database,
 not the toolchain: it does not contain the fixture users from
 `fixtures/users.sql`. The test that looks for the bob fixture fails with
-"not found". Slices 128-2 to 128-5 are planned, not started.
+"not found". The same 64 tests failed the same way after 128-2, so the module
+bumps did not change the result. Slices 128-3 to 128-5 are planned, not
+started.
 
 **Tags:** `#toolchain` → `tools/where.sh -g toolchain`
 
@@ -45,6 +48,36 @@ recorded. One slice changes one kind of input.
 - The production runtime `gcr.io/distroless/static-debian12:nonroot` does not
   change. It is still supported.
 
+128-2 changes Go module pins only:
+
+- `coder/websocket` moves from 1.8.13 to 1.8.15, `jackc/pgx/v5` from 5.9.2 to
+  5.12.0, and `golang.org/x/crypto` from 0.51.0 to 0.58.0.
+- `go mod tidy` moves four indirect modules: `jackc/puddle/v2` from 2.2.2 to
+  2.2.3, `golang.org/x/sync` from 0.21.0 to 0.24.0, `golang.org/x/sys` from
+  0.44.0 to 0.49.0, and `golang.org/x/text` from 0.39.0 to 0.43.0.
+- `go-webauthn` does not change. Slice 128-3 moves it.
+- pgx 5.12.0 (2026-10-30) fixes two high-severity vulnerabilities: SQL
+  injection in simple-protocol batches (GHSA-j38q-h3ph-jjpq) and a bypass of
+  `require_auth` and `channel_binding=require` (GHSA-95fj-3fxw-g62g). chalk
+  uses no simple protocol, no batches, and neither setting. It was not exposed.
+  It now carries the fixed version.
+
+The review of chalk code covered three behavior changes in these releases.
+None applies to chalk:
+
+- pgx 5.11.0 and 5.12.0 require mocks of `pgx.Rows` and `BatchResults` to add
+  `TypeMap` and `Tx`. chalk sets no `QueryExecMode`, calls no `SendBatch`, and
+  has no custom `pgx.Rows` or `BatchResults` implementation.
+- pgx 5.11.0 replaced the connection-URI parser with a parser that matches
+  libpq exactly. The database URLs of `chalkctl` carry base64url passwords
+  (letters, digits, `-`, and `_`), so the new parser accepts them unchanged.
+- `coder/websocket` 1.8.14 changed the origin-scheme comparison. `websocket.Accept`
+  in chalk sets only `Subprotocols`, so the change has no effect.
+
+pgx 5.10.0 also hardened the binary decoders against malicious servers. pgx
+5.11.0 changed text-format `timestamptz` scans to `time.Local`. Neither change
+needed a code change in chalk.
+
 The Go 1.26 and 1.27 release notes show nothing that touches chalk code
 paths. These changes are worth knowing:
 
@@ -58,8 +91,8 @@ paths. These changes are worth knowing:
 
 - 128-1 (built): Go 1.27.3 and Node 24 build toolchain, Alpine 3.24 dev
   image, docs updated.
-- 128-2 (planned): Go module bumps without breaking changes. `go mod tidy`
-  updates the indirect modules.
+- 128-2 (built): Go module bumps without breaking changes. `go mod tidy`
+  updated the indirect modules.
 - 128-3 (planned): `go-webauthn/webauthn` to 0.18.2. This slice stands alone.
   Version 0.18.0 (2026-08-27) has large breaking changes, listed in the
   library file `MIGRATION.md`. It also adds ML-DSA support on Go 1.27. The
@@ -80,9 +113,13 @@ paths. These changes are worth knowing:
 | Node image | `docker/Dockerfile`, `docker/Dockerfile.dev` | `node:20-alpine` | `node:24-alpine` | 128-1, built |
 | Node in CI | `.github/workflows/ci.yml` | '20' | '24' | 128-1, built |
 | Alpine runtime | `docker/Dockerfile.dev` | 3.20 | 3.24 | 128-1, built |
-| `coder/websocket` | `go.mod` | 1.8.13 | 1.8.15 | 128-2, planned |
-| `jackc/pgx/v5` | `go.mod` | 5.9.2 | 5.12.0 | 128-2, planned |
-| `golang.org/x/crypto` | `go.mod` | 0.51.0 | 0.58.0 | 128-2, planned |
+| `coder/websocket` | `go.mod` | 1.8.13 | 1.8.15 | 128-2, built |
+| `jackc/pgx/v5` | `go.mod` | 5.9.2 | 5.12.0 | 128-2, built |
+| `golang.org/x/crypto` | `go.mod` | 0.51.0 | 0.58.0 | 128-2, built |
+| `jackc/puddle/v2` | `go.mod` | 2.2.2 | 2.2.3 | 128-2, built |
+| `golang.org/x/sync` | `go.mod` | 0.21.0 | 0.24.0 | 128-2, built |
+| `golang.org/x/sys` | `go.mod` | 0.44.0 | 0.49.0 | 128-2, built |
+| `golang.org/x/text` | `go.mod` | 0.39.0 | 0.43.0 | 128-2, built |
 | `go-webauthn/webauthn` | `go.mod` | 0.17.3 | 0.18.2 | 128-3, planned |
 | `go-webauthn/x` | `go.mod` | 0.2.5 | 0.3.1 | 128-3, planned |
 | `@mediapipe/tasks-vision` | `web/package.json` | 1.0.1 | 1.2.0 | 128-4, planned |

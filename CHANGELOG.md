@@ -15,6 +15,9 @@ The engineering-level history (which slice shipped what) lives in
 ### Changed
 - The server image is built with the current Go release (1.27) and the current
   Node runtime again. The previous ones no longer received security fixes.
+- The server now ships the current PostgreSQL driver. This closes two security
+  issues that the driver authors reported. chalk did not use the affected code
+  paths, so it was not exposed.
 
 ### Fixed
 - Password managers now recognise the username and password fields on the
