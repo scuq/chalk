@@ -155,3 +155,40 @@ export function firstRowBelow(
   }
   return -1;
 }
+
+// 79-8: A LandingTarget is the place where a landing puts the view: on the
+// divider, or at the end of the feed.
+export type LandingTarget = "divider" | "end";
+
+// 79-8: landingTarget returns the target of a landing. The first landing on a
+// channel uses the rows of the first commit. Rows that a refetch brings later
+// land an untouched reader again. This rule keeps the new landing from
+// changing the target without a reason.
+//
+// previous is the landing that still holds the view, or null for a first
+// landing. hasDivider reports whether the feed holds a divider now.
+// dividerEarnsIt measures the unread run against the screen. landingTarget
+// calls it only when the rule needs the answer.
+//
+// The rules, in this order:
+//
+//	- If the previous landing was on the divider, the target is the divider.
+//	  If the divider is gone, the target is the end.
+//	- If the previous landing was at the end and saw a divider, the target is
+//	  the end. The run did not earn the scroll then, and a new landing must
+//	  not move a reader who sees the newest message.
+//	- Otherwise the target is the divider if the feed holds one and the run
+//	  earns the scroll, and the end if not. This covers a first landing, and
+//	  a previous landing that saw no divider because the unread rows were not
+//	  loaded.
+export function landingTarget(
+  previous: { target: LandingTarget; hadDivider: boolean } | null,
+  hasDivider: boolean,
+  dividerEarnsIt: () => boolean,
+): LandingTarget {
+  if (previous !== null) {
+    if (previous.target === "divider") return hasDivider ? "divider" : "end";
+    if (previous.hadDivider) return "end";
+  }
+  return hasDivider && dividerEarnsIt() ? "divider" : "end";
+}

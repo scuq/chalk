@@ -7,6 +7,7 @@ import {
   firstRowBelow,
   keepDrift,
   landingFillAllowed,
+  landingTarget,
   nextEmptyStreak,
   unreadRunFits,
 } from "../chat/history-paging";
@@ -586,6 +587,12 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
   // left parked at whichever image grew. Holding the anchor until the user
   // takes over is what makes the landing survive that.
   const anchorRef = useRef<Anchor>(null);
+  // 79-8: true after the first gesture of the reader since the landing.
+  // Until then, each row that arrives lands the view again.
+  const touchedRef = useRef(false);
+  // 79-8: true if the last landing saw a divider. landingTarget uses it to
+  // keep a new landing from changing the target without a reason.
+  const landedWithDividerRef = useRef(false);
   // 79-4: what holds the view once the anchor is released and the reader is
   // somewhere other than the bottom -- the row they are reading from, and its
   // offset in the scrollport. See KeepAnchor.
@@ -744,6 +751,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
         keepRef.current = topRowAnchor(rootRef.current, sc);
       }
       anchorRef.current = null;
+      touchedRef.current = true;
     };
     sc.addEventListener("scroll", onScroll, { passive: true });
     sc.addEventListener("wheel", release, { passive: true });
@@ -866,15 +874,39 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
   // After that, any new message pins the view to the bottom as before.
   useEffect(() => {
     if (ephemeral || messages.length === 0) return;
-    if (landedRef.current !== (channelID ?? null)) {
-      landedRef.current = channelID ?? null;
+    // 79-8: the landing is not spent until the reader takes over.
+    // On a re-entry, the first commit holds the window of the last visit.
+    // The rows that arrived while the socket was down come later, through
+    // the key-ready refetch.
+    // A landing made once on that old window put the newest old row at the
+    // bottom. The follow of the late append was a smooth scroll, and a phone
+    // did not carry it out.
+    // So the landing runs again on every row change, at once, on the rows
+    // that exist now, while no gesture has happened and the anchor is held.
+    // A gesture, or a dropped anchor (the flash target), ends the landing
+    // phase.
+    const relanding = landedRef.current === (channelID ?? null);
+    if (!relanding || (!touchedRef.current && anchorRef.current !== null)) {
+      if (!relanding) {
+        landedRef.current = channelID ?? null;
+        touchedRef.current = false;
+      }
       // Landing mid-history means not pinned. Set it here rather than
       // waiting for the scroll event, so a message arriving in the same
       // tick can't win the race and yank us to the bottom.
       const scroller = scrollParentOf(rootRef.current);
       const divider = dividerIndex >= 0 ? dividerRef.current : null;
-      const landOnDivider =
-        divider !== null && dividerEarnsTheScroll(divider, endRef.current, scroller);
+      const previous =
+        relanding && anchorRef.current !== null
+          ? { target: anchorRef.current, hadDivider: landedWithDividerRef.current }
+          : null;
+      const target = landingTarget(
+        previous,
+        divider !== null,
+        () => divider !== null && dividerEarnsTheScroll(divider, endRef.current, scroller),
+      );
+      landedWithDividerRef.current = divider !== null;
+      const landOnDivider = target === "divider";
       pinnedRef.current = !landOnDivider;
       // 79-2: hold the target the landing actually used, not "divider
       // whenever one exists". A divider that did not earn the scroll left the

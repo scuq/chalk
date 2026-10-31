@@ -14,6 +14,7 @@ import {
   KEEP_DRIFT_MIN_PX,
   keepDrift,
   landingFillAllowed,
+  landingTarget,
   nextEmptyStreak,
   pageMarksComplete,
   unreadRunFits,
@@ -179,4 +180,44 @@ test("a probe line below every row holds nothing", () => {
 
 test("an empty feed holds nothing", () => {
   assert.equal(firstRowBelow([], 10), -1);
+});
+
+// 79-8: the target of a first landing, and of a landing again on late rows.
+test("a first landing takes the divider only when the run earns it", () => {
+  assert.equal(landingTarget(null, true, () => true), "divider");
+  assert.equal(landingTarget(null, true, () => false), "end");
+  assert.equal(landingTarget(null, false, () => true), "end");
+});
+
+test("a re-landing keeps a divider landing", () => {
+  const prev = { target: "divider" as const, hadDivider: true };
+  assert.equal(landingTarget(prev, true, () => false), "divider");
+});
+
+test("a re-landing falls to the end when the divider is gone", () => {
+  const prev = { target: "divider" as const, hadDivider: true };
+  assert.equal(landingTarget(prev, false, () => true), "end");
+});
+
+test("a re-landing keeps the end when the first landing saw a divider", () => {
+  const prev = { target: "end" as const, hadDivider: true };
+  assert.equal(landingTarget(prev, true, () => true), "end");
+});
+
+test("a re-landing decides again when the first landing saw no divider", () => {
+  const prev = { target: "end" as const, hadDivider: false };
+  assert.equal(landingTarget(prev, true, () => true), "divider");
+  assert.equal(landingTarget(prev, true, () => false), "end");
+  assert.equal(landingTarget(prev, false, () => true), "end");
+});
+
+test("the measurement runs only when the rule needs it", () => {
+  let asked = 0;
+  const earns = () => { asked++; return true; };
+  landingTarget(null, false, earns);
+  landingTarget({ target: "divider", hadDivider: true }, true, earns);
+  landingTarget({ target: "end", hadDivider: true }, true, earns);
+  assert.equal(asked, 0);
+  landingTarget(null, true, earns);
+  assert.equal(asked, 1);
 });

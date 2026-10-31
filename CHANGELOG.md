@@ -22,6 +22,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ### Fixed
 - On the light themes (light, snazzy-light, warmwhite, vscode-light, and catppuccin-latte), the green glow along the window edge was too pale to see while the ghost was out. The glow now uses a darker, denser green on these themes.
+- On a phone, you can leave the app in the background and open a conversation again. It now lands on the messages that arrived in the meantime. If some of them are unread, it lands on the "new messages" line. Before, it landed on the last message that the conversation showed before, and the new messages were below the screen.
 
 ---
 

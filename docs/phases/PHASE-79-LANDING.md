@@ -4,7 +4,7 @@
 changelog; the design notes are as-built, not a contemporaneous plan.
 
 **Status:** shipped, v0.6.4 (79-1), v0.7.0 (79-2), v0.7.1 (79-3),
-v0.7.4 (79-4, 79-5). Built, not yet released: 79-6, 79-7.
+v0.7.4 (79-4, 79-5), v0.8.26 (79-6, 79-7). Built, not yet released: 79-8.
 **Tags:** `#unread`, `#history` → `tools/where.sh -g unread`
 
 ## Why
@@ -43,6 +43,9 @@ further.
   a scroll cannot let growth above the reader move the view.
 - **79-7** — clear the "show message" jump target when the phone returns to the
   list, so re-entry does not jump to the old row.
+- **79-8** — land again when rows arrive after the landing, until the reader
+  touches the screen, so a re-entry after a spell in the background does not
+  stay on the old window.
 
 ## The third state (79-4)
 
@@ -158,6 +161,110 @@ on a channel change does not fire.
 The target stayed armed, and re-entry centered the old row.
 A new effect in `App.tsx` clears the target when `zuckerScreen` becomes
 `"list"`.
+
+## The stale window (79-8)
+
+On a phone (Zuckermode, phase 62), the conversation list and the feed share the
+scroller `.chalk-main`, and `MessageList` mounts again on each entry.
+A conversation opened again after the app was in the background landed on the
+last message that the phone showed before.
+The rows that arrived in the meantime were below the screen.
+The reader saw older history.
+
+The cause was confirmed in the code and by a probe:
+
+- `state.messages[cid]` survives a visit.
+  On re-entry the feed mounts with the window of the last visit.
+- The activation fetch in `App.tsx` returns early when the history is already
+  loaded.
+- The rows that arrived while the socket was down come only through the
+  key-ready refetch in `ensureKeyFor` (the 23g backstop), which runs after the
+  mount.
+  On a phone the socket is down in the background, so every re-entry after a
+  background spell is this case.
+- The landing effect landed once per channel, on the first commit with rows.
+  That commit held the old window.
+- The late append then went through the follow branch, a smooth `scrollToEnd`.
+  On the phone the view did not move.
+- If unread rows were among the late rows, the divider was not in the old
+  window at the time of the landing.
+  The landing went to the end and the divider was lost.
+
+The fix has three parts:
+
+- `touchedRef` is false at the mount.
+  The release step sets it to true on the first wheel, touch, mouse, or key
+  gesture.
+  A landing that moves to a new channel sets it to false.
+- The landing effect lands again on every row change while `touchedRef` is
+  false and `anchorRef` is still held.
+  A gesture, or a dropped anchor (the flash target of 49-1), ends the landing
+  phase.
+  A new landing is instant (`behavior: "auto"`), on the rows that exist now.
+- `landingTarget` in `history-paging.ts` chooses the target.
+  `landedWithDividerRef` carries between landings whether the last landing saw
+  a divider.
+
+The rules of `landingTarget`, in this order:
+
+| Previous landing | Divider in the feed now | Target |
+|---|---|---|
+| None (first landing) | Yes, and the run earns the scroll | Divider |
+| None (first landing) | No, or the run does not earn the scroll | End |
+| On the divider | Yes | Divider |
+| On the divider | No | End |
+| At the end, and it saw a divider | Any | End |
+| At the end, and it saw no divider | Yes, and the run earns the scroll | Divider |
+| At the end, and it saw no divider | No, or the run does not earn the scroll | End |
+
+The row "at the end, and it saw a divider" keeps the 79-2 rule: the run did not
+earn the scroll then, so the new landing does not move the reader.
+The row "at the end, and it saw no divider" decides again because the unread
+rows were not loaded at the time.
+Six tests in `history-paging.test.ts` hold the table.
+
+The probe ran in Chromium with iPhone 14 emulation.
+It proxied the websocket of the reader.
+It dropped the `message` frames for one channel during the background spell and
+held the `fetch_history_ack` for 2.5 s.
+It advanced the cursor of the reader by SQL in place of a second device.
+It had three passes: the active channel after a socket cut with the rows read
+elsewhere, the same with unread rows, and a different channel with the socket
+alive.
+
+The numbers before the fix:
+
+- Pass 1 landed at `scrollTop` 628 of 1124, which is the old end.
+  The append grew the feed to 1987 at 2.5 s.
+  The view followed to 1491 one frame (16 ms) later, through the
+  `ResizeObserver`.
+  Chromium does not show the stall of the phone.
+- Pass 2 (16 unread late rows) landed at the end.
+  The divider was 692 px above the viewport.
+- Pass 3 followed to the end.
+- 15 of 19 checks passed.
+  Four failed: the probe's own bookkeeping and pass 2.
+
+The numbers after the fix:
+
+- Pass 1 went from 628 to 1491 in the same frame as the growth to 1987.
+- Pass 2 stopped at `scrollTop` 1057 of 2308.
+  The divider was 63 px below the top of the scroller, under the header (the
+  bottom of the header is at 51 px).
+- Pass 3 went from 1491 to 2211 at the append.
+- First visits landed on the divider at 63 px.
+- 19 of 19 checks passed, with no page errors.
+
+A visible consequence: until the first gesture, each row that arrives lands the
+view again at once, in place of the smooth follow.
+After the first gesture the follow branch is as before.
+
+Caveat: the probe did not reproduce the failure of the phone to carry out the
+smooth follow.
+The fix removes the smooth follow from the phase before the first gesture.
+A reader who touched the screen before the append still depends on the follow
+branch.
+A possible 79-9 applies the follow again when a touch ends.
 
 ## Where it lives
 
