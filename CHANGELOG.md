@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.9.0 — 31 October 2026 — Ten seasonal figures, a winter season, and phone conversations that land on new messages
 
 ### Added
 - The Halloween visitor is now one of ten figures, and a different one comes each time. The figures include a pumpkin, a ghost, a witch's hat, a black cat, and a bat. They are cut from a single icon set.
