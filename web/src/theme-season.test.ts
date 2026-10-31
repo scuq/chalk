@@ -60,6 +60,18 @@ test("no seasonal rule lives outside the seasonal section", () => {
   assert.ok(!/chalk-season/.test(after), "a chalk-season rule lives below the seasonal section");
 });
 
+test("the aura covers the window, takes no clicks, and paints only its edge", () => {
+  const aura = /\.chalk-season-aura\s*\{([^}]*)\}/.exec(animated);
+  assert.ok(aura, "no .chalk-season-aura rule");
+  assert.match(aura![1], /position\s*:\s*fixed/);
+  assert.match(aura![1], /inset\s*:\s*0/);
+  assert.match(aura![1], /pointer-events\s*:\s*none/);
+  assert.match(aura![1], /box-shadow\s*:[^;]*inset/);
+  assert.ok(!/background\s*:/.test(aura![1]), "the aura must not fill the window");
+  // Every season in the registry sets its aura colour.
+  assert.match(animated, /\.chalk-season-aura\[data-season="halloween"\]\s*\{[^}]*--chalk-season-aura\s*:/);
+});
+
 test("the anchor takes no room and no clicks, and hangs off the footer's top edge", () => {
   const anchor = /\.chalk-season\s*\{([^}]*)\}/.exec(animated);
   assert.ok(anchor, "no .chalk-season rule");

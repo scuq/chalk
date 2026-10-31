@@ -73,6 +73,22 @@ block of flair. `web/src/theme-season.test.ts` holds every moving selector of
 this phase to its own reduced-motion block. It also holds the section above
 flair.
 
+### The aura
+
+While the ghost is visible, a second element shows beside the glyph.
+`SeasonFigure.tsx` renders it with the class `chalk-season-aura`,
+`data-testid="season-aura"`, and `data-season` set to the season id.
+It is a fixed sheet over the whole viewport, at z-index 1000, and it takes no clicks.
+It paints only an inset box-shadow: a 1 px inner line and a 90 px glow.
+It has no background, so the middle of the window is not changed.
+
+Each season sets the colour in `--chalk-season-aura` and `--chalk-season-aura-line`.
+Halloween uses a pale ghost green.
+The opacity fades over 1200 ms with the visibility of the figure.
+The reduced-motion block of the same section sets `transition: none` on the aura.
+`web/src/theme-season.test.ts` holds the sheet fixed, with `inset: 0`, click-through, inset-shadow only, and no fill.
+It also requires that every season in the registry sets its aura colour.
+
 ### Three gates
 
 The figure shows only if all three hold:
@@ -202,6 +218,17 @@ against the dev stack on 2026-10-31 and its 32 checks passed:
 - The admin tab, which reads the stored value again
 - The admin switch end to end: config false, row stored, own figure gone at once, peer sees none after a cache-cleared reload, back on
 
+The probe has four more checks for the aura.
+They test four facts:
+
+- The aura covers the window
+- The aura is lit while the ghost is out
+- The aura paints an edge and not a fill
+- The aura is dark when the ghost hides
+
+The aura checks came after the 32-check run.
+Run the probe again to see them pass.
+
 ### Manual checklist for the live stack
 
 Use two users, Alice and Bob, and a date inside the window.
@@ -229,6 +256,7 @@ Use two users, Alice and Bob, and a date inside the window.
     shows the ghost.
 11. Close and open the settings tab. Check that it shows the saved value.
 12. Set the system date outside the window. Check that no ghost shows.
+13. Check that the edge of the window glows while the ghost is out, and that the edge is dark otherwise.
 
 ## How to add a season
 

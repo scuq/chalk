@@ -11787,6 +11787,30 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-season-cut {
   fill: var(--chalk-bg);
 }
+/* The aura is a glow along the inner edge of the window. It shows while the
+   figure is visible. The element is fixed, takes no clicks, and sits at
+   z-index 1000, the level of the lightbox and the menus. It paints only an
+   inset shadow and has no background, so the middle of the window is not
+   changed. Each season sets its colour in --chalk-season-aura and
+   --chalk-season-aura-line. */
+.chalk-season-aura {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 1200ms ease;
+  box-shadow:
+    inset 0 0 0 1px var(--chalk-season-aura-line),
+    inset 0 0 90px 14px var(--chalk-season-aura);
+}
+.chalk-season-aura[data-season="halloween"] {
+  --chalk-season-aura: rgba(126, 255, 176, 0.42);
+  --chalk-season-aura-line: rgba(160, 255, 200, 0.35);
+}
+.chalk-season-aura--visible {
+  opacity: 1;
+}
 @keyframes chalk-season-bob {
   0%,
   100% {
@@ -11822,7 +11846,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
    the seasonal section -- theme-season.test.ts holds every animated
    selector to it. */
 @media (prefers-reduced-motion: reduce) {
-  .chalk-season-figure {
+  .chalk-season-figure,
+  .chalk-season-aura {
     transition: none;
   }
   .chalk-season-figure--visible .chalk-season-svg {

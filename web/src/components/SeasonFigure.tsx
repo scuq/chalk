@@ -9,6 +9,8 @@
 // footer only for a text channel that is on screen. pointer-events: none stops
 // the glyph from taking a click. The fade and the bob are CSS, and reduced
 // motion switches them off. The only timer is one setTimeout per schedule step.
+// While the glyph shows, the component also renders the aura, a glow along the
+// window edge.
 
 import { useEffect, useState } from "preact/hooks";
 import type { Season, SeasonId } from "../season/seasons";
@@ -29,8 +31,18 @@ export function SeasonFigure({ season }: Props) {
     const t = setTimeout(() => setPeek((p) => nextPeek(p.visible)), peek.ms);
     return () => clearTimeout(t);
   }, [peek]);
+  const vis = peek.visible ? " chalk-season-aura--visible" : "";
   return (
     <div class="chalk-season" data-testid="season-anchor">
+      {/* 129-1: The aura is a glow along the inner edge of the window. It shows
+          while the figure is visible. It is fixed to the viewport and takes no
+          clicks. The season rule in theme.css sets its colour. */}
+      <div
+        class={"chalk-season-aura" + vis}
+        data-testid="season-aura"
+        data-season={season.id}
+        aria-hidden="true"
+      />
       <span
         class={"chalk-season-figure" + (peek.visible ? " chalk-season-figure--visible" : "")}
         data-testid="season-figure"

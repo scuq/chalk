@@ -34,7 +34,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     phase: 129,
     title: "a ghost for halloween",
     lines: [
-      "from 24 october to 1 november a small ghost visits the bottom corner of the conversation now and then, and other seasons will bring their own figure",
+      "from 24 october to 1 november a small ghost visits the bottom corner of the conversation now and then, with a faint green glow along the window's edge while it is out, and other seasons will bring their own figure",
       "it is on by default, you can turn it off for this device, and the administrator can turn it off for the whole server",
     ],
     where: "settings → appearance → seasonal",
