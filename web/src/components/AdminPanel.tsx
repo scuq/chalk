@@ -14,9 +14,10 @@
 //
 // All state lives in the reducer; this component reads and dispatches.
 
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { AdminUsersTab } from "./AdminUsersTab";
 import { AdminBlacklistTab } from "./AdminBlacklistTab";
+import { AdminSettingsTab } from "./AdminSettingsTab"; // 129-3
 import { ConfirmModal } from "./ConfirmModal";
 import {
   listUsers,
@@ -27,14 +28,21 @@ import {
   listBlacklist,
   addToBlacklist,
   removeFromBlacklist,
+  getSettings,
+  putSettings,
+  type InstanceSettings,
 } from "../auth/admin";
 import { ApiError } from "../auth/api";
+import type { AuthConfig } from "../auth/types";
 import type { Action } from "../state/types";
 import type { AdminPanelState } from "../state/types";
 
 interface Props {
   state: AdminPanelState;
   ownUserID: string | null;
+  // 129-3: the loaded public config, so a saved switch can be folded into
+  // it and this client follows the change without a reload.
+  authConfig: AuthConfig | null;
   dispatch: (action: Action) => void;
   onBackToChat: () => void;
 }
@@ -43,9 +51,19 @@ interface Props {
 // to feel responsive, long enough to coalesce a fast typist.
 const SEARCH_DEBOUNCE_MS = 250;
 
+// 129-3: one wording for a failed admin call, the same the tabs above use.
+function describeError(err: unknown): string {
+  return err instanceof ApiError
+    ? `${err.code}: ${err.message}`
+    : err instanceof Error
+      ? err.message
+      : String(err);
+}
+
 export function AdminPanel({
   state,
   ownUserID,
+  authConfig,
   dispatch,
   onBackToChat,
 }: Props) {
@@ -118,6 +136,53 @@ export function AdminPanel({
     state.users.offset,
     state.users.refreshTick,
   ]);
+
+  // 129-3: settings tab: read the switches every time the tab opens, so
+  // the row shows what the database holds rather than what this client
+  // last saw. A retry re-runs the same effect through its tick.
+  const [settingsTick, setSettingsTick] = useState(0);
+  useEffect(() => {
+    if (state.activeTab !== "settings") return undefined;
+    let cancelled = false;
+    const run = async () => {
+      dispatch({ kind: "admin_settings_load_start" });
+      try {
+        const values = await getSettings();
+        if (cancelled) return;
+        dispatch({ kind: "admin_settings_load_succeeded", values });
+      } catch (err) {
+        if (cancelled) return;
+        dispatch({ kind: "admin_settings_load_failed", message: describeError(err) });
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [state.activeTab, settingsTick]);
+
+  // 129-3: a flipped switch goes to the server; its answer is the truth
+  // for the row, and it is folded into the public config so the figure
+  // on this screen follows at once. Other clients see it on their next
+  // load (the config endpoint's cache is a minute).
+  const onSettingsChange = async (patch: Partial<InstanceSettings>) => {
+    dispatch({ kind: "admin_settings_save_start", patch });
+    try {
+      const values = await putSettings(patch);
+      dispatch({ kind: "admin_settings_save_succeeded", values });
+      if (authConfig) {
+        dispatch({
+          kind: "auth_config_loaded",
+          config: { ...authConfig, seasonal_decorations: values.seasonal_decorations },
+        });
+      }
+    } catch (err) {
+      dispatch({ kind: "admin_settings_save_failed", message: describeError(err) });
+      // The row showed the flip before the server refused it: re-read, so
+      // it returns to what is stored.
+      setSettingsTick((t) => t + 1);
+    }
+  };
 
   // Blacklist tab: fetch when tab becomes active or pagination
   // changes or refreshTick increments. No search yet.
@@ -318,6 +383,16 @@ export function AdminPanel({
           >
             blacklist
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={state.activeTab === "settings"}
+            class={`chalk-admin-tab-btn ${state.activeTab === "settings" ? "chalk-admin-tab-btn--active" : ""}`}
+            onClick={() => dispatch({ kind: "admin_tab_change", tab: "settings" })}
+            data-testid="admin-tab-settings"
+          >
+            settings
+          </button>
         </nav>
       </header>
 
@@ -357,6 +432,13 @@ export function AdminPanel({
             onRemoveErrorDismiss={() =>
               dispatch({ kind: "admin_blacklist_remove_error_dismissed" })
             }
+          />
+        )}
+        {state.activeTab === "settings" && (
+          <AdminSettingsTab
+            state={state.settings}
+            onChange={onSettingsChange}
+            onRetry={() => setSettingsTick((t) => t + 1)}
           />
         )}
       </div>

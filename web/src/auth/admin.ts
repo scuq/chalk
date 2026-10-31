@@ -12,6 +12,9 @@
 //   POST   /api/admin/blacklist
 //   DELETE /api/admin/blacklist/{email}
 //
+//   GET    /api/admin/settings          (129-3)
+//   PUT    /api/admin/settings
+//
 //   POST   /api/admin/bootstrap/begin
 //   POST   /api/admin/bootstrap/finish
 //
@@ -215,4 +218,30 @@ export async function removeFromBlacklist(email: string): Promise<void> {
     credentials: "same-origin",
   });
   await parseEmpty(resp);
+}
+
+// ---- settings: the server-wide switches (129-3) ------------------------
+
+/** InstanceSettings mirrors the server's instanceSettings: every switch, defaults filled in. */
+export interface InstanceSettings {
+  seasonal_decorations: boolean;
+}
+
+export async function getSettings(): Promise<InstanceSettings> {
+  const resp = await fetch(`/api/admin/settings`, {
+    method: "GET",
+    credentials: "same-origin",
+  });
+  return parseResponse<InstanceSettings>(resp);
+}
+
+/** putSettings writes the switches present in the patch and returns the full set. */
+export async function putSettings(patch: Partial<InstanceSettings>): Promise<InstanceSettings> {
+  const resp = await fetch(`/api/admin/settings`, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  return parseResponse<InstanceSettings>(resp);
 }

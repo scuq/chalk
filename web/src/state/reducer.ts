@@ -2840,5 +2840,76 @@ export function reducer(state: AppState, action: Action): AppState {
           blacklist: { ...state.adminPanel.blacklist, removeError: null },
         },
       };
+
+    // 129-3: the settings tab. A load keeps the last values on screen while
+    // it runs. A save shows the flipped switch at once (a controlled check
+    // box that snaps back while the request runs reads as a refusal), and
+    // the server's answer (the full settings) replaces it; after a failure
+    // the panel re-reads, so the row returns to what is stored.
+    case "admin_settings_load_start":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          settings: { ...state.adminPanel.settings, loading: true, loadError: null },
+        },
+      };
+    case "admin_settings_load_succeeded":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          settings: {
+            ...state.adminPanel.settings,
+            values: action.values,
+            loading: false,
+            loadError: null,
+          },
+        },
+      };
+    case "admin_settings_load_failed":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          settings: { ...state.adminPanel.settings, loading: false, loadError: action.message },
+        },
+      };
+    case "admin_settings_save_start": {
+      const cur = state.adminPanel.settings.values;
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          settings: {
+            ...state.adminPanel.settings,
+            values: cur ? { ...cur, ...action.patch } : cur,
+            saving: true,
+            saveError: null,
+          },
+        },
+      };
+    }
+    case "admin_settings_save_succeeded":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          settings: {
+            ...state.adminPanel.settings,
+            values: action.values,
+            saving: false,
+            saveError: null,
+          },
+        },
+      };
+    case "admin_settings_save_failed":
+      return {
+        ...state,
+        adminPanel: {
+          ...state.adminPanel,
+          settings: { ...state.adminPanel.settings, saving: false, saveError: action.message },
+        },
+      };
   }
 }

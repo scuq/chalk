@@ -35,7 +35,7 @@ import type {
   VerifyEmailChangeState,
 } from "../auth/types";
 // Phase 09d-2b: admin panel uses these DTOs from the admin API client.
-import type { AdminUser, BlacklistEntry } from "../auth/admin";
+import type { AdminUser, BlacklistEntry, InstanceSettings } from "../auth/admin";
 import { initialAuthState } from "../auth/types";
 
 // ---- Domain types --------------------------------------------------------
@@ -1012,7 +1012,8 @@ export interface AppState {
 // initialAdminPanelState, and TypeScript const declarations must
 // be ordered top-to-bottom in the source file.
 
-export type AdminTab = "users" | "blacklist";
+// 129-3: the settings tab holds the server-wide switches.
+export type AdminTab = "users" | "blacklist" | "settings";
 
 // AdminUsersState mirrors what AdminUsersTab needs: the current
 // users list, search query, pagination cursor, load + action error
@@ -1053,10 +1054,22 @@ export interface AdminBlacklistState {
   removeError: string | null;
 }
 
+// 129-3: the server-wide switches an administrator flips at run time.
+// `values` is null until the first load answers, so the tab can tell "not
+// loaded" from "every switch off".
+export interface AdminSettingsState {
+  values: InstanceSettings | null;
+  loading: boolean;
+  loadError: string | null;
+  saving: boolean;
+  saveError: string | null;
+}
+
 export interface AdminPanelState {
   activeTab: AdminTab;
   users: AdminUsersState;
   blacklist: AdminBlacklistState;
+  settings: AdminSettingsState;
 }
 
 const initialAdminUsersState: AdminUsersState = {
@@ -1089,10 +1102,19 @@ const initialAdminBlacklistState: AdminBlacklistState = {
   removeError: null,
 };
 
+const initialAdminSettingsState: AdminSettingsState = {
+  values: null,
+  loading: false,
+  loadError: null,
+  saving: false,
+  saveError: null,
+};
+
 export const initialAdminPanelState: AdminPanelState = {
   activeTab: "users",
   users: initialAdminUsersState,
   blacklist: initialAdminBlacklistState,
+  settings: initialAdminSettingsState,
 };
 
 export const initialState: AppState = {
@@ -1420,6 +1442,13 @@ export type Action =
   | { kind: "admin_blacklist_remove_succeeded"; email: string }
   | { kind: "admin_blacklist_remove_failed"; email: string; message: string }
   | { kind: "admin_blacklist_remove_error_dismissed" }
+  // 129-3: settings tab
+  | { kind: "admin_settings_load_start" }
+  | { kind: "admin_settings_load_succeeded"; values: InstanceSettings }
+  | { kind: "admin_settings_load_failed"; message: string }
+  | { kind: "admin_settings_save_start"; patch: Partial<InstanceSettings> }
+  | { kind: "admin_settings_save_succeeded"; values: InstanceSettings }
+  | { kind: "admin_settings_save_failed"; message: string }
   // ---- Phase 9.6a: friends panel actions -------------------------------
   | { kind: "friends_panel_tab_change"; tab: "add" | "pending" | "friends" }
   | { kind: "friends_add_input_change"; value: string }
