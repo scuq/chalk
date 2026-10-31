@@ -10,10 +10,10 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.27 — 31 October 2026 — A ghost for Halloween, with a server-wide switch
 
 ### Added
-- Around Halloween (24 October to 1 November), a small ghost now visits the bottom corner of the conversation from time to time. It is on by default. To turn it off on one device, clear the check box under settings, appearance, seasonal. Other seasons will follow.
+- Around Halloween (24 October to 1 November), a small ghost now visits the bottom corner of the conversation from time to time. It is on by default. To turn it off on one device, clear the check box under settings, appearance, seasonal. While the ghost is out, a faint green glow also runs along the edge of the window. Other seasons will follow.
 - Administrators have a new settings tab in the admin panel. It has a server-wide switch for the seasonal figure.
 
 ---
