@@ -1,7 +1,7 @@
 # Phase 128 — toolchain and dependency refresh
 
-**Status:** 128-1, 128-2, 128-3, and 128-4 built (2026-10-31). These steps passed on
-go1.27.3 for the first three slices:
+**Status:** all five slices built (2026-10-31). The phase shipped. These steps
+passed on go1.27.3 for the first three slices:
 `go build`, `go vet`, `gofmt -l`, the Go suite without the database
 variables, `tsc --noEmit`, `node test.mjs`, `node build.mjs`, and a docker
 build of `docker/Dockerfile`. With the database variables set, `internal/auth`
@@ -10,8 +10,8 @@ on go1.25.12 against the same dev database. The cause is the dev database,
 not the toolchain: it does not contain the fixture users from
 `fixtures/users.sql`. The test that looks for the bob fixture fails with
 "not found". The same 64 tests failed the same way after 128-2, so the module
-bumps did not change the result. Slice 128-5 is planned, not
-started.
+bumps did not change the result. Slice 128-5 passed the desktop chain
+(`tsc --noEmit`, `node test.mjs`, `node build.mjs`).
 
 **Tags:** `#toolchain` → `tools/where.sh -g toolchain`
 
@@ -191,6 +191,72 @@ The browser version is not the cause. The specs predate auth v2:
 The driver and probes in `.claude/skills/run-chalk/` are the working browser
 path.
 
+128-5 moves Electron only:
+
+- In `desktop/`, `electron` moves from 43.4.1 to 45.2.1 (released 2026-10-30).
+  The `allowScripts` key moves from `electron@43.4.1` to `electron@45.2.1`.
+  Electron 45.2.1 embeds Chromium 156.0.8078.75 and Node 24.22.1. Electron
+  43.4.1 had Chromium 150.0.7871.224 and Node 24.18.1. The 43 line is still
+  patched at 43.8.6, but it loses support when Electron 46 ships. Electron 46
+  is in alpha.
+- `npm install` does not download the Electron binary while the `allowScripts`
+  key names the old version, because the postinstall stays blocked until the
+  key matches. Run `node node_modules/electron/install.js` by hand to get
+  it. PHASE-104 notes the same step for other reasons.
+
+The audit of the desktop lockfile had 8 findings before this slice. One of
+them was Electron 43 itself. `npm audit fix` without `--force` moved the
+transitive `brace-expansion` and `undici` inside the `@electron/packager`
+tree. After the bump and the fix, 5 moderate findings remain. All are `glob`
+and `minimatch` under `@electron/asar` inside `@electron/packager` 20.3.0. The
+only fix that npm offers is a downgrade to `@electron/packager` 18.4.4, which
+is a breaking change. The findings stay until the packager releases a version
+with a newer `glob`. Both packages run only at packaging time on the release
+runner. They are not in the shipped app. `npm audit` in `web/` and
+`test/e2e/` still reports 0 vulnerabilities.
+
+The review of the Electron 44 and 45 breaking changes against `desktop/src`
+found that none applies:
+
+- The sandboxed preload (`desktop/src/preload.ts`) uses no `Buffer`,
+  `setImmediate`, or Node module shims. It uses only `process.argv` and
+  `process.platform`, and both remain.
+- Screen share goes through `setDisplayMediaRequestHandler` with
+  `desktopCapturer` sources. Electron 45 did not change this flow.
+  `display-capture` is already in the permission allowlist
+  (`desktop/src/permissions.ts`).
+- Every window is already sandboxed with `contextIsolation`. This includes the
+  pop-out children from `setWindowOpenHandler`. The Electron 45 change that
+  sandboxes the children of unsandboxed windows therefore does not reach
+  chalk.
+- chalk does not use `safeStorage`, the `clipboard` module, `net.request`, or
+  `contentTracing`.
+- Electron 44 dropped macOS 12, Windows ia32, Linux armv7l, and the Unity
+  desktop. chalk targets none of them.
+
+The desktop chain passed: `npx tsc --noEmit`, `node test.mjs` (63 passed, 0
+failed), and `node build.mjs`. The Go build, `go vet`, and `gofmt -l` did not
+change and are clean. The web chain did not change.
+
+The real-shell probe ran on 2026-10-31. It used Playwright `_electron` with
+the shell started with `--server http://localhost:8443` against the dev stack
+and a new `XDG_CONFIG_HOME`. Six of six substantive tests passed:
+
+- The runtime reported electron 45.2.1, chrome 156.0.8078.75, and node
+  24.22.1.
+- The shell loaded the sign-in card of the server.
+- A user registered inside the shell through the full auth-v2 signup and
+  reached the chat.
+- The preload bridge was exposed under the sandbox.
+- The Document Picture-in-Picture API was absent, so the 104-6 switch still
+  works on Chromium 156.
+- `window.open('', …, 'popup,width=420,height=320')`, the plain pop-up path of
+  the call pop-out, opened a second shell window of 420×357.
+
+The run logged one console error: a 404 on `/api/server-identity`. The server
+answers 404 on purpose when it has no identity key configured, and the dev
+stack has none. It is not an Electron matter.
+
 ## Slices
 
 - 128-1 (built): Go 1.27.3 and Node 24 build toolchain, Alpine 3.24 dev
@@ -203,9 +269,9 @@ path.
   change is `ExtensionsUnsolicitedOutputPolicy`, with a test.
 - 128-4 (built): npm bumps in `web/` and `test/e2e/`. `npm audit` stays clean
   in both.
-- 128-5 (planned): Electron 43.4.1 to 45.2.1. The 43 line is still supported
+- 128-5 (built): Electron 43.4.1 to 45.2.1. The 43 line is still supported
   (43.8.6), but it loses support when Electron 46 ships. Electron 46 is in
-  alpha. `docs/browser-support.md` must then say Chromium 156.
+  alpha. `docs/browser-support.md` now says Chromium 156.
 
 ## Versions
 
@@ -231,7 +297,7 @@ path.
 | `@playwright/test` | `test/e2e/package.json` | 1.56.1 | 1.64.1 | 128-4, built |
 | `typescript` | `test/e2e/package.json` | 5.6.3 | 7.0.2 | 128-4, built |
 | `@types/node` | `test/e2e/package.json` | 22 | ^24.19.2 | 128-4, built |
-| Electron | `desktop/package.json` | 43.4.1 | 45.2.1 | 128-5, planned |
+| Electron | `desktop/package.json` | 43.4.1 | 45.2.1 | 128-5, built |
 
 These pins are current and do not change: `descope/virtualwebauthn` 1.0.5,
 `google/uuid` 1.6.0, `esbuild` 0.28.2, `typescript` 7.0.2 in `web/`,
@@ -244,6 +310,10 @@ These pins are current and do not change: `descope/virtualwebauthn` 1.0.5,
 - `gcr.io/distroless/static-debian13`. The image exists, but it has no
   security driver now.
 - Node 26 as the build image. Wait until it has several patch releases.
+- The `test/e2e` suite. Its specs predate auth v2 (see the 128-4 block). It
+  needs a revival.
+- The 5 moderate `npm audit` findings in `desktop/` under `@electron/packager`.
+  They stay until a packager release moves off the old `glob` and `minimatch`.
 
 ## Rejected
 
@@ -264,3 +334,7 @@ known for this toolchain.
 the design section records it.
 
 128-4 leaves no open item.
+
+128-5 leaves no open item. The probe found nothing to follow up. The verification of
+shaped windows on macOS and Windows from 104-6 does not change. It belongs to
+phase 104, not to this phase.

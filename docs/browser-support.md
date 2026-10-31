@@ -31,7 +31,7 @@ as Chrome 137+ proliferates (expected to be broadly safe to assume ~2027).
 
 The desktop app (`desktop/`, phase 104) is an Electron shell around the
 server's page, so its engine is whatever Chromium the pinned Electron embeds —
-Electron 43 carries Chromium 150, above the floor by a wide margin — and the
+Electron 45 carries Chromium 156, above the floor by a wide margin — and the
 support question there is the platform, not the browser:
 
 | Platform | Builds | Everything works? |

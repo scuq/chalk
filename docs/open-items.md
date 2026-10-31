@@ -265,3 +265,12 @@ Two deliberate exclusions:
   `NODE_ENV=production`, so released images ship unminified bundles with inline
   sourcemaps. Costlier since 52-2 (the MediaPipe chunk is 153 KB minified vs
   737 KB as shipped).
+- Phase 128 left five items open on purpose:
+  - Preact 10.29.8 to 11.1.1 (major release, its own phase).
+  - `gcr.io/distroless/static-debian13` (no security driver).
+  - Node 26 as the build image (wait for patch releases).
+  - The `test/e2e` suite (its specs predate auth v2).
+  - Five moderate `npm audit` findings in `desktop/` under `@electron/packager` (old `glob` and `minimatch`).
+
+  Reasons are in the Deferred section of
+  [phases/PHASE-128-TOOLCHAIN.md](phases/PHASE-128-TOOLCHAIN.md).

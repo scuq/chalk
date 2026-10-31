@@ -16,12 +16,12 @@
   },
   "devDependencies": {
     "@electron/packager": "20.3.0",
-    "electron": "43.4.1",
+    "electron": "45.2.1",
     "esbuild": "0.28.2",
     "typescript": "7.0.2"
   },
   "allowScripts": {
-    "electron@43.4.1": true,
+    "electron@45.2.1": true,
     "esbuild@0.28.2": true
   }
 }

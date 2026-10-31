@@ -119,6 +119,7 @@ as-built rather than a contemporaneous plan.
 | 125 | the channel header survives the phone keyboard | [PHASE-125-KEYBOARD.md](phases/PHASE-125-KEYBOARD.md) |
 | 126 | the zucker voice shelf keeps its row, and a call bar for the phone's home screen | [PHASE-126-ZUCKERCALL.md](phases/PHASE-126-ZUCKERCALL.md) |
 | 127 | password managers recognise the sign-in and password fields — real forms, named inputs, a hidden username | [PHASE-127-AUTOFILL.md](phases/PHASE-127-AUTOFILL.md) |
+| 128 | toolchain and dependency refresh — Go 1.27, Node 24, current Go modules, go-webauthn 0.18, npm packages and Electron 45 | [PHASE-128-TOOLCHAIN.md](phases/PHASE-128-TOOLCHAIN.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

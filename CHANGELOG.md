@@ -18,6 +18,7 @@ The engineering-level history (which slice shipped what) lives in
 - The server now ships the current PostgreSQL driver. This closes two security
   issues that the driver authors reported. chalk did not use the affected code
   paths, so it was not exposed.
+- The desktop app now runs on Electron 45, which carries Chromium 156.
 - The passkey library is current. A passkey from a provider that sends extra
   extension data along with the sign-in keeps working.
 - The video background blur runs on the current segmentation runtime.
