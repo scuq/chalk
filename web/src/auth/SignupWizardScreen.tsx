@@ -28,6 +28,8 @@ import {
   PASSWORD_MIN_LENGTH,
 } from "../crypto/authkdf";
 import { setKEK } from "./kek-holder";
+import { submitWhen } from "./form";
+import { HiddenUsername } from "./HiddenUsername";
 import { fetchAndPinServerIdentity } from "../crypto/server-pin"; // 83-6
 
 interface Props {
@@ -96,6 +98,9 @@ export function SignupWizardScreen({
 
   const usernameOK = /^[a-z0-9_]{3,32}$/.test(username.trim().toLowerCase());
   const emailOK = config.dev_mode ? true : /.+@.+\..+/.test(email.trim());
+  const canLeaveAccount = usernameOK && emailOK;
+  const canLeavePassword = !busy && policy.ok && confirmMatches;
+  const canFinish = !busy && code.trim().length === 6;
 
   // step 1 -> 2 is local; step 2 -> 3 calls begin (admission + TOTP secret).
   const onAccountNext = () => {
@@ -209,11 +214,14 @@ export function SignupWizardScreen({
         {banner && <p class="chalk-auth-error" data-testid="signup-banner">{banner}</p>}
 
         {step === "account" && (
-          <div data-testid="signup-step-account">
+          <form data-testid="signup-step-account" onSubmit={submitWhen(canLeaveAccount, onAccountNext)}>
             <label class="chalk-auth-label">
               username
               <input
                 class="chalk-auth-input"
+                type="text"
+                name="username"
+                id="signup-username"
                 value={username}
                 onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
                 placeholder="a-z, 0-9, _ (3-32 chars)"
@@ -226,8 +234,12 @@ export function SignupWizardScreen({
               display name (optional)
               <input
                 class="chalk-auth-input"
+                type="text"
+                name="name"
+                id="signup-display-name"
                 value={displayName}
                 onInput={(e) => setDisplayName((e.target as HTMLInputElement).value)}
+                autocomplete="nickname"
               />
             </label>
             <label class="chalk-auth-label">
@@ -235,6 +247,8 @@ export function SignupWizardScreen({
               <input
                 class="chalk-auth-input"
                 type="email"
+                name="email"
+                id="signup-email"
                 value={email}
                 onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
                 autocomplete="email"
@@ -249,29 +263,36 @@ export function SignupWizardScreen({
                 invite token
                 <input
                   class="chalk-auth-input"
+                  type="text"
+                  name="invite"
+                  id="signup-invite"
                   value={invite}
                   onInput={(e) => setInvite((e.target as HTMLInputElement).value)}
+                  autocomplete="off"
                 />
               </label>
             )}
             <button
               class="chalk-auth-button"
-              disabled={!usernameOK || !emailOK}
-              onClick={onAccountNext}
+              type="submit"
+              disabled={!canLeaveAccount}
               data-testid="signup-account-next"
             >
               Next: choose a password
             </button>
-          </div>
+          </form>
         )}
 
         {step === "password" && (
-          <div data-testid="signup-step-password">
+          <form data-testid="signup-step-password" onSubmit={submitWhen(canLeavePassword, onPasswordNext)}>
+            <HiddenUsername username={username.trim().toLowerCase()} id="signup-password-username" />
             <label class="chalk-auth-label">
               password
               <input
                 class="chalk-auth-input"
                 type="password"
+                name="new-password"
+                id="signup-password"
                 value={password}
                 onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
                 autocomplete="new-password"
@@ -282,6 +303,8 @@ export function SignupWizardScreen({
               <input
                 class="chalk-auth-input"
                 type="password"
+                name="confirm-password"
+                id="signup-password-confirm"
                 value={confirm}
                 onInput={(e) => setConfirm((e.target as HTMLInputElement).value)}
                 autocomplete="new-password"
@@ -307,8 +330,8 @@ export function SignupWizardScreen({
             )}
             <button
               class="chalk-auth-button"
-              disabled={busy || !policy.ok || !confirmMatches}
-              onClick={onPasswordNext}
+              type="submit"
+              disabled={!canLeavePassword}
               data-testid="signup-password-next"
             >
               {busy ? "checking..." : "Next: set up two-factor"}
@@ -316,11 +339,11 @@ export function SignupWizardScreen({
             <button class="chalk-auth-link" type="button" onClick={() => setStep("account")}>
               back
             </button>
-          </div>
+          </form>
         )}
 
         {step === "totp" && (
-          <div data-testid="signup-step-totp">
+          <form data-testid="signup-step-totp" onSubmit={submitWhen(canFinish, onFinish)}>
             <p class="chalk-auth-subtitle">
               Scan this with your authenticator app (or enter the code manually),
               then type the 6-digit code it shows. Two-factor is required for
@@ -345,6 +368,9 @@ export function SignupWizardScreen({
               6-digit code
               <input
                 class="chalk-auth-input"
+                type="text"
+                name="code"
+                id="signup-code"
                 inputMode="numeric"
                 maxLength={6}
                 value={code}
@@ -354,13 +380,13 @@ export function SignupWizardScreen({
             </label>
             <button
               class="chalk-auth-button"
-              disabled={busy || code.trim().length !== 6}
-              onClick={onFinish}
+              type="submit"
+              disabled={!canFinish}
               data-testid="signup-finish"
             >
               {busy ? "securing your account..." : "Verify & create account"}
             </button>
-          </div>
+          </form>
         )}
 
         {onGoLogin && (

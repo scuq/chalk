@@ -39,6 +39,7 @@ import { resetAuthViaRecovery, resetErrorMessage } from "./recovery-reset-api";
 import { SignupApiError } from "./signup-v2-api";
 import { totpEnroll, totpConfirm } from "./security-api";
 import { setKEK } from "./kek-holder";
+import { submitWhen } from "./form";
 import { fetchMe } from "./api";
 import { RecoveryScreen } from "./RecoveryScreen";
 
@@ -111,6 +112,7 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
 
   const canSubmit =
     !busy && usernameOK && words.length === 24 && policy.ok && confirmMatches && codeOK;
+  const canConfirmEnroll = !busy && enrollCode.trim().length === 6;
 
   const onSubmitReset = async () => {
     setErr("");
@@ -242,7 +244,7 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
             this now.
           </p>
           {provisioningURI ? (
-            <>
+            <form onSubmit={submitWhen(canConfirmEnroll, onConfirmTOTP)}>
               {qrDataURL && (
                 <img class="chalk-auth-qr" src={qrDataURL} alt="TOTP setup QR code" width={192} height={192} />
               )}
@@ -251,6 +253,9 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
                 6-digit code
                 <input
                   class="chalk-auth-input"
+                  type="text"
+                  name="code"
+                  id="recovery-enroll-code"
                   inputMode="numeric"
                   maxLength={6}
                   value={enrollCode}
@@ -260,13 +265,13 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
               </label>
               <button
                 class="chalk-auth-button"
-                disabled={busy || enrollCode.trim().length !== 6}
-                onClick={onConfirmTOTP}
+                type="submit"
+                disabled={!canConfirmEnroll}
                 data-testid="recovery-reset-totp-confirm"
               >
                 {busy ? "confirming..." : "Confirm and continue"}
               </button>
-            </>
+            </form>
           ) : (
             // Enrollment couldn't start. Don't strand the user here: the reset
             // already succeeded and account security can finish the job.
@@ -286,7 +291,7 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
 
   return (
     <div class="chalk-auth" data-testid="recovery-reset">
-      <div class="chalk-auth-card chalk-auth-card--wide">
+      <form class="chalk-auth-card chalk-auth-card--wide" onSubmit={submitWhen(canSubmit, onSubmitReset)}>
         <header class="chalk-auth-header">
           <h2>reset access with your recovery phrase</h2>
           <p class="chalk-auth-subtitle">
@@ -301,6 +306,9 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
           username
           <input
             class="chalk-auth-input"
+            type="text"
+            name="username"
+            id="recovery-username"
             value={username}
             maxLength={32}
             onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
@@ -316,6 +324,8 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
           24 recovery words
           <textarea
             class="chalk-auth-input"
+            name="recovery-phrase"
+            id="recovery-phrase"
             rows={4}
             value={phrase}
             onInput={(e) => setPhrase((e.target as HTMLTextAreaElement).value)}
@@ -340,6 +350,8 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
           <input
             class="chalk-auth-input"
             type="password"
+            name="new-password"
+            id="recovery-password"
             value={newPw}
             onInput={(e) => setNewPw((e.target as HTMLInputElement).value)}
             autocomplete="new-password"
@@ -351,6 +363,8 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
           <input
             class="chalk-auth-input"
             type="password"
+            name="confirm-password"
+            id="recovery-password-confirm"
             value={confirmPw}
             onInput={(e) => setConfirmPw((e.target as HTMLInputElement).value)}
             autocomplete="new-password"
@@ -374,6 +388,9 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
             6-digit code from your authenticator
             <input
               class="chalk-auth-input"
+              type="text"
+              name="code"
+              id="recovery-code"
               inputMode="numeric"
               maxLength={6}
               value={totpCode}
@@ -398,8 +415,8 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
 
         <button
           class="chalk-auth-button"
+          type="submit"
           disabled={!canSubmit}
-          onClick={onSubmitReset}
           data-testid="recovery-reset-submit"
         >
           {busy ? "resetting..." : "Reset my access"}
@@ -411,7 +428,7 @@ export function RecoveryResetScreen({ initialUsername, onDone, onFailedAfterRese
             back to sign in
           </button>
         </p>
-      </div>
+      </form>
     </div>
   );
 }

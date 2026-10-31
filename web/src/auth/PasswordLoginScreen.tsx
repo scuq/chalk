@@ -23,6 +23,7 @@ import { authenticateBegin, authenticateFinish, ApiError } from "./api";
 import { performAuthentication, WebAuthnError } from "../webauthn";
 import { deriveAuth, fromB64, toB64 } from "../crypto/authkdf";
 import { setKEK } from "./kek-holder";
+import { submitWhen } from "./form";
 
 interface Props {
   onLoggedIn: (result: LoginResult) => void;
@@ -44,6 +45,9 @@ export function PasswordLoginScreen({ onLoggedIn, onGoRegister, onGoRecovery, sh
   const [code, setCode] = useState("");
 
   const usernameOK = /^[a-z0-9_]{3,32}$/.test(username.trim().toLowerCase());
+  const canContinue = !busy && usernameOK && password.length > 0;
+  const canSubmitCode = !busy && code.trim().length === 6;
+  const canUsePasskey = !busy && usernameOK;
 
   const onSubmitCredentials = async () => {
     setBanner("");
@@ -155,12 +159,19 @@ export function PasswordLoginScreen({ onLoggedIn, onGoRegister, onGoRecovery, sh
         <h1 class="chalk-auth-title">Sign in</h1>
         {banner && <p class="chalk-auth-error" data-testid="login-banner">{banner}</p>}
 
+        {/* 127-1: Each step is a real form so password managers can fill and save the login. */}
         {mode === "credentials" && (
-          <div data-testid="login-step-credentials">
+          <form
+            data-testid="login-step-credentials"
+            onSubmit={submitWhen(canContinue, onSubmitCredentials)}
+          >
             <label class="chalk-auth-label">
               username
               <input
                 class="chalk-auth-input"
+                type="text"
+                name="username"
+                id="login-username"
                 value={username}
                 onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
                 autocomplete="username"
@@ -171,20 +182,17 @@ export function PasswordLoginScreen({ onLoggedIn, onGoRegister, onGoRecovery, sh
               <input
                 class="chalk-auth-input"
                 type="password"
+                name="password"
+                id="login-password"
                 value={password}
                 onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && usernameOK && password.length > 0 && !busy) {
-                    void onSubmitCredentials();
-                  }
-                }}
                 autocomplete="current-password"
               />
             </label>
             <button
               class="chalk-auth-button"
-              disabled={busy || !usernameOK || password.length === 0}
-              onClick={onSubmitCredentials}
+              type="submit"
+              disabled={!canContinue}
               data-testid="login-credentials-next"
             >
               {busy ? "checking..." : "Continue"}
@@ -192,11 +200,11 @@ export function PasswordLoginScreen({ onLoggedIn, onGoRegister, onGoRecovery, sh
             <button class="chalk-auth-link" type="button" onClick={() => { setBanner(""); setMode("passkey"); }}>
               use a passkey instead
             </button>
-          </div>
+          </form>
         )}
 
         {mode === "totp" && (
-          <div data-testid="login-step-totp">
+          <form data-testid="login-step-totp" onSubmit={submitWhen(canSubmitCode, onSubmitTOTP)}>
             <p class="chalk-auth-subtitle">
               Enter the 6-digit code from your authenticator app.
             </p>
@@ -204,22 +212,20 @@ export function PasswordLoginScreen({ onLoggedIn, onGoRegister, onGoRecovery, sh
               6-digit code
               <input
                 class="chalk-auth-input"
+                type="text"
+                name="code"
+                id="login-code"
                 inputMode="numeric"
                 maxLength={6}
                 value={code}
                 onInput={(e) => setCode((e.target as HTMLInputElement).value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && code.trim().length === 6 && !busy) {
-                    void onSubmitTOTP();
-                  }
-                }}
                 autocomplete="one-time-code"
               />
             </label>
             <button
               class="chalk-auth-button"
-              disabled={busy || code.trim().length !== 6}
-              onClick={onSubmitTOTP}
+              type="submit"
+              disabled={!canSubmitCode}
               data-testid="login-totp-submit"
             >
               {busy ? "signing in..." : "Sign in"}
@@ -227,15 +233,18 @@ export function PasswordLoginScreen({ onLoggedIn, onGoRegister, onGoRecovery, sh
             <button class="chalk-auth-link" type="button" onClick={() => { setBanner(""); setMode("credentials"); setCode(""); }}>
               back
             </button>
-          </div>
+          </form>
         )}
 
         {mode === "passkey" && (
-          <div data-testid="login-step-passkey">
+          <form data-testid="login-step-passkey" onSubmit={submitWhen(canUsePasskey, onSubmitPasskey)}>
             <label class="chalk-auth-label">
               username
               <input
                 class="chalk-auth-input"
+                type="text"
+                name="username"
+                id="login-passkey-username"
                 value={username}
                 onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
                 autocomplete="username webauthn"
@@ -243,8 +252,8 @@ export function PasswordLoginScreen({ onLoggedIn, onGoRegister, onGoRecovery, sh
             </label>
             <button
               class="chalk-auth-button"
-              disabled={busy || !usernameOK}
-              onClick={onSubmitPasskey}
+              type="submit"
+              disabled={!canUsePasskey}
               data-testid="login-passkey-submit"
             >
               {busy ? "waiting for passkey..." : "Sign in with passkey"}
@@ -252,7 +261,7 @@ export function PasswordLoginScreen({ onLoggedIn, onGoRegister, onGoRecovery, sh
             <button class="chalk-auth-link" type="button" onClick={() => { setBanner(""); setMode("credentials"); }}>
               use password instead
             </button>
-          </div>
+          </form>
         )}
 
         <p class="chalk-auth-footer">

@@ -9828,6 +9828,20 @@ body.chalk-resizing-y .chalk-composer-resizer {
   background: var(--chalk-bg-elev);
 }
 
+/* 127-1: Hide the field visually, not with display:none. Some password
+   managers ignore a field that has display:none. */
+.chalk-auth-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .chalk-auth-input {
   display: block;
   width: 100%;

@@ -31,6 +31,7 @@ import {
 import { migrationPassword, migrationComplete } from "./migration-api";
 import { totpEnroll, totpConfirm } from "./security-api";
 import { SignupApiError } from "./signup-v2-api";
+import { submitWhen } from "./form";
 
 interface Props {
   onDone: () => void;
@@ -62,6 +63,8 @@ export function MigrationScreen({ onDone }: Props) {
   const policy = useMemo(() => checkPasswordPolicy(password), [password]);
   const strength = useMemo(() => estimateStrength(password), [password]);
   const confirmMatches = confirm.length > 0 && confirm === password;
+  const canSetPassword = !busy && policy.ok && confirmMatches;
+  const canFinish = !busy && code.trim().length === 6;
 
   const qrDataURL = useMemo(() => {
     if (!provisioningURI) return "";
@@ -137,16 +140,18 @@ export function MigrationScreen({ onDone }: Props) {
         {banner && <p class="chalk-auth-error" data-testid="migration-banner">{banner}</p>}
 
         {step === "password" && (
-          <div data-testid="migration-step-password">
+          <form data-testid="migration-step-password" onSubmit={submitWhen(canSetPassword, onSubmitPassword)}>
             <label class="chalk-auth-label">
               password
-              <input class="chalk-auth-input" type="password" value={password}
+              <input class="chalk-auth-input" type="password" name="new-password" id="migration-password"
+                value={password}
                 onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
                 autocomplete="new-password" />
             </label>
             <label class="chalk-auth-label">
               confirm password
-              <input class="chalk-auth-input" type="password" value={confirm}
+              <input class="chalk-auth-input" type="password" name="confirm-password" id="migration-password-confirm"
+                value={confirm}
                 onInput={(e) => setConfirm((e.target as HTMLInputElement).value)}
                 autocomplete="new-password" />
             </label>
@@ -162,16 +167,16 @@ export function MigrationScreen({ onDone }: Props) {
             {password.length > 0 && (
               <p class={`chalk-auth-strength strength-${strength}`}>strength: {STRENGTH_LABELS[strength]}</p>
             )}
-            <button class="chalk-auth-button"
-              disabled={busy || !policy.ok || !confirmMatches}
-              onClick={onSubmitPassword} data-testid="migration-password-next">
+            <button class="chalk-auth-button" type="submit"
+              disabled={!canSetPassword}
+              data-testid="migration-password-next">
               {busy ? "securing..." : "Next: set up two-factor"}
             </button>
-          </div>
+          </form>
         )}
 
         {step === "totp" && (
-          <div data-testid="migration-step-totp">
+          <form data-testid="migration-step-totp" onSubmit={submitWhen(canFinish, onSubmitTOTP)}>
             <p class="chalk-auth-subtitle">
               Scan with your authenticator app (or enter the code manually),
               then type the 6-digit code it shows.
@@ -182,13 +187,14 @@ export function MigrationScreen({ onDone }: Props) {
             <div class="chalk-auth-secret"><code>{secretB32}</code></div>
             <label class="chalk-auth-label">
               6-digit code
-              <input class="chalk-auth-input" inputMode="numeric" maxLength={6} value={code}
+              <input class="chalk-auth-input" type="text" name="code" id="migration-code"
+                inputMode="numeric" maxLength={6} value={code}
                 onInput={(e) => setCode((e.target as HTMLInputElement).value)}
                 autocomplete="one-time-code" />
             </label>
-            <button class="chalk-auth-button"
-              disabled={busy || code.trim().length !== 6}
-              onClick={onSubmitTOTP} data-testid="migration-finish">
+            <button class="chalk-auth-button" type="submit"
+              disabled={!canFinish}
+              data-testid="migration-finish">
               {busy ? "finishing..." : "Verify & finish"}
             </button>
             <p class="chalk-auth-footer">
@@ -196,7 +202,7 @@ export function MigrationScreen({ onDone }: Props) {
               encryption phrase" so NEW devices can unlock your message
               history with just this password.
             </p>
-          </div>
+          </form>
         )}
       </div>
     </div>

@@ -10,6 +10,15 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- Password managers now recognise the username and password fields on the
+  sign-in, sign-up, password-change, and recovery screens. They can fill a
+  saved login or offer to save a new one. Enter still submits each step.
+
+---
+
 ## v0.8.24 — 13 September 2026 — A typing line that lines up, and a ripple you can turn off
 
 ### Added

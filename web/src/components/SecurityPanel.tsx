@@ -41,6 +41,8 @@ import { putSeedWrap, SignupApiError } from "../auth/signup-v2-api";
 import { changePassword, totpEnroll, totpConfirm } from "../auth/security-api";
 import type { StepUpProof } from "../auth/stepup";
 import { StepUpPrompt } from "./StepUpPrompt";
+import { submitWhen } from "../auth/form";
+import { HiddenUsername } from "../auth/HiddenUsername";
 
 interface Props {
   username: string;
@@ -82,6 +84,9 @@ export function SecurityPanel({ username }: Props) {
   const policy = useMemo(() => checkPasswordPolicy(newPw), [newPw]);
   const strength = useMemo(() => estimateStrength(newPw), [newPw]);
   const confirmMatches = confirmPw.length > 0 && confirmPw === newPw;
+  const canChangePassword = !busy && curPw.length > 0 && policy.ok && confirmMatches;
+  const canConfirmTOTP = !busy && code.trim().length === 6;
+  const canRelink = !busy && relinkPw.length > 0 && relinkPhrase.trim().length > 0;
 
   const qrDataURL = useMemo(() => {
     if (!provisioningURI) return "";
@@ -272,29 +277,34 @@ export function SecurityPanel({ username }: Props) {
       )}
 
       {view === "password" && (
-        <div data-testid="security-password">
+        <form data-testid="security-password" onSubmit={submitWhen(canChangePassword, onChangePassword)}>
+          <HiddenUsername username={username} id="security-password-username" />
           <label class="chalk-auth-label">
             current password
-            <input class="chalk-auth-input" type="password" value={curPw}
+            <input class="chalk-auth-input" type="password" name="current-password" id="security-current-password"
+              value={curPw}
               onInput={(e) => setCurPw((e.target as HTMLInputElement).value)}
               autocomplete="current-password" />
           </label>
           <label class="chalk-auth-label">
             new password
-            <input class="chalk-auth-input" type="password" value={newPw}
+            <input class="chalk-auth-input" type="password" name="new-password" id="security-new-password"
+              value={newPw}
               onInput={(e) => setNewPw((e.target as HTMLInputElement).value)}
               autocomplete="new-password" />
           </label>
           <label class="chalk-auth-label">
             confirm new password
-            <input class="chalk-auth-input" type="password" value={confirmPw}
+            <input class="chalk-auth-input" type="password" name="confirm-password" id="security-confirm-password"
+              value={confirmPw}
               onInput={(e) => setConfirmPw((e.target as HTMLInputElement).value)}
               autocomplete="new-password" />
           </label>
           {needPhrase && (
             <label class="chalk-auth-label">
               24-word encryption phrase
-              <textarea class="chalk-auth-input" rows={3} value={phrase}
+              <textarea class="chalk-auth-input" name="encryption-phrase" id="security-password-phrase"
+                rows={3} value={phrase} autocomplete="off"
                 onInput={(e) => setPhrase((e.target as HTMLTextAreaElement).value)} />
             </label>
           )}
@@ -310,13 +320,13 @@ export function SecurityPanel({ username }: Props) {
           {newPw.length > 0 && (
             <p class={`chalk-auth-strength strength-${strength}`}>strength: {STRENGTH_LABELS[strength]}</p>
           )}
-          <button class="chalk-auth-button"
-            disabled={busy || curPw.length === 0 || !policy.ok || !confirmMatches}
-            onClick={onChangePassword} data-testid="security-password-submit">
+          <button class="chalk-auth-button" type="submit"
+            disabled={!canChangePassword}
+            data-testid="security-password-submit">
             {busy ? "re-securing..." : "Change password"}
           </button>
           <button class="chalk-auth-link" type="button" onClick={() => open("idle")}>cancel</button>
-        </div>
+        </form>
       )}
 
       {view === "totp" && !secretB32 && (
@@ -331,7 +341,7 @@ export function SecurityPanel({ username }: Props) {
       )}
 
       {view === "totp" && secretB32 && (
-        <div data-testid="security-totp">
+        <form data-testid="security-totp" onSubmit={submitWhen(canConfirmTOTP, onConfirmTOTP)}>
           <p class="chalk-auth-subtitle">
             Scan the new code with your authenticator, then confirm with one
             live code. Your current codes keep working until you confirm.
@@ -344,21 +354,23 @@ export function SecurityPanel({ username }: Props) {
           )}
           <label class="chalk-auth-label">
             6-digit code
-            <input class="chalk-auth-input" inputMode="numeric" maxLength={6} value={code}
+            <input class="chalk-auth-input" type="text" name="code" id="security-totp-code"
+              inputMode="numeric" maxLength={6} value={code}
               onInput={(e) => setCode((e.target as HTMLInputElement).value)}
               autocomplete="one-time-code" />
           </label>
-          <button class="chalk-auth-button"
-            disabled={busy || code.trim().length !== 6}
-            onClick={onConfirmTOTP} data-testid="security-totp-confirm">
+          <button class="chalk-auth-button" type="submit"
+            disabled={!canConfirmTOTP}
+            data-testid="security-totp-confirm">
             {busy ? "confirming..." : "Confirm new secret"}
           </button>
           <button class="chalk-auth-link" type="button" onClick={() => open("idle")}>cancel</button>
-        </div>
+        </form>
       )}
 
       {view === "relink" && (
-        <div data-testid="security-relink">
+        <form data-testid="security-relink" onSubmit={submitWhen(canRelink, onRelink)}>
+          <HiddenUsername username={username} id="security-relink-username" />
           <p class="chalk-auth-subtitle">
             Re-creates the encrypted link between your password and your
             24-word encryption phrase, so a NEW device can unlock message
@@ -367,22 +379,24 @@ export function SecurityPanel({ username }: Props) {
           </p>
           <label class="chalk-auth-label">
             password
-            <input class="chalk-auth-input" type="password" value={relinkPw}
+            <input class="chalk-auth-input" type="password" name="password" id="security-relink-password"
+              value={relinkPw}
               onInput={(e) => setRelinkPw((e.target as HTMLInputElement).value)}
               autocomplete="current-password" />
           </label>
           <label class="chalk-auth-label">
             24-word encryption phrase
-            <textarea class="chalk-auth-input" rows={3} value={relinkPhrase}
+            <textarea class="chalk-auth-input" name="encryption-phrase" id="security-relink-phrase"
+              rows={3} value={relinkPhrase} autocomplete="off"
               onInput={(e) => setRelinkPhrase((e.target as HTMLTextAreaElement).value)} />
           </label>
-          <button class="chalk-auth-button"
-            disabled={busy || relinkPw.length === 0 || relinkPhrase.trim().length === 0}
-            onClick={onRelink} data-testid="security-relink-submit">
+          <button class="chalk-auth-button" type="submit"
+            disabled={!canRelink}
+            data-testid="security-relink-submit">
             {busy ? "linking..." : "Re-link"}
           </button>
           <button class="chalk-auth-link" type="button" onClick={() => open("idle")}>cancel</button>
-        </div>
+        </form>
       )}
     </section>
   );

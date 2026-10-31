@@ -12,6 +12,8 @@
 import { useState } from "preact/hooks";
 
 import { buildStepUp, type StepUpProof } from "../auth/stepup";
+import { submitWhen } from "../auth/form";
+import { HiddenUsername } from "../auth/HiddenUsername";
 
 interface Props {
   username: string;
@@ -59,16 +61,19 @@ export function StepUpPrompt({
   };
 
   return (
-    <div class="chalk-stepup" data-testid={testid}>
+    <form class="chalk-stepup" data-testid={testid} onSubmit={submitWhen(!working && ready, submit)}>
       <p class="chalk-auth-subtitle">
         Confirm it's you to {action}.
       </p>
       {err && <p class="chalk-auth-error" data-testid={`${testid}-error`}>{err}</p>}
+      <HiddenUsername username={username} id={`${testid}-username`} />
       <label class="chalk-auth-label">
         password
         <input
           class="chalk-auth-input"
           type="password"
+          name="password"
+          id={`${testid}-password`}
           value={password}
           onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
           autocomplete="current-password"
@@ -80,6 +85,9 @@ export function StepUpPrompt({
           6-digit code
           <input
             class="chalk-auth-input"
+            type="text"
+            name="code"
+            id={`${testid}-code`}
             inputMode="numeric"
             maxLength={6}
             value={code}
@@ -91,9 +99,8 @@ export function StepUpPrompt({
       )}
       <button
         class="chalk-auth-button"
-        type="button"
+        type="submit"
         disabled={working || !ready}
-        onClick={submit}
         data-testid={`${testid}-submit`}
       >
         {working ? "confirming..." : "Confirm"}
@@ -101,6 +108,6 @@ export function StepUpPrompt({
       <button class="chalk-auth-link" type="button" onClick={onCancel} disabled={working}>
         cancel
       </button>
-    </div>
+    </form>
   );
 }
