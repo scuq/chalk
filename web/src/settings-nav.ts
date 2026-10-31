@@ -155,6 +155,8 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       // who wants the corner empty again.
       "seasonal", "season", "halloween", "christmas", "ghost", "pumpkin",
       "holiday", "holidays", "decoration", "decorations", "spooky",
+      // 129-4: the winter keywords.
+      "winter", "snow", "snowflake", "snowman", "xmas", "advent",
     ],
   },
   {

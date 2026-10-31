@@ -1,90 +1,84 @@
-// 129-1: the figure for the season -- today a ghost for halloween.
+// 129-1: the figure for the season -- a pumpkin, a ghost, a snowman.
 //
-// One component for every season: the registry says which, a switch picks the
-// glyph, and the schedule in season/peek.ts says when it shows. The anchor is
-// a zero-size absolute element pinned to the top-right corner of the
-// composer footer (the footer is position: relative). The glyph floats over
-// the bottom-right corner of the feed, whatever the feed's length or scroll
-// position, and takes no room from it. App.tsx mounts this component in the
-// footer only for a text channel that is on screen. pointer-events: none stops
-// the glyph from taking a click. The fade and the bob are CSS, and reduced
-// motion switches them off. The only timer is one setTimeout per schedule step.
-// While the glyph shows, the component also renders the aura, a glow along the
-// window edge.
+// One component serves every season. The registry says which season it is
+// and which figures it has. Each visit draws one figure at random, never the
+// figure of the visit before. The schedule in season/peek.ts says when the
+// figure shows.
+// The anchor is a zero-size element at the top-right corner of the footer.
+// The footer is position: relative. So the figure floats over the
+// bottom-right corner of the feed, whatever the length or the scroll
+// position of the feed, and takes no room from it.
+// pointer-events: none stops the figure from taking a click.
+// The fade and the bob are CSS, and reduced motion switches them off. The
+// only timer here is one timeout for each schedule step.
+// Beside the figure is the aura, a glow along the inner edge of the window.
+// The parent switches the aura on inside the aura window of the season.
 
 import { useEffect, useState } from "preact/hooks";
-import type { Season, SeasonId } from "../season/seasons";
-import { firstPeek, nextPeek } from "../season/peek";
+import type { Season } from "../season/seasons";
+import { pickFigure } from "../season/seasons";
+import { FIGURES } from "../season/figures";
+import { firstPeek, nextPeek, type Peek } from "../season/peek";
 
 interface Props {
   season: Season;
+  /** whether the window-edge glow runs today (the season's aura window) */
+  aura: boolean;
 }
 
-const LABELS: Record<SeasonId, string> = {
-  halloween: "a ghost, for halloween",
-  christmas: "a decoration, for christmas",
-};
+interface Visit extends Peek {
+  figure: string;
+}
 
-export function SeasonFigure({ season }: Props) {
-  const [peek, setPeek] = useState(() => firstPeek());
+export function SeasonFigure({ season, aura }: Props) {
+  const [visit, setVisit] = useState<Visit>(() => ({
+    ...firstPeek(),
+    figure: pickFigure(season),
+  }));
   useEffect(() => {
-    const t = setTimeout(() => setPeek((p) => nextPeek(p.visible)), peek.ms);
+    const t = setTimeout(
+      () =>
+        setVisit((v) => {
+          const next = nextPeek(v.visible);
+          // As the figure goes out of sight, pick the figure for the next
+          // visit, so the fade-in already shows it.
+          const figure = next.visible ? v.figure : pickFigure(season, Math.random, v.figure);
+          return { ...next, figure };
+        }),
+      visit.ms,
+    );
     return () => clearTimeout(t);
-  }, [peek]);
-  const vis = peek.visible ? " chalk-season-aura--visible" : "";
+  }, [visit, season]);
+  const key = `${season.id}/${visit.figure}`;
+  const fig = FIGURES[key];
+  const vis = visit.visible ? "--visible" : "";
   return (
     <div class="chalk-season" data-testid="season-anchor">
-      {/* 129-1: The aura is a glow along the inner edge of the window. It shows
-          while the figure is visible. It is fixed to the viewport and takes no
-          clicks. The season rule in theme.css sets its colour. */}
-      <div
-        class={"chalk-season-aura" + vis}
-        data-testid="season-aura"
-        data-season={season.id}
-        aria-hidden="true"
-      />
+      {/* 129-1: the aura -- a glow along the inner edge of the window while
+          the figure is out, so the whole room sees the visitor and not only
+          one corner. The element is fixed to the viewport and takes no
+          clicks. Its colour comes from the rule of the season in theme.css.
+          It mounts only inside the aura window of the season. */}
+      {aura && (
+        <div
+          class={"chalk-season-aura" + (vis && " chalk-season-aura--visible")}
+          data-testid="season-aura"
+          data-season={season.id}
+          aria-hidden="true"
+        />
+      )}
       <span
-        class={"chalk-season-figure" + (peek.visible ? " chalk-season-figure--visible" : "")}
+        class={"chalk-season-figure" + (vis && " chalk-season-figure--visible")}
         data-testid="season-figure"
         data-season={season.id}
-        data-visible={peek.visible ? "" : undefined}
+        data-figure={visit.figure}
+        data-visible={visit.visible ? "" : undefined}
         role="img"
-        aria-label={LABELS[season.id]}
-        aria-hidden={!peek.visible}
+        aria-label={fig ? `${fig.label}, for ${season.id}` : season.id}
+        aria-hidden={!visit.visible}
       >
-        {glyph(season.id)}
+        {fig && <img class="chalk-season-art" src={fig.src} alt="" draggable={false} />}
       </span>
     </div>
-  );
-}
-
-function glyph(id: SeasonId) {
-  switch (id) {
-    case "halloween":
-      return <Ghost />;
-    case "christmas":
-      // 129-4 draws this one. Until then the registry holds no christmas
-      // window, so this branch is never reached.
-      return null;
-  }
-}
-
-// The ghost: a dome with a wavy hem, eyes and a mouth cut out in the page
-// colour so they read as holes rather than paint.
-function Ghost() {
-  return (
-    <svg
-      class="chalk-season-svg"
-      viewBox="0 0 24 24"
-      width="40"
-      height="40"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M12 2a7 7 0 0 0-7 7v12.2l2.4-1.9 2.3 1.9 2.3-1.9 2.3 1.9 2.3-1.9 2.4 1.9V9a7 7 0 0 0-7-7z" />
-      <circle class="chalk-season-cut" cx="9.6" cy="9.6" r="1.4" />
-      <circle class="chalk-season-cut" cx="14.4" cy="9.6" r="1.4" />
-      <ellipse class="chalk-season-cut" cx="12" cy="13.6" rx="1.1" ry="1.5" />
-    </svg>
   );
 }

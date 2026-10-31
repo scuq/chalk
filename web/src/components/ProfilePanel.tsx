@@ -1082,9 +1082,10 @@ export function ProfilePanel({
                   <span>a small figure for the season</span>
                 </label>
                 <p class="chalk-profile-hint">
-                  on by default. around halloween a ghost visits the bottom
-                  corner of the conversation now and then, and other seasons
-                  bring their own. stored on this device only. the
+                  on by default. around halloween a pumpkin, a ghost or a
+                  black cat visits the bottom corner of the conversation now
+                  and then, and from december into the new year it is a
+                  snowman, a fox or a lantern. stored on this device only. the
                   administrator can turn it off for the whole server, and it
                   holds still when your system asks for reduced motion.
                 </p>

@@ -1,44 +1,128 @@
 // chalk-web -- 129-1: the season registry.
 //
-// Which season it is, decided from the reader's local calendar date, year
-// after year. Pure: `now` is a parameter the way daymarks.ts takes one, so
-// the window logic is tested with a fixed clock and never with a real one.
-// Local time on purpose: a season is a date on the reader's own calendar.
+// The registry decides which season it is from the local calendar date of
+// the reader. The decision is pure: `now` is a parameter, as in daymarks.ts,
+// so a test uses a fixed clock and never the real one.
+// The date is local on purpose: a season is a date on the calendar of the
+// reader.
+//
+// 129-4/129-5: a season also names its figures. They are the cut-outs in
+// assets/season/<id>/, and each visit draws one at random. A season can
+// also have an aura window. The window-edge glow then runs only inside it.
+// Without an aura window, the glow runs for the whole season.
 
-export type SeasonId = "halloween" | "christmas";
+export type SeasonId = "halloween" | "winter";
 
 /** A month-and-day pair, 1-based month, as a person reads a calendar. */
 export type MonthDay = [month: number, day: number];
 
-export interface Season {
-  id: SeasonId;
-  /** first day inside the season */
+export interface Window {
+  /** first day inside the window */
   from: MonthDay;
-  /** last day inside the season, inclusive */
+  /** last day inside the window, inclusive */
   to: MonthDay;
 }
 
-// The window ends on the day after the feast, so the figure is still there
-// for the people who read the night's messages in the morning.
-export const SEASONS: Season[] = [{ id: "halloween", from: [10, 24], to: [11, 1] }];
+export interface Season extends Window {
+  id: SeasonId;
+  /** the figures that visit, by file name under assets/season/<id>/ */
+  figures: string[];
+  /** the days the window-edge glow runs; absent means the whole season */
+  aura?: Window;
+}
+
+export const SEASONS: Season[] = [
+  {
+    // The window ends one day after the feast. People who read the night's
+    // messages in the morning still see the figure.
+    id: "halloween",
+    from: [10, 24],
+    to: [11, 1],
+    figures: [
+      "pumpkin",
+      "ghost",
+      "witch-hat",
+      "cauldron",
+      "black-cat",
+      "skull-candle",
+      "bat",
+      "spider-web",
+      "scarecrow",
+      "haunted-lantern",
+    ],
+  },
+  {
+    // Winter runs through the holidays into the new year. The glow runs
+    // only on the three days of Christmas.
+    id: "winter",
+    from: [12, 1],
+    to: [1, 6],
+    figures: [
+      "snowflake",
+      "snowman",
+      "pine-tree",
+      "ice-crystal",
+      "arctic-fox",
+      "winter-lantern",
+      "signpost",
+      "icicles",
+      "scarf",
+      "mittens",
+    ],
+    aura: { from: [12, 23], to: [12, 25] },
+  },
+];
 
 function dayKey([month, day]: MonthDay): number {
   return month * 100 + day;
 }
 
 /**
- * seasonFor returns the season that holds the local calendar date of `now`,
- * or null when no season does. A window whose end precedes its start wraps the
- * year boundary.
+ * inWindow reports whether the local calendar date of `now` lies inside the
+ * window. If the end of a window comes before its start, the window wraps
+ * the year boundary.
  */
-export function seasonFor(now: number | Date, seasons: Season[] = SEASONS): Season | null {
+export function inWindow(now: number | Date, w: Window): boolean {
   const d = typeof now === "number" ? new Date(now) : now;
   const k = dayKey([d.getMonth() + 1, d.getDate()]);
+  const a = dayKey(w.from);
+  const b = dayKey(w.to);
+  return a <= b ? k >= a && k <= b : k >= a || k <= b;
+}
+
+/**
+ * seasonFor returns the season that holds the local calendar date of `now`,
+ * or null when no season does.
+ */
+export function seasonFor(now: number | Date, seasons: Season[] = SEASONS): Season | null {
   for (const s of seasons) {
-    const a = dayKey(s.from);
-    const b = dayKey(s.to);
-    const inside = a <= b ? k >= a && k <= b : k >= a || k <= b;
-    if (inside) return s;
+    if (inWindow(now, s)) return s;
   }
   return null;
+}
+
+/**
+ * auraFor reports whether the window-edge glow of the season runs on the
+ * local calendar date of `now`. A season without an aura window returns true.
+ */
+export function auraFor(season: Season, now: number | Date): boolean {
+  return season.aura ? inWindow(now, season.aura) : true;
+}
+
+/**
+ * pickFigure returns one figure of the season at random. It never returns
+ * `avoid`, unless the season has only one figure. `rnd` returns a number
+ * from 0 to 1. The function clamps a number outside that range, and it
+ * treats a value that is not finite as 0.
+ */
+export function pickFigure(
+  season: Season,
+  rnd: () => number = Math.random,
+  avoid?: string,
+): string {
+  const pool =
+    season.figures.length > 1 ? season.figures.filter((f) => f !== avoid) : season.figures;
+  const r = rnd();
+  const t = Number.isFinite(r) ? Math.min(0.999999, Math.max(0, r)) : 0;
+  return pool[Math.floor(t * pool.length)];
 }

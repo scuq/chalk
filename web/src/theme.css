@@ -11774,18 +11774,17 @@ body.chalk-resizing-y .chalk-composer-resizer {
   opacity: 0.85;
   transform: translateY(0);
 }
-.chalk-season-svg {
+.chalk-season-art {
   display: block;
-  width: 40px;
-  height: 40px;
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  /* A soft shadow separates a pale figure from a light page and a dark
+     figure from a dark page. */
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.35));
 }
-.chalk-season-figure--visible .chalk-season-svg {
+.chalk-season-figure--visible .chalk-season-art {
   animation: chalk-season-bob 3.2s ease-in-out infinite;
-}
-/* The eyes and the mouth are drawn in the page colour, so they read as
-   holes in the glyph rather than paint on it. */
-.chalk-season-cut {
-  fill: var(--chalk-bg);
 }
 /* The aura is a glow along the inner edge of the window. It shows while the
    figure is visible. The element is fixed, takes no clicks, and sits at
@@ -11819,6 +11818,20 @@ body.chalk-resizing-y .chalk-composer-resizer {
 [data-theme="catppuccin-latte"] .chalk-season-aura[data-season="halloween"] {
   --chalk-season-aura: rgba(18, 122, 66, 0.4);
   --chalk-season-aura-line: rgba(18, 122, 66, 0.55);
+}
+/* 129-4: the winter glow is ice blue. It is pale on a dark theme and deeper
+   on a light theme. It uses the same two kinds of rule as halloween. */
+.chalk-season-aura[data-season="winter"] {
+  --chalk-season-aura: rgba(150, 210, 255, 0.42);
+  --chalk-season-aura-line: rgba(190, 230, 255, 0.4);
+}
+[data-theme="light"] .chalk-season-aura[data-season="winter"],
+[data-theme="snazzy-light"] .chalk-season-aura[data-season="winter"],
+[data-theme="warmwhite"] .chalk-season-aura[data-season="winter"],
+[data-theme="vscode-light"] .chalk-season-aura[data-season="winter"],
+[data-theme="catppuccin-latte"] .chalk-season-aura[data-season="winter"] {
+  --chalk-season-aura: rgba(28, 96, 170, 0.38);
+  --chalk-season-aura-line: rgba(28, 96, 170, 0.55);
 }
 .chalk-season-aura--visible {
   opacity: 1;
@@ -11862,7 +11875,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   .chalk-season-aura {
     transition: none;
   }
-  .chalk-season-figure--visible .chalk-season-svg {
+  .chalk-season-figure--visible .chalk-season-art {
     animation: none;
   }
 }

@@ -1,13 +1,13 @@
 # Phase 129 — seasonal: a figure for the season
 
-**Status:** built, 129-1 – 129-3 (2026-10-31). 129-4 (Christmas) is planned, not started.
+**Status:** built, 129-1 – 129-5 (2026-10-31). 129-1 – 129-3 shipped in v0.8.27.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
 
 chalk had nothing that marked a season. The brief: on special days a small
-figure sits in the chat. Today that is Halloween. Christmas and other days
-follow later. The figure appears and disappears on its own. It is on by
+figure sits in the chat. The seasons are Halloween and winter. Other seasons
+can follow. The figure appears and disappears on its own. It is on by
 default. An administrator can turn it off for the whole server.
 
 ## The design
@@ -17,6 +17,18 @@ default. An administrator can turn it off for the whole server.
 `web/src/season/seasons.ts` holds `SEASONS`, one window per season, as 1-based
 month and day pairs. Halloween runs from 24 October to 1 November inclusive.
 The extra day is for people who read the night's messages in the morning.
+
+Winter runs from 1 December to 6 January.
+Its end comes before its start, so the window wraps the year boundary.
+`inWindow(now, window)` is the shared window test.
+`seasonFor` and `auraFor` both use it.
+
+A season can carry an `aura` window.
+It sets the days on which the window-edge glow runs, and the figures still visit all season.
+The winter aura window is 23 to 25 December, the three days of Christmas.
+Halloween has no aura window, so its glow runs the whole season.
+`auraFor(season, now)` is the check.
+`App.tsx` passes `aura` to the component from the same hourly clock that picks the season.
 
 `seasonFor(now)` is a pure function. It takes the clock as a parameter and
 reads the local calendar date of the reader. It ignores the year. If the end of
@@ -35,13 +47,58 @@ Each duration is random inside its bounds. The random source is a parameter,
 so a test can pin it. The component owns one `setTimeout` per step and clears
 it on unmount.
 
-### The component
+### The figure set and the random pick
 
-`web/src/components/SeasonFigure.tsx` draws an inline SVG ghost on
-`currentColor`. The eyes and the mouth are cut out in the page color. The SVG
-has `role="img"` and an aria-label. It has `aria-hidden` while it is hidden.
-One component serves every season, and a `switch` on the season id picks the
-glyph.
+Each season in `SEASONS` lists ten figures by file name.
+Each visit draws one of them at random.
+`pickFigure(season, rnd, avoid)` in `seasons.ts` does the draw.
+It never returns the figure of the previous visit.
+The random source is a parameter, so a test can pin it.
+
+129-1 drew a single inline SVG ghost.
+129-5 replaced it with PNG cut-outs under `web/assets/season/<season>/<figure>.png`.
+`web/src/season/figures.ts` imports each file.
+It exports `FIGURES`, keyed `<season>/<figure>`.
+Each entry has the hashed `src` URL and an accessible `label`, for example "a pumpkin".
+`web/src/assets.d.ts` declares `*.png`.
+`web/test.mjs` has a `.png` file loader, so the tests see a URL for each figure.
+
+`web/src/components/SeasonFigure.tsx` renders `<img class="chalk-season-art">` at 56 px with a drop shadow.
+It sets `data-figure` to the figure name.
+The component picks the next figure as the current one goes out of sight, so the fade-in already shows it.
+The wrapper has `role="img"` and an aria-label.
+It has `aria-hidden` while it is hidden.
+One component serves every season.
+
+The Halloween figures are pumpkin, ghost, witch-hat, cauldron, black-cat, skull-candle, bat, spider-web, scarecrow, and haunted-lantern.
+The winter figures are snowflake, snowman, pine-tree, ice-crystal, arctic-fox, winter-lantern, signpost, icicles, scarf, and mittens.
+
+`web/src/season/figures.test.ts` checks that every registry figure has a file, a URL, and a label.
+It also checks that `FIGURES` lists no figure that the registry does not use.
+
+### The cut-out tool
+
+`tools/cut-season-sheet.py` made the PNG files.
+It needs Python 3, Pillow, and numpy.
+The sheet is an icon sheet that the user supplied.
+The sheet is not in the repository.
+
+    python3 -I tools/cut-season-sheet.py SHEET.png web/assets/season
+
+The tool keys the flat dark background of the sheet to alpha.
+It splits each row band at the empty columns between the icons.
+It trims each piece and writes it on a square canvas.
+Three refinements matter:
+
+- The tool closes the outline of a figure across small gaps.
+  A region that the outline encloses counts as the figure, unless it is plain background.
+  So the body of a black cat stays black, and the open cells of a spider web stay open.
+- A pixel brighter than the sheet counts as glow.
+  A glow fades out over a longer distance than the figure edge.
+  The tool unblends its colour from the sheet.
+  So the halo of a pumpkin is a translucent light on a light page and not a dark fog.
+- The `ROWS` table sets each row band and its figure ids.
+  A new sheet needs its own rows.
 
 ### The mount
 
@@ -75,7 +132,7 @@ flair.
 
 ### The aura
 
-While the ghost is visible, a second element shows beside the glyph.
+While the figure is visible, a second element shows beside it. It mounts only on the days that `auraFor` allows.
 `SeasonFigure.tsx` renders it with the class `chalk-season-aura`,
 `data-testid="season-aura"`, and `data-season` set to the season id.
 It is a fixed sheet over the whole viewport, at z-index 1000, and it takes no clicks.
@@ -84,15 +141,18 @@ It has no background, so the middle of the window is not changed.
 
 Each season sets the colour in `--chalk-season-aura` and `--chalk-season-aura-line`.
 Halloween uses a pale ghost green.
-On a light theme a pale glow is invisible, so a second rule gives the aura a darker, denser green.
-It sets `rgba(18, 122, 66, 0.4)` for the glow and `rgba(18, 122, 66, 0.55)` for the line.
-The rule lists the five themes that declare `color-scheme: light`: `light`, `snazzy-light`, `warmwhite`, `vscode-light`, and `catppuccin-latte`.
+Winter uses an ice blue: `rgba(150, 210, 255, 0.42)` for the glow with a paler line on dark themes.
+On the five light themes winter uses `rgba(28, 96, 170, 0.38)` for the glow and `rgba(28, 96, 170, 0.55)` for the line.
+On a light theme a pale glow is invisible, so a second rule for each season gives the aura a darker, denser colour.
+For Halloween it sets `rgba(18, 122, 66, 0.4)` for the glow and `rgba(18, 122, 66, 0.55)` for the line.
+The rules list the five themes that declare `color-scheme: light`: `light`, `snazzy-light`, `warmwhite`, `vscode-light`, and `catppuccin-latte`.
 The opacity fades over 1200 ms with the visibility of the figure.
 The reduced-motion block of the same section sets `transition: none` on the aura.
 `web/src/theme-season.test.ts` holds the sheet fixed, with `inset: 0`, click-through, inset-shadow only, and no fill.
-It also requires that every season in the registry sets its aura colour.
+It also loops over the registry and requires that every season sets its aura colour.
 A second test reads every `[data-theme]` block and collects the themes that declare a light scheme.
-It requires that the light rule lists exactly those themes, so a new light theme cannot ship without an aura colour.
+For each season in the registry, it requires that the light rule lists exactly those themes.
+So a new light theme cannot ship without an aura colour.
 
 ### Three gates
 
@@ -110,11 +170,12 @@ for `showChannelBanner`. Like every pref in that file, it is in localStorage.
 
 The settings section `seasonal` is on the appearance tab in `settings-nav.ts`.
 Its keywords are seasonal, season, halloween, christmas, ghost, pumpkin,
-holiday, holidays, decoration, decorations, and spooky. `ProfilePanel.tsx` has
+holiday, holidays, decoration, decorations, spooky, winter, snow, snowflake,
+snowman, xmas, and advent. `ProfilePanel.tsx` has
 a check box row for it after the flair section.
 
 The switch is not a flair sub-switch. Flair is off by default and this switch
-is on by default. A reader who has flair off still gets the ghost.
+is on by default. A reader who has flair off still gets the figure.
 
 ### The server switch (129-2)
 
@@ -190,7 +251,13 @@ switch is off, the component does not mount.
   not need one.
 - **129-3 — the admin tab.** `AdminSettingsTab.tsx`, the third tab in
   `AdminPanel.tsx`, `getSettings` and `putSettings`, and the reducer state.
-- **129-4 — Christmas.** Planned, not started. See "How to add a season".
+- **129-4 — winter.** The second season in `seasons.ts`, with ten figures. The
+  `aura` window, `inWindow`, and `auraFor`. The winter aura colours in
+  `theme.css`. The winter keywords in `settings-nav.ts`. Tests in
+  `seasons.test.ts` and `theme-season.test.ts`.
+- **129-5 — the figure set.** The PNG cut-outs, `season/figures.ts`,
+  `pickFigure`, the `<img>` in `SeasonFigure.tsx`, `assets.d.ts`, the `.png`
+  loader in `test.mjs`, `tools/cut-season-sheet.py`, and `figures.test.ts`.
 
 ## Trade-offs
 
@@ -198,15 +265,15 @@ switch is off, the component does not mount.
    `GET /api/auth/config` is cached with `max-age=60`, so the delay is one
    minute at most. A `welcome` payload field or a WebSocket broadcast is a
    later slice if it is wanted.
-2. Only Halloween ships. Christmas is 129-4.
-3. The date check runs once an hour. A tab can show the figure up to one hour
-   into 2 November.
+2. The date check runs once an hour. A tab can show the figure up to one hour
+   into 2 November, or into 7 January.
 
 ## Verification
 
 Done on 2026-10-31: `go build`, `go vet`, `gofmt -l` (empty), and
 `go test ./...` pass. `npx tsc --noEmit` is clean. `node test.mjs` passes
-1656 tests. `node build.mjs` succeeds. The database-backed tests pass against
+1656 tests. `node build.mjs` succeeds. After 129-4 and 129-5, the client suite
+passes 1664 tests. The database-backed tests pass against
 the dev Postgres.
 
 A Playwright probe drives the real UI. It lives in the scratch slot
@@ -234,49 +301,72 @@ They test four facts:
 The aura checks came after the 32-check run.
 Run the probe again to see them pass.
 
+The probe also has two checks for the figure set.
+They test two facts:
+
+- The figure is a loaded Halloween cut-out
+- The next visit shows a different figure
+
+The probe ran again on 2026-10-31 against the dev stack, with 39 checks.
+One check failed, and the cause was a mistake in the probe baseline.
+The probe compared the figure of the next visit with a figure it captured before the device switch remounted the component.
+The probe now uses a baseline captured after the remount.
+
 ### Manual checklist for the live stack
 
 Use two users, Alice and Bob, and a date inside the window.
 
-1. Check that the ghost is absent for the first 4 s after a text channel
+1. Check that the figure is absent for the first 4 s after a text channel
    opens, and that it shows at some point in the next 12 s.
-2. Check that the ghost sits in the bottom-right corner of the feed, and that
+2. Check that the figure sits in the bottom-right corner of the feed, and that
    a click on its position reaches the message under it.
-3. Check that the ghost is not present in a voice channel or in a parked
+3. Check that the figure is not present in a voice channel or in a parked
    channel.
-4. Emulate reduced motion. Check that the ghost comes and goes without a fade
+4. Emulate reduced motion. Check that the figure comes and goes without a fade
    and without a bob.
 5. Clear the check box under settings, appearance, seasonal. Check that the
-   ghost does not mount on this device. Check that it stays off after a
+   figure does not mount on this device. Check that it stays off after a
    reload.
-6. Check that a device with flair off still shows the ghost.
-7. Check the phone layout (400 px wide). Check that the ghost does not cover
+6. Check that a device with flair off still shows the figure.
+7. Check the phone layout (400 px wide). Check that the figure does not cover
    the composer and does not cause sideways overflow.
 8. As an administrator, open the settings tab in the admin panel and turn the
-   switch off. Check that the ghost on the screen of the administrator goes
+   switch off. Check that the figure on the screen of the administrator goes
    away at once.
-9. Check that Bob loses the ghost on his next page load, one minute at most
+9. Check that Bob loses the figure on his next page load, one minute at most
    after the save.
 10. Check that a signed-out client of an instance with the switch off never
-    shows the ghost.
+    shows the figure.
 11. Close and open the settings tab. Check that it shows the saved value.
-12. Set the system date outside the window. Check that no ghost shows.
-13. Check that the edge of the window glows while the ghost is out, and that the edge is dark otherwise.
+12. Set the system date outside every window. Check that no figure shows.
+13. Check that the edge of the window glows while the figure is out, and that the edge is dark otherwise.
 14. On a light theme, for example `warmwhite`, check that the edge glow is a visibly darker green.
+15. Wait for two visits. Check that the second visit shows a different figure from the first.
+16. Set the system date to 10 December. Check that a winter figure shows and that the window edge does not glow.
+17. Set the system date to 22 December. Check that a winter figure shows and that the window edge does not glow.
+18. Set the system date to 24 December. Check that the window edge glows ice blue while the figure is out.
+19. On a light theme, for example `warmwhite`, check that the ice-blue glow is visibly darker.
 
 ## How to add a season
 
-1. Add an entry to `SEASONS` in `web/src/season/seasons.ts`. For example:
-   `{ id: "christmas", from: [12, 1], to: [12, 26] }`.
-2. Add a case for the new id to the `switch` in `SeasonFigure.tsx` with the
-   glyph.
-3. Add the new id to a test of `seasonFor` in the season tests.
-4. Add the keywords of the season to the `seasonal` section in
-   `settings-nav.ts` if they are not there.
-
-5. Add an aura colour pair for the new season, for dark themes and for light themes.
-   The light pair goes in the rule that lists the light themes.
+1. Add an entry to `SEASONS` in `web/src/season/seasons.ts`.
+   It has an `id`, a `from` and a `to` date, and the `figures` list.
+   Add an `aura` window if the glow must run for only part of the season.
+   For example:
+   `{ id: "spring", from: [3, 20], to: [4, 5], figures: [...], aura: { from: [3, 20], to: [3, 21] } }`.
+2. Put one PNG for each figure in `web/assets/season/<id>/<figure>.png`.
+   If you cut the figures from a sheet, add a row to the `ROWS` table in `tools/cut-season-sheet.py` and run the tool.
+3. Add one import and one entry for each figure to `FIGURES` in `web/src/season/figures.ts`.
+   The key is `<id>/<figure>`. Give each entry a `label`.
+4. Add the new id to `SeasonId` in `seasons.ts`.
+5. Add two aura colour pairs to `web/src/theme.css`.
+   The first pair is for dark themes.
+   The second pair is for the rule that lists the five light themes.
    The pale glow of a dark theme is invisible on a light page.
+6. Add the keywords of the season to the `seasonal` section in `settings-nav.ts`, if they are not there.
+
+`seasons.test.ts`, `figures.test.ts`, and `theme-season.test.ts` loop over the registry.
+They fail if a figure file, a `FIGURES` entry, or an aura colour is missing.
 
 The device switch, the server switch, and the schedule need no change.
-The CSS needs only the colour pairs from step 5.
+The component needs no change.

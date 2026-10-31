@@ -9,26 +9,24 @@ Latest release: **v0.8.27** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 129 is the newest work, and 129-4 (Christmas) is its one open slice. The phase-doc index at the top of
+Phase 129 is the newest work, and nothing of it is open. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
 
 ## Phase 129 — seasonal: COMPLETE, with recorded trade-offs
 
-129-1 … 129-3, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
-A ghost peeks into the feed from 24 October to 1 November, with a switch per
-device and a server switch on a new admin settings tab. 129-4 (Christmas) is
-planned, not started.
+129-1 … 129-5, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
+A figure peeks into the feed in two seasons, Halloween (24 October to
+1 November) and winter (1 December to 6 January). Each visit shows one of ten
+figures at random. There is a switch per device and a server switch on the
+admin settings tab. No slice is open.
 
 - **A change by an administrator reaches other clients on their next page
   load.** `GET /api/auth/config` is cached with `max-age=60`, so the delay is
   one minute at most. A `welcome` payload field or a WebSocket broadcast is the
   fix if it grates.
 - **The date check runs once an hour.** A tab can show the figure up to one
-  hour into 2 November.
-- **129-4, Christmas, is planned, not started.** It needs the entry
-  `{ id: "christmas", from: [12, 1], to: [12, 26] }` in `SEASONS` and a second
-  glyph in the `switch` in `SeasonFigure.tsx`.
+  hour into 2 November, or into 7 January.
 
 ## Phase 116 — what's new: COMPLETE, with one hand step at release time
 

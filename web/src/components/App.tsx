@@ -21,7 +21,7 @@ import { burstStore, useHotChannels } from "../chat/burst-store"; // 115-2
 import { waveStore, useWaves } from "../chat/wave-store"; // 115-3
 import { Flame } from "./Flame"; // 115-2
 import { SeasonFigure } from "./SeasonFigure"; // 129-1
-import { seasonFor } from "../season/seasons"; // 129-1
+import { auraFor, seasonFor } from "../season/seasons"; // 129-1
 import { mentionsHandle } from "../chat/mentions";
 import { threadTitle, attachmentTitle } from "../chat/threadtitle";
 import { notifySounds, type NotifySounds } from "../notify";
@@ -6585,7 +6585,9 @@ export function App() {
           activeChannel &&
           activeChannel.channelType !== "voice" &&
           !state.parked &&
-          !(zuckerActive && zuckerScreen === "list") && <SeasonFigure season={season} />}
+          !(zuckerActive && zuckerScreen === "list") && (
+            <SeasonFigure season={season} aura={auraFor(season, seasonNow)} />
+          )}
         {!isMobile && (
           <ComposerResizer
             height={composerHeight}

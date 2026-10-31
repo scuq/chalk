@@ -12,6 +12,10 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- The Halloween visitor is now one of ten figures, and a different one comes each time. The figures include a pumpkin, a ghost, a witch's hat, a black cat, and a bat. They are cut from a single icon set.
+- From 1 December to 6 January, a winter season brings ten winter figures, among them a snowman, an arctic fox, and a pair of mittens. On 23 to 25 December only, an ice-blue glow also runs along the edge of the window.
+
 ### Fixed
 - On the light themes (light, snazzy-light, warmwhite, vscode-light, and catppuccin-latte), the green glow along the window edge was too pale to see while the ghost was out. The glow now uses a darker, denser green on these themes.
 

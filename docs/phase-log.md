@@ -762,8 +762,12 @@ shows for 8 s to 15 s, hides for 25 s to 90 s, and repeats. The calendar
 decides (`seasonFor`, local date), and a device switch and a server switch
 must also be on. The server switch is the first row of the generic
 `instance_settings` table (migration 0062), set on a new settings tab in the
-admin panel and carried on `GET /api/auth/config`. Christmas (129-4) is
-planned, not started.
+admin panel and carried on `GET /api/auth/config`. 129-4 added winter (1
+December to 6 January, a window that wraps the year boundary). Its glow along
+the window edge runs only on 23 to 25 December, through a new `aura` window in
+the registry. 129-5 replaced the single SVG ghost with a set of ten PNG
+figures for each season. Each visit draws one at random and never repeats the
+previous one. `tools/cut-season-sheet.py` cut the figures from an icon sheet.
 
 **Not started.** 65 (web push), 86 (ties), 87
 (message reminders), 90 (a local idle agent) and 99 (database-credential

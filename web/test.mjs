@@ -79,7 +79,9 @@ for (const t of tests) {
     // notify/index.ts. No test plays them, so they bundle as nothing --
     // the theme *table* (themes.ts) is what the theme tests read, and it
     // imports no files. The theme tests open the folders themselves.
-    loader: { ".wav": "empty", ".mp3": "empty" },
+    // 129-5: .png loads as a file here, because figures.test.ts tests that
+    // each figure has a URL.
+    loader: { ".wav": "empty", ".mp3": "empty", ".png": "file" },
     sourcemap: "inline",
     logLevel: "warning",
   });
