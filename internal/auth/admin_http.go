@@ -79,6 +79,10 @@ func (d *HTTPDeps) MountAdmin(mux *http.ServeMux) error {
 	mux.HandleFunc("GET /api/admin/blacklist", d.handleAdminListBlacklist)
 	mux.HandleFunc("POST /api/admin/blacklist", d.handleAdminAddBlacklist)
 	mux.HandleFunc("DELETE /api/admin/blacklist/{email}", d.handleAdminRemoveBlacklist)
+
+	// 129-2: run-time switches for the whole server.
+	mux.HandleFunc("GET /api/admin/settings", d.handleAdminGetSettings)
+	mux.HandleFunc("PUT /api/admin/settings", d.handleAdminPutSettings)
 	return nil
 }
 

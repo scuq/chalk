@@ -361,16 +361,27 @@ type configResponse struct {
 	// 80-12: whether ephemeral voice channels (guest magic links) are on.
 	// Gates the create-modal TTL option and the invite UI.
 	EphemeralEnabled bool `json:"ephemeral_enabled"`
+	// 129-2: the administrator's switch for the seasonal figure. Unlike
+	// the fields above it is read from the database on every call and can
+	// change while chalkd runs; the 60 s cache below bounds the staleness.
+	SeasonalDecorations bool `json:"seasonal_decorations"`
 }
 
 // ---- handlers ----------------------------------------------------------
 
 // handleConfig returns public auth configuration the SPA needs at
-// startup. No authentication required. Cacheable for a short period
-// (the values are stable across the chalkd process lifetime).
+// startup. No authentication required. Cacheable for a short period:
+// most values are stable across the chalkd process lifetime, and the
+// one that is not (129-2) tolerates a minute of staleness.
 func (d *HTTPDeps) handleConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "max-age=60") // values are stable but allow override
+	// 129-2: a database error here must not take the sign-in screen down
+	// with it -- log it and answer with the defaults.
+	settings, err := loadInstanceSettings(r.Context(), d.Store)
+	if err != nil {
+		d.Logger.Printf("auth/config: instance settings: %v", err)
+	}
 	_ = json.NewEncoder(w).Encode(configResponse{
 		RPID:              d.Service.RPID(),
 		RPName:            d.Service.RPDisplayName(),
@@ -379,9 +390,10 @@ func (d *HTTPDeps) handleConfig(w http.ResponseWriter, r *http.Request) {
 		RecoveryWordCount: RecoveryWordCount,
 		GiphyEnabled:      d.GiphyClient != nil,
 
-		LinkPreviewEnabled: d.LinkPreview != nil,
-		LinkPreviewDomains: d.LinkPreviewDomains,
-		EphemeralEnabled:   d.EphemeralEnabled,
+		LinkPreviewEnabled:  d.LinkPreview != nil,
+		LinkPreviewDomains:  d.LinkPreviewDomains,
+		EphemeralEnabled:    d.EphemeralEnabled,
+		SeasonalDecorations: settings.SeasonalDecorations,
 	})
 }
 
