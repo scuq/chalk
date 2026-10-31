@@ -72,6 +72,24 @@ test("the aura covers the window, takes no clicks, and paints only its edge", ()
   assert.match(animated, /\.chalk-season-aura\[data-season="halloween"\]\s*\{[^}]*--chalk-season-aura\s*:/);
 });
 
+test("every light theme gets the aura's darker colours", () => {
+  // Collect the themes whose [data-theme] block declares a light scheme.
+  const light = new Set<string>();
+  const block = /\[data-theme="([a-z-]+)"\]\s*\{([^}]*)\}/g;
+  for (const m of stripped.matchAll(block)) {
+    if (/color-scheme\s*:\s*light/.test(m[2])) light.add(m[1]);
+  }
+  assert.ok(light.size >= 3, `expected the light themes, found ${light.size}`);
+  // Find the aura rule for light themes. It must list each light theme and no other theme.
+  const rule = /((?:\[data-theme="[a-z-]+"\] \.chalk-season-aura\[data-season="halloween"\],?\s*)+)\{([^}]*)\}/.exec(animated);
+  assert.ok(rule, "no light-theme aura rule");
+  const listed = new Set([...rule![1].matchAll(/\[data-theme="([a-z-]+)"\]/g)].map((m) => m[1]));
+  for (const t of light) assert.ok(listed.has(t), `light theme ${t} has no aura colour of its own`);
+  for (const t of listed) assert.ok(light.has(t), `${t} is listed as light but declares no light scheme`);
+  assert.match(rule![2], /--chalk-season-aura\s*:/);
+  assert.match(rule![2], /--chalk-season-aura-line\s*:/);
+});
+
 test("the anchor takes no room and no clicks, and hangs off the footer's top edge", () => {
   const anchor = /\.chalk-season\s*\{([^}]*)\}/.exec(animated);
   assert.ok(anchor, "no .chalk-season rule");

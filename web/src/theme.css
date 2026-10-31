@@ -11808,6 +11808,18 @@ body.chalk-resizing-y .chalk-composer-resizer {
   --chalk-season-aura: rgba(126, 255, 176, 0.42);
   --chalk-season-aura-line: rgba(160, 255, 200, 0.35);
 }
+/* A pale glow is invisible on a light page. These selectors list every
+   theme block that declares color-scheme: light. They give the aura the
+   same hue, darker and denser. theme-season.test.ts makes sure the list
+   and the light themes match. */
+[data-theme="light"] .chalk-season-aura[data-season="halloween"],
+[data-theme="snazzy-light"] .chalk-season-aura[data-season="halloween"],
+[data-theme="warmwhite"] .chalk-season-aura[data-season="halloween"],
+[data-theme="vscode-light"] .chalk-season-aura[data-season="halloween"],
+[data-theme="catppuccin-latte"] .chalk-season-aura[data-season="halloween"] {
+  --chalk-season-aura: rgba(18, 122, 66, 0.4);
+  --chalk-season-aura-line: rgba(18, 122, 66, 0.55);
+}
 .chalk-season-aura--visible {
   opacity: 1;
 }

@@ -84,10 +84,15 @@ It has no background, so the middle of the window is not changed.
 
 Each season sets the colour in `--chalk-season-aura` and `--chalk-season-aura-line`.
 Halloween uses a pale ghost green.
+On a light theme a pale glow is invisible, so a second rule gives the aura a darker, denser green.
+It sets `rgba(18, 122, 66, 0.4)` for the glow and `rgba(18, 122, 66, 0.55)` for the line.
+The rule lists the five themes that declare `color-scheme: light`: `light`, `snazzy-light`, `warmwhite`, `vscode-light`, and `catppuccin-latte`.
 The opacity fades over 1200 ms with the visibility of the figure.
 The reduced-motion block of the same section sets `transition: none` on the aura.
 `web/src/theme-season.test.ts` holds the sheet fixed, with `inset: 0`, click-through, inset-shadow only, and no fill.
 It also requires that every season in the registry sets its aura colour.
+A second test reads every `[data-theme]` block and collects the themes that declare a light scheme.
+It requires that the light rule lists exactly those themes, so a new light theme cannot ship without an aura colour.
 
 ### Three gates
 
@@ -257,6 +262,7 @@ Use two users, Alice and Bob, and a date inside the window.
 11. Close and open the settings tab. Check that it shows the saved value.
 12. Set the system date outside the window. Check that no ghost shows.
 13. Check that the edge of the window glows while the ghost is out, and that the edge is dark otherwise.
+14. On a light theme, for example `warmwhite`, check that the edge glow is a visibly darker green.
 
 ## How to add a season
 
@@ -268,4 +274,9 @@ Use two users, Alice and Bob, and a date inside the window.
 4. Add the keywords of the season to the `seasonal` section in
    `settings-nav.ts` if they are not there.
 
-The device switch, the server switch, the schedule, and the CSS need no change.
+5. Add an aura colour pair for the new season, for dark themes and for light themes.
+   The light pair goes in the rule that lists the light themes.
+   The pale glow of a dark theme is invisible on a light page.
+
+The device switch, the server switch, and the schedule need no change.
+The CSS needs only the colour pairs from step 5.

@@ -10,6 +10,13 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- On the light themes (light, snazzy-light, warmwhite, vscode-light, and catppuccin-latte), the green glow along the window edge was too pale to see while the ghost was out. The glow now uses a darker, denser green on these themes.
+
+---
+
 ## v0.8.27 — 31 October 2026 — A ghost for Halloween, with a server-wide switch
 
 ### Added
