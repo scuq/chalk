@@ -65,7 +65,8 @@ Each entry has the hashed `src` URL and an accessible `label`, for example "a pu
 
 `web/src/components/SeasonFigure.tsx` renders `<img class="chalk-season-art">` at 56 px with a drop shadow.
 It sets `data-figure` to the figure name.
-The component picks the next figure as the current one goes out of sight, so the fade-in already shows it.
+The component picks the next figure as the figure comes in, never as it goes out.
+The fade-out always shows the figure that visited.
 The wrapper has `role="img"` and an aria-label.
 It has `aria-hidden` while it is hidden.
 One component serves every season.
@@ -346,6 +347,7 @@ Use two users, Alice and Bob, and a date inside the window.
 17. Set the system date to 22 December. Check that a winter figure shows and that the window edge does not glow.
 18. Set the system date to 24 December. Check that the window edge glows ice blue while the figure is out.
 19. On a light theme, for example `warmwhite`, check that the ice-blue glow is visibly darker.
+20. Watch a whole fade-out. Check that the figure does not change until it is gone.
 
 ## How to add a season
 

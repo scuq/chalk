@@ -40,9 +40,10 @@ export function SeasonFigure({ season, aura }: Props) {
       () =>
         setVisit((v) => {
           const next = nextPeek(v.visible);
-          // As the figure goes out of sight, pick the figure for the next
-          // visit, so the fade-in already shows it.
-          const figure = next.visible ? v.figure : pickFigure(season, Math.random, v.figure);
+          // A new face each time the figure comes back. Picked as it comes
+          // in, never as it goes out: the one on its way out must stay what
+          // it was for the whole fade.
+          const figure = next.visible ? pickFigure(season, Math.random, v.figure) : v.figure;
           return { ...next, figure };
         }),
       visit.ms,
