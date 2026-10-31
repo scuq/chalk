@@ -116,6 +116,11 @@ async function register(page, username) {
   await page.locator("[data-testid='identity-generate-confirm']").click();
 
   await page.waitForSelector("[data-state='open']", { timeout: 30000 });
+  // 116-2: The whats-new note opens 1500 ms after prefs load, also for a new
+  // account. Its backdrop blocks all clicks until you close the note.
+  const whatsNew = page.locator("[data-testid='whats-new-dismiss']");
+  await whatsNew.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+  if (await whatsNew.isVisible().catch(() => false)) await whatsNew.click();
   await page.waitForTimeout(1000);
   console.log(`  registered ${username} (password: ${PASSWORD})`);
 }

@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.8.25 — 31 October 2026 — Current toolchain and libraries, sign-in fields that password managers fill, and roster pictures that show sooner
 
 ### Changed
 - The server image is built with the current Go release (1.27) and the current
