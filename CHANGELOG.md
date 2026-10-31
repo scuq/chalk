@@ -10,6 +10,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- Around Halloween (24 October to 1 November), a small ghost now visits the bottom corner of the conversation from time to time. It is on by default. To turn it off on one device, clear the check box under settings, appearance, seasonal. Other seasons will follow.
+- Administrators have a new settings tab in the admin panel. It has a server-wide switch for the seasonal figure.
+
+---
+
 ## v0.8.26 — 31 October 2026 — Phone conversations that stay at the new-messages line
 
 ### Fixed

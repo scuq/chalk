@@ -1063,6 +1063,35 @@ export function ProfilePanel({
             </section>
           )}
 
+          {/* 129-1: the seasonal figure. Its own section rather than a flair
+              switch: flair is off by default and this is on, and a reader
+              with flair off still gets the ghost. */}
+          {show("seasonal") && (
+            <section class="chalk-profile-seasonal" data-testid="seasonal-section">
+              <h3>seasonal</h3>
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={display.seasonal}
+                    onChange={(e) =>
+                      setDisplay({ seasonal: (e.target as HTMLInputElement).checked })
+                    }
+                    data-testid="seasonal-on"
+                  />
+                  <span>a small figure for the season</span>
+                </label>
+                <p class="chalk-profile-hint">
+                  on by default. around halloween a ghost visits the bottom
+                  corner of the conversation now and then, and other seasons
+                  bring their own. stored on this device only. the
+                  administrator can turn it off for the whole server, and it
+                  holds still when your system asks for reduced motion.
+                </p>
+              </div>
+            </section>
+          )}
+
           {show("chat") && onSetChatPref && chatPrefs && (
             <section class="chalk-profile-chat">
               <h3>chat</h3>

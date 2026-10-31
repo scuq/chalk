@@ -55,6 +55,7 @@ const FLAIR_DEFAULTS = {
   flairBanner: true,
   flairBurstCount: 4,
   flairBurstMinutes: 4,
+  seasonal: true,
 };
 
 test("normalize keeps a valid pref untouched", () => {
@@ -298,4 +299,11 @@ test("apply writes the flair attributes only while the master is on", () => {
   // sub-switches still say, so a rule never has to check both.
   applyDisplayPrefs({ ...DEFAULT_DISPLAY_PREFS, flair: false }, on);
   assert.deepEqual(on.attrs, {});
+});
+
+test("129-1: the seasonal figure is on by default, on when absent, and off when stored off", () => {
+  assert.equal(DEFAULT_DISPLAY_PREFS.seasonal, true);
+  assert.equal(normalizeDisplayPrefs({ font: "mono", scale: 1 }).seasonal, true);
+  assert.equal(normalizeDisplayPrefs({ seasonal: false }).seasonal, false);
+  assert.equal(normalizeDisplayPrefs({ seasonal: "no" }).seasonal, true);
 });

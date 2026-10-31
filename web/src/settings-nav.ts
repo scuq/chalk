@@ -28,6 +28,7 @@ export type SectionId =
   | "about"
   | "appearance"
   | "flair"
+  | "seasonal"
   | "chat"
   | "roster"
   | "shortcuts"
@@ -143,6 +144,17 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       "flair", "animation", "animated", "animations", "motion", "fancy",
       "flame", "fire", "hot", "busy", "burst", "wave", "frame", "frames",
       "avatar frame", "banner", "drift", "reduced motion", "alive",
+    ],
+  },
+  {
+    id: "seasonal",
+    tab: "appearance",
+    title: "seasonal",
+    keywords: [
+      // 129-1: the figure's name, the seasons, and the words for a person
+      // who wants the corner empty again.
+      "seasonal", "season", "halloween", "christmas", "ghost", "pumpkin",
+      "holiday", "holidays", "decoration", "decorations", "spooky",
     ],
   },
   {

@@ -31,6 +31,15 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    phase: 129,
+    title: "a ghost for halloween",
+    lines: [
+      "from 24 october to 1 november a small ghost visits the bottom corner of the conversation now and then, and other seasons will bring their own figure",
+      "it is on by default, you can turn it off for this device, and the administrator can turn it off for the whole server",
+    ],
+    where: "settings → appearance → seasonal",
+  },
+  {
     phase: 115,
     title: "flair, off until you ask for it",
     lines: [

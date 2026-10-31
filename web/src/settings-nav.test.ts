@@ -52,8 +52,13 @@ test("no match yields an empty set, not null", () => {
   assert.equal(hits.size, 0);
 });
 
-test("registry: 20 unique sections, valid tabs, keywords present", () => {
-  assert.equal(SETTINGS_SECTIONS.length, 20);
+test("registry: 21 unique sections, valid tabs, keywords present", () => {
+  assert.equal(SETTINGS_SECTIONS.length, 21);
+  // 129-1: the seasonal figure sits on the appearance tab, and the season's
+  // name finds it.
+  assert.equal(SECTION_TAB["seasonal"], "appearance");
+  assert.ok(matchSections("halloween")!.has("seasonal"));
+  assert.ok(matchSections("ghost")!.has("seasonal"));
   // 115-1: flair sits on the appearance tab, and the words for wanting
   // motion *off* find it too.
   assert.equal(SECTION_TAB["flair"], "appearance");

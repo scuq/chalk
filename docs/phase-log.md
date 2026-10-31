@@ -120,6 +120,7 @@ as-built rather than a contemporaneous plan.
 | 126 | the zucker voice shelf keeps its row, and a call bar for the phone's home screen | [PHASE-126-ZUCKERCALL.md](phases/PHASE-126-ZUCKERCALL.md) |
 | 127 | password managers recognise the sign-in and password fields — real forms, named inputs, a hidden username | [PHASE-127-AUTOFILL.md](phases/PHASE-127-AUTOFILL.md) |
 | 128 | toolchain and dependency refresh — Go 1.27, Node 24, current Go modules, go-webauthn 0.18, npm packages and Electron 45 | [PHASE-128-TOOLCHAIN.md](phases/PHASE-128-TOOLCHAIN.md) |
+| 129 | seasonal — a figure for the season, with a switch per device and one for the server | [PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
@@ -754,6 +755,15 @@ documents carry a note saying so.
 hours in the emulated arm64 half of the image build (node crashed under
 QEMU, npm never returned); every stage that runs anything now runs on the
 build platform and Go cross-compiles, with a 30-minute cap on the job.
+
+**129 — seasonal** (2026-10-31). Around Halloween (24 October to 1
+November) a small ghost peeks into the bottom-right corner of the feed: it
+shows for 8 s to 15 s, hides for 25 s to 90 s, and repeats. The calendar
+decides (`seasonFor`, local date), and a device switch and a server switch
+must also be on. The server switch is the first row of the generic
+`instance_settings` table (migration 0062), set on a new settings tab in the
+admin panel and carried on `GET /api/auth/config`. Christmas (129-4) is
+planned, not started.
 
 **Not started.** 65 (web push), 86 (ties), 87
 (message reminders), 90 (a local idle agent) and 99 (database-credential

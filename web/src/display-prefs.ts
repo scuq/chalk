@@ -77,6 +77,10 @@ export interface DisplayPrefs {
   // scale: a hand-edited entry cannot make the flame permanent or impossible.
   flairBurstCount: number;
   flairBurstMinutes: number;
+  // 129-1: the seasonal figure -- a ghost at halloween, later others. On by
+  // default, unlike flair: it is one small visitor in a corner, not a mode.
+  // Per-device like everything here, so a phone can stay plain.
+  seasonal: boolean;
 }
 
 export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
@@ -94,6 +98,7 @@ export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
   flairBanner: true,
   flairBurstCount: 4,
   flairBurstMinutes: 4,
+  seasonal: true,
 };
 
 // 115-1: the flame's threshold bounds. Two in one minute is the smallest
@@ -219,6 +224,9 @@ export function normalizeDisplayPrefs(raw: unknown): DisplayPrefs {
       MIN_BURST_MINUTES,
       MAX_BURST_MINUTES,
     ),
+    // 129-1: absent means on -- a device that stored its prefs before 129
+    // gets the figure, the same way 111 turned banners on.
+    seasonal: bool("seasonal", DEFAULT_DISPLAY_PREFS.seasonal),
   };
 }
 

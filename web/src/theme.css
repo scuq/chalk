@@ -11736,6 +11736,101 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 
 /* ============================================================
+   Phase 129: seasonal -- a figure for the season, on by default.
+   The anchor is a zero-size element pinned to the footer's top-right
+   corner (the footer is the positioned box under the feed), so the
+   glyph floats over the feed's bottom-right corner whatever the
+   feed's length or scroll position, and takes no room from it.
+   Motion uses opacity and transform only. The reduced-motion block
+   at the end of this section turns it off and leaves the glyph in
+   place.
+   This section must stay above the flair section: theme-flair.test.ts
+   takes the sheet's last reduced-motion block as flair's.
+   ============================================================ */
+/* The anchor: zero size, absolute, with its bottom edge on the footer's
+   top edge. It is not sticky and it is not inside the scroller. */
+.chalk-season {
+  position: absolute;
+  bottom: 100%;
+  right: var(--chalk-scroll-lane, var(--chalk-s2));
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.chalk-season-figure {
+  position: absolute;
+  right: var(--chalk-s4);
+  bottom: var(--chalk-s2);
+  display: block;
+  color: var(--chalk-fg-dim);
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 900ms ease,
+    transform 900ms ease;
+}
+.chalk-season-figure--visible {
+  opacity: 0.85;
+  transform: translateY(0);
+}
+.chalk-season-svg {
+  display: block;
+  width: 40px;
+  height: 40px;
+}
+.chalk-season-figure--visible .chalk-season-svg {
+  animation: chalk-season-bob 3.2s ease-in-out infinite;
+}
+/* The eyes and the mouth are drawn in the page colour, so they read as
+   holes in the glyph rather than paint on it. */
+.chalk-season-cut {
+  fill: var(--chalk-bg);
+}
+@keyframes chalk-season-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+/* 129-3: the admin panel's settings tab borrows the settings dialog's
+   row shape (phase 124), whose rules are scoped to the dialog -- so the
+   card and the row are restated here for the tab. */
+.chalk-admin-settings section {
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: 6px;
+  padding: var(--chalk-s3) var(--chalk-s4);
+  max-width: 48rem;
+}
+.chalk-admin-settings section h3 {
+  margin: 0 0 var(--chalk-s2) 0;
+  font-size: var(--chalk-size-body);
+  color: var(--chalk-fg-bright);
+  font-weight: 500;
+}
+.chalk-admin-settings .chalk-profile-hint {
+  margin: var(--chalk-s1) 0 0 0;
+  color: var(--chalk-fg-dim);
+}
+
+/* Reduced motion: the figure still comes and goes, but it jumps rather
+   than fades and does not bob. This block must stay the last thing in
+   the seasonal section -- theme-season.test.ts holds every animated
+   selector to it. */
+@media (prefers-reduced-motion: reduce) {
+  .chalk-season-figure {
+    transition: none;
+  }
+  .chalk-season-figure--visible .chalk-season-svg {
+    animation: none;
+  }
+}
+
+/* ============================================================
    Phase 115: flair -- the animated mode, off by default.
    Every rule below is gated on a data-flair* attribute that
    display-prefs.ts writes on <html>, so with the switch off this

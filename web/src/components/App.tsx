@@ -20,6 +20,8 @@ import { typingStore } from "../chat/typing-store";
 import { burstStore, useHotChannels } from "../chat/burst-store"; // 115-2
 import { waveStore, useWaves } from "../chat/wave-store"; // 115-3
 import { Flame } from "./Flame"; // 115-2
+import { SeasonFigure } from "./SeasonFigure"; // 129-1
+import { seasonFor } from "../season/seasons"; // 129-1
 import { mentionsHandle } from "../chat/mentions";
 import { threadTitle, attachmentTitle } from "../chat/threadtitle";
 import { notifySounds, type NotifySounds } from "../notify";
@@ -3590,8 +3592,24 @@ export function App() {
       flairFrames,
       flairBurstCount,
       flairBurstMinutes,
+      seasonal: seasonalPref,
     },
   ] = useDisplayPrefs();
+  // 129-1: which season it is, re-read once an hour so a tab left open over
+  // midnight crosses the window's edge without a reload. Three gates: the
+  // calendar, this device's switch, and the server's switch -- and the last
+  // is unknown until the config has loaded, so nothing shows before then.
+  const [seasonNow, setSeasonNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setSeasonNow(Date.now()), 60 * 60 * 1000);
+    return () => clearInterval(t);
+  }, []);
+  const season = seasonFor(seasonNow);
+  const seasonalOn =
+    season !== null &&
+    seasonalPref &&
+    state.authConfig !== null &&
+    state.authConfig.seasonal_decorations !== false;
   // 112-10: A friend row draws the friend's picture from the DM with that friend.
   // While the roster switch (or flair avatar frames) is on, list the pictures
   // of every two-person DM, not only of the active channel.
@@ -5080,6 +5098,7 @@ export function App() {
       <AdminPanel
         state={state.adminPanel}
         ownUserID={state.me?.userID ?? null}
+        authConfig={state.authConfig} // 129-3
         dispatch={dispatch}
         onBackToChat={() => {
           window.history.pushState({}, "", "/");
@@ -6557,6 +6576,16 @@ export function App() {
           !isMobile && composerHeight > 0 ? `--chalk-composer-h:${composerHeight}px` : undefined
         }
       >
+        {/* 129-1: the season's figure hangs off the footer's top edge, so it
+            floats over the feed's bottom-right corner whatever the feed's
+            length or scroll position. Only over a text conversation that is
+            on screen: not a call, not the parking lot, not the phone's list. */}
+        {seasonalOn &&
+          season &&
+          activeChannel &&
+          activeChannel.channelType !== "voice" &&
+          !state.parked &&
+          !(zuckerActive && zuckerScreen === "list") && <SeasonFigure season={season} />}
         {!isMobile && (
           <ComposerResizer
             height={composerHeight}
