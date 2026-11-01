@@ -815,6 +815,10 @@ five neutral scenes, which reverses 129-10. The calendar and the gaps did not
 change, and `seasonFor` still returns null on such a date. `seasonalOn` in
 `App.tsx` no longer needs a season. `SeasonScene` takes a season or null. The
 night frame still needs a season.
+129-13 added the title of the season. `drawTitle` in `scene.ts` draws it on a
+small centred sign, last, so the walkers pass behind it. The neutral dates
+show `CHALK`. The sign is left out if it does not fit in the strip. This
+reverses the no-title decision of 129-9.
 
 **130 — guest flow** (2026-11-01). The first real use of temporary voice
 rooms showed four rough edges in the flow of the member. 130-1 stopped the

@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a scene for the season
 
-**Status:** built, 129-1 – 129-12. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-12 are not yet in a release. 129-8 to 129-10 land together.
+**Status:** built, 129-1 – 129-13. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-13 are not yet in a release. 129-8 to 129-10 land together.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -15,6 +15,7 @@ with an animated pixel scene for each of eight seasons. 129-10 left gaps
 between the seasons, so chalk is not in a season all year, and it added
 always-on hours for two evenings. 129-12 replaced the scene engine with one
 that has 45 scenes, and it gave the dates in the gaps scenes of their own.
+129-13 added the title of the season on a small sign.
 
 ## The design
 
@@ -231,8 +232,13 @@ always-on hours walk all five.
 
 The scene differs from the supplied engine on purpose:
 
-- It has no sky, no haze, no earth block, no title, no panel, and no pixel
-  font. The canvas stays transparent, so the scene blends with all 15 themes.
+- It has no sky, no haze, and no earth block. The canvas stays transparent,
+  so the scene blends with all 15 themes.
+- It draws the title (129-13) on a small sign and not on a panel for the whole
+  strip. The title is always at single size. The supplied engine uses double
+  size on a strip of 275 scene pixels or wider. Here the strip is 22 scene
+  pixels high, and double size would make `HARVEST FESTIVAL` about 380 CSS
+  pixels wide and nearly as high as the strip.
 - The stars and the moon of the earlier engine are gone, because the supplied
   engine has none.
 - The ground is the bottom line of the header: `ground = H - 1`. Scattered
@@ -535,7 +541,9 @@ and spends the daily caps. A span of nine hours would use up the caps, and the
 other visits of the day would not come.
 
 The title and the solid panel of the reference scene (129-9). They do not
-blend with all 15 themes.
+blend with all 15 themes. 129-13 reversed the title part of this decision at
+the request of the user: the scene shows the title on a small sign. The solid
+panel for the whole strip stays rejected.
 
 A phone layout with the scene on a second header row (129-9). It changes the
 height of the header. This still holds for the header. 129-11 put the scene
@@ -631,6 +639,17 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
   and the two mounts pass `season` or null. Text in `whats-new.ts` and
   `CHANGELOG.md`.
 
+- **129-13 — the title.** `PALETTES` in `season/scene.ts` gained `title`,
+  `ink`, and `panel` for each key. The title is the name of the season, and
+  `CHALK` on the neutral dates. `FONT` is a 5 by 7 pixel font. `drawTitle`
+  draws a centred sign: a panel 13 scene pixels high with an edge line at the
+  top and at the bottom, and the letters at single size. `drawScene` calls it
+  last, so the walkers pass behind the sign, and the title fades with its
+  scene. If the sign does not fit in the width of the strip, `drawTitle`
+  leaves it out. `titleFor` and `hasGlyph` are exports for the tests. One
+  scene pixel is 2 CSS pixels, so a letter is 10 by 14 CSS pixels. Text in
+  `CHANGELOG.md`.
+
 ## Trade-offs
 
 1. A change by an administrator reaches other clients on their next page load.
@@ -679,6 +698,9 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
 16. Two scene names promise what the scene does not draw: Cabin Smoke has no
     smoke, and Bridge Walk has no bridge. The names are the names of the user.
     The gap is recorded in `docs/open-items.md`.
+17. The sign of the title covers the middle of the strip, about 105 scene
+    pixels at most for `HARVEST FESTIVAL`. The walkers pass behind it. A
+    strip that is too narrow for the sign shows no title.
 
 ## Verification
 
@@ -719,6 +741,8 @@ For 129-12, a contact sheet of all 45 scenes was rendered from the real
 Playwright probe ran on the same date against neutral dates, 29 February, the
 Halloween night frame, a rotation in the always-on hours, and the first frame
 under reduced motion. It passed.
+
+For 129-13, the showcase in the real header on 2026-11-02 showed the title.
 
 ### Manual checklist for the live stack
 
@@ -772,7 +796,7 @@ no season and shows the neutral scenes (see item 13).
     a neutral scene, because the date is in the gap from 8 February to
     28 February.
 14. Switch between a dark theme and a light theme, for example `warmwhite`.
-    Check that the scene shows on both with no panel behind it.
+    Check that the scene shows on both with no panel behind it, except the small sign of the title.
 15. Check that two visits make a new scene: the walkers enter from the edges
     again. The second visit comes 20 minutes or more after the first, and 1 hour
     or more if the first started before 18:00. To avoid the wait, clear the key `chalk.season.visits.v1` from localStorage after
@@ -819,6 +843,12 @@ no season and shows the neutral scenes (see item 13).
     the edges. After the fifth scene, check that the first one comes back.
 36. Emulate reduced motion and start a visit. Check that the first frame is
     whole, with no fade in, and that it holds still.
+37. During a visit in a season, check that the sign shows the name of the
+    season. Check that the walkers pass behind the sign, and that the title
+    fades with the scene.
+38. On a date in a gap, check that the sign shows `CHALK`.
+39. Make the strip narrower than the sign. Check that the title is absent and
+    that the scene still shows.
 
 ## How to add a season
 

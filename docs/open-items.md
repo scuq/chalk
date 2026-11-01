@@ -28,7 +28,7 @@ Every change is in the client.
 
 ## Phase 129 — seasonal: COMPLETE, with recorded trade-offs
 
-129-1 … 129-12, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
+129-1 … 129-13, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
 An animated pixel scene peeks into the middle of the top header. Each of
 eight seasons has five scenes that change every 35 s. A gap of 21 days in a
 common year separates two seasons, and a date in a gap shows five neutral

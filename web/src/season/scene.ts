@@ -1,5 +1,5 @@
 // chalk-web -- 129-9: the scene. 129-12: five scenes for each key, and the
-// neutral key.
+// neutral key. 129-13: the title of the season on a small sign.
 //
 // This module draws a small pixel scene and moves it. SCENES has nine keys:
 // the eight seasons of seasons.ts, and "neutral" for a date in no season. Each
@@ -12,10 +12,14 @@
 // the time of the scene. So a test uses a fake Painter and gets the same
 // picture each time. SeasonScene.tsx owns the loop and the start index.
 // The scene differs from the engine that the user supplied, on purpose:
-//   - It paints no sky, no haze, no earth block, no title, no panel, and no
-//     pixel font. The canvas stays transparent, so the scene blends with all
-//     themes. It draws no stars and no moon, because the supplied engine has
-//     none.
+//   - It paints no sky, no haze, and no earth block. The canvas stays
+//     transparent, so the scene blends with all themes. It draws no stars and
+//     no moon, because the supplied engine has none.
+//   - It draws the title on a small sign, not on a panel for the whole strip.
+//     The title is always at single size. The supplied engine uses double size
+//     on a strip of 275 scene pixels or wider. Here the strip is 22 scene
+//     pixels high, and double size would make the longest title nearly as
+//     high as the strip.
 //   - The ground is H - 1. The bottom line of the header is the ground.
 //     Scattered tufts of grass on the ground stay.
 //   - It has no preview API on window, because that would be a global in
@@ -233,17 +237,80 @@ export const SCENES: Record<SceneKey, SceneRow[]> = {
   ],
 };
 
-// The colours of the ground tufts and of the hills, meadow, and farm, for each key.
-const PALETTES: Record<SceneKey, { earth: string; edge: string }> = {
-  "new-year": { earth: "#29344d", edge: "#576d95" },
-  winterfest: { earth: "#b3cdd4", edge: "#e6f4f0" },
-  "spring-bloom": { earth: "#467849", edge: "#81ba70" },
-  "green-season": { earth: "#285b33", edge: "#68a94e" },
-  midsummer: { earth: "#607c35", edge: "#afbd60" },
-  "harvest-festival": { earth: "#64512c", edge: "#b49a4c" },
-  "spooky-season": { earth: "#152d1d", edge: "#467442" },
-  "late-autumn": { earth: "#493d30", edge: "#a27743" },
-  neutral: { earth: "#193d28", edge: "#397a4b" },
+// For each key: the colours of the ground tufts and of the hills, meadow, and
+// farm (earth, edge), the title of the season (title), and the colours of the
+// letters (ink) and of the sign (panel). The edge colour also draws the two
+// lines of the sign. The neutral key has the title "CHALK".
+const PALETTES: Record<SceneKey, {
+  earth: string;
+  edge: string;
+  title: string;
+  ink: string;
+  panel: string;
+}> = {
+  "new-year": {
+    earth: "#29344d",
+    edge: "#576d95",
+    title: "NEW YEAR",
+    ink: "#ffd47c",
+    panel: "#091222",
+  },
+  winterfest: {
+    earth: "#b3cdd4",
+    edge: "#e6f4f0",
+    title: "WINTERFEST",
+    ink: "#daf5ff",
+    panel: "#102637",
+  },
+  "spring-bloom": {
+    earth: "#467849",
+    edge: "#81ba70",
+    title: "SPRING BLOOM",
+    ink: "#ffe0ea",
+    panel: "#294d43",
+  },
+  "green-season": {
+    earth: "#285b33",
+    edge: "#68a94e",
+    title: "GREEN SEASON",
+    ink: "#ceffab",
+    panel: "#173a2b",
+  },
+  midsummer: {
+    earth: "#607c35",
+    edge: "#afbd60",
+    title: "MIDSUMMER",
+    ink: "#ffe6a0",
+    panel: "#485139",
+  },
+  "harvest-festival": {
+    earth: "#64512c",
+    edge: "#b49a4c",
+    title: "HARVEST FESTIVAL",
+    ink: "#ffdc92",
+    panel: "#453423",
+  },
+  "spooky-season": {
+    earth: "#152d1d",
+    edge: "#467442",
+    title: "SPOOKY SEASON",
+    ink: "#ffb057",
+    panel: "#121324",
+  },
+  "late-autumn": {
+    earth: "#493d30",
+    edge: "#a27743",
+    title: "LATE AUTUMN",
+    ink: "#f9c992",
+    panel: "#292e2e",
+  },
+  neutral: {
+    earth: "#193d28",
+    edge: "#397a4b",
+    title: "CHALK",
+    ink: "#62edaf",
+    panel: "#081d13",
+  },
 };
 
 // A walker. `lift` is the height above the ground and `vy` the upward speed.
@@ -871,10 +938,78 @@ function drawActor(p: Px, s: Scene, a: Actor): void {
   }
 }
 
+// A 5 by 7 pixel font for the capital letters of the titles. Each glyph is
+// seven rows that are joined with "/". In a row, "1" is a painted pixel and
+// "0" is an empty pixel.
+const FONT: Record<string, string> = {
+  A: "01110/10001/10001/11111/10001/10001/10001",
+  B: "11110/10001/10001/11110/10001/10001/11110",
+  C: "01111/10000/10000/10000/10000/10000/01111",
+  D: "11110/10001/10001/10001/10001/10001/11110",
+  E: "11111/10000/10000/11110/10000/10000/11111",
+  F: "11111/10000/10000/11110/10000/10000/10000",
+  G: "01111/10000/10000/10111/10001/10001/01111",
+  H: "10001/10001/10001/11111/10001/10001/10001",
+  I: "11111/00100/00100/00100/00100/00100/11111",
+  J: "00111/00010/00010/00010/10010/10010/01100",
+  K: "10001/10010/10100/11000/10100/10010/10001",
+  L: "10000/10000/10000/10000/10000/10000/11111",
+  M: "10001/11011/10101/10101/10001/10001/10001",
+  N: "10001/11001/10101/10011/10001/10001/10001",
+  O: "01110/10001/10001/10001/10001/10001/01110",
+  P: "11110/10001/10001/11110/10000/10000/10000",
+  Q: "01110/10001/10001/10001/10101/10010/01101",
+  R: "11110/10001/10001/11110/10100/10010/10001",
+  S: "01111/10000/10000/01110/00001/00001/11110",
+  T: "11111/00100/00100/00100/00100/00100/00100",
+  U: "10001/10001/10001/10001/10001/10001/01110",
+  V: "10001/10001/10001/10001/10001/01010/00100",
+  W: "10001/10001/10001/10101/10101/10101/01010",
+  X: "10001/10001/01010/00100/01010/10001/10001",
+  Y: "10001/10001/01010/00100/00100/00100/00100",
+  Z: "11111/00001/00010/00100/01000/10000/11111",
+};
+
+/** titleFor returns the title that the sign shows for `key`. */
+export function titleFor(key: SceneKey): string {
+  return PALETTES[key].title;
+}
+
+/** hasGlyph reports whether the font can draw `ch`. A space counts as drawable. */
+export function hasGlyph(ch: string): boolean {
+  return ch === " " || ch in FONT;
+}
+
+// Draws the title of the scene on a sign that is centred in the strip. The sign
+// is a panel 13 scene pixels high, with an edge line at the top and at the
+// bottom. The letters are at single size. If the sign does not fit in the width
+// of the strip, the function draws nothing. A character that the font does not
+// have is skipped.
+function drawTitle(p: Px, s: Scene): void {
+  const { title, ink, panel, edge } = PALETTES[s.key];
+  const width = title.length * 6 - 1;
+  if (width + 10 > s.W) return;
+  const x = Math.floor((s.W - width) / 2);
+  const y = 4;
+  p(x - 5, y - 3, width + 10, 13, panel);
+  p(x - 5, y - 3, width + 10, 1, edge);
+  p(x - 5, y + 9, width + 10, 1, edge);
+  for (let i = 0; i < title.length; i++) {
+    const glyph = FONT[title[i]]?.split("/");
+    if (!glyph) continue;
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 5; col++) {
+        if (glyph[row][col] === "1") p(x + i * 6 + col, y + row, 1, 1, ink);
+      }
+    }
+  }
+}
+
 /**
  * drawScene paints the scene on `ctx`. It does not clear the canvas. It sets
  * ctx.globalAlpha to the value of [sceneAlpha] for the frame, and sets it back
- * to 1 at the end.
+ * to 1 at the end. The title sign is the last item drawn, so the walkers pass
+ * behind it, and it fades with the scene.
  */
 export function drawScene(ctx: Painter, s: Scene): void {
   const p: Px = (x, y, w, h, color) => {
@@ -887,5 +1022,6 @@ export function drawScene(ctx: Painter, s: Scene): void {
   s.row.props.forEach((kind, i) => drawProp(p, s, kind, at[i]));
   drawEffects(p, s);
   for (const a of s.actors) drawActor(p, s, a);
+  drawTitle(p, s);
   ctx.globalAlpha = 1;
 }

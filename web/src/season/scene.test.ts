@@ -4,7 +4,8 @@
 // check the table (45 scenes, nine keys, the same ids as SEASONS plus
 // "neutral"), whole pixels and a see-through strip in every scene, a paint for
 // each prop, the rotation and its wrap, the fade, a start index outside the
-// range, the walkers, a ghost that floats, a long frame, and a resize.
+// range, the walkers, a ghost that floats, a long frame, and a resize. 129-13:
+// the title of each key, the font, the sign, and a strip that is too narrow.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -12,12 +13,14 @@ import {
   createScene,
   drawScene,
   FADE_SECONDS,
+  hasGlyph,
   resizeScene,
   SCENE_SECONDS,
   SCENES,
   SCENES_PER_KEY,
   sceneAlpha,
   stepScene,
+  titleFor,
   type Painter,
   type SceneKey,
 } from "./scene";
@@ -113,6 +116,56 @@ test("a first scene is whole at once, a rotation fades in, and each scene fades 
   assert.equal(sceneAlpha(scene), 0);
   scene.sceneTime = FADE_SECONDS / 2;
   assert.ok(Math.abs(sceneAlpha(scene) - 0.5) < 1e-9);
+});
+
+test("each season has its title, and the font holds every letter", () => {
+  assert.equal(titleFor("spooky-season"), "SPOOKY SEASON");
+  assert.equal(titleFor("neutral"), "CHALK");
+  const titles = KEYS.map(titleFor);
+  assert.equal(new Set(titles).size, KEYS.length);
+  for (const title of titles) {
+    for (const ch of title) assert.ok(hasGlyph(ch), `${title}: ${ch}`);
+  }
+});
+
+test("the title sits on a centred sign, painted after the walkers", () => {
+  const scene = createScene("harvest-festival", W, H);
+  scene.actors[0].x = W / 2;
+  const { ctx, rects } = recorder();
+  drawScene(ctx, scene);
+  const panel = rects.findIndex((r) => r.color === "#453423");
+  assert.ok(panel >= 0, "no title sign");
+  const width = "HARVEST FESTIVAL".length * 6 - 1 + 10;
+  assert.equal(rects[panel].w, width);
+  assert.equal(rects[panel].h, 13);
+  assert.equal(rects[panel].x, Math.floor((W - (width - 10)) / 2) - 5);
+  assert.ok(rects[panel].y + rects[panel].h <= H);
+  const ink = rects.filter((r) => r.color === "#ffdc92");
+  assert.ok(ink.length > 50, "no letters");
+  assert.ok(rects.slice(0, panel).some((r) => r.color === "#d68d4f"), "the walkers are not under the sign");
+});
+
+test("a strip too narrow for the title leaves it out", () => {
+  const scene = createScene("harvest-festival", 60, H);
+  const { ctx, rects } = recorder();
+  drawScene(ctx, scene);
+  assert.ok(!rects.some((r) => r.color === "#453423"));
+});
+
+test("a title fades with its scene", () => {
+  const scene = createScene("neutral", W, H);
+  scene.rotations = 1;
+  scene.sceneTime = FADE_SECONDS / 2;
+  const seen: number[] = [];
+  const ctx: Painter = {
+    fillStyle: "",
+    globalAlpha: 1,
+    fillRect() {
+      seen.push(ctx.globalAlpha);
+    },
+  };
+  drawScene(ctx, scene);
+  assert.ok(seen.every((a) => Math.abs(a - 0.5) < 1e-9));
 });
 
 test("a start index outside the range still picks a scene", () => {
