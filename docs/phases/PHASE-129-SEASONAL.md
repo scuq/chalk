@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a scene for the season
 
-**Status:** built, 129-1 – 129-11. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-11 are not yet in a release. 129-8 to 129-10 land together.
+**Status:** built, 129-1 – 129-12. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-12 are not yet in a release. 129-8 to 129-10 land together.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -13,7 +13,8 @@ The visitor began as a ghost for Halloween (129-1) and grew into a set of
 figures for two seasons (129-4, 129-5). 129-8 and 129-9 replaced the figures
 with an animated pixel scene for each of eight seasons. 129-10 left gaps
 between the seasons, so chalk is not in a season all year, and it added
-always-on hours for two evenings.
+always-on hours for two evenings. 129-12 replaced the scene engine with one
+that has 45 scenes, and it gave the dates in the gaps scenes of their own.
 
 ## The design
 
@@ -44,10 +45,12 @@ Between two seasons is a gap of 21 days in a common year. The gaps are:
 - 6 to 26 November
 - 1 to 21 December
 
-A date in a gap has no season, and chalk shows no scene on it. The user asked
-for this, so that chalk is not always in a season.
+A date in a gap has no season. 129-10 showed no scene on such a date, because
+the user wanted chalk not to be in a season all year. 129-12 changed this: a
+date in a gap shows the neutral scenes (see "Neutral dates"). The calendar and
+the gaps did not change.
 29 February falls in the gap from 8 February to 28 February, so it has no
-season.
+season. It is a neutral date.
 
 Winterfest has two rows because it comes twice in the year. New Year has two
 rows because it crosses the year boundary. Two rows can share an `id`.
@@ -56,7 +59,8 @@ rows because it crosses the year boundary. Two rows can share an `id`.
 `seasonFor(now)` is a pure function. It takes the clock as a parameter and
 reads the local calendar date of the reader. It ignores the year. It returns
 null for a date in no row. With the default `SEASONS` that is a normal result,
-and `App.tsx` mounts no scene and spends no visit.
+and `App.tsx` passes `season={null}` to `SeasonScene`, which shows the neutral
+scenes.
 `inWindow(now, window)` is the shared window test. It still handles a window
 whose end comes before its start, which wraps the year boundary.
 `label` is the name of the season for a person. The scene also uses it as the
@@ -90,8 +94,8 @@ caps work as before, also on the same day.
 The same gates apply. The header of a phone width shows no scene (129-11 added
 a row for zuckermode, see "The mount"), and the device switch and the server
 switch turn it off. With reduced motion the scene holds one frame
-for the hours. Both windows fall on dates that have a row, so the calendar gate
-is open in them.
+for the hours. Both windows fall on dates that have a row, so they show the
+scenes of a season. The neutral scenes do not occur in them.
 
 The list is separate from the rows on purpose. The second window crosses from
 the 31 December row into the 1 January row. A field on a row would need two
@@ -149,58 +153,120 @@ it on unmount.
 
 ### The scene
 
-`web/src/season/scene.ts` draws the scene. It is a port of a reference scene
-that the user supplied.
-It exports `THEMES`, one entry for each `SeasonId`, and four functions:
+`web/src/season/scene.ts` draws the scene. 129-12 replaced the engine of
+129-9 with a port of a second engine that the user supplied, to get more
+variety. It exports these names:
 
-- `createScene(season, W, H)` returns a new scene of W by H scene pixels.
-- `resizeScene(scene, W, H)` moves the ground and the obstacles to fit a new size.
-- `stepScene(scene, elapsed)` moves the scene forward by `elapsed` seconds.
-  It counts at most 0.1 s, so a long frame cannot throw a walker across the strip.
+- `SCENES`, a table from a `SceneKey` to five `SceneRow` values. `SceneKey` is
+  a `SeasonId` or `"neutral"`, so there are nine keys and 45 scenes.
+- `SCENES_PER_KEY` (5), `SCENE_SECONDS` (35), and `FADE_SECONDS` (0.7).
+- `SCALE` (2) and `FPS` (12). One scene pixel is `SCALE` CSS pixels, and the
+  scene runs at `FPS` frames each second.
+- `createScene(key, W, H, index)` returns a new scene of W by H scene pixels,
+  which starts at the row `index`. An index outside 0 to 4 wraps around.
+- `resizeScene(scene, W, H)` moves the ground and the obstacles to fit a new
+  size.
+- `stepScene(scene, elapsed)` moves the scene forward by `elapsed` seconds. It
+  counts at most 0.1 s, so a long frame cannot throw a walker across the
+  strip. It also rotates the scene.
+- `sceneAlpha(scene)` returns the opacity of the scene, from 0 to 1.
 - `drawScene(ctx, scene)` paints the scene. It does not clear the canvas.
 
-One scene pixel is `SCALE` CSS pixels, and `SCALE` is 2. The scene runs at
-`FPS` frames each second, and `FPS` is 12.
+A `SceneRow` has a name, an environment, an effect, four props, and two cast
+members. The fields are typed unions and not strings, so a misspelled prop
+fails at compile time. The four props stand at four places: 12 scene pixels
+from the left edge, 20 percent of the width, 80 percent of the width, and 24
+scene pixels from the right edge. The props at index 1 and 2 are the obstacles.
+The first cast member enters from the left edge and the second from the right
+edge, and they walk in opposite directions. A walker on the ground jumps when
+an obstacle is 0 to 10 scene pixels ahead. It jumps over each obstacle once for
+each pass.
+
+The ghost is the exception. A ghost floats and does not jump. Its bob is part
+of the drawing. The new cast members are the witch and the ghost. The new
+effects are confetti, sparkles, aurora, rain, embers, lanterns, bats, fog, and
+clouds.
 
 The module is pure apart from the `Painter` it gets. `Painter` is the part of
-`CanvasRenderingContext2D` that the code uses: `fillStyle` and `fillRect`. The
-module uses no timer, no DOM, and no random source. Each effect takes its
-places from a hash of an index and from the time of the scene. So a test uses a
-fake `Painter` and gets the same picture each time.
+`CanvasRenderingContext2D` that the code uses: `fillStyle`, `fillRect`, and,
+since 129-12, `globalAlpha`. The module uses no timer, no DOM, and no random
+source. Each effect takes its places from a hash of an index and from the time
+of the scene. So a test uses a fake `Painter` and gets the same picture each
+time. `PALETTES` gives each key an earth colour and an edge colour.
 
-Two walkers enter from the two edges and walk in opposite directions.
-Two obstacles stand at 20 percent and 80 percent of the width.
-A walker on the ground jumps when an obstacle is 0 to 9 scene pixels ahead, and
-it jumps over each obstacle once for each pass.
-Each season sets a landscape, two obstacles, two walkers, and one effect:
+The 45 scenes:
 
-| Season | Landscape | Obstacles | Walkers | Effect |
-|---|---|---|---|---|
-| New Year | city | crate, crate | person, cat | fireworks |
-| Winterfest | pine | snowball, stump | penguin, fox | snow |
-| Spring Bloom | blossom | flowerpot, stone | rabbit, chick | petals |
-| Green Season | forest | log, stone | frog, fox | butterflies |
-| Midsummer | meadow | stone, flowerpot | person, rabbit | fireflies |
-| Harvest Festival | harvest | mushroom, hay | hedgehog, fox | leaves |
-| Spooky Season | graveyard | pumpkin, grave | skeleton, cat | ghosts and bats |
-| Late Autumn | bare | mushroom, log | fox, hedgehog | leaves |
+| Key | Scenes |
+|---|---|
+| `new-year` | Midnight Skyline, Rooftop Countdown, Harbor Lights, Town Celebration, First Sunrise |
+| `winterfest` | Snowy Pines, Cabin Smoke, Frozen Lake, Aurora Ridge, Lantern Walk |
+| `spring-bloom` | Cherry Blossom, Rain Garden, Pond Hopping, Flower Trail, Butterfly Orchard |
+| `green-season` | Deep Woods, Stream Crossing, Fern Garden, Hillside Run, Summer Rain |
+| `midsummer` | Golden Meadow, Lakeside Sunset, Campfire Evening, Firefly Night, Festival Lanterns |
+| `harvest-festival` | Mushroom Grove, Apple Orchard, Hayfield Run, Village Market, Golden Fields |
+| `spooky-season` | Old Graveyard, Haunted Manor, Witchwood, Foggy Marsh, Pumpkin Patch |
+| `late-autumn` | Windy Avenue, Rainy Village, Forest Floor, Creek Crossing, Lantern Path |
+| `neutral` | Green Alley, Quiet Forest, Little Workshop, Bridge Walk, Morning Hills |
 
-New Year, Winterfest, and Spooky Season have stars. The first two have a pale
-moon, and Spooky Season has an orange moon. Late Autumn has a pale moon and no
-stars. The other four seasons have a sun.
+#### Rotation and fade
 
-The scene differs from the reference on purpose:
+A scene shows one row for `SCENE_SECONDS`. Then it moves to the next row of its
+key, and the last row is followed by the first. The walkers start again at the
+edges. `sceneAlpha` fades a scene out in the last `FADE_SECONDS` of its row, and
+it fades a rotated scene in during the first `FADE_SECONDS`. `drawScene` sets
+`ctx.globalAlpha` to that value and sets it back to 1 at the end.
 
-- It has no sky fill, no haze, and no ground block. The canvas is transparent,
-  so the scene blends with all 15 themes.
-- It has no title panel and no pixel font. They do not blend.
-- The ground is the bottom line of the header: `ground = H - 1`.
+The first scene of a visit has no fade in. So a frame at time zero is whole when
+the system asks for reduced motion. The CSS fade of the canvas covers the start
+of the visit.
 
-`web/src/season/scene.test.ts` uses a fake `Painter`.
-It checks that `THEMES` and `SEASONS` list the same ids, that every season
-draws whole pixels with no rectangle as wide as the strip, that the walkers
-enter from the edges and jump, and that a resize and a very narrow strip do not
-break a scene.
+#### The random start
+
+`SeasonScene` passes a random index to `createScene`. A visit lasts 45 s to
+75 s and a scene lasts 35 s. If each visit started at the first scene, scenes 3
+to 5 would almost never show. So a visit shows two or three scenes. The
+always-on hours walk all five.
+
+#### Differences from the supplied engine
+
+The scene differs from the supplied engine on purpose:
+
+- It has no sky, no haze, no earth block, no title, no panel, and no pixel
+  font. The canvas stays transparent, so the scene blends with all 15 themes.
+- The stars and the moon of the earlier engine are gone, because the supplied
+  engine has none.
+- The ground is the bottom line of the header: `ground = H - 1`. Scattered
+  tufts of grass on the ground stay.
+- It has no `window.ChalkSeasonHeader` preview API, because it would be a
+  global in production.
+- A scene fades to transparent and not to black.
+
+Two scene names promise what the scene does not draw. Cabin Smoke has no smoke,
+and Bridge Walk has no bridge. The names are the names of the user. This is a
+known gap (see `docs/open-items.md`).
+
+`web/src/season/scene.test.ts` uses a fake `Painter`. It checks the table (nine
+keys, five rows each, 45 distinct names, and the same ids as `SEASONS` plus
+`"neutral"`), that every scene draws whole pixels with no rectangle as wide as
+the strip, that each prop paints something, the rotation and its wrap, the
+fade, a start index outside the range, the walkers and the jump, a ghost that
+does not jump, and that a resize and a very narrow strip do not break a scene.
+
+### Neutral dates (129-12)
+
+A date in a gap shows the neutral scenes. 129-12 reverses the decision of
+129-10, which showed no scene on such a date. The user asked for it, so that
+chalk has a scene all year, apart from the switches.
+
+A neutral date is a visit like any other. It has the same caps and the same
+gaps between visits. The calendar dates and the gaps of 21 days did not change.
+`seasonFor` still returns null on a neutral date, and `SEASONS` did not change.
+
+`App.tsx` no longer needs a season for `seasonalOn`. The two mounts pass
+`season` or null. `SeasonScene` takes `season: Season | null`. The key is
+`season?.id ?? "neutral"` and the label for a screen reader is "Chalk".
+`data-season` shows the key, also `neutral`. The night frame still needs a
+season: `nightSeason` checks `season !== null`.
 
 ### The component
 
@@ -210,8 +276,9 @@ It keeps the one-timer schedule and the visible-page rule of 129-7: a
 One component serves every season.
 
 `runScene` starts a visit. It sets the size of the canvas from its CSS size
-divided by `SCALE`, makes a new scene, and paints it once. Each visit makes a
-new scene, so no state passes from one visit to the next.
+divided by `SCALE`, makes a new scene at a random start index, and paints it
+once. Each visit makes a new scene, so no state passes from one visit to the
+next.
 Unless the system asks for reduced motion, it then starts a
 `requestAnimationFrame` loop. The loop steps and paints the scene at `FPS`.
 A `ResizeObserver` resizes the scene when the canvas changes size.
@@ -227,18 +294,20 @@ holds still, stays true.
 
 The canvas has `role="img"` and the aria-label "<label>, an animated pixel
 scene". It has `aria-hidden` while it is hidden. It sets `data-season` to the
-season id and `data-visible` while the canvas is up, in a visit or in the
+scene key (a season id, or `neutral`) and `data-visible` while the canvas is up, in a visit or in the
 always-on hours.
 
 ### The mount
 
 `App.tsx` mounts `SeasonScene` in the header, between `.chalk-header-left` and
-`StatusBar`. Three gates and one width rule decide if it mounts:
+`StatusBar`. Two gates and one width rule decide if it mounts:
 
-- The calendar says it is a season (`seasonFor` does not return null).
 - The device switch is on.
 - The server switch is on.
 - The window is wider than 767 px (`!isMobile`).
+
+Before 129-12 a third gate, the calendar, also decided. It is gone, because a
+neutral date shows the neutral scenes.
 
 It does not depend on the active channel, on a parked channel, or on the
 phone's list screen.
@@ -270,10 +339,10 @@ On a phone in zuckermode, the list screen shows the scene in a row at the top
 of the list. The user asked for a row that goes away when it is off.
 
 `App.tsx` passes `scene` to `ZuckerList`. The value is
-`<SeasonScene season always row />`, or `null` if the calendar, the device
-switch, or the server switch says no. `ZuckerList` stays presentational. It
+`<SeasonScene season always row />`, or `null` if the device switch or the
+server switch says no. `ZuckerList` stays presentational. It
 renders `scene` as the first child of `.chalk-zucker`, above
-`.chalk-zucker-head`. A date in a gap, or a switch that is off, mounts no row.
+`.chalk-zucker-head`. A switch that is off mounts no row.
 The row is a child of the list screen only, so it does not show on the chat
 screen. The classic phone layout (the drawer) still shows no scene.
 
@@ -324,8 +393,8 @@ A window whose end precedes its start wraps the year boundary.
 A season can carry an optional `night` window, and `nightFor(season, now)` is the check.
 The night is on the Spooky Season row: `{ from: [10, 31, 18], to: [11, 1, 3] }`.
 No other row has a night.
-The night uses the same three gates as the rest of the phase. It does not
-depend on the width rule, so a phone shows the frame on video tiles.
+The night uses the same switches as the rest of the phase, and the Spooky
+Season row. It does not depend on the width rule, so a phone shows the frame on video tiles.
 
 `App.tsx` writes `data-season-night="<season id>"` on `<html>` while the night is on.
 The value is `spooky-season`. Before 129-8 it was `halloween`.
@@ -353,14 +422,17 @@ The pop-out and board tests use a minimal fake element that has neither `setAttr
 The frame is static on purpose.
 A call is not the place for motion, so the reduced-motion block has nothing to switch off.
 
-### Three gates
+### Two gates
 
-The scene shows only if all three hold. It shows in the header on a screen
+The scene shows only if both hold. It shows in the header on a screen
 wider than a phone, and in the row above the list on a phone in zuckermode:
 
-- The calendar says it is a season (`seasonFor`).
 - The device switch is on.
 - The server switch is on.
+
+The calendar is not a gate since 129-12. It picks the scenes: those of the
+season, or the neutral ones. The night frame on video tiles still needs a
+season, and it uses the same two switches.
 
 ### The device switch
 
@@ -422,8 +494,8 @@ After a successful save, the client of the administrator folds the value into
 its loaded config (`auth_config_loaded`). The scene on the screen of the
 administrator follows at once.
 
-`web/src/whats-new.ts` has an entry for phase 129. 129-9 rewrote its lines in
-place, because the entry is keyed by the phase number. A person who already
+`web/src/whats-new.ts` has an entry for phase 129. 129-9, 129-10, and 129-12
+rewrote its lines in place, because the entry is keyed by the phase number. A person who already
 marked the entry as read does not see the new text.
 
 ## What was rejected
@@ -468,6 +540,17 @@ blend with all 15 themes.
 A phone layout with the scene on a second header row (129-9). It changes the
 height of the header. This still holds for the header. 129-11 put the scene
 in the list screen instead.
+
+A preview API on `window` (129-12). The supplied engine has one,
+`window.ChalkSeasonHeader`. In production it would be a global. The contact
+sheet of the verification renders the real `scene.ts` instead.
+
+A start at the first scene in each visit (129-12). A visit lasts 45 s to 75 s
+and a scene lasts 35 s, so scenes 3 to 5 would almost never show. `createScene`
+takes an index, and `SeasonScene` passes a random one.
+
+A fade to black at the end of a scene, as the supplied engine does (129-12).
+The canvas is transparent, so the alpha fades to transparent.
 
 History: 129-1 to 129-8 showed a figure beside the wordmark. 129-1 drew an SVG
 ghost, and 129-5 replaced it with 20 PNG cut-outs, ten for each of two seasons.
@@ -540,6 +623,14 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
   The row rules and the reduced-motion rule in `theme.css`. Text in
   `ProfilePanel.tsx`, `AdminSettingsTab.tsx`, and `whats-new.ts`.
 
+- **129-12 — 45 scenes and the neutral dates.** `season/scene.ts` is the port
+  of the second engine: `SCENES`, `PALETTES`, `sceneAlpha`, the rotation, and
+  the `index` of `createScene`. `Painter` gained `globalAlpha`. `scene.test.ts`
+  covers the new engine. `SeasonScene.tsx` takes `season: Season | null` and
+  starts at a random scene. `seasonalOn` in `App.tsx` no longer needs a season,
+  and the two mounts pass `season` or null. Text in `whats-new.ts` and
+  `CHANGELOG.md`.
+
 ## Trade-offs
 
 1. A change by an administrator reaches other clients on their next page load.
@@ -567,7 +658,7 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
    Hemisphere sees the same season on the same date.
 8. The loop of the scene runs at 12 fps during a visit and for 1.2 s after it.
    This costs CPU for about a minute each visit, and nothing between visits.
-9. 129-9 and 129-10 rewrote the what's-new entry of phase 129 in place. A person
+9. 129-9, 129-10, and 129-12 rewrote the what's-new entry of phase 129 in place. A person
    who already marked it as read does not see the new text.
 10. In the always-on hours the 12 fps loop runs for nine hours while the tab is
     visible. `requestAnimationFrame` pauses in a hidden tab. This costs CPU
@@ -582,6 +673,12 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
 14. When the row opens or closes, the rows below it move by 44 px over 1.2 s.
     A tap in that moment can land on a different row. This is the accepted cost
     of a row that goes away.
+15. A visit shows two or three scenes of the five, because a visit lasts 45 s
+    to 75 s and a scene lasts 35 s. The start is random, so each scene shows
+    over many visits. Only the always-on hours walk all five in one run.
+16. Two scene names promise what the scene does not draw: Cabin Smoke has no
+    smoke, and Bridge Walk has no bridge. The names are the names of the user.
+    The gap is recorded in `docs/open-items.md`.
 
 ## Verification
 
@@ -607,7 +704,8 @@ It also made these checks:
 - Reduced motion holds one frame
 - No page errors
 
-A second probe ran on 2026-11-02. It checked a neutral date, a season date,
+A second probe ran on 2026-11-02. It checked a neutral date (then without a
+scene), a season date,
 the four sides of the always-on hours, and a date just before them. It passed.
 
 A third Playwright probe ran on 2026-11-02 on an iPhone 14 viewport. It checked
@@ -616,10 +714,16 @@ is closed before a visit, opens, and collapses after it, a conversation that
 opens and a return to the list, zuckermode off, a neutral date, and 21:00 on
 24 December. It passed.
 
+For 129-12, a contact sheet of all 45 scenes was rendered from the real
+`scene.ts` on a dark background and on a light background on 2026-11-02. A
+Playwright probe ran on the same date against neutral dates, 29 February, the
+Halloween night frame, a rotation in the always-on hours, and the first frame
+under reduced motion. It passed.
+
 ### Manual checklist for the live stack
 
 Use two users, Alice and Bob, and a date inside a season. A date in a gap has
-no season (see item 13).
+no season and shows the neutral scenes (see item 13).
 
 1. Clear the key `chalk.season.visits.v1` from localStorage and reload.
    Check that the scene is absent for the first 4 s after a text channel
@@ -647,22 +751,26 @@ no season (see item 13).
 10. Check that a signed-out client of an instance with the switch off never
     shows the scene.
 11. Close and open the settings tab. Check that it shows the saved value.
-12. Set the system date to each date in the list below. Check that the scene
-    shows the landscape and the effect of the season:
-    - 3 January: New Year, a city with fireworks
-    - 15 January: Winterfest, pines with snow
-    - 10 April: Spring Bloom, blossom trees with petals
-    - 10 May: Green Season, a forest with butterflies
-    - 15 July: Midsummer, a meadow with fireflies
-    - 20 September: Harvest Festival, with falling leaves
-    - 28 October: Spooky Season, a graveyard with a ghost and bats
-    - 10 November: Late Autumn, bare trees with falling leaves
-    - 30 December and 31 December: Winterfest, then New Year
+12. Set the system date to each date in the list below. Check that
+    `data-season` on the canvas is the key of the season, and that the scene is
+    one of the five scenes of the key (see the table in "The scene"):
+    - 3 January: `new-year`
+    - 15 January: `winterfest`
+    - 10 April: `spring-bloom`
+    - 10 May: `green-season`
+    - 15 July: `midsummer`
+    - 20 September: `harvest-festival`
+    - 28 October: `spooky-season`
+    - 10 November: `late-autumn`
+    - 30 December and 31 December: `winterfest`, then `new-year`
 13. Set the system date to a date in a gap, for example 15 April, 15 November,
-    and 10 December. Check that no scene mounts and that the count in
-    `chalk.season.visits.v1` does not change.
-    Set the system date to 29 February of a leap year. Check that no scene
-    shows, because the date is in the gap from 8 February to 28 February.
+    and 10 December. Check that `data-season` is `neutral` and that the scene
+    is one of the five neutral scenes. Check that the visits follow the same
+    caps and gaps as on a date in a season, and that the count in
+    `chalk.season.visits.v1` changes with each visit.
+    Set the system date to 29 February of a leap year. Check that the scene is
+    a neutral scene, because the date is in the gap from 8 February to
+    28 February.
 14. Switch between a dark theme and a light theme, for example `warmwhite`.
     Check that the scene shows on both with no panel behind it.
 15. Check that two visits make a new scene: the walkers enter from the edges
@@ -700,9 +808,17 @@ no season (see item 13).
     and that a visit comes after a first pause of 4 s to 12 s. Check that the
     daily caps still hold.
 31. Turn zuckermode off. Check that no row shows.
-32. Set the system date to a date in a gap. Check that no row mounts.
+32. Set the system date to a date in a gap. Check that the row shows a neutral
+    scene.
 33. Set the system clock to 21:00 on 24 December. Check that the row stays
     open, and that the count in `chalk.season.visits.v1` does not change.
+34. On a date in a gap, set the clock to the evening. Check that a visit shows
+    a neutral scene, and that the night frame is absent on video tiles.
+35. Watch one scene for 35 seconds. Check that the scene fades out, that the
+    next scene of the same key fades in, and that the walkers start again at
+    the edges. After the fifth scene, check that the first one comes back.
+36. Emulate reduced motion and start a visit. Check that the first frame is
+    whole, with no fade in, and that it holds still.
 
 ## How to add a season
 
@@ -713,9 +829,10 @@ no season (see item 13).
    take.
    A season can have more than one row. The rows then share the `id`.
 2. Add the new id to `SeasonId` in `seasons.ts`.
-3. Add an entry to `THEMES` in `web/src/season/scene.ts`, with the same key.
-   It sets the landscape, the obstacles, the walkers, the effect, the stars,
-   and the moon. A landscape, obstacle, walker, or effect that does not exist
+3. Add five rows to `SCENES` in `web/src/season/scene.ts`, with the same key,
+   and add an entry to `PALETTES`. Each row sets a name, an environment, an
+   effect, four props, and two cast members. The props at index 1 and 2 are the
+   obstacles. An environment, prop, cast member, or effect that does not exist
    yet needs drawing code in `scene.ts`.
 4. Add the keywords of the season to the `seasonal` section in `settings-nav.ts`, if they are not there.
 5. Optional: add a `night` window to the season.
@@ -725,7 +842,8 @@ no season (see item 13).
 
 `seasons.test.ts` checks that no day falls in two rows and that each gap is a
 date in no row.
-`scene.test.ts` checks that `THEMES` and `SEASONS` list the same ids.
+`scene.test.ts` checks that `SCENES` and `SEASONS` list the same ids, with
+`"neutral"` in addition, and that each key has five rows.
 
 The device switch, the server switch, the schedule, the component, and the
 stylesheet need no change.

@@ -1,690 +1,891 @@
-// chalk-web -- 129-9: the pixel scene.
+// chalk-web -- 129-9: the scene. 129-12: five scenes for each key, and the
+// neutral key.
 //
-// The scene is a small animation for the empty middle of the top header.
-// Each season in THEMES has a landscape, two obstacles, two walkers, and one
-// effect: fireworks, snow, petals, butterflies, fireflies, leaves, or ghosts
-// with bats. The two walkers enter from the two edges and jump over the
-// obstacles.
-// Pure apart from the Painter it gets: no timer, no DOM, and no random source.
-// The effects take their places from a hash of an index and from the time of
-// the scene, so a test uses a fake Painter and gets the same picture each time.
-// The component in SeasonScene.tsx owns the canvas, the clock, and the loop.
-// This code is a port of a reference scene. It differs from the reference on
-// purpose in these parts:
-//
-//   - It draws no sky fill, no haze, and no ground block. The canvas is
-//     transparent, so the scene blends with all 15 themes.
-//   - It draws no title panel and uses no pixel font.
-//   - The ground is the bottom line of the header: ground = H - 1.
+// This module draws a small pixel scene and moves it. SCENES has nine keys:
+// the eight seasons of seasons.ts, and "neutral" for a date in no season. Each
+// key has five rows (SCENES_PER_KEY), so there are 45 scenes. A row names an
+// environment, an effect, four props, and two cast members. A scene shows its
+// row for SCENE_SECONDS. Then it shows the next row of the same key, and the
+// first row comes after the last.
+// Pure: the module uses no timer, no DOM, and no random source. The Painter is
+// a parameter. Each effect takes its places from a hash of an index and from
+// the time of the scene. So a test uses a fake Painter and gets the same
+// picture each time. SeasonScene.tsx owns the loop and the start index.
+// The scene differs from the engine that the user supplied, on purpose:
+//   - It paints no sky, no haze, no earth block, no title, no panel, and no
+//     pixel font. The canvas stays transparent, so the scene blends with all
+//     themes. It draws no stars and no moon, because the supplied engine has
+//     none.
+//   - The ground is H - 1. The bottom line of the header is the ground.
+//     Scattered tufts of grass on the ground stay.
+//   - It has no preview API on window, because that would be a global in
+//     production.
+//   - A scene fades to transparent, not to black.
 
 import type { SeasonId } from "./seasons";
 
-/** SCALE is the number of CSS pixels for one pixel of the scene. */
+/** SCALE is the number of CSS pixels in one scene pixel. */
 export const SCALE = 2;
 
-/** FPS is the number of frames the scene draws each second. */
+/** FPS is the number of frames each second that the component paints. */
 export const FPS = 12;
-const GRAVITY = 105;
-const JUMP_VELOCITY = 40;
 
-type Effect = "fireworks" | "snow" | "petals" | "butterflies" | "fireflies" | "leaves" | "ghosts";
-type Landscape =
+/** SCENE_SECONDS is the time in seconds that a scene shows one row before it rotates. */
+export const SCENE_SECONDS = 35;
+
+/**
+ * FADE_SECONDS is the length in seconds of the fade at the end of a row, and
+ * of the fade in after a rotation. See [sceneAlpha].
+ */
+export const FADE_SECONDS = 0.7;
+
+/** SCENES_PER_KEY is the number of rows that each key of SCENES has. */
+export const SCENES_PER_KEY = 5;
+
+// The downward pull on a jump, and the upward speed at the start of a jump, in
+// scene pixels and seconds.
+const GRAVITY = 105;
+const JUMP = 40;
+
+/**
+ * A SceneKey names a set of five scenes: a season id, or "neutral" for a date
+ * in no season.
+ */
+export type SceneKey = SeasonId | "neutral";
+
+// The unions below list every value that a row can use. A misspelled value
+// fails at compile time.
+
+type Environment =
   | "city"
-  | "pine"
-  | "blossom"
+  | "town"
+  | "lake"
+  | "hills"
   | "forest"
+  | "mountain"
+  | "orchard"
+  | "garden"
   | "meadow"
-  | "harvest"
+  | "farm"
   | "graveyard"
-  | "bare";
-type ObstacleKind =
-  | "crate"
+  | "swamp";
+type Effect =
+  | "fireworks"
+  | "confetti"
+  | "sparkles"
+  | "snow"
+  | "aurora"
+  | "petals"
+  | "rain"
+  | "butterflies"
+  | "fireflies"
+  | "embers"
+  | "lanterns"
+  | "leaves"
+  | "ghosts"
+  | "bats"
+  | "fog"
+  | "clouds";
+type Prop =
+  | "tree"
+  | "cherry"
+  | "appletree"
+  | "pine"
+  | "bare"
+  | "house"
+  | "cabin"
+  | "manor"
+  | "stall"
+  | "tower"
+  | "clock"
+  | "windmill"
+  | "lamp"
+  | "lantern"
+  | "snowman"
+  | "scarecrow"
+  | "reeds"
+  | "flower"
+  | "flag"
+  | "boat"
+  | "grave"
+  | "pumpkin"
+  | "mushroom"
+  | "cauldron"
+  | "campfire"
+  | "ice"
   | "snowball"
-  | "stump"
-  | "flowerpot"
   | "stone"
   | "log"
-  | "mushroom"
+  | "stump"
+  | "crate"
+  | "barrel"
+  | "basket"
   | "hay"
-  | "pumpkin"
-  | "grave";
-type ActorKind =
+  | "gift"
+  | "flowerpot";
+type Cast =
   | "person"
   | "cat"
-  | "penguin"
   | "fox"
   | "rabbit"
-  | "chick"
-  | "frog"
   | "hedgehog"
-  | "skeleton";
+  | "frog"
+  | "chick"
+  | "penguin"
+  | "skeleton"
+  | "witch"
+  | "ghost";
 
-// What one season looks like. `edge` is the colour of the flecks on the
-// ground. If `moon` is null, the scene draws a sun in its place.
-interface SceneTheme {
-  edge: string;
+/**
+ * A SceneRow describes one scene. `name` is the name of the scene.
+ * `environment` and `effect` set the background and the moving effect. `props`
+ * has four props. Their places are the four entries of `positions`, and the
+ * props at index 1 and 2 are the obstacles that the walkers jump over. `cast`
+ * has two walkers: the first enters from the left edge, the second from the
+ * right edge.
+ */
+export interface SceneRow {
+  name: string;
+  environment: Environment;
   effect: Effect;
-  landscape: Landscape;
-  obstacles: [ObstacleKind, ObstacleKind];
-  actors: [ActorKind, ActorKind];
-  stars: boolean;
-  moon: string | null;
+  props: [Prop, Prop, Prop, Prop];
+  cast: [Cast, Cast];
 }
 
-const SUN = null;
+function row(
+  name: string,
+  environment: Environment,
+  effect: Effect,
+  props: [Prop, Prop, Prop, Prop],
+  cast: [Cast, Cast],
+): SceneRow {
+  return { name, environment, effect, props, cast };
+}
 
-/** THEMES holds the look of the scene for each season, keyed by the season id. */
-export const THEMES: Record<SeasonId, SceneTheme> = {
-  "new-year": {
-    edge: "#51658a",
-    effect: "fireworks",
-    landscape: "city",
-    obstacles: ["crate", "crate"],
-    actors: ["person", "cat"],
-    stars: true,
-    moon: "#d8ddd3",
-  },
-  winterfest: {
-    edge: "#edf5ef",
-    effect: "snow",
-    landscape: "pine",
-    obstacles: ["snowball", "stump"],
-    actors: ["penguin", "fox"],
-    stars: true,
-    moon: "#d8ddd3",
-  },
-  "spring-bloom": {
-    edge: "#75b568",
-    effect: "petals",
-    landscape: "blossom",
-    obstacles: ["flowerpot", "stone"],
-    actors: ["rabbit", "chick"],
-    stars: false,
-    moon: SUN,
-  },
-  "green-season": {
-    edge: "#62a744",
-    effect: "butterflies",
-    landscape: "forest",
-    obstacles: ["log", "stone"],
-    actors: ["frog", "fox"],
-    stars: false,
-    moon: SUN,
-  },
-  midsummer: {
-    edge: "#a8ba57",
-    effect: "fireflies",
-    landscape: "meadow",
-    obstacles: ["stone", "flowerpot"],
-    actors: ["person", "rabbit"],
-    stars: false,
-    moon: SUN,
-  },
-  "harvest-festival": {
-    edge: "#b99a4a",
-    effect: "leaves",
-    landscape: "harvest",
-    obstacles: ["mushroom", "hay"],
-    actors: ["hedgehog", "fox"],
-    stars: false,
-    moon: SUN,
-  },
-  "spooky-season": {
-    edge: "#3e6932",
-    effect: "ghosts",
-    landscape: "graveyard",
-    obstacles: ["pumpkin", "grave"],
-    actors: ["skeleton", "cat"],
-    stars: true,
-    moon: "#e6a34c",
-  },
-  "late-autumn": {
-    edge: "#a16d35",
-    effect: "leaves",
-    landscape: "bare",
-    obstacles: ["mushroom", "log"],
-    actors: ["fox", "hedgehog"],
-    stars: false,
-    moon: "#d8ddd3",
-  },
+/**
+ * SCENES holds the rows of each key, in the order of rotation. Each key has
+ * SCENES_PER_KEY rows. Two names promise what the scene does not draw: Cabin
+ * Smoke has no smoke, and Bridge Walk has no bridge.
+ */
+export const SCENES: Record<SceneKey, SceneRow[]> = {
+  "new-year": [
+    row("Midnight Skyline", "city", "fireworks", ["tower", "crate", "barrel", "lamp"], ["person", "cat"]),
+    row("Rooftop Countdown", "city", "confetti", ["clock", "crate", "gift", "flag"], ["person", "fox"]),
+    row("Harbor Lights", "lake", "fireworks", ["boat", "barrel", "crate", "lamp"], ["person", "cat"]),
+    row("Town Celebration", "town", "confetti", ["house", "gift", "crate", "lantern"], ["person", "rabbit"]),
+    row("First Sunrise", "hills", "sparkles", ["tree", "stone", "log", "flag"], ["fox", "person"]),
+  ],
+  winterfest: [
+    row("Snowy Pines", "forest", "snow", ["pine", "snowball", "log", "pine"], ["penguin", "fox"]),
+    row("Cabin Smoke", "town", "snow", ["cabin", "snowball", "stump", "pine"], ["fox", "rabbit"]),
+    row("Frozen Lake", "lake", "snow", ["pine", "ice", "snowball", "snowman"], ["penguin", "cat"]),
+    row("Aurora Ridge", "mountain", "aurora", ["pine", "stone", "snowball", "pine"], ["fox", "penguin"]),
+    row("Lantern Walk", "forest", "snow", ["lantern", "snowball", "stump", "snowman"], ["person", "fox"]),
+  ],
+  "spring-bloom": [
+    row("Cherry Blossom", "orchard", "petals", ["cherry", "flowerpot", "stone", "cherry"], ["rabbit", "chick"]),
+    row("Rain Garden", "garden", "rain", ["tree", "flowerpot", "log", "flower"], ["frog", "rabbit"]),
+    row("Pond Hopping", "lake", "butterflies", ["reeds", "stone", "flowerpot", "reeds"], ["frog", "chick"]),
+    row("Flower Trail", "meadow", "petals", ["flower", "flowerpot", "stone", "flower"], ["rabbit", "fox"]),
+    row("Butterfly Orchard", "orchard", "butterflies", ["cherry", "log", "flowerpot", "cherry"], ["chick", "rabbit"]),
+  ],
+  "green-season": [
+    row("Deep Woods", "forest", "fireflies", ["tree", "log", "stone", "tree"], ["fox", "cat"]),
+    row("Stream Crossing", "lake", "butterflies", ["reeds", "log", "stone", "tree"], ["frog", "fox"]),
+    row("Fern Garden", "garden", "fireflies", ["flower", "flowerpot", "log", "tree"], ["frog", "rabbit"]),
+    row("Hillside Run", "hills", "butterflies", ["tree", "stone", "log", "tree"], ["rabbit", "fox"]),
+    row("Summer Rain", "forest", "rain", ["tree", "log", "stump", "tree"], ["frog", "cat"]),
+  ],
+  midsummer: [
+    row("Golden Meadow", "meadow", "butterflies", ["flower", "stone", "flowerpot", "flower"], ["rabbit", "fox"]),
+    row("Lakeside Sunset", "lake", "fireflies", ["reeds", "log", "stone", "reeds"], ["frog", "person"]),
+    row("Campfire Evening", "forest", "embers", ["pine", "log", "stone", "campfire"], ["person", "fox"]),
+    row("Firefly Night", "hills", "fireflies", ["tree", "stone", "log", "tree"], ["cat", "rabbit"]),
+    row("Festival Lanterns", "town", "lanterns", ["lantern", "crate", "flowerpot", "lantern"], ["person", "chick"]),
+  ],
+  "harvest-festival": [
+    row("Mushroom Grove", "forest", "leaves", ["tree", "mushroom", "log", "tree"], ["hedgehog", "fox"]),
+    row("Apple Orchard", "orchard", "leaves", ["appletree", "basket", "crate", "appletree"], ["fox", "rabbit"]),
+    row("Hayfield Run", "farm", "leaves", ["hay", "hay", "crate", "scarecrow"], ["hedgehog", "person"]),
+    row("Village Market", "town", "sparkles", ["stall", "basket", "mushroom", "lantern"], ["person", "fox"]),
+    row("Golden Fields", "farm", "leaves", ["scarecrow", "stump", "hay", "windmill"], ["fox", "hedgehog"]),
+  ],
+  "spooky-season": [
+    row("Old Graveyard", "graveyard", "ghosts", ["bare", "grave", "pumpkin", "bare"], ["skeleton", "cat"]),
+    row("Haunted Manor", "town", "bats", ["manor", "grave", "pumpkin", "bare"], ["skeleton", "ghost"]),
+    row("Witchwood", "forest", "bats", ["bare", "mushroom", "cauldron", "bare"], ["witch", "cat"]),
+    row("Foggy Marsh", "swamp", "fog", ["bare", "stone", "grave", "reeds"], ["ghost", "skeleton"]),
+    row("Pumpkin Patch", "farm", "ghosts", ["pumpkin", "pumpkin", "pumpkin", "scarecrow"], ["cat", "witch"]),
+  ],
+  "late-autumn": [
+    row("Windy Avenue", "orchard", "leaves", ["bare", "log", "stone", "bare"], ["fox", "hedgehog"]),
+    row("Rainy Village", "town", "rain", ["house", "crate", "mushroom", "lantern"], ["cat", "person"]),
+    row("Forest Floor", "forest", "leaves", ["bare", "mushroom", "stump", "bare"], ["hedgehog", "fox"]),
+    row("Creek Crossing", "lake", "fog", ["bare", "stone", "log", "reeds"], ["fox", "rabbit"]),
+    row("Lantern Path", "hills", "embers", ["lantern", "stump", "stone", "bare"], ["person", "cat"]),
+  ],
+  neutral: [
+    row("Green Alley", "town", "sparkles", ["lamp", "crate", "log", "house"], ["person", "cat"]),
+    row("Quiet Forest", "forest", "fireflies", ["tree", "log", "stone", "tree"], ["fox", "rabbit"]),
+    row("Little Workshop", "town", "sparkles", ["house", "crate", "barrel", "lamp"], ["person", "cat"]),
+    row("Bridge Walk", "lake", "fireflies", ["reeds", "stone", "log", "reeds"], ["frog", "fox"]),
+    row("Morning Hills", "hills", "clouds", ["tree", "stone", "log", "tree"], ["rabbit", "chick"]),
+  ],
 };
 
-// A walker. `x` is the left edge in scene pixels. `speed` is in scene pixels
-// each second. `lift` is the height above the ground, and `vy` is the speed
-// of the jump. `lastObstacle` is the id of the obstacle the walker jumped
-// over last, or -1.
+// The colours of the ground tufts and of the hills, meadow, and farm, for each key.
+const PALETTES: Record<SceneKey, { earth: string; edge: string }> = {
+  "new-year": { earth: "#29344d", edge: "#576d95" },
+  winterfest: { earth: "#b3cdd4", edge: "#e6f4f0" },
+  "spring-bloom": { earth: "#467849", edge: "#81ba70" },
+  "green-season": { earth: "#285b33", edge: "#68a94e" },
+  midsummer: { earth: "#607c35", edge: "#afbd60" },
+  "harvest-festival": { earth: "#64512c", edge: "#b49a4c" },
+  "spooky-season": { earth: "#152d1d", edge: "#467442" },
+  "late-autumn": { earth: "#493d30", edge: "#a27743" },
+  neutral: { earth: "#193d28", edge: "#397a4b" },
+};
+
+// A walker. `lift` is the height above the ground and `vy` the upward speed.
+// `jumped` is the id of the last obstacle that the walker jumped, or -1.
 interface Actor {
-  kind: ActorKind;
+  type: Cast;
   x: number;
   dir: 1 | -1;
   speed: number;
   width: number;
   lift: number;
   vy: number;
-  lastObstacle: number;
+  jumped: number;
 }
 
+// An obstacle: the prop at index `id` of the row, with its x place and width.
 interface Obstacle {
   id: number;
-  kind: ObstacleKind;
   x: number;
   width: number;
 }
 
 /**
- * A Scene is the state of one visit. W and H are the size in scene pixels.
- * ground is the row of the ground line, H - 1. time is the seconds that
- * stepScene has added up. A visit makes a new Scene, and the state does not
- * pass from one visit to the next.
+ * A Scene is the state of one running scene, W by H scene pixels. `key` and
+ * `index` pick the current row, `row`. `time` is the time of the scene in
+ * seconds, and `sceneTime` is the time since the current row started.
+ * `rotations` counts the rotations. One loop at a time must step and paint a
+ * Scene.
  */
 export interface Scene {
-  season: SeasonId;
-  theme: SceneTheme;
+  key: SceneKey;
+  index: number;
+  row: SceneRow;
   W: number;
   H: number;
   ground: number;
   time: number;
+  sceneTime: number;
+  // The number of rotations since createScene. sceneAlpha reads it to skip the
+  // fade in of the first row.
+  rotations: number;
   actors: Actor[];
   obstacles: Obstacle[];
 }
 
 /**
- * A Painter is the part of CanvasRenderingContext2D that drawScene uses. A
- * test passes a fake that records the calls.
+ * A Painter is the part of CanvasRenderingContext2D that drawScene uses, so a
+ * test can pass a fake.
  */
-export type Painter = Pick<CanvasRenderingContext2D, "fillStyle" | "fillRect">;
+export type Painter = Pick<CanvasRenderingContext2D, "fillStyle" | "fillRect" | "globalAlpha">;
 
 type Px = (x: number, y: number, w: number, h: number, color: string) => void;
 
-function obstacleX(W: number, i: number): number {
-  return Math.round(W * (i === 0 ? 0.2 : 0.8));
+// The x places of the four props of a row, from left to right. The two inner
+// places, at 20 percent and 80 percent of the width, hold the obstacles. The
+// outer places are at fixed distances from the edges, where the walkers enter.
+// The walkers jump over the inner props only.
+function positions(W: number): number[] {
+  return [12, Math.round(W * 0.2), Math.round(W * 0.8), W - 24];
+}
+
+// Loads the row at s.index. The walkers go back to the edges and the row timer
+// starts again. The props at index 1 and 2 become the obstacles. The props at
+// index 0 and 3 stand next to the edges, so they are not obstacles.
+function loadRow(s: Scene): void {
+  s.row = SCENES[s.key][s.index];
+  s.sceneTime = 0;
+  const at = positions(s.W);
+  s.obstacles = [1, 2].map((i) => ({ id: i, x: at[i], width: 10 }));
+  s.actors = s.row.cast.map((type, i) => ({
+    type,
+    x: i === 0 ? -14 : s.W + 14,
+    dir: i === 0 ? 1 : -1,
+    speed: i === 0 ? 17 : 20,
+    width: 9,
+    lift: 0,
+    vy: 0,
+    jumped: -1,
+  }));
 }
 
 /**
- * createScene returns the scene for the season, W by H scene pixels. The
- * first walker starts left of the left edge and walks right. The second starts
- * right of the right edge and walks left. The two obstacles stand at 20 percent
- * and 80 percent of W.
+ * createScene returns a new scene of W by H scene pixels for `key`. The scene
+ * starts at the row `index`. An index outside 0 to SCENES_PER_KEY - 1 wraps
+ * around, also a negative one.
  */
-export function createScene(season: SeasonId, W: number, H: number): Scene {
-  const theme = THEMES[season];
-  return {
-    season,
-    theme,
+export function createScene(key: SceneKey, W: number, H: number, index = 0): Scene {
+  const start = ((index % SCENES_PER_KEY) + SCENES_PER_KEY) % SCENES_PER_KEY;
+  const s: Scene = {
+    key,
+    index: start,
+    row: SCENES[key][start],
     W,
     H,
     ground: H - 1,
     time: 0,
-    actors: [
-      {
-        kind: theme.actors[0],
-        x: -12,
-        dir: 1,
-        speed: 17,
-        width: 9,
-        lift: 0,
-        vy: 0,
-        lastObstacle: -1,
-      },
-      {
-        kind: theme.actors[1],
-        x: W + 12,
-        dir: -1,
-        speed: 21,
-        width: 9,
-        lift: 0,
-        vy: 0,
-        lastObstacle: -1,
-      },
-    ],
-    obstacles: theme.obstacles.map((kind, i) => ({ id: i, kind, x: obstacleX(W, i), width: 9 })),
+    sceneTime: 0,
+    rotations: 0,
+    actors: [],
+    obstacles: [],
   };
+  loadRow(s);
+  return s;
 }
 
 /**
- * resizeScene changes the size of s to W by H scene pixels. It moves the
- * ground and the obstacles to fit. It does not move the walkers.
+ * resizeScene moves the ground and the obstacles to fit a scene of W by H
+ * scene pixels.
  */
 export function resizeScene(s: Scene, W: number, H: number): void {
   s.W = W;
   s.H = H;
   s.ground = H - 1;
-  s.obstacles.forEach((o, i) => {
-    o.x = obstacleX(W, i);
+  const at = positions(W);
+  s.obstacles.forEach((o) => {
+    o.x = at[o.id];
   });
 }
 
 /**
- * stepScene moves the scene forward by `elapsed` seconds. A walker on the
- * ground starts a jump when an obstacle is 0 to 9 scene pixels ahead. It jumps
- * over each obstacle once for each pass. A walker that leaves one edge comes back at the
- * other edge. stepScene counts at most 0.1 s of `elapsed`, so a long frame
- * cannot throw a walker across the strip.
+ * stepScene moves the scene forward by `elapsed` seconds. It counts at most
+ * 0.1 s, so a long frame cannot throw a walker across the strip. When the row
+ * has shown for SCENE_SECONDS, the scene rotates to the next row of its key,
+ * and the walkers start again at the edges.
  */
 export function stepScene(s: Scene, elapsed: number): void {
   const dt = Math.min(elapsed, 0.1);
   s.time += dt;
+  s.sceneTime += dt;
+  if (s.sceneTime >= SCENE_SECONDS) {
+    s.index = (s.index + 1) % SCENES_PER_KEY;
+    s.rotations++;
+    loadRow(s);
+  }
   for (const a of s.actors) {
-    if (a.lift === 0 && a.vy === 0) {
-      for (const o of s.obstacles) {
-        const gap = a.dir > 0 ? o.x - (a.x + a.width) : a.x - (o.x + o.width);
-        if (gap >= 0 && gap <= 9 && a.lastObstacle !== o.id) {
-          a.vy = JUMP_VELOCITY;
-          a.lastObstacle = o.id;
-          break;
+    if (a.type === "ghost") {
+      // A ghost floats: it never jumps. Its bob is drawn in drawActor.
+      a.x += a.dir * a.speed * dt;
+    } else {
+      if (a.lift === 0 && a.vy === 0) {
+        for (const o of s.obstacles) {
+          const gap = a.dir > 0 ? o.x - (a.x + a.width) : a.x - (o.x + o.width);
+          if (gap >= 0 && gap <= 10 && a.jumped !== o.id) {
+            a.vy = JUMP;
+            a.jumped = o.id;
+            break;
+          }
+        }
+      }
+      a.x += a.dir * a.speed * dt;
+      if (a.vy !== 0 || a.lift > 0) {
+        a.lift += a.vy * dt;
+        a.vy -= GRAVITY * dt;
+        if (a.lift <= 0) {
+          a.lift = 0;
+          a.vy = 0;
         }
       }
     }
-    a.x += a.dir * a.speed * dt;
-    if (a.vy !== 0 || a.lift > 0) {
-      a.lift += a.vy * dt;
-      a.vy -= GRAVITY * dt;
-      if (a.lift <= 0) {
-        a.lift = 0;
-        a.vy = 0;
-      }
+    if (a.dir > 0 && a.x > s.W + 14) {
+      a.x = -14;
+      a.jumped = -1;
     }
-    if (a.dir > 0 && a.x > s.W + 12) {
-      a.x = -12;
-      a.lastObstacle = -1;
-    }
-    if (a.dir < 0 && a.x < -12) {
-      a.x = s.W + 12;
-      a.lastObstacle = -1;
+    if (a.dir < 0 && a.x < -14) {
+      a.x = s.W + 14;
+      a.jumped = -1;
     }
   }
 }
 
-function hash(n: number): number {
+// A hash of n to a number from 0 up to, but not including, 1. The same n always
+// gives the same number, so the effects need no random source.
+function rand(n: number): number {
   const v = Math.sin(n * 127.1 + 78.233) * 43758.5453;
   return v - Math.floor(v);
 }
 
-function drawSky(p: Px, s: Scene): void {
-  const { W, ground, theme, time } = s;
-  if (theme.stars) {
-    for (let i = 0; i < 29; i++) {
-      const x = hash(i + 11) * W;
-      const y = hash(i + 81) * (ground - 8);
-      const lit = Math.floor(time * 2 + i * 0.7) % 4 === 0;
-      p(x, y, 1, 1, lit ? "#b9bba0" : "#475668");
+/**
+ * sceneAlpha returns the opacity of the scene, from 0 to 1. The scene fades
+ * out in the last FADE_SECONDS of its row. After a rotation, it also fades in
+ * during the first FADE_SECONDS of the new row. The first row of a scene does
+ * not fade in, so a frame at time zero is whole when the system asks for
+ * reduced motion. The CSS fade of the canvas covers the start of the visit.
+ */
+export function sceneAlpha(s: Scene): number {
+  const out = (SCENE_SECONDS - s.sceneTime) / FADE_SECONDS;
+  const into = s.rotations > 0 ? s.sceneTime / FADE_SECONDS : 1;
+  return Math.max(0, Math.min(1, into, out));
+}
+
+function drawBackground(p: Px, s: Scene): void {
+  const { W, ground, key } = s;
+  const env = s.row.environment;
+  const { earth, edge } = PALETTES[key];
+  if (env === "city" || env === "town") {
+    for (let i = 0; i < 8; i++) {
+      const x = i < 4 ? i * 17 : W - (8 - i) * 17;
+      const bh = env === "city" ? 9 + ((i * 7) % 10) : 5 + ((i * 3) % 6);
+      p(x, ground - bh, 13, bh, "#1c2a30");
+      for (let yy = ground - bh + 3; yy < ground - 2; yy += 4) {
+        p(x + 3, yy, 2, 1, "#b09a62");
+        p(x + 8, yy, 2, 1, "#627a70");
+      }
     }
   }
-  const x = W - 28;
-  const y = 4;
-  if (theme.moon) {
-    p(x + 2, y, 7, 1, theme.moon);
-    p(x, y + 1, 11, 5, theme.moon);
-    p(x + 2, y + 6, 7, 1, theme.moon);
-    p(x + 3, y + 2, 2, 2, "#a7a493");
-  } else {
-    p(x + 2, y, 7, 1, "#ffda76");
-    p(x, y + 1, 11, 6, "#ffda76");
-    p(x + 2, y + 7, 7, 1, "#ffda76");
+  if (env === "forest" || env === "orchard" || env === "garden") {
+    for (let i = 0; i < 7; i++) {
+      const x = i < 4 ? i * 17 : W - (7 - i) * 18;
+      p(x + 4, ground - 11, 2, 11, "#26382a");
+      p(x, ground - 14, 10, 8, env === "orchard" ? "#49604d" : "#264635");
+    }
   }
-}
-
-function pine(p: Px, s: Scene, x: number): void {
-  const g = s.ground;
-  p(x + 4, g - 8, 2, 8, "#574934");
-  p(x + 3, g - 17, 4, 7, "#23513f");
-  p(x + 1, g - 13, 8, 5, "#24533e");
-  p(x, g - 9, 10, 5, "#1b4936");
-  if (s.season === "winterfest") {
-    p(x + 3, g - 17, 4, 1, "#e7f3ee");
-    p(x + 1, g - 13, 8, 1, "#d8e9e7");
-    p(x, g - 9, 10, 1, "#d8e9e7");
+  if (env === "hills" || env === "meadow" || env === "farm") {
+    for (let x = 0; x < W; x += 5) {
+      const height = 3 + Math.round((Math.sin(x / 23) + 1) * 2);
+      p(x, ground - height, 5, height, earth);
+    }
+    if (env === "farm") {
+      for (let x = 3; x < W; x += 12) p(x, ground - 2, 5, 1, edge);
+    }
   }
-}
-
-function leafyTree(p: Px, s: Scene, x: number, blossom = false): void {
-  const g = s.ground;
-  const c1 = blossom ? "#e59ab5" : "#315f36";
-  const c2 = blossom ? "#f5c2d4" : "#468c46";
-  p(x + 4, g - 12, 2, 12, "#55452c");
-  p(x + 1, g - 17, 9, 8, c1);
-  p(x + 3, g - 20, 5, 5, c2);
-  p(x, g - 13, 11, 5, c1);
-  p(x + 2, g - 15, 3, 2, c2);
-}
-
-function bareTree(p: Px, s: Scene, x: number): void {
-  const g = s.ground;
-  const c = "#4b342b";
-  p(x + 5, g - 15, 2, 15, c);
-  p(x + 2, g - 13, 3, 2, c);
-  p(x + 1, g - 17, 2, 5, c);
-  p(x + 7, g - 14, 4, 2, c);
-  p(x + 10, g - 18, 2, 5, c);
-}
-
-function flower(p: Px, s: Scene, x: number, color: string): void {
-  const y = s.ground - 5;
-  p(x + 2, y + 2, 1, 3, "#31783a");
-  p(x + 1, y, 3, 3, color);
-  p(x + 2, y + 1, 1, 1, "#ffe28d");
-}
-
-function mushroom(p: Px, s: Scene, x: number): void {
-  const y = s.ground - 6;
-  p(x + 3, y + 3, 3, 3, "#e4d3a5");
-  p(x + 1, y + 1, 7, 3, "#b54935");
-  p(x + 3, y, 3, 1, "#cc6146");
-  p(x + 3, y + 2, 1, 1, "#fff2ca");
-  p(x + 6, y + 2, 1, 1, "#fff2ca");
-}
-
-function drawLandscape(p: Px, s: Scene): void {
-  const { W, ground, theme } = s;
-  switch (theme.landscape) {
-    case "city":
-      for (let i = 0; i < 6; i++) {
-        const x = i < 3 ? 9 + i * 17 : W - 60 + (i - 3) * 17;
-        const bh = 9 + ((i * 7) % 8);
-        p(x, ground - bh, 13, bh, "#1b213a");
-        for (let j = 2; j < bh - 2; j += 4) {
-          p(x + 3, ground - bh + j, 2, 1, "#d6a967");
-          p(x + 8, ground - bh + j, 2, 1, "#9aa5cc");
-        }
+  if (env === "mountain") {
+    for (let i = 0; i < 6; i++) {
+      const x = i < 3 ? i * 22 : W - (6 - i) * 22;
+      const height = 10 + (i % 3) * 3;
+      for (let level = 0; level < height; level += 2) {
+        p(x + Math.floor(level / 3), ground - height + level, Math.max(3, 17 - Math.floor(level / 2)), 2, "#38505c");
       }
-      break;
-    case "pine":
-      pine(p, s, 8);
-      pine(p, s, 28);
-      pine(p, s, W - 19);
-      pine(p, s, W - 44);
-      break;
-    case "blossom":
-      leafyTree(p, s, 8, true);
-      leafyTree(p, s, W - 20, true);
-      flower(p, s, 35, "#ffc2db");
-      flower(p, s, W - 43, "#ffc2db");
-      break;
-    case "forest":
-      leafyTree(p, s, 8);
-      leafyTree(p, s, 28);
-      leafyTree(p, s, W - 22);
-      flower(p, s, 43, "#ffe580");
-      flower(p, s, W - 42, "#f9d768");
-      break;
-    case "meadow":
-      flower(p, s, 13, "#ffe06f");
-      flower(p, s, 37, "#ffc0a1");
-      flower(p, s, W - 15, "#fff1a0");
-      flower(p, s, W - 44, "#ffcf62");
-      break;
-    case "harvest":
-      bareTree(p, s, 10);
-      leafyTree(p, s, W - 21);
-      mushroom(p, s, 32);
-      mushroom(p, s, W - 43);
-      break;
-    case "graveyard":
-      bareTree(p, s, 10);
-      bareTree(p, s, W - 20);
-      p(25, ground - 6, 5, 6, "#465448");
-      p(W - 39, ground - 8, 6, 8, "#465448");
-      break;
-    case "bare":
-      bareTree(p, s, 9);
-      bareTree(p, s, 31);
-      bareTree(p, s, W - 19);
-      mushroom(p, s, W - 42);
-      break;
+    }
+  }
+  if (env === "lake" || env === "swamp") {
+    p(0, ground - 4, W, 4, env === "lake" ? "#284f61" : "#2a4940");
+    for (let i = 0; i < 20; i++) {
+      p((i * 31) % W, ground - 3 + (i % 2), 5, 1, "#739087");
+    }
+  }
+  if (env === "graveyard") {
+    for (let i = 0; i < 9; i++) {
+      const x = (i * 37 + 8) % W;
+      p(x, ground - 5, 5, 5, "#34483e");
+      p(x + 1, ground - 6, 3, 1, "#566d5e");
+    }
   }
   for (let i = 0; i < 15; i++) {
-    const x = hash(i * 9 + 3) * W;
-    if (s.season === "winterfest") p(x, ground - 1, 3, 1, "#e9f5f2");
-    else p(x, ground - 1, 2, 1, theme.edge);
+    const x = rand(i * 9 + 3) * W;
+    if (key === "winterfest") p(x, ground - 1, 3, 1, "#e9f5f2");
+    else p(x, ground - 1, 2, 1, edge);
   }
 }
 
-function drawObstacle(p: Px, s: Scene, o: Obstacle): void {
-  const x = o.x;
+function drawProp(p: Px, s: Scene, kind: Prop, x: number): void {
   const y = s.ground;
-  switch (o.kind) {
-    case "pumpkin":
-      p(x + 4, y - 9, 2, 3, "#477d34");
-      p(x + 1, y - 6, 8, 6, "#c86b23");
-      p(x + 3, y - 7, 4, 7, "#ed8a31");
-      p(x + 3, y - 4, 1, 1, "#23150e");
-      p(x + 6, y - 4, 1, 1, "#23150e");
-      p(x + 4, y - 2, 2, 1, "#ffe069");
+  const brown = "#75533b";
+  const green = "#315e3b";
+  switch (kind) {
+    case "tree":
+    case "cherry":
+    case "appletree": {
+      p(x + 5, y - 13, 3, 13, brown);
+      const c = kind === "cherry" ? "#e8a1bd" : "#376d3f";
+      p(x + 1, y - 17, 12, 9, c);
+      p(x + 3, y - 20, 8, 5, c);
+      if (kind === "appletree") {
+        p(x + 3, y - 13, 2, 2, "#de6d42");
+        p(x + 9, y - 17, 2, 2, "#de6d42");
+      }
+      break;
+    }
+    case "pine":
+      p(x + 5, y - 15, 3, 15, brown);
+      p(x + 4, y - 20, 5, 7, "#315d48");
+      p(x + 2, y - 16, 9, 7, "#24513c");
+      p(x, y - 11, 13, 7, "#204832");
+      if (s.key === "winterfest") {
+        p(x + 4, y - 20, 5, 1, "#ecf5f1");
+        p(x + 2, y - 16, 9, 1, "#d8ebea");
+      }
+      break;
+    case "bare":
+      p(x + 6, y - 18, 2, 18, "#503a30");
+      p(x + 2, y - 15, 4, 2, "#503a30");
+      p(x + 1, y - 19, 2, 6, "#503a30");
+      p(x + 8, y - 13, 5, 2, "#503a30");
+      p(x + 11, y - 17, 2, 6, "#503a30");
+      break;
+    case "house":
+    case "cabin":
+    case "manor":
+    case "stall": {
+      const big = kind === "manor";
+      const width = big ? 20 : 15;
+      const height = big ? 15 : 10;
+      p(x, y - height, width, height, big ? "#303047" : brown);
+      p(x - 2, y - height - 3, width + 4, 3, "#413b45");
+      p(x + 3, y - height + 3, 3, 3, "#efc574");
+      p(x + width - 6, y - height + 3, 3, 3, "#efc574");
+      p(x + Math.floor(width / 2) - 2, y - 5, 4, 5, "#27352c");
+      break;
+    }
+    case "tower":
+    case "clock":
+    case "windmill":
+      p(x + 4, y - 17, 9, 17, "#515465");
+      p(x + 2, y - 19, 13, 3, "#333d51");
+      if (kind === "clock") {
+        p(x + 7, y - 15, 5, 5, "#e2c581");
+        p(x + 9, y - 14, 1, 3, "#413a31");
+      }
+      if (kind === "windmill") {
+        p(x + 8, y - 20, 2, 12, "#dac9a0");
+        p(x + 3, y - 15, 12, 2, "#dac9a0");
+      }
+      break;
+    case "lamp":
+    case "lantern":
+      p(x + 5, y - 14, 2, 14, "#6b6951");
+      p(x + 3, y - 16, 6, 5, "#f4bb64");
+      p(x + 4, y - 15, 4, 3, "#ffe19b");
+      break;
+    case "snowman":
+      p(x + 2, y - 6, 9, 6, "#eaf3ed");
+      p(x + 4, y - 11, 6, 6, "#ffffff");
+      p(x + 8, y - 8, 1, 1, "#e49a45");
+      p(x + 5, y - 9, 1, 1, "#26373f");
+      break;
+    case "scarecrow":
+      p(x + 6, y - 17, 2, 17, brown);
+      p(x + 1, y - 13, 12, 2, brown);
+      p(x + 4, y - 18, 6, 5, "#d2ac67");
+      p(x + 3, y - 19, 8, 2, "#80603e");
+      break;
+    case "reeds":
+      for (let i = 0; i < 4; i++) p(x + i * 3, y - 4 - (i % 3), 1, 5, green);
+      break;
+    case "flower":
+      p(x + 6, y - 6, 1, 6, green);
+      p(x + 4, y - 9, 5, 4, "#f3b0aa");
+      p(x + 6, y - 8, 1, 2, "#ffe08b");
+      break;
+    case "flag":
+      p(x + 3, y - 15, 1, 15, "#c1c5b3");
+      p(x + 4, y - 15, 9, 5, "#d69c54");
+      break;
+    case "boat":
+      p(x, y - 5, 16, 3, "#875d41");
+      p(x + 3, y - 2, 10, 2, "#a47850");
+      p(x + 8, y - 14, 1, 9, "#c2bda5");
+      p(x + 9, y - 13, 6, 8, "#ddd5ac");
       break;
     case "grave":
-      p(x + 1, y - 7, 7, 7, "#44564b");
-      p(x + 2, y - 8, 5, 1, "#748477");
-      p(x + 4, y - 6, 1, 4, "#889b8a");
-      p(x + 3, y - 5, 3, 1, "#889b8a");
+      p(x + 2, y - 8, 8, 8, "#536459");
+      p(x + 4, y - 9, 4, 1, "#718477");
+      p(x + 6, y - 7, 1, 5, "#a0a99c");
+      p(x + 5, y - 6, 3, 1, "#a0a99c");
+      break;
+    case "pumpkin":
+      p(x + 5, y - 9, 2, 3, green);
+      p(x + 1, y - 6, 10, 6, "#c56b27");
+      p(x + 3, y - 7, 6, 7, "#ed8b33");
+      p(x + 4, y - 4, 1, 1, "#24170d");
+      p(x + 8, y - 4, 1, 1, "#24170d");
+      p(x + 5, y - 2, 3, 1, "#ffdb67");
       break;
     case "mushroom":
-      mushroom(p, s, x);
+      p(x + 5, y - 5, 4, 5, "#e2d2ae");
+      p(x + 2, y - 8, 10, 5, "#bd5945");
+      p(x + 5, y - 7, 2, 2, "#fff0cb");
       break;
+    case "cauldron":
+      p(x + 1, y - 7, 12, 6, "#333b3c");
+      p(x + 3, y - 8, 8, 2, "#79ae58");
+      p(x + 4, y - 10 - Math.sin(s.time * 3) * 2, 2, 2, "#9bc96c");
+      break;
+    case "campfire":
+      p(x + 2, y - 2, 10, 2, brown);
+      p(x + 5, y - 8, 4, 6, "#f3ae3e");
+      p(x + 6, y - 6, 2, 4, "#ffe48b");
+      break;
+    case "ice":
     case "snowball":
-      p(x + 2, y - 5, 5, 5, "#d8e9ed");
-      p(x + 1, y - 3, 8, 3, "#f0f7f4");
+    case "stone": {
+      const c = kind === "stone" ? "#87958c" : kind === "ice" ? "#a6e1e9" : "#edf4f2";
+      p(x + 2, y - 6, 7, 6, c);
+      p(x, y - 4, 11, 4, c);
       break;
-    case "stump":
-      p(x + 1, y - 5, 8, 5, "#765b45");
-      p(x, y - 6, 10, 2, "#b49b78");
-      break;
+    }
     case "log":
-      p(x, y - 4, 10, 4, "#755034");
-      p(x + 1, y - 3, 8, 1, "#aa7650");
-      break;
-    case "stone":
-      p(x + 2, y - 5, 6, 5, "#788378");
-      p(x, y - 3, 10, 3, "#9ba395");
-      break;
-    case "flowerpot":
-      p(x + 3, y - 9, 1, 5, "#39854b");
-      p(x + 2, y - 10, 4, 3, "#f4bd76");
-      p(x + 1, y - 4, 8, 4, "#ae6448");
-      break;
-    case "hay":
-      p(x + 1, y - 6, 8, 6, "#bd9341");
-      p(x, y - 3, 10, 3, "#d4aa54");
-      p(x + 4, y - 6, 1, 6, "#7b5928");
-      break;
+    case "stump":
     case "crate":
-      p(x, y - 6, 10, 6, "#74543e");
-      p(x + 1, y - 5, 8, 4, "#ad8054");
-      p(x + 2, y - 5, 1, 4, "#6b4839");
-      p(x + 7, y - 5, 1, 4, "#6b4839");
+    case "barrel":
+    case "basket":
+    case "hay":
+    case "gift":
+    case "flowerpot": {
+      const c = {
+        log: "#7f5638",
+        stump: "#70543e",
+        crate: "#9c704a",
+        barrel: "#765c47",
+        basket: "#ad814d",
+        hay: "#d0a84e",
+        gift: "#b76c9b",
+        flowerpot: "#b46a50",
+      }[kind];
+      p(x + 1, y - 6, 10, 6, c);
+      p(x, y - 5, 12, 2, c);
+      if (kind === "gift") p(x + 5, y - 6, 2, 6, "#e9d59e");
+      if (kind === "flowerpot") {
+        p(x + 5, y - 11, 1, 5, green);
+        p(x + 3, y - 12, 5, 3, "#f4b0b1");
+      }
+      if (kind === "hay") p(x + 4, y - 6, 1, 6, "#97702e");
       break;
+    }
   }
 }
 
-function drawParticles(p: Px, s: Scene): void {
-  const { W, ground, time, theme } = s;
-  const effect = theme.effect;
+function drawEffects(p: Px, s: Scene): void {
+  const { W, ground } = s;
+  const t = s.time;
+  const effect = s.row.effect;
   if (effect === "fireworks") {
-    const colors = ["#ffcf60", "#ff698f", "#8bcfff", "#b18cff"];
-    for (let b = 0; b < 4; b++) {
-      const phase = (time * 0.27 + b * 0.29) % 1;
-      if (phase > 0.77) continue;
-      const bx = b % 2 === 0 ? 25 + b * 15 : W - 30 - b * 13;
-      const by = 4 + (b % 2) * 4;
-      const radius = phase * 19;
+    const colors = ["#ffcd61", "#f584aa", "#85cfff", "#d4a5f2"];
+    for (let burst = 0; burst < 4; burst++) {
+      const phase = (t * 0.27 + burst * 0.24) % 1;
+      if (phase > 0.75) continue;
+      const cx = burst % 2 ? W - 38 : 38;
+      const cy = 5 + (burst % 2) * 4;
+      const radius = phase * 24;
       for (let i = 0; i < 12; i++) {
-        const angle = (i * Math.PI) / 6;
-        const x = bx + Math.cos(angle) * radius;
-        const y = by + Math.sin(angle) * radius * 0.65;
-        p(x, y, 1, 1, colors[(i + b) % colors.length]);
+        const a = (i * Math.PI) / 6;
+        p(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius * 0.65, 1, 1, colors[(i + burst) % colors.length]);
       }
     }
     return;
   }
-  if (effect === "ghosts") {
-    const x = W - ((time * 10 + 50) % (W + 30));
-    const y = 3 + Math.sin(time * 2) * 2;
-    p(x + 2, y, 6, 1, "#c6d9c7");
-    p(x, y + 1, 10, 5, "#deefd9");
-    p(x, y + 6, 3, 2, "#deefd9");
-    p(x + 5, y + 6, 3, 2, "#deefd9");
-    p(x + 2, y + 3, 1, 2, "#1b2920");
-    p(x + 7, y + 3, 1, 2, "#1b2920");
+  if (effect === "aurora") {
+    for (let i = 0; i < 35; i++) {
+      p((i * W) / 35, 2 + Math.sin(t + i * 0.3) * 3, 3, 9, i % 2 ? "#497e8c" : "#4c9a76");
+    }
+    return;
+  }
+  if (effect === "fog") {
+    for (let i = 0; i < 7; i++) {
+      p(((i * 53 + t * 3) % (W + 35)) - 20, ground - 5 - (i % 3), 25, 2, "#65766b");
+    }
+    return;
+  }
+  if (effect === "ghosts" || effect === "bats") {
     for (let i = 0; i < 2; i++) {
-      const bx = ((time * (16 + i * 7) + i * 125) % (W + 20)) - 10;
-      const by = 3 + i * 4 + Math.sin(time * 4 + i) * 2;
-      const flap = Math.floor(time * 9 + i * 2) % 2;
-      p(bx + 4, by + 2, 3, 2, "#947d9c");
-      if (flap) {
-        p(bx, by, 4, 1, "#947d9c");
-        p(bx + 7, by, 4, 1, "#947d9c");
+      const x = ((t * (9 + i * 5) + i * 87) % (W + 20)) - 10;
+      const y = 3 + Math.sin(t * 2 + i) * 2;
+      if (effect === "ghosts") {
+        p(x + 2, y, 6, 2, "#dcebd9");
+        p(x, y + 2, 10, 6, "#dcebd9");
+        p(x + 2, y + 4, 1, 2, "#1d2930");
+        p(x + 7, y + 4, 1, 2, "#1d2930");
       } else {
-        p(bx, by + 3, 4, 1, "#947d9c");
-        p(bx + 7, by + 3, 4, 1, "#947d9c");
+        const flap = Math.floor(t * 9 + i) % 2;
+        p(x + 4, y + 2, 3, 2, "#9b81a3");
+        p(x, y + (flap ? 0 : 3), 4, 1, "#9b81a3");
+        p(x + 7, y + (flap ? 0 : 3), 4, 1, "#9b81a3");
       }
+    }
+    return;
+  }
+  if (effect === "clouds") {
+    for (let i = 0; i < 4; i++) {
+      const x = ((i * 83 + t * 3) % (W + 35)) - 20;
+      const y = 2 + (i % 3) * 3;
+      p(x + 3, y, 12, 2, "#9caf9d");
+      p(x, y + 2, 20, 2, "#9caf9d");
     }
     return;
   }
   const count = effect === "snow" ? 35 : 18;
   for (let i = 0; i < count; i++) {
-    const seedX = hash(i + 120) * W;
-    const seedY = hash(i + 220) * ground;
-    const speed = 3 + hash(i + 320) * 9;
-    if (effect === "snow") {
-      const x = (seedX + Math.sin(time + i) * 5 + W) % W;
-      const y = (seedY + time * speed) % ground;
-      p(x, y, 1, 1, i % 3 ? "#dcefeb" : "#ffffff");
-    } else if (effect === "petals") {
-      const x = (seedX + time * 4 + Math.sin(time + i) * 6) % W;
-      const y = (seedY + time * speed * 0.55) % ground;
-      p(x, y, 2, 1, i % 2 ? "#f6c2d6" : "#e99ebc");
-    } else if (effect === "leaves") {
-      const x = (seedX + time * (5 + (i % 4))) % W;
-      const y = (seedY + time * speed * 0.6) % ground;
-      const colors = ["#c58c36", "#a85c30", "#e2ab4b"];
-      p(x + Math.sin(time * 2 + i) * 3, y, 2, 2, colors[i % colors.length]);
-    } else if (effect === "fireflies") {
-      const x = seedX + Math.sin(time + i * 2) * 7;
-      const y = 5 + hash(i + 420) * (ground - 9) + Math.sin(time * 1.5 + i) * 2;
-      if (Math.sin(time * 3 + i * 4) > 0.4) p(x, y, 1, 1, "#fff4a0");
-    } else if (effect === "butterflies" && i < 5) {
-      const x = (seedX + time * (4 + i)) % W;
-      const y = 6 + hash(i + 210) * (ground - 12) + Math.sin(time * 3 + i) * 3;
-      const color = i % 2 ? "#ffdc87" : "#b2d5a2";
-      p(x, y, 1, 2, color);
-      p(x + 2, y, 1, 2, color);
-      p(x + 1, y + 1, 1, 1, "#445e36");
+    const sx = rand(i + 25) * W;
+    const sy = rand(i + 75) * ground;
+    const speed = 3 + rand(i + 125) * 9;
+    if (
+      effect === "snow" ||
+      effect === "rain" ||
+      effect === "petals" ||
+      effect === "leaves" ||
+      effect === "confetti"
+    ) {
+      const x = (sx + Math.sin(t + i) * 3 + (effect === "leaves" ? t * 5 : 0) + W * 10) % W;
+      const y = (sy + t * speed) % ground;
+      if (effect === "snow") p(x, y, 1, 1, "#ecf7f4");
+      if (effect === "rain") p(x, y, 1, 3, "#a2b8cb");
+      if (effect === "petals") p(x, y, 2, 1, i % 2 ? "#f6c3d8" : "#f1a9bf");
+      if (effect === "leaves") p(x, y, 2, 2, i % 2 ? "#c98938" : "#e2ae51");
+      if (effect === "confetti") p(x, y, 2, 1, ["#ffb766", "#a7ccff", "#f39cbc"][i % 3]);
+    }
+    if (effect === "fireflies" || effect === "sparkles") {
+      const x = sx + Math.sin(t + i) * 5;
+      const y = 3 + sy * 0.7 + Math.sin(t * 2 + i) * 2;
+      if (Math.sin(t * 4 + i * 7) > 0.45) p(x, y, 1, 1, "#fff3a2");
+    }
+    if (effect === "butterflies" && i < 7) {
+      const x = (sx + t * (3 + i)) % W;
+      const y = 5 + sy * 0.5 + Math.sin(t * 4 + i) * 3;
+      const c = i % 2 ? "#ffd784" : "#edb1db";
+      p(x, y, 1, 2, c);
+      p(x + 2, y, 1, 2, c);
+    }
+    if (effect === "embers" || effect === "lanterns") {
+      const x = sx + Math.sin(t + i) * 3;
+      const y = ground - ((sy + t * speed) % ground);
+      if (effect === "embers") {
+        p(x, y, 1, 1, "#ffcf6d");
+      } else if (i < 8) {
+        p(x, y, 3, 4, "#f6bd68");
+        p(x + 1, y + 1, 1, 2, "#fff0a1");
+      }
     }
   }
 }
 
+const CAST_COLORS: Record<Cast, string> = {
+  cat: "#45354c",
+  fox: "#d68d4f",
+  rabbit: "#e7e4d5",
+  hedgehog: "#805e48",
+  frog: "#78b65e",
+  chick: "#f3d775",
+  penguin: "#344653",
+  skeleton: "#e0e9d6",
+  witch: "#80659a",
+  person: "#b69c76",
+  ghost: "#dfefdf",
+};
+
 function drawActor(p: Px, s: Scene, a: Actor): void {
+  const t = s.time;
   const x = Math.round(a.x);
-  const y = Math.round(s.ground - 10 - a.lift);
-  const step = Math.floor(s.time * 8) % 2;
+  const step = Math.floor(t * 8) % 2;
+  const y = Math.round(s.ground - a.lift - 10);
   const jumping = a.lift > 0.5;
-  switch (a.kind) {
-    case "skeleton": {
-      const c = "#e0e8d1";
-      p(x + 2, y, 5, 4, c);
-      p(x + 3, y + 2, 1, 1, "#172018");
-      p(x + 6, y + 2, 1, 1, "#172018");
-      p(x + 4, y + 4, 1, 1, c);
-      p(x + 2, y + 5, 5, 1, c);
-      p(x + 3, y + 6, 3, 1, c);
-      p(x + 4, y + 7, 1, 1, c);
-      p(x + 1, y + (jumping ? 3 : 5 + step), 1, 3, c);
-      p(x + 7, y + (jumping ? 3 : 6 - step), 1, 3, c);
-      p(x + 3 - (jumping ? 1 : 0) + step, y + 8, 1, 2, c);
-      p(x + 5 + (jumping ? 1 : 0) - step, y + 8, 1, 2, c);
+  const c = CAST_COLORS[a.type];
+  switch (a.type) {
+    case "ghost": {
+      const gy = y + Math.sin(t * 2) * 3;
+      p(x + 2, gy + 1, 6, 2, c);
+      p(x, gy + 3, 10, 7, c);
+      p(x + 2, gy + 5, 1, 2, "#182520");
+      p(x + 7, gy + 5, 1, 2, "#182520");
       break;
     }
+    case "skeleton":
+      p(x + 2, y, 6, 4, c);
+      p(x + 3, y + 2, 1, 1, "#162119");
+      p(x + 6, y + 2, 1, 1, "#162119");
+      p(x + 4, y + 4, 2, 1, c);
+      p(x + 2, y + 5, 6, 1, c);
+      p(x + 3, y + 6, 4, 1, c);
+      p(x + 1, y + (jumping ? 3 : 5 + step), 1, 3, c);
+      p(x + 8, y + (jumping ? 3 : 6 - step), 1, 3, c);
+      p(x + 3 + step, y + 7, 1, 3, c);
+      p(x + 6 - step, y + 7, 1, 3, c);
+      break;
     case "cat":
-    case "fox": {
-      const c = a.kind === "cat" ? "#403248" : "#d78a4d";
-      const eye = a.kind === "cat" ? "#ffd65a" : "#263023";
-      const hx = a.dir > 0 ? x + 5 : x;
+    case "fox":
+    case "rabbit":
+    case "hedgehog": {
+      const headX = a.dir > 0 ? x + 6 : x;
       p(x + 1, y + 5, 8, 3, c);
-      p(hx, y + 3, 4, 4, c);
-      p(hx, y + 1, 2, 3, c);
-      p(hx + 2, y + 1, 2, 3, c);
-      p(hx + (a.dir > 0 ? 3 : 0), y + 5, 1, 1, eye);
-      p(a.dir > 0 ? x : x + 9, y + 3 + step, 1, 4, c);
+      p(headX, y + 3, 4, 5, c);
+      if (a.type === "rabbit") {
+        p(headX, y, 1, 4, c);
+        p(headX + 3, y, 1, 4, c);
+      } else {
+        p(headX, y + 2, 2, 2, c);
+        p(headX + 2, y + 2, 2, 2, c);
+      }
+      if (a.type === "hedgehog") {
+        for (let i = 0; i < 5; i++) p(x + i * 2, y + 3 - (i % 2), 2, 3, "#a17e5a");
+      }
+      p(headX + (a.dir > 0 ? 3 : 0), y + 5, 1, 1, a.type === "cat" ? "#ffd267" : "#263128");
+      if (a.type === "cat" || a.type === "fox") {
+        p(a.dir > 0 ? x : x + 9, y + 3 + step, 2, 4, c);
+      }
       p(x + 2 + step, y + 8, 2, 2, c);
       p(x + 6 - step, y + 8, 2, 2, c);
       break;
     }
-    case "rabbit": {
-      const c = "#e9e4d2";
-      p(x + 2, y, 2, 5, c);
-      p(x + 5, y, 2, 5, c);
-      p(x + 1, y + 4, 7, 4, c);
-      p(x + 2, y + 7, 5, 3, c);
-      p(x + (a.dir > 0 ? 6 : 2), y + 6, 1, 1, "#b36a75");
-      p(x + 2 + step, y + 9, 2, 1, c);
+    case "frog":
+      p(x + 1, y + 5, 9, 5, c);
+      p(x + 1, y + 3, 3, 3, c);
+      p(x + 7, y + 3, 3, 3, c);
+      p(x + 2, y + 4, 1, 1, "#172c1d");
+      p(x + 8, y + 4, 1, 1, "#172c1d");
       break;
-    }
+    case "chick":
+      p(x + 2, y + 3, 7, 7, c);
+      p(x + 3, y + 1, 5, 4, c);
+      p(x + (a.dir > 0 ? 7 : 3), y + 4, 1, 1, "#233127");
+      p(x + (a.dir > 0 ? 9 : 1), y + 6, 2, 1, "#db9142");
+      break;
     case "penguin":
-      p(x + 2, y + 1, 6, 9, "#263746");
-      p(x + 3, y + 3, 4, 6, "#f1f2e7");
-      p(x + 3, y + 2, 1, 1, "#ffffff");
-      p(x + 6, y + 2, 1, 1, "#ffffff");
-      p(x + 4, y + 4, 3, 1, "#e6a34b");
-      p(x + 2 + step, y + 9, 2, 1, "#e6a34b");
-      p(x + 6 - step, y + 9, 2, 1, "#e6a34b");
+      p(x + 2, y + 1, 7, 9, c);
+      p(x + 3, y + 4, 5, 6, "#e8ede5");
+      p(x + 4, y + 3, 1, 1, "#ffffff");
+      p(x + 7, y + 3, 1, 1, "#ffffff");
+      p(x + 5, y + 5, 3, 1, "#e7a049");
       break;
-    case "frog": {
-      const c = "#79b454";
-      p(x + 1, y + 4, 8, 5, c);
-      p(x + 1, y + 2, 2, 3, c);
-      p(x + 7, y + 2, 2, 3, c);
-      p(x + 2, y + 3, 1, 1, "#172919");
-      p(x + 7, y + 3, 1, 1, "#172919");
-      p(x, y + 8, 3, 2, c);
-      p(x + 7, y + 8, 3, 2, c);
-      break;
-    }
-    case "hedgehog": {
-      const c = "#76543e";
-      for (let i = 0; i < 7; i++) p(x + i, y + 3 - (i % 2), 2, 3, "#9d7952");
-      p(x + 1, y + 5, 9, 4, c);
-      p(x + (a.dir > 0 ? 8 : 1), y + 6, 1, 1, "#151613");
-      p(x + 2 + step, y + 9, 2, 1, c);
-      p(x + 7 - step, y + 9, 2, 1, c);
-      break;
-    }
-    case "chick": {
-      const c = "#f4d57b";
-      p(x + 2, y + 3, 6, 6, c);
-      p(x + 3, y + 1, 4, 4, c);
-      p(x + (a.dir > 0 ? 6 : 3), y + 4, 1, 1, "#202b23");
-      p(x + (a.dir > 0 ? 8 : 1), y + 5, 2, 1, "#e39551");
-      p(x + 3 + step, y + 9, 1, 1, "#bb834b");
-      p(x + 6 - step, y + 9, 1, 1, "#bb834b");
-      break;
-    }
-    case "person": {
-      const coat = s.season === "new-year" ? "#a07acc" : "#e6c477";
-      p(x + 3, y, 4, 3, "#e4b38c");
-      p(x + 2, y - 1, 6, 1, "#3a394a");
-      p(x + 2, y + 3, 6, 4, coat);
-      p(x + 1, y + (jumping ? 2 : 4 + step), 1, 3, coat);
-      p(x + 8, y + (jumping ? 2 : 5 - step), 1, 3, coat);
-      p(x + 3 + step, y + 7, 2, 3, "#30374a");
-      p(x + 6 - step, y + 7, 2, 3, "#30374a");
+    case "person":
+    case "witch": {
+      const coat = a.type === "witch" ? "#694778" : "#a17c64";
+      p(x + 3, y + 1, 5, 4, "#d9ad8c");
+      p(x + 2, y + 5, 7, 3, coat);
+      p(x + 1, y + (jumping ? 3 : 5 + step), 2, 3, coat);
+      p(x + 9, y + (jumping ? 3 : 6 - step), 2, 3, coat);
+      p(x + 3 + step, y + 8, 2, 2, "#343849");
+      p(x + 7 - step, y + 8, 2, 2, "#343849");
+      if (a.type === "witch") {
+        p(x + 1, y, 9, 2, "#34273f");
+        p(x + 4, y - 4, 3, 4, "#34273f");
+      } else {
+        p(x + 2, y, 7, 2, "#493e39");
+      }
       break;
     }
   }
 }
 
 /**
- * drawScene paints the scene with ctx.fillRect, in whole pixels. The order is
- * stars and moon or sun, landscape, obstacles, effect, walkers. It paints no
- * background, and it does not clear the canvas. The caller must clear it
- * before each frame.
+ * drawScene paints the scene on `ctx`. It does not clear the canvas. It sets
+ * ctx.globalAlpha to the value of [sceneAlpha] for the frame, and sets it back
+ * to 1 at the end.
  */
 export function drawScene(ctx: Painter, s: Scene): void {
   const p: Px = (x, y, w, h, color) => {
     ctx.fillStyle = color;
     ctx.fillRect(Math.round(x), Math.round(y), Math.ceil(w), Math.ceil(h));
   };
-  drawSky(p, s);
-  drawLandscape(p, s);
-  for (const o of s.obstacles) drawObstacle(p, s, o);
-  drawParticles(p, s);
+  ctx.globalAlpha = sceneAlpha(s);
+  drawBackground(p, s);
+  const at = positions(s.W);
+  s.row.props.forEach((kind, i) => drawProp(p, s, kind, at[i]));
+  drawEffects(p, s);
   for (const a of s.actors) drawActor(p, s, a);
+  ctx.globalAlpha = 1;
 }

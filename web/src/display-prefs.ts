@@ -77,10 +77,10 @@ export interface DisplayPrefs {
   // scale: a hand-edited entry cannot make the flame permanent or impossible.
   flairBurstCount: number;
   flairBurstMinutes: number;
-  // 129-1: the seasonal scene -- a small animation in the header, with one
-  // scene for each of eight seasons. On by default, unlike flair: it is one
-  // small visitor in the header, not a mode. Per-device like everything here,
-  // so a device can stay plain.
+  // 129-1: the seasonal scene -- a small animation in the header, with five
+  // scenes for each of eight seasons and five for the dates between them. On
+  // by default, unlike flair: it is one small visitor in the header, not a
+  // mode. Per-device like everything here, so a device can stay plain.
   seasonal: boolean;
 }
 

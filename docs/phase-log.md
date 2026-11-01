@@ -782,7 +782,8 @@ A reload or a second tab brings no extra visit, and a tab in the background clai
 seasons in 10 rows. The night frame moved to the Spooky Season row.
 129-9 replaced the figures and the glow with an animated pixel scene on a
 canvas in the middle of the top header (`web/src/season/scene.ts` and
-`SeasonScene.tsx`). There is one scene for each of the eight seasons. A phone
+`SeasonScene.tsx`). There was one scene for each of the eight seasons (129-12
+made it five). A phone
 width showed no scene in the header (129-11 changed this for zuckermode). A visit shows for 45 s to 75 s, and a day has at most 16
 visits, of which at most 10 start before 18:00. The gap is 1 to 2 hours, and
 20 to 40 minutes from 18:00. The reduced-motion promise holds: the scene paints
@@ -790,7 +791,8 @@ one frame and holds it. The 20 PNG files, `figures.ts`,
 `tools/cut-season-sheet.py`, and the aura are gone.
 129-10 shortened the rows of `SEASONS`, so a gap of 21 days in a common year
 separates two seasons. A date in a gap has no season, and `seasonFor` returns
-null. 29 February is in a gap. It also added `ALWAYS_ON` and `alwaysOn`: from
+null. 129-10 showed no scene on such a date (129-12 changed this). 29 February
+is in a gap. It also added `ALWAYS_ON` and `alwaysOn`: from
 20:00 on 24 December until 05:00 on 25 December, and from 20:00 on 31 December
 until 05:00 on 1 January, by the local clock, the scene stays up without a
 break. No visit is claimed in those hours, and the daily caps do not count
@@ -804,6 +806,15 @@ still shows no scene. The list screen unmounts when a conversation opens, so
 the scene starts again with a first pause when the user comes back. The log of
 visits is in localStorage, so the caps hold. In the always-on hours the row
 stays open and claims no visit.
+129-12 replaced the scene engine with a port of a second engine that the user
+supplied. `SCENES` in `web/src/season/scene.ts` holds nine keys, the eight
+seasons and `neutral`, with five scenes each, so there are 45 scenes. A scene
+rotates to the next one of its key every 35 s and fades out and in. Each visit
+starts at a random scene. A date in a gap, 29 February included, now shows the
+five neutral scenes, which reverses 129-10. The calendar and the gaps did not
+change, and `seasonFor` still returns null on such a date. `seasonalOn` in
+`App.tsx` no longer needs a season. `SeasonScene` takes a season or null. The
+night frame still needs a season.
 
 **130 — guest flow** (2026-11-01). The first real use of temporary voice
 rooms showed four rough edges in the flow of the member. 130-1 stopped the

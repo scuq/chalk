@@ -28,10 +28,11 @@ Every change is in the client.
 
 ## Phase 129 — seasonal: COMPLETE, with recorded trade-offs
 
-129-1 … 129-11, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
-An animated pixel scene peeks into the middle of the top header in eight
-seasons. A gap of 21 days in a common year separates two seasons, and a date
-in a gap has no scene. On the evening of 24 December and on New Year's Eve, the
+129-1 … 129-12, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
+An animated pixel scene peeks into the middle of the top header. Each of
+eight seasons has five scenes that change every 35 s. A gap of 21 days in a
+common year separates two seasons, and a date in a gap shows five neutral
+scenes (129-12). On the evening of 24 December and on New Year's Eve, the
 scene stays up from 20:00 to 05:00. There is a switch per device and a server
 switch on the admin settings tab. A visit comes at most 16 times in a local day
 on one device, and at most 10 of them start before 18:00 (129-7, 129-9).
@@ -43,6 +44,8 @@ No slice is open.
   load.** `GET /api/auth/config` is cached with `max-age=60`, so the delay is
   one minute at most. A `welcome` payload field or a WebSocket broadcast is the
   fix if it grates.
+- **Two scene names promise what is not drawn.** Cabin Smoke has no smoke, and
+  Bridge Walk has no bridge. The names are the names of the user.
 - **The cap on visits is for a device and a local day.** A person with two
   devices gets 16 visits on each. Clearing `chalk.season.visits.v1` from
   localStorage gives visits again.

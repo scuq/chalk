@@ -7,7 +7,9 @@
 // The date is local on purpose: a season is a date on the calendar of the
 // reader.
 // The rows of SEASONS leave gaps of 21 days between the seasons, so a date
-// can have no season. The calendar is written for the Northern Hemisphere.
+// can have no season. The scene still shows on such a date: it uses the
+// neutral scenes of scene.ts. The calendar is written for the Northern
+// Hemisphere.
 // chalk reads only the local date, so a reader in the Southern Hemisphere gets
 // the same calendar.
 // ALWAYS_ON lists the hours in which the scene stays up without a break.
@@ -61,7 +63,7 @@ export interface Season extends Window {
 
 // The rows run in calendar order. Each gap between two rows lasts 21 days in
 // a common year, so chalk is not in a season all year. A date in a gap has no
-// season. 29 February falls in the gap from 8 February to 28 February, so it
+// season, and the scene uses the neutral scenes. 29 February falls in the gap from 8 February to 28 February, so it
 // has no season. Two seasons have two rows: winterfest comes twice in the
 // year, and new-year crosses the year boundary.
 export const SEASONS: Season[] = [
@@ -116,7 +118,8 @@ export function inWindow(now: number | Date, w: Window): boolean {
 /**
  * seasonFor returns the season that holds the local calendar date of `now`,
  * or null when no season does. With the default SEASONS a date in a gap
- * returns null. This is a normal result.
+ * returns null. This is a normal result: the caller then shows the neutral
+ * scenes.
  */
 export function seasonFor(now: number | Date, seasons: Season[] = SEASONS): Season | null {
   for (const s of seasons) {

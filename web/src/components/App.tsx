@@ -3617,9 +3617,11 @@ export function App() {
   ] = useDisplayPrefs();
   // 129-1: which season it is, re-read once a minute so a tab left open over
   // midnight crosses the edge of a season without a reload. A date in a gap
-  // between two seasons has no season, so nothing shows. Three gates: the
-  // calendar, this device's switch, and the server's switch -- and the last
-  // is unknown until the config has loaded, so nothing shows before then.
+  // between two seasons has no season, and `season` is then null. 129-12: the
+  // scene shows on such a date too, with the neutral scenes. Two gates decide
+  // if the scene mounts: this device's switch and the server's switch. The
+  // server's switch is unknown until the config has loaded, so nothing shows
+  // before then. The third gate, the width of the window, is at the mount.
   const [seasonNow, setSeasonNow] = useState(() => Date.now());
   useEffect(() => {
     // 129-6: the clock ticks once a minute, so the night frame starts
@@ -3630,7 +3632,6 @@ export function App() {
   }, []);
   const season = seasonFor(seasonNow);
   const seasonalOn =
-    season !== null &&
     seasonalPref &&
     state.authConfig !== null &&
     state.authConfig.seasonal_decorations !== false;
@@ -5903,13 +5904,14 @@ export function App() {
         {/* 129-9: the scene for the season, in the empty middle of the header
             between the brand and the status bar. It mounts only on a wide
             screen. At 767 px and below only about 30 px of middle remains, so
-            the header shows no scene on a phone. On a date in no season,
-            nothing mounts. 129-10: in the always-on hours the scene stays up
+            the header shows no scene on a phone. 129-12: on a date in no
+            season, `season` is null and the neutral scenes show.
+            129-10: in the always-on hours the scene stays up
             without a break. A second row for the scene in the header
             would change the height of the header. 129-11: a phone in
             zuckermode shows the scene in a row above the list instead (see the
             `scene` prop of ZuckerList). */}
-        {seasonalOn && season && !isMobile && (
+        {seasonalOn && !isMobile && (
           <SeasonScene season={season} always={alwaysOn(seasonNow)} />
         )}
         <StatusBar
@@ -6274,12 +6276,13 @@ export function App() {
         {zuckerActive && zuckerScreen === "list" ? (
           <ZuckerList
             /* 129-11: the scene as a row above the list. It uses the same
-               gates as the header mount: the calendar, the device switch, and
-               the server switch. If a gate is off, nothing mounts. The row has
+               gates as the header mount: the device switch and the server
+               switch. If a gate is off, nothing mounts. On a date in no
+               season, `season` is null and the neutral scenes show. The row has
                no height between visits. The classic phone layout has no list
                screen, so it shows no scene. */
             scene={
-              seasonalOn && season ? (
+              seasonalOn ? (
                 <SeasonScene season={season} always={alwaysOn(seasonNow)} row />
               ) : null
             }
