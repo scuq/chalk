@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a scene for the season
 
-**Status:** built, 129-1 – 129-10. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-10 are not yet in a release. 129-8 to 129-10 land together.
+**Status:** built, 129-1 – 129-11. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-11 are not yet in a release. 129-8 to 129-10 land together.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -87,8 +87,9 @@ During these hours the scene stays up without a break. `App.tsx` passes
 so the daily caps do not count these hours. Outside the hours the visits and the
 caps work as before, also on the same day.
 
-The same gates apply. A phone width shows no scene, and the device switch and
-the server switch turn it off. With reduced motion the scene holds one frame
+The same gates apply. The header of a phone width shows no scene (129-11 added
+a row for zuckermode, see "The mount"), and the device switch and the server
+switch turn it off. With reduced motion the scene holds one frame
 for the hours. Both windows fall on dates that have a row, so the calendar gate
 is open in them.
 
@@ -125,7 +126,9 @@ It brought the figure and the glow about 1,250 times a day to each open tab.
 - Only a visible page (`document.visibilityState`) claims a visit.
   A background tab does not spend the visits of the day where nobody sees them.
   If two windows are visible, one of them shows the visit.
-- A phone width mounts no scene, so it claims no visit (see "The mount").
+- The header of a phone width mounts no scene, so it claims no visit. A phone
+  in zuckermode claims a visit only while the list screen shows (see "The
+  mount").
 
 The log is `{day, count, nextAt}` in localStorage under the key `chalk.season.visits.v1`.
 All tabs and reloads of one browser share it.
@@ -256,8 +259,39 @@ The header has the same height with and without the scene. A check in a
 browser found no change.
 
 At 390 px only about 30 px of the middle remains, so the scene would be a
-sliver. So a phone shows no scene and spends no visit. The old figure did show
-on a phone. This is a recorded trade-off.
+sliver. So the header of a phone shows no scene. The old figure did show on a
+phone. This is a recorded trade-off. 129-9 and 129-10 recorded that a phone
+shows no scene at all. 129-11 changed this for zuckermode, as the next
+subsection says.
+
+### The row above the zuckermode list (129-11)
+
+On a phone in zuckermode, the list screen shows the scene in a row at the top
+of the list. The user asked for a row that goes away when it is off.
+
+`App.tsx` passes `scene` to `ZuckerList`. The value is
+`<SeasonScene season always row />`, or `null` if the calendar, the device
+switch, or the server switch says no. `ZuckerList` stays presentational. It
+renders `scene` as the first child of `.chalk-zucker`, above
+`.chalk-zucker-head`. A date in a gap, or a switch that is off, mounts no row.
+The row is a child of the list screen only, so it does not show on the chat
+screen. The classic phone layout (the drawer) still shows no scene.
+
+`SeasonScene` has a `row` prop. With it, the root gets `chalk-season--row`.
+While the scene shows, the root also gets `chalk-season--live`.
+
+- `.chalk-season--row` is a flex child (`flex: 0 0 auto`) with `height: 0` and
+  `overflow: hidden`. Between visits the row takes no space. A height
+  transition of 1200 ms opens and closes it.
+- `.chalk-season--row.chalk-season--live` is 44 px high and has a bottom
+  border. `box-sizing` makes 44 px the total height.
+- The canvas sits at `bottom: 0` in the row.
+- With reduced motion the height transition is off too, so the row jumps.
+
+`ZuckerList` unmounts when a conversation opens. `SeasonScene` then mounts
+again when the user comes back to the list, and it starts with a first pause of
+4 s to 12 s. The log of visits is in localStorage, so the caps hold across that
+restart. In the always-on hours the row stays open and claims no visit.
 
 `App.tsx` reads the date again once a minute with `setInterval`. A tab that
 stays open over midnight crosses the edge of a season without a reload.
@@ -321,7 +355,8 @@ A call is not the place for motion, so the reduced-motion block has nothing to s
 
 ### Three gates
 
-The scene shows only if all three hold, on a screen wider than a phone:
+The scene shows only if all three hold. It shows in the header on a screen
+wider than a phone, and in the row above the list on a phone in zuckermode:
 
 - The calendar says it is a season (`seasonFor`).
 - The device switch is on.
@@ -431,7 +466,8 @@ The title and the solid panel of the reference scene (129-9). They do not
 blend with all 15 themes.
 
 A phone layout with the scene on a second header row (129-9). It changes the
-height of the header.
+height of the header. This still holds for the header. 129-11 put the scene
+in the list screen instead.
 
 History: 129-1 to 129-8 showed a figure beside the wordmark. 129-1 drew an SVG
 ghost, and 129-5 replaced it with 20 PNG cut-outs, ten for each of two seasons.
@@ -498,6 +534,12 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
   the `alwaysOn` call in `App.tsx`. Text in `whats-new.ts`. Tests in
   `seasons.test.ts`.
 
+- **129-11 — the row above the zuckermode list.** The `scene` prop of
+  `ZuckerList.tsx`, and the `scene` value in `App.tsx`. The `row` prop and the
+  classes `chalk-season--row` and `chalk-season--live` in `SeasonScene.tsx`.
+  The row rules and the reduced-motion rule in `theme.css`. Text in
+  `ProfilePanel.tsx`, `AdminSettingsTab.tsx`, and `whats-new.ts`.
+
 ## Trade-offs
 
 1. A change by an administrator reaches other clients on their next page load.
@@ -516,9 +558,11 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
    later, notices it.
 5. The count in localStorage is not a secret and not a guard. A person who
    clears the key gets visits again. This is an accepted property for a decoration.
-6. A window of 767 px or less shows no scene. The old figure did show on a
-   phone. A phone now shows no seasonal art, and a visit is not spent there.
-   The scene does not fit: at 390 px only about 30 px of the middle remains.
+6. The header of a window of 767 px or less shows no scene. The old figure
+   did show on a phone. The scene does not fit: at 390 px only about 30 px of
+   the middle remains. 129-11 changed this for zuckermode: the list screen
+   shows the scene in a row (see trade-offs 13 and 14). The classic phone layout
+   shows no scene.
 7. The calendar is for the Northern Hemisphere. A reader in the Southern
    Hemisphere sees the same season on the same date.
 8. The loop of the scene runs at 12 fps during a visit and for 1.2 s after it.
@@ -530,7 +574,14 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
     for nine hours on two evenings of the year.
 11. The always-on hours follow the Northern Hemisphere calendar, like the rows. A reader in the Southern Hemisphere sees the scene in summer on those
     evenings.
-12. A phone width shows no scene in the always-on hours either.
+12. The header of a phone width shows no scene in the always-on hours either.
+    In zuckermode the row stays open in those hours.
+13. Only the list screen of zuckermode claims a visit. A user who stays in a
+    conversation gets fewer visits. A visit that the user leaves by opening a
+    conversation still counts.
+14. When the row opens or closes, the rows below it move by 44 px over 1.2 s.
+    A tap in that moment can land on a different row. This is the accepted cost
+    of a row that goes away.
 
 ## Verification
 
@@ -559,6 +610,12 @@ It also made these checks:
 A second probe ran on 2026-11-02. It checked a neutral date, a season date,
 the four sides of the always-on hours, and a date just before them. It passed.
 
+A third Playwright probe ran on 2026-11-02 on an iPhone 14 viewport. It checked
+the cases of items 29 to 33 of the checklist below. The cases are a row that
+is closed before a visit, opens, and collapses after it, a conversation that
+opens and a return to the list, zuckermode off, a neutral date, and 21:00 on
+24 December. It passed.
+
 ### Manual checklist for the live stack
 
 Use two users, Alice and Bob, and a date inside a season. A date in a gap has
@@ -579,9 +636,9 @@ no season (see item 13).
    scene does not mount on this device. Check that it stays off after a
    reload.
 6. Check that a device with flair off still shows the scene.
-7. Check the phone layout (400 px wide). Check that no scene shows, that the
-   header looks as before, and that there is no sideways overflow. Check that
-   the count in `chalk.season.visits.v1` does not change.
+7. Check the classic phone layout (400 px wide, zuckermode off). Check that no
+   scene shows, that the header looks as before, and that there is no sideways
+   overflow. Check that the count in `chalk.season.visits.v1` does not change.
 8. As an administrator, open the settings tab in the admin panel and turn the
    switch off. Check that the scene on the screen of the administrator goes
    away at once.
@@ -633,8 +690,19 @@ no season (see item 13).
 27. Repeat items 25 and 26 for 31 December, with 05:00 on 1 January as the end.
     Check that the scene stays up across midnight.
 28. In the always-on hours, check that the count in `chalk.season.visits.v1`
-    does not change, that a phone width shows no scene, and that a device with
-    the switch off shows no scene.
+    does not change, that the header of a phone width shows no scene, and that
+    a device with the switch off shows no scene.
+29. Check the row above the zuckermode list (400 px wide, zuckermode on, a date
+    inside a season). On the list screen, check that the row takes no space
+    before a visit. Check that it opens to 44 px, that the scene shows, and
+    that the row collapses when the visit ends.
+30. Open a conversation and go back to the list. Check that the row is closed,
+    and that a visit comes after a first pause of 4 s to 12 s. Check that the
+    daily caps still hold.
+31. Turn zuckermode off. Check that no row shows.
+32. Set the system date to a date in a gap. Check that no row mounts.
+33. Set the system clock to 21:00 on 24 December. Check that the row stays
+    open, and that the count in `chalk.season.visits.v1` does not change.
 
 ## How to add a season
 

@@ -8,7 +8,10 @@
 // keep its two "+" entry points. 64-1 adds a third pinned row: friends,
 // expanding in place to the full roster with presence, because the
 // activity-sorted list buries anyone you haven't talked to lately.
+//
+// 129-11: the seasonal scene can sit above the header as a row (`scene`).
 
+import type { ComponentChildren } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import {
   splitVoice,
@@ -54,6 +57,10 @@ interface Props {
   burstMinutes?: number;
   // 115-3: friends whose name is waving right now (userID -> wave start).
   waves?: ReadonlyMap<string, number>;
+  // 129-11: the seasonal scene row, or null. It renders as the first child,
+  // above the header. The parent decides if it mounts. The list stays
+  // presentational.
+  scene?: ComponentChildren;
 }
 
 export function ZuckerList({
@@ -74,6 +81,7 @@ export function ZuckerList({
   hotChannels,
   burstMinutes = 4,
   waves,
+  scene,
 }: Props) {
   const [friendsOpen, setFriendsOpen] = useState(false);
   // 64-2/64-5: quick filter over the conversation rows, same match rule as
@@ -210,6 +218,7 @@ export function ZuckerList({
 
   return (
     <div class="chalk-zucker" data-testid="zucker-list">
+      {scene}
       <div class="chalk-zucker-head">
         <span class="chalk-zucker-title">conversations</span>
         <button

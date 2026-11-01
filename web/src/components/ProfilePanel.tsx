@@ -1084,8 +1084,8 @@ export function ProfilePanel({
                 <p class="chalk-profile-hint">
                   on by default. now and then a small animated scene for the
                   season shows in the middle of the top bar, with fireworks at
-                  new year and a graveyard around halloween. a phone does not
-                  show it. stored on this device only. the administrator can
+                  new year and a graveyard around halloween. a phone in
+                  zuckermode shows it in a row above the conversation list. stored on this device only. the administrator can
                   turn it off for the whole server, and it holds still when
                   your system asks for reduced motion.
                 </p>

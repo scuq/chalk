@@ -28,14 +28,16 @@ Every change is in the client.
 
 ## Phase 129 — seasonal: COMPLETE, with recorded trade-offs
 
-129-1 … 129-10, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
+129-1 … 129-11, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
 An animated pixel scene peeks into the middle of the top header in eight
 seasons. A gap of 21 days in a common year separates two seasons, and a date
 in a gap has no scene. On the evening of 24 December and on New Year's Eve, the
 scene stays up from 20:00 to 05:00. There is a switch per device and a server
 switch on the admin settings tab. A visit comes at most 16 times in a local day
 on one device, and at most 10 of them start before 18:00 (129-7, 129-9).
-A phone width shows no scene. No slice is open.
+A phone in zuckermode shows the scene in a row above the conversation list
+(129-11). The classic phone layout and the header of a phone show no scene.
+No slice is open.
 
 - **A change by an administrator reaches other clients on their next page
   load.** `GET /api/auth/config` is cached with `max-age=60`, so the delay is
@@ -46,9 +48,16 @@ A phone width shows no scene. No slice is open.
   localStorage gives visits again.
 - **The date check runs once a minute.** A tab can show the scene of the old
   season for up to one minute after midnight changes the season.
-- **A phone shows no scene.** At 390 px only about 30 px of the header middle
-  remains. A second header row would change the header height. This holds in
-  the always-on hours too.
+- **The header of a phone shows no scene, and neither does the classic phone
+  layout.** At 390 px only about 30 px of the header middle remains. A second
+  header row would change the header height. This holds in the always-on hours
+  too. Only zuckermode has a scene on a phone, in the row of 129-11.
+- **A phone in zuckermode gets fewer visits.** Only the list screen claims a
+  visit, so a user who stays in a conversation gets fewer. A visit that the
+  user leaves by opening a conversation still counts.
+- **The row moves the list.** When the row opens or closes, the rows below it
+  move by 44 px over 1.2 s. A tap in that moment can land on a different row.
+  This is the accepted cost of a row that goes away.
 - **The always-on hours run a 12 fps loop for nine hours** while the tab is
   visible. `requestAnimationFrame` pauses in a hidden tab.
 - **The what's-new entry of phase 129 was rewritten in place.** A person who

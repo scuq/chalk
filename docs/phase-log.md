@@ -783,7 +783,7 @@ seasons in 10 rows. The night frame moved to the Spooky Season row.
 129-9 replaced the figures and the glow with an animated pixel scene on a
 canvas in the middle of the top header (`web/src/season/scene.ts` and
 `SeasonScene.tsx`). There is one scene for each of the eight seasons. A phone
-width shows no scene. A visit shows for 45 s to 75 s, and a day has at most 16
+width showed no scene in the header (129-11 changed this for zuckermode). A visit shows for 45 s to 75 s, and a day has at most 16
 visits, of which at most 10 start before 18:00. The gap is 1 to 2 hours, and
 20 to 40 minutes from 18:00. The reduced-motion promise holds: the scene paints
 one frame and holds it. The 20 PNG files, `figures.ts`,
@@ -795,6 +795,15 @@ null. 29 February is in a gap. It also added `ALWAYS_ON` and `alwaysOn`: from
 until 05:00 on 1 January, by the local clock, the scene stays up without a
 break. No visit is claimed in those hours, and the daily caps do not count
 them.
+129-11 added the scene to the phone. On a phone in zuckermode, App.tsx passes
+the scene to `ZuckerList` as `scene`, and the list renders it as a row above
+its header. The row (`.chalk-season--row`) has no height between visits and
+opens to 44 px over 1200 ms while a visit shows. If the calendar, the device
+switch, or the server switch says no, no row mounts. The classic phone layout
+still shows no scene. The list screen unmounts when a conversation opens, so
+the scene starts again with a first pause when the user comes back. The log of
+visits is in localStorage, so the caps hold. In the always-on hours the row
+stays open and claims no visit.
 
 **130 — guest flow** (2026-11-01). The first real use of temporary voice
 rooms showed four rough edges in the flow of the member. 130-1 stopped the

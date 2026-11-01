@@ -50,3 +50,5 @@ server that can read messages**:
 
 64 (mobile swipe-back and the friends row), 78 (hidden channels honoured in the
 list) and 79 (landing) all extend this surface.
+Phase 129 (129-11) can put a row with the seasonal scene above the list. See
+[PHASE-129-SEASONAL.md](PHASE-129-SEASONAL.md).

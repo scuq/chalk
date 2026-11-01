@@ -1,14 +1,22 @@
 // 129-9: the scene for the season -- a small pixel animation in the header.
 // 129-10: in the always-on hours the scene stays up without a break.
+// 129-11: on a phone in zuckermode the scene is a row above the list.
 //
 // One component serves every season. The registry says which season it is.
 // season/scene.ts says what that season looks like and moves it. The schedule
 // in season/peek.ts sets the bounds of a visit, and season/visits.ts grants a
 // visit under the caps in peek.ts.
-// App.tsx mounts the component in the header, between the brand and the
-// status bar, and only on a wide screen. The box .chalk-season takes the empty
-// middle of the header. The canvas inside it is out of flow, so the header
-// keeps its height when the scene comes and goes.
+// App.tsx mounts the component in one of two places. On a wide screen it sits
+// in the header, between the brand and the status bar. The box .chalk-season
+// takes the empty middle of the header. The canvas inside it is out of flow,
+// so the header keeps its height when the scene comes and goes.
+// On a phone in zuckermode, with the `row` prop, ZuckerList renders the
+// component as the first child of the list screen. The row has no height
+// between visits and opens to 44 px while a visit shows. The classic phone
+// layout mounts no scene.
+// The list screen unmounts when a conversation opens, so the component starts
+// again, with a first pause, when the user comes back to the list. The log of
+// visits is in localStorage, so the daily caps hold across that restart.
 // The component draws on the canvas only during a visit and for FADE_MS after
 // it. A hidden canvas costs no frame. In the always-on hours (ALWAYS_ON in
 // season/seasons.ts) the component draws without a break, claims no visit, and
@@ -100,6 +108,8 @@ interface Props {
   season: Season;
   /** true in the always-on hours: the scene stays up and no visit is claimed */
   always: boolean;
+  /** true for the row above the zuckermode list: the box has no height between visits */
+  row?: boolean;
 }
 
 /**
@@ -108,7 +118,7 @@ interface Props {
  * reader while a visit shows. If `always` is true, the canvas stays up without
  * a break and the schedule claims no visit.
  */
-export function SeasonScene({ season, always }: Props) {
+export function SeasonScene({ season, always, row = false }: Props) {
   const [visit, setVisit] = useState<Peek>(() => firstPeek());
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -131,7 +141,14 @@ export function SeasonScene({ season, always }: Props) {
     return runScene(el, ctx, id);
   }, [live, id]);
   return (
-    <div class="chalk-season" data-testid="season-anchor">
+    <div
+      class={
+        "chalk-season" +
+        (row ? " chalk-season--row" : "") +
+        (live ? " chalk-season--live" : "")
+      }
+      data-testid="season-anchor"
+    >
       <canvas
         ref={canvas}
         class={"chalk-season-canvas" + (live ? " chalk-season-canvas--visible" : "")}

@@ -5902,11 +5902,13 @@ export function App() {
         </div>
         {/* 129-9: the scene for the season, in the empty middle of the header
             between the brand and the status bar. It mounts only on a wide
-            screen. At 767 px and below only about 30 px of middle remains, so a
-            phone shows no scene and spends no visit. On a date in no season,
+            screen. At 767 px and below only about 30 px of middle remains, so
+            the header shows no scene on a phone. On a date in no season,
             nothing mounts. 129-10: in the always-on hours the scene stays up
-            without a break. A second row for the scene
-            would change the height of the header. */}
+            without a break. A second row for the scene in the header
+            would change the height of the header. 129-11: a phone in
+            zuckermode shows the scene in a row above the list instead (see the
+            `scene` prop of ZuckerList). */}
         {seasonalOn && season && !isMobile && (
           <SeasonScene season={season} always={alwaysOn(seasonNow)} />
         )}
@@ -6271,6 +6273,16 @@ export function App() {
             (the footer hides its composer the parked way). */}
         {zuckerActive && zuckerScreen === "list" ? (
           <ZuckerList
+            /* 129-11: the scene as a row above the list. It uses the same
+               gates as the header mount: the calendar, the device switch, and
+               the server switch. If a gate is off, nothing mounts. The row has
+               no height between visits. The classic phone layout has no list
+               screen, so it shows no scene. */
+            scene={
+              seasonalOn && season ? (
+                <SeasonScene season={season} always={alwaysOn(seasonNow)} row />
+              ) : null
+            }
             rows={zuckerSplit.visible}
             hiddenRows={zuckerSplit.hidden}
             presence={state.presence}

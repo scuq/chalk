@@ -11739,9 +11739,11 @@ body.chalk-resizing-y .chalk-composer-resizer {
    Phase 129: seasonal -- a scene for the season, on by default.
    SeasonScene.tsx draws a pixel scene on a canvas in the empty middle of
    the top header, between the brand and the status bar. App.tsx mounts it
-   only on a wide screen. The motion is the JavaScript loop of the
-   component. The only CSS motion is the fade of the canvas, and the
-   reduced-motion block at the end of this section turns it off.
+   there only on a wide screen. 129-11: on a phone in zuckermode, App.tsx
+   passes it to ZuckerList as a row above the list (.chalk-season--row). The
+   motion is the JavaScript loop of the component. The only CSS motion is the
+   fade of the canvas and the height of the row. The reduced-motion block at
+   the end of this section turns both off.
    This section must stay above the flair section: theme-flair.test.ts
    takes the sheet's last reduced-motion block as flair's.
    ============================================================ */
@@ -11781,6 +11783,29 @@ body.chalk-resizing-y .chalk-composer-resizer {
    SeasonScene.tsx must stay equal to it. */
 .chalk-season-canvas--visible {
   opacity: 0.9;
+}
+/* 129-11: the row above the zuckermode list. Between visits it has no
+   height, so it takes no space. The height transition opens and closes it, so
+   the rows below move by 44 px over 1200 ms. align-self: auto and margin: 0
+   undo the strip rules above. overflow: hidden keeps the canvas inside the
+   box while the height changes. */
+.chalk-season--row {
+  flex: 0 0 auto;
+  align-self: auto;
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+  transition: height 1200ms ease;
+}
+/* While the scene shows. The global box-sizing: border-box makes 44 px the
+   total height, with the border. */
+.chalk-season--row.chalk-season--live {
+  height: 44px;
+  border-bottom: 1px solid var(--chalk-border);
+}
+/* The row has no padding below, so the canvas sits at the bottom edge. */
+.chalk-season--row .chalk-season-canvas {
+  bottom: 0;
 }
 /* The title-bar header has no vertical padding and a smaller height, so the
    canvas takes the height of the header and stays inside it. */
@@ -11835,11 +11860,13 @@ html[data-season-night="spooky-season"] .chalk-voice-night {
 }
 
 /* Reduced motion: the scene still comes and goes, but it holds one frame
-   and jumps rather than fades. This block must stay the last thing in the
+   and jumps rather than fades. The row of 129-11 also opens and closes
+   without a height transition. This block must stay the last thing in the
    seasonal section -- theme-season.test.ts holds every animated selector
    to it. */
 @media (prefers-reduced-motion: reduce) {
-  .chalk-season-canvas {
+  .chalk-season-canvas,
+  .chalk-season--row {
     transition: none;
   }
 }
