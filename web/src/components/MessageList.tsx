@@ -6,7 +6,9 @@ import {
   dividerScrollDelta,
   firstRowBelow,
   keepDrift,
+  LANDING_HOLD_MS,
   landingFillAllowed,
+  landingHoldNeeded,
   landingTarget,
   nextEmptyStreak,
   unreadRunFits,
@@ -342,6 +344,24 @@ function scrollToAnchor(
   }
 }
 
+// 79-10: anchorGap returns the distance in pixels between the view and the
+// held anchor. For the end, it is the distance from the bottom. For the
+// divider, it is the delta that scrollToDivider applies. It returns zero if
+// the anchor cannot be measured.
+function anchorGap(
+  anchor: Anchor,
+  divider: HTMLElement | null,
+  scroller: HTMLElement | null,
+): number {
+  if (!scroller) return 0;
+  if (anchor === "divider" && divider) {
+    const offset =
+      divider.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    return dividerScrollDelta(offset, pinnedTopInset(scroller));
+  }
+  return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+}
+
 // 79-4: the row the reader is holding, and where it sat in the scrollport when
 // they last scrolled. This is what a reader who has taken over gets instead of
 // an anchor: the feed's scroller sets `overflow-anchor: none` (theme.css) so
@@ -597,6 +617,33 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
   // somewhere other than the bottom -- the row they are reading from, and its
   // offset in the scrollport. See KeepAnchor.
   const keepRef = useRef<KeepAnchor | null>(null);
+  // 79-10: reapplyAnchor puts the view back on the held anchor. It does
+  // nothing if the landing phase is off (no anchor, or the reader touched the
+  // screen) or if the view is already on the anchor.
+  const reapplyAnchor = (scroller: HTMLElement | null) => {
+    const gap = anchorGap(anchorRef.current, dividerRef.current, scroller);
+    if (!landingHoldNeeded(anchorRef.current, touchedRef.current, gap)) return;
+    scrollToAnchor(anchorRef.current, dividerRef.current, endRef.current, scroller);
+  };
+  // 79-10: A landing write in the mount commit can take effect late, or not
+  // at all, on a phone. holdLanding checks the view again on the next frame
+  // and after LANDING_HOLD_MS, and reapplies the anchor if the view is off.
+  // A callback does nothing if the channel changed. It returns the function
+  // that cancels both checks, for the effect cleanup.
+  const holdLanding = (): (() => void) | undefined => {
+    if (typeof window === "undefined") return undefined;
+    const landed = landedRef.current;
+    const again = () => {
+      if (landedRef.current !== landed) return;
+      reapplyAnchor(scrollParentOf(rootRef.current));
+    };
+    const frame = window.requestAnimationFrame(again);
+    const timer = window.setTimeout(again, LANDING_HOLD_MS);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  };
   // 41-3: the open row menu -- which message, and where the pointer was.
   // Coordinates are viewport-relative because the menu is position:fixed. The
   // message is held by id, not by value: a reaction or an edit landing while
@@ -736,6 +783,11 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
       // them can be undone. Nothing to hold while pinned: the bottom is its
       // own anchor, and the branch below follows it.
       keepRef.current = pinnedRef.current ? null : topRowAnchor(rootRef.current, sc);
+      // 79-10: During the landing phase, a scroll away from the anchor is not
+      // the reader's, because a touch releases the anchor before any scroll
+      // event. Put the view back. Our own instant writes land on the anchor,
+      // so they cause no write here.
+      reapplyAnchor(sc);
     };
     // Release the anchor on a real user gesture, not on scroll events --
     // our own programmatic scrolls fire those too, and couldn't be told
@@ -872,13 +924,18 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
   // just makes the view feel like it's still settling.
   //
   // After that, any new message pins the view to the bottom as before.
+  //
+  // 79-10: The landing phase also holds the view on its anchor after the
+  // write. The write can take effect late, or not at all, in the commit that
+  // mounts the list. holdLanding and the scroll listener put the view back
+  // until the reader touches the screen.
   useEffect(() => {
     if (ephemeral || messages.length === 0) {
       // 79-9: an empty feed is a visit too. Clear the ref so the next
       // channel with rows gets a fresh landing. Before, the ref still named
       // the previous channel, and a return to it looked like a re-landing.
       landedRef.current = null;
-      return;
+      return undefined;
     }
     // 79-8: the landing is not spent until the reader takes over.
     // On a re-entry, the first commit holds the window of the last visit.
@@ -927,7 +984,8 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
       // the newest message in view and the divider a scroll away.
       anchorRef.current = landOnDivider ? "divider" : "end";
       scrollToAnchor(anchorRef.current, dividerRef.current, endRef.current, scroller);
-      return;
+      // 79-10: Check the landing again after the write. See holdLanding.
+      return holdLanding();
     }
     // A held divider anchor outranks pinnedRef. The reader was put
     // mid-history deliberately and has not taken over yet, so nothing that
@@ -935,12 +993,13 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
     // may re-aim the view at the newest message. pinnedRef is derived from
     // scroll events, and a scrollback page prepending under the landing
     // moves the offset without the reader touching anything.
-    if (anchorRef.current === "divider") return;
-    if (!pinnedRef.current) return;
+    if (anchorRef.current === "divider") return undefined;
+    if (!pinnedRef.current) return undefined;
     // Re-arm the anchor: we're following the feed, so keep following it
     // while this message's images resolve.
     anchorRef.current = "end";
     scrollToEnd(endRef.current, scrollParentOf(rootRef.current), "smooth");
+    return undefined;
   }, [messages.length, channelID, dividerIndex, ephemeral]);
 
   // 49-1: "show message" -- scroll the flash target into view once it

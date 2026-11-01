@@ -181,6 +181,32 @@ export type LandingTarget = "divider" | "end";
 //	  earns the scroll, and the end if not. This covers a first landing, and
 //	  a previous landing that saw no divider because the unread rows were not
 //	  loaded.
+// 79-10: ANCHOR_SLACK_PX is the distance in pixels that the view can sit
+// from a held anchor before the landing phase puts it back. It leaves
+// sub-pixel drift alone.
+export const ANCHOR_SLACK_PX = 1;
+
+// 79-10: LANDING_HOLD_MS is the time in milliseconds after a landing write
+// when the landing effect checks the view once more. The check covers a write
+// that the browser applied late or not at all.
+export const LANDING_HOLD_MS = 250;
+
+// 79-10: landingHoldNeeded reports whether the landing phase must put the
+// view back on its anchor. It returns false if anchor is null (the reader took
+// over) or if touched is true (a gesture happened since the landing).
+// Otherwise it returns true if gapPx is more than ANCHOR_SLACK_PX in either
+// direction. gapPx is the distance from the anchor. For the end, it is
+// scrollHeight minus scrollTop minus clientHeight. For the divider, it is
+// dividerScrollDelta.
+export function landingHoldNeeded(
+  anchor: LandingTarget | null,
+  touched: boolean,
+  gapPx: number,
+): boolean {
+  if (anchor === null || touched) return false;
+  return Math.abs(gapPx) > ANCHOR_SLACK_PX;
+}
+
 export function landingTarget(
   previous: { target: LandingTarget; hadDivider: boolean } | null,
   hasDivider: boolean,

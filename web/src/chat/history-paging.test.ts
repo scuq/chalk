@@ -15,6 +15,8 @@ import {
   keepDrift,
   landingFillAllowed,
   landingTarget,
+  landingHoldNeeded,
+  ANCHOR_SLACK_PX,
   nextEmptyStreak,
   pageMarksComplete,
   unreadRunFits,
@@ -220,4 +222,21 @@ test("the measurement runs only when the rule needs it", () => {
   assert.equal(asked, 0);
   landingTarget(null, true, earns);
   assert.equal(asked, 1);
+});
+
+// 79-10: These two tests cover the rule that holds the view on its anchor
+// during the landing phase. The rule puts the view back after a write that did
+// not take effect, and after a move with no size change.
+test("the hold acts only while an anchor is held and the reader has not touched", () => {
+  assert.equal(landingHoldNeeded(null, false, 500), false);
+  assert.equal(landingHoldNeeded("end", true, 500), false);
+  assert.equal(landingHoldNeeded("end", false, 500), true);
+  assert.equal(landingHoldNeeded("divider", false, -500), true);
+});
+
+test("the hold leaves sub-pixel drift alone", () => {
+  assert.equal(landingHoldNeeded("end", false, 0), false);
+  assert.equal(landingHoldNeeded("end", false, ANCHOR_SLACK_PX), false);
+  assert.equal(landingHoldNeeded("end", false, -ANCHOR_SLACK_PX), false);
+  assert.equal(landingHoldNeeded("end", false, ANCHOR_SLACK_PX + 1), true);
 });

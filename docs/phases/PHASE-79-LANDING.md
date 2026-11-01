@@ -4,7 +4,7 @@
 changelog; the design notes are as-built, not a contemporaneous plan.
 
 **Status:** shipped, v0.6.4 (79-1), v0.7.0 (79-2), v0.7.1 (79-3),
-v0.7.4 (79-4, 79-5), v0.8.26 (79-6, 79-7), v0.9.0 (79-8). Built, not yet released: 79-9.
+v0.7.4 (79-4, 79-5), v0.8.26 (79-6, 79-7), v0.9.0 (79-8), v0.9.1 (79-9). Built, not yet released: 79-10.
 **Tags:** `#unread`, `#history` → `tools/where.sh -g unread`
 
 ## Why
@@ -48,6 +48,8 @@ further.
   stay on the old window.
 - **79-9** — clear the landing record when a channel has no rows, so a quick
   switch to a channel and back lands on the new rows.
+- **79-10** — look at the landing again after the write, so a phone that
+  applied the write late or not at all still lands on the anchor.
 
 ## The third state (79-4)
 
@@ -298,6 +300,64 @@ Check it by hand on a phone:
 2. Switch to a group that has not loaded.
 3. Switch back to the direct message before the group loads.
 4. Make sure a message that arrived in the direct message in the meantime is in view, or that the view is on the "new messages" line.
+
+## The dropped landing (79-10)
+
+The maintainer reported this on an iPhone PWA with the zucker layout, after a fresh start:
+
+1. Open a direct message. The view lands at the bottom.
+2. Swipe back.
+3. Open a group. The view lands at the bottom.
+4. Swipe back.
+5. Open the same direct message again.
+
+The view sat near the top of the loaded page, with the newest messages below the screen.
+It stayed there until the reader touched it.
+The same direct message twice, with no group between, landed correctly.
+
+On the zucker layout the message list unmounts on every trip to the list, so each entry is a fresh mount.
+On a first visit the rows arrive after the mount, and the landing runs when they arrive.
+On a second visit the rows are already in state.
+The landing write runs in the mount commit, about 10 ms after the feed is inserted.
+It runs in the same frame as the swap from the list to the feed.
+
+The Chromium probe (iPhone 14 emulation, headless) showed this timeline.
+The landing `scrollTo` ran 10 ms after the mount, with the right target and the right scroll height.
+The scroller still read offset zero for the next 10 ms to 200 ms.
+Then it jumped to the bottom, with no further write logged.
+The browser applied the one write late.
+Chromium applied it in the end, so the view recovered there.
+WebKit evidently does not.
+Nothing in the code looked at the view again.
+The `ResizeObserver` wakes only on a size change, and no size changed.
+The probe did not reproduce the final wrong position.
+Before the fix, 5 of 5 entries landed at the bottom.
+It showed the window in which the write had not taken effect.
+
+The fix follows the phase 79 rule: settle the target once, and let nothing but the reader move it.
+The landing phase is the state that 79-8 defined: the anchor is held and no gesture has happened.
+In that phase, the view is held on its anchor in three ways.
+Each is a no-op if the view is already there.
+
+1. After the landing write, the landing effect schedules one `requestAnimationFrame` and one `setTimeout` of `LANDING_HOLD_MS` (250 ms). Each measures the gap to the anchor and applies the anchor again if the landing phase is still on. The effect cleanup cancels both. A `landedRef` check stops a late callback from landing a stale channel.
+2. The scroll listener applies the anchor again if a scroll event finds the view off the anchor in the landing phase. The instant writes of the list land on the anchor, so they cause no write. No smooth scroll runs in the landing phase, so nothing fights the write. The follow branch is reached only after a gesture or a dropped anchor.
+3. The rule is the pure function `landingHoldNeeded(anchor, touched, gapPx)` in `history-paging.ts`. `ANCHOR_SLACK_PX` (1 px) leaves sub-pixel drift alone. `anchorGap` in `MessageList.tsx` measures the gap. For the end, it is the distance from the bottom. For the divider, it is `dividerScrollDelta`.
+
+After the fix, the probe shows that the check adds no write in Chromium.
+The late write had taken effect by the next frame.
+
+Known cost: a scroll by an assistive tool, or by find-in-page, in the first 250 ms after a landing is reverted.
+The `ResizeObserver` already did this on any size change.
+A touch cannot be reverted, because `touchstart` releases the anchor before any scroll event.
+
+The probe cannot show the WebKit result.
+Check it by hand on a phone with the zucker layout, with both sequences:
+
+1. Open a direct message, swipe back, open a group, swipe back, and open the same direct message again. Make sure the view is at the newest message.
+2. Open a direct message, swipe back, and open the same direct message again. Make sure the view is at the newest message.
+
+The kept probe is `.claude/skills/run-chalk/reentry-landing.mjs`.
+It records one timeline per entry, including every write to the scroller offset.
 
 ## Where it lives
 
