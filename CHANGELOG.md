@@ -10,6 +10,13 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- The seasonal figure and the glow at the window edge now visit at most 10 times a day on one device. Before, they came back every minute or so. The first visit of a day still comes a few seconds after the page loads. A later visit comes 1 to 2 hours after the one before. A reload or a second tab does not bring an extra visit. A tab in the background does not use up a visit.
+
+---
+
 ## v0.9.2 — 1 November 2026 — Temporary rooms for guests, no uninvited calls, and a phone that keeps its place
 
 ### Added

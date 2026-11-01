@@ -765,7 +765,7 @@ build platform and Go cross-compiles, with a 30-minute cap on the job.
 
 **129 — seasonal** (2026-10-31). Around Halloween (24 October to 1
 November) a small ghost peeks into the header beside the wordmark: it
-shows for 8 s to 15 s, hides for 25 s to 90 s, and repeats. The calendar
+shows for 8 s to 15 s. The calendar
 decides (`seasonFor`, local date), and a device switch and a server switch
 must also be on. The server switch is the first row of the generic
 `instance_settings` table (migration 0062), set on a new settings tab in the
@@ -776,6 +776,10 @@ the registry. 129-5 replaced the single SVG ghost with a set of ten PNG
 figures for each season. Each visit draws one at random and never repeats the
 previous one. `tools/cut-season-sheet.py` cut the figures from an icon sheet.
 129-6 added a green frame on video tiles, pop-outs, and the board on Halloween night, from 18:00 to 03:00 by the clock of the viewer.
+129-7 capped the visits. The first schedule restarted at each page load, so the figure and the glow came about 1,250 times a day to each open tab.
+Now a log in localStorage allows at most 10 visits in a local day on one device.
+Two visits start 1 to 2 hours apart.
+A reload or a second tab brings no extra visit, and a tab in the background claims none.
 
 **130 — guest flow** (2026-11-01). The first real use of temporary voice
 rooms showed four rough edges in the flow of the member. 130-1 stopped the

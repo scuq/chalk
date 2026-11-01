@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a figure for the season
 
-**Status:** built, 129-1 – 129-6 (2026-10-31). 129-1 – 129-3 shipped in v0.8.27.
+**Status:** built, 129-1 – 129-7. 129-1 – 129-6 date from 2026-10-31, and 129-7 is not yet in a release. 129-1 – 129-3 shipped in v0.8.27.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -36,12 +36,39 @@ a window comes before its start, the window wraps the year boundary.
 
 ### The figure peeks, it is not furniture
 
-`web/src/season/peek.ts` sets the schedule:
+The first schedule (129-1 to 129-6) was a loop of 8 s to 15 s shown and 25 s to 90 s hidden.
+It restarted at each page load and had no limit.
+It brought the figure and the glow about 1,250 times a day to each open tab.
+129-7 replaced it with a cap.
 
-1. The figure starts hidden for a first pause of 4 s to 12 s.
-2. It shows for 8 s to 15 s.
-3. It hides for 25 s to 90 s.
-4. The cycle repeats from step 2.
+`web/src/season/peek.ts` sets the bounds and decides if a visit is due.
+`web/src/season/visits.ts` keeps the log of visits.
+
+- The cap is `MAX_VISITS_PER_DAY`, which is 10.
+- After a visit, the next one is due 1 to 2 hours later (`GAP_MS`). The time counts from the start of the visit.
+- The first visit of a day stays prompt: 4 s to 12 s after the page loads (`FIRST_PAUSE_MS`).
+  A reload after that does not bring a new visit.
+- A visit shows for 8 s to 15 s (`SHOW_MS`).
+- While the figure is hidden, each page checks once a minute (`CHECK_MS`).
+  This one poll covers midnight, a claim by another tab, and a page that was in the background.
+- Only a visible page (`document.visibilityState`) claims a visit.
+  A background tab does not spend the visits of the day where nobody sees them.
+  If two windows are visible, one of them shows the visit.
+- The glow follows the figure, so it has the same limit.
+- A person who has chalk open for a working day sees fewer than 10 visits.
+  Chalk must be open for about 10 to 20 hours to reach the cap.
+
+The log is `{day, count, nextAt}` in localStorage under the key `chalk.season.visits.v1`.
+All tabs and reloads of one browser share it.
+`claimVisit` in `peek.ts` is a pure function of the log, the clock, and the random source.
+It returns the new log, or null if no visit is due.
+`takeVisit` in `visits.ts` reads the log, calls `claimVisit`, and writes the result.
+
+If `nextAt` is further away than the longest gap, someone moved the clock back.
+That value counts as due, so a changed system date cannot silence the figure.
+If localStorage fails, a module variable holds the log, and the cap holds for that page only.
+The night frame on video tiles is not a visit.
+It is continuous for the whole night and has no cap.
 
 Each duration is random inside its bounds. The random source is a parameter,
 so a test can pin it. The component owns one `setTimeout` per step and clears
@@ -288,6 +315,12 @@ phone.
 An `html` data attribute for the device switch. It is not necessary: when the
 switch is off, the component does not mount.
 
+A longer pause in `peek.ts` alone (129-7). It cannot give a maximum, because
+each reload and each tab starts its own count.
+
+A server-side count of visits (129-7). The figure is client presentation, and
+a limit for each device is enough for a decoration.
+
 ## The slices
 
 - **129-1 — the figure on the client.** `season/seasons.ts`, `season/peek.ts`,
@@ -315,6 +348,10 @@ switch is off, the component does not mount.
   `theme.css`. `voice/night-frame.ts`, with its use in `pip.ts` and `board.ts`.
   Tests in `seasons.test.ts`, `voice/night-frame.test.ts`, and
   `theme-season.test.ts`.
+- **129-7 — a cap on visits.** `claimVisit`, `GAP_MS`, `CHECK_MS`,
+  `MAX_VISITS_PER_DAY`, and `VisitLog` in `season/peek.ts`. The new
+  `season/visits.ts`. The visibility check and the claim in
+  `SeasonFigure.tsx`. Tests in `peek.test.ts` and `visits.test.ts`.
 
 ## Trade-offs
 
@@ -327,6 +364,13 @@ switch is off, the component does not mount.
    figure up to one minute into 2 November, or into 7 January.
 3. A pop-out opened during the night has its frame at once. A pop-out that
    stays open across 18:00 is repainted by `setNightFrame`.
+
+4. The cap is for a device (a browser profile) and for a local calendar day.
+   It is not for an account. A person with two devices gets 10 visits on each.
+   A new day starts at local midnight, and the next check, one minute at most
+   later, notices it.
+5. The count in localStorage is not a secret and not a guard. A person who
+   clears the key gets visits again. This is an accepted property for a decoration.
 
 ## Verification
 
@@ -349,6 +393,11 @@ against the dev stack on 2026-10-31 and its 32 checks passed:
 - The what's-new note that names the ghost
 - The admin tab, which reads the stored value again
 - The admin switch end to end: config false, row stored, own figure gone at once, peer sees none after a cache-cleared reload, back on
+
+The probe waits for a second visit. Since 129-7, a second visit comes 1 hour or
+more after the first. So the probe must clear the key `chalk.season.visits.v1`
+from localStorage to get one. The probe is not committed, and this change is
+not yet made in it.
 
 The probe has four more checks for the aura.
 They test four facts:
@@ -376,7 +425,8 @@ The probe now uses a baseline captured after the remount.
 
 Use two users, Alice and Bob, and a date inside the window.
 
-1. Check that the figure is absent for the first 4 s after a text channel
+1. Clear the key `chalk.season.visits.v1` from localStorage and reload.
+   Check that the figure is absent for the first 4 s after a text channel
    opens, and that it shows at some point in the next 12 s.
 2. Check that the figure sits in the header beside the wordmark, and that the
    header has the same height with and without the figure.
@@ -399,9 +449,9 @@ Use two users, Alice and Bob, and a date inside the window.
     shows the figure.
 11. Close and open the settings tab. Check that it shows the saved value.
 12. Set the system date outside every window. Check that no figure shows.
-13. Check that the edge of the window glows while the figure is out, and that the edge is dark otherwise.
+13. Check that the edge of the window glows while the figure is out, and that the edge is dark otherwise. The glow follows the visits and has the same limit.
 14. On a light theme, for example `warmwhite`, check that the edge glow is a visibly darker green.
-15. Wait for two visits. Check that the second visit shows a different figure from the first.
+15. Check that two visits show different figures. The second visit comes 1 hour or more after the first. To avoid the wait, clear the key `chalk.season.visits.v1` from localStorage after the first visit. The next visit then comes within a minute.
 16. Set the system date to 10 December. Check that a winter figure shows and that the window edge does not glow.
 17. Set the system date to 22 December. Check that a winter figure shows and that the window edge does not glow.
 18. Set the system date to 24 December. Check that the window edge glows ice blue while the figure is out.
@@ -410,6 +460,9 @@ Use two users, Alice and Bob, and a date inside the window.
 21. On 31 October after 18:00, join a video call. Check that every tile, the expanded tile, a pop-out window, and the board show the green frame.
 22. At 03:00 on 1 November, check that the green frame goes.
 23. Before 18:00 on 31 October, check that no green frame shows.
+24. After the first visit of the day, reload the page. Check that no new visit comes after the reload.
+25. Open chalk in a background tab, and wait 5 minutes. Check that the tab shows no visit and that the count in `chalk.season.visits.v1` does not change. Then bring the tab to the front and check that a visit can come.
+26. Clear the key `chalk.season.visits.v1` from localStorage. Check that the next visit comes within a minute. This is the way to check a visit by hand.
 
 ## How to add a season
 

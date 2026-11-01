@@ -2,8 +2,10 @@
 //
 // One component serves every season. The registry says which season it is
 // and which figures it has. Each visit draws one figure at random, never the
-// figure of the visit before. The schedule in season/peek.ts says when the
-// figure shows.
+// figure of the visit before. The schedule in season/peek.ts sets the bounds
+// of a visit, and season/visits.ts grants a visit: at most 10 in a local day
+// on one device, with 1 to 2 hours between them. The aura follows the figure,
+// so it has the same limit.
 // The anchor is a fixed-size box in the flow of the header brand, after the
 // wordmark. Its size is in em, so it scales with the title. The art is
 // taller than the box and overflows it, so the header keeps the height of
@@ -19,6 +21,7 @@ import type { Season } from "../season/seasons";
 import { pickFigure } from "../season/seasons";
 import { FIGURES } from "../season/figures";
 import { firstPeek, nextPeek, type Peek } from "../season/peek";
+import { takeVisit } from "../season/visits";
 
 interface Props {
   season: Season;
@@ -36,18 +39,16 @@ export function SeasonFigure({ season, aura }: Props) {
     figure: pickFigure(season),
   }));
   useEffect(() => {
-    const t = setTimeout(
-      () =>
-        setVisit((v) => {
-          const next = nextPeek(v.visible);
-          // A new face each time the figure comes back. Picked as it comes
-          // in, never as it goes out: the one on its way out must stay what
-          // it was for the whole fade.
-          const figure = next.visible ? pickFigure(season, Math.random, v.figure) : v.figure;
-          return { ...next, figure };
-        }),
-      visit.ms,
-    );
+    const t = setTimeout(() => {
+      // Only a visible page claims a visit. A background tab does not spend
+      // the visits of the day where nobody sees them. It checks again later.
+      const show = !visit.visible && document.visibilityState === "visible" && takeVisit();
+      // A new face each time the figure comes back. Picked as it comes
+      // in, never as it goes out: the one on its way out must stay what
+      // it was for the whole fade.
+      const figure = show ? pickFigure(season, Math.random, visit.figure) : visit.figure;
+      setVisit({ ...nextPeek(show), figure });
+    }, visit.ms);
     return () => clearTimeout(t);
   }, [visit, season]);
   const key = `${season.id}/${visit.figure}`;
