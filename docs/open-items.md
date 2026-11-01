@@ -9,9 +9,22 @@ Latest release: **v0.9.1** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 129 is the newest work, and nothing of it is open. The phase-doc index at the top of
+Phase 130 is the newest work, and two small points of it are open. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
+
+## Phase 130 — guest flow: built, with two open points
+
+130-1 … 130-4, record in [phases/PHASE-130-GUESTFLOW.md](phases/PHASE-130-GUESTFLOW.md).
+A member can open a temporary room alone from a `+` on the voice section of
+the sidebar, and the guest links are one click away in the header of the room.
+Every change is in the client.
+
+- **The phone list has no quick-create `+` yet.** Its voice rooms sit behind a
+  collapsed row, and the list has no section header to carry the button.
+- **A member who is not the creator was not probed for the absence of the
+  header button.** The condition is the expression that the members panel used
+  before this phase.
 
 ## Phase 129 — seasonal: COMPLETE, with recorded trade-offs
 

@@ -121,6 +121,7 @@ as-built rather than a contemporaneous plan.
 | 127 | password managers recognise the sign-in and password fields — real forms, named inputs, a hidden username | [PHASE-127-AUTOFILL.md](phases/PHASE-127-AUTOFILL.md) |
 | 128 | toolchain and dependency refresh — Go 1.27, Node 24, current Go modules, go-webauthn 0.18, npm packages and Electron 45 | [PHASE-128-TOOLCHAIN.md](phases/PHASE-128-TOOLCHAIN.md) |
 | 129 | seasonal — a figure for the season, with a switch per device and one for the server | [PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md) |
+| 130 | guest flow — a temporary room opens alone from the voice section, and its guest links are one click away | [PHASE-130-GUESTFLOW.md](phases/PHASE-130-GUESTFLOW.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
@@ -774,6 +775,15 @@ the registry. 129-5 replaced the single SVG ghost with a set of ten PNG
 figures for each season. Each visit draws one at random and never repeats the
 previous one. `tools/cut-season-sheet.py` cut the figures from an icon sheet.
 129-6 added a green frame on video tiles, pop-outs, and the board on Halloween night, from 18:00 to 03:00 by the clock of the viewer.
+
+**130 — guest flow** (2026-11-01). The first real use of temporary voice
+rooms showed four rough edges in the flow of the member. 130-1 stopped the
+create dialog and the guest-links dialog from closing on a click on the
+backdrop. 130-2 let a member open a temporary room with no other member, and
+added 8 hours as a lifetime. 130-3 added a + on the voice section of the
+sidebar that opens a temporary room with one name, and then opens the
+guest-links dialog. 130-4 added an "invite guests" button to the header of
+the room. Every change is in the client.
 
 **Not started.** 65 (web push), 86 (ties), 87
 (message reminders), 90 (a local idle agent) and 99 (database-credential

@@ -193,6 +193,8 @@ interface Props {
   selfHue?: number | null;
   onSetFriendHue?: (handle: string, hue: number | null) => void;
   onCreateClick: () => void;
+  /** 130-3: The + on the voice section. Absent if voice or guest rooms are off. */
+  onQuickRoomClick?: () => void;
   // 59-1: the friends header's "+" — opens the add-friend flow (the
   // friends panel on its "add" tab, which lists everyone on the
   // server). Optional so other Sidebar callers are unaffected.
@@ -420,6 +422,7 @@ export function Sidebar({
   selfHue,
   onSetFriendHue,
   onCreateClick,
+  onQuickRoomClick,
   onAddFriendClick,
   groupingEnabled = true,
   groupOverrides,
@@ -1445,19 +1448,35 @@ export function Sidebar({
            filter below does not reach up here. The section only exists while
            there is a room to show; hidden voice rooms stay on the hidden
            shelf with everything else. */}
-      {voiceChannels.length > 0 && (
+      {/* 130-3: If quick create is on, the header also shows when there is no
+          room yet, because it carries the + that makes the first room. */}
+      {(voiceChannels.length > 0 || onQuickRoomClick) && (
         <div class="chalk-sidebar-section chalk-sidebar-section--voice">
           <div class="chalk-sidebar-header chalk-sidebar-header--voice">
             <span class="chalk-sidebar-title">
-              voice <span class="chalk-sidebar-count">({voiceChannels.length})</span>
+              voice {voiceChannels.length > 0 && (
+                <span class="chalk-sidebar-count">({voiceChannels.length})</span>
+              )}
             </span>
+            {onQuickRoomClick && (
+              <button
+                class="chalk-sidebar-new"
+                type="button"
+                data-testid="sidebar-voice-new"
+                onClick={onQuickRoomClick}
+                aria-label="new temporary room"
+                title="new temporary room (8 hours, guests by link)"
+              >+</button>
+            )}
           </div>
-          <ul
-            class="chalk-sidebar-list chalk-sidebar-list--voice"
-            data-testid="sidebar-voice-list"
-          >
-            {voiceChannels.map((ch) => channelRow(ch))}
-          </ul>
+          {voiceChannels.length > 0 && (
+            <ul
+              class="chalk-sidebar-list chalk-sidebar-list--voice"
+              data-testid="sidebar-voice-list"
+            >
+              {voiceChannels.map((ch) => channelRow(ch))}
+            </ul>
+          )}
         </div>
       )}
 

@@ -10,6 +10,21 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- A + on the voice section of the sidebar opens a temporary room with one name. The room lives for 8 hours. The guest links dialog opens right after you create it.
+- A temporary room that you created has an "invite guests" button in its header.
+- The create dialog offers 8 hours as a lifetime for a temporary room.
+
+### Changed
+- You can open a temporary room without another member, so you can talk to guests only. Every other channel still needs at least one member.
+
+### Fixed
+- The create dialog and the guest links dialog no longer close when a click lands outside them. An example is the end of a drag that selects the link. Before, any click outside closed them.
+
+---
+
 ## v0.9.1 — 1 November 2026 — Guest rooms read right again, and quick switches on a phone land on new messages
 
 ### Fixed

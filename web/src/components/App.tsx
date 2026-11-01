@@ -284,6 +284,8 @@ const EmojiPicker = lazyComponent(() =>
   import("./EmojiPicker").then((m) => m.EmojiPicker)
 );
 import { CreateChannelModal } from "./CreateChannelModal";
+import { QuickRoomModal } from "./QuickRoomModal"; // 130-3
+import { QUICK_ROOM_TTL_SECS } from "../chat/create-rules"; // 130-3
 import { DEFAULT_GROUP, effectiveGroup, knownGroups } from "../chat/channel-groups";
 // 114: the roster's order model -- the reads live in the Sidebar, the writes
 // (prune, then size-check, then send) live here with the rest of the prefs.
@@ -575,6 +577,11 @@ export function App() {
   const [membersLoading, setMembersLoading] = useState(false);
   // 80-12: the guest-link modal (creator of an ephemeral room only).
   const [guestInvitesOpen, setGuestInvitesOpen] = useState(false);
+  // 130-3: The quick create of the sidebar for a temporary room. The ref is
+  // true from the submit until the create ack. The ack then opens the guest
+  // links.
+  const [quickRoomOpen, setQuickRoomOpen] = useState(false);
+  const quickRoomPendingRef = useRef(false);
   // 80-14: THE countdown tick for ephemeral rooms. One timer for the whole
   // app; the badge components render from this value.
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
@@ -3133,6 +3140,13 @@ export function App() {
         }
         // Activate the new channel.
         dispatch({ kind: "set_active_channel", channelID: cid });
+        // 130-3: A quick room exists to be shared, so its guest links open at
+        // once. The lone creator makes the key, so the key is ready at once.
+        if (quickRoomPendingRef.current) {
+          quickRoomPendingRef.current = false;
+          setQuickRoomOpen(false);
+          setGuestInvitesOpen(true);
+        }
         break;
       }
       case TypeChannelEvent: {
@@ -5129,6 +5143,12 @@ export function App() {
   const activeChannel = state.activeChannelID
     ? state.channels[state.activeChannelID]
     : null;
+  // 130-4: True if the active room has an expiry and the user created it.
+  // The header button and the row in the members panel both use it.
+  const isTemporaryRoomOwner =
+    !!activeChannel &&
+    activeChannel.expiresAt != null &&
+    activeChannel.createdBy === (state.user?.id ?? "");
 
   // 42-8: lookup maps for the inbox panel, built once here rather than scanned
   // per row -- the same discipline MessageList's handleByUser follows. The inbox
@@ -6164,6 +6184,15 @@ export function App() {
             setNavOpen(false);
             dispatch({ kind: "open_create_modal" });
           }}
+          // 130-3: The + on the voice section. Set only if voice and guest rooms are on.
+          onQuickRoomClick={
+            state.voiceEnabled && (state.authConfig?.ephemeral_enabled ?? false)
+              ? () => {
+                  setNavOpen(false);
+                  setQuickRoomOpen(true);
+                }
+              : undefined
+          }
           // 59-1: the friends "+" — the friends panel on its "add" tab,
           // where the server directory lists everyone addable.
           onAddFriendClick={() => {
@@ -6358,6 +6387,20 @@ export function App() {
                   }
                   onClick={() => dispatch({ kind: "open_panel", panel: "members" })}
                 />
+                {/* 130-4: Guest links one click away for the creator of the room.
+                    The members panel keeps its row as the second path. */}
+                {isTemporaryRoomOwner && (
+                  <button
+                    type="button"
+                    class="chalk-channel-guests"
+                    onClick={() => setGuestInvitesOpen(true)}
+                    title="mint a link that lets someone without an account join this room"
+                    aria-label="invite guests"
+                    data-testid="channel-guest-invites"
+                  >
+                    ⚷ invite guests
+                  </button>
+                )}
                 {/* 61-2: message search. Also on Ctrl/Cmd+K. */}
                 <button
                   type="button"
@@ -6738,6 +6781,21 @@ export function App() {
         />
       )}
 
+      {/* 130-3: The user types a name only. The lifetime is fixed and no member is picked. */}
+      {quickRoomOpen && (
+        <QuickRoomModal
+          ttlSecs={QUICK_ROOM_TTL_SECS}
+          onClose={() => {
+            quickRoomPendingRef.current = false;
+            setQuickRoomOpen(false);
+          }}
+          onSubmit={(name) => {
+            quickRoomPendingRef.current = true;
+            onCreateChannel(name, false, [], true, DEFAULT_GROUP, QUICK_ROOM_TTL_SECS, "");
+          }}
+        />
+      )}
+
       {/* Phase 26 (governance prereq) / 35-4: delete confirmation. The copy
           and the number of confirms follow the staged message's action --
           retracting your own message is not the same act as an owner erasing
@@ -6991,12 +7049,7 @@ export function App() {
             void refreshVerification();
           }}
           onClose={() => dispatch({ kind: "close_panel" })}
-          onOpenGuestInvites={
-            activeChannel.expiresAt != null &&
-            activeChannel.createdBy === (state.user?.id ?? "")
-              ? () => setGuestInvitesOpen(true)
-              : undefined
-          }
+          onOpenGuestInvites={isTemporaryRoomOwner ? () => setGuestInvitesOpen(true) : undefined}
         />
       )}
       {guestInvitesOpen && activeChannel && (

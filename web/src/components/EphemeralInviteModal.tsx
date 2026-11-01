@@ -89,8 +89,11 @@ export function EphemeralInviteModal({ channelName, listInvites, mintInvite, rev
   const live = (invites ?? []).filter((i) => !i.revoked_at).length;
   const atCap = maxGuests > 0 && live >= maxGuests;
 
+  // 130-1: The backdrop does not close the dialog. A drag that selects the
+  // minted link can end outside the card. The X, the footer close button, and
+  // Escape close the dialog.
   return (
-    <div class="chalk-modal-backdrop" onClick={onClose} data-testid="ephemeral-invite-modal">
+    <div class="chalk-modal-backdrop" data-testid="ephemeral-invite-modal">
       <div
         class="chalk-modal"
         onClick={(e) => e.stopPropagation()}

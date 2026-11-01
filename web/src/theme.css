@@ -12269,3 +12269,24 @@ html[data-flair-frames] .chalk-avatar--tile[data-frame] {
   justify-content: space-between;
   align-items: center;
 }
+
+/* 130-4: The "invite guests" button of the creator, in the header of a
+   temporary room. It has the shape of the search button, without the push to
+   the right edge. */
+.chalk-channel-guests {
+  background: transparent;
+  border: 1px solid var(--chalk-border);
+  border-radius: 2px;
+  color: var(--chalk-fg-muted);
+  font: inherit;
+  font-size: var(--chalk-size-small);
+  padding: 0 var(--chalk-s2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chalk-channel-guests:hover,
+.chalk-channel-guests:focus-visible {
+  background: var(--chalk-bg-elev);
+  color: var(--chalk-fg);
+}

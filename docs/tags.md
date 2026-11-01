@@ -69,7 +69,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #attachments    69        web/src/attachments/ internal/store/ docs/design/chalk-attachments-design-spec.md docs/phases/PHASE-69-PINNEDHEADER.md docs/phases/PHASE-00-29-FOUNDATION.md
 #chalkctl       72 73 82  internal/chalkctl/ cmd/chalkctl/ test/integration/backup_restore_test.go docs/deployment.md docs/phases/PHASE-72-BACKUP.md docs/phases/PHASE-73-METRICS.md
 #toolchain      128       go.mod docker/Dockerfile docker/Dockerfile.dev .github/workflows/ci.yml .github/workflows/release.yml web/package.json desktop/package.json test/e2e/package.json docs/phases/PHASE-128-TOOLCHAIN.md
-#ephemeral      80        internal/chalkctl/ migrations/ internal/store/ internal/server/ internal/auth/ internal/proto/ internal/config/ web/src/crypto/ web/src/components/ web/src/chat/
+#ephemeral      80 130    internal/chalkctl/ migrations/ internal/store/ internal/server/ internal/auth/ internal/proto/ internal/config/ web/src/crypto/ web/src/components/ web/src/chat/ web/src/theme.css docs/phases/PHASE-130-GUESTFLOW.md
 #hardening      81        internal/auth/ internal/ratelimit/ internal/store/ internal/chalkctl/ docs/threat-model.md docs/phases/PHASE-81-SECAUDIT.md
 #msgsig         83        web/src/crypto/ web/src/chat/verify.ts web/src/chat/roster-observe.ts web/src/components/ web/src/state/ web/src/attachments/pipeline.ts web/src/ws-client.ts web/src/auth/ internal/innerchan/ internal/store/ internal/server/ internal/proto/ internal/chalkctl/ internal/config/ migrations/ docs/phases/PHASE-83-MSGSIG.md docs/audits/ docs/threat-model.md docs/deployment.md
 #bigrooms       -         docs/phases/PHASE-98-BIGROOMS.md

@@ -15,6 +15,7 @@ import type { Friend } from "../state/types";
 import { FriendPicker } from "./FriendPicker";
 import { DEFAULT_GROUP, canonicalizeGroup } from "../chat/channel-groups";
 import { MAX_SHORT_NAME_LEN, shortNameLength } from "../chat/channel-names"; // 106-3
+import { createSubmitState, isTemporaryRoom, QUICK_ROOM_TTL_SECS } from "../chat/create-rules"; // 130-2
 
 interface Props {
   friends: Friend[];
@@ -51,6 +52,7 @@ const TTL_CHOICES: Array<{ label: string; secs: number }> = [
   { label: "never (permanent)", secs: 0 },
   { label: "1 hour", secs: 3600 },
   { label: "4 hours", secs: 4 * 3600 },
+  { label: "8 hours", secs: QUICK_ROOM_TTL_SECS }, // 130-2: the lifetime that the quick create uses
   { label: "24 hours", secs: 24 * 3600 },
   { label: "7 days", secs: 7 * 24 * 3600 },
   { label: "30 days", secs: 30 * 24 * 3600 },
@@ -68,6 +70,15 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEn
   const [error, setError] = useState<string | null>(null);
 
   const namingNewGroup = group === NEW_GROUP_OPTION;
+  // 130-2: A temporary room is the one channel that a member can open alone.
+  const soloRoom = isTemporaryRoom(voice, ttlSecs);
+  const submitState = createSubmitState({
+    loading,
+    friendCount: friends.length,
+    selectedCount: selected.size,
+    voice,
+    ttlSecs,
+  });
 
   // Escape to close.
   useEffect(() => {
@@ -106,8 +117,8 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEn
       setError("group too long (max 80)");
       return;
     }
-    if (selected.size < 1) {
-      setError("pick at least one member");
+    if (submitState.error) {
+      setError(submitState.error);
       return;
     }
     // is_dm is always false here: a 1:1 is created by clicking a friend in
@@ -118,8 +129,11 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEn
       voice ? ttlSecs : 0, shortName.trim());
   };
 
+  // 130-1: The backdrop does not close the dialog. A drag that selects text
+  // can end outside the card, and its click then lands on the backdrop. The
+  // X, cancel, and Escape close the dialog.
   return (
-    <div class="chalk-modal-backdrop" onClick={onClose} data-testid="create-modal">
+    <div class="chalk-modal-backdrop" data-testid="create-modal">
       <div
         class="chalk-modal"
         onClick={(e) => e.stopPropagation()}
@@ -267,7 +281,9 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEn
               </div>
             ) : friends.length === 0 ? (
               <div class="chalk-field-hint" data-testid="create-modal-no-friends">
-                no friends yet. add some first (not yet supported).
+                {soloRoom
+                  ? "no friends yet. a temporary room opens without members; mint guest links once it exists."
+                  : "no friends yet. add some first (not yet supported)."}
               </div>
             ) : (
               <FriendPicker
@@ -299,7 +315,7 @@ export function CreateChannelModal({ friends, loading, voiceEnabled, ephemeralEn
             type="button"
             class="chalk-button chalk-button--primary"
             onClick={submit}
-            disabled={loading || friends.length === 0}
+            disabled={submitState.disabled}
             data-testid="create-modal-submit"
           >
             create
