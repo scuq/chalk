@@ -731,7 +731,7 @@ new rows.
 
 **80–85 — guests, and taking the crypto seriously (v0.7.0 – v0.7.1).**
 Ephemeral voice rooms with guest magic links, a `chalk_guest` RLS fence and
-expiry-driven purge (80); the security audit and its remediation — session
+expiry-driven purge (80, with slice 80-17 unreleased: the first end-to-end walkthrough, a guest that opens signed envelopes on receive, and a guest line that shows from the send acknowledgment); the security audit and its remediation — session
 revocation on credential change, step-up auth, per-IP anonymous rate limits,
 trusted-proxy handling, dependency bumps (81); Ed25519-signed channel-key wraps
 with TOFU identity pinning, a self-healing re-sign sweep and `chalkctl wrapsig`

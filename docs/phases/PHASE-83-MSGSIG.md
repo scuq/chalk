@@ -6,7 +6,7 @@ full-stack smoke run (16/16 checks: sealed channel, registration pin,
 verified send/edit/reaction round trips on both sides, revision-chain
 verification, no walls). Implementation opened on the R20-conditioned
 pass, all four of its items complete in the sixth revision. Open
-caveats live in the slice record: guest sends unsigned, edit envelopes
+caveats live in the slice record: guest sends unsigned (guests open signed envelopes on receive since 80-17), edit envelopes
 re-sign text only, reactions not rotation-gated, and the user-facing
 phrase-rotation flow behind 83-4's primitive is not built. A fresh
 design under the revised trust model (decided by scuq, 2026-08-09),
@@ -708,7 +708,9 @@ made here:
 - **Open caveat: guest sends (GuestRoom) are still unsigned** and
   render as `(unsigned)` for members. Guests derive an identity from
   the link secret, so signing them is possible — folded into a
-  follow-up slice, to be decided.
+  follow-up slice, to be decided. The caveat covers sends only. Since
+  80-17, the guest opens signed envelopes on receive and shows the
+  verdict label.
 
 **83-3 (landed 2026-08-09)** — append-only edits (migration 0051 +
 the atomic displace-then-overwrite in `store.EditMessage`,

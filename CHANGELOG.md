@@ -14,6 +14,8 @@ The engineering-level history (which slice shipped what) lives in
 
 ### Fixed
 - On a phone, you can switch quickly from one conversation to another and back. Before, the view could stay on the messages it showed before, and the new messages were below the screen. It now lands on the new messages, or on the "new messages" line if some are unread.
+- A guest in a temporary voice room reads the messages of members as text again. Before, garbage characters surrounded the text of each message from a member.
+- A guest sees their own line in the scratchpad right after they send it. Before, the line was missing until the page connected again.
 
 ---
 

@@ -118,7 +118,8 @@ full-stack smoke run.
 
 Caveats that remain open (all in the phase doc's slice record):
 
-- **Guest sends are unsigned** (render `(unsigned)`), and a guest cannot
+- **Guest sends are unsigned** (render `(unsigned)`; since 80-17 a guest
+  opens signed envelopes on receive), and a guest cannot
   clear the rotation gate — a member's next send does.
 - **Edit envelopes re-sign text only**; attachment bindings stay anchored in
   the original envelope through the revision chain.

@@ -34,11 +34,15 @@ import {
   type MessagePayload,
   type MessageDeletedPayload,
   type SendPayload,
+  type SendAckPayload,
   type MarkReadPayload,
 } from "../proto";
 import { WSClient, type ConnectionState } from "../ws-client";
 import { encryptMessage, decryptMessage } from "../crypto/spacekey";
 import type { DerivedIdentity } from "../crypto/identity";
+import type { VerifyStatus } from "../crypto/envelope";
+import { openGuestBody, guestSignerResolver, type GuestSignerResolve } from "../crypto/guest-envelope"; // 80-17
+import { verifyLabel, verifyTitle } from "../chat/verify";
 import { VoiceCall, describeMediaError } from "../voice/call";
 
 /** Everything JoinScreen resolved for this guest session. */
@@ -60,6 +64,8 @@ interface RoomMessage {
   text: string;
   ts: number;
   deleted: boolean;
+  /** 80-17: the envelope verdict. Absent for the guest's own rows and for rows that did not decrypt. */
+  verify?: VerifyStatus;
 }
 
 interface PeerTile {
@@ -106,6 +112,7 @@ export function GuestRoom({ ctx }: { ctx: GuestContext }) {
 
   const clientRef = useRef<WSClient | null>(null);
   const callRef = useRef<VoiceCall | null>(null);
+  const resolverRef = useRef<GuestSignerResolve | null>(null); // 80-17: trust answers for senders
   const deviceID = useRef(guestDeviceID(ctx.guestUserID)).current;
   const listRef = useRef<HTMLDivElement | null>(null);
 
@@ -117,28 +124,39 @@ export function GuestRoom({ ctx }: { ctx: GuestContext }) {
     return () => window.clearInterval(t);
   }, []);
 
-  const decryptBody = async (body: string, keyVersion?: number): Promise<string> => {
-    if (!keyVersion || keyVersion !== ctx.keyVersion) return "[message from before you joined]";
+  // 80-17: members seal signed envelopes (83-3). Decrypt, then open the
+  // plaintext as members do. The result is the body text and a verdict.
+  // Never decode the envelope bytes as prose.
+  const openBody = async (w: MessagePayload): Promise<{ text: string; verify?: VerifyStatus }> => {
+    const keyVersion = w.key_version;
+    if (!keyVersion || keyVersion !== ctx.keyVersion) return { text: "[message from before you joined]" };
     try {
-      const pt = await decryptMessage(ctx.spaceKey, ctx.channelID, keyVersion, b64ToBytes(body));
-      return pt ? new TextDecoder().decode(pt) : "[could not decrypt]";
+      const pt = await decryptMessage(ctx.spaceKey, ctx.channelID, keyVersion, b64ToBytes(w.body));
+      const resolve = resolverRef.current;
+      if (!pt || !resolve) return { text: "[could not decrypt]" };
+      return await openGuestBody(
+        pt,
+        { channelID: w.channel_id, keyVersion, senderUserID: w.sender_user_id ?? "" },
+        resolve,
+      );
     } catch {
-      return "[could not decrypt]";
+      return { text: "[could not decrypt]" };
     }
   };
 
   const appendWire = async (w: MessagePayload) => {
     if (w.channel_id !== ctx.channelID) return;
-    const text = w.body ? await decryptBody(w.body, w.key_version) : "";
+    const opened = w.body ? await openBody(w) : { text: "" };
     setMessages((prev) => {
       if (prev.some((m) => m.id === w.id)) return prev;
       const next = [...prev, {
         id: w.id,
         seq: w.seq,
         senderUserID: w.sender_user_id ?? "",
-        text,
+        text: opened.text,
         ts: w.ts,
         deleted: !!w.deleted,
+        verify: opened.verify,
       }];
       next.sort((a, b) => a.seq - b.seq);
       return next;
@@ -216,6 +234,7 @@ export function GuestRoom({ ctx }: { ctx: GuestContext }) {
       },
     });
     clientRef.current = client;
+    resolverRef.current = guestSignerResolver(client); // 80-17: one identity fetch for each sender
     client.start();
     return () => {
       void callRef.current?.leave();
@@ -245,12 +264,33 @@ export function GuestRoom({ ctx }: { ctx: GuestContext }) {
     if (!text || !c || !c.isOpen() || expired) return;
     setDraft("");
     const body = await encryptMessage(ctx.spaceKey, ctx.channelID, ctx.keyVersion, new TextEncoder().encode(text));
-    c.send<SendPayload>(TypeSend, {
-      channel_id: ctx.channelID,
-      body: bytesToB64(body),
-      key_version: ctx.keyVersion,
-      client_msg_id: crypto.randomUUID(),
-    }, "gsend-" + Date.now());
+    // 80-17: the hub does not send a message back to the connection that sent
+    // it. Members keep an optimistic row, but the guest has none, so the ack
+    // is the only copy of the own line of the guest. Append the row from the ack.
+    try {
+      const ack = await c.request<SendPayload, SendAckPayload>(TypeSend, {
+        channel_id: ctx.channelID,
+        body: bytesToB64(body),
+        key_version: ctx.keyVersion,
+        client_msg_id: crypto.randomUUID(),
+      });
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === ack.id)) return prev;
+        const next = [...prev, {
+          id: ack.id,
+          seq: ack.seq,
+          senderUserID: ctx.guestUserID,
+          text,
+          ts: ack.ts,
+          deleted: false,
+        }];
+        next.sort((a, b) => a.seq - b.seq);
+        return next;
+      });
+    } catch (e) {
+      console.warn("guest send:", e);
+      setDraft((d) => d || text); // give the line back instead of losing it
+    }
   };
 
   const joinCall = async () => {
@@ -417,6 +457,17 @@ export function GuestRoom({ ctx }: { ctx: GuestContext }) {
                 {m.senderUserID === ctx.guestUserID ? ctx.displayName : names[m.senderUserID] || "member"}
               </span>
               <span class="chalk-guest-msg-text">{m.deleted ? "[deleted]" : m.text}</span>
+              {/* 80-17: the verdict label that members see. The guest's own
+                  sends are legacy sealed text and get no label. */}
+              {!m.deleted && m.senderUserID !== ctx.guestUserID && verifyLabel(m.verify) !== "" && (
+                <span
+                  class={`chalk-message-verify chalk-message-verify-${m.verify}`}
+                  title={verifyTitle(m.verify)}
+                  data-testid="guest-msg-verify"
+                >
+                  {verifyLabel(m.verify)}
+                </span>
+              )}
             </div>
           ))
         )}

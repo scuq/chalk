@@ -311,6 +311,7 @@ silent, so verify with `systemctl cat chalk-coturn` and a real allocation.
 | 80-13 | `/join` route: fragment read + **immediate `history.replaceState` strip**, name entry, POST, WS bootstrap | new `web/src/components/JoinScreen.tsx`, `web/src/components/App.tsx` |
 | 80-14 | Roster badge + countdown; `channel_event{kind:"deleted"}` push on expiry; `display_name` for guests in channel summaries | `Sidebar.tsx`, `ZuckerList.tsx`, `web/src/chat/zucker.ts`, new `web/src/chat/countdown.ts` (+test) |
 | 80-15 | `docs/tags.md`, `docs/deployment.md`, `CHANGELOG.md` | — |
+| 80-17 | End-to-end walkthrough, and the two defects it found: the guest opens signed envelopes on receive, and the guest's own line shows from the `send_ack` | new `web/src/crypto/guest-envelope.ts` (+test), `web/src/components/GuestRoom.tsx` |
 
 ### Notes that change code, not just prose
 
@@ -441,3 +442,40 @@ Recorded during implementation; each was a deliberate call, not drift.
 - The join challenge carries a nonce (`nonce || ts || HMAC`), found by test:
   deterministic per-second challenges collided with the replay set when two
   redemptions raced in the same second.
+
+### 80-17: the end-to-end walkthrough (2026-11-01)
+
+The walkthrough in the "Verification" section ran for the first time on
+2026-11-01, as a Playwright probe against the dev stack. It used two members,
+an ephemeral voice room with a TTL of 1 hour, a minted link, a `/join` without
+cookies, and a second redemption of the same link. It also covered the
+scratchpad in both directions, the call with the guest, expiry through the
+janitor, and a check that no rows remain in Postgres. All 23 checks pass after
+the two fixes below. The database-backed store tests and the auth join tests
+also pass.
+
+- **The guest could not read the messages of members.** Since 83-3, members
+  seal every message as a signed envelope. The guest room decoded the
+  decrypted body as bare text, so each member message showed
+  `chalk-msg-sig.v1`, uuids, hashes, and the 64-byte signature as garbage
+  characters. The slice record of phase 83 covers only the send direction.
+  `openGuestBody` in `web/src/crypto/guest-envelope.ts` now parses the
+  envelope. A legacy body is bare text. A malformed envelope, or one that is
+  not a message, renders the shared placeholder `PLACEHOLDER_FAILED`. A message
+  envelope renders its body text under the verdict of `classifyEnvelope`.
+  `GuestRoom.tsx` shows the same label that members see. The guest's own sends
+  get no label. The content always shows, and the label is the boundary
+  (83-2).
+- **Verdict semantics for a guest.** The guest has no pin store.
+  `guestSignerResolver` makes one `fetch_identity` request for each sender in
+  a session and trusts the answer on first use for that session. A fingerprint
+  that is not the current key of the sender is `foreign`. The guest cannot walk
+  generation chains, because `fetch_identity_chain` is not in the guest frame
+  allowlist. After an identity rotation, an earlier generation therefore
+  renders as "signature invalid".
+- **The line of the guest did not appear in its own scratchpad.** This defect
+  dates from 80-13 and is not a regression. The hub does not push a message
+  back to the connection that sent it. Members keep an optimistic row, and the
+  guest room had none, so the line was missing until a reconnect fetched the
+  history again. `sendDraft` now uses `request` and appends the row from the
+  `send_ack` (id, seq, ts). If the send fails, the draft returns to the input.
