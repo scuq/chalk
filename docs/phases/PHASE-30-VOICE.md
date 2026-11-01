@@ -66,7 +66,8 @@ coturn is mandatory as a relay, never as a decryptor.
 - **30-10** — coturn configured via unit Exec args with detected public IP and
   a TCP TURN URL, so networks blocking UDP can still connect.
 - **30-11** — auto-join a voice room once per selection, not on every
-  channel-list refresh.
+  channel-list refresh. Since 130-5, a channel that the reducer picked by
+  itself, such as the newest channel on a fresh start, never joins.
 
 ## Where it lives
 

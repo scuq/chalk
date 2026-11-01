@@ -22,6 +22,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ### Fixed
 - The create dialog and the guest links dialog no longer close when a click lands outside them. An example is the end of a drag that selects the link. Before, any click outside closed them.
+- Opening the app no longer joins the newest voice room by itself. A room joins when you pick it. Before, every start on a phone joined the call of the voice room created last.
 
 ---
 

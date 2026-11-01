@@ -2313,6 +2313,11 @@ export function App() {
     const ch = state.channels[cid];
     if (!ch || ch.channelType !== "voice") return;
     if (keyStatus[cid] !== "ready") return;
+    // 130-5: Do not join while the reducer picked the active channel. An
+    // example is the newest channel on a fresh launch. The user did not open
+    // that room. Without this check, every launch joined the voice room that
+    // was created last. Only a selection joins.
+    if (state.activeChannelAutoPicked) return;
     if (autoJoinedForRef.current === cid) return;
     autoJoinedForRef.current = cid;
     void voiceSession.join({
@@ -2323,7 +2328,7 @@ export function App() {
       client: clientRef,
       cc: ccRef,
     });
-  }, [state.activeChannelID, state.channels, state.voiceEnabled, state.user, ccReady, keyStatus]);
+  }, [state.activeChannelID, state.activeChannelAutoPicked, state.channels, state.voiceEnabled, state.user, ccReady, keyStatus]);
 
   // 30-5i: auto-rejoin after a page reload. A reload cannot preserve WebRTC
   // state, so the prior session left a hint (sessionStorage). Once we're

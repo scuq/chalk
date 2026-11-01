@@ -783,7 +783,9 @@ backdrop. 130-2 let a member open a temporary room with no other member, and
 added 8 hours as a lifetime. 130-3 added a + on the voice section of the
 sidebar that opens a temporary room with one name, and then opens the
 guest-links dialog. 130-4 added an "invite guests" button to the header of
-the room. Every change is in the client.
+the room. 130-5 stopped the client from joining the newest voice room by
+itself on every start. Only a channel that the user picks joins its call.
+Every change is in the client.
 
 **Not started.** 65 (web push), 86 (ties), 87
 (message reminders), 90 (a local idle agent) and 99 (database-credential

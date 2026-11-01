@@ -242,15 +242,15 @@ export function reducer(state: AppState, action: Action): AppState {
       }
       // Auto-select first channel if none active. Fallback to null
       // if there are no channels.
-      const active =
-        state.activeChannelID && channels[state.activeChannelID]
-          ? state.activeChannelID
-          : order[0] ?? null;
+      const kept = !!(state.activeChannelID && channels[state.activeChannelID]);
+      const active = kept ? state.activeChannelID : order[0] ?? null;
       return {
         ...state,
         channels,
         channelOrder: order,
         activeChannelID: active,
+        // 130-5: The fallback is a pick of the reducer, not a selection of the user.
+        activeChannelAutoPicked: kept ? state.activeChannelAutoPicked : active !== null,
         unread,
         activity,
         // 33-4: the channel active after a (re)connect is auto-selected here
@@ -289,6 +289,9 @@ export function reducer(state: AppState, action: Action): AppState {
         unread: nextUnread,
         activity: nextActivity,
         activeChannelID: nextActive,
+        // 130-5: A fallback to the next channel is a pick, not a selection.
+        activeChannelAutoPicked:
+          state.activeChannelID === cid ? nextActive !== null : state.activeChannelAutoPicked,
       };
     }
     case "avatars_loaded": {
@@ -404,6 +407,13 @@ export function reducer(state: AppState, action: Action): AppState {
         channels: { ...state.channels, [ch.id]: ch },
         channelOrder: [ch.id, ...state.channelOrder],
         activeChannelID: nextActive,
+        // 130-5: A pending DM is a selection. A channel added while nothing is
+        // active is a pick.
+        activeChannelAutoPicked: isMatchingDM
+          ? false
+          : state.activeChannelID === null
+            ? true
+            : state.activeChannelAutoPicked,
         dmPendingForUserID: isMatchingDM ? null : state.dmPendingForUserID,
         unread: bumpUnread(state.unread, ch.id, {
           lastSeq: ch.lastSeq,
@@ -669,13 +679,16 @@ export function reducer(state: AppState, action: Action): AppState {
       // already in is how you come back to it, and returning `state` would
       // leave the parking lot on screen with no way out but a second click.
       if (action.channelID === state.activeChannelID && !state.parked) {
-        return state;
+        // 130-5: A click on the channel that the reducer picked is a selection.
+        // The click joins its call like any other click.
+        return state.activeChannelAutoPicked ? { ...state, activeChannelAutoPicked: false } : state;
       }
       // 33-4: freeze the unread window BEFORE the mark_read effect fires,
       // which it will as soon as this render commits.
       return {
         ...state,
         activeChannelID: action.channelID,
+        activeChannelAutoPicked: false, // 130-5: selection
         openThread: null,
         parked: false,
         // 53-4: you navigated, so the screen parking remembered is not where
@@ -2438,6 +2451,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         activeChannelID: action.channelID,
+        activeChannelAutoPicked: false, // 130-5: selection
         openThread: { channelID: action.channelID, threadID: action.threadID },
         // 53-1: opening a thread is asking to read it.
         parked: false,

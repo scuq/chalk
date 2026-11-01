@@ -737,6 +737,12 @@ export interface AppState {
   channels: Record<string, ChannelSummary>; // by channel id
   channelOrder: string[]; // sidebar order, newest-first
   activeChannelID: string | null;
+  // 130-5: True while activeChannelID is a fallback that the reducer chose.
+  // Examples are the newest channel on load and the next channel after a
+  // removal. False after the user picks a channel. Click-to-join reads it.
+  // A voice room that is active only because it is first in the list was
+  // not opened by the user.
+  activeChannelAutoPicked: boolean;
 
   // Messages, per channel. Missing key means "history not yet fetched."
   messages: Record<string, Message[]>; // by channel id
@@ -1124,6 +1130,7 @@ export const initialState: AppState = {
   channels: {},
   channelOrder: [],
   activeChannelID: null,
+  activeChannelAutoPicked: false,
   messages: {},
   historyLoaded: {},
   historyComplete: {},
