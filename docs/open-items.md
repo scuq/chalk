@@ -28,22 +28,28 @@ Every change is in the client.
 
 ## Phase 129 — seasonal: COMPLETE, with recorded trade-offs
 
-129-1 … 129-7, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
-A figure peeks into the feed in two seasons, Halloween (24 October to
-1 November) and winter (1 December to 6 January). Each visit shows one of ten
-figures at random. There is a switch per device and a server switch on the
-admin settings tab. A visit comes at most 10 times in a local day on one
-device (129-7). No slice is open.
+129-1 … 129-9, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
+An animated pixel scene peeks into the middle of the top header in eight
+seasons that cover the whole year. There is a switch per device and a server
+switch on the admin settings tab. A visit comes at most 16 times in a local day
+on one device, and at most 10 of them start before 18:00 (129-7, 129-9).
+A phone width shows no scene. No slice is open.
 
 - **A change by an administrator reaches other clients on their next page
   load.** `GET /api/auth/config` is cached with `max-age=60`, so the delay is
   one minute at most. A `welcome` payload field or a WebSocket broadcast is the
   fix if it grates.
 - **The cap on visits is for a device and a local day.** A person with two
-  devices gets 10 visits on each. Clearing `chalk.season.visits.v1` from
+  devices gets 16 visits on each. Clearing `chalk.season.visits.v1` from
   localStorage gives visits again.
-- **The date check runs once an hour.** A tab can show the figure up to one
-  hour into 2 November, or into 7 January.
+- **The date check runs once a minute.** A tab can show the scene of the old
+  season for up to one minute after midnight changes the season.
+- **A phone shows no scene.** At 390 px only about 30 px of the header middle
+  remains. A second header row would change the header height.
+- **The what's-new entry of phase 129 was rewritten in place.** A person who
+  already marked it as read does not see the new text.
+- **The calendar is for the Northern Hemisphere.** chalk reads only the local
+  date.
 
 ## Phase 116 — what's new: COMPLETE, with one hand step at release time
 

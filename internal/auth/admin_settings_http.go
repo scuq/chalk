@@ -18,7 +18,7 @@ import (
 )
 
 // settingSeasonalDecorations is the instance_settings key for the seasonal
-// figure (phase 129). Its value is a JSON boolean; absent means true.
+// scene (phase 129). Its value is a JSON boolean; absent means true.
 const settingSeasonalDecorations = "seasonal_decorations"
 
 // instanceSettings is the wire shape of GET and the response of PUT: every

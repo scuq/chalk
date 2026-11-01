@@ -34,9 +34,10 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     phase: 129,
     title: "a visitor for the season",
     lines: [
-      "from 24 october to 1 november a pumpkin, a ghost, a black cat or one of seven other halloween figures drops in beside the chalk name at the top now and then, with a faint green glow along the window's edge while it is out",
-      "from 1 december to 6 january the visitors are winter ones -- a snowman, an arctic fox, a lantern in the snow -- and the glow, ice blue this time, runs on the three days of christmas",
+      "all year, a small animated scene for the season shows in the middle of the top bar now and then -- fireworks at new year, snow in winter, petals in spring, butterflies, fireflies, falling leaves, and ghosts and bats around halloween",
+      "it comes up to 16 times a day, more in the evening, and a phone does not show it",
       "it is on by default, you can turn it off for this device, and the administrator can turn it off for the whole server",
+      "it holds still when your system asks for reduced motion",
     ],
     where: "settings → appearance → seasonal",
   },

@@ -89,7 +89,7 @@ export interface AuthConfig {
   // 80-12: whether ephemeral voice channels (guest magic links) are on.
   // Absent from older servers -> false.
   ephemeral_enabled?: boolean;
-  // 129-1: the administrator's switch for the seasonal figure. Absent from
+  // 129-1: the administrator's switch for the seasonal scene. Absent from
   // older servers -> on, which is the default.
   seasonal_decorations?: boolean;
 }

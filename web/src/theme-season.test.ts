@@ -1,4 +1,4 @@
-// 129-1: the seam between the seasonal figure and its stylesheet, on the
+// 129-1: the seam between the seasonal scene and its stylesheet, on the
 // theme-flair.test.ts pattern.
 //
 // Two things nothing else would notice if they broke: a seasonal animation or
@@ -46,8 +46,7 @@ function movingSelectors(text: string): string[] {
 
 test("every moving seasonal selector is switched off under reduced motion", () => {
   const sels = movingSelectors(animated);
-  assert.ok(sels.length >= 2, `expected the fade and the bob, found ${sels.length} moving rules`);
-  assert.ok(/animation\s*:\s*none/.test(reduced), "the reduced-motion block sets no animation: none");
+  assert.ok(sels.length >= 1, `expected the fade, found ${sels.length} moving rules`);
   assert.ok(/transition\s*:\s*none/.test(reduced), "the reduced-motion block sets no transition: none");
   for (const sel of sels) {
     assert.ok(reduced.includes(sel), `reduced motion does not cover: ${sel}`);
@@ -61,53 +60,23 @@ test("no seasonal rule lives outside the seasonal section", () => {
   assert.ok(!/chalk-season/.test(after), "a chalk-season rule lives below the seasonal section");
 });
 
-test("the aura covers the window, takes no clicks, and paints only its edge", () => {
-  const aura = /\.chalk-season-aura\s*\{([^}]*)\}/.exec(animated);
-  assert.ok(aura, "no .chalk-season-aura rule");
-  assert.match(aura![1], /position\s*:\s*fixed/);
-  assert.match(aura![1], /inset\s*:\s*0/);
-  assert.match(aura![1], /pointer-events\s*:\s*none/);
-  assert.match(aura![1], /box-shadow\s*:[^;]*inset/);
-  assert.ok(!/background\s*:/.test(aura![1]), "the aura must not fill the window");
-  // Every season in the registry sets its aura colour.
-  for (const s of SEASONS) {
-    const rule = new RegExp(`\\.chalk-season-aura\\[data-season="${s.id}"\\]\\s*\\{[^}]*--chalk-season-aura\\s*:`);
-    assert.match(animated, rule, `season ${s.id} sets no aura colour`);
-  }
-});
-
-test("every light theme gets the aura's darker colours", () => {
-  // Collect the themes whose [data-theme] block declares a light scheme.
-  const light = new Set<string>();
-  const block = /\[data-theme="([a-z-]+)"\]\s*\{([^}]*)\}/g;
-  for (const m of stripped.matchAll(block)) {
-    if (/color-scheme\s*:\s*light/.test(m[2])) light.add(m[1]);
-  }
-  assert.ok(light.size >= 3, `expected the light themes, found ${light.size}`);
-  // Find each season's aura rule for light themes. It must list each light
-  // theme and no other theme.
-  for (const s of SEASONS) {
-    const re = new RegExp(
-      `((?:\\[data-theme="[a-z-]+"\\] \\.chalk-season-aura\\[data-season="${s.id}"\\],?\\s*)+)\\{([^}]*)\\}`,
-    );
-    const rule = re.exec(animated);
-    assert.ok(rule, `no light-theme aura rule for ${s.id}`);
-    const listed = new Set([...rule![1].matchAll(/\[data-theme="([a-z-]+)"\]/g)].map((m) => m[1]));
-    for (const t of light) assert.ok(listed.has(t), `light theme ${t} has no ${s.id} aura colour`);
-    for (const t of listed) assert.ok(light.has(t), `${t} is listed as light but declares no light scheme`);
-    assert.match(rule![2], /--chalk-season-aura\s*:/);
-    assert.match(rule![2], /--chalk-season-aura-line\s*:/);
-  }
-});
-
-test("the box beside the wordmark is a fixed size and takes no clicks", () => {
+test("the strip fills the middle of the header, takes no clicks, and cannot widen it", () => {
   const anchor = /\.chalk-season\s*\{([^}]*)\}/.exec(animated);
   assert.ok(anchor, "no .chalk-season rule");
-  assert.match(anchor![1], /display\s*:\s*inline-flex/);
-  assert.match(anchor![1], /width\s*:\s*[\d.]+em/);
-  assert.match(anchor![1], /height\s*:\s*[\d.]+em/);
+  assert.match(anchor![1], /flex\s*:\s*1 1 0/);
+  assert.match(anchor![1], /min-width\s*:\s*0/);
+  assert.match(anchor![1], /align-self\s*:\s*stretch/);
   assert.match(anchor![1], /pointer-events\s*:\s*none/);
-  assert.ok(!/position\s*:/.test(anchor![1]), "the box is in the header's flow, not positioned");
+});
+
+test("the canvas is out of flow, starts hidden, and fades into the header at both ends", () => {
+  const rule = /\.chalk-season-canvas\s*\{([^}]*)\}/.exec(animated);
+  assert.ok(rule, "no .chalk-season-canvas rule");
+  assert.match(rule![1], /position\s*:\s*absolute/);
+  assert.match(rule![1], /opacity\s*:\s*0/);
+  assert.match(rule![1], /image-rendering\s*:\s*pixelated/);
+  assert.match(rule![1], /mask-image\s*:\s*linear-gradient/);
+  assert.ok(!/background\s*:/.test(rule![1]), "the canvas must blend, not fill");
 });
 
 test("129-6: the night frame is hidden by default and every season with a night has a rule", () => {

@@ -361,7 +361,7 @@ type configResponse struct {
 	// 80-12: whether ephemeral voice channels (guest magic links) are on.
 	// Gates the create-modal TTL option and the invite UI.
 	EphemeralEnabled bool `json:"ephemeral_enabled"`
-	// 129-2: the administrator's switch for the seasonal figure. Unlike
+	// 129-2: the administrator's switch for the seasonal scene. Unlike
 	// the fields above it is read from the database on every call and can
 	// change while chalkd runs; the 60 s cache below bounds the staleness.
 	SeasonalDecorations bool `json:"seasonal_decorations"`

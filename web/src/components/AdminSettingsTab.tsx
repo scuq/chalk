@@ -47,14 +47,13 @@ export function AdminSettingsTab({ state, onChange, onRetry }: Props) {
               }
               data-testid="admin-seasonal-on"
             />
-            <span>a small figure for the season, for everyone on this server</span>
+            <span>a scene for the season, for everyone on this server</span>
           </label>
           <p class="chalk-profile-hint">
-            on by default. around halloween and through the winter holidays a
-            small figure drops in beside the chalk name at the top now and
-            then. off here hides it for every account;
-            each person can also turn it off for their own device under settings,
-            appearance, seasonal. a change reaches other people's screens on their
+            on by default. now and then a small animated scene for the season
+            shows in the middle of the top bar, except on a phone. off here
+            hides it for every account. each person can also turn it off for
+            their own device under settings, appearance, seasonal. a change reaches other people's screens on their
             next page load.
           </p>
         </div>

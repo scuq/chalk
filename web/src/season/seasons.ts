@@ -1,17 +1,25 @@
-// chalk-web -- 129-1: the season registry.
+// chalk-web -- 129-1: the season registry. 129-8: the calendar of eight
+// seasons.
 //
 // The registry decides which season it is from the local calendar date of
 // the reader. The decision is pure: `now` is a parameter, as in daymarks.ts,
 // so a test uses a fixed clock and never the real one.
 // The date is local on purpose: a season is a date on the calendar of the
 // reader.
-//
-// 129-4/129-5: a season also names its figures. They are the cut-outs in
-// assets/season/<id>/, and each visit draws one at random. A season can
-// also have an aura window. The window-edge glow then runs only inside it.
-// Without an aura window, the glow runs for the whole season.
+// The rows of SEASONS cover every day of the year, so a date always has a
+// season. The calendar is written for the Northern Hemisphere. chalk reads
+// only the local date, so a reader in the Southern Hemisphere gets the same
+// calendar.
 
-export type SeasonId = "halloween" | "winter";
+export type SeasonId =
+  | "new-year"
+  | "winterfest"
+  | "spring-bloom"
+  | "green-season"
+  | "midsummer"
+  | "harvest-festival"
+  | "spooky-season"
+  | "late-autumn";
 
 /** A month-and-day pair, 1-based month, as a person reads a calendar. */
 export type MonthDay = [month: number, day: number];
@@ -37,58 +45,42 @@ export interface HourWindow {
   to: MonthDayHour;
 }
 
+/**
+ * A Season is one row of the calendar. `from` and `to` come from [Window]. A
+ * season can have more than one row, and the rows then share the `id`.
+ */
 export interface Season extends Window {
+  /** the key of the season, also the key of its scene in scene.ts */
   id: SeasonId;
-  /** the figures that visit, by file name under assets/season/<id>/ */
-  figures: string[];
-  /** the days the window-edge glow runs; absent means the whole season */
-  aura?: Window;
+  /** the name of the season for a person, also the label of the scene for a screen reader */
+  label: string;
   /** 129-6: the hours of the video-tile frame. Absent means no frame. */
   night?: HourWindow;
 }
 
+// The rows run in calendar order. Together they cover all 366 days. Two
+// seasons have two rows because they cross the year boundary: winterfest and
+// new-year. Winterfest ends on 29 February, not on 28 February, so that
+// 29 February in a leap year has a season. The comparison uses month and
+// day only, so this end date is also safe in other years.
 export const SEASONS: Season[] = [
+  { id: "new-year", label: "New Year / Fireworks", from: [1, 1], to: [1, 7] },
+  { id: "winterfest", label: "Winterfest", from: [1, 8], to: [2, 29] },
+  { id: "spring-bloom", label: "Spring Bloom", from: [3, 1], to: [4, 30] },
+  { id: "green-season", label: "Green Season", from: [5, 1], to: [6, 20] },
+  { id: "midsummer", label: "Midsummer", from: [6, 21], to: [8, 31] },
+  { id: "harvest-festival", label: "Harvest Festival", from: [9, 1], to: [10, 14] },
   {
-    // The window ends one day after the feast. People who read the night's
-    // messages in the morning still see the figure.
-    id: "halloween",
-    from: [10, 24],
-    to: [11, 1],
-    figures: [
-      "pumpkin",
-      "ghost",
-      "witch-hat",
-      "cauldron",
-      "black-cat",
-      "skull-candle",
-      "bat",
-      "spider-web",
-      "scarecrow",
-      "haunted-lantern",
-    ],
+    id: "spooky-season",
+    label: "Spooky Season",
+    from: [10, 15],
+    to: [11, 5],
     // Halloween night: the video-tile frame runs from 18:00 on 31 October until 03:00 on 1 November.
     night: { from: [10, 31, 18], to: [11, 1, 3] },
   },
-  {
-    // Winter runs through the holidays into the new year. The glow runs
-    // only on the three days of Christmas.
-    id: "winter",
-    from: [12, 1],
-    to: [1, 6],
-    figures: [
-      "snowflake",
-      "snowman",
-      "pine-tree",
-      "ice-crystal",
-      "arctic-fox",
-      "winter-lantern",
-      "signpost",
-      "icicles",
-      "scarf",
-      "mittens",
-    ],
-    aura: { from: [12, 23], to: [12, 25] },
-  },
+  { id: "late-autumn", label: "Late Autumn", from: [11, 6], to: [11, 30] },
+  { id: "winterfest", label: "Winterfest", from: [12, 1], to: [12, 30] },
+  { id: "new-year", label: "New Year / Fireworks", from: [12, 31], to: [12, 31] },
 ];
 
 function dayKey([month, day]: MonthDay): number {
@@ -110,7 +102,8 @@ export function inWindow(now: number | Date, w: Window): boolean {
 
 /**
  * seasonFor returns the season that holds the local calendar date of `now`,
- * or null when no season does.
+ * or null when no season does. With the default SEASONS it never returns
+ * null.
  */
 export function seasonFor(now: number | Date, seasons: Season[] = SEASONS): Season | null {
   for (const s of seasons) {
@@ -142,30 +135,4 @@ export function inHours(now: number | Date, w: HourWindow): boolean {
  */
 export function nightFor(season: Season, now: number | Date): boolean {
   return season.night ? inHours(now, season.night) : false;
-}
-
-/**
- * auraFor reports whether the window-edge glow of the season runs on the
- * local calendar date of `now`. A season without an aura window returns true.
- */
-export function auraFor(season: Season, now: number | Date): boolean {
-  return season.aura ? inWindow(now, season.aura) : true;
-}
-
-/**
- * pickFigure returns one figure of the season at random. It never returns
- * `avoid`, unless the season has only one figure. `rnd` returns a number
- * from 0 to 1. The function clamps a number outside that range, and it
- * treats a value that is not finite as 0.
- */
-export function pickFigure(
-  season: Season,
-  rnd: () => number = Math.random,
-  avoid?: string,
-): string {
-  const pool =
-    season.figures.length > 1 ? season.figures.filter((f) => f !== avoid) : season.figures;
-  const r = rnd();
-  const t = Number.isFinite(r) ? Math.min(0.999999, Math.max(0, r)) : 0;
-  return pool[Math.floor(t * pool.length)];
 }

@@ -162,7 +162,7 @@ export function AdminPanel({
   }, [state.activeTab, settingsTick]);
 
   // 129-3: a flipped switch goes to the server; its answer is the truth
-  // for the row, and it is folded into the public config so the figure
+  // for the row, and it is folded into the public config so the scene
   // on this screen follows at once. Other clients see it on their next
   // load (the config endpoint's cache is a minute).
   const onSettingsChange = async (patch: Partial<InstanceSettings>) => {

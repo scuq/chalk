@@ -120,7 +120,7 @@ as-built rather than a contemporaneous plan.
 | 126 | the zucker voice shelf keeps its row, and a call bar for the phone's home screen | [PHASE-126-ZUCKERCALL.md](phases/PHASE-126-ZUCKERCALL.md) |
 | 127 | password managers recognise the sign-in and password fields — real forms, named inputs, a hidden username | [PHASE-127-AUTOFILL.md](phases/PHASE-127-AUTOFILL.md) |
 | 128 | toolchain and dependency refresh — Go 1.27, Node 24, current Go modules, go-webauthn 0.18, npm packages and Electron 45 | [PHASE-128-TOOLCHAIN.md](phases/PHASE-128-TOOLCHAIN.md) |
-| 129 | seasonal — a figure for the season, with a switch per device and one for the server | [PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md) |
+| 129 | seasonal — a scene for the season, with a switch per device and one for the server | [PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md) |
 | 130 | guest flow — a temporary room opens alone from the voice section, and its guest links are one click away | [PHASE-130-GUESTFLOW.md](phases/PHASE-130-GUESTFLOW.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
@@ -763,23 +763,32 @@ hours in the emulated arm64 half of the image build (node crashed under
 QEMU, npm never returned); every stage that runs anything now runs on the
 build platform and Go cross-compiles, with a 30-minute cap on the job.
 
-**129 — seasonal** (2026-10-31). Around Halloween (24 October to 1
-November) a small ghost peeks into the header beside the wordmark: it
+**129 — seasonal** (2026-10-31). A small visitor for the season peeks into the
+header. At first it was a ghost beside the wordmark around Halloween, and it
 shows for 8 s to 15 s. The calendar
 decides (`seasonFor`, local date), and a device switch and a server switch
 must also be on. The server switch is the first row of the generic
 `instance_settings` table (migration 0062), set on a new settings tab in the
-admin panel and carried on `GET /api/auth/config`. 129-4 added winter (1
-December to 6 January, a window that wraps the year boundary). Its glow along
-the window edge runs only on 23 to 25 December, through a new `aura` window in
-the registry. 129-5 replaced the single SVG ghost with a set of ten PNG
-figures for each season. Each visit draws one at random and never repeats the
-previous one. `tools/cut-season-sheet.py` cut the figures from an icon sheet.
+admin panel and carried on `GET /api/auth/config`. 129-4 added winter and an
+`aura` window for the glow along the window edge. 129-5 replaced the single SVG
+ghost with a set of ten PNG figures for each season. Each visit drew one at
+random and never repeated the previous one.
 129-6 added a green frame on video tiles, pop-outs, and the board on Halloween night, from 18:00 to 03:00 by the clock of the viewer.
 129-7 capped the visits. The first schedule restarted at each page load, so the figure and the glow came about 1,250 times a day to each open tab.
 Now a log in localStorage allows at most 10 visits in a local day on one device.
 Two visits start 1 to 2 hours apart.
 A reload or a second tab brings no extra visit, and a tab in the background claims none.
+129-8 turned `SEASONS` in `web/src/season/seasons.ts` into a calendar of eight
+seasons in 10 rows that cover every day of the year. The night frame moved to
+the Spooky Season row.
+129-9 replaced the figures and the glow with an animated pixel scene on a
+canvas in the middle of the top header (`web/src/season/scene.ts` and
+`SeasonScene.tsx`). There is one scene for each of the eight seasons. A phone
+width shows no scene. A visit shows for 45 s to 75 s, and a day has at most 16
+visits, of which at most 10 start before 18:00. The gap is 1 to 2 hours, and
+20 to 40 minutes from 18:00. The reduced-motion promise holds: the scene paints
+one frame and holds it. The 20 PNG files, `figures.ts`,
+`tools/cut-season-sheet.py`, and the aura are gone.
 
 **130 — guest flow** (2026-11-01). The first real use of temporary voice
 rooms showed four rough edges in the flow of the member. 130-1 stopped the

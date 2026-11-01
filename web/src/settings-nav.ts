@@ -151,12 +151,14 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     tab: "appearance",
     title: "seasonal",
     keywords: [
-      // 129-1: the figure's name, the seasons, and the words for a person
-      // who wants the corner empty again.
+      // 129-1: the seasons, the words ghost and pumpkin, and the words for
+      // a person who wants the header empty again.
       "seasonal", "season", "halloween", "christmas", "ghost", "pumpkin",
       "holiday", "holidays", "decoration", "decorations", "spooky",
       // 129-4: the winter keywords.
       "winter", "snow", "snowflake", "snowman", "xmas", "advent",
+      // 129-9: the words for the scene and for the other seasons.
+      "scene", "animation", "fireworks", "new year", "spring", "summer", "harvest", "autumn",
     ],
   },
   {

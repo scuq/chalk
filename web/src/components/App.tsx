@@ -20,8 +20,8 @@ import { typingStore } from "../chat/typing-store";
 import { burstStore, useHotChannels } from "../chat/burst-store"; // 115-2
 import { waveStore, useWaves } from "../chat/wave-store"; // 115-3
 import { Flame } from "./Flame"; // 115-2
-import { SeasonFigure } from "./SeasonFigure"; // 129-1
-import { auraFor, nightFor, seasonFor } from "../season/seasons"; // 129-1
+import { SeasonScene } from "./SeasonScene"; // 129-9
+import { nightFor, seasonFor } from "../season/seasons"; // 129-1
 import { setNightFrame } from "../voice/night-frame"; // 129-6
 import { mentionsHandle } from "../chat/mentions";
 import { threadTitle, attachmentTitle } from "../chat/threadtitle";
@@ -3616,7 +3616,7 @@ export function App() {
     },
   ] = useDisplayPrefs();
   // 129-1: which season it is, re-read once a minute so a tab left open over
-  // midnight crosses the window's edge without a reload. Three gates: the
+  // midnight crosses the edge of a season without a reload. Three gates: the
   // calendar, this device's switch, and the server's switch -- and the last
   // is unknown until the config has loaded, so nothing shows before then.
   const [seasonNow, setSeasonNow] = useState(() => Date.now());
@@ -3642,7 +3642,7 @@ export function App() {
     if (nightSeason) el.setAttribute("data-season-night", nightSeason);
     else el.removeAttribute("data-season-night");
     setNightFrame(
-      nightSeason === "halloween"
+      nightSeason === "spooky-season"
         ? { line: "rgba(160, 255, 200, 0.55)", glow: "rgba(126, 255, 176, 0.45)" }
         : null,
     );
@@ -5896,14 +5896,14 @@ export function App() {
                 mobile by CSS -- the header is already tight there, and the
                 profile panel carries the same link. */}
             <VersionLink version={state.serverVersion} commit={state.serverCommit} />
-            {/* 129-1: the figure for the season, beside the wordmark. Its box has
-                a fixed size, so the header does not reflow when the figure
-                comes and goes. */}
-            {seasonalOn && season && (
-              <SeasonFigure season={season} aura={auraFor(season, seasonNow)} />
-            )}
           </div>
         </div>
+        {/* 129-9: the scene for the season, in the empty middle of the header
+            between the brand and the status bar. It mounts only on a wide
+            screen. At 767 px and below only about 30 px of middle remains, so a
+            phone shows no scene and spends no visit. A second row for the scene
+            would change the height of the header. */}
+        {seasonalOn && season && !isMobile && <SeasonScene season={season} />}
         <StatusBar
           state={state.wsState}
           detail={state.wsDetail}

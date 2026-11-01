@@ -11736,115 +11736,58 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 
 /* ============================================================
-   Phase 129: seasonal -- a figure for the season, on by default.
-   The anchor is a fixed-size box in the flow of the header brand,
-   after the wordmark. Its size is in em, so it scales with the title.
-   The art overflows the box, so the header does not reflow when the
-   figure comes and goes.
-   Motion uses opacity and transform only. The reduced-motion block
-   at the end of this section turns it off and leaves the glyph in
-   place.
+   Phase 129: seasonal -- a scene for the season, on by default.
+   SeasonScene.tsx draws a pixel scene on a canvas in the empty middle of
+   the top header, between the brand and the status bar. App.tsx mounts it
+   only on a wide screen. The motion is the JavaScript loop of the
+   component. The only CSS motion is the fade of the canvas, and the
+   reduced-motion block at the end of this section turns it off.
    This section must stay above the flair section: theme-flair.test.ts
    takes the sheet's last reduced-motion block as flair's.
    ============================================================ */
-/* The anchor: a box with a fixed size, in the flow of the header brand. */
+/* The strip: a box that takes the space between the brand and the status
+   bar. flex: 1 1 0 with min-width: 0 lets it shrink to nothing, so it
+   cannot widen the header. align-self: stretch gives it the height of the
+   header. It is positioned, so the canvas can sit inside it. */
 .chalk-season {
-  /* The size is in the em of the title, so the box scales with the title on
-     a phone. The height equals the height of the logo. The art is taller
-     than the box and overflows it on purpose, above and below the
-     letters. */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 1.9em;
-  height: 1.15em;
-  margin-left: 0.15em;
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  align-self: stretch;
+  margin: 0 var(--chalk-s3);
   pointer-events: none;
-  overflow: visible;
 }
-.chalk-season-figure {
+/* The canvas is out of flow, so it adds nothing to the height of the
+   header. Its bottom edge is the bottom line of the header. The header has
+   padding of --chalk-s3 below its content, so bottom is negative by that
+   amount. The scene draws its ground on the last row of the canvas, and the
+   walkers then stand on the line. The mask fades both ends, so the scene
+   has no hard edge against the brand and the status bar. The canvas has no
+   background, so it blends with every theme. It is hidden until a visit
+   shows it. */
+.chalk-season-canvas {
+  position: absolute;
+  left: 0;
+  bottom: calc(-1 * var(--chalk-s3));
   display: block;
-  color: var(--chalk-fg-dim);
-  opacity: 0;
-  transform: translateY(6px);
-  transition:
-    opacity 900ms ease,
-    transform 900ms ease;
-}
-.chalk-season-figure--visible {
-  opacity: 0.85;
-  transform: translateY(0);
-}
-.chalk-season-art {
-  display: block;
-  width: 1.9em;
-  height: 1.9em;
-  object-fit: contain;
-  /* A soft shadow separates a pale figure from a light page and a dark
-     figure from a dark page. */
-  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.35));
-}
-.chalk-season-figure--visible .chalk-season-art {
-  animation: chalk-season-bob 3.2s ease-in-out infinite;
-}
-/* The aura is a glow along the inner edge of the window. It shows while the
-   figure is visible. The element is fixed, takes no clicks, and sits at
-   z-index 1000, the level of the lightbox and the menus. It paints only an
-   inset shadow and has no background, so the middle of the window is not
-   changed. Each season sets its colour in --chalk-season-aura and
-   --chalk-season-aura-line. */
-.chalk-season-aura {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1000;
+  width: 100%;
+  height: 44px;
+  image-rendering: pixelated;
   opacity: 0;
   transition: opacity 1200ms ease;
-  box-shadow:
-    inset 0 0 0 1px var(--chalk-season-aura-line),
-    inset 0 0 90px 14px var(--chalk-season-aura);
+  mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
 }
-.chalk-season-aura[data-season="halloween"] {
-  --chalk-season-aura: rgba(126, 255, 176, 0.42);
-  --chalk-season-aura-line: rgba(160, 255, 200, 0.35);
+/* While a visit shows. The fade-out takes 1200 ms, and FADE_MS in
+   SeasonScene.tsx must stay equal to it. */
+.chalk-season-canvas--visible {
+  opacity: 0.9;
 }
-/* A pale glow is invisible on a light page. These selectors list every
-   theme block that declares color-scheme: light. They give the aura the
-   same hue, darker and denser. theme-season.test.ts makes sure the list
-   and the light themes match. */
-[data-theme="light"] .chalk-season-aura[data-season="halloween"],
-[data-theme="snazzy-light"] .chalk-season-aura[data-season="halloween"],
-[data-theme="warmwhite"] .chalk-season-aura[data-season="halloween"],
-[data-theme="vscode-light"] .chalk-season-aura[data-season="halloween"],
-[data-theme="catppuccin-latte"] .chalk-season-aura[data-season="halloween"] {
-  --chalk-season-aura: rgba(18, 122, 66, 0.4);
-  --chalk-season-aura-line: rgba(18, 122, 66, 0.55);
-}
-/* 129-4: the winter glow is ice blue. It is pale on a dark theme and deeper
-   on a light theme. It uses the same two kinds of rule as halloween. */
-.chalk-season-aura[data-season="winter"] {
-  --chalk-season-aura: rgba(150, 210, 255, 0.42);
-  --chalk-season-aura-line: rgba(190, 230, 255, 0.4);
-}
-[data-theme="light"] .chalk-season-aura[data-season="winter"],
-[data-theme="snazzy-light"] .chalk-season-aura[data-season="winter"],
-[data-theme="warmwhite"] .chalk-season-aura[data-season="winter"],
-[data-theme="vscode-light"] .chalk-season-aura[data-season="winter"],
-[data-theme="catppuccin-latte"] .chalk-season-aura[data-season="winter"] {
-  --chalk-season-aura: rgba(28, 96, 170, 0.38);
-  --chalk-season-aura-line: rgba(28, 96, 170, 0.55);
-}
-.chalk-season-aura--visible {
-  opacity: 1;
-}
-@keyframes chalk-season-bob {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-5px);
+/* The title-bar header has no vertical padding and a smaller height, so the
+   canvas takes the height of the header and stays inside it. */
+@media (display-mode: window-controls-overlay) and (min-width: 768px) {
+  .chalk-season-canvas {
+    bottom: 0;
+    height: 100%;
   }
 }
 /* 129-3: the admin panel's settings tab borrows the settings dialog's
@@ -11884,24 +11827,20 @@ body.chalk-resizing-y .chalk-composer-resizer {
   pointer-events: none;
   z-index: 3;
 }
-html[data-season-night="halloween"] .chalk-voice-night {
+html[data-season-night="spooky-season"] .chalk-voice-night {
   display: block;
   box-shadow:
     inset 0 0 0 2px rgba(160, 255, 200, 0.55),
     inset 0 0 28px 6px rgba(126, 255, 176, 0.45);
 }
 
-/* Reduced motion: the figure still comes and goes, but it jumps rather
-   than fades and does not bob. This block must stay the last thing in
-   the seasonal section -- theme-season.test.ts holds every animated
-   selector to it. */
+/* Reduced motion: the scene still comes and goes, but it holds one frame
+   and jumps rather than fades. This block must stay the last thing in the
+   seasonal section -- theme-season.test.ts holds every animated selector
+   to it. */
 @media (prefers-reduced-motion: reduce) {
-  .chalk-season-figure,
-  .chalk-season-aura {
+  .chalk-season-canvas {
     transition: none;
-  }
-  .chalk-season-figure--visible .chalk-season-art {
-    animation: none;
   }
 }
 

@@ -1063,9 +1063,9 @@ export function ProfilePanel({
             </section>
           )}
 
-          {/* 129-1: the seasonal figure. Its own section rather than a flair
+          {/* 129-1: the seasonal scene. Its own section rather than a flair
               switch: flair is off by default and this is on, and a reader
-              with flair off still gets the ghost. */}
+              with flair off still gets the scene. */}
           {show("seasonal") && (
             <section class="chalk-profile-seasonal" data-testid="seasonal-section">
               <h3>seasonal</h3>
@@ -1079,15 +1079,15 @@ export function ProfilePanel({
                     }
                     data-testid="seasonal-on"
                   />
-                  <span>a small figure for the season</span>
+                  <span>a scene for the season</span>
                 </label>
                 <p class="chalk-profile-hint">
-                  on by default. around halloween a pumpkin, a ghost or a
-                  black cat drops in beside the chalk name at the top now
-                  and then, and from december into the new year it is a
-                  snowman, a fox or a lantern. stored on this device only. the
-                  administrator can turn it off for the whole server, and it
-                  holds still when your system asks for reduced motion.
+                  on by default. now and then a small animated scene for the
+                  season shows in the middle of the top bar, with fireworks at
+                  new year and a graveyard around halloween. a phone does not
+                  show it. stored on this device only. the administrator can
+                  turn it off for the whole server, and it holds still when
+                  your system asks for reduced motion.
                 </p>
               </div>
             </section>

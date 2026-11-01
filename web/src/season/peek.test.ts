@@ -1,12 +1,16 @@
 // 129-1: the peek schedule's bounds, with a pinned random source.
 // 129-7: the daily cap, the gap between visits, and a moved clock.
+// 129-9: the daytime cap and the shorter gap in the evening.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   CHECK_MS,
+  EVENING_GAP_MS,
+  EVENING_HOUR,
   FIRST_PAUSE_MS,
   GAP_MS,
+  MAX_DAYTIME_VISITS,
   MAX_VISITS_PER_DAY,
   SHOW_MS,
   claimVisit,
@@ -53,8 +57,8 @@ test("a random source that misbehaves cannot make a step last forever or not at 
 });
 
 test("a pause is always longer than a showing", () => {
-  assert.ok(GAP_MS[0] > SHOW_MS[1]);
-  assert.ok(CHECK_MS > SHOW_MS[1]);
+  assert.ok(EVENING_GAP_MS[0] > SHOW_MS[1]);
+  assert.ok(GAP_MS[0] > EVENING_GAP_MS[0]);
 });
 
 test("the first visit of a day is due at once and the next waits out the gap", () => {
@@ -64,20 +68,37 @@ test("the first visit of a day is due at once and the next waits out the gap", (
   assert.equal(claimVisit(first!, NOON + GAP_MS[0], fixed(0))?.count, 2);
 });
 
-test("a full day stops at the cap for every random value", () => {
+test("a full day stops at the cap and keeps visits back for the evening", () => {
   for (const r of [0, 0.5, 1]) {
     let log = EMPTY;
     let visits = 0;
+    let daytime = 0;
     const midnight = new Date(2026, 9, 28).getTime();
     for (let now = midnight; now < midnight + 24 * HOUR; now += CHECK_MS) {
       const claimed = claimVisit(log, now, fixed(r));
       if (claimed) {
         log = claimed;
         visits++;
+        if (now < midnight + EVENING_HOUR * HOUR) daytime++;
       }
     }
     assert.equal(visits, MAX_VISITS_PER_DAY, `visits at ${r}`);
+    assert.ok(daytime <= MAX_DAYTIME_VISITS, `daytime visits ${daytime} at ${r}`);
   }
+});
+
+test("the evening spaces visits closer than the day", () => {
+  const evening = new Date(2026, 9, 28, EVENING_HOUR).getTime();
+  assert.equal(claimVisit(EMPTY, NOON, fixed(1))?.nextAt, NOON + GAP_MS[1]);
+  assert.equal(claimVisit(EMPTY, evening, fixed(1))?.nextAt, evening + EVENING_GAP_MS[1]);
+  assert.equal(claimVisit(EMPTY, evening - 1, fixed(1))?.nextAt, evening - 1 + GAP_MS[1]);
+});
+
+test("a day that used its daytime visits still has the evening's", () => {
+  const log: VisitLog = { day: "2026-10-28", count: MAX_DAYTIME_VISITS, nextAt: 0 };
+  assert.equal(claimVisit(log, NOON, fixed(0)), null);
+  const evening = new Date(2026, 9, 28, EVENING_HOUR).getTime();
+  assert.equal(claimVisit(log, evening, fixed(0))?.count, MAX_DAYTIME_VISITS + 1);
 });
 
 test("the count starts again on a new day", () => {

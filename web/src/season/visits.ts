@@ -1,6 +1,6 @@
 // chalk-web -- 129-7: the log of visits, shared by all tabs.
 //
-// A visit of the figure is claimed from a log in localStorage. All tabs and
+// A visit of the scene is claimed from a log in localStorage. All tabs and
 // reloads of one browser profile read the same log. So the daily cap in
 // peek.ts holds for the device and not for the account. If localStorage fails,
 // a module variable holds the log, and the cap holds for that page only.

@@ -13,9 +13,3 @@ declare module "*.mp3" {
   const url: string;
   export default url;
 }
-
-// 129-5: the seasonal figures are PNG cut-outs under assets/season/.
-declare module "*.png" {
-  const url: string;
-  export default url;
-}

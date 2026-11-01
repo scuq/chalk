@@ -77,9 +77,10 @@ export interface DisplayPrefs {
   // scale: a hand-edited entry cannot make the flame permanent or impossible.
   flairBurstCount: number;
   flairBurstMinutes: number;
-  // 129-1: the seasonal figure -- a ghost at halloween, later others. On by
-  // default, unlike flair: it is one small visitor in a corner, not a mode.
-  // Per-device like everything here, so a phone can stay plain.
+  // 129-1: the seasonal scene -- a small animation in the header, with one
+  // scene for each of eight seasons. On by default, unlike flair: it is one
+  // small visitor in the header, not a mode. Per-device like everything here,
+  // so a device can stay plain.
   seasonal: boolean;
 }
 
@@ -225,7 +226,7 @@ export function normalizeDisplayPrefs(raw: unknown): DisplayPrefs {
       MAX_BURST_MINUTES,
     ),
     // 129-1: absent means on -- a device that stored its prefs before 129
-    // gets the figure, the same way 111 turned banners on.
+    // gets the scene, the same way 111 turned banners on.
     seasonal: bool("seasonal", DEFAULT_DISPLAY_PREFS.seasonal),
   };
 }
