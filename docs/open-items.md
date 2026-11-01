@@ -28,7 +28,7 @@ Every change is in the client.
 
 ## Phase 129 — seasonal: COMPLETE, with recorded trade-offs
 
-129-1 … 129-13, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
+129-1 … 129-14, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
 An animated pixel scene peeks into the middle of the top header. Each of
 eight seasons has five scenes that change every 35 s. A gap of 21 days in a
 common year separates two seasons, and a date in a gap shows five neutral
@@ -44,8 +44,6 @@ No slice is open.
   load.** `GET /api/auth/config` is cached with `max-age=60`, so the delay is
   one minute at most. A `welcome` payload field or a WebSocket broadcast is the
   fix if it grates.
-- **Two scene names promise what is not drawn.** Cabin Smoke has no smoke, and
-  Bridge Walk has no bridge. The names are the names of the user.
 - **The cap on visits is for a device and a local day.** A person with two
   devices gets 16 visits on each. Clearing `chalk.season.visits.v1` from
   localStorage gives visits again.
@@ -59,7 +57,7 @@ No slice is open.
   visit, so a user who stays in a conversation gets fewer. A visit that the
   user leaves by opening a conversation still counts.
 - **The row moves the list.** When the row opens or closes, the rows below it
-  move by 44 px over 1.2 s. A tap in that moment can land on a different row.
+  move by 48 px over 1.2 s. A tap in that moment can land on a different row.
   This is the accepted cost of a row that goes away.
 - **The always-on hours run a 12 fps loop for nine hours** while the tab is
   visible. `requestAnimationFrame` pauses in a hidden tab.

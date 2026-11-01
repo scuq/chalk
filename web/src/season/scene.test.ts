@@ -6,6 +6,8 @@
 // each prop, the rotation and its wrap, the fade, a start index outside the
 // range, the walkers, a ghost that floats, a long frame, and a resize. 129-13:
 // the title of each key, the font, the sign, and a strip that is too narrow.
+// 129-14: a walker under the sign, snow and ice in the cold seasons, the named
+// details (sunrise, smoke, bridge, blossom), and no animal out of season.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -27,7 +29,7 @@ import {
 import { SEASONS } from "./seasons";
 
 const W = 300;
-const H = 22;
+const H = 24;
 const KEYS = Object.keys(SCENES) as SceneKey[];
 
 function recorder() {
@@ -74,7 +76,7 @@ test("every scene draws whole pixels and leaves the strip see-through, at each s
 
 test("each prop paints something of its own", () => {
   const kinds = new Set(KEYS.flatMap((k) => SCENES[k].flatMap((r) => r.props)));
-  assert.equal(kinds.size, 36);
+  assert.equal(kinds.size, 38);
   const bare = createScene("neutral", W, H);
   bare.row = { ...bare.row, props: [] as never };
   const base = recorder();
@@ -137,12 +139,60 @@ test("the title sits on a centred sign, painted after the walkers", () => {
   assert.ok(panel >= 0, "no title sign");
   const width = "HARVEST FESTIVAL".length * 6 - 1 + 10;
   assert.equal(rects[panel].w, width);
-  assert.equal(rects[panel].h, 13);
+  assert.equal(rects[panel].h, 11);
+  assert.equal(rects[panel].y, 0);
   assert.equal(rects[panel].x, Math.floor((W - (width - 10)) / 2) - 5);
   assert.ok(rects[panel].y + rects[panel].h <= H);
   const ink = rects.filter((r) => r.color === "#ffdc92");
   assert.ok(ink.length > 50, "no letters");
   assert.ok(rects.slice(0, panel).some((r) => r.color === "#d68d4f"), "the walkers are not under the sign");
+});
+
+test("a walker runs under the sign without touching it", () => {
+  const scene = createScene("midsummer", W, H);
+  const a = scene.actors[0];
+  assert.ok(a.lift === 0);
+  const top = scene.ground - 10;
+  assert.ok(top >= 11, `a walker's head reaches row ${top}, and the sign ends at row 10`);
+});
+
+test("the cold seasons have snow and ice, and the warm ones do not", () => {
+  const colors = (key: SceneKey, index: number) => {
+    const scene = createScene(key, W, H, index);
+    const { ctx, rects } = recorder();
+    drawScene(ctx, scene);
+    return new Set(rects.map((r) => r.color));
+  };
+  assert.ok(colors("winterfest", 2).has("#a9cfdc"), "Frozen Lake has no ice");
+  assert.ok(colors("midsummer", 1).has("#284f61"), "Lakeside Sunset has no water");
+  assert.ok(!colors("midsummer", 1).has("#a9cfdc"));
+  assert.ok(colors("winterfest", 1).has("#e6f4f0"), "the cabin roof has no snow");
+  assert.ok(!colors("neutral", 2).has("#e6f4f0"));
+});
+
+test("a named thing is drawn: the sunrise, the smoke, the bridge, and the blossom", () => {
+  const colors = (key: SceneKey, index: number) => {
+    const scene = createScene(key, W, H, index);
+    const { ctx, rects } = recorder();
+    drawScene(ctx, scene);
+    return new Set(rects.map((r) => r.color));
+  };
+  assert.equal(SCENES["new-year"][4].name, "First Sunrise");
+  assert.ok(colors("new-year", 4).has("#ff9a4f"), "no sun in First Sunrise");
+  assert.ok(colors("winterfest", 1).has("#9aa6a6"), "no smoke in Cabin Smoke");
+  assert.ok(colors("neutral", 3).has("#8a6543"), "no bridge in Bridge Walk");
+  assert.ok(colors("spring-bloom", 0).has("#d99ab4"), "no blossom in the orchard");
+  assert.ok(!colors("late-autumn", 0).has("#d99ab4"));
+});
+
+test("no animal is out of season", () => {
+  const cast = (key: SceneKey) => new Set(SCENES[key].flatMap((r) => r.cast));
+  assert.ok(!cast("midsummer").has("chick"));
+  for (const key of ["winterfest", "new-year"] as SceneKey[]) {
+    assert.ok(!cast(key).has("frog"), key);
+    assert.ok(!cast(key).has("hedgehog"), key);
+  }
+  assert.ok(!cast("winterfest").has("cat"));
 });
 
 test("a strip too narrow for the title leaves it out", () => {

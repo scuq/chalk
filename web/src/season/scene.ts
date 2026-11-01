@@ -1,5 +1,6 @@
 // chalk-web -- 129-9: the scene. 129-12: five scenes for each key, and the
-// neutral key. 129-13: the title of the season on a small sign.
+// neutral key. 129-13: the title of the season on a small sign. 129-14: a
+// higher sign, a sky for each row, and the details of each season.
 //
 // This module draws a small pixel scene and moves it. SCENES has nine keys:
 // the eight seasons of seasons.ts, and "neutral" for a date in no season. Each
@@ -12,14 +13,20 @@
 // the time of the scene. So a test uses a fake Painter and gets the same
 // picture each time. SeasonScene.tsx owns the loop and the start index.
 // The scene differs from the engine that the user supplied, on purpose:
-//   - It paints no sky, no haze, and no earth block. The canvas stays
-//     transparent, so the scene blends with all themes. It draws no stars and
-//     no moon, because the supplied engine has none.
+//   - It paints no sky color, no haze, and no earth block. The canvas stays
+//     transparent, so the scene blends with all themes. The supplied engine
+//     has no stars, no moon, and no sun. Here each row names a sky: none,
+//     stars with a moon, a sun, or a low sun. See drawSky.
 //   - It draws the title on a small sign, not on a panel for the whole strip.
 //     The title is always at single size. The supplied engine uses double size
-//     on a strip of 275 scene pixels or wider. Here the strip is 22 scene
+//     on a strip of 275 scene pixels or wider. Here the strip is 24 scene
 //     pixels high, and double size would make the longest title nearly as
 //     high as the strip.
+//   - The sign is high in the strip, in rows 0 to 10. The ground is row 23.
+//     The head of a walker is at row 13, so two clear rows are between the
+//     head and the sign. A walker runs under the sign. The hat of a witch
+//     rises four rows and reaches under the bottom edge of the sign, and a
+//     jump can pass behind the sign.
 //   - The ground is H - 1. The bottom line of the header is the ground.
 //     Scattered tufts of grass on the ground stay.
 //   - It has no preview API on window, because that would be a global in
@@ -90,7 +97,15 @@ type Effect =
   | "bats"
   | "fog"
   | "clouds";
+/**
+ * A Sky is the sky of one scene. "none" draws nothing. "stars" draws stars and
+ * a moon, orange in Spooky Season. "sun" draws a sun. "low-sun" draws a low
+ * sun with a line of glow, for a sunrise or a sunset.
+ */
+type Sky = "none" | "stars" | "sun" | "low-sun";
 type Prop =
+  | "bridge"
+  | "lilypad"
   | "tree"
   | "cherry"
   | "appletree"
@@ -146,7 +161,7 @@ type Cast =
  * has four props. Their places are the four entries of `positions`, and the
  * props at index 1 and 2 are the obstacles that the walkers jump over. `cast`
  * has two walkers: the first enters from the left edge, the second from the
- * right edge.
+ * right edge. `sky` is the sky that drawSky draws.
  */
 export interface SceneRow {
   name: string;
@@ -154,6 +169,7 @@ export interface SceneRow {
   effect: Effect;
   props: [Prop, Prop, Prop, Prop];
   cast: [Cast, Cast];
+  sky: Sky;
 }
 
 function row(
@@ -162,78 +178,78 @@ function row(
   effect: Effect,
   props: [Prop, Prop, Prop, Prop],
   cast: [Cast, Cast],
+  sky: Sky = "none",
 ): SceneRow {
-  return { name, environment, effect, props, cast };
+  return { name, environment, effect, props, cast, sky };
 }
 
 /**
  * SCENES holds the rows of each key, in the order of rotation. Each key has
- * SCENES_PER_KEY rows. Two names promise what the scene does not draw: Cabin
- * Smoke has no smoke, and Bridge Walk has no bridge.
+ * SCENES_PER_KEY rows.
  */
 export const SCENES: Record<SceneKey, SceneRow[]> = {
   "new-year": [
-    row("Midnight Skyline", "city", "fireworks", ["tower", "crate", "barrel", "lamp"], ["person", "cat"]),
-    row("Rooftop Countdown", "city", "confetti", ["clock", "crate", "gift", "flag"], ["person", "fox"]),
-    row("Harbor Lights", "lake", "fireworks", ["boat", "barrel", "crate", "lamp"], ["person", "cat"]),
-    row("Town Celebration", "town", "confetti", ["house", "gift", "crate", "lantern"], ["person", "rabbit"]),
-    row("First Sunrise", "hills", "sparkles", ["tree", "stone", "log", "flag"], ["fox", "person"]),
+    row("Midnight Skyline", "city", "fireworks", ["tower", "crate", "barrel", "lamp"], ["person", "cat"], "stars"),
+    row("Rooftop Countdown", "city", "confetti", ["clock", "crate", "gift", "flag"], ["person", "fox"], "stars"),
+    row("Harbor Lights", "lake", "fireworks", ["boat", "barrel", "crate", "lamp"], ["person", "cat"], "stars"),
+    row("Town Celebration", "town", "confetti", ["house", "gift", "crate", "lantern"], ["person", "rabbit"], "stars"),
+    row("First Sunrise", "hills", "clouds", ["tree", "stone", "log", "flag"], ["fox", "person"], "low-sun"),
   ],
   winterfest: [
     row("Snowy Pines", "forest", "snow", ["pine", "snowball", "log", "pine"], ["penguin", "fox"]),
-    row("Cabin Smoke", "town", "snow", ["cabin", "snowball", "stump", "pine"], ["fox", "rabbit"]),
-    row("Frozen Lake", "lake", "snow", ["pine", "ice", "snowball", "snowman"], ["penguin", "cat"]),
-    row("Aurora Ridge", "mountain", "aurora", ["pine", "stone", "snowball", "pine"], ["fox", "penguin"]),
-    row("Lantern Walk", "forest", "snow", ["lantern", "snowball", "stump", "snowman"], ["person", "fox"]),
+    row("Cabin Smoke", "town", "snow", ["cabin", "snowball", "stump", "pine"], ["fox", "rabbit"], "stars"),
+    row("Frozen Lake", "lake", "snow", ["pine", "ice", "snowball", "snowman"], ["penguin", "rabbit"]),
+    row("Aurora Ridge", "mountain", "aurora", ["pine", "stone", "snowball", "pine"], ["fox", "penguin"], "stars"),
+    row("Lantern Walk", "forest", "snow", ["lantern", "snowball", "stump", "snowman"], ["person", "fox"], "stars"),
   ],
   "spring-bloom": [
-    row("Cherry Blossom", "orchard", "petals", ["cherry", "flowerpot", "stone", "cherry"], ["rabbit", "chick"]),
+    row("Cherry Blossom", "orchard", "petals", ["cherry", "flowerpot", "stone", "cherry"], ["rabbit", "chick"], "sun"),
     row("Rain Garden", "garden", "rain", ["tree", "flowerpot", "log", "flower"], ["frog", "rabbit"]),
-    row("Pond Hopping", "lake", "butterflies", ["reeds", "stone", "flowerpot", "reeds"], ["frog", "chick"]),
-    row("Flower Trail", "meadow", "petals", ["flower", "flowerpot", "stone", "flower"], ["rabbit", "fox"]),
-    row("Butterfly Orchard", "orchard", "butterflies", ["cherry", "log", "flowerpot", "cherry"], ["chick", "rabbit"]),
+    row("Pond Hopping", "lake", "butterflies", ["reeds", "lilypad", "stone", "reeds"], ["frog", "chick"], "sun"),
+    row("Flower Trail", "meadow", "petals", ["flower", "flowerpot", "stone", "flower"], ["rabbit", "fox"], "sun"),
+    row("Butterfly Orchard", "orchard", "butterflies", ["cherry", "log", "flowerpot", "cherry"], ["chick", "rabbit"], "sun"),
   ],
   "green-season": [
     row("Deep Woods", "forest", "fireflies", ["tree", "log", "stone", "tree"], ["fox", "cat"]),
-    row("Stream Crossing", "lake", "butterflies", ["reeds", "log", "stone", "tree"], ["frog", "fox"]),
-    row("Fern Garden", "garden", "fireflies", ["flower", "flowerpot", "log", "tree"], ["frog", "rabbit"]),
-    row("Hillside Run", "hills", "butterflies", ["tree", "stone", "log", "tree"], ["rabbit", "fox"]),
+    row("Stream Crossing", "lake", "butterflies", ["reeds", "log", "stone", "tree"], ["frog", "fox"], "sun"),
+    row("Fern Garden", "garden", "butterflies", ["flower", "flowerpot", "log", "tree"], ["frog", "rabbit"], "sun"),
+    row("Hillside Run", "hills", "butterflies", ["tree", "stone", "log", "tree"], ["rabbit", "fox"], "sun"),
     row("Summer Rain", "forest", "rain", ["tree", "log", "stump", "tree"], ["frog", "cat"]),
   ],
   midsummer: [
-    row("Golden Meadow", "meadow", "butterflies", ["flower", "stone", "flowerpot", "flower"], ["rabbit", "fox"]),
-    row("Lakeside Sunset", "lake", "fireflies", ["reeds", "log", "stone", "reeds"], ["frog", "person"]),
-    row("Campfire Evening", "forest", "embers", ["pine", "log", "stone", "campfire"], ["person", "fox"]),
-    row("Firefly Night", "hills", "fireflies", ["tree", "stone", "log", "tree"], ["cat", "rabbit"]),
-    row("Festival Lanterns", "town", "lanterns", ["lantern", "crate", "flowerpot", "lantern"], ["person", "chick"]),
+    row("Golden Meadow", "meadow", "butterflies", ["flower", "stone", "flowerpot", "flower"], ["rabbit", "fox"], "sun"),
+    row("Lakeside Sunset", "lake", "fireflies", ["reeds", "lilypad", "stone", "reeds"], ["frog", "person"], "low-sun"),
+    row("Campfire Evening", "forest", "embers", ["pine", "log", "stone", "campfire"], ["person", "fox"], "stars"),
+    row("Firefly Night", "hills", "fireflies", ["tree", "stone", "log", "tree"], ["cat", "rabbit"], "stars"),
+    row("Festival Lanterns", "town", "lanterns", ["lantern", "crate", "flowerpot", "lantern"], ["person", "cat"], "stars"),
   ],
   "harvest-festival": [
     row("Mushroom Grove", "forest", "leaves", ["tree", "mushroom", "log", "tree"], ["hedgehog", "fox"]),
-    row("Apple Orchard", "orchard", "leaves", ["appletree", "basket", "crate", "appletree"], ["fox", "rabbit"]),
-    row("Hayfield Run", "farm", "leaves", ["hay", "hay", "crate", "scarecrow"], ["hedgehog", "person"]),
-    row("Village Market", "town", "sparkles", ["stall", "basket", "mushroom", "lantern"], ["person", "fox"]),
-    row("Golden Fields", "farm", "leaves", ["scarecrow", "stump", "hay", "windmill"], ["fox", "hedgehog"]),
+    row("Apple Orchard", "orchard", "leaves", ["appletree", "basket", "crate", "appletree"], ["fox", "rabbit"], "sun"),
+    row("Hayfield Run", "farm", "leaves", ["hay", "hay", "crate", "scarecrow"], ["hedgehog", "person"], "sun"),
+    row("Village Market", "town", "leaves", ["stall", "basket", "mushroom", "lantern"], ["person", "fox"], "sun"),
+    row("Golden Fields", "farm", "leaves", ["scarecrow", "stump", "hay", "windmill"], ["fox", "hedgehog"], "low-sun"),
   ],
   "spooky-season": [
-    row("Old Graveyard", "graveyard", "ghosts", ["bare", "grave", "pumpkin", "bare"], ["skeleton", "cat"]),
-    row("Haunted Manor", "town", "bats", ["manor", "grave", "pumpkin", "bare"], ["skeleton", "ghost"]),
-    row("Witchwood", "forest", "bats", ["bare", "mushroom", "cauldron", "bare"], ["witch", "cat"]),
+    row("Old Graveyard", "graveyard", "ghosts", ["bare", "grave", "pumpkin", "bare"], ["skeleton", "cat"], "stars"),
+    row("Haunted Manor", "town", "bats", ["manor", "grave", "pumpkin", "bare"], ["skeleton", "ghost"], "stars"),
+    row("Witchwood", "forest", "bats", ["bare", "mushroom", "cauldron", "bare"], ["witch", "cat"], "stars"),
     row("Foggy Marsh", "swamp", "fog", ["bare", "stone", "grave", "reeds"], ["ghost", "skeleton"]),
-    row("Pumpkin Patch", "farm", "ghosts", ["pumpkin", "pumpkin", "pumpkin", "scarecrow"], ["cat", "witch"]),
+    row("Pumpkin Patch", "farm", "ghosts", ["pumpkin", "pumpkin", "pumpkin", "scarecrow"], ["cat", "witch"], "stars"),
   ],
   "late-autumn": [
     row("Windy Avenue", "orchard", "leaves", ["bare", "log", "stone", "bare"], ["fox", "hedgehog"]),
     row("Rainy Village", "town", "rain", ["house", "crate", "mushroom", "lantern"], ["cat", "person"]),
     row("Forest Floor", "forest", "leaves", ["bare", "mushroom", "stump", "bare"], ["hedgehog", "fox"]),
     row("Creek Crossing", "lake", "fog", ["bare", "stone", "log", "reeds"], ["fox", "rabbit"]),
-    row("Lantern Path", "hills", "embers", ["lantern", "stump", "stone", "bare"], ["person", "cat"]),
+    row("Lantern Path", "hills", "leaves", ["lantern", "stump", "stone", "bare"], ["person", "cat"], "stars"),
   ],
   neutral: [
-    row("Green Alley", "town", "sparkles", ["lamp", "crate", "log", "house"], ["person", "cat"]),
+    row("Green Alley", "town", "sparkles", ["lamp", "crate", "log", "house"], ["person", "cat"], "stars"),
     row("Quiet Forest", "forest", "fireflies", ["tree", "log", "stone", "tree"], ["fox", "rabbit"]),
-    row("Little Workshop", "town", "sparkles", ["house", "crate", "barrel", "lamp"], ["person", "cat"]),
-    row("Bridge Walk", "lake", "fireflies", ["reeds", "stone", "log", "reeds"], ["frog", "fox"]),
-    row("Morning Hills", "hills", "clouds", ["tree", "stone", "log", "tree"], ["rabbit", "chick"]),
+    row("Little Workshop", "town", "sparkles", ["house", "crate", "barrel", "lamp"], ["person", "cat"], "stars"),
+    row("Bridge Walk", "lake", "fireflies", ["reeds", "bridge", "log", "reeds"], ["frog", "fox"]),
+    row("Morning Hills", "hills", "clouds", ["tree", "stone", "log", "tree"], ["rabbit", "chick"], "low-sun"),
   ],
 };
 
@@ -501,6 +517,63 @@ export function sceneAlpha(s: Scene): number {
   return Math.max(0, Math.min(1, into, out));
 }
 
+// The color of the background trees of each key. The orchard of Spring Bloom
+// uses pink instead. A bare tree has no canopy.
+const CANOPY: Record<SceneKey, string> = {
+  "new-year": "#1f3a35",
+  winterfest: "#1f3f38",
+  "spring-bloom": "#5f8f57",
+  "green-season": "#264f35",
+  midsummer: "#3f7a3a",
+  "harvest-festival": "#9a6a2c",
+  "spooky-season": "#2a2433",
+  "late-autumn": "#7b4a26",
+  neutral: "#264635",
+};
+
+// Reports whether the key is Winterfest or New Year. In those keys, roofs and
+// treetops carry snow.
+function isSnowy(s: Scene): boolean {
+  return s.key === "winterfest" || s.key === "new-year";
+}
+
+// Reports whether the key is Spooky Season or Late Autumn. In those keys, the
+// background trees are bare.
+function isLeafless(s: Scene): boolean {
+  return s.key === "spooky-season" || s.key === "late-autumn";
+}
+
+// Draws the sky that the row names. Stars come with a moon. A low sun comes
+// with a line of glow, and on water it shows as orange lines.
+function drawSky(p: Px, s: Scene): void {
+  const { W, ground, time, row: r } = s;
+  if (r.sky === "stars") {
+    for (let i = 0; i < 29; i++) {
+      const lit = Math.floor(time * 2 + i * 0.7) % 4 === 0;
+      p(rand(i + 11) * W, rand(i + 81) * (ground - 8), 1, 1, lit ? "#b9bba0" : "#475668");
+    }
+    const x = W - 34;
+    const c = s.key === "spooky-season" ? "#e6a34c" : "#d8ddd3";
+    p(x + 2, 2, 7, 1, c);
+    p(x, 3, 11, 5, c);
+    p(x + 2, 8, 7, 1, c);
+    p(x + 3, 4, 2, 2, s.key === "spooky-season" ? "#b97b34" : "#a7a493");
+  }
+  if (r.sky === "sun") {
+    const x = W - 34;
+    p(x + 2, 2, 7, 1, "#ffda76");
+    p(x, 3, 11, 6, "#ffda76");
+    p(x + 2, 9, 7, 1, "#ffda76");
+  }
+  if (r.sky === "low-sun") {
+    const x = Math.round(W * 0.7);
+    p(x + 3, ground - 11, 8, 1, "#ffc46b");
+    p(x + 1, ground - 10, 12, 2, "#ffb45c");
+    p(x, ground - 8, 14, 4, "#ff9a4f");
+    p(x - 14, ground - 5, 42, 1, "#c9774a");
+  }
+}
+
 function drawBackground(p: Px, s: Scene): void {
   const { W, ground, key } = s;
   const env = s.row.environment;
@@ -510,6 +583,7 @@ function drawBackground(p: Px, s: Scene): void {
       const x = i < 4 ? i * 17 : W - (8 - i) * 17;
       const bh = env === "city" ? 9 + ((i * 7) % 10) : 5 + ((i * 3) % 6);
       p(x, ground - bh, 13, bh, "#1c2a30");
+      if (isSnowy(s)) p(x, ground - bh, 13, 1, "#dfeef0");
       for (let yy = ground - bh + 3; yy < ground - 2; yy += 4) {
         p(x + 3, yy, 2, 1, "#b09a62");
         p(x + 8, yy, 2, 1, "#627a70");
@@ -520,7 +594,13 @@ function drawBackground(p: Px, s: Scene): void {
     for (let i = 0; i < 7; i++) {
       const x = i < 4 ? i * 17 : W - (7 - i) * 18;
       p(x + 4, ground - 11, 2, 11, "#26382a");
-      p(x, ground - 14, 10, 8, env === "orchard" ? "#49604d" : "#264635");
+      if (isLeafless(s)) {
+        p(x + 1, ground - 13, 3, 1, "#26382a");
+        p(x + 6, ground - 12, 3, 1, "#26382a");
+        continue;
+      }
+      p(x, ground - 14, 10, 8, env === "orchard" && key === "spring-bloom" ? "#d99ab4" : CANOPY[key]);
+      if (isSnowy(s)) p(x, ground - 14, 10, 1, "#e6f4f0");
     }
   }
   if (env === "hills" || env === "meadow" || env === "farm") {
@@ -542,9 +622,13 @@ function drawBackground(p: Px, s: Scene): void {
     }
   }
   if (env === "lake" || env === "swamp") {
-    p(0, ground - 4, W, 4, env === "lake" ? "#284f61" : "#2a4940");
+    const frozen = key === "winterfest";
+    const sunset = s.row.sky === "low-sun";
+    p(0, ground - 4, W, 4, frozen ? "#a9cfdc" : env === "lake" ? "#284f61" : "#2a4940");
     for (let i = 0; i < 20; i++) {
-      p((i * 31) % W, ground - 3 + (i % 2), 5, 1, "#739087");
+      const drift = frozen ? 0 : s.time * 2;
+      const c = frozen ? "#dcecf0" : sunset && i % 2 ? "#e0935a" : "#739087";
+      p((i * 31 + drift) % W, ground - 3 + (i % 2), 5, 1, c);
     }
   }
   if (env === "graveyard") {
@@ -603,10 +687,19 @@ function drawProp(p: Px, s: Scene, kind: Prop, x: number): void {
       const big = kind === "manor";
       const width = big ? 20 : 15;
       const height = big ? 15 : 10;
+      const lit = big ? (Math.floor(s.time * 3) % 5 === 0 ? "#6b5a3a" : "#efc574") : "#efc574";
       p(x, y - height, width, height, big ? "#303047" : brown);
       p(x - 2, y - height - 3, width + 4, 3, "#413b45");
-      p(x + 3, y - height + 3, 3, 3, "#efc574");
-      p(x + width - 6, y - height + 3, 3, 3, "#efc574");
+      if (isSnowy(s)) p(x - 2, y - height - 3, width + 4, 1, "#e6f4f0");
+      p(x + 3, y - height + 3, 3, 3, lit);
+      p(x + width - 6, y - height + 3, 3, 3, lit);
+      if (kind === "cabin") {
+        p(x + 11, y - height - 6, 3, 4, "#413b45");
+        for (let i = 0; i < 6; i++) {
+          const phase = (s.time * 0.5 + i / 6) % 1;
+          p(x + 12 + Math.sin(s.time + i) * 2 + phase * 6, y - height - 7 - phase * 7, 2, 1, "#9aa6a6");
+        }
+      }
       p(x + Math.floor(width / 2) - 2, y - 5, 4, 5, "#27352c");
       break;
     }
@@ -620,15 +713,22 @@ function drawProp(p: Px, s: Scene, kind: Prop, x: number): void {
         p(x + 9, y - 14, 1, 3, "#413a31");
       }
       if (kind === "windmill") {
-        p(x + 8, y - 20, 2, 12, "#dac9a0");
-        p(x + 3, y - 15, 12, 2, "#dac9a0");
+        if (Math.floor(s.time * 3) % 2) {
+          p(x + 8, y - 20, 2, 12, "#dac9a0");
+          p(x + 3, y - 15, 12, 2, "#dac9a0");
+        } else {
+          for (let i = -4; i <= 4; i++) {
+            p(x + 8 + i, y - 15 + i, 2, 2, "#dac9a0");
+            p(x + 8 + i, y - 15 - i, 2, 2, "#dac9a0");
+          }
+        }
       }
       break;
     case "lamp":
     case "lantern":
       p(x + 5, y - 14, 2, 14, "#6b6951");
       p(x + 3, y - 16, 6, 5, "#f4bb64");
-      p(x + 4, y - 15, 4, 3, "#ffe19b");
+      p(x + 4, y - 15, 4, 3, Math.sin(s.time * 7 + x) > 0.6 ? "#f7cf7e" : "#ffe19b");
       break;
     case "snowman":
       p(x + 2, y - 6, 9, 6, "#eaf3ed");
@@ -641,6 +741,18 @@ function drawProp(p: Px, s: Scene, kind: Prop, x: number): void {
       p(x + 1, y - 13, 12, 2, brown);
       p(x + 4, y - 18, 6, 5, "#d2ac67");
       p(x + 3, y - 19, 8, 2, "#80603e");
+      break;
+    case "bridge":
+      p(x - 2, y - 4, 16, 2, "#8a6543");
+      p(x - 2, y - 2, 2, 2, "#5f4530");
+      p(x + 12, y - 2, 2, 2, "#5f4530");
+      p(x, y - 8, 1, 4, "#5f4530");
+      p(x + 11, y - 8, 1, 4, "#5f4530");
+      p(x, y - 8, 12, 1, "#a07a52");
+      break;
+    case "lilypad":
+      p(x + 1, y - 4, 9, 2, "#4f8f4a");
+      p(x + 4, y - 6, 3, 2, "#e8b3cf");
       break;
     case "reeds":
       for (let i = 0; i < 4; i++) p(x + i * 3, y - 4 - (i % 3), 1, 5, green);
@@ -672,7 +784,7 @@ function drawProp(p: Px, s: Scene, kind: Prop, x: number): void {
       p(x + 3, y - 7, 6, 7, "#ed8b33");
       p(x + 4, y - 4, 1, 1, "#24170d");
       p(x + 8, y - 4, 1, 1, "#24170d");
-      p(x + 5, y - 2, 3, 1, "#ffdb67");
+      p(x + 5, y - 2, 3, 1, Math.sin(s.time * 6 + x) > 0.5 ? "#ffa640" : "#ffdb67");
       break;
     case "mushroom":
       p(x + 5, y - 5, 4, 5, "#e2d2ae");
@@ -686,8 +798,12 @@ function drawProp(p: Px, s: Scene, kind: Prop, x: number): void {
       break;
     case "campfire":
       p(x + 2, y - 2, 10, 2, brown);
-      p(x + 5, y - 8, 4, 6, "#f3ae3e");
+      p(x + 5, y - 8 - (Math.floor(s.time * 6) % 2), 4, 6, "#f3ae3e");
       p(x + 6, y - 6, 2, 4, "#ffe48b");
+      for (let i = 0; i < 4; i++) {
+        const phase = (s.time * 0.5 + i / 4) % 1;
+        p(x + 6 + Math.sin(s.time + i) * 2, y - 10 - phase * 8, 1, 1, "#8f9a94");
+      }
       break;
     case "ice":
     case "snowball":
@@ -981,19 +1097,20 @@ export function hasGlyph(ch: string): boolean {
 }
 
 // Draws the title of the scene on a sign that is centred in the strip. The sign
-// is a panel 13 scene pixels high, with an edge line at the top and at the
-// bottom. The letters are at single size. If the sign does not fit in the width
-// of the strip, the function draws nothing. A character that the font does not
+// is a panel 11 scene pixels high, from row 0, with an edge line at row 0 and
+// at row 10. The letters are at single size, in rows 2 to 8. The sign is high,
+// so the walkers can run under it. If the sign does not fit in the width of
+// the strip, the function draws nothing. A character that the font does not
 // have is skipped.
 function drawTitle(p: Px, s: Scene): void {
   const { title, ink, panel, edge } = PALETTES[s.key];
   const width = title.length * 6 - 1;
   if (width + 10 > s.W) return;
   const x = Math.floor((s.W - width) / 2);
-  const y = 4;
-  p(x - 5, y - 3, width + 10, 13, panel);
-  p(x - 5, y - 3, width + 10, 1, edge);
-  p(x - 5, y + 9, width + 10, 1, edge);
+  const y = 2;
+  p(x - 5, y - 2, width + 10, 11, panel);
+  p(x - 5, y - 2, width + 10, 1, edge);
+  p(x - 5, y + 8, width + 10, 1, edge);
   for (let i = 0; i < title.length; i++) {
     const glyph = FONT[title[i]]?.split("/");
     if (!glyph) continue;
@@ -1017,6 +1134,7 @@ export function drawScene(ctx: Painter, s: Scene): void {
     ctx.fillRect(Math.round(x), Math.round(y), Math.ceil(w), Math.ceil(h));
   };
   ctx.globalAlpha = sceneAlpha(s);
+  drawSky(p, s);
   drawBackground(p, s);
   const at = positions(s.W);
   s.row.props.forEach((kind, i) => drawProp(p, s, kind, at[i]));

@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a scene for the season
 
-**Status:** built, 129-1 – 129-13. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-13 are not yet in a release. 129-8 to 129-10 land together.
+**Status:** built, 129-1 – 129-14. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 are not yet in a release. 129-8 to 129-10 land together.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -15,7 +15,9 @@ with an animated pixel scene for each of eight seasons. 129-10 left gaps
 between the seasons, so chalk is not in a season all year, and it added
 always-on hours for two evenings. 129-12 replaced the scene engine with one
 that has 45 scenes, and it gave the dates in the gaps scenes of their own.
-129-13 added the title of the season on a small sign.
+129-13 added the title of the season on a small sign. 129-14 moved the sign up
+so the walkers run under it, gave each scene a sky, and added the details of
+each season.
 
 ## The design
 
@@ -232,24 +234,46 @@ always-on hours walk all five.
 
 The scene differs from the supplied engine on purpose:
 
-- It has no sky, no haze, and no earth block. The canvas stays transparent,
-  so the scene blends with all 15 themes.
+- It has no sky color, no haze, and no earth block. The canvas stays
+  transparent, so the scene blends with all 15 themes. Each row names a sky
+  (129-14): none, stars with a moon, a sun, or a low sun.
 - It draws the title (129-13) on a small sign and not on a panel for the whole
   strip. The title is always at single size. The supplied engine uses double
-  size on a strip of 275 scene pixels or wider. Here the strip is 22 scene
+  size on a strip of 275 scene pixels or wider. Here the strip is 24 scene
   pixels high, and double size would make `HARVEST FESTIVAL` about 380 CSS
   pixels wide and nearly as high as the strip.
-- The stars and the moon of the earlier engine are gone, because the supplied
-  engine has none.
+- The sign is high in the strip, in rows 0 to 10 (129-14). The ground is row
+  23, and the head of a walker is at row 13. Two clear rows are between the
+  head and the sign, so a walker runs under it. The hat of a witch rises four
+  rows and reaches under the bottom edge of the sign, and a jump can pass
+  behind the sign.
 - The ground is the bottom line of the header: `ground = H - 1`. Scattered
   tufts of grass on the ground stay.
 - It has no `window.ChalkSeasonHeader` preview API, because it would be a
   global in production.
 - A scene fades to transparent and not to black.
 
-Two scene names promise what the scene does not draw. Cabin Smoke has no smoke,
-and Bridge Walk has no bridge. The names are the names of the user. This is a
-known gap (see `docs/open-items.md`).
+129-14 added a sky and the details of each season to the scene:
+
+- A `SceneRow` has a `sky`: `"none"`, `"stars"`, `"sun"`, or `"low-sun"`.
+  `drawSky` draws stars and a moon (orange in Spooky Season), a sun, or a low
+  sun with a line of glow for a sunrise or a sunset. Each of the 45 rows names
+  its sky.
+- `CANOPY` gives each key a color for the background trees. The background
+  trees of a Spring Bloom orchard are pink. `isLeafless` is true in Spooky
+  Season and Late Autumn, and the background trees there are bare. `isSnowy`
+  is true in Winterfest and New Year, and roofs and treetops carry snow.
+- A lake is frozen in Winterfest: pale ice with still lines. Other water
+  drifts. A low sun shows on water as orange lines.
+- The props `bridge` (at the obstacle slot in Bridge Walk) and `lilypad` are
+  new. A cabin has a chimney with smoke. A campfire flickers and smokes, a
+  windmill turns, a lantern and a pumpkin flicker, and the windows of the
+  manor flicker. This closed the gap that Cabin Smoke had no smoke and Bridge
+  Walk had no bridge.
+- Some scenes changed to fit their season. First Sunrise has clouds and a low
+  sun. Fern Garden has butterflies. Village Market and Lantern Path have
+  leaves. Frozen Lake casts a rabbit, and Festival Lanterns casts a cat. Pond
+  Hopping and Lakeside Sunset have a lilypad.
 
 `web/src/season/scene.test.ts` uses a fake `Painter`. It checks the table (nine
 keys, five rows each, 45 distinct names, and the same ids as `SEASONS` plus
@@ -322,7 +346,7 @@ phone's list screen.
 `align-self: stretch`, and `position: relative`. It takes the empty middle of
 the header, and it cannot widen the header. It has `pointer-events: none`.
 `.chalk-season-canvas` is out of flow: `position: absolute`, 100 percent wide,
-and 44 px high. It sits on the bottom line of the header. The header has
+and 48 px high. It sits on the bottom line of the header. The header has
 padding of `--chalk-s3` below its content, so `bottom` is
 `calc(-1 * var(--chalk-s3))`. The scene draws its ground on the last row of the
 canvas, and the walkers stand on the line. `image-rendering: pixelated` keeps
@@ -358,8 +382,8 @@ While the scene shows, the root also gets `chalk-season--live`.
 - `.chalk-season--row` is a flex child (`flex: 0 0 auto`) with `height: 0` and
   `overflow: hidden`. Between visits the row takes no space. A height
   transition of 1200 ms opens and closes it.
-- `.chalk-season--row.chalk-season--live` is 44 px high and has a bottom
-  border. `box-sizing` makes 44 px the total height.
+- `.chalk-season--row.chalk-season--live` is 48 px high and has a bottom
+  border. `box-sizing` makes 48 px the total height.
 - The canvas sits at `bottom: 0` in the row.
 - With reduced motion the height transition is off too, so the row jumps.
 
@@ -642,12 +666,28 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
 - **129-13 — the title.** `PALETTES` in `season/scene.ts` gained `title`,
   `ink`, and `panel` for each key. The title is the name of the season, and
   `CHALK` on the neutral dates. `FONT` is a 5 by 7 pixel font. `drawTitle`
-  draws a centred sign: a panel 13 scene pixels high with an edge line at the
-  top and at the bottom, and the letters at single size. `drawScene` calls it
+  draws a centred sign: a panel with an edge line at the top and at the
+  bottom, and the letters at single size (129-14 changed the geometry). `drawScene` calls it
   last, so the walkers pass behind the sign, and the title fades with its
   scene. If the sign does not fit in the width of the strip, `drawTitle`
   leaves it out. `titleFor` and `hasGlyph` are exports for the tests. One
   scene pixel is 2 CSS pixels, so a letter is 10 by 14 CSS pixels. Text in
+  `CHANGELOG.md`.
+
+- **129-14 — the sign higher, and the details of the seasons.** The user asked
+  for a higher sign, so that the creatures can run under it, and for scenes
+  that are more authentic for each season. `drawTitle` draws at y = 2 with a
+  panel 11 scene pixels high from row 0, and edge lines at rows 0 and 10. The
+  canvas grew from 44 px to 48 px, in the header and in the zuckermode row, so
+  `H` is 24 scene pixels and the ground is row 23. The header height does not
+  change. In the title-bar header the canvas takes the height of the header, so
+  the strip there can be smaller. `SceneRow` gained `sky`, and `drawSky` draws
+  it. `CANOPY`, `isLeafless`, and `isSnowy` set the background trees and the
+  snow. The lake is frozen in Winterfest. The props `bridge` and `lilypad` are
+  new, and the cabin, campfire, windmill, lantern, pumpkin, and manor windows
+  got smoke or flicker. Five scenes changed their effect or cast. The gap of
+  Cabin Smoke and Bridge Walk is closed. `scene.test.ts` covers a walker under
+  the sign, snow and ice, the named details, and the cast by season. Text in
   `CHANGELOG.md`.
 
 ## Trade-offs
@@ -689,18 +729,16 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
 13. Only the list screen of zuckermode claims a visit. A user who stays in a
     conversation gets fewer visits. A visit that the user leaves by opening a
     conversation still counts.
-14. When the row opens or closes, the rows below it move by 44 px over 1.2 s.
+14. When the row opens or closes, the rows below it move by 48 px over 1.2 s.
     A tap in that moment can land on a different row. This is the accepted cost
     of a row that goes away.
 15. A visit shows two or three scenes of the five, because a visit lasts 45 s
     to 75 s and a scene lasts 35 s. The start is random, so each scene shows
     over many visits. Only the always-on hours walk all five in one run.
-16. Two scene names promise what the scene does not draw: Cabin Smoke has no
-    smoke, and Bridge Walk has no bridge. The names are the names of the user.
-    The gap is recorded in `docs/open-items.md`.
-17. The sign of the title covers the middle of the strip, about 105 scene
-    pixels at most for `HARVEST FESTIVAL`. The walkers pass behind it. A
-    strip that is too narrow for the sign shows no title.
+16. The sign of the title covers the middle of the strip, about 105 scene
+    pixels at most for `HARVEST FESTIVAL`. The sign is high (129-14), so the
+    walkers run under it. Only a jump of a walker can pass behind it. A strip
+    that is too narrow for the sign shows no title.
 
 ## Verification
 
@@ -743,6 +781,7 @@ Halloween night frame, a rotation in the always-on hours, and the first frame
 under reduced motion. It passed.
 
 For 129-13, the showcase in the real header on 2026-11-02 showed the title.
+For 129-14, contact sheets of all 45 scenes on dark and light backgrounds on 2026-11-02 showed the sign and the seasonal details.
 
 ### Manual checklist for the live stack
 
@@ -826,7 +865,7 @@ no season and shows the neutral scenes (see item 13).
     a device with the switch off shows no scene.
 29. Check the row above the zuckermode list (400 px wide, zuckermode on, a date
     inside a season). On the list screen, check that the row takes no space
-    before a visit. Check that it opens to 44 px, that the scene shows, and
+    before a visit. Check that it opens to 48 px, that the scene shows, and
     that the row collapses when the visit ends.
 30. Open a conversation and go back to the list. Check that the row is closed,
     and that a visit comes after a first pause of 4 s to 12 s. Check that the
@@ -844,11 +883,15 @@ no season and shows the neutral scenes (see item 13).
 36. Emulate reduced motion and start a visit. Check that the first frame is
     whole, with no fade in, and that it holds still.
 37. During a visit in a season, check that the sign shows the name of the
-    season. Check that the walkers pass behind the sign, and that the title
+    season. Check that the walkers run under the sign, and that the title
     fades with the scene.
 38. On a date in a gap, check that the sign shows `CHALK`.
 39. Make the strip narrower than the sign. Check that the title is absent and
     that the scene still shows.
+40. Watch a walker run under the sign. Check that its head does not touch the
+    sign.
+41. Check three seasonal details. Examples are the smoke of the cabin in Cabin
+    Smoke, the ice in Frozen Lake, and the bare trees in Old Graveyard.
 
 ## How to add a season
 

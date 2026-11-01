@@ -14,7 +14,8 @@ The engineering-level history (which slice shipped what) lives in
 
 ### Changed
 - The seasonal visitor is now an animated scene in the middle of the top bar. The figures and the glow along the window edge are gone. The scene follows eight seasons. It comes up to 16 times a day on one device. At most 10 of those visits start before 18:00, so the evening has more. A visit lasts 45 to 75 seconds. The first visit of a day comes a few seconds after the page loads. A later visit comes 1 to 2 hours after the one before, or 20 to 40 minutes after it in the evening. Before, the figure came back every minute or so. A reload or a second tab does not bring an extra visit. A tab in the background does not use up a visit. On a phone in zuckermode, the scene shows in a row at the top of the conversation list. The row goes away when the scene ends. The classic phone layout shows no scene. The same device switch and server switch turn it off.
-- The scene shows the name of the season on a small sign, and it shows CHALK between the seasons.
+- The scene shows the name of the season on a small sign, and it shows CHALK between the seasons. The sign is high, so the walkers run under it.
+- Each scene has a sky, and it shows the details of its season. Examples are stars and a moon at night, a low sun at sunrise and sunset, bare trees in autumn, snow and ice in winter, and smoke from a chimney.
 - Between the seasons, chalk shows its own five neutral scenes. The seasons have breaks of three weeks between them. Each season has five scenes, and a scene gives way to the next one every 35 seconds.
 - On the evening of 24 December and on New Year's Eve, the scene stays up without a break from 20:00 to 05:00. Those hours do not count as visits. On a phone in zuckermode, the row at the top of the conversation list stays open in those hours. The classic phone layout shows no scene.
 

@@ -87,7 +87,7 @@ test("the zucker row takes no height until the scene shows", () => {
   assert.match(row![1], /flex\s*:\s*0 0 auto/);
   const live = /\.chalk-season--row\.chalk-season--live\s*\{([^}]*)\}/.exec(animated);
   assert.ok(live, "no live row rule");
-  assert.match(live![1], /height\s*:\s*44px/);
+  assert.match(live![1], /height\s*:\s*48px/);
 });
 
 test("129-6: the night frame is hidden by default and every season with a night has a rule", () => {

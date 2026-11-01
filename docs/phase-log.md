@@ -819,6 +819,16 @@ night frame still needs a season.
 small centred sign, last, so the walkers pass behind it. The neutral dates
 show `CHALK`. The sign is left out if it does not fit in the strip. This
 reverses the no-title decision of 129-9.
+129-14 moved the sign up, to rows 0 to 10, so the walkers run under it. The
+canvas grew from 44 px to 48 px, in the header and in the zuckermode row. Each
+row of `SCENES` got a `sky`: none, stars with a moon, a sun, or a low sun.
+`CANOPY`, `isLeafless`, and `isSnowy` give the background trees their color,
+bare trees in Spooky Season and Late Autumn, and snow in Winterfest and New
+Year. A lake is frozen in Winterfest. The props `bridge` and `lilypad` are new.
+The cabin has a chimney with smoke, and the campfire, windmill, lantern,
+pumpkin, and manor windows move or flicker. Five scenes changed their effect
+or cast to fit their season. This closed the gap of Cabin Smoke and Bridge
+Walk.
 
 **130 — guest flow** (2026-11-01). The first real use of temporary voice
 rooms showed four rough edges in the flow of the member. 130-1 stopped the

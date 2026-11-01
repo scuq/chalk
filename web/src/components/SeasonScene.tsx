@@ -14,7 +14,7 @@
 // so the header keeps its height when the scene comes and goes.
 // On a phone in zuckermode, with the `row` prop, ZuckerList renders the
 // component as the first child of the list screen. The row has no height
-// between visits and opens to 44 px while a visit shows. The classic phone
+// between visits and opens to 48 px while a visit shows. The classic phone
 // layout mounts no scene.
 // The list screen unmounts when a conversation opens, so the component starts
 // again, with a first pause, when the user comes back to the list. The log of
