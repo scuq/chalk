@@ -29,6 +29,7 @@ The engineering-level history (which slice shipped what) lives in
 ## v0.9.1 — 1 November 2026 — Guest rooms read right again, and quick switches on a phone land on new messages
 
 ### Fixed
+- On a phone, if you open a conversation for the second time, the view now stays on the newest message until you scroll. Before, the view sometimes stayed at the top of the recent messages, with the newest messages below the screen.
 - On a phone, you can switch quickly from one conversation to another and back. Before, the view could stay on the messages it showed before, and the new messages were below the screen. It now lands on the new messages, or on the "new messages" line if some are unread.
 - A guest in a temporary voice room reads the messages of members as text again. Before, garbage characters surrounded the text of each message from a member.
 - A guest sees their own line in the scratchpad right after they send it. Before, the line was missing until the page connected again.
