@@ -4,7 +4,7 @@
 changelog; the design notes are as-built, not a contemporaneous plan.
 
 **Status:** shipped, v0.6.4 (79-1), v0.7.0 (79-2), v0.7.1 (79-3),
-v0.7.4 (79-4, 79-5), v0.8.26 (79-6, 79-7), v0.9.0 (79-8), v0.9.1 (79-9). Built, not yet released: 79-10.
+v0.7.4 (79-4, 79-5), v0.8.26 (79-6, 79-7), v0.9.0 (79-8), v0.9.1 (79-9), v0.9.2 (79-10).
 **Tags:** `#unread`, `#history` → `tools/where.sh -g unread`
 
 ## Why

@@ -1,6 +1,6 @@
 # Phase 130 — guest flow: a temporary room opens alone
 
-**Status:** built, 130-1 – 130-5 (2026-11-01). Every change is in the client.
+**Status:** shipped, v0.9.2 (130-1 – 130-5). Every change is in the client.
 **Tags:** `#ephemeral` → `tools/where.sh -g ephemeral`
 
 Phase 80 ships temporary voice rooms and guest magic links. Its record is

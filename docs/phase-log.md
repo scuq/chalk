@@ -728,7 +728,7 @@ Slice 79-8, shipped in v0.9.0, lands the view again on rows that arrive after th
 mount, until the first gesture, so a conversation opened again after a spell in
 the background lands on the new rows. Slice 79-9, shipped in v0.9.1, clears the landing record
 when a channel has no rows, so a quick switch to a channel and back lands on the
-new rows. Slice 79-10, unreleased, looks at the landing again after the write,
+new rows. Slice 79-10, shipped in v0.9.2, looks at the landing again after the write,
 for a phone that applied the write late or not at all.
 
 **80–85 — guests, and taking the crypto seriously (v0.7.0 – v0.7.1).**
