@@ -873,7 +873,13 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
   //
   // After that, any new message pins the view to the bottom as before.
   useEffect(() => {
-    if (ephemeral || messages.length === 0) return;
+    if (ephemeral || messages.length === 0) {
+      // 79-9: an empty feed is a visit too. Clear the ref so the next
+      // channel with rows gets a fresh landing. Before, the ref still named
+      // the previous channel, and a return to it looked like a re-landing.
+      landedRef.current = null;
+      return;
+    }
     // 79-8: the landing is not spent until the reader takes over.
     // On a re-entry, the first commit holds the window of the last visit.
     // The rows that arrived while the socket was down come later, through

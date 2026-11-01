@@ -10,6 +10,13 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- On a phone, you can switch quickly from one conversation to another and back. Before, the view could stay on the messages it showed before, and the new messages were below the screen. It now lands on the new messages, or on the "new messages" line if some are unread.
+
+---
+
 ## v0.9.0 — 31 October 2026 — Ten seasonal figures, a winter season, and phone conversations that land on new messages
 
 ### Added

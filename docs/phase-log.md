@@ -723,9 +723,11 @@ receive-side-only nano markdown (77), hidden channels that never suppress
 notifications (78), and the landing target settled once so late-decrypting
 images cannot drag the reader (79). Slices 79-6 and 79-7 keep the view on
 the divider after a tap and clear a stale jump target on the phone.
-Slice 79-8, unreleased, lands the view again on rows that arrive after the
+Slice 79-8, shipped in v0.9.0, lands the view again on rows that arrive after the
 mount, until the first gesture, so a conversation opened again after a spell in
-the background lands on the new rows.
+the background lands on the new rows. Slice 79-9, unreleased, clears the landing record
+when a channel has no rows, so a quick switch to a channel and back lands on the
+new rows.
 
 **80–85 — guests, and taking the crypto seriously (v0.7.0 – v0.7.1).**
 Ephemeral voice rooms with guest magic links, a `chalk_guest` RLS fence and

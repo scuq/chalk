@@ -4,7 +4,7 @@
 changelog; the design notes are as-built, not a contemporaneous plan.
 
 **Status:** shipped, v0.6.4 (79-1), v0.7.0 (79-2), v0.7.1 (79-3),
-v0.7.4 (79-4, 79-5), v0.8.26 (79-6, 79-7). Built, not yet released: 79-8.
+v0.7.4 (79-4, 79-5), v0.8.26 (79-6, 79-7), v0.9.0 (79-8). Built, not yet released: 79-9.
 **Tags:** `#unread`, `#history` → `tools/where.sh -g unread`
 
 ## Why
@@ -46,6 +46,8 @@ further.
 - **79-8** — land again when rows arrive after the landing, until the reader
   touches the screen, so a re-entry after a spell in the background does not
   stay on the old window.
+- **79-9** — clear the landing record when a channel has no rows, so a quick
+  switch to a channel and back lands on the new rows.
 
 ## The third state (79-4)
 
@@ -264,7 +266,38 @@ smooth follow.
 The fix removes the smooth follow from the phase before the first gesture.
 A reader who touched the screen before the append still depends on the follow
 branch.
-A possible 79-9 applies the follow again when a touch ends.
+A later slice can apply the follow again when a touch ends.
+
+## The empty visit (79-9)
+
+`landedRef` holds the channel where the component last landed.
+`relanding = landedRef.current === channelID` chooses between a fresh landing and the re-landing branches.
+A fresh landing resets `touchedRef`.
+The list stays mounted when the reader switches channels. Only `channelID` changes.
+
+Before 79-9, the landing effect returned early when the feed was empty.
+The feed is empty when the history has not loaded, when the channel has no rows, and in an ephemeral channel.
+The early return did not change `landedRef`.
+The sequence was: a direct message, a group whose rows had not arrived, and then the direct message again.
+`landedRef` still named the direct message, so the return looked like a re-landing of the same visit.
+If the reader touched the direct message in the first visit, `touchedRef` was still true.
+The landing block did not run, and the view stayed where the old window left it.
+The rows that arrived during the group visit were below the screen.
+The failure happened only when the middle channel was empty at its first commit.
+Fast switching showed it. Slow switching did not.
+
+The fix is one line.
+The early return now sets `landedRef.current = null`.
+The next channel with rows gets a fresh landing on the rows that exist then.
+79-8 added the re-landing, and 79-9 closes the path that bypassed it.
+
+There is no component test, because there is no `MessageList` component test.
+Check it by hand on a phone:
+
+1. Open a direct message, and scroll or tap in it.
+2. Switch to a group that has not loaded.
+3. Switch back to the direct message before the group loads.
+4. Make sure a message that arrived in the direct message in the meantime is in view, or that the view is on the "new messages" line.
 
 ## Where it lives
 
