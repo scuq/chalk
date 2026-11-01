@@ -21,7 +21,7 @@ import { burstStore, useHotChannels } from "../chat/burst-store"; // 115-2
 import { waveStore, useWaves } from "../chat/wave-store"; // 115-3
 import { Flame } from "./Flame"; // 115-2
 import { SeasonScene } from "./SeasonScene"; // 129-9
-import { nightFor, seasonFor } from "../season/seasons"; // 129-1
+import { alwaysOn, nightFor, seasonFor } from "../season/seasons"; // 129-1
 import { setNightFrame } from "../voice/night-frame"; // 129-6
 import { mentionsHandle } from "../chat/mentions";
 import { threadTitle, attachmentTitle } from "../chat/threadtitle";
@@ -3616,13 +3616,15 @@ export function App() {
     },
   ] = useDisplayPrefs();
   // 129-1: which season it is, re-read once a minute so a tab left open over
-  // midnight crosses the edge of a season without a reload. Three gates: the
+  // midnight crosses the edge of a season without a reload. A date in a gap
+  // between two seasons has no season, so nothing shows. Three gates: the
   // calendar, this device's switch, and the server's switch -- and the last
   // is unknown until the config has loaded, so nothing shows before then.
   const [seasonNow, setSeasonNow] = useState(() => Date.now());
   useEffect(() => {
     // 129-6: the clock ticks once a minute, so the night frame starts
-    // within a minute of 18:00. Each tick is one render.
+    // within a minute of 18:00. The always-on hours of the scene also start
+    // within a minute. Each tick is one render.
     const t = setInterval(() => setSeasonNow(Date.now()), 60 * 1000);
     return () => clearInterval(t);
   }, []);
@@ -5901,9 +5903,13 @@ export function App() {
         {/* 129-9: the scene for the season, in the empty middle of the header
             between the brand and the status bar. It mounts only on a wide
             screen. At 767 px and below only about 30 px of middle remains, so a
-            phone shows no scene and spends no visit. A second row for the scene
+            phone shows no scene and spends no visit. On a date in no season,
+            nothing mounts. 129-10: in the always-on hours the scene stays up
+            without a break. A second row for the scene
             would change the height of the header. */}
-        {seasonalOn && season && !isMobile && <SeasonScene season={season} />}
+        {seasonalOn && season && !isMobile && (
+          <SeasonScene season={season} always={alwaysOn(seasonNow)} />
+        )}
         <StatusBar
           state={state.wsState}
           detail={state.wsDetail}

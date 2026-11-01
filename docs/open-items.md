@@ -28,9 +28,11 @@ Every change is in the client.
 
 ## Phase 129 — seasonal: COMPLETE, with recorded trade-offs
 
-129-1 … 129-9, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
+129-1 … 129-10, record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
 An animated pixel scene peeks into the middle of the top header in eight
-seasons that cover the whole year. There is a switch per device and a server
+seasons. A gap of 21 days in a common year separates two seasons, and a date
+in a gap has no scene. On the evening of 24 December and on New Year's Eve, the
+scene stays up from 20:00 to 05:00. There is a switch per device and a server
 switch on the admin settings tab. A visit comes at most 16 times in a local day
 on one device, and at most 10 of them start before 18:00 (129-7, 129-9).
 A phone width shows no scene. No slice is open.
@@ -45,11 +47,14 @@ A phone width shows no scene. No slice is open.
 - **The date check runs once a minute.** A tab can show the scene of the old
   season for up to one minute after midnight changes the season.
 - **A phone shows no scene.** At 390 px only about 30 px of the header middle
-  remains. A second header row would change the header height.
+  remains. A second header row would change the header height. This holds in
+  the always-on hours too.
+- **The always-on hours run a 12 fps loop for nine hours** while the tab is
+  visible. `requestAnimationFrame` pauses in a hidden tab.
 - **The what's-new entry of phase 129 was rewritten in place.** A person who
   already marked it as read does not see the new text.
-- **The calendar is for the Northern Hemisphere.** chalk reads only the local
-  date.
+- **The calendar and the always-on hours are for the Northern Hemisphere.**
+  chalk reads only the local date.
 
 ## Phase 116 — what's new: COMPLETE, with one hand step at release time
 

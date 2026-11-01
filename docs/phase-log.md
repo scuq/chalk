@@ -779,8 +779,7 @@ Now a log in localStorage allows at most 10 visits in a local day on one device.
 Two visits start 1 to 2 hours apart.
 A reload or a second tab brings no extra visit, and a tab in the background claims none.
 129-8 turned `SEASONS` in `web/src/season/seasons.ts` into a calendar of eight
-seasons in 10 rows that cover every day of the year. The night frame moved to
-the Spooky Season row.
+seasons in 10 rows. The night frame moved to the Spooky Season row.
 129-9 replaced the figures and the glow with an animated pixel scene on a
 canvas in the middle of the top header (`web/src/season/scene.ts` and
 `SeasonScene.tsx`). There is one scene for each of the eight seasons. A phone
@@ -789,6 +788,13 @@ visits, of which at most 10 start before 18:00. The gap is 1 to 2 hours, and
 20 to 40 minutes from 18:00. The reduced-motion promise holds: the scene paints
 one frame and holds it. The 20 PNG files, `figures.ts`,
 `tools/cut-season-sheet.py`, and the aura are gone.
+129-10 shortened the rows of `SEASONS`, so a gap of 21 days in a common year
+separates two seasons. A date in a gap has no season, and `seasonFor` returns
+null. 29 February is in a gap. It also added `ALWAYS_ON` and `alwaysOn`: from
+20:00 on 24 December until 05:00 on 25 December, and from 20:00 on 31 December
+until 05:00 on 1 January, by the local clock, the scene stays up without a
+break. No visit is claimed in those hours, and the daily caps do not count
+them.
 
 **130 — guest flow** (2026-11-01). The first real use of temporary voice
 rooms showed four rough edges in the flow of the member. 130-1 stopped the

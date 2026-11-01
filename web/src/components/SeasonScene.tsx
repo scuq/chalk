@@ -1,4 +1,5 @@
 // 129-9: the scene for the season -- a small pixel animation in the header.
+// 129-10: in the always-on hours the scene stays up without a break.
 //
 // One component serves every season. The registry says which season it is.
 // season/scene.ts says what that season looks like and moves it. The schedule
@@ -9,7 +10,9 @@
 // middle of the header. The canvas inside it is out of flow, so the header
 // keeps its height when the scene comes and goes.
 // The component draws on the canvas only during a visit and for FADE_MS after
-// it. A hidden canvas costs no frame.
+// it. A hidden canvas costs no frame. In the always-on hours (ALWAYS_ON in
+// season/seasons.ts) the component draws without a break, claims no visit, and
+// the daily caps do not count those hours.
 // A visit makes a new scene, so no state passes from one visit to the next.
 // The fade is CSS. The only timer for the schedule is one timeout for each
 // step.
@@ -95,41 +98,49 @@ function runScene(
 interface Props {
   /** the season to show */
   season: Season;
+  /** true in the always-on hours: the scene stays up and no visit is claimed */
+  always: boolean;
 }
 
 /**
  * SeasonScene renders the canvas of the season and runs the schedule of
  * visits. The canvas is hidden between visits. It has a label for a screen
- * reader while a visit shows.
+ * reader while a visit shows. If `always` is true, the canvas stays up without
+ * a break and the schedule claims no visit.
  */
-export function SeasonScene({ season }: Props) {
+export function SeasonScene({ season, always }: Props) {
   const [visit, setVisit] = useState<Peek>(() => firstPeek());
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const t = setTimeout(() => {
-      const show = !visit.visible && document.visibilityState === "visible" && takeVisit();
+      // In the always-on hours no visit is claimed, so the hours do not use up
+      // the daily caps.
+      const show =
+        !always && !visit.visible && document.visibilityState === "visible" && takeVisit();
       setVisit(nextPeek(show));
     }, visit.ms);
     return () => clearTimeout(t);
-  }, [visit]);
+  }, [visit, always]);
   const { id, label } = season;
+  // The canvas is up in a visit and in the always-on hours.
+  const live = always || visit.visible;
   useEffect(() => {
     const el = canvas.current;
-    const ctx = visit.visible ? el?.getContext("2d") : null;
+    const ctx = live ? el?.getContext("2d") : null;
     if (!el || !ctx) return;
     return runScene(el, ctx, id);
-  }, [visit.visible, id]);
+  }, [live, id]);
   return (
     <div class="chalk-season" data-testid="season-anchor">
       <canvas
         ref={canvas}
-        class={"chalk-season-canvas" + (visit.visible ? " chalk-season-canvas--visible" : "")}
+        class={"chalk-season-canvas" + (live ? " chalk-season-canvas--visible" : "")}
         data-testid="season-scene"
         data-season={id}
-        data-visible={visit.visible ? "" : undefined}
+        data-visible={live ? "" : undefined}
         role="img"
         aria-label={`${label}, an animated pixel scene`}
-        aria-hidden={!visit.visible}
+        aria-hidden={!live}
       />
     </div>
   );

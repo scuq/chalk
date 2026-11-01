@@ -34,8 +34,8 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     phase: 129,
     title: "a visitor for the season",
     lines: [
-      "all year, a small animated scene for the season shows in the middle of the top bar now and then -- fireworks at new year, snow in winter, petals in spring, butterflies, fireflies, falling leaves, and ghosts and bats around halloween",
-      "it comes up to 16 times a day, more in the evening, and a phone does not show it",
+      "in each season, a small animated scene shows in the middle of the top bar now and then, and the seasons have breaks of three weeks between them -- fireworks at new year, snow in winter, petals in spring, butterflies, fireflies, falling leaves, and ghosts and bats around halloween",
+      "it comes up to 16 times a day, more in the evening, and a phone does not show it. on the evening of 24 december and on new year's eve it stays up from 20:00 to 05:00",
       "it is on by default, you can turn it off for this device, and the administrator can turn it off for the whole server",
       "it holds still when your system asks for reduced motion",
     ],

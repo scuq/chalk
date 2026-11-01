@@ -1,7 +1,8 @@
 // chalk-web -- 129-1: the peek schedule. 129-7: the daily cap. 129-9: the
 // evening.
 //
-// The scene is not always there. It is a visitor, not furniture. A visit
+// Outside the always-on hours (ALWAYS_ON in seasons.ts), the scene is not
+// there all the time. It is a visitor, not furniture. A visit
 // shows for 45 s to 75 s. Visits are few: at most MAX_VISITS_PER_DAY in one
 // local calendar day. Before EVENING_HOUR, at most MAX_DAYTIME_VISITS of them
 // can start, so a tab that stays open all day does not use up the evening.

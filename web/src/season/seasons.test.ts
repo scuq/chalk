@@ -1,9 +1,10 @@
 // 129-1: the season windows, tested with a fixed clock.
-// 129-8: the rows cover every day of the year, and two seasons have two rows.
+// 129-8: two seasons have two rows. 129-10: the rows leave gaps of 21 days, and
+// ALWAYS_ON lists the hours in which the scene stays up.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { inHours, inWindow, nightFor, seasonFor, SEASONS, type Season } from "./seasons";
+import { ALWAYS_ON, alwaysOn, inHours, inWindow, nightFor, seasonFor, SEASONS, type Season } from "./seasons";
 
 // Local-time constructor, because the registry reads the calendar of the
 // reader.
@@ -11,14 +12,37 @@ const at = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12, 0, 0);
 const spooky = SEASONS.find((s) => s.id === "spooky-season")!;
 const winterfest = SEASONS.find((s) => s.id === "winterfest")!;
 
-test("every day of a leap year and of a common year falls in exactly one row", () => {
+test("no day of a leap year or of a common year falls in two rows", () => {
   for (const year of [2028, 2027]) {
     for (const day = at(year, 1, 1); day.getFullYear() === year; day.setDate(day.getDate() + 1)) {
       const hits = SEASONS.filter((s) => inWindow(day, s));
-      assert.equal(hits.length, 1, `${day.toDateString()} falls in ${hits.length} rows`);
+      assert.ok(hits.length <= 1, `${day.toDateString()} falls in ${hits.length} rows`);
     }
   }
-  assert.equal(seasonFor(at(2028, 2, 29))?.id, "winterfest");
+});
+
+test("the neutral gaps last 21 days, and 29 february falls in one", () => {
+  const gaps: [number, number, number, number][] = [
+    [1, 8, 1, 28],
+    [2, 8, 2, 28],
+    [4, 10, 4, 30],
+    [5, 31, 6, 20],
+    [8, 11, 8, 31],
+    [9, 24, 10, 14],
+    [11, 6, 11, 26],
+    [12, 1, 12, 21],
+  ];
+  for (const [m1, d1, m2, d2] of gaps) {
+    const first = at(2027, m1, d1);
+    const last = at(2027, m2, d2);
+    assert.equal(Math.round((last.getTime() - first.getTime()) / 86_400_000) + 1, 21, `${m1}/${d1}`);
+    for (const day = new Date(first); day <= last; day.setDate(day.getDate() + 1)) {
+      assert.equal(seasonFor(day), null, day.toDateString());
+    }
+    assert.notEqual(seasonFor(new Date(first.getTime() - 86_400_000)), null, `before ${m1}/${d1}`);
+    assert.notEqual(seasonFor(new Date(last.getTime() + 86_400_000)), null, `after ${m2}/${d2}`);
+  }
+  assert.equal(seasonFor(at(2028, 2, 29)), null);
 });
 
 test("the rows run in calendar order and hold the eight seasons", () => {
@@ -38,18 +62,22 @@ test("the rows run in calendar order and hold the eight seasons", () => {
 });
 
 test("each season starts and ends on its calendar dates", () => {
-  assert.equal(seasonFor(at(2026, 10, 14))?.id, "harvest-festival");
-  assert.equal(seasonFor(at(2026, 10, 15))?.id, "spooky-season");
-  assert.equal(seasonFor(at(2026, 11, 5))?.id, "spooky-season");
-  assert.equal(seasonFor(at(2026, 11, 6))?.id, "late-autumn");
-  assert.equal(seasonFor(at(2026, 12, 1))?.id, "winterfest");
-  assert.equal(seasonFor(at(2026, 12, 30))?.id, "winterfest");
-  assert.equal(seasonFor(at(2026, 12, 31))?.id, "new-year");
-  assert.equal(seasonFor(at(2027, 1, 7))?.id, "new-year");
-  assert.equal(seasonFor(at(2027, 1, 8))?.id, "winterfest");
-  assert.equal(seasonFor(at(2027, 2, 28))?.id, "winterfest");
-  assert.equal(seasonFor(at(2027, 3, 1))?.id, "spring-bloom");
-  assert.equal(seasonFor(at(2027, 6, 21))?.id, "midsummer");
+  const rows: [string, number, number, number, number][] = [
+    ["new-year", 1, 1, 1, 7],
+    ["winterfest", 1, 29, 2, 7],
+    ["spring-bloom", 3, 1, 4, 9],
+    ["green-season", 5, 1, 5, 30],
+    ["midsummer", 6, 21, 8, 10],
+    ["harvest-festival", 9, 1, 9, 23],
+    ["spooky-season", 10, 15, 11, 5],
+    ["late-autumn", 11, 27, 11, 30],
+    ["winterfest", 12, 22, 12, 30],
+    ["new-year", 12, 31, 12, 31],
+  ];
+  for (const [id, m1, d1, m2, d2] of rows) {
+    assert.equal(seasonFor(at(2027, m1, d1))?.id, id);
+    assert.equal(seasonFor(at(2027, m2, d2))?.id, id);
+  }
 });
 
 test("the window is year-agnostic and accepts a millisecond timestamp", () => {
@@ -96,5 +124,28 @@ test("a night window lies inside its season", () => {
     if (!s.night) continue;
     assert.ok(inWindow(at(2026, s.night.from[0], s.night.from[1]), s), `${s.id}: night starts outside the season`);
     assert.ok(inWindow(at(2026, s.night.to[0], s.night.to[1]), s), `${s.id}: night ends outside the season`);
+  }
+});
+
+test("the always-on hours run from 20:00 to 05:00 on 24 december and new year's eve", () => {
+  assert.equal(alwaysOn(atH(2026, 12, 24, 19, 59)), false);
+  assert.equal(alwaysOn(atH(2026, 12, 24, 20, 0)), true);
+  assert.equal(alwaysOn(atH(2026, 12, 25, 4, 59)), true);
+  assert.equal(alwaysOn(atH(2026, 12, 25, 5, 0)), false);
+  assert.equal(alwaysOn(atH(2026, 12, 31, 19, 59)), false);
+  assert.equal(alwaysOn(atH(2026, 12, 31, 20, 0)), true);
+  assert.equal(alwaysOn(atH(2027, 1, 1, 0, 0)), true);
+  assert.equal(alwaysOn(atH(2027, 1, 1, 4, 59)), true);
+  assert.equal(alwaysOn(atH(2027, 1, 1, 5, 0)), false);
+  assert.equal(alwaysOn(atH(2026, 12, 25, 20, 0)), false);
+  assert.equal(alwaysOn(atH(2026, 7, 1, 22, 0)), false);
+});
+
+test("every always-on hour falls inside a season", () => {
+  for (const w of ALWAYS_ON) {
+    const [m1, d1] = w.from;
+    const [m2, d2] = w.to;
+    assert.ok(seasonFor(at(2026, m1, d1)), `${m1}/${d1} has no season`);
+    assert.ok(seasonFor(at(2027, m2, d2)), `${m2}/${d2} has no season`);
   }
 });

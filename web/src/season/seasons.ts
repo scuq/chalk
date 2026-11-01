@@ -6,10 +6,11 @@
 // so a test uses a fixed clock and never the real one.
 // The date is local on purpose: a season is a date on the calendar of the
 // reader.
-// The rows of SEASONS cover every day of the year, so a date always has a
-// season. The calendar is written for the Northern Hemisphere. chalk reads
-// only the local date, so a reader in the Southern Hemisphere gets the same
-// calendar.
+// The rows of SEASONS leave gaps of 21 days between the seasons, so a date
+// can have no season. The calendar is written for the Northern Hemisphere.
+// chalk reads only the local date, so a reader in the Southern Hemisphere gets
+// the same calendar.
+// ALWAYS_ON lists the hours in which the scene stays up without a break.
 
 export type SeasonId =
   | "new-year"
@@ -58,18 +59,18 @@ export interface Season extends Window {
   night?: HourWindow;
 }
 
-// The rows run in calendar order. Together they cover all 366 days. Two
-// seasons have two rows because they cross the year boundary: winterfest and
-// new-year. Winterfest ends on 29 February, not on 28 February, so that
-// 29 February in a leap year has a season. The comparison uses month and
-// day only, so this end date is also safe in other years.
+// The rows run in calendar order. Each gap between two rows lasts 21 days in
+// a common year, so chalk is not in a season all year. A date in a gap has no
+// season. 29 February falls in the gap from 8 February to 28 February, so it
+// has no season. Two seasons have two rows: winterfest comes twice in the
+// year, and new-year crosses the year boundary.
 export const SEASONS: Season[] = [
   { id: "new-year", label: "New Year / Fireworks", from: [1, 1], to: [1, 7] },
-  { id: "winterfest", label: "Winterfest", from: [1, 8], to: [2, 29] },
-  { id: "spring-bloom", label: "Spring Bloom", from: [3, 1], to: [4, 30] },
-  { id: "green-season", label: "Green Season", from: [5, 1], to: [6, 20] },
-  { id: "midsummer", label: "Midsummer", from: [6, 21], to: [8, 31] },
-  { id: "harvest-festival", label: "Harvest Festival", from: [9, 1], to: [10, 14] },
+  { id: "winterfest", label: "Winterfest", from: [1, 29], to: [2, 7] },
+  { id: "spring-bloom", label: "Spring Bloom", from: [3, 1], to: [4, 9] },
+  { id: "green-season", label: "Green Season", from: [5, 1], to: [5, 30] },
+  { id: "midsummer", label: "Midsummer", from: [6, 21], to: [8, 10] },
+  { id: "harvest-festival", label: "Harvest Festival", from: [9, 1], to: [9, 23] },
   {
     id: "spooky-season",
     label: "Spooky Season",
@@ -78,9 +79,21 @@ export const SEASONS: Season[] = [
     // Halloween night: the video-tile frame runs from 18:00 on 31 October until 03:00 on 1 November.
     night: { from: [10, 31, 18], to: [11, 1, 3] },
   },
-  { id: "late-autumn", label: "Late Autumn", from: [11, 6], to: [11, 30] },
-  { id: "winterfest", label: "Winterfest", from: [12, 1], to: [12, 30] },
+  { id: "late-autumn", label: "Late Autumn", from: [11, 27], to: [11, 30] },
+  { id: "winterfest", label: "Winterfest", from: [12, 22], to: [12, 30] },
   { id: "new-year", label: "New Year / Fireworks", from: [12, 31], to: [12, 31] },
+];
+
+/**
+ * ALWAYS_ON lists the local hours in which the scene stays up without a break.
+ * The windows are 20:00 on 24 December until 05:00 on 25 December, and 20:00
+ * on 31 December until 05:00 on 1 January. The list is separate from SEASONS
+ * because the second window crosses from the 31 December row into the
+ * 1 January row. A field on a row would need two copies of it.
+ */
+export const ALWAYS_ON: HourWindow[] = [
+  { from: [12, 24, 20], to: [12, 25, 5] },
+  { from: [12, 31, 20], to: [1, 1, 5] },
 ];
 
 function dayKey([month, day]: MonthDay): number {
@@ -102,8 +115,8 @@ export function inWindow(now: number | Date, w: Window): boolean {
 
 /**
  * seasonFor returns the season that holds the local calendar date of `now`,
- * or null when no season does. With the default SEASONS it never returns
- * null.
+ * or null when no season does. With the default SEASONS a date in a gap
+ * returns null. This is a normal result.
  */
 export function seasonFor(now: number | Date, seasons: Season[] = SEASONS): Season | null {
   for (const s of seasons) {
@@ -135,4 +148,12 @@ export function inHours(now: number | Date, w: HourWindow): boolean {
  */
 export function nightFor(season: Season, now: number | Date): boolean {
   return season.night ? inHours(now, season.night) : false;
+}
+
+/**
+ * alwaysOn reports whether the local time of `now` lies inside one of the
+ * windows. The `from` hour is inside. The `to` hour is outside.
+ */
+export function alwaysOn(now: number | Date, windows: HourWindow[] = ALWAYS_ON): boolean {
+  return windows.some((w) => inHours(now, w));
 }

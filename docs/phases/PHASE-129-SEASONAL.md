@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a scene for the season
 
-**Status:** built, 129-1 – 129-9. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7, 129-8, and 129-9 are not yet in a release. 129-8 and 129-9 land together.
+**Status:** built, 129-1 – 129-10. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-10 are not yet in a release. 129-8 to 129-10 land together.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -11,8 +11,9 @@ on by default. An administrator can turn it off for the whole server.
 
 The visitor began as a ghost for Halloween (129-1) and grew into a set of
 figures for two seasons (129-4, 129-5). 129-8 and 129-9 replaced the figures
-with an animated pixel scene for each of eight seasons. The seasons cover the
-whole year.
+with an animated pixel scene for each of eight seasons. 129-10 left gaps
+between the seasons, so chalk is not in a season all year, and it added
+always-on hours for two evenings.
 
 ## The design
 
@@ -21,27 +22,41 @@ whole year.
 `web/src/season/seasons.ts` holds `SEASONS`, a table of 10 rows for eight
 seasons. Each row has an `id`, a `label`, and a window of 1-based month and day
 pairs.
-The rows cover every day of the year:
+The rows do not cover the whole year (129-10):
 
 - New Year: 31 December, and 1 to 7 January
-- Winterfest: 8 January to 29 February, and 1 to 30 December
-- Spring Bloom: 1 March to 30 April
-- Green Season: 1 May to 20 June
-- Midsummer: 21 June to 31 August
-- Harvest Festival: 1 September to 14 October
+- Winterfest: 29 January to 7 February, and 22 to 30 December
+- Spring Bloom: 1 March to 9 April
+- Green Season: 1 to 30 May
+- Midsummer: 21 June to 10 August
+- Harvest Festival: 1 to 23 September
 - Spooky Season: 15 October to 5 November
-- Late Autumn: 6 to 30 November
+- Late Autumn: 27 to 30 November
 
-New Year and Winterfest have two rows each, because they cross the year
-boundary. Two rows can share an `id`.
-The first Winterfest row ends on 29 February and not on 28 February, so
-29 February in a leap year has a season.
-`inWindow` compares month and day keys, so the end date is safe in other
-years.
+Between two seasons is a gap of 21 days in a common year. The gaps are:
+
+- 8 to 28 January
+- 8 to 28 February
+- 10 to 30 April
+- 31 May to 20 June
+- 11 to 31 August
+- 24 September to 14 October
+- 6 to 26 November
+- 1 to 21 December
+
+A date in a gap has no season, and chalk shows no scene on it. The user asked
+for this, so that chalk is not always in a season.
+29 February falls in the gap from 8 February to 28 February, so it has no
+season.
+
+Winterfest has two rows because it comes twice in the year. New Year has two
+rows because it crosses the year boundary. Two rows can share an `id`.
+`inWindow` compares month and day keys, so the rows work in all years.
 
 `seasonFor(now)` is a pure function. It takes the clock as a parameter and
-reads the local calendar date of the reader. It ignores the year. With the
-default `SEASONS` it never returns null.
+reads the local calendar date of the reader. It ignores the year. It returns
+null for a date in no row. With the default `SEASONS` that is a normal result,
+and `App.tsx` mounts no scene and spends no visit.
 `inWindow(now, window)` is the shared window test. It still handles a window
 whose end comes before its start, which wraps the year boundary.
 `label` is the name of the season for a person. The scene also uses it as the
@@ -52,8 +67,34 @@ local date, so a reader in the Southern Hemisphere gets the same calendar.
 
 Before 129-8 the registry had two windows: Halloween from 24 October to
 1 November, and winter from 1 December to 6 January. Winter also had an `aura`
-window. 129-8 replaced both windows with the rows above, and 129-9 removed the
-`aura` window.
+window. 129-8 replaced both windows with a calendar of rows, and 129-9 removed
+the `aura` window. 129-10 shortened the rows and left the gaps.
+
+### The always-on hours (129-10)
+
+`ALWAYS_ON` in `seasons.ts` is a list of two `HourWindow` values, by the local
+clock:
+
+- 20:00 on 24 December until 05:00 on 25 December
+- 20:00 on 31 December until 05:00 on 1 January
+
+`alwaysOn(now, windows)` reports whether `now` lies inside one of them. The
+`from` hour is inside and the `to` hour is outside.
+
+During these hours the scene stays up without a break. `App.tsx` passes
+`always={alwaysOn(seasonNow)}` to `SeasonScene`. In `SeasonScene`, `live` is
+`always || visit.visible`. The schedule claims no visit while `always` is true,
+so the daily caps do not count these hours. Outside the hours the visits and the
+caps work as before, also on the same day.
+
+The same gates apply. A phone width shows no scene, and the device switch and
+the server switch turn it off. With reduced motion the scene holds one frame
+for the hours. Both windows fall on dates that have a row, so the calendar gate
+is open in them.
+
+The list is separate from the rows on purpose. The second window crosses from
+the 31 December row into the 1 January row. A field on a row would need two
+copies of the window.
 
 ### The scene peeks, it is not furniture
 
@@ -172,7 +213,8 @@ Unless the system asks for reduced motion, it then starts a
 `requestAnimationFrame` loop. The loop steps and paints the scene at `FPS`.
 A `ResizeObserver` resizes the scene when the canvas changes size.
 
-The loop runs only during a visit. When the visit ends, it stops `FADE_MS`
+The loop runs only while the canvas is up: during a visit, and in the always-on
+hours. When the visit ends, it stops `FADE_MS`
 later, and `FADE_MS` is 1200. This is the time of the CSS fade-out. If the loop
 stopped first, the scene would freeze in the picture while it fades.
 
@@ -182,14 +224,15 @@ holds still, stays true.
 
 The canvas has `role="img"` and the aria-label "<label>, an animated pixel
 scene". It has `aria-hidden` while it is hidden. It sets `data-season` to the
-season id and `data-visible` while a visit shows.
+season id and `data-visible` while the canvas is up, in a visit or in the
+always-on hours.
 
 ### The mount
 
 `App.tsx` mounts `SeasonScene` in the header, between `.chalk-header-left` and
 `StatusBar`. Three gates and one width rule decide if it mounts:
 
-- The calendar says it is a season (`seasonFor`).
+- The calendar says it is a season (`seasonFor` does not return null).
 - The device switch is on.
 - The server switch is on.
 - The window is wider than 767 px (`!isMobile`).
@@ -218,6 +261,8 @@ on a phone. This is a recorded trade-off.
 
 `App.tsx` reads the date again once a minute with `setInterval`. A tab that
 stays open over midnight crosses the edge of a season without a reload.
+The same minute clock has three uses: the season, the night frame, and the
+always-on hours. The always-on hours start within a minute of 20:00.
 
 ### The motion
 
@@ -371,7 +416,16 @@ each reload and each tab starts its own count.
 A server-side count of visits (129-7). The scene is client presentation, and
 a limit for each device is enough for a decoration.
 
-The scene always on (129-9). The 12 fps loop runs only during a visit.
+The scene always on (129-9). The 12 fps loop runs only during a visit. 129-10
+made two exceptions, the always-on hours.
+
+A field on a `Season` row for the always-on hours (129-10). The second window
+crosses from the 31 December row into the 1 January row, so the field would
+need two copies of it.
+
+The always-on hours as a visit (129-10). A visit has a length of 45 s to 75 s
+and spends the daily caps. A span of nine hours would use up the caps, and the
+other visits of the day would not come.
 
 The title and the solid panel of the reference scene (129-9). They do not
 blend with all 15 themes.
@@ -428,7 +482,8 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
 - **129-8 — the calendar of eight seasons.** `SEASONS` in `season/seasons.ts`
   now has 10 rows for eight seasons that cover every day of the year, each with
   a `label`. The night frame moved to the Spooky Season row, so
-  `data-season-night` is `spooky-season`. Tests in `seasons.test.ts`.
+  `data-season-night` is `spooky-season`. Tests in `seasons.test.ts`. 129-10
+  shortened the rows and left the gaps.
 - **129-9 — the scene.** `season/scene.ts` and `scene.test.ts`. The new
   `SeasonScene.tsx`, which replaces `SeasonFigure.tsx`, and its mount in
   `App.tsx` for a wide screen only. The strip and the canvas in `theme.css`.
@@ -436,6 +491,12 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
   `MAX_DAYTIME_VISITS`, `EVENING_HOUR`, and `EVENING_GAP_MS`. New keywords in
   `settings-nav.ts`. New text in `ProfilePanel.tsx`, `AdminSettingsTab.tsx`,
   and `whats-new.ts`. The removals are in "What was rejected".
+
+- **129-10 — gaps and always-on hours.** The rows of `SEASONS` now leave gaps
+  of 21 days, so a date can have no season. `ALWAYS_ON` and `alwaysOn` in
+  `season/seasons.ts`. The `always` prop and `live` in `SeasonScene.tsx`, and
+  the `alwaysOn` call in `App.tsx`. Text in `whats-new.ts`. Tests in
+  `seasons.test.ts`.
 
 ## Trade-offs
 
@@ -462,8 +523,14 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
    Hemisphere sees the same season on the same date.
 8. The loop of the scene runs at 12 fps during a visit and for 1.2 s after it.
    This costs CPU for about a minute each visit, and nothing between visits.
-9. 129-9 rewrote the what's-new entry of phase 129 in place. A person who
-   already marked it as read does not see the new text.
+9. 129-9 and 129-10 rewrote the what's-new entry of phase 129 in place. A person
+   who already marked it as read does not see the new text.
+10. In the always-on hours the 12 fps loop runs for nine hours while the tab is
+    visible. `requestAnimationFrame` pauses in a hidden tab. This costs CPU
+    for nine hours on two evenings of the year.
+11. The always-on hours follow the Northern Hemisphere calendar, like the rows. A reader in the Southern Hemisphere sees the scene in summer on those
+    evenings.
+12. A phone width shows no scene in the always-on hours either.
 
 ## Verification
 
@@ -489,10 +556,13 @@ It also made these checks:
 - Reduced motion holds one frame
 - No page errors
 
+A second probe ran on 2026-11-02. It checked a neutral date, a season date,
+the four sides of the always-on hours, and a date just before them. It passed.
+
 ### Manual checklist for the live stack
 
-Use two users, Alice and Bob, and a date inside a season. Every date is inside
-a season.
+Use two users, Alice and Bob, and a date inside a season. A date in a gap has
+no season (see item 13).
 
 1. Clear the key `chalk.season.visits.v1` from localStorage and reload.
    Check that the scene is absent for the first 4 s after a text channel
@@ -531,8 +601,11 @@ a season.
     - 28 October: Spooky Season, a graveyard with a ghost and bats
     - 10 November: Late Autumn, bare trees with falling leaves
     - 30 December and 31 December: Winterfest, then New Year
-13. Set the system date to 29 February of a leap year. Check that the scene
-    shows Winterfest.
+13. Set the system date to a date in a gap, for example 15 April, 15 November,
+    and 10 December. Check that no scene mounts and that the count in
+    `chalk.season.visits.v1` does not change.
+    Set the system date to 29 February of a leap year. Check that no scene
+    shows, because the date is in the gap from 8 February to 28 February.
 14. Switch between a dark theme and a light theme, for example `warmwhite`.
     Check that the scene shows on both with no panel behind it.
 15. Check that two visits make a new scene: the walkers enter from the edges
@@ -552,13 +625,24 @@ a season.
     for example `2026-11-2`. Before 18:00 local time, check that no visit
     comes. After 18:00, check that a visit comes within a minute.
 24. Clear the key `chalk.season.visits.v1` from localStorage. Check that the next visit comes within a minute. This is the way to check a visit by hand.
+25. Set the system clock to 19:59 on 24 December. Check that the scene shows
+    only as a visit. Within a minute after 20:00, check that the scene stays up
+    without a break.
+26. Set the system clock to 04:59 on 25 December. Check that the scene is up.
+    After 05:00, check that it goes, and that visits work as before.
+27. Repeat items 25 and 26 for 31 December, with 05:00 on 1 January as the end.
+    Check that the scene stays up across midnight.
+28. In the always-on hours, check that the count in `chalk.season.visits.v1`
+    does not change, that a phone width shows no scene, and that a device with
+    the switch off shows no scene.
 
 ## How to add a season
 
 1. Add a row to `SEASONS` in `web/src/season/seasons.ts`.
    It has an `id`, a `label`, a `from` date, and a `to` date.
-   The rows must stay in calendar order and cover every day of the year with
-   no overlap. Shorten the row of the season whose days you take.
+   The rows must stay in calendar order with no overlap. Leave a gap of
+   21 days between two seasons, or shorten the row of the season whose days you
+   take.
    A season can have more than one row. The rows then share the `id`.
 2. Add the new id to `SeasonId` in `seasons.ts`.
 3. Add an entry to `THEMES` in `web/src/season/scene.ts`, with the same key.
@@ -571,7 +655,8 @@ a season.
    It also needs colours in the `setNightFrame` call in `App.tsx`.
    `theme-season.test.ts` fails if a season has a `night` window and no such rule.
 
-`seasons.test.ts` checks that every day falls in exactly one row.
+`seasons.test.ts` checks that no day falls in two rows and that each gap is a
+date in no row.
 `scene.test.ts` checks that `THEMES` and `SEASONS` list the same ids.
 
 The device switch, the server switch, the schedule, the component, and the
