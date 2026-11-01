@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.9.1 — 1 November 2026 — Guest rooms read right again, and quick switches on a phone land on new messages
 
 ### Fixed
 - On a phone, you can switch quickly from one conversation to another and back. Before, the view could stay on the messages it showed before, and the new messages were below the screen. It now lands on the new messages, or on the "new messages" line if some are unread.
