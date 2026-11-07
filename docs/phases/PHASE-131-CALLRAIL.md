@@ -1,6 +1,6 @@
 # Phase 131 — the call rail: every participant in a narrow column
 
-**Status:** built, 131-1 to 131-7 (2026-11-08). Unit-tested by
+**Status:** built, 131-1 to 131-8 (2026-11-08). Unit-tested by
 `web/src/voice/rail-tiles.test.ts`, the `roomCardRows` cases in
 `web/src/chat/hovercard.test.ts`, and the rewritten third test in
 `web/src/theme-sidebar.test.ts`, which asserts the CSS declarations against the
@@ -141,8 +141,9 @@ join.
 ### The record light (131-4)
 
 A voice room that has people in it shows a red dot in the glyph box, in place
-of the speaker glyph. The dot blinks slowly, with a 2.4 s cycle from opacity 1
-to 0.3. It says "live" at a glance, where a count alone does not.
+of the speaker glyph. The dot blinks hard like the record light of a camera, with
+a 1.15 s cycle. It is fully on for the first half and fully off for the second
+half, with `steps(1, end)` and no fade (131-8). It says "live" at a glance, where a count alone does not.
 The count badge at the end of the row stays and gives the number.
 The dot keeps its red on the active row. If the user sets
 `prefers-reduced-motion: reduce`, the dot does not blink.
@@ -260,6 +261,13 @@ The live probe ran on 131-7. The result is in the status header.
   `VoiceDock`, and the phone-only footer bar. The rail test in
   `theme-sidebar.test.ts` asserts the new grid areas, the one-column footer,
   the head, and the leave rule.
+
+- **131-8 — the light blinks hard.** The `chalk-rec-blink` keyframes and the
+  `animation` line of `chalk-chglyph--live` in `theme.css`. The first design
+  faded the dot over 2.4 s. A user-supplied sketch of the light had the text
+  "REC". The text is not in the glyph box, because the box has no room for it.
+  The stylesheet test in `theme-sidebar.test.ts` covers the slice. A CSS timing
+  change needs no live probe. Built 2026-11-08.
 
 ## Left open
 

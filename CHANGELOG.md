@@ -16,6 +16,7 @@ The engineering-level history (which slice shipped what) lives in
 - If the longest friend name fits half the sidebar, the friends list shows in two columns. If it does not fit, the list stays in one column. To turn the columns off, clear **show friends in two columns** under appearance in the settings. The device keeps the choice.
 
 ### Changed
+- A voice room that has people in it shows a light in front of its name. The light now blinks on and off like the record light of a camera. It no longer fades.
 - Friend rows in the sidebar take less vertical space. A list of friends now leaves more room for the channels.
 - In a call on a desktop, the column left of the sidebar shows the call timer at the top. At the bottom it has every call control and the leave button, always in view. The bar under the channel list and the box at its bottom are gone, and the channel list runs to the bottom of the window. A click on the timer takes you back to the call room. The column shows the people only while the call room is not on screen. The phone keeps its bar.
 - A tile in the call column shows the first letter of the name until the picture loads, so it is never blank.
