@@ -92,6 +92,11 @@ its test are gone, and the dock is one row. The floors of this phase stay. The
 preview moved into the call rail, which is a column of its own. See
 [PHASE-131-CALLRAIL.md](PHASE-131-CALLRAIL.md).
 
+Since 131-7 the dock box does not render on desktop, so the sidebar has no
+footer there. The roster runs to the bottom of the window, and the floors still
+protect the channel list on a short window. The dock box renders on the phone
+only.
+
 ## Manual checklist
 
 - [ ] Chrome on a real 13-inch laptop at its native size, camera on during

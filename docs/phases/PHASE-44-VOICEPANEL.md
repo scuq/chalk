@@ -57,3 +57,12 @@ the mic had before 63-3: Brave re-randomizes deviceIds per session and
 late-plugged devices go unmatched. Fix the same way — persist the label, resolve
 via `voice/device-resolve.ts` at capture time. Listed in `docs/open-items.md`
 under deferred cleanup.
+
+## Since 131-7
+
+The global voice panel under the channel list renders on the phone only. On
+desktop the call rail carries mute, deafen, camera, share, settings, and
+leave, and only that one set of controls is on screen. The argument of 44-2,
+that you set the toggles before you join, holds on the phone only. On desktop
+the pre-join defaults are in settings, voice. See
+[PHASE-131-CALLRAIL.md](PHASE-131-CALLRAIL.md).

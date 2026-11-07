@@ -1,5 +1,7 @@
-// VoiceDock (Phase 30, slices 30-5c + 30-5f): the Discord bottom-left
-// connection panel, mounted ONCE at the app level (bottom of the sidebar).
+// VoiceDock (Phase 30, slices 30-5c + 30-5f): the connection panel, mounted
+// ONCE at the app level. Since 131-7 the visible box (job 2) is the phone's:
+// it is in the sidebar drawer. On desktop the call rail carries the duration,
+// the controls, and leave, and only the sinks and listeners render here.
 //
 // Jobs:
 //   1. AUDIO. The hidden <audio> sinks for every remote peer live HERE, not
@@ -69,9 +71,13 @@ export function useVoiceRoom(): string | null {
 
 interface Props {
   onJumpToChannel: (channelID: string) => void;
+  /** 131-7: render the connection box. Off on desktop, where the call rail
+   * carries the duration, the controls and leave. The sinks, the shortcut
+   * and the listeners run either way. */
+  bar?: boolean;
 }
 
-export function VoiceDock({ onJumpToChannel }: Props) {
+export function VoiceDock({ onJumpToChannel, bar = true }: Props) {
   const snap = useVoiceSession();
   const [, setTick] = useState(0);
 
@@ -169,7 +175,7 @@ export function VoiceDock({ onJumpToChannel }: Props) {
 
       {/* Job 2: the connection bar. One row since 131-2: the room, how
           long, the live dot, and leave. The rail shows who is there. */}
-      {snap.phase !== "idle" && (
+      {bar && snap.phase !== "idle" && (
         <div class="chalk-voice-dock" data-testid="voice-dock">
           <div class="chalk-voice-dock-row">
             <button
@@ -206,10 +212,10 @@ export function VoiceDock({ onJumpToChannel }: Props) {
               />
             )}
             {/* 44-2: mute and deafen used to live here too. They are global
-                now, and the cluster that owns them sits directly below this
-                dock in the same column -- two identical mute buttons a
-                centimetre apart is worse than one. The dock keeps what is
-                genuinely about THIS call: where it is, how long, and leaving. */}
+                now, and the phone's control bar owns them -- two identical
+                mute buttons a centimetre apart is worse than one. The dock
+                keeps what is genuinely about THIS call: where it is, how
+                long, and leaving. Since 131-7 this box is the phone's. */}
             <button
               class="chalk-btn chalk-voice-ctl chalk-voice-ctl--leave"
               type="button"

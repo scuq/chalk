@@ -199,3 +199,10 @@ rewritten:
   voice dock (30-5c) is what tells you where you are, and it is above the
   footer on every screen, so this has not bitten — but "the room you are in
   sorts to the top, or pins itself open" is the cheap fix if it does.
+
+## Since 131-7
+
+The controls panel renders on the phone only. On desktop the call rail carries
+the controls, and the roster column has no panel. The remark above that the
+panel costs a corner of the roster column on a desktop describes the state
+before 131-7. See [PHASE-131-CALLRAIL.md](PHASE-131-CALLRAIL.md).

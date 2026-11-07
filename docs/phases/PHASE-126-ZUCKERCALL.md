@@ -158,3 +158,11 @@ pass against the previous build.
 - [ ] Tap the room name in the bar. You return to the room.
 - [ ] Tap leave. The bar disappears and the voice controls band hides.
 - [ ] Android Chrome, the same five steps.
+
+## Since 131-7
+
+The dock box renders on the phone only. On desktop the call rail carries the
+duration, the controls, and leave. The dock component still mounts on both and
+owns the audio sinks, so the decision above stands: the bar of this phase
+reads the same session snapshot. See
+[PHASE-131-CALLRAIL.md](PHASE-131-CALLRAIL.md).
