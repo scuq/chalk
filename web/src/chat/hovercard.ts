@@ -2,11 +2,12 @@
 //
 // The card itself is components/HoverCard.tsx; everything that decides which
 // of its lines exist and what they read lives here, where it can be tested
-// without a browser. Two builders, one per surface: a roster row and a sender
-// name in the message feed. They agree on the shape (PersonCardInfo) and
-// differ in what they know -- the roster knows the friend and whether a DM
-// exists, the feed knows the device a message came from and nothing about
-// friendship.
+// without a browser. Two builders make a person card, one per surface: a
+// roster row and a sender name in the message feed. They agree on the shape
+// (PersonCardInfo) and differ in what they know -- the roster knows the
+// friend and whether a DM exists, the feed knows the device a message came
+// from and nothing about friendship. A third builder, roomCardRows (131-3),
+// makes the rows of a room card for a voice row.
 import { fmtRelative } from "./reltime";
 import { presenceLabel } from "./presence";
 
@@ -170,4 +171,64 @@ export function senderCardInfo(args: {
     hint: null,
     meta: ids.length > 0 ? ids.join(" · ") : "unknown sender",
   };
+}
+
+// ---- 131-3: the room card ---------------------------------------------------
+//
+// The sidebar has no name list under a voice room. A hover over the row
+// shows the names in a card. This builder decides the rows; the card is
+// RoomCard in components/HoverCard.tsx.
+
+export interface RoomCardRow {
+  key: string;
+  name: string;
+  hue: number | null;
+  self: boolean;
+  muted: boolean;
+  deafened: boolean;
+  camera: boolean;
+  screen: boolean;
+}
+
+/** The card lists this many people, then one line with the rest as a count. */
+export const ROOM_CARD_MAX_ROWS = 12;
+
+export interface RoomOccupant {
+  userID: string;
+  deviceID: string;
+  muted: boolean;
+  videoOn: boolean;
+  screenOn: boolean;
+  deafened: boolean;
+}
+
+// roomCardRows builds the rows of a room card: you first, then the roster in
+// its own order. A person the member list does not name shows a userID slice
+// and no tint, the same fallback occupantName uses.
+export function roomCardRows(args: {
+  roster: RoomOccupant[];
+  members: { userID: string; handle: string }[];
+  ownUserID: string | null;
+  selfHue: number | null;
+  hueForHandle?: (handle: string) => number | null | undefined;
+}): RoomCardRow[] {
+  const handleOf = (userID: string): string =>
+    args.members.find((m) => m.userID === userID)?.handle || "";
+  const rowOf = (p: RoomOccupant): RoomCardRow => {
+    const self = !!args.ownUserID && p.userID === args.ownUserID;
+    const handle = handleOf(p.userID);
+    return {
+      key: p.userID + ":" + p.deviceID,
+      name: self ? "you" : handle || p.userID.slice(0, 8),
+      hue: self ? args.selfHue : handle ? (args.hueForHandle?.(handle) ?? null) : null,
+      self,
+      muted: p.muted,
+      deafened: p.deafened,
+      camera: p.videoOn,
+      screen: p.screenOn,
+    };
+  };
+  const own = args.roster.filter((p) => !!args.ownUserID && p.userID === args.ownUserID);
+  const rest = args.roster.filter((p) => !(!!args.ownUserID && p.userID === args.ownUserID));
+  return [...own, ...rest].map(rowOf);
 }

@@ -32,9 +32,11 @@ parking and threads:
 - **The section only exists while there is a voice room to show** — no empty
   "voice" header for servers that never use voice.
 - **One row implementation.** The channel-row JSX (glyph, expiry badge,
-  occupant count, unread dot, occupant sublist, context menu, long-press) was
+  occupant count, unread dot, context menu, long-press) was
   extracted into a `channelRow` closure used by both lists, so the two can
-  never drift apart.
+  never drift apart. The row also had a list of the people in the room. 131-3
+  removed it. The row keeps the count badge, and a room card on hover lists
+  the people. See [PHASE-131-CALLRAIL.md](PHASE-131-CALLRAIL.md).
 - **Hidden channels are untouched.** 78-2's shelf keeps holding both kinds,
   last in the channels section; hiding a voice room removes it from the voice
   section like it removed it from the roster before.

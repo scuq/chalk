@@ -1,10 +1,11 @@
 // chalk-web -- the hover card (92-1, generalised in 92-4).
 //
-// One tooltip with two homes: a desktop roster row, and a sender name in the
-// message feed. Both open it on a deliberate rest of the pointer, both anchor
-// it to the element rather than to the cursor -- a card that follows mouse
-// jitter is harder to read than one that stays put -- and both clamp it into
-// the viewport the way the sidebar menus do.
+// One tooltip with three homes: a desktop roster row, a sender name in the
+// message feed, and a voice room row in the sidebar (the room card, 131-3).
+// All three open it on a deliberate rest of the pointer, all anchor it to the
+// element rather than to the cursor -- a card that follows mouse jitter is
+// harder to read than one that stays put -- and all clamp it into the
+// viewport the way the sidebar menus do.
 //
 // Two properties of the CSS are load-bearing. `position: fixed` gets the card
 // out of the sidebar's and the feed's scroll containers, which would
@@ -15,13 +16,15 @@
 //
 // Touch never opens it. On the roster a long press is already the nick menu
 // (9.7f), and in the feed a long press is already the message menu; a tooltip
-// has nothing to add to a gesture budget that is spent.
+// has nothing to add to a gesture budget that is spent. The voice row has no
+// touch form either: the count badge stays, and the stage lists the names.
 
 import type { ComponentChildren } from "preact"; // 112-4
 import { useEffect, useRef, useState } from "preact/hooks";
 import { nickTintStyle } from "../chat/nickcolor";
 import { presenceClass } from "../chat/presence";
-import type { PersonCardInfo } from "../chat/hovercard";
+import { ROOM_CARD_MAX_ROWS, type PersonCardInfo, type RoomCardRow } from "../chat/hovercard";
+import { CamIcon, DeafIcon, MicOffIcon, ScreenIcon } from "./VoiceBadges"; // 131-3
 
 // How long the pointer must rest before the card appears. Keyboard focus
 // passes 0 -- tabbing to a row is already deliberate.
@@ -49,10 +52,10 @@ export interface OpenCard<T> {
   y: number;
 }
 
-function cardPosition(anchor: HTMLElement, placement: CardPlacement) {
+function cardPosition(anchor: HTMLElement, placement: CardPlacement, heightPX: number) {
   const r = anchor.getBoundingClientRect();
   const maxX = Math.max(0, window.innerWidth - CARD_W);
-  const maxY = Math.max(0, window.innerHeight - CARD_H);
+  const maxY = Math.max(0, window.innerHeight - heightPX);
   return placement === "below"
     ? { x: Math.min(r.left, maxX), y: Math.min(r.bottom + 4, maxY) }
     : { x: Math.min(r.right + GAP, maxX), y: Math.min(r.top, maxY) };
@@ -76,14 +79,18 @@ export function useHoverCard<T>() {
     setCard(null);
   };
 
+  // 131-3: `heightPX` is the clamp's estimate of the card's height. The
+  // person card is one size; the room card grows with the room, and a tall
+  // card clamped as a short one would run off the bottom of the window.
   const arm = (
     data: T,
     anchor: HTMLElement,
     delayMS: number,
     placement: CardPlacement = "right",
+    heightPX: number = CARD_H,
   ) => {
     close();
-    const at = cardPosition(anchor, placement);
+    const at = cardPosition(anchor, placement, heightPX);
     timer.current = window.setTimeout(() => {
       timer.current = null;
       setCard({ data, ...at });
@@ -162,6 +169,56 @@ export function PersonCard({
       {info.seen && <div class="chalk-friend-card-seen">{info.seen}</div>}
       {info.hint && <div class="chalk-friend-card-hint">{info.hint}</div>}
       {info.meta && <div class="chalk-friend-card-meta">{info.meta}</div>}
+    </div>
+  );
+}
+
+// 131-3: the room card. The sidebar's card frame, with one row per person in
+// a voice room instead of one person's lines. Rows past the cap fold into a
+// count, so a crowded room stays a card and not a column.
+const ROOM_ROW_H = 18;
+
+/** roomCardHeight estimates the card's height for the clamp. */
+export function roomCardHeight(count: number): number {
+  const rows = Math.min(count, ROOM_CARD_MAX_ROWS) + (count > ROOM_CARD_MAX_ROWS ? 1 : 0);
+  return GAP * 2 + ROOM_ROW_H + 4 + rows * ROOM_ROW_H;
+}
+
+export function RoomCard({
+  x,
+  y,
+  rows,
+  testID,
+}: {
+  x: number;
+  y: number;
+  rows: RoomCardRow[];
+  testID: string;
+}) {
+  const shown = rows.slice(0, ROOM_CARD_MAX_ROWS);
+  const more = rows.length - shown.length;
+  return (
+    <div
+      class="chalk-friend-card chalk-room-card"
+      style={`left:${x}px;top:${y}px`}
+      data-testid={testID}
+      role="tooltip"
+    >
+      <div class="chalk-room-card-title">{rows.length} in voice</div>
+      {shown.map((r) => (
+        <div class="chalk-room-card-row" key={r.key} data-user-id={r.key}>
+          <span
+            class={`chalk-room-card-name ${r.hue !== null ? "chalk-nick-tinted" : ""}`}
+            style={r.hue !== null ? nickTintStyle(r.hue) : undefined}
+          >
+            {r.name}
+          </span>
+          {r.deafened ? <DeafIcon /> : r.muted ? <MicOffIcon /> : null}
+          {r.camera && <CamIcon />}
+          {r.screen && <ScreenIcon />}
+        </div>
+      ))}
+      {more > 0 && <div class="chalk-room-card-more">+{more} more</div>}
     </div>
   );
 }

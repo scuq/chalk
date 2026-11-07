@@ -226,7 +226,8 @@ it on `:focus-visible`.
   an id the map has never seen, and a renamed user's id is one it has. A
   reload gets it. Fixing it properly means the server telling us, which is the
   wire change 92-5 declined.
-- The members panel, the voice-room occupant list and the reaction-who card
-  name people without a hover card. They are all untruncated, so none of them
-  has the problem 92-6 solved; they would be a consistency argument, not a
-  legibility one.
+- The members panel and the reaction-who card name people without a hover
+  card. They are both untruncated, so neither has the problem 92-6 solved; they
+  would be a consistency argument, not a legibility one. The voice-room
+  occupant list is gone since 131-3. A hover card on the voice row now lists
+  the people in the room.

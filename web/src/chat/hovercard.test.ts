@@ -197,3 +197,78 @@ test("your own card drops a display name that only repeats the handle", () => {
     "away",
   );
 });
+
+// ---- 131-3: the room card --------------------------------------------------
+
+import { ROOM_CARD_MAX_ROWS, roomCardRows } from "./hovercard";
+
+const occupant = (userID: string, over: Partial<Parameters<typeof roomCardRows>[0]["roster"][number]> = {}) => ({
+  userID,
+  deviceID: "d1",
+  muted: false,
+  videoOn: false,
+  screenOn: false,
+  deafened: false,
+  ...over,
+});
+
+test("a room card lists you first, then the roster in its order", () => {
+  const rows = roomCardRows({
+    roster: [occupant("u-bob"), occupant("u-me"), occupant("u-carol")],
+    members: [
+      { userID: "u-bob", handle: "bob" },
+      { userID: "u-me", handle: "me" },
+      { userID: "u-carol", handle: "carol" },
+    ],
+    ownUserID: "u-me",
+    selfHue: 120,
+    hueForHandle: (h) => (h === "bob" ? 30 : null),
+  });
+  assert.deepEqual(
+    rows.map((r) => r.name),
+    ["you", "bob", "carol"],
+  );
+  assert.equal(rows[0].self, true);
+  assert.equal(rows[0].hue, 120, "your row takes your own hue");
+  assert.equal(rows[1].hue, 30, "a friend's row takes the handle's hue");
+  assert.equal(rows[2].hue, null, "no pick means no tint");
+});
+
+test("a room card carries the flags of each person", () => {
+  const rows = roomCardRows({
+    roster: [
+      occupant("u-a", { muted: true, deafened: true }),
+      occupant("u-b", { videoOn: true, screenOn: true }),
+    ],
+    members: [
+      { userID: "u-a", handle: "a" },
+      { userID: "u-b", handle: "b" },
+    ],
+    ownUserID: null,
+    selfHue: null,
+  });
+  assert.deepEqual(
+    rows.map((r) => [r.muted, r.deafened, r.camera, r.screen]),
+    [
+      [true, true, false, false],
+      [false, false, true, true],
+    ],
+  );
+});
+
+test("a person the member list does not name shows a userID slice and no tint", () => {
+  const rows = roomCardRows({
+    roster: [occupant("0123456789abcdef")],
+    members: [],
+    ownUserID: "someone-else",
+    selfHue: 200,
+    hueForHandle: () => 99,
+  });
+  assert.equal(rows[0].name, "01234567");
+  assert.equal(rows[0].hue, null);
+  assert.equal(rows[0].self, false);
+});
+
+test("the card's row cap is a dozen", () => {
+  assert.equal(ROOM_CARD_MAX_ROWS, 12);
+});

@@ -2,8 +2,9 @@
 // Phase 9.6c: presence dots, @ prefix dropped from sidebar roster.
 // Phase 30 (30-5): Discord-style channel rows. Text channels carry a "❯"
 // prompt glyph (the terminal aesthetic's answer to "#"); voice channels
-// carry "▶" plus a LIVE occupant sublist -- who is in the room right now,
-// with mute / camera / screen badges, visible without entering the channel.
+// carry "▶" and a count badge of who is in the room right now. Since 131-3
+// the names and their mute / camera / screen badges show in a room card on
+// hover (RoomCard), not in a list under the row.
 // Occupancy is reducer-owned (voiceRosters): seeded by a voice_roster
 // request per voice channel after the channel list loads, kept current by
 // joined/left/state pushes.
@@ -37,6 +38,7 @@ import {
   GROUP_SORT_LABEL,
   moveInList,
   orderChannels,
+  holdOrder, // 114-6
   orderGroups,
   placeInList,
   type ChannelSortMode,
@@ -65,7 +67,8 @@ import type {
 } from "../state/types";
 import { rosterCardInfo } from "../chat/hovercard";
 import { presenceClass, presenceLabel } from "../chat/presence";
-import { HOVER_CARD_DELAY_MS, PersonCard, useHoverCard } from "./HoverCard";
+import { HOVER_CARD_DELAY_MS, PersonCard, RoomCard, roomCardHeight, useHoverCard } from "./HoverCard";
+import { roomCardRows } from "../chat/hovercard"; // 131-3
 import type { DisplayNameMap } from "../auth/display-names";
 
 // 33-2: the unread marker. Extracted to UnreadDot.tsx in 62-6 so the
@@ -316,9 +319,10 @@ function findDMWithFriend(
 }
 
 // 30-5: resolve an occupant's display name from the channel's member list.
-// "you" for the viewer's own entry -- seeing yourself listed in the room
-// from the sidebar is the Discord behavior and doubles as join feedback.
-function occupantName(
+// "you" for the viewer's own entry, which doubles as join feedback.
+// 131-1: the call rail and the room card use the same rule. A userID prefix
+// is the fallback when the member list does not name the occupant.
+export function occupantName(
   ch: ChannelSummary,
   ownUserID: string | null,
   userID: string
@@ -328,81 +332,9 @@ function occupantName(
   return m?.handle || userID.slice(0, 8);
 }
 
-// 47-5: the handle an occupant colors by, or "" when the channel's member
-// list doesn't name them (the row falls back to a userID slice, which has no
-// stable identity to color).
-function occupantHandle(ch: ChannelSummary, userID: string): string {
-  return (ch.members ?? []).find((x) => x.userID === userID)?.handle || "";
-}
-
-// ---- 30-5 badge icons -------------------------------------------------------
-// Tiny inline SVGs in currentColor so they inherit the theme (the emoji
-// variants 🔇/🎥 fight the green-on-black palette). Stroke style, 12px box.
-
-export function MicOffIcon() {
-  return (
-    <svg
-      class="chalk-voice-badge chalk-voice-badge--muted"
-      viewBox="0 0 24 24"
-      width="12"
-      height="12"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.4"
-      stroke-linecap="round"
-      aria-label="muted"
-      role="img"
-    >
-      <rect x="9" y="3" width="6" height="11" rx="3" />
-      <path d="M5 11a7 7 0 0 0 14 0" />
-      <line x1="12" y1="18" x2="12" y2="21" />
-      <line x1="3" y1="3" x2="21" y2="21" />
-    </svg>
-  );
-}
-
-export function CamIcon() {
-  return (
-    <svg
-      class="chalk-voice-badge chalk-voice-badge--cam"
-      viewBox="0 0 24 24"
-      width="12"
-      height="12"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.4"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-label="camera on"
-      role="img"
-    >
-      <rect x="2" y="6" width="13" height="12" rx="2" />
-      <path d="M15 10l7-4v12l-7-4z" />
-    </svg>
-  );
-}
-
-export function ScreenIcon() {
-  return (
-    <svg
-      class="chalk-voice-badge chalk-voice-badge--screen"
-      viewBox="0 0 24 24"
-      width="12"
-      height="12"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.4"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-label="sharing screen"
-      role="img"
-    >
-      <rect x="2" y="4" width="20" height="13" rx="2" />
-      <line x1="8" y1="21" x2="16" y2="21" />
-      <line x1="12" y1="17" x2="12" y2="21" />
-    </svg>
-  );
-}
+// 30-5 badge icons live in VoiceBadges.tsx since 131-3. Re-exported here
+// for the callers that import them from the sidebar.
+export { MicOffIcon, CamIcon, DeafIcon, ScreenIcon } from "./VoiceBadges";
 
 export function Sidebar({
   channels,
@@ -429,7 +361,7 @@ export function Sidebar({
   onSetChannelGroup,
   hiddenChannels,
   onSetChannelHidden,
-  channelSort = "created",
+  channelSort = "activity",
   groupSort,
   channelOrder,
   groupOrder,
@@ -523,6 +455,13 @@ export function Sidebar({
     card: hoverCard,
     arm: armHoverCard,
     close: closeHoverCard,
+  } = useHoverCard<string>();
+  // 131-3: the room card, keyed by the voice room's channel id. A hook of
+  // its own, so a friend card and a room card never fight over one slot.
+  const {
+    card: roomCard,
+    arm: armRoomCard,
+    close: closeRoomCard,
   } = useHoverCard<string>();
   // A long-press must NOT also fire the row's click (which opens the DM).
   // The pointer sequence is down -> (timer fires) -> up -> click, so we set
@@ -635,11 +574,13 @@ export function Sidebar({
   // the account default is the only order there is. It still applies, or the
   // activity setting would silently do nothing for anyone who turned
   // grouping off.
-  const visibleChannels = orderChannels(
-    filterRoster(textChannels, channelFilter, filterText),
-    channelSort,
-    undefined,
-    activity,
+  // 114-6: while the mouse pointer rests on the list, the order it had when
+  // the pointer came in holds, so a message landing does not move the row
+  // under the click. Null is no hold. The list's pointer handlers set it.
+  const [heldIDs, setHeldIDs] = useState<string[] | null>(null);
+  const visibleChannels = holdOrder(
+    orderChannels(filterRoster(textChannels, channelFilter, filterText), channelSort, undefined, activity),
+    heldIDs,
   );
   const showChannelFilter = showRosterFilter(textChannels.length);
 
@@ -654,10 +595,12 @@ export function Sidebar({
   const groupLists = channelOrder ?? {};
   const sortFor = (key: string): ChannelSortMode => groupSorts[key] ?? channelSort;
   const channelGroups = orderGroups(
-    groupRoster(textChannels, overrides).map((g) => ({
-      ...g,
-      channels: orderChannels(g.channels, sortFor(g.key), groupLists[g.key], activity),
-    })),
+    groupRoster(textChannels, overrides).map((g) => {
+      const sorted = orderChannels(g.channels, sortFor(g.key), groupLists[g.key], activity);
+      // 114-6: a group in manual mode is never held. A drag or a menu move
+      // is the reader's own hand, and it has to show at once.
+      return { ...g, channels: sortFor(g.key) === "manual" ? sorted : holdOrder(sorted, heldIDs) };
+    }),
     groupOrder,
   );
   const groupedView =
@@ -1041,7 +984,7 @@ export function Sidebar({
     // 45-3: my own presence in the room decides whether the scratchpad
     // may show a dot. Read off the roster rather than the call session:
     // the server owns who is in the room, and this is the same list the
-    // occupant sublist below renders.
+    // count badge and the room card show.
     const inRoom = !!ownUserID && roster.some((p) => p.userID === ownUserID);
     const showUnread = countsAsUnread(u, ch.channelType, inRoom);
     return (
@@ -1071,6 +1014,7 @@ export function Sidebar({
           openChannelMenu(ch, e.clientX, e.clientY);
         }}
         onPointerDown={(e) => {
+          closeRoomCard();
           if (e.pointerType === "mouse") {
             // 114-4: right-click still opens the menu; only the left button
             // picks a row up.
@@ -1092,11 +1036,34 @@ export function Sidebar({
           cancelLongPress();
           if (orderable) onDragPointerUp(ch.id, e);
         }}
-        onPointerLeave={cancelLongPress}
+        onPointerLeave={() => {
+          cancelLongPress();
+          closeRoomCard();
+        }}
         onPointerCancel={(e) => {
           cancelLongPress();
           if (orderable) onDragPointerUp(ch.id, e);
         }}
+        // 131-3: a voice row with people in it shows the room card while the
+        // mouse pointer rests on it, or on keyboard focus. Same rules as the
+        // friend rows.
+        onPointerEnter={(e) => {
+          if (!isVoice || roster.length === 0 || e.pointerType !== "mouse") return;
+          armRoomCard(
+            ch.id,
+            e.currentTarget as HTMLElement,
+            HOVER_CARD_DELAY_MS,
+            "right",
+            roomCardHeight(roster.length),
+          );
+        }}
+        onFocus={(e) => {
+          if (!isVoice || roster.length === 0) return;
+          const row = e.currentTarget as HTMLElement;
+          if (!row.matches(":focus-visible")) return;
+          armRoomCard(ch.id, row, 0, "right", roomCardHeight(roster.length));
+        }}
+        onBlur={closeRoomCard}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => {
@@ -1149,45 +1116,22 @@ export function Sidebar({
           )}
           {showUnread && <UnreadDot mention={u.mention} />}
         </span>
-        {/* 30-5: live occupant sublist. Rendered inside the channel
-            <li> (still one click target); pointer events fall through
-            to the channel select. */}
-        {isVoice && roster.length > 0 && (
-          <ul
-            class="chalk-sidebar-occupants"
-            data-testid="sidebar-voice-occupants"
-          >
-            {roster.map((p) => {
-              const isOwn = !!ownUserID && p.userID === ownUserID;
-              const handle = occupantHandle(ch, p.userID);
-              const hue = isOwn
-                ? (selfHue ?? null)
-                : handle
-                  ? (hueForHandle?.(handle) ?? null)
-                  : null;
-              return (
-                <li
-                  class="chalk-sidebar-occupant"
-                  key={p.userID + ":" + p.deviceID}
-                  data-user-id={p.userID}
-                >
-                  <span
-                    class={`chalk-sidebar-occupant-name ${hue !== null ? "chalk-nick-tinted" : ""}`}
-                    style={hue !== null ? nickTintStyle(hue) : undefined}
-                  >
-                    {occupantName(ch, ownUserID, p.userID)}
-                  </span>
-                  {p.muted && <MicOffIcon />}
-                  {p.videoOn && <CamIcon />}
-                  {p.screenOn && <ScreenIcon />}
-                </li>
-              );
-            })}
-          </ul>
-        )}
       </li>
     );
   };
+
+  // 131-3: the open room card's rows, resolved from the live roster so a
+  // join or a mute while the card is up shows on the next render.
+  const roomCardCh = roomCard ? (channels.find((c) => c.id === roomCard.data) ?? null) : null;
+  const roomRows = roomCardCh
+    ? roomCardRows({
+        roster: voiceRosters[roomCardCh.id] ?? [],
+        members: roomCardCh.members ?? [],
+        ownUserID,
+        selfHue: selfHue ?? null,
+        hueForHandle,
+      })
+    : [];
 
   // 92-1: everything the open card draws, resolved once. Null when no card is
   // open, or when its friend left the roster while it was up. The relative
@@ -1519,6 +1463,16 @@ export function Sidebar({
           // 114-4: a lone group draws no header, so the list carries its key
           // -- otherwise a drag inside it would have no group to land in.
           data-roster-group={soleGroup?.key}
+          // 114-6: the hold. Mouse only: touch has no rest, and a finger
+          // leaving the list is the end of the gesture anyway.
+          onPointerEnter={(e) => {
+            if (e.pointerType !== "mouse") return;
+            setHeldIDs(rosterRows.flatMap((r) => (r.kind === "channel" ? [r.ch.id] : [])));
+          }}
+          onPointerLeave={(e) => {
+            if (e.pointerType !== "mouse") return;
+            setHeldIDs(null);
+          }}
         >
           {/* The insertion line. Positioned in the list's own scrolled
               coordinates, so it stays where it was put while the edges
@@ -1661,6 +1615,9 @@ export function Sidebar({
       {/* 92-1: the roster hover card. Fixed-position for the same reason the
           menus are, and pointer-transparent -- it is a tooltip, and must never
           be the thing under the cursor when the row is clicked. */}
+      {roomCard && roomRows.length > 0 && (
+        <RoomCard x={roomCard.x} y={roomCard.y} rows={roomRows} testID="room-hover-card" />
+      )}
       {hoverCard && hoverInfo && (
         <PersonCard
           x={hoverCard.x}
