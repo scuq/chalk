@@ -7856,18 +7856,36 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-call-rail {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  padding: var(--chalk-s2) 0;
+  border: 1px solid var(--chalk-border);
+  background: var(--chalk-bg-elev);
+}
+/* The tiles scroll. The foot below them does not scroll. */
+.chalk-call-rail-tiles {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   gap: var(--chalk-s1);
-  padding: var(--chalk-s2) 0;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
-  border: 1px solid var(--chalk-border);
-  background: var(--chalk-bg-elev);
 }
-.chalk-call-rail::-webkit-scrollbar {
+.chalk-call-rail-tiles::-webkit-scrollbar {
   display: none;
+}
+/* 131-6: mute and deafen at the foot, two short buttons, one above the other. */
+.chalk-call-rail-foot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--chalk-s1);
+  margin-top: var(--chalk-s1);
+  padding-top: var(--chalk-s1);
+  border-top: 1px solid var(--chalk-border);
 }
 
 .chalk-call-tile {
@@ -8419,6 +8437,11 @@ body.chalk-resizing-y .chalk-composer-resizer {
 /* Outside a call the panel only sets defaults for the next room, so it fades
    back -- discoverable, but not competing with live UI. Full strength returns
    on hover (and via :focus-within for keyboard users) and while in a call. */
+/* 131-6: three columns while the call rail carries mute and deafen. */
+.chalk-voice-controls--rail {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .chalk-voice-controls.is-idle {
   opacity: 0.45;
   transition: opacity 0.15s ease;
@@ -8429,7 +8452,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   opacity: 1;
 }
 
-.chalk-voice-ctlbtn {
+.chalk-voice-ctlbtn,
+.chalk-call-rail-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8443,7 +8467,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   cursor: pointer;
 }
 
-.chalk-voice-ctlbtn:hover {
+.chalk-voice-ctlbtn:hover,
+.chalk-call-rail-btn:hover {
   color: var(--chalk-fg-bright);
   border-color: var(--chalk-fg-muted);
   background: var(--chalk-bg-elev-2);
@@ -8451,7 +8476,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 /* Muted, deafened, camera-off: the state you can be caught out by, so it gets
    the warning colour rather than a subtler "inactive" treatment. */
-.chalk-voice-ctlbtn.is-off {
+.chalk-voice-ctlbtn.is-off,
+.chalk-call-rail-btn.is-off {
   color: var(--chalk-warn);
   border-color: var(--chalk-warn);
 }
@@ -8460,6 +8486,16 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-voice-ctlbtn.is-on {
   color: var(--chalk-warn);
   border-color: var(--chalk-warn);
+}
+
+/* 131-6: the foot buttons of the rail are short, so the shared square shape
+   does not apply to them. This rule comes after the shared rule, so these
+   sizes win. */
+.chalk-call-rail-btn {
+  width: 40px;
+  height: 24px;
+  min-height: 24px;
+  aspect-ratio: auto;
 }
 
 /* Share outside a call: nothing to share into yet. */

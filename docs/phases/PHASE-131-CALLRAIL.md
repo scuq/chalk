@@ -1,6 +1,6 @@
 # Phase 131 — the call rail: every participant in a narrow column
 
-**Status:** built, 131-1 to 131-5 (2026-11-07). Unit-tested by
+**Status:** built, 131-1 to 131-6 (2026-11-08). Unit-tested by
 `web/src/voice/rail-tiles.test.ts`, the `roomCardRows` cases in
 `web/src/chat/hovercard.test.ts`, and the rewritten third test in
 `web/src/theme-sidebar.test.ts`, which asserts the CSS declarations against the
@@ -9,8 +9,12 @@ stylesheet. The live probe `.claude/skills/run-chalk/probes/ui.mjs` ran on
 on 131-1 to 131-4. After 131-5 it ran again, with 22 checks, and all passed.
 They include no rail on the room page, the rail with video on a text channel,
 a tile without video that shows the initial, and a tile click that jumps back
-and removes the rail. The manual checklist at the end of this file is still
-open.
+and removes the rail. After 131-6 it ran on 2026-11-08, with 25 checks, and
+all passed. The new checks are: on the room page the footer bar has five
+controls. On a text channel the rail foot holds two buttons in 57 px, and the
+footer bar has three controls with no mute button. A click on the mute button
+of the rail flips the muted badge on your own tile. The manual checklist at the
+end of this file is still open.
 Phase 114 gained slices 114-5 and 114-6 in the same change set. Their record is
 in [PHASE-114-ROSTERORDER.md](PHASE-114-ROSTERORDER.md).
 
@@ -132,6 +136,24 @@ The dot keeps its red on the active row. If the user sets
 `prefers-reduced-motion: reduce`, the dot does not blink.
 An empty room keeps the speaker glyph.
 
+### Mute and deafen at the foot of the rail (131-6)
+
+While the rail shows, two buttons for mute and deafen sit at the foot of it.
+Each is 40 px wide and 24 px tall, with a 14 px glyph, and one is above the
+other. The tiles scroll in `.chalk-call-rail-tiles`. The foot,
+`.chalk-call-rail-foot`, does not scroll, so both buttons are always in view,
+also in a call with many people.
+
+While the rail shows, the footer bar under the sidebar does not render its mute
+and deafen buttons. It keeps camera, share, and settings, in three columns
+(`compact` prop of `VoiceControls`, class `chalk-voice-controls--rail`). When
+the rail is gone, on the room page or out of a call, the footer bar has all
+five buttons again. One mute button is on screen at a time, which is the rule
+of phase 44-2. `.chalk-call-rail-btn` shares the color, hover, and `is-off`
+rules of `.chalk-voice-ctlbtn`.
+
+The live probe ran on 131-6. The result is in the status header.
+
 ## What was rejected
 
 - A rail that stays open with friend avatars when you are idle. It takes 48 px
@@ -170,6 +192,10 @@ An empty room keeps the speaker glyph.
 
 - **131-5 — the rail leaves the room page.** The `railOn` rule, the initial
   under the picture, and the CSS that places the picture over it.
+- **131-6 — mute and deafen at the foot of the rail.** The `size` prop of
+  `Glyph`, the exports `IconMic` and `IconHeadphones`, the `compact` prop of
+  `VoiceControls`, the foot in `CallRail.tsx`, the CSS split of the rail block,
+  and the rail test in `theme-sidebar.test.ts`.
 
 ## Left open
 

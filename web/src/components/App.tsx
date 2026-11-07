@@ -6707,6 +6707,7 @@ export function App() {
             <VoiceControls
               onOpenMicSettings={() => setMicSettingsOpen(true)}
               hideIdle={zuckerActive}
+              compact={railOn} // 131-6
             />
           )}
         </div>

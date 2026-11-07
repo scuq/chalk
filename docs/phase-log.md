@@ -852,7 +852,9 @@ names under each voice room. A hover card on the row shows the people instead.
 131-4 replaced the speaker glyph of a voice room that has people in it with a
 red record light that blinks slowly. The count badge stays. 131-5 hid the rail
 while the call room is the channel on screen, because the stage shows everyone
-there, and made a tile always draw the initial under the picture.
+there, and made a tile always draw the initial under the picture. 131-6 put
+mute and deafen at the foot of the rail, and the footer bar under the sidebar
+drops those two buttons while the rail shows.
 Phase 114 gained two slices in the same change set. 114-5 made the newest
 message the default sort of the channels in a group, and an account that
 stored the creation order keeps it. 114-6 holds the order of the channel list

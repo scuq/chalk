@@ -14,6 +14,8 @@ import { Avatar } from "./Avatar";
 import { occupantName } from "./Sidebar";
 import { DeafIcon, MicOffIcon, ScreenIcon } from "./VoiceBadges";
 import { useVoiceSession } from "./VoiceDock";
+import { voiceSession } from "../voice/session";
+import { IconHeadphones, IconMic } from "./VoiceControls"; // 131-6
 
 interface Props {
   onJumpToChannel: (channelID: string) => void;
@@ -58,6 +60,7 @@ export function CallRail({
 
   return (
     <aside class="chalk-call-rail" data-testid="call-rail" aria-label="people in the call">
+      <div class="chalk-call-rail-tiles">
       {tiles.map((t) => {
         const name = nameFor(t);
         const speaking =
@@ -117,6 +120,33 @@ export function CallRail({
           </button>
         );
       })}
+      </div>
+      {/* 131-6: mute and deafen at the foot, always in view. While the rail
+          shows, the footer bar does not render its own two buttons. */}
+      <div class="chalk-call-rail-foot" data-testid="call-rail-foot">
+        <button
+          class={"chalk-call-rail-btn" + (snap.muted ? " is-off" : "")}
+          type="button"
+          onClick={() => voiceSession.toggleMute()}
+          title={snap.muted ? "unmute microphone" : "mute microphone"}
+          aria-pressed={snap.muted}
+          aria-label={snap.muted ? "unmute microphone" : "mute microphone"}
+          data-testid="call-rail-mute"
+        >
+          <IconMic off={snap.muted} size={14} />
+        </button>
+        <button
+          class={"chalk-call-rail-btn" + (snap.deafened ? " is-off" : "")}
+          type="button"
+          onClick={() => voiceSession.toggleDeafen()}
+          title={snap.deafened ? "hear everyone again" : "deafen: silence everyone, and you"}
+          aria-pressed={snap.deafened}
+          aria-label={snap.deafened ? "hear everyone again" : "deafen everyone"}
+          data-testid="call-rail-deafen"
+        >
+          <IconHeadphones off={snap.deafened} size={14} />
+        </button>
+      </div>
     </aside>
   );
 }

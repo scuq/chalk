@@ -81,9 +81,18 @@ test("the call rail is a narrow scrolling column, and the dock preview is gone",
     "the footer follows the same columns, so the composer stays under the feed",
   );
 
-  const rail = block(".chalk-call-rail");
-  assert.match(rail, /overflow-y:\s*auto;/, "the rail scrolls when the tiles overflow");
-  assert.match(rail, /scrollbar-width:\s*none;/, "the rail hides its scrollbar");
+  const tilesBox = block(".chalk-call-rail-tiles");
+  assert.match(tilesBox, /overflow-y:\s*auto;/, "the tiles scroll when they overflow");
+  assert.match(tilesBox, /scrollbar-width:\s*none;/, "the tile column hides its scrollbar");
+  // 131-6: the foot with mute and deafen does not scroll with the tiles, and
+  // its buttons are shorter than a tile.
+  const foot = block(".chalk-call-rail-foot");
+  assert.match(foot, /flex:\s*0 0 auto;/, "the foot keeps its height");
+  const btn = block(".chalk-call-rail-btn");
+  assert.match(btn, /width:\s*40px;/, "a foot button is as wide as a tile");
+  assert.match(btn, /height:\s*24px;/, "a foot button is shorter than a tile");
+  const compactBar = block(".chalk-voice-controls--rail");
+  assert.match(compactBar, /repeat\(3, 1fr\)/, "the footer bar keeps three controls while the rail shows");
 
   const tile = block(".chalk-call-tile");
   assert.match(tile, /width:\s*40px;/, "a tile is 40px wide");

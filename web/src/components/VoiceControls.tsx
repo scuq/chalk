@@ -1,5 +1,8 @@
-// VoiceControls (44-2): the always-present mute / deafen / camera / share /
-// settings panel, in the footer column under the roster.
+// VoiceControls (44-2): the always-present panel of mute, deafen, camera,
+// share, and settings, in the footer column under the roster. It has five
+// controls. While the call rail shows, it has three: the rail carries mute and
+// deafen at its foot, and only one mute button is on screen at a time
+// (131-6, the 44-2 rule).
 //
 // The point of it being always present is that all three toggles are GLOBAL
 // (see voiceSession's setGlobal): outside a call they set the state the next
@@ -23,12 +26,12 @@ import { useVoiceSession } from "./VoiceDock";
 // and therefore the theme and the muted/off state -- with no per-theme rules.
 // The slash is a child of the "off" variants rather than a separate overlay so
 // it strokes and scales with the rest of the glyph.
-function Glyph({ children }: { children: ComponentChildren }) {
+function Glyph({ children, size = 18 }: { children: ComponentChildren; size?: number }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      width="18"
-      height="18"
+      width={size}
+      height={size}
       fill="none"
       stroke="currentColor"
       strokeWidth={2}
@@ -43,9 +46,11 @@ function Glyph({ children }: { children: ComponentChildren }) {
 
 const SLASH = <path d="M3 3l18 18" />;
 
-function IconMic({ off }: { off?: boolean }) {
+// 131-6: the call rail uses the microphone and the headphones at its foot, at
+// a smaller size, so both are exported.
+export function IconMic({ off, size }: { off?: boolean; size?: number }) {
   return (
-    <Glyph>
+    <Glyph size={size}>
       <rect x="9" y="2" width="6" height="11" rx="3" />
       <path d="M5 11a7 7 0 0 0 14 0" />
       <path d="M12 18v3" />
@@ -54,9 +59,9 @@ function IconMic({ off }: { off?: boolean }) {
   );
 }
 
-function IconHeadphones({ off }: { off?: boolean }) {
+export function IconHeadphones({ off, size }: { off?: boolean; size?: number }) {
   return (
-    <Glyph>
+    <Glyph size={size}>
       <path d="M4 14v-2a8 8 0 0 1 16 0v2" />
       <rect x="2" y="14" width="5" height="7" rx="2" />
       <rect x="17" y="14" width="5" height="7" rx="2" />
@@ -104,9 +109,12 @@ interface Props {
   // moment a room is joined, which is when the toggles have something to act
   // on. Pre-join defaults are still reachable -- settings ▸ voice.
   hideIdle?: boolean;
+  // 131-6: while the call rail shows, it carries mute and deafen at its foot.
+  // The panel then has camera, share, and settings only.
+  compact?: boolean;
 }
 
-export function VoiceControls({ onOpenMicSettings, hideIdle }: Props) {
+export function VoiceControls({ onOpenMicSettings, hideIdle, compact }: Props) {
   const snap = useVoiceSession();
   const inCall = snap.phase === "in-call";
   // "joining" counts as joined here: the controls appear with the dock, not a
@@ -127,9 +135,14 @@ export function VoiceControls({ onOpenMicSettings, hideIdle }: Props) {
 
   return (
     <div
-      class={"chalk-voice-controls" + (inCall ? "" : " is-idle")}
+      class={
+        "chalk-voice-controls" +
+        (inCall ? "" : " is-idle") +
+        (compact ? " chalk-voice-controls--rail" : "")
+      }
       data-testid="voice-controls"
     >
+      {!compact && (
       <button
         class={"chalk-voice-ctlbtn" + (snap.muted ? " is-off" : "")}
         type="button"
@@ -145,6 +158,8 @@ export function VoiceControls({ onOpenMicSettings, hideIdle }: Props) {
       >
         <IconMic off={snap.muted} />
       </button>
+      )}
+      {!compact && (
       <button
         class={"chalk-voice-ctlbtn" + (snap.deafened ? " is-off" : "")}
         type="button"
@@ -160,6 +175,7 @@ export function VoiceControls({ onOpenMicSettings, hideIdle }: Props) {
       >
         <IconHeadphones off={snap.deafened} />
       </button>
+      )}
       <button
         class={"chalk-voice-ctlbtn" + (snap.camOn ? "" : " is-off")}
         type="button"
