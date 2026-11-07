@@ -1,6 +1,6 @@
 # Phase 131 — the call rail: every participant in a narrow column
 
-**Status:** built, 131-1, 131-2 and 131-3 (2026-11-07). Unit-tested by
+**Status:** built, 131-1 to 131-4 (2026-11-07). Unit-tested by
 `web/src/voice/rail-tiles.test.ts`, the `roomCardRows` cases in
 `web/src/chat/hovercard.test.ts`, and the rewritten third test in
 `web/src/theme-sidebar.test.ts`, which asserts the CSS declarations against the
@@ -100,6 +100,16 @@ The classic phone drawer reuses `Sidebar`, so it loses the list too, and touch
 has no hover. Zuckermode keeps its own list. The stage shows the names once you
 join.
 
+### The record light (131-4)
+
+A voice room that has people in it shows a red dot in the glyph box, in place
+of the speaker glyph. The dot blinks slowly, with a 2.4 s cycle from opacity 1
+to 0.3. It says "live" at a glance, where a count alone does not.
+The count badge at the end of the row stays and gives the number.
+The dot keeps its red on the active row. If the user sets
+`prefers-reduced-motion: reduce`, the dot does not blink.
+An empty room keeps the speaker glyph.
+
 ## What was rejected
 
 - A rail that stays open with friend avatars when you are idle. It takes 48 px
@@ -130,6 +140,11 @@ join.
   `RoomCard`, the height estimate of `arm`, and a second hover card in
   `Sidebar` for rooms. The card is for the mouse and for keyboard focus.
   The old sublist and its CSS are gone.
+- **131-4 — the record light.** `RecordIcon` in `VoiceBadges.tsx`, the glyph
+  branch in the channel row of `Sidebar`, the `chalk-chglyph--live` rule with
+  the `chalk-rec-blink` keyframes, and one test in `theme-sidebar.test.ts`
+  that asserts the color, the cycle time, the keyframes, and the
+  reduced-motion rule.
 
 ## Left open
 

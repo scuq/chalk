@@ -91,3 +91,22 @@ export function ScreenIcon() {
     </svg>
   );
 }
+
+// 131-4: RecordIcon is a filled dot. The sidebar shows it in the glyph box of
+// a voice room that has people in it. The stylesheet colors it red and blinks
+// it slowly.
+export function RecordIcon() {
+  return (
+    <svg
+      class="chalk-chglyph-svg"
+      viewBox="0 0 24 24"
+      width="13"
+      height="13"
+      fill="currentColor"
+      aria-label="people in voice"
+      role="img"
+    >
+      <circle cx="12" cy="12" r="6.5" />
+    </svg>
+  );
+}

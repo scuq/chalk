@@ -7479,6 +7479,24 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color: var(--chalk-fg-dim);
 }
 
+/* 131-4: The record light of a voice room that has people in it. It is red
+   and blinks slowly. It keeps its red on the active row, where the other
+   glyphs change color with the text. With reduced motion it does not blink. */
+.chalk-chglyph--live,
+.chalk-sidebar-item--active .chalk-chglyph--live {
+  color: var(--chalk-error);
+  animation: chalk-rec-blink 2.4s ease-in-out infinite;
+}
+@keyframes chalk-rec-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chalk-chglyph--live {
+    animation: none;
+  }
+}
+
 .chalk-chglyph--header {
   margin-right: var(--chalk-s1);
   color: var(--chalk-fg-dim);

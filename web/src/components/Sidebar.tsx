@@ -335,6 +335,7 @@ export function occupantName(
 // 30-5 badge icons live in VoiceBadges.tsx since 131-3. Re-exported here
 // for the callers that import them from the sidebar.
 export { MicOffIcon, CamIcon, DeafIcon, ScreenIcon } from "./VoiceBadges";
+import { RecordIcon } from "./VoiceBadges"; // 131-4
 
 export function Sidebar({
   channels,
@@ -1074,11 +1075,24 @@ export function Sidebar({
         }}
       >
         <span class="chalk-sidebar-item-row">
-          <span
-            class={`chalk-chglyph ${isVoice ? "chalk-chglyph--voice" : "chalk-chglyph--text"}`}
-          >
-            <ChannelGlyph type={isVoice ? "voice" : "text"} />
-          </span>
+          {/* 131-4: A voice room with people in it shows a record light in
+              place of the speaker glyph. The count badge at the end of the
+              row shows how many people are in it. */}
+          {isVoice && roster.length > 0 ? (
+            <span
+              class="chalk-chglyph chalk-chglyph--live"
+              data-testid="sidebar-voice-live"
+              title={`${roster.length} in voice`}
+            >
+              <RecordIcon />
+            </span>
+          ) : (
+            <span
+              class={`chalk-chglyph ${isVoice ? "chalk-chglyph--voice" : "chalk-chglyph--text"}`}
+            >
+              <ChannelGlyph type={isVoice ? "voice" : "text"} />
+            </span>
+          )}
           {/* 115-2: the flame goes BEFORE the name. The name truncates to
               the sidebar's width, so anything after it is the first thing a
               narrow sidebar loses -- and a flame nobody sees is no flame. */}

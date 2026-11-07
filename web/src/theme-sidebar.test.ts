@@ -94,3 +94,16 @@ test("the call rail is a narrow scrolling column, and the dock preview is gone",
   assert.equal(/\.chalk-voice-pip\b/.test(css), false, "no .chalk-voice-pip rule remains");
   assert.equal(/@media\s*\(max-height/.test(css), false, "no max-height media query remains");
 });
+
+test("a voice room with people in it shows a slow red record light (131-4)", () => {
+  const live = block(".chalk-chglyph--live,\n.chalk-sidebar-item--active .chalk-chglyph--live");
+  assert.match(live, /color:\s*var\(--chalk-error\)/, "the light is red");
+  const anim = /animation:\s*chalk-rec-blink\s+([\d.]+)s/.exec(live);
+  assert.ok(anim, "the light blinks with the chalk-rec-blink keyframes");
+  // Slow: a record light that flashes reads as an alarm.
+  assert.ok(Number(anim[1]) >= 1.5, `a cycle of ${anim[1]}s is too fast`);
+  assert.match(css, /@keyframes chalk-rec-blink\s*\{/, "the keyframes exist");
+  const reduced = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.chalk-chglyph--live\s*\{([^}]*)\}/.exec(css);
+  assert.ok(reduced, "reduced motion has a rule for the light");
+  assert.match(reduced[1], /animation:\s*none/, "reduced motion holds the light steady");
+});
