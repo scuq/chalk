@@ -1,11 +1,10 @@
 // 131-1: the call rail. A 48px column left of the sidebar, one 40px tile
 // per participant and per screen share, for as long as you are in a call.
 //
-// The rail replaced the dock's one-camera preview. A tile plays video only
-// while the room is not the active channel. When the room is on screen the
-// stage plays the video, and the tile shows the picture or the monogram, so
-// one stream is never bound to two video elements. A click on a tile jumps
-// back to the room.
+// The rail replaced the dock's one-camera preview. It shows only while the
+// call room is not the channel on screen (131-5). On the room's own page the
+// stage shows everyone and plays the video. A click on a tile jumps back to
+// the room.
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { AttachmentController } from "../attachments/pipeline";
@@ -17,7 +16,6 @@ import { DeafIcon, MicOffIcon, ScreenIcon } from "./VoiceBadges";
 import { useVoiceSession } from "./VoiceDock";
 
 interface Props {
-  activeChannelID: string | null;
   onJumpToChannel: (channelID: string) => void;
   channels: Record<string, ChannelSummary>;
   voiceRosters: Record<string, VoiceParticipant[]>;
@@ -28,7 +26,6 @@ interface Props {
 }
 
 export function CallRail({
-  activeChannelID,
   onJumpToChannel,
   channels,
   voiceRosters,
@@ -53,7 +50,6 @@ export function CallRail({
   const ch: ChannelSummary | undefined = channels[roomID];
   const roster = voiceRosters[roomID] ?? [];
   const tiles = railTiles(snap, roster, selfUserID, selfDeviceID);
-  const playVideo = activeChannelID !== roomID;
   const pictures = avatars[roomID] ?? {};
   const selfHandle = ch?.members?.find((m) => m.userID === selfUserID)?.handle || "y";
 
@@ -73,7 +69,7 @@ export function CallRail({
         const title = states.length > 0 ? `${name} (${states.join(", ")})` : name;
         const initial = (t.isSelf ? selfHandle : name).slice(0, 1).toUpperCase();
         const pictureID = t.isScreen ? null : (pictures[t.userID] ?? null);
-        const video = playVideo && t.hasLiveVideo && t.stream;
+        const video = t.hasLiveVideo && t.stream;
         return (
           <button
             key={t.key}
@@ -90,7 +86,10 @@ export function CallRail({
               <RailVideo stream={t.stream!} mirrored={t.isSelf && !t.isScreen} />
             ) : (
               <span class="chalk-voice-avatar" aria-hidden="true">
-                {pictureID ? (
+                {/* 131-5: a tile always draws the initial. The picture draws
+                    over it when it resolves, so a tile is never blank. */}
+                {initial}
+                {pictureID && (
                   <Avatar
                     channelID={roomID}
                     attachmentID={pictureID}
@@ -99,8 +98,6 @@ export function CallRail({
                     userID={t.userID}
                     live
                   />
-                ) : (
-                  initial
                 )}
               </span>
             )}

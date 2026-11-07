@@ -607,7 +607,10 @@ export function App() {
   const isMobile = useIsMobile();
   // 131-1: the room the session is in. The rail column exists while it is set.
   const railChannelID = useVoiceRoom();
-  const railOn = !isMobile && railChannelID !== null;
+  // 131-5: the rail shows only while you are in a call and the call room is
+  // not the channel on screen. On the room's own page the stage shows
+  // everyone, so the column is gone and the layout has two columns.
+  const railOn = !isMobile && railChannelID !== null && state.activeChannelID !== railChannelID;
   // 125-1: keep the shell's height in sync with the visual viewport on
   // mobile, so the iOS keyboard can't push the channel header off-screen.
   // A no-op on desktop; see web/src/viewport.ts.
@@ -5970,7 +5973,6 @@ export function App() {
           and its own call bar. */}
       {railOn && state.user && (
         <CallRail
-          activeChannelID={state.activeChannelID}
           onJumpToChannel={(id) => dispatch({ kind: "set_active_channel", channelID: id })}
           channels={state.channels}
           voiceRosters={state.voiceRosters}

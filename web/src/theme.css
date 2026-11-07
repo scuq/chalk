@@ -317,9 +317,11 @@ html {
 .chalk-app--phase08b .chalk-main    { grid-area: main; }
 .chalk-app--phase08b .chalk-footer  { grid-area: footer; }
 
-/* 131-1: the call rail. A third column, left of the sidebar, for as long as
-   you are in a call. The header and the footer span it. The shell cap grows
-   by the rail and its gap, so the feed keeps its width. */
+/* 131-1: the call rail. A third column, left of the sidebar, while you are in
+   a call and the call room is not the channel on screen (131-5). On the
+   room's own page the class is off and the grid has two columns. The header
+   and the footer span the rail. The shell cap grows by the rail and its gap,
+   so the feed keeps its width. */
 .chalk-app--phase08b.chalk-app--rail {
   grid-template-columns: var(--chalk-rail-w, 48px) var(--chalk-sidebar-w, 220px) 1fr;
   grid-template-areas:
@@ -7896,6 +7898,13 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-call-tile .chalk-voice-avatar {
   font-size: calc(16px * var(--chalk-font-scale));
+}
+/* 131-5: the picture sits over the initial. The letter shows until the
+   picture resolves, and stays if the picture does not resolve. */
+.chalk-call-tile .chalk-avatar--tile {
+  position: absolute;
+  inset: 0;
+  object-fit: cover;
 }
 .chalk-call-tile-badge {
   position: absolute;

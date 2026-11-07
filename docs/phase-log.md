@@ -850,7 +850,9 @@ camera preview and the status row from the voice dock, so the dock is one row,
 and removed the 44 px preview query of phase 123. 131-3 removed the list of
 names under each voice room. A hover card on the row shows the people instead.
 131-4 replaced the speaker glyph of a voice room that has people in it with a
-red record light that blinks slowly. The count badge stays.
+red record light that blinks slowly. The count badge stays. 131-5 hid the rail
+while the call room is the channel on screen, because the stage shows everyone
+there, and made a tile always draw the initial under the picture.
 Phase 114 gained two slices in the same change set. 114-5 made the newest
 message the default sort of the channels in a group, and an account that
 stored the creation order keeps it. 114-6 holds the order of the channel list

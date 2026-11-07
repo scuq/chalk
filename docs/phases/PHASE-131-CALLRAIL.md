@@ -1,12 +1,16 @@
 # Phase 131 — the call rail: every participant in a narrow column
 
-**Status:** built, 131-1 to 131-4 (2026-11-07). Unit-tested by
+**Status:** built, 131-1 to 131-5 (2026-11-07). Unit-tested by
 `web/src/voice/rail-tiles.test.ts`, the `roomCardRows` cases in
 `web/src/chat/hovercard.test.ts`, and the rewritten third test in
 `web/src/theme-sidebar.test.ts`, which asserts the CSS declarations against the
 stylesheet. The live probe `.claude/skills/run-chalk/probes/ui.mjs` ran on
-2026-11-07 with two users at 1280x680 and a fake camera. All 20 checks passed.
-The manual checklist at the end of this file is still open.
+2026-11-07 with two users at 1280x680 and a fake camera. All 20 checks passed
+on 131-1 to 131-4. After 131-5 it ran again, with 22 checks, and all passed.
+They include no rail on the room page, the rail with video on a text channel,
+a tile without video that shows the initial, and a tile click that jumps back
+and removes the rail. The manual checklist at the end of this file is still
+open.
 Phase 114 gained slices 114-5 and 114-6 in the same change set. Their record is
 in [PHASE-114-ROSTERORDER.md](PHASE-114-ROSTERORDER.md).
 
@@ -31,14 +35,15 @@ them are not visible from another channel.
 ## The design
 
 A call rail is a 48 px column to the left of the sidebar, like the activity bar
-of a code editor. It exists only while you are in a call.
+of a code editor. It exists only while you are in a call and the call room is not the channel on
+screen (131-5).
 Each participant has one 40 px tile in it. The dock shrinks to one row. The
 sidebar drops the names under the voice rooms.
 
 ### The rail (131-1)
 
-The root element gets the class `chalk-app--rail` while you are in a call.
-The class makes the grid three columns wide, `var(--chalk-rail-w)`, the sidebar
+The root element gets the class `chalk-app--rail` while you are in a call and
+the room is not on screen. The class makes the grid three columns wide, `var(--chalk-rail-w)`, the sidebar
 width, and the main column. The token `--chalk-rail-w` is 48 px.
 The footer grid and the layout with a thread open get the same extra column.
 The maximum width of the centered shell grows by the width of the rail and one
@@ -48,10 +53,11 @@ A tile follows these rules:
 
 - The order is the stage order: you first, then the roster order, then media
   with no roster entry, then one tile for each screen share.
-- A tile plays video only when the participant has a live camera and the room
-  is not the active channel. If the room is on screen, the stage plays the
-  video and the tile shows the picture or the monogram. One stream is never
-  bound to two video elements.
+- A tile plays video when the participant has a live camera. The rail is
+  there only while the room is off screen, so the stage never plays the same
+  stream.
+- A tile always draws the first letter of the name. The picture draws over it
+  when it resolves, so a tile is never blank (131-5).
 - A 2 px accent ring shows who speaks.
 - A badge shows muted, deafened, or a screen share. The title and the aria
   label carry the name.
@@ -74,6 +80,20 @@ join, a leave, or a move, so the app shell does not render on every speaking
 tick. `CallRail.tsx` reads the full session itself and uses a one-second tick
 while in a call. The badge icons moved to `VoiceBadges.tsx`, and `DeafIcon` is
 new there.
+
+### The rail leaves the room page (131-5)
+
+The first design kept the rail on the room page, with picture tiles. The stage
+there already shows everyone, so the column repeated it. A picture that did not
+resolve also left a blank box. The rail now shows only while you are in a call
+and the room is not the channel on screen. On the room's own page the layout
+has two columns. The accepted cost is a shift of the layout each time you
+switch between the room and a text channel.
+
+The `railOn` line in `App.tsx` holds the rule. In `CallRail.tsx` the initial is
+always in the tile, and the `Avatar` draws over it. The rule
+`.chalk-call-tile .chalk-avatar--tile` places the picture with `position:
+absolute` and `inset: 0`.
 
 ### The dock on one row (131-2)
 
@@ -148,6 +168,9 @@ An empty room keeps the speaker glyph.
   that asserts the color, the cycle time, the keyframes, and the
   reduced-motion rule.
 
+- **131-5 — the rail leaves the room page.** The `railOn` rule, the initial
+  under the picture, and the CSS that places the picture over it.
+
 ## Left open
 
 - The stage memo in `VoiceCallPanel.tsx` still builds the same tile order as
@@ -156,8 +179,8 @@ An empty room keeps the speaker glyph.
 - The phone list has no deafened state. The rail and the room card have it.
 - The phone drawer has no name list and no hover. Zuckermode keeps its list.
 - While the room is off screen, the rail decodes one video for each remote
-  camera. The old preview decoded one. The rule that shows the picture while
-  the room is on screen keeps it to one surface for each stream.
+  camera. The old preview decoded one. The rail is off while the room is on
+  screen, so each stream has one surface.
 
 ## Manual checklist
 

@@ -10,6 +10,13 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- The call column shows only while the call room is not the channel on screen, because the room already shows everyone. A tile shows the first letter of the name until the picture loads, so it is never blank.
+
+---
+
 ## v0.10.1 — 7 November 2026 — A call rail beside the sidebar, and channels sorted by the newest message
 
 ### Added

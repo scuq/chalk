@@ -16,12 +16,13 @@ phases are *planned, not started*.
 
 ## Phase 131 — call rail: built, with three open points
 
-131-1 … 131-4, record in [phases/PHASE-131-CALLRAIL.md](phases/PHASE-131-CALLRAIL.md).
+131-1 … 131-5, record in [phases/PHASE-131-CALLRAIL.md](phases/PHASE-131-CALLRAIL.md).
 In a call on a desktop, a 48 px column left of the sidebar shows one tile for
-each participant and each screen share. The voice dock is one row. The
+each participant and each screen share. The column shows only while the call
+room is not the channel on screen. The voice dock is one row. The
 sidebar lists no names under the voice rooms, and a hover card on the row
 shows them. A voice room with people in it shows a red record light. Every
-change is in the client. The live probe ran on 2026-11-07, and all 20 checks
+change is in the client. The live probe ran on 2026-11-07 after 131-5, and all 22 checks
 passed. The manual checklist in the phase doc is still open.
 
 - **The stage memo in `VoiceCallPanel.tsx` still builds the tile order that
