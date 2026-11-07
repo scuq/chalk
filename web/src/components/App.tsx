@@ -607,10 +607,10 @@ export function App() {
   const isMobile = useIsMobile();
   // 131-1: the room the session is in. The rail column exists while it is set.
   const railChannelID = useVoiceRoom();
-  // 131-5: the rail shows only while you are in a call and the call room is
-  // not the channel on screen. On the room's own page the stage shows
-  // everyone, so the column is gone and the layout has two columns.
-  const railOn = !isMobile && railChannelID !== null && state.activeChannelID !== railChannelID;
+  // 131-7: the rail column shows for the whole call on desktop, so the layout
+  // does not shift between the room and a channel. On the room's own page the
+  // rail draws its head and foot and no tiles, because the stage shows everyone.
+  const railOn = !isMobile && railChannelID !== null;
   // 125-1: keep the shell's height in sync with the visual viewport on
   // mobile, so the iOS keyboard can't push the channel header off-screen.
   // A no-op on desktop; see web/src/viewport.ts.
@@ -5970,9 +5970,12 @@ export function App() {
 
       {/* 131-1: the call rail. Its own grid cell, left of the sidebar, for as
           long as you are in a call. Desktop only: the phone has the drawer
-          and its own call bar. */}
+          and its own call bar. 131-7: it carries the duration and every
+          control, so the dock box and the footer bar do not render here. */}
       {railOn && state.user && (
         <CallRail
+          activeChannelID={state.activeChannelID}
+          onOpenMicSettings={() => setMicSettingsOpen(true)}
           onJumpToChannel={(id) => dispatch({ kind: "set_active_channel", channelID: id })}
           channels={state.channels}
           voiceRosters={state.voiceRosters}
@@ -6252,6 +6255,7 @@ export function App() {
         {/* 30-5c: the persistent-call dock -- app-level audio sinks + the
             Discord-style connection bar. Renders nothing while idle. */}
         <VoiceDock
+          bar={isMobile} // 131-7
           onJumpToChannel={(id) =>
             dispatch({ kind: "set_active_channel", channelID: id })
           }
@@ -6696,21 +6700,22 @@ export function App() {
             onCommit={commitComposerHeight}
           />
         )}
-        {/* 44-2: the roster-width column the composer's tool rail used to
-            occupy. Voice controls live here now -- always visible, so mute and
-            camera are set before you join rather than after.
-            95-1: "always visible" holds everywhere except the phone list, where
-            the panel is a full-width band under the composer rather than a
-            corner of a column -- see VoiceControls' hideIdle. */}
-        <div class="chalk-footer-left">
-          {state.voiceEnabled && (
-            <VoiceControls
-              onOpenMicSettings={() => setMicSettingsOpen(true)}
-              hideIdle={zuckerActive}
-              compact={railOn} // 131-6
-            />
-          )}
-        </div>
+        {/* 44-2: the voice controls used to sit here in a roster-width column,
+            always visible, so mute and camera were set before you join rather
+            than after. 95-1: on the phone list the panel is a full-width band
+            under the composer -- see VoiceControls' hideIdle. */}
+        {/* 131-7: the phone's control bar. On desktop the call rail carries
+            the controls and the roster runs to the bottom. */}
+        {isMobile && (
+          <div class="chalk-footer-left">
+            {state.voiceEnabled && (
+              <VoiceControls
+                onOpenMicSettings={() => setMicSettingsOpen(true)}
+                hideIdle={zuckerActive}
+              />
+            )}
+          </div>
+        )}
         {/* 53-1: hidden, not unmounted -- the composer owns its draft and its
             pending attachments in local state, and parking must not be a way
             to lose the message you were halfway through writing. The voice

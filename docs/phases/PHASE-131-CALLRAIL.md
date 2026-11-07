@@ -1,6 +1,6 @@
 # Phase 131 — the call rail: every participant in a narrow column
 
-**Status:** built, 131-1 to 131-6 (2026-11-08). Unit-tested by
+**Status:** built, 131-1 to 131-7 (2026-11-08). Unit-tested by
 `web/src/voice/rail-tiles.test.ts`, the `roomCardRows` cases in
 `web/src/chat/hovercard.test.ts`, and the rewritten third test in
 `web/src/theme-sidebar.test.ts`, which asserts the CSS declarations against the
@@ -15,6 +15,15 @@ controls. On a text channel the rail foot holds two buttons in 57 px, and the
 footer bar has three controls with no mute button. A click on the mute button
 of the rail flips the muted badge on your own tile. The manual checklist at the
 end of this file is still open.
+Slice 131-7 changed the desktop layout again, so the probe checks of 131-5 and
+131-6 about the room page and the footer bar are out of date. After 131-7 the
+probe ran on 2026-11-08, with 25 checks, and all passed. On the room page the
+rail is present with head and foot and no tiles. The grid has three columns,
+the foot has six buttons, and the timer shows in the head. There is no footer
+bar and no dock box. On a text channel the rail has one tile and six foot
+buttons, and there is no footer bar. The mute button of the rail flips the
+badge on your own tile. A click on a tile jumps back and the tiles go. At 390 px
+there is no rail. After leave the grid has two columns again.
 Phase 114 gained slices 114-5 and 114-6 in the same change set. Their record is
 in [PHASE-114-ROSTERORDER.md](PHASE-114-ROSTERORDER.md).
 
@@ -39,17 +48,19 @@ them are not visible from another channel.
 ## The design
 
 A call rail is a 48 px column to the left of the sidebar, like the activity bar
-of a code editor. It exists only while you are in a call and the call room is not the channel on
-screen (131-5).
-Each participant has one 40 px tile in it. The dock shrinks to one row. The
-sidebar drops the names under the voice rooms.
+of a code editor. On desktop it exists for the whole call (131-7).
+Each participant has one 40 px tile in it while the call room is not the
+channel on screen (131-5). The dock shrinks to one row, and since 131-7 the
+dock box and the footer bar are the phone's. The sidebar drops the names under
+the voice rooms.
 
 ### The rail (131-1)
 
-The root element gets the class `chalk-app--rail` while you are in a call and
-the room is not on screen. The class makes the grid three columns wide, `var(--chalk-rail-w)`, the sidebar
-width, and the main column. The token `--chalk-rail-w` is 48 px.
-The footer grid and the layout with a thread open get the same extra column.
+The root element gets the class `chalk-app--rail` while you are in a call on
+desktop. The class makes the grid three columns wide: `var(--chalk-rail-w)`,
+the sidebar width, and the main column. The token `--chalk-rail-w` is 48 px.
+The layout with a thread open gets the same extra column. Since 131-7 the rail
+and the sidebar both span the main row and the footer row.
 The maximum width of the centered shell grows by the width of the rail and one
 column gap, so the feed keeps its width.
 
@@ -57,8 +68,8 @@ A tile follows these rules:
 
 - The order is the stage order: you first, then the roster order, then media
   with no roster entry, then one tile for each screen share.
-- A tile plays video when the participant has a live camera. The rail is
-  there only while the room is off screen, so the stage never plays the same
+- A tile plays video when the participant has a live camera. The rail draws
+  tiles only while the room is off screen, so the stage never plays the same
   stream.
 - A tile always draws the first letter of the name. The picture draws over it
   when it resolves, so a tile is never blank (131-5).
@@ -85,16 +96,16 @@ tick. `CallRail.tsx` reads the full session itself and uses a one-second tick
 while in a call. The badge icons moved to `VoiceBadges.tsx`, and `DeafIcon` is
 new there.
 
-### The rail leaves the room page (131-5)
+### The tiles leave the room page (131-5)
 
-The first design kept the rail on the room page, with picture tiles. The stage
+The first design kept the tiles on the room page, with pictures. The stage
 there already shows everyone, so the column repeated it. A picture that did not
-resolve also left a blank box. The rail now shows only while you are in a call
-and the room is not the channel on screen. On the room's own page the layout
-has two columns. The accepted cost is a shift of the layout each time you
-switch between the room and a text channel.
+resolve also left a blank box. The rail now draws tiles only while the room is
+not the channel on screen. Slice 131-5 also removed the whole column on the
+room page. Slice 131-7 brought the column back, with no tiles, so the layout
+does not shift between the room and a text channel.
 
-The `railOn` line in `App.tsx` holds the rule. In `CallRail.tsx` the initial is
+The `showTiles` line in `CallRail.tsx` holds the rule. The initial is
 always in the tile, and the `Avatar` draws over it. The rule
 `.chalk-call-tile .chalk-avatar--tile` places the picture with `position:
 absolute` and `inset: 0`.
@@ -104,7 +115,8 @@ absolute` and `inset: 0`.
 The dock lost the preview and the "voice connected" status row. It is one row
 now: the room name, the duration (or "joining…"), the live dot, and the leave
 button. The row for the screen-share stop button and the audio nudge stay below
-it when they apply.
+it when they apply. Since 131-7 this box renders on the phone only. On desktop
+the call rail carries the duration and leave.
 The preview rules of phase 123 went with it: the 44 px strip under 820 px and
 the only `max-height` media query in the stylesheet.
 The dock does not use its `activeChannelID` prop now, so the prop is gone.
@@ -136,23 +148,67 @@ The dot keeps its red on the active row. If the user sets
 `prefers-reduced-motion: reduce`, the dot does not blink.
 An empty room keeps the speaker glyph.
 
-### Mute and deafen at the foot of the rail (131-6)
+### Buttons at the foot of the rail (131-6)
 
-While the rail shows, two buttons for mute and deafen sit at the foot of it.
-Each is 40 px wide and 24 px tall, with a 14 px glyph, and one is above the
-other. The tiles scroll in `.chalk-call-rail-tiles`. The foot,
-`.chalk-call-rail-foot`, does not scroll, so both buttons are always in view,
-also in a call with many people.
+Slice 131-6 put two buttons for mute and deafen at the foot of the rail. Each
+is 40 px wide and 24 px tall, with a 14 px glyph, and one is above the other.
+The tiles scroll in `.chalk-call-rail-tiles`. The foot,
+`.chalk-call-rail-foot`, does not scroll, so the buttons are always in view,
+also in a call with many people. `.chalk-call-rail-btn` shares the color,
+hover, and `is-off` rules of `.chalk-voice-ctlbtn`.
 
-While the rail shows, the footer bar under the sidebar does not render its mute
-and deafen buttons. It keeps camera, share, and settings, in three columns
-(`compact` prop of `VoiceControls`, class `chalk-voice-controls--rail`). When
-the rail is gone, on the room page or out of a call, the footer bar has all
-five buttons again. One mute button is on screen at a time, which is the rule
-of phase 44-2. `.chalk-call-rail-btn` shares the color, hover, and `is-off`
-rules of `.chalk-voice-ctlbtn`.
+Slice 131-6 also cut the footer bar under the sidebar to three controls while
+the rail showed. Slice 131-7 removed that: the rail foot carries all the
+controls, and the footer bar renders on the phone only.
 
 The live probe ran on 131-6. The result is in the status header.
+
+### The rail is the call column (131-7)
+
+The rail is now the one call surface on desktop. It is present for the whole
+call. It has three parts:
+
+- The head, `.chalk-call-rail-head`. It holds the call duration as a button,
+  the live dot while the microphone transmits, and a small amber icon when audio
+  is blocked. The button shows "…" while joining. Its title has the room name,
+  and a click goes back to the room.
+- The tiles, drawn only while the call room is not the channel on screen. On
+  the room page the box stays empty and keeps the foot at the bottom.
+- The foot. It holds microphone, headphones, camera, screen share, settings,
+  and last a leave button. The leave button has a handset icon in the error
+  color.
+
+Why:
+
+- The call has one surface. The old design split it between the rail, the dock
+  box, and the footer bar.
+- The roster gains the footer corner. The sidebar and the rail span the footer
+  row, `.chalk-footer` is a one-column grid, and the roster runs to the bottom
+  of the window.
+- Only one set of controls is on screen.
+- The layout no longer shifts between the room and a text channel. The room
+  page shows the head and the foot and no tiles, because the stage shows
+  everyone.
+
+The footer bar (`VoiceControls`) and the dock box (`VoiceDock`, prop `bar`)
+render on the phone only. The audio sinks, the Ctrl+Shift+V shortcut, the
+pop-out cleanup, and the autoplay-resume listener run on both. The `compact`
+prop and `.chalk-voice-controls--rail` are removed. `IconCamera`, `IconScreen`,
+and `IconGear` gained a `size` prop and are exported. `IconLeave` and
+`toggleCamOrEnable()` are new. The pre-join defaults stay in settings, voice.
+The phone keeps its footer bar, its dock box in the drawer, and the zuckermode
+call bar.
+
+Risks:
+
+- The shell widens by 60 px when you join, on every page, also the room page.
+  At 1280 px and wider this does not matter.
+- Past one hour the duration has seven characters. At font scale 1.5 it clips
+  in 46 px. The title has the full value.
+- A window that goes from desktop to phone width during a call mounts the
+  footer bar and the dock box. Both are stateless views of the session.
+
+The live probe ran on 131-7. The result is in the status header.
 
 ## What was rejected
 
@@ -190,12 +246,20 @@ The live probe ran on 131-6. The result is in the status header.
   that asserts the color, the cycle time, the keyframes, and the
   reduced-motion rule.
 
-- **131-5 — the rail leaves the room page.** The `railOn` rule, the initial
-  under the picture, and the CSS that places the picture over it.
+- **131-5 — the tiles leave the room page.** The `railOn` rule, the initial
+  under the picture, and the CSS that places the picture over it. Slice 131-7
+  changed the `railOn` rule.
 - **131-6 — mute and deafen at the foot of the rail.** The `size` prop of
   `Glyph`, the exports `IconMic` and `IconHeadphones`, the `compact` prop of
   `VoiceControls`, the foot in `CallRail.tsx`, the CSS split of the rail block,
-  and the rail test in `theme-sidebar.test.ts`.
+  and the rail test in `theme-sidebar.test.ts`. Slice 131-7 removed the
+  `compact` prop.
+- **131-7 — the rail is the call column.** `railOn` is true for the whole call.
+  The head, the six-button foot, and `showTiles` in `CallRail.tsx`. The grid
+  areas and the one-column footer in `theme.css`. The `bar` prop of
+  `VoiceDock`, and the phone-only footer bar. The rail test in
+  `theme-sidebar.test.ts` asserts the new grid areas, the one-column footer,
+  the head, and the leave rule.
 
 ## Left open
 
@@ -205,8 +269,8 @@ The live probe ran on 131-6. The result is in the status header.
 - The phone list has no deafened state. The rail and the room card have it.
 - The phone drawer has no name list and no hover. Zuckermode keeps its list.
 - While the room is off screen, the rail decodes one video for each remote
-  camera. The old preview decoded one. The rail is off while the room is on
-  screen, so each stream has one surface.
+  camera. The old preview decoded one. The rail draws no tiles while the room
+  is on screen, so each stream has one surface.
 
 ## Manual checklist
 
@@ -214,8 +278,8 @@ The live probe ran on 131-6. The result is in the status header.
       rail shows both tiles, the camera tiles play video, and the channel list
       shows at least two rows.
 - [ ] The desktop app, same steps.
-- [ ] Set the font scale to 1.5. The rail, the one-row dock, and the
-      channel list all fit.
+- [ ] Set the font scale to 1.5. The rail and the channel list fit. Past one
+      hour in a call, the duration clips and its title shows the full value.
 - [ ] A room with 12 or more participants. The rail scrolls and shows no
       scrollbar. The room card shows 12 rows and "+N more".
 - [ ] The centered layout of 1100 px with a thread open. The feed keeps its

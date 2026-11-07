@@ -122,7 +122,7 @@ as-built rather than a contemporaneous plan.
 | 128 | toolchain and dependency refresh — Go 1.27, Node 24, current Go modules, go-webauthn 0.18, npm packages and Electron 45 | [PHASE-128-TOOLCHAIN.md](phases/PHASE-128-TOOLCHAIN.md) |
 | 129 | seasonal — a scene for the season, with a switch per device and one for the server | [PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md) |
 | 130 | guest flow — a temporary room opens alone from the voice section, and its guest links are one click away | [PHASE-130-GUESTFLOW.md](phases/PHASE-130-GUESTFLOW.md) |
-| 131 | call rail — every participant of a call in a narrow column, a one-row voice dock, and the room names on a hover card | [PHASE-131-CALLRAIL.md](phases/PHASE-131-CALLRAIL.md) |
+| 131 | call rail — a narrow call column with the people, the timer, and the controls, and the room names on a hover card | [PHASE-131-CALLRAIL.md](phases/PHASE-131-CALLRAIL.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
@@ -854,7 +854,11 @@ red record light that blinks slowly. The count badge stays. 131-5 hid the rail
 while the call room is the channel on screen, because the stage shows everyone
 there, and made a tile always draw the initial under the picture. 131-6 put
 mute and deafen at the foot of the rail, and the footer bar under the sidebar
-drops those two buttons while the rail shows.
+drops those two buttons while the rail shows. 131-7 made the rail the whole
+call surface on a desktop. It is present for the whole call, with the duration
+at the head and every control and leave at the foot. It draws tiles only while
+the call room is not on screen. The footer bar and the dock box render on the
+phone only. The sidebar runs to the bottom of the window.
 Phase 114 gained two slices in the same change set. 114-5 made the newest
 message the default sort of the channels in a group, and an account that
 stored the creation order keeps it. 114-6 holds the order of the channel list

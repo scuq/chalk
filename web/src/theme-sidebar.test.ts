@@ -74,12 +74,6 @@ test("the call rail is a narrow scrolling column, and the dock preview is gone",
     /grid-template-columns:\s*var\(--chalk-rail-w/,
     "the rail is the first grid column",
   );
-  const footer = block(".chalk-app--rail .chalk-footer");
-  assert.match(
-    footer,
-    /grid-template-columns:\s*var\(--chalk-rail-w/,
-    "the footer follows the same columns, so the composer stays under the feed",
-  );
 
   const tilesBox = block(".chalk-call-rail-tiles");
   assert.match(tilesBox, /overflow-y:\s*auto;/, "the tiles scroll when they overflow");
@@ -91,8 +85,6 @@ test("the call rail is a narrow scrolling column, and the dock preview is gone",
   const btn = block(".chalk-call-rail-btn");
   assert.match(btn, /width:\s*40px;/, "a foot button is as wide as a tile");
   assert.match(btn, /height:\s*24px;/, "a foot button is shorter than a tile");
-  const compactBar = block(".chalk-voice-controls--rail");
-  assert.match(compactBar, /repeat\(3, 1fr\)/, "the footer bar keeps three controls while the rail shows");
 
   const tile = block(".chalk-call-tile");
   assert.match(tile, /width:\s*40px;/, "a tile is 40px wide");
@@ -102,6 +94,19 @@ test("the call rail is a narrow scrolling column, and the dock preview is gone",
   // media query in the file, so none must remain.
   assert.equal(/\.chalk-voice-pip\b/.test(css), false, "no .chalk-voice-pip rule remains");
   assert.equal(/@media\s*\(max-height/.test(css), false, "no max-height media query remains");
+
+  // 131-7: the sidebar and the rail run to the bottom of the window. The
+  // footer spans the main column only, as one column of its own.
+  assert.match(block(".chalk-app--phase08b"), /"sidebar\s+main"\s*"sidebar\s+footer"/, "the sidebar spans the footer row");
+  assert.match(grid, /"rail\s+sidebar\s+main"\s*"rail\s+sidebar\s+footer"/, "the rail spans the footer row");
+  assert.match(block(".chalk-app--phase08b.chalk-app--thread-open"), /"sidebar\s+footer\s+thread"/, "with a thread open too");
+  assert.match(block(".chalk-app--phase08b.chalk-app--rail.chalk-app--thread-open"), /"rail\s+sidebar\s+footer\s+thread"/, "with the rail and a thread");
+  const footer = block(".chalk-footer");
+  assert.match(footer, /grid-template-columns:\s*1fr;/, "the footer is one column");
+  assert.doesNotMatch(footer, /--chalk-sidebar-w/, "the footer no longer reserves a sidebar column");
+  assert.match(block(".chalk-call-rail-head"), /flex:\s*0 0 auto;/, "the head keeps its height");
+  assert.match(block(".chalk-call-rail-btn--leave,\n.chalk-call-rail-btn--leave:hover"), /var\(--chalk-error\)/, "leave is in the error color");
+  assert.equal(/\.chalk-voice-controls--rail\b/.test(css), false, "no three-column footer bar remains");
 });
 
 test("a voice room with people in it shows a slow red record light (131-4)", () => {

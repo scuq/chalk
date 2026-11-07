@@ -16,15 +16,17 @@ phases are *planned, not started*.
 
 ## Phase 131 — call rail: built, with three open points
 
-131-1 … 131-6, record in [phases/PHASE-131-CALLRAIL.md](phases/PHASE-131-CALLRAIL.md).
-In a call on a desktop, a 48 px column left of the sidebar shows one tile for
-each participant and each screen share. The column shows only while the call
-room is not the channel on screen. The voice dock is one row. The
-sidebar lists no names under the voice rooms, and a hover card on the row
-shows them. A voice room with people in it shows a red record light. Every
-change is in the client. While the column shows, it carries mute and deafen at
-its foot. The live probe ran on 2026-11-08 after 131-6, and all 25 checks
-passed. The manual checklist in the phase doc is still open.
+131-1 … 131-7, record in [phases/PHASE-131-CALLRAIL.md](phases/PHASE-131-CALLRAIL.md).
+In a call on a desktop, a 48 px column left of the sidebar is present for the
+whole call. It carries the duration at its head, and microphone, headphones,
+camera, share, settings, and leave at its foot. It shows one tile for each
+participant and each screen share only while the call room is not the channel
+on screen. The footer bar and the voice dock box render on the phone only, and
+the sidebar runs to the bottom of the window. The sidebar lists no names under
+the voice rooms, and a hover card on the row shows them. A voice room with
+people in it shows a red record light. Every change is in the client. The live
+probe ran on 2026-11-08 after 131-7, and all 25 checks passed. The manual
+checklist in the phase doc is still open.
 
 - **The stage memo in `VoiceCallPanel.tsx` still builds the tile order that
   `railTiles` builds.** It must become one call to `railTiles`. This needs its

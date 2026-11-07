@@ -289,7 +289,9 @@ html {
 }
 
 /* Phase 08b: two-column layout with a fixed-width sidebar.
-   The header and footer span both columns. */
+   The header spans both columns. 131-7: the sidebar spans the main row and
+   the footer row, and the footer sits under the main column only, so the
+   roster runs to the bottom of the window. */
 .chalk-app--phase08b {
   display: grid;
   /* 33-4: the sidebar column is driven by --chalk-sidebar-w, set inline on
@@ -298,9 +300,9 @@ html {
   grid-template-columns: var(--chalk-sidebar-w, 220px) 1fr;
   grid-template-rows: auto 1fr auto;
   grid-template-areas:
-    "header header"
+    "header  header"
     "sidebar main"
-    "footer footer";
+    "sidebar footer";
   /* 30-5j: inherit the viewport-pinned height from .chalk-app; the 1fr
      middle row shrinks (min-height:0) so sidebar + main scroll internally
      and the footer composer stays anchored at the bottom. */
@@ -317,27 +319,20 @@ html {
 .chalk-app--phase08b .chalk-main    { grid-area: main; }
 .chalk-app--phase08b .chalk-footer  { grid-area: footer; }
 
-/* 131-1: the call rail. A third column, left of the sidebar, while you are in
-   a call and the call room is not the channel on screen (131-5). On the
-   room's own page the class is off and the grid has two columns. The header
-   and the footer span the rail. The shell cap grows by the rail and its gap,
-   so the feed keeps its width. */
+/* 131-1: the call rail. A third column, left of the sidebar, for the whole
+   call on desktop (131-7). The header spans the rail. The rail and the sidebar
+   both span the main row and the footer row, so the footer sits under the main
+   column only. The shell cap grows by the rail and its gap, so the feed keeps
+   its width. */
 .chalk-app--phase08b.chalk-app--rail {
   grid-template-columns: var(--chalk-rail-w, 48px) var(--chalk-sidebar-w, 220px) 1fr;
   grid-template-areas:
     "header header  header"
     "rail   sidebar main"
-    "footer footer  footer";
+    "rail   sidebar footer";
   max-width: calc(var(--chalk-app-max-w, 1100px) + var(--chalk-rail-w, 48px) + var(--chalk-s3));
 }
 .chalk-app--phase08b .chalk-call-rail { grid-area: rail; }
-/* The footer is a grid of its own. Under the rail it takes the same columns,
-   so the composer stays under the feed and the controls under the sidebar. */
-.chalk-app--rail .chalk-footer {
-  grid-template-columns: var(--chalk-rail-w, 48px) var(--chalk-sidebar-w, 220px) 1fr;
-}
-.chalk-app--rail .chalk-footer-left { grid-column: 2; }
-.chalk-app--rail .chalk-footer-main { grid-column: 3; }
 
 .chalk-header {
   display: flex;
@@ -394,17 +389,19 @@ html {
   padding: var(--chalk-s4) var(--chalk-scroll-lane, var(--chalk-s2)) var(--chalk-s4) 0;
 }
 
-/* 44-1: the footer carries the two-column alignment the composer used to do
-   for itself -- voice controls under the roster, everything you type under the
-   messages. Same variable and gap as the shell grid, so the columns line up.
-   align-items: end keeps the voice cluster's buttons on the send button's row
-   rather than floating beside the top of the field. */
+/* 44-1: the footer holds everything you type, under the messages.
+   131-7: it was a two-column grid with the voice controls under the roster.
+   The sidebar now spans the footer row, so it is one column.
+   align-items: end keeps the composer's buttons on the send button's row
+   rather than floating beside the top of the field. On the phone the voice
+   bar still sits in the footer (95-1). */
 .chalk-footer {
   border-top: 1px solid var(--chalk-border);
   padding: var(--chalk-s3) 0 var(--chalk-s4) 0;
   display: grid;
-  grid-template-columns: var(--chalk-sidebar-w, 220px) 1fr;
-  column-gap: var(--chalk-s3);
+  /* 131-7: one column. The footer spans the main column only, and the
+     sidebar runs to the bottom beside it. */
+  grid-template-columns: 1fr;
   align-items: end;
   /* 91-1: anchor for the absolutely-positioned resize handle. */
   position: relative;
@@ -2042,7 +2039,7 @@ html {
   width: 8px;
   cursor: col-resize;
   /* Above the sidebar's own content so a channel row can't swallow the
-     grab, but below modals and the voice dock's controls. */
+     grab, but below modals and the call controls. */
   z-index: 5;
   /* The visible affordance is a 2px line drawn inside the strip, shown
      only on hover/focus so the resting sidebar keeps its clean edge. */
@@ -2301,11 +2298,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-sidebar-inner {
   display: flex;
   flex-direction: column;
-  /* 30-5g: shrinkable so the pinned voice dock (sibling, flex:0 0 auto)
-     always keeps its space on a short window. The friends and channels
-     lists inside already scroll on their own (base .chalk-sidebar-list),
-     so no second scroll container is introduced -- the channel rows scroll
-     within their list and the dock stays a visible footer. */
+  /* 30-5g: shrinkable, so the pinned voice dock on the phone (sibling,
+     flex:0 0 auto) keeps its space on a short window. The friends and
+     channels lists inside already scroll on their own (base
+     .chalk-sidebar-list), so no second scroll container is introduced -- the
+     channel rows scroll within their list and the dock stays a visible
+     footer. On desktop (131-7) the list runs to the bottom of the window. */
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -6360,7 +6358,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   grid-template-areas:
     "header  header header"
     "sidebar main   thread"
-    "footer  footer thread";
+    "sidebar footer thread";
 }
 .chalk-app--phase08b.chalk-app--thread-open .chalk-thread-panel {
   grid-area: thread;
@@ -6371,7 +6369,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   grid-template-areas:
     "header header  header thread"
     "rail   sidebar main   thread"
-    "footer footer  footer thread";
+    "rail   sidebar footer thread";
 }
 
 /* Panel: vertical flex with header / scrollable body / footer.
@@ -7736,9 +7734,10 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color: var(--chalk-warn);
 }
 
-/* ---- 30-5c: persistent-call dock (Discord's bottom-left panel) ----------
+/* ---- 30-5c: persistent-call dock ---------------------------------------
    131-2: one row (room, duration, live dot, leave). The call rail shows who
-   is in the call. */
+   is in the call. 131-7: the box renders on the phone only. On desktop the
+   call rail has the duration and leave. */
 
 .chalk-voice-dock {
   margin: var(--chalk-s2) var(--chalk-s2) 0 var(--chalk-s2);
@@ -7876,7 +7875,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-call-rail-tiles::-webkit-scrollbar {
   display: none;
 }
-/* 131-6: mute and deafen at the foot, two short buttons, one above the other. */
+/* 131-6, 131-7: the controls at the foot, short buttons one above the other,
+   leave last. */
 .chalk-call-rail-foot {
   flex: 0 0 auto;
   display: flex;
@@ -7886,6 +7886,47 @@ body.chalk-resizing-y .chalk-composer-resizer {
   margin-top: var(--chalk-s1);
   padding-top: var(--chalk-s1);
   border-top: 1px solid var(--chalk-border);
+}
+/* 131-7: the head. How long, the live dot, and the audio nudge. A click on
+   the duration goes back to the room. */
+.chalk-call-rail-head {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--chalk-s1);
+  margin-bottom: var(--chalk-s1);
+  padding-bottom: var(--chalk-s1);
+  border-bottom: 1px solid var(--chalk-border);
+}
+.chalk-call-rail-time {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: calc(10px * var(--chalk-font-scale));
+  font-variant-numeric: tabular-nums;
+  color: var(--chalk-fg-dim);
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.chalk-call-rail-time:hover {
+  color: var(--chalk-fg-bright);
+  text-decoration: underline;
+}
+.chalk-call-rail-nudge {
+  font-size: calc(11px * var(--chalk-font-scale));
+  cursor: default;
+}
+/* Leave, at the very bottom, in the error color like the dock's button. The
+   hover is repeated because the shared hover rule brightens the color. */
+.chalk-call-rail-btn--leave,
+.chalk-call-rail-btn--leave:hover {
+  color: var(--chalk-error);
+  border-color: var(--chalk-error);
+  margin-top: var(--chalk-s1);
 }
 
 .chalk-call-tile {
@@ -8420,10 +8461,10 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 /* ---- 44-2/44-6: the always-present footer panel ------------------------ */
 
-/* Same border, raised background and margins as .chalk-voice-dock, which sits
-   directly above it in this column -- the two read as one voice block rather
-   than a panel and five loose buttons. Five equal columns so the buttons fill
-   the roster width at any sidebar size instead of huddling at the left edge. */
+/* Same border, raised background and margins as .chalk-voice-dock, so the two
+   read as one voice block rather than a panel and five loose buttons. 131-7:
+   the panel renders on the phone only. Five equal columns so the buttons fill
+   the width instead of huddling at the left edge. */
 .chalk-voice-controls {
   margin: 0 var(--chalk-s2);
   border: 1px solid var(--chalk-border);
@@ -8437,11 +8478,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
 /* Outside a call the panel only sets defaults for the next room, so it fades
    back -- discoverable, but not competing with live UI. Full strength returns
    on hover (and via :focus-within for keyboard users) and while in a call. */
-/* 131-6: three columns while the call rail carries mute and deafen. */
-.chalk-voice-controls--rail {
-  grid-template-columns: repeat(3, 1fr);
-}
-
 .chalk-voice-controls.is-idle {
   opacity: 0.45;
   transition: opacity 0.15s ease;
@@ -8499,7 +8535,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 
 /* Share outside a call: nothing to share into yet. */
-.chalk-voice-ctlbtn:disabled {
+.chalk-voice-ctlbtn:disabled,
+.chalk-call-rail-btn:disabled {
   color: var(--chalk-fg-muted);
   border-color: var(--chalk-border);
   background: transparent;

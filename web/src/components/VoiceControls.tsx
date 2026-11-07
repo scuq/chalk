@@ -1,22 +1,20 @@
-// VoiceControls (44-2): the always-present panel of mute, deafen, camera,
-// share, and settings, in the footer column under the roster. It has five
-// controls. While the call rail shows, it has three: the rail carries mute and
-// deafen at its foot, and only one mute button is on screen at a time
-// (131-6, the 44-2 rule).
+// VoiceControls (44-2): the panel of mute, deafen, camera, share, and
+// settings. Since 131-7 it is the phone's control bar and renders only there.
+// On desktop the call rail carries the same five controls and leave, so only
+// one set of controls is on screen.
 //
 // The point of it being always present is that all three toggles are GLOBAL
 // (see voiceSession's setGlobal): outside a call they set the state the next
 // room is joined in, inside a call they act on the live call as well. So you
 // mute yourself before walking into the room, the way you would reach for the
 // mute switch before putting the headset on -- rather than joining hot and
-// scrambling for the dock's button.
+// scrambling for the dock's button. Since 131-7 this argument holds on the
+// phone only. On desktop the pre-join defaults are in settings, voice.
 //
-// 44-6: a bordered panel rather than four loose buttons, matching the voice
-// dock that appears directly above it in the same column -- together they read
-// as one voice block instead of stray letters in the corner. Glyphs rather
-// than words for the same reason the dock collapses to letters in a narrow
-// roster: there is no room for "undeafen" here, and a struck-through mic says
-// it in every language.
+// 44-6: a bordered panel rather than four loose buttons, in the look of the
+// voice dock. Glyphs rather than words for the same reason the dock collapses
+// to letters in a narrow roster: there is no room for "undeafen" here, and a
+// struck-through mic says it in every language.
 
 import type { ComponentChildren } from "preact";
 import { voiceSession } from "../voice/session";
@@ -70,9 +68,9 @@ export function IconHeadphones({ off, size }: { off?: boolean; size?: number }) 
   );
 }
 
-function IconCamera({ off }: { off?: boolean }) {
+export function IconCamera({ off, size }: { off?: boolean; size?: number }) {
   return (
-    <Glyph>
+    <Glyph size={size}>
       <rect x="2" y="6" width="13" height="12" rx="2" />
       <path d="M15 10l7-4v12l-7-4z" />
       {off && SLASH}
@@ -80,9 +78,9 @@ function IconCamera({ off }: { off?: boolean }) {
   );
 }
 
-function IconScreen() {
+export function IconScreen({ size }: { size?: number } = {}) {
   return (
-    <Glyph>
+    <Glyph size={size}>
       <rect x="2" y="4" width="20" height="13" rx="2" />
       <path d="M8 21h8M12 17v4" />
     </Glyph>
@@ -90,31 +88,46 @@ function IconScreen() {
 }
 
 // A toothed ring around the hub, not radiating spokes -- spokes read as a sun.
-function IconGear() {
+export function IconGear({ size }: { size?: number } = {}) {
   return (
-    <Glyph>
+    <Glyph size={size}>
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </Glyph>
   );
 }
 
-interface Props {
-  onOpenMicSettings: () => void;
-  // 95-1: render nothing outside a call. The "always present" argument above is
-  // a desktop argument -- it costs a corner of a roster column there, and a
-  // 40px band across the bottom of a phone, which in Zuckermode is a band the
-  // conversation list is paying for on every screen including the ones with no
-  // voice in them. Set from App for the phone list; the panel comes back the
-  // moment a room is joined, which is when the toggles have something to act
-  // on. Pre-join defaults are still reachable -- settings ▸ voice.
-  hideIdle?: boolean;
-  // 131-6: while the call rail shows, it carries mute and deafen at its foot.
-  // The panel then has camera, share, and settings only.
-  compact?: boolean;
+// 131-7: leave. A handset put down, in the Glyph style of the others.
+export function IconLeave({ size }: { size?: number } = {}) {
+  return (
+    <Glyph size={size}>
+      <path d="M3 12.5c5.2-4.6 12.8-4.6 18 0l-2.4 2.9a1.4 1.4 0 0 1-1.9.3L14 14.2a8.6 8.6 0 0 0-4 0l-2.7 1.5a1.4 1.4 0 0 1-1.9-.3z" />
+    </Glyph>
+  );
 }
 
-export function VoiceControls({ onOpenMicSettings, hideIdle, compact }: Props) {
+// 131-7: the camera switch with its fallback, shared by this bar and the
+// call rail. In a call that joined audio-only there is no camera track to
+// flip, so the camera is asked for mid-call. A failure surfaces through the
+// session error, which the call panel renders.
+export function toggleCamOrEnable(): void {
+  if (voiceSession.toggleCam()) return;
+  void voiceSession.enableCamera();
+}
+
+interface Props {
+  onOpenMicSettings: () => void;
+  // 95-1: render nothing outside a call. The "always present" argument above
+  // costs a 40px band across the bottom of a phone, which in Zuckermode is a
+  // band the conversation list is paying for on every screen including the
+  // ones with no voice in them. Set from App for the phone list; the panel
+  // comes back the moment a room is joined, which is when the toggles have
+  // something to act on. Pre-join defaults are still reachable -- settings ▸
+  // voice.
+  hideIdle?: boolean;
+}
+
+export function VoiceControls({ onOpenMicSettings, hideIdle }: Props) {
   const snap = useVoiceSession();
   const inCall = snap.phase === "in-call";
   // "joining" counts as joined here: the controls appear with the dock, not a
@@ -125,24 +138,11 @@ export function VoiceControls({ onOpenMicSettings, hideIdle, compact }: Props) {
   // looks like it did nothing.
   const suffix = (forNextRoom: string) => (inCall ? "" : ` — ${forNextRoom}`);
 
-  const toggleCam = () => {
-    if (voiceSession.toggleCam()) return;
-    // In a call that joined audio-only there is no camera track to flip --
-    // ask for one mid-call. A failure surfaces through the session error,
-    // which the call panel renders.
-    void voiceSession.enableCamera();
-  };
-
   return (
     <div
-      class={
-        "chalk-voice-controls" +
-        (inCall ? "" : " is-idle") +
-        (compact ? " chalk-voice-controls--rail" : "")
-      }
+      class={"chalk-voice-controls" + (inCall ? "" : " is-idle")}
       data-testid="voice-controls"
     >
-      {!compact && (
       <button
         class={"chalk-voice-ctlbtn" + (snap.muted ? " is-off" : "")}
         type="button"
@@ -158,8 +158,6 @@ export function VoiceControls({ onOpenMicSettings, hideIdle, compact }: Props) {
       >
         <IconMic off={snap.muted} />
       </button>
-      )}
-      {!compact && (
       <button
         class={"chalk-voice-ctlbtn" + (snap.deafened ? " is-off" : "")}
         type="button"
@@ -175,11 +173,10 @@ export function VoiceControls({ onOpenMicSettings, hideIdle, compact }: Props) {
       >
         <IconHeadphones off={snap.deafened} />
       </button>
-      )}
       <button
         class={"chalk-voice-ctlbtn" + (snap.camOn ? "" : " is-off")}
         type="button"
-        onClick={toggleCam}
+        onClick={toggleCamOrEnable}
         title={
           snap.camOn
             ? "turn the camera off" + suffix("you'll join rooms with video")

@@ -13,8 +13,8 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Changed
-- While the call column shows, the buttons for mute and deafen sit at the foot of it, always in view. The bar under the sidebar then has camera, share, and settings only. When the column is gone, the bar has all five buttons again.
-- The call column shows only while the call room is not the channel on screen, because the room already shows everyone. A tile shows the first letter of the name until the picture loads, so it is never blank.
+- In a call on a desktop, the column left of the sidebar shows the call timer at the top. At the bottom it has every call control and the leave button, always in view. The bar under the channel list and the box at its bottom are gone, and the channel list runs to the bottom of the window. A click on the timer takes you back to the call room. The column shows the people only while the call room is not on screen. The phone keeps its bar.
+- A tile in the call column shows the first letter of the name until the picture loads, so it is never blank.
 
 ---
 
