@@ -9,9 +9,27 @@ Latest release: **v0.10.0** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 130 is the newest work, and two small points of it are open. The phase-doc index at the top of
+Phase 131 is the newest work, and three small points of it are open.
+Phase 130 has two open points. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
+
+## Phase 131 — call rail: built, with three open points
+
+131-1 … 131-3, record in [phases/PHASE-131-CALLRAIL.md](phases/PHASE-131-CALLRAIL.md).
+In a call on a desktop, a 48 px column left of the sidebar shows one tile for
+each participant and each screen share. The voice dock is one row. The
+sidebar lists no names under the voice rooms, and a hover card on the row
+shows them. Every change is in the client. The live probe on a running stack
+is pending.
+
+- **The stage memo in `VoiceCallPanel.tsx` still builds the tile order that
+  `railTiles` builds.** It must become one call to `railTiles`. This needs its
+  own slice and an approval.
+- **The phone list has no deafened state.** The rail and the room card show it.
+- **The phone drawer has no name list and no hover.** The drawer reuses the
+  sidebar and touch has no hover. Zuckermode keeps its own list, and the stage
+  shows the names once you join.
 
 ## Phase 130 — guest flow: built, with two open points
 
@@ -92,12 +110,18 @@ motion).
   call tile's circular picture gets a circular ring for free but the feed's
   one-line avatar gets none by rule. Also recorded there.
 
-## Phase 114 — roster order: COMPLETE, with one recorded trade-off
+## Phase 114 — roster order: COMPLETE, with two recorded trade-offs
 
-114-1 … 114-4, record in [phases/PHASE-114-ROSTERORDER.md](phases/PHASE-114-ROSTERORDER.md).
+114-1 … 114-6, record in [phases/PHASE-114-ROSTERORDER.md](phases/PHASE-114-ROSTERORDER.md).
 Channels within a group by creation, by activity or by hand; groups by hand;
 the menus on every device and drag-and-drop on the desktop. All of it lives in
-`prefs.roster`, with no wire or schema change.
+`prefs.roster`, with no wire or schema change. Since 114-5 the default sort is
+the newest message first, and an account that stored `created` keeps it.
+Since 114-6 the channel list holds its order while the mouse pointer is over it.
+
+- **A keyboard action that hides or moves a channel keeps the held order.**
+  If the pointer stays in the list, the order stays until the next pointer
+  leave (114-6).
 
 - **Hiding a channel drops it from its group's hand-written order** on the next
   write, and un-hiding appends it at the bottom. That is the phase's own rule

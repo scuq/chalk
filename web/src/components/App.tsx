@@ -309,8 +309,9 @@ import {
 // voice pushes from handleFrame to the mounted panel's VoiceCall.
 import { VoiceCallPanel } from "./VoiceCallPanel";
 import { ZuckerCallBar } from "./ZuckerCallBar";
-import { VoiceDock } from "./VoiceDock";
+import { VoiceDock, useVoiceRoom } from "./VoiceDock";
 import { VoiceControls } from "./VoiceControls"; // 44-2
+import { CallRail } from "./CallRail"; // 131-1
 import { MicSettingsDialog } from "./MicSettingsDialog"; // 44-3
 import { SidebarResizer } from "./SidebarResizer";
 import { ComposerResizer } from "./ComposerResizer";
@@ -604,6 +605,9 @@ export function App() {
   // reset it when we widen so a drawer left open on a phone-sized window
   // doesn't come back as a stuck overlay after a resize.
   const isMobile = useIsMobile();
+  // 131-1: the room the session is in. The rail column exists while it is set.
+  const railChannelID = useVoiceRoom();
+  const railOn = !isMobile && railChannelID !== null;
   // 125-1: keep the shell's height in sync with the visual viewport on
   // mobile, so the iOS keyboard can't push the channel header off-screen.
   // A no-op on desktop; see web/src/viewport.ts.
@@ -5874,7 +5878,7 @@ export function App() {
          pane itself -- see theme.css. The class is all this side of it: what
          gets covered is a CSS question, and answering it there is what makes a
          surface added later covered by default rather than by remembering. */
-      class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${isMobile ? "chalk-app--mobile" : ""} ${navOpen && !zuckerActive ? "chalk-app--nav-open" : ""} ${zuckerActive ? "chalk-app--zucker" : ""} ${zuckerActive && zuckerScreen === "list" ? "chalk-app--zucker-list" : ""} ${chatSwipe.offset !== null ? "chalk-app--swiping" : ""} ${chatSwipe.settling ? "chalk-app--swiping-settle" : ""} ${screened ? "chalk-app--screened" : ""}`}
+      class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${railOn ? "chalk-app--rail" : ""} ${isMobile ? "chalk-app--mobile" : ""} ${navOpen && !zuckerActive ? "chalk-app--nav-open" : ""} ${zuckerActive ? "chalk-app--zucker" : ""} ${zuckerActive && zuckerScreen === "list" ? "chalk-app--zucker-list" : ""} ${chatSwipe.offset !== null ? "chalk-app--swiping" : ""} ${chatSwipe.settling ? "chalk-app--swiping-settle" : ""} ${screened ? "chalk-app--screened" : ""}`}
       style={shellStyle || undefined}
     >
       <header class="chalk-header">
@@ -5961,6 +5965,21 @@ export function App() {
         />
       )}
 
+      {/* 131-1: the call rail. Its own grid cell, left of the sidebar, for as
+          long as you are in a call. Desktop only: the phone has the drawer
+          and its own call bar. */}
+      {railOn && state.user && (
+        <CallRail
+          activeChannelID={state.activeChannelID}
+          onJumpToChannel={(id) => dispatch({ kind: "set_active_channel", channelID: id })}
+          channels={state.channels}
+          voiceRosters={state.voiceRosters}
+          avatars={state.avatars}
+          attachmentController={attControllerRef.current ?? null}
+          selfUserID={state.user.id}
+          selfDeviceID={state.user.device}
+        />
+      )}
       <aside class="chalk-sidebar" id="chalk-roster">
         {/* The open drawer covers the header, so it carries its own close
             control instead of relying on the ☰ button behind it. */}
@@ -6231,7 +6250,6 @@ export function App() {
         {/* 30-5c: the persistent-call dock -- app-level audio sinks + the
             Discord-style connection bar. Renders nothing while idle. */}
         <VoiceDock
-          activeChannelID={state.activeChannelID}
           onJumpToChannel={(id) =>
             dispatch({ kind: "set_active_channel", channelID: id })
           }

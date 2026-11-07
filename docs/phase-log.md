@@ -122,6 +122,7 @@ as-built rather than a contemporaneous plan.
 | 128 | toolchain and dependency refresh — Go 1.27, Node 24, current Go modules, go-webauthn 0.18, npm packages and Electron 45 | [PHASE-128-TOOLCHAIN.md](phases/PHASE-128-TOOLCHAIN.md) |
 | 129 | seasonal — a scene for the season, with a switch per device and one for the server | [PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md) |
 | 130 | guest flow — a temporary room opens alone from the voice section, and its guest links are one click away | [PHASE-130-GUESTFLOW.md](phases/PHASE-130-GUESTFLOW.md) |
+| 131 | call rail — every participant of a call in a narrow column, a one-row voice dock, and the room names on a hover card | [PHASE-131-CALLRAIL.md](phases/PHASE-131-CALLRAIL.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
@@ -840,6 +841,18 @@ guest-links dialog. 130-4 added an "invite guests" button to the header of
 the room. 130-5 stopped the client from joining the newest voice room by
 itself on every start. Only a channel that the user picks joins its call.
 Every change is in the client.
+
+**131 — call rail** (2026-11-07). A user with many friends and a big voice room
+had no space left in the sidebar for the text channels. 131-1 added a 48 px
+column left of the sidebar, for as long as the user is in a call, with one
+40 px tile for each participant and each screen share. 131-2 removed the
+camera preview and the status row from the voice dock, so the dock is one row,
+and removed the 44 px preview query of phase 123. 131-3 removed the list of
+names under each voice room. A hover card on the row shows the people instead.
+Phase 114 gained two slices in the same change set. 114-5 made the newest
+message the default sort of the channels in a group, and an account that
+stored the creation order keeps it. 114-6 holds the order of the channel list
+while the mouse pointer is over it. Every change is in the client.
 
 **Not started.** 65 (web push), 86 (ties), 87
 (message reminders), 90 (a local idle agent) and 99 (database-credential

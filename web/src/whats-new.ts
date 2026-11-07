@@ -31,6 +31,17 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    phase: 131,
+    title: "a call rail, and channels by newest message",
+    lines: [
+      "in a call on a desktop, a narrow column of small tiles shows left of the sidebar, one for each person and each screen share, with a ring around the one who speaks and a badge for muted, deafened or sharing. a click on a tile takes you back to the call room",
+      "the voice bar at the bottom of the sidebar is one row now, and the names under each voice room are gone. rest the mouse pointer on the room to see who is in it",
+      "channels in a group sort by the newest message first. if you chose \"when they were made\" before, you keep it",
+      "while the mouse pointer is over the channel list, the channels stay where they were, so a new message does not move a channel away under the pointer",
+    ],
+    where: "settings → chat → channel list",
+  },
+  {
     phase: 129,
     title: "a visitor for the season",
     lines: [

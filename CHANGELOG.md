@@ -10,6 +10,19 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- In a call on a desktop, a narrow column of small tiles shows left of the sidebar. It has one tile for each person and one for each screen share. A tile shows the picture or the first letter of the name, and a ring shows who speaks. A badge shows if the person is muted, deafened, or sharing a screen. If the call room is not the channel on screen, a tile plays the video of the camera. A click on a tile takes you back to the call room. If the call has many people, the column scrolls. A phone does not show the column.
+
+### Changed
+- The voice bar at the bottom of the sidebar is one row. It shows the room name, how long the call lasts, and the leave button. The small camera picture and the "voice connected" line are gone. The channel list keeps more room.
+- The sidebar no longer lists the names under each voice room. The count of people stays. If you rest the mouse pointer on a voice room, a card lists the people. You can also move to the room with the keyboard. The card shows icons for muted, deafened, camera, and screen. The card shows 12 people and then how many more. The classic phone layout shows the count only.
+- Channels in a group now sort by the newest message first. Before, they sorted by the date they were made. If you chose "when they were made" in the settings, you keep it. Otherwise, you can choose it again in the settings.
+- While the mouse pointer is over the channel list, the channels stay in place. Before, a channel could move away under the pointer when a new message came. The order updates when the pointer leaves. A group that you sorted by hand is not held.
+
+---
+
 ## v0.10.0 — 2 November 2026 — A seasonal scene in the top bar, all year round
 
 ### Changed

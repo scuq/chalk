@@ -200,6 +200,8 @@
   --chalk-s4: 16px;
   --chalk-s5: 24px;
   --chalk-s6: 32px;
+  /* 131-1: the call rail column, left of the sidebar while in a call. */
+  --chalk-rail-w: 48px;
 
   /* Radii. Keep tiny -- the matrix-green aesthetic is sharp. */
   --chalk-radius: 2px;
@@ -314,6 +316,26 @@ html {
 .chalk-app--phase08b .chalk-sidebar { grid-area: sidebar; }
 .chalk-app--phase08b .chalk-main    { grid-area: main; }
 .chalk-app--phase08b .chalk-footer  { grid-area: footer; }
+
+/* 131-1: the call rail. A third column, left of the sidebar, for as long as
+   you are in a call. The header and the footer span it. The shell cap grows
+   by the rail and its gap, so the feed keeps its width. */
+.chalk-app--phase08b.chalk-app--rail {
+  grid-template-columns: var(--chalk-rail-w, 48px) var(--chalk-sidebar-w, 220px) 1fr;
+  grid-template-areas:
+    "header header  header"
+    "rail   sidebar main"
+    "footer footer  footer";
+  max-width: calc(var(--chalk-app-max-w, 1100px) + var(--chalk-rail-w, 48px) + var(--chalk-s3));
+}
+.chalk-app--phase08b .chalk-call-rail { grid-area: rail; }
+/* The footer is a grid of its own. Under the rail it takes the same columns,
+   so the composer stays under the feed and the controls under the sidebar. */
+.chalk-app--rail .chalk-footer {
+  grid-template-columns: var(--chalk-rail-w, 48px) var(--chalk-sidebar-w, 220px) 1fr;
+}
+.chalk-app--rail .chalk-footer-left { grid-column: 2; }
+.chalk-app--rail .chalk-footer-main { grid-column: 3; }
 
 .chalk-header {
   display: flex;
@@ -6341,6 +6363,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-app--phase08b.chalk-app--thread-open .chalk-thread-panel {
   grid-area: thread;
 }
+/* 131-1: the rail and the thread panel at the same time. */
+.chalk-app--phase08b.chalk-app--rail.chalk-app--thread-open {
+  grid-template-columns: var(--chalk-rail-w, 48px) var(--chalk-sidebar-w, 220px) 1fr clamp(340px, 28%, 560px);
+  grid-template-areas:
+    "header header  header thread"
+    "rail   sidebar main   thread"
+    "footer footer  footer thread";
+}
 
 /* Panel: vertical flex with header / scrollable body / footer.
    Top + bottom borders match the existing chalk-channel-header /
@@ -7618,36 +7648,15 @@ body.chalk-resizing-y .chalk-composer-resizer {
   margin: 0;
 }
 
-/* Live occupant sublist under a voice channel. Indented past the glyph
-   column so names align with the channel name above. */
-.chalk-sidebar-occupants {
-  list-style: none;
-  margin: 2px 0 2px 1.2em;
-  padding: 0;
-}
-
-.chalk-sidebar-occupant {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: calc(12px * var(--chalk-font-scale));
-  color: var(--chalk-fg-dim);
-  line-height: 1.6;
-  min-width: 0;
-}
-
-.chalk-sidebar-occupant-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
+/* 131-3: the badge icons (VoiceBadges.tsx). The phone list, the room card,
+   and the call rail share them. 131-1 added the deafened variant. */
 .chalk-voice-badge {
   flex: 0 0 auto;
   opacity: 0.85;
 }
 
-.chalk-voice-badge--muted {
+.chalk-voice-badge--muted,
+.chalk-voice-badge--deaf {
   color: var(--chalk-error);
 }
 
@@ -7707,7 +7716,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color: var(--chalk-warn);
 }
 
-/* ---- 30-5c: persistent-call dock (Discord's bottom-left panel) ---------- */
+/* ---- 30-5c: persistent-call dock (Discord's bottom-left panel) ----------
+   131-2: one row (room, duration, live dot, leave). The call rail shows who
+   is in the call. */
 
 .chalk-voice-dock {
   margin: var(--chalk-s2) var(--chalk-s2) 0 var(--chalk-s2);
@@ -7820,76 +7831,68 @@ body.chalk-resizing-y .chalk-composer-resizer {
   cursor: default;
 }
 
-/* ---- 30-5f: micro PiP preview in the dock ------------------------------- */
+/* ---- 131-1: the call rail ----------------------------------------------- */
 
-.chalk-voice-pip {
+.chalk-call-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--chalk-s1);
+  padding: var(--chalk-s2) 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  border: 1px solid var(--chalk-border);
+  background: var(--chalk-bg-elev);
+}
+.chalk-call-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.chalk-call-tile {
   position: relative;
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  max-height: 96px;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
   padding: 0;
-  margin-bottom: var(--chalk-s1);
   border: 1px solid var(--chalk-border);
   background: #000;
-  cursor: pointer;
+  color: var(--chalk-fg);
   overflow: hidden;
+  cursor: pointer;
 }
-
-.chalk-voice-pip:hover {
+.chalk-call-tile:hover {
   border-color: var(--chalk-fg-dim);
 }
-
-.chalk-voice-pip-video {
+.chalk-call-tile--speaking {
+  border-color: var(--chalk-accent);
+  box-shadow: 0 0 0 1px var(--chalk-accent);
+}
+.chalk-call-tile-video {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
   background: #000;
 }
-
-.chalk-voice-pip-mono {
-  width: 100%;
-  height: 100%;
+.chalk-call-tile .chalk-voice-avatar {
+  font-size: calc(16px * var(--chalk-font-scale));
+}
+.chalk-call-tile-badge {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 14px;
+  height: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: calc(28px * var(--chalk-font-scale));
-  color: var(--chalk-fg-muted);
-  background: var(--chalk-bg-elev-2);
-  user-select: none;
+  border-radius: 50%;
+  background: var(--chalk-bg);
 }
-
-/* "▸ back" overlay: appears on hover, bottom-right, so the preview stays
-   clean at rest. */
-.chalk-voice-pip-hint {
-  position: absolute;
-  right: 3px;
-  bottom: 3px;
-  font-size: calc(10px * var(--chalk-font-scale));
-  color: var(--chalk-fg-bright);
-  background: rgba(0, 0, 0, 0.7);
-  padding: 0 4px;
-  opacity: 0;
-  transition: opacity 0.1s;
-}
-
-.chalk-voice-pip:hover .chalk-voice-pip-hint {
+.chalk-call-tile-badge .chalk-voice-badge {
   opacity: 1;
-}
-
-/* 123-1: on a short window the preview is a strip, not a box. The
-   96px box, plus the dock's rows, cost about 166px. A 13-inch laptop
-   gives the sidebar about 520px, and the channel list paid for the
-   difference. width: 100% with object-fit: cover crops the strip from
-   the center of the frame. The monogram still fits. This is the only
-   max-height media query in the file. The 820px threshold covers a
-   13-inch and a 1440x900 screen under browser chrome, and leaves a
-   1080p desktop alone. */
-@media (max-height: 820px) {
-  .chalk-voice-pip {
-    max-height: 44px;
-  }
 }
 
 /* ---- stage: big tile + filmstrip ---- */
@@ -9445,6 +9448,30 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-size: 0.85em;
   overflow-wrap: anywhere;
 }
+/* 131-3: the room card. The same frame as the friend card, one row per
+   person in the room. The voice row's hover shows it, so a crowded room
+   takes no room in the sidebar. */
+.chalk-room-card-title {
+  color: var(--chalk-fg-dim);
+  margin-bottom: var(--chalk-s1);
+}
+.chalk-room-card-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--chalk-fg);
+}
+.chalk-room-card-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chalk-room-card-more {
+  color: var(--chalk-fg-muted);
+  font-style: italic;
+}
 
 /* ============================================================
    Phase 9.7g: emoji picker
@@ -10039,7 +10066,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
   .chalk-app,
   .chalk-app--phase08b,
-  .chalk-app--phase08b.chalk-app--thread-open {
+  .chalk-app--phase08b.chalk-app--rail,
+  .chalk-app--phase08b.chalk-app--thread-open,
+  .chalk-app--phase08b.chalk-app--rail.chalk-app--thread-open {
     /* 125-1: same variable as the html/body rule above, so the shell and
        the page shrink together and neither one leaves room for Safari to
        scroll into. */
@@ -10053,6 +10082,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
     max-width: none;
     padding-left: max(var(--chalk-s2), env(safe-area-inset-left));
     padding-right: max(var(--chalk-s2), env(safe-area-inset-right));
+  }
+
+  /* 131-1: no rail on a phone. The JSX gate is the first guard. The
+     selectors in the reset above are the second, because the desktop rail
+     rule has two classes and would outrank a one-class reset. This rule
+     hides the rail element itself. */
+  .chalk-call-rail {
+    display: none;
   }
 
   /* -- roster drawer ------------------------------------------------ */
