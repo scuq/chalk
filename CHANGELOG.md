@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.10.2 — 8 November 2026 — Every call control in the column beside the sidebar, and a friends list that takes less room
 
 ### Added
 - If the longest friend name fits half the sidebar, the friends list shows in two columns. If it does not fit, the list stays in one column. To turn the columns off, clear **show friends in two columns** under appearance in the settings. The device keeps the choice.
