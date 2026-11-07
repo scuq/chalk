@@ -7,8 +7,8 @@
 // channel's birth, not about whether you care about it today.
 //
 // Two axes, deliberately kept apart. Channels inside a group have a SORT MODE
-// -- created (today's order), activity (most recent message first), or manual
-// (a list this reader wrote). Groups have only one question, your order or the
+// -- activity (most recent message first, the default since 114-5), created
+// (newest channel first), or manual (a list this reader wrote). Groups have only one question, your order or the
 // default one, so they get a single list of group keys.
 //
 // Everything here is pure and TOTAL: whatever the stored prefs hold, the
@@ -37,8 +37,8 @@ export const CHANNEL_SORT_CHOICES: {
   label: string;
   desc: string;
 }[] = [
-  { value: "created", label: "when they were made", desc: "newest first" },
   { value: "activity", label: "recent activity", desc: "newest message first" },
+  { value: "created", label: "when they were made", desc: "newest first" },
 ];
 
 // What a group's own menu offers on top of the account default.
@@ -57,9 +57,12 @@ export function normalizeSortMode(
   return raw === "created" || raw === "activity" || raw === "manual" ? raw : fallback;
 }
 
-// The account default collapses "manual" to "created" -- see AutoSortMode.
+// The account default collapses "manual" to the fallback -- see AutoSortMode.
+// 114-5: the fallback is "activity". Only an explicit "created" keeps the
+// creation order, so an account that picked it in settings keeps it and an
+// account that never chose gets the newest message on top.
 export function normalizeAutoSortMode(raw: unknown): AutoSortMode {
-  return raw === "activity" ? "activity" : "created";
+  return raw === "created" ? "created" : "activity";
 }
 
 // ---- the comparator -------------------------------------------------------
@@ -144,6 +147,15 @@ export function orderChannels<T extends OrderableChannel>(
   }
   if (mode === "manual") return applyManual(channels, (ch) => ch.id, manual);
   return channels.slice();
+}
+
+// 114-6: holdOrder keeps the order a list had when the pointer entered it.
+// `held` is the ids in the order on screen, or null for no hold. A channel
+// that appears during the hold appends at the bottom, and one that left is
+// skipped, which is exactly what applyManual does with a stale list.
+export function holdOrder<T extends { id: string }>(channels: T[], held: string[] | null): T[] {
+  if (held === null) return channels.slice();
+  return applyManual(channels, (ch) => ch.id, held);
 }
 
 // The structural subset a group ordering needs -- RosterGroup's key, the

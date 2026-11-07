@@ -10,6 +10,7 @@ import {
   PREFS_MAX_BYTES,
   activityWhen,
   compareByActivity,
+  holdOrder,
   moveInList,
   normalizeAutoSortMode,
   normalizeSortMode,
@@ -255,9 +256,9 @@ test("pruning de-duplicates both lists and keeps the account default", () => {
 
 // ---- the resolver ----------------------------------------------------------
 
-test("empty prefs resolve to exactly today's roster", () => {
+test("empty prefs resolve to the defaults: activity sort and no lists (114-5)", () => {
   assert.deepEqual(resolveRosterOrder({}), {
-    channelSort: "created",
+    channelSort: "activity",
     groupSort: {},
     channelOrder: {},
     groupOrder: [],
@@ -271,7 +272,7 @@ test("the resolver drops junk rather than trusting the blob", () => {
     channelOrder: { dev: ["a", 5, "", "a", "b"], ops: "nope", empty: [] },
     groupOrder: ["dev", 1, "dev", ""],
   });
-  assert.equal(out.channelSort, "created");
+  assert.equal(out.channelSort, "activity");
   assert.deepEqual(out.groupSort, { dev: "activity" });
   assert.deepEqual(out.channelOrder, { dev: ["a", "b"] });
   assert.deepEqual(out.groupOrder, ["dev"]);
@@ -298,13 +299,61 @@ test("junk sort modes read as the fallback", () => {
   assert.equal(normalizeSortMode("nope", "activity"), "activity");
 });
 
-test("the account default has no manual setting", () => {
-  assert.equal(normalizeAutoSortMode("manual"), "created");
+test("the account default has no manual setting, and falls back to activity (114-5)", () => {
+  assert.equal(normalizeAutoSortMode("manual"), "activity");
   assert.equal(normalizeAutoSortMode("activity"), "activity");
-  assert.equal(normalizeAutoSortMode(undefined), "created");
+  assert.equal(normalizeAutoSortMode(undefined), "activity");
+  // An explicit pick of the creation order survives the new default.
+  assert.equal(normalizeAutoSortMode("created"), "created");
   assert.deepEqual(
     CHANNEL_SORT_CHOICES.map((c) => c.value),
-    ["created", "activity"],
+    ["activity", "created"],
+  );
+});
+
+// ---- 114-6: the hold under the pointer -------------------------------------
+
+test("holdOrder with no hold is the identity, as a copy", () => {
+  const input = [{ id: "a" }, { id: "b" }];
+  const out = holdOrder(input, null);
+  assert.deepEqual(out, input);
+  assert.notEqual(out, input);
+});
+
+test("a held order survives a changed activity sort", () => {
+  const held = ["a", "b", "c"];
+  // "c" got a message and sorted to the top, but the pointer is on the list.
+  const resorted = [{ id: "c" }, { id: "a" }, { id: "b" }];
+  assert.deepEqual(
+    holdOrder(resorted, held).map((c) => c.id),
+    ["a", "b", "c"],
+  );
+});
+
+test("a channel that appears during the hold appends at the bottom", () => {
+  const held = ["a", "b"];
+  const now = [{ id: "n" }, { id: "b" }, { id: "a" }];
+  assert.deepEqual(
+    holdOrder(now, held).map((c) => c.id),
+    ["a", "b", "n"],
+  );
+});
+
+test("a channel that left during the hold is skipped", () => {
+  const held = ["a", "gone", "b"];
+  const now = [{ id: "b" }, { id: "a" }];
+  assert.deepEqual(
+    holdOrder(now, held).map((c) => c.id),
+    ["a", "b"],
+  );
+});
+
+test("holdOrder does not change its input", () => {
+  const now = [{ id: "b" }, { id: "a" }];
+  holdOrder(now, ["a", "b"]);
+  assert.deepEqual(
+    now.map((c) => c.id),
+    ["b", "a"],
   );
 });
 

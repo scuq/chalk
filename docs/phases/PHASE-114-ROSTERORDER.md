@@ -1,6 +1,8 @@
 # Phase 114 — roster order: your channels, in your order
 
-**Status:** built, 114-1 – 114-4 (2026-09-07), shipped in v0.8.16. Verified against a running
+**Status:** built, 114-1 – 114-4 (2026-09-07), shipped in v0.8.16. 114-5 and
+114-6 are built (2026-11-07). They are unit-tested by `roster-order.test.ts`,
+and their live probe is pending. Verified against a running
 stack: two users, four channels across two groups, 14 checks on the real DOM
 (`.claude/skills/run-chalk/roster-order.mjs`) covering the group header menu,
 the channel menu's order row, a mouse drag within a group and across into
@@ -46,12 +48,13 @@ the account the way group overrides and hidden channels already do.
 
 | mode | order | source |
 | --- | --- | --- |
-| `created` | newest-created first | today's order, unchanged |
+| `created` | newest-created first | the order before this phase, unchanged |
 | `activity` | most recent message first | `state.activity[id].ts`, falling back to `createdAt` for a channel that has never had a message — the exact rule Zuckermode's `buildConversationList` uses, with the same id tie-break so same-millisecond sends do not jitter |
 | `manual` | the reader's list | `prefs.roster.channelOrder[groupKey]` |
 
-The mode has an account-wide default (`prefs.roster.channelSort`, **`created`**
-— today's behaviour, so nobody's roster moves when this ships) and a per-group
+The mode has an account-wide default (`prefs.roster.channelSort`). It was
+**`created`** when this phase shipped, so nobody's roster moved. Since 114-5 it
+is **`activity`** unless the account stored `created`. There is also a per-group
 override. Reordering a channel by hand switches that group to `manual`; picking
 a mode from the group's menu switches it back and leaves the manual list in
 place, so "sort by activity for a while, then back to my order" costs nothing.
@@ -149,11 +152,11 @@ it is already the activity-sorted view and has no groups.
 
 An activity-sorted group reorders itself when a message lands, which can move
 a row out from under the pointer. Zuckermode has lived with this since 62 and
-nobody has asked for a fix; the roster gets the same behaviour, and the
-`created` default means only readers who chose the sort see it. If it turns
-out to matter, the follow-up is to defer re-sorting while the pointer is over
-the list — a rendering rule, not a data one — and it belongs in a later slice,
-not in the comparator.
+nobody has asked for a fix. The roster got the same behavior at first, because
+the `created` default meant only readers who chose the sort saw it.
+114-5 made `activity` the default, so every reader can see it. 114-6 is the
+follow-up: the list holds its order while the pointer is over it. It is a
+rendering rule, not a data one, and it is not in the comparator.
 
 ## What was rejected
 
@@ -167,12 +170,10 @@ what `manual` already degrades to: put the ones you care about in the list,
 and everything else follows in the automatic order. A separate mode would be a
 second way to say the same thing.
 
-**Changing the default to `activity`.** The brief says the default stays as it
-is, and the phase honours that literally: an account that never touches a
-setting renders in exactly today's order. If that turns out to be the wrong
-call — if `activity` is what most readers want and nobody finds the setting —
-it is a one-line default flip in `selectRosterPrefs`, and the `created` mode
-stays selectable for the readers who liked the old order.
+**Changing the default to `activity` in the first release.** The brief said the
+default stays as it is, and the phase honored that: an account that never
+touched a setting rendered in the old order. 114-5 later flipped the default
+to `activity`, a change of one default. The `created` mode stays selectable.
 
 **Drag-and-drop first.** It is the gesture people picture, and it is the most
 code, the most browser-specific, and the only part that cannot be tested
@@ -248,11 +249,23 @@ purpose). One sort site, on the client, over data it already holds.
     the roster *as the change leaves it* rather than as it stands, or the
     placement it just made would be pruned straight back out.
 
+- **114-5 — newest message first by default.** `normalizeAutoSortMode` returns
+  `created` only for an explicit `created`, and `activity` for all other
+  values. An account that picked "when they were made" in settings keeps it,
+  because the stored value is explicit. An account with no stored value moves
+  to `activity`. The `activity` choice is now first in the settings picker.
+  The `Sidebar` prop default follows. The tests of the old default changed to
+  expect `activity`.
+- **114-6 — the order holds under the pointer.** `holdOrder` in
+  `roster-order.ts` and the `heldIDs` state in `Sidebar`. While the mouse
+  pointer is over the channel list, the order it had when the pointer entered
+  holds. `holdOrder` calls `applyManual`, so a channel that appears during the
+  hold goes to the bottom, and a channel that leaves drops out. A group in
+  manual mode is exempt, so a drag or a menu move shows at once. A pointer
+  leave releases the hold. Touch and pen do not hold.
+
 ## Left open
 
-- **Whether `activity` should be the default after all.** See "What was
-  rejected" — deliberately not, but cheap to flip (one line in
-  `resolveRosterOrder`).
 - **Hiding a channel drops it from its group's manual list** on the next
   write, and un-hiding appends it at the bottom rather than restoring where it
   was. That follows the phase's own rule — the write side never lets a list
@@ -260,8 +273,9 @@ purpose). One sort site, on the client, over data it already holds.
   something. If it grates, the fix is to prune against membership rather than
   visibility, which trades a slightly larger blob for a position that
   survives.
-- **Deferring re-sorts under the pointer** for activity-sorted groups, if the
-  moving target turns out to bother anyone.
+- **A keyboard action under the held order.** If a keyboard action hides or
+  moves a channel while the pointer stays in the list, the held order stays
+  until the next pointer leave (114-6).
 - **The friends list and the voice section** are out of scope. Friends are
   sorted by presence then name (64-1) and voice rooms are "rarely more than a
   handful" (100-1); neither has asked for an order, and neither has groups.

@@ -1514,10 +1514,10 @@ export function ProfilePanel({
                 </div>
               )}
               {/* 114-2: what order the channels inside a group come in.
-                  Defaults to how they have always come -- newest first --
-                  so nobody's roster moves the day this arrives. A single
-                  group can be set differently, or put in your own order by
-                  hand, from its header menu in the sidebar. */}
+                  114-5: the default is the newest message first. The creation
+                  order is the other choice, and an account that picked it
+                  keeps it. A single group can be set differently, or put in
+                  your own order by hand, from its header menu in the sidebar. */}
               {rosterChannelSort !== undefined && onSetRosterChannelSort && (
                 <div class="chalk-profile-field">
                   <label class="chalk-profile-label" for="roster-channel-sort">

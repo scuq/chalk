@@ -674,8 +674,8 @@ export interface ResolvedRosterPrefs {
   hidden: Record<string, HiddenChannel>;
   // 106-3: anything but the exact string "short" resolves to full.
   nameStyle: "full" | "short";
-  // 114-1: the order half, resolved by resolveRosterOrder. Defaults are
-  // today's roster exactly: "created", no per-group overrides, no lists.
+  // 114-1: the order half, resolved by resolveRosterOrder. The defaults are
+  // "activity" (since 114-5), no per-group overrides, and no lists.
   channelSort: AutoSortMode;
   groupSort: Record<string, ChannelSortMode>;
   channelOrder: Record<string, string[]>;
