@@ -6,6 +6,10 @@
 // test.mjs can measure that. The test can only check that the declarations
 // match what they must be. The measurements behind them are in
 // docs/phases/PHASE-123-SIDEBARFLOOR.md.
+//
+// 131-2: the dock's call preview is gone. The call rail, a column of its
+// own left of the sidebar, shows the participants instead. The third test
+// holds the rail's declarations and makes sure the preview does not return.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -60,26 +64,33 @@ test("the channels section keeps a floor", () => {
   assert.match(decls, /min-height:\s*[1-9][\d.]*em/, "channels needs a floor in em");
 });
 
-test("the call preview is a strip on a short window", () => {
-  const base = block(".chalk-voice-pip");
-  const baseMax = /max-height:\s*(\d+)px/.exec(base);
-  assert.ok(baseMax, ".chalk-voice-pip declares no max-height in px");
+test("the call rail is a narrow scrolling column, and the dock preview is gone", () => {
+  // The token the grid and the footer share.
+  assert.match(css, /--chalk-rail-w:\s*48px;/, "theme.css declares --chalk-rail-w");
 
-  const media = /@media\s*\(max-height:\s*(\d+)px\)\s*\{([\s\S]*?)\n\}/.exec(css);
-  assert.ok(media, "theme.css has no max-height media query");
-  const threshold = Number(media[1]);
-  // A 13-inch laptop viewport under browser chrome is 700px to 780px. A
-  // 1440x900 screen is about 800px. A 1080p desktop must stay untouched.
-  assert.ok(threshold >= 800 && threshold < 1000, `threshold ${threshold}px covers the laptops and not a desktop`);
-
-  const strip = blockIn(media[2], ".chalk-voice-pip");
-  const stripMax = /max-height:\s*(\d+)px/.exec(strip);
-  assert.ok(stripMax, "the media query does not cap .chalk-voice-pip");
-  assert.ok(
-    Number(stripMax[1]) < Number(baseMax[1]),
-    `the strip (${stripMax[1]}px) must be shorter than the box (${baseMax[1]}px)`,
+  const grid = block(".chalk-app--phase08b.chalk-app--rail");
+  assert.match(
+    grid,
+    /grid-template-columns:\s*var\(--chalk-rail-w/,
+    "the rail is the first grid column",
   );
-  // The monogram fallback is 28px * font-scale. A strip that cannot hold it
-  // shows a clipped letter in every audio-only call.
-  assert.ok(Number(stripMax[1]) >= 36, "the strip must still hold the monogram");
+  const footer = block(".chalk-app--rail .chalk-footer");
+  assert.match(
+    footer,
+    /grid-template-columns:\s*var\(--chalk-rail-w/,
+    "the footer follows the same columns, so the composer stays under the feed",
+  );
+
+  const rail = block(".chalk-call-rail");
+  assert.match(rail, /overflow-y:\s*auto;/, "the rail scrolls when the tiles overflow");
+  assert.match(rail, /scrollbar-width:\s*none;/, "the rail hides its scrollbar");
+
+  const tile = block(".chalk-call-tile");
+  assert.match(tile, /width:\s*40px;/, "a tile is 40px wide");
+  assert.match(tile, /height:\s*40px;/, "a tile is 40px tall");
+
+  // The preview the rail replaced. Its 44px strip was the only max-height
+  // media query in the file, so none must remain.
+  assert.equal(/\.chalk-voice-pip\b/.test(css), false, "no .chalk-voice-pip rule remains");
+  assert.equal(/@media\s*\(max-height/.test(css), false, "no max-height media query remains");
 });

@@ -6,29 +6,24 @@
 //      in the per-channel panel -- that is the whole point of a persistent
 //      call: sound keeps flowing while you read a text channel. Each sink
 //      applies the peer's LOCAL prefs (A1 mute + A4-subset volume).
-//   2. THE BAR. While connected: "voice connected" + room name (click jumps
-//      back to the room), live duration, mute toggle, disconnect.
+//   2. THE BAR. While connected, one row: the room name (a click jumps back
+//      to the room), the live duration, the live dot, and disconnect. While
+//      joining, the duration slot shows "joining…". Since 131-2 the dock has
+//      no video preview and no status row. The call rail (CallRail.tsx)
+//      shows who is in the call.
 //   2b. (30-7b) SHARED-AUDIO sinks + the sharing row. A peer's screen share
 //      can carry PROGRAM audio (tab/system capture) as its own track --
 //      those sinks live here too, under the same per-peer local prefs. And
 //      while YOU share, the dock says so everywhere (with a stop button):
 //      forgetting a live screen share is the classic embarrassment.
-//   3. (30-5f) MICRO PiP. When you're connected to a voice room but looking
-//      at a DIFFERENT channel, the dock shows a tiny live video of the
-//      focused speaker (or a monogram when audio-only) -- Discord's picture
-//      the moment you leave the call view. Clicking it, the room name, or
-//      pressing the jump shortcut snaps you back to the room.
-//
-// The focus rule mirrors the panel's stage: first remote with live video,
-// else first remote, else self.
 //
 // 126-2: job 2, the bar, has a phone sibling, ZuckerCallBar. Zuckermode
 // hides this dock inside the sidebar drawer, so the phone's home screen
 // reads the same session snapshot (useVoiceSession, below) and shows its
 // own bar and leave button instead.
 
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { voiceSession, type SessionRemoteTile, type VoiceSessionSnap } from "../voice/session";
+import { useEffect, useRef, useState } from "preact/hooks";
+import { voiceSession, type VoiceSessionSnap } from "../voice/session";
 import { closeAllTilePopouts } from "../voice/pip";
 import { applySinkId, useAudioOutput } from "../voice/device-prefs";
 import {
@@ -51,24 +46,36 @@ export function useVoiceSession(): VoiceSessionSnap {
   return snap;
 }
 
-interface Props {
-  onJumpToChannel: (channelID: string) => void;
-  /** The channel currently on screen. When it differs from the connected
-   * voice room, the dock shows the PiP preview + jump-back affordance. */
-  activeChannelID: string | null;
+function currentRoom(): string | null {
+  const s = voiceSession.snap();
+  return s.phase === "idle" ? null : s.channelID;
 }
 
-// PiP focus discriminated union: a remote tile or the local stream.
-type PiPTile =
-  | { kind: "remote"; tile: SessionRemoteTile; hasVideo: boolean }
-  | { kind: "self"; stream: MediaStream | null; hasVideo: boolean };
+/** useVoiceRoom: the room the session is in or joining, or null when idle.
+ * It changes only at a join, a leave, or a move, so the app shell can read
+ * it without a re-render on every speaking tick. (131-1) */
+export function useVoiceRoom(): string | null {
+  const [room, setRoom] = useState<string | null>(currentRoom);
+  useEffect(
+    () =>
+      voiceSession.subscribe(() => {
+        const next = currentRoom();
+        setRoom((prev) => (prev === next ? prev : next));
+      }),
+    [],
+  );
+  return room;
+}
 
-export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
+interface Props {
+  onJumpToChannel: (channelID: string) => void;
+}
+
+export function VoiceDock({ onJumpToChannel }: Props) {
   const snap = useVoiceSession();
   const [, setTick] = useState(0);
 
-  // Duration ticker while connected. Also keeps the PiP focus fresh as
-  // tracks start/stop (getVideoTracks() is polled via this re-render).
+  // Duration ticker while connected.
   useEffect(() => {
     if (snap.phase !== "in-call") return;
     const id = window.setInterval(() => setTick((t) => t + 1), 1000);
@@ -125,32 +132,6 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
     };
   }, [snap.audioBlocked]);
 
-  // Viewing a different channel than the one we're connected to?
-  const viewingElsewhere =
-    snap.phase === "in-call" && snap.channelID !== null && activeChannelID !== snap.channelID;
-
-  // Focused tile for the PiP (same rule as the stage). Self is a valid
-  // fallback so a solo call still previews your own camera.
-  const focused: PiPTile | null = useMemo(() => {
-    if (snap.phase !== "in-call") return null;
-    const remotes = Object.values(snap.tiles);
-    const withVideo = remotes.find((t) =>
-      t.stream.getVideoTracks().some((v) => v.readyState === "live"),
-    );
-    if (withVideo) return { kind: "remote", tile: withVideo, hasVideo: true };
-    if (remotes.length > 0) return { kind: "remote", tile: remotes[0], hasVideo: false };
-    // Solo: preview self if the camera is on.
-    if (
-      snap.camOn &&
-      snap.localStream &&
-      snap.localStream.getVideoTracks().some((v) => v.enabled && v.readyState === "live")
-    ) {
-      return { kind: "self", stream: snap.localStream, hasVideo: true };
-    }
-    return { kind: "self", stream: snap.localStream, hasVideo: false };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snap.phase, snap.tiles, snap.localStream, snap.camOn]);
-
   return (
     <>
       {/* Job 1: app-level audio, always rendered while tiles exist. */}
@@ -186,68 +167,10 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
           );
         })}
 
-      {/* Job 2/3: the connection bar (+ PiP when viewing elsewhere). */}
+      {/* Job 2: the connection bar. One row since 131-2: the room, how
+          long, the live dot, and leave. The rail shows who is there. */}
       {snap.phase !== "idle" && (
         <div class="chalk-voice-dock" data-testid="voice-dock">
-          {/* 30-5f: micro video preview, only when you're looking away from
-              the room. Clicking it jumps back. */}
-          {viewingElsewhere && focused && (
-            <button
-              class="chalk-voice-pip"
-              type="button"
-              onClick={jumpBack}
-              title="back to the voice room (Ctrl+Shift+V)"
-              data-testid="voice-dock-pip"
-            >
-              {focused.hasVideo ? (
-                <PiPVideo
-                  stream={focused.kind === "remote" ? focused.tile.stream : focused.stream}
-                  mirrored={focused.kind === "self"}
-                />
-              ) : (
-                <span class="chalk-voice-pip-mono" aria-hidden="true">
-                  {pipInitial(focused)}
-                </span>
-              )}
-              <span class="chalk-voice-pip-hint">▸ back</span>
-            </button>
-          )}
-
-          <div class="chalk-voice-dock-row">
-            <span
-              class="chalk-voice-dock-status"
-              data-connected={snap.phase === "in-call" ? "true" : "false"}
-            >
-              {snap.phase === "in-call" ? "voice connected" : "joining…"}
-            </span>
-            {snap.phase === "in-call" && snap.joinedAt !== null && (
-              <span class="chalk-voice-dock-duration" data-testid="voice-dock-duration">
-                {fmtDuration(Date.now() - snap.joinedAt)}
-              </span>
-            )}
-          </div>
-          {snap.sharing && (
-            <div class="chalk-voice-dock-row" data-testid="voice-dock-sharing">
-              <span class="chalk-voice-dock-status" data-connected="true">
-                sharing screen · {snap.shareMode}
-              </span>
-              <span class="chalk-voice-dock-spacer" />
-              <button
-                class="chalk-btn chalk-voice-ctl chalk-voice-ctl--off"
-                type="button"
-                onClick={() => void voiceSession.toggleScreenShare()}
-                title="stop sharing your screen"
-                data-testid="voice-dock-stopshare"
-              >
-                stop
-              </button>
-            </div>
-          )}
-          {snap.audioBlocked && (
-            <div class="chalk-voice-dock-row chalk-voice-audionudge" data-testid="voice-audio-nudge">
-              🔇 click anywhere to enable audio
-            </div>
-          )}
           <div class="chalk-voice-dock-row">
             <button
               class="chalk-voice-dock-channel"
@@ -262,6 +185,17 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
               <span class="chalk-voice-dock-channame">{snap.channelName || "voice"}</span>
             </button>
             <span class="chalk-voice-dock-spacer" />
+            {snap.phase !== "in-call" ? (
+              <span class="chalk-voice-dock-status" data-connected="false">
+                joining…
+              </span>
+            ) : (
+              snap.joinedAt !== null && (
+                <span class="chalk-voice-dock-duration" data-testid="voice-dock-duration">
+                  {fmtDuration(Date.now() - snap.joinedAt)}
+                </span>
+              )
+            )}
             {/* 41-5: the gate is open and we are audible. Absent while muted --
                 a live dot next to a mute button reads as a contradiction. */}
             {!snap.muted && snap.micOpen && (
@@ -287,6 +221,28 @@ export function VoiceDock({ onJumpToChannel, activeChannelID }: Props) {
               <CtlLabel wide="leave" mini="l" />
             </button>
           </div>
+          {snap.sharing && (
+            <div class="chalk-voice-dock-row" data-testid="voice-dock-sharing">
+              <span class="chalk-voice-dock-status" data-connected="true">
+                sharing screen · {snap.shareMode}
+              </span>
+              <span class="chalk-voice-dock-spacer" />
+              <button
+                class="chalk-btn chalk-voice-ctl chalk-voice-ctl--off"
+                type="button"
+                onClick={() => void voiceSession.toggleScreenShare()}
+                title="stop sharing your screen"
+                data-testid="voice-dock-stopshare"
+              >
+                stop
+              </button>
+            </div>
+          )}
+          {snap.audioBlocked && (
+            <div class="chalk-voice-dock-row chalk-voice-audionudge" data-testid="voice-audio-nudge">
+              🔇 click anywhere to enable audio
+            </div>
+          )}
         </div>
       )}
     </>
@@ -306,13 +262,6 @@ function CtlLabel({ wide, mini }: { wide: string; mini: string }) {
       <span class="chalk-voice-ctl-mini">{mini}</span>
     </>
   );
-}
-
-function pipInitial(focused: PiPTile): string {
-  if (focused.kind === "self") return "y";
-  // Remote: first char of the userID as a cheap monogram; the dock has no
-  // member list to resolve handles, and the stage carries the real name.
-  return focused.tile.userID.slice(0, 1).toUpperCase();
 }
 
 function AudioSink({
@@ -404,24 +353,5 @@ function AudioSink({
       <audio ref={ref} autoPlay style={{ display: "none" }} />
       <audio ref={rawRef} autoPlay muted style={{ display: "none" }} />
     </>
-  );
-}
-
-function PiPVideo({ stream, mirrored }: { stream: MediaStream | null; mirrored?: boolean }) {
-  const ref = useRef<HTMLVideoElement | null>(null);
-  useEffect(() => {
-    if (ref.current && stream && ref.current.srcObject !== stream) {
-      ref.current.srcObject = stream;
-    }
-  }, [stream]);
-  // Muted: audio flows through the AudioSinks; this element is video only.
-  return (
-    <video
-      ref={ref}
-      class={"chalk-voice-pip-video" + (mirrored ? " chalk-voice-video-mirrored" : "")}
-      autoPlay
-      playsInline
-      muted
-    />
   );
 }

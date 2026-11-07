@@ -85,6 +85,13 @@ Related, not closed: a four-tile call does not fit a window under about
 separately in `docs/open-items.md`. The phone layout, which replaces the
 sidebar with a fixed full-height drawer, is not affected.
 
+## Since phase 131
+
+131-2 removed the call preview and its 44 px media query. The strip rule and
+its test are gone, and the dock is one row. The floors of this phase stay. The
+preview moved into the call rail, which is a column of its own. See
+[PHASE-131-CALLRAIL.md](PHASE-131-CALLRAIL.md).
+
 ## Manual checklist
 
 - [ ] Chrome on a real 13-inch laptop at its native size, camera on during
