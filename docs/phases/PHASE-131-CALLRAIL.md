@@ -4,7 +4,9 @@
 `web/src/voice/rail-tiles.test.ts`, the `roomCardRows` cases in
 `web/src/chat/hovercard.test.ts`, and the rewritten third test in
 `web/src/theme-sidebar.test.ts`, which asserts the CSS declarations against the
-stylesheet. The live probe on a running stack is pending.
+stylesheet. The live probe `.claude/skills/run-chalk/probes/ui.mjs` ran on
+2026-11-07 with two users at 1280x680 and a fake camera. All 20 checks passed.
+The manual checklist at the end of this file is still open.
 Phase 114 gained slices 114-5 and 114-6 in the same change set. Their record is
 in [PHASE-114-ROSTERORDER.md](PHASE-114-ROSTERORDER.md).
 

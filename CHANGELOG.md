@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.10.1 — 7 November 2026 — A call rail beside the sidebar, and channels sorted by the newest message
 
 ### Added
 - In a call on a desktop, a narrow column of small tiles shows left of the sidebar. It has one tile for each person and one for each screen share. A tile shows the picture or the first letter of the name, and a ring shows who speaks. A badge shows if the person is muted, deafened, or sharing a screen. If the call room is not the channel on screen, a tile plays the video of the camera. A click on a tile takes you back to the call room. If the call has many people, the column scrolls. A phone does not show the column.

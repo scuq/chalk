@@ -5,7 +5,7 @@ What is **not** done. Shipped history lives in [phase-log.md](phase-log.md)
 is the authority on what is still open, and `CLAUDE.md` points here rather than
 carrying it.
 
-Latest release: **v0.10.0** — keep this in step with the topmost `## vX.Y.Z`
+Latest release: **v0.10.1** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
@@ -20,8 +20,9 @@ phases are *planned, not started*.
 In a call on a desktop, a 48 px column left of the sidebar shows one tile for
 each participant and each screen share. The voice dock is one row. The
 sidebar lists no names under the voice rooms, and a hover card on the row
-shows them. Every change is in the client. The live probe on a running stack
-is pending.
+shows them. A voice room with people in it shows a red record light. Every
+change is in the client. The live probe ran on 2026-11-07, and all 20 checks
+passed. The manual checklist in the phase doc is still open.
 
 - **The stage memo in `VoiceCallPanel.tsx` still builds the tile order that
   `railTiles` builds.** It must become one call to `railTiles`. This needs its
