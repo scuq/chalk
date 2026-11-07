@@ -82,6 +82,10 @@ export interface DisplayPrefs {
   // by default, unlike flair: it is one small visitor in the header, not a
   // mode. Per-device like everything here, so a device can stay plain.
   seasonal: boolean;
+  // 132-2: the friends list as a two-column grid when the names fit. On
+  // by default. Per-device, because the fit depends on the sidebar width
+  // of the device.
+  friendColumns: boolean;
 }
 
 export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
@@ -100,6 +104,7 @@ export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
   flairBurstCount: 4,
   flairBurstMinutes: 4,
   seasonal: true,
+  friendColumns: true,
 };
 
 // 115-1: the flame's threshold bounds. Two in one minute is the smallest
@@ -228,6 +233,9 @@ export function normalizeDisplayPrefs(raw: unknown): DisplayPrefs {
     // 129-1: absent means on -- a device that stored its prefs before 129
     // gets the scene, the same way 111 turned banners on.
     seasonal: bool("seasonal", DEFAULT_DISPLAY_PREFS.seasonal),
+    // 132-2: a missing value means on, so a device with older prefs gets
+    // the columns.
+    friendColumns: bool("friendColumns", DEFAULT_DISPLAY_PREFS.friendColumns),
   };
 }
 

@@ -123,6 +123,7 @@ as-built rather than a contemporaneous plan.
 | 129 | seasonal — a scene for the season, with a switch per device and one for the server | [PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md) |
 | 130 | guest flow — a temporary room opens alone from the voice section, and its guest links are one click away | [PHASE-130-GUESTFLOW.md](phases/PHASE-130-GUESTFLOW.md) |
 | 131 | call rail — a narrow call column with the people, the timer, and the controls, and the room names on a hover card | [PHASE-131-CALLRAIL.md](phases/PHASE-131-CALLRAIL.md) |
+| 132 | friend columns — compact friend rows, and a two-column friends list when the names fit the sidebar | [PHASE-132-FRIENDCOLUMNS.md](phases/PHASE-132-FRIENDCOLUMNS.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.

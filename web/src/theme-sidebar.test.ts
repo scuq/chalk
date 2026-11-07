@@ -57,6 +57,32 @@ test("the friends and voice sections give way when the column is overfull", () =
   }
 });
 
+test("132: friend rows are compact, and the list can be a two-column grid", () => {
+  const row = block(".chalk-sidebar-item--friend");
+  // 132-1: 3px above and below, the base 8px left and right.
+  assert.match(row, /padding:\s*3px var\(--chalk-s2\);/, "the friend row has 3px vertical padding");
+
+  // 132-2: auto-fill against the longest row, floored at half the list so
+  // the grid never has more than two columns.
+  const grid = block(".chalk-sidebar-list--friends.chalk-sidebar-list--columns");
+  assert.match(grid, /display:\s*grid;/, "the columns list is a grid");
+  assert.match(
+    grid,
+    /grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(max\(var\(--chalk-friend-col[^)]*\),\s*50%\),\s*1fr\)\)/,
+    "the columns come from auto-fill with a 50% floor",
+  );
+  assert.match(
+    block(".chalk-sidebar-list--columns .chalk-sidebar-item--friend"),
+    /min-width:\s*0;/,
+    "a grid cell lets the name ellipsis hold",
+  );
+  assert.match(
+    block(".chalk-sidebar-list--columns .chalk-sidebar-empty"),
+    /grid-column:\s*1 \/ -1;/,
+    "the empty state spans both columns",
+  );
+});
+
 test("the channels section keeps a floor", () => {
   const decls = block(".chalk-sidebar-section--channels");
   assert.match(decls, /flex:\s*1;/, "channels still fills what the others leave");

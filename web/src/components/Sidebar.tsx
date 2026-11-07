@@ -16,7 +16,8 @@ import { Flame } from "./Flame"; // 115-2
 import { WaveName } from "./WaveName"; // 115-3
 import { pickAvatar } from "../avatars/pick"; // 112-4
 import type { AttachmentController } from "../attachments/pipeline"; // 112-4
-import { useState, useRef, useEffect } from "preact/hooks";
+import { useState, useRef, useEffect, useMemo } from "preact/hooks";
+import { friendColumnMinWidth, longestFriendName } from "../chat/friend-columns"; // 132-2
 import { DEFAULT_SELF_HUE, nickTintStyle } from "../chat/nickcolor";
 import { HueSlider } from "./HueSlider"; // 117-1
 import { PrioritySelect } from "./PrioritySelect";
@@ -275,6 +276,9 @@ interface Props {
   // shared channel's copy is to hand (pickAvatar), preferring the one on
   // screen because its key and bytes are most likely already decrypted.
   avatars?: Record<string, Record<string, string>>;
+  // 132-2: the friends list as a two-column grid when the names fit the
+  // sidebar. App reads it from the display prefs.
+  friendColumns?: boolean;
   // 115-8: the hover card's pictures, which may be on when the rows' are
   // off (flair's frames want the card to show them). Defaults to `avatars`.
   cardAvatars?: Record<string, Record<string, string>>;
@@ -377,6 +381,7 @@ export function Sidebar({
   nameStyle = "full",
   onUpdateChannel,
   avatars, // 112-4
+  friendColumns, // 132-2
   cardAvatars = avatars, // 115-8
   attachmentController,
   onPickChannelBanner,
@@ -561,6 +566,12 @@ export function Sidebar({
   }, [nickMenu, channelMenu, groupMenu]);
 
   const sortedFriends = sortFriends(friends);
+  // 132-2: the width of the widest row. The grid compares it with half the
+  // sidebar. A picture in the row counts when roster avatars are on.
+  const friendCol = useMemo(
+    () => friendColumnMinWidth(longestFriendName(friends), avatars !== undefined),
+    [friends, avatars !== undefined],
+  );
 
   const visibleFriends = filterRoster(
     sortedFriends,
@@ -1207,7 +1218,8 @@ export function Sidebar({
         )}
 
         <ul
-          class="chalk-sidebar-list chalk-sidebar-list--friends"
+          class={`chalk-sidebar-list chalk-sidebar-list--friends${friendColumns ? " chalk-sidebar-list--columns" : ""}`}
+          style={{ "--chalk-friend-col": friendCol }}
           data-testid="sidebar-friends-list"
         >
           {sortedFriends.length === 0 && (

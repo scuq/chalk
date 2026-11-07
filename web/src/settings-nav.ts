@@ -132,6 +132,8 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       // 93-1: what someone hunting for the layout-width pref would type.
       "width", "full width", "wide", "fullscreen", "layout", "column",
       "margins", "ultrawide",
+      // 132-2: the two-column friends list.
+      "friends", "two columns", "columns",
     ],
   },
   {

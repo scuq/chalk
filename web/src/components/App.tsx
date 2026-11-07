@@ -3620,6 +3620,7 @@ export function App() {
       flairBurstCount,
       flairBurstMinutes,
       seasonal: seasonalPref,
+      friendColumns: friendColumnsPref,
     },
   ] = useDisplayPrefs();
   // 129-1: which season it is, re-read once a minute so a tab left open over
@@ -6101,6 +6102,7 @@ export function App() {
           // there. Withholding the map is the gate: no map, nothing drawn,
           // in the rows and in the roster's hover card alike.
           avatars={showRosterAvatarsPref ? state.avatars : undefined}
+          friendColumns={friendColumnsPref}
           // 115-8: the hover card shows the framed picture whenever flair's
           // frames are on, whatever the roster-row switch says -- the card is
           // the one place a picture is worth looking at, and a frame nobody

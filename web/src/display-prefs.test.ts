@@ -56,6 +56,7 @@ const FLAIR_DEFAULTS = {
   flairBurstCount: 4,
   flairBurstMinutes: 4,
   seasonal: true,
+  friendColumns: true,
 };
 
 test("normalize keeps a valid pref untouched", () => {
@@ -306,4 +307,11 @@ test("129-1: the seasonal figure is on by default, on when absent, and off when 
   assert.equal(normalizeDisplayPrefs({ font: "mono", scale: 1 }).seasonal, true);
   assert.equal(normalizeDisplayPrefs({ seasonal: false }).seasonal, false);
   assert.equal(normalizeDisplayPrefs({ seasonal: "no" }).seasonal, true);
+});
+
+test("132-2: friend columns are on by default, on when absent, and off when stored off", () => {
+  assert.equal(DEFAULT_DISPLAY_PREFS.friendColumns, true);
+  assert.equal(normalizeDisplayPrefs({ font: "mono", scale: 1 }).friendColumns, true);
+  assert.equal(normalizeDisplayPrefs({ friendColumns: false }).friendColumns, false);
+  assert.equal(normalizeDisplayPrefs({ friendColumns: "no" }).friendColumns, true);
 });

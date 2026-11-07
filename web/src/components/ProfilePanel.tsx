@@ -848,6 +848,26 @@ export function ProfilePanel({
                 </p>
               </div>
 
+              {/* 132-2: the friends list as two columns. The grid itself
+                  decides when the names fit; this only turns it off. */}
+              <div class="chalk-profile-field">
+                <label class="chalk-profile-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={display.friendColumns}
+                    onChange={(e) =>
+                      setDisplay({ friendColumns: (e.target as HTMLInputElement).checked })
+                    }
+                    data-testid="display-friend-columns"
+                  />
+                  <span>show friends in two columns</span>
+                </label>
+                <p class="chalk-profile-hint">
+                  on by default. if a name does not fit half the sidebar, the
+                  list shows one column.
+                </p>
+              </div>
+
               {/* 111-4: the channel banner's off switch. Per-device like the
                   knobs above it -- a strip of picture is worth more of a
                   monitor than of a phone. */}
@@ -866,9 +886,9 @@ export function ProfilePanel({
                 <p class="chalk-profile-hint">
                   a channel's owner can pin an image under its name; turning
                   this off hides the band and never downloads the picture.
-                  font, text size, layout width, scrollbars and this are stored
-                  on this device only, so your phone and your desktop can
-                  differ.
+                  font, text size, layout width, scrollbars, friend columns
+                  and this are stored on this device only, so your phone and
+                  your desktop can differ.
                 </p>
               </div>
             </section>

@@ -4744,17 +4744,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
   margin-left: 0.25em;
 }
 
-/* Friends section: tighter spacing than channels, slight visual
-   distinction so users feel the hierarchy. */
-.chalk-sidebar-list--friends {
-  /* nothing override-specific; inherits chalk-sidebar-list */
-}
-
-.chalk-sidebar-item--friend .chalk-sidebar-item-name {
-  /* the @ prefix is part of the rendered text; keep typography
-     consistent with channel names */
-}
-
 /* Empty states for both sections use the existing chalk-sidebar-empty
    rule. No additional CSS needed there. */
 
@@ -4818,6 +4807,22 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-sidebar-list--friends {
   flex: 0 1 auto;
   overflow-y: auto;
+}
+
+/* 132-2: two columns when the names fit. --chalk-friend-col is the
+   width of the longest row, set inline by the Sidebar. The 50% floor
+   caps the grid at two columns, and auto-fill falls back to one when
+   two rows of that width do not fit the sidebar. */
+.chalk-sidebar-list--friends.chalk-sidebar-list--columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(var(--chalk-friend-col, 100%), 50%), 1fr));
+  align-content: start;
+}
+.chalk-sidebar-list--columns .chalk-sidebar-item--friend {
+  min-width: 0;
+}
+.chalk-sidebar-list--columns .chalk-sidebar-empty {
+  grid-column: 1 / -1;
 }
 
 /* The channels list keeps the base flex: 1 of .chalk-sidebar-list. Its
@@ -5039,6 +5044,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  /* 132-1: the friend row keeps the horizontal padding of the base row
+     and gives up most of the vertical. */
+  padding: 3px var(--chalk-s2);
 }
 
 /* The dot: 8px circle, always rendered (transparent border for
