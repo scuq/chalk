@@ -787,6 +787,41 @@ html {
   margin: 0;
 }
 
+/* 133-6: only a titled empty feed (it holds .chalk-empty) takes the tall,
+   centred layout. The one-line hint of the thread panel stays compact. */
+.chalk-messages--empty:has(.chalk-empty) {
+  min-height: 50vh;
+  font-style: normal;
+}
+
+.chalk-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--chalk-s2);
+  max-width: 40ch;
+  text-align: center;
+  font-style: normal;
+}
+
+.chalk-empty-mark {
+  width: 72px;
+  height: 72px;
+  margin-bottom: var(--chalk-s2);
+  color: var(--chalk-accent);
+}
+
+.chalk-empty-title {
+  margin: 0;
+  font-size: var(--chalk-size-title);
+  color: var(--chalk-fg-bright);
+}
+
+.chalk-empty .chalk-empty-hint {
+  color: var(--chalk-fg-dim);
+  font-size: var(--chalk-size-small);
+}
+
 /* ============================================================
    Phase 55-1: scroll-up pagination
    ============================================================ */
@@ -3034,7 +3069,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   justify-content: center;
   height: 100%;
   color: var(--chalk-fg-dim);
-  font-style: italic;
+  font-style: normal;
 }
 
 /* -- Modal --------------------------------------------------------- */

@@ -1,6 +1,6 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** 133-1 to 133-5 built (2026-11-08). 133-6 and 133-7 planned.
+**Status:** 133-1 to 133-6 built (2026-11-08). 133-7 planned.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
 of the derived tokens. `web/src/theme-tokens.test.ts` tests two rules: every
 custom property the stylesheet reads is declared, and no `var()` carries a
@@ -375,12 +375,34 @@ still mark an edit.
 The `rows`, the stretch, and the `--chalk-composer-h` clamp do not change, so
 `composer-height.ts` needs no edit.
 
-### The empty states (133-6, planned)
+### The empty states (133-6)
 
-An empty channel shows the chalk mark, a title, and the existing hint. The
-mark and the title are not shown while the hint is the loading text. The page
-for "no channel selected" gets the same split. The text has no glow and no
-animation.
+An empty text channel shows the chalk mark, the title "no messages yet", and a
+hint. The mark and the title are not shown while the hint is the loading text
+"loading history...". The thread panel and the voice scratchpad pass no title,
+so they keep the one-line hint. The screen for "no channel open" shows the
+same stack. Its title is "no channels yet" if the user has no channel, and
+"no channel open" if they have one. The text has no glow and no animation.
+
+`Logo.tsx` has a new prop `tone`. The default "brand" keeps the green
+gradient, and the header uses it. The tone "theme" draws all three gradient
+stops as `currentColor`. The mark is 72px and takes `--chalk-accent`, so it
+follows the theme, for example scarlet and cyan in blade-runner. The review
+asked for a centred picture, a short title, and a quiet hint, and no large
+art.
+
+`MessageList.tsx` has a new prop `emptyTitle`. Only a titled empty feed takes
+the tall layout (`50vh`) through `:has(.chalk-empty)`. The italic text of
+`.chalk-main-empty` is now upright.
+
+The plan said "be the first to write something in #<name>". The built hint
+uses the name of the channel without a "#", because the header shows
+a glyph and not a "#". A direct message has its own hint: "be the first to
+write to <name>.".
+
+`web/src/theme-empty.test.ts` has two tests. One tests the mark and its
+colour. One tests that only a titled feed takes the tall layout, and that the
+thread panel passes no title.
 
 ## What was rejected
 
@@ -440,7 +462,12 @@ animation.
   The phone block keeps the 2x2 grid. Four tests in `theme-composer.test.ts`.
   `Composer.tsx` and `theme.css`. Done.
 - **133-6 — the empty states.** `MessageList.tsx`, `App.tsx`, and
-  `theme.css`. Any string that `test/e2e` asserts stays. Planned.
+  `theme.css`, `Logo.tsx`, and two tests in `theme-empty.test.ts`. Done. Seen
+in a browser in the empty channel in green, light, and blade-runner. The
+"no channel open" screen was not seen in a browser. A new account opens in the
+Parking Lot, which has its own large mark from an earlier phase, and the
+screen shows only when no channel and no parking lot is open. The type-check
+and the test cover it.
 - **133-7 — the theme sweep.** Screenshots of the desktop shell in all 15
   themes and of the green phone layout. A theme that misses the contract is
   fixed by an override of one derived token in its block, never by a component
@@ -448,12 +475,23 @@ animation.
 
 ## Left open
 
-- 133-6 and 133-7, as listed above.
+- 133-7, as listed above.
+- The manual check of the "no channel open" screen. See the checklist.
 - After a live resize from a phone width back to a desktop width, the header
   measured 59px and not 56px. A reload restores 56px. 133 does not cause it.
   It is not investigated.
 
 ## Manual checklist
+
+Open after 133-6:
+
+- Open the shell with no channel and no parking lot open. The mark, the
+  title, and the hint must show, centred, in the colors of the theme.
+- Do the same in a light theme and in blade-runner. The mark must follow the
+  accent of the theme.
+- Open an empty text channel and an empty direct message. The hints must name
+  the channel or the person.
+- Open an empty thread panel. It must keep the one-line hint.
 
 Open after 133-5:
 

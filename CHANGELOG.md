@@ -20,6 +20,7 @@ The engineering-level history (which slice shipped what) lives in
 - The sidebar sits on its own slightly raised surface, and the divider lines between its sections are gone. Channel rows are a little more compact. A hovered or selected row stands clear of the column edge. The channel header is a raised band too.
 - The selected channel is a rounded, filled row with a thin outline in every theme. The name of a channel with unread messages is bold.
 - On a desktop, the tools of the message box sit in one row beside the field, with matching icons. The send button is filled in the accent color of your theme when there is something to send. On a phone, the composer is unchanged.
+- An empty channel shows the chalk mark in the colors of your theme, a short title, and a hint that names the channel. Before, it showed one line of italic text. The screen for no open channel looks the same.
 
 ### Fixed
 - Keyboard focus shows a clear ring on every button and field, including the composer tools, send, and the call buttons.

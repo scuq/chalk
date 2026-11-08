@@ -7,15 +7,24 @@
 // background -- an <img> would have to hardcode one theme's colour and would
 // show a black wedge on the light themes.
 //
+// The tone prop picks the colour. The "brand" tone draws the green gradient.
+// The "theme" tone draws every gradient stop as currentColor, so CSS sets the
+// colour and the mark follows the active theme. The empty-state mark uses it.
+//
 // Decorative: the wordmark next to it carries the name, so the svg is
 // aria-hidden rather than labelled.
 
 import { useId } from "preact/hooks";
 
-export function Logo({ class: className }: { class?: string }) {
+// Logo draws the chalk mark. The tone is "brand" by default (green gradient)
+// or "theme" (the CSS colour of the element).
+export function Logo({ class: className, tone = "brand" }: { class?: string; tone?: "brand" | "theme" }) {
   // Two instances can be mounted at once (header + mobile drawer), so the
   // gradient needs a per-instance id to keep the document's ids unique.
   const gradient = `chalk-logo-green-${useId()}`;
+  const stops = tone === "theme"
+    ? ["currentColor", "currentColor", "currentColor"]
+    : ["#56f09a", "#35df83", "#20ce70"];
 
   return (
     <svg
@@ -26,9 +35,9 @@ export function Logo({ class: className }: { class?: string }) {
     >
       <defs>
         <linearGradient id={gradient} x1="70" y1="40" x2="330" y2="350" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stop-color="#56f09a" />
-          <stop offset="0.48" stop-color="#35df83" />
-          <stop offset="1" stop-color="#20ce70" />
+          <stop offset="0" stop-color={stops[0]} />
+          <stop offset="0.48" stop-color={stops[1]} />
+          <stop offset="1" stop-color={stops[2]} />
         </linearGradient>
       </defs>
 

@@ -6593,14 +6593,28 @@ export function App() {
                 ? "loading history..."
                 : activeChannel.channelType === "voice"
                   ? "scratchpad is empty."
-                  : "no messages yet. say something."}
+                  : activeChannel.isDM
+                    ? `be the first to write to ${displayName(activeChannel, state.user?.id ?? null)}.`
+                    : `be the first to write something in ${displayName(activeChannel, state.user?.id ?? null)}.`}
+              emptyTitle={state.historyLoaded[activeChannel.id] && activeChannel.channelType !== "voice"
+                ? "no messages yet"
+                : undefined}
             />
           </>
         ) : (
           <div class="chalk-main-empty" data-testid="no-channel">
-            {state.channelOrder.length === 0
-              ? "no channels yet. create one to get started."
-              : "select a channel from the sidebar."}
+            {/* 133-6: the same stack as the empty feed, without a channel. */}
+            <div class="chalk-empty">
+              <Logo class="chalk-empty-mark" tone="theme" />
+              <p class="chalk-empty-title">
+                {state.channelOrder.length === 0 ? "no channels yet" : "no channel open"}
+              </p>
+              <p class="chalk-empty-hint">
+                {state.channelOrder.length === 0
+                  ? "create one with the + beside channels to get started."
+                  : "select a channel from the sidebar."}
+              </p>
+            </div>
           </div>
         )}
       </main>

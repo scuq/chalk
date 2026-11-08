@@ -26,6 +26,7 @@ import { MessageMenu } from "./MessageMenu";
 import { ReactionBar } from "./ReactionBar";
 import { AttachmentGroup } from "./AttachmentGroup";
 import { Avatar } from "./Avatar"; // 112-3
+import { Logo } from "./Logo";
 import type { AttachmentController } from "../attachments/pipeline";
 import { decideGiphyRender, type GiphyPref } from "../giphy/giphy";
 import { decideLinkPreviewRender } from "../linkpreview/linkpreview";
@@ -455,6 +456,10 @@ interface Props {
   showAvatars?: boolean;
   // empty is the text shown when messages.length === 0.
   empty?: string;
+  // emptyTitle is the title of the empty feed. If it is set, the empty feed
+  // shows the logo, the title, and then empty. If it is not set, the empty
+  // feed shows empty alone, in one line.
+  emptyTitle?: string;
   // Phase 9.7d: chat display settings (timestamps + compact mode).
   // Resolved upstream by selectChatPrefs() so all fields are defaulted.
   display?: {
@@ -586,7 +591,7 @@ function fmtTimeAs(d: Date, fmt: "hms" | "hm" | "relative", now: Date): string {
   return fmtRelative(d, now);
 }
 
-export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, presence, lastSeen, displayNames, empty, display, isDM, onOpenThread, onQuoteMessage, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, avatarFor, showAvatars = false, giphyPref, onRequestEnableGiphy, linkPreviewHide, ephemeral, flashMessageID, onFlashDone, onLoadOlder, historyComplete, oldestSeq }: Props) {
+export function MessageList({ messages: allMessages, channelID, unreadMark, ownDevice, ownUserID, ownHandle, members, presence, lastSeen, displayNames, empty, emptyTitle, display, isDM, onOpenThread, onQuoteMessage, threadSeen, canDeleteMessage, onDeleteMessage, deleteLabelFor, canEditMessage, onEditMessage, editingMessageID, reactions, onToggleReaction, onPickReaction, attachmentController, avatarFor, showAvatars = false, giphyPref, onRequestEnableGiphy, linkPreviewHide, ephemeral, flashMessageID, onFlashDone, onLoadOlder, historyComplete, oldestSeq }: Props) {
   const messages = ephemeral ? allMessages.slice(-EPHEMERAL_MAX_ROWS) : allMessages;
   const endRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -1194,7 +1199,16 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
             until the initial page lands (oldestSeq set), and the "beginning"
             cap is noise above "no messages yet", so complete shows nothing. */}
         {oldestSeq != null && !historyComplete && pagingRow}
-        <p class="chalk-empty-hint">{empty ?? "no messages yet. say something."}</p>
+        {/* 133-6: a titled empty feed shows the mark and the title above the hint. */}
+        {emptyTitle ? (
+          <div class="chalk-empty">
+            <Logo class="chalk-empty-mark" tone="theme" />
+            <p class="chalk-empty-title">{emptyTitle}</p>
+            <p class="chalk-empty-hint">{empty ?? "say something."}</p>
+          </div>
+        ) : (
+          <p class="chalk-empty-hint">{empty ?? "no messages yet. say something."}</p>
+        )}
       </div>
     );
   }
