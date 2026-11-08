@@ -1,6 +1,6 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** 133-1 to 133-4 built (2026-11-08). 133-5 to 133-7 planned.
+**Status:** 133-1 to 133-5 built (2026-11-08). 133-6 and 133-7 planned.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
 of the derived tokens. `web/src/theme-tokens.test.ts` tests two rules: every
 custom property the stylesheet reads is declared, and no `var()` carries a
@@ -331,19 +331,49 @@ page text. The warmwhite rail is dark, so the unread envelope has been
 invisible on the rail since 132-3. The warmwhite rail block now sets
 `--chalk-unread: var(--chalk-fg)`.
 
-### The composer (133-5, planned)
+### The composer (133-5)
 
-On a desktop, `.chalk-composer-tools` is one flex row on a bordered
-`--chalk-bg-elev` surface. The tool buttons are borderless squares of 28px.
-The textarea gets `--chalk-border` and `--chalk-radius-md`, and its border
-turns to `--chalk-accent` on focus. Send is a filled button: `--chalk-accent`
-background, `--chalk-on-accent` text, and `--chalk-accent-hover` on hover.
-When it is disabled, it is an outline. The tool block stays mounted during an
-edit and is hidden with `visibility: hidden`, so the row keeps its width. A
-new SVG icon for the emoji tool replaces the character, so the four tools
-share one stroke style. The `rows`, the stretch, and the
-`--chalk-composer-h` clamp do not change, so `composer-height.ts` needs no
-edit. The mobile block goes back to the 2x2 grid of phase 94.
+On a desktop, `.chalk-composer-tools` is one flex row with a 2px gap and 3px
+of padding. The row sits on one surface: `--chalk-bg-elev`, a 1px
+`--chalk-border`, and `--chalk-radius-md`. The tool buttons have no border.
+They are 28px tall, with `--chalk-radius-sm`. In the icon style they are
+28px squares. The phone block goes back to the 2x2 grid of
+[phase 94](PHASE-94-PHONECOMPOSER.md), with the 1px border on each button, so
+the phone composer looks as it did.
+
+The tool block is always mounted. During an edit it gets the class
+`chalk-composer-tools--hidden` (`visibility: hidden`) and
+`aria-hidden="true"`. One row of tools is about 120px wide. The old 2x2 grid
+needed only the 56px of an empty rail. If the block were unmounted during an
+edit, the field would slide sideways. The hidden buttons also leave the tab
+order. Measured in the browser, the x position of the field is 442px before
+an edit and 442px during an edit. `.chalk-composer-rail` lost its
+`min-width: 56px`, because the hidden tools hold the width.
+
+The GIF tool shows only when GIF search is enabled. Without it, the row has
+three tools.
+
+A new `IconEmoji` (a stroked smiley, with the stroke style of the other
+icons) replaces the character in the icon style. The text style is
+unchanged. All four icons are now 16px, and were 14px.
+
+The textarea has `--chalk-radius-md` and a `--chalk-border` edge. Its focus
+outline is `--chalk-accent`, and was `--chalk-fg`. Send is a filled button:
+`--chalk-accent` background and border, `--chalk-on-accent` text, weight 700,
+and `--chalk-accent-hover` on hover. When the field is empty, send is
+transparent, with a `--chalk-border` edge and muted text. It has no opacity.
+Send is the one prominent control of the composer, and it is filled only when
+there is something to send. The height rule of
+[phase 94](PHASE-94-PHONECOMPOSER.md) stays: send is as high as the field.
+
+The slice deleted `.chalk-composer--editing .chalk-composer-send` and its
+hover rule. They colored the label with the accent. On the new accent fill,
+the label of "save" was invisible. The browser showed this. Send is now the
+accent in both modes. The editing strip and the accent ring on the field
+still mark an edit.
+
+The `rows`, the stretch, and the `--chalk-composer-h` clamp do not change, so
+`composer-height.ts` needs no edit.
 
 ### The empty states (133-6, planned)
 
@@ -404,8 +434,11 @@ animation.
   transition on five button rules, the global focus rule, and the
   reduced-motion guard for `.chalk-status-dot--connecting`. Two tests in
   `theme-sidebar.test.ts`. All in `theme.css`. Done.
-- **133-5 — the composer.** `Composer.tsx` and the composer rules in
-  `theme.css`. Planned.
+- **133-5 — the composer.** The tool row on one surface, the tool block
+  mounted and hidden during an edit, `IconEmoji`, the 16px icons, the filled
+  send button, the accent focus outline, and the deleted edit-mode send rules.
+  The phone block keeps the 2x2 grid. Four tests in `theme-composer.test.ts`.
+  `Composer.tsx` and `theme.css`. Done.
 - **133-6 — the empty states.** `MessageList.tsx`, `App.tsx`, and
   `theme.css`. Any string that `test/e2e` asserts stays. Planned.
 - **133-7 — the theme sweep.** Screenshots of the desktop shell in all 15
@@ -415,9 +448,21 @@ animation.
 
 ## Left open
 
-- 133-5 to 133-7, as listed above.
+- 133-6 and 133-7, as listed above.
+- After a live resize from a phone width back to a desktop width, the header
+  measured 59px and not 56px. A reload restores 56px. 133 does not cause it.
+  It is not investigated.
 
 ## Manual checklist
+
+Open after 133-5:
+
+- Open a thread pane. Its composer is narrower than the main one. All four
+  tools must fit in it.
+- Set the tool style to text on a desktop. The labels must fit the row.
+- Edit a message. The field must not move.
+- Look at send in a light theme and in a dark theme. It must be filled when
+  the field has text, and its label must be readable.
 
 Open after 133-4:
 

@@ -885,11 +885,11 @@ html {
   gap: var(--chalk-s2);
 }
 
-/* The rail renders empty during an edit (its buttons are hidden), so it holds
-   the block's width to stop the field sliding sideways mid-edit. */
+/* The rail has no width of its own. During an edit the tool block inside it is
+   hidden, not removed (133-5), so it holds the width and the field does not
+   slide sideways. */
 .chalk-composer-rail {
   flex: none;
-  min-width: 56px;
 }
 
 .chalk-composer-main {
@@ -950,7 +950,7 @@ html {
   background: var(--chalk-bg-elev);
   color: var(--chalk-fg);
   border: 1px solid var(--chalk-border);
-  border-radius: var(--chalk-radius);
+  border-radius: var(--chalk-radius-md);
   padding: var(--chalk-s2) var(--chalk-s3);
   font-family: inherit;
   font-size: var(--chalk-size-base);
@@ -966,7 +966,7 @@ html {
 }
 
 .chalk-composer-input:focus {
-  outline: 1px solid var(--chalk-fg);
+  outline: 1px solid var(--chalk-accent);
   outline-offset: -1px;
   background: var(--chalk-bg-elev-2);
 }
@@ -980,8 +980,9 @@ html {
   cursor: not-allowed;
 }
 
-/* 42-1: a quiet outline button -- Enter sends, so this does not need to be the
-   loudest thing in the footer.
+/* 133-5: send is the one prominent control of the composer. It is filled with
+   the accent when the field has something to send, and an outline when the
+   field is empty (disabled).
    94-2: it does need to be the same height as the field it sits beside. It was
    a 26px button parked at the bottom corner, which read as a stray control
    rather than the composer's own; with the field resizable (91-1) and Enter no
@@ -992,27 +993,30 @@ html {
   flex: 0 0 auto;
   align-self: stretch;
   padding: 0 var(--chalk-s3);
-  background: transparent;
-  color: var(--chalk-fg);
-  border: 1px solid var(--chalk-fg);
-  border-radius: var(--chalk-radius);
+  background: var(--chalk-accent);
+  color: var(--chalk-on-accent);
+  border: 1px solid var(--chalk-accent);
+  border-radius: var(--chalk-radius-md);
+  font-weight: 700;
   font-family: inherit;
   font-size: var(--chalk-size-small);
   line-height: 1;
   text-transform: lowercase;
   letter-spacing: 0.05em;
   cursor: pointer;
+  transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), border-color var(--chalk-dur-fast);
 }
 
 .chalk-composer-send:hover:not(:disabled) {
-  background: var(--chalk-fg);
-  color: var(--chalk-bg);
+  background: var(--chalk-accent-hover);
+  border-color: var(--chalk-accent-hover);
+  color: var(--chalk-on-accent);
 }
 
 .chalk-composer-send:disabled {
-  opacity: 0.4;
+  background: transparent;
   cursor: not-allowed;
-  border-color: var(--chalk-fg-muted);
+  border-color: var(--chalk-border);
   color: var(--chalk-fg-muted);
 }
 
@@ -1067,14 +1071,6 @@ html {
 .chalk-composer--editing .chalk-composer-input:focus {
   border-color: var(--chalk-accent);
   outline-color: var(--chalk-accent);
-}
-.chalk-composer--editing .chalk-composer-send {
-  border-color: var(--chalk-accent);
-  color: var(--chalk-accent);
-}
-.chalk-composer--editing .chalk-composer-send:hover:not(:disabled) {
-  background: var(--chalk-accent);
-  color: var(--chalk-bg);
 }
 .chalk-composer-editing-hint {
   margin-left: auto;
@@ -8784,37 +8780,41 @@ body.chalk-resizing-y .chalk-composer-resizer {
 /* Readability: the placeholder used --chalk-fg-muted on a near-black
    field, which sat well under a comfortable contrast ratio. Move it to
    --chalk-fg-dim and pin opacity (Firefox applies its own by default).
-   The brighter border gives the field a visible edge instead of it
-   bleeding into the page background. */
+   133-5: the field has its own raised background on the page, so the
+   --chalk-border edge is enough. Focus is an accent outline. */
 .chalk-composer-input {
   line-height: 1.5;
-  border-color: var(--chalk-fg-muted);
+  border-color: var(--chalk-border);
 }
 .chalk-composer-input::placeholder {
   color: var(--chalk-fg-dim);
   opacity: 1;
 }
 
-/* 44-5: attach / GIF / emoji / "?" as a 2x2 block against the left edge of the
-   input. Two columns rather than one row or one column: a row ate the field's
-   width, and a column of four made the footer twice as tall as the field it
-   sits beside. align-content: end keeps the block's bottom on the input's
-   bottom when the field is dragged taller. */
+/* 44-5: the tool block sits against the left edge of the input.
+   133-5: on a desktop it is one flex row on one surface, with a 2px gap and
+   3px of padding. The phone block below returns to the 2x2 grid. */
 .chalk-composer-tools {
-  display: grid;
-  grid-template-columns: repeat(2, auto);
-  align-content: end;
-  justify-content: start;
-  gap: var(--chalk-s1);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius-md);
+}
+/* 133-5: an edit hides the block and keeps its width. */
+.chalk-composer-tools--hidden {
+  visibility: hidden;
 }
 .chalk-composer-tool {
   background: transparent;
   color: var(--chalk-fg-dim);
-  border: 1px solid var(--chalk-border);
-  border-radius: var(--chalk-radius);
-  padding: 1px var(--chalk-s2);
+  border: none;
+  border-radius: var(--chalk-radius-sm);
+  padding: 0 var(--chalk-s2);
   min-height: 0;
-  height: 22px;
+  height: 28px;
   line-height: 1;
   font-family: inherit;
   font-size: var(--chalk-size-small);
@@ -8823,7 +8823,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-composer-tool:hover:not(:disabled) {
   color: var(--chalk-fg);
-  border-color: var(--chalk-fg-muted);
   background: var(--chalk-bg-hover);
 }
 .chalk-composer-tool:disabled {
@@ -9864,14 +9863,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 /* Icon variant: square buttons that centre their glyph. The SVGs stroke with
    currentColor, so they inherit the button's colour and hover state and need
-   no per-theme rules. 26px square x 2 rows lands the block at the same height
-   as the two-row input beside it. */
+   no per-theme rules. On a desktop the buttons are 28px squares in one row.
+   The phone block below sets 34px squares in a 2x2 grid. */
 .chalk-composer-rail--icons .chalk-composer-tool {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   padding: 0;
 }
 .chalk-composer-rail--icons .chalk-composer-tool svg {
@@ -10560,6 +10559,21 @@ body.chalk-resizing-y .chalk-composer-resizer {
      character and a half of the line you are typing. */
   .chalk-composer-row {
     gap: var(--chalk-s1);
+  }
+
+  /* 133-5: the phone keeps the 2x2 grid and the bordered buttons of 44-5. */
+  .chalk-composer-tools {
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    align-content: end;
+    gap: var(--chalk-s1);
+    padding: 0;
+    background: transparent;
+    border: none;
+  }
+
+  .chalk-composer-tool {
+    border: 1px solid var(--chalk-border);
   }
 
   /* 44-5: bigger squares for thumbs. The block is then 2 x 34px + the gap, so

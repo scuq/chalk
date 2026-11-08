@@ -87,8 +87,9 @@ interface Props {
   giphyReady?: boolean;
   onRequestEnableGiphy?: () => void;
   // Phase 9.7h: tool row presentation. "text" (default) renders FILE / GIF /
-  // EMOJI labels; "icons" renders glyphs. The emoji button keeps its 🙂 in
-  // both -- it already is an icon.
+  // EMOJI labels; "icons" renders glyphs. The emoji button has its own
+  // stroked glyph (IconEmoji) in the icon style, so the four tools match. The
+  // text style is unchanged.
   //
   // 94-1: on a phone the text style renders the initials instead (F / G / E /
   // C) -- see TOOL_LABELS.
@@ -182,14 +183,14 @@ function hostOfURL(url: string): string {
 
 // Phase 9.7h: inline SVG glyphs for the "icons" tool style. Stroked with
 // currentColor so they inherit the button's colour (and therefore the theme
-// and hover state) without any per-theme rules. 14px to sit inside the 22px
+// and hover state) without any per-theme rules. 16px to sit inside the 28px
 // tool button with room to breathe.
 function IconFile() {
   return (
     <svg
       viewBox="0 0 24 24"
-      width="14"
-      height="14"
+      width="16"
+      height="16"
       fill="none"
       stroke="currentColor"
       strokeWidth={2}
@@ -208,8 +209,8 @@ function IconGif() {
   return (
     <svg
       viewBox="0 0 24 24"
-      width="14"
-      height="14"
+      width="16"
+      height="16"
       fill="none"
       stroke="currentColor"
       strokeWidth={2}
@@ -229,8 +230,8 @@ function IconCode() {
   return (
     <svg
       viewBox="0 0 24 24"
-      width="14"
-      height="14"
+      width="16"
+      height="16"
       fill="none"
       stroke="currentColor"
       strokeWidth={2}
@@ -240,6 +241,27 @@ function IconCode() {
     >
       <path d="M8 6l-6 6 6 6" />
       <path d="M16 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+function IconEmoji() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8.5 14.5a4.5 4.5 0 0 0 7 0" />
+      <path d="M9 9.5h.01" />
+      <path d="M15 9.5h.01" />
     </svg>
   );
 }
@@ -1205,77 +1227,79 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
         )}
         <div class="chalk-composer-row">
           {/* 44-5: the tool block, immediately left of the field it acts on.
-              A 2x2 grid rather than a row or a column: a row stole width from
-              the field, a column of four made the footer twice as tall. The
-              block is rendered (empty) during an edit to hold its width, so
-              the field does not slide sideways mid-edit. The old per-button
-              classes are kept alongside chalk-composer-tool so the existing
-              hover/disabled rules still apply.
-              74-2: still four cells -- CODE took the "?" one, and the sheet
-              moved down beside the send button. Keeping it 2x2 is what keeps
-              the rail the same height as the two-row input. */}
+              The old per-button classes are kept alongside chalk-composer-tool
+              so the existing hover/disabled rules still apply.
+              133-5: on a desktop the block is one row on a shared surface, from
+              the design review. The phone keeps the 2x2 block, which makes the
+              rail as high as the two-row input (74-2: CODE took the fourth
+              cell). The block stays mounted during an edit and gets
+              chalk-composer-tools--hidden and aria-hidden. One row is about
+              120px wide, so unmounting the block would slide the field
+              sideways mid-edit. Hidden buttons also leave the tab order. */}
           {railed && (
             <div
               class={`chalk-composer-rail ${icons ? "chalk-composer-rail--icons" : "chalk-composer-rail--text"}`}
               data-testid="composer-rail"
             >
-              {showTools && (
-                <div class="chalk-composer-tools" data-testid="composer-tools">
-                  {enableAttachments && (
-                    <button
-                      type="button"
-                      class="chalk-composer-tool chalk-composer-attach"
-                      onClick={() => openTool("file")}
-                      disabled={effectiveDisabled || sending}
-                      title={`attach a file (${shortcutLabel("file", mac)})`}
-                      aria-label="attach a file"
-                      data-testid="composer-attach"
-                    >
-                      {icons ? <IconFile /> : toolLabel("file")}
-                    </button>
-                  )}
-                  {giphyEnabled && (
-                    <button
-                      type="button"
-                      class="chalk-composer-tool chalk-composer-giphy"
-                      onClick={() => openTool("gif")}
-                      disabled={effectiveDisabled || sending}
-                      title={`send a GIF (${shortcutLabel("gif", mac)})`}
-                      aria-label="send a GIF"
-                      data-testid="composer-giphy"
-                    >
-                      {icons ? <IconGif /> : toolLabel("gif")}
-                    </button>
-                  )}
+              <div
+                class={`chalk-composer-tools ${showTools ? "" : "chalk-composer-tools--hidden"}`}
+                data-testid="composer-tools"
+                aria-hidden={showTools ? undefined : "true"}
+              >
+                {enableAttachments && (
                   <button
                     type="button"
-                    class="chalk-composer-tool chalk-composer-emoji"
-                    onClick={() => openTool("emoji")}
+                    class="chalk-composer-tool chalk-composer-attach"
+                    onClick={() => openTool("file")}
                     disabled={effectiveDisabled || sending}
-                    title={`insert emoji (${shortcutLabel("emoji", mac)})`}
-                    aria-label="insert emoji"
-                    data-testid="composer-emoji"
+                    title={`attach a file (${shortcutLabel("file", mac)})`}
+                    aria-label="attach a file"
+                    data-testid="composer-attach"
                   >
-                    {icons ? "🙂" : toolLabel("emoji")}
+                    {icons ? <IconFile /> : toolLabel("file")}
                   </button>
-                  {/* 74-2: no shortcut in the title -- see openTool.
-                      94-4: the class is -code-tool, not -code: .chalk-composer-code
-                      is the staged-snippet chip below, and the collision made this
-                      button a flex container, which is what stopped `text-align:
-                      center` from centring the phone's "C". */}
+                )}
+                {giphyEnabled && (
                   <button
                     type="button"
-                    class="chalk-composer-tool chalk-composer-code-tool"
-                    onClick={() => openTool("code")}
+                    class="chalk-composer-tool chalk-composer-giphy"
+                    onClick={() => openTool("gif")}
                     disabled={effectiveDisabled || sending}
-                    title="paste code"
-                    aria-label="paste code"
-                    data-testid="composer-code"
+                    title={`send a GIF (${shortcutLabel("gif", mac)})`}
+                    aria-label="send a GIF"
+                    data-testid="composer-giphy"
                   >
-                    {icons ? <IconCode /> : toolLabel("code")}
+                    {icons ? <IconGif /> : toolLabel("gif")}
                   </button>
-                </div>
-              )}
+                )}
+                <button
+                  type="button"
+                  class="chalk-composer-tool chalk-composer-emoji"
+                  onClick={() => openTool("emoji")}
+                  disabled={effectiveDisabled || sending}
+                  title={`insert emoji (${shortcutLabel("emoji", mac)})`}
+                  aria-label="insert emoji"
+                  data-testid="composer-emoji"
+                >
+                  {icons ? <IconEmoji /> : toolLabel("emoji")}
+                </button>
+                {/* 74-2: no shortcut in the title -- see openTool.
+                    94-4: the class is -code-tool, not -code: .chalk-composer-code
+                    is the staged-snippet chip below, and the collision made this
+                    button a flex container, which is what stopped `text-align:
+                    center` from centring the phone's "C". */}
+                <button
+                  type="button"
+                  class="chalk-composer-tool chalk-composer-code-tool"
+                  onClick={() => openTool("code")}
+                  disabled={effectiveDisabled || sending}
+                  title="paste code"
+                  aria-label="paste code"
+                  data-testid="composer-code"
+                >
+                  {icons ? <IconCode /> : toolLabel("code")}
+                </button>
+              </div>
             </div>
           )}
           <textarea
