@@ -1,11 +1,13 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** built, 133-1 to 133-14 (2026-11-08).
+**Status:** built, 133-1 to 133-15 (2026-11-08).
 133-7 changed no code. The phase closed at 133-7 and was reopened for the voice
 room. See "The voice room" below. After the owner watched a live demo, the
 phase was reopened once more for 133-12. The owner then sent an icon sheet,
 and the phase was reopened for 133-13, the icons. A second design review
-then led to 133-14, the composer as one control.
+then led to 133-14, the composer as one control. The owner then asked for
+less cyan sidebar text after a mock with three candidate colors. This led to
+133-15, the body text color.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
 of the derived tokens. `web/src/theme-tokens.test.ts` tests two rules: every
 custom property the stylesheet reads is declared, and no `var()` carries a
@@ -100,16 +102,16 @@ room:
 
 ### Tokens and the green palette (133-1)
 
-The default palette is now a near-black ground with soft mint body text. The
-unread green `#24f077` is the emphasis color and the accent. The review gave
-these values:
+The default palette is now a near-black ground with soft body text. 133-15
+changed that text from mint to a greener tone. The unread green `#24f077` is
+the emphasis color and the accent. The review gave these values:
 
 | Token | Value |
 |---|---|
 | `--chalk-bg` | `#050805` |
 | `--chalk-bg-elev` | `#0a110b` |
 | `--chalk-bg-elev-2` | `#0f1c11` |
-| `--chalk-fg` | `#88ffc9` |
+| `--chalk-fg` | `#8cffa8` (133-1 gave `#88ffc9`) |
 | `--chalk-fg-dim` | `#74b08a` |
 | `--chalk-fg-bright` | `#24f077` |
 | `--chalk-fg-muted` | `#3c6b52` |
@@ -241,7 +243,7 @@ not green showed a green tint on hover in these places:
 
 Two rules keep a literal color on purpose, and each has a comment that says
 why. `.chalk-noscript` is the notice for a browser with no JavaScript. The
-script applies themes, so the notice cannot use a token. Its colors, `#88ffc9`
+script applies themes, so the notice cannot use a token. Its colors, `#8cffa8`
 on `#050805`, now equal the new default palette. The matrix flair frame keeps
 `#00ff41`, because matrix green is one color in every theme.
 
@@ -1011,6 +1013,31 @@ and the test cover it.
   `theme.css`. Four new tests in `theme-composer.test.ts`, and a changed
   test in `theme-icons.test.ts`. Done. See "The composer as one control
   (133-14)".
+- **133-15 — a greener body text.** `--chalk-fg` changed from `#88ffc9` to
+  `#8cffa8`, a phosphor green. The `.chalk-noscript` color changed to the same
+  value. `theme.css` only. Done. See "A greener body text (133-15)".
+
+### A greener body text (133-15)
+
+The owner looked at the sidebar and saw cyan channel names. The cause was the
+mint body text `#88ffc9`, at a hue of about 153 degrees. The owner saw a mock
+with three candidate colors and chose phosphor `#8cffa8`, at a hue of about
+134 degrees. It stays clearly different from the unread green `#24f077`.
+
+The slice changed one value in `--chalk-fg` and the literal color of
+`.chalk-noscript`. The section headers, the channel glyphs (`--chalk-fg-dim`),
+and the unread color did not change. The change applies to all body text in the
+green theme. The contrast against `#050805` stays far above the 4.5:1 floor in
+`theme-palette.test.ts`.
+
+Rejected:
+
+- `#a0ff9a`, a terminal green at a hue of about 116 degrees. It was a full
+  shift to pure green. Phosphor keeps more of the 133 look and removes the
+  cyan.
+- `#b8f0a8`. It sat close to the yellow-green tint of the nicknames.
+- A rule that changes only the sidebar. The owner chose the one token for the
+  whole theme.
 
 ## Left open
 

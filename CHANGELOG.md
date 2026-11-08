@@ -10,6 +10,11 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- In the default green theme, text is now a greener tone and no longer mint. Channel names no longer look cyan. Unread names stay the brighter green.
+
 ## v0.11.0 — 8 November 2026 — One consistent look across the sidebar, the composer and the voice room
 
 ### Changed

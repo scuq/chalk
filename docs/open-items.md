@@ -18,7 +18,7 @@ phases are *planned, not started*.
 
 ## Phase 133 — polish: built, with seven open points
 
-133-1 … 133-12 are built, record in
+133-1 … 133-15 are built, record in
 [phases/PHASE-133-POLISH.md](phases/PHASE-133-POLISH.md). The phase closed at
 133-7 and reopened for the voice room. The voice room slices are built: an
 adaptive stage, the scratchpad, a scenario sweep, and a measured height for

@@ -145,13 +145,14 @@
 }
 
 :root {
-  /* 133-1: Palette. A near-black ground with soft mint body text. The
+  /* 133-1: Palette. A near-black ground with green body text. The
      unread green #24f077 is the emphasis and accent color. The values
-     come from the 133 design review. */
+     come from the 133 design review. 133-15 changed the body text from
+     mint to a greener tone, so it does not look cyan. */
   --chalk-bg:           #050805;
   --chalk-bg-elev:      #0a110b;
   --chalk-bg-elev-2:    #0f1c11;
-  --chalk-fg:           #88ffc9;
+  --chalk-fg:           #8cffa8;
   --chalk-fg-dim:       #74b08a;
   --chalk-fg-bright:    #24f077;
   --chalk-fg-muted:     #3c6b52;
@@ -317,7 +318,7 @@ html {
    index.html because style-src is strict; hardcoded rather than themed
    because the themes are applied by the script that did not run. */
 .chalk-noscript {
-  color: #88ffc9;
+  color: #8cffa8;
   background: #050805;
   font-family: monospace;
   padding: 2rem;
