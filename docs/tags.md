@@ -35,7 +35,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #notify         40 50 71 102  web/src/notify/ web/assets/sounds/ web/src/components/ProfilePanel.tsx tools/render-classic-theme.mjs internal/server/spa.go docs/notification-sounds.md docs/phases/PHASE-40-SOUNDS.md docs/phases/PHASE-50-NOTIFYRULES.md docs/phases/PHASE-71-CALLSOUNDS.md docs/phases/PHASE-102-SOUNDTHEMES.md
 #push           -         docs/phases/PHASE-65-PUSH.md
 #parking        53        web/src/parking.ts web/src/parking-hotkey.ts web/src/state/ web/src/components/ docs/phases/PHASE-53-PARKING.md
-#roster         54 78 92 100 106 114 123 131 132  web/src/chat/ web/src/chat/friend-columns.ts web/src/components/Sidebar.tsx web/src/components/UnreadDot.tsx web/src/components/HoverCard.tsx web/src/components/ZuckerList.tsx web/src/components/CreateChannelModal.tsx web/src/theme.css web/src/theme-sidebar.test.ts docs/phases/PHASE-54-ROSTER.md docs/phases/PHASE-78-HIDECHANNELS.md docs/phases/PHASE-92-HOVERCARD.md docs/phases/PHASE-100-VOICESECTION.md docs/phases/PHASE-123-SIDEBARFLOOR.md docs/phases/PHASE-131-CALLRAIL.md
+#roster         54 78 92 100 106 114 123 131 132 133  web/src/chat/ web/src/chat/friend-columns.ts web/src/components/Sidebar.tsx web/src/components/UnreadDot.tsx web/src/components/HoverCard.tsx web/src/components/ZuckerList.tsx web/src/components/CreateChannelModal.tsx web/src/theme.css web/src/theme-sidebar.test.ts docs/phases/PHASE-54-ROSTER.md docs/phases/PHASE-78-HIDECHANNELS.md docs/phases/PHASE-92-HOVERCARD.md docs/phases/PHASE-100-VOICESECTION.md docs/phases/PHASE-123-SIDEBARFLOOR.md docs/phases/PHASE-131-CALLRAIL.md
 #channelnames   106       migrations/0054_channel_short_name.sql internal/store/channel_names.go internal/store/channels.go internal/store/guest_data.go internal/proto/frames.go internal/server/channel_names_ws.go internal/server/ws.go web/src/chat/channel-names.ts web/src/components/Sidebar.tsx web/src/components/CreateChannelModal.tsx web/src/components/ProfilePanel.tsx web/src/components/App.tsx web/src/state/ web/src/proto.ts web/src/theme.css docs/phases/PHASE-106-CHANNELNAMES.md
 #zucker         62 64 78 95 126 129  web/src/chat/zucker.ts web/src/components/ZuckerList.tsx web/src/components/ZuckerCallBar.tsx web/src/theme.css web/src/theme-zucker.test.ts docs/phases/PHASE-62-ZUCKER.md docs/phases/PHASE-78-HIDECHANNELS.md docs/phases/PHASE-95-PHONEVOICE.md docs/phases/PHASE-126-ZUCKERCALL.md
 #history        55 69 79  internal/store/ web/src/chat/ web/src/components/MessageList.tsx docs/phases/PHASE-55-HISTORY.md docs/phases/PHASE-69-PINNEDHEADER.md docs/phases/PHASE-79-LANDING.md
@@ -45,7 +45,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #whatsnew       116       web/src/whats-new.ts web/src/whats-new.test.ts web/src/components/WhatsNewNudge.tsx web/src/components/AvatarNudge.tsx web/src/components/App.tsx web/src/components/ProfilePanel.tsx web/src/settings-nav.ts web/src/state/types.ts web/src/theme.css docs/phases/PHASE-116-WHATSNEW.md
 #rosterorder    114       web/src/chat/roster-order.ts web/src/chat/zucker.ts web/src/components/Sidebar.tsx web/src/components/App.tsx web/src/components/ProfilePanel.tsx web/src/state/types.ts web/src/settings-nav.ts web/src/theme.css docs/phases/PHASE-114-ROSTERORDER.md
 #mentions       56        web/src/chat/ web/src/components/Composer.tsx docs/phases/PHASE-56-MENTIONS.md
-#composer       91 94     web/src/chat/composer-height.ts web/src/chat/composer-keys.ts web/src/components/ComposerResizer.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-91-COMPOSERSIZE.md docs/phases/PHASE-94-PHONECOMPOSER.md
+#composer       91 94 133 web/src/chat/composer-height.ts web/src/chat/composer-keys.ts web/src/components/ComposerResizer.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-91-COMPOSERSIZE.md docs/phases/PHASE-94-PHONECOMPOSER.md
 #linkpreview    57 67     internal/linkpreview/ web/src/linkpreview/ web/src/chat/links.ts docs/phases/PHASE-57-LINKPREVIEW.md docs/phases/PHASE-67-LINKLABELS.md
 #code           74        web/src/code/ web/src/chat/bodytext.ts web/src/components/CodeModal.tsx web/src/components/CodeBlockView.tsx docs/phases/PHASE-74-CODEBLOCKS.md
 #nanomd         77 107    web/src/chat/nanomd.ts web/src/components/MessageList.tsx web/src/theme.css docs/phases/PHASE-77-NANOMD.md docs/phases/PHASE-107-QUOTE.md
@@ -59,7 +59,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #mobile         32 60 64 76 94 125  web/src/mobile.ts web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/components/ web/src/theme.css web/src/viewport.ts docs/phases/PHASE-32-MOBILE.md docs/phases/PHASE-60-MOBILEFIT.md docs/phases/PHASE-64-SWIPEBACK.md docs/phases/PHASE-94-PHONECOMPOSER.md docs/phases/PHASE-125-KEYBOARD.md
 #settings       68 70 76 124 132  web/src/settings-nav.ts web/src/display-prefs.ts web/src/components/ProfilePanel.tsx web/src/components/MicSettings.tsx web/src/components/MicSettingsDialog.tsx web/src/theme.css docs/phases/PHASE-68-SETTINGSTABS.md docs/phases/PHASE-70-APPEARANCE.md docs/phases/PHASE-76-SHORTCUTS.md docs/phases/PHASE-124-SETTINGSROWS.md
 #fullwidth      93        web/src/display-prefs.ts web/src/theme.css web/src/components/ProfilePanel.tsx docs/phases/PHASE-93-WIDTH.md
-#themes         -         web/src/theme.css web/src/theme-palette.test.ts web/src/components/ProfilePanel.tsx web/src/chat/nickcolor.ts docs/theming.md
+#themes         133       web/src/theme.css web/src/theme-palette.test.ts web/src/theme-tokens.test.ts web/src/components/ProfilePanel.tsx web/src/chat/nickcolor.ts docs/theming.md docs/phases/PHASE-133-POLISH.md
 #nickcolor      117       web/src/chat/nickcolor.ts web/src/components/HueSlider.tsx web/src/components/ProfilePanel.tsx web/src/components/Sidebar.tsx web/src/theme.css docs/phases/PHASE-117-HUESTRIP.md
 #version        39        internal/version/ web/src/version.ts docs/phases/PHASE-39-VERSION.md
 #servernotice   46        web/src/state/ web/src/components/ docs/phases/PHASE-46-UPDATENOTICE.md
@@ -99,7 +99,7 @@ Phase numbers that appear in the source but are not claimed above. Left here
 rather than guessed at, so the legend stays trustworthy; move one into a tag
 line when its topic is clear.
 
-    (none — 25 through 121 are all claimed)
+    (none — 25 through 133 are all claimed)
 
 Phases below 25 predate the tagging convention and carry no `// NN-n:` comments
 to find. They are recorded in `docs/phases/PHASE-00-29-FOUNDATION.md` instead —

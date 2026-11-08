@@ -4,7 +4,7 @@ chalk's UI is themed entirely via CSS custom properties, all of them in
 `web/src/theme.css`. Two layers cascade:
 
 ```
-:root                ← the default theme (matrix green-on-black)
+:root                ← the default theme (near-black with mint text)
 [data-theme="X"]     ← every other built-in theme
 ```
 
@@ -16,7 +16,7 @@ styles on the same element — see `web/src/display-prefs.ts`.
 
 ## Tokens
 
-A theme block redeclares the eleven palette tokens and nothing else:
+A theme block redeclares the eleven palette tokens. It can also override any derived token with a hex value. It declares nothing else:
 
 | Token | Role |
 |---|---|
@@ -32,11 +32,35 @@ A theme block redeclares the eleven palette tokens and nothing else:
 
 Plus `color-scheme`, so form controls and scrollbars follow.
 
+### Derived tokens
+
+Seven more tokens come from the palette through `color-mix()`, in one rule in
+`web/src/theme.css`. No theme block needs to declare them. The rule also names
+the warmwhite rail, because the rail declares its own palette on
+`.chalk-sidebar`, and a derived token must resolve against that palette. To
+change one derived token in one theme, set a hex value for it in the theme
+block. The palette test then uses that hex.
+
+| Token | Role |
+|---|---|
+| `--chalk-bg-hover` | hovered rows and buttons |
+| `--chalk-bg-selected` | the selected row |
+| `--chalk-border-strong` | the edge of the selected row |
+| `--chalk-accent-hover` | the accent control under the pointer |
+| `--chalk-accent-dim` | a quiet accent fill |
+| `--chalk-on-accent` | text on an accent fill |
+| `--chalk-focus` | the keyboard focus ring |
+
 The rest of the token set is theme-independent and lives on `:root`:
 type (`--chalk-font-*`, `--chalk-font-scale`, `--chalk-size-*`), spacing
-(`--chalk-s1` … `--chalk-s6`), `--chalk-radius`, and the presence colors
+(`--chalk-s1` … `--chalk-s6`), the radius scale, the durations, and the presence colors
 (`--chalk-presence-*`), which are a fixed status signal — "online" means the
-same green in every theme, so a theme block must not override them. Nick colors
+same green in every theme, so a theme block must not override them. The radius
+scale is `--chalk-radius-sm` (4px, badges and chips), `--chalk-radius-md` (6px,
+rows, buttons, and inputs), and `--chalk-radius-lg` (8px, panels).
+`--chalk-radius` is an alias of the md radius. A theme block can override the
+three, as `lcars` does with 10px. The durations are `--chalk-dur-fast` (100ms)
+and `--chalk-dur` (160ms). Nick colors
 are per-user hues with theme-supplied saturation and lightness
 (`--nick-s` / `--nick-l`); see `web/src/chat/nickcolor.ts`.
 
@@ -45,7 +69,7 @@ are per-user hues with theme-supplied saturation and lightness
 Light: `light` (warm cream), `snazzy-light`, `warmwhite` (dark rail beside a
 paper page), `vscode-light`, `catppuccin-latte`.
 
-Dark: the default matrix green, `cyberpunk`, `solarized-dark`, `tokyo-night`,
+Dark: the default near-black with mint text, `cyberpunk`, `solarized-dark`, `tokyo-night`,
 `lcars`, `blade-runner`, `azeroth`, `darkord`, `exchalk`, `catppuccin-mocha`.
 
 Two of them bend more than color, which is what makes them read as themselves:
@@ -62,6 +86,20 @@ above the block: body, dim and emphasis clear 4.5:1 on `--chalk-bg`, the muted
 tier and the signal colors clear 3:1, and nothing drops below 3:1 on
 `--chalk-bg-elev-2`. `web/src/theme-palette.test.ts` enforces exactly that, and
 also holds the picker and the stylesheet to the same theme names.
+
+The derived tokens have floors of their own, and the same test enforces them:
+
+- `--chalk-fg` clears 3:1 on `--chalk-bg-hover`, the same floor as the top
+  surface `--chalk-bg-elev-2`, and 4.5:1 on `--chalk-bg-selected`.
+- `--chalk-fg-bright` clears 3:1 on `--chalk-bg-selected`.
+- `--chalk-on-accent` clears 4.5:1 on `--chalk-accent` and on
+  `--chalk-accent-hover`, because a label on an accent fill is small text.
+- `--chalk-focus` clears 3:1 on `--chalk-bg`.
+
+`web/src/theme-tokens.test.ts` adds one more check. Every custom property that
+the stylesheet reads must be declared in the sheet or set by TypeScript. A
+`var()` with no declaration and no fallback drops its whole declaration
+without a message.
 
 ## Motion policy
 
@@ -91,6 +129,10 @@ the rules any motion in the sheet follows:
    for the pulse ring) so every theme passes the palette test unchanged. The
    aurora frame is the one deliberate exception: a spectrum is the same
    spectrum in every theme.
+5. **Transitions use the duration tokens.** A transition is written on
+   `--chalk-dur` or `--chalk-dur-fast`. One `@media (prefers-reduced-motion:
+   reduce)` rule in the `:root` section sets both to 0ms, so every transition
+   on a token stops without a guard of its own.
 
 ## Adding a built-in theme
 
@@ -108,7 +150,9 @@ the rules any motion in the sheet follows:
 5. A light theme also wants the modal shadow and softened backdrop the other
    light themes carry, and a place in the `--nick-s` / `--nick-l` selector list
    at the bottom of the sheet
-6. `node test.mjs` — the palette test will tell you which tone is short
+6. `node test.mjs` — the palette test will tell you which tone is short. It
+   also checks the floors of the derived tokens. If a derived token misses a
+   floor, set a hex value for that one token in the theme block
 
 ## Bundled fonts
 

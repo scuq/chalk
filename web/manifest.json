@@ -8,8 +8,8 @@
   "scope": "/",
   "display_override": ["window-controls-overlay"],
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#050805",
+  "theme_color": "#050805",
   "icons": [
     {
       "src": "/icons/favicon.svg",

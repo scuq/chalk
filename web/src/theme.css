@@ -145,19 +145,20 @@
 }
 
 :root {
-  /* Palette -- matrix green tuned just a hair off pure #00FF41 so it
-     isn't retina-vibrating on OLED. */
-  --chalk-bg:           #000000;
-  --chalk-bg-elev:      #001a00;
-  --chalk-bg-elev-2:    #002a00;
-  --chalk-fg:           #00ff41;
-  --chalk-fg-dim:       #4ca96a;
-  --chalk-fg-bright:    #5cffb1;
-  --chalk-fg-muted:     #338050;
-  --chalk-border:       #003a00;
-  --chalk-accent:       #5cffb1;
-  --chalk-warn:         #ffcc00;
-  --chalk-error:        #ff4d4d;
+  /* 133-1: Palette. A near-black ground with soft mint body text. The
+     unread green #24f077 is the emphasis and accent color. The values
+     come from the 133 design review. */
+  --chalk-bg:           #050805;
+  --chalk-bg-elev:      #0a110b;
+  --chalk-bg-elev-2:    #0f1c11;
+  --chalk-fg:           #88ffc9;
+  --chalk-fg-dim:       #74b08a;
+  --chalk-fg-bright:    #24f077;
+  --chalk-fg-muted:     #3c6b52;
+  --chalk-border:       #143a25;
+  --chalk-accent:       #24f077;
+  --chalk-warn:         #ffc64d;
+  --chalk-error:        #ff5252;
 
   /* Presence is a status signal, not part of the palette: these are
      fixed across every theme so "online" always means the same thing.
@@ -201,6 +202,7 @@
   --chalk-size-base: calc(14px * var(--chalk-font-scale));
   --chalk-size-small: calc(12px * var(--chalk-font-scale));
   --chalk-size-title: calc(18px * var(--chalk-font-scale));
+  --chalk-size-body: var(--chalk-size-base);
 
   /* Spacing rhythm -- 4px grid */
   --chalk-s1: 4px;
@@ -212,10 +214,46 @@
   /* 131-1: the call rail column, left of the sidebar while in a call. */
   --chalk-rail-w: 48px;
 
-  /* Radii. Keep tiny -- the matrix-green aesthetic is sharp. */
-  --chalk-radius: 2px;
+  /* 133-1: Radii. Use sm for badges and chips, md for rows, buttons,
+     and inputs, and lg for panels. --chalk-radius is an alias of md, so
+     the rules that read it get 6px. A theme block can override all three. */
+  --chalk-radius-sm: 4px;
+  --chalk-radius-md: 6px;
+  --chalk-radius-lg: 8px;
+  --chalk-radius: var(--chalk-radius-md);
+
+  /* 133-1: Transition durations. Write each transition on these tokens,
+     so the reduced-motion block below stops them all. */
+  --chalk-dur-fast: 100ms;
+  --chalk-dur: 160ms;
 
   color-scheme: dark;
+}
+
+/* 133-1: Derived tokens. Each one is a mix of palette tokens, so no
+   theme block needs an edit. A custom property resolves on the element
+   that declares it. The warmwhite rail declares its own palette on
+   .chalk-sidebar, so this rule also names the rail and derives from that
+   palette. A theme block can override one derived token with a hex. The
+   palette test then uses that hex. */
+:root,
+[data-theme="warmwhite"] .chalk-sidebar {
+  --chalk-bg-hover:      color-mix(in srgb, var(--chalk-fg) 8%, var(--chalk-bg-elev));
+  --chalk-bg-selected:   color-mix(in srgb, var(--chalk-accent) 20%, var(--chalk-bg));
+  --chalk-border-strong: color-mix(in srgb, var(--chalk-accent) 50%, var(--chalk-border));
+  --chalk-accent-hover:  color-mix(in srgb, var(--chalk-accent) 85%, var(--chalk-fg));
+  --chalk-accent-dim:    color-mix(in srgb, var(--chalk-accent) 55%, var(--chalk-bg));
+  --chalk-on-accent:     var(--chalk-bg);
+  --chalk-focus:         var(--chalk-accent);
+}
+
+/* 133-1: With reduced motion, both durations are 0ms. Every transition
+   written on a duration token stops, and it needs no guard of its own. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --chalk-dur-fast: 0ms;
+    --chalk-dur: 0ms;
+  }
 }
 
 * {
@@ -3548,7 +3586,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-field-input--textarea {
   resize: vertical;
   min-height: 6em;
-  font-family: var(--chalk-mono, ui-monospace, monospace);
+  font-family: var(--chalk-font-mono);
 }
 
 .chalk-field-hint--warn {
@@ -5383,7 +5421,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 /* Static preview swatches: do NOT use variables so they show the
    theme's actual colors regardless of which one is currently active. */
 .chalk-profile-theme-swatch-preview--green {
-  background: linear-gradient(135deg, #000000 0%, #000000 50%, #00ff41 50%, #00ff41 100%);
+  background: linear-gradient(135deg, #050805 0%, #050805 50%, #24f077 50%, #24f077 100%);
 }
 .chalk-profile-theme-swatch-preview--light {
   background: linear-gradient(135deg, #f7f5ee 0%, #f7f5ee 50%, #2d6e3f 50%, #2d6e3f 100%);
@@ -5557,6 +5595,13 @@ body.chalk-resizing-y .chalk-composer-resizer {
   --chalk-accent:       #268bd2;
   --chalk-warn:         #b58900;
   --chalk-error:        #dc322f;
+  /* 133-1: Two derived tokens are set by hand. The selected row is the
+     theme's own tone, 12% accent over the page. It gives body text 4.5:1
+     or more, and the derived 20% mix gave 4.29:1. Solarized blue is a
+     mid-tone, so base03 on it gives 4.08:1 and white gives 3.7:1. The
+     on-accent text is base03 made darker, which gives about 4.7:1. */
+  --chalk-bg-selected:  #053749;
+  --chalk-on-accent:    #001e26;
 
   color-scheme: dark;
 }
@@ -6167,7 +6212,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   background: var(--chalk-bg);
 }
 .chalk-msgmenu-item--delete:hover {
-  color: var(--chalk-danger, #e5484d);
+  color: var(--chalk-error);
 }
 .chalk-msgmenu-item:focus-visible {
   outline: 1px solid var(--chalk-fg-bright);
@@ -6948,7 +6993,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   margin-bottom: 0.75rem;
 }
 .chalk-verify-code {
-  background: var(--chalk-bg-alt, #0c130c);
+  background: var(--chalk-bg-elev);
   border: 1px solid var(--chalk-border, #1f2a1f);
   padding: 0.75rem;
   margin-bottom: 0.5rem;
@@ -7085,7 +7130,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   margin-left: 0.25rem;
 }
 .chalk-members-remove:hover {
-  color: var(--chalk-danger, #e66);
+  color: var(--chalk-error);
 }
 .chalk-members-leave {
   margin-top: 0.5rem;
@@ -7099,8 +7144,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   padding: 0.35rem 0.6rem;
 }
 .chalk-members-leave:hover:not(:disabled) {
-  color: var(--chalk-danger, #e66);
-  border-color: var(--chalk-danger, #e66);
+  color: var(--chalk-error);
+  border-color: var(--chalk-error);
 }
 .chalk-members-leave:disabled { opacity: 0.4; cursor: default; }
 .chalk-members-pending {
@@ -7152,7 +7197,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   padding: 0.3rem 0.5rem;
 }
 .chalk-members-add-friend:hover {
-  background: var(--chalk-row-hover, #14201410);
+  background: var(--chalk-bg-hover);
   color: var(--chalk-accent, #8effa0);
 }
 .chalk-members-add-empty {
@@ -7193,8 +7238,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   border-color: var(--chalk-accent);
 }
 .chalk-btn-danger:hover:not(:disabled) {
-  border-color: var(--chalk-danger);
-  color: var(--chalk-danger);
+  border-color: var(--chalk-error);
+  color: var(--chalk-error);
 }
 .chalk-select {
   background: var(--chalk-bg-elev);
@@ -8906,9 +8951,11 @@ body.chalk-resizing-y .chalk-composer-resizer {
   --chalk-warn:         #ffcc66;
   --chalk-error:        #cc6666;
 
-  /* LCARS panels are all rounded ends; 2px sharp would read as any
-     other dark theme. */
-  --chalk-radius: 10px;
+  /* LCARS panels are all rounded ends. The default radii of 4px to 8px
+     would read as any other dark theme. */
+  --chalk-radius-sm: 10px;
+  --chalk-radius-md: 10px;
+  --chalk-radius-lg: 10px;
 
   color-scheme: dark;
 }
@@ -10117,7 +10164,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color: var(--chalk-fg-dim);
 }
 
-.chalk-auth-strength.strength-1 { color: var(--chalk-danger); }
+.chalk-auth-strength.strength-1 { color: var(--chalk-error); }
 .chalk-auth-strength.strength-2 { color: var(--chalk-fg-dim); }
 .chalk-auth-strength.strength-3 { color: var(--chalk-fg); }
 .chalk-auth-strength.strength-4 { color: var(--chalk-fg-bright); }
@@ -10132,7 +10179,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-auth-secret {
   text-align: center;
-  font-family: var(--chalk-mono);
+  font-family: var(--chalk-font-mono);
   font-size: var(--chalk-size-small);
   color: var(--chalk-fg);
   word-break: break-all;
@@ -11859,7 +11906,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   border: 2px solid var(--chalk-error);
   border-radius: 10px;
   padding: 1.5rem 1.75rem;
-  background: var(--chalk-surface, var(--chalk-bg));
+  background: var(--chalk-bg);
 }
 .chalk-pinwall-card h1 {
   color: var(--chalk-error);
@@ -11878,7 +11925,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   margin: 0.15rem 0 0;
 }
 .chalk-pinwall-fps code {
-  font-family: var(--chalk-mono, monospace);
+  font-family: var(--chalk-font-mono);
   letter-spacing: 0.03em;
   word-break: break-all;
 }
@@ -11948,7 +11995,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
    gets monospace, generous spacing and selectability. */
 .chalk-server-identity-fp code {
   display: inline-block;
-  font-family: var(--chalk-mono, monospace);
+  font-family: var(--chalk-font-mono);
   font-size: 1.05em;
   letter-spacing: 0.06em;
   padding: 0.35em 0.55em;
@@ -11958,7 +12005,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   word-break: break-all;
 }
 .chalk-server-identity-explain code {
-  font-family: var(--chalk-mono, monospace);
+  font-family: var(--chalk-font-mono);
 }
 
 /* ============================================================
