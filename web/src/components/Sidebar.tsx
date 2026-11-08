@@ -30,6 +30,7 @@ import {
   canonicalizeGroup,
   effectiveGroup,
   groupRoster,
+  groupTagNames,
   knownGroups,
   loadCollapsedGroups,
   saveCollapsedGroups,
@@ -564,6 +565,8 @@ export function Sidebar({
     inGroups && channelFilter.trim() === "" && channelGroups.length === 1
       ? channelGroups[0]
       : null;
+  // 134-2: the group tag of each channel, or null if no row shows one.
+  const groupTags = chaos ? groupTagNames(channelGroups) : null;
 
   // 114-3: the group a menu row can be reordered inside -- null when what is
   // on screen is not in group order (grouping off, or a filter running),
@@ -939,10 +942,12 @@ export function Sidebar({
     // count badge and the room card show.
     const inRoom = !!ownUserID && roster.some((p) => p.userID === ownUserID);
     const showUnread = countsAsUnread(u, ch.channelType, inRoom);
+    // 134-2: voice rows and hidden-shelf rows get no tag.
+    const groupTag = !isVoice && !hidden ? groupTags?.get(ch.id) : undefined;
     return (
       <li
         key={ch.id}
-        class={`chalk-sidebar-item ${isVoice ? "chalk-sidebar-item--voicech" : ""} ${ch.id === activeRow ? "chalk-sidebar-item--active" : ""} ${showUnread ? "chalk-sidebar-item--unread" : ""} ${hidden ? "chalk-sidebar-item--hidden" : ""} ${grouped ? "chalk-sidebar-item--grouped" : ""}`}
+        class={`chalk-sidebar-item ${isVoice ? "chalk-sidebar-item--voicech" : ""} ${ch.id === activeRow ? "chalk-sidebar-item--active" : ""} ${showUnread ? "chalk-sidebar-item--unread" : ""} ${hidden ? "chalk-sidebar-item--hidden" : ""} ${grouped ? "chalk-sidebar-item--grouped" : ""} ${groupTag ? "chalk-sidebar-item--chaos" : ""}`}
         data-testid="sidebar-item"
         data-channel-id={ch.id}
         data-hidden={hidden ? "true" : "false"}
@@ -1078,6 +1083,16 @@ export function Sidebar({
             </span>
           )}
           {showUnread && <UnreadDot mention={u.mention} />}
+          {/* 134-2: the group tag. The title is the full group name. */}
+          {groupTag && (
+            <span
+              class="chalk-sidebar-item-tag chalk-sidebar-item-tag--group"
+              title={groupTag}
+              data-testid="sidebar-group-tag"
+            >
+              {groupTag}
+            </span>
+          )}
         </span>
       </li>
     );

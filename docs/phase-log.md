@@ -125,6 +125,7 @@ as-built rather than a contemporaneous plan.
 | 131 | call rail — a narrow call column with the people, the timer, and the controls, and the room names on a hover card | [PHASE-131-CALLRAIL.md](phases/PHASE-131-CALLRAIL.md) |
 | 132 | friend columns — compact friend rows, and a two-column friends list when the names fit the sidebar | [PHASE-132-FRIENDCOLUMNS.md](phases/PHASE-132-FRIENDCOLUMNS.md) |
 | 133 | polish — semantic tokens and a refined shell, one look for hover, selected, and unread in every theme, and an adaptive voice room | [PHASE-133-POLISH.md](phases/PHASE-133-POLISH.md) |
+| 134 | chaos mode — one list of the text channels, newest activity on top, and each row shows its group as a small tag | [PHASE-134-CHAOS.md](phases/PHASE-134-CHAOS.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
@@ -865,6 +866,16 @@ Phase 114 gained two slices in the same change set. 114-5 made the newest
 message the default sort of the channels in a group, and an account that
 stored the creation order keeps it. 114-6 holds the order of the channel list
 while the mouse pointer is over it. Every change is in the client.
+
+**134 — chaos mode** (2026-11-08). A reader who wanted the latest message had
+to look through every group. 134-1 added the `chaos` roster preference, on by
+default. On a desktop it replaces the grouped view with one flat list of the
+text channels in activity order. The phone does not change. A checkbox in
+settings turns it off. 134-2 gave each text channel row a small tag with the
+name of its group, at the right end of the row. The tag shows only if more than
+one group exists. Voice rows and hidden rows get no tag. When the row is short
+of space, the tag shortens before the channel name does. Every change is in the
+client.
 
 **Not started.** 65 (web push), 86 (ties), 87
 (message reminders), 90 (a local idle agent) and 99 (database-credential

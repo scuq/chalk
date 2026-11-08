@@ -7676,10 +7676,10 @@ body.chalk-resizing-y .chalk-composer-resizer {
   flex: 1 1 auto;
 }
 
-/* 33-4: the name is the only element allowed to shrink, so it ellipsises
-   at whatever width is left over after the glyph, badges, and dot have
-   taken theirs. Narrowing the sidebar therefore truncates the name earlier
-   rather than pushing the dot out of view. */
+/* 33-4: the name shrinks, so it ellipsises at whatever width is left over
+   after the glyph, badges, and dot have taken theirs. Narrowing the sidebar
+   therefore truncates the name earlier rather than pushing the dot out of
+   view. In a chaos row (134-2), the group tag shrinks before the name does. */
 .chalk-sidebar-item-row .chalk-sidebar-item-name {
   flex: 0 1 auto;
   min-width: 0;
@@ -7687,6 +7687,31 @@ body.chalk-resizing-y .chalk-composer-resizer {
      all you'd otherwise get once the name has eaten every spare pixel, and
      "General…●" reads as one glyph. */
   padding-right: 6px;
+}
+
+/* 134-2: in a chaos row, the name grows into the free space. The group tag
+   then sits at the right edge of the row. This rule must follow the row name
+   rule above, because both have the same specificity and the later rule wins. */
+.chalk-sidebar-item--chaos .chalk-sidebar-item-name {
+  flex: 1 1 auto;
+}
+/* 134-2: the group tag of a chaos row. The shrink factor of 1000 against 1
+   for the name makes the tag give up space first. The min-width keeps about
+   three letters. Only then does the name shorten. The border is softer and
+   the radius 3px, so the tag reads as a label and not as a badge. */
+.chalk-sidebar-item-tag--group {
+  flex: 0 1000 auto;
+  min-width: 3.2em;
+  max-width: 90px;
+  box-sizing: border-box;
+  margin-left: 6px;
+  padding: 0 4px;
+  line-height: 14px;
+  border-color: color-mix(in srgb, var(--chalk-fg-dim) 45%, var(--chalk-bg-elev));
+  border-radius: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chalk-sidebar-item--voicech {

@@ -6,6 +6,7 @@ import {
   canonicalizeGroup,
   effectiveGroup,
   groupRoster,
+  groupTagNames,
   knownGroups,
   loadCollapsedGroups,
   splitVoice,
@@ -182,4 +183,29 @@ test("splitVoice of nothing is two empty halves", () => {
 test("loadCollapsedGroups without a window is an empty set", () => {
   // node has no localStorage; the helper must fail closed (all expanded).
   assert.deepEqual(loadCollapsedGroups(), new Set());
+});
+
+// 134-2: the group tags of the chaos list.
+test("groupTagNames gives no tags while only one group exists", () => {
+  assert.equal(groupTagNames([]), null);
+  const one = groupRoster([channel({ id: "a" }), channel({ id: "b" })]);
+  assert.equal(groupTagNames(one), null);
+});
+
+test("groupTagNames tags each channel with its group's display name", () => {
+  const groups = groupRoster(
+    [
+      channel({ id: "a" }),
+      channel({ id: "b", groupName: "Dev" }),
+      channel({ id: "c", groupName: "dev" }),
+      channel({ id: "d", groupName: "Music" }),
+    ],
+    { d: "Friday-Boardgame-Night" },
+  );
+  const tags = groupTagNames(groups);
+  assert.ok(tags);
+  assert.equal(tags.get("a"), DEFAULT_GROUP);
+  assert.equal(tags.get("b"), "Dev");
+  assert.equal(tags.get("c"), "Dev");
+  assert.equal(tags.get("d"), "Friday-Boardgame-Night");
 });

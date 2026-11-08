@@ -10,6 +10,9 @@
 // 131-2: the dock's call preview is gone. The call rail, a column of its
 // own left of the sidebar, shows the participants instead. The third test
 // holds the rail's declarations and makes sure the preview does not return.
+//
+// 134-2: the last test holds the chaos-row declarations. The group tag
+// shrinks before the channel name, and the name rule grows into free space.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -208,4 +211,28 @@ test("unread rows, a live share and keyboard focus each have a visible state", (
   // A media query adds no specificity, so the guard must follow the animation rule to win.
   const guard = /\.chalk-status-dot--connecting \{[^}]*animation:\s*chalk-pulse[^}]*\}\s*@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.chalk-status-dot--connecting\s*\{\s*animation:\s*none/.exec(css);
   assert.ok(guard, "the connecting pulse stops under reduced motion, in a rule after the animation");
+});
+
+// 134-2: jsdom has no layout, so the test checks the declarations.
+test("in chaos mode the group tag shortens before the channel name does", () => {
+  const name = ".chalk-sidebar-item--chaos .chalk-sidebar-item-name";
+  const [grow, shrink] = flexOf(block(name), name);
+  assert.equal(grow, "1", "the name must take the free space");
+  assert.equal(shrink, "1");
+
+  const tag = ".chalk-sidebar-item-tag--group";
+  const decls = block(tag);
+  const [, tagShrink] = flexOf(decls, tag);
+  assert.ok(Number(tagShrink) >= 100, "the tag must shrink far faster than the name");
+  assert.match(decls, /min-width:\s*3\.2em/, "the tag keeps about three letters");
+  assert.match(decls, /text-overflow:\s*ellipsis/);
+  assert.match(decls, /overflow:\s*hidden/);
+  assert.match(decls, /white-space:\s*nowrap/);
+
+  // The chaos rule must come after the general name rule, which it overrides
+  // at the same specificity.
+  assert.ok(
+    css.indexOf(name) > css.indexOf(".chalk-sidebar-item-row .chalk-sidebar-item-name"),
+    "the chaos name rule must follow the row name rule",
+  );
 });

@@ -13,7 +13,7 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
-- On desktop, chaos mode lists all text channels in one list, newest activity on top, also when groups are on. It is on by default. To get the groups back, turn it off in settings under channel list.
+- On desktop, chaos mode lists all text channels in one list, newest activity on top, also when groups are on. It is on by default. To get the groups back, turn it off in settings under channel list. Each channel shows its group as a small tag at the end of its row. When space is short, the tag shortens before the channel name does.
 
 ### Changed
 - In the default green theme, text is now a greener tone and no longer mint. Channel names no longer look cyan. Unread names stay the brighter green.

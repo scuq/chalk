@@ -1,6 +1,6 @@
 # Phase 134 — chaos mode: one list, newest activity on top
 
-**Status:** in progress. 134-1 is built (2026-11-08). 134-2 is planned, not started.
+**Status:** complete (shipped). 134-1 and 134-2 are built (2026-11-08).
 **Tags:** `#roster` → `tools/where.sh -g roster`
 
 ## The problem
@@ -49,10 +49,19 @@ Also, a new sort mode replaces the saved manual order, and chaos mode must keep 
   `ProfilePanel` has the checkbox and the disabled controls.
   `settings-nav.ts` has the keywords "chaos" and "chaos mode".
   `roster-order.test.ts` tests the resolver: empty roster, `true`, `false`, and a junk value.
-- **134-2 — the group tag (planned).**
-  In chaos mode, each text channel row shows its group name as a small tag at the right end.
-  The tag shortens before the channel name does.
+- **134-2 — the group tag.**
+  In chaos mode, each text channel row shows its group name as a small tag.
+  The tag is at the right end of the row, after the expiry badge and the unread envelope.
+  The name is the one that a group header shows.
+  `groupTagNames` in `channel-groups.ts` maps each channel ID to it.
   The tag shows only if more than one group exists, the same rule that hides group headers.
+  Voice rows and hidden-shelf rows get no tag.
+  The tooltip of the tag is the full group name.
+  The tag has a very large `flex-shrink`, an ellipsis, and a minimum width of about three letters.
+  So the tag shortens first, and the channel name shortens only after that.
+  In chaos rows the name rule grows into the free space, so the tag sits at the right edge.
+  The tag reuses the `.chalk-sidebar-item-tag` style with a `--group` modifier.
+  `theme-sidebar.test.ts` holds the declarations.
 
 ## Manual checklist
 
@@ -62,4 +71,8 @@ Open on the dev stack, with one account that has several groups and one long cha
 - [ ] Settings: "group channels" and "sort channels by" are disabled and read "used when chaos mode is off".
 - [ ] Chaos mode off: the grouped view and the manual order are back.
 - [ ] A hidden channel still shows on the hidden shelf, last.
-- [ ] Phone: the channel list does not change, and settings has no chaos mode checkbox.
+- [ ] Several groups, chaos mode on: each text channel row shows its group name as a tag at the right end. The full name shows on hover.
+- [ ] One group only: no row shows a tag.
+- [ ] Voice rows and hidden-shelf rows show no tag.
+- [ ] A long channel name in a narrow sidebar: the tag shortens first, down to about three letters. Then the channel name shortens.
+- [ ] Phone: the channel list does not change, and settings has no chaos mode checkbox. Rows show no group tag.

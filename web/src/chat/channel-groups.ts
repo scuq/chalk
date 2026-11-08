@@ -110,6 +110,19 @@ export function groupRoster(
   );
 }
 
+// 134-2: groupTagNames returns a map from channel ID to the display name of
+// its group, for the group tags of the chaos list. It returns null if fewer
+// than two groups exist, the same rule that hides group headers. The name is
+// the one a group header shows: the casing of the first channel seen.
+export function groupTagNames(groups: RosterGroup[]): Map<string, string> | null {
+  if (groups.length < 2) return null;
+  const names = new Map<string, string>();
+  for (const g of groups) {
+    for (const ch of g.channels) names.set(ch.id, g.name);
+  }
+  return names;
+}
+
 // ---- collapse state ---------------------------------------------------------
 //
 // Which groups are folded up is per-machine by design (localStorage, like
