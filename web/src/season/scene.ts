@@ -3,16 +3,18 @@
 // higher sign, a sky for each row, and the details of each season. 129-15: a
 // visit holds one row. 129-18: the neutral key has ten scripts and no rows.
 // 129-19: the christmas key has seven scripts and no rows. 129-20: the new-year
-// key has seven scripts and no rows.
+// key has seven scripts and no rows. 129-21: the winterfest key has eight
+// scripts and no rows.
 //
 // This module draws a small pixel scene and moves it. There are ten keys: the
 // nine season ids of seasons.ts, and "neutral" for a date in no season. SCENES
-// holds the seven keys that have rows. Each of them has five rows
-// (SCENES_PER_KEY), so there are 35 rows. A row names an environment, an
-// effect, four props, and two cast members. Three keys have scripts and no
+// holds the six keys that have rows. Each of them has five rows
+// (SCENES_PER_KEY), so there are 30 rows. A row names an environment, an
+// effect, four props, and two cast members. Four keys have scripts and no
 // rows: "neutral" has the ten scripts of OFFSEASON (offseason.ts), "christmas"
-// has the seven scripts of CHRISTMAS (christmas.ts), and "new-year" has the
-// seven scripts of NEWYEAR (newyear.ts). So there are 59 scenes.
+// has the seven scripts of CHRISTMAS (christmas.ts), "new-year" has the seven
+// scripts of NEWYEAR (newyear.ts), and "winterfest" has the eight scripts of
+// WINTERFEST (winterfest.ts). So there are 62 scenes.
 // A script draws its own opaque strip, and it does not use the fields of a
 // row. The rows stay see-through.
 // A scene shows its row or its script. A scene that rotates (rotate is true)
@@ -46,6 +48,7 @@
 
 import { CHRISTMAS } from "./christmas";
 import { NEWYEAR } from "./newyear";
+import { WINTERFEST } from "./winterfest";
 import { OFFSEASON } from "./offseason";
 import { STRIP_H, type Script } from "./strip";
 import type { SeasonId } from "./seasons";
@@ -74,9 +77,8 @@ export const SCENES_PER_KEY = 5;
 
 /**
  * sceneCount returns the number of scenes of key: the number of scripts for a
- * key that runs scripts ("neutral", "christmas", and "new-year"), and
- * SCENES_PER_KEY for
- * any other key.
+ * key that runs scripts ("neutral", "christmas", "new-year", and
+ * "winterfest"), and SCENES_PER_KEY for any other key.
  */
 export function sceneCount(key: SceneKey): number {
   return isScripted(key) ? SCRIPTED[key].length : SCENES_PER_KEY;
@@ -84,7 +86,7 @@ export function sceneCount(key: SceneKey): number {
 
 // The scripts of each key that runs scripts in place of rows. isScripted must
 // list the same keys.
-const SCRIPTED = { neutral: OFFSEASON, christmas: CHRISTMAS, "new-year": NEWYEAR };
+const SCRIPTED = { neutral: OFFSEASON, christmas: CHRISTMAS, "new-year": NEWYEAR, winterfest: WINTERFEST };
 
 /** A ScriptKey is a key that runs scripts and has no rows in SCENES. */
 export type ScriptKey = keyof typeof SCRIPTED;
@@ -94,7 +96,7 @@ export type RowKey = Exclude<SceneKey, ScriptKey>;
 
 /** isScripted reports whether key runs scripts instead of rows. */
 export function isScripted(key: SceneKey): key is ScriptKey {
-  return key === "neutral" || key === "christmas" || key === "new-year";
+  return key === "neutral" || key === "christmas" || key === "new-year" || key === "winterfest";
 }
 
 // The downward pull on a jump, and the upward speed at the start of a jump, in
@@ -104,9 +106,10 @@ const JUMP = 40;
 
 /**
  * A SceneKey names a set of scenes: a season id or "neutral". A key has five
- * rows in SCENES, except three keys that have scripts. "christmas" has the seven
- * scripts of CHRISTMAS, and "new-year" has the seven scripts of NEWYEAR.
- * "neutral", for a date in no season, has the ten scripts of OFFSEASON.
+ * rows in SCENES, except four keys that have scripts. "christmas" has the seven
+ * scripts of CHRISTMAS, "new-year" has the seven scripts of NEWYEAR, and
+ * "winterfest" has the eight scripts of WINTERFEST. "neutral", for a date in no
+ * season, has the ten scripts of OFFSEASON.
  */
 export type SceneKey = SeasonId | "neutral";
 
@@ -231,17 +234,11 @@ function row(
 
 /**
  * SCENES holds the rows of each RowKey, in the order of rotation. Each key has
- * SCENES_PER_KEY rows. The "neutral", "christmas", and "new-year" keys have no
- * rows. They use the scripts of OFFSEASON, CHRISTMAS, and NEWYEAR.
+ * SCENES_PER_KEY rows. The "neutral", "christmas", "new-year", and "winterfest"
+ * keys have no rows. They use the scripts of OFFSEASON, CHRISTMAS, NEWYEAR, and
+ * WINTERFEST.
  */
 export const SCENES: Record<RowKey, SceneRow[]> = {
-  winterfest: [
-    row("Snowy Pines", "forest", "snow", ["pine", "snowball", "log", "pine"], ["penguin", "fox"]),
-    row("Cabin Smoke", "town", "snow", ["cabin", "snowball", "stump", "pine"], ["fox", "rabbit"], "stars"),
-    row("Frozen Lake", "lake", "snow", ["pine", "ice", "snowball", "snowman"], ["penguin", "rabbit"]),
-    row("Aurora Ridge", "mountain", "aurora", ["pine", "stone", "snowball", "pine"], ["fox", "penguin"], "stars"),
-    row("Lantern Walk", "forest", "snow", ["lantern", "snowball", "stump", "snowman"], ["person", "fox"], "stars"),
-  ],
   "spring-bloom": [
     row("Cherry Blossom", "orchard", "petals", ["cherry", "flowerpot", "stone", "cherry"], ["rabbit", "chick"], "sun"),
     row("Rain Garden", "garden", "rain", ["tree", "flowerpot", "log", "flower"], ["frog", "rabbit"]),
@@ -297,8 +294,8 @@ const PALETTES: Record<SceneKey, {
   ink: string;
   panel: string;
 }> = {
-  // Rows never read this entry, because "new-year" runs scripts. The Record
-  // type needs it.
+  // Rows never read the entries of "new-year" and "winterfest", because those
+  // keys run scripts. The Record type needs them.
   "new-year": {
     earth: "#29344d",
     edge: "#576d95",
@@ -613,8 +610,8 @@ export function sceneAlpha(s: Scene): number {
 // The color of the background trees of each key. The orchard of Spring Bloom
 // uses pink instead. A bare tree has no canopy.
 const CANOPY: Record<SceneKey, string> = {
-  // Rows never read this entry, because "new-year" runs scripts. The Record
-  // type needs it.
+  // Rows never read the entries of "new-year" and "winterfest", because those
+  // keys run scripts. The Record type needs them.
   "new-year": "#1f3a35",
   winterfest: "#1f3f38",
   "spring-bloom": "#5f8f57",
@@ -629,8 +626,8 @@ const CANOPY: Record<SceneKey, string> = {
 };
 
 // Reports whether the key is Winterfest or New Year. In those keys, roofs and
-// treetops carry snow. The "new-year" key runs scripts, so only the rows of
-// Winterfest reach this test.
+// treetops carry snow. Both keys run scripts, so no row reaches this test now.
+// The test stays for later tuning.
 function isSnowy(s: Scene): boolean {
   return s.key === "winterfest" || s.key === "new-year";
 }
@@ -720,6 +717,8 @@ function drawBackground(p: Px, s: Scene): void {
     }
   }
   if (env === "lake" || env === "swamp") {
+    // Only a row of "winterfest" freezes the lake. No row has that key now, so
+    // the ice stays for later tuning.
     const frozen = key === "winterfest";
     const sunset = s.row.sky === "low-sun";
     p(0, ground - 4, W, 4, frozen ? "#a9cfdc" : env === "lake" ? "#284f61" : "#2a4940");
@@ -738,6 +737,7 @@ function drawBackground(p: Px, s: Scene): void {
   }
   for (let i = 0; i < 15; i++) {
     const x = rand(i * 9 + 3) * W;
+    // Snow tufts for "winterfest". No row has that key now.
     if (key === "winterfest") p(x, ground - 1, 3, 1, "#e9f5f2");
     else p(x, ground - 1, 2, 1, edge);
   }
@@ -766,6 +766,7 @@ function drawProp(p: Px, s: Scene, kind: Prop, x: number): void {
       p(x + 4, y - 20, 5, 7, "#315d48");
       p(x + 2, y - 16, 9, 7, "#24513c");
       p(x, y - 11, 13, 7, "#204832");
+      // Only a row of "winterfest" puts snow on a pine. No row has that key now.
       if (s.key === "winterfest") {
         p(x + 4, y - 20, 5, 1, "#ecf5f1");
         p(x + 2, y - 16, 9, 1, "#d8ebea");
@@ -791,6 +792,7 @@ function drawProp(p: Px, s: Scene, kind: Prop, x: number): void {
       if (isSnowy(s)) p(x - 2, y - height - 3, width + 4, 1, "#e6f4f0");
       p(x + 3, y - height + 3, 3, 3, lit);
       p(x + width - 6, y - height + 3, 3, 3, lit);
+      // No row has a cabin now. The chimney smoke stays for later tuning.
       if (kind === "cabin") {
         p(x + 11, y - height - 6, 3, 4, "#413b45");
         for (let i = 0; i < 6; i++) {

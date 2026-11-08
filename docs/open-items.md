@@ -78,12 +78,13 @@ Every change is in the client.
 
 ## Phase 129 — seasonal: IN PROGRESS, with recorded trade-offs
 
-129-1 … 129-20 are built. 129-21 onward is open. Record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
+129-1 … 129-21 are built. 129-22 onward is open. Record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
 An animated pixel scene peeks into the middle of the top header. Each of
-seven season keys has five scenes, and the `christmas` key shows seven scripted
+six season keys has five scenes, and the `christmas` key shows seven scripted
 scenes, which are nods to films and series (129-19). The `new-year` key also
 shows seven scripted scenes: six nods to films, series, and a game, and a plain
-fireworks show (129-20). A visit holds one of them,
+fireworks show (129-20). The `winterfest` key shows eight scripted scenes, which
+are nods to films and series (129-21). A visit holds one of them,
 and it is never the scene of the last visit of the same key (129-15). The
 always-on hours rotate through the scenes of the key every 35 s. The calendar
 is: Christmas from 1 to 26 December, no season from 27 to 30 December, New Year
@@ -99,9 +100,15 @@ times in a local day on one device, and at most 10 of them start before 18:00
 A phone in zuckermode shows the scene in a row above the conversation list
 (129-11). The classic phone layout and the header of a phone show no scene.
 A headed season demo in the ui-sweep skill shows one scene on a fake date (129-17).
-Open: 129-21 and later, which tune the seven keys that have rows, one key in
-each slice, in this order: late-autumn, winterfest, spring-bloom,
-green-season, midsummer, harvest-festival, spooky-season.
+Open: 129-22 and later, which tune the six keys that have rows, one key in
+each slice, in this order: late-autumn, spring-bloom, green-season, midsummer,
+harvest-festival, spooky-season.
+Open cleanup: the scene engine in `web/src/season/scene.ts` still has branches
+for snow roofs, snow on pines, frozen lakes, and chimney smoke. They key on
+`winterfest` and `new-year`, and no row reaches them now. Twelve props (`barrel`,
+`boat`, `bridge`, `cabin`, `clock`, `flag`, `gift`, `ice`, `lamp`, `snowball`,
+`snowman`, and `tower`) are in no row. The branches and the props stay for the
+tuning slices. After the last of them, remove what no row uses, or use it.
 
 - **A change by an administrator reaches other clients on their next page
   load.** `GET /api/auth/config` is cached with `max-age=60`, so the delay is

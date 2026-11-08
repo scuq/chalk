@@ -1,17 +1,19 @@
 // 129-9: tests for the scene. 129-12: five scenes for each of eight row keys.
 // The neutral key has ten scripts since 129-18, the christmas key has seven
-// scripts since 129-19, and the new-year key has seven scripts since 129-20.
+// scripts since 129-19, the new-year key has seven scripts since 129-20, and
+// the winterfest key has eight scripts since 129-21.
 //
 // A fake Painter records the rectangles, so a test needs no canvas. The tests
-// check the table (59 scenes: the rows of the SEASONS ids except "christmas"
-// and "new-year", the ten scripts of "neutral", the seven scripts of
-// "christmas", and the seven scripts of "new-year"), whole
+// check the table (62 scenes: the rows of the SEASONS ids except "christmas",
+// "new-year", and "winterfest", the ten scripts of "neutral", the seven scripts
+// of "christmas", the seven scripts of "new-year", and the eight scripts of
+// "winterfest"), whole
 // pixels and a see-through strip in every scene of a season, a paint for
 // each prop, the rotation and its wrap, the fade, a start index outside the
 // range, the walkers, a ghost that floats, a long frame, and a resize. 129-13:
 // the title of each key, the font, the sign, and a strip that is too narrow.
-// 129-14: a walker under the sign, snow and ice in the cold seasons, the named
-// details (smoke and blossom), and no animal out of season.
+// 129-14: a walker under the sign, water and no ice in a warm season, the named
+// detail (blossom), and no animal out of season.
 // 129-15: a scene that does not rotate holds its row and has no fade.
 // 129-18: sceneCount gives 10 for "neutral". The ten off-season scripts draw
 // whole pixels, in a budget of rectangles, at three widths. A script holds
@@ -24,6 +26,9 @@
 // 129-20: sceneCount gives 7 for "new-year". The script tests run over all three
 // sets of scripts. The prop test checks the eight props that no row uses. The
 // new-year key runs its scripts and holds one through a visit.
+// 129-21: sceneCount gives 8 for "winterfest". The script tests run over all
+// four sets of scripts. The prop test checks the twelve props that no row uses.
+// The winterfest key runs its scripts and holds one through a visit.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -46,6 +51,7 @@ import {
 } from "./scene";
 import { CHRISTMAS } from "./christmas";
 import { NEWYEAR } from "./newyear";
+import { WINTERFEST } from "./winterfest";
 import { OFFSEASON } from "./offseason";
 import type { Script } from "./strip";
 import { SEASONS } from "./seasons";
@@ -53,12 +59,13 @@ import { SEASONS } from "./seasons";
 const W = 300;
 const H = 24;
 const KEYS = Object.keys(SCENES) as SceneKey[];
-const ALL_KEYS: SceneKey[] = [...KEYS, "neutral", "christmas", "new-year"];
+const ALL_KEYS: SceneKey[] = [...KEYS, "neutral", "christmas", "new-year", "winterfest"];
 // 129-19: the keys that run scripts, with their scripts.
 const SCRIPT_SETS: [SceneKey, Script[]][] = [
   ["neutral", OFFSEASON],
   ["christmas", CHRISTMAS],
   ["new-year", NEWYEAR],
+  ["winterfest", WINTERFEST],
 ];
 
 function recorder() {
@@ -73,12 +80,13 @@ function recorder() {
   return { ctx, rects };
 }
 
-test("there are 59 scenes: five rows for each row season, seven christmas scripts, seven new-year scripts, and ten neutral scripts", () => {
+test("there are 62 scenes: five rows for each row season, seven christmas scripts, seven new-year scripts, eight winterfest scripts, and ten neutral scripts", () => {
   const ids = new Set<string>(SEASONS.map((s) => s.id));
   ids.delete("christmas");
   ids.delete("new-year");
+  ids.delete("winterfest");
   assert.deepEqual(new Set(KEYS), ids);
-  assert.equal(KEYS.length, 7);
+  assert.equal(KEYS.length, 6);
   for (const key of KEYS) {
     assert.equal(SCENES[key as keyof typeof SCENES].length, SCENES_PER_KEY, key);
     assert.equal(sceneCount(key), SCENES_PER_KEY, key);
@@ -86,14 +94,16 @@ test("there are 59 scenes: five rows for each row season, seven christmas script
   assert.equal(sceneCount("neutral"), 10);
   assert.equal(sceneCount("christmas"), 7);
   assert.equal(sceneCount("new-year"), 7);
+  assert.equal(sceneCount("winterfest"), 8);
   const names = [
     ...KEYS.flatMap((k) => SCENES[k as keyof typeof SCENES].map((r) => r.name)),
     ...OFFSEASON.map((x) => x.name),
     ...CHRISTMAS.map((x) => x.name),
     ...NEWYEAR.map((x) => x.name),
+    ...WINTERFEST.map((x) => x.name),
   ];
-  assert.equal(names.length, 59);
-  assert.equal(new Set(names).size, 59);
+  assert.equal(names.length, 62);
+  assert.equal(new Set(names).size, 62);
 });
 
 test("every scene draws whole pixels and leaves the strip see-through, at each step", () => {
@@ -117,11 +127,11 @@ test("every scene draws whole pixels and leaves the strip see-through, at each s
 
 test("each prop paints something of its own", () => {
   const used = new Set(KEYS.flatMap((k) => SCENES[k as keyof typeof SCENES].flatMap((r) => r.props)));
-  assert.equal(used.size, 30);
-  // 129-18, 129-20: no row uses these props since the neutral and new-year
-  // rows became scripts. They stay in the set of props, so each paint is still
-  // checked.
-  const unused = ["barrel", "boat", "bridge", "clock", "flag", "gift", "lamp", "tower"] as const;
+  assert.equal(used.size, 26);
+  // 129-18, 129-20, 129-21: no row uses these props since the neutral,
+  // new-year, and winterfest rows became scripts. They stay in the set of
+  // props, so each paint is still checked.
+  const unused = ["barrel", "boat", "bridge", "cabin", "clock", "flag", "gift", "ice", "lamp", "snowball", "snowman", "tower"] as const;
   for (const kind of unused) assert.ok(!used.has(kind), kind);
   const kinds = new Set([...used, ...unused]);
   assert.equal(kinds.size, 38);
@@ -215,28 +225,24 @@ test("a walker runs under the sign without touching it", () => {
   assert.ok(top >= 11, `a walker's head reaches row ${top}, and the sign ends at row 10`);
 });
 
-test("the cold seasons have snow and ice, and the warm ones do not", () => {
+test("a warm season has water and no ice", () => {
   const colors = (key: SceneKey, index: number) => {
     const scene = createScene(key, W, H, index);
     const { ctx, rects } = recorder();
     drawScene(ctx, scene);
     return new Set(rects.map((r) => r.color));
   };
-  assert.ok(colors("winterfest", 2).has("#a9cfdc"), "Frozen Lake has no ice");
   assert.ok(colors("midsummer", 1).has("#284f61"), "Lakeside Sunset has no water");
   assert.ok(!colors("midsummer", 1).has("#a9cfdc"));
-  assert.ok(colors("winterfest", 1).has("#e6f4f0"), "the cabin roof has no snow");
-  assert.ok(!colors("neutral", 2).has("#e6f4f0"));
 });
 
-test("a named thing is drawn: the smoke and the blossom", () => {
+test("a named thing is drawn: the blossom", () => {
   const colors = (key: SceneKey, index: number) => {
     const scene = createScene(key, W, H, index);
     const { ctx, rects } = recorder();
     drawScene(ctx, scene);
     return new Set(rects.map((r) => r.color));
   };
-  assert.ok(colors("winterfest", 1).has("#9aa6a6"), "no smoke in Cabin Smoke");
   assert.ok(colors("spring-bloom", 0).has("#d99ab4"), "no blossom in the orchard");
   assert.ok(!colors("late-autumn", 0).has("#d99ab4"));
 });
@@ -244,9 +250,6 @@ test("a named thing is drawn: the smoke and the blossom", () => {
 test("no animal is out of season", () => {
   const cast = (key: SceneKey) => new Set(SCENES[key as keyof typeof SCENES].flatMap((r) => r.cast));
   assert.ok(!cast("midsummer").has("chick"));
-  assert.ok(!cast("winterfest").has("frog"));
-  assert.ok(!cast("winterfest").has("hedgehog"));
-  assert.ok(!cast("winterfest").has("cat"));
 });
 
 test("a strip too narrow for the title leaves it out", () => {
@@ -433,6 +436,14 @@ test("129-20: the new-year key runs its scripts and holds one through a visit", 
   const scene = createScene("new-year", W, H, 0, false);
   assert.equal(scene.script, NEWYEAR[0]);
   assert.equal(scene.row.name, "Year 3000");
+  for (let t = 0; t < 80; t += 0.1) stepScene(scene, 0.1);
+  assert.equal(scene.index, 0);
+});
+
+test("129-21: the winterfest key runs its scripts and holds one through a visit", () => {
+  const scene = createScene("winterfest", W, H, 0, false);
+  assert.equal(scene.script, WINTERFEST[0]);
+  assert.equal(scene.row.name, "The Walker Falls");
   for (let t = 0; t < 80; t += 0.1) stepScene(scene, 0.1);
   assert.equal(scene.index, 0);
 });

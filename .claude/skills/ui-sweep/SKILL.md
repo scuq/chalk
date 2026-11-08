@@ -38,7 +38,7 @@ Flags:
 The season demo sets a fake date with the Playwright clock. The clock runs at normal speed.
 It seeds the visit logs, so that a visit is due at once. After each page load, it skips the first pause.
 It loads the page again, up to 25 times, until `data-scene` has the wanted name.
-It then shows the scene for `--scene-secs` seconds, with a corner tag. Without `--scene`, it shows the scenes of the key in table order. The keys `neutral`, `christmas`, and `new-year` read their scene names from the script files in `web/src/season/`.
+It then shows the scene for `--scene-secs` seconds, with a corner tag. Without `--scene`, it shows the scenes of the key in table order. The keys `neutral`, `christmas`, `new-year`, and `winterfest` read their scene names from the script files in `web/src/season/`.
 A visit lasts 45 s to 75 s. A value of `--scene-secs` above 45 can let the visit end before the next load.
 The app has no preview API, so the demo only loads the page again until the scene shows.
 An unknown key or scene stops the script with exit code 2 and lists the known values.
