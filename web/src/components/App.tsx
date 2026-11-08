@@ -6219,6 +6219,7 @@ export function App() {
           lastSeen={state.lastSeen}
           displayNames={displayNames}
           voiceRosters={state.voiceRosters}
+          recInHeader={railChannelID !== null && !isMobile} // 131-10: header shows REC
           unread={state.unread}
           onSelect={(id) => {
             dispatch({ kind: "set_active_channel", channelID: id });

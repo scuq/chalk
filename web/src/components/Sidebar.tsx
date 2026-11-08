@@ -176,6 +176,9 @@ interface Props {
   displayNames?: DisplayNameMap;
   // 30-5: live voice-room occupancy by channel id (reducer-owned).
   voiceRosters: Record<string, VoiceParticipant[]>;
+  /** 131-10: If true, the header shows the REC light for the room you are
+   * in, and that room's row keeps its plain speaker glyph. Default false. */
+  recInHeader?: boolean;
   // 33-2: unread + mention state by channel id (reducer-owned). Missing
   // entry means "nothing unread".
   unread: Record<string, ChannelUnread>;
@@ -350,6 +353,7 @@ export function Sidebar({
   lastSeen,
   displayNames,
   voiceRosters,
+  recInHeader = false,
   unread,
   onSelect,
   onFriendClick,
@@ -1086,11 +1090,12 @@ export function Sidebar({
         }}
       >
         <span class="chalk-sidebar-item-row">
-          {/* 131-4, 131-9: A voice room with people in it shows the REC
-              indicator, a red dot and the word REC, in place of the speaker
-              glyph. The count badge at the end of the row shows how many
-              people are in it. */}
-          {isVoice && roster.length > 0 ? (
+          {/* 131-4, 131-9, 131-10: A voice room with people in it shows the
+              REC indicator, a red dot and the word REC, in place of the
+              speaker glyph. The room you are in keeps the speaker glyph while
+              the header shows the REC light (recInHeader). The count badge at
+              the end of the row shows how many people are in the room. */}
+          {isVoice && roster.length > 0 && !(recInHeader && inRoom) ? (
             <span class="chalk-chglyph chalk-chglyph--live">
               <RecIndicator title={`${roster.length} in voice`} testID="sidebar-voice-live" />
             </span>

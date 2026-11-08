@@ -1,6 +1,6 @@
 # Phase 131 — the call rail: every participant in a narrow column
 
-**Status:** built, 131-1 to 131-9 (2026-11-08). Unit-tested by
+**Status:** built, 131-1 to 131-10 (2026-11-08). Unit-tested by
 `web/src/voice/rail-tiles.test.ts`, the `roomCardRows` cases in
 `web/src/chat/hovercard.test.ts`, and the rewritten third test in
 `web/src/theme-sidebar.test.ts`, which asserts the CSS declarations against the
@@ -21,6 +21,9 @@ REC and no speaker glyph. The dot blinks with `chalk-rec-blink` at 1.15 s,
 stepped, in the error red. The header shows REC for the person in the call
 only. On a text channel the header REC stays and the rail shows the tile. A
 click on the header REC goes back to the room, and leave removes it.
+After 131-10 the same probe ran again on 2026-11-08, with 7 checks, and all
+passed. In the new check, the person in the call sees only the speaker glyph on
+the row of that room, with no REC, while the header shows REC.
 Slice 131-7 changed the desktop layout again, so the probe checks of 131-5 and
 131-6 about the room page and the footer bar are out of date. After 131-7 the
 probe ran on 2026-11-08, with 25 checks, and all passed. On the room page the
@@ -166,6 +169,11 @@ phone header is tight. A click on it goes back to the room, and its title names
 the room. `RecIndicator.tsx` holds the indicator, and the sidebar and the header
 share it. The color is the `--chalk-error` token.
 
+While the header shows the light, the row of the room you are in keeps the
+speaker glyph (131-10). Two lights a few centimeters apart say the same thing.
+The rule holds on desktop while you are in a voice room. Other busy rooms keep
+the light in their row.
+
 ### Buttons at the foot of the rail (131-6)
 
 Slice 131-6 put two buttons for mute and deafen at the foot of the rail. Each
@@ -293,6 +301,10 @@ The live probe ran on 131-7. The result is in the status header.
   stylesheet test in `theme-sidebar.test.ts` covers the color, the cycle, the
   stepped blink, the still word, and the reduced-motion rule. The live probe of
   the status header covers the rest. Built 2026-11-08.
+- **131-10 — one light for the room you are in.** `Sidebar` has a new prop,
+  `recInHeader`. `App.tsx` passes `railChannelID !== null && !isMobile`. The
+  glyph branch adds `!(recInHeader && inRoom)`. One check in the live probe
+  `rail.mjs` covers it. Built 2026-11-08. The probe passed.
 
 ## Left open
 

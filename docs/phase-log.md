@@ -851,7 +851,7 @@ camera preview and the status row from the voice dock, so the dock is one row,
 and removed the 44 px preview query of phase 123. 131-3 removed the list of
 names under each voice room. A hover card on the row shows the people instead.
 131-4 replaced the speaker glyph of a voice room that has people in it with a
-red record light that blinks slowly. 131-8 made the light blink hard, on and off, like a camera's record light. The count badge stays. 131-9 put the word REC beside the dot, as a camcorder's viewfinder draws it. It also showed the same indicator in the header, beside the version badge, while the user is in a voice room. 131-5 hid the rail
+red record light that blinks slowly. 131-8 made the light blink hard, on and off, like a camera's record light. The count badge stays. 131-9 put the word REC beside the dot, as a camcorder's viewfinder draws it. It also showed the same indicator in the header, beside the version badge, while the user is in a voice room. 131-10 gave the room the user is in its plain glyph while the header shows the light. 131-5 hid the rail
 while the call room is the channel on screen, because the stage shows everyone
 there, and made a tile always draw the initial under the picture. 131-6 put
 mute and deafen at the foot of the rail, and the footer bar under the sidebar
