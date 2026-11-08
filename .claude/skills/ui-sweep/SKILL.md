@@ -1,6 +1,6 @@
 ---
 name: ui-sweep
-description: Screenshot or check chalk's UI across themes, sweep the voice room for clipping with several users, or start a headed demo of the shell or the voice room. Use it when a UI change needs a look in more than one theme. Also use it for a voice layout clipping check, or when asked to demo.
+description: Screenshot or check chalk's UI across themes. Sweep the voice room for clipping with several users. Start a headed demo of the shell, the voice room, or a season scene. Use it when a UI change needs a look in more than one theme. Also use it for a voice layout clipping check, or when asked to demo or tune a season scene.
 ---
 
 The `ui-sweep` script drives a real browser against the dev stack.
@@ -31,6 +31,17 @@ Flags:
 - `--groups` also creates six channels in channel groups, and bob posts into one of them. Use it to look at chaos mode with group tags.
 - `--headed` opens a visible window signed in as ann and keeps it open.
 - `--cycle` (with `--headed`) changes the theme every `--cycle-secs` seconds. The default is 5.
+- `--season=<key>` (with `--headed`) starts the season scene demo for that season key. The keys are `neutral`, `late-autumn`, `winterfest`, `new-year`, `spring-bloom`, `green-season`, `midsummer`, `harvest-festival`, and `spooky-season`.
+- `--scene=<row name>` (with `--season`) shows only that scene, again and again.
+- `--scene-secs=N` sets the seconds for each scene. The default is 30.
+
+The season demo sets a fake date with the Playwright clock. The clock runs at normal speed.
+It seeds the visit logs, so that a visit is due at once. After each page load, it skips the first pause.
+It loads the page again, up to 25 times, until `data-scene` has the wanted name.
+It then shows the scene for `--scene-secs` seconds, with a corner tag. Without `--scene`, it shows the five scenes of the key in table order.
+A visit lasts 45 s to 75 s. A value of `--scene-secs` above 45 can let the visit end before the next load.
+The app has no preview API, so the demo only loads the page again until the scene shows.
+An unknown key or scene stops the script with exit code 2 and lists the known values.
 
 Each flag also reads as an upper-case environment variable with underscores. For example, `--sweep-voice` is `SWEEP_VOICE=1`.
 An unknown flag stops the script with exit code 2 and lists the known flags.
@@ -62,9 +73,11 @@ node .claude/skills/run-chalk/ui-sweep.mjs --voice --sweep-voice --users=5
 node .claude/skills/run-chalk/ui-sweep.mjs --headed --voice --users=5
 node .claude/skills/run-chalk/ui-sweep.mjs --headed --cycle
 node .claude/skills/run-chalk/ui-sweep.mjs --headed --groups
+node .claude/skills/run-chalk/ui-sweep.mjs --headed --season=neutral
+node .claude/skills/run-chalk/ui-sweep.mjs --headed --season=neutral --scene="The Hatch"
 ```
 
-The last three commands are demos. They run until you close the window or stop the node process.
+The last five commands are demos. They run until you close the window or stop the node process.
 Run a demo in the background, so that the window stays open after the call.
 Each user registers with Argon2id, so setup takes some time. More users take more time.
 
@@ -78,6 +91,9 @@ The script deletes `/tmp/chalk-sweep/` at the start and writes all files there:
 - `credentials.txt`, in headed mode only. It holds the shared password and the TOTP secret of every user.
 
 The measurements go to standard output, not to `probe.log`.
+
+The season demo prints `SCENE <key>: <name>` for each target scene. If the demo gave up after 25 tries, the line ends with `(wanted <name>)`.
+If the name is `(none)`, no visit showed. `probe.log` has one line for each try.
 
 The voice sweep prints one line for each step, for example `two-cams`. Each line shows the result for the four viewport sizes.
 `ok` means that all tiles and cards fit in the stage.
@@ -102,4 +118,5 @@ For many screenshots, a contact sheet (all images in one grid) is faster to revi
 - The avatar nudge and the "what's new" note cover the page after signup. The script dismisses both. If you add a step, dismiss them first.
 - A channel picks bob by name. With several friends, the first friend is not always bob, and bob then never sees the channel.
 - The web bundle is embedded in chalkd. A change to the client is not on screen until `node build.mjs` and a chalkd rebuild and restart.
+- The web bundle must include phase 129-15 or later for `data-scene`. If it does not, every try fails.
 - A headed window needs the live desktop session. A headless-only environment gets no window.

@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a scene for the season
 
-**Status:** built, 129-1 – 129-14. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 are not yet in a release. 129-8 to 129-10 land together.
+**Status:** in progress. Built: 129-1 – 129-18. Open: 129-19 and later. They tune the eight season keys, one key in each slice, in this order: late-autumn, winterfest, new-year, spring-bloom, green-season, midsummer, harvest-festival, spooky-season. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 shipped in v0.10.0. 129-15 and later are not yet in a release. 129-8 to 129-10 land together.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -17,7 +17,9 @@ always-on hours for two evenings. 129-12 replaced the scene engine with one
 that has 45 scenes, and it gave the dates in the gaps scenes of their own.
 129-13 added the title of the season on a small sign. 129-14 moved the sign up
 so the walkers run under it, gave each scene a sky, and added the details of
-each season.
+each season. 129-15 made a visit hold one scene. 129-16 gave the neutral scene
+its own windows in the day. 129-18 replaced the five neutral rows with ten
+scripted scenes that are nods to films and series.
 
 ## The design
 
@@ -114,6 +116,8 @@ It brought the figure and the glow about 1,250 times a day to each open tab.
 
 `web/src/season/peek.ts` sets the bounds and decides if a visit is due.
 `web/src/season/visits.ts` keeps the log of visits.
+The cap, the gaps, and the log below are for the scenes of a season. The neutral
+scene has its own rule (see "Neutral dates", 129-16).
 
 - The cap is `MAX_VISITS_PER_DAY`, which is 16.
 - `MAX_DAYTIME_VISITS`, which is 10, is the most visits that can start before
@@ -160,13 +164,20 @@ it on unmount.
 129-9 with a port of a second engine that the user supplied, to get more
 variety. It exports these names:
 
-- `SCENES`, a table from a `SceneKey` to five `SceneRow` values. `SceneKey` is
-  a `SeasonId` or `"neutral"`, so there are nine keys and 45 scenes.
+- `SCENES`, a table from a `SeasonId` to five `SceneRow` values, so there are
+  40 rows. `SceneKey` is a `SeasonId` or `"neutral"`. The `"neutral"` key has no
+  rows. It has the ten scripts of `OFFSEASON` (129-18), so there are nine keys
+  and 50 scenes.
 - `SCENES_PER_KEY` (5), `SCENE_SECONDS` (35), and `FADE_SECONDS` (0.7).
+- `sceneCount(key)` returns 10 for `"neutral"` and `SCENES_PER_KEY` for a
+  season (129-18).
+- `holdStill(scene)` moves a scene with a script to the still time of its
+  script, for reduced motion (129-18).
 - `SCALE` (2) and `FPS` (12). One scene pixel is `SCALE` CSS pixels, and the
   scene runs at `FPS` frames each second.
 - `createScene(key, W, H, index)` returns a new scene of W by H scene pixels,
-  which starts at the row `index`. An index outside 0 to 4 wraps around.
+  which starts at the row `index`, or at the script `index` for `"neutral"`. An
+  index outside 0 to `sceneCount(key) - 1` wraps around.
 - `resizeScene(scene, W, H)` moves the ground and the obstacles to fit a new
   size.
 - `stepScene(scene, elapsed)` moves the scene forward by `elapsed` seconds. It
@@ -197,7 +208,7 @@ source. Each effect takes its places from a hash of an index and from the time
 of the scene. So a test uses a fake `Painter` and gets the same picture each
 time. `PALETTES` gives each key an earth colour and an edge colour.
 
-The 45 scenes:
+The 50 scenes:
 
 | Key | Scenes |
 |---|---|
@@ -209,15 +220,23 @@ The 45 scenes:
 | `harvest-festival` | Mushroom Grove, Apple Orchard, Hayfield Run, Village Market, Golden Fields |
 | `spooky-season` | Old Graveyard, Haunted Manor, Witchwood, Foggy Marsh, Pumpkin Patch |
 | `late-autumn` | Windy Avenue, Rainy Village, Forest Floor, Creek Crossing, Lantern Path |
-| `neutral` | Green Alley, Quiet Forest, Little Workshop, Bridge Walk, Morning Hills |
+| `neutral` | Time Car, Night Highway, Code Rooftop, Starship, The Gate, Light Cycles, Twin Suns, The Hatch, Shadow over Town, Flashlights in the Woods |
 
 #### Rotation and fade
 
-A scene shows one row for `SCENE_SECONDS`. Then it moves to the next row of its
-key, and the last row is followed by the first. The walkers start again at the
-edges. `sceneAlpha` fades a scene out in the last `FADE_SECONDS` of its row, and
-it fades a rotated scene in during the first `FADE_SECONDS`. `drawScene` sets
-`ctx.globalAlpha` to that value and sets it back to 1 at the end.
+A `Scene` has the field `rotate`. 129-15 made it false for a visit and true for
+the always-on hours. `createScene` takes it as its fifth argument, and the
+default is true.
+
+If `rotate` is true, a scene shows one row for `SCENE_SECONDS`. Then it moves to
+the next row of its key, and the last row is followed by the first. The walkers
+start again at the edges. `sceneAlpha` fades a scene out in the last
+`FADE_SECONDS` of its row, and it fades a rotated scene in during the first
+`FADE_SECONDS`.
+
+If `rotate` is false, `stepScene` never changes the row and `sceneAlpha` always
+returns 1. `drawScene` sets `ctx.globalAlpha` to the value of `sceneAlpha` and
+sets it back to 1 at the end.
 
 The first scene of a visit has no fade in. So a frame at time zero is whole when
 the system asks for reduced motion. The CSS fade of the canvas covers the start
@@ -225,10 +244,19 @@ of the visit.
 
 #### The random start
 
-`SeasonScene` passes a random index to `createScene`. A visit lasts 45 s to
-75 s and a scene lasts 35 s. If each visit started at the first scene, scenes 3
-to 5 would almost never show. So a visit shows two or three scenes. The
-always-on hours walk all five.
+In the always-on hours, `SeasonScene` passes a random index to `createScene`,
+and the scene rotates through all five rows.
+
+For a visit, 129-15 replaced the random index with `nextRow` in `visits.ts`.
+`nextRow(key, count)` returns a row index for the visit and records it in
+localStorage under `chalk.season.last.v1`. The value is JSON of an object from
+key to row index. The index is never the index of the last visit of the same
+key. If the stored value is missing or not valid, any row can come. If
+localStorage fails, a module variable holds the last rows, and the rule holds
+for that page only.
+
+The canvas has the attribute `data-scene`. Its value is the name of the row on
+show. A later demo probe reads it.
 
 #### Differences from the supplied engine
 
@@ -236,7 +264,9 @@ The scene differs from the supplied engine on purpose:
 
 - It has no sky color, no haze, and no earth block. The canvas stays
   transparent, so the scene blends with all 15 themes. Each row names a sky
-  (129-14): none, stars with a moon, a sun, or a low sun.
+  (129-14): none, stars with a moon, a sun, or a low sun. The ten neutral
+  scripts of 129-18 are the exception: each one paints its own opaque
+  background.
 - It draws the title (129-13) on a small sign and not on a panel for the whole
   strip. The title is always at single size. The supplied engine uses double
   size on a strip of 275 scene pixels or wider. Here the strip is 24 scene
@@ -257,8 +287,8 @@ The scene differs from the supplied engine on purpose:
 
 - A `SceneRow` has a `sky`: `"none"`, `"stars"`, `"sun"`, or `"low-sun"`.
   `drawSky` draws stars and a moon (orange in Spooky Season), a sun, or a low
-  sun with a line of glow for a sunrise or a sunset. Each of the 45 rows names
-  its sky.
+  sun with a line of glow for a sunrise or a sunset. Each row of a season
+  names its sky.
 - `CANOPY` gives each key a color for the background trees. The background
   trees of a Spring Bloom orchard are pink. `isLeafless` is true in Spooky
   Season and Late Autumn, and the background trees there are bare. `isSnowy`
@@ -266,7 +296,8 @@ The scene differs from the supplied engine on purpose:
 - A lake is frozen in Winterfest: pale ice with still lines. Other water
   drifts. A low sun shows on water as orange lines.
 - The props `bridge` (at the obstacle slot in Bridge Walk) and `lilypad` are
-  new. A cabin has a chimney with smoke. A campfire flickers and smokes, a
+  new. 129-18 removed Bridge Walk, so no row uses `bridge` now. It stays in
+  the set of props. A cabin has a chimney with smoke. A campfire flickers and smokes, a
   windmill turns, a lantern and a pumpkin flicker, and the windows of the
   manor flicker. This closed the gap that Cabin Smoke had no smoke and Bridge
   Walk had no bridge.
@@ -275,12 +306,13 @@ The scene differs from the supplied engine on purpose:
   leaves. Frozen Lake casts a rabbit, and Festival Lanterns casts a cat. Pond
   Hopping and Lakeside Sunset have a lilypad.
 
-`web/src/season/scene.test.ts` uses a fake `Painter`. It checks the table (nine
-keys, five rows each, 45 distinct names, and the same ids as `SEASONS` plus
-`"neutral"`), that every scene draws whole pixels with no rectangle as wide as
-the strip, that each prop paints something, the rotation and its wrap, the
-fade, a start index outside the range, the walkers and the jump, a ghost that
-does not jump, and that a resize and a very narrow strip do not break a scene.
+`web/src/season/scene.test.ts` uses a fake `Painter`. It checks the table (eight
+seasons with five rows each, ten scripts, 50 distinct names, and the same ids as
+`SEASONS` in `SCENES`), that every scene of a season draws whole pixels with no
+rectangle as wide as the strip, that each prop paints something, the rotation
+and its wrap, the fade, a start index outside the range, the walkers and the
+jump, a ghost that does not jump, and that a resize and a very narrow strip do
+not break a scene. The tests of 129-18 are in the slice record.
 
 ### Neutral dates (129-12)
 
@@ -288,15 +320,89 @@ A date in a gap shows the neutral scenes. 129-12 reverses the decision of
 129-10, which showed no scene on such a date. The user asked for it, so that
 chalk has a scene all year, apart from the switches.
 
-A neutral date is a visit like any other. It has the same caps and the same
-gaps between visits. The calendar dates and the gaps of 21 days did not change.
-`seasonFor` still returns null on a neutral date, and `SEASONS` did not change.
+129-12 made a neutral date a visit like any other, with the same caps and gaps.
+129-16 replaced that rule (see "The windows of the neutral scene"). The
+calendar dates and the gaps of 21 days did not change. `seasonFor` still
+returns null on a neutral date, and `SEASONS` did not change.
 
 `App.tsx` no longer needs a season for `seasonalOn`. The two mounts pass
 `season` or null. `SeasonScene` takes `season: Season | null`. The key is
 `season?.id ?? "neutral"` and the label for a screen reader is "Chalk".
 `data-season` shows the key, also `neutral`. The night frame still needs a
 season: `nightSeason` checks `season !== null`.
+
+#### The windows of the neutral scene (129-16)
+
+The neutral scene does not use the cap of 16 visits or the gaps of `GAP_MS`.
+`NEUTRAL_WINDOWS` in `peek.ts` has two windows, as `[start, end)` in local
+hours: `[8, 12]` and `[16, 24]`. The neutral scene has at most one visit in
+each window, so at most two visits in a day.
+
+`claimNeutral(log, now, rnd)` in `peek.ts` is a pure function.
+
+- A log from another day, or with the wrong number of targets, is replaced. A
+  clock moved back gives a new log in the same way.
+- The new log has one random target time for each window. The target is no
+  later than `SHOW_MS[1]` before the end of the window, so a visit of the
+  longest time still ends inside the window.
+- A visit starts at the first check with a visible tab, if now is inside a
+  window, the visit of that window did not start, and now is at the target time
+  or later.
+- A window that no visible tab saw is lost. It does not move to the next window
+  or to the next day.
+
+The log is `{day, at, done}` in localStorage under the key
+`chalk.season.neutral.v1`. `at` holds the target times in milliseconds since the
+epoch, and `done` tells for each window if its visit started. A corrupt entry
+is replaced. If localStorage fails, a module variable holds the log, and the
+windows hold for that page only.
+
+`takeVisit(now, neutral)` in `visits.ts` calls `claimNeutral` if `neutral` is
+true. A neutral claim does not read or change the season log, so it does not
+use up the cap of the season scenes. `SeasonScene` passes `neutral` when
+`season` is null.
+
+#### The off-season scripts (129-18)
+
+A neutral date shows one of ten scripts, and not a row of walkers.
+`web/src/season/offseason.ts` holds them in `OFFSEASON`. Each script is a nod to
+a film or a series, and a person knows it by one famous moment. A script has no
+title, no logo, and no likeness of an actor. The only text is the `CHALK` sign
+and the six numbers that The Hatch types. A script uses a motif and does
+not copy the design of a ship or a car.
+
+| Script | Nod |
+|---|---|
+| Time Car | Back to the Future |
+| Night Highway | Knight Rider |
+| Code Rooftop | The Matrix |
+| Starship | Star Trek |
+| The Gate | Stargate SG-1 |
+| Light Cycles | Tron |
+| Twin Suns | Star Wars |
+| The Hatch | Lost |
+| Shadow over Town | Stranger Things |
+| Flashlights in the Woods | The X-Files |
+
+A `Script` has a `name`, a `period` (the length of its loop in seconds), a
+`still` (the time of the frame for reduced motion), and
+`draw(p, a, W, t)`. `draw` paints the frame at time `t` on a strip `W` scene
+pixels wide, with the painter `p` and the alpha setter `a`. A script paints a
+strip of `STRIP_H` scene pixels, which is 24. A script is opaque, because it
+paints its own background. The rows of the seasons are see-through. This is a
+deliberate change for the neutral key.
+
+`scene.ts` runs a script as follows:
+
+- `loadRow` loads a script for the `"neutral"` key. It gives the scene a
+  placeholder row from `scriptRow`, and only the name of that row is read. The
+  scene has no walkers and no obstacles.
+- `drawScene` runs the script at the bottom of the canvas, with an offset of
+  `H - STRIP_H`. It multiplies the alpha of the script with `sceneAlpha`.
+- `stepScene` wraps the rotation at `sceneCount(key)`.
+- `holdStill` moves the scene to the still time of its script.
+
+The slice record has the tests.
 
 ### The component
 
@@ -306,8 +412,9 @@ It keeps the one-timer schedule and the visible-page rule of 129-7: a
 One component serves every season.
 
 `runScene` starts a visit. It sets the size of the canvas from its CSS size
-divided by `SCALE`, makes a new scene at a random start index, and paints it
-once. Each visit makes a new scene, so no state passes from one visit to the
+divided by `SCALE`, makes a new scene, and paints it once. The scene starts at
+the row of `nextRow`, or at a random row in the always-on hours (see "The random
+start"). Each visit makes a new scene, so no state passes from one visit to the
 next.
 Unless the system asks for reduced motion, it then starts a
 `requestAnimationFrame` loop. The loop steps and paints the scene at `FPS`.
@@ -319,7 +426,8 @@ later, and `FADE_MS` is 1200. This is the time of the CSS fade-out. If the loop
 stopped first, the scene would freeze in the picture while it fades.
 
 With `prefers-reduced-motion: reduce`, a visit paints one frame and holds it,
-and the CSS fade is off. So the promise in the profile panel, that the scene
+and the CSS fade is off. A script holds its still frame: `runScene` calls
+`holdStill` before the one paint (129-18). So the promise in the profile panel, that the scene
 holds still, stays true.
 
 The canvas has `role="img"` and the aria-label "<label>, an animated pixel
@@ -524,8 +632,8 @@ After a successful save, the client of the administrator folds the value into
 its loaded config (`auth_config_loaded`). The scene on the screen of the
 administrator follows at once.
 
-`web/src/whats-new.ts` has an entry for phase 129. 129-9, 129-10, and 129-12
-rewrote its lines in place, because the entry is keyed by the phase number. A person who already
+`web/src/whats-new.ts` has an entry for phase 129. 129-9, 129-10, 129-12, and
+129-18 rewrote its lines in place, because the entry is keyed by the phase number. A person who already
 marked the entry as read does not see the new text.
 
 ## What was rejected
@@ -579,10 +687,36 @@ sheet of the verification renders the real `scene.ts` instead.
 
 A start at the first scene in each visit (129-12). A visit lasts 45 s to 75 s
 and a scene lasts 35 s, so scenes 3 to 5 would almost never show. `createScene`
-takes an index, and `SeasonScene` passes a random one.
+takes an index, and 129-12 passed a random one. 129-15 replaced the rotation in
+a visit with one held scene.
+
+A scrolling world that runs through the rows with no cut (129-15). It would let
+one visit show more than one scene. It is a larger change of the engine, so
+the slice held one scene instead.
+
+A crossfade through all five rows in a longer visit (129-15). A visit of 45 s to
+75 s is short on purpose, and a longer visit would stay on the screen longer.
+
+A gap-based schedule with a lower cap for the neutral scene (129-16). It cannot
+guarantee one visit in each part of the day, so a day could have no morning
+visit. The windows give that guarantee for a tab that is visible.
 
 A fade to black at the end of a scene, as the supplied engine does (129-12).
 The canvas is transparent, so the alpha fades to transparent.
+
+Walker rows with film-themed props for the neutral scenes (129-18). A moment
+of a film does not fit in a strip 24 scene pixels high with two walkers and
+four props.
+
+The titles of the films on the neutral scenes (129-18). The user wants each
+scene to speak for itself. The only text is the sign.
+
+Logos, and exact designs of a ship or a car (129-18). They carry a risk for a
+trademark. A scene uses a motif.
+
+An earlier set of candidates for the neutral scenes (129-18). The review
+replaced the candidates Jaws, E.T., and an alphabet wall with Lost, Stargate,
+and the shadow-monster scene of Stranger Things.
 
 History: 129-1 to 129-8 showed a figure beside the wordmark. 129-1 drew an SVG
 ghost, and 129-5 replaced it with 20 PNG cut-outs, ten for each of two seasons.
@@ -690,6 +824,76 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
   the sign, snow and ice, the named details, and the cast by season. Text in
   `CHANGELOG.md`.
 
+- **129-15 — a visit holds one scene.** The problem: `stepScene` rotated to the
+  next row every `SCENE_SECONDS`, with a fade out and a fade in. A visit of
+  45 s to 75 s showed two or three scenes. The design: `Scene` has `rotate`, and it is false for a visit.
+  `stepScene` does not rotate it and `sceneAlpha` returns 1. The always-on
+  hours still rotate. `nextRow` in `season/visits.ts` picks the row of a visit,
+  never the row of the last visit of the same key, and records it in
+  `chalk.season.last.v1`. The canvas has `data-scene`. Rejected: a scrolling
+  world across the rows, and a crossfade through all five rows in a longer
+  visit (see "What was rejected"). Tests in `scene.test.ts` and
+  `visits.test.ts`. Text in `CHANGELOG.md` and `whats-new.ts`.
+
+- **129-16 — the windows of the neutral scene.** The problem: the neutral scene
+  shared the log and the cap of the season scenes. A schedule of gaps cannot
+  guarantee one visit in each part of the day. The design: `NEUTRAL_WINDOWS`, `claimNeutral`, `NeutralLog`, and
+  a log under `chalk.season.neutral.v1`. `takeVisit(now, neutral)` sends a
+  neutral claim to that log. Season scenes keep the cap of 16 and 10. Rejected:
+  a gap-based schedule with a lower cap (see "What was rejected"). Tests in
+  `peek.test.ts` and `visits.test.ts`. Text in `CHANGELOG.md` and
+  `whats-new.ts`.
+
+- **129-17 — a headed season demo (built).** The problem: a scene shows only
+  on a date of its season and after a pause, and a visit picks its row by its
+  own rule. A person who tunes a scene cannot wait for that. The design: the
+  flags `--season=<key>`, `--scene=<row name>`, and `--scene-secs=N` (default
+  30) in `.claude/skills/run-chalk/ui-sweep.mjs`, with `--headed`. The script
+  has the table `SEASON_DATES`. Neutral is 10 November 2026 at 09:00, in the
+  first neutral window. The other keys are at 13:00 on a date inside the
+  season, near the real date. Playwright `page.clock.install` sets the date,
+  and the clock runs at normal speed. An init script removes
+  `chalk.season.visits.v1` and seeds `chalk.season.neutral.v1`, so a visit is
+  due at once. After each page load, `clock.fastForward(13000)` skips
+  `FIRST_PAUSE_MS` (4 s to 12 s). The script waits for
+  `[data-testid='season-scene'][data-visible]` and reads `data-scene`. It
+  loads the page again, up to 25 times, until `data-scene` is the target. It
+  then shows the scene for `--scene-secs` seconds with a corner tag. Without
+  `--scene`, the targets are the five row names of the key, read from
+  `web/src/season/scene.ts`. 129-18 changed this for neutral: the ten script
+  names come from `web/src/season/offseason.ts`. The script prints `SCENE <key>: <name>`, with
+  `(wanted X)` if it gave up, and logs each try to `probe.log`. An unknown key
+  or scene stops it with exit 2. Rejected: a forced index, which needs a
+  preview hook in the product, and a `Math.random` stub in the probe, which
+  changes the whole app. The demo has no preview API, so it matches the scene
+  by reload. A visit lasts 45 s to 75 s, so a `--scene-secs` value above 45 can
+  let the visit end before the next load. The `ui-sweep` skill lists the flags.
+
+- **129-18 — ten scripted neutral scenes (built).** The problem: the five
+  neutral rows (Green Alley, Quiet Forest, Little Workshop, Bridge Walk, and
+  Morning Hills) were walkers on a strip 24 scene pixels high. They could not
+  show a moment of a film. The design: `web/src/season/offseason.ts` has
+  `STRIP_H`, `Script`, and `OFFSEASON` with ten scripts (see "The off-season
+  scripts"). `SCENES` is now `Record<SeasonId, SceneRow[]>`. `scene.ts` gained
+  `sceneCount`, `Scene.script`, `scriptRow`, and `holdStill`, and `loadRow`,
+  `createScene`, `stepScene`, and `drawScene` handle a script. `SeasonScene.tsx`
+  calls `sceneCount` and calls `holdStill` before the one paint under reduced
+  motion. In `ui-sweep.mjs`, `sceneNames` reads the neutral names from
+  `offseason.ts`. The user approved the design on an animated mock-up page.
+  Rejected: walker rows with film props, the film titles, and logos or exact
+  designs (see "What was rejected"). Tests in `scene.test.ts`: the table has 50
+  scenes. Each script draws whole pixels, inside a budget of rectangles, at
+  three widths over its loop. A script holds through a visit. A rotating
+  neutral scene moves on to the next script. The fade of a rotating scene caps
+  the alpha of a script. A script draws at the bottom of a taller canvas. The
+  still time of each script is inside its loop. The prop `bridge` is no longer
+  used by a row, so the prop test adds it by hand. Text in `CHANGELOG.md` and
+  `whats-new.ts`.
+
+- **129-19 and later — tune the scenes (planned, not started).** One key for
+  each slice, in this order: late-autumn, winterfest, new-year, spring-bloom,
+  green-season, midsummer, harvest-festival, spooky-season.
+
 ## Trade-offs
 
 1. A change by an administrator reaches other clients on their next page load.
@@ -732,13 +936,20 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
 14. When the row opens or closes, the rows below it move by 48 px over 1.2 s.
     A tap in that moment can land on a different row. This is the accepted cost
     of a row that goes away.
-15. A visit shows two or three scenes of the five, because a visit lasts 45 s
-    to 75 s and a scene lasts 35 s. The start is random, so each scene shows
-    over many visits. Only the always-on hours walk all five in one run.
+15. A visit shows one scene of the five, or of the ten for neutral (129-15). The row differs from the row
+    of the last visit of the same key, so each scene shows over many visits.
+    Only the always-on hours walk all five in one run.
 16. The sign of the title covers the middle of the strip, about 105 scene
     pixels at most for `HARVEST FESTIVAL`. The sign is high (129-14), so the
     walkers run under it. Only a jump of a walker can pass behind it. A strip
     that is too narrow for the sign shows no title.
+17. A window of the neutral scene is lost if no visible tab checks at or after
+    its target time inside the window (129-16). A device that is always in the
+    background sees no neutral visit. The neutral log is for a device and a
+    local day, like the cap.
+18. A neutral script is opaque (129-18). It paints its own background, so it
+    does not blend with a theme as the see-through rows do. This is a deliberate
+    change.
 
 ## Verification
 
@@ -828,18 +1039,21 @@ no season and shows the neutral scenes (see item 13).
     - 30 December and 31 December: `winterfest`, then `new-year`
 13. Set the system date to a date in a gap, for example 15 April, 15 November,
     and 10 December. Check that `data-season` is `neutral` and that the scene
-    is one of the five neutral scenes. Check that the visits follow the same
-    caps and gaps as on a date in a season, and that the count in
-    `chalk.season.visits.v1` changes with each visit.
+    is one of the ten neutral scenes. Check that the visits follow the same
+    windows of 129-16: at most one visit from 08:00 to 12:00 and one from
+    16:00 to 24:00. Check that `chalk.season.neutral.v1` has `done` set for each
+    visit, and that the count in `chalk.season.visits.v1` does not change.
     Set the system date to 29 February of a leap year. Check that the scene is
     a neutral scene, because the date is in the gap from 8 February to
     28 February.
 14. Switch between a dark theme and a light theme, for example `warmwhite`.
     Check that the scene shows on both with no panel behind it, except the small sign of the title.
 15. Check that two visits make a new scene: the walkers enter from the edges
-    again. The second visit comes 20 minutes or more after the first, and 1 hour
-    or more if the first started before 18:00. To avoid the wait, clear the key `chalk.season.visits.v1` from localStorage after
-    the first visit. The next visit then comes within a minute.
+    again, and `data-scene` differs from the first visit. On a date in a
+    season, the second visit comes 20 minutes or more after the first, and 1
+    hour or more if the first started before 18:00. To avoid the wait, clear the
+    key `chalk.season.visits.v1` from localStorage after the first visit. The
+    next visit then comes within a minute.
 16. Watch a whole fade-out. Check that the scene keeps moving until it is gone.
 17. Change the width of the window during a visit. Check that the scene
     follows the new width.
@@ -877,9 +1091,12 @@ no season and shows the neutral scenes (see item 13).
     open, and that the count in `chalk.season.visits.v1` does not change.
 34. On a date in a gap, set the clock to the evening. Check that a visit shows
     a neutral scene, and that the night frame is absent on video tiles.
-35. Watch one scene for 35 seconds. Check that the scene fades out, that the
-    next scene of the same key fades in, and that the walkers start again at
-    the edges. After the fifth scene, check that the first one comes back.
+35. Watch a whole visit of a season scene. Check that the scene stays the same,
+    that `data-scene` does not change, and that the scene does not fade between
+    scenes. In the always-on hours, watch for 35 seconds. Check that the scene
+    fades out, that the next scene of the same key fades in, and that the
+    walkers start again at the edges. After the fifth scene, check that the
+    first one comes back.
 36. Emulate reduced motion and start a visit. Check that the first frame is
     whole, with no fade in, and that it holds still.
 37. During a visit in a season, check that the sign shows the name of the
@@ -892,6 +1109,12 @@ no season and shows the neutral scenes (see item 13).
     sign.
 41. Check three seasonal details. Examples are the smoke of the cabin in Cabin
     Smoke, the ice in Frozen Lake, and the bare trees in Old Graveyard.
+42. On a neutral date, watch each of the ten scripts (the demo in the `ui-sweep`
+    skill shows one by name). Check that the strip is opaque, that the only text
+    is the `CHALK` sign and, in The Hatch, the six numbers, and that the sign
+    stays clear of the picture. Check this on a dark theme and on a light theme.
+43. Emulate reduced motion on a neutral date. Check that a script holds its
+    still frame, and that the frame shows the moment of the script.
 
 ## How to add a season
 
@@ -915,8 +1138,9 @@ no season and shows the neutral scenes (see item 13).
 
 `seasons.test.ts` checks that no day falls in two rows and that each gap is a
 date in no row.
-`scene.test.ts` checks that `SCENES` and `SEASONS` list the same ids, with
-`"neutral"` in addition, and that each key has five rows.
+`scene.test.ts` checks that `SCENES` and `SEASONS` list the same ids, and that
+each key of `SCENES` has five rows. The `"neutral"` key is not in `SCENES`. It
+uses the ten scripts of `OFFSEASON` (129-18).
 
 The device switch, the server switch, the schedule, the component, and the
 stylesheet need no change.

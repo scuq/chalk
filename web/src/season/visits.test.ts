@@ -1,10 +1,12 @@
 // 129-7: the log of visits. A fake localStorage shows that pages share one log,
 // that a corrupt entry is replaced, and that the cap holds without storage.
+// 129-15: the next row differs from the last row. 129-16: the neutral log is
+// separate from the log of the cap.
 
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { GAP_MS, MAX_VISITS_PER_DAY } from "./peek";
-import { takeVisit } from "./visits";
+import { nextRow, takeVisit } from "./visits";
 
 const KEY = "chalk.season.visits.v1";
 const HOUR = 3_600_000;
@@ -66,4 +68,48 @@ test("without storage the cap still holds for the page", () => {
   };
   assert.equal(takeVisit(now), true);
   assert.equal(takeVisit(now + HOUR / 2), false);
+});
+
+test("129-15: the next row is never the last row of the same key", () => {
+  const items = fakeStorage();
+  const LAST = "chalk.season.last.v1";
+  for (const r of [0, 0.3, 0.6, 0.99, 1]) {
+    items.set(LAST, JSON.stringify({ neutral: 2, midsummer: 0 }));
+    const i = nextRow("neutral", 5, () => r);
+    assert.notEqual(i, 2, String(r));
+    assert.ok(i >= 0 && i < 5);
+    assert.equal(JSON.parse(items.get(LAST)!).neutral, i);
+    assert.equal(JSON.parse(items.get(LAST)!).midsummer, 0);
+  }
+});
+
+test("129-15: a corrupt last row lets any row come", () => {
+  const items = fakeStorage();
+  for (const bad of ['{"neutral":"2"}', '{"neutral":9}', '{"neutral":-1}']) {
+    items.set("chalk.season.last.v1", bad);
+    assert.equal(nextRow("neutral", 5, () => 0.5), 2, bad);
+  }
+});
+
+test("129-16: a neutral claim keeps the season log and the windows hold across pages", () => {
+  const items = fakeStorage(JSON.stringify({ day: "", count: 0, nextAt: 0 }));
+  const morning = new Date(2026, 10, 10, 11, 58).getTime();
+  assert.equal(takeVisit(morning, true), true);
+  assert.equal(takeVisit(morning + 1, true), false);
+  assert.equal(JSON.parse(items.get(KEY)!).count, 0);
+  assert.deepEqual(JSON.parse(items.get("chalk.season.neutral.v1")!).done, [true, false]);
+  assert.equal(takeVisit(morning, false), true);
+});
+
+test("129-16: a corrupt neutral entry is replaced", () => {
+  const bads = ["{", '{"day":"d","at":[1],"done":[]}', '{"day":"d","at":["x"],"done":[true]}'];
+  bads.forEach((bad, i) => {
+    const morning = new Date(2026, 10, 11 + i, 11, 58).getTime();
+    const items = fakeStorage();
+    items.set("chalk.season.neutral.v1", bad);
+    takeVisit(morning - 3 * HOUR, true);
+    const log = JSON.parse(items.get("chalk.season.neutral.v1")!);
+    assert.equal(log.day, `2026-11-${11 + i}`, bad);
+    assert.equal(log.at.length, 2, bad);
+  });
 });

@@ -1,13 +1,17 @@
 // 129-9: the scene for the season -- a small pixel animation in the header.
 // 129-10: in the always-on hours the scene stays up without a break.
 // 129-11: on a phone in zuckermode the scene is a row above the list.
-// 129-12: a date in no season shows the neutral scenes. A scene rotates.
+// 129-12: a date in no season shows the neutral scenes. 129-15: a visit holds
+// one scene. 129-16: the neutral scene has its own windows. 129-18: the neutral
+// scenes are ten scripts, and reduced motion holds the still frame of a script.
 //
 // One component serves every season and the dates between them. The registry
 // says which season it is, or null for a date in no season. season/scene.ts
-// holds five scenes for each season and five neutral scenes, and it moves the
-// scene. The schedule in season/peek.ts sets the bounds of a visit, and
-// season/visits.ts grants a visit under the caps in peek.ts.
+// holds five scenes for each season and ten neutral scenes, and it moves the
+// scene. A neutral scene is a script of season/offseason.ts. The schedule in
+// season/peek.ts sets the bounds of a visit, and season/visits.ts grants a
+// visit under the caps in peek.ts. For a date in no season, it grants at most
+// one visit in each of the windows in peek.ts.
 // App.tsx mounts the component in one of two places. On a wide screen it sits
 // in the header, between the brand and the status bar. The box .chalk-season
 // takes the empty middle of the header. The canvas inside it is out of flow,
@@ -17,22 +21,25 @@
 // between visits and opens to 48 px while a visit shows. The classic phone
 // layout mounts no scene.
 // The list screen unmounts when a conversation opens, so the component starts
-// again, with a first pause, when the user comes back to the list. The log of
-// visits is in localStorage, so the daily caps hold across that restart.
+// again, with a first pause, when the user comes back to the list. The logs of
+// visits are in localStorage, so the daily caps and the neutral windows hold
+// across that restart.
 // The component draws on the canvas only during a visit and for FADE_MS after
 // it. A hidden canvas costs no frame. In the always-on hours (ALWAYS_ON in
 // season/seasons.ts) the component draws without a break, claims no visit, and
 // the daily caps do not count those hours.
-// A visit makes a new scene, so no state passes from one visit to the next. A
-// scene rotates to the next one every SCENE_SECONDS (see season/scene.ts).
-// Each visit starts at a random one of the five scenes. A visit lasts 45 s to
-// 75 s and a scene lasts 35 s, so a start at the first scene would almost never
-// show scenes 3 to 5. A visit shows two or three scenes, and the always-on
-// hours walk all five.
+// A visit makes a new scene, and the scene holds one scene of the key from
+// the start of the visit to its end. It does not rotate and does not fade
+// between scenes. nextRow in season/visits.ts picks the scene, and it is never
+// the scene of the last visit of the same key. The always-on hours start at a
+// random scene and rotate through all five scenes of a season. A scene rotates to the next one
+// every SCENE_SECONDS (see season/scene.ts).
+// The canvas has the attribute data-scene. Its value is the name of the scene
+// on show.
 // The fade is CSS. The only timer for the schedule is one timeout for each
 // step.
 // If the system asks for reduced motion, a visit paints one frame and holds
-// it, and the CSS fade is off.
+// it, and the CSS fade is off. A script paints its still frame.
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { Season } from "../season/seasons";
@@ -41,13 +48,14 @@ import {
   createScene,
   drawScene,
   FPS,
+  holdStill,
   resizeScene,
   SCALE,
-  SCENES_PER_KEY,
+  sceneCount,
   stepScene,
   type SceneKey,
 } from "../season/scene";
-import { takeVisit } from "../season/visits";
+import { nextRow, takeVisit } from "../season/visits";
 
 // The time that the canvas takes to fade out. It must equal the opacity
 // transition of .chalk-season-canvas in theme.css.
@@ -55,8 +63,10 @@ const FADE_MS = 1200;
 
 /**
  * runScene paints a new scene for the key on the canvas and returns the
- * function that ends the visit. The scene starts at a random one of the five
- * scenes of the key.
+ * function that ends the visit. If always is false, the scene is the one that
+ * nextRow picks, and it holds that scene. If always is true, the scene starts
+ * at a random one of the scenes of the key and rotates. The key has five
+ * scenes, or ten for "neutral".
  *
  * The scene has the size of the canvas in scene pixels. A resize of the canvas
  * resizes the scene and paints it again. Unless the system asks for reduced
@@ -72,6 +82,7 @@ function runScene(
   el: HTMLCanvasElement,
   ctx: CanvasRenderingContext2D,
   key: SceneKey,
+  always: boolean,
 ): () => void {
   const size = (): [number, number] => [
     Math.max(1, Math.round(el.clientWidth / SCALE)),
@@ -81,7 +92,12 @@ function runScene(
   el.width = w;
   el.height = h;
   ctx.imageSmoothingEnabled = false;
-  const scene = createScene(key, w, h, Math.floor(Math.random() * SCENES_PER_KEY));
+  // 129-15: a visit holds the row that nextRow picks. The always-on hours
+  // start at a random row and rotate.
+  const count = sceneCount(key);
+  const index = always ? Math.floor(Math.random() * count) : nextRow(key, count);
+  const scene = createScene(key, w, h, index, always);
+  el.dataset.scene = scene.row.name;
   const paint = () => {
     ctx.clearRect(0, 0, el.width, el.height);
     drawScene(ctx, scene);
@@ -104,12 +120,15 @@ function runScene(
     if (elapsed < 1000 / FPS) return;
     last = now;
     stepScene(scene, elapsed / 1000);
+    if (el.dataset.scene !== scene.row.name) el.dataset.scene = scene.row.name;
     paint();
   };
+  // 129-18: with reduced motion, holdStill moves a script to its still frame
+  // before the one paint.
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced) holdStill(scene);
   paint();
-  if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    raf = requestAnimationFrame(frame);
-  }
+  if (!reduced) raf = requestAnimationFrame(frame);
   const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
   observer?.observe(el);
   return () => {
@@ -140,16 +159,18 @@ interface Props {
 export function SeasonScene({ season, always, row = false }: Props) {
   const [visit, setVisit] = useState<Peek>(() => firstPeek());
   const canvas = useRef<HTMLCanvasElement>(null);
+  const neutral = season === null;
   useEffect(() => {
     const t = setTimeout(() => {
       // In the always-on hours no visit is claimed, so the hours do not use up
       // the daily caps.
       const show =
-        !always && !visit.visible && document.visibilityState === "visible" && takeVisit();
+        !always && !visit.visible && document.visibilityState === "visible" &&
+        takeVisit(Date.now(), neutral);
       setVisit(nextPeek(show));
     }, visit.ms);
     return () => clearTimeout(t);
-  }, [visit, always]);
+  }, [visit, always, neutral]);
   const key: SceneKey = season?.id ?? "neutral";
   const label = season?.label ?? "Chalk";
   // The canvas is up in a visit and in the always-on hours.
@@ -158,8 +179,8 @@ export function SeasonScene({ season, always, row = false }: Props) {
     const el = canvas.current;
     const ctx = live ? el?.getContext("2d") : null;
     if (!el || !ctx) return;
-    return runScene(el, ctx, key);
-  }, [live, key]);
+    return runScene(el, ctx, key, always);
+  }, [live, key, always]);
   return (
     <div
       class={

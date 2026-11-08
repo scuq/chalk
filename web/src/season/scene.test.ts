@@ -1,13 +1,20 @@
-// 129-9: tests for the scene. 129-12: five scenes for each of nine keys.
+// 129-9: tests for the scene. 129-12: five scenes for each of nine keys. The
+// neutral key has ten scripts since 129-18.
 //
 // A fake Painter records the rectangles, so a test needs no canvas. The tests
-// check the table (45 scenes, nine keys, the same ids as SEASONS plus
-// "neutral"), whole pixels and a see-through strip in every scene, a paint for
+// check the table (50 scenes, the same ids as SEASONS plus "neutral"), whole
+// pixels and a see-through strip in every scene of a season, a paint for
 // each prop, the rotation and its wrap, the fade, a start index outside the
 // range, the walkers, a ghost that floats, a long frame, and a resize. 129-13:
 // the title of each key, the font, the sign, and a strip that is too narrow.
 // 129-14: a walker under the sign, snow and ice in the cold seasons, the named
 // details (sunrise, smoke, bridge, blossom), and no animal out of season.
+// 129-15: a scene that does not rotate holds its row and has no fade.
+// 129-18: the table has 50 scenes, and sceneCount gives 10 for "neutral". The
+// ten off-season scripts draw whole pixels, in a budget of rectangles, at three
+// widths. A script holds through a visit, a rotating script moves on to the
+// next one, and the fade of a rotating scene caps the alpha of a script. A script draws at the bottom of a taller canvas.
+// holdStill moves a script to its still frame, which is inside its loop.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -16,21 +23,25 @@ import {
   drawScene,
   FADE_SECONDS,
   hasGlyph,
+  holdStill,
   resizeScene,
   SCENE_SECONDS,
   SCENES,
   SCENES_PER_KEY,
   sceneAlpha,
+  sceneCount,
   stepScene,
   titleFor,
   type Painter,
   type SceneKey,
 } from "./scene";
+import { OFFSEASON } from "./offseason";
 import { SEASONS } from "./seasons";
 
 const W = 300;
 const H = 24;
 const KEYS = Object.keys(SCENES) as SceneKey[];
+const ALL_KEYS: SceneKey[] = [...KEYS, "neutral"];
 
 function recorder() {
   const rects: { x: number; y: number; w: number; h: number; color: string }[] = [];
@@ -44,15 +55,21 @@ function recorder() {
   return { ctx, rects };
 }
 
-test("there are 45 scenes: five for each season and five for the neutral dates", () => {
+test("there are 50 scenes: five rows for each season and ten scripts for the neutral dates", () => {
   const ids = new Set<string>(SEASONS.map((s) => s.id));
-  ids.add("neutral");
   assert.deepEqual(new Set(KEYS), ids);
-  assert.equal(KEYS.length, 9);
-  for (const key of KEYS) assert.equal(SCENES[key].length, SCENES_PER_KEY, key);
-  const names = KEYS.flatMap((k) => SCENES[k].map((r) => r.name));
-  assert.equal(names.length, 45);
-  assert.equal(new Set(names).size, 45);
+  assert.equal(KEYS.length, 8);
+  for (const key of KEYS) {
+    assert.equal(SCENES[key as keyof typeof SCENES].length, SCENES_PER_KEY, key);
+    assert.equal(sceneCount(key), SCENES_PER_KEY, key);
+  }
+  assert.equal(sceneCount("neutral"), 10);
+  const names = [
+    ...KEYS.flatMap((k) => SCENES[k as keyof typeof SCENES].map((r) => r.name)),
+    ...OFFSEASON.map((x) => x.name),
+  ];
+  assert.equal(names.length, 50);
+  assert.equal(new Set(names).size, 50);
 });
 
 test("every scene draws whole pixels and leaves the strip see-through, at each step", () => {
@@ -75,14 +92,19 @@ test("every scene draws whole pixels and leaves the strip see-through, at each s
 });
 
 test("each prop paints something of its own", () => {
-  const kinds = new Set(KEYS.flatMap((k) => SCENES[k].flatMap((r) => r.props)));
+  const used = new Set(KEYS.flatMap((k) => SCENES[k as keyof typeof SCENES].flatMap((r) => r.props)));
+  assert.equal(used.size, 37);
+  // 129-18: no row uses the bridge since the neutral rows became scripts. It
+  // stays in the set of props, so its paint is still checked.
+  assert.ok(!used.has("bridge"));
+  const kinds = new Set([...used, "bridge" as const]);
   assert.equal(kinds.size, 38);
-  const bare = createScene("neutral", W, H);
+  const bare = createScene("midsummer", W, H);
   bare.row = { ...bare.row, props: [] as never };
   const base = recorder();
   drawScene(base.ctx, bare);
   for (const kind of kinds) {
-    const scene = createScene("neutral", W, H);
+    const scene = createScene("midsummer", W, H);
     scene.row = { ...scene.row, props: [kind, kind, kind, kind] };
     const one = recorder();
     drawScene(one.ctx, scene);
@@ -118,6 +140,17 @@ test("a first scene is whole at once, a rotation fades in, and each scene fades 
   assert.equal(sceneAlpha(scene), 0);
   scene.sceneTime = FADE_SECONDS / 2;
   assert.ok(Math.abs(sceneAlpha(scene) - 0.5) < 1e-9);
+});
+
+test("129-15: a visit holds one row, with no rotation and no fade", () => {
+  const scene = createScene("midsummer", W, H, 2, false);
+  for (let t = 0; t < 80; t += 0.1) {
+    stepScene(scene, 0.1);
+    assert.equal(sceneAlpha(scene), 1);
+  }
+  assert.equal(scene.index, 2);
+  assert.equal(scene.rotations, 0);
+  assert.equal(scene.row.name, "Campfire Evening");
 });
 
 test("each season has its title, and the font holds every letter", () => {
@@ -180,13 +213,12 @@ test("a named thing is drawn: the sunrise, the smoke, the bridge, and the blosso
   assert.equal(SCENES["new-year"][4].name, "First Sunrise");
   assert.ok(colors("new-year", 4).has("#ff9a4f"), "no sun in First Sunrise");
   assert.ok(colors("winterfest", 1).has("#9aa6a6"), "no smoke in Cabin Smoke");
-  assert.ok(colors("neutral", 3).has("#8a6543"), "no bridge in Bridge Walk");
   assert.ok(colors("spring-bloom", 0).has("#d99ab4"), "no blossom in the orchard");
   assert.ok(!colors("late-autumn", 0).has("#d99ab4"));
 });
 
 test("no animal is out of season", () => {
-  const cast = (key: SceneKey) => new Set(SCENES[key].flatMap((r) => r.cast));
+  const cast = (key: SceneKey) => new Set(SCENES[key as keyof typeof SCENES].flatMap((r) => r.cast));
   assert.ok(!cast("midsummer").has("chick"));
   for (const key of ["winterfest", "new-year"] as SceneKey[]) {
     assert.ok(!cast(key).has("frog"), key);
@@ -203,7 +235,7 @@ test("a strip too narrow for the title leaves it out", () => {
 });
 
 test("a title fades with its scene", () => {
-  const scene = createScene("neutral", W, H);
+  const scene = createScene("midsummer", W, H);
   scene.rotations = 1;
   scene.sceneTime = FADE_SECONDS / 2;
   const seen: number[] = [];
@@ -219,8 +251,10 @@ test("a title fades with its scene", () => {
 });
 
 test("a start index outside the range still picks a scene", () => {
-  assert.equal(createScene("neutral", W, H, 7).index, 2);
-  assert.equal(createScene("neutral", W, H, -1).index, 4);
+  assert.equal(createScene("midsummer", W, H, 7).index, 2);
+  assert.equal(createScene("midsummer", W, H, -1).index, 4);
+  assert.equal(createScene("neutral", W, H, 12).index, 2);
+  assert.equal(createScene("neutral", W, H, -1).index, 9);
 });
 
 test("the walkers enter from the edges and walk in opposite directions", () => {
@@ -271,11 +305,95 @@ test("a resize moves the ground and the obstacles", () => {
 });
 
 test("a very narrow strip still draws every scene", () => {
-  for (const key of KEYS) {
-    for (let index = 0; index < SCENES_PER_KEY; index++) {
+  for (const key of ALL_KEYS) {
+    for (let index = 0; index < sceneCount(key); index++) {
       const scene = createScene(key, 40, 16, index);
       stepScene(scene, 1 / 12);
       drawScene(recorder().ctx, scene);
     }
   }
+});
+
+// 129-18: the off-season scripts.
+
+test("129-18: each off-season script draws whole pixels, on a budget, over its full loop", () => {
+  for (const wide of [150, 300, 460]) {
+    OFFSEASON.forEach((script, index) => {
+      const scene = createScene("neutral", wide, H, index, false);
+      assert.equal(scene.script, script);
+      assert.equal(scene.row.name, script.name);
+      for (let t = 0; t < Math.min(script.period, 30) + 1; t += 1 / 12) {
+        stepScene(scene, 1 / 12);
+        const alphas: number[] = [];
+        const { ctx, rects } = recorder();
+        const fill = ctx.fillRect;
+        ctx.fillRect = (x, y, w, h) => {
+          alphas.push(ctx.globalAlpha);
+          fill(x, y, w, h);
+        };
+        drawScene(ctx, scene);
+        assert.equal(ctx.globalAlpha, 1, `${script.name}: the alpha leaks past the frame`);
+        assert.ok(rects.length > 0, `${script.name} drew nothing`);
+        assert.ok(rects.length < 6000, `${script.name} at ${wide}: ${rects.length} rectangles in one frame`);
+        for (const a of alphas) assert.ok(a >= 0 && a <= 1, `${script.name}: alpha ${a}`);
+        for (const r of rects) {
+          for (const n of [r.x, r.y, r.w, r.h]) assert.ok(Number.isInteger(n), `${script.name}: ${n}`);
+          assert.ok(r.w >= 0 && r.h >= 0, `${script.name}: a negative size`);
+        }
+      }
+    });
+  }
+});
+
+test("129-18: a script holds through a visit and does not rotate", () => {
+  const scene = createScene("neutral", W, H, 4, false);
+  for (let t = 0; t < 80; t += 0.1) stepScene(scene, 0.1);
+  assert.equal(scene.index, 4);
+  assert.equal(scene.rotations, 0);
+  assert.equal(scene.row.name, "The Gate");
+});
+
+test("129-18: a rotating neutral scene moves on to the next script", () => {
+  const scene = createScene("neutral", W, H, 9);
+  for (let t = 0; t < SCENE_SECONDS; t += 0.1) stepScene(scene, 0.1);
+  stepScene(scene, 0.1);
+  assert.equal(scene.index, 0);
+  assert.equal(scene.script, OFFSEASON[0]);
+});
+
+test("129-18: the fade of a rotating scene caps the alpha of a script", () => {
+  const scene = createScene("neutral", W, H, 0);
+  scene.rotations = 1;
+  scene.sceneTime = FADE_SECONDS / 2;
+  const seen: number[] = [];
+  const ctx: Painter = {
+    fillStyle: "",
+    globalAlpha: 1,
+    fillRect() {
+      seen.push(ctx.globalAlpha);
+    },
+  };
+  drawScene(ctx, scene);
+  assert.ok(seen.length > 0);
+  assert.ok(seen.every((a) => a <= 0.5 + 1e-9), "a script drew brighter than its fade");
+  assert.equal(ctx.globalAlpha, 1);
+});
+
+test("129-18: a canvas taller than the strip draws the script at the bottom", () => {
+  const scene = createScene("neutral", W, 30, 1, false);
+  const { ctx, rects } = recorder();
+  drawScene(ctx, scene);
+  assert.ok(rects.every((r) => r.y >= 6), "a script drew above its strip");
+});
+
+test("129-18: a still frame is inside the loop of its script", () => {
+  OFFSEASON.forEach((script, index) => {
+    assert.ok(script.still >= 0 && script.still < script.period, script.name);
+    const scene = createScene("neutral", W, H, index, false);
+    holdStill(scene);
+    assert.equal(scene.sceneTime, script.still);
+  });
+  const row = createScene("midsummer", W, H);
+  holdStill(row);
+  assert.equal(row.sceneTime, 0);
 });

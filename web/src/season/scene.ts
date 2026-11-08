@@ -1,13 +1,19 @@
 // chalk-web -- 129-9: the scene. 129-12: five scenes for each key, and the
 // neutral key. 129-13: the title of the season on a small sign. 129-14: a
-// higher sign, a sky for each row, and the details of each season.
+// higher sign, a sky for each row, and the details of each season. 129-15: a
+// visit holds one row. 129-18: the neutral key has ten scripts and no rows.
 //
-// This module draws a small pixel scene and moves it. SCENES has nine keys:
-// the eight seasons of seasons.ts, and "neutral" for a date in no season. Each
-// key has five rows (SCENES_PER_KEY), so there are 45 scenes. A row names an
-// environment, an effect, four props, and two cast members. A scene shows its
-// row for SCENE_SECONDS. Then it shows the next row of the same key, and the
-// first row comes after the last.
+// This module draws a small pixel scene and moves it. There are nine keys: the
+// eight seasons of seasons.ts, and "neutral" for a date in no season. SCENES
+// holds the eight seasons. Each season has five rows (SCENES_PER_KEY), so there
+// are 40 rows. A row names an environment, an effect, four props, and two cast
+// members. The neutral key has the ten scripts of OFFSEASON (offseason.ts), so
+// there are 50 scenes. A script draws its own opaque strip, and it does not use
+// the fields of a row. The rows of the seasons stay see-through.
+// A scene shows its row or its script. A scene that rotates (rotate is true)
+// shows it for SCENE_SECONDS. Then it shows the next one of the same key, and
+// the first comes after the last. A scene that does not rotate holds its row or
+// its script. The always-on hours rotate. A visit does not.
 // Pure: the module uses no timer, no DOM, and no random source. The Painter is
 // a parameter. Each effect takes its places from a hash of an index and from
 // the time of the scene. So a test uses a fake Painter and gets the same
@@ -33,6 +39,7 @@
 //     production.
 //   - A scene fades to transparent, not to black.
 
+import { OFFSEASON, STRIP_H, type Script } from "./offseason";
 import type { SeasonId } from "./seasons";
 
 /** SCALE is the number of CSS pixels in one scene pixel. */
@@ -41,17 +48,29 @@ export const SCALE = 2;
 /** FPS is the number of frames each second that the component paints. */
 export const FPS = 12;
 
-/** SCENE_SECONDS is the time in seconds that a scene shows one row before it rotates. */
+/**
+ * SCENE_SECONDS is the time in seconds that a scene that rotates shows one row
+ * before it rotates. A scene that does not rotate ignores it.
+ */
 export const SCENE_SECONDS = 35;
 
 /**
  * FADE_SECONDS is the length in seconds of the fade at the end of a row, and
- * of the fade in after a rotation. See [sceneAlpha].
+ * of the fade in after a rotation. A scene that does not rotate has no fade.
+ * See [sceneAlpha].
  */
 export const FADE_SECONDS = 0.7;
 
-/** SCENES_PER_KEY is the number of rows that each key of SCENES has. */
+/** SCENES_PER_KEY is the number of rows that each season of SCENES has. */
 export const SCENES_PER_KEY = 5;
+
+/**
+ * sceneCount returns the number of scenes of key: SCENES_PER_KEY for a season,
+ * and the number of OFFSEASON scripts for "neutral".
+ */
+export function sceneCount(key: SceneKey): number {
+  return key === "neutral" ? OFFSEASON.length : SCENES_PER_KEY;
+}
 
 // The downward pull on a jump, and the upward speed at the start of a jump, in
 // scene pixels and seconds.
@@ -59,8 +78,8 @@ const GRAVITY = 105;
 const JUMP = 40;
 
 /**
- * A SceneKey names a set of five scenes: a season id, or "neutral" for a date
- * in no season.
+ * A SceneKey names a set of scenes: a season id, with five rows in SCENES, or
+ * "neutral" for a date in no season, with the ten scripts of OFFSEASON.
  */
 export type SceneKey = SeasonId | "neutral";
 
@@ -184,10 +203,10 @@ function row(
 }
 
 /**
- * SCENES holds the rows of each key, in the order of rotation. Each key has
- * SCENES_PER_KEY rows.
+ * SCENES holds the rows of each season, in the order of rotation. Each season
+ * has SCENES_PER_KEY rows. The "neutral" key has no rows. It uses OFFSEASON.
  */
-export const SCENES: Record<SceneKey, SceneRow[]> = {
+export const SCENES: Record<SeasonId, SceneRow[]> = {
   "new-year": [
     row("Midnight Skyline", "city", "fireworks", ["tower", "crate", "barrel", "lamp"], ["person", "cat"], "stars"),
     row("Rooftop Countdown", "city", "confetti", ["clock", "crate", "gift", "flag"], ["person", "fox"], "stars"),
@@ -243,13 +262,6 @@ export const SCENES: Record<SceneKey, SceneRow[]> = {
     row("Forest Floor", "forest", "leaves", ["bare", "mushroom", "stump", "bare"], ["hedgehog", "fox"]),
     row("Creek Crossing", "lake", "fog", ["bare", "stone", "log", "reeds"], ["fox", "rabbit"]),
     row("Lantern Path", "hills", "leaves", ["lantern", "stump", "stone", "bare"], ["person", "cat"], "stars"),
-  ],
-  neutral: [
-    row("Green Alley", "town", "sparkles", ["lamp", "crate", "log", "house"], ["person", "cat"], "stars"),
-    row("Quiet Forest", "forest", "fireflies", ["tree", "log", "stone", "tree"], ["fox", "rabbit"]),
-    row("Little Workshop", "town", "sparkles", ["house", "crate", "barrel", "lamp"], ["person", "cat"], "stars"),
-    row("Bridge Walk", "lake", "fireflies", ["reeds", "bridge", "log", "reeds"], ["frog", "fox"]),
-    row("Morning Hills", "hills", "clouds", ["tree", "stone", "log", "tree"], ["rabbit", "chick"], "low-sun"),
   ],
 };
 
@@ -351,7 +363,8 @@ interface Obstacle {
 
 /**
  * A Scene is the state of one running scene, W by H scene pixels. `key` and
- * `index` pick the current row, `row`. `time` is the time of the scene in
+ * `index` pick the current row, `row`. For "neutral", they pick the current
+ * script, and `row` only holds its name. `time` is the time of the scene in
  * seconds, and `sceneTime` is the time since the current row started.
  * `rotations` counts the rotations. One loop at a time must step and paint a
  * Scene.
@@ -368,6 +381,11 @@ export interface Scene {
   // The number of rotations since createScene. sceneAlpha reads it to skip the
   // fade in of the first row.
   rotations: number;
+  // 129-15: true if the scene rotates through the rows. It is false for a
+  // visit, which holds one row from start to end.
+  rotate: boolean;
+  // 129-18: the script of an off-season scene, or null for a scene with a row.
+  script: Script | null;
   actors: Actor[];
   obstacles: Obstacle[];
 }
@@ -380,6 +398,21 @@ export type Painter = Pick<CanvasRenderingContext2D, "fillStyle" | "fillRect" | 
 
 type Px = (x: number, y: number, w: number, h: number, color: string) => void;
 
+// 129-18: the row of a script. A script draws itself, so only the name is
+// read, and it names the scene. The other fields are placeholders.
+function scriptRow(script: Script): SceneRow {
+  return row(script.name, "town", "sparkles", ["lamp", "lamp", "lamp", "lamp"], ["person", "cat"]);
+}
+
+/**
+ * holdStill moves a scene with a script to the still time of its script. The
+ * frame then holds when the system asks for reduced motion. A scene with a row
+ * does not change.
+ */
+export function holdStill(s: Scene): void {
+  if (s.script) s.sceneTime = s.script.still;
+}
+
 // The x places of the four props of a row, from left to right. The two inner
 // places, at 20 percent and 80 percent of the width, hold the obstacles. The
 // outer places are at fixed distances from the edges, where the walkers enter.
@@ -388,12 +421,23 @@ function positions(W: number): number[] {
   return [12, Math.round(W * 0.2), Math.round(W * 0.8), W - 24];
 }
 
-// Loads the row at s.index. The walkers go back to the edges and the row timer
-// starts again. The props at index 1 and 2 become the obstacles. The props at
-// index 0 and 3 stand next to the edges, so they are not obstacles.
+// Loads the row at s.index, or the script at s.index for "neutral". The row
+// timer starts again. A script has no walkers and no obstacles. For a row, the
+// walkers go back to the edges. The props at index 1 and 2 become the
+// obstacles. The props at index 0 and 3 stand next to the edges, so they are
+// not obstacles.
 function loadRow(s: Scene): void {
-  s.row = SCENES[s.key][s.index];
   s.sceneTime = 0;
+  if (s.key === "neutral") {
+    const script = OFFSEASON[s.index];
+    s.script = script;
+    s.row = scriptRow(script);
+    s.obstacles = [];
+    s.actors = [];
+    return;
+  }
+  s.script = null;
+  s.row = SCENES[s.key][s.index];
   const at = positions(s.W);
   s.obstacles = [1, 2].map((i) => ({ id: i, x: at[i], width: 10 }));
   s.actors = s.row.cast.map((type, i) => ({
@@ -410,21 +454,34 @@ function loadRow(s: Scene): void {
 
 /**
  * createScene returns a new scene of W by H scene pixels for `key`. The scene
- * starts at the row `index`. An index outside 0 to SCENES_PER_KEY - 1 wraps
- * around, also a negative one.
+ * starts at the row `index`, or at the script `index` for "neutral". An index
+ * outside 0 to sceneCount(key) - 1 wraps around, also a negative one.
+ *
+ * If rotate is true, the scene rotates through the rows or scripts of the key.
+ * If rotate is false, the scene holds the row or script `index` and stepScene
+ * never changes it.
  */
-export function createScene(key: SceneKey, W: number, H: number, index = 0): Scene {
-  const start = ((index % SCENES_PER_KEY) + SCENES_PER_KEY) % SCENES_PER_KEY;
+export function createScene(
+  key: SceneKey,
+  W: number,
+  H: number,
+  index = 0,
+  rotate = true,
+): Scene {
+  const n = sceneCount(key);
+  const start = ((index % n) + n) % n;
   const s: Scene = {
     key,
     index: start,
-    row: SCENES[key][start],
+    row: key === "neutral" ? scriptRow(OFFSEASON[start]) : SCENES[key][start],
     W,
     H,
     ground: H - 1,
     time: 0,
     sceneTime: 0,
     rotations: 0,
+    rotate,
+    script: null,
     actors: [],
     obstacles: [],
   };
@@ -449,15 +506,16 @@ export function resizeScene(s: Scene, W: number, H: number): void {
 /**
  * stepScene moves the scene forward by `elapsed` seconds. It counts at most
  * 0.1 s, so a long frame cannot throw a walker across the strip. When the row
- * has shown for SCENE_SECONDS, the scene rotates to the next row of its key,
- * and the walkers start again at the edges.
+ * has shown for SCENE_SECONDS and the scene rotates, the scene shows the next
+ * row of its key, and the walkers start again at the edges. A scene that does
+ * not rotate stays on its row.
  */
 export function stepScene(s: Scene, elapsed: number): void {
   const dt = Math.min(elapsed, 0.1);
   s.time += dt;
   s.sceneTime += dt;
-  if (s.sceneTime >= SCENE_SECONDS) {
-    s.index = (s.index + 1) % SCENES_PER_KEY;
+  if (s.rotate && s.sceneTime >= SCENE_SECONDS) {
+    s.index = (s.index + 1) % sceneCount(s.key);
     s.rotations++;
     loadRow(s);
   }
@@ -507,11 +565,13 @@ function rand(n: number): number {
 /**
  * sceneAlpha returns the opacity of the scene, from 0 to 1. The scene fades
  * out in the last FADE_SECONDS of its row. After a rotation, it also fades in
- * during the first FADE_SECONDS of the new row. The first row of a scene does
- * not fade in, so a frame at time zero is whole when the system asks for
- * reduced motion. The CSS fade of the canvas covers the start of the visit.
+ * during the first FADE_SECONDS of the new row. A scene that does not rotate
+ * always returns 1. The first row of a scene does not fade in, so a frame at
+ * time zero is whole when the system asks for reduced motion. The CSS fade of
+ * the canvas covers the start of the visit.
  */
 export function sceneAlpha(s: Scene): number {
+  if (!s.rotate) return 1;
   const out = (SCENE_SECONDS - s.sceneTime) / FADE_SECONDS;
   const into = s.rotations > 0 ? s.sceneTime / FADE_SECONDS : 1;
   return Math.max(0, Math.min(1, into, out));
@@ -1123,7 +1183,9 @@ function drawTitle(p: Px, s: Scene): void {
 }
 
 /**
- * drawScene paints the scene on `ctx`. It does not clear the canvas. It sets
+ * drawScene paints the scene on `ctx`. It does not clear the canvas. If the
+ * scene has a script, the script paints the strip at the bottom of the canvas,
+ * and drawTitle does not run, because a script draws its own CHALK sign. It sets
  * ctx.globalAlpha to the value of [sceneAlpha] for the frame, and sets it back
  * to 1 at the end. The title sign is the last item drawn, so the walkers pass
  * behind it, and it fades with the scene.
@@ -1133,7 +1195,23 @@ export function drawScene(ctx: Painter, s: Scene): void {
     ctx.fillStyle = color;
     ctx.fillRect(Math.round(x), Math.round(y), Math.ceil(w), Math.ceil(h));
   };
-  ctx.globalAlpha = sceneAlpha(s);
+  const base = sceneAlpha(s);
+  ctx.globalAlpha = base;
+  if (s.script) {
+    // A script draws for a strip STRIP_H high, at the bottom of the canvas. Its
+    // own alpha is multiplied with the alpha of the scene.
+    const dy = s.H - STRIP_H;
+    s.script.draw(
+      (x, y, w, h, color) => p(x, y + dy, w, h, color),
+      (v) => {
+        ctx.globalAlpha = base * Math.max(0, Math.min(1, v));
+      },
+      s.W,
+      s.sceneTime,
+    );
+    ctx.globalAlpha = 1;
+    return;
+  }
   drawSky(p, s);
   drawBackground(p, s);
   const at = positions(s.W);

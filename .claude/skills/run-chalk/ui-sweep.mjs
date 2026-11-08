@@ -68,8 +68,30 @@
 //                   seconds (default 5) and show the theme name in a
 //                   corner tag.
 //   --cycle-secs=N  Seconds between theme changes for --cycle.
+//   --season=KEY    With --headed, run the season scene demo for the season
+//                   key KEY (see "Season demo" below).
+//   --scene=NAME    With --season, show only the scene with the row name
+//                   NAME, again and again.
+//   --scene-secs=N  Seconds to show each scene. Default: 30.
 //
 // A headed run does not end. Close the window or stop the node process.
+//
+// Season demo: --season sets a fake date with the Playwright clock, which
+// runs at normal speed. The keys are neutral, late-autumn, winterfest,
+// new-year, spring-bloom, green-season, midsummer, harvest-festival, and
+// spooky-season. The script clears the visit log and seeds the neutral log
+// so that a visit is due at once. After each page load it skips the first
+// pause (13 s) and reads data-scene from the scene canvas. It loads the page
+// again, up to 25 times, until the scene has the wanted name. It then shows
+// the scene for --scene-secs seconds with a corner tag. Without --scene, the
+// targets are the scenes of the key, in table order: the five rows in
+// web/src/season/scene.ts, or the ten scripts in web/src/season/offseason.ts
+// for neutral. For each target, the script prints
+// "SCENE <key>: <name>" on standard output, with "(wanted X)" if it gave
+// up. A visit lasts 45 s to 75 s. A value of --scene-secs above 45 can let
+// the visit end before the next load. An unknown key or scene stops the
+// script with exit code 2 and lists the known values. The app has no preview
+// API, so the demo only loads the page again until the scene shows.
 //
 // Output: the folder /tmp/chalk-sweep/. The script deletes the folder at
 // the start of each run. The folder holds the screenshots and probe.log.
@@ -83,11 +105,11 @@
 //     is not always bob, and bob then never sees the channel.
 import { chromium } from '@playwright/test';
 import { createHmac } from 'node:crypto';
-import { mkdirSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync, appendFileSync, readFileSync } from 'node:fs';
 
 for (const a of process.argv.slice(2)) {
   const m = /^--([a-z][a-z-]*)(?:=(.*))?$/.exec(a);
-  const known = ['themes', 'sweep-only', 'phone', 'voice', 'voice-only', 'sweep-voice', 'users', 'headed', 'cycle', 'cycle-secs', 'groups'];
+  const known = ['themes', 'sweep-only', 'phone', 'voice', 'voice-only', 'sweep-voice', 'users', 'headed', 'cycle', 'cycle-secs', 'groups', 'season', 'scene', 'scene-secs'];
   if (!m || !known.includes(m[1])) {
     console.error(`unknown argument: ${a} (known: --${known.join(', --')})`);
     process.exit(2);
@@ -200,6 +222,76 @@ async function clearOverlaysEarly(page) {
   for (const sel of ["[data-testid='whats-new-dismiss']", "[data-testid='avatar-nudge-later']", "[data-testid='avatar-nudge-close']"]) {
     const el = page.locator(sel);
     if (await el.isVisible().catch(() => false)) { await el.click().catch(() => {}); await page.waitForTimeout(300); }
+  }
+}
+// 129-17: the season demo. A fake clock sets the date, an init script makes a
+// visit due at once, and the loop reloads until the wanted scene shows.
+const SEASON_DATES = {
+  neutral: [2026, 10, 10, 9],
+  'late-autumn': [2026, 10, 28, 13],
+  winterfest: [2026, 11, 23, 13],
+  'new-year': [2027, 0, 2, 13],
+  'spring-bloom': [2026, 2, 15, 13],
+  'green-season': [2026, 4, 10, 13],
+  midsummer: [2026, 6, 1, 13],
+  'harvest-festival': [2026, 8, 10, 13],
+  'spooky-season': [2026, 9, 20, 13],
+};
+// Returns the scene names of the key, in table order. The neutral names come
+// from offseason.ts. The other names come from the rows in scene.ts.
+function sceneNames(key) {
+  if (key === 'neutral') {
+    const off = readFileSync(new URL('../../../web/src/season/offseason.ts', import.meta.url), 'utf8');
+    const list = off.slice(off.indexOf('export const OFFSEASON'));
+    return [...list.matchAll(/name: "([^"]+)"/g)].map((m) => m[1]);
+  }
+  const src = readFileSync(new URL('../../../web/src/season/scene.ts', import.meta.url), 'utf8');
+  const head = /^[a-z]+$/.test(key) ? `  ${key}: [` : `  "${key}": [`;
+  const at = src.indexOf(head);
+  if (at < 0) return [];
+  const body = src.slice(at, src.indexOf('\n  ],', at));
+  return [...body.matchAll(/row\("([^"]+)"/g)].map((m) => m[1]);
+}
+async function seasonDemo(key, only, secs) {
+  if (!SEASON_DATES[key]) {
+    console.error(`unknown season: ${key} (known: ${Object.keys(SEASON_DATES).join(', ')})`);
+    process.exit(2);
+  }
+  const names = sceneNames(key);
+  if (only && !names.includes(only)) {
+    console.error(`unknown scene for ${key}: ${only} (known: ${names.join(', ')})`);
+    process.exit(2);
+  }
+  const targets = only ? [only] : names;
+  await A.clock.install({ time: new Date(...SEASON_DATES[key]) });
+  await A.addInitScript(() => {
+    const now = Date.now();
+    const d = new Date(now);
+    const day = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    try {
+      localStorage.removeItem('chalk.season.visits.v1');
+      localStorage.setItem('chalk.season.neutral.v1', JSON.stringify({ day, at: [now - 1000, now - 1000], done: [false, false] }));
+    } catch {}
+  });
+  const canvas = A.locator("[data-testid='season-scene']");
+  for (let i = 0; ; i = (i + 1) % targets.length) {
+    let shown = '';
+    for (let tries = 0; tries < 25 && shown !== targets[i]; tries++) {
+      await A.reload();
+      await A.waitForSelector("[data-testid='season-anchor']", { timeout: 20000 });
+      await clearOverlaysEarly(A);
+      await A.clock.fastForward(13000);
+      await A.waitForSelector("[data-testid='season-scene'][data-visible]", { timeout: 10000 }).catch(() => {});
+      shown = (await canvas.getAttribute('data-scene').catch(() => null)) || '';
+      log('season demo', key, 'want', targets[i], 'got', shown || '(none)');
+    }
+    console.log(`SCENE ${key}: ${shown || '(none)'}${shown === targets[i] ? '' : ` (wanted ${targets[i]})`}`);
+    await A.evaluate((t) => {
+      let tag = document.getElementById('demo-theme-tag');
+      if (!tag) { tag = document.createElement('div'); tag.id = 'demo-theme-tag'; tag.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:9999;padding:6px 10px;border-radius:6px;font:600 14px monospace;background:#000c;color:#fff;pointer-events:none'; document.body.appendChild(tag); }
+      tag.textContent = t;
+    }, `${key} · ${shown || 'no visit'}`).catch(() => {});
+    await A.waitForTimeout(secs * 1000);
   }
 }
 const VOICE = process.env.VOICE === '1';
@@ -444,6 +536,7 @@ if (HEADED) {
   writeFileSync(OUT + 'credentials.txt', `base: ${BASE}\nuser: ${ua}\nfriend: ${ub}\npassword: ${PASSWORD}\ntotp secret ${ua}: ${secrets[ua]}\ntotp secret ${ub}: ${secrets[ub]}\n` + extras.map(({ n }) => `totp secret ${n}: ${secrets[n]}\n`).join(''));
   console.log('READY', ua, 'credentials in', OUT + 'credentials.txt');
   if (!VOICE) await ctxB.close();
+  if (process.env.SEASON) await seasonDemo(process.env.SEASON, process.env.SCENE, Number(process.env.SCENE_SECS || 30));
   if (process.env.CYCLE === '1') {
     await A.locator('.chalk-sidebar-item', { hasText: 'general' }).first().click().catch(() => {});
     const all = ['green','light','snazzy-light','warmwhite','vscode-light','catppuccin-latte','cyberpunk','solarized-dark','tokyo-night','lcars','blade-runner','azeroth','darkord','exchalk','catppuccin-mocha'];

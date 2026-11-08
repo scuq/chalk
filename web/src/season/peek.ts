@@ -1,13 +1,16 @@
 // chalk-web -- 129-1: the peek schedule. 129-7: the daily cap. 129-9: the
-// evening.
+// evening. 129-16: the windows of the neutral scene.
 //
 // Outside the always-on hours (ALWAYS_ON in seasons.ts), the scene is not
 // there all the time. It is a visitor, not furniture. A visit
-// shows for 45 s to 75 s. Visits are few: at most MAX_VISITS_PER_DAY in one
-// local calendar day. Before EVENING_HOUR, at most MAX_DAYTIME_VISITS of them
+// shows for 45 s to 75 s. Visits of a season scene are few: at most
+// MAX_VISITS_PER_DAY in one local calendar day. Before EVENING_HOUR, at most MAX_DAYTIME_VISITS of them
 // can start, so a tab that stays open all day does not use up the evening.
 // The gap between the starts of two visits is 1 to 2 hours in the daytime and
 // 20 to 40 minutes in the evening.
+// The neutral scene (a date in no season) does not use this cap or these gaps.
+// It has at most one visit in each of the NEUTRAL_WINDOWS, which claimNeutral
+// grants.
 // Pure: the clock and the random source are parameters, so the tests pin the
 // bounds. This module keeps no state. The log of visits is in visits.ts. The
 // component owns the one timer that walks this schedule.
@@ -134,4 +137,66 @@ export function claimVisit(
   const cap = evening ? MAX_VISITS_PER_DAY : MAX_DAYTIME_VISITS;
   if (count >= cap || (wait > 0 && wait <= GAP_MS[1])) return null;
   return { day, count: count + 1, nextAt: now + pick(evening ? EVENING_GAP_MS : GAP_MS, rnd) };
+}
+
+/**
+ * 129-16: NEUTRAL_WINDOWS are the windows of the neutral scene, as
+ * [start, end) in local hours. The neutral scene shows at most one time in
+ * each window.
+ */
+export const NEUTRAL_WINDOWS: Range[] = [
+  [8, 12],
+  [16, 24],
+];
+
+/**
+ * A NeutralLog records the neutral visits of one local calendar day.
+ *
+ * day is the local date, as made by dayKey. at holds the target time of each
+ * window in NEUTRAL_WINDOWS, in milliseconds since the epoch. done tells for
+ * each window if its visit started.
+ */
+export interface NeutralLog {
+  day: string;
+  at: number[];
+  done: boolean[];
+}
+
+/** NeutralClaim is the result of claimNeutral. */
+export interface NeutralClaim {
+  log: NeutralLog;
+  show: boolean;
+}
+
+/**
+ * claimNeutral returns the log after a check at now, and reports whether a
+ * neutral visit starts. It does not change log.
+ *
+ * A log from another day is replaced. The new log has a random target time
+ * in each window, no later than SHOW_MS[1] before the end of the window. A
+ * visit starts if now is in a window, the visit of that window did not start,
+ * and now is at the target time or later. After the end of a window, its
+ * visit is lost.
+ */
+export function claimNeutral(
+  log: NeutralLog,
+  now: number,
+  rnd: () => number = Math.random,
+): NeutralClaim {
+  const day = dayKey(now);
+  const d = new Date(now);
+  const at = (h: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), h).getTime();
+  let next = log;
+  if (log.day !== day || log.at.length !== NEUTRAL_WINDOWS.length) {
+    next = {
+      day,
+      at: NEUTRAL_WINDOWS.map(([a, b]) => pick([at(a), at(b) - SHOW_MS[1]], rnd)),
+      done: NEUTRAL_WINDOWS.map(() => false),
+    };
+  }
+  const w = NEUTRAL_WINDOWS.findIndex(([a, b]) => now >= at(a) && now < at(b));
+  if (w < 0 || next.done[w] || now < next.at[w]) return { log: next, show: false };
+  const done = next.done.slice();
+  done[w] = true;
+  return { log: { ...next, done }, show: true };
 }

@@ -1,6 +1,7 @@
 // 129-1: the peek schedule's bounds, with a pinned random source.
 // 129-7: the daily cap, the gap between visits, and a moved clock.
 // 129-9: the daytime cap and the shorter gap in the evening.
+// 129-16: the windows of the neutral scene, one visit in each.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -12,10 +13,13 @@ import {
   GAP_MS,
   MAX_DAYTIME_VISITS,
   MAX_VISITS_PER_DAY,
+  NEUTRAL_WINDOWS,
   SHOW_MS,
+  claimNeutral,
   claimVisit,
   firstPeek,
   nextPeek,
+  type NeutralLog,
   type VisitLog,
 } from "./peek";
 
@@ -110,4 +114,67 @@ test("the count starts again on a new day", () => {
 test("a next visit further away than any gap is a moved clock, not a wait", () => {
   const log: VisitLog = { day: "2026-10-28", count: 1, nextAt: NOON + GAP_MS[1] + 1 };
   assert.equal(claimVisit(log, NOON, fixed(0))?.count, 2);
+});
+
+// 129-16: the neutral windows.
+const NO_LOG: NeutralLog = { day: "", at: [], done: [] };
+
+// Walks one local day in CHECK_MS steps and returns the times of the visits.
+function walkDay(r: number, skip: (now: number) => boolean = () => false): number[] {
+  const midnight = new Date(2026, 10, 10).getTime();
+  let log = NO_LOG;
+  const shown: number[] = [];
+  for (let now = midnight; now < midnight + 24 * HOUR; now += CHECK_MS) {
+    if (skip(now)) continue;
+    const c = claimNeutral(log, now, fixed(r));
+    log = c.log;
+    if (c.show) shown.push(now);
+  }
+  return shown;
+}
+
+test("129-16: the neutral scene shows one time in each window and never outside", () => {
+  for (const r of [0, 0.3, 0.7, 1]) {
+    const shown = walkDay(r);
+    assert.equal(shown.length, NEUTRAL_WINDOWS.length, String(r));
+    shown.forEach((t, i) => {
+      const h = new Date(t).getHours();
+      const [a, b] = NEUTRAL_WINDOWS[i];
+      assert.ok(h >= a && h < b, `visit at ${h}:00 for r ${r}`);
+      assert.ok(t + SHOW_MS[1] <= new Date(2026, 10, 10, b).getTime() + CHECK_MS);
+    });
+  }
+  assert.deepEqual(NEUTRAL_WINDOWS, [
+    [8, 12],
+    [16, 24],
+  ]);
+});
+
+test("129-16: a target that no visible tab saw shows at the next check in its window", () => {
+  const target = new Date(2026, 10, 10, 10).getTime();
+  const shown = walkDay(0.5, (now) => now >= target - HOUR && now < target + HOUR);
+  assert.equal(shown.length, 2);
+  assert.equal(shown[0], target + HOUR);
+});
+
+test("129-16: a window that no visible tab saw is lost", () => {
+  const shown = walkDay(0.5, (now) => new Date(now).getHours() < 12);
+  assert.equal(shown.length, 1);
+  assert.ok(new Date(shown[0]).getHours() >= 16);
+});
+
+test("129-16: the log keeps its targets, and a new day or a clock moved back gives a new log", () => {
+  const nine = new Date(2026, 10, 10, 9).getTime();
+  const first = claimNeutral(NO_LOG, nine, fixed(1));
+  assert.equal(first.show, false);
+  const again = claimNeutral(first.log, nine + CHECK_MS, fixed(0));
+  assert.equal(again.log, first.log);
+  assert.equal(again.show, false);
+  const done: NeutralLog = { ...first.log, done: [true, true] };
+  const next = claimNeutral(done, nine + 24 * HOUR, fixed(0));
+  assert.equal(next.show, true);
+  assert.deepEqual(next.log.done, [true, false]);
+  const back = claimNeutral(done, nine - 24 * HOUR, fixed(0));
+  assert.equal(back.show, true);
+  assert.equal(back.log.day, "2026-11-9");
 });

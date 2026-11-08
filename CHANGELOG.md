@@ -13,6 +13,9 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Changed
+- A seasonal scene now stays on one scene for the whole visit and does not switch partway. The next visit shows a different scene.
+- On days outside a season, the Chalk scene shows at most twice a day. It shows once from 08:00 to 12:00 and once from 16:00 to midnight.
+- On days outside a season, the Chalk scene is now one of ten small animated nods to films and series, and each one shows a famous moment.
 - Flair animations now move in short bursts with long pauses between them, and they stop while chalk is in the background. They use much less processor time.
 
 ## v0.11.1 — 8 November 2026 — Chaos mode for the channel list and calmer theme colors
