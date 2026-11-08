@@ -35,7 +35,6 @@ import type { WSClient } from "../ws-client";
 import type { ChannelCrypto } from "../crypto/channel-crypto";
 import {
   voiceSession,
-  type SessionRemoteTile,
   type ScreenShareMode,
   type VoiceSessionSnap,
 } from "../voice/session";
@@ -53,6 +52,7 @@ import {
   syncTilePopouts,
 } from "../voice/pip";
 import { gridPlan, isCrowded, resolveGridMode, type VoiceLayout } from "../voice/grid";
+import { railTiles, type RailTile } from "../voice/rail-tiles";
 
 /** Stats refresh cadence while the drawer is open. Passive getStats reads
  * only (the Addendum D rule: nothing in-call may compete with media). */
@@ -169,9 +169,6 @@ export function VoiceCallPanel({
     return m?.handle || userID.slice(0, 8);
   };
 
-  const rosterFor = (userID: string, deviceID: string): VoiceParticipant | undefined =>
-    roster.find((p) => p.userID === userID && p.deviceID === deviceID);
-
   // Duration ticker while viewing the live room.
   useEffect(() => {
     if (!hereInCall) return;
@@ -273,99 +270,15 @@ export function VoiceCallPanel({
   // One entry per participant the ROSTER says is in the room (self included),
   // enriched with a media stream when the mesh has delivered one. A roster
   // entry without a stream renders as "connecting…" -- the honest state.
+  // The list comes from railTiles (133-8).
 
 
-  const stageTiles: StageTile[] = useMemo(() => {
-    if (!hereInCall) return [];
-    const out: StageTile[] = [];
-    const seen = new Set<string>();
-    // Self first (stable slot in the strip).
-    out.push({
-      key: selfKey,
-      userID: selfUserID,
-      deviceID: selfDeviceID,
-      isSelf: true,
-      stream: snap.localStream,
-      hasLiveVideo:
-        snap.camOn &&
-        !!snap.localStream &&
-        snap.localStream.getVideoTracks().some((t) => t.enabled && t.readyState === "live"),
-      connState: null,
-      part: rosterFor(selfUserID, selfDeviceID),
-    });
-    seen.add(selfKey);
-    for (const p of roster) {
-      const key = p.userID + ":" + p.deviceID;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const t: SessionRemoteTile | undefined = snap.tiles[key];
-      out.push({
-        key,
-        userID: p.userID,
-        deviceID: p.deviceID,
-        isSelf: false,
-        stream: t?.stream ?? null,
-        hasLiveVideo:
-          !!t && t.stream.getVideoTracks().some((x) => x.readyState === "live"),
-        connState: t?.connState ?? "connecting",
-        part: p,
-      });
-    }
-    // A peer with media but (momentarily) missing from the roster -- push
-    // races. Show it rather than dropping video-with-no-tile on the floor.
-    for (const t of Object.values(snap.tiles)) {
-      if (seen.has(t.key)) continue;
-      out.push({
-        key: t.key,
-        userID: t.userID,
-        deviceID: t.deviceID,
-        isSelf: false,
-        stream: t.stream,
-        hasLiveVideo: t.stream.getVideoTracks().some((x) => x.readyState === "live"),
-        connState: t.connState,
-      });
-    }
-    // 30-7a screen tiles: one extra tile per active share (self + remote),
-    // keyed "<peer>:screen" so pinning distinguishes it from the camera.
-    if (snap.localScreenStream) {
-      out.push({
-        key: selfKey + ":screen",
-        userID: selfUserID,
-        deviceID: selfDeviceID,
-        isSelf: true,
-        stream: snap.localScreenStream,
-        hasLiveVideo: snap.localScreenStream
-          .getVideoTracks()
-          .some((x) => x.readyState === "live"),
-        connState: null,
-        isScreen: true,
-      });
-    }
-    for (const t of Object.values(snap.tiles)) {
-      if (!t.screenStream) continue;
-      // 30-7b (B5): a locally hidden share renders as the placeholder tile
-      // (avatar + "show") and never wins the auto-focus.
-      const hidden = !!snap.screenHidden[t.key];
-      out.push({
-        key: t.key + ":screen",
-        userID: t.userID,
-        deviceID: t.deviceID,
-        isSelf: false,
-        stream: t.screenStream,
-        hasLiveVideo:
-          !hidden && t.screenStream.getVideoTracks().some((x) => x.readyState === "live"),
-        // 96-3: only a share that actually carries program audio gets the
-        // volume controls -- most don't, and a dead slider is a lie. Tracks
-        // can be added mid-share, which the nowTick recompute picks up.
-        hasAudio: t.screenStream.getAudioTracks().length > 0,
-        connState: null,
-        isScreen: true,
-      });
-    }
-    return out;
+  const stageTiles: StageTile[] = useMemo(
+    () => (hereInCall ? railTiles(snap, roster, selfUserID, selfDeviceID) : []),
     // nowTick keeps hasLiveVideo honest as tracks start/stop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hereInCall, roster, snap.tiles, snap.localStream, snap.localScreenStream, snap.screenHidden, snap.camOn, nowTick]);
+    [hereInCall, roster, snap.tiles, snap.localStream, snap.localScreenStream, snap.screenHidden, snap.camOn, nowTick],
+  );
 
   const focusedKey: string | null = useMemo(() => {
     if (stageTiles.length === 0) return null;
@@ -907,22 +820,9 @@ export function VoiceCallPanel({
   // without prop-drilling. NO AudioSink here (VoiceDock owns audio).
 }
 
-interface StageTile {
-  key: string;
-  userID: string;
-  deviceID: string;
-  isSelf: boolean;
-  stream: MediaStream | null;
-  hasLiveVideo: boolean;
-  /** 96-3: this stream carries audio we play back (screen tiles only -- a
-   * camera tile's audio is the person's voice, always assumed present). */
-  hasAudio?: boolean;
-  connState: string | null;
-  part?: VoiceParticipant;
-  /** 30-7a: this tile is a screen share (own tile, never mirrored, no
-   * per-peer audio controls -- those belong to the person's camera tile). */
-  isScreen?: boolean;
-}
+
+// A stage tile is a call rail tile (133-8).
+type StageTile = RailTile;
 
 function StagePeer({
   tile,

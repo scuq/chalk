@@ -1,6 +1,8 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** built, 133-1 to 133-7 (2026-11-08). 133-7 changed no code.
+**Status:** 133-1 to 133-8 built (2026-11-08), 133-9 to 133-11 planned.
+133-7 changed no code. The phase closed at 133-7 and was reopened for the voice
+room. See "The voice room" below.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
 of the derived tokens. `web/src/theme-tokens.test.ts` tests two rules: every
 custom property the stylesheet reads is declared, and no `var()` carries a
@@ -38,6 +40,33 @@ chalk already had most of the token architecture. The gaps were small:
 A `var()` with no fallback and no declaration does not fail. The browser drops
 the whole declaration, and the rule draws nothing. No test caught this.
 
+### The voice room (133-8 to 133-11)
+
+The owner received a second design review. It covers the voice room on a
+desktop and on a phone. The review makes these points:
+
+- The voice view has no balanced composition, most of all with one participant.
+- A participant with audio only gets a large empty video rectangle.
+- The scratchpad must be the main text area. It must fill the unused space,
+  keep the composer at the bottom, and keep its ephemeral behavior.
+- The empty scratchpad needs a restrained empty state.
+- Explanatory text that repeats other text must go.
+- The participant tiles and the scratchpad must stay distinct.
+- The room must support calls with audio only, with cameras, with a screen
+  share, and with a mix of these.
+
+The code survey found these causes:
+
+- Audio-only, camera, and screen tiles share one 16:9 box. The rule
+  `aspect-ratio: 16/9` is on `.chalk-voice-peer--grid`, `--big`, and
+  `--strip`. A voice call of two people therefore shows one large empty
+  rectangle in the spotlight.
+- The scratchpad notice renders at all times, also before you join.
+- The empty scratchpad collapses to zero height.
+- No test covers the stage layout.
+- The stage and the call rail each built a tile list. This was the open item
+  of phase 131.
+
 ## The design
 
 The 11-token palette stays the personality of a theme. Every new token is
@@ -53,6 +82,18 @@ Four decisions came from the operator before the work started:
 3. The radius scale is 4px, 6px, and 8px. The lcars theme keeps its 10px pills.
 4. On a desktop, the composer tools become one row. The phone keeps the 2x2
    block from [phase 94](PHASE-94-PHONECOMPOSER.md).
+
+Three decisions came from the owner when the phase reopened for the voice
+room:
+
+1. The scratchpad notice ("text here is for the call ... everything is deleted
+   for everyone once the last person leaves ...") moves into the empty state
+   of the scratchpad. When the scratchpad has text, a one-line caption stays
+   above it. The caption says that the text goes when the last person leaves.
+2. Desktop and phone share one layout. Each slice is checked at phone width.
+3. The duplicate tile list of the stage merges into the tested builder of the
+   call rail first, as its own slice. This approval closes the open item of
+   [phase 131](PHASE-131-CALLRAIL.md).
 
 ### Tokens and the green palette (133-1)
 
@@ -430,6 +471,29 @@ they have a "+" glyph and a hover fill. The design review asked for fewer
 outlines, so the palettes stay as they are. This closes the solarized-dark
 note of 133-3.
 
+### One tile list (133-8)
+
+The stage and the call rail built the same list of tiles twice. The builder
+`railTiles` in `web/src/voice/rail-tiles.ts` has tests. The `stageTiles` memo
+in `VoiceCallPanel.tsx` kept its own copy of about 90 lines. Both lists had
+the same order and the same fields: you first, then the roster, then media with
+no roster entry, then one tile for each screen share.
+
+The memo now calls `railTiles(snap, roster, selfUserID, selfDeviceID)`. It has
+the same dependency list as before, including `nowTick`, which keeps the
+live-video flags current. The type `StageTile` is now an alias of `RailTile`.
+The helper `rosterFor` and the import `SessionRemoteTile` had no other use and
+are gone.
+
+One difference existed. On camera tiles, the stage left `isScreen` and
+`hasAudio` undefined, and the rail sets them to `false`. Every read of these
+fields in the stage is a truthiness check, so the result does not change. A
+screenshot of a two-person voice room before and after the change is identical.
+
+A test in `web/src/voice/rail-tiles.test.ts` reads `VoiceCallPanel.tsx`. It
+checks that the panel calls `railTiles` and has no `interface StageTile`.
+133-9 and the slices after it build on this single list.
+
 ## What was rejected
 
 - Floating card panels. The sticky header, the season canvas, the drawer, and
@@ -497,6 +561,21 @@ and the test cover it.
   themes and of the green phone layout. No theme missed the contract, so the
   slice changed no code. The weak outlines in solarized-dark, darkord, and
   exchalk are accepted. Done.
+- **133-8 — one tile list.** The stage calls `railTiles`. `StageTile` is an
+  alias of `RailTile`. About 90 lines, `rosterFor`, and one import are gone
+  from `VoiceCallPanel.tsx`. One test in `rail-tiles.test.ts`. No visible
+  change. Done.
+- **133-9 — an adaptive stage.** People with audio only get compact cards.
+  People with a camera get 16:9 tiles. A screen share keeps the main area. A
+  mixed call combines both. The stage uses CSS Grid with responsive sizing,
+  and it is checked at phone width. Planned.
+- **133-10 — the scratchpad.** The notice becomes the empty state, and a short
+  caption stays above the text. The scratchpad fills the unused space, with
+  the composer at the bottom. The voice bar becomes quieter. The flags for mute
+  and deafen become icons. Planned.
+- **133-11 — the scenario sweep.** Calls with audio only (one, two, and four
+  people), with cameras, with a screen share, and with a mix, in several
+  themes and at phone width. Planned.
 
 ## Left open
 

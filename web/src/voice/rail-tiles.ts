@@ -2,8 +2,9 @@
 //
 // The call rail and the stage show the same people in the same order:
 // self first, then the roster, then media that has no roster entry yet,
-// then one tile per screen share. The stage keeps its own copy of this
-// list for now (VoiceCallPanel.tsx). This module can be tested without a browser.
+// then one tile per screen share. The stage builds its tiles with this
+// function too (VoiceCallPanel.tsx, 133-8). This module can be tested without a
+// browser.
 
 import type { SessionRemoteTile } from "./session";
 import type { VoiceParticipant } from "../state/types";

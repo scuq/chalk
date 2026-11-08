@@ -127,3 +127,12 @@ test("camera off gives no live video, for self and for a peer", () => {
   tiles = railTiles({ ...on, camOn: false }, roster, "me", "d1");
   assert.equal(tiles[0].hasLiveVideo, false);
 });
+
+test("the stage builds its tiles with railTiles and keeps no copy of its own", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { join, resolve } = await import("node:path");
+  const panel = readFileSync(join(resolve(process.cwd(), "src"), "components", "VoiceCallPanel.tsx"), "utf8");
+  assert.match(panel, /railTiles\(snap, roster, selfUserID, selfDeviceID\)/);
+  assert.match(panel, /type StageTile = RailTile;/);
+  assert.doesNotMatch(panel, /interface StageTile/);
+});

@@ -331,9 +331,6 @@ The live probe ran on 131-7. The result is in the status header.
 
 ## Left open
 
-- The stage memo in `VoiceCallPanel.tsx` still builds the same tile order as
-  `railTiles`. It must become one call to `railTiles`. This needs its own
-  slice, and the owner of the repository must approve it.
 - The phone list has no deafened state. The rail and the room card have it.
 - The phone drawer has no name list and no hover. Zuckermode keeps its list.
 - While the room is off screen, the rail decodes one video for each remote

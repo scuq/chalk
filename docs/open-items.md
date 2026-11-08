@@ -9,15 +9,20 @@ Latest release: **v0.10.3** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 133 is the newest work, and five points of it are open.
-Phase 131 has three small open points.
+Phase 133 is the newest work. It is reopened for the voice room, and five
+points of it are open.
+Phase 131 has two small open points.
 Phase 130 has two open points. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
 
 ## Phase 133 — polish: built, with five open points
 
-133-1 … 133-7, record in [phases/PHASE-133-POLISH.md](phases/PHASE-133-POLISH.md).
+133-1 … 133-8 are built, record in
+[phases/PHASE-133-POLISH.md](phases/PHASE-133-POLISH.md). The phase closed at
+133-7 and reopened for the voice room. 133-9 to 133-11 are planned: an adaptive
+stage, the scratchpad, and a scenario sweep. 133-8 merged the tile list of the
+stage into `railTiles`, which closed the stage-memo point of phase 131.
 The shell has semantic tokens, a raised sidebar and channel header, one look
 for hover, selected, unread, and focus, a one-row composer with a filled send
 button, and a themed empty state. The sweep of 133-7 checked 15 themes on a
@@ -34,7 +39,7 @@ desktop and the green theme on a phone. Every change is in the client.
   133-3 left it as it is.
 - **The manual checklist in the phase doc is still open.**
 
-## Phase 131 — call rail: built, with three open points
+## Phase 131 — call rail: built, with two open points
 
 131-1 … 131-11, record in [phases/PHASE-131-CALLRAIL.md](phases/PHASE-131-CALLRAIL.md).
 In a call on a desktop, a 48 px column left of the sidebar is present for the
@@ -48,9 +53,6 @@ people in it shows a red record light. Every change is in the client. The live
 probe ran on 2026-11-08 after 131-7, and all 25 checks passed. The manual
 checklist in the phase doc is still open.
 
-- **The stage memo in `VoiceCallPanel.tsx` still builds the tile order that
-  `railTiles` builds.** It must become one call to `railTiles`. This needs its
-  own slice and an approval.
 - **The phone list has no deafened state.** The rail and the room card show it.
 - **The phone drawer has no name list and no hover.** The drawer reuses the
   sidebar and touch has no hover. Zuckermode keeps its own list, and the stage
