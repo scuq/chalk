@@ -11894,21 +11894,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
   width: min(55%, 45vh);
   height: auto;
   opacity: 0.28;
-  animation: chalk-parking-drift 28s ease-in-out infinite;
-}
-
-/* A screensaver drifts. Slowly and by a few percent, which is enough to keep
-   a static mark off one set of pixels for hours at a time. */
-@keyframes chalk-parking-drift {
-  0%   { transform: translate(-3%, 2%) scale(0.98); }
-  50%  { transform: translate(3%, -2%) scale(1.02); }
-  100% { transform: translate(-3%, 2%) scale(0.98); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chalk-parking-mark {
-    animation: none;
-  }
 }
 
 /* Hidden, not unmounted: the composer keeps its draft and its pending

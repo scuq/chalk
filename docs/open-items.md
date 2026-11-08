@@ -141,6 +141,13 @@ motion).
 - **Frames are drawn on the `<img>` itself** (outline and box-shadow), so a
   call tile's circular picture gets a circular ring for free but the feed's
   one-line avatar gets none by rule. Also recorded there.
+- **The animated avatar frames run without end.** With flair on, the frames
+  ember, aurora, gold, matrix, frost, and pulse animate on your own avatar in
+  the header on every screen, and on the avatars of online friends in the
+  sidebar. The rules are the `html[data-flair*]` frame selectors in
+  `web/src/theme.css`. Several animate `box-shadow`, `outline`, or `filter`,
+  and these repaint at every frame. This is the same cost class as the 53-6
+  parking drift. The cost is not measured yet.
 
 ## Phase 114 — roster order: COMPLETE, with two recorded trade-offs
 

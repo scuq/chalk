@@ -27,6 +27,7 @@ The engineering-level history (which slice shipped what) lives in
 - An empty channel shows the chalk mark in the colors of your theme, a short title, and a hint that names the channel. Before, it showed one line of italic text. The screen for no open channel looks the same.
 
 ### Fixed
+- An idle chalk on the parking screen no longer keeps the processor and graphics busy. The chalk mark on that screen now stands still.
 - Keyboard focus shows a clear ring on every button and field, including the composer tools, send, and the call buttons.
 - Screen sharing from the call buttons beside the sidebar is now highlighted, like mute and camera-off.
 - The hover of a danger button and the weakest password-strength label had no color. They are red now. The delete item in the message menu and the remove and leave actions in the member list follow the red of your theme.

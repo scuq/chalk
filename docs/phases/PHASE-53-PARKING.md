@@ -4,7 +4,7 @@
 changelog; 53-4/53-5 are recent enough that the commit messages are the fuller
 account.
 
-**Status:** shipped, v0.4.4 (53-1), v0.4.7 (53-2), v0.5.7 (53-3); 53-4/53-5 are
+**Status:** shipped, v0.4.4 (53-1), v0.4.7 (53-2), v0.5.7 (53-3); 53-4 to 53-6 are
 in `## Unreleased`.
 **Tag:** `#parking` → `tools/where.sh -g parking`
 
@@ -41,6 +41,16 @@ Consequences that had to be designed rather than fall out:
 - **53-5** — the privacy screen: with it on, the channel list, friends, your own
   name and the call bar are blurred, the tab stops showing the unread count, and
   notification sounds go quiet until you come back.
+- **53-6** — the mark on the parking screen stands still. It had an endless
+  28 s drift animation (a 3% shift and a 2% scale change) as a screensaver
+  against burn-in. Only the operating system setting for reduced motion
+  stopped it. A parked chalk made a new frame at every screen refresh, and
+  each frame also went through the GPU process and the window manager. On
+  Linux, a user saw about 18% on the renderer, 16% on the GPU process, and
+  15% on the window manager while the window was idle. The change removes the drift.
+  Rejected: a script that moves the mark one step each minute, and an instant
+  jump. The owner chose the simplest fix and accepted the loss of the drift.
+  `theme-parking.test.ts` checks that the rule has no animation.
 
 ## Where it lives
 
