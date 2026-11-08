@@ -91,13 +91,6 @@ export function CallRail({
         >
           {inCall && snap.joinedAt !== null ? fmtDuration(Date.now() - snap.joinedAt) : "…"}
         </button>
-        {!snap.muted && snap.micOpen && (
-          <span
-            class="chalk-voice-live"
-            title="your microphone is transmitting"
-            data-testid="call-rail-live"
-          />
-        )}
         {snap.audioBlocked && (
           <span
             class="chalk-call-rail-nudge chalk-voice-audionudge"
@@ -180,7 +173,7 @@ export function CallRail({
           aria-label={snap.muted ? "unmute microphone" : "mute microphone"}
           data-testid="call-rail-mute"
         >
-          <IconMic off={snap.muted} size={14} />
+          <IconMic off={snap.muted} size={22} />
         </button>
         <button
           class={"chalk-call-rail-btn" + (snap.deafened ? " is-off" : "")}
@@ -191,7 +184,7 @@ export function CallRail({
           aria-label={snap.deafened ? "hear everyone again" : "deafen everyone"}
           data-testid="call-rail-deafen"
         >
-          <IconHeadphones off={snap.deafened} size={14} />
+          <IconHeadphones off={snap.deafened} size={22} />
         </button>
         <button
           class={"chalk-call-rail-btn" + (snap.camOn ? "" : " is-off")}
@@ -202,7 +195,7 @@ export function CallRail({
           aria-label={snap.camOn ? "turn the camera off" : "turn the camera on"}
           data-testid="call-rail-cam"
         >
-          <IconCamera off={!snap.camOn} size={14} />
+          <IconCamera off={!snap.camOn} size={22} />
         </button>
         <button
           class={"chalk-call-rail-btn" + (snap.sharing ? " is-on" : "")}
@@ -214,7 +207,7 @@ export function CallRail({
           aria-label={snap.sharing ? "stop sharing your screen" : "share your screen"}
           data-testid="call-rail-share"
         >
-          <IconScreen size={14} />
+          <IconScreen size={22} />
         </button>
         <button
           class="chalk-call-rail-btn"
@@ -224,7 +217,7 @@ export function CallRail({
           aria-label="voice and video settings"
           data-testid="call-rail-settings"
         >
-          <IconGear size={14} />
+          <IconGear size={22} />
         </button>
         <button
           class="chalk-call-rail-btn chalk-call-rail-btn--leave"
@@ -234,7 +227,7 @@ export function CallRail({
           aria-label="disconnect from voice"
           data-testid="call-rail-leave"
         >
-          <IconLeave size={14} />
+          <IconLeave size={22} />
         </button>
       </div>
     </aside>

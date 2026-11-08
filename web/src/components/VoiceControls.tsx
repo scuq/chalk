@@ -20,18 +20,27 @@ import type { ComponentChildren } from "preact";
 import { voiceSession } from "../voice/session";
 import { useVoiceSession } from "./VoiceDock";
 
-// Stroked with currentColor at 18px, so they inherit the button's colour --
+// Stroked with currentColor at 18px by default, so they inherit the button's colour --
 // and therefore the theme and the muted/off state -- with no per-theme rules.
 // The slash is a child of the "off" variants rather than a separate overlay so
-// it strokes and scales with the rest of the glyph.
-function Glyph({ children, size = 18 }: { children: ComponentChildren; size?: number }) {
+// it strokes and scales with the rest of the glyph. 131-12: with `filled`, the
+// glyph is filled with currentColor and has no stroke.
+function Glyph({
+  children,
+  size = 18,
+  filled = false,
+}: {
+  children: ComponentChildren;
+  size?: number;
+  filled?: boolean;
+}) {
   return (
     <svg
       viewBox="0 0 24 24"
       width={size}
       height={size}
-      fill="none"
-      stroke="currentColor"
+      fill={filled ? "currentColor" : "none"}
+      stroke={filled ? "none" : "currentColor"}
       strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -44,8 +53,8 @@ function Glyph({ children, size = 18 }: { children: ComponentChildren; size?: nu
 
 const SLASH = <path d="M3 3l18 18" />;
 
-// 131-6: the call rail uses the microphone and the headphones at its foot, at
-// a smaller size, so both are exported.
+// 131-6, 131-12: the call rail uses the microphone and the headphones at its
+// foot, at 22px, so both are exported.
 export function IconMic({ off, size }: { off?: boolean; size?: number }) {
   return (
     <Glyph size={size}>
@@ -97,11 +106,11 @@ export function IconGear({ size }: { size?: number } = {}) {
   );
 }
 
-// 131-7: leave. A handset put down, in the Glyph style of the others.
+// 131-7, 131-12: leave. A filled handset put down.
 export function IconLeave({ size }: { size?: number } = {}) {
   return (
-    <Glyph size={size}>
-      <path d="M3 12.5c5.2-4.6 12.8-4.6 18 0l-2.4 2.9a1.4 1.4 0 0 1-1.9.3L14 14.2a8.6 8.6 0 0 0-4 0l-2.7 1.5a1.4 1.4 0 0 1-1.9-.3z" />
+    <Glyph size={size} filled>
+      <path d="M2 13C5 9.7 8.4 8 12 8s7 1.7 10 5v.9l-2.3 2.3q-.5.5-1.1.1l-2.2-1.6q-.4-.3-.4-.8v-1.8c-2.6-.7-5.4-.7-8 0v1.8q0 .5-.4.8l-2.2 1.6q-.6.4-1.1-.1L2 13.9z" />
     </Glyph>
   );
 }

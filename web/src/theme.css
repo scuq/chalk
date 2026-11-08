@@ -7930,8 +7930,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-call-rail-tiles::-webkit-scrollbar {
   display: none;
 }
-/* 131-6, 131-7: the controls at the foot, short buttons one above the other,
-   leave last. */
+/* 131-6, 131-7, 131-12: the controls at the foot, square buttons one above
+   the other, leave last. */
 .chalk-call-rail-foot {
   flex: 0 0 auto;
   display: flex;
@@ -7942,8 +7942,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   padding-top: var(--chalk-s1);
   border-top: 1px solid var(--chalk-border);
 }
-/* 131-7: the head. How long, the live dot, and the audio nudge. A click on
-   the duration goes back to the room. */
+/* 131-7, 131-12: the head. How long and the audio nudge. A click on the
+   duration goes back to the room. */
 .chalk-call-rail-head {
   flex: 0 0 auto;
   display: flex;
@@ -7975,13 +7975,18 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-size: calc(11px * var(--chalk-font-scale));
   cursor: default;
 }
-/* Leave, at the very bottom, in the error color like the dock's button. The
-   hover is repeated because the shared hover rule brightens the color. */
-.chalk-call-rail-btn--leave,
-.chalk-call-rail-btn--leave:hover {
-  color: var(--chalk-error);
+/* 131-12: leave, at the very bottom, a solid button in the error color with a
+   white glyph. The selector has two classes, so it wins over the shared hover
+   rule that comes later. The hover rule below brightens the button. */
+.chalk-call-rail-btn.chalk-call-rail-btn--leave,
+.chalk-call-rail-btn.chalk-call-rail-btn--leave:hover {
+  color: #fff;
+  background: var(--chalk-error);
   border-color: var(--chalk-error);
   margin-top: var(--chalk-s1);
+}
+.chalk-call-rail-btn.chalk-call-rail-btn--leave:hover {
+  filter: brightness(1.15);
 }
 
 .chalk-call-tile {
@@ -8579,13 +8584,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
   border-color: var(--chalk-warn);
 }
 
-/* 131-6: the foot buttons of the rail are short, so the shared square shape
-   does not apply to them. This rule comes after the shared rule, so these
-   sizes win. */
+/* 131-6, 131-12: the foot buttons of the rail are 40 px square, the size of a
+   tile. This rule comes after the shared rule, so these sizes win. */
 .chalk-call-rail-btn {
   width: 40px;
-  height: 24px;
-  min-height: 24px;
+  height: 40px;
+  min-height: 40px;
   aspect-ratio: auto;
 }
 

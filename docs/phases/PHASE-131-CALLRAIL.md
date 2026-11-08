@@ -1,6 +1,6 @@
 # Phase 131 — the call rail: every participant in a narrow column
 
-**Status:** built, 131-1 to 131-11 (2026-11-08). Unit-tested by
+**Status:** built, 131-1 to 131-12 (2026-11-08). Unit-tested by
 `web/src/voice/rail-tiles.test.ts`, the `roomCardRows` cases in
 `web/src/chat/hovercard.test.ts`, and the rewritten third test in
 `web/src/theme-sidebar.test.ts`, which asserts the CSS declarations against the
@@ -181,7 +181,9 @@ the light in their row.
 ### Buttons at the foot of the rail (131-6)
 
 Slice 131-6 put two buttons for mute and deafen at the foot of the rail. Each
-is 40 px wide and 24 px tall, with a 14 px glyph, and one is above the other.
+was 40 px wide and 24 px tall, with a 14 px glyph, and one was above the other.
+Slice 131-12 made each button 40 px square with a 22 px glyph, the size of a
+tile.
 The tiles scroll in `.chalk-call-rail-tiles`. The foot,
 `.chalk-call-rail-foot`, does not scroll, so the buttons are always in view,
 also in a call with many people. `.chalk-call-rail-btn` shares the color,
@@ -199,14 +201,14 @@ The rail is now the one call surface on desktop. It is present for the whole
 call. It has three parts:
 
 - The head, `.chalk-call-rail-head`. It holds the call duration as a button,
-  the live dot while the microphone transmits, and a small amber icon when audio
-  is blocked. The button shows "…" while joining. Its title has the room name,
+  and a small amber icon when audio is blocked. Slice 131-12 removed the green
+  live dot that showed while the microphone transmitted. The button shows "…" while joining. Its title has the room name,
   and a click goes back to the room.
 - The tiles, drawn only while the call room is not the channel on screen. On
   the room page the box stays empty and keeps the foot at the bottom.
 - The foot. It holds microphone, headphones, camera, screen share, settings,
-  and last a leave button. The leave button has a handset icon in the error
-  color.
+  and last a leave button. The leave button has a filled handset icon. Since
+  131-12 it is a solid button in the error color with a white glyph.
 
 Why:
 
@@ -315,6 +317,17 @@ The live probe ran on 131-7. The result is in the status header.
   recording, and chalk records nothing. The component and the `chalk-rec*`
   classes keep their names. The title in `theme-sidebar.test.ts` and the probe
   `rail.mjs` say LIVE. Built 2026-11-08. The probe passed.
+- **131-12 — larger foot buttons, a red leave button.** The foot buttons in
+  `theme.css` are 40 px square, and the glyphs in `CallRail.tsx` are 22 px.
+  `Glyph` in `VoiceControls.tsx` has a `filled` prop, and `IconLeave` is a
+  filled handset. The leave button has the background `var(--chalk-error)` and
+  a white glyph, and it brightens on hover. Its selector has two classes, so it
+  wins over the shared hover rule that comes later. The live dot
+  (`call-rail-live`) is gone from the head: the green `--speaking` border of a
+  tile shows who talks, also for you. `.chalk-voice-live` stays, because
+  `VoiceDock` and `ZuckerCallBar` use it. The rail test in
+  `theme-sidebar.test.ts` asserts the new sizes and the leave rule. No live
+  probe ran. Built 2026-11-08.
 
 ## Left open
 

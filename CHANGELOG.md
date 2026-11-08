@@ -13,6 +13,7 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Changed
+- The call buttons in the column beside the sidebar are larger, and leave is now a red hang-up button. The green border on a person's picture alone shows who is talking, and the extra green dot is gone.
 - The light in front of a busy voice room and beside the chalk logo now says LIVE instead of REC, because chalk records nothing.
 
 ### Fixed

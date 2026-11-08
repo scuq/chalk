@@ -104,13 +104,13 @@ test("the call rail is a narrow scrolling column, and the dock preview is gone",
   const tilesBox = block(".chalk-call-rail-tiles");
   assert.match(tilesBox, /overflow-y:\s*auto;/, "the tiles scroll when they overflow");
   assert.match(tilesBox, /scrollbar-width:\s*none;/, "the tile column hides its scrollbar");
-  // 131-6: the foot with mute and deafen does not scroll with the tiles, and
-  // its buttons are shorter than a tile.
+  // 131-6, 131-12: the foot with mute and deafen does not scroll with the
+  // tiles, and its buttons are as large as a tile.
   const foot = block(".chalk-call-rail-foot");
   assert.match(foot, /flex:\s*0 0 auto;/, "the foot keeps its height");
   const btn = block(".chalk-call-rail-btn");
   assert.match(btn, /width:\s*40px;/, "a foot button is as wide as a tile");
-  assert.match(btn, /height:\s*24px;/, "a foot button is shorter than a tile");
+  assert.match(btn, /height:\s*40px;/, "a foot button is as tall as a tile");
 
   const tile = block(".chalk-call-tile");
   assert.match(tile, /width:\s*40px;/, "a tile is 40px wide");
@@ -131,7 +131,9 @@ test("the call rail is a narrow scrolling column, and the dock preview is gone",
   assert.match(footer, /grid-template-columns:\s*1fr;/, "the footer is one column");
   assert.doesNotMatch(footer, /--chalk-sidebar-w/, "the footer no longer reserves a sidebar column");
   assert.match(block(".chalk-call-rail-head"), /flex:\s*0 0 auto;/, "the head keeps its height");
-  assert.match(block(".chalk-call-rail-btn--leave,\n.chalk-call-rail-btn--leave:hover"), /var\(--chalk-error\)/, "leave is in the error color");
+  const leave = block(".chalk-call-rail-btn.chalk-call-rail-btn--leave,\n.chalk-call-rail-btn.chalk-call-rail-btn--leave:hover");
+  assert.match(leave, /background:\s*var\(--chalk-error\)/, "leave is a red button");
+  assert.match(leave, /color:\s*#fff;/, "with a white handset");
   assert.equal(/\.chalk-voice-controls--rail\b/.test(css), false, "no three-column footer bar remains");
 });
 
