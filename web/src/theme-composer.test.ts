@@ -44,3 +44,32 @@ test("an edit hides the tools without unmounting them, so the field keeps its pl
   assert.doesNotMatch(composer, /\{showTools && \(\s*<div class="chalk-composer-tools"/);
   assert.match(block(".chalk-composer-tools--hidden"), /visibility:\s*hidden/);
 });
+
+// 133-14: the composer as one control, from the external design review. These
+// tests read the source text, as the tests above do.
+test("desktop icon tools are 30px by 32px and turn to the accent on hover", () => {
+  const tool = block(".chalk-composer-rail--icons .chalk-composer-tool");
+  assert.match(tool, /width:\s*30px;/);
+  assert.match(tool, /height:\s*32px;/);
+  assert.match(block(".chalk-composer-tool:hover:not(:disabled),\n.chalk-composer-tool:active:not(:disabled)"), /color:\s*var\(--chalk-accent\)/);
+  assert.match(block(".chalk-composer-tool:focus-visible"), /outline-offset:\s*-2px/);
+});
+
+test("the field is 60px by default, scrolls inside, and keeps the dragged height", () => {
+  const input = block(".chalk-composer-input");
+  assert.match(input, /min-height:\s*60px;/);
+  assert.match(input, /overflow-y:\s*auto;/);
+  assert.match(input, /height:\s*var\(--chalk-composer-h, auto\)/);
+  assert.match(block(".chalk-composer-input:focus"), /border-color:\s*var\(--chalk-accent\)/);
+});
+
+test("send shows the arrow, and an edit keeps the word", () => {
+  assert.match(composer, /<SendIcon \/>/);
+  assert.match(composer, /aria-label=\{editing \? undefined : "send"\}/);
+  assert.match(composer, /sending \? "saving…" : "save"/);
+});
+
+test("the legacy attach and GIF button rules are gone", () => {
+  assert.doesNotMatch(css, /\.chalk-composer-(attach|giphy)\b/);
+  assert.doesNotMatch(composer, /chalk-composer-(attach|giphy)\b/);
+});

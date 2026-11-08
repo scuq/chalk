@@ -1,11 +1,12 @@
 import type { ComponentChildren } from "preact";
 
-// 133-13: the shared icon family. Every icon of the sidebar and of the channel
-// header comes from this file, so all of them have one viewBox (24 by 24), one
-// stroke width (2), round caps and joins, and the color of the text
-// (currentColor). A hover or selected state in CSS recolors the icon with no
-// extra rule. The voice-status badges and the call controls are not part of
-// this family.
+// 133-13: the shared icon family. Every icon of the sidebar, of the channel
+// header, and (133-14) of the composer tools and send comes from this file.
+// All of them have one viewBox (24 by 24), round caps and joins, and the color
+// of the text (currentColor). The stroke is 2, or 1.8 with the fine prop,
+// which the composer icons use. A hover or selected state in CSS recolors the
+// icon with no extra rule. The voice-status badges and the call controls are
+// not part of this family.
 
 // The base of every icon. With a label, the icon is an image that a screen
 // reader announces. Without a label, the icon is decoration and is hidden
@@ -13,10 +14,12 @@ import type { ComponentChildren } from "preact";
 function Icon({
   size,
   label,
+  fine = false,
   children,
 }: {
   size: number;
   label?: string;
+  fine?: boolean;
   children: ComponentChildren;
 }) {
   return (
@@ -27,7 +30,7 @@ function Icon({
       height={size}
       fill="none"
       stroke="currentColor"
-      stroke-width="2"
+      stroke-width={fine ? "1.8" : "2"}
       stroke-linecap="round"
       stroke-linejoin="round"
       role={label ? "img" : undefined}
@@ -110,6 +113,60 @@ export function BallotIcon() {
       <path d="M3 12v8h18v-8" />
       <path d="M2 8l10-4 10 4-10 4Z" />
       <path d="M12 12v4" />
+    </Icon>
+  );
+}
+
+// 133-14: the composer tool icons and the send icon use the fine stroke (1.8)
+// that the external design review asked for. The tool icons are 17px. The
+// buttons carry the aria-label, so the icons are decoration.
+export function AttachIcon() {
+  return (
+    <Icon size={17} fine>
+      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </Icon>
+  );
+}
+
+// GifIcon is a framed play triangle. It reads as "animated image", not as
+// "video".
+export function GifIcon() {
+  return (
+    <Icon size={17} fine>
+      <rect x="2" y="4" width="20" height="16" rx="3" />
+      <path d="M10 9.2l5.2 2.8-5.2 2.8z" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
+export function EmojiIcon() {
+  return (
+    <Icon size={17} fine>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8.5 14.5a4.5 4.5 0 0 0 7 0" />
+      <path d="M9 9.5h.01" />
+      <path d="M15 9.5h.01" />
+    </Icon>
+  );
+}
+
+// 74-2: CodeIcon is two angle brackets with no slash. At this size a third
+// stroke turns the glyph into a smudge.
+export function CodeIcon() {
+  return (
+    <Icon size={17} fine>
+      <path d="M8 6l-6 6 6 6" />
+      <path d="M16 6l6 6-6 6" />
+    </Icon>
+  );
+}
+
+// SendIcon is the outline paper plane of the send button, 18px.
+export function SendIcon() {
+  return (
+    <Icon size={18} fine>
+      <path d="M4 4l16 8-16 8 3-8Z" />
+      <path d="M7 12h6" />
     </Icon>
   );
 }

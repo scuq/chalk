@@ -13,6 +13,7 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Changed
+- The tools of the message bar sit in one toolbar of thin icons. The field shows a clear accent edge when it has focus. The send button shows an arrow.
 - The icons in the sidebar and in the channel header now share one style, size, and line weight. This includes the text channel, voice room, parking lot, lock, and the crown and ballot box of the channel mode. The crown and the ballot box use the accent color of your theme. The text and voice icons use one color.
 - In a voice room, an empty scratchpad now shows a short explanation. Once it has text, a one-line reminder replaces the paragraph that was always there. The marks for muted, deafened, camera on, and sharing a screen on people are now icons.
 - In a voice room, people without a camera now show as compact cards with their picture, name, and volume. Before, they showed as large empty video boxes. Cameras show as video tiles above the cards, and a screen share still takes the main area.

@@ -47,6 +47,7 @@ import {
   matchMentionHandles,
 } from "../chat/mention-complete";
 import { useIsMobile } from "../mobile";
+import { AttachIcon, CodeIcon, EmojiIcon, GifIcon, SendIcon } from "./icons";
 
 // Phase 9.6g: disabledReason distinguishes the two reasons the
 // composer might be unusable. "offline" reflects a real connection
@@ -179,91 +180,6 @@ function hostOfURL(url: string): string {
   } catch {
     return url;
   }
-}
-
-// Phase 9.7h: inline SVG glyphs for the "icons" tool style. Stroked with
-// currentColor so they inherit the button's colour (and therefore the theme
-// and hover state) without any per-theme rules. 16px to sit inside the 28px
-// tool button with room to breathe.
-function IconFile() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-    </svg>
-  );
-}
-
-// A framed play triangle: reads as "animated image" rather than "video",
-// which is the closest unambiguous glyph for a GIF at this size.
-function IconGif() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="2" y="4" width="20" height="16" rx="3" />
-      <path d="M10 9.2l5.2 2.8-5.2 2.8z" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-// 74-2: the angle brackets every editor uses for "code". No slash between
-// them -- at 14px the third stroke turns the glyph into a smudge.
-function IconCode() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8 6l-6 6 6 6" />
-      <path d="M16 6l6 6-6 6" />
-    </svg>
-  );
-}
-
-function IconEmoji() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="M8.5 14.5a4.5 4.5 0 0 0 7 0" />
-      <path d="M9 9.5h.01" />
-      <path d="M15 9.5h.01" />
-    </svg>
-  );
 }
 
 export function Composer({ disabled, disabledReason, onSend, placeholder, enableAttachments, giphyEnabled, giphyReady, onRequestEnableGiphy, toolStyle, emoticons, editing, onEditSubmit, onEditCancel, onEditLast, focusKey, quote, onTyping, mentionHandles, linkPreviewEnabled, linkPreviewPref, linkPreviewDomains, onRequestEnableLinkPreview }: Props) {
@@ -1227,10 +1143,8 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
         )}
         <div class="chalk-composer-row">
           {/* 44-5: the tool block, immediately left of the field it acts on.
-              The old per-button classes are kept alongside chalk-composer-tool
-              so the existing hover/disabled rules still apply.
               133-5: on a desktop the block is one row on a shared surface, from
-              the design review. The phone keeps the 2x2 block, which makes the
+              the design review. 133-14 centers it on the field. The phone keeps the 2x2 block, which makes the
               rail as high as the two-row input (74-2: CODE took the fourth
               cell). The block stays mounted during an edit and gets
               chalk-composer-tools--hidden and aria-hidden. One row is about
@@ -1249,27 +1163,27 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
                 {enableAttachments && (
                   <button
                     type="button"
-                    class="chalk-composer-tool chalk-composer-attach"
+                    class="chalk-composer-tool"
                     onClick={() => openTool("file")}
                     disabled={effectiveDisabled || sending}
                     title={`attach a file (${shortcutLabel("file", mac)})`}
                     aria-label="attach a file"
                     data-testid="composer-attach"
                   >
-                    {icons ? <IconFile /> : toolLabel("file")}
+                    {icons ? <AttachIcon /> : toolLabel("file")}
                   </button>
                 )}
                 {giphyEnabled && (
                   <button
                     type="button"
-                    class="chalk-composer-tool chalk-composer-giphy"
+                    class="chalk-composer-tool"
                     onClick={() => openTool("gif")}
                     disabled={effectiveDisabled || sending}
                     title={`send a GIF (${shortcutLabel("gif", mac)})`}
                     aria-label="send a GIF"
                     data-testid="composer-giphy"
                   >
-                    {icons ? <IconGif /> : toolLabel("gif")}
+                    {icons ? <GifIcon /> : toolLabel("gif")}
                   </button>
                 )}
                 <button
@@ -1281,7 +1195,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
                   aria-label="insert emoji"
                   data-testid="composer-emoji"
                 >
-                  {icons ? <IconEmoji /> : toolLabel("emoji")}
+                  {icons ? <EmojiIcon /> : toolLabel("emoji")}
                 </button>
                 {/* 74-2: no shortcut in the title -- see openTool.
                     94-4: the class is -code-tool, not -code: .chalk-composer-code
@@ -1293,11 +1207,11 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
                   class="chalk-composer-tool chalk-composer-code-tool"
                   onClick={() => openTool("code")}
                   disabled={effectiveDisabled || sending}
-                  title="paste code"
+                  title="paste a code snippet"
                   aria-label="paste code"
                   data-testid="composer-code"
                 >
-                  {icons ? <IconCode /> : toolLabel("code")}
+                  {icons ? <CodeIcon /> : toolLabel("code")}
                 </button>
               </div>
             </div>
@@ -1329,8 +1243,14 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
             onClick={() => void submit()}
             disabled={!canSend}
             data-testid="composer-send"
+            aria-label={editing ? undefined : "send"}
+            aria-busy={sending ? "true" : undefined}
+            title={editing ? undefined : isMobile ? "send" : "send (enter)"}
           >
-            {sending ? (editing ? "saving…" : "sending…") : editing ? "save" : "send"}
+            {/* 133-14: send shows the arrow while the user writes. An edit
+                shows the words "save" and "saving…", because an arrow does not
+                say "save". */}
+            {editing ? (sending ? "saving…" : "save") : <SendIcon />}
           </button>
         </div>
       </div>

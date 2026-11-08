@@ -1,10 +1,11 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** built, 133-1 to 133-13 (2026-11-08).
+**Status:** built, 133-1 to 133-14 (2026-11-08).
 133-7 changed no code. The phase closed at 133-7 and was reopened for the voice
 room. See "The voice room" below. After the owner watched a live demo, the
 phase was reopened once more for 133-12. The owner then sent an icon sheet,
-and the phase was reopened for 133-13, the icons.
+and the phase was reopened for 133-13, the icons. A second design review
+then led to 133-14, the composer as one control.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
 of the derived tokens. `web/src/theme-tokens.test.ts` tests two rules: every
 custom property the stylesheet reads is declared, and no `var()` carries a
@@ -380,7 +381,7 @@ On a desktop, `.chalk-composer-tools` is one flex row with a 2px gap and 3px
 of padding. The row sits on one surface: `--chalk-bg-elev`, a 1px
 `--chalk-border`, and `--chalk-radius-md`. The tool buttons have no border.
 They are 28px tall, with `--chalk-radius-sm`. In the icon style they are
-28px squares. The phone block goes back to the 2x2 grid of
+28px squares. (133-14 changed these sizes to 30px by 32px.) The phone block goes back to the 2x2 grid of
 [phase 94](PHASE-94-PHONECOMPOSER.md), with the 1px border on each button, so
 the phone composer looks as it did.
 
@@ -398,10 +399,12 @@ three tools.
 
 A new `IconEmoji` (a stroked smiley, with the stroke style of the other
 icons) replaces the character in the icon style. The text style is
-unchanged. All four icons are now 16px, and were 14px.
+unchanged. All four icons are now 16px, and were 14px. (133-14 moved the
+icons to the shared module and made them 17px.)
 
 The textarea has `--chalk-radius-md` and a `--chalk-border` edge. Its focus
-outline is `--chalk-accent`, and was `--chalk-fg`. Send is a filled button:
+outline is `--chalk-accent`, and was `--chalk-fg`. (133-14 changed the
+outline to an accent border.) Send is a filled button:
 `--chalk-accent` background and border, `--chalk-on-accent` text, weight 700,
 and `--chalk-accent-hover` on hover. When the field is empty, send is
 transparent, with a `--chalk-border` edge and muted text. It has no opacity.
@@ -415,8 +418,9 @@ the label of "save" was invisible. The browser showed this. Send is now the
 accent in both modes. The editing strip and the accent ring on the field
 still mark an edit.
 
-The `rows`, the stretch, and the `--chalk-composer-h` clamp do not change, so
-`composer-height.ts` needs no edit.
+The `rows`, the stretch, and the `--chalk-composer-h` clamp did not change in
+133-5, so `composer-height.ts` needed no edit. 133-14 added a default minimum
+height of 60px. The dragged height still applies.
 
 ### The empty states (133-6)
 
@@ -824,6 +828,76 @@ The owner made three decisions:
 stroke width, that the sidebar and the header badges draw no inline SVG, and
 that the colors follow the decisions above.
 
+133-14 added a `fine` prop to `Icon`. The stroke is 1.8 with `fine` and 2
+without it. The module now also exports the composer icons, all with `fine`
+and a size of 17px: `AttachIcon` (a paperclip), `GifIcon` (a framed play
+triangle), `EmojiIcon`, and `CodeIcon` (two angle brackets with no slash).
+`SendIcon` is an outline paper plane of 18px, also with `fine`. These five
+icons replace four local functions in `Composer.tsx`, and the new test
+asserts that `Composer.tsx` draws no inline SVG.
+
+### The composer as one control (133-14)
+
+An outside design review asked for the composer to read as one control: a
+tool block, a two-line field, and a send button. The spec had these points:
+
+- Tool buttons of 30px by 32px, with icons of 17px and a stroke of 1.8.
+- A muted default color, and the accent color on hover and when pressed.
+- A visible focus ring.
+- A field of 60px with two lines, internal scroll, and text at the top.
+- An accent border when the field has focus.
+- Gaps of 8px.
+- A send button as high as the field, with a send-arrow icon, and different
+  states for enabled, hover, and disabled.
+
+The slice built this:
+
+- The icons moved to the shared family. See "One icon family (133-13)".
+- The rail is centered vertically on the field on a desktop. On a phone,
+  `align-self` is `auto`, and the 2x2 grid keeps its shape.
+- The field has `min-height: 60px` and `overflow-y: auto`. It was 2.4em. The
+  dragged height `--chalk-composer-h` of phase 91 still applies. The focus
+  state is an accent `border-color`, with no outline.
+- Send is an inline flex box with a centered label and `min-width: 44px`. A
+  new `:active` state brightens the fill by 1.15.
+- Tool buttons are 30px by 32px, and were 28px by 28px. Hover and `:active`
+  turn the glyph to `--chalk-accent` on `--chalk-bg-hover`, and were
+  `--chalk-fg`. `:focus-visible` uses `outline-offset: -2px`. Without it, the
+  ring covers the next button across the gap of 2px.
+- While the user writes, send shows the arrow. The `aria-label` is "send".
+  The title is "send (enter)" on a desktop and "send" on a phone, where Enter
+  does not send. `aria-busy` is set while the message sends. An edit keeps
+  the words "save" and "saving…", because an arrow does not say "save".
+- The title of the code tool is now "paste a code snippet".
+- The rules `.chalk-composer-attach` and `.chalk-composer-giphy` are deleted,
+  and the button classes are removed from the markup. The tool class holds
+  all the styles.
+
+The owner made these decisions:
+
+- The GIF tool stays in the tool block when the server enables GIF search.
+  No feature is removed. The review asked for exactly three tools, and it
+  assumed a server without GIF search.
+- The field keeps the dragged height of phase 91 and the minimum of 72px on a
+  phone. Only the default gets the floor of 60px. A fixed field would reverse
+  phase 91.
+- The code icon keeps the angle brackets of 74-2, with no slash.
+- The icons join the shared family with a fine stroke. They do not stay
+  local.
+
+The default color of the tools stays `--chalk-fg-dim`, and not
+`--chalk-fg-muted`. In the green theme, `--chalk-fg-muted` is too dim against
+`--chalk-bg-elev` for a control that is not text.
+
+Rejected:
+
+- A field of 60px with no drag.
+- The slash in the code icon.
+- A block of three tools.
+
+Four tests in `theme-composer.test.ts` cover the sizes, the field, send, and
+the deleted rules. `theme-icons.test.ts` changed as described above.
+
 ## What was rejected
 
 - Floating card panels. The sticky header, the season canvas, the drawer, and
@@ -929,6 +1003,14 @@ and the test cover it.
   `ModeBadge.tsx`, and `EncryptionIndicator.tsx` use it. Text and voice share
   `--chalk-fg-dim`, and both governance badges take the accent. `theme.css`
   and the new `theme-icons.test.ts`. Done. See "One icon family (133-13)".
+- **133-14 — the composer as one control.** The composer icons and the new
+  `SendIcon` in `icons.tsx`, with the `fine` stroke of 1.8. Tool buttons of
+  30px by 32px. A field with a floor of 60px and an accent border on focus.
+  A centered rail. Send with an arrow and an `:active` state. The legacy
+  attach and GIF rules are deleted. `Composer.tsx`, `icons.tsx`, and
+  `theme.css`. Four new tests in `theme-composer.test.ts`, and a changed
+  test in `theme-icons.test.ts`. Done. See "The composer as one control
+  (133-14)".
 
 ## Left open
 
@@ -951,6 +1033,14 @@ The 133-7 sweep looked at the empty channel, the selected row, the unread
 channel, and the filled send in 15 themes at 1280 by 800. The sweep did not
 open the checklist items below, except where an item names an empty channel
 or a selected row in a theme that the sweep covered.
+
+Open after 133-14:
+
+- Open the composer in the green, light, warmwhite, lcars, and
+  solarized-dark themes. The tool block must be centered on the field.
+- The field must be 60px high, and send must fill the height of the field.
+- Edit a message. The field must not move.
+- Press Tab to each tool. The focus ring must show on each one.
 
 Open after 133-13:
 

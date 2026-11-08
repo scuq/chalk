@@ -948,6 +948,8 @@ html {
    slide sideways. */
 .chalk-composer-rail {
   flex: none;
+  /* 133-14: center the tool block on the field. The phone rule sets auto. */
+  align-self: center;
 }
 
 .chalk-composer-main {
@@ -1013,7 +1015,10 @@ html {
   font-family: inherit;
   font-size: var(--chalk-size-base);
   resize: vertical;
-  min-height: 2.4em;
+  /* 133-14: two lines are 60px at the default scale. A longer draft scrolls
+     inside the field. The dragged height below still wins. */
+  min-height: 60px;
+  overflow-y: auto;
   /* 91-1: --chalk-composer-h is the footer's dragged height; unset (the
      thread composer, mobile, an untouched pref) leaves the field the two rows
      it has always been. The clamp lets the handle take it past the 30dvh the
@@ -1024,8 +1029,8 @@ html {
 }
 
 .chalk-composer-input:focus {
-  outline: 1px solid var(--chalk-accent);
-  outline-offset: -1px;
+  outline: none;
+  border-color: var(--chalk-accent);
   background: var(--chalk-bg-elev-2);
 }
 
@@ -1050,6 +1055,10 @@ html {
 .chalk-composer-send {
   flex: 0 0 auto;
   align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
   padding: 0 var(--chalk-s3);
   background: var(--chalk-accent);
   color: var(--chalk-on-accent);
@@ -1071,6 +1080,12 @@ html {
   color: var(--chalk-on-accent);
 }
 
+.chalk-composer-send:active:not(:disabled) {
+  background: var(--chalk-accent);
+  border-color: var(--chalk-accent);
+  filter: brightness(1.15);
+}
+
 .chalk-composer-send:disabled {
   background: transparent;
   cursor: not-allowed;
@@ -1078,27 +1093,7 @@ html {
   color: var(--chalk-fg-muted);
 }
 
-/* -- att-2: composer attach button + pending tray ----------------- */
-.chalk-composer-attach {
-  flex: 0 0 auto;
-  align-self: stretch;
-  padding: 0 var(--chalk-s3);
-  background: transparent;
-  color: var(--chalk-fg-muted);
-  border: 1px solid var(--chalk-border);
-  border-radius: var(--chalk-radius);
-  font-family: inherit;
-  font-size: var(--chalk-size-base);
-  cursor: pointer;
-}
-.chalk-composer-attach:hover:not(:disabled) {
-  color: var(--chalk-fg);
-  border-color: var(--chalk-fg);
-}
-.chalk-composer-attach:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+/* -- att-2: composer pending tray ----------------- */
 
 .chalk-composer-tray {
   display: flex;
@@ -7412,32 +7407,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 
 /* ===================================================================
-   att-4c: Giphy -- composer button, gated render, search picker.
+   att-4c: Giphy -- gated render, search picker.
    =================================================================== */
-
-/* Composer "GIF" button -- mirrors the paperclip affordance. */
-.chalk-composer-giphy {
-  flex: 0 0 auto;
-  align-self: stretch;
-  padding: 0 var(--chalk-s2);
-  background: transparent;
-  color: var(--chalk-fg-muted);
-  border: 1px solid var(--chalk-border);
-  border-radius: var(--chalk-radius);
-  font-family: inherit;
-  font-size: var(--chalk-size-small);
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-}
-.chalk-composer-giphy:hover:not(:disabled) {
-  color: var(--chalk-fg);
-  border-color: var(--chalk-fg);
-}
-.chalk-composer-giphy:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
 
 /* Rendered GIF in the feed (enabled + allowlisted). Capped like an inline
    attachment image; the GIF keeps its aspect ratio. */
@@ -8970,7 +8941,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
    field, which sat well under a comfortable contrast ratio. Move it to
    --chalk-fg-dim and pin opacity (Firefox applies its own by default).
    133-5: the field has its own raised background on the page, so the
-   --chalk-border edge is enough. Focus is an accent outline. */
+   --chalk-border edge is enough. Focus is an accent border (133-14). */
 .chalk-composer-input {
   line-height: 1.5;
   border-color: var(--chalk-border);
@@ -9003,16 +8974,22 @@ body.chalk-resizing-y .chalk-composer-resizer {
   border-radius: var(--chalk-radius-sm);
   padding: 0 var(--chalk-s2);
   min-height: 0;
-  height: 28px;
+  height: 32px;
   line-height: 1;
   font-family: inherit;
   font-size: var(--chalk-size-small);
   cursor: pointer;
   transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), border-color var(--chalk-dur-fast);
 }
-.chalk-composer-tool:hover:not(:disabled) {
-  color: var(--chalk-fg);
+.chalk-composer-tool:hover:not(:disabled),
+.chalk-composer-tool:active:not(:disabled) {
+  color: var(--chalk-accent);
   background: var(--chalk-bg-hover);
+}
+/* 133-14: draw the focus ring inside the button. A ring outside the button
+   covers the next button across the 2px gap. */
+.chalk-composer-tool:focus-visible {
+  outline-offset: -2px;
 }
 .chalk-composer-tool:disabled {
   opacity: 0.45;
@@ -10052,14 +10029,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 /* Icon variant: square buttons that centre their glyph. The SVGs stroke with
    currentColor, so they inherit the button's colour and hover state and need
-   no per-theme rules. On a desktop the buttons are 28px squares in one row.
+   no per-theme rules. On a desktop the buttons are 30px by 32px in one row.
    The phone block below sets 34px squares in a 2x2 grid. */
 .chalk-composer-rail--icons .chalk-composer-tool {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 32px;
   padding: 0;
 }
 .chalk-composer-rail--icons .chalk-composer-tool svg {
@@ -10737,8 +10714,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
   /* 94-2: the button is the field's height on both layouts now.
      94-4: and it is already a full-height target, so the extra horizontal
      padding was buying nothing -- 94-2 widened it for a thumb back when it was
-     a 26px chip. The word plus s2 is still a ~48px-wide, field-height target,
-     and the 16px it gives back goes to the field beside it. */
+     a 26px chip. The arrow plus s2 is still a field-height target, at least
+     44px wide (133-14), and the width it gives back goes to the field
+     beside it. */
   .chalk-composer-send {
     padding: 0 var(--chalk-s2);
   }
@@ -10786,6 +10764,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
   .chalk-composer-rail {
     min-width: 72px;
+    align-self: auto;
   }
 
   .chalk-composer-input {

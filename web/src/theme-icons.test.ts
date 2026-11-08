@@ -1,9 +1,10 @@
 // 133-13: the icon family, asserted against the source and the stylesheet.
 //
-// The sidebar and the channel header draw their icons from components/icons.tsx.
-// The tests make sure that every icon has one viewBox and one stroke width,
-// that no other file draws an inline SVG for these places, and that text and
-// voice glyphs share one color while both governance badges take the accent.
+// The sidebar, the channel header, and (133-14) the composer draw their icons
+// from components/icons.tsx. The tests make sure that every icon has one
+// viewBox and one stroke width (2, or 1.8 with the fine prop), that no other
+// file draws an inline SVG for these places, and that text and voice glyphs
+// share one color while both governance badges take the accent.
 // jsdom has no layout, so the tests cannot check that the icons line up. The
 // manual checklist in docs/phases/PHASE-133-POLISH.md covers that.
 
@@ -26,12 +27,12 @@ function block(selector: string): string {
 test("every icon in the shared module has one viewBox and one stroke width", () => {
   const icons = read("components/icons.tsx");
   assert.deepEqual(icons.match(/viewBox="[^"]*"/g), ['viewBox="0 0 24 24"']);
-  assert.deepEqual(icons.match(/stroke-width="[^"]*"/g), ['stroke-width="2"']);
+  assert.deepEqual(icons.match(/stroke-width=[^\s>]*(?: \? [^\s>]*)?(?: : [^\s>]*)?/g), ['stroke-width={fine ? "1.8" : "2"}']);
   assert.doesNotMatch(icons, /strokeWidth/);
 });
 
-test("the sidebar and the header badges draw no SVG of their own", () => {
-  for (const f of ["components/Sidebar.tsx", "components/ModeBadge.tsx", "components/EncryptionIndicator.tsx"]) {
+test("the sidebar, the header badges and the composer draw no SVG of their own", () => {
+  for (const f of ["components/Sidebar.tsx", "components/ModeBadge.tsx", "components/EncryptionIndicator.tsx", "components/Composer.tsx"]) {
     assert.doesNotMatch(read(f), /<svg/, `${f} has an inline <svg>`);
   }
 });
