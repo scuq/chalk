@@ -256,6 +256,11 @@
   }
 }
 
+:where(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--chalk-focus);
+  outline-offset: 1px;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -633,6 +638,9 @@ html {
   box-shadow: 0 0 4px var(--chalk-presence-online-glow);
 }
 .chalk-status-dot--connecting { background: var(--chalk-warn); animation: chalk-pulse 1s infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .chalk-status-dot--connecting { animation: none; }
+}
 .chalk-status-dot--closed {
   background: transparent;
   border: 1px solid var(--chalk-presence-offline);
@@ -2381,6 +2389,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   line-height: 1;
   cursor: pointer;
   padding: 0;
+  border-radius: var(--chalk-radius-sm);
+  transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), border-color var(--chalk-dur-fast);
 }
 .chalk-sidebar-new:hover {
   border-color: var(--chalk-fg-bright);
@@ -2414,7 +2424,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   padding: 6px var(--chalk-s2);
   margin: 0 var(--chalk-s1);
   cursor: pointer;
-  border-left: 2px solid transparent;
+  border-radius: var(--chalk-radius-md);
+  transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), box-shadow var(--chalk-dur-fast);
   color: var(--chalk-fg);
 }
 .chalk-sidebar-item:hover {
@@ -2425,9 +2436,13 @@ body.chalk-resizing-y .chalk-composer-resizer {
   outline-offset: -1px;
 }
 .chalk-sidebar-item--active {
-  border-left-color: var(--chalk-fg-bright);
+  box-shadow: inset 0 0 0 1px var(--chalk-border-strong);
   background: var(--chalk-bg-selected);
   color: var(--chalk-fg-bright);
+}
+.chalk-sidebar-item--unread .chalk-sidebar-item-name {
+  color: var(--chalk-fg-bright);
+  font-weight: 700;
 }
 
 .chalk-sidebar-item-name {
@@ -3577,6 +3592,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   padding: var(--chalk-s2) var(--chalk-s3);
   text-align: left;
   cursor: pointer;
+  border-radius: var(--chalk-radius-sm);
+  transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), box-shadow var(--chalk-dur-fast);
 }
 
 .chalk-status-menu-item:hover,
@@ -4913,20 +4930,23 @@ body.chalk-resizing-y .chalk-composer-resizer {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  width: 100%;
+  width: calc(100% - 2 * var(--chalk-s1));
   background: none;
   border: none;
   padding: var(--chalk-s1) var(--chalk-s2);
-  margin-top: var(--chalk-s1);
+  margin: var(--chalk-s1) var(--chalk-s1) 0;
   font-family: inherit;
   font-size: var(--chalk-size-small);
   color: var(--chalk-fg-dim);
   cursor: pointer;
   text-align: left;
+  border-radius: var(--chalk-radius-md);
+  transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), box-shadow var(--chalk-dur-fast);
 }
 
 .chalk-sidebar-group-header:hover {
   color: var(--chalk-fg);
+  background: var(--chalk-bg-hover);
 }
 
 /* 106-1: a group has to read as a heading, not as one more row. Two
@@ -5206,7 +5226,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  border-radius: 3px;
+  border-radius: var(--chalk-radius-sm);
+  transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), border-color var(--chalk-dur-fast);
 }
 .chalk-presence-trigger:hover {
   border-color: var(--chalk-border);
@@ -5262,6 +5283,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   text-align: left;
   padding: 0.4rem 0.75rem;
   cursor: pointer;
+  border-radius: var(--chalk-radius-sm);
+  transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), box-shadow var(--chalk-dur-fast);
 }
 .chalk-presence-menu-item:hover {
   background: var(--chalk-bg-hover);
@@ -5346,9 +5369,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
 /* In light mode, the active-channel highlight in the sidebar is a
    subtle warm tint rather than the green-on-black we have in the
    dark theme. Done via opacity of the accent. */
-[data-theme="light"] .chalk-sidebar-item--active {
-  background: rgba(45, 110, 63, 0.10);
-}
 
 /* The presence trigger's hover state in 9.6j uses a bg-elev
    reference that works fine here -- no override needed. */
@@ -5548,15 +5568,16 @@ body.chalk-resizing-y .chalk-composer-resizer {
   --chalk-accent:       #00f0ff;
   --chalk-warn:         #ffcc00;
   --chalk-error:        #ff3060;
+  /* The selected row keeps the old magenta tint. The ring mixes from the
+     bright text color, not from the accent. */
+  --chalk-bg-selected:  #270931;
+  --chalk-border-strong: color-mix(in srgb, var(--chalk-fg-bright) 50%, var(--chalk-border));
 
   color-scheme: dark;
 }
 
 /* Active sidebar item: faint magenta wash instead of the default
    green tint. */
-[data-theme="cyberpunk"] .chalk-sidebar-item--active {
-  background: rgba(255, 46, 170, 0.12);
-}
 
 /* ============================================================
    Phase 9.7c: solarized-dark theme
@@ -5613,9 +5634,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 
 /* Active sidebar item: a low-opacity wash of solarized blue. */
-[data-theme="solarized-dark"] .chalk-sidebar-item--active {
-  background: rgba(38, 139, 210, 0.12);
-}
 
 /* ============================================================
    Phase 9.7c: picker swatches for new themes
@@ -6819,7 +6837,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.4rem 1rem;
+  padding: var(--chalk-s2) var(--chalk-s4);
+  border-radius: var(--chalk-radius-md);
+  transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), box-shadow var(--chalk-dur-fast);
 }
 .chalk-members-row:hover { background: var(--chalk-bg-hover); }
 .chalk-members-handle { color: var(--chalk-fg); }
@@ -8634,13 +8654,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius);
   cursor: pointer;
+  transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), border-color var(--chalk-dur-fast);
 }
 
 .chalk-voice-ctlbtn:hover,
 .chalk-call-rail-btn:hover {
   color: var(--chalk-fg-bright);
   border-color: var(--chalk-fg-muted);
-  background: var(--chalk-bg-elev-2);
+  background: var(--chalk-bg-hover);
 }
 
 /* Muted, deafened, camera-off: the state you can be caught out by, so it gets
@@ -8652,7 +8673,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 
 /* Live screen share -- also a state you can be caught out by. */
-.chalk-voice-ctlbtn.is-on {
+.chalk-voice-ctlbtn.is-on,
+.chalk-call-rail-btn.is-on {
   color: var(--chalk-warn);
   border-color: var(--chalk-warn);
 }
@@ -8797,11 +8819,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-family: inherit;
   font-size: var(--chalk-size-small);
   cursor: pointer;
+  transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), border-color var(--chalk-dur-fast);
 }
 .chalk-composer-tool:hover:not(:disabled) {
   color: var(--chalk-fg);
   border-color: var(--chalk-fg-muted);
-  background: var(--chalk-bg-elev);
+  background: var(--chalk-bg-hover);
 }
 .chalk-composer-tool:disabled {
   opacity: 0.45;
@@ -8894,9 +8917,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
   background: rgba(27, 30, 43, 0.42);
 }
 
-[data-theme="snazzy-light"] .chalk-sidebar-item--active {
-  background: rgba(181, 42, 133, 0.10);
-}
 
 /* ---- tokyo-night: the standard Tokyo Night palette. */
 [data-theme="tokyo-night"] {
@@ -8918,9 +8938,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color-scheme: dark;
 }
 
-[data-theme="tokyo-night"] .chalk-sidebar-item--active {
-  background: rgba(122, 162, 247, 0.14);
-}
 
 /* ============================================================
    lcars: Star Trek TNG-era display panel
@@ -8948,6 +8965,10 @@ body.chalk-resizing-y .chalk-composer-resizer {
   --chalk-accent:       #99ccff;
   --chalk-warn:         #ffcc66;
   --chalk-error:        #cc6666;
+  /* The selected row keeps the old orange tint. The ring mixes from the
+     bright text color, not from the accent. */
+  --chalk-bg-selected:  #291800;
+  --chalk-border-strong: color-mix(in srgb, var(--chalk-fg-bright) 50%, var(--chalk-border));
 
   /* LCARS panels are all rounded ends. The default radii of 4px to 8px
      would read as any other dark theme. */
@@ -8958,9 +8979,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color-scheme: dark;
 }
 
-[data-theme="lcars"] .chalk-sidebar-item--active {
-  background: rgba(255, 153, 0, 0.16);
-}
 
 /* Headers as LCARS labels: uppercase, wide tracking, orange. The base
    sheet lowercases modal titles, so this has to override explicitly. */
@@ -9033,13 +9051,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
   /* Pushed pink-ward so errors don't read as "just more emphasis"
      against a theme whose emphasis color is already red. */
   --chalk-error:        #ff7a8a;
+  /* The selected row keeps the old scarlet tint. The ring mixes from the
+     bright text color, not from the accent. */
+  --chalk-bg-selected:  #2c0c0d;
+  --chalk-border-strong: color-mix(in srgb, var(--chalk-fg-bright) 50%, var(--chalk-border));
 
   color-scheme: dark;
 }
 
-[data-theme="blade-runner"] .chalk-sidebar-item--active {
-  background: rgba(255, 47, 47, 0.14);
-}
 
 /* Neon bloom on the titles that carry the lead color. */
 [data-theme="blade-runner"] .chalk-modal-header h2,
@@ -9194,9 +9213,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color-scheme: dark;
 }
 
-[data-theme="azeroth"] .chalk-sidebar-item--active {
-  background: rgba(46, 221, 79, 0.12);
-}
 
 /* The gilded frame: bronze edge with a thin gold inner line. Two
    metals is what separates a game panel from a plain bordered box,
@@ -9246,9 +9262,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color-scheme: dark;
 }
 
-[data-theme="darkord"] .chalk-sidebar-item--active {
-  background: rgba(88, 101, 242, 0.18);
-}
 
 .chalk-profile-theme-swatch-preview--darkord {
   background: linear-gradient(135deg,
@@ -9281,15 +9294,17 @@ body.chalk-resizing-y .chalk-composer-resizer {
   --chalk-accent:       #64b4fa;
   --chalk-warn:         #fc9d03;
   --chalk-error:        #fc6b60;
+  /* The selected row is 14% white over the raised sidebar. The old white tint
+     over the black page matched the sidebar, so the fill vanished. The ring
+     mixes from the bright text color, not from the accent. */
+  --chalk-bg-selected:  #3a3a3a;
+  --chalk-border-strong: color-mix(in srgb, var(--chalk-fg-bright) 50%, var(--chalk-border));
 
   color-scheme: dark;
 }
 
 /* Active sidebar item: the source app highlights the selected
    conversation with a neutral grey pill, not an accent wash. */
-[data-theme="exchalk"] .chalk-sidebar-item--active {
-  background: rgba(255, 255, 255, 0.10);
-}
 
 .chalk-profile-theme-swatch-preview--exchalk {
   background: linear-gradient(135deg,
@@ -9344,9 +9359,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 
 /* VS Code highlights the active list row with a soft blue wash. */
-[data-theme="vscode-light"] .chalk-sidebar-item--active {
-  background: rgba(0, 122, 204, 0.12);
-}
 
 .chalk-profile-theme-swatch-preview--vscode-light {
   background: linear-gradient(135deg,
@@ -9387,9 +9399,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color-scheme: dark;
 }
 
-[data-theme="catppuccin-mocha"] .chalk-sidebar-item--active {
-  background: rgba(203, 166, 247, 0.14);
-}
 
 .chalk-profile-theme-swatch-preview--catppuccin-mocha {
   background: linear-gradient(135deg,
@@ -9448,9 +9457,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
   background: rgba(76, 79, 105, 0.42);
 }
 
-[data-theme="catppuccin-latte"] .chalk-sidebar-item--active {
-  background: rgba(27, 96, 234, 0.12);
-}
 
 .chalk-profile-theme-swatch-preview--catppuccin-latte {
   background: linear-gradient(135deg,
@@ -11090,6 +11096,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   text-align: left;
   padding: var(--chalk-s1) var(--chalk-s2);
   cursor: pointer;
+  border-radius: var(--chalk-radius-md);
+  transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), box-shadow var(--chalk-dur-fast);
 }
 
 .chalk-sidebar-threads:hover,
@@ -11635,6 +11643,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   text-align: left;
   padding: var(--chalk-s1) var(--chalk-s2);
   cursor: pointer;
+  border-radius: var(--chalk-radius-md);
+  transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast), box-shadow var(--chalk-dur-fast);
 }
 
 .chalk-sidebar-parking:hover,
@@ -11645,6 +11655,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-sidebar-parking--active {
   background: var(--chalk-bg-selected);
   color: var(--chalk-fg-bright);
+  box-shadow: inset 0 0 0 1px var(--chalk-border-strong);
 }
 
 .chalk-sidebar-parking-glyph {

@@ -1,6 +1,6 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** 133-1 to 133-3 built (2026-11-08). 133-4 to 133-7 planned.
+**Status:** 133-1 to 133-4 built (2026-11-08). 133-5 to 133-7 planned.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
 of the derived tokens. `web/src/theme-tokens.test.ts` tests two rules: every
 custom property the stylesheet reads is declared, and no `var()` carries a
@@ -205,19 +205,72 @@ on `#050805`, now equal the new default palette. The matrix flair frame keeps
 writes a fallback on a token that the sheet always declares and that no
 non-test `.ts` or `.tsx` file sets.
 
-### The interaction contract (133-4, planned)
+### The interaction contract (133-4)
 
-One rule set applies to every row-like control in the shell: the sidebar
-items, the group headers, the member rows, and the presence and status menu
-items. Each has a transparent 1px border, `--chalk-radius-md`, and a
-transition on `--chalk-dur-fast`. Hover uses `--chalk-bg-hover`. The active
-row uses `--chalk-bg-selected`, `--chalk-border-strong`, and
-`--chalk-fg-bright`. An unread row uses `--chalk-unread` and a heavier font.
+One look for hover, selected, unread, and keyboard focus applies across the
+shell. The derived tokens from 133-1 carry it.
 
-A global focus rule has zero specificity (`:where()`), so every existing
-per-selector focus rule still wins. It draws a 2px outline in `--chalk-focus`.
-The 15 per-theme blocks that tune the active row are deleted, and the derived
-token replaces them.
+The selected sidebar row is a filled row. It has `--chalk-bg-selected` as its
+fill and a 1px inset ring: `box-shadow: inset 0 0 0 1px
+var(--chalk-border-strong)`. The 2px left border is gone. The ring is an inset
+shadow and not a border, so no row changes height. Channel rows stay 32px and
+friend rows stay 26px (measured). The first plan was a transparent 1px border
+on every row. A border adds to the height, so it was rejected.
+
+These rules have `--chalk-radius-md` and a transition on background-color,
+color, and box-shadow at `--chalk-dur-fast`:
+
+- `.chalk-sidebar-item`
+- `.chalk-sidebar-threads`
+- `.chalk-sidebar-parking`, whose active state has the same ring
+- `.chalk-sidebar-group-header`, which is now inset like the rows and has a
+  `--chalk-bg-hover` hover
+- `.chalk-members-row`
+- The presence and status menu items, which have `--chalk-radius-sm`
+
+An unread channel name is `--chalk-fg-bright` at weight 700, so it stands out
+beside its envelope.
+
+The slice deleted 13 per-theme rules of the form `[data-theme="X"]
+.chalk-sidebar-item--active`. The plan said 15. The real number is 13. Nine
+tinted the row with the accent of the theme, and the derived
+`--chalk-bg-selected` does that now. Four tinted it with the emphasis color of
+the theme and not the accent. These are cyberpunk (magenta), lcars (orange),
+blade-runner (scarlet), and exchalk (white). Their palette blocks now override
+`--chalk-bg-selected` with a hex and `--chalk-border-strong` with a mix from
+`--chalk-fg-bright`. The hex values are `#270931`, `#291800`, `#2c0c0d`, and
+`#3a3a3a`. The palette test holds the hex values to the contrast floors. It
+reads only hex, so it does not test the `--chalk-border-strong` mixes.
+
+The exchalk value is a correction found in the browser. The first value was the
+old tint of 10% white over the black page. That color matched the raised
+sidebar `#1a1a1a`, so the selected fill vanished. The value `#3a3a3a` is 14%
+white over the sidebar.
+
+Other changes in this slice:
+
+- The transition at `--chalk-dur-fast` is on `.chalk-call-rail-btn`,
+  `.chalk-voice-ctlbtn`, `.chalk-composer-tool`, `.chalk-sidebar-new`, and
+  `.chalk-presence-trigger`.
+- The hover of the call-rail buttons and of the composer tools is
+  `--chalk-bg-hover`.
+- The sidebar "+" and the presence trigger have `--chalk-radius-sm`. The
+  trigger had a fixed 3px.
+- `.chalk-call-rail-btn.is-on` shares the rule of `.chalk-voice-ctlbtn.is-on`.
+  A live screen share on the rail has the warn color now.
+
+A global focus rule sits near the top of the sheet:
+`:where(button, a, input, textarea, select, summary, [tabindex]):focus-visible`.
+It draws a 2px outline in `--chalk-focus` with a 1px offset. `:where()` gives
+the selector no specificity of its own, and `:focus-visible` adds the
+specificity of one pseudo-class. Every per-selector focus rule therefore still
+wins. The rule covers controls that had no focus style, such as the composer
+tools, send, and the call-rail buttons. They used the browser default before.
+
+`.chalk-status-dot--connecting` pulsed with no reduced-motion guard. The guard
+now stands directly after that rule. It must stay after the rule. A media query
+adds no specificity, so a guard earlier in the sheet loses to the later
+animation rule. `theme-sidebar.test.ts` tests the order.
 
 ### Surfaces and spacing (133-3)
 
@@ -267,7 +320,7 @@ hover in these areas therefore uses `--chalk-bg-hover`. These are the sidebar
 rows, the "+" buttons, the threads and parking rows, the channel search and
 guests buttons, and the presence trigger. The selected channel row and the
 selected parking row use `--chalk-bg-selected`. The 2px left border of the
-selected row stays until 133-4.
+selected row stayed until 133-4.
 
 `.chalk-header`, `.chalk-header-left`, and `.chalk-channel-header` change
 `align-items` from `baseline` to `center`. The height of the header does not
@@ -344,10 +397,13 @@ animation.
   outlines of the sidebar "+" buttons and the bottom rule of the channel
   header vanish on the raised surfaces. The result reads acceptably. Decide in
   the theme sweep.
-- **133-4 — the interaction contract.** The contract, the global focus rule,
-  and the deleted per-theme blocks. A rule for `.chalk-call-rail-btn.is-on`
-  and a first rule for `.chalk-sidebar-item--unread`. A reduced-motion guard
-  for `.chalk-status-dot--connecting`. Planned.
+- **133-4 — the interaction contract.** The inset ring on the selected row,
+  the radius and transition on the row-like rules, the 13 deleted per-theme
+  rules, and the four emphasis overrides in cyberpunk, lcars, blade-runner,
+  and exchalk. The unread name, the `.chalk-call-rail-btn.is-on` rule, the
+  transition on five button rules, the global focus rule, and the
+  reduced-motion guard for `.chalk-status-dot--connecting`. Two tests in
+  `theme-sidebar.test.ts`. All in `theme.css`. Done.
 - **133-5 — the composer.** `Composer.tsx` and the composer rules in
   `theme.css`. Planned.
 - **133-6 — the empty states.** `MessageList.tsx`, `App.tsx`, and
@@ -359,9 +415,17 @@ animation.
 
 ## Left open
 
-- 133-4 to 133-7, as listed above.
+- 133-5 to 133-7, as listed above.
 
 ## Manual checklist
+
+Open after 133-4:
+
+- Press Tab through the sidebar, the channel header, and the composer in the
+  green theme and in a light theme. A ring must show on every control.
+- Select a channel in cyberpunk, lcars, blade-runner, and exchalk. The row
+  must keep its emphasis color, and the fill must show.
+- Share a screen during a call. The call-rail button must show the warn color.
 
 Open after 133-3:
 

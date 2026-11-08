@@ -186,3 +186,26 @@ test("a voice room with people in it shows a blinking red LIVE light (131-4, 131
   assert.ok(reduced, "reduced motion has a rule for the dot");
   assert.match(reduced[1], /animation:\s*none/, "reduced motion holds the dot steady");
 });
+
+test("the selected row is one rule on the derived tokens, with no per-theme copies", () => {
+  const active = block(".chalk-sidebar-item--active");
+  assert.match(active, /background:\s*var\(--chalk-bg-selected\)/, "the fill is the selected token");
+  assert.match(active, /box-shadow:\s*inset 0 0 0 1px var\(--chalk-border-strong\)/, "the edge is an inset ring");
+  assert.doesNotMatch(active, /border-left/, "the 2px left bar is gone");
+  assert.doesNotMatch(
+    css,
+    /\[data-theme="[\w-]+"\]\s*\.chalk-sidebar-item--active\s*\{/,
+    "a theme changes the selected row through --chalk-bg-selected in its palette block",
+  );
+});
+
+test("unread rows, a live share and keyboard focus each have a visible state", () => {
+  assert.match(block(".chalk-sidebar-item--unread .chalk-sidebar-item-name"), /font-weight:\s*700/);
+  const share = block(".chalk-voice-ctlbtn.is-on,\n.chalk-call-rail-btn.is-on");
+  assert.match(share, /color:\s*var\(--chalk-warn\)/, "screen share on the rail is marked like the dock");
+  const focus = block(":where(button, a, input, textarea, select, summary, [tabindex]):focus-visible");
+  assert.match(focus, /outline:\s*2px solid var\(--chalk-focus\)/);
+  // A media query adds no specificity, so the guard must follow the animation rule to win.
+  const guard = /\.chalk-status-dot--connecting \{[^}]*animation:\s*chalk-pulse[^}]*\}\s*@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*\.chalk-status-dot--connecting\s*\{\s*animation:\s*none/.exec(css);
+  assert.ok(guard, "the connecting pulse stops under reduced motion, in a rule after the animation");
+});
