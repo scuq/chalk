@@ -23,7 +23,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { voiceSession } from "../voice/session";
 import { fmtDuration } from "../voice/duration";
-import { ChannelGlyph } from "./Sidebar";
+import { ChannelGlyph } from "./icons";
 import { useVoiceSession } from "./VoiceDock";
 
 interface Props {

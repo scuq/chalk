@@ -1,6 +1,7 @@
 import type { ChannelKeyStatus } from "../crypto/channel-crypto";
 import { CURRENT_KEY_VERSION } from "../crypto/channel-crypto";
 import { describeSuites } from "../crypto/spacekey";
+import { LockIcon } from "./icons";
 
 /**
  * EncryptionIndicator -- a small inline lock in the channel header, with a
@@ -42,24 +43,7 @@ export function EncryptionIndicator({
       }}
       style={onClick ? "cursor: pointer" : undefined}
     >
-      <svg
-        width="13"
-        height="13"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-        {ready ? (
-          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-        ) : (
-          <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-        )}
-      </svg>
+      <LockIcon open={!ready} />
 
       <span class="chalk-enc-popover" role="tooltip">
         <span class="chalk-enc-pop-head">{headline}</span>

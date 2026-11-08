@@ -39,7 +39,7 @@ import {
   type Boost,
 } from "../voice/boost"; // 119-1
 import { fmtDuration } from "../voice/duration"; // 126-2: shared with ZuckerCallBar
-import { ChannelGlyph } from "./Sidebar";
+import { ChannelGlyph } from "./icons";
 
 /** useVoiceSession: subscribe a component to the session store. */
 export function useVoiceSession(): VoiceSessionSnap {

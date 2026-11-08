@@ -1,3 +1,5 @@
+import { BallotIcon, CrownIcon } from "./icons";
+
 /**
  * ModeBadge -- a small inline glyph in the channel header showing the
  * channel's governance mode (gov-2):
@@ -5,7 +7,9 @@
  *   dictator   -> crown.       "owner acts unilaterally"
  *   democratic -> ballot box.  "actions decided by a member vote"
  *
- * Glyphs are the spec-approved 16x16 paths (fill none, stroke currentColor).
+ * The glyphs are CrownIcon and BallotIcon from icons.tsx. They share the
+ * 24-unit grid and the stroke of every other icon. The badge takes the accent
+ * color in both modes.
  * Presentational only; the mode is sourced from the channel summary.
  */
 export function ModeBadge({ mode, onClick }: { mode: string; onClick?: () => void }) {
@@ -32,30 +36,7 @@ export function ModeBadge({ mode, onClick }: { mode: string; onClick?: () => voi
       }}
       style={onClick ? "cursor: pointer" : undefined}
     >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 18 18"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        {democratic ? (
-          <>
-            <path d="M2 9 L2 15 L16 15 L16 9" />
-            <path d="M1 6 L9 3 L17 6 L9 9 Z" />
-            <line x1="9" y1="9" x2="9" y2="12" />
-          </>
-        ) : (
-          <>
-            <path d="M2 13 L2 6 L6 9 L9 3 L12 9 L16 6 L16 13 Z" />
-            <line x1="2" y1="15.5" x2="16" y2="15.5" />
-          </>
-        )}
-      </svg>
+      {democratic ? <BallotIcon /> : <CrownIcon />}
     </span>
   );
 }

@@ -13,6 +13,7 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Changed
+- The icons in the sidebar and in the channel header now share one style, size, and line weight. This includes the text channel, voice room, parking lot, lock, and the crown and ballot box of the channel mode. The crown and the ballot box use the accent color of your theme. The text and voice icons use one color.
 - In a voice room, an empty scratchpad now shows a short explanation. Once it has text, a one-line reminder replaces the paragraph that was always there. The marks for muted, deafened, camera on, and sharing a screen on people are now icons.
 - In a voice room, people without a camera now show as compact cards with their picture, name, and volume. Before, they showed as large empty video boxes. Cameras show as video tiles above the cards, and a screen share still takes the main area.
 - In a voice room, every participant stays visible at any window size. Before, tiles and cards could be cut off. The camera tiles shrink to leave room for the cards and the scratchpad. Small tiles keep the name. The scratchpad reminder shares the row of the call controls.

@@ -214,7 +214,8 @@ import {
 import { Logo } from "./Logo";
 import { VersionLink } from "./VersionLink";
 import { StatusBar } from "./StatusBar";
-import { Sidebar, ChannelGlyph } from "./Sidebar";
+import { Sidebar } from "./Sidebar";
+import { ChannelGlyph } from "./icons";
 // 62-6: Zuckermode -- the phone's unified conversation list.
 import { ZuckerList } from "./ZuckerList";
 import {

@@ -26,7 +26,8 @@ import { formatCountdown, countdownUrgent } from "../chat/countdown";
 import { UnreadDot } from "./UnreadDot";
 import { Flame } from "./Flame"; // 115-2
 import { WaveName } from "./WaveName"; // 115-3
-import { CamIcon, ChannelGlyph, MicOffIcon, ScreenIcon } from "./Sidebar";
+import { CamIcon, MicOffIcon, ScreenIcon } from "./Sidebar";
+import { ChannelGlyph } from "./icons";
 import { presenceClass, presenceLabel } from "../chat/presence";
 
 interface Props {

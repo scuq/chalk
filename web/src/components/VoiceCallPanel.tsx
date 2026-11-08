@@ -39,7 +39,7 @@ import {
   type VoiceSessionSnap,
 } from "../voice/session";
 import { useVoiceSession } from "./VoiceDock";
-import { ChannelGlyph } from "./Sidebar";
+import { ChannelGlyph } from "./icons";
 import type { VoiceSessionDiagnostics } from "../voice/session";
 import { useNetPrefs } from "../voice/net-prefs";
 import { MAX_PEER_VOLUME } from "../voice/boost"; // 119-1

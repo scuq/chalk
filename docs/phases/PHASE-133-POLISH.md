@@ -1,9 +1,10 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** built, 133-1 to 133-12 (2026-11-08).
+**Status:** built, 133-1 to 133-13 (2026-11-08).
 133-7 changed no code. The phase closed at 133-7 and was reopened for the voice
 room. See "The voice room" below. After the owner watched a live demo, the
-phase was reopened once more for 133-12.
+phase was reopened once more for 133-12. The owner then sent an icon sheet,
+and the phase was reopened for 133-13, the icons.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
 of the derived tokens. `web/src/theme-tokens.test.ts` tests two rules: every
 custom property the stylesheet reads is declared, and no `var()` carries a
@@ -771,6 +772,58 @@ with a test for the measured height. It also checks that no `100dvh - NNNpx`
 reserve remains and that the caption sits in the bar. A second new test covers
 the container rule for small tiles.
 
+### One icon family (133-13)
+
+The icons of the sidebar and of the channel header did not match. Their sizes
+were 12px, 13px, and 14px. Their strokes were 1.5, 2, and 2.2. The governance
+badges used a viewBox of 18 units, and the other icons used 24. No shared
+module existed: each icon was inline SVG in the file that used it.
+
+The owner sent an icon sheet. The shapes of the text, voice, lock, and crown
+icons come from that sheet.
+
+The slice added `web/src/components/icons.tsx`. It holds a private base
+`Icon` with a viewBox of 24 by 24, a stroke of 2, round caps and joins, and
+`currentColor`. With a label, the icon is an image with an `aria-label`.
+Without a label, it is hidden from a screen reader. Its class is `chalk-icon`.
+The module exports these icons:
+
+- `ChannelGlyph`: a speech bubble for text and a speaker with two waves for
+  voice. Both are 14px, not 13px. The stroke of the voice icon was 2.2.
+- `ParkingIcon`: the paths did not change. It is 14px, not 13px.
+- `LockIcon`: 12px, not 13px. The shackle is closed when the key is ready
+  and open when the key is pending.
+- `CrownIcon`: 14px, for a channel in dictator mode.
+- `BallotIcon`: 14px, for a channel in democratic mode. The old paths of the
+  18-unit grid are redrawn on the 24 grid. The old stroke of 1.5 is now 2 in
+  equivalent size.
+
+`ChannelGlyph` and `ParkingIcon` moved out of `Sidebar.tsx`. `ModeBadge.tsx`
+and `EncryptionIndicator.tsx` use the shared icons, and no file of these
+places draws an inline SVG. The class `.chalk-chglyph-svg` is now
+`.chalk-icon`.
+
+The voice-status badges in `VoiceBadges.tsx` and the `Glyph` of
+`VoiceControls` did not move. They are status icons and not navigation. This
+was the choice of the owner.
+
+The owner made three decisions:
+
+- The crown takes the accent color, not gold. `--chalk-warn` stays for
+  warnings. Both governance badges now use `--chalk-accent`, and the rule
+  `.chalk-mode-badge.chalk-mode-democratic` is deleted.
+- Text and voice glyphs both use `--chalk-fg-dim`. The color `--chalk-fg-muted`
+  is `#3c6b52` and is near the 3:1 floor for graphics on the sidebar. The
+  color rule of `.chalk-chglyph--voice` is deleted. The class stays in the
+  markup as a hook.
+- The lock stays the encryption indicator and the crown stays the governance
+  badge. chalk has no private-channel concept, so these icons do not show
+  privacy.
+
+`web/src/theme-icons.test.ts` tests that the module has one viewBox and one
+stroke width, that the sidebar and the header badges draw no inline SVG, and
+that the colors follow the decisions above.
+
 ## What was rejected
 
 - Floating card panels. The sticky header, the season canvas, the drawer, and
@@ -788,6 +841,9 @@ the container rule for small tiles.
 - A separate theme for the new green. The review palette replaces the default
   green.
 - A 4.5:1 floor for the hover surface. See the contrast floors above.
+- A gold crown. The accent color is used, and `--chalk-warn` stays for
+  warnings.
+- A lock for a private channel. chalk has no private-channel concept.
 
 ## The slices
 
@@ -868,6 +924,11 @@ and the test cover it.
   in the call bar. `VoiceCallPanel.tsx`, `theme.css`, and two tests in
   `theme-voice-pane.test.ts`. Done. See "Every participant stays visible
   (133-12)".
+- **133-13 — one icon family.** The shared module `icons.tsx` with the text,
+  voice, parking, lock, crown, and ballot icons. `Sidebar.tsx`,
+  `ModeBadge.tsx`, and `EncryptionIndicator.tsx` use it. Text and voice share
+  `--chalk-fg-dim`, and both governance badges take the accent. `theme.css`
+  and the new `theme-icons.test.ts`. Done. See "One icon family (133-13)".
 
 ## Left open
 
@@ -890,6 +951,18 @@ The 133-7 sweep looked at the empty channel, the selected row, the unread
 channel, and the filled send in 15 themes at 1280 by 800. The sweep did not
 open the checklist items below, except where an item names an empty channel
 or a selected row in a theme that the sweep covered.
+
+Open after 133-13:
+
+- Open the sidebar and a channel header. The text, voice, and parking lot
+  glyphs must line up with the names in every row.
+- Select a text channel and a voice channel. The glyph of the selected row
+  must be bright.
+- Look at the lock in the channel header with the key ready and with the key
+  pending. It must be readable at 12px in both states.
+- Open a channel in dictator mode. The crown must show in the accent color.
+- Look at the glyphs in the green theme, in a light theme, in the warmwhite dark
+  rail, and in lcars.
 
 Open after 133-9:
 
