@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a scene for the season
 
-**Status:** in progress. Built: 129-1 – 129-19. Open: 129-20 and later. They tune the eight keys that have rows, one key in each slice, in this order: late-autumn, winterfest, new-year, spring-bloom, green-season, midsummer, harvest-festival, spooky-season. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 shipped in v0.10.0. 129-15 and later are not yet in a release. 129-8 to 129-10 land together.
+**Status:** in progress. Built: 129-1 – 129-20. Open: 129-21 and later. They tune the seven keys that have rows, one key in each slice, in this order: late-autumn, winterfest, spring-bloom, green-season, midsummer, harvest-festival, spooky-season. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 shipped in v0.10.0. 129-15 and later are not yet in a release. 129-8 to 129-10 land together.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -21,7 +21,9 @@ each season. 129-15 made a visit hold one scene. 129-16 gave the neutral scene
 its own windows in the day. 129-18 replaced the five neutral rows with ten
 scripted scenes that are nods to films and series. 129-19 added the
 `christmas` key: it shows seven scripted scenes from 1 to 26 December, and it
-changed the calendar around the turn of the year.
+changed the calendar around the turn of the year. 129-20 replaced the five
+New Year rows with seven scripted scenes: six nods to films, series, and a
+game, and one plain fireworks show.
 
 ## The design
 
@@ -106,7 +108,9 @@ a row for zuckermode, see "The mount"), and the device switch and the server
 switch turn it off. With reduced motion the scene holds one frame
 for the hours. Both windows fall on dates that have a row, so they show the
 scenes of a season. The first window falls in the `christmas` key, so it rotates
-through the seven Christmas scripts. The neutral scenes do not occur in them.
+through the seven Christmas scripts. The second window falls in the `new-year`
+key, so it rotates through the seven New Year scripts. The neutral scenes do
+not occur in them.
 
 The list is separate from the rows on purpose. The second window crosses from
 the 31 December row into the 1 January row. A field on a row would need two
@@ -171,15 +175,17 @@ it on unmount.
 variety. It exports these names:
 
 - `SCENES`, a table from a `RowKey` to five `SceneRow` values, so there are
-  40 rows. `SceneKey` is a `SeasonId` or `"neutral"`, so there are ten keys.
-  A `ScriptKey` is a key that runs scripts: `"neutral"` and `"christmas"`.
-  A `RowKey` is a `SceneKey` that is not a `ScriptKey`, so there are eight.
-  A `ScriptKey` has no rows. `"neutral"` has the ten scripts of `OFFSEASON`
-  (129-18), and `"christmas"` has the seven scripts of `CHRISTMAS` (129-19).
-  So there are 57 scenes.
+  35 rows. `SceneKey` is a `SeasonId` or `"neutral"`, so there are ten keys.
+  A `ScriptKey` is a key that runs scripts: `"neutral"`, `"christmas"`, and
+  `"new-year"`. A `RowKey` is a `SceneKey` that is not a `ScriptKey`, so there
+  are seven. A `ScriptKey` has no rows. `"neutral"` has the ten scripts of
+  `OFFSEASON` (129-18), `"christmas"` has the seven scripts of `CHRISTMAS`
+  (129-19), and `"new-year"` has the seven scripts of `NEWYEAR` (129-20).
+  So there are 59 scenes.
 - `SCENES_PER_KEY` (5), `SCENE_SECONDS` (35), and `FADE_SECONDS` (0.7).
-- `sceneCount(key)` returns 10 for `"neutral"`, 7 for `"christmas"`, and
-  `SCENES_PER_KEY` for any other key (129-18, 129-19). `isScripted(key)` reports
+- `sceneCount(key)` returns 10 for `"neutral"`, 7 for `"christmas"` and
+  `"new-year"`, and `SCENES_PER_KEY` for any other key (129-18, 129-19,
+  129-20). `isScripted(key)` reports
   whether `key` is a `ScriptKey` (129-19).
 - `holdStill(scene)` moves a scene with a script to the still time of its
   script, for reduced motion (129-18).
@@ -218,11 +224,11 @@ source. Each effect takes its places from a hash of an index and from the time
 of the scene. So a test uses a fake `Painter` and gets the same picture each
 time. `PALETTES` gives each key an earth colour and an edge colour.
 
-The 57 scenes:
+The 59 scenes:
 
 | Key | Scenes |
 |---|---|
-| `new-year` | Midnight Skyline, Rooftop Countdown, Harbor Lights, Town Celebration, First Sunrise |
+| `new-year` | Year 3000, The Statue Walks, Y2K, The Gate at Midnight, The Wrong Year, Thumb against the Cloud, Fireworks over the River |
 | `winterfest` | Snowy Pines, Cabin Smoke, Frozen Lake, Aurora Ridge, Lantern Walk |
 | `christmas` | Party at the Tower, The House with the Traps, Gremlins in the Tree, Robot Santa, The Light Show, The Ornament, The Ribbon at Christmas |
 | `spring-bloom` | Cherry Blossom, Rain Garden, Pond Hopping, Flower Trail, Butterfly Orchard |
@@ -256,7 +262,8 @@ of the visit.
 #### The random start
 
 In the always-on hours, `SeasonScene` passes a random index to `createScene`,
-and the scene rotates through all five rows.
+and the scene rotates through all the scenes of the key: five rows, or the
+scripts of a `ScriptKey`.
 
 For a visit, 129-15 replaced the random index with `nextRow` in `visits.ts`.
 `nextRow(key, count)` returns a row index for the visit and records it in
@@ -303,23 +310,26 @@ The scene differs from the supplied engine on purpose:
 - `CANOPY` gives each key a color for the background trees. The background
   trees of a Spring Bloom orchard are pink. `isLeafless` is true in Spooky
   Season and Late Autumn, and the background trees there are bare. `isSnowy`
-  is true in Winterfest and New Year, and roofs and treetops carry snow.
+  is true in Winterfest and New Year, and roofs and treetops carry snow. Since
+  129-20 the `new-year` key runs scripts, so only the rows of Winterfest reach
+  this test.
 - A lake is frozen in Winterfest: pale ice with still lines. Other water
   drifts. A low sun shows on water as orange lines.
 - The props `bridge` (at the obstacle slot in Bridge Walk) and `lilypad` are
-  new. 129-18 removed Bridge Walk, so no row uses `bridge` now. It stays in
-  the set of props. A cabin has a chimney with smoke. A campfire flickers and smokes, a
+  new. 129-18 removed Bridge Walk, so no row uses `bridge` now. 129-20 left
+  seven more props with no row: `barrel`, `boat`, `clock`, `flag`, `gift`,
+  `lamp`, and `tower`. All eight stay in the set of props. A cabin has a chimney with smoke. A campfire flickers and smokes, a
   windmill turns, a lantern and a pumpkin flicker, and the windows of the
   manor flicker. This closed the gap that Cabin Smoke had no smoke and Bridge
   Walk had no bridge.
-- Some scenes changed to fit their season. First Sunrise has clouds and a low
-  sun. Fern Garden has butterflies. Village Market and Lantern Path have
+- Some scenes changed to fit their season. Fern Garden has butterflies. Village Market and Lantern Path have
   leaves. Frozen Lake casts a rabbit, and Festival Lanterns casts a cat. Pond
   Hopping and Lakeside Sunset have a lilypad.
 
-`web/src/season/scene.test.ts` uses a fake `Painter`. It checks the table (eight
-keys with five rows each, ten neutral scripts, seven Christmas scripts, 57
-distinct names, and the same ids as `SEASONS` in `SCENES`, except `christmas`), that every scene of a season draws whole pixels with no
+`web/src/season/scene.test.ts` uses a fake `Painter`. It checks the table (seven
+keys with five rows each, ten neutral scripts, seven Christmas scripts, seven
+New Year scripts, 59 distinct names, and the same ids as `SEASONS` in `SCENES`,
+except `christmas` and `new-year`), that every scene of a season draws whole pixels with no
 rectangle as wide as the strip, that each prop paints something, the rotation
 and its wrap, the fade, a start index outside the range, the walkers and the
 jump, a ghost that does not jump, and that a resize and a very narrow strip do
@@ -444,6 +454,37 @@ scene shows no face.
 
 `PALETTES` and `CANOPY` have an entry for `christmas`, because their `Record`
 type needs every `SceneKey`. A script never reads them, as for `"neutral"`.
+
+#### The New Year scripts (129-20)
+
+The `"new-year"` key runs scripts too. `web/src/season/newyear.ts` holds the
+seven scripts in `NEWYEAR`, and `SCRIPTED` and `isScripted` in `scene.ts` list
+the key. The key runs on 31 December and 1 January. In the always-on hours, from
+20:00 on 31 December to 05:00 on 1 January, it rotates through all seven.
+
+Six scripts are nods to a film, a series episode, or a game, and a person knows
+each one by one famous moment. The seventh is a plain fireworks show with no
+nod. The rules of the Christmas scripts hold: no title, no logo, no show
+lettering, no likeness of an actor, and the `CHALK` sign as the only text. The
+one exception is the years and the clock digits where they are the moment. Each
+character is generic: a man in a red jacket, a man in a white shirt, a green
+statue with a torch, and a figure in a blue jumpsuit. No script draws a mascot
+or a character of a show.
+
+| Script | Nod | Text on show |
+|---|---|---|
+| Year 3000 | Futurama | 1999 runs to 3000 |
+| The Statue Walks | Ghostbusters II | none |
+| Y2K | The Simpsons | 1999, 2000, and 1900 |
+| The Gate at Midnight | Star Trek: Voyager | 23:59, 00:00, and a countdown digit |
+| The Wrong Year | Seinfeld | 2000 and 2001 |
+| Thumb against the Cloud | Fallout, a game | none |
+| Fireworks over the River | none | none |
+
+`PALETTES` and `CANOPY` keep an entry for `"new-year"` for the same reason as
+for `"christmas"`. Eight props are in no row now: `barrel`, `boat`, `bridge`, `clock`, `flag`,
+`gift`, `lamp`, and `tower`. The props stay in the vocabulary for later tuning, and the prop test still checks
+that each one paints something.
 
 ### The component
 
@@ -763,6 +804,19 @@ Lettering, logos, and faces from the reference mock-ups of the Christmas scenes
 (129-19). The mock-ups had a lettered van, a company logo on a tower, and the
 face of a character. The scenes leave them out, by the same rules as 129-18.
 
+The five walker rows for New Year (129-20). Midnight Skyline, Rooftop
+Countdown, Harbor Lights, Town Celebration, and First Sunrise had no famous
+moment. The user chose scripted nods, as for Christmas, from an animated
+mock-up page. The slice removes the rows.
+
+Titles and show lettering on the New Year scenes (129-20). The user wants each
+scene to speak for itself, as in 129-18. The years and clock digits are the
+only added text, because they are the moment.
+
+A likeness of a mascot or of a character (129-20). The rules of 129-18 and
+129-19 hold. The scenes use a generic figure: a man in a red jacket, a man in a
+white shirt, and a figure in a blue jumpsuit.
+
 An earlier set of candidates for the neutral scenes (129-18). The review
 replaced the candidates Jaws, E.T., and an alphabet wall with Lost, Stargate,
 and the shadow-monster scene of Stranger Things.
@@ -967,9 +1021,27 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
   scripts and holds one through a visit. Text in `CHANGELOG.md` and
   `whats-new.ts`.
 
-- **129-20 and later — tune the scenes (planned, not started).** One key for
-  each slice, in this order: late-autumn, winterfest, new-year, spring-bloom,
-  green-season, midsummer, harvest-festival, spooky-season. These are the eight
+- **129-20 — New Year scripts (built).** The problem: the `new-year` key showed
+  five walker rows with no famous moment. The user wanted nods, as for
+  Christmas. The design: `newyear.ts` has the seven scripts in `NEWYEAR` (see
+  "The New Year scripts"), and the user chose them on an animated mock-up page.
+  The slice removes the five rows. `SCRIPTED` has `"new-year"`, `isScripted` lists it,
+  and `SCENES` has seven keys. There are 59 scenes. Eight props, `barrel`,
+  `boat`, `bridge`, `clock`, `flag`, `gift`, `lamp`, and `tower`, are in no row.
+  They stay in the vocabulary. The always-on hours of 31 December rotate through
+  the seven scripts. In `ui-sweep.mjs`, `sceneNames` also reads `newyear.ts`.
+  Rejected: the walker rows for New Year, titles and show lettering, and a
+  likeness of a mascot or a character (see "What was rejected"). Tests in
+  `scene.test.ts`: the table has 59 scenes, the script tests run over all three
+  sets of scripts, and a `new-year` scene runs its scripts and holds one through
+  a visit. The prop test checks the eight props that no row uses. The First
+  Sunrise check and the cast check of `new-year` are gone, because the rows are
+  gone. The budget test found a negative stem height in Thumb against the
+  Cloud, and a clamp fixed it. Text in `CHANGELOG.md` and `whats-new.ts`.
+
+- **129-21 and later — tune the scenes (planned, not started).** One key for
+  each slice, in this order: late-autumn, winterfest, spring-bloom,
+  green-season, midsummer, harvest-festival, spooky-season. These are the seven
   keys that have rows.
 
 ## Trade-offs
@@ -1014,8 +1086,8 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
 14. When the row opens or closes, the rows below it move by 48 px over 1.2 s.
     A tap in that moment can land on a different row. This is the accepted cost
     of a row that goes away.
-15. A visit shows one scene of the five, of the seven for christmas, or of the
-    ten for neutral (129-15, 129-19). The row differs from the row
+15. A visit shows one scene of the five, of the seven for christmas and
+    new-year, or of the ten for neutral (129-15, 129-19, 129-20). The row differs from the row
     of the last visit of the same key, so each scene shows over many visits.
     Only the always-on hours walk all five in one run.
 16. The sign of the title covers the middle of the strip, about 105 scene
@@ -1028,7 +1100,7 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
     local day, like the cap.
 18. A neutral script is opaque (129-18). It paints its own background, so it
     does not blend with a theme as the see-through rows do. This is a deliberate
-    change.
+    change. The scripts of `christmas` and `new-year` are opaque too.
 
 ## Verification
 
@@ -1107,7 +1179,8 @@ no season and shows the neutral scenes (see item 13).
 12. Set the system date to each date in the list below. Check that
     `data-season` on the canvas is the key of the season, and that the scene is
     one of the five scenes of the key (see the table in "The scene"):
-    - 1 January and 31 December: `new-year`
+    - 1 January and 31 December: `new-year`, one of the seven New Year scenes
+      (129-20)
     - 15 January: `winterfest`
     - 10 April: `spring-bloom`
     - 10 May: `green-season`
@@ -1195,6 +1268,13 @@ no season and shows the neutral scenes (see item 13).
     stays clear of the picture. Check this on a dark theme and on a light theme.
 43. Emulate reduced motion on a neutral date. Check that a script holds its
     still frame, and that the frame shows the moment of the script.
+44. Set the system date to 31 December. Watch each of the seven New Year
+    scripts (the demo in the `ui-sweep` skill shows one by name). Check that
+    the strip is opaque, and that the only text is the `CHALK` sign and the
+    years and clock digits of the scripts. Check that no script shows a title,
+    a logo, or a face. Check this on a dark theme and on a light theme.
+45. Emulate reduced motion on 31 December. Check that a script holds its still
+    frame, and that the frame shows the moment of the script.
 
 ## How to add a season
 
@@ -1219,11 +1299,12 @@ no season and shows the neutral scenes (see item 13).
 `seasons.test.ts` checks that no day falls in two rows and that each gap is a
 date in no row.
 `scene.test.ts` checks that `SCENES` and `SEASONS` list the same ids, and that
-each key of `SCENES` has five rows. The `"neutral"` and `"christmas"` keys are
-not in `SCENES`. They use the scripts of `OFFSEASON` (129-18) and `CHRISTMAS`
-(129-19).
+each key of `SCENES` has five rows. The `"neutral"`, `"christmas"`, and
+`"new-year"` keys are not in `SCENES`. They use the scripts of `OFFSEASON`
+(129-18), `CHRISTMAS` (129-19), and `NEWYEAR` (129-20).
 
-A key can run scripts and not rows, as `"neutral"` and `"christmas"` do (129-19).
+A key can run scripts and not rows, as `"neutral"`, `"christmas"`, and
+`"new-year"` do (129-19, 129-20).
 For such a key, add the scripts to a file next to `christmas.ts`, import the
 shared parts from `strip.ts`, add the key to `SCRIPTED` in `scene.ts`, and add
 the key to `PALETTES` and `CANOPY`. A script never reads those two entries, but

@@ -87,7 +87,8 @@
 // the scene for --scene-secs seconds with a corner tag. Without --scene, the
 // targets are the scenes of the key, in table order: the five rows in
 // web/src/season/scene.ts, the ten scripts in web/src/season/offseason.ts for
-// neutral, or the seven scripts in web/src/season/christmas.ts for christmas.
+// neutral, the seven scripts in web/src/season/christmas.ts for christmas, or
+// the seven scripts in web/src/season/newyear.ts for new-year.
 // For each target, the script prints
 // "SCENE <key>: <name>" on standard output, with "(wanted X)" if it gave
 // up. A visit lasts 45 s to 75 s. A value of --scene-secs above 45 can let
@@ -241,10 +242,11 @@ const SEASON_DATES = {
   'spooky-season': [2026, 9, 20, 13],
 };
 // Returns the scene names of the key, in table order. The names of neutral come
-// from offseason.ts, and the names of christmas come from christmas.ts. The
-// other names come from the rows in scene.ts.
+// from offseason.ts, the names of christmas come from christmas.ts, and the
+// names of new-year come from newyear.ts. The other names come from the rows in
+// scene.ts.
 function sceneNames(key) {
-  const scripted = { neutral: ['offseason.ts', 'OFFSEASON'], christmas: ['christmas.ts', 'CHRISTMAS'] }[key];
+  const scripted = { neutral: ['offseason.ts', 'OFFSEASON'], christmas: ['christmas.ts', 'CHRISTMAS'], 'new-year': ['newyear.ts', 'NEWYEAR'] }[key];
   if (scripted) {
     const off = readFileSync(new URL(`../../../web/src/season/${scripted[0]}`, import.meta.url), 'utf8');
     const list = off.slice(off.indexOf(`export const ${scripted[1]}`));

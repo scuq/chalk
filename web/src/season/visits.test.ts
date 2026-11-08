@@ -93,7 +93,7 @@ test("129-15: a corrupt last row lets any row come", () => {
 
 test("129-16: a neutral claim keeps the season log and the windows hold across pages", () => {
   const items = fakeStorage(JSON.stringify({ day: "", count: 0, nextAt: 0 }));
-  const morning = new Date(2026, 10, 10, 11, 58).getTime();
+  const morning = new Date(2026, 10, 10, 11, 58, 50).getTime(); // after the latest morning target, 11:58:45
   assert.equal(takeVisit(morning, true), true);
   assert.equal(takeVisit(morning + 1, true), false);
   assert.equal(JSON.parse(items.get(KEY)!).count, 0);

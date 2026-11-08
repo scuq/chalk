@@ -2,15 +2,17 @@
 // neutral key. 129-13: the title of the season on a small sign. 129-14: a
 // higher sign, a sky for each row, and the details of each season. 129-15: a
 // visit holds one row. 129-18: the neutral key has ten scripts and no rows.
-// 129-19: the christmas key has seven scripts and no rows.
+// 129-19: the christmas key has seven scripts and no rows. 129-20: the new-year
+// key has seven scripts and no rows.
 //
 // This module draws a small pixel scene and moves it. There are ten keys: the
 // nine season ids of seasons.ts, and "neutral" for a date in no season. SCENES
-// holds the eight keys that have rows. Each of them has five rows
-// (SCENES_PER_KEY), so there are 40 rows. A row names an environment, an
-// effect, four props, and two cast members. Two keys have scripts and no rows:
-// "neutral" has the ten scripts of OFFSEASON (offseason.ts), and "christmas"
-// has the seven scripts of CHRISTMAS (christmas.ts). So there are 57 scenes.
+// holds the seven keys that have rows. Each of them has five rows
+// (SCENES_PER_KEY), so there are 35 rows. A row names an environment, an
+// effect, four props, and two cast members. Three keys have scripts and no
+// rows: "neutral" has the ten scripts of OFFSEASON (offseason.ts), "christmas"
+// has the seven scripts of CHRISTMAS (christmas.ts), and "new-year" has the
+// seven scripts of NEWYEAR (newyear.ts). So there are 59 scenes.
 // A script draws its own opaque strip, and it does not use the fields of a
 // row. The rows stay see-through.
 // A scene shows its row or its script. A scene that rotates (rotate is true)
@@ -43,6 +45,7 @@
 //   - A scene fades to transparent, not to black.
 
 import { CHRISTMAS } from "./christmas";
+import { NEWYEAR } from "./newyear";
 import { OFFSEASON } from "./offseason";
 import { STRIP_H, type Script } from "./strip";
 import type { SeasonId } from "./seasons";
@@ -71,15 +74,17 @@ export const SCENES_PER_KEY = 5;
 
 /**
  * sceneCount returns the number of scenes of key: the number of scripts for a
- * key that runs scripts ("neutral" and "christmas"), and SCENES_PER_KEY for
+ * key that runs scripts ("neutral", "christmas", and "new-year"), and
+ * SCENES_PER_KEY for
  * any other key.
  */
 export function sceneCount(key: SceneKey): number {
   return isScripted(key) ? SCRIPTED[key].length : SCENES_PER_KEY;
 }
 
-// The scripts of each key that runs scripts in place of rows.
-const SCRIPTED = { neutral: OFFSEASON, christmas: CHRISTMAS };
+// The scripts of each key that runs scripts in place of rows. isScripted must
+// list the same keys.
+const SCRIPTED = { neutral: OFFSEASON, christmas: CHRISTMAS, "new-year": NEWYEAR };
 
 /** A ScriptKey is a key that runs scripts and has no rows in SCENES. */
 export type ScriptKey = keyof typeof SCRIPTED;
@@ -89,7 +94,7 @@ export type RowKey = Exclude<SceneKey, ScriptKey>;
 
 /** isScripted reports whether key runs scripts instead of rows. */
 export function isScripted(key: SceneKey): key is ScriptKey {
-  return key === "neutral" || key === "christmas";
+  return key === "neutral" || key === "christmas" || key === "new-year";
 }
 
 // The downward pull on a jump, and the upward speed at the start of a jump, in
@@ -99,9 +104,9 @@ const JUMP = 40;
 
 /**
  * A SceneKey names a set of scenes: a season id or "neutral". A key has five
- * rows in SCENES, except "christmas", which has the seven scripts of CHRISTMAS,
- * and "neutral", for a date in no season, which has the ten scripts of
- * OFFSEASON.
+ * rows in SCENES, except three keys that have scripts. "christmas" has the seven
+ * scripts of CHRISTMAS, and "new-year" has the seven scripts of NEWYEAR.
+ * "neutral", for a date in no season, has the ten scripts of OFFSEASON.
  */
 export type SceneKey = SeasonId | "neutral";
 
@@ -226,17 +231,10 @@ function row(
 
 /**
  * SCENES holds the rows of each RowKey, in the order of rotation. Each key has
- * SCENES_PER_KEY rows. The "neutral" and "christmas" keys have no rows. They
- * use the scripts of OFFSEASON and CHRISTMAS.
+ * SCENES_PER_KEY rows. The "neutral", "christmas", and "new-year" keys have no
+ * rows. They use the scripts of OFFSEASON, CHRISTMAS, and NEWYEAR.
  */
 export const SCENES: Record<RowKey, SceneRow[]> = {
-  "new-year": [
-    row("Midnight Skyline", "city", "fireworks", ["tower", "crate", "barrel", "lamp"], ["person", "cat"], "stars"),
-    row("Rooftop Countdown", "city", "confetti", ["clock", "crate", "gift", "flag"], ["person", "fox"], "stars"),
-    row("Harbor Lights", "lake", "fireworks", ["boat", "barrel", "crate", "lamp"], ["person", "cat"], "stars"),
-    row("Town Celebration", "town", "confetti", ["house", "gift", "crate", "lantern"], ["person", "rabbit"], "stars"),
-    row("First Sunrise", "hills", "clouds", ["tree", "stone", "log", "flag"], ["fox", "person"], "low-sun"),
-  ],
   winterfest: [
     row("Snowy Pines", "forest", "snow", ["pine", "snowball", "log", "pine"], ["penguin", "fox"]),
     row("Cabin Smoke", "town", "snow", ["cabin", "snowball", "stump", "pine"], ["fox", "rabbit"], "stars"),
@@ -299,6 +297,8 @@ const PALETTES: Record<SceneKey, {
   ink: string;
   panel: string;
 }> = {
+  // Rows never read this entry, because "new-year" runs scripts. The Record
+  // type needs it.
   "new-year": {
     earth: "#29344d",
     edge: "#576d95",
@@ -355,7 +355,8 @@ const PALETTES: Record<SceneKey, {
     ink: "#f9c992",
     panel: "#292e2e",
   },
-  // Rows never read this entry, because "christmas" runs scripts. The Record type needs it.
+  // Rows never read this entry, because "christmas" runs scripts. The Record
+  // type needs it.
   christmas: {
     earth: "#2a3a36",
     edge: "#5f7c74",
@@ -394,9 +395,9 @@ interface Obstacle {
 
 /**
  * A Scene is the state of one running scene, W by H scene pixels. `key` and
- * `index` pick the current row, `row`. For "neutral", they pick the current
- * script, and `row` only holds its name. `time` is the time of the scene in
- * seconds, and `sceneTime` is the time since the current row started.
+ * `index` pick the current row, `row`. For a key that runs scripts, they pick
+ * the current script, and `row` only holds its name. `time` is the time of the
+ * scene in seconds, and `sceneTime` is the time since the current row started.
  * `rotations` counts the rotations. One loop at a time must step and paint a
  * Scene.
  */
@@ -452,7 +453,8 @@ function positions(W: number): number[] {
   return [12, Math.round(W * 0.2), Math.round(W * 0.8), W - 24];
 }
 
-// Loads the row at s.index, or the script at s.index for "neutral". The row
+// Loads the row at s.index, or the script at s.index for a key that runs
+// scripts. The row
 // timer starts again. A script has no walkers and no obstacles. For a row, the
 // walkers go back to the edges. The props at index 1 and 2 become the
 // obstacles. The props at index 0 and 3 stand next to the edges, so they are
@@ -485,7 +487,7 @@ function loadRow(s: Scene): void {
 
 /**
  * createScene returns a new scene of W by H scene pixels for `key`. The scene
- * starts at the row `index`, or at the script `index` for "neutral". An index
+ * starts at the row `index`, or at the script `index` for a key that runs scripts. An index
  * outside 0 to sceneCount(key) - 1 wraps around, also a negative one.
  *
  * If rotate is true, the scene rotates through the rows or scripts of the key.
@@ -611,6 +613,8 @@ export function sceneAlpha(s: Scene): number {
 // The color of the background trees of each key. The orchard of Spring Bloom
 // uses pink instead. A bare tree has no canopy.
 const CANOPY: Record<SceneKey, string> = {
+  // Rows never read this entry, because "new-year" runs scripts. The Record
+  // type needs it.
   "new-year": "#1f3a35",
   winterfest: "#1f3f38",
   "spring-bloom": "#5f8f57",
@@ -625,7 +629,8 @@ const CANOPY: Record<SceneKey, string> = {
 };
 
 // Reports whether the key is Winterfest or New Year. In those keys, roofs and
-// treetops carry snow.
+// treetops carry snow. The "new-year" key runs scripts, so only the rows of
+// Winterfest reach this test.
 function isSnowy(s: Scene): boolean {
   return s.key === "winterfest" || s.key === "new-year";
 }
