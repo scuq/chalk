@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a scene for the season
 
-**Status:** in progress. Built: 129-1 – 129-22. Open: 129-23 and later. They tune the six keys that have rows, one key in each slice, in this order: late-autumn, spring-bloom, green-season, midsummer, harvest-festival, spooky-season. One cleanup item is open: the dead snow branches of the scene engine (see "The winterfest scripts"). 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 shipped in v0.10.0. 129-15 and later are not yet in a release. 129-8 to 129-10 land together.
+**Status:** in progress. Built: 129-1 – 129-23. Open: 129-24 and later. They tune the five keys that have rows, one key in each slice, in this order: spring-bloom, green-season, midsummer, harvest-festival, spooky-season. One cleanup item is open: the dead snow branches of the scene engine (see "The winterfest scripts"). 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 shipped in v0.10.0. 129-15 and later are not yet in a release. 129-8 to 129-10 land together.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -28,6 +28,8 @@ with eight scripted scenes that are nods to films and series. 129-22 added
 the `black-week` key: nine scripted scenes about money and sales, from the
 Monday before Black Friday to Cyber Monday. It is the first season whose dates
 move with the year, and the first whose scenes show sign words and prices.
+129-23 replaced the five Late Autumn rows with seven scripted scenes: five nods
+to films and series, and two nods to games.
 
 ## The design
 
@@ -214,20 +216,22 @@ it on unmount.
 variety. It exports these names:
 
 - `SCENES`, a table from a `RowKey` to five `SceneRow` values, so there are
-  30 rows. `SceneKey` is a `SeasonId` or `"neutral"`, so there are eleven keys.
+  25 rows. `SceneKey` is a `SeasonId` or `"neutral"`, so there are eleven keys.
   A `ScriptKey` is a key that runs scripts: `"neutral"`, `"christmas"`,
-  `"new-year"`, `"winterfest"`, and `"black-week"`. A `RowKey` is a `SceneKey` that is not a
-  `ScriptKey`, so there are six: `spring-bloom`, `green-season`, `midsummer`,
-  `harvest-festival`, `spooky-season`, and `late-autumn`. A `ScriptKey` has no
-  rows. `"neutral"` has the ten scripts of `OFFSEASON` (129-18), `"christmas"`
+  `"new-year"`, `"winterfest"`, `"black-week"`, and `"late-autumn"`. A `RowKey`
+  is a `SceneKey` that is not a `ScriptKey`, so there are five: `spring-bloom`,
+  `green-season`, `midsummer`, `harvest-festival`, and `spooky-season`. A
+  `ScriptKey` has no rows. `"neutral"` has the ten scripts of `OFFSEASON` (129-18), `"christmas"`
   has the seven scripts of `CHRISTMAS` (129-19), `"new-year"` has the seven
   scripts of `NEWYEAR` (129-20), `"winterfest"` has the eight scripts of
-  `WINTERFEST` (129-21), and `"black-week"` has the nine scripts of `BLACKWEEK`
-  (129-22). So there are 71 scenes.
+  `WINTERFEST` (129-21), `"black-week"` has the nine scripts of `BLACKWEEK`
+  (129-22), and `"late-autumn"` has the seven scripts of `LATEAUTUMN` (129-23).
+  So there are 73 scenes.
 - `SCENES_PER_KEY` (5), `SCENE_SECONDS` (35), and `FADE_SECONDS` (0.7).
-- `sceneCount(key)` returns 10 for `"neutral"`, 7 for `"christmas"` and
-  `"new-year"`, 8 for `"winterfest"`, 9 for `"black-week"`, and
-  `SCENES_PER_KEY` for any other key (129-18, 129-19, 129-20, 129-21, 129-22).
+- `sceneCount(key)` returns 10 for `"neutral"`, 7 for `"christmas"`,
+  `"new-year"`, and `"late-autumn"`, 8 for `"winterfest"`, 9 for `"black-week"`,
+  and `SCENES_PER_KEY` for any other key (129-18, 129-19, 129-20, 129-21,
+  129-22, 129-23).
   `isScripted(key)` reports whether `key` is a `ScriptKey` (129-19). Since
   129-22 it tests whether `key` is a key of `SCRIPTED`.
 - `sceneWeights(key)` returns the weight of each scene of `key`, in the order
@@ -269,7 +273,7 @@ source. Each effect takes its places from a hash of an index and from the time
 of the scene. So a test uses a fake `Painter` and gets the same picture each
 time. `PALETTES` gives each key an earth colour and an edge colour.
 
-The 71 scenes:
+The 73 scenes:
 
 | Key | Scenes |
 |---|---|
@@ -282,7 +286,7 @@ The 71 scenes:
 | `midsummer` | Golden Meadow, Lakeside Sunset, Campfire Evening, Firefly Night, Festival Lanterns |
 | `harvest-festival` | Mushroom Grove, Apple Orchard, Hayfield Run, Village Market, Golden Fields |
 | `spooky-season` | Old Graveyard, Haunted Manor, Witchwood, Foggy Marsh, Pumpkin Patch |
-| `late-autumn` | Windy Avenue, Rainy Village, Forest Floor, Creek Crossing, Lantern Path |
+| `late-autumn` | The Thing in the Fog, The Duel in the Garden, Coffee and the Owl, The Vineyard, Leaf Chase, The Raid, The Harvest Helpers |
 | `neutral` | Time Car, Night Highway, Code Rooftop, Starship, The Gate, Light Cycles, Twin Suns, The Hatch, Shadow over Town, Flashlights in the Woods |
 
 #### Rotation and fade
@@ -366,7 +370,7 @@ The scene differs from the supplied engine on purpose:
   new. 129-18 removed Bridge Walk, so no row uses `bridge` now. 129-20 left
   seven more props with no row: `barrel`, `boat`, `clock`, `flag`, `gift`,
   `lamp`, and `tower`. 129-21 left four more: `cabin`, `ice`, `snowball`, and
-  `snowman`. All 12 stay in the set of props. A cabin has a chimney with smoke. A campfire flickers and smokes, a
+  `snowman`. 129-23 left one more: `house`. All 13 stay in the set of props. A cabin has a chimney with smoke. A campfire flickers and smokes, a
   windmill turns, a lantern and a pumpkin flicker, and the windows of the
   manor flicker. This closed the gap that Cabin Smoke had no smoke and Bridge
   Walk had no bridge.
@@ -374,11 +378,12 @@ The scene differs from the supplied engine on purpose:
   leaves. Frozen Lake casts a rabbit, and Festival Lanterns casts a cat. Pond
   Hopping and Lakeside Sunset have a lilypad.
 
-`web/src/season/scene.test.ts` uses a fake `Painter`. It checks the table (seven
+`web/src/season/scene.test.ts` uses a fake `Painter`. It checks the table (five
 keys with five rows each, ten neutral scripts, seven Christmas scripts, seven
-New Year scripts, eight Winterfest scripts, nine Black Week scripts, 71
-distinct names, and the same ids as `SEASONS` in `SCENES`, except `christmas`,
-`new-year`, `winterfest`, and `black-week`),
+New Year scripts, eight Winterfest scripts, nine Black Week scripts, seven
+Late Autumn scripts, 73 distinct names, and the same ids as `SEASONS` in
+`SCENES`, except `christmas`, `new-year`, `winterfest`, `black-week`, and
+`late-autumn`),
 that every scene of a season draws whole pixels with no
 rectangle as wide as the strip, that each prop paints something, the rotation
 and its wrap, the fade, a start index outside the range, the walkers and the
@@ -572,8 +577,10 @@ checks that each one paints something.
 Open cleanup: the engine in `scene.ts` still has the branches for snow on
 roofs, treetops, and pines (`isSnowy`), the frozen lake, snow tufts on the
 ground, and the smoke of a cabin chimney. They key on `winterfest` and
-`new-year`, and no row reaches them now. They stay on purpose for the tuning
-slices of 129-23 and later. After the last of those slices, remove each branch
+`new-year`, and no row reaches them now. The same holds for the `late-autumn`
+entries of `PALETTES` and `CANOPY` and the `late-autumn` case of `isLeafless`
+(129-23). They stay on purpose for the tuning
+slices of 129-24 and later. After the last of those slices, remove each branch
 that no row uses, or give it a row. The comments on the branches say that no
 row reaches them.
 
@@ -630,6 +637,38 @@ Only The Bar has a weight above 1. Its weight is 2, so a visit shows it twice
 as often as each other scene that the last-visit rule allows. `SeasonScene.tsx`
 passes `sceneWeights(key)` to `nextRow`. The always-on hours ignore weights,
 and black week has no always-on hours.
+
+#### The late-autumn scripts (129-23)
+
+The `"late-autumn"` key runs scripts too. `web/src/season/lateautumn.ts` holds
+the seven scripts in `LATEAUTUMN`, and `SCRIPTED` and `isScripted` in `scene.ts`
+list the key. The key runs from 16 to 22 November. The user chose the seven on
+an animated mock-up page.
+
+Each script is a nod to a film, a series, or a game, and a person knows it by
+one moment in autumn. Five scripts nod to a film or a series, and two nod to a
+game. The rules of the earlier scripts hold: no title, no logo, no lettering,
+no likeness of an actor, and the `CHALK` sign as the only text. Each character
+is generic.
+
+| Script | Nod | What the strip shows | Loop |
+|---|---|---|---|
+| The Thing in the Fog | The X-Files | Three layers of fog drift over autumn trees. Two agents aim light beams at a dark monster that comes into view, steps closer, and fades out | 16 s |
+| The Duel in the Garden | Kill Bill Vol. 1 | A fighter in yellow and a fighter in white cross swords by a red maple. The strip flashes white, and the red leaves scatter | 14 s |
+| Coffee and the Owl | Twin Peaks | A figure in a dark suit raises a cup in a pine forest, and an owl blinks and glows | 16 s |
+| The Vineyard | Star Trek: The Next Generation | A bald man in a red and black uniform top picks grapes by a stone château. His badge chirps, a column of light takes him away, and a starship glides past | 24 s |
+| Leaf Chase | Animal Crossing, a game | A villager with a net runs after a falling leaf and catches it | 12 s |
+| The Raid | Fantastic Mr. Fox | A fox with a bundle runs past farm buildings and lamp beams, and jumps into a hole | 16 s |
+| The Harvest Helpers | Stardew Valley, a game | Rows of crops vanish one by one, and five small helpers hop to a crate with a crop each | 24 s |
+
+The user asked for the monster of The Thing in the Fog, and for the maple to
+stand to the left of the sign. The user reworked The Vineyard: a stone château,
+vine rows with grapes that sway, a bald man with a combadge, a chirp, a beam
+that leaves the basket behind, and a starship. The loops of The Vineyard and
+The Harvest Helpers are slow, 24 s each, at the request of the user.
+
+`PALETTES` and `CANOPY` keep an entry for `"late-autumn"` for the same reason
+as for `"christmas"`. A script never reads them.
 
 ### The component
 
@@ -961,6 +1000,17 @@ A banner on a separate timer outside the scene (129-22). The user wanted a
 banner that comes every few minutes. The banner unfolds inside the loop of
 The Bar instead.
 
+The five walker rows for Late Autumn (129-23). Windy Avenue, Rainy Village,
+Forest Floor, Creek Crossing, and Lantern Path had no famous moment. The user
+chose scripted nods from an animated mock-up page, as for Winterfest. The slice
+removes the rows.
+
+A craft in The Thing in the Fog (129-23). The first version of the scene showed
+a craft in the fog. The user wanted a monster, and the scene shows one.
+
+The maple under the sign in The Duel in the Garden (129-23). The user wanted
+the maple to the left of the sign, and the scene draws it there.
+
 The five walker rows for Winterfest (129-21). Snowy Pines, Cabin Smoke, Frozen
 Lake, Aurora Ridge, and Lantern Walk had no famous moment. The user chose
 scripted nods from an animated mock-up page, as for New Year. The slice removes
@@ -1249,10 +1299,29 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
   scripts, and the weights. `visits.test.ts` checks a weighted `nextRow`. Text
   in `CHANGELOG.md` and `whats-new.ts`.
 
-- **129-23 and later — tune the scenes (planned, not started).** One key for
-  each slice, in this order: late-autumn, spring-bloom, green-season,
-  midsummer, harvest-festival, spooky-season. These are the six keys that have
-  rows.
+- **129-23 — Late Autumn scripts (built).** The problem: the `late-autumn` key
+  showed five walker rows with no famous moment: Windy Avenue, Rainy Village,
+  Forest Floor, Creek Crossing, and Lantern Path. The user wanted nods, as for
+  the other keys. The design: `lateautumn.ts` has the seven scripts in
+  `LATEAUTUMN` (see "The late-autumn scripts"). The user chose them on an
+  animated mock-up page and refined four of them there. The Thing in the Fog
+  shows a monster, not a craft. The maple of The Duel in the Garden stands to
+  the left of the sign. The user reworked The Vineyard and slowed The
+  Harvest Helpers to a loop of 24 s. The slice removes the five rows. `SCRIPTED` has
+  `"late-autumn"`, `isScripted` lists it, and `SCENES` has five keys. There are
+  73 scenes. Thirteen props are in no row: `house` joins the earlier twelve.
+  They stay in the vocabulary. In `ui-sweep.mjs`, `sceneNames` also reads
+  `lateautumn.ts`. Rejected: the walker rows, the craft version of The Thing in
+  the Fog, and the maple under the sign (see "What was rejected"). Tests in
+  `scene.test.ts`: the table has 73 scenes and five row keys, the script tests
+  run over six sets of scripts, and a `late-autumn` scene runs its scripts and
+  holds one through a visit. The prop test checks the 13 props that no row
+  uses. The blossom check uses `harvest-festival`, because `late-autumn` has no
+  row. Text in `CHANGELOG.md` and `whats-new.ts`.
+
+- **129-24 and later — tune the scenes (planned, not started).** One key for
+  each slice, in this order: spring-bloom, green-season, midsummer,
+  harvest-festival, spooky-season. These are the five keys that have rows.
 
 ## Trade-offs
 
@@ -1297,8 +1366,9 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
     A tap in that moment can land on a different row. This is the accepted cost
     of a row that goes away.
 15. A visit shows one scene of the five, of the seven for christmas and
-    new-year, of the eight for winterfest, of the nine for black-week, or of
-    the ten for neutral (129-15, 129-19, 129-20, 129-21, 129-22). The row
+    new-year, and late-autumn, of the eight for winterfest, of the nine for
+    black-week, or of the ten for neutral (129-15, 129-19, 129-20, 129-21,
+    129-22, 129-23). The row
     differs from the row
     of the last visit of the same key, so each scene shows over many visits.
     Only the always-on hours walk all five in one run.
@@ -1400,7 +1470,7 @@ no season and shows the neutral scenes (see item 13).
     - 15 July: `midsummer`
     - 20 September: `harvest-festival`
     - 28 October: `spooky-season`
-    - 18 November: `late-autumn`
+    - 18 November: `late-autumn`, one of the seven Late Autumn scenes (129-23)
     - 25 November: `black-week`, one of the nine Black Week scenes (129-22)
     - 10 December and 26 December: `christmas`, one of the seven Christmas
       scenes (129-19)
@@ -1526,13 +1596,14 @@ no season and shows the neutral scenes (see item 13).
 date in no row.
 `scene.test.ts` checks that `SCENES` and `SEASONS` list the same ids, and that
 each key of `SCENES` has five rows. The `"neutral"`, `"christmas"`,
-`"new-year"`, `"winterfest"`, and `"black-week"` keys are not in `SCENES`. They
-use the scripts of `OFFSEASON` (129-18), `CHRISTMAS` (129-19), `NEWYEAR`
-(129-20), `WINTERFEST` (129-21), and `BLACKWEEK` (129-22).
+`"new-year"`, `"winterfest"`, `"black-week"`, and `"late-autumn"` keys are not
+in `SCENES`. They use the scripts of `OFFSEASON` (129-18), `CHRISTMAS`
+(129-19), `NEWYEAR` (129-20), `WINTERFEST` (129-21), `BLACKWEEK` (129-22), and
+`LATEAUTUMN` (129-23).
 
 A key can run scripts and not rows, as `"neutral"`, `"christmas"`,
-`"new-year"`, `"winterfest"`, and `"black-week"` do (129-19, 129-20, 129-21,
-129-22).
+`"new-year"`, `"winterfest"`, `"black-week"`, and `"late-autumn"` do (129-19,
+129-20, 129-21, 129-22, 129-23).
 For such a key, add the scripts to a file next to `christmas.ts`, import the
 shared parts from `strip.ts`, add the key to `SCRIPTED` in `scene.ts`, and add
 the key to `PALETTES` and `CANOPY`. A script never reads those two entries, but

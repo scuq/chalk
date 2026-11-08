@@ -108,14 +108,17 @@ times in a local day on one device, and at most 10 of them start before 18:00
 A phone in zuckermode shows the scene in a row above the conversation list
 (129-11). The classic phone layout and the header of a phone show no scene.
 A headed season demo in the ui-sweep skill shows one scene on a fake date (129-17).
-Open: 129-23 and later, which tune the six keys that have rows, one key in
-each slice, in this order: late-autumn, spring-bloom, green-season, midsummer,
-harvest-festival, spooky-season.
+Open: 129-24 and later, which tune the five keys that have rows, one key in
+each slice, in this order: spring-bloom, green-season, midsummer,
+harvest-festival, spooky-season. Late Autumn runs seven scripted nods to films,
+series, and games (129-23).
 Open cleanup: the scene engine in `web/src/season/scene.ts` still has branches
 for snow roofs, snow on pines, frozen lakes, and chimney smoke. They key on
-`winterfest` and `new-year`, and no row reaches them now. Twelve props (`barrel`,
-`boat`, `bridge`, `cabin`, `clock`, `flag`, `gift`, `ice`, `lamp`, `snowball`,
-`snowman`, and `tower`) are in no row. The branches and the props stay for the
+`winterfest` and `new-year`, and no row reaches them now. The `late-autumn`
+entries of `PALETTES` and `CANOPY` and the `late-autumn` case of `isLeafless`
+are in the same state (129-23). Thirteen props (`barrel`,
+`boat`, `bridge`, `cabin`, `clock`, `flag`, `gift`, `house`, `ice`, `lamp`,
+`snowball`, `snowman`, and `tower`) are in no row. The branches and the props stay for the
 tuning slices. After the last of them, remove what no row uses, or use it.
 
 - **A change by an administrator reaches other clients on their next page

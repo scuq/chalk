@@ -2,13 +2,15 @@
 // The neutral key has ten scripts since 129-18, the christmas key has seven
 // scripts since 129-19, the new-year key has seven scripts since 129-20, and
 // the winterfest key has eight scripts since 129-21, and the black-week key
-// has nine scripts since 129-22.
+// has nine scripts since 129-22, and the late-autumn key has seven scripts since
+// 129-23.
 //
 // A fake Painter records the rectangles, so a test needs no canvas. The tests
-// check the table (71 scenes: the rows of the SEASONS ids except "christmas",
-// "new-year", "winterfest", and "black-week", the ten scripts of "neutral", the
-// seven scripts of "christmas", the seven scripts of "new-year", the eight
-// scripts of "winterfest", and the nine scripts of "black-week"), whole
+// check the table (73 scenes: the rows of the SEASONS ids except "christmas",
+// "new-year", "winterfest", "black-week", and "late-autumn", the ten scripts of
+// "neutral", the seven scripts of "christmas", the seven scripts of "new-year",
+// the eight scripts of "winterfest", the nine scripts of "black-week", and the
+// seven scripts of "late-autumn"), whole
 // pixels and a see-through strip in every scene of a season, a paint for
 // each prop, the rotation and its wrap, the fade, a start index outside the
 // range, the walkers, a ghost that floats, a long frame, and a resize. 129-13:
@@ -55,6 +57,7 @@ import { CHRISTMAS } from "./christmas";
 import { NEWYEAR } from "./newyear";
 import { WINTERFEST } from "./winterfest";
 import { BLACKWEEK } from "./blackweek";
+import { LATEAUTUMN } from "./lateautumn";
 import { OFFSEASON } from "./offseason";
 import type { Script } from "./strip";
 import { SEASONS } from "./seasons";
@@ -62,7 +65,7 @@ import { SEASONS } from "./seasons";
 const W = 300;
 const H = 24;
 const KEYS = Object.keys(SCENES) as SceneKey[];
-const ALL_KEYS: SceneKey[] = [...KEYS, "neutral", "christmas", "new-year", "winterfest", "black-week"];
+const ALL_KEYS: SceneKey[] = [...KEYS, "neutral", "christmas", "new-year", "winterfest", "black-week", "late-autumn"];
 // 129-19: the keys that run scripts, with their scripts.
 const SCRIPT_SETS: [SceneKey, Script[]][] = [
   ["neutral", OFFSEASON],
@@ -70,6 +73,7 @@ const SCRIPT_SETS: [SceneKey, Script[]][] = [
   ["new-year", NEWYEAR],
   ["winterfest", WINTERFEST],
   ["black-week", BLACKWEEK],
+  ["late-autumn", LATEAUTUMN],
 ];
 
 function recorder() {
@@ -84,14 +88,15 @@ function recorder() {
   return { ctx, rects };
 }
 
-test("there are 71 scenes: five rows for each row season, and the scripts of the five script keys", () => {
+test("there are 73 scenes: five rows for each row season, and the scripts of the six script keys", () => {
   const ids = new Set<string>(SEASONS.map((s) => s.id));
   ids.delete("christmas");
   ids.delete("new-year");
   ids.delete("winterfest");
   ids.delete("black-week");
+  ids.delete("late-autumn");
   assert.deepEqual(new Set(KEYS), ids);
-  assert.equal(KEYS.length, 6);
+  assert.equal(KEYS.length, 5);
   for (const key of KEYS) {
     assert.equal(SCENES[key as keyof typeof SCENES].length, SCENES_PER_KEY, key);
     assert.equal(sceneCount(key), SCENES_PER_KEY, key);
@@ -101,6 +106,7 @@ test("there are 71 scenes: five rows for each row season, and the scripts of the
   assert.equal(sceneCount("new-year"), 7);
   assert.equal(sceneCount("winterfest"), 8);
   assert.equal(sceneCount("black-week"), 9);
+  assert.equal(sceneCount("late-autumn"), 7);
   const names = [
     ...KEYS.flatMap((k) => SCENES[k as keyof typeof SCENES].map((r) => r.name)),
     ...OFFSEASON.map((x) => x.name),
@@ -108,9 +114,10 @@ test("there are 71 scenes: five rows for each row season, and the scripts of the
     ...NEWYEAR.map((x) => x.name),
     ...WINTERFEST.map((x) => x.name),
     ...BLACKWEEK.map((x) => x.name),
+    ...LATEAUTUMN.map((x) => x.name),
   ];
-  assert.equal(names.length, 71);
-  assert.equal(new Set(names).size, 71);
+  assert.equal(names.length, 73);
+  assert.equal(new Set(names).size, 73);
 });
 
 test("every scene draws whole pixels and leaves the strip see-through, at each step", () => {
@@ -134,11 +141,11 @@ test("every scene draws whole pixels and leaves the strip see-through, at each s
 
 test("each prop paints something of its own", () => {
   const used = new Set(KEYS.flatMap((k) => SCENES[k as keyof typeof SCENES].flatMap((r) => r.props)));
-  assert.equal(used.size, 26);
-  // 129-18, 129-20, 129-21: no row uses these props since the neutral,
-  // new-year, and winterfest rows became scripts. They stay in the set of
-  // props, so each paint is still checked.
-  const unused = ["barrel", "boat", "bridge", "cabin", "clock", "flag", "gift", "ice", "lamp", "snowball", "snowman", "tower"] as const;
+  assert.equal(used.size, 25);
+  // 129-18, 129-20, 129-21, 129-23: no row uses these props since the neutral,
+  // new-year, winterfest, and late-autumn rows became scripts. They stay in the
+  // set of props, so each paint is still checked.
+  const unused = ["barrel", "boat", "bridge", "cabin", "clock", "flag", "gift", "house", "ice", "lamp", "snowball", "snowman", "tower"] as const;
   for (const kind of unused) assert.ok(!used.has(kind), kind);
   const kinds = new Set([...used, ...unused]);
   assert.equal(kinds.size, 38);
@@ -251,7 +258,7 @@ test("a named thing is drawn: the blossom", () => {
     return new Set(rects.map((r) => r.color));
   };
   assert.ok(colors("spring-bloom", 0).has("#d99ab4"), "no blossom in the orchard");
-  assert.ok(!colors("late-autumn", 0).has("#d99ab4"));
+  assert.ok(!colors("harvest-festival", 0).has("#d99ab4"));
 });
 
 test("no animal is out of season", () => {
@@ -465,4 +472,12 @@ test("129-22: the bar weighs twice as much as each other black week scene, and e
     assert.ok(sceneWeights(key).every((v) => v === 1), key);
     assert.equal(sceneWeights(key).length, sceneCount(key), key);
   }
+});
+
+test("129-23: the late-autumn key runs its scripts and holds one through a visit", () => {
+  const scene = createScene("late-autumn", W, H, 3, false);
+  assert.equal(scene.script, LATEAUTUMN[3]);
+  assert.equal(scene.row.name, "The Vineyard");
+  for (let t = 0; t < 80; t += 0.1) stepScene(scene, 0.1);
+  assert.equal(scene.index, 3);
 });

@@ -10,6 +10,11 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Added
+- From 16 to 22 November, the Chalk scene is one of seven small animated autumn nods to films, series, and games. Each one shows a famous moment.
+
 ## v0.11.2 — 8 November 2026 — Film and series nods for the winter seasons and Black Week
 
 ### Added

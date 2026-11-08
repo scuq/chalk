@@ -5,18 +5,20 @@
 // 129-19: the christmas key has seven scripts and no rows. 129-20: the new-year
 // key has seven scripts and no rows. 129-21: the winterfest key has eight
 // scripts and no rows. 129-22: the black-week key has nine scripts and no
-// rows, and a script can have a weight.
+// rows, and a script can have a weight. 129-23: the late-autumn key has seven
+// scripts and no rows.
 //
 // This module draws a small pixel scene and moves it. There are eleven keys:
 // the ten season ids of seasons.ts, and "neutral" for a date in no season.
-// SCENES holds the six keys that have rows. Each of them has five rows
-// (SCENES_PER_KEY), so there are 30 rows. A row names an environment, an
-// effect, four props, and two cast members. Five keys have scripts and no
+// SCENES holds the five keys that have rows. Each of them has five rows
+// (SCENES_PER_KEY), so there are 25 rows. A row names an environment, an
+// effect, four props, and two cast members. Six keys have scripts and no
 // rows: "neutral" has the ten scripts of OFFSEASON (offseason.ts), "christmas"
 // has the seven scripts of CHRISTMAS (christmas.ts), "new-year" has the seven
 // scripts of NEWYEAR (newyear.ts), "winterfest" has the eight scripts of
 // WINTERFEST (winterfest.ts), and "black-week" has the nine scripts of
-// BLACKWEEK (blackweek.ts). So there are 71 scenes.
+// BLACKWEEK (blackweek.ts), and "late-autumn" has the seven scripts of
+// LATEAUTUMN (lateautumn.ts). So there are 73 scenes.
 // A script draws its own opaque strip, and it does not use the fields of a
 // row. The rows stay see-through.
 // A scene shows its row or its script. A scene that rotates (rotate is true)
@@ -50,6 +52,7 @@
 
 import { BLACKWEEK } from "./blackweek";
 import { CHRISTMAS } from "./christmas";
+import { LATEAUTUMN } from "./lateautumn";
 import { NEWYEAR } from "./newyear";
 import { WINTERFEST } from "./winterfest";
 import { OFFSEASON } from "./offseason";
@@ -91,8 +94,8 @@ export function sceneWeights(key: SceneKey): number[] {
 
 /**
  * sceneCount returns the number of scenes of key: the number of scripts for a
- * key that runs scripts ("neutral", "christmas", "new-year", "winterfest", and
- * "black-week"), and SCENES_PER_KEY for any other key.
+ * key that runs scripts ("neutral", "christmas", "new-year", "winterfest",
+ * "black-week", and "late-autumn"), and SCENES_PER_KEY for any other key.
  */
 export function sceneCount(key: SceneKey): number {
   return isScripted(key) ? SCRIPTED[key].length : SCENES_PER_KEY;
@@ -106,6 +109,7 @@ const SCRIPTED = {
   "new-year": NEWYEAR,
   winterfest: WINTERFEST,
   "black-week": BLACKWEEK,
+  "late-autumn": LATEAUTUMN,
 };
 
 /** A ScriptKey is a key that runs scripts and has no rows in SCENES. */
@@ -126,11 +130,11 @@ const JUMP = 40;
 
 /**
  * A SceneKey names a set of scenes: a season id or "neutral". A key has five
- * rows in SCENES, except four season keys that have scripts. "christmas" has
+ * rows in SCENES, except five season keys that have scripts. "christmas" has
  * the seven scripts of CHRISTMAS, "new-year" has the seven scripts of NEWYEAR,
- * "winterfest" has the eight scripts of WINTERFEST, and "black-week" has the
- * nine scripts of BLACKWEEK. "neutral", for a date in no season, has the ten
- * scripts of OFFSEASON.
+ * "winterfest" has the eight scripts of WINTERFEST, "black-week" has the nine
+ * scripts of BLACKWEEK, and "late-autumn" has the seven scripts of LATEAUTUMN.
+ * "neutral", for a date in no season, has the ten scripts of OFFSEASON.
  */
 export type SceneKey = SeasonId | "neutral";
 
@@ -255,9 +259,9 @@ function row(
 
 /**
  * SCENES holds the rows of each RowKey, in the order of rotation. Each key has
- * SCENES_PER_KEY rows. The "neutral", "christmas", "new-year", "winterfest", and
- * "black-week" keys have no rows. They use the scripts of OFFSEASON,
- * CHRISTMAS, NEWYEAR, WINTERFEST, and BLACKWEEK.
+ * SCENES_PER_KEY rows. The "neutral", "christmas", "new-year", "winterfest",
+ * "black-week", and "late-autumn" keys have no rows. They use the scripts of
+ * OFFSEASON, CHRISTMAS, NEWYEAR, WINTERFEST, BLACKWEEK, and LATEAUTUMN.
  */
 export const SCENES: Record<RowKey, SceneRow[]> = {
   "spring-bloom": [
@@ -294,13 +298,6 @@ export const SCENES: Record<RowKey, SceneRow[]> = {
     row("Witchwood", "forest", "bats", ["bare", "mushroom", "cauldron", "bare"], ["witch", "cat"], "stars"),
     row("Foggy Marsh", "swamp", "fog", ["bare", "stone", "grave", "reeds"], ["ghost", "skeleton"]),
     row("Pumpkin Patch", "farm", "ghosts", ["pumpkin", "pumpkin", "pumpkin", "scarecrow"], ["cat", "witch"], "stars"),
-  ],
-  "late-autumn": [
-    row("Windy Avenue", "orchard", "leaves", ["bare", "log", "stone", "bare"], ["fox", "hedgehog"]),
-    row("Rainy Village", "town", "rain", ["house", "crate", "mushroom", "lantern"], ["cat", "person"]),
-    row("Forest Floor", "forest", "leaves", ["bare", "mushroom", "stump", "bare"], ["hedgehog", "fox"]),
-    row("Creek Crossing", "lake", "fog", ["bare", "stone", "log", "reeds"], ["fox", "rabbit"]),
-    row("Lantern Path", "hills", "leaves", ["lantern", "stump", "stone", "bare"], ["person", "cat"], "stars"),
   ],
 };
 
@@ -366,6 +363,8 @@ const PALETTES: Record<SceneKey, {
     ink: "#ffb057",
     panel: "#121324",
   },
+  // Rows never read this entry, because "late-autumn" runs scripts. The Record
+  // type needs it.
   "late-autumn": {
     earth: "#493d30",
     edge: "#a27743",
@@ -647,6 +646,7 @@ const CANOPY: Record<SceneKey, string> = {
   midsummer: "#3f7a3a",
   "harvest-festival": "#9a6a2c",
   "spooky-season": "#2a2433",
+  // Rows never read this entry, because "late-autumn" runs scripts.
   "late-autumn": "#7b4a26",
   // Rows never read this entry, because "christmas" runs scripts.
   christmas: "#1f3f38",
@@ -662,7 +662,8 @@ function isSnowy(s: Scene): boolean {
 }
 
 // Reports whether the key is Spooky Season or Late Autumn. In those keys, the
-// background trees are bare.
+// background trees are bare. Late Autumn runs scripts, so no row reaches that
+// case now. The case stays for later tuning.
 function isLeafless(s: Scene): boolean {
   return s.key === "spooky-season" || s.key === "late-autumn";
 }

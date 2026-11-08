@@ -89,8 +89,9 @@
 // web/src/season/scene.ts, the ten scripts in web/src/season/offseason.ts for
 // neutral, the seven scripts in web/src/season/christmas.ts for christmas, the
 // seven scripts in web/src/season/newyear.ts for new-year, the eight scripts
-// in web/src/season/winterfest.ts for winterfest, or the nine scripts in
-// web/src/season/blackweek.ts for black-week.
+// in web/src/season/winterfest.ts for winterfest, the nine scripts in
+// web/src/season/blackweek.ts for black-week, or the seven scripts in
+// web/src/season/lateautumn.ts for late-autumn.
 // For each target, the script prints
 // "SCENE <key>: <name>" on standard output, with "(wanted X)" if it gave
 // up. A visit lasts 45 s to 75 s. A value of --scene-secs above 45 can let
@@ -249,10 +250,11 @@ const SEASON_DATES = {
 // Returns the scene names of the key, in table order. The names of neutral come
 // from offseason.ts, the names of christmas come from christmas.ts, and the
 // names of new-year come from newyear.ts, the names of winterfest come from
-// winterfest.ts, and the names of black-week come from blackweek.ts. The other
-// names come from the rows in scene.ts.
+// winterfest.ts, the names of black-week come from blackweek.ts, and the names
+// of late-autumn come from lateautumn.ts. The other names come from the rows in
+// scene.ts.
 function sceneNames(key) {
-  const scripted = { neutral: ['offseason.ts', 'OFFSEASON'], christmas: ['christmas.ts', 'CHRISTMAS'], 'new-year': ['newyear.ts', 'NEWYEAR'], winterfest: ['winterfest.ts', 'WINTERFEST'], 'black-week': ['blackweek.ts', 'BLACKWEEK'] }[key];
+  const scripted = { neutral: ['offseason.ts', 'OFFSEASON'], christmas: ['christmas.ts', 'CHRISTMAS'], 'new-year': ['newyear.ts', 'NEWYEAR'], winterfest: ['winterfest.ts', 'WINTERFEST'], 'black-week': ['blackweek.ts', 'BLACKWEEK'], 'late-autumn': ['lateautumn.ts', 'LATEAUTUMN'] }[key];
   if (scripted) {
     const off = readFileSync(new URL(`../../../web/src/season/${scripted[0]}`, import.meta.url), 'utf8');
     const list = off.slice(off.indexOf(`export const ${scripted[1]}`));

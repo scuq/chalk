@@ -6,19 +6,21 @@
 // scenes are ten scripts, and reduced motion holds the still frame of a script.
 // 129-19: the christmas key has seven scripts. 129-20: the new-year key has
 // seven scripts. 129-21: the winterfest key has eight scripts. 129-22: the
-// black-week key has nine scripts, and a script can have a weight.
+// black-week key has nine scripts, and a script can have a weight. 129-23: the
+// late-autumn key has seven scripts.
 //
 // One component serves every season and the dates between them. The registry
 // says which season it is, or null for a date in no season. season/scene.ts
-// holds five rows for each of six row keys, seven scripts for the christmas
+// holds five rows for each of five row keys, seven scripts for the christmas
 // key, seven scripts for the new-year key, eight scripts for the winterfest
-// key, nine scripts for the black-week key, and ten scripts for the neutral
-// key, and it moves the scene. A visit
+// key, nine scripts for the black-week key, seven scripts for the late-autumn
+// key, and ten scripts for the neutral key, and it moves the scene. A visit
 // holds one scene. The always-on hours rotate through the scenes of the key.
 // The neutral scripts are in season/offseason.ts, the christmas scripts are in
 // season/christmas.ts, the new-year scripts are in season/newyear.ts, the
-// winterfest scripts are in season/winterfest.ts, and the black-week scripts
-// are in season/blackweek.ts. The schedule in
+// winterfest scripts are in season/winterfest.ts, the black-week scripts are
+// in season/blackweek.ts, and the late-autumn scripts are in
+// season/lateautumn.ts. The schedule in
 // season/peek.ts sets the bounds of a visit, and season/visits.ts grants a
 // visit under the caps in peek.ts. For a date in no season, it grants at most
 // one visit in each of the windows in peek.ts.
@@ -77,8 +79,9 @@ const FADE_MS = 1200;
  * runScene paints a new scene for the key on the canvas and returns the
  * function that ends the visit. If always is false, the scene is the one that
  * nextRow picks, and it holds that scene. If always is true, the scene starts
- * at a random one of the scenes of the key and rotates. The key has five
- * scenes, or ten for "neutral".
+ * at a random one of the scenes of the key and rotates. The key has the number
+ * of scenes that sceneCount gives: the rows of a row key, or the scripts of a
+ * script key.
  *
  * The scene has the size of the canvas in scene pixels. A resize of the canvas
  * resizes the scene and paints it again. Unless the system asks for reduced
