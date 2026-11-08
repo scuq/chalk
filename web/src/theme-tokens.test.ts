@@ -40,3 +40,15 @@ test("every custom property the sheet reads is declared in the sheet or set by t
   }
   assert.deepEqual(missing.sort(), [], `theme.css reads custom properties nothing declares: ${missing.join(", ")}`);
 });
+
+// A fallback on a token that the sheet always declares never applies, so it
+// is dead code. The dead values were the old green palette, and they misled
+// anyone who read the sheet. A fallback stays legal on a token that a
+// script writes inline, because it applies until the script runs.
+test("palette and derived tokens carry no var() fallback", () => {
+  const always = new Set([...css.matchAll(/(?:^|[\s;{])(--chalk-[\w-]+)\s*:/g)].map((m) => m[1]));
+  const offenders = [...css.matchAll(/var\(\s*(--chalk-[\w-]+)\s*,[^)]*\)/g)]
+    .filter((m) => always.has(m[1]) && !scripts.includes(`"${m[1]}"`) && !scripts.includes(`'${m[1]}'`))
+    .map((m) => m[0]);
+  assert.deepEqual(offenders, [], `dead fallbacks on tokens the sheet always declares: ${offenders.join(", ")}`);
+});

@@ -21,6 +21,7 @@ The engineering-level history (which slice shipped what) lives in
 ### Fixed
 - The hover of a danger button and the weakest password-strength label had no color. They are red now. The delete item in the message menu and the remove and leave actions in the member list follow the red of your theme.
 - Buttons and the add-friend list in the member panel show a highlight when the pointer is over them. Some of them showed none before.
+- In themes other than the default green, the presence menu, the verify buttons, and the reshare button showed a green highlight under the pointer. They now use your theme colors.
 - With **show profile pictures in the roster** on, the pictures beside friends' names flickered when you switched channels. The names also jumped. This no longer happens.
 
 ---

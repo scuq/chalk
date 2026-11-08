@@ -1,10 +1,11 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** 133-1 built (2026-11-08). 133-2 to 133-7 planned. 133-1 is
-unit-tested by `web/src/theme-palette.test.ts` (the contrast floors of the
-palette and of the derived tokens) and by `web/src/theme-tokens.test.ts`
-(every custom property the stylesheet reads is declared). The manual
-checklist at the end of this file is open.
+**Status:** 133-1 and 133-2 built (2026-11-08). 133-3 to 133-7 planned.
+`web/src/theme-palette.test.ts` tests the contrast floors of the palette and
+of the derived tokens. `web/src/theme-tokens.test.ts` tests two rules: every
+custom property the stylesheet reads is declared, and no `var()` carries a
+fallback on a token that the sheet always declares. The manual checklist at
+the end of this file is open.
 
 **Tags:** `#themes`, `#roster`, `#composer` → `tools/where.sh -g themes`
 
@@ -169,6 +170,41 @@ rules that read `--chalk-bg-hover` are the hover of `.chalk-btn`, the hover of
 two drew no hover background. The third had a near-transparent fallback
 (`--chalk-row-hover`).
 
+### Dead fallbacks and green tints (133-2)
+
+The plan was to replace the literals of the old green. The slice removed more:
+every `var()` fallback on a token that the sheet always declares. That is 143
+fallbacks in `web/src/theme.css`. The tokens are the palette tokens,
+`--chalk-bg-hover`, and `--chalk-rail-w`. A fallback on such a token never
+applies, because the token always has a value. Many fallbacks held the old
+green (`#1f2a1f`, `#14201a`, `#5cffb1`, `#c8ffc8`, `#6effa1`), so they
+misled anyone who read the sheet.
+
+Fallbacks stay on variables that the client TypeScript writes inline, for
+example `--chalk-sidebar-w`, `--chalk-composer-h`, and `--chalk-shell-h`.
+There the fallback applies until the script sets the value.
+
+Five fixed green tints became tokens. Before, light themes and themes that are
+not green showed a green tint on hover in these places:
+
+| Rule | Now |
+|---|---|
+| `.chalk-presence-menu-item:hover` | `var(--chalk-bg-hover)` |
+| `.chalk-presence-menu-item--active` | `var(--chalk-bg-selected)` |
+| `.chalk-members-reshare:hover` | `color-mix(in srgb, var(--chalk-accent) 8%, transparent)` |
+| `.chalk-verify-mark:hover` | the same `color-mix` |
+| `.chalk-verify-confirm-yes:hover` | the same `color-mix` |
+
+Two rules keep a literal color on purpose, and each has a comment that says
+why. `.chalk-noscript` is the notice for a browser with no JavaScript. The
+script applies themes, so the notice cannot use a token. Its colors, `#88ffc9`
+on `#050805`, now equal the new default palette. The matrix flair frame keeps
+`#00ff41`, because matrix green is one color in every theme.
+
+`web/src/theme-tokens.test.ts` has a second test. It fails when `theme.css`
+writes a fallback on a token that the sheet always declares and that no
+non-test `.ts` or `.tsx` file sets.
+
 ### The interaction contract (133-4, planned)
 
 One rule set applies to every row-like control in the shell: the sidebar
@@ -243,12 +279,8 @@ animation.
   lcars radii. The swatch, `index.html`, and `manifest.json`. The derived
   floors in `theme-palette.test.ts`. `theme-tokens.test.ts`. The seven
   replaced tokens. `docs/theming.md`. Done.
-- **133-2 — the old green literals become tokens.** About 63 places in
-  `theme.css` hold the old green as a literal or as a `var()` fallback. The
-  fallbacks go, hover tints become `--chalk-bg-hover`, and accent literals
-  become `--chalk-accent`. Two places keep their literal and get a comment:
-  the notice for a browser with no JavaScript, and the matrix flair frame.
-  Planned.
+- **133-2 — dead fallbacks and green hover tints.** Done. See the section
+  below.
 - **133-3 — surfaces and spacing.** The two surfaces, no sidebar dividers,
   and the spacing tokens. Planned.
 - **133-4 — the interaction contract.** The contract, the global focus rule,
@@ -266,10 +298,16 @@ animation.
 
 ## Left open
 
-- 133-2 to 133-7, as listed above.
-- Literals of the old green palette stay in `theme.css` until 133-2.
+- 133-3 to 133-7, as listed above.
 
 ## Manual checklist
+
+Open after 133-2:
+
+- Open a light theme and a theme that is not green. Hover and select an item
+  in the presence menu. The colors must follow the theme, with no green tint.
+- In the same themes, hover the reshare button in the member list and the
+  verify buttons. The highlight must follow the accent of the theme.
 
 Open after 133-1:
 

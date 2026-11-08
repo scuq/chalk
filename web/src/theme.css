@@ -312,8 +312,8 @@ html {
    index.html because style-src is strict; hardcoded rather than themed
    because the themes are applied by the script that did not run. */
 .chalk-noscript {
-  color: #00ff41;
-  background: #000;
+  color: #88ffc9;
+  background: #050805;
   font-family: monospace;
   padding: 2rem;
 }
@@ -372,12 +372,12 @@ html {
    column only. The shell cap grows by the rail and its gap, so the feed keeps
    its width. */
 .chalk-app--phase08b.chalk-app--rail {
-  grid-template-columns: var(--chalk-rail-w, 48px) var(--chalk-sidebar-w, 220px) 1fr;
+  grid-template-columns: var(--chalk-rail-w) var(--chalk-sidebar-w, 220px) 1fr;
   grid-template-areas:
     "header header  header"
     "rail   sidebar main"
     "rail   sidebar footer";
-  max-width: calc(var(--chalk-app-max-w, 1100px) + var(--chalk-rail-w, 48px) + var(--chalk-s3));
+  max-width: calc(var(--chalk-app-max-w, 1100px) + var(--chalk-rail-w) + var(--chalk-s3));
 }
 .chalk-app--phase08b .chalk-call-rail { grid-area: rail; }
 
@@ -1521,7 +1521,7 @@ html {
   min-width: 0;
 }
 .chalk-linkpreview-domain-input--error {
-  border-color: var(--chalk-error, #c33) !important;
+  border-color: var(--chalk-error) !important;
 }
 
 /* -- att-3: drag-drop affordance + per-item upload progress -------- */
@@ -2748,7 +2748,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   flex: 0 0 auto;
   object-fit: cover;
   vertical-align: middle;
-  background: var(--chalk-bg-elev-2, transparent);
+  background: var(--chalk-bg-elev-2);
 }
 
 .chalk-avatar--line {
@@ -2956,7 +2956,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   gap: 2px;
   min-width: 220px;
   padding: var(--chalk-s2) var(--chalk-s3);
-  background: var(--chalk-bg, #0a0f0a);
+  background: var(--chalk-bg);
   border: 1px solid var(--chalk-accent);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   color: var(--chalk-fg);
@@ -3799,7 +3799,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-profile-filter-input {
   width: 100%;
-  background: var(--chalk-bg-elev, #14201a);
+  background: var(--chalk-bg-elev);
   border: 1px solid var(--chalk-border);
   color: var(--chalk-fg);
   padding: 0.3rem 0.5rem;
@@ -4561,7 +4561,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   justify-content: space-between;
   align-items: baseline;
   padding: 0.75rem 1rem 0.5rem;
-  border-bottom: 1px solid var(--chalk-border, #1f2a1f);
+  border-bottom: 1px solid var(--chalk-border);
 }
 
 .chalk-friends-title {
@@ -4574,12 +4574,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
   display: flex;
   gap: 0.25rem;
   padding: 0.5rem 1rem 0;
-  border-bottom: 1px solid var(--chalk-border, #1f2a1f);
+  border-bottom: 1px solid var(--chalk-border);
 }
 
 .chalk-friends-tab {
   background: transparent;
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   border: none;
   padding: 0.4rem 0.75rem;
   cursor: pointer;
@@ -4591,16 +4591,16 @@ body.chalk-resizing-y .chalk-composer-resizer {
   align-items: center;
   gap: 0.4rem;
 }
-.chalk-friends-tab:hover { color: var(--chalk-fg, #c8ffc8); }
+.chalk-friends-tab:hover { color: var(--chalk-fg); }
 .chalk-friends-tab--active {
-  color: var(--chalk-fg, #c8ffc8);
-  border-bottom-color: var(--chalk-accent, #6effa1);
+  color: var(--chalk-fg);
+  border-bottom-color: var(--chalk-accent);
 }
 
 .chalk-friends-badge,
 .chalk-status-menu-badge {
-  background: var(--chalk-accent, #6effa1);
-  color: var(--chalk-bg, #0a120a);
+  background: var(--chalk-accent);
+  color: var(--chalk-bg);
   border-radius: 9999px;
   padding: 0 0.45em;
   font-size: 0.75rem;
@@ -4611,14 +4611,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-friends-refresh {
   margin-left: auto;
   background: transparent;
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   border: none;
   font-family: inherit;
   font-size: 1.1rem;
   cursor: pointer;
   padding: 0.2rem 0.5rem;
 }
-.chalk-friends-refresh:hover { color: var(--chalk-fg, #c8ffc8); }
+.chalk-friends-refresh:hover { color: var(--chalk-fg); }
 
 .chalk-friends-body {
   padding: 1rem;
@@ -4626,7 +4626,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 
 .chalk-friends-help {
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   font-size: 0.85rem;
   margin: 0 0 0.75rem;
   line-height: 1.4;
@@ -4639,9 +4639,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-friends-add-input {
   flex: 1;
-  background: var(--chalk-bg-elev, #14201a);
-  border: 1px solid var(--chalk-border, #1f2a1f);
-  color: var(--chalk-fg, #c8ffc8);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg);
   padding: 0.45rem 0.6rem;
   font-family: inherit;
   font-size: 0.95rem;
@@ -4649,12 +4649,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-friends-add-input:focus {
   outline: none;
-  border-color: var(--chalk-accent, #6effa1);
+  border-color: var(--chalk-accent);
 }
 
 .chalk-friends-add-submit {
-  background: var(--chalk-accent, #6effa1);
-  color: var(--chalk-bg, #0a120a);
+  background: var(--chalk-accent);
+  color: var(--chalk-bg);
   border: none;
   padding: 0.45rem 1rem;
   font-family: inherit;
@@ -4664,21 +4664,21 @@ body.chalk-resizing-y .chalk-composer-resizer {
   border-radius: 3px;
 }
 .chalk-friends-add-submit:disabled {
-  background: var(--chalk-fg-dim, #5a8a5a);
+  background: var(--chalk-fg-dim);
   cursor: not-allowed;
 }
 
 .chalk-friends-error {
-  color: var(--chalk-error, #ff7070);
+  color: var(--chalk-error);
   font-size: 0.85rem;
   margin-top: 0.5rem;
   padding: 0.4rem 0.6rem;
   background: rgba(255, 112, 112, 0.08);
-  border-left: 2px solid var(--chalk-error, #ff7070);
+  border-left: 2px solid var(--chalk-error);
 }
 
 .chalk-friends-empty {
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   font-style: italic;
   text-align: center;
   padding: 1.5rem 1rem;
@@ -4686,7 +4686,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-friends-section-title {
   font-size: 0.8rem;
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin: 0 0 0.5rem;
@@ -4700,11 +4700,11 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-friends-directory {
   margin-top: 1.25rem;
   padding-top: 0.75rem;
-  border-top: 1px solid var(--chalk-border, #1f2a1f);
+  border-top: 1px solid var(--chalk-border);
 }
 
 .chalk-friends-dim {
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   font-size: 0.85rem;
 }
 
@@ -4722,12 +4722,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
   border-radius: 3px;
 }
 .chalk-friends-row:hover {
-  background: var(--chalk-bg-elev, #14201a);
+  background: var(--chalk-bg-elev);
 }
 
 .chalk-friends-handle {
   font-family: inherit;
-  color: var(--chalk-fg, #c8ffc8);
+  color: var(--chalk-fg);
 }
 
 .chalk-friends-row-actions {
@@ -4737,8 +4737,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-friends-action {
   background: transparent;
-  border: 1px solid var(--chalk-border, #1f2a1f);
-  color: var(--chalk-fg-dim, #5a8a5a);
+  border: 1px solid var(--chalk-border);
+  color: var(--chalk-fg-dim);
   font-family: inherit;
   font-size: 0.85rem;
   padding: 0.25rem 0.6rem;
@@ -4746,28 +4746,28 @@ body.chalk-resizing-y .chalk-composer-resizer {
   cursor: pointer;
 }
 .chalk-friends-action:hover {
-  color: var(--chalk-fg, #c8ffc8);
-  border-color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg-dim);
 }
 .chalk-friends-action:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 .chalk-friends-action--accept {
-  color: var(--chalk-accent, #6effa1);
-  border-color: var(--chalk-accent, #6effa1);
+  color: var(--chalk-accent);
+  border-color: var(--chalk-accent);
 }
 .chalk-friends-action--accept:hover {
-  background: var(--chalk-accent, #6effa1);
-  color: var(--chalk-bg, #0a120a);
+  background: var(--chalk-accent);
+  color: var(--chalk-bg);
 }
 .chalk-friends-action--decline {
-  color: var(--chalk-warn, #ffd060);
-  border-color: var(--chalk-warn, #ffd060);
+  color: var(--chalk-warn);
+  border-color: var(--chalk-warn);
 }
 .chalk-friends-action--decline:hover {
-  background: var(--chalk-warn, #ffd060);
-  color: var(--chalk-bg, #0a120a);
+  background: var(--chalk-warn);
+  color: var(--chalk-bg);
 }
 
 /* ============================================================
@@ -4779,13 +4779,13 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-sidebar-header--channels {
   margin-top: 1rem;
   padding-top: 0.5rem;
-  border-top: 1px solid var(--chalk-border, #1f2a1f);
+  border-top: 1px solid var(--chalk-border);
 }
 
 /* Inline count next to section title. Dimmed by default, takes the
    accent color when there's something to highlight. */
 .chalk-sidebar-count {
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   font-size: 0.85em;
   font-weight: normal;
   margin-left: 0.25em;
@@ -4838,7 +4838,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   /* Same separated-section treatment as threads above it. */
   margin-top: 1rem;
   padding-top: 0.5rem;
-  border-top: 1px solid var(--chalk-border, #1f2a1f);
+  border-top: 1px solid var(--chalk-border);
 }
 
 .chalk-sidebar-list--voice {
@@ -4885,7 +4885,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-sidebar-filter-input {
   width: 100%;
-  background: var(--chalk-bg-elev, #14201a);
+  background: var(--chalk-bg-elev);
   border: 1px solid var(--chalk-border);
   color: var(--chalk-fg);
   padding: 0.3rem 0.5rem;
@@ -4946,7 +4946,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   margin-top: 0;
   padding-top: 0.45rem;
   padding-bottom: 0.3rem;
-  border-top: 1px solid var(--chalk-border, #1f2a1f);
+  border-top: 1px solid var(--chalk-border);
   letter-spacing: 0.08em;
 }
 .chalk-sidebar-group:first-child .chalk-sidebar-group-header {
@@ -4978,7 +4978,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-nick-menu-group-input {
   flex: 1;
   min-width: 0;
-  background: var(--chalk-bg-elev, #14201a);
+  background: var(--chalk-bg-elev);
   border: 1px solid var(--chalk-border);
   color: var(--chalk-fg);
   padding: 0.2rem 0.4rem;
@@ -4997,7 +4997,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-nick-menu-select {
   flex: 1;
   min-width: 0;
-  background: var(--chalk-bg-elev, #14201a);
+  background: var(--chalk-bg-elev);
   border: 1px solid var(--chalk-border);
   color: var(--chalk-fg);
   padding: 0.2rem 0.4rem;
@@ -5181,9 +5181,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-lazy-error {
   padding: 1.5rem;
-  color: var(--chalk-error, #ff7070);
+  color: var(--chalk-error);
   background: rgba(255, 112, 112, 0.08);
-  border-left: 2px solid var(--chalk-error, #ff7070);
+  border-left: 2px solid var(--chalk-error);
   margin: 1rem;
   font-size: var(--chalk-size-small);
 }
@@ -5211,8 +5211,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   border-radius: 3px;
 }
 .chalk-presence-trigger:hover {
-  border-color: var(--chalk-border, #1f2a1f);
-  background: var(--chalk-bg-elev, #14201a);
+  border-color: var(--chalk-border);
+  background: var(--chalk-bg-elev);
 }
 .chalk-presence-trigger:focus-visible {
   outline: 1px solid var(--chalk-fg-bright);
@@ -5235,7 +5235,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-size: calc(10px * var(--chalk-font-scale));
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   padding: 0 0.25rem;
 }
 
@@ -5245,8 +5245,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   left: 0;
   margin-top: 4px;
   min-width: 12rem;
-  background: var(--chalk-bg-elev, #14201a);
-  border: 1px solid var(--chalk-border, #1f2a1f);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
   padding: 0.3rem 0;
   z-index: 20;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
@@ -5259,18 +5259,18 @@ body.chalk-resizing-y .chalk-composer-resizer {
   width: 100%;
   background: transparent;
   border: none;
-  color: var(--chalk-fg, #c8ffc8);
+  color: var(--chalk-fg);
   font: inherit;
   text-align: left;
   padding: 0.4rem 0.75rem;
   cursor: pointer;
 }
 .chalk-presence-menu-item:hover {
-  background: rgba(110, 255, 161, 0.08);
+  background: var(--chalk-bg-hover);
 }
 .chalk-presence-menu-item--active {
-  color: var(--chalk-fg-bright, #6effa1);
-  background: rgba(110, 255, 161, 0.05);
+  color: var(--chalk-fg-bright);
+  background: var(--chalk-bg-selected);
 }
 .chalk-presence-menu-item--active::before {
   content: "✓ ";
@@ -5278,7 +5278,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-presence-menu-hint {
   font-size: 0.75rem;
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   font-style: italic;
 }
 
@@ -6435,7 +6435,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 /* 131-1: the rail and the thread panel at the same time. */
 .chalk-app--phase08b.chalk-app--rail.chalk-app--thread-open {
-  grid-template-columns: var(--chalk-rail-w, 48px) var(--chalk-sidebar-w, 220px) 1fr clamp(340px, 28%, 560px);
+  grid-template-columns: var(--chalk-rail-w) var(--chalk-sidebar-w, 220px) 1fr clamp(340px, 28%, 560px);
   grid-template-areas:
     "header header  header thread"
     "rail   sidebar main   thread"
@@ -6780,13 +6780,13 @@ body.chalk-resizing-y .chalk-composer-resizer {
   justify-content: space-between;
   align-items: baseline;
   padding: 0.75rem 1rem 0.5rem;
-  border-bottom: 1px solid var(--chalk-border, #1f2a1f);
+  border-bottom: 1px solid var(--chalk-border);
 }
 .chalk-members-title {
-  color: var(--chalk-fg-bright, #c8ffc8);
+  color: var(--chalk-fg-bright);
 }
 .chalk-members-chan {
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   margin-left: 0.35rem;
 }
 .chalk-members-header-actions {
@@ -6796,14 +6796,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-members-refresh {
   background: transparent;
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   border: none;
   font-family: inherit;
   font-size: 0.8rem;
   cursor: pointer;
   padding: 0.2rem 0.5rem;
 }
-.chalk-members-refresh:hover { color: var(--chalk-fg, #c8ffc8); }
+.chalk-members-refresh:hover { color: var(--chalk-fg); }
 .chalk-members-refresh:disabled { opacity: 0.5; cursor: default; }
 
 .chalk-members-body {
@@ -6813,7 +6813,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-members-empty {
   padding: 1rem;
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   text-align: center;
 }
 .chalk-members-list { list-style: none; margin: 0; padding: 0; }
@@ -6823,9 +6823,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
   align-items: center;
   padding: 0.4rem 1rem;
 }
-.chalk-members-row:hover { background: var(--chalk-bg-hover, #121912); }
-.chalk-members-handle { color: var(--chalk-fg, #c8ffc8); }
-.chalk-members-you { color: var(--chalk-fg-dim, #5a8a5a); }
+.chalk-members-row:hover { background: var(--chalk-bg-hover); }
+.chalk-members-handle { color: var(--chalk-fg); }
+.chalk-members-you { color: var(--chalk-fg-dim); }
 
 .chalk-members-status {
   font-size: 0.75rem;
@@ -6834,31 +6834,31 @@ body.chalk-resizing-y .chalk-composer-resizer {
   padding: 1px 6px;
   border: 1px solid currentColor;
 }
-.chalk-members-status--has { color: var(--chalk-accent, #5cffb1); }
-.chalk-members-status--waiting { color: var(--chalk-fg-muted, #6a7a6a); }
+.chalk-members-status--has { color: var(--chalk-accent); }
+.chalk-members-status--waiting { color: var(--chalk-fg-muted); }
 
 .chalk-members-footer {
   padding: 0.6rem 1rem 0.8rem;
-  border-top: 1px solid var(--chalk-border, #1f2a1f);
+  border-top: 1px solid var(--chalk-border);
 }
 .chalk-members-reshare {
   width: 100%;
   background: transparent;
-  color: var(--chalk-accent, #5cffb1);
-  border: 1px solid var(--chalk-accent, #5cffb1);
+  color: var(--chalk-accent);
+  border: 1px solid var(--chalk-accent);
   font-family: inherit;
   font-size: 0.85rem;
   cursor: pointer;
   padding: 0.4rem 0.6rem;
 }
-.chalk-members-reshare:hover { background: rgba(92, 255, 177, 0.08); }
+.chalk-members-reshare:hover { background: color-mix(in srgb, var(--chalk-accent) 8%, transparent); }
 .chalk-members-reshare:disabled { opacity: 0.5; cursor: default; }
 .chalk-members-allset,
 .chalk-members-nokey {
   display: block;
   text-align: center;
   font-size: 0.8rem;
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
 }
 
 /* -- Verification: badges + verify view (phase 24b) ---------------- */
@@ -6880,14 +6880,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
   cursor: pointer;
 }
 .chalk-verify-badge:disabled { cursor: default; opacity: 0.7; }
-.chalk-verify-badge--verified { color: var(--chalk-accent, #5cffb1); }
-.chalk-verify-badge--unverified { color: var(--chalk-fg-dim, #5a8a5a); }
-.chalk-verify-badge--changed { color: var(--chalk-warn, #ffcc66); }
-.chalk-verify-badge--none { color: var(--chalk-fg-muted, #6a7a6a); }
+.chalk-verify-badge--verified { color: var(--chalk-accent); }
+.chalk-verify-badge--unverified { color: var(--chalk-fg-dim); }
+.chalk-verify-badge--changed { color: var(--chalk-warn); }
+.chalk-verify-badge--none { color: var(--chalk-fg-muted); }
 /* 82-8: TOFU -- this device recognises the key but nobody compared it. Sits
    between unverified and verified deliberately: it is a real fact, and it is
    not a check. */
-.chalk-verify-badge--pinned { color: var(--chalk-fg, #c8ffc8); opacity: 0.75; }
+.chalk-verify-badge--pinned { color: var(--chalk-fg); opacity: 0.75; }
 
 /* -- 82-8: the identity-changed wall ------------------------------------
    A repudiated identity pin is the gravest thing this panel can report, so it
@@ -6896,21 +6896,21 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-identity-wall {
   margin: 0.6rem 1rem 0;
   padding: 0.6rem 0.7rem;
-  border: 1px solid var(--chalk-error, #ff4d4d);
+  border: 1px solid var(--chalk-error);
   border-left-width: 3px;
-  background: color-mix(in srgb, var(--chalk-error, #ff4d4d) 8%, transparent);
+  background: color-mix(in srgb, var(--chalk-error) 8%, transparent);
 }
 .chalk-identity-wall-title {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--chalk-error, #ff4d4d);
+  color: var(--chalk-error);
   margin-bottom: 0.3rem;
 }
 .chalk-identity-wall-body {
   font-size: 0.8rem;
   line-height: 1.45;
-  color: var(--chalk-fg, #c8ffc8);
+  color: var(--chalk-fg);
 }
 .chalk-identity-wall-who {
   display: flex;
@@ -6922,12 +6922,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-family: inherit;
   font-size: 0.75rem;
   background: transparent;
-  border: 1px solid var(--chalk-error, #ff4d4d);
-  color: var(--chalk-error, #ff4d4d);
+  border: 1px solid var(--chalk-error);
+  color: var(--chalk-error);
   padding: 1px 8px;
   cursor: pointer;
 }
-.chalk-identity-wall-link:hover { color: var(--chalk-fg, #c8ffc8); }
+.chalk-identity-wall-link:hover { color: var(--chalk-fg); }
 
 /* -- 82-8: "who just joined" notice, above the composer ------------------
    Membership is server-asserted and a key holder auto-reshares to whoever
@@ -6938,55 +6938,55 @@ body.chalk-resizing-y .chalk-composer-resizer {
   align-items: flex-start;
   gap: 0.5rem;
   padding: 0.3rem 0.6rem;
-  border-left: 2px solid var(--chalk-warn, #ffcc66);
-  background: color-mix(in srgb, var(--chalk-warn, #ffcc66) 7%, transparent);
+  border-left: 2px solid var(--chalk-warn);
+  background: color-mix(in srgb, var(--chalk-warn) 7%, transparent);
   font-size: 0.78rem;
   line-height: 1.4;
 }
-.chalk-join-notice-text { flex: 1; color: var(--chalk-fg, #c8ffc8); }
+.chalk-join-notice-text { flex: 1; color: var(--chalk-fg); }
 .chalk-join-notice-dismiss {
   background: transparent;
   border: none;
-  color: var(--chalk-fg-muted, #6a7a6a);
+  color: var(--chalk-fg-muted);
   font-family: inherit;
   font-size: 0.8rem;
   line-height: 1;
   cursor: pointer;
   padding: 0 0.15rem;
 }
-.chalk-join-notice-dismiss:hover { color: var(--chalk-fg, #c8ffc8); }
+.chalk-join-notice-dismiss:hover { color: var(--chalk-fg); }
 
 /* -- 82-8: key provenance line ------------------------------------------ */
 .chalk-members-provenance {
   font-size: 0.75rem;
-  color: var(--chalk-fg-muted, #6a7a6a);
+  color: var(--chalk-fg-muted);
   margin-bottom: 0.4rem;
 }
-.chalk-members-provenance--weak { color: var(--chalk-warn, #ffcc66); }
+.chalk-members-provenance--weak { color: var(--chalk-warn); }
 
 .chalk-members-back {
   background: transparent;
   border: none;
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   font-family: inherit;
   font-size: inherit;
   cursor: pointer;
   padding: 0;
 }
-.chalk-members-back:hover { color: var(--chalk-fg, #c8ffc8); }
+.chalk-members-back:hover { color: var(--chalk-fg); }
 
 .chalk-verify-view {
   padding: 0.75rem 1rem 1rem;
 }
 .chalk-verify-intro {
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   font-size: 0.85rem;
   line-height: 1.5;
   margin-bottom: 0.75rem;
 }
 .chalk-verify-warn {
-  color: var(--chalk-warn, #ffcc66);
-  border: 1px solid var(--chalk-warn, #ffcc66);
+  color: var(--chalk-warn);
+  border: 1px solid var(--chalk-warn);
   padding: 0.5rem 0.6rem;
   font-size: 0.85rem;
   line-height: 1.4;
@@ -6994,7 +6994,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-verify-code {
   background: var(--chalk-bg-elev);
-  border: 1px solid var(--chalk-border, #1f2a1f);
+  border: 1px solid var(--chalk-border);
   padding: 0.75rem;
   margin-bottom: 0.5rem;
 }
@@ -7004,12 +7004,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
   gap: 0.4rem 0.6rem;
 }
 .chalk-verify-word {
-  color: var(--chalk-accent, #5cffb1);
+  color: var(--chalk-accent);
   font-size: 0.95rem;
   text-align: center;
 }
 .chalk-verify-numeric {
-  color: var(--chalk-accent, #5cffb1);
+  color: var(--chalk-accent);
   font-size: 0.95rem;
   line-height: 1.6;
   letter-spacing: 0.05em;
@@ -7019,34 +7019,34 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-verify-toggle {
   background: transparent;
   border: none;
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   font-family: inherit;
   font-size: 0.8rem;
   cursor: pointer;
   padding: 0.2rem 0;
   margin-bottom: 0.75rem;
 }
-.chalk-verify-toggle:hover { color: var(--chalk-fg, #c8ffc8); }
+.chalk-verify-toggle:hover { color: var(--chalk-fg); }
 
 .chalk-verify-actions { margin-top: 0.5rem; }
 .chalk-verify-state--verified {
-  color: var(--chalk-accent, #5cffb1);
+  color: var(--chalk-accent);
   text-align: center;
   font-size: 0.9rem;
 }
 .chalk-verify-mark {
   width: 100%;
   background: transparent;
-  color: var(--chalk-accent, #5cffb1);
-  border: 1px solid var(--chalk-accent, #5cffb1);
+  color: var(--chalk-accent);
+  border: 1px solid var(--chalk-accent);
   font-family: inherit;
   font-size: 0.85rem;
   cursor: pointer;
   padding: 0.4rem 0.6rem;
 }
-.chalk-verify-mark:hover { background: rgba(92, 255, 177, 0.08); }
+.chalk-verify-mark:hover { background: color-mix(in srgb, var(--chalk-accent) 8%, transparent); }
 .chalk-verify-confirm-text {
-  color: var(--chalk-fg, #c8ffc8);
+  color: var(--chalk-fg);
   font-size: 0.85rem;
   line-height: 1.4;
   margin-bottom: 0.5rem;
@@ -7058,27 +7058,27 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-verify-confirm-yes {
   flex: 1;
   background: transparent;
-  color: var(--chalk-accent, #5cffb1);
-  border: 1px solid var(--chalk-accent, #5cffb1);
+  color: var(--chalk-accent);
+  border: 1px solid var(--chalk-accent);
   font-family: inherit;
   font-size: 0.85rem;
   cursor: pointer;
   padding: 0.4rem 0.6rem;
 }
-.chalk-verify-confirm-yes:hover { background: rgba(92, 255, 177, 0.08); }
+.chalk-verify-confirm-yes:hover { background: color-mix(in srgb, var(--chalk-accent) 8%, transparent); }
 .chalk-verify-confirm-no {
   flex: 1;
   background: transparent;
-  color: var(--chalk-fg-dim, #5a8a5a);
-  border: 1px solid var(--chalk-border, #1f2a1f);
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-border);
   font-family: inherit;
   font-size: 0.85rem;
   cursor: pointer;
   padding: 0.4rem 0.6rem;
 }
-.chalk-verify-confirm-no:hover { color: var(--chalk-fg, #c8ffc8); }
+.chalk-verify-confirm-no:hover { color: var(--chalk-fg); }
 .chalk-verify-empty {
-  color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg-dim);
   font-size: 0.85rem;
   line-height: 1.5;
   text-align: center;
@@ -7093,26 +7093,26 @@ body.chalk-resizing-y .chalk-composer-resizer {
   gap: 0.5rem;
   margin-top: 0.5rem;
   padding-top: 0.5rem;
-  border-top: 1px solid var(--chalk-border, #1f2a1f);
+  border-top: 1px solid var(--chalk-border);
 }
 .chalk-members-rotate {
   flex: 1;
   background: transparent;
-  color: var(--chalk-fg-dim, #5a8a5a);
-  border: 1px solid var(--chalk-border, #1f2a1f);
+  color: var(--chalk-fg-dim);
+  border: 1px solid var(--chalk-border);
   font-family: inherit;
   font-size: 0.85rem;
   cursor: pointer;
   padding: 0.4rem 0.6rem;
 }
 .chalk-members-rotate:hover:not(:disabled) {
-  color: var(--chalk-fg, #c8ffc8);
-  border-color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg-dim);
 }
 .chalk-members-rotate:disabled { opacity: 0.5; cursor: default; }
 .chalk-members-keyver {
   font-size: 0.75rem;
-  color: var(--chalk-fg-muted, #6a7a6a);
+  color: var(--chalk-fg-muted);
   white-space: nowrap;
 }
 
@@ -7121,7 +7121,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-members-remove {
   background: transparent;
   border: none;
-  color: var(--chalk-fg-muted, #6a7a6a);
+  color: var(--chalk-fg-muted);
   font-family: inherit;
   font-size: 0.85rem;
   line-height: 1;
@@ -7136,8 +7136,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   margin-top: 0.5rem;
   width: 100%;
   background: transparent;
-  color: var(--chalk-fg-muted, #6a7a6a);
-  border: 1px solid var(--chalk-border, #1f2a1f);
+  color: var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-border);
   font-family: inherit;
   font-size: 0.8rem;
   cursor: pointer;
@@ -7151,8 +7151,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-members-pending {
   margin-top: 0.5rem;
   font-size: 0.78rem;
-  color: var(--chalk-warn, #ffcc66);
-  border-left: 2px solid var(--chalk-warn, #ffcc66);
+  color: var(--chalk-warn);
+  border-left: 2px solid var(--chalk-warn);
   padding-left: 0.5rem;
 }
 
@@ -7164,16 +7164,16 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-members-add-toggle {
   width: 100%;
   background: transparent;
-  color: var(--chalk-fg-dim, #5a8a5a);
-  border: 1px dashed var(--chalk-border, #1f2a1f);
+  color: var(--chalk-fg-dim);
+  border: 1px dashed var(--chalk-border);
   font-family: inherit;
   font-size: 0.82rem;
   cursor: pointer;
   padding: 0.35rem 0.6rem;
 }
 .chalk-members-add-toggle:hover {
-  color: var(--chalk-fg, #c8ffc8);
-  border-color: var(--chalk-fg-dim, #5a8a5a);
+  color: var(--chalk-fg);
+  border-color: var(--chalk-fg-dim);
 }
 .chalk-members-add-list {
   list-style: none;
@@ -7189,7 +7189,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   width: 100%;
   text-align: left;
   background: transparent;
-  color: var(--chalk-fg, #c8ffc8);
+  color: var(--chalk-fg);
   border: none;
   font-family: inherit;
   font-size: 0.85rem;
@@ -7198,11 +7198,11 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-members-add-friend:hover {
   background: var(--chalk-bg-hover);
-  color: var(--chalk-accent, #8effa0);
+  color: var(--chalk-accent);
 }
 .chalk-members-add-empty {
   font-size: 0.78rem;
-  color: var(--chalk-fg-muted, #6a7a6a);
+  color: var(--chalk-fg-muted);
   padding: 0.3rem 0.5rem;
 }
 
@@ -10728,7 +10728,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
   /* 64-5: the filter toggle while its input is showing. */
   .chalk-zucker-add--active {
-    background: var(--chalk-bg-elev, #14201a);
+    background: var(--chalk-bg-elev);
     color: var(--chalk-fg-bright);
     border-color: var(--chalk-fg-bright);
   }
@@ -11073,7 +11073,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   flex-shrink: 0;
   margin-top: 1rem;
   padding-top: 0.5rem;
-  border-top: 1px solid var(--chalk-border, #1f2a1f);
+  border-top: 1px solid var(--chalk-border);
 }
 
 .chalk-sidebar-threads {
@@ -11619,7 +11619,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   flex-shrink: 0;
   margin-top: 1rem;
   padding-top: 0.5rem;
-  border-top: 1px solid var(--chalk-border, #1f2a1f);
+  border-top: 1px solid var(--chalk-border);
 }
 
 .chalk-sidebar-parking {
@@ -11750,7 +11750,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-size: 1.1em;
 }
 .chalk-guest-expiry {
-  color: var(--chalk-warn, #c90);
+  color: var(--chalk-warn);
 }
 .chalk-guest-conn {
   margin-left: auto;
@@ -11815,8 +11815,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   flex-shrink: 0;
 }
 .chalk-expiry-badge--urgent {
-  color: var(--chalk-error, #f33);
-  border-color: var(--chalk-error, #f33);
+  color: var(--chalk-error);
+  border-color: var(--chalk-error);
 }
 
 /* 36-3: window controls overlay -- chalk's own header drawn into the title bar
@@ -11957,8 +11957,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   align-items: flex-start;
   gap: 0.5rem;
   padding: 0.3rem 0.6rem;
-  border-left: 2px solid var(--chalk-warn, #ffcc66);
-  background: color-mix(in srgb, var(--chalk-warn, #ffcc66) 7%, transparent);
+  border-left: 2px solid var(--chalk-warn);
+  background: color-mix(in srgb, var(--chalk-warn) 7%, transparent);
   font-size: 0.78rem;
   line-height: 1.4;
 }
@@ -11979,7 +11979,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-roster-notice-text {
   flex: 1;
-  color: var(--chalk-fg, #c8ffc8);
+  color: var(--chalk-fg);
 }
 .chalk-roster-notice-dismiss {
   background: none;
