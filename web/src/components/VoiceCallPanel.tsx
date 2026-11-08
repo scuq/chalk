@@ -53,6 +53,7 @@ import {
 } from "../voice/pip";
 import { gridPlan, isCrowded, resolveStageMode, type VoiceLayout } from "../voice/grid";
 import { railTiles, type RailTile } from "../voice/rail-tiles";
+import { CamIcon, DeafIcon, MicOffIcon, ScreenIcon } from "./VoiceBadges";
 
 /** Stats refresh cadence while the drawer is open. Passive getStats reads
  * only (the Addendum D rule: nothing in-call may compete with media). */
@@ -859,17 +860,15 @@ export function VoiceCallPanel({
         />
       )}
 
-      {/* 45-4: the rules of the room's text, stated where the text is. It sits
-          below the call and directly above the feed it describes, and shows in
-          the lobby too -- someone typing here before anyone joins is exactly
-          the person who needs to know it won't be kept. */}
+      {/* 45-4, 133-10: the one-line rule of the room's text, stated where the
+          text is. It sits below the call and directly above the feed. It
+          renders in the lobby and in the call. Someone who types here before
+          anyone joins must know that chalk does not keep the text. The CSS
+          hides it while the scratchpad is empty, because the empty state then
+          gives the full explanation. */}
       <div class="chalk-voice-scratch" data-testid="voice-scratch-note">
         <span class="chalk-voice-scratch-tag">scratchpad</span>
-        <span>
-          text here is for the call: only what fits stays on screen, older lines
-          scroll away for good, and everything is deleted for everyone once the
-          last person leaves. keep it short — a line, a link, a GIF.
-        </span>
+        <span>deleted for everyone when the last person leaves</span>
       </div>
     </div>
   );
@@ -1063,27 +1062,29 @@ function StagePeer({
             {big || grid ? (poppedOut ? "⧉ close" : "⧉ popout") : "⧉"}
           </button>
         )}
-        {/* 109-1: deafened stands IN PLACE OF muted, not beside it. Deafening
-            mutes you with it, so a deafened peer always broadcasts both, and
-            two flags saying overlapping things is one flag of noise -- d is
-            the stronger claim and the tooltip carries the rest. */}
+        {/* 109-1, 133-10: the deafened icon stands in place of the muted icon,
+            not beside it. A deafened peer is always muted too, so two icons
+            would repeat one fact. The deafened icon is the stronger claim and
+            the tooltip gives the rest. The flags are the shared VoiceBadges
+            icons. The local "M" stays a letter in a box, so you can tell it
+            from what a person did themselves. */}
         {tile.part?.deafened ? (
           <span
             class="chalk-voice-peer-flag chalk-voice-peer-flag--deaf"
             title="deafened — they cannot hear the room, and are muted with it"
           >
-            d
+            <DeafIcon />
           </span>
         ) : (
           tile.part?.muted && (
             <span class="chalk-voice-peer-flag" title="muted">
-              m
+              <MicOffIcon />
             </span>
           )
         )}
-        {tile.part?.videoOn && <span class="chalk-voice-peer-flag" title="camera on">c</span>}
+        {tile.part?.videoOn && <span class="chalk-voice-peer-flag" title="camera on"><CamIcon /></span>}
         {tile.part?.screenOn && (
-          <span class="chalk-voice-peer-flag" title="sharing screen">s</span>
+          <span class="chalk-voice-peer-flag" title="sharing screen"><ScreenIcon /></span>
         )}
         {!tile.isSelf && (tile.isScreen ? screenMuted : pref?.muted) && (
           <span

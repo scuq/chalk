@@ -6592,13 +6592,15 @@ export function App() {
               empty={!state.historyLoaded[activeChannel.id]
                 ? "loading history..."
                 : activeChannel.channelType === "voice"
-                  ? "scratchpad is empty."
+                  ? "notes for this call. only what fits stays on screen, and it is all deleted for everyone when the last person leaves."
                   : activeChannel.isDM
                     ? `be the first to write to ${displayName(activeChannel, state.user?.id ?? null)}.`
                     : `be the first to write something in ${displayName(activeChannel, state.user?.id ?? null)}.`}
-              emptyTitle={state.historyLoaded[activeChannel.id] && activeChannel.channelType !== "voice"
-                ? "no messages yet"
-                : undefined}
+              emptyTitle={!state.historyLoaded[activeChannel.id]
+                ? undefined
+                : activeChannel.channelType === "voice"
+                  ? "scratchpad"
+                  : "no messages yet"}
             />
           </>
         ) : (

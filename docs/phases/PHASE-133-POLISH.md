@@ -1,6 +1,6 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** 133-1 to 133-9 built (2026-11-08), 133-10 and 133-11 planned.
+**Status:** 133-1 to 133-10 built (2026-11-08), 133-11 planned.
 133-7 changed no code. The phase closed at 133-7 and was reopened for the voice
 room. See "The voice room" below.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
@@ -564,6 +564,75 @@ and in 133-11.
 The slice has three tests for `resolveStageMode` in `grid.test.ts`, and one
 test for the card and video-grid rules in `theme-voice-pane.test.ts`.
 
+### The scratchpad and a quieter call panel (133-10)
+
+The notice under the call was a paragraph that showed at all times. It
+repeated what a user already knew once the scratchpad had text. The owner chose
+"empty state plus short caption":
+
+- When the scratchpad is empty, the empty state gives the full explanation.
+  The title is "scratchpad". The hint is "notes for this call. only what fits
+  stays on screen, and it is all deleted for everyone when the last person
+  leaves." `App.tsx` passes both for a voice channel. The loading state still
+  has no title.
+- The caption is one line: the tag "scratchpad" and the text "deleted for
+  everyone when the last person leaves". It renders in the lobby and in the
+  call. The rule
+  `.chalk-main--voice:has(.chalk-messages--ephemeral.chalk-messages--empty)`
+  hides it while the scratchpad is empty, so the same words do not show twice.
+  A person who types before anyone joins sees the caption after the first note.
+- The caption lost its dashed top rule and has a muted color. The tag is dim, not
+  the warn color.
+
+The flags for muted, deafened, camera on, and screen share on a tile are now
+the shared `VoiceBadges` icons: `MicOffIcon`, `DeafIcon`, `CamIcon`, and
+`ScreenIcon`. The call rail, the sidebar, and the hover card use the same
+icons. The deafened icon still stands in place of the muted icon. The local
+"M" (muted by you) stays a letter in a box, so it stays distinct from what the
+person did themselves. The flag has a transparent border, and the local flag
+keeps its colored border through its own rule. The deafened flag lost its
+border color. The peer tile has the medium radius and the panel has the large
+radius.
+
+The scratchpad empty state differs from the empty state of a text channel. It
+has no 50vh floor, because the call needs the height. It has a 40px mark and a
+title of the base size.
+
+Two bugs were found in a browser, not by a test:
+
+1. The empty state sat at the right edge. The feed anchors its content to the
+   bottom with `justify-content: flex-end`. In the voice room this pushed a
+   grid track to the right edge. The rule `justify-content: center` on the
+   empty scratchpad stops it.
+2. One camera at 640px by 360px pushed the audio-only card out of the clipped
+   stage at 800px height. The rules for `.chalk-voice-videos` with
+   `data-count` 1 and 2 now cap the width from the height that the pane can
+   spare:
+
+   | Cameras | Width cap | With a row of cards below |
+   |---|---|---|
+   | One | `min(640px, calc((100dvh - 480px) * 16 / 9))` | 530px reserve |
+   | Two | `min(960px, calc((100dvh - 480px) * 32 / 9))` | 530px reserve |
+
+   The 480px and the 530px were measured by hand at 1280px by 800px. They are
+   the rest of the pane: the header, the channel header, the bar, the caption,
+   the row of cards, the floor of the scratchpad, and the composer. With the
+   cap, the camera is 480px by 270px and everything fits. The cap applies to
+   one and two cameras in the mixed layout only. Three or more cameras and the
+   forced grid are not capped. If the pane gets another fixed part, the two
+   constants must change.
+
+This is the method that the open item "A four-tile call does not fit a window
+under ~850px tall" proposes for the grid. See `docs/open-items.md`.
+
+Seen on the dev stack at 1280px by 800px in the green theme: the empty
+scratchpad with the centred explanation under two cards, the caption after one
+note, and the mixed view whole. Cards and the empty state were seen at a phone
+width of 390px. The slice has two tests in `theme-voice-pane.test.ts`: one for
+the caption and the empty-state rules, and one for the camera height cap.
+Still to see, in 133-11: the speaking highlight on a card, a screen share,
+three or more cameras, and the light themes in the voice room.
+
 ## What was rejected
 
 - Floating card panels. The sticky header, the season canvas, the drawer, and
@@ -640,15 +709,17 @@ and the test cover it.
   mixed call combines both. `resolveStageMode`, the `card` prop of
   `StagePeer`, the toggle cycle, and the rules for `.chalk-voice-videos` and
   `.chalk-voice-cards`. Four tests. Done. See the section above.
-- **133-10 — the scratchpad.** The notice becomes the empty state, and a short
-  caption stays above the text. The scratchpad fills the unused space, with
-  the composer at the bottom. The voice bar becomes quieter. The flags for mute
-  and deafen become icons. Planned.
+- **133-10 — the scratchpad and a quieter call panel.** The notice becomes
+  the empty state, and a one-line caption stays once the scratchpad has text.
+  The flags for muted, deafened, camera, and screen become icons. One and two
+  cameras get a height cap. `VoiceCallPanel.tsx`, `App.tsx`, `theme.css`, and
+  two tests in `theme-voice-pane.test.ts`. Done. See "The scratchpad and a quieter call panel (133-10)".
 - **133-11 — the scenario sweep.** Calls with audio only (one, two, and four
   people), with cameras, with a screen share, and with a mix, in several
-  themes and at phone width. It must also cover the three cases that 133-9
-  did not see: a phone with no camera (cards only), the speaking highlight on
-  a card, and a screen share. Planned.
+  themes and at phone width. It must also cover the cases that 133-9 and
+  133-10 did not see: a phone with no camera (cards only), the speaking
+  highlight on a card, a screen share, three or more cameras, and the light
+  themes in the voice room. Planned.
 
 ## Left open
 

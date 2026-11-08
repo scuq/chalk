@@ -822,6 +822,29 @@ html {
   font-size: var(--chalk-size-small);
 }
 
+/* 133-10: the empty state of the voice scratchpad. It has no 50vh floor,
+   because the call above it needs the height. It is centred with
+   justify-content, because the feed anchors its content to the bottom
+   (flex-end), and that pushed the empty state to the right edge in a browser.
+   The mark is 40px and the title has the base size. The caption of
+   .chalk-voice-scratch is hidden while the scratchpad is empty, because the
+   empty state then gives the full explanation. */
+.chalk-messages--ephemeral.chalk-messages--empty:has(.chalk-empty) {
+  min-height: 0;
+  justify-content: center;
+}
+.chalk-messages--ephemeral .chalk-empty-mark {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 0;
+}
+.chalk-messages--ephemeral .chalk-empty-title {
+  font-size: var(--chalk-size-base);
+}
+.chalk-main--voice:has(.chalk-messages--ephemeral.chalk-messages--empty) .chalk-voice-scratch {
+  display: none;
+}
+
 /* ============================================================
    Phase 55-1: scroll-up pagination
    ============================================================ */
@@ -7864,6 +7887,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   padding: var(--chalk-s3);
   margin-bottom: var(--chalk-s3);
   background: var(--chalk-bg-elev);
+  border-radius: var(--chalk-radius-lg);
 }
 
 .chalk-voice-lobby {
@@ -7899,10 +7923,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
   gap: var(--chalk-s2);
   margin-top: var(--chalk-s2);
   padding-top: var(--chalk-s2);
-  border-top: 1px dashed var(--chalk-border);
   font-size: calc(11px * var(--chalk-font-scale));
   line-height: 1.4;
-  color: var(--chalk-fg-dim);
+  color: var(--chalk-fg-muted);
 }
 
 .chalk-voice-scratch-tag {
@@ -7910,7 +7933,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-size: calc(10px * var(--chalk-font-scale));
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--chalk-warn);
+  color: var(--chalk-fg-dim);
 }
 
 /* ---- 30-5c: persistent-call dock ---------------------------------------
@@ -8221,8 +8244,27 @@ body.chalk-resizing-y .chalk-composer-resizer {
   max-width: 960px;
   margin: 0 auto;
 }
+/* 133-10: one or two cameras get a width cap from the height that the pane
+   can spare. Without the cap, one 640px by 360px camera pushed the card of
+   an audio-only person out of the clipped stage at 800px height. The 480px is
+   the rest of the pane at 1280px by 800px: the header, the channel header,
+   the bar, the caption, the row of cards, the floor of the scratchpad, and the
+   composer. A row of cards below needs 530px. Both values were measured by
+   hand. With the cap, the camera is 480px by 270px and everything fits. The
+   open item about a four-tile call proposes the same method for the grid. It
+   applies here to one and two cameras in the mixed layout only. Three or more
+   cameras and the forced grid are not capped. */
 .chalk-voice-videos[data-count="1"] {
-  max-width: 640px;
+  max-width: min(640px, calc((100dvh - 480px) * 16 / 9));
+}
+.chalk-voice-videos[data-count="2"] {
+  max-width: min(960px, calc((100dvh - 480px) * 32 / 9));
+}
+.chalk-voice-stage:has(.chalk-voice-cards) .chalk-voice-videos[data-count="1"] {
+  max-width: min(640px, calc((100dvh - 530px) * 16 / 9));
+}
+.chalk-voice-stage:has(.chalk-voice-cards) .chalk-voice-videos[data-count="2"] {
+  max-width: min(960px, calc((100dvh - 530px) * 32 / 9));
 }
 
 .chalk-voice-cards {
@@ -8305,6 +8347,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   background: #000;
   border: 1px solid var(--chalk-border);
   overflow: hidden;
+  border-radius: var(--chalk-radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8476,10 +8519,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
   white-space: nowrap;
 }
 
-/* Single-letter state flags (m/c/s/d) -- terminal-terse; title expands. */
+/* State flags (muted, deafened, camera, screen) hold an icon; the title expands. */
 .chalk-voice-peer-flag {
   flex: 0 0 auto;
-  border: 1px solid var(--voice-on-video-line);
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
   padding: 0 4px;
   font-size: calc(10px * var(--chalk-font-scale));
   text-transform: uppercase;
@@ -8492,7 +8537,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
    noticing before you start talking, not that anything is wrong. */
 .chalk-voice-peer-flag--deaf {
   color: var(--voice-on-video-warn);
-  border-color: var(--voice-on-video-warn);
 }
 
 .chalk-voice-peer-conn {

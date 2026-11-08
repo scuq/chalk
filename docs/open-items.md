@@ -365,7 +365,9 @@ Two deliberate exclusions:
   `.chalk-voice-grid`'s `max-width` from the height the pane can spare, which
   scales all four tiles whole; it needs a hand-measured constant for the rest
   of the pane (~390px), which is why it was deferred. Numbers and the rejected
-  alternatives are in `docs/phases/PHASE-45-SCRATCHPAD.md`.
+  alternatives are in `docs/phases/PHASE-45-SCRATCHPAD.md`. Slice 133-10
+  applied this height cap to one and two cameras in the mixed layout. The
+  forced grid and three or more cameras still crop.
 - `docker/Dockerfile`'s frontend stage runs `npm run build` without
   `NODE_ENV=production`, so released images ship unminified bundles with inline
   sourcemaps. Costlier since 52-2 (the MediaPipe chunk is 153 KB minified vs

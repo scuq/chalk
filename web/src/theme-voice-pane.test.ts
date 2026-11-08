@@ -86,3 +86,22 @@ test("133-9: audio-only people are compact cards on the theme surface, cameras k
   assert.match(block(".chalk-voice-videos"), /grid-template-columns:\s*repeat\(auto-fit/);
   assert.match(block(".chalk-voice-peer--grid"), /aspect-ratio:\s*16 \/ 9/);
 });
+
+test("133-10: the scratchpad explains itself when empty and keeps a one-line caption otherwise", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { join, resolve } = await import("node:path");
+  const panel = readFileSync(join(resolve(process.cwd(), "src"), "components", "VoiceCallPanel.tsx"), "utf8");
+  assert.match(panel, /<span>deleted for everyone when the last person leaves<\/span>/);
+  assert.doesNotMatch(panel, /keep it short/, "the long notice is gone from the call panel");
+  const hide = block(".chalk-main--voice:has(.chalk-messages--ephemeral.chalk-messages--empty) .chalk-voice-scratch");
+  assert.match(hide, /display:\s*none/);
+  assert.match(block(".chalk-messages--ephemeral.chalk-messages--empty:has(.chalk-empty)"), /min-height:\s*0/);
+});
+
+test("133-10: one or two cameras shrink whole with the window instead of pushing the cards out", () => {
+  assert.match(block('.chalk-voice-videos[data-count="1"]'), /max-width:\s*min\(640px, calc\(\(100dvh - \d+px\)/);
+  assert.match(
+    block('.chalk-voice-stage:has(.chalk-voice-cards) .chalk-voice-videos[data-count="1"]'),
+    /100dvh - \d+px/,
+  );
+});
