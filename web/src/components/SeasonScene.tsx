@@ -4,11 +4,15 @@
 // 129-12: a date in no season shows the neutral scenes. 129-15: a visit holds
 // one scene. 129-16: the neutral scene has its own windows. 129-18: the neutral
 // scenes are ten scripts, and reduced motion holds the still frame of a script.
+// 129-19: the christmas key has seven scripts.
 //
 // One component serves every season and the dates between them. The registry
 // says which season it is, or null for a date in no season. season/scene.ts
-// holds five scenes for each season and ten neutral scenes, and it moves the
-// scene. A neutral scene is a script of season/offseason.ts. The schedule in
+// holds five rows for each of eight row keys, seven scripts for the christmas
+// key, and ten scripts for the neutral key, and it moves the scene. A visit
+// holds one scene. The always-on hours rotate through the scenes of the key.
+// The neutral scripts are in season/offseason.ts, and the christmas scripts
+// are in season/christmas.ts. The schedule in
 // season/peek.ts sets the bounds of a visit, and season/visits.ts grants a
 // visit under the caps in peek.ts. For a date in no season, it grants at most
 // one visit in each of the windows in peek.ts.

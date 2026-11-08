@@ -1,8 +1,10 @@
-// 129-9: tests for the scene. 129-12: five scenes for each of nine keys. The
-// neutral key has ten scripts since 129-18.
+// 129-9: tests for the scene. 129-12: five scenes for each of eight row keys.
+// The neutral key has ten scripts since 129-18, and the christmas key has seven
+// scripts since 129-19.
 //
 // A fake Painter records the rectangles, so a test needs no canvas. The tests
-// check the table (50 scenes, the same ids as SEASONS plus "neutral"), whole
+// check the table (57 scenes: the rows of the SEASONS ids except "christmas",
+// the ten scripts of "neutral", and the seven scripts of "christmas"), whole
 // pixels and a see-through strip in every scene of a season, a paint for
 // each prop, the rotation and its wrap, the fade, a start index outside the
 // range, the walkers, a ghost that floats, a long frame, and a resize. 129-13:
@@ -10,11 +12,15 @@
 // 129-14: a walker under the sign, snow and ice in the cold seasons, the named
 // details (sunrise, smoke, bridge, blossom), and no animal out of season.
 // 129-15: a scene that does not rotate holds its row and has no fade.
-// 129-18: the table has 50 scenes, and sceneCount gives 10 for "neutral". The
-// ten off-season scripts draw whole pixels, in a budget of rectangles, at three
-// widths. A script holds through a visit, a rotating script moves on to the
-// next one, and the fade of a rotating scene caps the alpha of a script. A script draws at the bottom of a taller canvas.
-// holdStill moves a script to its still frame, which is inside its loop.
+// 129-18: sceneCount gives 10 for "neutral". The ten off-season scripts draw
+// whole pixels, in a budget of rectangles, at three widths. A script holds
+// through a visit, a rotating script moves on to the next one, and the fade of
+// a rotating scene caps the alpha of a script. A script draws at the bottom of
+// a taller canvas. holdStill moves a script to its still frame, which is inside
+// its loop.
+// 129-19: sceneCount gives 7 for "christmas". The script tests run over both
+// sets of scripts. The christmas key runs its scripts and holds one through a
+// visit.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -35,13 +41,20 @@ import {
   type Painter,
   type SceneKey,
 } from "./scene";
+import { CHRISTMAS } from "./christmas";
 import { OFFSEASON } from "./offseason";
+import type { Script } from "./strip";
 import { SEASONS } from "./seasons";
 
 const W = 300;
 const H = 24;
 const KEYS = Object.keys(SCENES) as SceneKey[];
-const ALL_KEYS: SceneKey[] = [...KEYS, "neutral"];
+const ALL_KEYS: SceneKey[] = [...KEYS, "neutral", "christmas"];
+// 129-19: the keys that run scripts, with their scripts.
+const SCRIPT_SETS: [SceneKey, Script[]][] = [
+  ["neutral", OFFSEASON],
+  ["christmas", CHRISTMAS],
+];
 
 function recorder() {
   const rects: { x: number; y: number; w: number; h: number; color: string }[] = [];
@@ -55,8 +68,9 @@ function recorder() {
   return { ctx, rects };
 }
 
-test("there are 50 scenes: five rows for each season and ten scripts for the neutral dates", () => {
+test("there are 57 scenes: five rows for each row season, seven christmas scripts, and ten neutral scripts", () => {
   const ids = new Set<string>(SEASONS.map((s) => s.id));
+  ids.delete("christmas");
   assert.deepEqual(new Set(KEYS), ids);
   assert.equal(KEYS.length, 8);
   for (const key of KEYS) {
@@ -64,12 +78,14 @@ test("there are 50 scenes: five rows for each season and ten scripts for the neu
     assert.equal(sceneCount(key), SCENES_PER_KEY, key);
   }
   assert.equal(sceneCount("neutral"), 10);
+  assert.equal(sceneCount("christmas"), 7);
   const names = [
     ...KEYS.flatMap((k) => SCENES[k as keyof typeof SCENES].map((r) => r.name)),
     ...OFFSEASON.map((x) => x.name),
+    ...CHRISTMAS.map((x) => x.name),
   ];
-  assert.equal(names.length, 50);
-  assert.equal(new Set(names).size, 50);
+  assert.equal(names.length, 57);
+  assert.equal(new Set(names).size, 57);
 });
 
 test("every scene draws whole pixels and leaves the strip see-through, at each step", () => {
@@ -316,10 +332,10 @@ test("a very narrow strip still draws every scene", () => {
 
 // 129-18: the off-season scripts.
 
-test("129-18: each off-season script draws whole pixels, on a budget, over its full loop", () => {
+test("129-18: each script draws whole pixels, on a budget, over its full loop", () => {
   for (const wide of [150, 300, 460]) {
-    OFFSEASON.forEach((script, index) => {
-      const scene = createScene("neutral", wide, H, index, false);
+    for (const [key, scripts] of SCRIPT_SETS) scripts.forEach((script, index) => {
+      const scene = createScene(key, wide, H, index, false);
       assert.equal(scene.script, script);
       assert.equal(scene.row.name, script.name);
       for (let t = 0; t < Math.min(script.period, 30) + 1; t += 1 / 12) {
@@ -387,13 +403,22 @@ test("129-18: a canvas taller than the strip draws the script at the bottom", ()
 });
 
 test("129-18: a still frame is inside the loop of its script", () => {
-  OFFSEASON.forEach((script, index) => {
+  for (const [key, scripts] of SCRIPT_SETS) scripts.forEach((script, index) => {
     assert.ok(script.still >= 0 && script.still < script.period, script.name);
-    const scene = createScene("neutral", W, H, index, false);
+    const scene = createScene(key, W, H, index, false);
     holdStill(scene);
     assert.equal(scene.sceneTime, script.still);
   });
   const row = createScene("midsummer", W, H);
   holdStill(row);
   assert.equal(row.sceneTime, 0);
+});
+
+test("129-19: the christmas key runs its scripts and holds one through a visit", () => {
+  const scene = createScene("christmas", W, H, 3, false);
+  assert.equal(scene.script, CHRISTMAS[3]);
+  assert.equal(scene.row.name, "Robot Santa");
+  for (let t = 0; t < 80; t += 0.1) stepScene(scene, 0.1);
+  assert.equal(scene.index, 3);
+  assert.equal(createScene("christmas", W, H, 9).index, 2);
 });

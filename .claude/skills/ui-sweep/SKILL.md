@@ -31,7 +31,7 @@ Flags:
 - `--groups` also creates six channels in channel groups, and bob posts into one of them. Use it to look at chaos mode with group tags.
 - `--headed` opens a visible window signed in as ann and keeps it open.
 - `--cycle` (with `--headed`) changes the theme every `--cycle-secs` seconds. The default is 5.
-- `--season=<key>` (with `--headed`) starts the season scene demo for that season key. The keys are `neutral`, `late-autumn`, `winterfest`, `new-year`, `spring-bloom`, `green-season`, `midsummer`, `harvest-festival`, and `spooky-season`.
+- `--season=<key>` (with `--headed`) starts the season scene demo for that season key. The keys are `neutral`, `late-autumn`, `christmas`, `winterfest`, `new-year`, `spring-bloom`, `green-season`, `midsummer`, `harvest-festival`, and `spooky-season`.
 - `--scene=<row name>` (with `--season`) shows only that scene, again and again.
 - `--scene-secs=N` sets the seconds for each scene. The default is 30.
 

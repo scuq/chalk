@@ -77,16 +77,18 @@
 // A headed run does not end. Close the window or stop the node process.
 //
 // Season demo: --season sets a fake date with the Playwright clock, which
-// runs at normal speed. The keys are neutral, late-autumn, winterfest,
-// new-year, spring-bloom, green-season, midsummer, harvest-festival, and
-// spooky-season. The script clears the visit log and seeds the neutral log
+// runs at normal speed. The keys are neutral, late-autumn, christmas,
+// winterfest, new-year, spring-bloom, green-season, midsummer,
+// harvest-festival, and spooky-season. The table SEASON_DATES has the date of
+// each key. The script clears the visit log and seeds the neutral log
 // so that a visit is due at once. After each page load it skips the first
 // pause (13 s) and reads data-scene from the scene canvas. It loads the page
 // again, up to 25 times, until the scene has the wanted name. It then shows
 // the scene for --scene-secs seconds with a corner tag. Without --scene, the
 // targets are the scenes of the key, in table order: the five rows in
-// web/src/season/scene.ts, or the ten scripts in web/src/season/offseason.ts
-// for neutral. For each target, the script prints
+// web/src/season/scene.ts, the ten scripts in web/src/season/offseason.ts for
+// neutral, or the seven scripts in web/src/season/christmas.ts for christmas.
+// For each target, the script prints
 // "SCENE <key>: <name>" on standard output, with "(wanted X)" if it gave
 // up. A visit lasts 45 s to 75 s. A value of --scene-secs above 45 can let
 // the visit end before the next load. An unknown key or scene stops the
@@ -229,20 +231,23 @@ async function clearOverlaysEarly(page) {
 const SEASON_DATES = {
   neutral: [2026, 10, 10, 9],
   'late-autumn': [2026, 10, 28, 13],
-  winterfest: [2026, 11, 23, 13],
-  'new-year': [2027, 0, 2, 13],
+  christmas: [2026, 11, 10, 13],
+  winterfest: [2027, 0, 15, 13],
+  'new-year': [2026, 11, 31, 13],
   'spring-bloom': [2026, 2, 15, 13],
   'green-season': [2026, 4, 10, 13],
   midsummer: [2026, 6, 1, 13],
   'harvest-festival': [2026, 8, 10, 13],
   'spooky-season': [2026, 9, 20, 13],
 };
-// Returns the scene names of the key, in table order. The neutral names come
-// from offseason.ts. The other names come from the rows in scene.ts.
+// Returns the scene names of the key, in table order. The names of neutral come
+// from offseason.ts, and the names of christmas come from christmas.ts. The
+// other names come from the rows in scene.ts.
 function sceneNames(key) {
-  if (key === 'neutral') {
-    const off = readFileSync(new URL('../../../web/src/season/offseason.ts', import.meta.url), 'utf8');
-    const list = off.slice(off.indexOf('export const OFFSEASON'));
+  const scripted = { neutral: ['offseason.ts', 'OFFSEASON'], christmas: ['christmas.ts', 'CHRISTMAS'] }[key];
+  if (scripted) {
+    const off = readFileSync(new URL(`../../../web/src/season/${scripted[0]}`, import.meta.url), 'utf8');
+    const list = off.slice(off.indexOf(`export const ${scripted[1]}`));
     return [...list.matchAll(/name: "([^"]+)"/g)].map((m) => m[1]);
   }
   const src = readFileSync(new URL('../../../web/src/season/scene.ts', import.meta.url), 'utf8');

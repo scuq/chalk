@@ -78,15 +78,18 @@ Every change is in the client.
 
 ## Phase 129 — seasonal: IN PROGRESS, with recorded trade-offs
 
-129-1 … 129-18 are built. 129-19 onward is open. Record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
+129-1 … 129-19 are built. 129-20 onward is open. Record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
 An animated pixel scene peeks into the middle of the top header. Each of
-eight seasons has five scenes. A visit holds one of them, and it is never the
-scene of the last visit of the same key (129-15). The always-on hours rotate
-through the five scenes every 35 s. A gap of 21 days in a
-common year separates two seasons, and a date in a gap shows one of ten
-scripted neutral scenes, which are nods to films and series (129-12, 129-18).
-On the evening of 24 December and on New Year's Eve, the
-scene stays up from 20:00 to 05:00. There is a switch per device and a server
+eight season keys has five scenes, and the `christmas` key shows seven scripted
+scenes, which are nods to films and series (129-19). A visit holds one of them,
+and it is never the scene of the last visit of the same key (129-15). The
+always-on hours rotate through the scenes of the key every 35 s. The calendar
+is: Christmas from 1 to 26 December, no season from 27 to 30 December, New Year
+on 31 December and 1 January, and Winterfest from 2 January to 7 February
+(129-19). A gap of 21 days in a common year separates two of the other seasons.
+A date in a gap shows one of ten scripted neutral scenes, which are also nods
+to films and series (129-12, 129-18). On the evening of 24 December and on New
+Year's Eve, the scene stays up from 20:00 to 05:00. There is a switch per device and a server
 switch on the admin settings tab. A visit of a season scene comes at most 16
 times in a local day on one device, and at most 10 of them start before 18:00
 (129-7, 129-9). The neutral scene has its own rule: at most one visit from
@@ -94,8 +97,8 @@ times in a local day on one device, and at most 10 of them start before 18:00
 A phone in zuckermode shows the scene in a row above the conversation list
 (129-11). The classic phone layout and the header of a phone show no scene.
 A headed season demo in the ui-sweep skill shows one scene on a fake date (129-17).
-Open: 129-19 and later, which tune the eight season keys, one key in each
-slice, in this order: late-autumn, winterfest, new-year, spring-bloom,
+Open: 129-20 and later, which tune the eight keys that have rows, one key in
+each slice, in this order: late-autumn, winterfest, new-year, spring-bloom,
 green-season, midsummer, harvest-festival, spooky-season.
 
 - **A change by an administrator reaches other clients on their next page

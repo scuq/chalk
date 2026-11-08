@@ -12,7 +12,12 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- From 1 December to 26 December, the Chalk scene is one of seven small animated nods to Christmas films and series. Each one shows a famous moment.
+
 ### Changed
+- The season calendar changed. Christmas runs from 1 December to 26 December. From 27 December to 30 December no season runs, so the scene is one of the ten scenes for days outside a season. New Year runs on 31 December and 1 January. Winterfest runs from 2 January to 7 February.
+- On the evening of 24 December, from 20:00 to 05:00, the scene stays up. It shows all seven Christmas scenes in turn.
 - A seasonal scene now stays on one scene for the whole visit and does not switch partway. The next visit shows a different scene.
 - On days outside a season, the Chalk scene shows at most twice a day. It shows once from 08:00 to 12:00 and once from 16:00 to midnight.
 - On days outside a season, the Chalk scene is now one of ten small animated nods to films and series, and each one shows a famous moment.

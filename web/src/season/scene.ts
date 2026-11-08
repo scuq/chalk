@@ -2,14 +2,17 @@
 // neutral key. 129-13: the title of the season on a small sign. 129-14: a
 // higher sign, a sky for each row, and the details of each season. 129-15: a
 // visit holds one row. 129-18: the neutral key has ten scripts and no rows.
+// 129-19: the christmas key has seven scripts and no rows.
 //
-// This module draws a small pixel scene and moves it. There are nine keys: the
-// eight seasons of seasons.ts, and "neutral" for a date in no season. SCENES
-// holds the eight seasons. Each season has five rows (SCENES_PER_KEY), so there
-// are 40 rows. A row names an environment, an effect, four props, and two cast
-// members. The neutral key has the ten scripts of OFFSEASON (offseason.ts), so
-// there are 50 scenes. A script draws its own opaque strip, and it does not use
-// the fields of a row. The rows of the seasons stay see-through.
+// This module draws a small pixel scene and moves it. There are ten keys: the
+// nine season ids of seasons.ts, and "neutral" for a date in no season. SCENES
+// holds the eight keys that have rows. Each of them has five rows
+// (SCENES_PER_KEY), so there are 40 rows. A row names an environment, an
+// effect, four props, and two cast members. Two keys have scripts and no rows:
+// "neutral" has the ten scripts of OFFSEASON (offseason.ts), and "christmas"
+// has the seven scripts of CHRISTMAS (christmas.ts). So there are 57 scenes.
+// A script draws its own opaque strip, and it does not use the fields of a
+// row. The rows stay see-through.
 // A scene shows its row or its script. A scene that rotates (rotate is true)
 // shows it for SCENE_SECONDS. Then it shows the next one of the same key, and
 // the first comes after the last. A scene that does not rotate holds its row or
@@ -39,7 +42,9 @@
 //     production.
 //   - A scene fades to transparent, not to black.
 
-import { OFFSEASON, STRIP_H, type Script } from "./offseason";
+import { CHRISTMAS } from "./christmas";
+import { OFFSEASON } from "./offseason";
+import { STRIP_H, type Script } from "./strip";
 import type { SeasonId } from "./seasons";
 
 /** SCALE is the number of CSS pixels in one scene pixel. */
@@ -65,11 +70,26 @@ export const FADE_SECONDS = 0.7;
 export const SCENES_PER_KEY = 5;
 
 /**
- * sceneCount returns the number of scenes of key: SCENES_PER_KEY for a season,
- * and the number of OFFSEASON scripts for "neutral".
+ * sceneCount returns the number of scenes of key: the number of scripts for a
+ * key that runs scripts ("neutral" and "christmas"), and SCENES_PER_KEY for
+ * any other key.
  */
 export function sceneCount(key: SceneKey): number {
-  return key === "neutral" ? OFFSEASON.length : SCENES_PER_KEY;
+  return isScripted(key) ? SCRIPTED[key].length : SCENES_PER_KEY;
+}
+
+// The scripts of each key that runs scripts in place of rows.
+const SCRIPTED = { neutral: OFFSEASON, christmas: CHRISTMAS };
+
+/** A ScriptKey is a key that runs scripts and has no rows in SCENES. */
+export type ScriptKey = keyof typeof SCRIPTED;
+
+/** A RowKey is a key that has rows in SCENES. It is a SceneKey that is not a ScriptKey. */
+export type RowKey = Exclude<SceneKey, ScriptKey>;
+
+/** isScripted reports whether key runs scripts instead of rows. */
+export function isScripted(key: SceneKey): key is ScriptKey {
+  return key === "neutral" || key === "christmas";
 }
 
 // The downward pull on a jump, and the upward speed at the start of a jump, in
@@ -78,8 +98,10 @@ const GRAVITY = 105;
 const JUMP = 40;
 
 /**
- * A SceneKey names a set of scenes: a season id, with five rows in SCENES, or
- * "neutral" for a date in no season, with the ten scripts of OFFSEASON.
+ * A SceneKey names a set of scenes: a season id or "neutral". A key has five
+ * rows in SCENES, except "christmas", which has the seven scripts of CHRISTMAS,
+ * and "neutral", for a date in no season, which has the ten scripts of
+ * OFFSEASON.
  */
 export type SceneKey = SeasonId | "neutral";
 
@@ -203,10 +225,11 @@ function row(
 }
 
 /**
- * SCENES holds the rows of each season, in the order of rotation. Each season
- * has SCENES_PER_KEY rows. The "neutral" key has no rows. It uses OFFSEASON.
+ * SCENES holds the rows of each RowKey, in the order of rotation. Each key has
+ * SCENES_PER_KEY rows. The "neutral" and "christmas" keys have no rows. They
+ * use the scripts of OFFSEASON and CHRISTMAS.
  */
-export const SCENES: Record<SeasonId, SceneRow[]> = {
+export const SCENES: Record<RowKey, SceneRow[]> = {
   "new-year": [
     row("Midnight Skyline", "city", "fireworks", ["tower", "crate", "barrel", "lamp"], ["person", "cat"], "stars"),
     row("Rooftop Countdown", "city", "confetti", ["clock", "crate", "gift", "flag"], ["person", "fox"], "stars"),
@@ -332,6 +355,14 @@ const PALETTES: Record<SceneKey, {
     ink: "#f9c992",
     panel: "#292e2e",
   },
+  // Rows never read this entry, because "christmas" runs scripts. The Record type needs it.
+  christmas: {
+    earth: "#2a3a36",
+    edge: "#5f7c74",
+    title: "CHRISTMAS",
+    ink: "#ffd23a",
+    panel: "#132622",
+  },
   neutral: {
     earth: "#193d28",
     edge: "#397a4b",
@@ -428,8 +459,8 @@ function positions(W: number): number[] {
 // not obstacles.
 function loadRow(s: Scene): void {
   s.sceneTime = 0;
-  if (s.key === "neutral") {
-    const script = OFFSEASON[s.index];
+  if (isScripted(s.key)) {
+    const script = SCRIPTED[s.key][s.index];
     s.script = script;
     s.row = scriptRow(script);
     s.obstacles = [];
@@ -473,7 +504,7 @@ export function createScene(
   const s: Scene = {
     key,
     index: start,
-    row: key === "neutral" ? scriptRow(OFFSEASON[start]) : SCENES[key][start],
+    row: isScripted(key) ? scriptRow(SCRIPTED[key][start]) : SCENES[key][start],
     W,
     H,
     ground: H - 1,
@@ -588,6 +619,8 @@ const CANOPY: Record<SceneKey, string> = {
   "harvest-festival": "#9a6a2c",
   "spooky-season": "#2a2433",
   "late-autumn": "#7b4a26",
+  // Rows never read this entry, because "christmas" runs scripts.
+  christmas: "#1f3f38",
   neutral: "#264635",
 };
 

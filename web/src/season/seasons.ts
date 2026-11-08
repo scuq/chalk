@@ -1,13 +1,14 @@
 // chalk-web -- 129-1: the season registry. 129-8: the calendar of eight
-// seasons.
+// seasons. 129-19: the calendar of nine season ids.
 //
 // The registry decides which season it is from the local calendar date of
 // the reader. The decision is pure: `now` is a parameter, as in daymarks.ts,
 // so a test uses a fixed clock and never the real one.
 // The date is local on purpose: a season is a date on the calendar of the
 // reader.
-// The rows of SEASONS leave gaps of 21 days between the seasons, so a date
-// can have no season. The scene still shows on such a date: it uses the
+// The rows of SEASONS leave gaps between the seasons, so a date can have no
+// season. A gap lasts 21 days, except the gap from 27 December to 30 December,
+// which lasts four days. The scene still shows on such a date: it uses the
 // neutral scenes of scene.ts. The calendar is written for the Northern
 // Hemisphere.
 // chalk reads only the local date, so a reader in the Southern Hemisphere gets
@@ -22,7 +23,8 @@ export type SeasonId =
   | "midsummer"
   | "harvest-festival"
   | "spooky-season"
-  | "late-autumn";
+  | "late-autumn"
+  | "christmas";
 
 /** A month-and-day pair, 1-based month, as a person reads a calendar. */
 export type MonthDay = [month: number, day: number];
@@ -62,13 +64,15 @@ export interface Season extends Window {
 }
 
 // The rows run in calendar order. Each gap between two rows lasts 21 days in
-// a common year, so chalk is not in a season all year. A date in a gap has no
-// season, and the scene uses the neutral scenes. 29 February falls in the gap from 8 February to 28 February, so it
-// has no season. Two seasons have two rows: winterfest comes twice in the
-// year, and new-year crosses the year boundary.
+// a common year, except the gap from 27 December to 30 December, which lasts
+// four days. So chalk is not in a season all year. A date in a gap has no
+// season, and the scene uses the neutral scenes. 29 February falls in the gap
+// from 8 February to 28 February, so it has no season. One season has two
+// rows: new-year crosses the year boundary, so it has 31 December and 1 January.
+// The christmas key runs from 1 December to 26 December. It has no night frame.
 export const SEASONS: Season[] = [
-  { id: "new-year", label: "New Year / Fireworks", from: [1, 1], to: [1, 7] },
-  { id: "winterfest", label: "Winterfest", from: [1, 29], to: [2, 7] },
+  { id: "new-year", label: "New Year / Fireworks", from: [1, 1], to: [1, 1] },
+  { id: "winterfest", label: "Winterfest", from: [1, 2], to: [2, 7] },
   { id: "spring-bloom", label: "Spring Bloom", from: [3, 1], to: [4, 9] },
   { id: "green-season", label: "Green Season", from: [5, 1], to: [5, 30] },
   { id: "midsummer", label: "Midsummer", from: [6, 21], to: [8, 10] },
@@ -82,7 +86,7 @@ export const SEASONS: Season[] = [
     night: { from: [10, 31, 18], to: [11, 1, 3] },
   },
   { id: "late-autumn", label: "Late Autumn", from: [11, 27], to: [11, 30] },
-  { id: "winterfest", label: "Winterfest", from: [12, 22], to: [12, 30] },
+  { id: "christmas", label: "Christmas", from: [12, 1], to: [12, 26] },
   { id: "new-year", label: "New Year / Fireworks", from: [12, 31], to: [12, 31] },
 ];
 

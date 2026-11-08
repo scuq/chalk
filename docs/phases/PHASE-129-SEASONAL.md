@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a scene for the season
 
-**Status:** in progress. Built: 129-1 – 129-18. Open: 129-19 and later. They tune the eight season keys, one key in each slice, in this order: late-autumn, winterfest, new-year, spring-bloom, green-season, midsummer, harvest-festival, spooky-season. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 shipped in v0.10.0. 129-15 and later are not yet in a release. 129-8 to 129-10 land together.
+**Status:** in progress. Built: 129-1 – 129-19. Open: 129-20 and later. They tune the eight keys that have rows, one key in each slice, in this order: late-autumn, winterfest, new-year, spring-bloom, green-season, midsummer, harvest-festival, spooky-season. 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 shipped in v0.10.0. 129-15 and later are not yet in a release. 129-8 to 129-10 land together.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -19,46 +19,51 @@ that has 45 scenes, and it gave the dates in the gaps scenes of their own.
 so the walkers run under it, gave each scene a sky, and added the details of
 each season. 129-15 made a visit hold one scene. 129-16 gave the neutral scene
 its own windows in the day. 129-18 replaced the five neutral rows with ten
-scripted scenes that are nods to films and series.
+scripted scenes that are nods to films and series. 129-19 added the
+`christmas` key: it shows seven scripted scenes from 1 to 26 December, and it
+changed the calendar around the turn of the year.
 
 ## The design
 
 ### The calendar decides which season it is
 
-`web/src/season/seasons.ts` holds `SEASONS`, a table of 10 rows for eight
-seasons. Each row has an `id`, a `label`, and a window of 1-based month and day
+`web/src/season/seasons.ts` holds `SEASONS`, a table of 10 rows for nine
+season ids. Each row has an `id`, a `label`, and a window of 1-based month and day
 pairs.
 The rows do not cover the whole year (129-10):
 
-- New Year: 31 December, and 1 to 7 January
-- Winterfest: 29 January to 7 February, and 22 to 30 December
+- New Year: 31 December, and 1 January
+- Winterfest: 2 January to 7 February
 - Spring Bloom: 1 March to 9 April
 - Green Season: 1 to 30 May
 - Midsummer: 21 June to 10 August
 - Harvest Festival: 1 to 23 September
 - Spooky Season: 15 October to 5 November
 - Late Autumn: 27 to 30 November
+- Christmas: 1 to 26 December (129-19)
 
-Between two seasons is a gap of 21 days in a common year. The gaps are:
+Between two seasons is a gap. A gap lasts 21 days in a common year, except the
+gap from 27 to 30 December, which lasts four days (129-19). The gaps are:
 
-- 8 to 28 January
 - 8 to 28 February
 - 10 to 30 April
 - 31 May to 20 June
 - 11 to 31 August
 - 24 September to 14 October
 - 6 to 26 November
-- 1 to 21 December
+- 27 to 30 December
 
 A date in a gap has no season. 129-10 showed no scene on such a date, because
 the user wanted chalk not to be in a season all year. 129-12 changed this: a
-date in a gap shows the neutral scenes (see "Neutral dates"). The calendar and
-the gaps did not change.
+date in a gap shows the neutral scenes (see "Neutral dates"). 129-19 changed
+the calendar at the turn of the year: the gaps from 8 to 28 January and from
+1 to 21 December are gone, and the gap from 27 to 30 December is new.
 29 February falls in the gap from 8 February to 28 February, so it has no
 season. It is a neutral date.
 
-Winterfest has two rows because it comes twice in the year. New Year has two
-rows because it crosses the year boundary. Two rows can share an `id`.
+New Year has two rows because it crosses the year boundary. Two rows can share
+an `id`. Before 129-19, Winterfest also had two rows, one in January and
+February and one in December.
 `inWindow` compares month and day keys, so the rows work in all years.
 
 `seasonFor(now)` is a pure function. It takes the clock as a parameter and
@@ -100,7 +105,8 @@ The same gates apply. The header of a phone width shows no scene (129-11 added
 a row for zuckermode, see "The mount"), and the device switch and the server
 switch turn it off. With reduced motion the scene holds one frame
 for the hours. Both windows fall on dates that have a row, so they show the
-scenes of a season. The neutral scenes do not occur in them.
+scenes of a season. The first window falls in the `christmas` key, so it rotates
+through the seven Christmas scripts. The neutral scenes do not occur in them.
 
 The list is separate from the rows on purpose. The second window crosses from
 the 31 December row into the 1 January row. A field on a row would need two
@@ -164,19 +170,23 @@ it on unmount.
 129-9 with a port of a second engine that the user supplied, to get more
 variety. It exports these names:
 
-- `SCENES`, a table from a `SeasonId` to five `SceneRow` values, so there are
-  40 rows. `SceneKey` is a `SeasonId` or `"neutral"`. The `"neutral"` key has no
-  rows. It has the ten scripts of `OFFSEASON` (129-18), so there are nine keys
-  and 50 scenes.
+- `SCENES`, a table from a `RowKey` to five `SceneRow` values, so there are
+  40 rows. `SceneKey` is a `SeasonId` or `"neutral"`, so there are ten keys.
+  A `ScriptKey` is a key that runs scripts: `"neutral"` and `"christmas"`.
+  A `RowKey` is a `SceneKey` that is not a `ScriptKey`, so there are eight.
+  A `ScriptKey` has no rows. `"neutral"` has the ten scripts of `OFFSEASON`
+  (129-18), and `"christmas"` has the seven scripts of `CHRISTMAS` (129-19).
+  So there are 57 scenes.
 - `SCENES_PER_KEY` (5), `SCENE_SECONDS` (35), and `FADE_SECONDS` (0.7).
-- `sceneCount(key)` returns 10 for `"neutral"` and `SCENES_PER_KEY` for a
-  season (129-18).
+- `sceneCount(key)` returns 10 for `"neutral"`, 7 for `"christmas"`, and
+  `SCENES_PER_KEY` for any other key (129-18, 129-19). `isScripted(key)` reports
+  whether `key` is a `ScriptKey` (129-19).
 - `holdStill(scene)` moves a scene with a script to the still time of its
   script, for reduced motion (129-18).
 - `SCALE` (2) and `FPS` (12). One scene pixel is `SCALE` CSS pixels, and the
   scene runs at `FPS` frames each second.
 - `createScene(key, W, H, index)` returns a new scene of W by H scene pixels,
-  which starts at the row `index`, or at the script `index` for `"neutral"`. An
+  which starts at the row `index`, or at the script `index` for a `ScriptKey`. An
   index outside 0 to `sceneCount(key) - 1` wraps around.
 - `resizeScene(scene, W, H)` moves the ground and the obstacles to fit a new
   size.
@@ -208,12 +218,13 @@ source. Each effect takes its places from a hash of an index and from the time
 of the scene. So a test uses a fake `Painter` and gets the same picture each
 time. `PALETTES` gives each key an earth colour and an edge colour.
 
-The 50 scenes:
+The 57 scenes:
 
 | Key | Scenes |
 |---|---|
 | `new-year` | Midnight Skyline, Rooftop Countdown, Harbor Lights, Town Celebration, First Sunrise |
 | `winterfest` | Snowy Pines, Cabin Smoke, Frozen Lake, Aurora Ridge, Lantern Walk |
+| `christmas` | Party at the Tower, The House with the Traps, Gremlins in the Tree, Robot Santa, The Light Show, The Ornament, The Ribbon at Christmas |
 | `spring-bloom` | Cherry Blossom, Rain Garden, Pond Hopping, Flower Trail, Butterfly Orchard |
 | `green-season` | Deep Woods, Stream Crossing, Fern Garden, Hillside Run, Summer Rain |
 | `midsummer` | Golden Meadow, Lakeside Sunset, Campfire Evening, Firefly Night, Festival Lanterns |
@@ -307,8 +318,8 @@ The scene differs from the supplied engine on purpose:
   Hopping and Lakeside Sunset have a lilypad.
 
 `web/src/season/scene.test.ts` uses a fake `Painter`. It checks the table (eight
-seasons with five rows each, ten scripts, 50 distinct names, and the same ids as
-`SEASONS` in `SCENES`), that every scene of a season draws whole pixels with no
+keys with five rows each, ten neutral scripts, seven Christmas scripts, 57
+distinct names, and the same ids as `SEASONS` in `SCENES`, except `christmas`), that every scene of a season draws whole pixels with no
 rectangle as wide as the strip, that each prop paints something, the rotation
 and its wrap, the fade, a start index outside the range, the walkers and the
 jump, a ghost that does not jump, and that a resize and a very narrow strip do
@@ -403,6 +414,36 @@ deliberate change for the neutral key.
 - `holdStill` moves the scene to the still time of its script.
 
 The slice record has the tests.
+
+#### The Christmas scripts (129-19)
+
+The `"christmas"` key runs scripts, as `"neutral"` does. `scene.ts` has the
+table `SCRIPTED`, from each `ScriptKey` to its scripts, and `loadRow` and
+`createScene` read it. `web/src/season/christmas.ts` holds the seven scripts in
+`CHRISTMAS`. The types and helpers that all scripts share moved to
+`web/src/season/strip.ts`: `STRIP_H`, `Px`, `Alpha`, `Script`, `rnd`, `sign`,
+`stars`, and `disc`. `offseason.ts` imports them from there.
+
+Each Christmas script is a nod to a film or a series episode, and a person
+knows it by one famous moment. The rules of the off-season scripts hold: no
+title, no logo, no lettering, no likeness of an actor, and the `CHALK` sign as
+the only text.
+
+| Script | Nod |
+|---|---|
+| Party at the Tower | Die Hard |
+| The House with the Traps | Home Alone |
+| Gremlins in the Tree | Gremlins |
+| Robot Santa | Futurama |
+| The Light Show | Christmas Vacation |
+| The Ornament | Star Trek: Voyager |
+| The Ribbon at Christmas | Star Trek: Generations |
+
+In The Ornament, a snap of light changes the colors of the baubles, and the
+scene shows no face.
+
+`PALETTES` and `CANOPY` have an entry for `christmas`, because their `Record`
+type needs every `SceneKey`. A script never reads them, as for `"neutral"`.
 
 ### The component
 
@@ -632,8 +673,8 @@ After a successful save, the client of the administrator folds the value into
 its loaded config (`auth_config_loaded`). The scene on the screen of the
 administrator follows at once.
 
-`web/src/whats-new.ts` has an entry for phase 129. 129-9, 129-10, 129-12, and
-129-18 rewrote its lines in place, because the entry is keyed by the phase number. A person who already
+`web/src/whats-new.ts` has an entry for phase 129. 129-9, 129-10, 129-12,
+129-18, and 129-19 rewrote its lines in place, because the entry is keyed by the phase number. A person who already
 marked the entry as read does not see the new text.
 
 ## What was rejected
@@ -713,6 +754,14 @@ scene to speak for itself. The only text is the sign.
 
 Logos, and exact designs of a ship or a car (129-18). They carry a risk for a
 trademark. A scene uses a motif.
+
+The Christmas scenes on the whole `winterfest` key (129-19). That key also runs
+from 2 January to 7 February, and a Christmas scene is wrong in those weeks. The
+Christmas scenes have a key of their own, `christmas`, that runs in December.
+
+Lettering, logos, and faces from the reference mock-ups of the Christmas scenes
+(129-19). The mock-ups had a lettered van, a company logo on a tower, and the
+face of a character. The scenes leave them out, by the same rules as 129-18.
 
 An earlier set of candidates for the neutral scenes (129-18). The review
 replaced the candidates Jaws, E.T., and an alphabet wall with Lost, Stargate,
@@ -890,9 +939,38 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
   used by a row, so the prop test adds it by hand. Text in `CHANGELOG.md` and
   `whats-new.ts`.
 
-- **129-19 and later — tune the scenes (planned, not started).** One key for
+- **129-19 — Christmas scenes and a new calendar (built).** The problem: the
+  user wanted Christmas scenes in December. The `winterfest` key also runs in
+  January and February, so a Christmas scene on that whole key is wrong in those
+  weeks. The design: a new key, `christmas`. `SeasonId` has `"christmas"`, and
+  `SEASONS` has the new rows (see "The calendar decides which season it is").
+  The user chose the calendar. Christmas runs from 1 to 26 December. The gap
+  from 27 to 30 December is neutral. New Year runs on 31 December and 1 January.
+  Winterfest runs from 2 January to 7 February. The always-on hours of
+  24 December, and of 31 December, did not change. They now fall in the
+  `christmas` key and the `new-year` key. `christmas.ts` has the seven scripts
+  (see "The Christmas scripts"). `strip.ts` has the parts that all scripts
+  share, moved out of `offseason.ts`. `scene.ts` has `SCRIPTED`, `ScriptKey`,
+  `RowKey`, and `isScripted`, and `sceneCount`, `loadRow`, and `createScene`
+  use them. `SCENES` is `Record<RowKey, SceneRow[]>`. In `ui-sweep.mjs`,
+  `SEASON_DATES` has `christmas` at 10 December 2026 at 13:00, `winterfest` moves
+  to 15 January 2027, and `new-year` moves to 31 December 2026 at 13:00.
+  `sceneNames` also reads `christmas.ts`. The user approved the scenes on an
+  animated mock-up page first. Rejected: Christmas scenes on the whole
+  `winterfest` key, and lettering, logos, and faces from the reference mock-ups
+  (see "What was rejected"). Tests in `seasons.test.ts`: the gaps last 21 days,
+  except the gap from 27 to 30 December, which lasts four. There are nine
+  season ids. Each season starts and ends on its new dates. `christmas` has no
+  night frame. Christmas Eve is in the `christmas` key, and New Year's Eve is in
+  the `new-year` key. Tests in `scene.test.ts`: the table has 57 scenes, the
+  script tests run over both sets of scripts, and a `christmas` scene runs its
+  scripts and holds one through a visit. Text in `CHANGELOG.md` and
+  `whats-new.ts`.
+
+- **129-20 and later — tune the scenes (planned, not started).** One key for
   each slice, in this order: late-autumn, winterfest, new-year, spring-bloom,
-  green-season, midsummer, harvest-festival, spooky-season.
+  green-season, midsummer, harvest-festival, spooky-season. These are the eight
+  keys that have rows.
 
 ## Trade-offs
 
@@ -936,7 +1014,8 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
 14. When the row opens or closes, the rows below it move by 48 px over 1.2 s.
     A tap in that moment can land on a different row. This is the accepted cost
     of a row that goes away.
-15. A visit shows one scene of the five, or of the ten for neutral (129-15). The row differs from the row
+15. A visit shows one scene of the five, of the seven for christmas, or of the
+    ten for neutral (129-15, 129-19). The row differs from the row
     of the last visit of the same key, so each scene shows over many visits.
     Only the always-on hours walk all five in one run.
 16. The sign of the title covers the middle of the strip, about 105 scene
@@ -1028,7 +1107,7 @@ no season and shows the neutral scenes (see item 13).
 12. Set the system date to each date in the list below. Check that
     `data-season` on the canvas is the key of the season, and that the scene is
     one of the five scenes of the key (see the table in "The scene"):
-    - 3 January: `new-year`
+    - 1 January and 31 December: `new-year`
     - 15 January: `winterfest`
     - 10 April: `spring-bloom`
     - 10 May: `green-season`
@@ -1036,9 +1115,10 @@ no season and shows the neutral scenes (see item 13).
     - 20 September: `harvest-festival`
     - 28 October: `spooky-season`
     - 10 November: `late-autumn`
-    - 30 December and 31 December: `winterfest`, then `new-year`
+    - 10 December and 26 December: `christmas`, one of the seven Christmas
+      scenes (129-19)
 13. Set the system date to a date in a gap, for example 15 April, 15 November,
-    and 10 December. Check that `data-season` is `neutral` and that the scene
+    and 28 December. Check that `data-season` is `neutral` and that the scene
     is one of the ten neutral scenes. Check that the visits follow the same
     windows of 129-16: at most one visit from 08:00 to 12:00 and one from
     16:00 to 24:00. Check that `chalk.season.neutral.v1` has `done` set for each
@@ -1126,7 +1206,7 @@ no season and shows the neutral scenes (see item 13).
    A season can have more than one row. The rows then share the `id`.
 2. Add the new id to `SeasonId` in `seasons.ts`.
 3. Add five rows to `SCENES` in `web/src/season/scene.ts`, with the same key,
-   and add an entry to `PALETTES`. Each row sets a name, an environment, an
+   and add an entry to `PALETTES` and to `CANOPY`. Each row sets a name, an environment, an
    effect, four props, and two cast members. The props at index 1 and 2 are the
    obstacles. An environment, prop, cast member, or effect that does not exist
    yet needs drawing code in `scene.ts`.
@@ -1139,8 +1219,15 @@ no season and shows the neutral scenes (see item 13).
 `seasons.test.ts` checks that no day falls in two rows and that each gap is a
 date in no row.
 `scene.test.ts` checks that `SCENES` and `SEASONS` list the same ids, and that
-each key of `SCENES` has five rows. The `"neutral"` key is not in `SCENES`. It
-uses the ten scripts of `OFFSEASON` (129-18).
+each key of `SCENES` has five rows. The `"neutral"` and `"christmas"` keys are
+not in `SCENES`. They use the scripts of `OFFSEASON` (129-18) and `CHRISTMAS`
+(129-19).
+
+A key can run scripts and not rows, as `"neutral"` and `"christmas"` do (129-19).
+For such a key, add the scripts to a file next to `christmas.ts`, import the
+shared parts from `strip.ts`, add the key to `SCRIPTED` in `scene.ts`, and add
+the key to `PALETTES` and `CANOPY`. A script never reads those two entries, but
+their `Record` type needs every `SceneKey`.
 
 The device switch, the server switch, the schedule, the component, and the
 stylesheet need no change.
