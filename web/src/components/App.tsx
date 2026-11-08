@@ -5908,7 +5908,7 @@ export function App() {
                 mobile by CSS -- the header is already tight there, and the
                 profile panel carries the same link. */}
             <VersionLink version={state.serverVersion} commit={state.serverCommit} />
-            {/* 131-9: The REC indicator while you are in a voice room. It
+            {/* 131-9: The live indicator while you are in a voice room. It
                 shows on desktop only, like the version badge, because the
                 phone header is tight. A click goes back to the room. */}
             {railChannelID && !isMobile && (
@@ -6219,7 +6219,7 @@ export function App() {
           lastSeen={state.lastSeen}
           displayNames={displayNames}
           voiceRosters={state.voiceRosters}
-          recInHeader={railChannelID !== null && !isMobile} // 131-10: header shows REC
+          recInHeader={railChannelID !== null && !isMobile} // 131-10: header shows the live light
           unread={state.unread}
           onSelect={(id) => {
             dispatch({ kind: "set_active_channel", channelID: id });

@@ -1,6 +1,6 @@
 # Phase 131 — the call rail: every participant in a narrow column
 
-**Status:** built, 131-1 to 131-10 (2026-11-08). Unit-tested by
+**Status:** built, 131-1 to 131-11 (2026-11-08). Unit-tested by
 `web/src/voice/rail-tiles.test.ts`, the `roomCardRows` cases in
 `web/src/chat/hovercard.test.ts`, and the rewritten third test in
 `web/src/theme-sidebar.test.ts`, which asserts the CSS declarations against the
@@ -17,13 +17,17 @@ of the rail flips the muted badge on your own tile. The manual checklist at the
 end of this file is still open.
 After 131-9 the probe `.claude/skills/run-chalk/probes/rail.mjs` ran on
 2026-11-08, with 6 checks, and all passed. The busy room row shows the dot and
-REC and no speaker glyph. The dot blinks with `chalk-rec-blink` at 1.15 s,
-stepped, in the error red. The header shows REC for the person in the call
-only. On a text channel the header REC stays and the rail shows the tile. A
-click on the header REC goes back to the room, and leave removes it.
+LIVE and no speaker glyph. The dot blinks with `chalk-rec-blink` at 1.15 s,
+stepped, in the error red. The header shows LIVE for the person in the call
+only. On a text channel the header LIVE stays and the rail shows the tile. A
+click on the header LIVE goes back to the room, and leave removes it.
 After 131-10 the same probe ran again on 2026-11-08, with 7 checks, and all
 passed. In the new check, the person in the call sees only the speaker glyph on
-the row of that room, with no REC, while the header shows REC.
+the row of that room, with no LIVE, while the header shows LIVE.
+Slice 131-11 renamed the word from REC to LIVE. REC claims a recording, and
+chalk records nothing. LIVE says what is true. After 131-11 the same probe ran again on
+2026-11-08, with 7 checks, and all passed. The word LIVE shows in the row and in
+the header.
 Slice 131-7 changed the desktop layout again, so the probe checks of 131-5 and
 131-6 about the room page and the footer bar are out of date. After 131-7 the
 probe ran on 2026-11-08, with 25 checks, and all passed. On the room page the
@@ -149,9 +153,9 @@ join.
 
 ### The record light (131-4)
 
-A voice room that has people in it shows the REC indicator in the glyph box, in
-place of the speaker glyph (131-9). The indicator is a red dot and the word REC
-in bold, spaced type, as the viewfinder of a VHS camcorder drew them. The dot
+A voice room that has people in it shows the live indicator in the glyph box, in
+place of the speaker glyph (131-9). The indicator is a red dot and the word LIVE
+in bold, spaced type. The dot is as the viewfinder of a VHS camcorder drew it. The dot
 blinks hard like the record light of a camera, with a 1.15 s cycle. It is fully on for the first half and fully off for the second
 half, with `steps(1, end)` and no fade (131-8). The word does not blink. It says "live" at a glance, where a count alone does
 not. The count badge at the end of the row stays and gives the number.
@@ -161,7 +165,7 @@ An empty room keeps the speaker glyph.
 The glyph box grew to hold the word, so a voice row with people in it is a few
 pixels wider than an empty one. This is the accepted cost.
 
-### The REC indicator in the header (131-9)
+### The live indicator in the header (131-9)
 
 While you are in a voice room, the header shows the same indicator beside the
 version badge. It shows on desktop only, like the version badge, because the
@@ -294,7 +298,7 @@ The live probe ran on 131-7. The result is in the status header.
   room: the glyph box grew to hold it.
   The stylesheet test in `theme-sidebar.test.ts` covers the slice. A CSS timing
   change needs no live probe. Built 2026-11-08.
-- **131-9 — the REC indicator.** `RecIndicator.tsx` is new. The sidebar uses it
+- **131-9 — the live indicator.** `RecIndicator.tsx` is new. The sidebar uses it
   in the glyph branch, and `App.tsx` uses it in a header button. `RecordIcon` is
   removed from `VoiceBadges.tsx`. In `theme.css`, `chalk-chglyph--live` holds
   `.chalk-rec`, and the `animation` line moved to `.chalk-rec-dot`. The
@@ -305,6 +309,12 @@ The live probe ran on 131-7. The result is in the status header.
   `recInHeader`. `App.tsx` passes `railChannelID !== null && !isMobile`. The
   glyph branch adds `!(recInHeader && inRoom)`. One check in the live probe
   `rail.mjs` covers it. Built 2026-11-08. The probe passed.
+- **131-11 — the word is LIVE.** The text of `RecIndicator.tsx` changes from
+  REC to LIVE, and its `aria-label` from "recording" to "live". The dot, the
+  blink, the type, the two homes, and the rule of 131-10 stay. REC claims a
+  recording, and chalk records nothing. The component and the `chalk-rec*`
+  classes keep their names. The title in `theme-sidebar.test.ts` and the probe
+  `rail.mjs` say LIVE. Built 2026-11-08. The probe passed.
 
 ## Left open
 

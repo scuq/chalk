@@ -7488,21 +7488,22 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 
 /* 131-4, 131-9: The glyph box of a voice room that has people in it holds
-   the REC indicator. The box is red and keeps its red on the active row,
+   the live indicator. The box is red and keeps its red on the active row,
    where the other glyphs change color with the text. The dot blinks, and
    with reduced motion it does not. */
 .chalk-chglyph--live,
 .chalk-sidebar-item--active .chalk-chglyph--live {
   color: var(--chalk-error);
-  /* 131-9: The box holds the dot and the word REC, so it is wider than a
+  /* 131-9: The box holds the dot and the word LIVE, so it is wider than a
      glyph. */
   width: auto;
   margin-right: 2px;
 }
 
-/* 131-9: The REC indicator, as the viewfinder of a VHS camcorder drew it: a
-   flat red dot and the word REC in bold, spaced type. The dot blinks hard
-   (131-8), half the cycle on and half off, with no fade. The word stays on.
+/* 131-9: The live indicator. The dot is as the viewfinder of a VHS camcorder
+   drew it: flat and red. The word LIVE is in bold, spaced type. The dot
+   blinks hard (131-8), half the cycle on and half off, with no fade. The
+   word stays on.
    With reduced motion the dot stays on. */
 .chalk-rec {
   display: inline-flex;
@@ -7532,7 +7533,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
     animation: none;
   }
 }
-/* 131-9: The REC button in the header, beside the version badge. A click goes
+/* 131-9: The live button in the header, beside the version badge. A click goes
    back to the voice room. */
 .chalk-rec-btn {
   background: none;

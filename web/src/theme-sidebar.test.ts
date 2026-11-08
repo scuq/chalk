@@ -135,7 +135,7 @@ test("the call rail is a narrow scrolling column, and the dock preview is gone",
   assert.equal(/\.chalk-voice-controls--rail\b/.test(css), false, "no three-column footer bar remains");
 });
 
-test("a voice room with people in it shows a blinking red REC light (131-4, 131-8, 131-9)", () => {
+test("a voice room with people in it shows a blinking red LIVE light (131-4, 131-8, 131-9, 131-11)", () => {
   const live = block(".chalk-chglyph--live,\n.chalk-sidebar-item--active .chalk-chglyph--live");
   assert.match(live, /color:\s*var\(--chalk-error\)/, "the light is red, on the active row too");
   const rec = block(".chalk-rec");
