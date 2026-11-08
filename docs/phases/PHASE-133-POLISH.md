@@ -1,6 +1,6 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** 133-1 to 133-6 built (2026-11-08). 133-7 planned.
+**Status:** built, 133-1 to 133-7 (2026-11-08). 133-7 changed no code.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
 of the derived tokens. `web/src/theme-tokens.test.ts` tests two rules: every
 custom property the stylesheet reads is declared, and no `var()` carries a
@@ -404,6 +404,32 @@ write to <name>.".
 colour. One tests that only a titled feed takes the tall layout, and that the
 thread panel passes no title.
 
+### The theme sweep (133-7)
+
+The sweep checked the contract in every theme. It changed no code. On the dev
+stack at 1280 by 800, the desktop shell was screenshotted in all 15 themes:
+green, light, snazzy-light, warmwhite, vscode-light, catppuccin-latte,
+cyberpunk, solarized-dark, tokyo-night, lcars, blade-runner, azeroth, darkord,
+exchalk, and catppuccin-mocha. Each theme has two shots. The first shows an
+empty channel with an unread channel in the sidebar. The second shows a
+channel with messages, an unread divider, and a selected row. The green theme
+was also screenshotted at a phone width of 390px, with the feed and with the
+drawer open.
+
+Every theme reads correctly. The selected row, the hover, the unread name, the
+mark of the empty state, the filled send button, and the raised channel header
+take the colors of the theme. No theme needed a token override in 133-7. The
+133-4 exchalk value and the 133-1 solarized-dark overrides are the only
+per-theme corrections of the phase.
+
+One result is accepted and not fixed. In solarized-dark, darkord, and
+exchalk, `--chalk-border` equals `--chalk-bg-elev`, or nearly so. The sidebar
+"+" buttons and the bottom rule of the channel header therefore show no
+outline on the raised surfaces. The buttons still read as controls, because
+they have a "+" glyph and a hover fill. The design review asked for fewer
+outlines, so the palettes stay as they are. This closes the solarized-dark
+note of 133-3.
+
 ## What was rejected
 
 - Floating card panels. The sticky header, the season canvas, the drawer, and
@@ -445,10 +471,9 @@ thread panel passes no title.
   | Friend row | 26px |
   | Sidebar | 220px |
 
-  For 133-7: in solarized-dark, `--chalk-border` equals `--chalk-bg-elev`. The
-  outlines of the sidebar "+" buttons and the bottom rule of the channel
-  header vanish on the raised surfaces. The result reads acceptably. Decide in
-  the theme sweep.
+  In solarized-dark, `--chalk-border` equals `--chalk-bg-elev`. The outlines
+  of the sidebar "+" buttons and the bottom rule of the channel header vanish
+  on the raised surfaces. The result reads acceptably. 133-7 accepted it.
 - **133-4 — the interaction contract.** The inset ring on the selected row,
   the radius and transition on the row-like rules, the 13 deleted per-theme
   rules, and the four emphasis overrides in cyberpunk, lcars, blade-runner,
@@ -469,19 +494,29 @@ Parking Lot, which has its own large mark from an earlier phase, and the
 screen shows only when no channel and no parking lot is open. The type-check
 and the test cover it.
 - **133-7 — the theme sweep.** Screenshots of the desktop shell in all 15
-  themes and of the green phone layout. A theme that misses the contract is
-  fixed by an override of one derived token in its block, never by a component
-  rule. Planned.
+  themes and of the green phone layout. No theme missed the contract, so the
+  slice changed no code. The weak outlines in solarized-dark, darkord, and
+  exchalk are accepted. Done.
 
 ## Left open
 
-- 133-7, as listed above.
-- The manual check of the "no channel open" screen. See the checklist.
+- The "no channel open" screen was not seen in a browser. A new account opens
+  in the Parking Lot. See the checklist.
+- The thread pane composer is narrower than the main one. It was not seen in a
+  browser with all four tools. See the checklist.
 - After a live resize from a phone width back to a desktop width, the header
   measured 59px and not 56px. A reload restores 56px. 133 does not cause it.
   It is not investigated.
+- The channel header band stops 8px short of the scrollbar lane on the right.
+  133-3 left it as it is.
+- The remaining items of the manual checklist.
 
 ## Manual checklist
+
+The 133-7 sweep looked at the empty channel, the selected row, the unread
+channel, and the filled send in 15 themes at 1280 by 800. The sweep did not
+open the checklist items below, except where an item names an empty channel
+or a selected row in a theme that the sweep covered.
 
 Open after 133-6:
 

@@ -9,10 +9,30 @@ Latest release: **v0.10.3** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 131 is the newest work, and three small points of it are open.
+Phase 133 is the newest work, and five points of it are open.
+Phase 131 has three small open points.
 Phase 130 has two open points. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
+
+## Phase 133 — polish: built, with five open points
+
+133-1 … 133-7, record in [phases/PHASE-133-POLISH.md](phases/PHASE-133-POLISH.md).
+The shell has semantic tokens, a raised sidebar and channel header, one look
+for hover, selected, unread, and focus, a one-row composer with a filled send
+button, and a themed empty state. The sweep of 133-7 checked 15 themes on a
+desktop and the green theme on a phone. Every change is in the client.
+
+- **The "no channel open" screen was not seen in a browser.** A new account
+  opens in the Parking Lot.
+- **The composer of the thread pane was not seen in a browser.** It is
+  narrower than the main one, and it must fit all four tools.
+- **After a live resize from a phone width to a desktop width, the header
+  measures 59px and not 56px.** A reload restores 56px. 133 does not cause it,
+  and it is not investigated.
+- **The channel header band stops 8px short of the scrollbar lane.**
+  133-3 left it as it is.
+- **The manual checklist in the phase doc is still open.**
 
 ## Phase 131 — call rail: built, with three open points
 
