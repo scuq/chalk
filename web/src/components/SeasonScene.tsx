@@ -7,7 +7,8 @@
 // 129-19: the christmas key has seven scripts. 129-20: the new-year key has
 // seven scripts. 129-21: the winterfest key has eight scripts. 129-22: the
 // black-week key has nine scripts, and a script can have a weight. 129-23: the
-// late-autumn key has seven scripts.
+// late-autumn key has seven scripts. 129-24: the neutral scene shows two times
+// in each window, and only while the window has focus.
 //
 // One component serves every season and the dates between them. The registry
 // says which season it is, or null for a date in no season. season/scene.ts
@@ -23,7 +24,9 @@
 // season/lateautumn.ts. The schedule in
 // season/peek.ts sets the bounds of a visit, and season/visits.ts grants a
 // visit under the caps in peek.ts. For a date in no season, it grants at most
-// one visit in each of the windows in peek.ts.
+// two visits in each of the windows in peek.ts, at least NEUTRAL_GAP_MS apart.
+// A season visit needs a visible tab. A neutral visit also needs focus
+// (document.hasFocus()), so a window in the background does not spend it.
 // App.tsx mounts the component in one of two places. On a wide screen it sits
 // in the header, between the brand and the status bar. The box .chalk-season
 // takes the empty middle of the header. The canvas inside it is out of flow,
@@ -74,6 +77,10 @@ import { nextRow, takeVisit } from "../season/visits";
 // The time that the canvas takes to fade out. It must equal the opacity
 // transition of .chalk-season-canvas in theme.css.
 const FADE_MS = 1200;
+
+// 129-24: the wait, in milliseconds, before a check after the window gets
+// focus back.
+const FOCUS_CHECK_MS = 2000;
 
 /**
  * runScene paints a new scene for the key on the canvas and returns the
@@ -179,13 +186,26 @@ export function SeasonScene({ season, always, row = false }: Props) {
     const t = setTimeout(() => {
       // In the always-on hours no visit is claimed, so the hours do not use up
       // the daily caps.
+      // 129-24: a neutral visit starts only while the window has focus. A season
+      // visit needs only a visible tab.
       const show =
-        !always && !visit.visible && document.visibilityState === "visible" &&
+        !always &&
+        !visit.visible &&
+        document.visibilityState === "visible" &&
+        (!neutral || document.hasFocus()) &&
         takeVisit(Date.now(), neutral);
       setVisit(nextPeek(show));
     }, visit.ms);
     return () => clearTimeout(t);
   }, [visit, always, neutral]);
+  useEffect(() => {
+    if (!neutral) return;
+    // 129-24: when the window gets focus back, check after FOCUS_CHECK_MS and
+    // not at the next CHECK_MS. A visit that is due then starts in seconds.
+    const onFocus = () => setVisit((v) => (v.visible ? v : { visible: false, ms: FOCUS_CHECK_MS }));
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [neutral]);
   const key: SceneKey = season?.id ?? "neutral";
   const label = season?.label ?? "Chalk";
   // The canvas is up in a visit and in the always-on hours.

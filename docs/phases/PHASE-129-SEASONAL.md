@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a scene for the season
 
-**Status:** in progress. Built: 129-1 – 129-23. Open: 129-24 and later. They tune the five keys that have rows, one key in each slice, in this order: spring-bloom, green-season, midsummer, harvest-festival, spooky-season. One cleanup item is open: the dead snow branches of the scene engine (see "The winterfest scripts"). 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 shipped in v0.10.0. 129-15 and later are not yet in a release. 129-8 to 129-10 land together.
+**Status:** in progress. Built: 129-1 – 129-24. Open: 129-25 and later. They tune the five keys that have rows, one key in each slice, in this order: spring-bloom, green-season, midsummer, harvest-festival, spooky-season. One cleanup item is open: the dead snow branches of the scene engine (see "The winterfest scripts"). 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 shipped in v0.10.0. 129-15 and later are not yet in a release. 129-8 to 129-10 land together.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -29,7 +29,8 @@ the `black-week` key: nine scripted scenes about money and sales, from the
 Monday before Black Friday to Cyber Monday. It is the first season whose dates
 move with the year, and the first whose scenes show sign words and prices.
 129-23 replaced the five Late Autumn rows with seven scripted scenes: five nods
-to films and series, and two nods to games.
+to films and series, and two nods to games. 129-24 let the neutral scene show
+two times in each window, and only while the chalk window has focus.
 
 ## The design
 
@@ -411,8 +412,9 @@ season: `nightSeason` checks `season !== null`.
 
 The neutral scene does not use the cap of 16 visits or the gaps of `GAP_MS`.
 `NEUTRAL_WINDOWS` in `peek.ts` has two windows, as `[start, end)` in local
-hours: `[8, 12]` and `[16, 24]`. The neutral scene has at most one visit in
-each window, so at most two visits in a day.
+hours: `[8, 12]` and `[16, 24]`. 129-16 gave the neutral scene one visit in
+each window. 129-24 changed that to two visits in each window, so at most four
+visits in a day (see "Two visits in each window").
 
 `claimNeutral(log, now, rnd)` in `peek.ts` is a pure function.
 
@@ -425,7 +427,8 @@ each window, so at most two visits in a day.
   window, the visit of that window did not start, and now is at the target time
   or later.
 - A window that no visible tab saw is lost. It does not move to the next window
-  or to the next day.
+  or to the next day. (129-24 changed the rule for a visit that is due. See
+  "Two visits in each window".)
 
 The log is `{day, at, done}` in localStorage under the key
 `chalk.season.neutral.v1`. `at` holds the target times in milliseconds since the
@@ -437,6 +440,39 @@ windows hold for that page only.
 true. A neutral claim does not read or change the season log, so it does not
 use up the cap of the season scenes. `SeasonScene` passes `neutral` when
 `season` is null.
+
+#### Two visits in each window (129-24)
+
+The neutral scene shows at most `NEUTRAL_PLAYS` times in each window.
+`NEUTRAL_PLAYS` is 2, so a day has at most four visits. A visit is also at least
+`NEUTRAL_GAP_MS`, which is 20 minutes, after the start of the last neutral
+visit.
+
+- `claimNeutral` cuts each window into `NEUTRAL_PLAYS` equal slots: 08:00 to
+  10:00, 10:00 to 12:00, 16:00 to 20:00, and 20:00 to 24:00.
+- The new log has one random target time for each slot. The target is no later
+  than `SHOW_MS[1]` before the end of the slot.
+- A visit starts if now is inside a window, a slot of that window did not start
+  its visit, now is at the target time of that slot or later, and the last
+  visit started at least `NEUTRAL_GAP_MS` ago. The earliest such slot is used.
+- A slot that is still unused when its window ends is lost.
+- A clock moved back before `last` counts as rested, so a moved clock does not
+  block the neutral scene.
+- A target that is due while no check ran starts at the next check. Two such
+  targets start one gap apart. A target that the gap puts past the end of its
+  window is lost.
+
+`NeutralLog` has the new field `last`, the start of the last neutral visit, or
+0. A stored log with two slots is replaced. A stored log with four slots and no
+`last` loads with `last` 0.
+
+The neutral visit also needs focus. `SeasonScene` starts a neutral visit only if
+`document.visibilityState` is `visible` and `document.hasFocus()` is true. A
+season visit still needs only a visible tab. When the window gets focus back,
+`SeasonScene` checks after `FOCUS_CHECK_MS`, which is 2 s, and not at the next
+`CHECK_MS`. So a visit that is due while the user is in another window starts
+within a few seconds of the return, if the chalk window is still open and the
+window is still inside its time.
 
 #### The off-season scripts (129-18)
 
@@ -674,7 +710,8 @@ as for `"christmas"`. A script never reads them.
 
 `web/src/components/SeasonScene.tsx` replaces `SeasonFigure.tsx`.
 It keeps the one-timer schedule and the visible-page rule of 129-7: a
-`setTimeout` for each step, and `takeVisit` only for a visible page.
+`setTimeout` for each step, and `takeVisit` only for a visible page. 129-24 adds
+the focus rule of the neutral scene (see "Two visits in each window").
 One component serves every season.
 
 `runScene` starts a visit. It sets the size of the canvas from its CSS size
@@ -966,6 +1003,16 @@ A crossfade through all five rows in a longer visit (129-15). A visit of 45 s to
 A gap-based schedule with a lower cap for the neutral scene (129-16). It cannot
 guarantee one visit in each part of the day, so a day could have no morning
 visit. The windows give that guarantee for a tab that is visible.
+
+One visit in each window (129-24). The user wanted the neutral scene two times
+before midday and two times later, so one visit in each window was too few.
+
+A claim on any visible tab for the neutral scene (129-24). A visible tab in a
+background window spends a visit that nobody sees. The neutral visit waits for
+focus.
+
+A fixed list of four times for the neutral scene (129-24). The visits would come
+at the same time every day. Each slot has one random target instead.
 
 A fade to black at the end of a scene, as the supplied engine does (129-12).
 The canvas is transparent, so the alpha fades to transparent.
@@ -1319,7 +1366,25 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
   uses. The blossom check uses `harvest-festival`, because `late-autumn` has no
   row. Text in `CHANGELOG.md` and `whats-new.ts`.
 
-- **129-24 and later — tune the scenes (planned, not started).** One key for
+- **129-24 — two neutral visits in each window (built).** The problem: the
+  neutral scene showed one time in each window. The user wanted it two times
+  before midday and two times later, with a high chance that a visit is seen. The
+  design: `NEUTRAL_PLAYS` is 2, and `NEUTRAL_GAP_MS` is 20 minutes. Each window
+  has two equal slots with one random target each. A visit starts at the
+  earliest due slot of the current window, if the last neutral visit started at
+  least `NEUTRAL_GAP_MS` ago. `NeutralLog` has `last`. A neutral visit starts
+  only while the window has focus (`document.hasFocus()`), and a focus event
+  makes a check after `FOCUS_CHECK_MS` of 2 s. The user chose this meaning: a
+  visit starts only while the chalk window has focus, and if its time comes
+  while the user is elsewhere, it plays within a few seconds of the return, if
+  the window is still open. Season visits did not change. Rejected: one visit in
+  each window, a claim on any visible tab for the neutral scene, and a fixed
+  list of four times (see "What was rejected"). Tests in `peek.test.ts` check four visits a day, two in each window, 20 minutes apart. They check that missed targets play at the next check, one gap apart. They check that a target that is too late for the gap is lost, and that an old log with two slots is replaced. Tests in `visits.test.ts` check that the log has four slots, that a corrupt entry gets four slots, and that a stored log without `last` loads. In
+  `ui-sweep.mjs`, the neutral demo seeds four due slots and `last`, and brings
+  the window to the front before it loads. Text in `CHANGELOG.md` and
+  `whats-new.ts`.
+
+- **129-25 and later — tune the scenes (planned, not started).** One key for
   each slice, in this order: spring-bloom, green-season, midsummer,
   harvest-festival, spooky-season. These are the five keys that have rows.
 
@@ -1376,9 +1441,9 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
     pixels at most for `HARVEST FESTIVAL`. The sign is high (129-14), so the
     walkers run under it. Only a jump of a walker can pass behind it. A strip
     that is too narrow for the sign shows no title.
-17. A window of the neutral scene is lost if no visible tab checks at or after
-    its target time inside the window (129-16). A device that is always in the
-    background sees no neutral visit. The neutral log is for a device and a
+17. A slot of the neutral scene is lost if no focused window checks at or after
+    its target time inside its window (129-16, 129-24). A device whose chalk
+    window never has focus sees no neutral visit. The neutral log is for a device and a
     local day, like the cap.
 18. A neutral script is opaque (129-18). It paints its own background, so it
     does not blend with a theme as the see-through rows do. This is a deliberate
@@ -1477,8 +1542,9 @@ no season and shows the neutral scenes (see item 13).
 13. Set the system date to a date in a gap, for example 15 April, 15 November,
     and 28 December. Check that `data-season` is `neutral` and that the scene
     is one of the ten neutral scenes. Check that the visits follow the same
-    windows of 129-16: at most one visit from 08:00 to 12:00 and one from
-    16:00 to 24:00. Check that `chalk.season.neutral.v1` has `done` set for each
+    windows of 129-16 and 129-24: at most two visits from 08:00 to 12:00 and two
+    from 16:00 to 24:00, at least 20 minutes apart, and only while the chalk
+    window has focus. Check that `chalk.season.neutral.v1` has `done` set for each
     visit, and that the count in `chalk.season.visits.v1` does not change.
     Set the system date to 29 February of a leap year. Check that the scene is
     a neutral scene, because the date is in the gap from 8 February to

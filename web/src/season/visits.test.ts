@@ -2,6 +2,7 @@
 // that a corrupt entry is replaced, and that the cap holds without storage.
 // 129-15: the next row differs from the last row. 129-16: the neutral log is
 // separate from the log of the cap. 129-22: nextRow picks by weight.
+// 129-24: the neutral log has four slots, and an old log without last loads.
 
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -97,7 +98,7 @@ test("129-16: a neutral claim keeps the season log and the windows hold across p
   assert.equal(takeVisit(morning, true), true);
   assert.equal(takeVisit(morning + 1, true), false);
   assert.equal(JSON.parse(items.get(KEY)!).count, 0);
-  assert.deepEqual(JSON.parse(items.get("chalk.season.neutral.v1")!).done, [true, false]);
+  assert.deepEqual(JSON.parse(items.get("chalk.season.neutral.v1")!).done, [true, false, false, false]);
   assert.equal(takeVisit(morning, false), true);
 });
 
@@ -110,7 +111,7 @@ test("129-16: a corrupt neutral entry is replaced", () => {
     takeVisit(morning - 3 * HOUR, true);
     const log = JSON.parse(items.get("chalk.season.neutral.v1")!);
     assert.equal(log.day, `2026-11-${11 + i}`, bad);
-    assert.equal(log.at.length, 2, bad);
+    assert.equal(log.at.length, 4, bad);
   });
 });
 
@@ -130,4 +131,13 @@ test("129-22: nextRow picks by weight and still never repeats the last row", () 
   }
   items.set(LAST, JSON.stringify({ x: 1 }));
   assert.equal(nextRow("x", [1, 1], () => 0.2), 0);
+});
+
+test("129-24: a stored neutral log without last still loads", () => {
+  const items = fakeStorage();
+  const nine = new Date(2026, 10, 12, 9, 59).getTime();
+  const at = [new Date(2026, 10, 12, 8).getTime(), new Date(2026, 10, 12, 11).getTime(), 0, 0];
+  items.set("chalk.season.neutral.v1", JSON.stringify({ day: "2026-11-12", at, done: [false, false, false, false] }));
+  assert.equal(takeVisit(nine, true), true);
+  assert.equal(JSON.parse(items.get("chalk.season.neutral.v1")!).last, nine);
 });

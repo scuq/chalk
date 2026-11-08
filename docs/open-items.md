@@ -78,7 +78,7 @@ Every change is in the client.
 
 ## Phase 129 — seasonal: IN PROGRESS, with recorded trade-offs
 
-129-1 … 129-22 are built. 129-23 onward is open. Record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
+129-1 … 129-24 are built. 129-25 onward is open. Record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
 An animated pixel scene peeks into the middle of the top header. Each of
 six season keys has five scenes, and the `christmas` key shows seven scripted
 scenes, which are nods to films and series (129-19). The `new-year` key also
@@ -103,12 +103,13 @@ to films and series (129-12, 129-18). On the evening of 24 December and on New
 Year's Eve, the scene stays up from 20:00 to 05:00. There is a switch per device and a server
 switch on the admin settings tab. A visit of a season scene comes at most 16
 times in a local day on one device, and at most 10 of them start before 18:00
-(129-7, 129-9). The neutral scene has its own rule: at most one visit from
-08:00 to 12:00 and one from 16:00 to 24:00 (129-16).
+(129-7, 129-9). The neutral scene has its own rule: at most two visits from
+08:00 to 12:00 and two from 16:00 to 24:00, at least 20 minutes apart, and only
+while the chalk window has focus (129-16, 129-24).
 A phone in zuckermode shows the scene in a row above the conversation list
 (129-11). The classic phone layout and the header of a phone show no scene.
 A headed season demo in the ui-sweep skill shows one scene on a fake date (129-17).
-Open: 129-24 and later, which tune the five keys that have rows, one key in
+Open: 129-25 and later, which tune the five keys that have rows, one key in
 each slice, in this order: spring-bloom, green-season, midsummer,
 harvest-festival, spooky-season. Late Autumn runs seven scripted nods to films,
 series, and games (129-23).

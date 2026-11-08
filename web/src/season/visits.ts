@@ -1,12 +1,15 @@
 // chalk-web -- 129-7: the log of visits, shared by all tabs. 129-15: the last
 // row of each key. 129-16: a separate log for the neutral scene. 129-22: a
-// row can have a weight.
+// row can have a weight. 129-24: the neutral
+// log has four slots and the start of the last visit.
 //
 // A visit of the scene is claimed from a log in localStorage. All tabs and
 // reloads of one browser profile read the same log. So the daily cap in
 // peek.ts holds for the device and not for the account. If localStorage fails,
 // a module variable holds the log, and the cap holds for that page only.
 // The neutral scene has its own log, and the cap does not count its visits.
+// That log holds four slots, two for each window, and the start of the last
+// neutral visit.
 // The log of the last rows lets a visit pick a row that differs from the row
 // of the last visit. A weight makes some rows more likely than others.
 
@@ -122,7 +125,7 @@ export function nextRow(key: string, weights: number | number[], rnd: () => numb
 const NEUTRAL_KEY = "chalk.season.neutral.v1";
 
 // The neutral log of this page. It is the fallback if localStorage fails.
-let neutralMemory: NeutralLog = { day: "", at: [], done: [] };
+let neutralMemory: NeutralLog = { day: "", at: [], done: [], last: 0 };
 
 function loadNeutral(): NeutralLog {
   try {
@@ -137,7 +140,9 @@ function loadNeutral(): NeutralLog {
         log.at.every(Number.isFinite) &&
         log.done.every((v: unknown) => typeof v === "boolean")
       ) {
-        return log;
+        // 129-24: a stored log from before the gap rule has no last. It loads with
+        // last 0.
+        return { ...log, last: Number.isFinite(log.last) ? log.last : 0 };
       }
     }
   } catch {

@@ -15,6 +15,9 @@ The engineering-level history (which slice shipped what) lives in
 ### Added
 - From 16 to 22 November, the Chalk scene is one of seven small animated autumn nods to films, series, and games. Each one shows a famous moment.
 
+### Changed
+- On days outside a season, the Chalk scene now shows up to two times from 08:00 to 12:00. It also shows up to two times from 16:00 to midnight. Two scenes are at least 20 minutes apart. It shows only while the Chalk window is in focus. If a scene is due while you are in another window, it plays within seconds of your return.
+
 ## v0.11.2 — 8 November 2026 — Film and series nods for the winter seasons and Black Week
 
 ### Added

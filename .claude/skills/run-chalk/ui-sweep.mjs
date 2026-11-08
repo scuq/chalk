@@ -81,7 +81,9 @@
 // christmas, winterfest, new-year, spring-bloom, green-season, midsummer,
 // harvest-festival, and spooky-season. The table SEASON_DATES has the date of
 // each key. The script clears the visit log and seeds the neutral log
-// so that a visit is due at once. After each page load it skips the first
+// with four due slots and last 0, so that a visit is due at once. A neutral
+// visit starts only while the window has focus, so the script brings the
+// window to the front before each load. After each page load it skips the first
 // pause (13 s) and reads data-scene from the scene canvas. It loads the page
 // again, up to 25 times, until the scene has the wanted name. It then shows
 // the scene for --scene-secs seconds with a corner tag. Without --scene, the
@@ -285,12 +287,13 @@ async function seasonDemo(key, only, secs) {
     const day = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
     try {
       localStorage.removeItem('chalk.season.visits.v1');
-      localStorage.setItem('chalk.season.neutral.v1', JSON.stringify({ day, at: [now - 1000, now - 1000], done: [false, false] }));
+      localStorage.setItem('chalk.season.neutral.v1', JSON.stringify({ day, at: [now - 1000, now - 1000, now - 1000, now - 1000], done: [false, false, false, false], last: 0 }));
     } catch {}
   });
   const canvas = A.locator("[data-testid='season-scene']");
   for (let i = 0; ; i = (i + 1) % targets.length) {
     let shown = '';
+    await A.bringToFront();
     for (let tries = 0; tries < 25 && shown !== targets[i]; tries++) {
       await A.reload();
       await A.waitForSelector("[data-testid='season-anchor']", { timeout: 20000 });

@@ -1,5 +1,6 @@
 // chalk-web -- 129-1: the peek schedule. 129-7: the daily cap. 129-9: the
-// evening. 129-16: the windows of the neutral scene.
+// evening. 129-16: the windows of the neutral scene. 129-24: two visits in
+// each window.
 //
 // Outside the always-on hours (ALWAYS_ON in seasons.ts), the scene is not
 // there all the time. It is a visitor, not furniture. A visit
@@ -9,8 +10,8 @@
 // The gap between the starts of two visits is 1 to 2 hours in the daytime and
 // 20 to 40 minutes in the evening.
 // The neutral scene (a date in no season) does not use this cap or these gaps.
-// It has at most one visit in each of the NEUTRAL_WINDOWS, which claimNeutral
-// grants.
+// It has at most NEUTRAL_PLAYS visits in each of the NEUTRAL_WINDOWS, with
+// NEUTRAL_GAP_MS between two starts. claimNeutral grants them.
 // Pure: the clock and the random source are parameters, so the tests pin the
 // bounds. This module keeps no state. The log of visits is in visits.ts. The
 // component owns the one timer that walks this schedule.
@@ -141,25 +142,36 @@ export function claimVisit(
 
 /**
  * 129-16: NEUTRAL_WINDOWS are the windows of the neutral scene, as
- * [start, end) in local hours. The neutral scene shows at most one time in
- * each window.
+ * [start, end) in local hours. 129-24: the neutral scene shows at most
+ * NEUTRAL_PLAYS times in each window.
  */
 export const NEUTRAL_WINDOWS: Range[] = [
   [8, 12],
   [16, 24],
 ];
 
+/** NEUTRAL_PLAYS is the most neutral visits in one window. */
+export const NEUTRAL_PLAYS = 2;
+
+/**
+ * NEUTRAL_GAP_MS is the shortest time between the starts of two neutral
+ * visits, in milliseconds. It is 20 minutes.
+ */
+export const NEUTRAL_GAP_MS = 1_200_000;
+
 /**
  * A NeutralLog records the neutral visits of one local calendar day.
  *
  * day is the local date, as made by dayKey. at holds the target time of each
- * window in NEUTRAL_WINDOWS, in milliseconds since the epoch. done tells for
- * each window if its visit started.
+ * slot, NEUTRAL_PLAYS slots for each window in NEUTRAL_WINDOWS, in
+ * milliseconds since the epoch. done tells for each slot if its visit started.
+ * last is the start of the last neutral visit, or 0 if there is none.
  */
 export interface NeutralLog {
   day: string;
   at: number[];
   done: boolean[];
+  last: number;
 }
 
 /** NeutralClaim is the result of claimNeutral. */
@@ -172,11 +184,13 @@ export interface NeutralClaim {
  * claimNeutral returns the log after a check at now, and reports whether a
  * neutral visit starts. It does not change log.
  *
- * A log from another day is replaced. The new log has a random target time
- * in each window, no later than SHOW_MS[1] before the end of the window. A
- * visit starts if now is in a window, the visit of that window did not start,
- * and now is at the target time or later. After the end of a window, its
- * visit is lost.
+ * A log from another day is replaced. Each window is cut into NEUTRAL_PLAYS
+ * equal slots, and the new log has a random target time in each slot, no
+ * later than SHOW_MS[1] before the end of the slot. A visit starts if now is in
+ * a window, a slot of that window has not started its visit, now is at the
+ * target time of that slot or later, and the last visit started at least
+ * NEUTRAL_GAP_MS ago. The earliest such slot is used. After the end of a
+ * window, its unused slots are lost.
  */
 export function claimNeutral(
   log: NeutralLog,
@@ -185,18 +199,27 @@ export function claimNeutral(
 ): NeutralClaim {
   const day = dayKey(now);
   const d = new Date(now);
-  const at = (h: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), h).getTime();
+  const at = (h: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() + h * 3_600_000;
+  const slots = NEUTRAL_WINDOWS.length * NEUTRAL_PLAYS;
   let next = log;
-  if (log.day !== day || log.at.length !== NEUTRAL_WINDOWS.length) {
-    next = {
-      day,
-      at: NEUTRAL_WINDOWS.map(([a, b]) => pick([at(a), at(b) - SHOW_MS[1]], rnd)),
-      done: NEUTRAL_WINDOWS.map(() => false),
-    };
+  if (log.day !== day || log.at.length !== slots || log.done.length !== slots) {
+    const at0: number[] = [];
+    for (const [a, b] of NEUTRAL_WINDOWS) {
+      const part = (b - a) / NEUTRAL_PLAYS;
+      for (let k = 0; k < NEUTRAL_PLAYS; k++) at0.push(pick([at(a + k * part), at(a + (k + 1) * part) - SHOW_MS[1]], rnd));
+    }
+    next = { day, at: at0, done: at0.map(() => false), last: 0 };
   }
   const w = NEUTRAL_WINDOWS.findIndex(([a, b]) => now >= at(a) && now < at(b));
-  if (w < 0 || next.done[w] || now < next.at[w]) return { log: next, show: false };
-  const done = next.done.slice();
-  done[w] = true;
-  return { log: { ...next, done }, show: true };
+  if (w < 0) return { log: next, show: false };
+  const rested = now - next.last >= NEUTRAL_GAP_MS || now < next.last;
+  if (!rested) return { log: next, show: false };
+  for (let k = 0; k < NEUTRAL_PLAYS; k++) {
+    const j = w * NEUTRAL_PLAYS + k;
+    if (next.done[j] || now < next.at[j]) continue;
+    const done = next.done.slice();
+    done[j] = true;
+    return { log: { ...next, done, last: now }, show: true };
+  }
+  return { log: next, show: false };
 }
