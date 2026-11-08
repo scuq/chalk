@@ -17,12 +17,14 @@ The engineering-level history (which slice shipped what) lives in
 - The marker for unread messages is now a small filled envelope in the colors of your theme. It no longer looks like an online dot. The envelope glows for a mention. It sits at the right edge of the row. In the two-column friend list, the envelopes of a column line up. An unread message no longer cuts off a long friend name.
 - The call buttons in the column beside the sidebar are larger, and leave is now a red hang-up button. The green border on a person's picture alone shows who is talking, and the extra green dot is gone.
 - The light in front of a busy voice room and beside the chalk logo now says LIVE instead of REC, because chalk records nothing.
+- The sidebar sits on its own slightly raised surface, and the divider lines between its sections are gone. Channel rows are a little more compact. A hovered or selected row stands clear of the column edge. The channel header is a raised band too.
 
 ### Fixed
 - The hover of a danger button and the weakest password-strength label had no color. They are red now. The delete item in the message menu and the remove and leave actions in the member list follow the red of your theme.
 - Buttons and the add-friend list in the member panel show a highlight when the pointer is over them. Some of them showed none before.
 - In themes other than the default green, the presence menu, the verify buttons, and the reshare button showed a green highlight under the pointer. They now use your theme colors.
 - With **show profile pictures in the roster** on, the pictures beside friends' names flickered when you switched channels. The names also jumped. This no longer happens.
+- In the warmwhite theme, the unread envelope was invisible in the dark sidebar. It shows now.
 
 ---
 

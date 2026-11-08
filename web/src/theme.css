@@ -383,7 +383,7 @@ html {
 
 .chalk-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   padding: var(--chalk-s4) 0 var(--chalk-s3) 0;
   border-bottom: 1px solid var(--chalk-border);
@@ -2062,6 +2062,7 @@ html {
 /* -- Sidebar ------------------------------------------------------- */
 
 .chalk-sidebar {
+  background: var(--chalk-bg-elev);
   border-right: 1px solid var(--chalk-border);
   padding: var(--chalk-s3) 0;
   min-height: 0; /* allow inner overflow to scroll */
@@ -2383,7 +2384,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-sidebar-new:hover {
   border-color: var(--chalk-fg-bright);
-  background: var(--chalk-bg-elev);
+  background: var(--chalk-bg-hover);
 }
 .chalk-sidebar-new:focus-visible {
   outline: 1px solid var(--chalk-fg-bright);
@@ -2410,13 +2411,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--chalk-s2);
+  padding: 6px var(--chalk-s2);
+  margin: 0 var(--chalk-s1);
   cursor: pointer;
   border-left: 2px solid transparent;
   color: var(--chalk-fg);
 }
 .chalk-sidebar-item:hover {
-  background: var(--chalk-bg-elev);
+  background: var(--chalk-bg-hover);
 }
 .chalk-sidebar-item:focus-visible {
   outline: 1px solid var(--chalk-fg-bright);
@@ -2424,7 +2426,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-sidebar-item--active {
   border-left-color: var(--chalk-fg-bright);
-  background: var(--chalk-bg-elev);
+  background: var(--chalk-bg-selected);
   color: var(--chalk-fg-bright);
 }
 
@@ -2462,8 +2464,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-channel-header {
   display: flex;
-  align-items: baseline;
-  padding: var(--chalk-s4) 0 var(--chalk-s3) 0;
+  align-items: center;
+  padding: var(--chalk-s4) var(--chalk-s3) var(--chalk-s3) var(--chalk-s3);
   border-bottom: 1px solid var(--chalk-border);
   margin-bottom: var(--chalk-s3);
   /* Pin the room name to the top of the feed while it scrolls. The
@@ -2476,11 +2478,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
   position: sticky;
   top: calc(-1 * var(--chalk-s4));
   margin-top: calc(-1 * var(--chalk-s4));
-  background: var(--chalk-bg);
+  background: var(--chalk-bg-elev);
   /* margin-bottom is transparent, so while pinned a clipped line of
      feed text showed through the gap under the border. The offset
-     shadow paints that exact strip in the background color; it must
-     match margin-bottom (the mobile override re-aims both). */
+     shadow paints that exact strip in the page color (--chalk-bg), not
+     in the raised color of the header (133-3); it must match
+     margin-bottom (the mobile override re-aims both). */
   box-shadow: 0 var(--chalk-s3) var(--chalk-bg);
   z-index: 5;
 }
@@ -2504,7 +2507,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   margin-top: calc(-1 * var(--chalk-s4));
   margin-bottom: var(--chalk-s3);
   border-bottom: 1px solid var(--chalk-border);
-  background: var(--chalk-bg);
+  background: var(--chalk-bg-elev);
   box-shadow: 0 var(--chalk-s3) var(--chalk-bg);
   z-index: 5;
 }
@@ -4774,12 +4777,11 @@ body.chalk-resizing-y .chalk-composer-resizer {
    Phase 9.6b: sidebar roster section
    ============================================================ */
 
-/* The sidebar now has two header rows + two lists. Give the
-   second header a top margin so the two sections feel distinct. */
+/* 133-3: the sidebar has several sections. A top margin of --chalk-s4
+   separates them. No divider line is drawn. The space and the section
+   titles show the grouping. */
 .chalk-sidebar-header--channels {
-  margin-top: 1rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--chalk-border);
+  margin-top: var(--chalk-s4);
 }
 
 /* Inline count next to section title. Dimmed by default, takes the
@@ -4835,10 +4837,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   flex: 0 1 auto;
   max-height: 35vh;
   min-height: 4.5em;
-  /* Same separated-section treatment as threads above it. */
-  margin-top: 1rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--chalk-border);
+  /* 133-3: the same top margin as the thread section. No divider line. */
+  margin-top: var(--chalk-s4);
 }
 
 .chalk-sidebar-list--voice {
@@ -4885,10 +4885,10 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-sidebar-filter-input {
   width: 100%;
-  background: var(--chalk-bg-elev);
+  background: var(--chalk-bg);
   border: 1px solid var(--chalk-border);
   color: var(--chalk-fg);
-  padding: 0.3rem 0.5rem;
+  padding: var(--chalk-s1) var(--chalk-s2);
   font-family: inherit;
   font-size: var(--chalk-size-small);
   box-sizing: border-box;
@@ -4916,8 +4916,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   width: 100%;
   background: none;
   border: none;
-  padding: 0.25rem var(--chalk-s2);
-  margin-top: 0.25rem;
+  padding: var(--chalk-s1) var(--chalk-s2);
+  margin-top: var(--chalk-s1);
   font-family: inherit;
   font-size: var(--chalk-size-small);
   color: var(--chalk-fg-dim);
@@ -4929,29 +4929,27 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color: var(--chalk-fg);
 }
 
-/* 106-1: a group has to read as a heading, not as one more row. Three
+/* 106-1: a group has to read as a heading, not as one more row. Two
    cues, none of them colour (the channel names stay the loudest text):
-   air above each group, a hairline across the column, and the same
-   letter-spacing the section titles use. The first group sits directly
-   under the filter and skips the rule; the hidden shelf (78-2) shares the
-   class and so gets the same treatment, which is right -- it is a heading
-   too. */
+   air above each group, and the same letter-spacing the section titles
+   use. 133-3 removed the hairline across the column, because the design
+   review asked for fewer competing divider lines. The hidden shelf (78-2)
+   shares the class and so gets the same treatment, which is right -- it
+   is a heading too. */
 .chalk-sidebar-group {
-  margin-top: 0.9rem;
+  margin-top: var(--chalk-s3);
 }
 .chalk-sidebar-group:first-child {
   margin-top: 0.15rem;
 }
 .chalk-sidebar-group .chalk-sidebar-group-header {
   margin-top: 0;
-  padding-top: 0.45rem;
-  padding-bottom: 0.3rem;
-  border-top: 1px solid var(--chalk-border);
+  padding-top: var(--chalk-s2);
+  padding-bottom: var(--chalk-s1);
   letter-spacing: 0.08em;
 }
 .chalk-sidebar-group:first-child .chalk-sidebar-group-header {
-  border-top: none;
-  padding-top: 0.25rem;
+  padding-top: var(--chalk-s1);
 }
 
 /* The rows under a header step in by the width of the fold arrow plus its
@@ -5212,7 +5210,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-presence-trigger:hover {
   border-color: var(--chalk-border);
-  background: var(--chalk-bg-elev);
+  background: var(--chalk-bg-hover);
 }
 .chalk-presence-trigger:focus-visible {
   outline: 1px solid var(--chalk-fg-bright);
@@ -7872,7 +7870,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-voice-dock {
   margin: var(--chalk-s2) var(--chalk-s2) 0 var(--chalk-s2);
   border: 1px solid var(--chalk-border);
-  background: var(--chalk-bg-elev);
+  background: var(--chalk-bg);
   padding: var(--chalk-s2);
   display: flex;
   flex-direction: column;
@@ -7987,7 +7985,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   flex-direction: column;
   min-height: 0;
   padding: var(--chalk-s2) 0;
-  border: 1px solid var(--chalk-border);
+  border-right: 1px solid var(--chalk-border);
   background: var(--chalk-bg-elev);
 }
 /* The tiles scroll. The foot below them does not scroll. */
@@ -8817,7 +8815,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 /* Header left cluster: brand, plus the nav toggle on mobile. */
 .chalk-header-left {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--chalk-s3);
 }
 
@@ -9116,8 +9114,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 
 /* ---- the rail. Redefining the variables re-tints the whole subtree;
-        `background` is what the element itself needs, since the
-        desktop sidebar draws no ground of its own. */
+        `background` is what the element itself needs, because the
+        base sidebar rule paints --chalk-bg-elev, and the rail uses its
+        own --chalk-bg. */
 [data-theme="warmwhite"] .chalk-sidebar {
   --chalk-bg:           #2b2927;
   --chalk-bg-elev:      #3a3835;
@@ -9132,6 +9131,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
   --chalk-accent:       #6ea8ff;
   --chalk-warn:         #e0a33c;
   --chalk-error:        #ff8079;
+  /* 133-3: the root derives --chalk-unread from the dark page text. On
+     this dark rail that color is invisible, so derive it again here. */
+  --chalk-unread:       var(--chalk-fg);
 
   /* Nick hues are tuned for the page; on the rail they need the dark
      ground treatment, or the swatch in the nick menu goes to mud. */
@@ -10344,7 +10346,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
     width: min(70vw, 270px);
     padding: max(var(--chalk-s3), env(safe-area-inset-top)) 0
              max(var(--chalk-s3), env(safe-area-inset-bottom)) 0;
-    background: var(--chalk-bg);
+    background: var(--chalk-bg-elev);
     border-right: 1px solid var(--chalk-border);
     box-shadow: 2px 0 16px rgba(0, 0, 0, 0.6);
     transform: translateX(-100%);
@@ -11066,21 +11068,21 @@ body.chalk-resizing-y .chalk-composer-resizer {
    ============================================================ */
 
 /* 49-6: the entry point moved from the status bar into the sidebar, between
-   friends and channels, so every unread dot lives in the same column. Styled
-   as its own separated section row; the dot inherits margin-left:auto and
-   sits on the right edge like the friend and channel rows' dots. */
+   friends and channels, so every unread dot lives in the same column. The
+   section is separated by a top margin (133-3), not by a divider line. The
+   dot inherits margin-left:auto and sits on the right edge like the friend
+   and channel rows' dots. */
 .chalk-sidebar-section--threads {
   flex-shrink: 0;
-  margin-top: 1rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--chalk-border);
+  margin-top: var(--chalk-s4);
 }
 
 .chalk-sidebar-threads {
   display: flex;
   align-items: center;
   gap: var(--chalk-s2);
-  width: 100%;
+  width: calc(100% - 2 * var(--chalk-s1));
+  margin: 0 var(--chalk-s1);
   background: transparent;
   border: none;
   color: var(--chalk-fg);
@@ -11092,7 +11094,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-sidebar-threads:hover,
 .chalk-sidebar-threads:focus-visible {
-  background: var(--chalk-bg-elev);
+  background: var(--chalk-bg-hover);
 }
 
 .chalk-sidebar-threads-glyph {
@@ -11385,7 +11387,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-channel-search:hover,
 .chalk-channel-search:focus-visible {
-  background: var(--chalk-bg-elev);
+  background: var(--chalk-bg-hover);
   color: var(--chalk-fg);
 }
 
@@ -11612,21 +11614,20 @@ body.chalk-resizing-y .chalk-composer-resizer {
    53-1: the parking lot
    ============================================================ */
 
-/* The sidebar row. Same separated-section treatment as the thread inbox
-   below it, so friends / parking / threads read as one column of entry
-   points rather than the roster growing an odd tail. */
+/* The sidebar row. It has the same top margin as the thread inbox below it
+   (133-3, no divider line), so friends / parking / threads read as one
+   column of entry points rather than the roster growing an odd tail. */
 .chalk-sidebar-section--parking {
   flex-shrink: 0;
-  margin-top: 1rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--chalk-border);
+  margin-top: var(--chalk-s4);
 }
 
 .chalk-sidebar-parking {
   display: flex;
   align-items: center;
   gap: var(--chalk-s2);
-  width: 100%;
+  width: calc(100% - 2 * var(--chalk-s1));
+  margin: 0 var(--chalk-s1);
   background: transparent;
   border: none;
   color: var(--chalk-fg);
@@ -11638,11 +11639,11 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-sidebar-parking:hover,
 .chalk-sidebar-parking:focus-visible {
-  background: var(--chalk-bg-elev);
+  background: var(--chalk-bg-hover);
 }
 
 .chalk-sidebar-parking--active {
-  background: var(--chalk-bg-elev);
+  background: var(--chalk-bg-selected);
   color: var(--chalk-fg-bright);
 }
 
@@ -12526,6 +12527,6 @@ html[data-flair-frames] .chalk-avatar--tile[data-frame] {
 
 .chalk-channel-guests:hover,
 .chalk-channel-guests:focus-visible {
-  background: var(--chalk-bg-elev);
+  background: var(--chalk-bg-hover);
   color: var(--chalk-fg);
 }

@@ -1,6 +1,6 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** 133-1 and 133-2 built (2026-11-08). 133-3 to 133-7 planned.
+**Status:** 133-1 to 133-3 built (2026-11-08). 133-4 to 133-7 planned.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
 of the derived tokens. `web/src/theme-tokens.test.ts` tests two rules: every
 custom property the stylesheet reads is declared, and no `var()` carries a
@@ -219,18 +219,64 @@ per-selector focus rule still wins. It draws a 2px outline in `--chalk-focus`.
 The 15 per-theme blocks that tune the active row are deleted, and the derived
 token replaces them.
 
-### Surfaces and spacing (133-3, planned)
+### Surfaces and spacing (133-3)
 
-The shell has two surfaces. The sidebar, the call rail, and the mobile drawer
-sit on `--chalk-bg-elev`. The main pane and the header sit on `--chalk-bg`.
-The channel header keeps its `--chalk-bg` shadow strip, because the strip
-hides the feed under the sticky gap. The divider lines in the sidebar go, and
-a margin of `--chalk-s3` replaces them. The section titles carry the grouping.
-Channel rows go from 8px to 6px of vertical padding. Friend rows keep the 3px
-that [phase 132](PHASE-132-FRIENDCOLUMNS.md) set. Paddings and margins in
-these ranges move to the `--chalk-s*` tokens. A hover background there must
-use `--chalk-bg-hover`, because a `--chalk-bg-elev` hover is not visible on a
-`--chalk-bg-elev` sidebar.
+The shell has two surfaces with flush regions:
+
+- The page (`--chalk-bg`) holds the header, the feed, and the composer.
+- The raised surface (`--chalk-bg-elev`) holds the sidebar, the call rail,
+  the phone drawer, and the channel header.
+
+`.chalk-sidebar` gets `background: var(--chalk-bg-elev)`. The phone drawer
+moves from `--chalk-bg` to `--chalk-bg-elev`. The scoped rail block of the
+warmwhite theme still wins with its own dark ground.
+
+The channel header and `.chalk-channel-headwrap` move to `--chalk-bg-elev`.
+The header row gets `--chalk-s3` of horizontal padding, so the title does not
+sit on the edge of the band. The offset shadow strip under the header stays
+`--chalk-bg`, because it paints the gap under the pinned header in the page
+color. The band sits inside the main column. It is 12px from the sidebar and
+8px short of the scrollbar lane on the right.
+
+The divider lines in the sidebar are gone:
+
+- `.chalk-sidebar-header--channels` and the voice, threads, and parking
+  sections lose `border-top` and `padding-top`. Their top margin is
+  `--chalk-s4`.
+- A channel group heading loses its hairline, and the first group no longer
+  needs a rule that hides it. This reverses part of
+  [phase 106](PHASE-106-CHANNELNAMES.md), which gave a group heading three
+  cues. Two cues remain: air above each group, and the letter-spacing. The
+  design review asked for fewer competing divider lines.
+- The space and the lowercase section titles carry the grouping.
+
+Rows and fields:
+
+- `.chalk-sidebar-item` has `6px` of vertical padding and an inline margin of
+  `--chalk-s1`, so a hovered or selected row stands clear of the column edge.
+  Friend rows keep the 3px that [phase 132](PHASE-132-FRIENDCOLUMNS.md) set.
+- `.chalk-sidebar-threads` and `.chalk-sidebar-parking` have the same inline
+  margin, and their width is `calc(100% - 2 * var(--chalk-s1))`.
+- Paddings and margins in these ranges move to the `--chalk-s*` tokens.
+- `.chalk-sidebar-filter-input` and `.chalk-voice-dock` move to `--chalk-bg`.
+  They are inset fields on the raised sidebar.
+- `.chalk-call-rail` keeps only its right border.
+
+A `--chalk-bg-elev` hover is not visible on a `--chalk-bg-elev` sidebar. Every
+hover in these areas therefore uses `--chalk-bg-hover`. These are the sidebar
+rows, the "+" buttons, the threads and parking rows, the channel search and
+guests buttons, and the presence trigger. The selected channel row and the
+selected parking row use `--chalk-bg-selected`. The 2px left border of the
+selected row stays until 133-4.
+
+`.chalk-header`, `.chalk-header-left`, and `.chalk-channel-header` change
+`align-items` from `baseline` to `center`. The height of the header does not
+change, so the season canvas, which is sized from the header, is not affected.
+
+The slice also fixes one bug. The root derives `--chalk-unread` from the dark
+page text. The warmwhite rail is dark, so the unread envelope has been
+invisible on the rail since 132-3. The warmwhite rail block now sets
+`--chalk-unread: var(--chalk-fg)`.
 
 ### The composer (133-5, planned)
 
@@ -262,7 +308,7 @@ animation.
 - The idle and busy presence states of the mockup. chalk has online, away, and
   offline.
 - A header height of 60px to 64px. The season bitmap is sized from the header,
-  and the height stays 53px.
+  and the height stays 56px.
 - JetBrains Mono as the default face. The font is a preference of the device,
   and Hack stays the default.
 - The token names of the review (`--bg-app`, `--text-primary`). The
@@ -282,7 +328,22 @@ animation.
 - **133-2 — dead fallbacks and green hover tints.** Done. See the section
   below.
 - **133-3 — surfaces and spacing.** The two surfaces, no sidebar dividers,
-  and the spacing tokens. Planned.
+  the spacing tokens, `--chalk-bg-hover` and `--chalk-bg-selected` on the
+  raised sidebar, and the warmwhite unread fix. All in `theme.css`. Done.
+  Measured on the dev stack at 1280 by 800:
+
+  | Part | Size |
+  |---|---|
+  | Header | 56px |
+  | Channel header | 49px |
+  | Channel row | 32px |
+  | Friend row | 26px |
+  | Sidebar | 220px |
+
+  For 133-7: in solarized-dark, `--chalk-border` equals `--chalk-bg-elev`. The
+  outlines of the sidebar "+" buttons and the bottom rule of the channel
+  header vanish on the raised surfaces. The result reads acceptably. Decide in
+  the theme sweep.
 - **133-4 — the interaction contract.** The contract, the global focus rule,
   and the deleted per-theme blocks. A rule for `.chalk-call-rail-btn.is-on`
   and a first rule for `.chalk-sidebar-item--unread`. A reduced-motion guard
@@ -298,9 +359,17 @@ animation.
 
 ## Left open
 
-- 133-3 to 133-7, as listed above.
+- 133-4 to 133-7, as listed above.
 
 ## Manual checklist
+
+Open after 133-3:
+
+- Open the shell at a phone width and open the drawer. It must sit on the
+  raised surface.
+- Look at a channel group heading. It must still read as a heading without
+  the hairline.
+- Open the warmwhite theme. The unread envelope must show on the dark rail.
 
 Open after 133-2:
 
