@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.11.0 — 8 November 2026 — One consistent look across the sidebar, the composer and the voice room
 
 ### Changed
 - The tools of the message bar sit in one toolbar of thin icons. The field shows a clear accent edge when it has focus. The send button shows an arrow.
