@@ -1,6 +1,6 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** 133-1 to 133-8 built (2026-11-08), 133-9 to 133-11 planned.
+**Status:** 133-1 to 133-9 built (2026-11-08), 133-10 and 133-11 planned.
 133-7 changed no code. The phase closed at 133-7 and was reopened for the voice
 room. See "The voice room" below.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
@@ -494,6 +494,76 @@ A test in `web/src/voice/rail-tiles.test.ts` reads `VoiceCallPanel.tsx`. It
 checks that the panel calls `railTiles` and has no `interface StageTile`.
 133-9 and the slices after it build on this single list.
 
+### The adaptive stage (133-9)
+
+The old automatic rule chose the grid or the spotlight by head count alone. A
+voice-only call of two people therefore showed one large empty 16:9 box and a
+small one. The new function `resolveStageMode(layout, tiles)` in
+`web/src/voice/grid.ts` reads the media. It returns one of four modes, by
+these rules in order:
+
+1. If no tile has live video, it returns "cards". This holds when the viewer
+   forced a layout, because a forced grid or spotlight with no video is only
+   empty boxes.
+2. If the viewer forced "grid" or "spotlight", it returns that layout.
+3. If a screen share has live video, it returns "spotlight".
+4. Otherwise it returns "mixed".
+
+`resolveGridMode` stays exported and tested. Nothing outside its tests imports
+it now.
+
+`VoiceCallPanel.tsx` puts the mode on the stage as `data-stage-mode`:
+
+- In "cards", everyone is a card in `.chalk-voice-cards`.
+- In "mixed", the tiles with live video are 16:9 grid tiles in
+  `.chalk-voice-videos`. The attribute `data-count` is 1, 2, or "many". A
+  click pins the tile into the spotlight, as before. The people without video
+  are cards below.
+- "grid" and "spotlight" render as before.
+
+`StagePeer` has a new prop `card`. A card shows the avatar and the label, and
+has no video surface. Its title has no "click to focus". The volume slider
+shows on a card and on the big tile. Before, the slider was on the big tile
+only. In "cards" no tile is big, so an audio-only call would have lost the
+volume control.
+
+The "tiles" toggle now cycles auto, grid, spotlight, and back to auto. Before,
+it flipped between the grid and the spotlight, and only unpinning returned to
+auto. The toggle is hidden in "cards", because nothing is left to arrange. When
+the viewer forced the spotlight, its title says "switch back to the automatic
+layout".
+
+The CSS is in `web/src/theme.css`, after `.chalk-voice-peer--grid`:
+
+- `.chalk-voice-videos` is a responsive grid,
+  `repeat(auto-fit, minmax(min(100%, 280px), 1fr))`. Its maximum width is
+  960px, and 640px for one camera.
+- `.chalk-voice-cards` is a centred grid of cards 180px to 240px wide.
+- A card has the raised theme surface, the medium radius, and a grid of avatar
+  and label. The speaking card has its border in the accent color. The avatar
+  is a 40px circle.
+- The rule is `.chalk-voice-peer.chalk-voice-peer--card`, with two classes.
+  The base `.chalk-voice-peer` rule comes later in the sheet, and with one
+  class it painted its black video background over the card. The light theme
+  showed this in a browser.
+- The card label points the `--voice-on-video*` variables at theme tokens.
+  The white-on-black palette of the bar is for text over video. A card sits on
+  the theme surface.
+
+Measured on the dev stack at 1280 by 800:
+
+| Call | Before | After |
+|---|---|---|
+| Two people, voice only | One large 16:9 box and a small one | Two cards, 240px by 61px |
+| One camera on | Not measured | A 640px by 360px camera tile and one card below |
+
+The stage was seen in the green and light themes, and at a phone width of
+390px with a camera on. Three cases were not seen. They are in the checklist
+and in 133-11.
+
+The slice has three tests for `resolveStageMode` in `grid.test.ts`, and one
+test for the card and video-grid rules in `theme-voice-pane.test.ts`.
+
 ## What was rejected
 
 - Floating card panels. The sticky header, the season canvas, the drawer, and
@@ -567,15 +637,18 @@ and the test cover it.
   change. Done.
 - **133-9 — an adaptive stage.** People with audio only get compact cards.
   People with a camera get 16:9 tiles. A screen share keeps the main area. A
-  mixed call combines both. The stage uses CSS Grid with responsive sizing,
-  and it is checked at phone width. Planned.
+  mixed call combines both. `resolveStageMode`, the `card` prop of
+  `StagePeer`, the toggle cycle, and the rules for `.chalk-voice-videos` and
+  `.chalk-voice-cards`. Four tests. Done. See the section above.
 - **133-10 — the scratchpad.** The notice becomes the empty state, and a short
   caption stays above the text. The scratchpad fills the unused space, with
   the composer at the bottom. The voice bar becomes quieter. The flags for mute
   and deafen become icons. Planned.
 - **133-11 — the scenario sweep.** Calls with audio only (one, two, and four
   people), with cameras, with a screen share, and with a mix, in several
-  themes and at phone width. Planned.
+  themes and at phone width. It must also cover the three cases that 133-9
+  did not see: a phone with no camera (cards only), the speaking highlight on
+  a card, and a screen share. Planned.
 
 ## Left open
 
@@ -596,6 +669,14 @@ The 133-7 sweep looked at the empty channel, the selected row, the unread
 channel, and the filled send in 15 themes at 1280 by 800. The sweep did not
 open the checklist items below, except where an item names an empty channel
 or a selected row in a theme that the sweep covered.
+
+Open after 133-9:
+
+- Open a voice room on a phone with no camera on. The cards must fit the
+  width and show the name and the volume slider.
+- Speak in a voice room with no camera on. The card of the speaker must have
+  its border in the accent color.
+- Share a screen in a room with cards. The share must take the main area.
 
 Open after 133-6:
 

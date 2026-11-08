@@ -51,7 +51,7 @@ import {
   subscribePopouts,
   syncTilePopouts,
 } from "../voice/pip";
-import { gridPlan, isCrowded, resolveGridMode, type VoiceLayout } from "../voice/grid";
+import { gridPlan, isCrowded, resolveStageMode, type VoiceLayout } from "../voice/grid";
 import { railTiles, type RailTile } from "../voice/rail-tiles";
 
 /** Stats refresh cadence while the drawer is open. Passive getStats reads
@@ -298,12 +298,15 @@ export function VoiceCallPanel({
   const focused = stageTiles.find((t) => t.key === focusedKey) ?? null;
   const strip = stageTiles.filter((t) => t.key !== focusedKey);
 
-  // 63-1: group calls render as a grid of identical tiles. The spotlight
-  // stays for 1:1 and while a share is live -- unless the viewer has said
-  // otherwise with the bar's toggle (96-1).
-  const hasLiveShare = stageTiles.some((t) => t.isScreen && t.hasLiveVideo);
-  const gridMode = resolveGridMode(layout, stageTiles.length, hasLiveShare);
+  // 133-9: the stage mode follows the media, not the head count. Without live
+  // video, everyone is a card. With cameras, the cameras are 16:9 tiles above
+  // the cards. A live share takes the spotlight. The bar's toggle (96-1) can
+  // force the grid or the spotlight, but not when no video is live.
+  const mode = resolveStageMode(layout, stageTiles);
+  const gridMode = mode === "grid";
   const grid = gridPlan(stageTiles.length);
+  const videoTiles = stageTiles.filter((t) => t.hasLiveVideo);
+  const audioTiles = stageTiles.filter((t) => !t.hasLiveVideo);
 
   // Leaving the grid is a layout decision, so clicking a grid tile records
   // one: pin it AND stand the spotlight up. Clicking the big tile puts that
@@ -318,10 +321,17 @@ export function VoiceCallPanel({
     setPinnedKey(null);
     setLayout("auto");
   };
-  // The toggle. Switching to the grid drops the pin with it: a pinned tile in
-  // a grid of equals is a promise the layout cannot keep, and leaving it set
-  // would have it reappear the next time the spotlight came up.
+  // The toggle cycles auto, grid, spotlight, and back to auto (133-9). Before
+  // 133-9 it flipped between the grid and the spotlight, and only unpinning
+  // returned to auto. Switching to the grid or to auto drops the pin: a pinned
+  // tile in a grid of equals is a promise the layout cannot keep, and leaving
+  // it set would have it reappear the next time the spotlight came up.
   const toggleLayout = () => {
+    if (layout === "spotlight") {
+      setPinnedKey(null);
+      setLayout("auto");
+      return;
+    }
     if (gridMode) {
       setLayout("spotlight");
       return;
@@ -467,8 +477,54 @@ export function VoiceCallPanel({
         </div>
       ) : (
         <>
-          <div class="chalk-voice-stage" data-testid="voice-stage">
-            {gridMode ? (
+          <div class="chalk-voice-stage" data-stage-mode={mode} data-testid="voice-stage">
+            {mode === "cards" || mode === "mixed" ? (
+              <>
+                {mode === "mixed" && (
+                  <div
+                    class="chalk-voice-videos"
+                    data-count={videoTiles.length > 2 ? "many" : String(videoTiles.length)}
+                    data-testid="voice-videos"
+                  >
+                    {videoTiles.map((t) => (
+                      <StagePeer
+                        key={t.key}
+                        tile={t}
+                        grid
+                        label={handleFor(t.userID)}
+                        rttMs={rttByKey[t.key]}
+                        onClick={() => pinFromGrid(t.key)}
+                        onPopOut={popOutFor(t)}
+                        poppedOut={isOut(t)}
+                        snap={snap}
+                        channel={channel}
+                        selfUserID={selfUserID}
+                        avatars={avatars}
+                        attachmentController={attachmentController}
+                      />
+                    ))}
+                  </div>
+                )}
+                {(mode === "cards" ? stageTiles : audioTiles).length > 0 && (
+                  <div class="chalk-voice-cards" data-testid="voice-cards">
+                    {(mode === "cards" ? stageTiles : audioTiles).map((t) => (
+                      <StagePeer
+                        key={t.key}
+                        tile={t}
+                        card
+                        label={handleFor(t.userID)}
+                        rttMs={rttByKey[t.key]}
+                        snap={snap}
+                        channel={channel}
+                        selfUserID={selfUserID}
+                        avatars={avatars}
+                        attachmentController={attachmentController}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : gridMode ? (
               <div
                 class={
                   "chalk-voice-grid" +
@@ -608,16 +664,18 @@ export function VoiceCallPanel({
                 pop out all
               </button>
             )}
-            {stageTiles.length > 1 && (
+            {stageTiles.length > 1 && mode !== "cards" && (
               <button
                 class={"chalk-btn chalk-voice-ctl" + (gridMode ? " chalk-voice-ctl--on" : "")}
                 onClick={toggleLayout}
                 data-testid="voice-layout-toggle"
                 aria-pressed={gridMode ? "true" : "false"}
                 title={
-                  gridMode
-                    ? "switch to the spotlight — one big tile, the rest in a strip"
-                    : "switch to tiles — everyone the same size"
+                  layout === "spotlight"
+                    ? "switch back to the automatic layout"
+                    : gridMode
+                      ? "switch to the spotlight — one big tile, the rest in a strip"
+                      : "switch to tiles — everyone the same size"
                 }
               >
                 tiles
@@ -829,6 +887,7 @@ function StagePeer({
   label,
   big,
   grid,
+  card,
   rttMs,
   onClick,
   onPopOut,
@@ -846,6 +905,10 @@ function StagePeer({
   rttMs?: number;
   /** 63-1: equal-size grid tile (group calls); clicking pins to spotlight. */
   grid?: boolean;
+  /** 133-9: compact card for a person with no live video. It shows the avatar
+   * and the label, has no video surface, and does not pin on click. The volume
+   * slider shows on a card, because no tile is big in a call of cards. */
+  card?: boolean;
   onClick?: () => void;
   /** 45-5: show this stream in a window of its own (expanded in-app when no
    * window can be had). Absent on tiles with no stream to show. */
@@ -875,7 +938,9 @@ function StagePeer({
     <div
       class={
         "chalk-voice-peer" +
-        (big
+        (card
+          ? " chalk-voice-peer--card"
+          : big
           ? " chalk-voice-peer--big"
           : grid
             ? " chalk-voice-peer--grid"
@@ -898,13 +963,13 @@ function StagePeer({
             }
           : undefined
       }
-      title={big ? shownLabel : `${shownLabel} — click to focus`}
+      title={big || card ? shownLabel : `${shownLabel} — click to focus`}
     >
       {/* 47-11: a tile showing in its own window rests here. The <video> is
           unmounted, not overlaid: the point is to stop painting the same
           frames twice, and the remount flicker on the way back is the cost
           of a deliberate close, not of a camera blinking. */}
-      {tile.stream && !poppedOut ? (
+      {tile.stream && !poppedOut && !card ? (
         <>
           <VideoSurface stream={tile.stream} mirrored={tile.isSelf && !tile.isScreen} />
           {!tile.hasLiveVideo && (
@@ -1036,8 +1101,9 @@ function StagePeer({
           <span class="chalk-voice-peer-conn">{tile.connState}…</span>
         )}
         {/* A1/A4 local audio controls (remote peers only). The volume
-            slider needs width, so it lives on the BIG tile -- pin a peer
-            to adjust them; the strip carries just the mute toggle.
+            slider needs width, so it lives on the BIG tile and on a card
+            (133-9) -- pin a peer to adjust it; the strip carries just the
+            mute toggle.
             stopPropagation: these must not re-pin/unpin the tile. */}
         {!tile.isSelf && tile.isScreen && (
           <span
@@ -1079,10 +1145,10 @@ function StagePeer({
                 person over it used to be impossible -- one slider drove both
                 -- and that is the thing everyone tries first. Same placement
                 rule as the camera tile: the slider needs width, so it rides
-                the big tile only. */}
+                the big tile and the card (133-9) only. */}
             {tile.hasAudio && (
               <>
-                {big && !screenMuted && (
+                {(big || card) && !screenMuted && (
                   <input
                     class={
                       "chalk-voice-volume" + (screenVolume > 1 ? " chalk-voice-volume--boost" : "")
@@ -1138,7 +1204,7 @@ function StagePeer({
           >
             {/* 119-1: up to 200%. Over 100 the dock's sink adds gain; the
                 thumb changes colour there so a boost reads as a boost. */}
-            {big && !pref?.muted && (
+            {(big || card) && !pref?.muted && (
               <input
                 class={
                   "chalk-voice-volume" +

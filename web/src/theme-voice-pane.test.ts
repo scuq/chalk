@@ -75,3 +75,14 @@ test("the call stage clips instead of spilling over its controls", () => {
       "is painted under the control bar",
   );
 });
+
+test("133-9: audio-only people are compact cards on the theme surface, cameras keep 16:9", () => {
+  const card = block(".chalk-voice-peer.chalk-voice-peer--card");
+  assert.match(card, /background:\s*var\(--chalk-bg-elev\)/);
+  assert.doesNotMatch(card, /aspect-ratio/);
+  const label = block(".chalk-voice-peer--card .chalk-voice-peer-label");
+  assert.match(label, /--voice-on-video:\s*var\(--chalk-fg\)/, "card text follows the theme, not the on-video white");
+  assert.match(block(".chalk-voice-cards"), /display:\s*grid/);
+  assert.match(block(".chalk-voice-videos"), /grid-template-columns:\s*repeat\(auto-fit/);
+  assert.match(block(".chalk-voice-peer--grid"), /aspect-ratio:\s*16 \/ 9/);
+});

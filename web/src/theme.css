@@ -8206,6 +8206,84 @@ body.chalk-resizing-y .chalk-composer-resizer {
   cursor: pointer;
 }
 
+/* 133-9: the adaptive stage. Cameras sit in .chalk-voice-videos as 16:9 tiles.
+   People without video sit in .chalk-voice-cards as compact cards. The card
+   rule uses two classes, because the base .chalk-voice-peer rule comes later
+   in the sheet and would paint its black video background over the card. The
+   label points the --voice-on-video variables at theme tokens, because the
+   white-on-black palette is for text over video and a card sits on the theme
+   surface. */
+.chalk-voice-videos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: var(--chalk-s2);
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+.chalk-voice-videos[data-count="1"] {
+  max-width: 640px;
+}
+
+.chalk-voice-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 240px));
+  justify-content: center;
+  gap: var(--chalk-s2);
+  width: 100%;
+}
+
+.chalk-voice-peer.chalk-voice-peer--card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  justify-content: stretch;
+  column-gap: var(--chalk-s2);
+  min-height: 56px;
+  padding: var(--chalk-s2);
+  background: var(--chalk-bg-elev);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius-md);
+  transition: border-color var(--chalk-dur-fast);
+}
+.chalk-voice-peer.chalk-voice-peer--card:has(.chalk-voice-speak-dot) {
+  border-color: var(--chalk-accent);
+}
+.chalk-voice-peer--card .chalk-voice-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  font-size: calc(18px * var(--chalk-font-scale));
+}
+.chalk-voice-peer--card .chalk-voice-peer-label {
+  --voice-on-video: var(--chalk-fg);
+  --voice-on-video-dim: var(--chalk-fg-dim);
+  --voice-on-video-line: var(--chalk-border);
+  --voice-on-video-alert: var(--chalk-error);
+  --voice-on-video-warn: var(--chalk-warn);
+
+  position: static;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: 0;
+  background: none;
+}
+.chalk-voice-peer--card .chalk-voice-peer-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chalk-voice-peer--card .chalk-voice-peer-audio {
+  flex-basis: 100%;
+  margin-left: 0;
+}
+.chalk-voice-peer--card .chalk-voice-volume {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
 .chalk-voice-peer--grid:hover {
   border-color: var(--chalk-fg-dim);
 }

@@ -13,6 +13,7 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Changed
+- In a voice room, people without a camera now show as compact cards with their picture, name, and volume. Before, they showed as large empty video boxes. Cameras show as video tiles above the cards, and a screen share still takes the main area.
 - The default green theme is softer. The background is near-black, the text is mint, and the unread green is the accent. Buttons, inputs, and rows have rounder corners in every theme except LCARS.
 - The marker for unread messages is now a small filled envelope in the colors of your theme. It no longer looks like an online dot. The envelope glows for a mention. It sits at the right edge of the row. In the two-column friend list, the envelopes of a column line up. An unread message no longer cuts off a long friend name.
 - The call buttons in the column beside the sidebar are larger, and leave is now a red hang-up button. The green border on a person's picture alone shows who is talking, and the extra green dot is gone.

@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { gridPlan, useGrid, isCrowded, resolveGridMode } from "./grid";
+import { gridPlan, useGrid, isCrowded, resolveGridMode, resolveStageMode } from "./grid";
 
 test("1:1 and solo calls keep the spotlight", () => {
   assert.equal(useGrid(1), false);
@@ -70,4 +70,28 @@ test("an empty stage is never a grid", () => {
 // the arrival is decided by the count alone.
 test("a pin made at two participants cannot suppress the grid at three", () => {
   assert.equal(resolveGridMode("auto", 3, false), true);
+});
+
+const cam = { hasLiveVideo: true, isScreen: false };
+const voice = { hasLiveVideo: false, isScreen: false };
+const share = { hasLiveVideo: true, isScreen: true };
+const hiddenShare = { hasLiveVideo: false, isScreen: true };
+
+test("133-9: a call with no live video is cards, whatever the viewer forced", () => {
+  assert.equal(resolveStageMode("auto", []), "cards");
+  assert.equal(resolveStageMode("auto", [voice, voice]), "cards");
+  assert.equal(resolveStageMode("grid", [voice, voice, voice]), "cards");
+  assert.equal(resolveStageMode("spotlight", [voice, hiddenShare]), "cards");
+});
+
+test("133-9: cameras without a share are mixed in auto, and a forced layout still wins", () => {
+  assert.equal(resolveStageMode("auto", [voice, cam]), "mixed");
+  assert.equal(resolveStageMode("auto", [cam, cam, cam, voice]), "mixed");
+  assert.equal(resolveStageMode("grid", [voice, cam]), "grid");
+  assert.equal(resolveStageMode("spotlight", [voice, cam]), "spotlight");
+});
+
+test("133-9: a live share takes the spotlight unless the viewer forced the grid", () => {
+  assert.equal(resolveStageMode("auto", [voice, voice, share]), "spotlight");
+  assert.equal(resolveStageMode("grid", [voice, cam, share]), "grid");
 });

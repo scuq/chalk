@@ -10,6 +10,13 @@
 //
 // 96-1 put that rule under a viewer's standing choice (resolveGridMode): the
 // control bar can force either layout, and "auto" is the rule above.
+//
+// 133-9 replaced that count rule in the panel with resolveStageMode. The count
+// rule gave a voice-only call of two people one large empty 16:9 box. The new
+// rule reads the media: cards when no tile has live video, a grid of cameras
+// above cards in the mixed case, and the spotlight for a live share.
+// resolveGridMode stays exported and tested, but nothing outside its tests
+// imports it.
 
 export interface GridPlan {
   /** Grid columns; always 2 -- growth is vertical by design. */
@@ -68,4 +75,36 @@ export function gridPlan(tileCount: number): GridPlan {
   const cols = 2;
   const rows = Math.max(1, Math.ceil(tileCount / cols));
   return { cols, rows, dummies: rows * cols - tileCount };
+}
+
+/**
+ * 133-9: how the stage draws one render.
+ *
+ * - "cards": no tile has live video. Everyone is a compact card.
+ * - "mixed": cameras are 16:9 tiles, and people without video are cards below.
+ * - "grid": every tile is a 16:9 tile of equal size.
+ * - "spotlight": one big tile with the rest in a strip.
+ */
+export type StageMode = "cards" | "mixed" | "grid" | "spotlight";
+
+/**
+ * resolveStageMode (133-9) returns the stage mode for one render. Rules, in
+ * order:
+ *
+ * 1. If no tile has live video, it returns "cards". This holds when the
+ *    viewer forced a layout, because a forced grid or spotlight with no video
+ *    is only empty boxes.
+ * 2. If the viewer forced "grid" or "spotlight", it returns that layout.
+ * 3. If a screen share has live video, it returns "spotlight".
+ * 4. Otherwise it returns "mixed".
+ */
+export function resolveStageMode(
+  layout: VoiceLayout,
+  tiles: readonly { hasLiveVideo: boolean; isScreen: boolean }[],
+): StageMode {
+  if (!tiles.some((t) => t.hasLiveVideo)) return "cards";
+  if (layout === "grid") return "grid";
+  if (layout === "spotlight") return "spotlight";
+  if (tiles.some((t) => t.isScreen && t.hasLiveVideo)) return "spotlight";
+  return "mixed";
 }
