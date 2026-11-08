@@ -313,7 +313,8 @@ export function VoiceCallPanel({
   // 133-12: measure the height that the camera grid can have, and write it to
   // the panel as --voice-media-h. The CSS caps the grid width from it. The
   // value is the current height of the grid, plus the height of the scratchpad
-  // above its floor, minus the height that the stage clips now. A change of
+  // above its floor, minus the height that the stage clips now, rounded down,
+  // minus MEDIA_SAFETY_PX. A change of
   // the grid moves the scratchpad by the same amount in the other direction,
   // so the value settles in one pass. A change of 2px or less is ignored,
   // which ends the feedback loop. The effect does nothing without
@@ -338,7 +339,7 @@ export function VoiceCallPanel({
       );
       const overflow = Math.max(0, stage.scrollHeight - stage.clientHeight);
       const slack = feed.offsetHeight - floor - overflow;
-      const next = Math.max(MEDIA_MIN_PX, Math.floor(media.offsetHeight + slack));
+      const next = Math.max(MEDIA_MIN_PX, Math.floor(media.offsetHeight + slack) - MEDIA_SAFETY_PX);
       const now = parseFloat(panel.style.getPropertyValue("--voice-media-h")) || 0;
       if (Math.abs(next - now) > 2) panel.style.setProperty("--voice-media-h", `${next}px`);
     };
@@ -943,6 +944,10 @@ const MEDIA_MIN_PX = 120;
 // 133-12: the least height, in pixels, that the scratchpad keeps while it is
 // empty, so that its explanation stays whole.
 const MEDIA_EMPTY_FLOOR_PX = 160;
+// 133-12: the margin, in pixels, that the measured height gives up, so that
+// rounding and the 2px tolerance cannot clip the last card. A smaller grid
+// gives the scratchpad the same height, so the next measurement is equal.
+const MEDIA_SAFETY_PX = 8;
 
 type StageTile = RailTile;
 

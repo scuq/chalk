@@ -717,7 +717,8 @@ The design replaces the reserve with a measurement:
   scratchpad above its floor, minus the height that the stage clips now. The
   floor of the scratchpad is its CSS `min-height`, and at least 84px. While
   the scratchpad is empty the floor is 160px, so its explanation stays whole.
-  The result is at least 120px.
+  The result is rounded down, reduced by a safety margin of 8px
+  (`MEDIA_SAFETY_PX`), and at least 120px.
 - The value changes only when the new height differs by more than 2px. This
   ends the feedback loop. A change of the grid moves the scratchpad by the same
   amount in the other direction, so the measurement settles in one pass.
@@ -740,15 +741,26 @@ The design replaces the reserve with a measurement:
   and the buttons, on one line with an ellipsis. In the lobby it stays below
   the panel. This saves one row, as in the mockup of the owner.
 
+The margin came from a second demo. The window was about 1229px by 790px,
+with one camera, four cards in two rows, and one note in the scratchpad. The
+last card still lost its bottom few pixels. Rounding down and the 2px
+tolerance let the measurement land a few pixels too high. The margin converges:
+if the grid shrinks by 8px, the scratchpad gains 8px, and the next measurement
+returns the same value.
+
 The probe ran on the dev stack with five users and fake cameras, at 1280px by
-800px, 1229px by 700px, and 1440px by 900px. The cases were one camera with
-four cards, two cameras with three cards, three cameras with two cards, five
-cameras, and the forced grid. No case clipped. These tile sizes were measured:
+800px, 1229px by 790px, 1229px by 700px, and 1440px by 900px. The cases were
+one camera with four cards, two cameras with three cards, three cameras with
+two cards, five cameras, and the forced grid. The sweep has a note in the
+scratchpad. The clip check flags any tile or card whose bottom passes the
+bottom of the stage, not only `scrollHeight > clientHeight`. No case clipped.
+These tile sizes were measured:
 
 | Window | One camera | Three cameras | Five cameras |
 |---|---|---|---|
-| 1280px by 800px | 325px by 183px | 217px by 122px | 262px by 147px |
-| 1229px by 700px | 240px by 135px, with four cards | 128px by 72px, with two cards | 189px by 106px |
+| 1280px by 800px | 446px by 251px | 277px by 156px | 262px by 147px |
+| 1229px by 790px | 428px by 241px | 268px by 151px | 262px by 147px |
+| 1229px by 700px | 268px by 151px, with four cards | 188px by 106px | 250px by 140px |
 
 At 1229px by 700px, the forced grid of five showed every name, with an
 ellipsis on long names. The tiles are small at a height of 700px with an empty
