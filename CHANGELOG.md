@@ -15,6 +15,9 @@ The engineering-level history (which slice shipped what) lives in
 ### Changed
 - The light in front of a busy voice room and beside the chalk logo now says LIVE instead of REC, because chalk records nothing.
 
+### Fixed
+- With **show profile pictures in the roster** on, the pictures beside friends' names flickered when you switched channels. The names also jumped. This no longer happens.
+
 ---
 
 ## v0.10.3 — 8 November 2026 — A camcorder record light for voice rooms

@@ -11,6 +11,7 @@
 
 import { Avatar } from "./Avatar"; // 112-5
 import { pickAvatar } from "../avatars/pick"; // 112-5
+import { avatarReady } from "../avatars/store"; // 112-11
 import type { AttachmentController } from "../attachments/pipeline"; // 112-5
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ConnectionState } from "../ws-client";
@@ -77,7 +78,7 @@ const labels: Record<ConnectionState, string> = {
 export function StatusBar({ avatars, attachmentController, state, detail, user, me, onLogout, onOpenInvites, onOpenProfile, onOpenFriends, onOpenAdmin, pendingFriendCount = 0, updateAvailable = false, onReload, onDismissUpdate, serverRestarting = false, presenceMode, effectivePresence, onPresenceModeChange, selfHue = null }: Props) {
   // 112-5: resolved once per render and reused by both spellings of the
   // corner (the menu trigger, and the plain label when there is no menu).
-  const selfPick = user && avatars ? pickAvatar(avatars, user.id) : null;
+  const selfPick = user && avatars ? pickAvatar(avatars, user.id, null, avatarReady) : null;
   // 115-8: the card over your own name -- your picture at card size, in
   // your frame, moving while you are online: the same look the roster gives
   // a friend, so you can see what everyone else sees. Mouse only, the

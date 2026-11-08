@@ -15,6 +15,7 @@ import { Avatar } from "./Avatar"; // 112-4
 import { Flame } from "./Flame"; // 115-2
 import { WaveName } from "./WaveName"; // 115-3
 import { pickAvatar } from "../avatars/pick"; // 112-4
+import { avatarReady } from "../avatars/store"; // 112-11
 import type { AttachmentController } from "../attachments/pipeline"; // 112-4
 import { useState, useRef, useEffect, useMemo } from "preact/hooks";
 import { friendColumnMinWidth, longestFriendName } from "../chat/friend-columns"; // 132-2
@@ -1330,8 +1331,13 @@ export function Sidebar({
                     here are taller than a feed line, so a fixed 16px box
                     costs no height either. */}
                 {(() => {
-                  const pick = avatars ? pickAvatar(avatars, friend.userID, activeID) : null;
+                  const pick = avatars
+                    ? pickAvatar(avatars, friend.userID, activeID, avatarReady)
+                    : null;
                   if (!pick) return null;
+                  // 112-11: `avatarReady` prefers a decrypted copy, so a
+                  // channel switch keeps the picture. `reserve` keeps the
+                  // 16px box while a copy decrypts, so the name stays.
                   return (
                     <Avatar
                       channelID={pick.channelID}
@@ -1339,6 +1345,7 @@ export function Sidebar({
                       controller={attachmentController ?? null}
                       alt=""
                       size="row"
+                      reserve
                       userID={friend.userID} // 115-6
                       live={presenceState === "online"} // 115-7
                     />
@@ -1655,7 +1662,7 @@ export function Sidebar({
           avatar={(() => {
             // 112-4: a card is about a person, so any shared channel's copy
             // of their picture will do.
-            const pick = cardAvatars ? pickAvatar(cardAvatars, hoverCard.data, activeID) : null;
+            const pick = cardAvatars ? pickAvatar(cardAvatars, hoverCard.data, activeID, avatarReady) : null;
             if (!pick) return null;
             return (
               <Avatar

@@ -142,6 +142,7 @@ someone who set a picture and later removed it is not re-prompted.
 | 112-8 | the reader's switch: profile pictures in the conversation are OFF by default, and each person turns them on for themselves |
 | 112-7 | a picture can be used whole — the cropper's "you must crop something" rule was right for a banner and wrong here |
 | 112-10 | client fix: while the roster switch is on, the client lists the pictures of every two-person DM, so a friend row shows its picture before the DM is opened |
+| 112-11 | client fix: a channel switch no longer makes the friend pictures in the sidebar flicker. The roster draws a copy that is already decrypted, and the row keeps its picture box while a copy decrypts |
 
 ## Left open
 
@@ -217,6 +218,23 @@ The probe drove one member's own client end to end; what it covers is ticked.
 - [ ] With the roster switch on, a friend's picture is drawn in the sidebar
       before you open the DM with that friend. A friend whose DM this device
       never opened shows no picture until you open it.
+
+## The flicker on a channel switch (112-11)
+
+Each channel holds its own copy of a picture, so each channel has its own
+attachment ID for the same face. The roster picked the copy of the channel on screen, so
+a switch changed the attachment. The picture cache uses the attachment ID as its key.
+A copy not yet decrypted in this tab had no URL, and the row drew no element
+at all. The picture vanished, the name jumped left, and both came back after
+the get and decrypt.
+
+The fix has two parts. `pickAvatar` takes an optional `ready(attachmentID)`.
+If the caller gives it, a decrypted copy wins: the copy of the preferred channel
+first, then the first ready copy in any channel. If no copy is ready, the old
+rule applies. The friend row, the friend hover card, and the status-bar corner
+pass `avatarReady`, which reports if the cache holds a URL. The friend row
+also passes `reserve` to `Avatar`, so the 16px box stays while a copy
+decrypts and the name does not move.
 
 ## What the density constraint cost
 

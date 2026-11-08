@@ -45,6 +45,12 @@ export function peekAvatar(attachmentID: string): string | null | undefined {
   return urls.get(attachmentID);
 }
 
+/** avatarReady reports whether the cache holds a URL for a picture. 112-11:
+ *  pickAvatar takes it as its `ready` argument. */
+export function avatarReady(attachmentID: string): boolean {
+  return typeof urls.get(attachmentID) === "string";
+}
+
 /**
  * resolveAvatar fetches, decrypts and caches one picture. Concurrent callers
  * share the same promise; a resolved id is never fetched twice.

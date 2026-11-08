@@ -35,3 +35,27 @@ test("someone with no picture anywhere is null, like someone who never set one",
   assert.equal(pickAvatar({}, "u-1"), null);
   assert.equal(pickAvatar(AVATARS, ""), null);
 });
+
+// 112-11: a channel switch must not swap a drawn picture for a blank one.
+test("a ready copy beats the preferred channel's copy that is not ready", () => {
+  const ready = (id: string) => id === "att-1a";
+  assert.deepEqual(pickAvatar(AVATARS, "u-1", "ch-2", ready), {
+    channelID: "ch-1",
+    attachmentID: "att-1a",
+  });
+});
+
+test("the preferred channel still wins when its copy is ready too", () => {
+  const ready = () => true;
+  assert.deepEqual(pickAvatar(AVATARS, "u-1", "ch-2", ready), {
+    channelID: "ch-2",
+    attachmentID: "att-1b",
+  });
+});
+
+test("with nothing ready, the pick is the same as without the check", () => {
+  const none = () => false;
+  assert.deepEqual(pickAvatar(AVATARS, "u-1", "ch-2", none), pickAvatar(AVATARS, "u-1", "ch-2"));
+  assert.deepEqual(pickAvatar(AVATARS, "u-2", "ch-2", none), pickAvatar(AVATARS, "u-2", "ch-2"));
+  assert.equal(pickAvatar(AVATARS, "u-9", "ch-2", none), null);
+});
