@@ -1,6 +1,6 @@
 # Phase 131 — the call rail: every participant in a narrow column
 
-**Status:** built, 131-1 to 131-8 (2026-11-08). Unit-tested by
+**Status:** built, 131-1 to 131-9 (2026-11-08). Unit-tested by
 `web/src/voice/rail-tiles.test.ts`, the `roomCardRows` cases in
 `web/src/chat/hovercard.test.ts`, and the rewritten third test in
 `web/src/theme-sidebar.test.ts`, which asserts the CSS declarations against the
@@ -15,6 +15,12 @@ controls. On a text channel the rail foot holds two buttons in 57 px, and the
 footer bar has three controls with no mute button. A click on the mute button
 of the rail flips the muted badge on your own tile. The manual checklist at the
 end of this file is still open.
+After 131-9 the probe `.claude/skills/run-chalk/probes/rail.mjs` ran on
+2026-11-08, with 6 checks, and all passed. The busy room row shows the dot and
+REC and no speaker glyph. The dot blinks with `chalk-rec-blink` at 1.15 s,
+stepped, in the error red. The header shows REC for the person in the call
+only. On a text channel the header REC stays and the rail shows the tile. A
+click on the header REC goes back to the room, and leave removes it.
 Slice 131-7 changed the desktop layout again, so the probe checks of 131-5 and
 131-6 about the room page and the footer bar are out of date. After 131-7 the
 probe ran on 2026-11-08, with 25 checks, and all passed. On the room page the
@@ -140,14 +146,25 @@ join.
 
 ### The record light (131-4)
 
-A voice room that has people in it shows a red dot in the glyph box, in place
-of the speaker glyph. The dot blinks hard like the record light of a camera, with
-a 1.15 s cycle. It is fully on for the first half and fully off for the second
-half, with `steps(1, end)` and no fade (131-8). It says "live" at a glance, where a count alone does not.
-The count badge at the end of the row stays and gives the number.
-The dot keeps its red on the active row. If the user sets
+A voice room that has people in it shows the REC indicator in the glyph box, in
+place of the speaker glyph (131-9). The indicator is a red dot and the word REC
+in bold, spaced type, as the viewfinder of a VHS camcorder drew them. The dot
+blinks hard like the record light of a camera, with a 1.15 s cycle. It is fully on for the first half and fully off for the second
+half, with `steps(1, end)` and no fade (131-8). The word does not blink. It says "live" at a glance, where a count alone does
+not. The count badge at the end of the row stays and gives the number.
+The indicator keeps its red on the active row. If the user sets
 `prefers-reduced-motion: reduce`, the dot does not blink.
 An empty room keeps the speaker glyph.
+The glyph box grew to hold the word, so a voice row with people in it is a few
+pixels wider than an empty one. This is the accepted cost.
+
+### The REC indicator in the header (131-9)
+
+While you are in a voice room, the header shows the same indicator beside the
+version badge. It shows on desktop only, like the version badge, because the
+phone header is tight. A click on it goes back to the room, and its title names
+the room. `RecIndicator.tsx` holds the indicator, and the sidebar and the header
+share it. The color is the `--chalk-error` token.
 
 ### Buttons at the foot of the rail (131-6)
 
@@ -241,8 +258,8 @@ The live probe ran on 131-7. The result is in the status header.
   `RoomCard`, the height estimate of `arm`, and a second hover card in
   `Sidebar` for rooms. The card is for the mouse and for keyboard focus.
   The old sublist and its CSS are gone.
-- **131-4 — the record light.** `RecordIcon` in `VoiceBadges.tsx`, the glyph
-  branch in the channel row of `Sidebar`, the `chalk-chglyph--live` rule with
+- **131-4 — the record light.** `RecordIcon` in `VoiceBadges.tsx` (removed in
+  131-9), the glyph branch in the channel row of `Sidebar`, the `chalk-chglyph--live` rule with
   the `chalk-rec-blink` keyframes, and one test in `theme-sidebar.test.ts`
   that asserts the color, the cycle time, the keyframes, and the
   reduced-motion rule.
@@ -265,9 +282,17 @@ The live probe ran on 131-7. The result is in the status header.
 - **131-8 — the light blinks hard.** The `chalk-rec-blink` keyframes and the
   `animation` line of `chalk-chglyph--live` in `theme.css`. The first design
   faded the dot over 2.4 s. A user-supplied sketch of the light had the text
-  "REC". The text is not in the glyph box, because the box has no room for it.
+  "REC". Slice 131-9 supersedes the decision to leave the text out for lack of
+  room: the glyph box grew to hold it.
   The stylesheet test in `theme-sidebar.test.ts` covers the slice. A CSS timing
   change needs no live probe. Built 2026-11-08.
+- **131-9 — the REC indicator.** `RecIndicator.tsx` is new. The sidebar uses it
+  in the glyph branch, and `App.tsx` uses it in a header button. `RecordIcon` is
+  removed from `VoiceBadges.tsx`. In `theme.css`, `chalk-chglyph--live` holds
+  `.chalk-rec`, and the `animation` line moved to `.chalk-rec-dot`. The
+  stylesheet test in `theme-sidebar.test.ts` covers the color, the cycle, the
+  stepped blink, the still word, and the reduced-motion rule. The live probe of
+  the status header covers the rest. Built 2026-11-08.
 
 ## Left open
 

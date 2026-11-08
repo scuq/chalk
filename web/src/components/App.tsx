@@ -312,6 +312,7 @@ import { ZuckerCallBar } from "./ZuckerCallBar";
 import { VoiceDock, useVoiceRoom } from "./VoiceDock";
 import { VoiceControls } from "./VoiceControls"; // 44-2
 import { CallRail } from "./CallRail"; // 131-1
+import { RecIndicator } from "./RecIndicator"; // 131-9
 import { MicSettingsDialog } from "./MicSettingsDialog"; // 44-3
 import { SidebarResizer } from "./SidebarResizer";
 import { ComposerResizer } from "./ComposerResizer";
@@ -5907,6 +5908,21 @@ export function App() {
                 mobile by CSS -- the header is already tight there, and the
                 profile panel carries the same link. */}
             <VersionLink version={state.serverVersion} commit={state.serverCommit} />
+            {/* 131-9: The REC indicator while you are in a voice room. It
+                shows on desktop only, like the version badge, because the
+                phone header is tight. A click goes back to the room. */}
+            {railChannelID && !isMobile && (
+              <button
+                type="button"
+                class="chalk-rec-btn"
+                onClick={() => dispatch({ kind: "set_active_channel", channelID: railChannelID })}
+                title={`in ${state.channels[railChannelID]?.name ?? "voice"} · back to the room (Ctrl+Shift+V)`}
+                aria-label="back to the voice room"
+                data-testid="header-rec"
+              >
+                <RecIndicator />
+              </button>
+            )}
           </div>
         </div>
         {/* 129-9: the scene for the season, in the empty middle of the header

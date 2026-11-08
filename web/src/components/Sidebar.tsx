@@ -339,7 +339,7 @@ export function occupantName(
 // 30-5 badge icons live in VoiceBadges.tsx since 131-3. Re-exported here
 // for the callers that import them from the sidebar.
 export { MicOffIcon, CamIcon, DeafIcon, ScreenIcon } from "./VoiceBadges";
-import { RecordIcon } from "./VoiceBadges"; // 131-4
+import { RecIndicator } from "./RecIndicator"; // 131-9
 
 export function Sidebar({
   channels,
@@ -1086,16 +1086,13 @@ export function Sidebar({
         }}
       >
         <span class="chalk-sidebar-item-row">
-          {/* 131-4: A voice room with people in it shows a record light in
-              place of the speaker glyph. The count badge at the end of the
-              row shows how many people are in it. */}
+          {/* 131-4, 131-9: A voice room with people in it shows the REC
+              indicator, a red dot and the word REC, in place of the speaker
+              glyph. The count badge at the end of the row shows how many
+              people are in it. */}
           {isVoice && roster.length > 0 ? (
-            <span
-              class="chalk-chglyph chalk-chglyph--live"
-              data-testid="sidebar-voice-live"
-              title={`${roster.length} in voice`}
-            >
-              <RecordIcon />
+            <span class="chalk-chglyph chalk-chglyph--live">
+              <RecIndicator title={`${roster.length} in voice`} testID="sidebar-voice-live" />
             </span>
           ) : (
             <span

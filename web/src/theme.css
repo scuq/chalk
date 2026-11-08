@@ -7487,14 +7487,40 @@ body.chalk-resizing-y .chalk-composer-resizer {
   color: var(--chalk-fg-dim);
 }
 
-/* 131-4: The record light of a voice room that has people in it. It is red
-   and blinks on and off. It keeps its red on the active row, where the other
-   glyphs change color with the text. With reduced motion it does not blink. */
+/* 131-4, 131-9: The glyph box of a voice room that has people in it holds
+   the REC indicator. The box is red and keeps its red on the active row,
+   where the other glyphs change color with the text. The dot blinks, and
+   with reduced motion it does not. */
 .chalk-chglyph--live,
 .chalk-sidebar-item--active .chalk-chglyph--live {
   color: var(--chalk-error);
-  /* 131-8: a hard on-off blink, half the cycle each, like a camera's
-     record light. No fade. */
+  /* 131-9: The box holds the dot and the word REC, so it is wider than a
+     glyph. */
+  width: auto;
+  margin-right: 2px;
+}
+
+/* 131-9: The REC indicator, as the viewfinder of a VHS camcorder drew it: a
+   flat red dot and the word REC in bold, spaced type. The dot blinks hard
+   (131-8), half the cycle on and half off, with no fade. The word stays on.
+   With reduced motion the dot stays on. */
+.chalk-rec {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--chalk-error);
+  font-weight: 700;
+  font-size: calc(10px * var(--chalk-font-scale));
+  letter-spacing: 0.15em;
+  line-height: 1;
+  user-select: none;
+}
+.chalk-rec-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
   animation: chalk-rec-blink 1.15s steps(1, end) infinite;
 }
 @keyframes chalk-rec-blink {
@@ -7502,9 +7528,27 @@ body.chalk-resizing-y .chalk-composer-resizer {
   50%, 100% { opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .chalk-chglyph--live {
+  .chalk-rec-dot {
     animation: none;
   }
+}
+/* 131-9: The REC button in the header, beside the version badge. A click goes
+   back to the voice room. */
+.chalk-rec-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: var(--chalk-s2);
+  align-self: center;
+  font: inherit;
+  cursor: pointer;
+}
+.chalk-rec-btn .chalk-rec {
+  font-size: calc(11px * var(--chalk-font-scale));
+}
+.chalk-rec-btn:hover .chalk-rec-text,
+.chalk-rec-btn:focus-visible .chalk-rec-text {
+  text-decoration: underline;
 }
 
 .chalk-chglyph--header {
