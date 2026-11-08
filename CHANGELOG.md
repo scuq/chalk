@@ -10,10 +10,12 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.10.3 — 8 November 2026 — A camcorder record light for voice rooms
 
 ### Changed
 - A voice room that has people in it shows a red dot and the word REC in front of its name. It looks like the record light of a camcorder. While you are in a voice room, the same light shows beside the chalk logo. A click on it takes you back to the room. The row of the room you are in then shows its speaker symbol.
+
+---
 
 ## v0.10.2 — 8 November 2026 — Every call control in the column beside the sidebar, and a friends list that takes less room
 
