@@ -2,6 +2,7 @@ import { render } from "preact";
 import { App } from "./components/App";
 import { JoinScreen } from "./components/JoinScreen";
 import { applyDisplayPrefs, loadDisplayPrefs } from "./display-prefs";
+import { startFlairMotion } from "./flair-motion";
 
 // The HTML scaffolds the page with a #root element and links to
 // theme.css + app.js. esbuild emits both as plain ESM artifacts;
@@ -11,6 +12,7 @@ import { applyDisplayPrefs, loadDisplayPrefs } from "./display-prefs";
 // here. Applying before the first render means the UI never paints at
 // the default size and then jumps.
 applyDisplayPrefs(loadDisplayPrefs());
+startFlairMotion();
 
 const root = document.getElementById("root");
 if (!root) {

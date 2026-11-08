@@ -10,6 +10,11 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- Flair animations now move in short bursts with long pauses between them, and they stop while chalk is in the background. They use much less processor time.
+
 ## v0.11.1 — 8 November 2026 — Chaos mode for the channel list and calmer theme colors
 
 ### Added

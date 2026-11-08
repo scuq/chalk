@@ -1,7 +1,8 @@
 # Phase 115 — flair: an animated chalk, off by default
 
-**Status:** built, 115-1 – 115-6 (2026-09-08), shipped in v0.8.17. Every slice has unit cover
-(`node test.mjs`), the server slice an end-to-end HTTP test against a database
+**Status:** built, 115-1 – 115-6 (2026-09-08), shipped in v0.8.17; 115-7 and
+115-8 followed; 115-9 (flair at rest) is built, not yet released.
+Every slice has unit cover (`node test.mjs`), the server slice an end-to-end HTTP test against a database
 (`TestAvatarFrameEndToEnd`), and the seam between the effects and the stylesheet
 its own test (`theme-flair.test.ts`). Verified against a running stack: two
 users, two channels and a banner, 31 checks on the real DOM (the probe in
@@ -195,6 +196,45 @@ the lazy dots). Real, and out of scope: ask before widening.
   roster-row switch *or* flair's frames are on, so the card shows a friend's
   framed picture even with row pictures off: the card is the one place a
   picture is worth looking at, and a frame nobody can see is no frame.
+
+- **115-9 — flair at rest** (2026-11-08). Slice 53-6 found that an endless
+  CSS animation makes Chrome produce a frame at every display refresh, and
+  that each frame also goes through the GPU process and the window manager.
+  A Linux PWA user saw about 18% renderer, 16% GPU process, and 15% window
+  manager while idle. Flair has the same cost on more elements: the flame
+  (busy channel rows, channel header), the six animated frames on every
+  online wearer (own header avatar, sidebar friends, call tiles), and the
+  banner drift (40 s) and poster breathe (12 s). Most frames animate
+  `box-shadow`, `outline`, or `filter`, and these repaint at every frame.
+  CSS cannot lower the frame rate of an animation. Only a paused animation
+  costs less.
+  - **Design.** `startFlairMotion()` in `flair-motion.ts` toggles
+    `data-flair-rest` on `<html>`: motion for `FLAIR_MOVE_MS` (5 s), rest for
+    `FLAIR_REST_MS` (120 s), and again, starting with a burst. While the
+    window is hidden or not focused, it rests all the time and no timer is
+    pending. Focus, or a visible window, starts a burst at once. It runs also
+    with flair off (two timer callbacks per 125 s, and no rule matches
+    without the `data-flair-*` attributes), so a change of the preference at
+    run time needs no wiring. `index.tsx` calls it after `applyDisplayPrefs`.
+    One rule in `theme.css`, before the reduced-motion block, sets
+    `animation-play-state: paused` on every endless flair animation under
+    `html[data-flair-rest]`. Each effect freezes in its current pose and does
+    not snap back, and Chrome makes no frames for flair at rest.
+  - **Not changed.** The wave (two iterations per event, then it stops), the
+    picker swatches (they always move, because they preview each frame, and
+    the picker is open only briefly), and reduced motion (it turns all flair
+    motion off, as before).
+  - **Rejected.** Full motion while focused, and rest only when away: it does
+    not help the reported case, because that user had chalk focused. Bursts
+    only on events, such as a new message or a friend coming online: it is
+    the cheapest option, but the frames could sit still for a long time. The
+    owner chose 5 s of motion and 120 s of rest.
+  - **Tests.** `flair-motion.test.ts` (fake clock and target): the burst and
+    rest cycle, rest with no timer while away, a start while away, a burst at
+    focus in the middle of a rest, and the stop. `theme-flair.test.ts` holds
+    the selectors of the paused rule to the endless flair selectors in the
+    `html[data-flair-rest]` form, minus the wave and the swatches, so a flair
+    animation added later cannot skip the rest.
 
 ## Left open
 

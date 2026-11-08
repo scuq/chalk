@@ -12656,6 +12656,31 @@ html[data-flair-frames] .chalk-avatar--tile[data-frame] {
   outline-offset: 0;
 }
 
+/* 115-9: flair at rest. An endless animation makes Chrome produce a frame
+   at every display refresh, and each frame also costs the GPU process and
+   the window manager. flair-motion.ts sets data-flair-rest on <html> for
+   most of the time, and this rule pauses every endless flair animation
+   then. Each effect freezes in its current pose and Chrome makes no
+   frames for it. The wave is not here: it stops by itself. The picker
+   swatches are not here: they show each frame and always move.
+   theme-flair.test.ts holds this list to the endless flair selectors. */
+html[data-flair-rest][data-flair-flame] .chalk-flair-flame-svg,
+html[data-flair-rest][data-flair-flame] .chalk-flair-flame-inner,
+html[data-flair-rest][data-flair-frames] .chalk-avatar[data-frame="ember"][data-live],
+html[data-flair-rest][data-flair-frames] .chalk-avatar[data-frame="aurora"][data-live],
+html[data-flair-rest][data-flair-frames] .chalk-avatar[data-frame="pulse"][data-live],
+html[data-flair-rest][data-flair-frames] .chalk-avatar[data-frame="matrix"][data-live],
+html[data-flair-rest][data-flair-frames] .chalk-avatar[data-frame="frost"][data-live],
+html[data-flair-rest][data-flair-frames] .chalk-avatar[data-frame="gold"][data-live],
+html[data-flair-rest][data-flair-banner]
+  .chalk-channel-banner:not(.chalk-channel-banner--preview):not(.chalk-channel-banner--poster)
+  .chalk-channel-banner-img,
+html[data-flair-rest][data-flair-banner]
+  .chalk-channel-banner--poster:not(.chalk-channel-banner--preview)
+  .chalk-channel-banner-fade {
+  animation-play-state: paused;
+}
+
 /* 115: reduced motion wins. Every flair animation off, each effect left
    in its resting shape: the flame stands still, a waving name sits where
    plain text sits, a framed picture keeps a static ring, the banner sits

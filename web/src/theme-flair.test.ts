@@ -1,10 +1,12 @@
 // 115-4: the seam between flair's TypeScript and its stylesheet.
 //
-// Three things nothing else would notice if they broke: a flair animation
+// Four things nothing else would notice if they broke: a flair animation
 // that the reduced-motion block forgot (motion for a reader who asked for
-// none), the banner drift reaching the editor's preview (a drifting focus
-// target), and the wave's per-letter delays disagreeing with WAVE_MAX_LETTERS
-// (a tail that never moves, or one that moves out of order).
+// none), a flair animation that the rest rule forgot (a frame at every
+// display refresh, also at rest), the banner drift reaching the editor's
+// preview (a drifting focus target), and the wave's per-letter delays
+// disagreeing with WAVE_MAX_LETTERS (a tail that never moves, or one that
+// moves out of order).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -48,6 +50,25 @@ test("every animated flair selector is switched off under reduced motion", () =>
   for (const sel of sels) {
     assert.ok(reducedFlat.includes(sel), `reduced motion does not cover: ${sel}`);
   }
+});
+
+test("every endless flair animation pauses at rest, except the wave and the picker swatches", () => {
+  const expected = animatedSelectors(animated)
+    .flatMap((group) => group.split(",").map((s) => s.trim()))
+    .filter((s) => s.startsWith("html[data-flair-") && !s.includes("chalk-flair-wave"))
+    .map((s) => s.replace("html[data-flair-", "html[data-flair-rest][data-flair-"))
+    .sort();
+  assert.ok(expected.length >= 10, `expected the flame, frames and banner, found ${expected.length}`);
+
+  const rule = [...animated.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) =>
+    /animation-play-state\s*:\s*paused/.test(m[2]),
+  );
+  assert.ok(rule, "the flair section has no animation-play-state: paused rule");
+  const actual = rule[1]
+    .split(",")
+    .map((s) => s.trim().replace(/\s+/g, " "))
+    .sort();
+  assert.deepEqual(actual, expected);
 });
 
 test("no flair animation is declared outside the flair section", () => {
