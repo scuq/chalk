@@ -17,6 +17,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ### Changed
 - In the default green theme, text is now a greener tone and no longer mint. Channel names no longer look cyan. Unread names stay the brighter green.
+- The exchalk theme now uses a cool charcoal palette and no longer uses true black. Borders are now visible against panels. The selected channel shows a blue fill and a blue edge. Hover has its own fill. Blue marks only the selected channel, keyboard focus, and some interactive highlights.
 
 ## v0.11.0 — 8 November 2026 — One consistent look across the sidebar, the composer and the voice room
 

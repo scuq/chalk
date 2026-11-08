@@ -1,13 +1,14 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** built, 133-1 to 133-15 (2026-11-08).
+**Status:** built, 133-1 to 133-16 (2026-11-08).
 133-7 changed no code. The phase closed at 133-7 and was reopened for the voice
 room. See "The voice room" below. After the owner watched a live demo, the
 phase was reopened once more for 133-12. The owner then sent an icon sheet,
 and the phase was reopened for 133-13, the icons. A second design review
 then led to 133-14, the composer as one control. The owner then asked for
 less cyan sidebar text after a mock with three candidate colors. This led to
-133-15, the body text color.
+133-15, the body text color. A palette review then led to 133-16, the
+exchalk palette.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
 of the derived tokens. `web/src/theme-tokens.test.ts` tests two rules: every
 custom property the stylesheet reads is declared, and no `var()` carries a
@@ -285,13 +286,14 @@ the theme and not the accent. These are cyberpunk (magenta), lcars (orange),
 blade-runner (scarlet), and exchalk (white). Their palette blocks now override
 `--chalk-bg-selected` with a hex and `--chalk-border-strong` with a mix from
 `--chalk-fg-bright`. The hex values are `#270931`, `#291800`, `#2c0c0d`, and
-`#3a3a3a`. The palette test holds the hex values to the contrast floors. It
+`#3a3a3a`. 133-16 replaced the exchalk values. See "The exchalk palette
+(133-16)". The palette test holds the hex values to the contrast floors. It
 reads only hex, so it does not test the `--chalk-border-strong` mixes.
 
 The exchalk value is a correction found in the browser. The first value was the
 old tint of 10% white over the black page. That color matched the raised
 sidebar `#1a1a1a`, so the selected fill vanished. The value `#3a3a3a` is 14%
-white over the sidebar.
+white over the sidebar. 133-16 later replaced this value.
 
 Other changes in this slice:
 
@@ -472,7 +474,8 @@ take the colors of the theme. No theme needed a token override in 133-7. The
 per-theme corrections of the phase.
 
 One result is accepted and not fixed. In solarized-dark, darkord, and
-exchalk, `--chalk-border` equals `--chalk-bg-elev`, or nearly so. The sidebar
+exchalk, `--chalk-border` equals `--chalk-bg-elev`, or nearly so. (133-16
+gave exchalk a border that differs from the raised surface.) The sidebar
 "+" buttons and the bottom rule of the channel header therefore show no
 outline on the raised surfaces. The buttons still read as controls, because
 they have a "+" glyph and a hover fill. The design review asked for fewer
@@ -1039,6 +1042,59 @@ Rejected:
 - A rule that changes only the sidebar. The owner chose the one token for the
   whole theme.
 
+- **133-16 — the exchalk palette.** The exchalk block in `theme.css` moved
+  from true black and a neutral grey ladder to a cool charcoal palette. It
+  has a blue-tinted selected fill, a hover fill, and no
+  `--chalk-border-strong` override. Comments and values in `theme.css` only.
+  Done. See "The exchalk palette (133-16)".
+
+### The exchalk palette (133-16)
+
+An external palette review found exchalk too flat. The page was true black,
+and the border equaled the raised surface, so panels had no outline. The
+selected row was grey.
+
+The slice replaced the values in the `[data-theme="exchalk"]` block:
+
+| Token | Before | After |
+|---|---|---|
+| `--chalk-bg` | `#000000` | `#0b0d10` |
+| `--chalk-bg-elev` | `#1a1a1a` | `#171a1f` |
+| `--chalk-bg-elev-2` | `#262626` | `#20252c` |
+| `--chalk-border` | `#262626` | `#303843` |
+| `--chalk-fg` | `#f7f7f7` | `#e6e9ef` |
+| `--chalk-fg-dim` | `#b2b2b2` | `#a5adb8` |
+| `--chalk-fg-muted` | `#8f8f8f` | `#78838f` |
+| `--chalk-fg-bright` | `#ffffff` | `#f5f7fa` |
+| `--chalk-accent` | `#64b4fa` | `#58a6ff` |
+| `--chalk-warn` | `#fc9d03` | `#f4b942` |
+| `--chalk-error` | `#fc6b60` | `#ff656b` |
+| `--chalk-bg-selected` | `#3a3a3a` | `#20364b` |
+| `--chalk-bg-hover` | derived | `#292f38` |
+
+The swatch gradient uses `#0b0d10` and `#58a6ff`. The comment that described a
+neutral grey pill for the active item was deleted.
+
+Decisions:
+
+- The border differs from `--chalk-bg-elev` now. This closes the weak-outline
+  note of 133-7 and the exchalk note of phase 124 for exchalk.
+- The theme no longer overrides `--chalk-border-strong`. The root recipe
+  mixes 50% of the accent into the border, so the selected row has a blue
+  edge. Blue marks only the selected channel, keyboard focus, and some
+  interactive highlights.
+- `--chalk-fg-bright` is `#f5f7fa`, and not pure white. The review gave no
+  value. The slice chose one step above `--chalk-fg`.
+- Presence green stays `#17a557`. The review proposed `#24c98a`. Presence
+  colors are fixed across all themes, and the owner chose to keep them.
+- Nickname colors do not change. exchalk sets no `--nick-s` or `--nick-l`.
+
+Out of scope:
+
+- `.chalk-modal-error` has the fixed color `#ff5555` in all themes. It does
+  not follow `--chalk-error`.
+- The video letterbox backgrounds are `#000` and stay.
+
 ## Left open
 
 - The "no channel open" screen was not seen in a browser. A new account opens
@@ -1060,6 +1116,19 @@ The 133-7 sweep looked at the empty channel, the selected row, the unread
 channel, and the filled send in 15 themes at 1280 by 800. The sweep did not
 open the checklist items below, except where an item names an empty channel
 or a selected row in a theme that the sweep covered.
+
+Open after 133-16:
+
+- Open exchalk and select a channel. The row must show a blue fill and a
+  blue edge.
+- Hover a channel row and a button. The hover fill must differ from the
+  page and from the selected row.
+- Look at the sidebar "+" buttons, the channel header rule, and the cards in
+  the profile panel. Each border must be visible.
+- Join a voice room with a camera on. The tile must read against the page.
+- Open the composer. The field border and the focus edge must show.
+- Cause an error line, such as a wrong password. The text must read on the
+  background.
 
 Open after 133-14:
 
@@ -1112,7 +1181,7 @@ Open after 133-4:
 
 - Press Tab through the sidebar, the channel header, and the composer in the
   green theme and in a light theme. A ring must show on every control.
-- Select a channel in cyberpunk, lcars, blade-runner, and exchalk. The row
+- Select a channel in cyberpunk, lcars, and blade-runner. The row
   must keep its emphasis color, and the fill must show.
 - Share a screen during a call. The call-rail button must show the warn color.
 

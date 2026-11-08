@@ -9463,44 +9463,41 @@ body.chalk-resizing-y .chalk-composer-resizer {
 /* ============================================================
    exchalk: the corporate meetings app, dark mode
    ============================================================
-   True-black window chrome with a two-step grey ladder for the
-   panels (#1a1a1a list, #262626 elevated), near-white text, and
-   sky-blue links -- the dark theme of the big video-meetings
-   client. The gold (#fc9d03) is its favorites star; it doubles
-   as the warn tone since urgency reads well in that amber.
-
-   The red is lifted a step from the source palette's #f7594d
-   (4.9:1 on black) so error text clears the muted-tier floor.
+   A cool charcoal palette. The page is #0b0d10. The panels step up
+   to #171a1f (list) and #20252c (elevated). The border is #303843,
+   so it differs from the list fill. Text is soft white #e6e9ef.
+   Blue (#58a6ff) marks only the selected channel, keyboard focus,
+   and some interactive highlights. The amber (#f4b942) is the warn
+   tone. The red is #ff656b.
+   Presence colors stay fixed across all themes.
    ============================================================ */
 
 [data-theme="exchalk"] {
-  --chalk-bg:           #000000;
-  --chalk-bg-elev:      #1a1a1a;
-  --chalk-bg-elev-2:    #262626;
-  --chalk-fg:           #f7f7f7;
-  --chalk-fg-dim:       #b2b2b2;
-  --chalk-fg-bright:    #ffffff;
-  --chalk-fg-muted:     #8f8f8f;
-  --chalk-border:       #262626;
-  --chalk-accent:       #64b4fa;
-  --chalk-warn:         #fc9d03;
-  --chalk-error:        #fc6b60;
-  /* The selected row is 14% white over the raised sidebar. The old white tint
-     over the black page matched the sidebar, so the fill vanished. The ring
-     mixes from the bright text color, not from the accent. */
-  --chalk-bg-selected:  #3a3a3a;
-  --chalk-border-strong: color-mix(in srgb, var(--chalk-fg-bright) 50%, var(--chalk-border));
+  --chalk-bg:           #0b0d10;
+  --chalk-bg-elev:      #171a1f;
+  --chalk-bg-elev-2:    #20252c;
+  --chalk-fg:           #e6e9ef;
+  --chalk-fg-dim:       #a5adb8;
+  --chalk-fg-bright:    #f5f7fa;
+  --chalk-fg-muted:     #78838f;
+  --chalk-border:       #303843;
+  --chalk-accent:       #58a6ff;
+  --chalk-warn:         #f4b942;
+  --chalk-error:        #ff656b;
+  /* The selected row and the hover fill are fixed hex values. The selected
+     fill is blue-tinted. The theme does not set --chalk-border-strong, so
+     the root recipe applies. The recipe mixes 50% of the accent into the
+     border, and the selected row gets a blue edge. */
+  --chalk-bg-selected:  #20364b;
+  --chalk-bg-hover:     #292f38;
 
   color-scheme: dark;
 }
 
-/* Active sidebar item: the source app highlights the selected
-   conversation with a neutral grey pill, not an accent wash. */
-
 .chalk-profile-theme-swatch-preview--exchalk {
   background: linear-gradient(135deg,
-    #000000 0%, #000000 50%,
-    #64b4fa 50%, #64b4fa 100%);
+    #0b0d10 0%, #0b0d10 50%,
+    #58a6ff 50%, #58a6ff 100%);
 }
 
 /* ============================================================

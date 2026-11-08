@@ -143,6 +143,7 @@ a change that is visual only.
   `darkord`, `exchalk` and `catppuccin-mocha` all declare `--chalk-border`
   one step above their own card fill, so a card border and a row hairline
   are present by measurement, not by inspection.
+  (133-16 later changed the `exchalk` border to `#303843`.)
 - **`.chalk-profile-theme-desc` still exists**, and is still the correct
   class for the theme and font pickers, for the two decibel readouts on
   the voice threshold row, and for the server commit hash in the about

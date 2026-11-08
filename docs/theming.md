@@ -41,11 +41,15 @@ the warmwhite rail, because the rail declares its own palette on
 change one derived token in one theme, set a hex value for it in the theme
 block. The palette test then uses that hex.
 
-The cyberpunk, lcars, blade-runner, and exchalk themes are the worked example.
+The cyberpunk, lcars, and blade-runner themes are the worked example.
 Their selected row uses the emphasis color and not the accent. Each block sets
 `--chalk-bg-selected` to a hex and `--chalk-border-strong` to a mix from
 `--chalk-fg-bright`. A theme does not write a component rule for the selected
 row.
+
+The exchalk theme sets `--chalk-bg-selected` and `--chalk-bg-hover` to hex
+values. It does not set `--chalk-border-strong`, so its selected row has an
+accent edge.
 
 | Token | Role |
 |---|---|
