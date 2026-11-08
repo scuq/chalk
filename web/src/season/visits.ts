@@ -1,5 +1,6 @@
 // chalk-web -- 129-7: the log of visits, shared by all tabs. 129-15: the last
-// row of each key. 129-16: a separate log for the neutral scene.
+// row of each key. 129-16: a separate log for the neutral scene. 129-22: a
+// row can have a weight.
 //
 // A visit of the scene is claimed from a log in localStorage. All tabs and
 // reloads of one browser profile read the same log. So the daily cap in
@@ -7,7 +8,7 @@
 // a module variable holds the log, and the cap holds for that page only.
 // The neutral scene has its own log, and the cap does not count its visits.
 // The log of the last rows lets a visit pick a row that differs from the row
-// of the last visit.
+// of the last visit. A weight makes some rows more likely than others.
 
 import { claimNeutral, claimVisit, type NeutralLog, type VisitLog } from "./peek";
 
@@ -80,23 +81,33 @@ function loadLast(): Record<string, number> {
 }
 
 /**
- * nextRow returns the row index, 0 to count - 1, for the next visit of key,
- * and records it. The index is never the index of the last visit of key. If
- * no valid last index is stored, any index can come.
+ * nextRow returns the row index for the next visit of key, and records it.
+ * `weights` is a count, or an array with one weight for each row. A count
+ * gives each row the weight 1. The index is 0 to the number of rows minus 1.
+ * The chance of an index is its weight divided by the sum of the weights. A
+ * weight that is not a finite number above 0 counts as 0, so that row never
+ * comes. The index is never the index of the last visit of key, unless every
+ * other row has the weight 0. If no valid last index is stored, any row with a
+ * weight above 0 can come.
  */
-export function nextRow(key: string, count: number, rnd: () => number = Math.random): number {
+export function nextRow(key: string, weights: number | number[], rnd: () => number = Math.random): number {
+  // 129-22: a count gives each row the weight 1.
+  const w = typeof weights === "number" ? Array.from({ length: weights }, () => 1) : weights.map((v) => (Number.isFinite(v) && v > 0 ? v : 0));
+  const count = w.length;
   const last = loadLast();
   const prev = last[key];
   const valid = Number.isInteger(prev) && prev >= 0 && prev < count;
+  const pick = w.map((v, i) => (valid && i === prev ? 0 : v));
+  const total = pick.reduce((sum, v) => sum + v, 0);
   const x = rnd();
   const r = Math.min(0.999999, Math.max(0, Number.isFinite(x) ? x : 0));
-  let index: number;
-  if (valid && count > 1) {
-    index = Math.floor(r * (count - 1));
-    if (index >= prev) index++;
-  } else {
-    index = Math.floor(r * count);
+  let index = total > 0 ? -1 : Math.floor(r * count);
+  let target = r * total;
+  for (let i = 0; i < count && index < 0; i++) {
+    if (pick[i] > 0 && target < pick[i]) index = i;
+    target -= pick[i];
   }
+  if (index < 0) index = pick.reduce((best, v, i) => (v > 0 ? i : best), 0);
   lastMemory = { ...last, [key]: index };
   try {
     window.localStorage.setItem(LAST_KEY, JSON.stringify(lastMemory));

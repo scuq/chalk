@@ -16,8 +16,10 @@ The engineering-level history (which slice shipped what) lives in
 - From 1 December to 26 December, the Chalk scene is one of seven small animated nods to Christmas films and series. Each one shows a famous moment.
 - On 31 December and 1 January, the Chalk scene is one of seven small animated New Year scenes. Six are nods to films, series, and a game, and one is a plain fireworks show.
 - From 2 January to 7 February, the Chalk scene is one of eight small animated winter nods to films and series. Each one shows a famous moment in snow or ice.
+- In Black Week, the Chalk scene is one of nine small animated nods to films, series, and a game. Black Week runs from the Monday before Black Friday to Cyber Monday. Each scene shows a famous moment about money or a sale, with short words and prices such as a sale sign.
 
 ### Changed
+- Late autumn now runs from 16 November to 22 November. Black Week takes its days in some years. From 6 November to 15 November no season runs.
 - The season calendar changed. Christmas runs from 1 December to 26 December. From 27 December to 30 December no season runs, so the scene is one of the ten scenes for days outside a season. New Year runs on 31 December and 1 January. Winterfest runs from 2 January to 7 February.
 - On the evening of 24 December, from 20:00 to 05:00, the scene stays up. It shows all seven Christmas scenes in turn.
 - A seasonal scene now stays on one scene for the whole visit and does not switch partway. The next visit shows a different scene.

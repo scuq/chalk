@@ -1,13 +1,14 @@
 // 129-9: tests for the scene. 129-12: five scenes for each of eight row keys.
 // The neutral key has ten scripts since 129-18, the christmas key has seven
 // scripts since 129-19, the new-year key has seven scripts since 129-20, and
-// the winterfest key has eight scripts since 129-21.
+// the winterfest key has eight scripts since 129-21, and the black-week key
+// has nine scripts since 129-22.
 //
 // A fake Painter records the rectangles, so a test needs no canvas. The tests
-// check the table (62 scenes: the rows of the SEASONS ids except "christmas",
-// "new-year", and "winterfest", the ten scripts of "neutral", the seven scripts
-// of "christmas", the seven scripts of "new-year", and the eight scripts of
-// "winterfest"), whole
+// check the table (71 scenes: the rows of the SEASONS ids except "christmas",
+// "new-year", "winterfest", and "black-week", the ten scripts of "neutral", the
+// seven scripts of "christmas", the seven scripts of "new-year", the eight
+// scripts of "winterfest", and the nine scripts of "black-week"), whole
 // pixels and a see-through strip in every scene of a season, a paint for
 // each prop, the rotation and its wrap, the fade, a start index outside the
 // range, the walkers, a ghost that floats, a long frame, and a resize. 129-13:
@@ -38,6 +39,7 @@ import {
   FADE_SECONDS,
   hasGlyph,
   holdStill,
+  sceneWeights,
   resizeScene,
   SCENE_SECONDS,
   SCENES,
@@ -52,6 +54,7 @@ import {
 import { CHRISTMAS } from "./christmas";
 import { NEWYEAR } from "./newyear";
 import { WINTERFEST } from "./winterfest";
+import { BLACKWEEK } from "./blackweek";
 import { OFFSEASON } from "./offseason";
 import type { Script } from "./strip";
 import { SEASONS } from "./seasons";
@@ -59,13 +62,14 @@ import { SEASONS } from "./seasons";
 const W = 300;
 const H = 24;
 const KEYS = Object.keys(SCENES) as SceneKey[];
-const ALL_KEYS: SceneKey[] = [...KEYS, "neutral", "christmas", "new-year", "winterfest"];
+const ALL_KEYS: SceneKey[] = [...KEYS, "neutral", "christmas", "new-year", "winterfest", "black-week"];
 // 129-19: the keys that run scripts, with their scripts.
 const SCRIPT_SETS: [SceneKey, Script[]][] = [
   ["neutral", OFFSEASON],
   ["christmas", CHRISTMAS],
   ["new-year", NEWYEAR],
   ["winterfest", WINTERFEST],
+  ["black-week", BLACKWEEK],
 ];
 
 function recorder() {
@@ -80,11 +84,12 @@ function recorder() {
   return { ctx, rects };
 }
 
-test("there are 62 scenes: five rows for each row season, seven christmas scripts, seven new-year scripts, eight winterfest scripts, and ten neutral scripts", () => {
+test("there are 71 scenes: five rows for each row season, and the scripts of the five script keys", () => {
   const ids = new Set<string>(SEASONS.map((s) => s.id));
   ids.delete("christmas");
   ids.delete("new-year");
   ids.delete("winterfest");
+  ids.delete("black-week");
   assert.deepEqual(new Set(KEYS), ids);
   assert.equal(KEYS.length, 6);
   for (const key of KEYS) {
@@ -95,15 +100,17 @@ test("there are 62 scenes: five rows for each row season, seven christmas script
   assert.equal(sceneCount("christmas"), 7);
   assert.equal(sceneCount("new-year"), 7);
   assert.equal(sceneCount("winterfest"), 8);
+  assert.equal(sceneCount("black-week"), 9);
   const names = [
     ...KEYS.flatMap((k) => SCENES[k as keyof typeof SCENES].map((r) => r.name)),
     ...OFFSEASON.map((x) => x.name),
     ...CHRISTMAS.map((x) => x.name),
     ...NEWYEAR.map((x) => x.name),
     ...WINTERFEST.map((x) => x.name),
+    ...BLACKWEEK.map((x) => x.name),
   ];
-  assert.equal(names.length, 62);
-  assert.equal(new Set(names).size, 62);
+  assert.equal(names.length, 71);
+  assert.equal(new Set(names).size, 71);
 });
 
 test("every scene draws whole pixels and leaves the strip see-through, at each step", () => {
@@ -446,4 +453,16 @@ test("129-21: the winterfest key runs its scripts and holds one through a visit"
   assert.equal(scene.row.name, "The Walker Falls");
   for (let t = 0; t < 80; t += 0.1) stepScene(scene, 0.1);
   assert.equal(scene.index, 0);
+});
+
+test("129-22: the bar weighs twice as much as each other black week scene, and every other key weighs one", () => {
+  const w = sceneWeights("black-week");
+  assert.equal(w.length, 9);
+  assert.equal(w[0], 2);
+  assert.ok(w.slice(1).every((v) => v === 1));
+  for (const key of ALL_KEYS) {
+    if (key === "black-week") continue;
+    assert.ok(sceneWeights(key).every((v) => v === 1), key);
+    assert.equal(sceneWeights(key).length, sceneCount(key), key);
+  }
 });

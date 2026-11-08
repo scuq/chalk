@@ -1,7 +1,7 @@
 // 129-7: the log of visits. A fake localStorage shows that pages share one log,
 // that a corrupt entry is replaced, and that the cap holds without storage.
 // 129-15: the next row differs from the last row. 129-16: the neutral log is
-// separate from the log of the cap.
+// separate from the log of the cap. 129-22: nextRow picks by weight.
 
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -112,4 +112,22 @@ test("129-16: a corrupt neutral entry is replaced", () => {
     assert.equal(log.day, `2026-11-${11 + i}`, bad);
     assert.equal(log.at.length, 2, bad);
   });
+});
+
+test("129-22: nextRow picks by weight and still never repeats the last row", () => {
+  const items = fakeStorage();
+  const LAST = "chalk.season.last.v1";
+  items.set(LAST, JSON.stringify({}));
+  assert.equal(nextRow("black-week", [2, 1, 1], () => 0.4), 0);
+  items.set(LAST, JSON.stringify({}));
+  assert.equal(nextRow("black-week", [2, 1, 1], () => 0.6), 1);
+  items.set(LAST, JSON.stringify({}));
+  assert.equal(nextRow("black-week", [2, 1, 1], () => 0.9), 2);
+  items.set(LAST, JSON.stringify({ "black-week": 0 }));
+  for (const r of [0, 0.4, 0.6, 0.99]) {
+    items.set(LAST, JSON.stringify({ "black-week": 0 }));
+    assert.notEqual(nextRow("black-week", [2, 1, 1], () => r), 0, String(r));
+  }
+  items.set(LAST, JSON.stringify({ x: 1 }));
+  assert.equal(nextRow("x", [1, 1], () => 0.2), 0);
 });

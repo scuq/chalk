@@ -4,11 +4,12 @@
 // has nine season ids. The christmas key runs from 1 December to 26 December,
 // and the gap from 27 December to 30 December lasts four days. The new-year
 // key runs on 31 December and 1 January, and winterfest runs from 2 January to
-// 7 February.
+// 7 February. 129-22: black week moves with the year, and it comes before the
+// fixed rows on its days.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ALWAYS_ON, alwaysOn, inHours, inWindow, nightFor, seasonFor, SEASONS, type Season } from "./seasons";
+import { ALWAYS_ON, alwaysOn, blackWeek, inHours, inWindow, nightFor, seasonFor, SEASONS, type Season } from "./seasons";
 
 // Local-time constructor, because the registry reads the calendar of the
 // reader.
@@ -25,14 +26,14 @@ test("no day of a leap year or of a common year falls in two rows", () => {
   }
 });
 
-test("129-19: the neutral gaps last 21 days, 27 to 30 december lasts four, and 29 february falls in one", () => {
+test("129-22: the neutral gaps last 21 days, 6 to 15 november lasts ten, 27 to 30 december lasts four, and 29 february falls in one", () => {
   const gaps: [number, number, number, number, number][] = [
     [2, 8, 2, 28, 21],
     [4, 10, 4, 30, 21],
     [5, 31, 6, 20, 21],
     [8, 11, 8, 31, 21],
     [9, 24, 10, 14, 21],
-    [11, 6, 11, 26, 21],
+    [11, 6, 11, 15, 10],
     [12, 27, 12, 30, 4],
   ];
   for (const [m1, d1, m2, d2, days] of gaps) {
@@ -51,8 +52,9 @@ test("129-19: the neutral gaps last 21 days, 27 to 30 december lasts four, and 2
 test("the rows run in calendar order and hold the nine seasons", () => {
   const starts = SEASONS.map((s) => s.from[0] * 100 + s.from[1]);
   assert.deepEqual(starts, [...starts].sort((a, b) => a - b));
-  assert.equal(SEASONS.length, 10);
+  assert.equal(SEASONS.length, 11);
   assert.deepEqual([...new Set(SEASONS.map((s) => s.id))].sort(), [
+    "black-week",
     "christmas",
     "green-season",
     "harvest-festival",
@@ -74,7 +76,9 @@ test("each season starts and ends on its calendar dates", () => {
     ["midsummer", 6, 21, 8, 10],
     ["harvest-festival", 9, 1, 9, 23],
     ["spooky-season", 10, 15, 11, 5],
-    ["late-autumn", 11, 27, 11, 30],
+    // 22 November is black week in 2027, the year of this table, so the row
+    // of late-autumn is checked to 21 November.
+    ["late-autumn", 11, 16, 11, 21],
     ["christmas", 12, 1, 12, 26],
     ["new-year", 12, 31, 12, 31],
   ];
@@ -162,4 +166,30 @@ test("129-19: christmas eve is always-on in the christmas key, and new year's ev
   assert.equal(seasonFor(at(2027, 1, 2))?.id, "winterfest");
   assert.equal(seasonFor(at(2026, 12, 26))?.id, "christmas");
   assert.equal(seasonFor(at(2026, 12, 27)), null);
+});
+
+test("129-22: black week runs from the monday before black friday to cyber monday", () => {
+  assert.deepEqual(blackWeek(2026), { from: [11, 23], to: [11, 30] });
+  assert.deepEqual(blackWeek(2027), { from: [11, 22], to: [11, 29] });
+  assert.deepEqual(blackWeek(2025), { from: [11, 24], to: [12, 1] });
+  assert.deepEqual(blackWeek(2030), { from: [11, 25], to: [12, 2] });
+  for (let year = 2024; year <= 2040; year++) {
+    const { from, to } = blackWeek(year);
+    const friday = new Date(year, from[0] - 1, from[1] + 4);
+    assert.equal(friday.getDay(), 5, `${year}`);
+    assert.ok(friday.getDate() >= 23 && friday.getDate() <= 29, `${year}`);
+    assert.equal(new Date(year, to[0] - 1, to[1]).getDay(), 1, `${year}`);
+  }
+});
+
+test("129-22: black week comes before late autumn and christmas on the days it holds", () => {
+  assert.equal(seasonFor(at(2026, 11, 22))?.id, "late-autumn");
+  assert.equal(seasonFor(at(2026, 11, 23))?.id, "black-week");
+  assert.equal(seasonFor(at(2026, 11, 30))?.id, "black-week");
+  assert.equal(seasonFor(at(2026, 12, 1))?.id, "christmas");
+  assert.equal(seasonFor(at(2027, 11, 22))?.id, "black-week");
+  assert.equal(seasonFor(at(2027, 11, 30)), null);
+  assert.equal(seasonFor(at(2025, 12, 1))?.id, "black-week");
+  assert.equal(seasonFor(at(2030, 12, 2))?.id, "black-week");
+  assert.equal(seasonFor(at(2030, 12, 3))?.id, "christmas");
 });

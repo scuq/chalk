@@ -1,5 +1,6 @@
 // chalk-web -- 129-1: the season registry. 129-8: the calendar of eight
-// seasons. 129-19: the calendar of nine season ids.
+// seasons. 129-19: the calendar of nine season ids. 129-22: the calendar of
+// ten season ids, and one season whose dates move with the year.
 //
 // The registry decides which season it is from the local calendar date of
 // the reader. The decision is pure: `now` is a parameter, as in daymarks.ts,
@@ -7,12 +8,18 @@
 // The date is local on purpose: a season is a date on the calendar of the
 // reader.
 // The rows of SEASONS leave gaps between the seasons, so a date can have no
-// season. A gap lasts 21 days, except the gap from 27 December to 30 December,
-// which lasts four days. The scene still shows on such a date: it uses the
-// neutral scenes of scene.ts. The calendar is written for the Northern
+// season. A gap lasts 21 days, except two gaps. The gap from 6 November to
+// 15 November lasts ten days, and the gap from 27 December to 30 December
+// lasts four days. The scene still shows on such a date: it uses the neutral
+// scenes of scene.ts. The calendar is written for the Northern
 // Hemisphere.
 // chalk reads only the local date, so a reader in the Southern Hemisphere gets
 // the same calendar.
+// The black-week season is the first season whose dates move. It runs from the
+// Monday before Black Friday to Cyber Monday, so its dates depend on the year.
+// On its days it comes before every fixed row. So it can take days from
+// late-autumn or from christmas, and some days from 23 November to 30 November
+// have no season. Its row in SEASONS holds the dates of 2026.
 // ALWAYS_ON lists the hours in which the scene stays up without a break.
 
 export type SeasonId =
@@ -24,6 +31,7 @@ export type SeasonId =
   | "harvest-festival"
   | "spooky-season"
   | "late-autumn"
+  | "black-week"
   | "christmas";
 
 /** A month-and-day pair, 1-based month, as a person reads a calendar. */
@@ -61,15 +69,44 @@ export interface Season extends Window {
   label: string;
   /** 129-6: the hours of the video-tile frame. Absent means no frame. */
   night?: HourWindow;
+  /**
+   * 129-22: the window of the season in a given year, for a season whose dates
+   * move. If present, seasonFor uses it and ignores `from` and `to`. The
+   * season comes before every fixed row on the days it holds. `from` and `to`
+   * only keep the rows of SEASONS in calendar order.
+   */
+  moving?: (year: number) => Window;
+}
+
+/**
+ * blackWeek returns the window of Black Week in `year`. The window starts four
+ * days before Black Friday, which is a Monday. It ends three days after Black
+ * Friday, which is Cyber Monday. Black Friday is the day after the fourth
+ * Thursday of November. The window can start in 19 to 25 November and can end
+ * from 26 November to 2 December.
+ */
+export function blackWeek(year: number): Window {
+  const firstDow = new Date(year, 10, 1).getDay();
+  const thanksgiving = 1 + ((4 - firstDow + 7) % 7) + 21;
+  const monday = new Date(year, 10, thanksgiving + 1 - 4);
+  const cyber = new Date(year, 10, thanksgiving + 1 + 3);
+  return {
+    from: [monday.getMonth() + 1, monday.getDate()],
+    to: [cyber.getMonth() + 1, cyber.getDate()],
+  };
 }
 
 // The rows run in calendar order. Each gap between two rows lasts 21 days in
-// a common year, except the gap from 27 December to 30 December, which lasts
-// four days. So chalk is not in a season all year. A date in a gap has no
+// a common year, except the gap from 6 November to 15 November, which lasts
+// ten days, and the gap from 27 December to 30 December, which lasts four
+// days. So chalk is not in a season all year. A date in a gap has no
 // season, and the scene uses the neutral scenes. 29 February falls in the gap
 // from 8 February to 28 February, so it has no season. One season has two
 // rows: new-year crosses the year boundary, so it has 31 December and 1 January.
 // The christmas key runs from 1 December to 26 December. It has no night frame.
+// The black-week row holds the dates of 2026, 23 November to 30 November. The
+// field `moving` replaces them in seasonFor. Late autumn runs from 16 November
+// to 22 November, and black week takes 22 November in some years.
 export const SEASONS: Season[] = [
   { id: "new-year", label: "New Year / Fireworks", from: [1, 1], to: [1, 1] },
   { id: "winterfest", label: "Winterfest", from: [1, 2], to: [2, 7] },
@@ -85,7 +122,8 @@ export const SEASONS: Season[] = [
     // Halloween night: the video-tile frame runs from 18:00 on 31 October until 03:00 on 1 November.
     night: { from: [10, 31, 18], to: [11, 1, 3] },
   },
-  { id: "late-autumn", label: "Late Autumn", from: [11, 27], to: [11, 30] },
+  { id: "late-autumn", label: "Late Autumn", from: [11, 16], to: [11, 22] },
+  { id: "black-week", label: "Black Week", from: [11, 23], to: [11, 30], moving: blackWeek },
   { id: "christmas", label: "Christmas", from: [12, 1], to: [12, 26] },
   { id: "new-year", label: "New Year / Fireworks", from: [12, 31], to: [12, 31] },
 ];
@@ -123,11 +161,16 @@ export function inWindow(now: number | Date, w: Window): boolean {
  * seasonFor returns the season that holds the local calendar date of `now`,
  * or null when no season does. With the default SEASONS a date in a gap
  * returns null. This is a normal result: the caller then shows the neutral
- * scenes.
+ * scenes. A season with a `moving` window is tested first, with the year of
+ * `now`. So it wins over a fixed row on the days it holds.
  */
 export function seasonFor(now: number | Date, seasons: Season[] = SEASONS): Season | null {
+  const d = typeof now === "number" ? new Date(now) : now;
   for (const s of seasons) {
-    if (inWindow(now, s)) return s;
+    if (s.moving && inWindow(d, s.moving(d.getFullYear()))) return s;
+  }
+  for (const s of seasons) {
+    if (!s.moving && inWindow(d, s)) return s;
   }
   return null;
 }

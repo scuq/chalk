@@ -78,18 +78,26 @@ Every change is in the client.
 
 ## Phase 129 — seasonal: IN PROGRESS, with recorded trade-offs
 
-129-1 … 129-21 are built. 129-22 onward is open. Record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
+129-1 … 129-22 are built. 129-23 onward is open. Record in [phases/PHASE-129-SEASONAL.md](phases/PHASE-129-SEASONAL.md).
 An animated pixel scene peeks into the middle of the top header. Each of
 six season keys has five scenes, and the `christmas` key shows seven scripted
 scenes, which are nods to films and series (129-19). The `new-year` key also
 shows seven scripted scenes: six nods to films, series, and a game, and a plain
 fireworks show (129-20). The `winterfest` key shows eight scripted scenes, which
-are nods to films and series (129-21). A visit holds one of them,
+are nods to films and series (129-21). The `black-week` key shows nine scripted
+scenes about money and sales, which are nods to films, series, and a game
+(129-22). A visit holds one of them,
 and it is never the scene of the last visit of the same key (129-15). The
 always-on hours rotate through the scenes of the key every 35 s. The calendar
 is: Christmas from 1 to 26 December, no season from 27 to 30 December, New Year
 on 31 December and 1 January, and Winterfest from 2 January to 7 February
-(129-19). A gap of 21 days in a common year separates two of the other seasons.
+(129-19). Late Autumn runs from 16 to 22 November, and no season runs from 6 to
+15 November (129-22). Black Week runs from the Monday before Black Friday to
+Cyber Monday, and its dates move with the year. On its days it comes before the
+fixed seasons, so in some years it takes 22 November from Late Autumn and
+1 December or 2 December from Christmas (129-22). The bar scene of Black Week
+shows twice as often as the other eight (129-22). A gap of 21 days in a common
+year separates two of the other seasons.
 A date in a gap shows one of ten scripted neutral scenes, which are also nods
 to films and series (129-12, 129-18). On the evening of 24 December and on New
 Year's Eve, the scene stays up from 20:00 to 05:00. There is a switch per device and a server
@@ -100,7 +108,7 @@ times in a local day on one device, and at most 10 of them start before 18:00
 A phone in zuckermode shows the scene in a row above the conversation list
 (129-11). The classic phone layout and the header of a phone show no scene.
 A headed season demo in the ui-sweep skill shows one scene on a fake date (129-17).
-Open: 129-22 and later, which tune the six keys that have rows, one key in
+Open: 129-23 and later, which tune the six keys that have rows, one key in
 each slice, in this order: late-autumn, spring-bloom, green-season, midsummer,
 harvest-festival, spooky-season.
 Open cleanup: the scene engine in `web/src/season/scene.ts` still has branches

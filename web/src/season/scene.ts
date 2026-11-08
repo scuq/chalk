@@ -4,17 +4,19 @@
 // visit holds one row. 129-18: the neutral key has ten scripts and no rows.
 // 129-19: the christmas key has seven scripts and no rows. 129-20: the new-year
 // key has seven scripts and no rows. 129-21: the winterfest key has eight
-// scripts and no rows.
+// scripts and no rows. 129-22: the black-week key has nine scripts and no
+// rows, and a script can have a weight.
 //
-// This module draws a small pixel scene and moves it. There are ten keys: the
-// nine season ids of seasons.ts, and "neutral" for a date in no season. SCENES
-// holds the six keys that have rows. Each of them has five rows
+// This module draws a small pixel scene and moves it. There are eleven keys:
+// the ten season ids of seasons.ts, and "neutral" for a date in no season.
+// SCENES holds the six keys that have rows. Each of them has five rows
 // (SCENES_PER_KEY), so there are 30 rows. A row names an environment, an
-// effect, four props, and two cast members. Four keys have scripts and no
+// effect, four props, and two cast members. Five keys have scripts and no
 // rows: "neutral" has the ten scripts of OFFSEASON (offseason.ts), "christmas"
 // has the seven scripts of CHRISTMAS (christmas.ts), "new-year" has the seven
-// scripts of NEWYEAR (newyear.ts), and "winterfest" has the eight scripts of
-// WINTERFEST (winterfest.ts). So there are 62 scenes.
+// scripts of NEWYEAR (newyear.ts), "winterfest" has the eight scripts of
+// WINTERFEST (winterfest.ts), and "black-week" has the nine scripts of
+// BLACKWEEK (blackweek.ts). So there are 71 scenes.
 // A script draws its own opaque strip, and it does not use the fields of a
 // row. The rows stay see-through.
 // A scene shows its row or its script. A scene that rotates (rotate is true)
@@ -46,6 +48,7 @@
 //     production.
 //   - A scene fades to transparent, not to black.
 
+import { BLACKWEEK } from "./blackweek";
 import { CHRISTMAS } from "./christmas";
 import { NEWYEAR } from "./newyear";
 import { WINTERFEST } from "./winterfest";
@@ -76,17 +79,34 @@ export const FADE_SECONDS = 0.7;
 export const SCENES_PER_KEY = 5;
 
 /**
+ * sceneWeights returns the weight of each scene of key, in the order of the
+ * scenes. The weight of a script is its weight field, or 1 if it has none. A
+ * key that runs rows gives 1 for each of its SCENES_PER_KEY rows. nextRow in
+ * visits.ts picks the scene of a visit with these weights. The always-on hours
+ * ignore them.
+ */
+export function sceneWeights(key: SceneKey): number[] {
+  return isScripted(key) ? SCRIPTED[key].map((s) => s.weight ?? 1) : Array.from({ length: SCENES_PER_KEY }, () => 1);
+}
+
+/**
  * sceneCount returns the number of scenes of key: the number of scripts for a
- * key that runs scripts ("neutral", "christmas", "new-year", and
- * "winterfest"), and SCENES_PER_KEY for any other key.
+ * key that runs scripts ("neutral", "christmas", "new-year", "winterfest", and
+ * "black-week"), and SCENES_PER_KEY for any other key.
  */
 export function sceneCount(key: SceneKey): number {
   return isScripted(key) ? SCRIPTED[key].length : SCENES_PER_KEY;
 }
 
-// The scripts of each key that runs scripts in place of rows. isScripted must
-// list the same keys.
-const SCRIPTED = { neutral: OFFSEASON, christmas: CHRISTMAS, "new-year": NEWYEAR, winterfest: WINTERFEST };
+// The scripts of each key that runs scripts in place of rows. isScripted reads
+// the keys of this object.
+const SCRIPTED = {
+  neutral: OFFSEASON,
+  christmas: CHRISTMAS,
+  "new-year": NEWYEAR,
+  winterfest: WINTERFEST,
+  "black-week": BLACKWEEK,
+};
 
 /** A ScriptKey is a key that runs scripts and has no rows in SCENES. */
 export type ScriptKey = keyof typeof SCRIPTED;
@@ -96,7 +116,7 @@ export type RowKey = Exclude<SceneKey, ScriptKey>;
 
 /** isScripted reports whether key runs scripts instead of rows. */
 export function isScripted(key: SceneKey): key is ScriptKey {
-  return key === "neutral" || key === "christmas" || key === "new-year" || key === "winterfest";
+  return key in SCRIPTED;
 }
 
 // The downward pull on a jump, and the upward speed at the start of a jump, in
@@ -106,10 +126,11 @@ const JUMP = 40;
 
 /**
  * A SceneKey names a set of scenes: a season id or "neutral". A key has five
- * rows in SCENES, except four keys that have scripts. "christmas" has the seven
- * scripts of CHRISTMAS, "new-year" has the seven scripts of NEWYEAR, and
- * "winterfest" has the eight scripts of WINTERFEST. "neutral", for a date in no
- * season, has the ten scripts of OFFSEASON.
+ * rows in SCENES, except four season keys that have scripts. "christmas" has
+ * the seven scripts of CHRISTMAS, "new-year" has the seven scripts of NEWYEAR,
+ * "winterfest" has the eight scripts of WINTERFEST, and "black-week" has the
+ * nine scripts of BLACKWEEK. "neutral", for a date in no season, has the ten
+ * scripts of OFFSEASON.
  */
 export type SceneKey = SeasonId | "neutral";
 
@@ -234,9 +255,9 @@ function row(
 
 /**
  * SCENES holds the rows of each RowKey, in the order of rotation. Each key has
- * SCENES_PER_KEY rows. The "neutral", "christmas", "new-year", and "winterfest"
- * keys have no rows. They use the scripts of OFFSEASON, CHRISTMAS, NEWYEAR, and
- * WINTERFEST.
+ * SCENES_PER_KEY rows. The "neutral", "christmas", "new-year", "winterfest", and
+ * "black-week" keys have no rows. They use the scripts of OFFSEASON,
+ * CHRISTMAS, NEWYEAR, WINTERFEST, and BLACKWEEK.
  */
 export const SCENES: Record<RowKey, SceneRow[]> = {
   "spring-bloom": [
@@ -294,8 +315,8 @@ const PALETTES: Record<SceneKey, {
   ink: string;
   panel: string;
 }> = {
-  // Rows never read the entries of "new-year" and "winterfest", because those
-  // keys run scripts. The Record type needs them.
+  // Rows never read the entries of "new-year", "winterfest", and "black-week",
+  // because those keys run scripts. The Record type needs them.
   "new-year": {
     earth: "#29344d",
     edge: "#576d95",
@@ -358,6 +379,13 @@ const PALETTES: Record<SceneKey, {
     earth: "#2a3a36",
     edge: "#5f7c74",
     title: "CHRISTMAS",
+    ink: "#ffd23a",
+    panel: "#132622",
+  },
+  "black-week": {
+    earth: "#2a3a36",
+    edge: "#5f7c74",
+    title: "BLACK WEEK",
     ink: "#ffd23a",
     panel: "#132622",
   },
@@ -610,8 +638,8 @@ export function sceneAlpha(s: Scene): number {
 // The color of the background trees of each key. The orchard of Spring Bloom
 // uses pink instead. A bare tree has no canopy.
 const CANOPY: Record<SceneKey, string> = {
-  // Rows never read the entries of "new-year" and "winterfest", because those
-  // keys run scripts. The Record type needs them.
+  // Rows never read the entries of "new-year", "winterfest", and "black-week",
+  // because those keys run scripts. The Record type needs them.
   "new-year": "#1f3a35",
   winterfest: "#1f3f38",
   "spring-bloom": "#5f8f57",
@@ -622,6 +650,7 @@ const CANOPY: Record<SceneKey, string> = {
   "late-autumn": "#7b4a26",
   // Rows never read this entry, because "christmas" runs scripts.
   christmas: "#1f3f38",
+  "black-week": "#1f3f38",
   neutral: "#264635",
 };
 

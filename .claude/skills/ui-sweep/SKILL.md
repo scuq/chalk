@@ -31,14 +31,14 @@ Flags:
 - `--groups` also creates six channels in channel groups, and bob posts into one of them. Use it to look at chaos mode with group tags.
 - `--headed` opens a visible window signed in as ann and keeps it open.
 - `--cycle` (with `--headed`) changes the theme every `--cycle-secs` seconds. The default is 5.
-- `--season=<key>` (with `--headed`) starts the season scene demo for that season key. The keys are `neutral`, `late-autumn`, `christmas`, `winterfest`, `new-year`, `spring-bloom`, `green-season`, `midsummer`, `harvest-festival`, and `spooky-season`.
+- `--season=<key>` (with `--headed`) starts the season scene demo for that season key. The keys are `neutral`, `late-autumn`, `black-week`, `christmas`, `winterfest`, `new-year`, `spring-bloom`, `green-season`, `midsummer`, `harvest-festival`, and `spooky-season`.
 - `--scene=<row name>` (with `--season`) shows only that scene, again and again.
 - `--scene-secs=N` sets the seconds for each scene. The default is 30.
 
 The season demo sets a fake date with the Playwright clock. The clock runs at normal speed.
 It seeds the visit logs, so that a visit is due at once. After each page load, it skips the first pause.
 It loads the page again, up to 25 times, until `data-scene` has the wanted name.
-It then shows the scene for `--scene-secs` seconds, with a corner tag. Without `--scene`, it shows the scenes of the key in table order. The keys `neutral`, `christmas`, `new-year`, and `winterfest` read their scene names from the script files in `web/src/season/`.
+It then shows the scene for `--scene-secs` seconds, with a corner tag. Without `--scene`, it shows the scenes of the key in table order. The keys `neutral`, `christmas`, `new-year`, `winterfest`, and `black-week` read their scene names from the script files in `web/src/season/`.
 A visit lasts 45 s to 75 s. A value of `--scene-secs` above 45 can let the visit end before the next load.
 The app has no preview API, so the demo only loads the page again until the scene shows.
 An unknown key or scene stops the script with exit code 2 and lists the known values.

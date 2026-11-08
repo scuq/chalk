@@ -1,6 +1,6 @@
 # Phase 129 — seasonal: a scene for the season
 
-**Status:** in progress. Built: 129-1 – 129-21. Open: 129-22 and later. They tune the six keys that have rows, one key in each slice, in this order: late-autumn, spring-bloom, green-season, midsummer, harvest-festival, spooky-season. One cleanup item is open: the dead snow branches of the scene engine (see "The winterfest scripts"). 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 shipped in v0.10.0. 129-15 and later are not yet in a release. 129-8 to 129-10 land together.
+**Status:** in progress. Built: 129-1 – 129-22. Open: 129-23 and later. They tune the six keys that have rows, one key in each slice, in this order: late-autumn, spring-bloom, green-season, midsummer, harvest-festival, spooky-season. One cleanup item is open: the dead snow branches of the scene engine (see "The winterfest scripts"). 129-1 – 129-3 shipped in v0.8.27, and 129-4 – 129-6 shipped in v0.9.0. 129-7 to 129-14 shipped in v0.10.0. 129-15 and later are not yet in a release. 129-8 to 129-10 land together.
 **Tags:** `#seasonal` → `tools/where.sh -g seasonal`
 
 ## The problem
@@ -24,13 +24,16 @@ scripted scenes that are nods to films and series. 129-19 added the
 changed the calendar around the turn of the year. 129-20 replaced the five
 New Year rows with seven scripted scenes: six nods to films, series, and a
 game, and one plain fireworks show. 129-21 replaced the five Winterfest rows
-with eight scripted scenes that are nods to films and series.
+with eight scripted scenes that are nods to films and series. 129-22 added
+the `black-week` key: nine scripted scenes about money and sales, from the
+Monday before Black Friday to Cyber Monday. It is the first season whose dates
+move with the year, and the first whose scenes show sign words and prices.
 
 ## The design
 
 ### The calendar decides which season it is
 
-`web/src/season/seasons.ts` holds `SEASONS`, a table of 10 rows for nine
+`web/src/season/seasons.ts` holds `SEASONS`, a table of 11 rows for ten
 season ids. Each row has an `id`, a `label`, and a window of 1-based month and day
 pairs.
 The rows do not cover the whole year (129-10):
@@ -42,18 +45,20 @@ The rows do not cover the whole year (129-10):
 - Midsummer: 21 June to 10 August
 - Harvest Festival: 1 to 23 September
 - Spooky Season: 15 October to 5 November
-- Late Autumn: 27 to 30 November
+- Late Autumn: 16 to 22 November (129-22)
+- Black Week: 23 to 30 November in 2026. The dates move with the year (129-22).
 - Christmas: 1 to 26 December (129-19)
 
-Between two seasons is a gap. A gap lasts 21 days in a common year, except the
-gap from 27 to 30 December, which lasts four days (129-19). The gaps are:
+Between two seasons is a gap. A gap lasts 21 days in a common year, except two
+gaps. The gap from 6 to 15 November lasts ten days (129-22). The gap from 27 to
+30 December lasts four days (129-19). The gaps are:
 
 - 8 to 28 February
 - 10 to 30 April
 - 31 May to 20 June
 - 11 to 31 August
 - 24 September to 14 October
-- 6 to 26 November
+- 6 to 15 November
 - 27 to 30 December
 
 A date in a gap has no season. 129-10 showed no scene on such a date, because
@@ -70,7 +75,8 @@ February and one in December.
 `inWindow` compares month and day keys, so the rows work in all years.
 
 `seasonFor(now)` is a pure function. It takes the clock as a parameter and
-reads the local calendar date of the reader. It ignores the year. It returns
+reads the local calendar date of the reader. It ignores the year, except for a
+season that has `moving` (see "Black Week moves with the year"). It returns
 null for a date in no row. With the default `SEASONS` that is a normal result,
 and `App.tsx` passes `season={null}` to `SeasonScene`, which shows the neutral
 scenes.
@@ -86,6 +92,38 @@ Before 129-8 the registry had two windows: Halloween from 24 October to
 1 November, and winter from 1 December to 6 January. Winter also had an `aura`
 window. 129-8 replaced both windows with a calendar of rows, and 129-9 removed
 the `aura` window. 129-10 shortened the rows and left the gaps.
+
+#### Black Week moves with the year (129-22)
+
+Black Week is the first season whose dates move. It runs from the Monday before
+Black Friday to Cyber Monday. Black Friday is the day after the fourth Thursday
+of November. The window starts four days before Black Friday and ends three days
+after it.
+
+| Year | Window |
+|---|---|
+| 2025 | 24 November to 1 December |
+| 2026 | 23 to 30 November |
+| 2027 | 22 to 29 November |
+| 2030 | 25 November to 2 December |
+
+`Season` has the optional field `moving(year)`. It returns the window of the
+season in that year. `blackWeek(year)` is the function for `black-week`.
+`seasonFor` tests the seasons that have `moving` first, with the year of `now`.
+Then it tests the fixed rows. So on its days black week comes before every
+fixed row. It takes 22 November from late-autumn in 2027. It takes 1 December
+from christmas in 2025, and 1 and 2 December in 2030.
+
+The `from` and `to` of the `black-week` row in `SEASONS` are the dates of 2026.
+`seasonFor` ignores them for this row. They only keep the rows in calendar
+order, which `seasons.test.ts` checks.
+
+In some years a day between 23 and 30 November has no season: 23 November in
+2025, 23 and 24 November in 2030, and 30 November in 2027. Such a day is a
+neutral date. Black week has no always-on hours.
+
+The user moved Late Autumn from 27 to 30 November to 16 to 22 November. The
+gap after Spooky Season is now 6 to 15 November, and it lasts ten days.
 
 ### The always-on hours (129-10)
 
@@ -176,20 +214,24 @@ it on unmount.
 variety. It exports these names:
 
 - `SCENES`, a table from a `RowKey` to five `SceneRow` values, so there are
-  30 rows. `SceneKey` is a `SeasonId` or `"neutral"`, so there are ten keys.
+  30 rows. `SceneKey` is a `SeasonId` or `"neutral"`, so there are eleven keys.
   A `ScriptKey` is a key that runs scripts: `"neutral"`, `"christmas"`,
-  `"new-year"`, and `"winterfest"`. A `RowKey` is a `SceneKey` that is not a
+  `"new-year"`, `"winterfest"`, and `"black-week"`. A `RowKey` is a `SceneKey` that is not a
   `ScriptKey`, so there are six: `spring-bloom`, `green-season`, `midsummer`,
   `harvest-festival`, `spooky-season`, and `late-autumn`. A `ScriptKey` has no
   rows. `"neutral"` has the ten scripts of `OFFSEASON` (129-18), `"christmas"`
   has the seven scripts of `CHRISTMAS` (129-19), `"new-year"` has the seven
-  scripts of `NEWYEAR` (129-20), and `"winterfest"` has the eight scripts of
-  `WINTERFEST` (129-21). So there are 62 scenes.
+  scripts of `NEWYEAR` (129-20), `"winterfest"` has the eight scripts of
+  `WINTERFEST` (129-21), and `"black-week"` has the nine scripts of `BLACKWEEK`
+  (129-22). So there are 71 scenes.
 - `SCENES_PER_KEY` (5), `SCENE_SECONDS` (35), and `FADE_SECONDS` (0.7).
 - `sceneCount(key)` returns 10 for `"neutral"`, 7 for `"christmas"` and
-  `"new-year"`, 8 for `"winterfest"`, and `SCENES_PER_KEY` for any other key
-  (129-18, 129-19, 129-20, 129-21). `isScripted(key)` reports
-  whether `key` is a `ScriptKey` (129-19).
+  `"new-year"`, 8 for `"winterfest"`, 9 for `"black-week"`, and
+  `SCENES_PER_KEY` for any other key (129-18, 129-19, 129-20, 129-21, 129-22).
+  `isScripted(key)` reports whether `key` is a `ScriptKey` (129-19). Since
+  129-22 it tests whether `key` is a key of `SCRIPTED`.
+- `sceneWeights(key)` returns the weight of each scene of `key`, in the order
+  of the scenes (129-22). See "The Black Week scripts".
 - `holdStill(scene)` moves a scene with a script to the still time of its
   script, for reduced motion (129-18).
 - `SCALE` (2) and `FPS` (12). One scene pixel is `SCALE` CSS pixels, and the
@@ -227,10 +269,11 @@ source. Each effect takes its places from a hash of an index and from the time
 of the scene. So a test uses a fake `Painter` and gets the same picture each
 time. `PALETTES` gives each key an earth colour and an edge colour.
 
-The 62 scenes:
+The 71 scenes:
 
 | Key | Scenes |
 |---|---|
+| `black-week` | The Bar, The Latinum Mountain, The Doors Open, The Money Bin, Merchandising, Through the Glasses, The Junk Shop, The Machine's Markup, The Sign Goes Wrong |
 | `new-year` | Year 3000, The Statue Walks, Y2K, The Gate at Midnight, The Wrong Year, Thumb against the Cloud, Fireworks over the River |
 | `winterfest` | The Walker Falls, The Gate under the Ice, The Ship in the Glacier, The Climb, The Dog in the Snow, The Station in the Ice, The Maze, The Prison Colony |
 | `christmas` | Party at the Tower, The House with the Traps, Gremlins in the Tree, Robot Santa, The Light Show, The Ornament, The Ribbon at Christmas |
@@ -333,8 +376,9 @@ The scene differs from the supplied engine on purpose:
 
 `web/src/season/scene.test.ts` uses a fake `Painter`. It checks the table (seven
 keys with five rows each, ten neutral scripts, seven Christmas scripts, seven
-New Year scripts, eight Winterfest scripts, 62 distinct names, and the same ids
-as `SEASONS` in `SCENES`, except `christmas`, `new-year`, and `winterfest`),
+New Year scripts, eight Winterfest scripts, nine Black Week scripts, 71
+distinct names, and the same ids as `SEASONS` in `SCENES`, except `christmas`,
+`new-year`, `winterfest`, and `black-week`),
 that every scene of a season draws whole pixels with no
 rectangle as wide as the strip, that each prop paints something, the rotation
 and its wrap, the fade, a start index outside the range, the walkers and the
@@ -529,9 +573,63 @@ Open cleanup: the engine in `scene.ts` still has the branches for snow on
 roofs, treetops, and pines (`isSnowy`), the frozen lake, snow tufts on the
 ground, and the smoke of a cabin chimney. They key on `winterfest` and
 `new-year`, and no row reaches them now. They stay on purpose for the tuning
-slices of 129-22 and later. After the last of those slices, remove each branch
+slices of 129-23 and later. After the last of those slices, remove each branch
 that no row uses, or give it a row. The comments on the branches say that no
 row reaches them.
+
+#### The Black Week scripts (129-22)
+
+The `"black-week"` key runs scripts too. `web/src/season/blackweek.ts` holds the
+nine scripts in `BLACKWEEK`, and `SCRIPTED` and `isScripted` in `scene.ts` list
+the key. The key runs from the Monday before Black Friday to Cyber Monday (see
+"Black Week moves with the year"). The user chose the name Black Week and the
+nine scenes.
+
+Each script is a nod to a film, a series, or a game, and a person knows it by
+one famous moment about money or a sale. Eight scripts nod to a film or a
+series, and one nods to a game. No script shows a title, a logo, or a likeness
+of an actor. Each character is generic: a big-eared figure, a duck in a top
+hat, a small wise figure with a cane, and a flying blue shopkeeper.
+
+The rule about text is different here. The earlier keys allow the `CHALK` sign
+and little else. Black Week allows short sign words and prices, because the
+text is the joke. The user approved this exception. The scripts have their own
+font, `FONT` in `blackweek.ts`: capital letters, digits, and the signs `%`,
+`-`, and `+`, each glyph three pixels wide and five high.
+
+| Script | Nod | What the strip shows | Text on show |
+|---|---|---|---|
+| The Bar | Star Trek: Deep Space Nine | Latinum bars pile up on a counter, a big-eared figure stands by a spinning wheel, a banner unfolds, and two figures cross the floor | DISCOUNT 0%, DISCOUNT 50%, PROFIT 200%, BLACK FRIDAY |
+| The Latinum Mountain | Star Trek: Deep Space Nine | A pile of latinum bars grows, and then it collapses | none |
+| The Doors Open | South Park | A crowd waits at a shop with a sale plate, the doors open, and the crowd runs in | SALE |
+| The Money Bin | DuckTales | A duck in a top hat jumps into a pile of gold coins and swims in it | none |
+| Merchandising | Spaceballs | A small wise figure with a cane stands while goods pile up beside it | MERCH, and MERCH with a percent that rises |
+| Through the Glasses | They Live | Three boards show sale words, a figure puts on glasses, the strip turns gray, and the boards show orders | SALE, NEW, 50%, OBEY, BUY, CONSUME |
+| The Junk Shop | Star Wars: The Phantom Menace | A flying blue shopkeeper hovers by a junk pile, and a price plate rises | 20, 40, 80 |
+| The Machine's Markup | Borderlands, a game | A vending machine shows a discount that turns into a markup, and a figure raises its arms | -50%, +50%, +300%, +900% |
+| The Sign Goes Wrong | Star Trek: Deep Space Nine | A sign changes from 50% OFF to 500% OFF, a crowd rushes in, and the latinum bars vanish | 50% OFF, 50 % OFF, 500% OFF |
+
+The user wanted a banner that comes every few minutes. In The Bar, the banner
+BLACK FRIDAY unfolds inside the loop of 20 s. It covers the PROFIT 200% plate
+for a short time. No timer outside the scene drives it.
+
+`PALETTES` and `CANOPY` keep an entry for `"black-week"` for the same reason as
+for `"christmas"`. A script never reads them.
+
+##### The weight rule
+
+A `Script` has the optional field `weight`. If it is absent, the weight is 1.
+`sceneWeights(key)` returns the weights of the scenes of `key`. A key that runs
+rows gives 1 for each row. `nextRow(key, weights)` in `visits.ts` takes a count
+or an array of weights. A count gives each row the weight 1. The chance of a row
+is its weight divided by the sum of the weights. A weight that is not a finite
+number above 0 counts as 0. `nextRow` still never picks the scene of the last
+visit of the same key, unless every other row has the weight 0.
+
+Only The Bar has a weight above 1. Its weight is 2, so a visit shows it twice
+as often as each other scene that the last-visit rule allows. `SeasonScene.tsx`
+passes `sceneWeights(key)` to `nextRow`. The always-on hours ignore weights,
+and black week has no always-on hours.
 
 ### The component
 
@@ -851,6 +949,18 @@ Lettering, logos, and faces from the reference mock-ups of the Christmas scenes
 (129-19). The mock-ups had a lettered van, a company logo on a tower, and the
 face of a character. The scenes leave them out, by the same rules as 129-18.
 
+Fixed dates of 23 to 30 November for Black Week (129-22). Black Friday moves
+from 23 to 29 November, so fixed dates match the week only in the years in
+which Black Friday falls on 27 November. The season has a `moving` window that
+`blackWeek(year)` computes.
+
+Removing Late Autumn (129-22). Black Week takes the days of its old dates, 27 to
+30 November. The user kept the key and moved its dates to 16 to 22 November.
+
+A banner on a separate timer outside the scene (129-22). The user wanted a
+banner that comes every few minutes. The banner unfolds inside the loop of
+The Bar instead.
+
 The five walker rows for Winterfest (129-21). Snowy Pines, Cabin Smoke, Frozen
 Lake, Aurora Ridge, and Lantern Walk had no famous moment. The user chose
 scripted nods from an animated mock-up page, as for New Year. The slice removes
@@ -1116,7 +1226,30 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
   roof snow, smoke, and winterfest cast checks are gone, because the rows are
   gone. Text in `CHANGELOG.md` and `whats-new.ts`.
 
-- **129-22 and later — tune the scenes (planned, not started).** One key for
+- **129-22 — Black Week (built).** The problem: the user wanted a season for
+  Black Week, with scenes about money and sales. The design: `black-week` is a
+  new key with nine scripts in `BLACKWEEK` in `blackweek.ts` (see "The Black
+  Week scripts"). The season is the first with `moving(year)`, and
+  `blackWeek(year)` computes the window (see "Black Week moves with the
+  year"). `seasonFor` tests moving seasons first. Late Autumn moved from 27 to
+  30 November to 16 to 22 November, and the gap after Spooky Season is now 6 to
+  15 November. `Script` has the optional `weight`. `sceneWeights(key)` returns
+  the weights, and `nextRow(key, weights)` picks by weight. The Bar has the
+  weight 2. `SCRIPTED` has `"black-week"`, `isScripted` is `key in SCRIPTED`,
+  and `SCENES` still has six keys. There are 71 scenes. The scripts show sign
+  words and prices, which the earlier keys do not. In `ui-sweep.mjs`,
+  `SEASON_DATES` has `black-week` (25 November 2026) and moves `late-autumn` to
+  18 November, and `sceneNames` also reads `blackweek.ts`. Rejected: fixed dates
+  for the week, removing Late Autumn, and a banner on a separate timer (see
+  "What was rejected"). Tests: `seasons.test.ts` checks the gap list, 11 rows,
+  the `black-week` id, `blackWeek` for 2024 to 2040, and the precedence of black
+  week over late-autumn and christmas. The row of late-autumn is checked to
+  21 November, because the date table uses 2027, where 22 November is black
+  week. `scene.test.ts` checks 71 scenes, the script tests over five sets of
+  scripts, and the weights. `visits.test.ts` checks a weighted `nextRow`. Text
+  in `CHANGELOG.md` and `whats-new.ts`.
+
+- **129-23 and later — tune the scenes (planned, not started).** One key for
   each slice, in this order: late-autumn, spring-bloom, green-season,
   midsummer, harvest-festival, spooky-season. These are the six keys that have
   rows.
@@ -1164,8 +1297,9 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
     A tap in that moment can land on a different row. This is the accepted cost
     of a row that goes away.
 15. A visit shows one scene of the five, of the seven for christmas and
-    new-year, of the eight for winterfest, or of the ten for neutral (129-15,
-    129-19, 129-20, 129-21). The row differs from the row
+    new-year, of the eight for winterfest, of the nine for black-week, or of
+    the ten for neutral (129-15, 129-19, 129-20, 129-21, 129-22). The row
+    differs from the row
     of the last visit of the same key, so each scene shows over many visits.
     Only the always-on hours walk all five in one run.
 16. The sign of the title covers the middle of the strip, about 105 scene
@@ -1178,8 +1312,8 @@ and the `.png` loader in `web/test.mjs`. `pickFigure`, `auraFor`, and the
     local day, like the cap.
 18. A neutral script is opaque (129-18). It paints its own background, so it
     does not blend with a theme as the see-through rows do. This is a deliberate
-    change. The scripts of `christmas`, `new-year`, and `winterfest` are opaque
-    too.
+    change. The scripts of `christmas`, `new-year`, `winterfest`, and `black-week`
+    are opaque too.
 
 ## Verification
 
@@ -1266,7 +1400,8 @@ no season and shows the neutral scenes (see item 13).
     - 15 July: `midsummer`
     - 20 September: `harvest-festival`
     - 28 October: `spooky-season`
-    - 10 November: `late-autumn`
+    - 18 November: `late-autumn`
+    - 25 November: `black-week`, one of the nine Black Week scenes (129-22)
     - 10 December and 26 December: `christmas`, one of the seven Christmas
       scenes (129-19)
 13. Set the system date to a date in a gap, for example 15 April, 15 November,
@@ -1372,6 +1507,9 @@ no season and shows the neutral scenes (see item 13).
    21 days between two seasons, or shorten the row of the season whose days you
    take.
    A season can have more than one row. The rows then share the `id`.
+   A season whose dates move with the year also sets `moving`, a function from
+   a year to a window (129-22). Its `from` and `to` then only keep the rows in
+   calendar order, and `seasonFor` tests it before the fixed rows.
 2. Add the new id to `SeasonId` in `seasons.ts`.
 3. Add five rows to `SCENES` in `web/src/season/scene.ts`, with the same key,
    and add an entry to `PALETTES` and to `CANOPY`. Each row sets a name, an environment, an
@@ -1388,12 +1526,13 @@ no season and shows the neutral scenes (see item 13).
 date in no row.
 `scene.test.ts` checks that `SCENES` and `SEASONS` list the same ids, and that
 each key of `SCENES` has five rows. The `"neutral"`, `"christmas"`,
-`"new-year"`, and `"winterfest"` keys are not in `SCENES`. They use the scripts
-of `OFFSEASON` (129-18), `CHRISTMAS` (129-19), `NEWYEAR` (129-20), and
-`WINTERFEST` (129-21).
+`"new-year"`, `"winterfest"`, and `"black-week"` keys are not in `SCENES`. They
+use the scripts of `OFFSEASON` (129-18), `CHRISTMAS` (129-19), `NEWYEAR`
+(129-20), `WINTERFEST` (129-21), and `BLACKWEEK` (129-22).
 
 A key can run scripts and not rows, as `"neutral"`, `"christmas"`,
-`"new-year"`, and `"winterfest"` do (129-19, 129-20, 129-21).
+`"new-year"`, `"winterfest"`, and `"black-week"` do (129-19, 129-20, 129-21,
+129-22).
 For such a key, add the scripts to a file next to `christmas.ts`, import the
 shared parts from `strip.ts`, add the key to `SCRIPTED` in `scene.ts`, and add
 the key to `PALETTES` and `CANOPY`. A script never reads those two entries, but

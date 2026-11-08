@@ -1,8 +1,8 @@
 // chalk-web -- 129-19: the parts that every scripted scene shares.
 //
 // A scripted scene paints an opaque strip of STRIP_H scene pixels with one
-// draw function of the time. offseason.ts, christmas.ts, newyear.ts, and
-// winterfest.ts hold the scripts.
+// draw function of the time. offseason.ts, christmas.ts, newyear.ts,
+// winterfest.ts, and blackweek.ts hold the scripts.
 // This module holds the types of a script and the helpers that the scripts
 // share: a hash, the CHALK sign, the stars, and a filled circle.
 // Pure: nothing here uses a timer, a DOM, or a random source.
@@ -27,6 +27,9 @@ export interface Script {
   name: string;
   period: number;
   still: number;
+  // 129-22: the weight of the scene. A visit picks it in proportion to this
+  // number, against the weights of the other scenes of its key. Absent means 1.
+  weight?: number;
   draw(p: Px, a: Alpha, W: number, t: number): void;
 }
 

@@ -5,17 +5,20 @@
 // one scene. 129-16: the neutral scene has its own windows. 129-18: the neutral
 // scenes are ten scripts, and reduced motion holds the still frame of a script.
 // 129-19: the christmas key has seven scripts. 129-20: the new-year key has
-// seven scripts. 129-21: the winterfest key has eight scripts.
+// seven scripts. 129-21: the winterfest key has eight scripts. 129-22: the
+// black-week key has nine scripts, and a script can have a weight.
 //
 // One component serves every season and the dates between them. The registry
 // says which season it is, or null for a date in no season. season/scene.ts
 // holds five rows for each of six row keys, seven scripts for the christmas
 // key, seven scripts for the new-year key, eight scripts for the winterfest
-// key, and ten scripts for the neutral key, and it moves the scene. A visit
+// key, nine scripts for the black-week key, and ten scripts for the neutral
+// key, and it moves the scene. A visit
 // holds one scene. The always-on hours rotate through the scenes of the key.
 // The neutral scripts are in season/offseason.ts, the christmas scripts are in
-// season/christmas.ts, the new-year scripts are in season/newyear.ts, and the
-// winterfest scripts are in season/winterfest.ts. The schedule in
+// season/christmas.ts, the new-year scripts are in season/newyear.ts, the
+// winterfest scripts are in season/winterfest.ts, and the black-week scripts
+// are in season/blackweek.ts. The schedule in
 // season/peek.ts sets the bounds of a visit, and season/visits.ts grants a
 // visit under the caps in peek.ts. For a date in no season, it grants at most
 // one visit in each of the windows in peek.ts.
@@ -38,7 +41,8 @@
 // A visit makes a new scene, and the scene holds one scene of the key from
 // the start of the visit to its end. It does not rotate and does not fade
 // between scenes. nextRow in season/visits.ts picks the scene, and it is never
-// the scene of the last visit of the same key. The always-on hours start at a
+// the scene of the last visit of the same key. It picks by the weights of
+// sceneWeights in season/scene.ts. The always-on hours start at a
 // random scene and rotate through all scenes of the key. A scene rotates to the next one
 // every SCENE_SECONDS (see season/scene.ts).
 // The canvas has the attribute data-scene. Its value is the name of the scene
@@ -59,6 +63,7 @@ import {
   resizeScene,
   SCALE,
   sceneCount,
+  sceneWeights,
   stepScene,
   type SceneKey,
 } from "../season/scene";
@@ -102,7 +107,7 @@ function runScene(
   // 129-15: a visit holds the row that nextRow picks. The always-on hours
   // start at a random row and rotate.
   const count = sceneCount(key);
-  const index = always ? Math.floor(Math.random() * count) : nextRow(key, count);
+  const index = always ? Math.floor(Math.random() * count) : nextRow(key, sceneWeights(key));
   const scene = createScene(key, w, h, index, always);
   el.dataset.scene = scene.row.name;
   const paint = () => {
