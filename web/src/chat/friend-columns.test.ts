@@ -12,8 +12,9 @@ test("132-2: the longest label counts handles and the userID tail alike", () => 
 });
 
 test("132-2: the column width is the name plus the row's fixed parts", () => {
-  assert.equal(friendColumnMinWidth(7, false), "calc(7ch + 0.5rem + 26px)");
+  // 132-3: the fixed parts include the unread envelope, unread or not.
+  assert.equal(friendColumnMinWidth(7, false), "calc(7ch + 0.5rem + 1em + 0.5rem + 26px)");
   // Roster avatars add the 16px picture and its 8px margin.
-  assert.equal(friendColumnMinWidth(7, true), "calc(7ch + 0.5rem + 50px)");
-  assert.equal(friendColumnMinWidth(0, false), "calc(0ch + 0.5rem + 26px)");
+  assert.equal(friendColumnMinWidth(7, true), "calc(7ch + 0.5rem + 1em + 0.5rem + 50px)");
+  assert.equal(friendColumnMinWidth(0, false), "calc(0ch + 0.5rem + 1em + 0.5rem + 26px)");
 });

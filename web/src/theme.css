@@ -168,6 +168,15 @@
   --chalk-presence-away:        #c47f00;
   --chalk-presence-offline:     #7f8a82;
 
+  /* Unread glyph colors. Unlike presence, they follow the theme.
+     --chalk-unread is the designed green for the default theme, which
+     has no data-theme attribute. The [data-theme] rule derives it from
+     --chalk-fg for every other theme. --chalk-unread-mention derives
+     from --chalk-accent. A theme block can set both tokens to its own
+     values. (132-3) */
+  --chalk-unread:         #24f077;
+  --chalk-unread-mention: var(--chalk-accent);
+
   /* Type. --chalk-font and --chalk-font-scale are the two knobs the
      per-device display prefs write as inline styles on <html> (see
      src/display-prefs.ts); everything below derives from them, so a
@@ -5253,6 +5262,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
      scream against the soft background.
    ============================================================ */
 
+/* 132-3: the default theme has no data-theme attribute and takes its
+   unread green from :root. Every other theme sets data-theme on the root
+   element. This rule derives the unread color from that theme's
+   --chalk-fg. */
+[data-theme] {
+  --chalk-unread: var(--chalk-fg);
+}
+
 [data-theme="light"] {
   --chalk-bg:           #f7f5ee;
   --chalk-bg-elev:      #ebe7da;
@@ -7605,27 +7622,40 @@ body.chalk-resizing-y .chalk-composer-resizer {
    Phase 33-2: unread indicator
    ============================================================ */
 
-/* A 7px dot pinned to the right edge of a sidebar row. Smaller than the
-   presence dot on purpose -- presence is about people and is always
-   rendered; unread is transient and should not compete with it. The
-   margin-left:auto works for both row shapes: the channel row's flex
-   container and the friend row's flex-start <li>. */
+/* The unread marker is a small filled envelope. A round dot in the text
+   color looked like a second presence light, so the marker has another
+   shape. Presence is about people and always shows. Unread is transient
+   and must not look like it. A conversation that was read shows no
+   glyph. The ::before pseudo-element draws the glyph with a mask. The
+   flap is cut out of the mask, so the flap shows the row background.
+   The element itself has no mask, so the glow of a mention is not
+   clipped. Unread uses --chalk-unread. A mention uses the same shape in
+   --chalk-unread-mention, with a glow. The size is 1em square, so it
+   follows the text size. margin-left:auto pins it to the right edge of
+   every row, friend or channel. In the friend grid each row is a grid
+   cell, so the envelopes in a column line up. (132-3) */
 .chalk-unread-dot {
   margin-left: auto;
   display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
+  width: 1em;
+  height: 1em;
   flex-shrink: 0;
-  background: var(--chalk-fg);
+}
+.chalk-unread-dot::before {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--chalk-unread);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cmask id='m'%3E%3Crect x='3' y='5' width='18' height='14' rx='3' fill='%23fff'/%3E%3Cpath d='M5.5 8.5L12 13.5L18.5 8.5' fill='none' stroke='%23000' stroke-width='2.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/mask%3E%3Crect x='3' y='5' width='18' height='14' rx='3' mask='url(%23m)'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cmask id='m'%3E%3Crect x='3' y='5' width='18' height='14' rx='3' fill='%23fff'/%3E%3Cpath d='M5.5 8.5L12 13.5L18.5 8.5' fill='none' stroke='%23000' stroke-width='2.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/mask%3E%3Crect x='3' y='5' width='18' height='14' rx='3' mask='url(%23m)'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
-/* Mention: the same dot in the accent color with a glow, so "someone
-   named me" separates from "something happened" at a glance rather than
-   needing a count. */
 .chalk-unread-dot--mention {
-  background: var(--chalk-accent);
-  box-shadow: 0 0 5px var(--chalk-accent);
+  filter: drop-shadow(0 0 3px var(--chalk-unread-mention));
+}
+.chalk-unread-dot--mention::before {
+  background: var(--chalk-unread-mention);
 }
 
 /* A voice channel row already spends its right edge on the occupant
@@ -11192,9 +11222,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
   opacity: 1;
 }
 
-/* A mentioned thread gets the accent edge, the same signal
-   .chalk-unread-dot--mention gives in the sidebar -- "someone named me"
-   separating from "something happened" without resorting to a count. */
+/* A mentioned thread gets the accent edge. The glowing accent envelope of
+   .chalk-unread-dot--mention gives the same signal in the sidebar:
+   "someone named me" differs from "something happened", with no count. */
 .chalk-threadinbox-item--mention .chalk-threadinbox-row {
   border-left-color: var(--chalk-accent);
 }

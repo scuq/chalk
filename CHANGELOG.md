@@ -13,6 +13,7 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Changed
+- The marker for unread messages is now a small filled envelope in the colors of your theme. It no longer looks like an online dot. The envelope glows for a mention. It sits at the right edge of the row. In the two-column friend list, the envelopes of a column line up. An unread message no longer cuts off a long friend name.
 - The call buttons in the column beside the sidebar are larger, and leave is now a red hang-up button. The green border on a person's picture alone shows who is talking, and the extra green dot is gone.
 - The light in front of a busy voice room and beside the chalk logo now says LIVE instead of REC, because chalk records nothing.
 

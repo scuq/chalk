@@ -1,14 +1,14 @@
 # Phase 132 — friend columns: compact friend rows and a two-column list
 
-**Status:** built, 132-1 and 132-2 (2026-11-08). Unit-tested by
+**Status:** built, 132-1 to 132-3 (2026-11-08). Unit-tested by
 `web/src/chat/friend-columns.test.ts`, the `132-2` case in
-`web/src/display-prefs.test.ts`, and the `132` case in
-`web/src/theme-sidebar.test.ts`, which asserts the CSS declarations against
+`web/src/display-prefs.test.ts`, and the `132` and `132-3` cases in
+`web/src/theme-sidebar.test.ts`, which assert the CSS declarations against
 the stylesheet. A live probe on a 1280×800 desktop viewport passed on
 2026-11-08. It covered the column count at three sidebar widths, the row
 height, the roster avatar width, the check box, and a reload. The probe
-logged no page errors. Three items stay open on the manual checklist at the
-end of this file.
+logged no page errors. Six items stay open on the manual checklist at the
+end of this file. The probe did not cover 132-3.
 
 **Tags:** `#roster`, `#settings` → `tools/where.sh -g roster`
 
@@ -63,6 +63,42 @@ the class `chalk-sidebar-list--columns` when it is on. The check box **show
 friends in two columns** is under appearance in the settings, and
 `settings-nav.ts` has search keywords for it.
 
+### An envelope for unread (132-3)
+
+The unread marker was a round dot of 7px in the text color. Beside the
+online presence dot, which is also a small round dot, it looked like a second
+presence light. In the two-column list, an unread friend took
+extra width, and a long name was cut off when the envelope appeared.
+
+The marker is now one glyph: a filled, rounded envelope. The operator gave
+the design as an SVG. The flap is cut out of the mask, so the flap shows the
+row background. A conversation that was read shows nothing, so there is no
+glyph for the read state.
+
+- The rule `.chalk-unread-dot::before` draws the glyph with a CSS mask. The
+  element itself has no mask, so the glow of a mention (`filter:
+  drop-shadow`) is not clipped.
+- Unread uses `--chalk-unread`. A mention (`.chalk-unread-dot--mention`) uses
+  the same shape in `--chalk-unread-mention`, with a soft glow. A mention
+  differs from unread by color and glow, not by shape.
+- `:root` sets `--chalk-unread` to `#24f077`, the designed green, for the
+  default theme. The default theme has no `data-theme` attribute. Every other
+  theme sets `data-theme` on the root element, and the `[data-theme]` rule
+  derives `--chalk-unread` from the `--chalk-fg` of that theme.
+  `--chalk-unread-mention` derives from `--chalk-accent`. A theme block can
+  set the tokens to its own values. The presence colors stay fixed across
+  themes.
+- The size is 1em square, so the glyph follows the text size preference.
+- Every row, friend or channel, pins the glyph to its right edge with
+  `margin-left: auto`. No friend-row rule overrides this. In the friend grid
+  each row is a grid cell, so the glyph sits at the right edge of the cell.
+  The envelopes in a column line up, in the first column too.
+- `friendColumnMinWidth` always counts the 1em glyph and its 0.5rem gap in the
+  column width. An unread message never changes how many columns the list has.
+- The class name `chalk-unread-dot` and the test ids stay as they were, so
+  the change is small. `UnreadDot.tsx` renders the marker for the sidebar and
+  for the conversation list.
+
 ## What was rejected
 
 - A name-length threshold in code. CSS measures the real width, so a sidebar
@@ -72,6 +108,17 @@ friends in two columns** is under appearance in the settings, and
   width of the sidebar on each device, so one stored value is wrong on one of
   them. The preference stays on the device, like the font and the layout
   width.
+- A Unicode envelope character for the unread marker. Some platforms draw it
+  as a color emoji, and no theme can recolor an emoji.
+- A bold name instead of a glyph. The glyph shows a mention and an unread
+  state, and a bold name shows only one state.
+- An outline glyph for unread, with the filled one for a mention. One filled
+  glyph replaced it, because the read state needs no glyph and one shape is
+  simpler to recognize.
+- The envelope right after the name. Names of different length put the
+  envelopes at different positions, so the envelopes in a column did not line
+  up.
+- A count. The unread state does not hold a reliable message count.
 
 ## The slices
 
@@ -82,6 +129,11 @@ friends in two columns** is under appearance in the settings, and
   `friendColumns` preference in `display-prefs.ts` and its test. The prop in
   `App.tsx`. The check box in `ProfilePanel.tsx`. The keywords in
   `settings-nav.ts`. The grid assertions in `theme-sidebar.test.ts`.
+- **132-3 — envelope marker.** The mask rule on `::before` and the two tokens
+  in `theme.css`. The `[data-theme]` rule. The right-edge pin for every row. The envelope
+  width in `friendColumnMinWidth` in `friend-columns.ts`. The comments in
+  `UnreadDot.tsx`. The `132-3` test in `theme-sidebar.test.ts` and the width
+  assertions in `friend-columns.test.ts`.
 
 ## Manual checklist
 
@@ -105,3 +157,13 @@ four to eight characters. The ticked items below are the ones it covered.
       this.
 - [ ] The phone view. The friends list looks right, and a long name shows an
       ellipsis.
+- [ ] A light theme. An unread friend and an unread channel show the filled
+      envelope in a readable color. A mention shows the same envelope in the
+      accent color, with a glow that the shape does not clip.
+- [ ] A dark theme. The same check as for the light theme.
+- [ ] The default theme. An unread friend shows the envelope in `#24f077`.
+- [ ] The two-column list with an unread friend. The envelope sits at the right
+      edge of its cell. The envelopes in a column line up, in the first column
+      too. The envelope does not sit between the columns.
+- [ ] An unread friend with a long name in a sidebar of 220px. The list keeps
+      the same number of columns, and the name keeps its ellipsis.

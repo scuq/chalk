@@ -74,7 +74,7 @@ import { roomCardRows } from "../chat/hovercard"; // 131-3
 import type { DisplayNameMap } from "../auth/display-names";
 
 // 33-2: the unread marker. Extracted to UnreadDot.tsx in 62-6 so the
-// Zuckermode conversation list renders the identical dot.
+// Zuckermode conversation list renders the identical filled envelope.
 import { UnreadDot } from "./UnreadDot";
 
 // Channel-kind indicators (30-5d): inline SVGs in currentColor, replacing

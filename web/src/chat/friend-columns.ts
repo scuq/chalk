@@ -26,6 +26,10 @@ export function longestFriendName(friends: readonly FriendLabel[]): number {
 // the 16px picture and its 8px margin add to this.
 const FIXED_PX = 8 + 16 + 2;
 const AVATAR_PX = 16 + 8;
+// 132-3: the 1em unread envelope and its 0.5rem gap. Always counted, so an
+// unread message never changes how many columns the list has. Before, a
+// long name was cut off when an envelope appeared.
+const UNREAD = "1em + 0.5rem";
 
 /**
  * friendColumnMinWidth returns the CSS length of a row that shows `chars`
@@ -33,5 +37,5 @@ const AVATAR_PX = 16 + 8;
  */
 export function friendColumnMinWidth(chars: number, avatars: boolean): string {
   const fixed = FIXED_PX + (avatars ? AVATAR_PX : 0);
-  return `calc(${chars}ch + 0.5rem + ${fixed}px)`;
+  return `calc(${chars}ch + 0.5rem + ${UNREAD} + ${fixed}px)`;
 }

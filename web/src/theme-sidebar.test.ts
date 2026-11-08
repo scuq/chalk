@@ -83,6 +83,35 @@ test("132: friend rows are compact, and the list can be a two-column grid", () =
   );
 });
 
+test("132-3: unread is a filled envelope in a theme token, and sits at the right edge of every row", () => {
+  // The default theme has its own green. Every other theme derives the color.
+  assert.match(css, /--chalk-unread:\s*#24f077;/, "the default theme's unread green");
+  assert.match(block("[data-theme]"), /--chalk-unread:\s*var\(--chalk-fg\);/, "other themes derive it");
+  assert.match(css, /--chalk-unread-mention:\s*var\(--chalk-accent\);/, "a mention follows the accent");
+  const glyph = block(".chalk-unread-dot::before");
+  assert.match(glyph, /background:\s*var\(--chalk-unread\);/, "the glyph color is only the token");
+  assert.match(glyph, /(^|[;\s])mask:\s*url\("data:image\/svg\+xml/, "the glyph is a mask");
+  assert.match(glyph, /M5\.5 8\.5L12 13\.5L18\.5 8\.5/, "the flap is cut out of the envelope");
+  assert.doesNotMatch(block(".chalk-unread-dot"), /border-radius:\s*50%/, "the glyph is not a round dot");
+  // The glow sits on the element, the mask on its ::before, so the mask
+  // does not clip the glow.
+  assert.match(block(".chalk-unread-dot--mention"), /filter:\s*drop-shadow\(/, "a mention glows");
+  assert.match(
+    block(".chalk-unread-dot--mention::before"),
+    /background:\s*var\(--chalk-unread-mention\);/,
+    "a mention uses its own token",
+  );
+  // 132-3: every row, friend or channel, pins the glyph to its right edge.
+  // In the friend grid that is the edge of the cell, so the envelopes in a
+  // column line up.
+  assert.match(block(".chalk-unread-dot"), /margin-left:\s*auto;/, "the glyph sits at the row's end");
+  assert.equal(
+    /\.chalk-sidebar-item--friend\s+\.chalk-unread-dot\s*\{/.test(css),
+    false,
+    "no friend-row rule moves the glyph from the right edge",
+  );
+});
+
 test("the channels section keeps a floor", () => {
   const decls = block(".chalk-sidebar-section--channels");
   assert.match(decls, /flex:\s*1;/, "channels still fills what the others leave");
