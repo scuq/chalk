@@ -28,6 +28,7 @@ Flags:
 - `--voice` starts Chromium with a fake camera and microphone. Ann creates the voice room "lounge" with every friend, and the others join.
 - `--voice-only` (with `--voice`) screenshots the voice room and stops.
 - `--sweep-voice` (with `--voice`) runs the voice scenario sweep.
+- `--groups` also creates six channels in channel groups, and bob posts into one of them. Use it to look at chaos mode with group tags.
 - `--headed` opens a visible window signed in as ann and keeps it open.
 - `--cycle` (with `--headed`) changes the theme every `--cycle-secs` seconds. The default is 5.
 
@@ -60,9 +61,10 @@ node .claude/skills/run-chalk/ui-sweep.mjs --sweep-only --themes=green,light,cyb
 node .claude/skills/run-chalk/ui-sweep.mjs --voice --sweep-voice --users=5
 node .claude/skills/run-chalk/ui-sweep.mjs --headed --voice --users=5
 node .claude/skills/run-chalk/ui-sweep.mjs --headed --cycle
+node .claude/skills/run-chalk/ui-sweep.mjs --headed --groups
 ```
 
-The last two commands are demos. They run until you close the window or stop the node process.
+The last three commands are demos. They run until you close the window or stop the node process.
 Run a demo in the background, so that the window stays open after the call.
 Each user registers with Argon2id, so setup takes some time. More users take more time.
 

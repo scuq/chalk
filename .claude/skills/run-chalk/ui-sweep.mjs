@@ -18,7 +18,8 @@
 // the signup form. User ann is the viewer. User bob is the friend. Both get
 // a run suffix. The script makes ann and bob friends, creates the channels
 // general, random, and quiet with bob as a member, and has bob post into
-// general so that ann has an unread.
+// general so that ann has an unread. With --groups, the script also creates
+// six channels in channel groups, and bob posts into one of them.
 //
 // Each flag also reads as an upper-case environment variable with
 // underscores: --sweep-voice is the same as SWEEP_VOICE=1. An unknown flag
@@ -51,6 +52,13 @@
 //                   ok or CLIPPED for each of four viewport sizes. CLIPPED
 //                   means that a tile or card goes past the stage edge.
 //                   Use --users=5 to get three or more cameras.
+//   --groups        After general, random, and quiet, create six channels in
+//                   channel groups: frontend and backend in "dev", tracks in
+//                   "music", infrastructure-migration in "operations",
+//                   boardgames in "friday-boardgame-night", and alerts in
+//                   "ops". Bob also posts into infrastructure-migration, so
+//                   that channel is unread. The long names show how chaos
+//                   mode shortens the group tag before the channel name.
 //   --headed        Open a visible Chromium window signed in as ann and keep
 //                   it open after setup (a demo). With --voice, the other
 //                   users stay in the call in background browsers. The
@@ -79,7 +87,7 @@ import { mkdirSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 
 for (const a of process.argv.slice(2)) {
   const m = /^--([a-z][a-z-]*)(?:=(.*))?$/.exec(a);
-  const known = ['themes', 'sweep-only', 'phone', 'voice', 'voice-only', 'sweep-voice', 'users', 'headed', 'cycle', 'cycle-secs'];
+  const known = ['themes', 'sweep-only', 'phone', 'voice', 'voice-only', 'sweep-voice', 'users', 'headed', 'cycle', 'cycle-secs', 'groups'];
   if (!m || !known.includes(m[1])) {
     console.error(`unknown argument: ${a} (known: --${known.join(', --')})`);
     process.exit(2);
@@ -165,10 +173,22 @@ async function register(page, username) {
   log('registered', username);
 }
 
-async function createChannel(page, name) {
+async function createChannel(page, name, group) {
   await page.locator("[data-testid='sidebar-new']").click();
   await page.waitForSelector("[data-testid='create-modal']", { timeout: 5000 });
   await page.locator("[data-testid='create-modal-name']").fill(name);
+  // Pick the group if it exists. If not, select the last option (the one
+  // that adds a group) and type the new group name.
+  if (group) {
+    const sel = page.locator("[data-testid='create-modal-group']");
+    const options = await sel.locator('option').allTextContents();
+    if (options.includes(group)) {
+      await sel.selectOption(group);
+    } else {
+      await sel.selectOption({ index: options.length - 1 });
+      await page.locator("[data-testid='create-modal-group-new']").fill(group);
+    }
+  }
   await page.locator("[data-testid='friend-picker-item']", { hasText: ub }).first().click();
   await page.locator("[data-testid='create-modal-submit']").click();
   await page.waitForSelector("[data-testid='composer-input']", { timeout: 15000 });
@@ -247,12 +267,35 @@ await A.locator("[data-testid='composer-send']").click();
 await A.waitForSelector("[data-testid='message-body']", { timeout: 8000 });
 await createChannel(A, 'random');
 await createChannel(A, 'quiet');
+// Channels in groups, for a look at chaos mode (one activity list with group tags).
+const GROUPS = process.env.GROUPS === '1';
+if (GROUPS) {
+  for (const [name, group] of [
+    ['frontend', 'dev'],
+    ['backend', 'dev'],
+    ['tracks', 'music'],
+    ['infrastructure-migration', 'operations'],
+    ['boardgames', 'friday-boardgame-night'],
+    ['alerts', 'ops'],
+  ]) {
+    await createChannel(A, name, group);
+    log('created', name, 'in', group);
+  }
+}
 
 // Bob posts into general while ann is in quiet, so general has an unread.
 await B.waitForTimeout(1500);
 await B.locator('.chalk-sidebar-item', { hasText: 'general' }).first().click();
 await B.locator("[data-testid='composer-input']").fill('hi ann, this one is unread for you');
 await B.locator("[data-testid='composer-send']").click();
+if (GROUPS) {
+  // Dismiss the avatar nudge first. Its backdrop intercepts the click on the sidebar row.
+  await B.waitForTimeout(800);
+  await clearOverlaysEarly(B);
+  await B.locator('.chalk-sidebar-item', { hasText: 'infrastructure-migration' }).first().click();
+  await B.locator("[data-testid='composer-input']").fill('the migration window moved to friday');
+  await B.locator("[data-testid='composer-send']").click();
+}
 await A.waitForTimeout(2000);
 
 async function clearOverlays(page) {
