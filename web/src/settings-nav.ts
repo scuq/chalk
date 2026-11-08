@@ -213,6 +213,9 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       "recent",
       "reorder",
       "rearrange",
+      // 134-1: chaos mode.
+      "chaos",
+      "chaos mode",
     ],
   },
   {

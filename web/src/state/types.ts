@@ -589,6 +589,8 @@ export interface RosterPrefs {
   groupSort?: Record<string, string>;
   channelOrder?: Record<string, string[]>;
   groupOrder?: string[];
+  // 134-1: chaos mode (desktop). Absent or any value but false means on.
+  chaos?: boolean;
 }
 
 // Phase 9.7d: resolved chat prefs (all fields required + defaulted).
@@ -680,6 +682,9 @@ export interface ResolvedRosterPrefs {
   groupSort: Record<string, ChannelSortMode>;
   channelOrder: Record<string, string[]>;
   groupOrder: string[];
+  // 134-1: true unless the stored value is exactly false, so existing
+  // accounts have chaos mode on until they turn it off.
+  chaos: boolean;
 }
 
 export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterPrefs {
@@ -699,6 +704,7 @@ export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterP
     hidden: normalizeHidden(r.hidden),
     nameStyle: r.nameStyle === "short" ? "short" : "full",
     ...resolveRosterOrder(r),
+    chaos: r.chaos !== false,
   };
 }
 

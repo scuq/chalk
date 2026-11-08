@@ -6048,6 +6048,8 @@ export function App() {
           channels={state.channelOrder.map((id) => state.channels[id])}
           friends={state.friends}
           groupingEnabled={selectRosterPrefs(state.prefs).groupingEnabled}
+          // 134-1: chaos mode is desktop only.
+          chaos={selectRosterPrefs(state.prefs).chaos && !isMobile}
           groupOverrides={selectRosterPrefs(state.prefs).groupOverrides}
           onSetChannelGroup={(channelID, group) => {
             const c = clientRef.current;
@@ -7419,6 +7421,14 @@ export function App() {
             if (!c || !c.isOpen()) return;
             const current = selectRosterPrefs(state.prefs);
             c.send(TypePrefsSet, { patch: { roster: { ...current, groupingEnabled: enabled } } });
+          }}
+          // 134-1: chaos mode. Whole roster object over the wire, as above.
+          rosterChaos={selectRosterPrefs(state.prefs).chaos}
+          onSetRosterChaos={(enabled) => {
+            const c = clientRef.current;
+            if (!c || !c.isOpen()) return;
+            const current = selectRosterPrefs(state.prefs);
+            c.send(TypePrefsSet, { patch: { roster: { ...current, chaos: enabled } } });
           }}
           // 106-3: full vs short channel names in the roster. Whole roster
           // object over the wire, as above.

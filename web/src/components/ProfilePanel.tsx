@@ -225,6 +225,9 @@ interface Props {
   // override it (and hold its own hand-written order) from its header menu.
   rosterChannelSort?: AutoSortMode;
   onSetRosterChannelSort?: (mode: AutoSortMode) => void;
+  // 134-1: chaos mode, a desktop-only checkbox.
+  rosterChaos?: boolean;
+  onSetRosterChaos?: (enabled: boolean) => void;
   // 62-5: Zuckermode -- the phone's unified conversation list. Synced
   // account-wide, consumed only on mobile.
   zuckerEnabled?: boolean;
@@ -262,6 +265,8 @@ export function ProfilePanel({
   onSetRosterNameStyle,
   rosterChannelSort,
   onSetRosterChannelSort,
+  rosterChaos,
+  onSetRosterChaos,
   zuckerEnabled,
   onSetZucker,
   onClose,
@@ -288,6 +293,9 @@ export function ProfilePanel({
   // 94-3: the shortcut sheet reads differently on a phone -- Enter is a
   // newline there.
   const isMobile = useIsMobile();
+  // 134-1: chaos mode is in effect only on desktop. While it is, the grouping
+  // and sort controls have no effect, so they are disabled.
+  const chaosOn = !isMobile && rosterChaos === true;
 
   // Local UI state: are we in the rotate-recovery sub-view?
   // Local because no other component cares.
@@ -1477,15 +1485,39 @@ export function ProfilePanel({
           )}
 
           {/* 54-3: channel grouping. Off renders the sidebar's channel list
-              flat, exactly as before phase 54. */}
+              flat, exactly as before phase 54.
+              134-1: the chaos mode checkbox is first. On desktop, chaos mode
+              renders the list flat whatever the grouping setting says. */}
           {show("roster") && rosterGroupingEnabled !== undefined && onSetRosterGrouping && (
             <section class="chalk-profile-roster" data-testid="roster-settings">
               <h3>channel list</h3>
+              {!isMobile && rosterChaos !== undefined && onSetRosterChaos && (
+                <div class="chalk-profile-field">
+                  <label class="chalk-profile-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={rosterChaos}
+                      onChange={(e) =>
+                        onSetRosterChaos((e.target as HTMLInputElement).checked)
+                      }
+                      data-testid="roster-chaos"
+                    />
+                    <span>
+                      chaos mode
+                      <span class="chalk-profile-desc">
+                        one list, newest activity on top; each channel shows
+                        its group as a small tag
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
               <div class="chalk-profile-field">
                 <label class="chalk-profile-checkbox-label">
                   <input
                     type="checkbox"
                     checked={rosterGroupingEnabled}
+                    disabled={chaosOn}
                     onChange={(e) =>
                       onSetRosterGrouping((e.target as HTMLInputElement).checked)
                     }
@@ -1494,9 +1526,9 @@ export function ProfilePanel({
                   <span>
                     group channels
                     <span class="chalk-profile-desc">
-                      collapsible headers in the sidebar, once more than one
-                      group exists; each channel's group is suggested by its
-                      creator
+                      {chaosOn
+                        ? "used when chaos mode is off"
+                        : "collapsible headers in the sidebar, once more than one group exists; each channel's group is suggested by its creator"}
                     </span>
                   </span>
                 </label>
@@ -1543,14 +1575,16 @@ export function ProfilePanel({
                   <label class="chalk-profile-label" for="roster-channel-sort">
                     sort channels by
                     <span class="chalk-profile-desc">
-                      one group can be set differently, or ordered by hand,
-                      from its header in the channel list
+                      {chaosOn
+                        ? "used when chaos mode is off"
+                        : "one group can be set differently, or ordered by hand, from its header in the channel list"}
                     </span>
                   </label>
                   <select
                     id="roster-channel-sort"
                     class="chalk-profile-select"
                     value={rosterChannelSort}
+                    disabled={chaosOn}
                     onChange={(e) =>
                       onSetRosterChannelSort(
                         (e.target as HTMLSelectElement).value as AutoSortMode,

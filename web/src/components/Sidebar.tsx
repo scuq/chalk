@@ -130,6 +130,9 @@ interface Props {
   // Headers only appear once a second group exists -- an all-'General'
   // roster looks exactly like the ungrouped one.
   groupingEnabled?: boolean;
+  // 134-1: chaos mode. The text channels render as one flat list in activity
+  // order, also when groupingEnabled is on. App passes false on a phone.
+  chaos?: boolean;
   // 54-4: this user's channel id -> group overrides (resolved prefs), and
   // the setter behind the context menu's group row. null group = back to
   // the creator's suggestion. Optional so other Sidebar callers are
@@ -286,6 +289,7 @@ export function Sidebar({
   onQuickRoomClick,
   onAddFriendClick,
   groupingEnabled = true,
+  chaos = false,
   groupOverrides,
   onSetChannelGroup,
   hiddenChannels,
@@ -510,12 +514,19 @@ export function Sidebar({
   // the account default is the only order there is. It still applies, or the
   // activity setting would silently do nothing for anyone who turned
   // grouping off.
+  // 134-1: in chaos mode the order is always "activity", whatever the
+  // account default is.
   // 114-6: while the mouse pointer rests on the list, the order it had when
   // the pointer came in holds, so a message landing does not move the row
   // under the click. Null is no hold. The list's pointer handlers set it.
   const [heldIDs, setHeldIDs] = useState<string[] | null>(null);
   const visibleChannels = holdOrder(
-    orderChannels(filterRoster(textChannels, channelFilter, filterText), channelSort, undefined, activity),
+    orderChannels(
+      filterRoster(textChannels, channelFilter, filterText),
+      chaos ? "activity" : channelSort,
+      undefined,
+      activity,
+    ),
     heldIDs,
   );
   const showChannelFilter = showRosterFilter(textChannels.length);
@@ -523,6 +534,8 @@ export function Sidebar({
   // 54-3: grouped view. An active filter always renders flat -- a match
   // hidden inside a collapsed group would read as "filter is broken" -- and
   // a single group draws no headers. Collapse state is per-machine.
+  // 134-1: chaos mode also renders flat. The saved group orders stay in the
+  // prefs and apply again when chaos mode is off.
   // 114-1: the order the reader asked for goes on here, after grouping and
   // before the row flatten -- one site, over data the client already holds.
   // With empty prefs both calls are the identity and the roster is byte for
@@ -539,13 +552,16 @@ export function Sidebar({
     }),
     groupOrder,
   );
+  // 134-1: grouping is in effect only when chaos mode is off. It gates the
+  // grouped view, the sole-group order, and drag and menu reorder.
+  const inGroups = groupingEnabled && !chaos;
   const groupedView =
-    groupingEnabled && channelFilter.trim() === "" && channelGroups.length > 1;
+    inGroups && channelFilter.trim() === "" && channelGroups.length > 1;
   // 114-1: with grouping on and only one group there are no headers, but
   // the list IS that group -- so it renders in that group's order rather
   // than the account default's. Filtering still renders flat.
   const soleGroup =
-    groupingEnabled && channelFilter.trim() === "" && channelGroups.length === 1
+    inGroups && channelFilter.trim() === "" && channelGroups.length === 1
       ? channelGroups[0]
       : null;
 
@@ -554,7 +570,7 @@ export function Sidebar({
   // because then there is nothing for "up" to mean. A hidden channel is off
   // the roster and so in no group either.
   const orderableGroupFor = (ch: ChannelSummary): RosterGroup | null => {
-    if (!onSetChannelOrder || !groupingEnabled || channelFilter.trim() !== "") {
+    if (!onSetChannelOrder || !inGroups || channelFilter.trim() !== "") {
       return null;
     }
     if (ch.isDM || ch.channelType === "voice") return null;
@@ -619,7 +635,7 @@ export function Sidebar({
 
   // The roster is only orderable while it is actually rendering in group
   // order -- see orderableGroupFor.
-  const rosterInGroupOrder = groupingEnabled && channelFilter.trim() === "";
+  const rosterInGroupOrder = inGroups && channelFilter.trim() === "";
   const canDragChannels = !!onSetChannelOrder && rosterInGroupOrder;
   const canDragGroups = !!onSetGroupOrder && groupedView;
 

@@ -23,6 +23,7 @@ import {
   resolveRosterOrder,
   type RosterOrderState,
 } from "./roster-order";
+import { selectRosterPrefs } from "../state/types.ts";
 
 function ch(id: string, createdAtMs = 0) {
   return { id, createdAt: new Date(createdAtMs) };
@@ -374,4 +375,14 @@ test("a hundred hand-ordered channels fit; a thousand do not", () => {
   assert.ok(prefsPatchFits(hundred));
   assert.ok(prefsPatchBytes(hundred) < PREFS_MAX_BYTES);
   assert.ok(!prefsPatchFits({ roster: { channelOrder: { dev: uuids(1000) } } }));
+});
+
+// 134-1: only an explicit false turns chaos mode off. Junk reads as on.
+test("chaos mode is on unless the account turned it off", () => {
+  assert.equal(selectRosterPrefs(undefined).chaos, true);
+  assert.equal(selectRosterPrefs({ roster: {} }).chaos, true);
+  assert.equal(selectRosterPrefs({ roster: { chaos: true } }).chaos, true);
+  assert.equal(selectRosterPrefs({ roster: { chaos: false } }).chaos, false);
+  const junk = { roster: { chaos: "off" } } as unknown as Parameters<typeof selectRosterPrefs>[0];
+  assert.equal(selectRosterPrefs(junk).chaos, true);
 });
