@@ -9,19 +9,19 @@ Latest release: **v0.10.3** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 133 is the newest work. It is reopened for the voice room, and five
+Phase 133 is the newest work. It is built, with the voice room, and eight
 points of it are open.
 Phase 131 has two small open points.
 Phase 130 has two open points. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
 
-## Phase 133 — polish: built, with five open points
+## Phase 133 — polish: built, with eight open points
 
-133-1 … 133-8 are built, record in
+133-1 … 133-11 are built, record in
 [phases/PHASE-133-POLISH.md](phases/PHASE-133-POLISH.md). The phase closed at
-133-7 and reopened for the voice room. 133-9 to 133-11 are planned: an adaptive
-stage, the scratchpad, and a scenario sweep. 133-8 merged the tile list of the
+133-7 and reopened for the voice room. The voice room slices are built: an
+adaptive stage, the scratchpad, and a scenario sweep. 133-8 merged the tile list of the
 stage into `railTiles`, which closed the stage-memo point of phase 131.
 The shell has semantic tokens, a raised sidebar and channel header, one look
 for hover, selected, unread, and focus, a one-row composer with a filled send
@@ -38,6 +38,11 @@ desktop and the green theme on a phone. Every change is in the client.
 - **The channel header band stops 8px short of the scrollbar lane.**
   133-3 left it as it is.
 - **The manual checklist in the phase doc is still open.**
+- **The forced "tiles" grid can crop on a short window.** It still has two
+  columns and the `56vh / rows` cap. The sweep of 133-11 did not cover it.
+- **The speaking highlight with five people was not seen.** It was seen with
+  two people.
+- **A voice room of more than five people was not swept.**
 
 ## Phase 131 — call rail: built, with two open points
 
@@ -365,9 +370,9 @@ Two deliberate exclusions:
   `.chalk-voice-grid`'s `max-width` from the height the pane can spare, which
   scales all four tiles whole; it needs a hand-measured constant for the rest
   of the pane (~390px), which is why it was deferred. Numbers and the rejected
-  alternatives are in `docs/phases/PHASE-45-SCRATCHPAD.md`. Slice 133-10
-  applied this height cap to one and two cameras in the mixed layout. The
-  forced grid and three or more cameras still crop.
+  alternatives are in `docs/phases/PHASE-45-SCRATCHPAD.md`. Slices 133-10
+  and 133-11 applied this height cap to any number of cameras in the mixed
+  layout. Only the forced "tiles" grid still crops.
 - `docker/Dockerfile`'s frontend stage runs `npm run build` without
   `NODE_ENV=production`, so released images ship unminified bundles with inline
   sourcemaps. Costlier since 52-2 (the MediaPipe chunk is 153 KB minified vs

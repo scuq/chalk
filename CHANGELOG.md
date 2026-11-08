@@ -15,6 +15,7 @@ The engineering-level history (which slice shipped what) lives in
 ### Changed
 - In a voice room, an empty scratchpad now shows a short explanation. Once it has text, a one-line reminder replaces the paragraph that was always there. The marks for muted, deafened, camera on, and sharing a screen on people are now icons.
 - In a voice room, people without a camera now show as compact cards with their picture, name, and volume. Before, they showed as large empty video boxes. Cameras show as video tiles above the cards, and a screen share still takes the main area.
+- In a voice room with three or more cameras on, the video tiles now shrink to fit the window. Before, they were cut off. On small tiles, the controls use short labels, so names stay readable.
 - The default green theme is softer. The background is near-black, the text is mint, and the unread green is the accent. Buttons, inputs, and rows have rounder corners in every theme except LCARS.
 - The marker for unread messages is now a small filled envelope in the colors of your theme. It no longer looks like an online dot. The envelope glows for a mention. It sits at the right edge of the row. In the two-column friend list, the envelopes of a column line up. An unread message no longer cuts off a long friend name.
 - The call buttons in the column beside the sidebar are larger, and leave is now a red hang-up button. The green border on a person's picture alone shows who is talking, and the extra green dot is gone.
@@ -31,6 +32,7 @@ The engineering-level history (which slice shipped what) lives in
 - Buttons and the add-friend list in the member panel show a highlight when the pointer is over them. Some of them showed none before.
 - In themes other than the default green, the presence menu, the verify buttons, and the reshare button showed a green highlight under the pointer. They now use your theme colors.
 - With **show profile pictures in the roster** on, the pictures beside friends' names flickered when you switched channels. The names also jumped. This no longer happens.
+- In the solarized-dark theme, the people cards and their volume sliders in a voice room blended into the call panel. They now stand out from it.
 - In the warmwhite theme, the unread envelope was invisible in the dark sidebar. It shows now.
 
 ---

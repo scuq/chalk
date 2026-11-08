@@ -1,6 +1,6 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** 133-1 to 133-10 built (2026-11-08), 133-11 planned.
+**Status:** built, 133-1 to 133-11 (2026-11-08).
 133-7 changed no code. The phase closed at 133-7 and was reopened for the voice
 room. See "The voice room" below.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
@@ -617,9 +617,8 @@ Two bugs were found in a browser, not by a test:
    The 480px and the 530px were measured by hand at 1280px by 800px. They are
    the rest of the pane: the header, the channel header, the bar, the caption,
    the row of cards, the floor of the scratchpad, and the composer. With the
-   cap, the camera is 480px by 270px and everything fits. The cap applies to
-   one and two cameras in the mixed layout only. Three or more cameras and the
-   forced grid are not capped. If the pane gets another fixed part, the two
+   cap, the camera is 480px by 270px and everything fits. 133-11 widened the
+   cap to any number of cameras. If the pane gets another fixed part, the two
    constants must change.
 
 This is the method that the open item "A four-tile call does not fit a window
@@ -630,8 +629,65 @@ scratchpad with the centred explanation under two cards, the caption after one
 note, and the mixed view whole. Cards and the empty state were seen at a phone
 width of 390px. The slice has two tests in `theme-voice-pane.test.ts`: one for
 the caption and the empty-state rules, and one for the camera height cap.
-Still to see, in 133-11: the speaking highlight on a card, a screen share,
-three or more cameras, and the light themes in the voice room.
+133-11 saw the rest. See the next section.
+
+### The voice room sweep (133-11)
+
+The sweep ran on the dev stack at 1280px by 800px. A Playwright probe in the
+probe slot of the run-chalk skill registers up to five users, makes them
+friends, and puts all of them in one voice room with the fake camera and
+microphone of Chromium. The probe steps through these cases and reports for
+each if the stage clips its content:
+
+- Five people with no camera.
+- The cards in six themes: green, light, warmwhite, cyberpunk,
+  solarized-dark, and lcars.
+- The speaking highlight, seen with two users. The card of the speaker has the
+  accent border and the dot.
+- Two, three, and five cameras.
+- A screen share. The capture source is selected automatically.
+- A phone width of 390px with five cameras.
+
+The sweep found three faults. Each has a fix.
+
+1. Three or more cameras clipped the stage. The cap of 133-10 applied to one
+   and two cameras only. Three or five tiles of 397px by 223px stacked into
+   rows taller than the window.
+   `videoGrid(count)` in `web/src/voice/grid.ts` now returns the columns and
+   rows: 1 by 1, 2 by 1, 2 by 2, 3 by 2, 3 by 3, and then four columns. The
+   panel sets `--voice-video-cols` and `--voice-video-rows` on
+   `.chalk-voice-videos`. The CSS uses the columns for `grid-template-columns`.
+   On a desktop (`min-width: 768px`) it sizes the width of the grid from the
+   window height divided by the rows:
+   `min(960px, max(320px, calc((100dvh - 480px) / rows * 16 / 9 * cols)))`.
+   The reserve is 530px when a row of cards is below. The rules for one camera
+   stay at 640px. The phone keeps columns that fit to the width, 140px at the
+   least. Measured after the fix: three cameras are 236px by 133px with two
+   cards below, and five cameras are 262px by 147px. Nothing clips.
+2. On small camera tiles the long labels "popout" and "mute for me" squeezed
+   the name to one letter. `StagePeer` has a new prop `compact`. With it, a
+   grid tile uses the short labels of the strip tile: the glyph alone to pop
+   out, "mute" and "unmute", and "hide" and "show". The mixed grid sets
+   `compact` when three or more cameras are on.
+3. In solarized-dark the cards and their slider tracks vanished into the call
+   panel. In that theme `--chalk-border` equals `--chalk-bg-elev`, and the card
+   was on `--chalk-bg-elev` too. A card is now `--chalk-bg-elev-2`, the next
+   surface step, and the palette test already covers its text contrast. The
+   avatar circle is `--chalk-bg-elev`, one step down, so it reads on the card.
+   The slider track on a card is `--chalk-fg-muted`.
+
+The slice changed two tests in `theme-voice-pane.test.ts`. The test for the
+card and video-grid rules now expects the variable columns and the
+`--chalk-bg-elev-2` card. A new test checks the compact labels and the column
+variables. `grid.test.ts` has a test for `videoGrid`.
+
+The sweep did not cover three cases:
+
+- The speaking highlight with five people did not start in the timing of the
+  probe.
+- The forced "tiles" grid. It still has two columns and the `56vh / rows` cap,
+  so it can crop on a short window.
+- More than five people.
 
 ## What was rejected
 
@@ -714,12 +770,14 @@ and the test cover it.
   The flags for muted, deafened, camera, and screen become icons. One and two
   cameras get a height cap. `VoiceCallPanel.tsx`, `App.tsx`, `theme.css`, and
   two tests in `theme-voice-pane.test.ts`. Done. See "The scratchpad and a quieter call panel (133-10)".
-- **133-11 — the scenario sweep.** Calls with audio only (one, two, and four
-  people), with cameras, with a screen share, and with a mix, in several
-  themes and at phone width. It must also cover the cases that 133-9 and
-  133-10 did not see: a phone with no camera (cards only), the speaking
-  highlight on a card, a screen share, three or more cameras, and the light
-  themes in the voice room. Planned.
+- **133-11 — the voice room sweep.** Five users in one room, with no camera,
+  with two, three, and five cameras, with a screen share, in six themes, and
+  at phone width. It found three faults, and the slice fixes them: the stage
+  clipped with three or more cameras, long labels hid the names on small
+  tiles, and the cards vanished in solarized-dark. `videoGrid`, the `compact`
+  prop, the width cap for any number of cameras, and the card surface. Two
+  tests changed in `theme-voice-pane.test.ts`, and `grid.test.ts` has one new
+  test. Done. See "The voice room sweep (133-11)".
 
 ## Left open
 
@@ -733,6 +791,10 @@ and the test cover it.
 - The channel header band stops 8px short of the scrollbar lane on the right.
   133-3 left it as it is.
 - The remaining items of the manual checklist.
+- The forced "tiles" grid still has two columns and the `56vh / rows` cap. It
+  can crop on a short window.
+- The speaking highlight with five people was not seen. It was seen with two.
+- A call of more than five people was not swept.
 
 ## Manual checklist
 

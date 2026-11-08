@@ -108,3 +108,14 @@ export function resolveStageMode(
   if (tiles.some((t) => t.isScreen && t.hasLiveVideo)) return "spotlight";
   return "mixed";
 }
+
+/**
+ * videoGrid returns the columns and rows for count camera tiles in the mixed
+ * layout. One camera gets 1 by 1, two get 2 by 1, three or four get 2 columns,
+ * five to nine get 3 columns, and more get 4 columns. The rows are the count
+ * divided by the columns, rounded up, and never less than 1.
+ */
+export function videoGrid(count: number): { cols: number; rows: number } {
+  const cols = count <= 1 ? 1 : count === 2 ? 2 : count <= 4 ? 2 : count <= 9 ? 3 : 4;
+  return { cols, rows: Math.max(1, Math.ceil(count / cols)) };
+}

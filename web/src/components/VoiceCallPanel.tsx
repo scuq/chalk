@@ -51,7 +51,7 @@ import {
   subscribePopouts,
   syncTilePopouts,
 } from "../voice/pip";
-import { gridPlan, isCrowded, resolveStageMode, type VoiceLayout } from "../voice/grid";
+import { gridPlan, isCrowded, resolveStageMode, videoGrid, type VoiceLayout } from "../voice/grid";
 import { railTiles, type RailTile } from "../voice/rail-tiles";
 import { CamIcon, DeafIcon, MicOffIcon, ScreenIcon } from "./VoiceBadges";
 
@@ -485,6 +485,7 @@ export function VoiceCallPanel({
                   <div
                     class="chalk-voice-videos"
                     data-count={videoTiles.length > 2 ? "many" : String(videoTiles.length)}
+                    style={`--voice-video-cols: ${videoGrid(videoTiles.length).cols}; --voice-video-rows: ${videoGrid(videoTiles.length).rows}`}
                     data-testid="voice-videos"
                   >
                     {videoTiles.map((t) => (
@@ -492,6 +493,7 @@ export function VoiceCallPanel({
                         key={t.key}
                         tile={t}
                         grid
+                        compact={videoTiles.length >= 3}
                         label={handleFor(t.userID)}
                         rttMs={rttByKey[t.key]}
                         onClick={() => pinFromGrid(t.key)}
@@ -887,6 +889,7 @@ function StagePeer({
   big,
   grid,
   card,
+  compact,
   rttMs,
   onClick,
   onPopOut,
@@ -908,6 +911,10 @@ function StagePeer({
    * and the label, has no video surface, and does not pin on click. The volume
    * slider shows on a card, because no tile is big in a call of cards. */
   card?: boolean;
+  /** 133-11: short control labels on a grid tile. The mixed grid sets it when
+   * three or more cameras are on, because the tiles are small and the long
+   * labels squeezed the name to one letter. */
+  compact?: boolean;
   onClick?: () => void;
   /** 45-5: show this stream in a window of its own (expanded in-app when no
    * window can be had). Absent on tiles with no stream to show. */
@@ -1058,8 +1065,9 @@ function StagePeer({
             aria-pressed={poppedOut ? "true" : "false"}
           >
             {/* The strip tile is 148px wide -- the glyph alone there, the
-                word on the big and grid tiles where there is room for it. */}
-            {big || grid ? (poppedOut ? "⧉ close" : "⧉ popout") : "⧉"}
+                word on the big and grid tiles where there is room for it.
+                A compact tile is small too, so it gets the glyph alone. */}
+            {(big || grid) && !compact ? (poppedOut ? "⧉ close" : "⧉ popout") : "⧉"}
           </button>
         )}
         {/* 109-1, 133-10: the deafened icon stands in place of the muted icon,
@@ -1133,12 +1141,13 @@ function StagePeer({
               {/* 66-4: the words got legible, so the 148px strip tile can no
                   longer carry "hide for me" beside a name. Same split the
                   popout button makes: the phrase where there is room, the
-                  verb alone where there isn't -- the title says the rest. */}
+                  verb alone where there isn't -- the title says the rest. A
+                  compact tile counts as one with no room. */}
               {snap.screenHidden[tile.userID + ":" + tile.deviceID]
-                ? big || grid
+                ? (big || grid) && !compact
                   ? "show for me"
                   : "show"
-                : big || grid
+                : (big || grid) && !compact
                   ? "hide for me"
                   : "hide"}
             </button>
@@ -1186,10 +1195,10 @@ function StagePeer({
                   data-testid="voice-screen-mute"
                 >
                   {screenMuted
-                    ? big || grid
+                    ? (big || grid) && !compact
                       ? "unmute sound"
                       : "unmute"
-                    : big || grid
+                    : (big || grid) && !compact
                       ? "mute sound"
                       : "mute"}
                 </button>
@@ -1241,10 +1250,10 @@ function StagePeer({
               data-testid="voice-peer-localmute"
             >
               {pref?.muted
-                ? big || grid
+                ? (big || grid) && !compact
                   ? "unmute for me"
                   : "unmute"
-                : big || grid
+                : (big || grid) && !compact
                   ? "mute for me"
                   : "mute"}
             </button>

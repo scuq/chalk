@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { gridPlan, useGrid, isCrowded, resolveGridMode, resolveStageMode } from "./grid";
+import { gridPlan, useGrid, isCrowded, resolveGridMode, resolveStageMode, videoGrid } from "./grid";
 
 test("1:1 and solo calls keep the spotlight", () => {
   assert.equal(useGrid(1), false);
@@ -94,4 +94,13 @@ test("133-9: cameras without a share are mixed in auto, and a forced layout stil
 test("133-9: a live share takes the spotlight unless the viewer forced the grid", () => {
   assert.equal(resolveStageMode("auto", [voice, voice, share]), "spotlight");
   assert.equal(resolveStageMode("grid", [voice, cam, share]), "grid");
+});
+
+test("133-11: cameras fill a grid that grows sideways before it grows down", () => {
+  assert.deepEqual(videoGrid(1), { cols: 1, rows: 1 });
+  assert.deepEqual(videoGrid(2), { cols: 2, rows: 1 });
+  assert.deepEqual(videoGrid(3), { cols: 2, rows: 2 });
+  assert.deepEqual(videoGrid(5), { cols: 3, rows: 2 });
+  assert.deepEqual(videoGrid(9), { cols: 3, rows: 3 });
+  assert.deepEqual(videoGrid(10), { cols: 4, rows: 3 });
 });

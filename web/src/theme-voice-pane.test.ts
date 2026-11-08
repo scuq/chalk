@@ -78,12 +78,12 @@ test("the call stage clips instead of spilling over its controls", () => {
 
 test("133-9: audio-only people are compact cards on the theme surface, cameras keep 16:9", () => {
   const card = block(".chalk-voice-peer.chalk-voice-peer--card");
-  assert.match(card, /background:\s*var\(--chalk-bg-elev\)/);
+  assert.match(card, /background:\s*var\(--chalk-bg-elev-2\)/, "a card stands off the call panel, which is bg-elev");
   assert.doesNotMatch(card, /aspect-ratio/);
   const label = block(".chalk-voice-peer--card .chalk-voice-peer-label");
   assert.match(label, /--voice-on-video:\s*var\(--chalk-fg\)/, "card text follows the theme, not the on-video white");
   assert.match(block(".chalk-voice-cards"), /display:\s*grid/);
-  assert.match(block(".chalk-voice-videos"), /grid-template-columns:\s*repeat\(auto-fit/);
+  assert.match(block(".chalk-voice-videos"), /grid-template-columns:\s*repeat\(var\(--voice-video-cols/);
   assert.match(block(".chalk-voice-peer--grid"), /aspect-ratio:\s*16 \/ 9/);
 });
 
@@ -104,4 +104,12 @@ test("133-10: one or two cameras shrink whole with the window instead of pushing
     block('.chalk-voice-stage:has(.chalk-voice-cards) .chalk-voice-videos[data-count="1"]'),
     /100dvh - \d+px/,
   );
+});
+
+test("133-11: three or more cameras use the short control labels, so names stay readable", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { join, resolve } = await import("node:path");
+  const panel = readFileSync(join(resolve(process.cwd(), "src"), "components", "VoiceCallPanel.tsx"), "utf8");
+  assert.match(panel, /compact=\{videoTiles\.length >= 3\}/);
+  assert.match(panel, /--voice-video-cols: \$\{videoGrid\(videoTiles\.length\)\.cols\}/);
 });

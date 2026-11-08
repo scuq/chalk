@@ -8235,36 +8235,48 @@ body.chalk-resizing-y .chalk-composer-resizer {
    in the sheet and would paint its black video background over the card. The
    label points the --voice-on-video variables at theme tokens, because the
    white-on-black palette is for text over video and a card sits on the theme
-   surface. */
+   surface. 133-11: a card is --chalk-bg-elev-2, and its avatar circle is
+   --chalk-bg-elev, one step down. In solarized-dark --chalk-border equals
+   --chalk-bg-elev, so a card on --chalk-bg-elev vanished into the call panel.
+   The slider track on a card is --chalk-fg-muted for the same reason. */
 .chalk-voice-videos {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  grid-template-columns: repeat(var(--voice-video-cols, 1), minmax(0, 1fr));
   gap: var(--chalk-s2);
   width: 100%;
   max-width: 960px;
   margin: 0 auto;
 }
-/* 133-10: one or two cameras get a width cap from the height that the pane
+/* 133-10, 133-11: the cameras get a width cap from the height that the pane
    can spare. Without the cap, one 640px by 360px camera pushed the card of
-   an audio-only person out of the clipped stage at 800px height. The 480px is
-   the rest of the pane at 1280px by 800px: the header, the channel header,
-   the bar, the caption, the row of cards, the floor of the scratchpad, and the
-   composer. A row of cards below needs 530px. Both values were measured by
-   hand. With the cap, the camera is 480px by 270px and everything fits. The
-   open item about a four-tile call proposes the same method for the grid. It
-   applies here to one and two cameras in the mixed layout only. Three or more
-   cameras and the forced grid are not capped. */
-.chalk-voice-videos[data-count="1"] {
-  max-width: min(640px, calc((100dvh - 480px) * 16 / 9));
+   an audio-only person out of the clipped stage at 800px height, and three or
+   five tiles stacked into rows taller than the window. The panel sets
+   --voice-video-cols and --voice-video-rows from videoGrid(count). The width
+   is the height per row, times 16 / 9, times the columns, with a floor of
+   320px and a ceiling of 960px. The 480px is the rest of the pane at 1280px by
+   800px: the header, the channel header, the bar, the caption, the row of
+   cards, the floor of the scratchpad, and the composer. A row of cards below
+   needs 530px. Both values were measured by hand. One camera keeps its own
+   640px rule. The cap applies on a desktop only. On a phone the columns fit
+   to the width, 140px at the least. The forced grid is not capped here. */
+@media (min-width: 768px) {
+  .chalk-voice-videos {
+    max-width: min(960px, max(320px, calc((100dvh - 480px) / var(--voice-video-rows, 1) * 16 / 9 * var(--voice-video-cols, 1))));
+  }
+  .chalk-voice-stage:has(.chalk-voice-cards) .chalk-voice-videos {
+    max-width: min(960px, max(320px, calc((100dvh - 530px) / var(--voice-video-rows, 1) * 16 / 9 * var(--voice-video-cols, 1))));
+  }
+  .chalk-voice-videos[data-count="1"] {
+    max-width: min(640px, calc((100dvh - 480px) * 16 / 9));
+  }
+  .chalk-voice-stage:has(.chalk-voice-cards) .chalk-voice-videos[data-count="1"] {
+    max-width: min(640px, calc((100dvh - 530px) * 16 / 9));
+  }
 }
-.chalk-voice-videos[data-count="2"] {
-  max-width: min(960px, calc((100dvh - 480px) * 32 / 9));
-}
-.chalk-voice-stage:has(.chalk-voice-cards) .chalk-voice-videos[data-count="1"] {
-  max-width: min(640px, calc((100dvh - 530px) * 16 / 9));
-}
-.chalk-voice-stage:has(.chalk-voice-cards) .chalk-voice-videos[data-count="2"] {
-  max-width: min(960px, calc((100dvh - 530px) * 32 / 9));
+@media (max-width: 767px) {
+  .chalk-voice-videos {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  }
 }
 
 .chalk-voice-cards {
@@ -8283,7 +8295,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   column-gap: var(--chalk-s2);
   min-height: 56px;
   padding: var(--chalk-s2);
-  background: var(--chalk-bg-elev);
+  background: var(--chalk-bg-elev-2);
   border: 1px solid var(--chalk-border);
   border-radius: var(--chalk-radius-md);
   transition: border-color var(--chalk-dur-fast);
@@ -8295,13 +8307,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
   width: 40px;
   height: 40px;
   border-radius: 50%;
+  background: var(--chalk-bg-elev);
   overflow: hidden;
   font-size: calc(18px * var(--chalk-font-scale));
 }
 .chalk-voice-peer--card .chalk-voice-peer-label {
   --voice-on-video: var(--chalk-fg);
   --voice-on-video-dim: var(--chalk-fg-dim);
-  --voice-on-video-line: var(--chalk-border);
+  --voice-on-video-line: var(--chalk-fg-muted);
   --voice-on-video-alert: var(--chalk-error);
   --voice-on-video-warn: var(--chalk-warn);
 
