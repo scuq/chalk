@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.11.2 — 8 November 2026 — Film and series nods for the winter seasons and Black Week
 
 ### Added
 - From 1 December to 26 December, the Chalk scene is one of seven small animated nods to Christmas films and series. Each one shows a famous moment.
