@@ -98,13 +98,6 @@ test("133-10: the scratchpad explains itself when empty and keeps a one-line cap
   assert.match(block(".chalk-messages--ephemeral.chalk-messages--empty:has(.chalk-empty)"), /min-height:\s*0/);
 });
 
-test("133-10: one or two cameras shrink whole with the window instead of pushing the cards out", () => {
-  assert.match(block('.chalk-voice-videos[data-count="1"]'), /max-width:\s*min\(640px, calc\(\(100dvh - \d+px\)/);
-  assert.match(
-    block('.chalk-voice-stage:has(.chalk-voice-cards) .chalk-voice-videos[data-count="1"]'),
-    /100dvh - \d+px/,
-  );
-});
 
 test("133-11: three or more cameras use the short control labels, so names stay readable", async () => {
   const { readFileSync } = await import("node:fs");
@@ -112,4 +105,23 @@ test("133-11: three or more cameras use the short control labels, so names stay 
   const panel = readFileSync(join(resolve(process.cwd(), "src"), "components", "VoiceCallPanel.tsx"), "utf8");
   assert.match(panel, /compact=\{videoTiles\.length >= 3\}/);
   assert.match(panel, /--voice-video-cols: \$\{videoGrid\(videoTiles\.length\)\.cols\}/);
+});
+
+test("133-12: the camera grids take the height the pane measured, not a hand-measured reserve", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { join, resolve } = await import("node:path");
+  const panel = readFileSync(join(resolve(process.cwd(), "src"), "components", "VoiceCallPanel.tsx"), "utf8");
+  assert.match(panel, /setProperty\("--voice-media-h"/, "the panel writes the measured height");
+  assert.match(panel, /new ResizeObserver/);
+  assert.match(block(".chalk-voice-videos"), /grid-template-columns/);
+  assert.match(block('.chalk-voice-videos[data-count="1"]'), /var\(--voice-media-h, 56vh\)/);
+  assert.match(block(".chalk-voice-grid"), /var\(--voice-media-h, 56vh\)/, "the forced grid fits too");
+  assert.doesNotMatch(block(".chalk-voice-peer--grid"), /max-height/, "a height cap bent the 16:9 tiles");
+  assert.doesNotMatch(css, /100dvh - 5?[0-9]{2}px/, "no hand-measured reserve is left");
+  assert.match(panel, /\{!hereInCall && scratchCaption\}/, "in a call the caption rides in the bar");
+});
+
+test("133-12: a tile under 220px hides its pop-out and mute-for-me buttons, so the name stays", () => {
+  assert.match(block(".chalk-voice-peer--grid"), /container-type:\s*inline-size/);
+  assert.match(css, /@container \(max-width: 220px\) \{\s*\.chalk-voice-peer--grid \.chalk-voice-popout,\s*\.chalk-voice-peer--grid \.chalk-voice-localmute \{\s*display:\s*none/);
 });

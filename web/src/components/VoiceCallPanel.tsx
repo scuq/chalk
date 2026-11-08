@@ -29,7 +29,7 @@
 
 import { Avatar } from "./Avatar"; // 112-4
 import type { AttachmentController } from "../attachments/pipeline"; // 112-4
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ChannelSummary, VoiceParticipant } from "../state/types";
 import type { WSClient } from "../ws-client";
 import type { ChannelCrypto } from "../crypto/channel-crypto";
@@ -309,6 +309,52 @@ export function VoiceCallPanel({
   const videoTiles = stageTiles.filter((t) => t.hasLiveVideo);
   const audioTiles = stageTiles.filter((t) => !t.hasLiveVideo);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  // 133-12: measure the height that the camera grid can have, and write it to
+  // the panel as --voice-media-h. The CSS caps the grid width from it. The
+  // value is the current height of the grid, plus the height of the scratchpad
+  // above its floor, minus the height that the stage clips now. A change of
+  // the grid moves the scratchpad by the same amount in the other direction,
+  // so the value settles in one pass. A change of 2px or less is ignored,
+  // which ends the feedback loop. The effect does nothing without
+  // ResizeObserver, and when there is no camera grid (cards only, spotlight).
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const main = panel?.closest<HTMLElement>(".chalk-main--voice");
+    if (!panel || !main || typeof ResizeObserver === "undefined") return;
+    let raf = 0;
+    const measure = () => {
+      raf = 0;
+      const stage = panel.querySelector<HTMLElement>(".chalk-voice-stage");
+      const media = panel.querySelector<HTMLElement>(".chalk-voice-videos, .chalk-voice-grid");
+      const feed = main.querySelector<HTMLElement>(".chalk-messages--ephemeral");
+      if (!stage || !media || !feed) {
+        panel.style.removeProperty("--voice-media-h");
+        return;
+      }
+      const floor = Math.max(
+        parseFloat(getComputedStyle(feed).minHeight) || 0,
+        feed.classList.contains("chalk-messages--empty") ? MEDIA_EMPTY_FLOOR_PX : MEDIA_FEED_FLOOR_PX,
+      );
+      const overflow = Math.max(0, stage.scrollHeight - stage.clientHeight);
+      const slack = feed.offsetHeight - floor - overflow;
+      const next = Math.max(MEDIA_MIN_PX, Math.floor(media.offsetHeight + slack));
+      const now = parseFloat(panel.style.getPropertyValue("--voice-media-h")) || 0;
+      if (Math.abs(next - now) > 2) panel.style.setProperty("--voice-media-h", `${next}px`);
+    };
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(measure);
+    };
+    const ro = new ResizeObserver(schedule);
+    ro.observe(main);
+    ro.observe(panel);
+    schedule();
+    return () => {
+      ro.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [hereInCall, mode, videoTiles.length, stageTiles.length]);
+
   // Leaving the grid is a layout decision, so clicking a grid tile records
   // one: pin it AND stand the spotlight up. Clicking the big tile puts that
   // back -- but only when there is a pin to release, so a spotlight chosen
@@ -450,8 +496,21 @@ export function VoiceCallPanel({
   void nowTick; // consumed by duration + stage recompute
   const error = snap.error ?? localNote;
 
+  // 45-4, 133-10, 133-12: the one-line rule of the room's text, stated where
+  // the text is. Someone who types here before anyone joins must know that
+  // chalk does not keep the text. The CSS hides it while the scratchpad is
+  // empty, because the empty state then gives the full explanation. In the
+  // lobby it renders below the panel. In a call it renders in the bar, which
+  // saves one row.
+  const scratchCaption = (
+    <div class="chalk-voice-scratch" data-testid="voice-scratch-note">
+      <span class="chalk-voice-scratch-tag">scratchpad</span>
+      <span>deleted for everyone when the last person leaves</span>
+    </div>
+  );
+
   return (
-    <div class="chalk-voice-panel chalk-voice-panel--v5" data-testid="voice-panel">
+    <div ref={panelRef} class="chalk-voice-panel chalk-voice-panel--v5" data-testid="voice-panel">
       {!hereInCall ? (
         <div class="chalk-voice-lobby">
           {elsewhere && (
@@ -541,6 +600,7 @@ export function VoiceCallPanel({
                     key={t.key}
                     tile={t}
                     grid
+                    compact={stageTiles.length >= 3}
                     label={handleFor(t.userID)}
                     rttMs={rttByKey[t.key]}
                     onClick={() => pinFromGrid(t.key)}
@@ -618,6 +678,7 @@ export function VoiceCallPanel({
                 relay-only
               </span>
             )}
+            {scratchCaption}
             <span class="chalk-voice-bar-spacer" />
             {snap.sharing && (
               <span class="chalk-voice-modes" data-testid="voice-share-modes">
@@ -862,16 +923,9 @@ export function VoiceCallPanel({
         />
       )}
 
-      {/* 45-4, 133-10: the one-line rule of the room's text, stated where the
-          text is. It sits below the call and directly above the feed. It
-          renders in the lobby and in the call. Someone who types here before
-          anyone joins must know that chalk does not keep the text. The CSS
-          hides it while the scratchpad is empty, because the empty state then
-          gives the full explanation. */}
-      <div class="chalk-voice-scratch" data-testid="voice-scratch-note">
-        <span class="chalk-voice-scratch-tag">scratchpad</span>
-        <span>deleted for everyone when the last person leaves</span>
-      </div>
+      {/* 133-12: in the lobby the caption sits below the panel, directly
+          above the feed. In a call it sits in the bar. */}
+      {!hereInCall && scratchCaption}
     </div>
   );
 
@@ -881,6 +935,15 @@ export function VoiceCallPanel({
 
 
 // A stage tile is a call rail tile (133-8).
+// 133-12: the least height, in pixels, that the scratchpad keeps when it has
+// text. The scratchpad min-height in the CSS can be larger.
+const MEDIA_FEED_FLOOR_PX = 84;
+// 133-12: the least height, in pixels, that the camera grid gets.
+const MEDIA_MIN_PX = 120;
+// 133-12: the least height, in pixels, that the scratchpad keeps while it is
+// empty, so that its explanation stays whole.
+const MEDIA_EMPTY_FLOOR_PX = 160;
+
 type StageTile = RailTile;
 
 function StagePeer({

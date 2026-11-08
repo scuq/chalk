@@ -15,7 +15,7 @@ The engineering-level history (which slice shipped what) lives in
 ### Changed
 - In a voice room, an empty scratchpad now shows a short explanation. Once it has text, a one-line reminder replaces the paragraph that was always there. The marks for muted, deafened, camera on, and sharing a screen on people are now icons.
 - In a voice room, people without a camera now show as compact cards with their picture, name, and volume. Before, they showed as large empty video boxes. Cameras show as video tiles above the cards, and a screen share still takes the main area.
-- In a voice room with three or more cameras on, the video tiles now shrink to fit the window. Before, they were cut off. On small tiles, the controls use short labels, so names stay readable.
+- In a voice room, every participant stays visible at any window size. Before, tiles and cards could be cut off. The camera tiles shrink to leave room for the cards and the scratchpad. Small tiles keep the name. The scratchpad reminder shares the row of the call controls.
 - The default green theme is softer. The background is near-black, the text is mint, and the unread green is the accent. Buttons, inputs, and rows have rounder corners in every theme except LCARS.
 - The marker for unread messages is now a small filled envelope in the colors of your theme. It no longer looks like an online dot. The envelope glows for a mention. It sits at the right edge of the row. In the two-column friend list, the envelopes of a column line up. An unread message no longer cuts off a long friend name.
 - The call buttons in the column beside the sidebar are larger, and leave is now a red hang-up button. The green border on a person's picture alone shows who is talking, and the extra green dot is gone.

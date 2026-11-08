@@ -1,8 +1,9 @@
 # Phase 133 — polish: semantic tokens and a refined shell in every theme
 
-**Status:** built, 133-1 to 133-11 (2026-11-08).
+**Status:** built, 133-1 to 133-12 (2026-11-08).
 133-7 changed no code. The phase closed at 133-7 and was reopened for the voice
-room. See "The voice room" below.
+room. See "The voice room" below. After the owner watched a live demo, the
+phase was reopened once more for 133-12.
 `web/src/theme-palette.test.ts` tests the contrast floors of the palette and
 of the derived tokens. `web/src/theme-tokens.test.ts` tests two rules: every
 custom property the stylesheet reads is declared, and no `var()` carries a
@@ -40,7 +41,7 @@ chalk already had most of the token architecture. The gaps were small:
 A `var()` with no fallback and no declaration does not fail. The browser drops
 the whole declaration, and the rule draws nothing. No test caught this.
 
-### The voice room (133-8 to 133-11)
+### The voice room (133-8 to 133-12)
 
 The owner received a second design review. It covers the voice room on a
 desktop and on a phone. The review makes these points:
@@ -621,6 +622,9 @@ Two bugs were found in a browser, not by a test:
    cap to any number of cameras. If the pane gets another fixed part, the two
    constants must change.
 
+   133-12 replaced the two constants with a measured height. See "Every
+   participant stays visible (133-12)".
+
 This is the method that the open item "A four-tile call does not fit a window
 under ~850px tall" proposes for the grid. See `docs/open-items.md`.
 
@@ -664,6 +668,7 @@ The sweep found three faults. Each has a fix.
    stay at 640px. The phone keeps columns that fit to the width, 140px at the
    least. Measured after the fix: three cameras are 236px by 133px with two
    cards below, and five cameras are 262px by 147px. Nothing clips.
+   133-12 replaced the reserves of 480px and 530px with a measured height.
 2. On small camera tiles the long labels "popout" and "mute for me" squeezed
    the name to one letter. `StagePeer` has a new prop `compact`. With it, a
    grid tile uses the short labels of the strip tile: the glyph alone to pop
@@ -686,8 +691,73 @@ The sweep did not cover three cases:
 - The speaking highlight with five people did not start in the timing of the
   probe.
 - The forced "tiles" grid. It still has two columns and the `56vh / rows` cap,
-  so it can crop on a short window.
+  so it can crop on a short window. 133-12 closed this point.
 - More than five people.
+
+### Every participant stays visible (133-12)
+
+The owner watched a live demo of a voice room with five people and one camera
+on, in a window of about 1229px by 790px. The fourth card of a person with no
+camera was cut off under the camera tile. The owner asked to find a way to see
+all participants, with none cut off. The owner also showed a mockup in which
+the call bar, the scratchpad caption, and the buttons share one row.
+
+The cause was the reserve of 133-10 and 133-11. The CSS sized the camera grid
+from the window height minus 480px, or minus 530px with cards. The two values
+assumed one row of cards and a window of 800px. In a narrower window, four
+cards wrap to two rows, and the reserve is wrong.
+
+The design replaces the reserve with a measurement:
+
+- The panel watches the voice pane (`.chalk-main--voice`) and itself with a
+  `ResizeObserver`. The effect runs again when the mode or a tile count
+  changes. It writes the height that the camera grid can have to the panel as
+  `--voice-media-h`.
+- The height is the current height of the grid, plus the height of the
+  scratchpad above its floor, minus the height that the stage clips now. The
+  floor of the scratchpad is its CSS `min-height`, and at least 84px. While
+  the scratchpad is empty the floor is 160px, so its explanation stays whole.
+  The result is at least 120px.
+- The value changes only when the new height differs by more than 2px. This
+  ends the feedback loop. A change of the grid moves the scratchpad by the same
+  amount in the other direction, so the measurement settles in one pass.
+- The effect does nothing without `ResizeObserver`, and when there is no camera
+  grid (cards only, or the spotlight).
+- The desktop caps of `.chalk-voice-videos` use `var(--voice-media-h, 56vh)`.
+  56vh is the height before the first measurement. The two rules for "with a
+  row of cards" are gone, because the measurement includes any number of rows
+  of cards.
+- The forced "tiles" grid (`.chalk-voice-grid`) has the same kind of cap, from
+  `--voice-media-h` and `--voice-grid-rows`. The rule `max-height: calc(56vh /
+  var(--voice-grid-rows, 1))` on `.chalk-voice-peer--grid` is gone, because it
+  bent the 16:9 tiles when it applied. The forced grid passes `compact` to its
+  tiles from three tiles up, like the mixed grid.
+- A grid tile is an inline-size container. On a tile that is 220px wide or
+  less, a container query hides the pop-out and mute-for-me buttons, so the
+  name and the status icons keep their room. On 133px tiles the names were gone
+  even with the short labels. The buttons stay on larger tiles.
+- In a call, the scratchpad caption sits in the call bar, between the duration
+  and the buttons, on one line with an ellipsis. In the lobby it stays below
+  the panel. This saves one row, as in the mockup of the owner.
+
+The probe ran on the dev stack with five users and fake cameras, at 1280px by
+800px, 1229px by 700px, and 1440px by 900px. The cases were one camera with
+four cards, two cameras with three cards, three cameras with two cards, five
+cameras, and the forced grid. No case clipped. These tile sizes were measured:
+
+| Window | One camera | Three cameras | Five cameras |
+|---|---|---|---|
+| 1280px by 800px | 325px by 183px | 217px by 122px | 262px by 147px |
+| 1229px by 700px | 240px by 135px, with four cards | 128px by 72px, with two cards | 189px by 106px |
+
+At 1229px by 700px, the forced grid of five showed every name, with an
+ellipsis on long names. The tiles are small at a height of 700px with an empty
+scratchpad, because the scratchpad keeps 160px for its explanation.
+
+The slice replaced the reserve test of 133-10 in `theme-voice-pane.test.ts`
+with a test for the measured height. It also checks that no `100dvh - NNNpx`
+reserve remains and that the caption sits in the bar. A second new test covers
+the container rule for small tiles.
 
 ## What was rejected
 
@@ -778,6 +848,14 @@ and the test cover it.
   prop, the width cap for any number of cameras, and the card surface. Two
   tests changed in `theme-voice-pane.test.ts`, and `grid.test.ts` has one new
   test. Done. See "The voice room sweep (133-11)".
+- **133-12 — every participant stays visible.** After a live demo the fourth
+  card was cut off in a window of 1229px by 790px. The panel measures the
+  height of the camera grid and sets `--voice-media-h`. The measured height
+  replaces the reserves of 133-10 and 133-11 and caps the forced grid. Small
+  tiles hide the pop-out and mute-for-me buttons. The scratchpad caption sits
+  in the call bar. `VoiceCallPanel.tsx`, `theme.css`, and two tests in
+  `theme-voice-pane.test.ts`. Done. See "Every participant stays visible
+  (133-12)".
 
 ## Left open
 
@@ -791,8 +869,6 @@ and the test cover it.
 - The channel header band stops 8px short of the scrollbar lane on the right.
   133-3 left it as it is.
 - The remaining items of the manual checklist.
-- The forced "tiles" grid still has two columns and the `56vh / rows` cap. It
-  can crop on a short window.
 - The speaking highlight with five people was not seen. It was seen with two.
 - A call of more than five people was not swept.
 
