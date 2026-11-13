@@ -311,9 +311,9 @@ import {
 // Phase 30 (30-4): the minimal in-call surface + the frame bus that hands
 // voice pushes from handleFrame to the mounted panel's VoiceCall.
 import { VoiceCallPanel } from "./VoiceCallPanel";
-import { ZuckerCallBar } from "./ZuckerCallBar";
+import { PhoneCallBar } from "./PhoneCallBar"; // 135-5
+import { PhoneCallSheet } from "./PhoneCallSheet"; // 135-5
 import { VoiceSinks, useVoiceRoom } from "./VoiceDock";
-import { VoiceControls } from "./VoiceControls"; // 44-2
 import { CallRail } from "./CallRail"; // 131-1
 import { RecIndicator } from "./RecIndicator"; // 131-9
 import { MicSettingsDialog } from "./MicSettingsDialog"; // 44-3
@@ -806,16 +806,36 @@ export function App() {
     zuckerActive && zuckerScreen === "chat",
     backToList,
   );
+  // 135-5: the room whose call view covers the phone screen, or null.
+  const [callView, setCallView] = useState<string | null>(null);
+  useEffect(() => {
+    if (!zuckerActive) setCallView(null);
+  }, [zuckerActive]);
+  // A leave closes the call view of the room you left.
+  const prevCallRoom = useRef<string | null>(railChannelID);
+  useEffect(() => {
+    if (prevCallRoom.current !== null && railChannelID === null) {
+      const left = prevCallRoom.current;
+      setCallView((v) => (v === left ? null : v));
+    }
+    prevCallRoom.current = railChannelID;
+  }, [railChannelID]);
   // 135-3: each phone layer is one history entry with the same URL. The
   // hook pushes entries when a layer opens and goes back when the app closes
   // one. After a browser back, it calls onPop, and onPop closes the top
   // layers. The hook is off on desktop and off on the admin route.
   usePhoneHistory(
     zuckerActive && state.route === "chat" && state.user !== null,
-    { screen: zuckerScreen, thread: state.openThread !== null, panel: state.openPanel !== null },
+    {
+      screen: zuckerScreen,
+      thread: state.openThread !== null,
+      panel: state.openPanel !== null,
+      call: callView !== null,
+    },
     (steps) => {
       for (const step of steps) {
         if (step === "close-panel") dispatch({ kind: "close_panel" });
+        else if (step === "close-call") setCallView(null);
         else if (step === "close-thread") dispatch({ kind: "close_thread" });
         else backToList();
       }
@@ -2327,6 +2347,9 @@ export function App() {
     // that room. Without this check, every launch joined the voice room that
     // was created last. Only a selection joins.
     if (state.activeChannelAutoPicked) return;
+    // 135-5: the phone joins from the call view's join button, not on a
+    // selection.
+    if (zuckerActive) return;
     if (autoJoinedForRef.current === cid) return;
     autoJoinedForRef.current = cid;
     void voiceSession.join({
@@ -2337,7 +2360,7 @@ export function App() {
       client: clientRef,
       cc: ccRef,
     });
-  }, [state.activeChannelID, state.activeChannelAutoPicked, state.channels, state.voiceEnabled, state.user, ccReady, keyStatus]);
+  }, [state.activeChannelID, state.activeChannelAutoPicked, state.channels, state.voiceEnabled, state.user, ccReady, keyStatus, zuckerActive]);
 
   // 30-5i: auto-rejoin after a page reload. A reload cannot preserve WebRTC
   // state, so the prior session left a hint (sessionStorage). Once we're
@@ -5989,8 +6012,8 @@ export function App() {
 
       {/* 131-1: the call rail. Its own grid cell, left of the sidebar, for as
           long as you are in a call. Desktop only: the phone has its own
-          call bar. 131-7: it carries the duration and every
-          control. */}
+          call bar (PhoneCallBar.tsx) and call view (PhoneCallSheet.tsx).
+          131-7: it carries the duration and every control. */}
       {railOn && state.user && (
         <CallRail
           activeChannelID={state.activeChannelID}
@@ -6264,7 +6287,7 @@ export function App() {
           "chalk-main" +
           (state.parked
             ? " chalk-main--parked"
-            : activeChannel?.channelType === "voice"
+            : activeChannel?.channelType === "voice" && !isMobile
               ? " chalk-main--voice"
               : "")
         }
@@ -6315,7 +6338,10 @@ export function App() {
                 // everything that accrued on the list screen. Re-freeze it so
                 // the divider reflects what is actually unread now.
                 dispatch({ kind: "unread_mark_refresh", channelID: id });
-                setZuckerScreen("chat");
+                // 135-5: a voice room opens its call view over the list. The
+                // selection above loads the room key for the join button.
+                if (state.channels[id]?.channelType === "voice") setCallView(id);
+                else setZuckerScreen("chat");
               }}
               onFriendSelect={(userID) => {
                 // An existing DM activates synchronously -- flip to it now. A
@@ -6443,6 +6469,19 @@ export function App() {
                     ⚷ invite guests
                   </button>
                 )}
+                {/* 135-5: on the phone a voice room's page is its chat. This
+                    button opens the call view. */}
+                {isMobile && activeChannel.channelType === "voice" && state.voiceEnabled && (
+                  <button
+                    type="button"
+                    class="chalk-channel-search"
+                    onClick={() => setCallView(activeChannel.id)}
+                    aria-label="open the call"
+                    data-testid="phone-open-call"
+                  >
+                    call
+                  </button>
+                )}
                 {/* 61-2: message search. Also on Ctrl/Cmd+K. */}
                 <button
                   type="button"
@@ -6468,15 +6507,16 @@ export function App() {
               )}
             </div>
             {/* Phase 30 (30-4): the minimal call surface for voice channels.
-                Key by channel id so switching rooms unmounts (and thereby
-                leaves) the previous call. 30-5 replaces this with the
-                Discord-style UI. */}
+                The panel renders on desktop only. On the phone a voice room's
+                page is its chat, and the call view opens from the "call"
+                button in the header. Key by channel id so switching rooms
+                mounts a new panel. Only a leave ends a call. */}
             {activeChannel.channelType === "voice" && !state.voiceEnabled && (
               <div class="chalk-voice-panel chalk-voice-disabled" data-testid="voice-disabled">
                 voice is disabled on this server (CHALK_VOICE_ENABLED)
               </div>
             )}
-            {activeChannel.channelType === "voice" && state.voiceEnabled && state.user && ccReady && (
+            {activeChannel.channelType === "voice" && state.voiceEnabled && state.user && ccReady && !isMobile && (
               <VoiceCallPanel
                 key={activeChannel.id}
                 channel={activeChannel}
@@ -6708,22 +6748,6 @@ export function App() {
             onCommit={commitComposerHeight}
           />
         )}
-        {/* 44-2: the voice controls used to sit here in a roster-width column,
-            always visible, so mute and camera were set before you join rather
-            than after. 95-1: on the phone list the panel is a full-width band
-            under the composer -- see VoiceControls' hideIdle. */}
-        {/* 131-7: the phone's control bar. On desktop the call rail carries
-            the controls and the roster runs to the bottom. */}
-        {isMobile && (
-          <div class="chalk-footer-left">
-            {state.voiceEnabled && (
-              <VoiceControls
-                onOpenMicSettings={() => setMicSettingsOpen(true)}
-                hideIdle
-              />
-            )}
-          </div>
-        )}
         {/* 53-1: hidden, not unmounted -- the composer owns its draft and its
             pending attachments in local state, and parking must not be a way
             to lose the message you were halfway through writing. The voice
@@ -6801,28 +6825,54 @@ export function App() {
             mentionHandles={activeChannel?.members.map((m) => m.handle)}
           />
         </div>
-        {/* 126-2: the phone home screen's own voice bar. It reads the same
-            session snapshot as VoiceSinks (135-2: VoiceSinks has no bar and
-            the phone has no sidebar). The mobile footer
-            stacks in column-reverse, so being last here puts the bar at the
-            top of the stack: above the composer on the chat screen, above
-            the voice controls band on the list screen.
-            Going back to the list only switches zuckerScreen -- the active
-            channel still holds the room, so the bar took it to mean you were
-            looking at the room while you stood on the list, and the "▸"
-            hint never showed there. Passing null on the list screen tells
-            the bar that no channel is on screen. */}
-        {zuckerActive && (
-          <ZuckerCallBar
-            activeChannelID={zuckerScreen === "list" ? null : state.activeChannelID}
-            onJumpToChannel={(id) => {
-              dispatch({ kind: "set_active_channel", channelID: id });
-              dispatch({ kind: "unread_mark_refresh", channelID: id });
-              setZuckerScreen("chat");
-            }}
+        {/* 135-5: the phone's call bar. The footer stacks in column-reverse,
+            so the last child is the top of the stack: above the composer. */}
+        {zuckerActive && callView === null && state.user && (
+          <PhoneCallBar
+            room={railChannelID ? state.channels[railChannelID] : undefined}
+            selfUserID={state.user.id}
+            onOpen={(id) => setCallView(id)}
           />
         )}
       </footer>
+
+      {/* 135-5: the phone's call view, over the screen under it. */}
+      {zuckerActive && callView !== null && state.user && (
+        <PhoneCallSheet
+          roomID={callView}
+          room={state.channels[callView]}
+          roster={state.voiceRosters[callView] ?? []}
+          avatars={state.avatars[callView] ?? {}}
+          attachmentController={attControllerRef.current ?? null}
+          selfUserID={state.user.id}
+          selfDeviceID={state.user.device}
+          keyReady={ccReady && keyStatus[callView] === "ready"}
+          chatUnread={(() => {
+            const u = state.unread[callView];
+            return !!u && u.lastSeq > u.lastReadSeq;
+          })()}
+          onJoin={() => {
+            const ch = state.channels[callView];
+            if (!ch || !state.user) return;
+            void voiceSession.join({
+              channelID: ch.id,
+              channelName: ch.name,
+              selfUserID: state.user.id,
+              selfDeviceID: state.user.device,
+              client: clientRef,
+              cc: ccRef,
+            });
+          }}
+          onClose={() => setCallView(null)}
+          onOpenChat={() => {
+            dispatch({ kind: "set_active_channel", channelID: callView });
+            dispatch({ kind: "unread_mark_refresh", channelID: callView });
+            setZuckerScreen("chat");
+            setCallView(null);
+          }}
+          onOpenSettings={() => setMicSettingsOpen(true)}
+        />
+      )}
 
 
       {state.createModalOpen && (

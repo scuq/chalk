@@ -86,7 +86,7 @@ interface Props {
  * rejection arrives as "code: message") to actionable phrasing. Unknown
  * codes pass through untouched.
  */
-function describeJoinError(raw: string): string {
+export function describeJoinError(raw: string): string {
   if (raw.startsWith("voice_room_full")) {
     return "room is full (server participant cap) — try again when someone leaves";
   }

@@ -17,14 +17,16 @@ export interface PhoneLayers {
   screen: "list" | "chat";
   thread: boolean;
   panel: boolean;
+  /** 135-5: the call view over the screen. */
+  call: boolean;
 }
 
 /** One action that closes one layer. */
-export type PopStep = "close-panel" | "close-thread" | "to-list";
+export type PopStep = "close-panel" | "close-call" | "close-thread" | "to-list";
 
 /** stackDepth returns the number of history entries the open layers need. */
 export function stackDepth(l: PhoneLayers): number {
-  return 1 + (l.screen === "chat" ? 1 : 0) + (l.thread ? 1 : 0) + (l.panel ? 1 : 0);
+  return 1 + (l.screen === "chat" ? 1 : 0) + (l.thread ? 1 : 0) + (l.panel ? 1 : 0) + (l.call ? 1 : 0);
 }
 
 /** historyDepth returns the depth stored in the state of a history entry.
@@ -52,6 +54,7 @@ export function popSteps(l: PhoneLayers, toDepth: number): PopStep[] {
   let depth = stackDepth(l);
   const order: [PopStep, boolean][] = [
     ["close-panel", l.panel],
+    ["close-call", l.call],
     ["close-thread", l.thread],
     ["to-list", l.screen === "chat"],
   ];

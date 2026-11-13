@@ -1,6 +1,6 @@
 # Phase 135 — phone: the chat list is the phone layout, with a call bar and a call view
 
-**Status:** in progress. 135-1 and 135-2 are built (2026-11-13). 135-3 and 135-4 are built (2026-11-14), and their device checks are open. 135-5 to 135-8 are planned and have no code.
+**Status:** in progress. 135-1 and 135-2 are built (2026-11-13). 135-3, 135-4, and 135-5 are built (2026-11-14), and their device checks are open. 135-6 to 135-8 are planned and have no code.
 **Tags:** `#zucker`, `#mobile`, `#roster`, `#themes`, `#voice` → `tools/where.sh -g zucker`
 
 ## The problem
@@ -36,22 +36,38 @@ The service worker stays in phase 65.
 
 ### Navigation rules of the call view (135-5)
 
-- A tap on the call bar opens the call view.
-- The chat button in the call view opens the chat of the room.
+- A tap on a voice room in the list opens the call view over the list. A text room opens its chat.
+- A tap on the call bar opens the call view over the current screen. The screen does not change, so back returns to it.
+- The chat button in the call view opens the chat of the room and closes the view.
 - A tap on a room the user is already in opens the call view. It does not join a second time.
-- A swipe down, the arrow, or the back gesture closes the call view.
-- Only the leave button ends the call.
+- On the phone, a selection does not join. The join button in the call view joins. Desktop still joins on a selection.
+- A swipe down on the head (past 90 px), the arrow, or the back gesture closes the call view.
+- Only the leave button ends the call. A leave also closes the view of the room that the user left.
 - A move takes 160 ms.
+
+### Design decisions of 135-5
+
+- The call view is an overlay with its own history layer. Back closes it and returns to the screen under it, whether that screen is the list or a chat.
+- The phone has a join screen and no auto-join. A tap on a voice room opens the view, and the join button joins.
+- On the phone, the page of a voice room is its chat. A "call" button in its header opens the view.
+- The new CSS block sits above the seasonal section. The seasonal and flair tests expect their own reduced-motion block to be the last in their section.
 
 ### Call view layout (135-5)
 
 - In an audio call (no camera on), each person has a compact card with a name, a picture, and a level meter. Eight cards fit without a scroll.
-- When a camera is on, video takes the room. People with audio only go to a strip. The user's own picture is a corner preview.
+- When another person has a camera on, video takes the room: up to four videos on the stage, and everybody else in a strip. The user's own camera is a corner preview. The user's own camera alone does not switch the view to video. The user's own screen share is not shown back to the user.
 - The speaker has a thin moving border and three level bars. With reduced motion, nothing moves.
 - The controls are rounded-square buttons: mute, deafen, camera, share, and leave. A muted button has an amber tint. The leave button has a red tint.
 - Settings moves to the header of the call view.
 - The share button is absent where the browser cannot share the screen.
-- The whole tile is the tap target. A tap opens a sheet with volume, mute for me, and show large. A double-tap on a video also shows it large.
+- The whole tile is the tap target. A tap opens a sheet with volume (0 to 200 %), mute for me, and show large for a video. A double tap on a video also shows it large. A video waits 280 ms for a second tap before it opens the sheet.
+- Before the user joins, the view shows:
+  - Who is here.
+  - The join button.
+  - A note when the user is in another room.
+  - The key wait.
+  - The join error.
+- The footer has a chat button with an unread dot, and the controls.
 
 ### Text size on the phone (135-4)
 
@@ -106,7 +122,7 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
   Also removed: the connection bar markup (room button, duration, live dot, leave, the sharing row with stop, and the autoplay nudge row).
   The bar could go. Since 131-7 it rendered only on the phone, and since 135-1 the phone hides the sidebar that held it.
   On desktop the call rail has the duration, the controls, and leave.
-  On the phone `ZuckerCallBar` has the room, the duration, the nudge, and leave until 135-5 replaces it.
+  On the phone `ZuckerCallBar` had the room, the duration, the nudge, and leave until 135-5 replaced it.
   `App.tsx` mounts `<VoiceSinks key="voice-sinks">` once, as the first child of the `.chalk-app` element, before the header, at a position that does not depend on `isMobile`.
   The position matters. A remount creates new `<audio>` elements in the middle of a call, and a rotated phone can cross the 767 px breakpoint.
   The `AdminPanel` early return still unmounts the sinks, as before.
@@ -114,7 +130,7 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
   `web/src/theme.css` lost these rules:
   the phone rule `.chalk-sidebar { display: none }` and its comment, the phone `.chalk-sidebar-item` rule with its heading, and the `.chalk-voice-ctl-mini` and `.chalk-voice-ctl-wide` rules (only `CtlLabel` used them).
   It also lost the reduced-motion rule for the sidebar transition. The transition was the drawer's.
-  The `.chalk-voice-dock*` rules stay, because `ZuckerCallBar` still uses them until 135-5.
+  The `.chalk-voice-dock*` rules stayed, because `ZuckerCallBar` still used them. 135-5 removed them.
   Tests: the new `web/src/components/voice-sinks-mount.test.ts` reads the `App.tsx` source.
   It asserts one `<VoiceSinks`, before the header, as a direct child of the `.chalk-app` element, with no `isMobile` or `zucker` between it and the header.
   It also asserts the aside behind `!isMobile` and no `<VoiceDock`.
@@ -171,9 +187,36 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
   Tests: the new `web/src/theme-phone.test.ts` checks the meta, the phone `html, body` rule, and the controls of the last phone block.
   It also checks the token, and that no decoration rule reads the muted colour directly.
   `web/src/theme-composer.test.ts` now expects 44 px phone tools.
-- **135-5 — phone call bar and call view.** Planned.
-  New `PhoneCallBar.tsx` and `PhoneCallSheet.tsx`, and a pure `web/src/voice/phone-call.ts`.
-  `ZuckerCallBar.tsx`, the footer `VoiceControls`, and their CSS go. `VoiceCallPanel` is desktop only.
+- **135-5 — phone call bar and call view.** Built 2026-11-14.
+  New files: `web/src/voice/phone-call.ts` (pure, tested in `phone-call.test.ts`), `web/src/components/PhoneCallBar.tsx`, and `web/src/components/PhoneCallSheet.tsx`.
+  The pure functions are:
+  `callLayout` (audio mode: one card for each tile. Video mode: up to four videos of other people on the stage, everybody else in a strip, the own camera in the corner. The own screen share is not shown. The own camera alone does not switch to video. A "show large" key puts one video alone on the stage),
+  `stageGrid`,
+  `cardColumns` (one column up to two people),
+  `barLine` (the second line of the bar. In order: the sound nudge, "joining…", the people who speak, "you are muted", "in the call"),
+  and `canShareScreen` (needs `getDisplayMedia`, which iOS Safari does not have).
+  `PhoneCallBar` shows above the composer on every phone screen except the call view, while the user is in a call or joining one.
+  It has the room name and duration, the bar line, a level meter, mute, and leave. A tap on the room opens the call view.
+  `PhoneCallSheet` is a full-screen layer (`position: fixed`, `z-index` 60, below dialogs at 100).
+  Its head has the arrow down (close), the room name, the duration, and settings.
+  Before the user joins, it shows who is here and the join button.
+  It also shows a note when the user is in another room, the key wait, and the join error (`describeJoinError`, now exported from `VoiceCallPanel.tsx`).
+  In the call it shows audio cards or the video layout. The foot has the chat button with an unread dot, and the controls: mute, deafen, camera, share (only where the browser can share), and leave.
+  A drag down on the head past 90 px closes the view.
+  `web/src/nav/phone-stack.ts` has a new layer `call` and a new step `close-call`. The call layer is above a thread and below a panel.
+  `App.tsx` has a `callView` state, the room whose view is open.
+  A tap on a voice room in the list sets the room active and opens the view over the list.
+  The selection loads the room key for the join button.
+  The bar opens the view over the current screen without a change of screen.
+  On the phone, the auto-join on a selection is off. Desktop keeps it.
+  On the phone, a voice room's page is its chat. It has no `VoiceCallPanel` and no `chalk-main--voice` class, and its header has a "call" button that opens the view.
+  `VoiceCallPanel` renders on desktop only.
+  Removed: `ZuckerCallBar.tsx`, the footer voice control band, and the `VoiceControls` component. `VoiceControls.tsx` keeps the icons and `toggleCamOrEnable`.
+  Removed CSS: `.chalk-voice-dock*` with its container query, `.chalk-voice-controls*`, `.chalk-voice-ctlbtn`, `.chalk-voice-live`, `.chalk-zucker-callbar*`, and `.chalk-footer-left`. The two `.chalk-call-rail-btn` rules are one rule now.
+  The new CSS block "135-5" sits above the seasonal section.
+  The seasonal and flair tests expect their own reduced-motion block to be the last in their section, so a block after them breaks those tests.
+  Tests: `web/src/voice/phone-call.test.ts`, `web/src/theme-phone-call.test.ts` (bar and button sizes, the fixed layer, control colors, reduced motion, the removed surfaces), and the call layer cases in `web/src/nav/phone-stack.test.ts`.
+  `theme-sidebar.test.ts` and `theme-zucker.test.ts` changed for the removed classes. The call bar margin test of 126-2 is gone with the bar.
   The call view has no board, no pop-outs, no layout toggle, and no debug drawer.
   The layout and the navigation rules are above.
 - **135-6 — resume from the background.** Planned.
@@ -248,6 +291,34 @@ Not verified on a device:
 - The iOS keyboard close with the `focusout` and `orientationchange` measurement.
 - Pull-to-refresh. It is not tested on Android Chrome or in an installed iOS app.
 
+## Verification of 135-5
+
+Live probe: Playwright with iPhone 14 touch emulation, 390x664. The phone user was in a room with three desktop users. 14 of 14 checks passed:
+
+- There is no bar before a call.
+- A tap on the room opens the join screen at history depth 2, with no join.
+- Join shows four audio cards.
+- A camera turns the view to video, with one video and three chips.
+- A tap on a person opens their sheet.
+- Every button in the view is 44 px or more.
+- Back returns to the list, and the bar shows.
+- The mute button of the bar toggles.
+- In a chat, the bar sits above the composer.
+- The bar opens the view over the chat at depth 3, and back returns to the same chat.
+- A tap on the room the user is in opens the call, not the join screen.
+- The chat button opens the room chat with the composer and the bar.
+- Leave ends the call and closes the view.
+
+The probe found one layout bug and the change fixes it. Card names sat in the middle of the card, over the picture, because a button centres its content.
+
+Not verified:
+
+- The drag-down close and the double tap. They are pointer gestures, and the probe did not drive them.
+- Real devices.
+- Screen share on an Android phone.
+- Eight audio cards without a scroll (the probe had four).
+- The `ui-sweep.mjs` probe with `--phone`. Its voice shots now land in the call view and not in the old room page. Its step that clicks `voice-cam` finds nothing. That step was already inside a catch.
+
 ## Known loss
 
 The phone list has no row menu.
@@ -256,7 +327,8 @@ The same loss is in `docs/open-items.md`.
 
 ## Left open
 
-- The phone has no call view until 135-5.
+- The 135-5 device checks are open. See the manual checklist.
+- The call view has no board, no pop-outs, no layout toggle, and no debug drawer. The desktop panel keeps them.
 
 ## Manual checklist
 
@@ -273,6 +345,12 @@ The same loss is in `docs/open-items.md`.
 - [ ] 135-4: an iPhone. Close the keyboard with a tap outside the field, with the return key, and by rotating. The shell returns to full height each time.
 - [ ] 135-4: pull down on a list and on a chat, on Android Chrome and in an installed iOS app. chalk does not reload.
 - [ ] 135-4: the settings panel, the friends panel, and the other panels. No visible control is under 44 px.
+- [ ] 135-5: a real iPhone and a real Android phone. Join from the call view, and the audio plays. The bar shows on the list and on a chat.
+- [ ] 135-5: a drag down on the head closes the view, and a short drag does not. A double tap on a video shows it large, and a single tap opens the sheet after a short wait.
+- [ ] 135-5: screen share on an Android phone. On an iPhone the share button is absent.
+- [ ] 135-5: the system back, the Android back gesture, and the iOS edge swipe close the call view. Each returns to the screen under it, and the call continues.
+- [ ] 135-5: eight people in a call. All cards show without a scroll.
+- [ ] 135-5: on a small phone, the controls of the call view are 44 px or more. The foot clears the home indicator.
 - [ ] 135-7: an interrupted call, such as an incoming phone call.
 - [ ] 135-7: an audio route change, such as a headset plugged in or removed.
 - [ ] 135-7: recovery after the user denies and then allows the microphone permission.

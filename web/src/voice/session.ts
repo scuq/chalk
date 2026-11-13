@@ -2,7 +2,7 @@
 //
 // Discord's defining voice behavior is that a call is not a page -- you
 // connect to a room and keep browsing text channels while connected, with a
-// small dock showing the connection. That is impossible while the call is
+// small bar showing the connection. That is impossible while the call is
 // owned by the per-channel VoiceCallPanel (unmount == leave, the 30-4/30-5
 // simplification). This module lifts ownership to a singleton that outlives
 // any component:
@@ -10,7 +10,8 @@
 //   * exactly ONE live VoiceCall at a time (join elsewhere = move rooms)
 //   * components are VIEWS: they subscribe(), render snap(), and call the
 //     imperative methods -- the panel shows the stage when you're looking at
-//     the room, the dock shows the connection everywhere else
+//     the room, the call rail and the phone call bar show the connection
+//     everywhere else
 //   * remote AUDIO is VoiceSinks' job (rendered once, app-level), so sound
 //     keeps flowing while you read a text channel
 //   * lifecycle edges that used to ride on unmount now ride on explicit
@@ -59,7 +60,7 @@ export type { PeerAudioPref } from "./peer-audio-store";
 // and the WebSocket -- WebRTC state cannot survive a reload, so a true
 // "stay connected" is impossible. Instead we remember which room we were in
 // (sessionStorage: survives reload, dies with the tab) and App auto-rejoins
-// once on the next mount (30-5i; the dock nudges if autoplay is gated). The
+// once on the next mount (30-5i; the call rail and the phone call view nudge if autoplay is gated). The
 // same hint, held in memory with wsDrop set, drives the rejoin after a
 // mid-session socket drop. Consuming the hint clears it, so a failed rejoin
 // can never crash-loop.
@@ -71,7 +72,7 @@ export interface RejoinHint {
   channelName: string;
   /** Set when the hint comes from a mid-session socket drop (handleWsDown):
    * rejoin in place, without refocusing the room -- the user may be reading
-   * a different channel while the call rides in the dock. Absent on the
+   * a different channel while the call rides in the call rail or the call bar. Absent on the
    * reload path, where the fresh page has no context worth preserving. */
   wsDrop?: boolean;
 }
@@ -107,8 +108,8 @@ export function readRejoinHint(): RejoinHint | null {
 
 // ---- global mute / deafen / camera (44-2) -----------------------------------
 //
-// These three are live controls AND join defaults: whatever the footer cluster
-// shows while you are idle is the state you join the next room in. Discord's
+// These three are live controls AND join defaults: the state you set while you
+// are idle is the state you join the next room in. Discord's
 // behaviour, and the honest one -- a mute you set deliberately should not be
 // silently undone by walking into a room.
 //
@@ -213,7 +214,8 @@ export interface VoiceSessionSnap {
   rejoinHint: RejoinHint | null;
   /** 30-5i: remote audio playback is suspended by the browser's autoplay
    * policy (common right after an auto-rejoin with no user gesture). The
-   * call rail and the phone call bar show a "click to enable audio" nudge; any click resumes it. */
+   * call rail shows a "click to enable audio" nudge, and the phone call bar
+   * and call view say "tap anywhere to turn on the sound". Any click resumes it. */
   audioBlocked: boolean;
   /** 41-5 (A4): deafened -- every remote sink silenced, and us muted with it. */
   deafened: boolean;
@@ -298,12 +300,12 @@ class VoiceSessionImpl {
     voiceBus.subscribe((f: Frame) => this.call?.handleFrame(f));
     // 30-5h: a hint left by a prior page load = offer a one-click rejoin.
     this.s.rejoinHint = readRejoinHint();
-    // 44-2: the footer cluster shows this while idle, and join() joins into it.
+    // 44-2: join() joins into this state.
     this.global = loadGlobalVoice();
     this.s = { ...this.s, ...this.global };
     // 66-3: the per-peer list can now change under us -- another tab, or this
     // account's other machine via the sync. Re-read the room we are in so the
-    // dock's sliders and the sinks follow it mid-call.
+    // volume sliders and the sinks follow it mid-call.
     subscribePeerAudioStore((store) => this.adoptPeerAudio(store));
   }
 
@@ -521,7 +523,7 @@ class VoiceSessionImpl {
         }),
       );
       await call.join();
-      // 44-2: join into the state the footer cluster is showing. The call
+      // 44-2: join into the global state. The call
       // itself starts unmuted with the camera off (matching the server's
       // default participant row), so only a differing global needs applying --
       // and setMuted/setVideoEnabled broadcast the corrected voice_state.
@@ -547,7 +549,7 @@ class VoiceSessionImpl {
         `session: in-call (relay=${call.relayOnly} video=${call.joinedWithVideo})`,
       );
       // 71-1: you're in. Deliberately after the snapshot flip, so the sound
-      // and the dock appearing are the same moment.
+      // and the call rail or call bar appearing are the same moment.
       notifySounds().playCall("call_join");
       // 30-5h: remember the room so a page reload can offer a one-click
       // rejoin. Cleared on user-initiated leave, kept across refresh.
@@ -616,7 +618,7 @@ class VoiceSessionImpl {
       micOpen: true,
       speaking: {},
       // 44-2: mute, deafen and the camera survive the call -- they are the
-      // footer cluster's state, and the default for the next room. Leaving a
+      // global state, and the default for the next room. Leaving a
       // room is not a reason to hand someone back a hot microphone.
       ...this.global,
     });

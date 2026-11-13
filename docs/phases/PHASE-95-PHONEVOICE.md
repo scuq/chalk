@@ -5,6 +5,10 @@ followed as a second, reported against the shelf 95-2 built. The phase is
 closed unless the remaining follow-ups under [Left open](#left-open) are taken
 up.
 
+NOTE: the phone has its own call bar and call view since 135-5.
+`ZuckerCallBar` and the footer voice controls are gone. The text below about
+them describes the code before 135-5.
+
 **Tag:** `#zucker` and `#voice` → `tools/where.sh -g zucker`. It sits on the
 seam between the two: it changes nothing about how a call works, only how much
 of the phone's home screen a call you are *not* in gets to occupy.

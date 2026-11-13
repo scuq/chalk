@@ -10,7 +10,7 @@
 // preference that must survive rejoins).
 //
 // 66-3: lifted out of session.ts so the list can be synced. localStorage stays
-// the runtime source of truth -- the dock reads it while rendering and it has
+// the runtime source of truth -- the call views read it while rendering and it has
 // to answer before the socket is up -- and peer-audio-sync.ts mirrors it
 // through the server as an encrypted blob. Hence the total normalizer: what
 // comes back down is a decrypted blob written by another device, and it must

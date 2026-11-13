@@ -40,6 +40,11 @@ there is no rail. After leave the grid has two columns again.
 Phase 114 gained slices 114-5 and 114-6 in the same change set. Their record is
 in [PHASE-114-ROSTERORDER.md](PHASE-114-ROSTERORDER.md).
 
+NOTE: the phone has its own call bar and call view since 135-5.
+`ZuckerCallBar` and the footer voice controls are gone. The text below about
+them describes the code before 135-5.
+
+
 **Tags:** `#voice` → `tools/where.sh -g voice`
 
 ## The problem

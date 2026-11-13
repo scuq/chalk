@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { historyDepth, hasDepth, popSteps, reconcile, stackDepth, type PhoneLayers } from "./phone-stack";
 
-const L = (screen: "list" | "chat", thread = false, panel = false): PhoneLayers => ({ screen, thread, panel });
+const L = (screen: "list" | "chat", thread = false, panel = false, call = false): PhoneLayers => ({ screen, thread, panel, call });
 
 test("the list is depth 1, and each open layer adds one", () => {
   assert.equal(stackDepth(L("list")), 1);
@@ -43,4 +43,11 @@ test("reconcile pushes when the state is deeper and goes back when it is not", (
   assert.deepEqual(reconcile(4, 2), { push: 2 });
   assert.deepEqual(reconcile(1, 3), { go: -2 });
   assert.equal(reconcile(2, 2), null);
+});
+
+test("the call view is a layer above the chat and below a panel", () => {
+  assert.equal(stackDepth(L("list", false, false, true)), 2);
+  assert.equal(stackDepth(L("chat", false, false, true)), 3);
+  assert.deepEqual(popSteps(L("chat", false, true, true), 2), ["close-panel", "close-call"]);
+  assert.deepEqual(popSteps(L("list", false, false, true), 1), ["close-call"]);
 });

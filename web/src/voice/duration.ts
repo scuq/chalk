@@ -1,7 +1,7 @@
-// duration.ts (126-2): the running-call clock, used by the phone's
-// zucker call bar. Split out of VoiceDock.tsx so
-// a component that needs only the clock does not pull in the session, pip
-// and boost modules behind it.
+// duration.ts (126-2): the running-call clock, used by the phone's call bar
+// and call view (PhoneCallBar.tsx, PhoneCallSheet.tsx). A component that
+// needs only the clock does not pull in the session, pip and boost modules
+// behind it.
 
 /** fmtDuration returns a call length as "m:ss", or "h:mm:ss" once it passes
  * one hour. A negative value, from a clock that ran backward, clamps to

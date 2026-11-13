@@ -9,17 +9,17 @@ Latest release: **v0.11.3** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 135 is the newest work. It is in progress: 135-1 to 135-4 are built,
-and 135-5 to 135-8 are planned.
+Phase 135 is the newest work. It is in progress: 135-1 to 135-5 are built,
+and 135-6 to 135-8 are planned.
 Phase 133 is built, with the voice room, and seven points of it are open.
 Phase 131 has two small open points.
 Phase 130 has two open points. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
 
-## Phase 135 — phone: IN PROGRESS, 135-1 to 135-4 built
+## Phase 135 — phone: IN PROGRESS, 135-1 to 135-5 built
 
-135-1 to 135-4, record in [phases/PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md).
+135-1 to 135-5, record in [phases/PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md).
 The chat list is the only phone layout. The menu button, the slide-in channel
 list, the Zuckermode setting, and the `roster.viewMode` preference are gone. The
 phone does not mount the sidebar (135-2). `VoiceSinks`, the audio of a call,
@@ -27,7 +27,11 @@ mounts once at the top of the app, outside every layout branch. On the phone,
 each layer (chat, thread, panel) is a history entry, so the system back closes
 it (135-3). The viewport meta asks Chromium to shrink the layout for the keyboard, the
 phone document does not scroll, and phone tap targets are 44 px (135-4).
-135-5 to 135-8 are planned and have no code.
+In a call, the phone has a call bar above the composer on every screen except
+the call view. A tap on it opens the call view, a full-screen layer with
+a history entry of its own (135-5). `ZuckerCallBar` and the footer voice controls
+are gone.
+135-6 to 135-8 are planned and have no code.
 
 - **The phone list has no row menu.** Hide, group, rename, manual order, and
   the nick colour of a friend are not reachable on a phone until 135-8.
@@ -47,6 +51,13 @@ phone document does not scroll, and phone tap targets are 44 px (135-4).
 - **Panels not measured for 44 px.** The probe measured the list, a chat, the
   composer, and one dialog. The settings panel, the friends panel, and other
   panels are not measured.
+- **The 135-5 device checks are open.** The drag-down close and the double tap
+  on a video are pointer gestures, and the live probe did not drive them. Real
+  devices and screen share on an Android phone are not tested. Eight audio
+  cards without a scroll were not seen (the probe had four).
+- **The `--phone` voice shots of `ui-sweep.mjs` changed.** They now land in the
+  call view and not in the old room page. Its step that clicks `voice-cam`
+  finds nothing. That step was already inside a catch.
 - **The manual checklist in the phase doc is open.**
 
 ## Phase 133 — polish: built, with seven open points
@@ -84,17 +95,19 @@ In a call on a desktop, a 48 px column left of the sidebar is present for the
 whole call. It carries the duration at its head, and microphone, headphones,
 camera, share, settings, and leave at its foot. It shows one tile for each
 participant and each screen share only while the call room is not the channel
-on screen. The footer bar and the voice dock box render on the phone only, and
-the sidebar runs to the bottom of the window. The sidebar lists no names under
+on screen. On the phone, the call bar and the call view of 135-5 take the
+place of the footer bar, and the sidebar runs to the bottom of the window. The sidebar lists no names under
 the voice rooms, and a hover card on the row shows them. A voice room with
 people in it shows a red record light. Every change is in the client. The live
 probe ran on 2026-11-08 after 131-7, and all 25 checks passed. The manual
 checklist in the phase doc is still open.
 
 - **The phone list has no deafened state.** The rail and the room card show it.
-- **The phone list has no name list and no hover.** Touch has no hover, and the
-  stage shows the names once you join. The phone drawer that reused the sidebar
-  is gone since 135-1.
+  Since 135-5 the deafen button of the call view shows it in a call.
+- **The phone list has no name list and no hover.** Touch has no hover. Since
+  135-5 the call view of a room, before you join, shows how many people are
+  there and a picture or initial for up to eight of them. The names show once
+  you join. The phone drawer that reused the sidebar is gone since 135-1.
 
 ## Phase 130 — guest flow: built, with two open points
 

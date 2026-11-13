@@ -12,7 +12,14 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- On a phone, a call now has a bar above the message box on every screen. The bar has mute and leave buttons.
+- On a phone, a tap on the call bar opens a full-screen call view with everyone in the call and large controls.
+- In the phone call view, a tap on a person opens a sheet with their volume and a mute for you only.
+
 ### Changed
+- On a phone, a tap on a voice room opens the call view and asks you to tap join. Before, a tap joined the call.
+- On a phone, back or a swipe down on the top of the call view returns you to where you were. The call continues until you tap leave.
 - On a phone, chalk now always opens on the conversation list. The menu button, the slide-in channel list, and the Zuckermode setting are gone.
 - On a phone, the system back button or back gesture now closes the open panel or thread first. Then it returns from a conversation to the list. Before, it left chalk. The list keeps its place, its filter, and its open sections when you come back.
 - On a phone, the buttons in the header, the conversation header, the message box, and dialogs are larger and easier to tap.

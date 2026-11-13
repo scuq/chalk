@@ -14,11 +14,10 @@
 //   3. The listeners: the Ctrl/Cmd+Shift+V jump shortcut, the pop-out
 //      cleanup when the call ends, and the autoplay resume.
 //
-// 135-2: the connection bar that this component once drew is gone. Since
-// 131-7 it rendered only on the phone, and since 135-1 the phone has no
-// sidebar to hold it. On desktop the call rail (CallRail.tsx) shows the
-// duration, the controls, and leave. On the phone ZuckerCallBar shows the
-// room, the duration, the autoplay nudge, and leave.
+// This component draws no connection bar. On desktop the call rail
+// (CallRail.tsx) shows the duration, the controls, and leave. On the phone
+// PhoneCallBar shows the room, the duration, and the mute and leave
+// buttons, and PhoneCallSheet is the full call view.
 //
 // App.tsx mounts this component as the first child of the .chalk-app
 // element, at a position that does not depend on the layout. A remount

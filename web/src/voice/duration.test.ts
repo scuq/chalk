@@ -1,6 +1,6 @@
-// 126-2: fmtDuration, split out of VoiceDock.tsx so the zucker call bar's clock
-// can be unit-tested without importing the session, pip and boost modules
-// that file pulls in.
+// 126-2: fmtDuration, in its own file so the phone call clock can be
+// unit-tested without importing the session, pip and boost modules that
+// VoiceDock.tsx pulls in.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

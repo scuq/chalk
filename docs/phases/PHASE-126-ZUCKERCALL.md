@@ -6,6 +6,11 @@ assert CSS declarations and the duration clock against known input, and
 verified under iPhone 14 emulation (see Verification below). Neither slice
 has a check on a real phone yet — see the manual checklist below.
 
+NOTE: the phone has its own call bar and call view since 135-5.
+`ZuckerCallBar` and the footer voice controls are gone. The text below about
+them describes the code before 135-5.
+
+
 Tags: `#zucker`, `#voice` → `tools/where.sh -g zucker`
 
 ## The problem

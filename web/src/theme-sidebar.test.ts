@@ -204,7 +204,7 @@ test("the selected row is one rule on the derived tokens, with no per-theme copi
 
 test("unread rows, a live share and keyboard focus each have a visible state", () => {
   assert.match(block(".chalk-sidebar-item--unread .chalk-sidebar-item-name"), /font-weight:\s*700/);
-  const share = block(".chalk-voice-ctlbtn.is-on,\n.chalk-call-rail-btn.is-on");
+  const share = block(".chalk-call-rail-btn.is-on");
   assert.match(share, /color:\s*var\(--chalk-warn\)/, "screen share on the rail is marked like the dock");
   const focus = block(":where(button, a, input, textarea, select, summary, [tabindex]):focus-visible");
   assert.match(focus, /outline:\s*2px solid var\(--chalk-focus\)/);
