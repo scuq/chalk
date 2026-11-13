@@ -332,7 +332,7 @@ html {
   /* 30-5j: pin the shell to the viewport (height, not min-height) so a short
      window -- e.g. with devtools open -- makes the middle row scroll INSIDE
      instead of the whole page overflowing below the fold (composer pushed
-     off-screen, sidebar dock drifting). min-height:0 lets the 1fr row shrink
+     off-screen, sidebar drifting). min-height:0 lets the 1fr row shrink
      below its content so main/sidebar become the scroll surfaces. */
   height: 100dvh;
   min-height: 0;
@@ -2404,12 +2404,10 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-sidebar-inner {
   display: flex;
   flex-direction: column;
-  /* 30-5g: shrinkable, so the pinned voice dock on the phone (sibling,
-     flex:0 0 auto) keeps its space on a short window. The friends and
-     channels lists inside already scroll on their own (base
-     .chalk-sidebar-list), so no second scroll container is introduced -- the
-     channel rows scroll within their list and the dock stays a visible
-     footer. On desktop (131-7) the list runs to the bottom of the window. */
+  /* 30-5g: shrinkable. The friends and channels lists inside already scroll
+     on their own (base .chalk-sidebar-list), so no second scroll container
+     is introduced. 131-7: on desktop the list runs to the bottom of the
+     window. 135-2: no voice dock sits beside it now. */
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -7932,7 +7930,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
 /* ---- 30-5c: persistent-call dock ---------------------------------------
    131-2: one row (room, duration, live dot, leave). The call rail shows who
    is in the call. 131-7: the box renders on the phone only. On desktop the
-   call rail has the duration and leave. */
+   call rail has the duration and leave. 135-2: VoiceSinks no longer draws
+   the box. Only ZuckerCallBar uses these classes, until 135-5 replaces it. */
 
 .chalk-voice-dock {
   margin: var(--chalk-s2) var(--chalk-s2) 0 var(--chalk-s2);
@@ -8016,28 +8015,19 @@ body.chalk-resizing-y .chalk-composer-resizer {
   flex: 1 1 auto;
 }
 
-/* 41-6: compact control labels. Word labels ("unmute", "undeafen", "leave")
-   need roughly 21em of dock before the channel name has anything left; below
-   that the buttons used to push out of the sidebar and sit on top of the
-   message list. The threshold is in em so it tracks the font-scale pref. */
-.chalk-voice-ctl-mini {
-  display: none;
-}
-
+/* 41-6: compact control padding. Below 21em of dock the buttons used to push
+   out of the sidebar and sit on top of the message list. The threshold is in
+   em so it tracks the font-scale pref. 135-2: the word and letter labels of
+   this rule are gone, and only the padding stays. */
 @container voicedock (max-width: 21em) {
-  .chalk-voice-ctl-wide {
-    display: none;
-  }
-  .chalk-voice-ctl-mini {
-    display: inline;
-  }
   .chalk-voice-dock-row .chalk-voice-ctl {
     padding-left: var(--chalk-s2);
     padding-right: var(--chalk-s2);
   }
 }
 
-/* 30-5i: autoplay-blocked audio nudge inside the connected dock. Amber to
+/* 30-5i: autoplay-blocked audio nudge inside the connected dock or the
+   call rail. Amber to
    read as an actionable notice, not an error. */
 .chalk-voice-audionudge {
   font-size: calc(11px * var(--chalk-font-scale));
@@ -9276,8 +9266,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
    The rail is done by redefining the --chalk-* variables *scoped to
    .chalk-sidebar* rather than by restyling its children. Every rule
    under there reads the variables from the cascade, so the whole
-   subtree -- filter box, nick menu, voice dock, and
-   and the hidden phone sidebar, which is the same element -- re-tints from one
+   subtree -- filter box and nick menu -- re-tints from one
    block and stays correct when new sidebar chrome is added later.
 
    The graphite is warm rather than the cool slate it would be in a
@@ -10464,20 +10453,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
     display: none;
   }
 
-  /* -- roster ------------------------------------------------------- */
-
-  /* 135-1: the phone hides the sidebar. The chat list in the main column
-     is the roster. The element stays mounted, because the VoiceDock inside
-     it holds the audio elements of a call. */
-  .chalk-sidebar {
-    display: none;
-  }
-
-  .chalk-sidebar-item {
-    /* Comfortable touch target; the desktop padding gives ~28px. */
-    min-height: 44px;
-  }
-
   /* -- header ------------------------------------------------------- */
 
   .chalk-header {
@@ -10972,7 +10947,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   }
 
   /* 126-2: the phone call bar borrows .chalk-voice-dock's own look, but that
-     class carries a margin sized for a column inside the sidebar. Flush
+     class carries a margin sized for a column in the sidebar (135-2: the
+     phone has no sidebar now). Flush
      against the footer edges is what the phone needs instead, so this zeroes
      it. The hint is the "▸" arrow shown when the room on screen is not the
      room you are connected to. */
@@ -11175,12 +11151,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
   .chalk-emoji-picker-item {
     min-height: 42px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chalk-sidebar {
-    transition: none;
   }
 }
 

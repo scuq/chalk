@@ -20,7 +20,7 @@
 // a context born suspended would play silence for that peer. So the sink
 // asks isRunning() before trusting the graph, plays the raw stream at 100%
 // while it is not, and the first pointer or key anywhere resumes it (the
-// same one-shot the dock uses for autoplay-blocked elements).
+// same one-shot VoiceSinks uses for autoplay-blocked elements).
 //
 // The pure half (the ceiling, the split between element and gain) is here
 // so the tests can pin it without a DOM.

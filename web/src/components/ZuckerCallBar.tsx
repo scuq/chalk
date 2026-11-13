@@ -1,24 +1,19 @@
 // ZuckerCallBar (126-2): the phone home screen's own voice bar.
 //
-// VoiceDock owns live audio: the hidden <audio> sinks for every peer, the
-// boost graph, the pop-out cleanup, and the autoplay-resume handler. It
-// mounts once, inside the sidebar. The phone hides the sidebar with
-// display: none, so the dock's own bar and leave button are unreachable
-// there.
-//
-// The alternative is moving the dock into the footer under zuckerActive.
-// That remounts it on every layout flip: a phone rotated to landscape
-// crosses the 767px breakpoint, and a remount recreates the audio sinks
-// mid-call. So the dock stays where it is and keeps doing audio, and this
-// component reads the same session snapshot (useVoiceSession, exported from
-// VoiceDock) to show a bar of its own on the screen the dock cannot reach.
+// VoiceSinks owns live audio: the hidden <audio> sinks for every peer, the
+// boost graph, the pop-out cleanup, and the autoplay-resume handler. Since
+// 135-2 it has no bar. App.tsx mounts it once, as the first child of the
+// app element and outside every layout branch, because a remount recreates
+// the audio sinks mid-call and a phone rotated to landscape crosses the
+// 767px breakpoint. This component reads the same session snapshot
+// (useVoiceSession, exported from VoiceDock.tsx) to show the phone's bar.
 //
 // Renders nothing while idle. Otherwise, one row: the room glyph and name
 // (jumps back to the room and switches the zucker screen to "chat"), a "▸"
 // hint when you are looking at something else, the running duration or
 // "joining…", the live dot while the microphone is open and not muted, and
-// a leave button. It reuses the dock's classes so it reads as the same
-// control.
+// a leave button. It reuses the chalk-voice-dock classes. 135-5 is to
+// replace this bar.
 
 import { useEffect, useState } from "preact/hooks";
 import { voiceSession } from "../voice/session";
@@ -40,7 +35,7 @@ export function ZuckerCallBar({ activeChannelID, onJumpToChannel }: Props) {
   const [, setTick] = useState(0);
 
   // Re-renders once a second for the running duration below, the same way
-  // the dock ticks its own copy.
+  // no other component ticks a copy of it.
   useEffect(() => {
     if (snap.phase !== "in-call") return;
     const id = window.setInterval(() => setTick((t) => t + 1), 1000);
@@ -57,9 +52,8 @@ export function ZuckerCallBar({ activeChannelID, onJumpToChannel }: Props) {
   return (
     <div class="chalk-voice-dock chalk-zucker-callbar" data-testid="zucker-callbar">
       {snap.audioBlocked && (
-        // 30-5i: the dock shows this same "tap to enable audio" nudge, but
-        // the dock sits inside the hidden sidebar here, so the bar needs its
-        // own copy.
+        // 30-5i: the call rail shows the same "tap to enable audio" nudge on
+        // desktop. The phone has no rail, so the bar needs its own copy.
         <div class="chalk-voice-dock-row chalk-voice-audionudge" data-testid="zucker-callbar-nudge">
           🔇 tap anywhere to enable audio
         </div>
@@ -92,7 +86,7 @@ export function ZuckerCallBar({ activeChannelID, onJumpToChannel }: Props) {
           </span>
         )}
         {!snap.muted && snap.micOpen && (
-          // 41-5: the same live dot the dock shows while your microphone is
+          // 41-5: the same live dot the call rail shows while your microphone is
           // open and not muted.
           <span class="chalk-voice-live" title="your microphone is transmitting" />
         )}

@@ -397,7 +397,7 @@ export class VoiceCall {
   private hasVideo = false;
   private muted = false;
   /** 109-1: self-deafen, carried here only so voice_state can broadcast it.
-   * The silencing itself is VoiceDock's, on the receive side. */
+   * The silencing itself is VoiceSinks', on the receive side. */
   private deafened = false;
   private videoEnabled = false;
   /** 30-7a: the local getDisplayMedia stream while sharing, else null. */
@@ -805,7 +805,7 @@ export class VoiceCall {
    * applyDevicePrefs (44-9) pushes a camera change into the live call.
    *
    * The output device is not handled here: playback belongs to the <audio>
-   * elements the dock owns, and this class never touches them.
+   * elements VoiceSinks owns, and this class never touches them.
    *
    * 44-10: the swap is now entirely inside the camera graph. The published
    * track belongs to the graph's canvas, so changing the device behind it

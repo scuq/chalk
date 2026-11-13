@@ -11,7 +11,7 @@
 //   * components are VIEWS: they subscribe(), render snap(), and call the
 //     imperative methods -- the panel shows the stage when you're looking at
 //     the room, the dock shows the connection everywhere else
-//   * remote AUDIO is the dock's job (rendered once, app-level), so sound
+//   * remote AUDIO is VoiceSinks' job (rendered once, app-level), so sound
 //     keeps flowing while you read a text channel
 //   * lifecycle edges that used to ride on unmount now ride on explicit
 //     app-level events: leaveIfChannelGone (removal/kick), handleWsDown
@@ -213,7 +213,7 @@ export interface VoiceSessionSnap {
   rejoinHint: RejoinHint | null;
   /** 30-5i: remote audio playback is suspended by the browser's autoplay
    * policy (common right after an auto-rejoin with no user gesture). The
-   * dock shows a "click to enable audio" nudge; any click resumes it. */
+   * call rail and the phone call bar show a "click to enable audio" nudge; any click resumes it. */
   audioBlocked: boolean;
   /** 41-5 (A4): deafened -- every remote sink silenced, and us muted with it. */
   deafened: boolean;
@@ -515,7 +515,7 @@ class VoiceSessionImpl {
         // lands on the running call.
         subscribeNetPrefs((prefs) => this.call?.applyNetPrefs(prefs)),
         // 44-9: and for the camera. The output device is not here -- that one
-        // is applied by the dock's <audio> elements, which own playback.
+        // is applied by the <audio> elements of VoiceSinks, which own playback.
         subscribeDevicePrefs((prefs) => {
           void this.call?.applyDevicePrefs(prefs);
         }),
@@ -702,8 +702,9 @@ class VoiceSessionImpl {
    * standard pairing, and the honest one: staying audible in a conversation you
    * have stopped listening to is worse than being off entirely.
    *
-   * Receive-side deafening is a flag the dock's AudioSinks read; no peer acts
-   * on it, so nobody else's client needs to agree. 109-1 does broadcast it,
+   * Receive-side deafening is a flag the audio sinks of VoiceSinks read.
+   * No peer acts on it, so nobody else's client needs to agree. 109-1 does
+   * broadcast it,
    * purely so the room can see that talking to you right now goes nowhere --
    * the mute alone said "their mic is off", which is a different fact.
    */
@@ -828,7 +829,7 @@ class VoiceSessionImpl {
     return h;
   }
 
-  /** 30-5i: flag/clear the autoplay-blocked state for the dock nudge. */
+  /** 30-5i: flag/clear the autoplay-blocked state for the nudge. */
   notifyAudioBlocked(): void {
     if (!this.s.audioBlocked) this.set({ audioBlocked: true });
   }
@@ -850,7 +851,7 @@ class VoiceSessionImpl {
 
   /** A4 subset: playback volume 0..1 for one participant. Persisted. */
   setPeerVolume(userID: string, volume: number): void {
-    // 119-1: 0..2; over 1 the dock's sink adds gain (boost.ts).
+    // 119-1: 0..2; over 1 the VoiceSinks sink adds gain (boost.ts).
     this.updatePeerAudio(userID, (p) => ({ ...p, volume: clampPeerVolume(volume) }));
   }
 

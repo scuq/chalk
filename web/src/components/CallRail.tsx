@@ -234,7 +234,7 @@ export function CallRail({
   );
 }
 
-// The video element of a tile. Muted: audio plays through the dock's sinks.
+// The video element of a tile. Muted: audio plays through the VoiceSinks sinks.
 function RailVideo({ stream, mirrored }: { stream: MediaStream; mirrored: boolean }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {

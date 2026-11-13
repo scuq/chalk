@@ -17,7 +17,7 @@
 // refuses an inline stylesheet, and pip.ts learned that the hard way.
 //
 // Every video is MUTED, as in pip.ts: remote audio has exactly one output
-// path (VoiceDock's sinks), and a second would double every voice.
+// path (VoiceSinks' sinks), and a second would double every voice.
 //
 // The layout is not remembered across openings yet -- the grid comes back
 // each time. That is the obvious next slice if anyone wants it.

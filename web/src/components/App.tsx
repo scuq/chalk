@@ -310,7 +310,7 @@ import {
 // voice pushes from handleFrame to the mounted panel's VoiceCall.
 import { VoiceCallPanel } from "./VoiceCallPanel";
 import { ZuckerCallBar } from "./ZuckerCallBar";
-import { VoiceDock, useVoiceRoom } from "./VoiceDock";
+import { VoiceSinks, useVoiceRoom } from "./VoiceDock";
 import { VoiceControls } from "./VoiceControls"; // 44-2
 import { CallRail } from "./CallRail"; // 131-1
 import { RecIndicator } from "./RecIndicator"; // 131-9
@@ -2324,7 +2324,8 @@ export function App() {
   // consume the hint EXACTLY ONCE and re-run the normal join. The ref guards
   // against a second attempt (crash-loop safety); consumeRejoinHint also
   // clears the hint, so a failed rejoin won't retry. Browsers may suspend
-  // audio playback until the first click -- the dock shows a nudge then.
+  // audio playback until the first click -- the call rail or the phone call
+  // bar shows a nudge then.
   //
   // The ref re-arms whenever the socket is down: a mid-session drop during a
   // call also leaves a hint (handleWsDown), and each reconnect gets exactly
@@ -4010,7 +4011,7 @@ export function App() {
   // 40-2: an AudioContext is born suspended and only resume()s from
   // inside a real user gesture, so the first click or keypress anywhere
   // is what grants sound for the rest of the session. One-shot, and the
-  // same shape VoiceDock uses to recover autoplay-blocked call audio.
+  // same shape VoiceSinks uses to recover autoplay-blocked call audio.
   //
   // Until this fires the gate returns "locked" and nothing is queued: a
   // message that arrives before the user has touched the page is silent
@@ -5865,6 +5866,14 @@ export function App() {
       class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${railOn ? "chalk-app--rail" : ""} ${zuckerActive ? "chalk-app--zucker" : ""} ${zuckerActive && zuckerScreen === "list" ? "chalk-app--zucker-list" : ""} ${chatSwipe.offset !== null ? "chalk-app--swiping" : ""} ${chatSwipe.settling ? "chalk-app--swiping-settle" : ""} ${screened ? "chalk-app--screened" : ""}`}
       style={shellStyle || undefined}
     >
+      {/* 135-2: the audio of a call. It must stay the first child of this
+          element and must not depend on isMobile or the layout. A remount
+          creates new <audio> elements in the middle of a call, and a phone
+          that rotates can cross the 767px breakpoint. */}
+      <VoiceSinks
+        key="voice-sinks"
+        onJumpToChannel={(id) => dispatch({ kind: "set_active_channel", channelID: id })}
+      />
       <header class="chalk-header">
         <div class="chalk-header-left">
           <div class="chalk-brand">
@@ -5946,7 +5955,7 @@ export function App() {
       {/* 131-1: the call rail. Its own grid cell, left of the sidebar, for as
           long as you are in a call. Desktop only: the phone has its own
           call bar. 131-7: it carries the duration and every
-          control, so the dock box and the footer bar do not render here. */}
+          control. */}
       {railOn && state.user && (
         <CallRail
           activeChannelID={state.activeChannelID}
@@ -5960,265 +5969,257 @@ export function App() {
           selfDeviceID={state.user.device}
         />
       )}
-      <aside class="chalk-sidebar" id="chalk-roster">
-        <Sidebar
-          // Phase 9.7f: nick colors in the roster context menu. hueForHandle
-          // reports what a handle currently renders as (explicit pick, else
-          // the automatic hash) so the picker opens on the live color;
-          // onSetFriendHue persists a pick, or clears it back to automatic.
-          // 47-5: it also tints the roster itself, so it honours the master
-          // switch -- null means "leave this name the theme's color".
-          nickColorsEnabled={selectChatPrefs(state.prefs).userColorsEnabled}
-          hueForHandle={nickHueForHandle}
-          selfHue={ownNickHue}
-          onSetFriendHue={(handle, hue) => {
-            // Same JSONB shallow-merge rule as the other chat prefs: ship the
-            // whole chat object, not just the changed key.
-            const c = clientRef.current;
-            if (!c || !c.isOpen()) return;
-            const current = selectChatPrefs(state.prefs);
-            const key = handle.toLowerCase();
-            const userHues = { ...current.userHues };
-            if (hue === null) delete userHues[key];
-            else userHues[key] = hue;
-            c.send(TypePrefsSet, { patch: { chat: { ...current, userHues } } });
-          }}
-          channels={state.channelOrder.map((id) => state.channels[id])}
-          friends={state.friends}
-          groupingEnabled={selectRosterPrefs(state.prefs).groupingEnabled}
-          // 134-1: chaos mode is desktop only.
-          chaos={selectRosterPrefs(state.prefs).chaos && !isMobile}
-          groupOverrides={selectRosterPrefs(state.prefs).groupOverrides}
-          onSetChannelGroup={(channelID, group) => {
-            const c = clientRef.current;
-            if (!c || !c.isOpen()) return;
-            const current = selectRosterPrefs(state.prefs);
-            // Rebuild keeping only channels still in the roster, so
-            // overrides for channels you've since left don't pile up in
-            // prefs forever. Whole roster object over the wire, as always.
-            const next: Record<string, string> = {};
-            for (const [id, g] of Object.entries(current.groupOverrides)) {
-              if (state.channels[id]) next[id] = g;
+      {!isMobile && (
+        <aside class="chalk-sidebar" id="chalk-roster">
+          <Sidebar
+            // Phase 9.7f: nick colors in the roster context menu. hueForHandle
+            // reports what a handle currently renders as (explicit pick, else
+            // the automatic hash) so the picker opens on the live color;
+            // onSetFriendHue persists a pick, or clears it back to automatic.
+            // 47-5: it also tints the roster itself, so it honours the master
+            // switch -- null means "leave this name the theme's color".
+            nickColorsEnabled={selectChatPrefs(state.prefs).userColorsEnabled}
+            hueForHandle={nickHueForHandle}
+            selfHue={ownNickHue}
+            onSetFriendHue={(handle, hue) => {
+              // Same JSONB shallow-merge rule as the other chat prefs: ship the
+              // whole chat object, not just the changed key.
+              const c = clientRef.current;
+              if (!c || !c.isOpen()) return;
+              const current = selectChatPrefs(state.prefs);
+              const key = handle.toLowerCase();
+              const userHues = { ...current.userHues };
+              if (hue === null) delete userHues[key];
+              else userHues[key] = hue;
+              c.send(TypePrefsSet, { patch: { chat: { ...current, userHues } } });
+            }}
+            channels={state.channelOrder.map((id) => state.channels[id])}
+            friends={state.friends}
+            groupingEnabled={selectRosterPrefs(state.prefs).groupingEnabled}
+            // 134-1: chaos mode is desktop only.
+            chaos={selectRosterPrefs(state.prefs).chaos && !isMobile}
+            groupOverrides={selectRosterPrefs(state.prefs).groupOverrides}
+            onSetChannelGroup={(channelID, group) => {
+              const c = clientRef.current;
+              if (!c || !c.isOpen()) return;
+              const current = selectRosterPrefs(state.prefs);
+              // Rebuild keeping only channels still in the roster, so
+              // overrides for channels you've since left don't pile up in
+              // prefs forever. Whole roster object over the wire, as always.
+              const next: Record<string, string> = {};
+              for (const [id, g] of Object.entries(current.groupOverrides)) {
+                if (state.channels[id]) next[id] = g;
+              }
+              if (group === null) delete next[channelID];
+              else next[channelID] = group;
+              c.send(TypePrefsSet, { patch: { roster: { ...current, groupOverrides: next } } });
+            }}
+            // 78-2: hiding a channel. Same shape as the group override above:
+            // per-user, prefs-synced, and rebuilt on every write so entries for
+            // channels you have left -- and watermarks a message has already
+            // passed -- don't pile up.
+            // 106-3: which name each row shows. 106-2: the owner's rename /
+            // short-name edit, from the same context menu. The ack and the
+            // channel_event push carry the result; nothing is applied
+            // optimistically, so a refused rename leaves the row untouched.
+            nameStyle={selectRosterPrefs(state.prefs).nameStyle}
+            onUpdateChannel={(channelID, patch) => {
+              const c = clientRef.current;
+              if (!c || !c.isOpen()) return;
+              const payload: UpdateChannelPayload = { channel_id: channelID };
+              if (patch.name !== undefined) payload.name = patch.name;
+              if (patch.shortName !== undefined) payload.short_name = patch.shortName;
+              c.send<UpdateChannelPayload>(TypeUpdateChannel, payload, "upch-" + Date.now());
+            }}
+            // 111-2/111-9: the banner. The menu picks a file or asks to edit;
+            // the upload belongs here, where the channel crypto is -- the blob
+            // is encrypted under the channel key exactly like a posted image.
+            // What the menu never does is write: picking a file uploads it and
+            // opens the editor, and only the editor's save sends anything. So
+            // cancelling leaves an orphaned blob and nothing anyone can see.
+            onPickChannelBanner={async (channelID, file) => {
+              const up = await uploadBannerImage(channelID, file);
+              const current = state.channels[channelID]?.banner ?? null;
+              setBannerEditor({
+                channelID,
+                fresh: true,
+                // A new picture inherits the framing the channel already
+                // uses: someone who settled on a tall fitted band does not
+                // want to set it again for every image.
+                layout: { ...(current ?? DEFAULT_BANNER), attachmentID: up.id },
+                localURL: up.url,
+              });
+            }}
+            onEditChannelBanner={(channelID) => {
+              const current = state.channels[channelID]?.banner;
+              if (!current) return;
+              setBannerEditor({ channelID, fresh: false, layout: current, localURL: null });
+            }}
+            onClearChannelBanner={(channelID) => {
+              const c = clientRef.current;
+              if (!c || !c.isOpen()) return;
+              c.send<UpdateChannelPayload>(
+                TypeUpdateChannel,
+                { channel_id: channelID, banner: { attachment_id: "" } },
+                "upch-" + Date.now(),
+              );
+            }}
+            // 112-4: the roster draws whichever shared channel's copy is to
+            // hand -- 112-9: and only when this reader asked for pictures
+            // there. Withholding the map is the gate: no map, nothing drawn,
+            // in the rows and in the roster's hover card alike.
+            avatars={showRosterAvatarsPref ? state.avatars : undefined}
+            friendColumns={friendColumnsPref}
+            // 115-8: the hover card shows the framed picture whenever flair's
+            // frames are on, whatever the roster-row switch says -- the card is
+            // the one place a picture is worth looking at, and a frame nobody
+            // can see is no frame.
+            cardAvatars={showRosterAvatarsPref || (flair && flairFrames) ? state.avatars : undefined}
+            attachmentController={attControllerRef.current ?? undefined}
+            hiddenChannels={selectRosterPrefs(state.prefs).hidden}
+            onSetChannelHidden={(channelID, mode) => {
+              const c = clientRef.current;
+              if (!c || !c.isOpen()) return;
+              const current = selectRosterPrefs(state.prefs);
+              const next = pruneHidden(
+                current.hidden,
+                Object.values(state.channels),
+                lastSeqOfChannel,
+              );
+              if (mode === null) {
+                delete next[channelID];
+              } else if (mode === "always") {
+                next[channelID] = { mode: "always" };
+              } else {
+                const ch = state.channels[channelID];
+                // The watermark is the newest message as of right now; the
+                // channel returns as soon as something lands past it.
+                next[channelID] = { mode: "untilNew", seq: ch ? lastSeqOfChannel(ch) : 0 };
+              }
+              c.send(TypePrefsSet, { patch: { roster: { ...current, hidden: next } } });
+            }}
+            // 114: what order the roster renders in. The reads are the
+            // Sidebar's; every write goes through writeRosterOrder, which
+            // prunes and size-checks before it sends and hands back a hint
+            // when the order would not fit.
+            channelSort={selectRosterPrefs(state.prefs).channelSort}
+            groupSort={selectRosterPrefs(state.prefs).groupSort}
+            channelOrder={selectRosterPrefs(state.prefs).channelOrder}
+            groupOrder={selectRosterPrefs(state.prefs).groupOrder}
+            activity={state.activity}
+            hotChannels={hotChannels} // 115-2
+            burstMinutes={flairBurstMinutes}
+            waves={waves} // 115-3
+            onSetGroupSort={(groupKey, mode) =>
+              writeRosterOrder((order) => {
+                const groupSort = { ...order.groupSort };
+                // Back to the account default is the absence of an entry, not
+                // a copy of it: change the default later and this group
+                // follows, which is what "default" has to mean.
+                if (mode === null) delete groupSort[groupKey];
+                else groupSort[groupKey] = mode;
+                return { ...order, groupSort };
+              })
             }
-            if (group === null) delete next[channelID];
-            else next[channelID] = group;
-            c.send(TypePrefsSet, { patch: { roster: { ...current, groupOverrides: next } } });
-          }}
-          // 78-2: hiding a channel. Same shape as the group override above:
-          // per-user, prefs-synced, and rebuilt on every write so entries for
-          // channels you have left -- and watermarks a message has already
-          // passed -- don't pile up.
-          // 106-3: which name each row shows. 106-2: the owner's rename /
-          // short-name edit, from the same context menu. The ack and the
-          // channel_event push carry the result; nothing is applied
-          // optimistically, so a refused rename leaves the row untouched.
-          nameStyle={selectRosterPrefs(state.prefs).nameStyle}
-          onUpdateChannel={(channelID, patch) => {
-            const c = clientRef.current;
-            if (!c || !c.isOpen()) return;
-            const payload: UpdateChannelPayload = { channel_id: channelID };
-            if (patch.name !== undefined) payload.name = patch.name;
-            if (patch.shortName !== undefined) payload.short_name = patch.shortName;
-            c.send<UpdateChannelPayload>(TypeUpdateChannel, payload, "upch-" + Date.now());
-          }}
-          // 111-2/111-9: the banner. The menu picks a file or asks to edit;
-          // the upload belongs here, where the channel crypto is -- the blob
-          // is encrypted under the channel key exactly like a posted image.
-          // What the menu never does is write: picking a file uploads it and
-          // opens the editor, and only the editor's save sends anything. So
-          // cancelling leaves an orphaned blob and nothing anyone can see.
-          onPickChannelBanner={async (channelID, file) => {
-            const up = await uploadBannerImage(channelID, file);
-            const current = state.channels[channelID]?.banner ?? null;
-            setBannerEditor({
-              channelID,
-              fresh: true,
-              // A new picture inherits the framing the channel already
-              // uses: someone who settled on a tall fitted band does not
-              // want to set it again for every image.
-              layout: { ...(current ?? DEFAULT_BANNER), attachmentID: up.id },
-              localURL: up.url,
-            });
-          }}
-          onEditChannelBanner={(channelID) => {
-            const current = state.channels[channelID]?.banner;
-            if (!current) return;
-            setBannerEditor({ channelID, fresh: false, layout: current, localURL: null });
-          }}
-          onClearChannelBanner={(channelID) => {
-            const c = clientRef.current;
-            if (!c || !c.isOpen()) return;
-            c.send<UpdateChannelPayload>(
-              TypeUpdateChannel,
-              { channel_id: channelID, banner: { attachment_id: "" } },
-              "upch-" + Date.now(),
-            );
-          }}
-          // 112-4: the roster draws whichever shared channel's copy is to
-          // hand -- 112-9: and only when this reader asked for pictures
-          // there. Withholding the map is the gate: no map, nothing drawn,
-          // in the rows and in the roster's hover card alike.
-          avatars={showRosterAvatarsPref ? state.avatars : undefined}
-          friendColumns={friendColumnsPref}
-          // 115-8: the hover card shows the framed picture whenever flair's
-          // frames are on, whatever the roster-row switch says -- the card is
-          // the one place a picture is worth looking at, and a frame nobody
-          // can see is no frame.
-          cardAvatars={showRosterAvatarsPref || (flair && flairFrames) ? state.avatars : undefined}
-          attachmentController={attControllerRef.current ?? undefined}
-          hiddenChannels={selectRosterPrefs(state.prefs).hidden}
-          onSetChannelHidden={(channelID, mode) => {
-            const c = clientRef.current;
-            if (!c || !c.isOpen()) return;
-            const current = selectRosterPrefs(state.prefs);
-            const next = pruneHidden(
-              current.hidden,
-              Object.values(state.channels),
-              lastSeqOfChannel,
-            );
-            if (mode === null) {
-              delete next[channelID];
-            } else if (mode === "always") {
-              next[channelID] = { mode: "always" };
-            } else {
-              const ch = state.channels[channelID];
-              // The watermark is the newest message as of right now; the
-              // channel returns as soon as something lands past it.
-              next[channelID] = { mode: "untilNew", seq: ch ? lastSeqOfChannel(ch) : 0 };
+            onSetChannelOrder={(groupKey, ids) =>
+              writeRosterOrder((order) => {
+                const channelOrder = { ...order.channelOrder };
+                const groupSort = { ...order.groupSort };
+                if (ids === null) {
+                  // "reset order": the group forgets its list, its sort
+                  // override and its place among the groups, all at once.
+                  delete channelOrder[groupKey];
+                  delete groupSort[groupKey];
+                  return {
+                    ...order,
+                    channelOrder,
+                    groupSort,
+                    groupOrder: order.groupOrder.filter((k) => k !== groupKey),
+                  };
+                }
+                // Saying where a channel goes IS choosing your own order, so
+                // the group switches to manual with it.
+                channelOrder[groupKey] = ids;
+                groupSort[groupKey] = "manual";
+                return { ...order, channelOrder, groupSort };
+              })
             }
-            c.send(TypePrefsSet, { patch: { roster: { ...current, hidden: next } } });
-          }}
-          // 114: what order the roster renders in. The reads are the
-          // Sidebar's; every write goes through writeRosterOrder, which
-          // prunes and size-checks before it sends and hands back a hint
-          // when the order would not fit.
-          channelSort={selectRosterPrefs(state.prefs).channelSort}
-          groupSort={selectRosterPrefs(state.prefs).groupSort}
-          channelOrder={selectRosterPrefs(state.prefs).channelOrder}
-          groupOrder={selectRosterPrefs(state.prefs).groupOrder}
-          activity={state.activity}
-          hotChannels={hotChannels} // 115-2
-          burstMinutes={flairBurstMinutes}
-          waves={waves} // 115-3
-          onSetGroupSort={(groupKey, mode) =>
-            writeRosterOrder((order) => {
-              const groupSort = { ...order.groupSort };
-              // Back to the account default is the absence of an entry, not
-              // a copy of it: change the default later and this group
-              // follows, which is what "default" has to mean.
-              if (mode === null) delete groupSort[groupKey];
-              else groupSort[groupKey] = mode;
-              return { ...order, groupSort };
-            })
-          }
-          onSetChannelOrder={(groupKey, ids) =>
-            writeRosterOrder((order) => {
-              const channelOrder = { ...order.channelOrder };
-              const groupSort = { ...order.groupSort };
-              if (ids === null) {
-                // "reset order": the group forgets its list, its sort
-                // override and its place among the groups, all at once.
-                delete channelOrder[groupKey];
-                delete groupSort[groupKey];
+            onSetGroupOrder={(keys) =>
+              writeRosterOrder((order) => ({ ...order, groupOrder: keys ?? [] }))
+            }
+            // 114-4: a drag across into another group. The group override and
+            // the placement are one write because the roster object goes over
+            // whole -- two writes in the same tick would race, and the second
+            // would ship the pre-move overrides and undo the first.
+            onMoveChannelToGroup={(channelID, group, groupKey, ids) =>
+              writeRosterOrder((order) => {
+                const groupOverrides = { ...order.groupOverrides };
+                if (group === null) delete groupOverrides[channelID];
+                else groupOverrides[channelID] = group;
                 return {
                   ...order,
-                  channelOrder,
-                  groupSort,
-                  groupOrder: order.groupOrder.filter((k) => k !== groupKey),
+                  groupOverrides,
+                  channelOrder: { ...order.channelOrder, [groupKey]: ids },
+                  groupSort: { ...order.groupSort, [groupKey]: "manual" },
                 };
-              }
-              // Saying where a channel goes IS choosing your own order, so
-              // the group switches to manual with it.
-              channelOrder[groupKey] = ids;
-              groupSort[groupKey] = "manual";
-              return { ...order, channelOrder, groupSort };
-            })
-          }
-          onSetGroupOrder={(keys) =>
-            writeRosterOrder((order) => ({ ...order, groupOrder: keys ?? [] }))
-          }
-          // 114-4: a drag across into another group. The group override and
-          // the placement are one write because the roster object goes over
-          // whole -- two writes in the same tick would race, and the second
-          // would ship the pre-move overrides and undo the first.
-          onMoveChannelToGroup={(channelID, group, groupKey, ids) =>
-            writeRosterOrder((order) => {
-              const groupOverrides = { ...order.groupOverrides };
-              if (group === null) delete groupOverrides[channelID];
-              else groupOverrides[channelID] = group;
-              return {
-                ...order,
-                groupOverrides,
-                channelOrder: { ...order.channelOrder, [groupKey]: ids },
-                groupSort: { ...order.groupSort, [groupKey]: "manual" },
-              };
-            })
-          }
-          activeID={state.activeChannelID}
-          ownUserID={state.user?.id ?? null}
-          presence={state.presence}
-          lastSeen={state.lastSeen}
-          displayNames={displayNames}
-          voiceRosters={state.voiceRosters}
-          recInHeader={railChannelID !== null && !isMobile} // 131-10: header shows the live light
-          unread={state.unread}
-          onSelect={(id) => {
-            dispatch({ kind: "set_active_channel", channelID: id });
-            // 30-5c click-to-join (Addendum C, core): selecting a voice room
-            // connects to it, Discord-style. The actual join call lives in
-            // the keyStatus-driven effect above (it fires off this same
-            // set_active_channel dispatch) so first-time visits -- where the
-            // channel key isn't ready yet -- join automatically too, instead
-            // of only on a later revisit.
-          }}
-          onFriendClick={(friendUserID) => {
-            handleFriendClickInRoster(friendUserID);
-          }}
-          countdownNow={countdownNow}
-          onCreateClick={() => {
-            dispatch({ kind: "open_create_modal" });
-          }}
-          // 130-3: The + on the voice section. Set only if voice and guest rooms are on.
-          onQuickRoomClick={
-            state.voiceEnabled && (state.authConfig?.ephemeral_enabled ?? false)
-              ? () => {
-                  setQuickRoomOpen(true);
-                }
-              : undefined
-          }
-          // 59-1: the friends "+" — the friends panel on its "add" tab,
-          // where the server directory lists everyone addable.
-          onAddFriendClick={() => {
-            dispatch({ kind: "friends_panel_tab_change", tab: "add" });
-            dispatch({ kind: "open_panel", panel: "friends" });
-          }}
-          // 53-1: the parking lot. Hidden when the setting says so; parking
-          // itself is a state change, no server round-trip involved.
-          parkingName={parking.hidden ? null : parking.name}
-          parked={state.parked}
-          onPark={park}
-          // 49-6: the thread inbox lives with the other unread dots now.
-          onOpenThreads={() => dispatch({ kind: "open_panel", panel: "threads" })}
-          threadsUnread={threadsNeedingYou}
-        />
-        {/* 30-5c: the persistent-call dock -- app-level audio sinks + the
-            Discord-style connection bar. Renders nothing while idle. */}
-        <VoiceDock
-          bar={isMobile} // 131-7
-          onJumpToChannel={(id) =>
-            dispatch({ kind: "set_active_channel", channelID: id })
-          }
-        />
-        {/* 33-4: resize handle. Desktop only -- on mobile the sidebar is
-            hidden and the grid column does not exist. */}
-        {!isMobile && (
+              })
+            }
+            activeID={state.activeChannelID}
+            ownUserID={state.user?.id ?? null}
+            presence={state.presence}
+            lastSeen={state.lastSeen}
+            displayNames={displayNames}
+            voiceRosters={state.voiceRosters}
+            recInHeader={railChannelID !== null && !isMobile} // 131-10: header shows the live light
+            unread={state.unread}
+            onSelect={(id) => {
+              dispatch({ kind: "set_active_channel", channelID: id });
+              // 30-5c click-to-join (Addendum C, core): selecting a voice room
+              // connects to it, Discord-style. The actual join call lives in
+              // the keyStatus-driven effect above (it fires off this same
+              // set_active_channel dispatch) so first-time visits -- where the
+              // channel key isn't ready yet -- join automatically too, instead
+              // of only on a later revisit.
+            }}
+            onFriendClick={(friendUserID) => {
+              handleFriendClickInRoster(friendUserID);
+            }}
+            countdownNow={countdownNow}
+            onCreateClick={() => {
+              dispatch({ kind: "open_create_modal" });
+            }}
+            // 130-3: The + on the voice section. Set only if voice and guest rooms are on.
+            onQuickRoomClick={
+              state.voiceEnabled && (state.authConfig?.ephemeral_enabled ?? false)
+                ? () => {
+                    setQuickRoomOpen(true);
+                  }
+                : undefined
+            }
+            // 59-1: the friends "+" — the friends panel on its "add" tab,
+            // where the server directory lists everyone addable.
+            onAddFriendClick={() => {
+              dispatch({ kind: "friends_panel_tab_change", tab: "add" });
+              dispatch({ kind: "open_panel", panel: "friends" });
+            }}
+            // 53-1: the parking lot. Hidden when the setting says so; parking
+            // itself is a state change, no server round-trip involved.
+            parkingName={parking.hidden ? null : parking.name}
+            parked={state.parked}
+            onPark={park}
+            // 49-6: the thread inbox lives with the other unread dots now.
+            onOpenThreads={() => dispatch({ kind: "open_panel", panel: "threads" })}
+            threadsUnread={threadsNeedingYou}
+          />
+          {/* 33-4: resize handle. The aside renders on desktop only (135-2),
+              so the handle needs no check of its own. */}
           <SidebarResizer
             width={sidebarWidth}
             onPreview={setSidebarDrag}
             onCommit={commitSidebarWidth}
           />
-        )}
-      </aside>
+        </aside>
+      )}
 
       {/* 45-3: a voice channel's pane does not scroll. The call sits at the
           top and the scratchpad fills whatever is left above the composer,
@@ -6758,10 +6759,9 @@ export function App() {
             mentionHandles={activeChannel?.members.map((m) => m.handle)}
           />
         </div>
-        {/* 126-2: the phone home screen's own voice bar. VoiceDock cannot
-            reach this screen -- it mounts once inside the sidebar, and
-            the phone hides the sidebar outright -- so this reads the same
-            session snapshot and shows a bar of its own. The mobile footer
+        {/* 126-2: the phone home screen's own voice bar. It reads the same
+            session snapshot as VoiceSinks (135-2: VoiceSinks has no bar and
+            the phone has no sidebar). The mobile footer
             stacks in column-reverse, so being last here puts the bar at the
             top of the stack: above the composer on the chat screen, above
             the voice controls band on the list screen.

@@ -2,8 +2,8 @@
 // voice session.
 //
 // 30-5c moved call OWNERSHIP to the app-level voiceSession singleton (the
-// Discord behavior: the call survives browsing; VoiceDock carries audio and
-// the connection bar everywhere). This panel is now a pure VIEW:
+// Discord behavior: the call survives browsing; VoiceSinks carries the audio
+// everywhere). This panel is now a pure VIEW:
 //
 //   * it renders the 30-5 stage (big tile + filmstrip, click-to-pin focus,
 //     roster-driven "connecting…" honesty, control bar, debug drawer) when
@@ -16,7 +16,7 @@
 //   * unmount does NOT leave; lifecycle edges (WS loss, removal, logout)
 //     are app-level session events
 //   * NO audio elements here -- remote audio is rendered exactly once, in
-//     VoiceDock; duplicating it would double the output
+//     VoiceSinks; duplicating it would double the output
 //
 // Click-to-join (Addendum C "click-to-join voice rooms", core) lives in an
 // App-level effect keyed off keyStatus, triggered by the sidebar's onSelect
@@ -446,7 +446,7 @@ export function VoiceCallPanel({
     handleFor(tile.userID) + (tile.isScreen ? " — screen" : "");
 
   // Video only: a pop-out of an audio-only peer would be a black rectangle,
-  // and their audio is already playing through the dock either way.
+  // and their audio is already playing through VoiceSinks either way.
   const popOut = (tile: StageTile) => {
     if (!tile.stream || !tile.hasLiveVideo) return;
     if (popped.includes(tile.key)) {
@@ -931,7 +931,7 @@ export function VoiceCallPanel({
   );
 
   // StagePeer stays inside the component body so it can use handleFor
-  // without prop-drilling. NO AudioSink here (VoiceDock owns audio).
+  // without prop-drilling. NO AudioSink here (VoiceSinks owns audio).
 }
 
 
@@ -1280,7 +1280,7 @@ function StagePeer({
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           >
-            {/* 119-1: up to 200%. Over 100 the dock's sink adds gain; the
+            {/* 119-1: up to 200%. Over 100 the VoiceSinks sink adds gain; the
                 thumb changes colour there so a boost reads as a boost. */}
             {(big || card) && !pref?.muted && (
               <input
@@ -1340,7 +1340,7 @@ function StagePeer({
  * button hands the same element to the Fullscreen API, which all three
  * engines do have.
  *
- * Muted, like every other video surface here: VoiceDock owns audio output.
+ * Muted, like every other video surface here: VoiceSinks owns audio output.
  */
 function ExpandedTile({
   tile,
@@ -1417,7 +1417,7 @@ function VideoSurface({ stream, mirrored }: { stream: MediaStream; mirrored?: bo
       ref.current.srcObject = stream;
     }
   }, [stream]);
-  // ALWAYS muted: remote audio flows exclusively through VoiceDock's sinks
+  // ALWAYS muted: remote audio flows exclusively through the VoiceSinks sinks
   // (one output path), and self-video must never loop back the mic.
   return (
     <>

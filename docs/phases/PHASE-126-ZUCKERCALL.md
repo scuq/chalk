@@ -159,6 +159,13 @@ pass against the previous build.
 - [ ] Tap leave. The bar disappears and the voice controls band hides.
 - [ ] Android Chrome, the same five steps.
 
+## Since 135-2
+
+The reason above for not moving the dock no longer holds. 135-2 moved the audio sinks out of the sidebar:
+`VoiceSinks` (the renamed `VoiceDock`, same file) mounts as the first child of the app element, and the phone does not mount the sidebar.
+`VoiceSinks` has no bar, and the bar of this phase is the only voice bar on the phone until 135-5.
+See [PHASE-135-PHONE.md](PHASE-135-PHONE.md).
+
 ## Since 131-7
 
 The dock box renders on the phone only. On desktop the call rail carries the

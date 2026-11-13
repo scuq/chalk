@@ -24,7 +24,7 @@
 // is why opening reports whether it worked rather than throwing -- the caller
 // falls back to the in-app expanded view.
 //
-// Every window is MUTED: remote audio has exactly one output path (VoiceDock's
+// Every window is MUTED: remote audio has exactly one output path (the VoiceSinks
 // sinks), and a second one would double every voice in the room.
 
 import { mountNightFrame } from "./night-frame"; // 129-6

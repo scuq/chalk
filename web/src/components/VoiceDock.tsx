@@ -1,28 +1,30 @@
-// VoiceDock (Phase 30, slices 30-5c + 30-5f): the connection panel, mounted
-// ONCE at the app level. Since 131-7 the visible box (job 2) is the phone's:
-// it is in the sidebar, which the phone hides. On desktop the call rail carries the duration,
-// the controls, and leave, and only the sinks and listeners render here.
+// VoiceSinks (Phase 30, slices 30-5c + 30-5f): the audio of a call, mounted
+// ONCE at the app level. It renders no visible box. The file keeps the name
+// VoiceDock.tsx because useVoiceSession and useVoiceRoom, exported below,
+// are imported from it in several places.
 //
 // Jobs:
 //   1. AUDIO. The hidden <audio> sinks for every remote peer live HERE, not
 //      in the per-channel panel -- that is the whole point of a persistent
 //      call: sound keeps flowing while you read a text channel. Each sink
 //      applies the peer's LOCAL prefs (A1 mute + A4-subset volume).
-//   2. THE BAR. While connected, one row: the room name (a click jumps back
-//      to the room), the live duration, the live dot, and disconnect. While
-//      joining, the duration slot shows "joining…". Since 131-2 the dock has
-//      no video preview and no status row. The call rail (CallRail.tsx)
-//      shows who is in the call.
-//   2b. (30-7b) SHARED-AUDIO sinks + the sharing row. A peer's screen share
-//      can carry PROGRAM audio (tab/system capture) as its own track --
-//      those sinks live here too, under the same per-peer local prefs. And
-//      while YOU share, the dock says so everywhere (with a stop button):
-//      forgetting a live screen share is the classic embarrassment.
+//   2. (30-7b) SHARED-AUDIO sinks. A peer's screen share can carry PROGRAM
+//      audio (tab/system capture) as its own track. Those sinks live here
+//      too, under the same per-peer local prefs.
+//   3. The listeners: the Ctrl/Cmd+Shift+V jump shortcut, the pop-out
+//      cleanup when the call ends, and the autoplay resume.
 //
-// 126-2: job 2, the bar, has a phone sibling, ZuckerCallBar. Zuckermode
-// hides this dock inside the sidebar, so the phone's home screen
-// reads the same session snapshot (useVoiceSession, below) and shows its
-// own bar and leave button instead.
+// 135-2: the connection bar that this component once drew is gone. Since
+// 131-7 it rendered only on the phone, and since 135-1 the phone has no
+// sidebar to hold it. On desktop the call rail (CallRail.tsx) shows the
+// duration, the controls, and leave. On the phone ZuckerCallBar shows the
+// room, the duration, the autoplay nudge, and leave.
+//
+// App.tsx mounts this component as the first child of the .chalk-app
+// element, at a position that does not depend on the layout. A remount
+// creates new <audio> elements in the middle of a call, and a phone that
+// rotates can cross the 767px breakpoint. Do not move the mount into a
+// layout branch.
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import { voiceSession, type VoiceSessionSnap } from "../voice/session";
@@ -38,8 +40,6 @@ import {
   openBoost,
   type Boost,
 } from "../voice/boost"; // 119-1
-import { fmtDuration } from "../voice/duration"; // 126-2: shared with ZuckerCallBar
-import { ChannelGlyph } from "./icons";
 
 /** useVoiceSession: subscribe a component to the session store. */
 export function useVoiceSession(): VoiceSessionSnap {
@@ -71,22 +71,10 @@ export function useVoiceRoom(): string | null {
 
 interface Props {
   onJumpToChannel: (channelID: string) => void;
-  /** 131-7: render the connection box. Off on desktop, where the call rail
-   * carries the duration, the controls and leave. The sinks, the shortcut
-   * and the listeners run either way. */
-  bar?: boolean;
 }
 
-export function VoiceDock({ onJumpToChannel, bar = true }: Props) {
+export function VoiceSinks({ onJumpToChannel }: Props) {
   const snap = useVoiceSession();
-  const [, setTick] = useState(0);
-
-  // Duration ticker while connected.
-  useEffect(() => {
-    if (snap.phase !== "in-call") return;
-    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [snap.phase]);
 
   const jumpBack = () => {
     if (snap.channelID) onJumpToChannel(snap.channelID);
@@ -94,7 +82,7 @@ export function VoiceDock({ onJumpToChannel, bar = true }: Props) {
 
   // 45-5: a popped-out tile is a window of its own, so it outlives the call
   // panel that opened it -- browse to a text channel and that panel unmounts.
-  // The dock is mounted for as long as the app is, so closing the pop-outs
+  // VoiceSinks is mounted for as long as the app is, so closing the pop-outs
   // when the call ends belongs here rather than there.
   useEffect(() => {
     if (snap.phase === "idle") closeAllTilePopouts();
@@ -152,7 +140,7 @@ export function VoiceDock({ onJumpToChannel, bar = true }: Props) {
           />
         );
       })}
-      {/* Job 2b (30-7b): shared PROGRAM audio (tab/system capture riding a
+      {/* Job 2 (30-7b): shared PROGRAM audio (tab/system capture riding a
           screen share). 96-3: on its OWN local mute and volume, not the
           person's. 30-7b tied the two together on the reading that muting
           someone means muting their game as well; in use it is the reverse
@@ -173,99 +161,6 @@ export function VoiceDock({ onJumpToChannel, bar = true }: Props) {
           );
         })}
 
-      {/* Job 2: the connection bar. One row since 131-2: the room, how
-          long, the live dot, and leave. The rail shows who is there. */}
-      {bar && snap.phase !== "idle" && (
-        <div class="chalk-voice-dock" data-testid="voice-dock">
-          <div class="chalk-voice-dock-row">
-            <button
-              class="chalk-voice-dock-channel"
-              type="button"
-              onClick={jumpBack}
-              title="jump to the voice room (Ctrl+Shift+V)"
-              data-testid="voice-dock-channel"
-            >
-              <span class="chalk-chglyph chalk-chglyph--voice chalk-chglyph--inline">
-                <ChannelGlyph type="voice" />
-              </span>
-              <span class="chalk-voice-dock-channame">{snap.channelName || "voice"}</span>
-            </button>
-            <span class="chalk-voice-dock-spacer" />
-            {snap.phase !== "in-call" ? (
-              <span class="chalk-voice-dock-status" data-connected="false">
-                joining…
-              </span>
-            ) : (
-              snap.joinedAt !== null && (
-                <span class="chalk-voice-dock-duration" data-testid="voice-dock-duration">
-                  {fmtDuration(Date.now() - snap.joinedAt)}
-                </span>
-              )
-            )}
-            {/* 41-5: the gate is open and we are audible. Absent while muted --
-                a live dot next to a mute button reads as a contradiction. */}
-            {!snap.muted && snap.micOpen && (
-              <span
-                class="chalk-voice-live"
-                title="your microphone is transmitting"
-                data-testid="voice-dock-live"
-              />
-            )}
-            {/* 44-2: mute and deafen used to live here too. They are global
-                now, and the phone's control bar owns them -- two identical
-                mute buttons a centimetre apart is worse than one. The dock
-                keeps what is genuinely about THIS call: where it is, how
-                long, and leaving. Since 131-7 this box is the phone's. */}
-            <button
-              class="chalk-btn chalk-voice-ctl chalk-voice-ctl--leave"
-              type="button"
-              onClick={() => void voiceSession.leave()}
-              title="disconnect from voice"
-              aria-label="disconnect from voice"
-              data-testid="voice-dock-leave"
-            >
-              <CtlLabel wide="leave" mini="l" />
-            </button>
-          </div>
-          {snap.sharing && (
-            <div class="chalk-voice-dock-row" data-testid="voice-dock-sharing">
-              <span class="chalk-voice-dock-status" data-connected="true">
-                sharing screen · {snap.shareMode}
-              </span>
-              <span class="chalk-voice-dock-spacer" />
-              <button
-                class="chalk-btn chalk-voice-ctl chalk-voice-ctl--off"
-                type="button"
-                onClick={() => void voiceSession.toggleScreenShare()}
-                title="stop sharing your screen"
-                data-testid="voice-dock-stopshare"
-              >
-                stop
-              </button>
-            </div>
-          )}
-          {snap.audioBlocked && (
-            <div class="chalk-voice-dock-row chalk-voice-audionudge" data-testid="voice-audio-nudge">
-              🔇 click anywhere to enable audio
-            </div>
-          )}
-        </div>
-      )}
-    </>
-  );
-}
-
-// CtlLabel: both spellings of a dock control's label, with CSS picking one.
-// A narrow sidebar can't fit "unmute · undeafen · leave" -- the buttons used
-// to spill out of the column and over the message list -- so a container
-// query on the dock collapses them to single letters. The letter is fixed per
-// control (mic / deafen / leave) rather than tracking the current action:
-// muted + deafened would otherwise render "u u l".
-function CtlLabel({ wide, mini }: { wide: string; mini: string }) {
-  return (
-    <>
-      <span class="chalk-voice-ctl-wide">{wide}</span>
-      <span class="chalk-voice-ctl-mini">{mini}</span>
     </>
   );
 }
@@ -328,7 +223,8 @@ function AudioSink({
       el.srcObject = play;
       // 30-5i: after an auto-rejoin there's been no user gesture, so the
       // browser's autoplay policy may reject playback. Detect it and flag
-      // the dock nudge; a global click (below) resumes.
+      // the nudge in the call rail or the phone call bar; a global click
+      // (below) resumes.
       const p = el.play?.();
       if (p && typeof p.catch === "function") {
         p.catch(() => voiceSession.notifyAudioBlocked());

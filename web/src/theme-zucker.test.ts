@@ -11,8 +11,7 @@
 // the reported screenshot behind both are in
 // docs/phases/PHASE-126-ZUCKERCALL.md.
 //
-// The third test (135-1) checks that the stylesheet has no drawer rules and
-// that the phone block hides the sidebar.
+// The third test (135-1) checks that the stylesheet has no drawer rules.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -44,12 +43,8 @@ test("the call bar sits flush in the phone footer", () => {
   assert.match(decls, /margin:\s*0;/, "the dock's sidebar margin does not apply in the footer");
 });
 
-test("the stylesheet has no drawer rules, and the phone block hides the sidebar", () => {
+test("the stylesheet has no drawer rules", () => {
   for (const gone of [".chalk-nav-toggle", ".chalk-nav-backdrop", ".chalk-drawer-", ".chalk-app--nav-open"]) {
     assert.equal(css.includes(gone), false, `${gone} is still in theme.css`);
   }
-  const at = css.indexOf("height: var(--chalk-shell-h, 100dvh)");
-  assert.ok(at > 0, "the phone shell rule is missing");
-  const phone = css.slice(at);
-  assert.match(phone, /\.chalk-sidebar\s*\{\s*display:\s*none;\s*\}/);
 });

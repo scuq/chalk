@@ -1,5 +1,5 @@
-// duration.ts (126-2): the running-call clock, shared by the sidebar's
-// voice dock and the phone's zucker call bar. Split out of VoiceDock.tsx so
+// duration.ts (126-2): the running-call clock, used by the phone's
+// zucker call bar. Split out of VoiceDock.tsx so
 // a component that needs only the clock does not pull in the session, pip
 // and boost modules behind it.
 

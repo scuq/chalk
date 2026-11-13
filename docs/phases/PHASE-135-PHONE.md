@@ -1,7 +1,7 @@
 # Phase 135 — phone: the chat list is the phone layout, with a call bar and a call view
 
-**Status:** in progress. 135-1 is built (2026-11-13). 135-2 to 135-8 are planned and have no code.
-**Tags:** `#zucker`, `#mobile`, `#roster` → `tools/where.sh -g zucker`
+**Status:** in progress. 135-1 and 135-2 are built (2026-11-13). 135-3 to 135-8 are planned and have no code.
+**Tags:** `#zucker`, `#mobile`, `#roster`, `#voice` → `tools/where.sh -g zucker`
 
 ## The problem
 
@@ -80,18 +80,37 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
   `zuckerActive` in `App.tsx` is `isMobile`.
   Removed: the `roster.viewMode` preference, the Zuckermode check box in settings, and its search keyword.
   Also removed: the phone drawer (menu button, backdrop, drawer head, and the `navOpen` state) and its CSS.
-  On a phone, `.chalk-sidebar` is `display: none` but stays mounted, because the `VoiceDock` inside it holds the audio elements of a call.
+  On a phone, `.chalk-sidebar` was `display: none` but stayed mounted, because the `VoiceDock` inside it held the audio elements of a call. 135-2 changed this.
   The next roster write from a new client drops a stored `viewMode` key.
   A tab that has not reloaded can show the old drawer until the update banner reloads it.
-  Tests: `web/src/chat/zucker.test.ts` (a stored `viewMode` is dropped), `web/src/theme-zucker.test.ts` (no drawer rules, and the phone block hides the sidebar).
+  Tests: `web/src/chat/zucker.test.ts` (a stored `viewMode` is dropped), `web/src/theme-zucker.test.ts` (no drawer rules). 135-2 removed the assertion that the phone block hides the sidebar.
   Also `test/e2e/mobile.spec.ts` (the list is home, a row opens the chat, back returns). The spec file is not executed. Its header says why.
   The probes under `.claude/skills/run-chalk/` moved from the drawer to the chat list: `driver.mjs`, `readme-shots.mjs`, `thread-refresh.mjs`, `unread-landing.mjs`, `reentry-landing.mjs`, and `ui-sweep.mjs`.
   The `--phone` shot of `ui-sweep.mjs` is now `phone-list.png`.
   A new `toPhone` helper opens a row after each resize, because a resize to phone width lands on the list.
-- **135-2 — audio sinks leave the sidebar.** Planned.
-  `VoiceDock` keeps the sinks, the hotkey handler, and the pop-out cleanup as `VoiceSinks`, and loses its bar.
-  `App.tsx` mounts `VoiceSinks` once, as a direct child of `.chalk-app`, at a position that does not depend on `isMobile`. A remount creates new `<audio>` elements in the middle of a call.
-  The sidebar renders on desktop only.
+- **135-2 — audio sinks leave the sidebar.** Built 2026-11-13.
+  The component `VoiceDock` is now `VoiceSinks`. The file keeps the name `VoiceDock.tsx`, because `useVoiceSession` and `useVoiceRoom` are imported from it in several places.
+  `VoiceSinks` keeps these parts:
+  the remote audio sinks, the program-audio sinks of a screen share, the Ctrl/Cmd+Shift+V jump shortcut, the pop-out cleanup, and the autoplay resume listener.
+  The pop-out cleanup runs when the call ends.
+  Removed from it: the `bar` prop, the duration ticker, and the `CtlLabel` helper.
+  Also removed: the connection bar markup (room button, duration, live dot, leave, the sharing row with stop, and the autoplay nudge row).
+  The bar could go. Since 131-7 it rendered only on the phone, and since 135-1 the phone hides the sidebar that held it.
+  On desktop the call rail has the duration, the controls, and leave.
+  On the phone `ZuckerCallBar` has the room, the duration, the nudge, and leave until 135-5 replaces it.
+  `App.tsx` mounts `<VoiceSinks key="voice-sinks">` once, as the first child of the `.chalk-app` element, before the header, at a position that does not depend on `isMobile`.
+  The position matters. A remount creates new `<audio>` elements in the middle of a call, and a rotated phone can cross the 767 px breakpoint.
+  The `AdminPanel` early return still unmounts the sinks, as before.
+  The `<aside class="chalk-sidebar">` (the `Sidebar` and the `SidebarResizer`) renders only when `!isMobile`, so the phone no longer mounts `Sidebar`.
+  `web/src/theme.css` lost these rules:
+  the phone rule `.chalk-sidebar { display: none }` and its comment, the phone `.chalk-sidebar-item` rule with its heading, and the `.chalk-voice-ctl-mini` and `.chalk-voice-ctl-wide` rules (only `CtlLabel` used them).
+  It also lost the reduced-motion rule for the sidebar transition. The transition was the drawer's.
+  The `.chalk-voice-dock*` rules stay, because `ZuckerCallBar` still uses them until 135-5.
+  Tests: the new `web/src/components/voice-sinks-mount.test.ts` reads the `App.tsx` source.
+  It asserts one `<VoiceSinks`, before the header, as a direct child of the `.chalk-app` element, with no `isMobile` or `zucker` between it and the header.
+  It also asserts the aside behind `!isMobile` and no `<VoiceDock`.
+  The 135-1 test in `web/src/theme-zucker.test.ts` now asserts only that the drawer rules are absent.
+  There is no user-visible change, so there is no changelog entry.
 - **135-3 — back button and back gesture.** Planned.
   Each layer (list, chat, thread or panel) is one history entry. The URL does not change. State follows history, and the `popstate` handler never calls `pushState`.
   New files: `web/src/nav/phone-stack.ts` (pure functions) and `web/src/nav/use-phone-history.ts`.
@@ -121,6 +140,14 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
 - A four-person call probe at 390x664 showed the call bar on the phone. The computed style of the sidebar was `display: none`. All three remote audio elements played with live tracks.
 - Only `driver.mjs` ran of the changed probes. The other five were checked for syntax only.
 
+## Verification of 135-2
+
+- The client chain passed: `npx tsc --noEmit`, `node test.mjs` (1834 pass, 0 fail), and `node build.mjs`. The Go chain did not change.
+- Live probe: four people in a call, Playwright with iPhone 14 touch emulation. The viewport went 1280, 390, 1280, 390 px during the call. All six audio elements stayed (three remote voices and their three muted raw elements), and none was created.
+  The three remote voices kept playing with live tracks.
+- `aside.chalk-sidebar` count was 1 on desktop and 0 on the phone.
+- Desktop screenshots show the rail, the sidebar, and the stage unchanged.
+
 ## Known loss
 
 The phone list has no row menu.
@@ -129,7 +156,6 @@ The same loss is in `docs/open-items.md`.
 
 ## Left open
 
-- The sidebar still mounts on the phone until 135-2.
 - The phone has no call view until 135-5.
 
 ## Manual checklist
@@ -137,7 +163,7 @@ The same loss is in `docs/open-items.md`.
 - [ ] A phone, first load after the update. The list is home, with no menu button. Open a row, then go back.
 - [ ] A tab open before the update. After the update banner reloads it, the old drawer is gone.
 - [ ] A call on a real iPhone and a real Android phone. The call bar shows on the list and on a chat, and the audio plays.
-- [ ] Resize a desktop window across 767 px during a call. The audio does not stop. This is the live check of 135-2.
+- [ ] Resize a desktop window across 767 px during a call. The audio does not stop. The 135-2 probe did this with emulation. A real window and a real phone are still open.
 - [ ] 135-7: an interrupted call, such as an incoming phone call.
 - [ ] 135-7: an audio route change, such as a headset plugged in or removed.
 - [ ] 135-7: recovery after the user denies and then allows the microphone permission.
