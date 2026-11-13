@@ -2,7 +2,8 @@
 <html lang="en" data-theme="default">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- 135-4: interactive-widget=resizes-content makes Chromium browsers shrink the layout when the on-screen keyboard opens. iOS Safari does not apply it yet, so src/viewport.ts measures the visual viewport there. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="description" content="chalk -- end-to-end encrypted group chat">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#050805">

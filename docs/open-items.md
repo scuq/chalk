@@ -9,23 +9,25 @@ Latest release: **v0.11.3** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 135 is the newest work. It is in progress: 135-1 to 135-3 are built,
-and 135-4 to 135-8 are planned.
+Phase 135 is the newest work. It is in progress: 135-1 to 135-4 are built,
+and 135-5 to 135-8 are planned.
 Phase 133 is built, with the voice room, and seven points of it are open.
 Phase 131 has two small open points.
 Phase 130 has two open points. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
 
-## Phase 135 — phone: IN PROGRESS, 135-1 to 135-3 built
+## Phase 135 — phone: IN PROGRESS, 135-1 to 135-4 built
 
-135-1 to 135-3, record in [phases/PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md).
+135-1 to 135-4, record in [phases/PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md).
 The chat list is the only phone layout. The menu button, the slide-in channel
 list, the Zuckermode setting, and the `roster.viewMode` preference are gone. The
 phone does not mount the sidebar (135-2). `VoiceSinks`, the audio of a call,
 mounts once at the top of the app, outside every layout branch. On the phone,
 each layer (chat, thread, panel) is a history entry, so the system back closes
-it (135-3). 135-4 to 135-8 are planned and have no code.
+it (135-3). The viewport meta asks Chromium to shrink the layout for the keyboard, the
+phone document does not scroll, and phone tap targets are 44 px (135-4).
+135-5 to 135-8 are planned and have no code.
 
 - **The phone list has no row menu.** Hide, group, rename, manual order, and
   the nick colour of a friend are not reachable on a phone until 135-8.
@@ -38,6 +40,13 @@ it (135-3). 135-4 to 135-8 are planned and have no code.
   predictive back, and the iOS edge swipe in an installed app are not tested.
   Chrome can skip history entries that a page adds without a user gesture.
   Every push in 135-3 follows a tap.
+- **The 135-4 device checks are open.** The keyboard on Android Chrome and
+  Brave with the new meta (a double resize is possible), the iOS keyboard
+  close, and pull-to-refresh on Android Chrome and in an installed iOS app are
+  not tested.
+- **Panels not measured for 44 px.** The probe measured the list, a chat, the
+  composer, and one dialog. The settings panel, the friends panel, and other
+  panels are not measured.
 - **The manual checklist in the phase doc is open.**
 
 ## Phase 133 — polish: built, with seven open points

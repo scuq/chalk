@@ -156,6 +156,11 @@
   --chalk-fg-dim:       #74b08a;
   --chalk-fg-bright:    #24f077;
   --chalk-fg-muted:     #3c6b52;
+  /* 135-4: the muted color for lines, borders, and other decoration.
+     It takes its value from --chalk-fg-muted where the theme sets it. The
+     phone block changes --chalk-fg-muted for text only, so this token
+     keeps the muted color. */
+  --chalk-fg-deco:      var(--chalk-fg-muted);
   --chalk-border:       #143a25;
   --chalk-accent:       #24f077;
   --chalk-warn:         #ffc64d;
@@ -311,7 +316,7 @@ html, body {
    the keyboard, the bars just stop being drawn (see src/display-prefs.ts). */
 html {
   scrollbar-width: var(--chalk-scrollbar-width, thin);
-  scrollbar-color: var(--chalk-fg-muted) transparent;
+  scrollbar-color: var(--chalk-fg-deco) transparent;
 }
 
 /* The no-JavaScript notice. Lives here rather than in a style attribute on
@@ -627,7 +632,7 @@ html {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--chalk-fg-muted);
+  background: var(--chalk-fg-deco);
 }
 
 /* "open" and "closed" read as online/offline to the user, so they use
@@ -3039,7 +3044,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 /* pending popover uses a muted border so it matches the icon state */
 .chalk-enc-indicator.chalk-enc-pending .chalk-enc-popover {
-  border-color: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-deco);
 }
 
 .chalk-enc-pop-head {
@@ -3604,7 +3609,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-status-menu-trigger:hover,
 .chalk-status-menu-trigger[aria-expanded="true"] {
   background: var(--chalk-bg-elev);
-  border-color: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-deco);
 }
 
 /* 89-1: waiting friend requests, on the "you" trigger and on the friends item
@@ -3622,7 +3627,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   right: 0;
   min-width: 8rem;
   background: var(--chalk-bg-elev);
-  border: 1px solid var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-fg-deco);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   z-index: 10;
   display: flex;
@@ -3744,7 +3749,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-invite-status--used {
   color: var(--chalk-fg-muted);
-  border-color: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-deco);
 }
 
 .chalk-invite-status--revoked {
@@ -4101,7 +4106,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   margin: 0;
   padding: 0;
   background: var(--chalk-bg-elev-2);
-  border: 1px solid var(--chalk-fg-muted); /* not --chalk-border: on the dark themes it sits too close to the card fill, and an unchecked switch had no visible outline */
+  border: 1px solid var(--chalk-fg-deco); /* not --chalk-border: on the dark themes it sits too close to the card fill, and an unchecked switch had no visible outline */
   border-radius: var(--chalk-radius); /* on LCARS, 10px turns this track and its knob into a pill with no extra rule -- both come from the same token */
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease;
@@ -4407,7 +4412,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-admin-row--deleted {
   color: var(--chalk-fg-muted);
   text-decoration: line-through;
-  text-decoration-color: var(--chalk-fg-muted);
+  text-decoration-color: var(--chalk-fg-deco);
 }
 
 .chalk-admin-cell-username {
@@ -4468,7 +4473,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-admin-status-pill--deleted {
   color: var(--chalk-fg-muted);
-  border-color: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-deco);
 }
 
 .chalk-admin-row-actions {
@@ -4582,8 +4587,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 
 .chalk-button--danger:disabled {
-  background: var(--chalk-fg-muted);
-  border-color: var(--chalk-fg-muted);
+  background: var(--chalk-fg-deco);
+  border-color: var(--chalk-fg-deco);
 }
 
 /* Confirm modal layout */
@@ -5921,7 +5926,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 .chalk-profile-camera-btn {
   background: transparent;
-  border: 1px solid var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-fg-deco);
   border-radius: 2px;
   color: var(--chalk-fg);
   font: inherit;
@@ -8305,7 +8310,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-voice-peer--card .chalk-voice-peer-label {
   --voice-on-video: var(--chalk-fg);
   --voice-on-video-dim: var(--chalk-fg-dim);
-  --voice-on-video-line: var(--chalk-fg-muted);
+  --voice-on-video-line: var(--chalk-fg-deco);
   --voice-on-video-alert: var(--chalk-error);
   --voice-on-video-warn: var(--chalk-warn);
 
@@ -8832,7 +8837,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-voice-ctlbtn:hover,
 .chalk-call-rail-btn:hover {
   color: var(--chalk-fg-bright);
-  border-color: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-deco);
   background: var(--chalk-bg-hover);
 }
 
@@ -9326,6 +9331,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
      a lifted row, which is the rail's whole selected state. */
   --chalk-fg-bright:    #f5f2ec;
   --chalk-fg-muted:     #837d74;
+  --chalk-fg-deco:      var(--chalk-fg-muted); /* 135-4: follows the sidebar's muted color */
   --chalk-border:       #3d3a37;
   --chalk-accent:       #6ea8ff;
   --chalk-warn:         #e0a33c;
@@ -9796,7 +9802,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-nick-menu-btn:hover {
   color: var(--chalk-fg);
-  border-color: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-deco);
   background: var(--chalk-bg-elev-2);
 }
 
@@ -9936,7 +9942,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   flex: 1 1 auto;
   background: var(--chalk-bg);
   color: var(--chalk-fg);
-  border: 1px solid var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-fg-deco);
   border-radius: var(--chalk-radius);
   padding: var(--chalk-s1) var(--chalk-s2);
   font-family: inherit;
@@ -9958,7 +9964,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-emoji-picker-close:hover {
   color: var(--chalk-fg);
-  border-color: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-deco);
 }
 
 .chalk-emoji-picker-tabs {
@@ -9985,7 +9991,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-emoji-picker-tab--active {
   opacity: 1;
-  border-color: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-deco);
   background: var(--chalk-bg-elev-2);
 }
 
@@ -10012,7 +10018,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 .chalk-emoji-picker-item:hover {
   background: var(--chalk-bg-elev-2);
-  border-color: var(--chalk-fg-muted);
+  border-color: var(--chalk-fg-deco);
 }
 
 .chalk-emoji-picker-hint {
@@ -10042,7 +10048,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 /* Icon variant: square buttons that centre their glyph. The SVGs stroke with
    currentColor, so they inherit the button's colour and hover state and need
    no per-theme rules. On a desktop the buttons are 30px by 32px in one row.
-   The phone block below sets 34px squares in a 2x2 grid. */
+   The phone block below sets 44px squares in a 2x2 grid. */
 .chalk-composer-rail--icons .chalk-composer-tool {
   display: inline-flex;
   align-items: center;
@@ -10423,6 +10429,20 @@ body.chalk-resizing-y .chalk-composer-resizer {
   html, body {
     min-height: 0;
     height: var(--chalk-shell-h, 100dvh);
+    /* 135-4: The document never scrolls on a phone. Only the panes inside
+       the shell scroll. The browser has no page to pull down, so it does
+       not start pull-to-refresh. */
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  /* 135-4: On the default theme, the muted color has a contrast of about
+     3:1 on the background. This is low for small text. Inside .chalk-app,
+     text in the muted color takes the dim color. Lines, borders, and other
+     decoration read --chalk-fg-deco, which the root resolved to the muted
+     color, so they keep it. */
+  .chalk-app {
+    --chalk-fg-muted: var(--chalk-fg-dim);
   }
 
   .chalk-app,
@@ -10656,27 +10676,27 @@ body.chalk-resizing-y .chalk-composer-resizer {
     border: 1px solid var(--chalk-border);
   }
 
-  /* 44-5: bigger squares for thumbs. The block is then 2 x 34px + the gap, so
-     the field is given the same height rather than leaving dead space beside
-     it -- two lines of input on a phone is no hardship. */
+  /* 44-5: bigger squares for thumbs, 44px since 135-4. The block is then
+     2 x 44px + the gap, so the field is given the same height rather than
+     leaving dead space beside it -- two lines of input on a phone is no
+     hardship. */
   .chalk-composer-rail--icons .chalk-composer-tool {
-    width: 34px;
-    height: 34px;
+    width: 44px;
+    height: 44px;
   }
 
-  /* 94-1: the text labels are initials here, so the same 34px square as the
-     icons -- "F" with padding alone would be a 24px target, under the 16px
-     control floor's spirit and awkward to hit. The rail is then the same
-     72px block whichever style you picked. */
+  /* 94-1: the text labels are initials here, so the same 44px square as the
+     icons. "F" with padding alone would be a 24px target, which is awkward
+     to hit. The rail is then the same width whichever style you picked. */
   .chalk-composer-rail--text .chalk-composer-tool {
-    width: 34px;
-    height: 34px;
+    width: 44px;
+    height: 44px;
     padding: 0;
     text-align: center;
   }
 
   .chalk-composer-rail {
-    min-width: 72px;
+    min-width: calc(2 * 44px + var(--chalk-s1));
     align-self: auto;
   }
 
@@ -10728,8 +10748,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
   }
 
   .chalk-modal-close {
-    width: 32px;
-    height: 32px;
+    width: 44px;
+    height: 44px;
   }
 
   /* 70-2: the tab pills wrap into rows (base rule) and grow to finger
@@ -11075,7 +11095,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
      channel header, sized for a thumb. */
   .chalk-zucker-back {
     min-width: 44px;
-    min-height: 34px;
+    min-height: 44px;
     margin-right: var(--chalk-s1);
     background: none;
     color: var(--chalk-fg-bright);
@@ -11303,7 +11323,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   min-width: 0;
   background: var(--chalk-bg);
   color: var(--chalk-fg);
-  border: 1px solid var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-fg-deco);
   border-radius: var(--chalk-radius);
   padding: var(--chalk-s1) var(--chalk-s2);
   font-family: inherit;
@@ -11454,7 +11474,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-threadinbox-more {
   margin: var(--chalk-s2) var(--chalk-s4) var(--chalk-s3);
   background: transparent;
-  border: 1px solid var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-fg-deco);
   border-radius: 2px;
   color: var(--chalk-fg);
   font: inherit;
@@ -11533,7 +11553,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
   min-width: 0;
   background: var(--chalk-bg);
   color: var(--chalk-fg);
-  border: 1px solid var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-fg-deco);
   border-radius: var(--chalk-radius);
   padding: var(--chalk-s1) var(--chalk-s2);
   font-family: inherit;
@@ -11697,7 +11717,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-search-deep-btn {
   flex-shrink: 0;
   background: transparent;
-  border: 1px solid var(--chalk-fg-muted);
+  border: 1px solid var(--chalk-fg-deco);
   border-radius: 2px;
   color: var(--chalk-fg);
   font: inherit;
@@ -12643,4 +12663,36 @@ html[data-flair-rest][data-flair-banner]
 .chalk-channel-guests:focus-visible {
   background: var(--chalk-bg-hover);
   color: var(--chalk-fg);
+}
+
+/* 135-4: tap targets on the phone. The header presence button, the user
+   menu, the channel search button, the mode badge, the encryption indicator,
+   and .chalk-button are at least 44px high. The search button, the badge,
+   and the indicator are also at least 44px wide (WCAG 2.5.5). This block is
+   last in the file, so no earlier rule of the same weight resets a size. */
+@media (max-width: 767px) {
+  .chalk-presence-trigger,
+  .chalk-status-menu-trigger,
+  .chalk-channel-search {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  .chalk-channel-search {
+    min-width: 44px;
+    justify-content: center;
+  }
+
+  .chalk-mode-badge,
+  .chalk-enc-indicator {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+    margin-left: 0;
+  }
+
+  .chalk-button {
+    min-height: 44px;
+  }
 }

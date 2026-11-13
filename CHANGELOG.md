@@ -15,6 +15,10 @@ The engineering-level history (which slice shipped what) lives in
 ### Changed
 - On a phone, chalk now always opens on the conversation list. The menu button, the slide-in channel list, and the Zuckermode setting are gone.
 - On a phone, the system back button or back gesture now closes the open panel or thread first. Then it returns from a conversation to the list. Before, it left chalk. The list keeps its place, its filter, and its open sections when you come back.
+- On a phone, the buttons in the header, the conversation header, the message box, and dialogs are larger and easier to tap.
+- On a phone, grey secondary text such as times and previews is easier to read.
+- On a phone, pulling down on a screen no longer reloads chalk.
+- On Android, chalk now asks the browser to shrink the page when the keyboard opens, so the message box stays above the keyboard.
 
 ## v0.11.3 — 9 November 2026 — Autumn nods and more off-season scenes while chalk is in focus
 

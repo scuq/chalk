@@ -1,7 +1,7 @@
 # Phase 135 — phone: the chat list is the phone layout, with a call bar and a call view
 
-**Status:** in progress. 135-1 and 135-2 are built (2026-11-13). 135-3 is built (2026-11-14), and its device checks are open. 135-4 to 135-8 are planned and have no code.
-**Tags:** `#zucker`, `#mobile`, `#roster`, `#voice` → `tools/where.sh -g zucker`
+**Status:** in progress. 135-1 and 135-2 are built (2026-11-13). 135-3 and 135-4 are built (2026-11-14), and their device checks are open. 135-5 to 135-8 are planned and have no code.
+**Tags:** `#zucker`, `#mobile`, `#roster`, `#themes`, `#voice` → `tools/where.sh -g zucker`
 
 ## The problem
 
@@ -58,7 +58,15 @@ The service worker stays in phase 65.
 On the phone, small text uses the existing dim text level.
 The muted level is for decoration only.
 The reason is a measurement: the muted colour on the default theme has a contrast of about 3:1.
-No theme token changes.
+No theme token value changes.
+The fix is a phone-only override, `.chalk-app { --chalk-fg-muted: var(--chalk-fg-dim); }` in the phone block of `web/src/theme.css`.
+Decoration needed its own token, `--chalk-fg-deco`.
+Without it, the override would also turn borders, scrollbar colour, and other lines from muted to dim.
+The token is declared at `:root` as `var(--chalk-fg-muted)`.
+A custom property that uses `var()` resolves where it is declared, so `--chalk-fg-deco` keeps the muted colour inside `.chalk-app`.
+The `warmwhite` theme re-tints the muted colour inside the desktop sidebar, so `--chalk-fg-deco` is also declared in that block.
+On desktop, `--chalk-fg-deco` equals the muted colour, so the desktop output does not change.
+No component uses a portal, so every dialog and panel renders inside `.chalk-app` and gets the override. The sign-in screens render outside it and keep the muted colour.
 
 ### Not adopted
 
@@ -139,11 +147,30 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
   `test/e2e/mobile.spec.ts` now asserts that the list is hidden, and not absent, after a row opens the chat. The spec file is not executed.
   Both landing probes now have a handler that closes the "what's new" note when it opens. The note opened over the list at an unknown time after sign-in and blocked the first tap.
   `unread-landing.mjs` also has a handler for the avatar nudge. `reentry-landing.mjs` closes the nudge itself.
-- **135-4 — shell: keyboard, overscroll, tap targets.** Planned.
-  The viewport meta gets `interactive-widget=resizes-content`. `viewport.ts` measures again on `focusout` and `orientationchange`.
-  The phone block sets `overscroll-behavior: none` and `overflow: hidden` on `html, body`, so the browser has no pull-to-refresh.
-  The header, the list head, the back button, and the composer tools get a 44 px floor.
-  The text rule above applies here.
+- **135-4 — shell: keyboard, overscroll, tap targets.** Built 2026-11-14.
+  The viewport meta in `web/index.html` has `interactive-widget=resizes-content`.
+  Chromium browsers (Chrome, and Brave on Android) then shrink the layout when the on-screen keyboard opens.
+  iOS Safari does not apply it yet. Research found support only in an iOS 27.3 beta, and `resizes-content` was reported as not working there.
+  iOS keeps the `visualViewport` path of 125-1 in `web/src/viewport.ts`.
+  125-1 rejected this meta value, because iOS ignored it. 135-4 adds it for Chromium and keeps the 125-1 path for iOS.
+  `useKeyboardSafeShell` also measures again on `focusout` and `orientationchange`.
+  Some iOS versions send no `visualViewport` event when the keyboard closes, and the shell stayed short.
+  The phone block of `web/src/theme.css` sets `overflow: hidden` and `overscroll-behavior: none` on `html, body`.
+  The document never scrolls on a phone. Only the panes inside the shell scroll. The browser has no page to pull down, so it does not start pull-to-refresh.
+  Contrast: the new token `--chalk-fg-deco` and the phone override are described in the text-size design note above.
+  23 decoration rules read `var(--chalk-fg-deco)` now. They are borders, border colours, two backgrounds, the scrollbar colour, a text-decoration colour, and `--voice-on-video-line`.
+  On the default theme, message timestamps render `#74b08a` on the phone. The muted colour is `#3c6b52`.
+  Tap targets of 44 px:
+  the phone composer tools (were 34 px, icons and text labels),
+  the rail `min-width` (was 72 px, now `calc(2 * 44px + var(--chalk-s1))`),
+  the modal close button (was 32 px),
+  and the min-height of the back button of the list (was 34 px).
+  A new phone block at the end of `web/src/theme.css` gives 44 px to these controls:
+  the header presence button, the user menu, the channel header search button, the mode badge, the encryption indicator, and `.chalk-button`.
+  It is last in the file, so no earlier rule of the same weight resets a size.
+  Tests: the new `web/src/theme-phone.test.ts` checks the meta, the phone `html, body` rule, and the controls of the last phone block.
+  It also checks the token, and that no decoration rule reads the muted colour directly.
+  `web/src/theme-composer.test.ts` now expects 44 px phone tools.
 - **135-5 — phone call bar and call view.** Planned.
   New `PhoneCallBar.tsx` and `PhoneCallSheet.tsx`, and a pure `web/src/voice/phone-call.ts`.
   `ZuckerCallBar.tsx`, the footer `VoiceControls`, and their CSS go. `VoiceCallPanel` is desktop only.
@@ -197,6 +224,30 @@ The two probes share `/tmp/chalk-probe/` and clear it at the start, so they must
 Not verified: a real Android back button, Android predictive back, and the iOS edge swipe in an installed app.
 Chrome can skip history entries that a page adds without a user gesture. Every push in 135-3 follows a tap, but this was not tested on a device.
 
+## Verification of 135-4
+
+The full client chain passed, with 1843 client tests.
+Live probe: Playwright with iPhone 14 touch emulation, 390x664.
+Before the change, these visible controls were under 44 px:
+
+- The header presence button, 72x19.
+- The user menu, 130x27.
+- The back arrow, 44x34.
+- The channel search, 60x19.
+- The mode badge and the encryption indicator, 14x14 each.
+- The three composer tools, 34x34 each.
+- The dialog close button and dialog buttons, 32 to 34 tall.
+
+After the change, the probe found none on the list or in a chat.
+The document reports `overflow: hidden` and `overscroll-behavior-y: none`.
+
+Not measured: only the list, a chat, the composer, and one dialog. The settings panel, the friends panel, and other panels are not measured for 44 px.
+Not verified on a device:
+
+- The keyboard on Android Chrome and Brave with the new meta. Look for a double resize, where the browser shrinks the layout and `viewport.ts` also shrinks the shell.
+- The iOS keyboard close with the `focusout` and `orientationchange` measurement.
+- Pull-to-refresh. It is not tested on Android Chrome or in an installed iOS app.
+
 ## Known loss
 
 The phone list has no row menu.
@@ -218,6 +269,10 @@ The same loss is in `docs/open-items.md`.
 - [ ] 135-3: an iPhone with chalk installed to the home screen. The edge swipe closes the same layers.
 - [ ] 135-3: on a device, the pushed entries stay in the history. Chrome can skip entries that a page adds without a user gesture.
 - [ ] 135-3: open the admin page and return with "back to chat". Then press back. The admin page does not open again.
+- [ ] 135-4: Android Chrome and Brave. Tap the composer. The message box stays above the keyboard, with no double resize and no gap. Close the keyboard. The shell returns to full height.
+- [ ] 135-4: an iPhone. Close the keyboard with a tap outside the field, with the return key, and by rotating. The shell returns to full height each time.
+- [ ] 135-4: pull down on a list and on a chat, on Android Chrome and in an installed iOS app. chalk does not reload.
+- [ ] 135-4: the settings panel, the friends panel, and the other panels. No visible control is under 44 px.
 - [ ] 135-7: an interrupted call, such as an incoming phone call.
 - [ ] 135-7: an audio route change, such as a headset plugged in or removed.
 - [ ] 135-7: recovery after the user denies and then allows the microphone permission.

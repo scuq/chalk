@@ -5,6 +5,8 @@
 asserts the CSS declarations against the stylesheet. Not yet checked on a
 real iPhone — see the manual checklist.
 
+**Update:** 135-4 (2026-11-14) adds `interactive-widget=resizes-content` to the viewport meta, so Chromium browsers shrink the layout. This replaces the first rejected item below for Chromium. iOS keeps this phase's path. 135-4 also measures again on `focusout` and `orientationchange`. See `docs/phases/PHASE-135-PHONE.md`.
+
 **Tags:** `#mobile` → `tools/where.sh -g mobile`
 
 ## The problem

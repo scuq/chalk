@@ -29,7 +29,7 @@ test("the phone keeps its 2x2 block of bordered squares", () => {
   assert.match(tools, /display:\s*grid;/);
   assert.match(tools, /grid-template-columns:\s*repeat\(2, auto\);/);
   assert.match(block(".chalk-composer-tool", "  "), /border:\s*1px solid var\(--chalk-border\)/);
-  assert.match(block(".chalk-composer-rail--icons .chalk-composer-tool", "  "), /width:\s*34px;/);
+  assert.match(block(".chalk-composer-rail--icons .chalk-composer-tool", "  "), /width:\s*44px;/);
 });
 
 test("send is filled with the accent and readable through the on-accent token", () => {

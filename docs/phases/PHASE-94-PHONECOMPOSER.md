@@ -4,6 +4,8 @@
 first three looked like on a real phone. The phase is closed unless the
 follow-ups under [Left open](#left-open) are taken up.
 
+**Update:** 135-4 raised the phone composer tools from 34px to 44px squares. The 34px sizes below are the 94-1 values.
+
 **Tag:** `#composer` → `tools/where.sh -g composer`. (Shares the tag with 91 —
 both are about the shape of the box you type into.)
 

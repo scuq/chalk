@@ -17,6 +17,10 @@
 // match through a CSS custom property. With nothing left above the fold
 // to scroll to, Safari has no reason to move the page, and a reset below
 // undoes it on the rare case it does anyway.
+//
+// 135-4: index.html also asks Chromium browsers to shrink the layout
+// itself (interactive-widget=resizes-content). iOS Safari does not apply
+// that value yet, so iOS keeps this path.
 import { useEffect } from "preact/hooks";
 
 // The CSS custom property this module writes to <html>. theme.css falls
@@ -55,7 +59,8 @@ export function shellHeight(
 // visualViewport exists, and removes it otherwise, on unmount, and while
 // inactive -- so the desktop layout, which never calls this with
 // active true, is never touched. It re-derives the value on every
-// visualViewport resize and scroll event, throttled to one
+// visualViewport resize and scroll event, and on every window focusout and
+// orientationchange event, throttled to one
 // requestAnimationFrame so a run of events writes the property at most
 // once per frame. When the page is not zoomed and the window has
 // scrolled -- iOS Safari's own reaction to the focused field -- it resets
@@ -84,10 +89,17 @@ export function useKeyboardSafeShell(active: boolean): void {
     sync();
     vv.addEventListener("resize", schedule);
     vv.addEventListener("scroll", schedule);
+    // 135-4: Some iOS versions send no visualViewport event when the
+    // keyboard closes, so the shell stays short. A focusout event and an
+    // orientationchange event also start a new measurement.
+    window.addEventListener("focusout", schedule);
+    window.addEventListener("orientationchange", schedule);
     return () => {
       if (frame !== 0) window.cancelAnimationFrame(frame);
       vv.removeEventListener("resize", schedule);
       vv.removeEventListener("scroll", schedule);
+      window.removeEventListener("focusout", schedule);
+      window.removeEventListener("orientationchange", schedule);
       root.style.removeProperty(SHELL_HEIGHT_VAR);
     };
   }, [active]);
