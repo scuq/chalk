@@ -90,7 +90,7 @@ test.describe("mobile layout", () => {
 
     await page.locator("[data-testid='zucker-row']").first().click();
     await expect(page.locator("[data-testid='composer-input']")).toBeVisible();
-    await expect(list).toHaveCount(0);
+    await expect(list).toBeHidden();
 
     await page.locator("[data-testid='zucker-back']").first().click();
     await expect(list).toBeVisible();

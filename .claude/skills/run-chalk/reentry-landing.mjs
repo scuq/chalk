@@ -105,6 +105,11 @@ const imgFile = (name, w, h, seed) => { const p = OUT + name; writeFileSync(p, m
 
 // ---- registration -----------------------------------------------------
 async function register(page, username) {
+  // 135-3: the "what's new" note opens at an unknown time after sign-in, and
+  // its backdrop blocks every tap. Close it when it shows.
+  await page.addLocatorHandler(page.locator("[data-testid='whats-new-backdrop']"), async () => {
+    await page.locator("[data-testid='whats-new-dismiss']").click().catch(() => {});
+  });
   await page.goto('/');
   await page.waitForSelector("[data-testid='password-login']", { timeout: 20000 });
   await page.locator('button.chalk-auth-link', { hasText: 'create an account' }).click();

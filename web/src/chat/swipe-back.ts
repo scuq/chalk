@@ -13,6 +13,10 @@
 // somewhere to pan (a strip already scrolled off its left edge, a slider)
 // never arms at all; that check needs the DOM, so it lives in
 // use-swipe-back.ts with the listeners.
+//
+// The swipe is not the only way back. Since 135-3 each phone layer is a
+// history entry, so the system back button and back gesture close the same
+// layers (see ../nav/phone-stack.ts).
 
 export const SWIPE_TRIGGER_PX = 64;
 export const SWIPE_CANCEL_PX = 32;

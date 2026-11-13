@@ -119,6 +119,14 @@ const imgFile = (name, w, h, seed) => {
 
 // ---- registration -----------------------------------------------------
 async function register(page, username) {
+  // 135-3: the "what's new" note and the avatar nudge open at an unknown time
+  // after sign-in, and their backdrops block every tap. Close them when they show.
+  await page.addLocatorHandler(page.locator("[data-testid='whats-new-backdrop']"), async () => {
+    await page.locator("[data-testid='whats-new-dismiss']").click().catch(() => {});
+  });
+  await page.addLocatorHandler(page.locator("[data-testid='avatar-nudge-backdrop']"), async () => {
+    await page.locator("[data-testid='avatar-nudge-later'], [data-testid='avatar-nudge-close']").first().click().catch(() => {});
+  });
   await page.goto('/');
   await page.waitForSelector("[data-testid='password-login']", { timeout: 20000 });
   await page.locator('button.chalk-auth-link', { hasText: 'create an account' }).click();

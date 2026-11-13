@@ -3,7 +3,7 @@
 *Backfilled record.* Written after the fact from the commit history and the
 changelog; the design notes are as-built, not a contemporaneous plan.
 
-**Status:** shipped, v0.5.1 – v0.6.3. Extended by 76-2 (code cards).
+**Status:** shipped, v0.5.1 – v0.6.3. Extended by 76-2 (code cards). Since 135-3, each phone layer is also a browser history entry, so the system back button does what the swipe does.
 **Tag:** `#mobile` → `tools/where.sh -g mobile`
 
 ## Why

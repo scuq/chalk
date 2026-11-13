@@ -227,6 +227,8 @@ import {
 import { messageText } from "../chat/bodytext";
 // 64-3/64-4/64-10: swipe right = back, on every screen that has a "back".
 import { useSwipeBack } from "../chat/use-swipe-back";
+import { usePhoneHistory } from "../nav/use-phone-history"; // 135-3
+import { historyDepth } from "../nav/phone-stack";
 import { MessageList } from "./MessageList";
 import { ChannelBanner } from "./ChannelBanner"; // 111-3
 import { useDisplayPrefs } from "../display-prefs"; // 111-4
@@ -626,7 +628,9 @@ export function App() {
   // 62-6: the unified conversation list is the home screen of the phone.
   // A row opens its conversation full-screen, and the header's back arrow
   // returns to the list. Desktop does not show the list. The screen that
-  // shows is local UI state.
+  // shows is local UI state. The list stays mounted and hidden while a chat
+  // shows (135-3). The browser history follows this state through
+  // usePhoneHistory.
   // 135-1: the phone always has the chat list. No preference turns it off.
   const zuckerActive = isMobile;
   const [zuckerScreen, setZuckerScreen] = useState<"list" | "chat">("list");
@@ -787,9 +791,11 @@ export function App() {
     () => (zuckerActive ? buildFriendList(state.friends, state.presence) : []),
     [zuckerActive, state.friends, state.presence],
   );
-  // 64-3/64-12: swipe right in a conversation = the Zuckermode back button.
-  // The conversation and the composer travel with the finger together; the
-  // header stays put because it is the same header on both screens.
+  // 64-3/64-12: swipe right in a conversation does what the Zuckermode back
+  // button does. The conversation and the composer travel with the finger
+  // together. The header stays because it is the same header on both
+  // screens. The system back also ends here, through usePhoneHistory
+  // (135-3).
   const backToList = useCallback(() => {
     // Un-park on the way out: the list is the home screen here, so "parked"
     // would otherwise linger invisibly behind it.
@@ -799,6 +805,21 @@ export function App() {
   const chatSwipe = useSwipeBack(
     zuckerActive && zuckerScreen === "chat",
     backToList,
+  );
+  // 135-3: each phone layer is one history entry with the same URL. The
+  // hook pushes entries when a layer opens and goes back when the app closes
+  // one. After a browser back, it calls onPop, and onPop closes the top
+  // layers. The hook is off on desktop and off on the admin route.
+  usePhoneHistory(
+    zuckerActive && state.route === "chat" && state.user !== null,
+    { screen: zuckerScreen, thread: state.openThread !== null, panel: state.openPanel !== null },
+    (steps) => {
+      for (const step of steps) {
+        if (step === "close-panel") dispatch({ kind: "close_panel" });
+        else if (step === "close-thread") dispatch({ kind: "close_thread" });
+        else backToList();
+      }
+    },
   );
 
   // 33-4: sidebar width. The committed value lives in prefs (so it follows
@@ -5014,6 +5035,8 @@ export function App() {
   //      fire popstate; we update state.route to match the new
   //      location. (pushState alone doesn't fire popstate, so
   //      programmatic navigation needs an explicit dispatch.)
+  //      On the phone, usePhoneHistory also listens for popstate. It
+  //      handles the layers. This listener handles the route.
   useEffect(() => {
     const isAdmin = state.me?.role === "admin";
     const path = window.location.pathname;
@@ -5130,7 +5153,12 @@ export function App() {
         authConfig={state.authConfig} // 129-3
         dispatch={dispatch}
         onBackToChat={() => {
-          window.history.pushState({}, "", "/");
+          // 135-3: if the current entry is the admin entry, go back to the
+          // entry below it. Then a later back does not open the admin page
+          // again. If the current entry is not the admin entry, replace it
+          // with the chat URL.
+          if ((window.history.state as { admin?: boolean } | null)?.admin) window.history.back();
+          else window.history.replaceState({ chalkDepth: historyDepth(window.history.state) }, "", "/");
           dispatch({ kind: "route_to_chat" });
         }}
       />
@@ -5937,7 +5965,14 @@ export function App() {
           attachmentController={attControllerRef.current ?? undefined}
           onOpenProfile={() => dispatch({ kind: "open_panel", panel: "profile" })}
           onOpenAdmin={() => {
-            window.history.pushState({}, "", "/admin");
+            // 135-3: the entry keeps the depth of the entry below it, so
+            // the phone stack does not count the admin page as a layer.
+            // The admin flag lets onBackToChat find this entry.
+            window.history.pushState(
+              { chalkDepth: historyDepth(window.history.state), admin: true },
+              "",
+              "/admin",
+            );
             dispatch({ kind: "route_to_admin" });
           }}
           updateAvailable={state.updateAvailable}
@@ -6243,63 +6278,70 @@ export function App() {
         onTouchEnd={chatSwipe.onTouchEnd}
         onTouchCancel={chatSwipe.onTouchCancel}
       >
-        {/* 62-6: Zuckermode's list screen replaces the conversation
-            entirely; everything below stays mounted-but-hidden logic-free
-            because the branch swaps content, not the surrounding chrome
-            (the footer hides its composer the parked way). */}
-        {zuckerActive && zuckerScreen === "list" ? (
-          <ZuckerList
-            /* 129-11: the scene as a row above the list. It uses the same
-               gates as the header mount: the device switch and the server
-               switch. If a gate is off, nothing mounts. On a date in no
-               season, `season` is null and the neutral scenes show. The row has
-               no height between visits. The classic phone layout has no list
-               screen, so it shows no scene. */
-            scene={
-              seasonalOn ? (
-                <SeasonScene season={season} always={alwaysOn(seasonNow)} row />
-              ) : null
-            }
-            rows={zuckerSplit.visible}
-            hiddenRows={zuckerSplit.hidden}
-            presence={state.presence}
-            friends={zuckerFriends}
-            voiceOccupants={zuckerVoiceOccupants}
-            parkingName={parking.hidden ? null : parking.name}
-            threadsUnread={threadsNeedingYou}
-            hotChannels={hotChannels} // 115-2
-            burstMinutes={flairBurstMinutes}
-            waves={waves} // 115-3
-            onSelect={(id) => {
-              dispatch({ kind: "set_active_channel", channelID: id });
-              // 64-8: re-entering the channel that is still active is a
-              // reducer no-op, so the frozen unread window would predate
-              // everything that accrued on the list screen. Re-freeze it so
-              // the divider reflects what is actually unread now.
-              dispatch({ kind: "unread_mark_refresh", channelID: id });
-              setZuckerScreen("chat");
-            }}
-            onFriendSelect={(userID) => {
-              // An existing DM activates synchronously -- flip to it now. A
-              // freshly created one flips via the dm_pending effect above
-              // once the channel lands.
-              const dmID = handleFriendClickInRoster(userID);
-              if (dmID) {
-                // 64-8: same re-freeze as onSelect, same no-op reason.
-                dispatch({ kind: "unread_mark_refresh", channelID: dmID });
-                setZuckerScreen("chat");
+        {/* 62-6: Zuckermode's list screen covers the conversation. The
+            list stays mounted in chalk-phone-list and is hidden while a
+            chat shows (135-3), so its filter, its open sections, and its
+            scroll offset survive a visit to a chat. The chat branch below
+            does not render on the list screen. The footer hides its
+            composer the parked way. */}
+        {zuckerActive && (
+          <div class="chalk-phone-list" hidden={zuckerScreen !== "list"}>
+            <ZuckerList
+              /* 129-11: the scene as a row above the list. It uses the same
+                 gates as the header mount: the device switch and the server
+                 switch. If a gate is off, nothing mounts. On a date in no
+                 season, `season` is null and the neutral scenes show. The row has
+                 no height between visits. The scene mounts only while the
+                 list shows, so a hidden list never uses up a scene visit. */
+              scene={
+                seasonalOn && zuckerScreen === "list" ? (
+                  <SeasonScene season={season} always={alwaysOn(seasonNow)} row />
+                ) : null
               }
-            }}
-            onPark={park}
-            onOpenThreads={() => dispatch({ kind: "open_panel", panel: "threads" })}
-            onAddFriend={() => {
-              dispatch({ kind: "friends_panel_tab_change", tab: "add" });
-              dispatch({ kind: "open_panel", panel: "friends" });
-            }}
-            onCreateChannel={() => dispatch({ kind: "open_create_modal" })}
-            countdownNow={countdownNow}
-          />
-        ) : /* 53-1: the parking lot wins over whatever channel is still
+              rows={zuckerSplit.visible}
+              hiddenRows={zuckerSplit.hidden}
+              presence={state.presence}
+              friends={zuckerFriends}
+              voiceOccupants={zuckerVoiceOccupants}
+              parkingName={parking.hidden ? null : parking.name}
+              threadsUnread={threadsNeedingYou}
+              hotChannels={hotChannels} // 115-2
+              burstMinutes={flairBurstMinutes}
+              waves={waves} // 115-3
+              onSelect={(id) => {
+                dispatch({ kind: "set_active_channel", channelID: id });
+                // 64-8: re-entering the channel that is still active is a
+                // reducer no-op, so the frozen unread window would predate
+                // everything that accrued on the list screen. Re-freeze it so
+                // the divider reflects what is actually unread now.
+                dispatch({ kind: "unread_mark_refresh", channelID: id });
+                setZuckerScreen("chat");
+              }}
+              onFriendSelect={(userID) => {
+                // An existing DM activates synchronously -- flip to it now. A
+                // freshly created one flips via the dm_pending effect above
+                // once the channel lands.
+                const dmID = handleFriendClickInRoster(userID);
+                if (dmID) {
+                  // 64-8: same re-freeze as onSelect, same no-op reason.
+                  dispatch({ kind: "unread_mark_refresh", channelID: dmID });
+                  setZuckerScreen("chat");
+                }
+              }}
+              onPark={park}
+              onOpenThreads={() => dispatch({ kind: "open_panel", panel: "threads" })}
+              onAddFriend={() => {
+                dispatch({ kind: "friends_panel_tab_change", tab: "add" });
+                dispatch({ kind: "open_panel", panel: "friends" });
+              }}
+              onCreateChannel={() => dispatch({ kind: "open_create_modal" })}
+              countdownNow={countdownNow}
+              shown={zuckerScreen === "list"}
+            />
+          </div>
+        )}
+        {zuckerActive && zuckerScreen === "list" ? null :
+        /* 53-1: the parking lot wins over whatever channel is still
             selected. Nothing about that channel is unloaded -- messages, the
             call, the key state all stay exactly as they were; they are just
             not on screen. The composer is hidden the same way (see the

@@ -62,6 +62,11 @@ interface Props {
   // above the header. The parent decides if it mounts. The list stays
   // presentational.
   scene?: ComponentChildren;
+  /** 135-3: false while a chat covers the list. The default is true. The
+   * list stays mounted, so its filter and its open sections survive. A
+   * hidden element loses its scroll offset. The list saves the offset of
+   * its rows on scroll and restores it when this prop becomes true. */
+  shown?: boolean;
 }
 
 export function ZuckerList({
@@ -83,7 +88,13 @@ export function ZuckerList({
   burstMinutes = 4,
   waves,
   scene,
+  shown = true,
 }: Props) {
+  const rowsRef = useRef<HTMLUListElement>(null);
+  const rowsScroll = useRef(0);
+  useLayoutEffect(() => {
+    if (shown && rowsRef.current) rowsRef.current.scrollTop = rowsScroll.current;
+  }, [shown]);
   const [friendsOpen, setFriendsOpen] = useState(false);
   // 64-2/64-5: quick filter over the conversation rows, same match rule as
   // the sidebar's rosters (54-1). Hidden behind the header's magnifier
@@ -361,7 +372,14 @@ export function ZuckerList({
         </div>
       )}
 
-      <ul class="chalk-zucker-rows" data-testid="zucker-rows">
+      <ul
+        class="chalk-zucker-rows"
+        data-testid="zucker-rows"
+        ref={rowsRef}
+        onScroll={(e) => {
+          rowsScroll.current = (e.currentTarget as HTMLUListElement).scrollTop;
+        }}
+      >
         {/* 95-2: "no matches" means nothing matched anywhere -- a filter that
             only hits a voice room has a hit, it is just up in that list. */}
         {rows.length > 0 && visibleRows.length === 0 && shownVoice.length === 0 && (

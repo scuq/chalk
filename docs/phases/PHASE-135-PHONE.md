@@ -1,6 +1,6 @@
 # Phase 135 — phone: the chat list is the phone layout, with a call bar and a call view
 
-**Status:** in progress. 135-1 and 135-2 are built (2026-11-13). 135-3 to 135-8 are planned and have no code.
+**Status:** in progress. 135-1 and 135-2 are built (2026-11-13). 135-3 is built (2026-11-14), and its device checks are open. 135-4 to 135-8 are planned and have no code.
 **Tags:** `#zucker`, `#mobile`, `#roster`, `#voice` → `tools/where.sh -g zucker`
 
 ## The problem
@@ -71,6 +71,7 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
 - A top call banner. The bottom is in thumb reach.
 - A service worker in this phase. It stays in phase 65.
 - A Navigation API branch. `pushState` and `popstate` are enough, and a second branch doubles the paths to test.
+- Restoring the open chat after a reload (135-3). The channels load asynchronously, so a restore would wait for them. A reload lands on the list, as before.
 - An adaptation of `VoiceCallPanel` for the phone. It is the desktop stage.
 - A migration for `viewMode`. The server stores preferences as opaque JSON, and no Go code reads `viewMode`.
 
@@ -111,10 +112,33 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
   It also asserts the aside behind `!isMobile` and no `<VoiceDock`.
   The 135-1 test in `web/src/theme-zucker.test.ts` now asserts only that the drawer rules are absent.
   There is no user-visible change, so there is no changelog entry.
-- **135-3 — back button and back gesture.** Planned.
-  Each layer (list, chat, thread or panel) is one history entry. The URL does not change. State follows history, and the `popstate` handler never calls `pushState`.
-  New files: `web/src/nav/phone-stack.ts` (pure functions) and `web/src/nav/use-phone-history.ts`.
-  `ZuckerList` stays mounted in its own scroller, so the list keeps its scroll position and filter.
+- **135-3 — back button and back gesture.** Built 2026-11-14.
+  Each layer (list, chat, thread, panel) is one history entry with the same URL.
+  New files: `web/src/nav/phone-stack.ts` (pure functions, tested in `phone-stack.test.ts`) and `web/src/nav/use-phone-history.ts`.
+  The pure functions are:
+  `stackDepth` (the list is 1, and the chat, the thread, and the panel each add one),
+  `historyDepth` (reads `history.state.chalkDepth`, and an invalid value counts as 1),
+  `hasDepth`,
+  `popSteps` (closes the panel first, then the thread, then the chat),
+  and `reconcile` (push n entries or go back n).
+  Design, in both directions:
+  - State follows history. After a `popstate`, the hook calls `onPop` with the steps that close layers. In `App.tsx`, `onPop` dispatches `close_panel` or `close_thread`, or calls `backToList`, which also un-parks.
+  - History follows state. When the app opens a layer, the hook pushes entries. When the app closes a layer (the back button in the app, the swipe, or a close X), the hook calls `history.go(-n)`.
+  - If the browser lands deeper than the state, the hook goes back again.
+  - Each entry stores its depth in `history.state.chalkDepth`. The hook stamps depth 1 on an entry that has none.
+  - A `pending` flag covers the time between the hook's own `history.go()` and the `popstate` for it. In that time the hook makes no push and no second `go()`.
+  - The hook is on only on the phone, on the chat route, with a signed-in user. On desktop, channel clicks add no history entries.
+  Admin: opening the admin page pushes `{ chalkDepth: <current>, admin: true }` at `/admin`, so it is not a layer.
+  "Back to chat" calls `history.back()` when the current entry is the admin entry. Otherwise it calls `replaceState` to `/`. Before 135-3, it pushed a new `/` entry, so a later back opened the admin page again.
+  Reload: a reload in a chat lands on the list, as before. The history goes back to the entry of depth 1, so the next back leaves the app.
+  The list: `App.tsx` keeps `ZuckerList` mounted in `<div class="chalk-phone-list" hidden=...>` while a chat shows. Before, the chat replaced the list.
+  The list gets the seasonal scene row only while it shows, so a hidden list never uses up a scene visit.
+  `ZuckerList` has a new `shown` prop. It saves the scroll offset of its rows on scroll and restores it when it shows again, because a hidden element loses its scroll offset.
+  The filter and the open friends, voice, and hidden sections now survive a visit to a chat.
+  `web/src/theme.css` has a new `.chalk-phone-list` rule in the phone block.
+  `test/e2e/mobile.spec.ts` now asserts that the list is hidden, and not absent, after a row opens the chat. The spec file is not executed.
+  Both landing probes now have a handler that closes the "what's new" note when it opens. The note opened over the list at an unknown time after sign-in and blocked the first tap.
+  `unread-landing.mjs` also has a handler for the avatar nudge. `reentry-landing.mjs` closes the nudge itself.
 - **135-4 — shell: keyboard, overscroll, tap targets.** Planned.
   The viewport meta gets `interactive-widget=resizes-content`. `viewport.ts` measures again on `focusout` and `orientationchange`.
   The phone block sets `overscroll-behavior: none` and `overflow: hidden` on `html, body`, so the browser has no pull-to-refresh.
@@ -148,6 +172,31 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
 - `aside.chalk-sidebar` count was 1 on desktop and 0 on the phone.
 - Desktop screenshots show the rail, the sidebar, and the stage unchanged.
 
+## Verification of 135-3
+
+Live probe: Playwright with iPhone 14 touch emulation, 390x664, fourteen channels. 10 of 10 checks passed:
+
+- The list is at depth 1.
+- A row opens the chat at depth 2.
+- The system back returns to the list.
+- The list keeps its scroll offset (374 px before and after).
+- A search panel over the chat is at depth 3.
+- Back closes the panel and keeps the chat.
+- A second back returns to the list.
+- The back button in the app leaves the history at depth 1.
+- A reload in a chat lands on the list at depth 1, and the next back leaves the app.
+- On desktop, channel clicks add no history entries.
+
+The landing probes ran one after the other on the 135-3 build:
+
+- `reentry-landing.mjs` reported 5 of 5 entries landed at the bottom.
+- `unread-landing.mjs` reported OK for all three alpha entries (first entry, re-entry, and third entry). Each landed 0 px from the bottom with the newest message visible. The first entry showed the unread divider.
+
+The two probes share `/tmp/chalk-probe/` and clear it at the start, so they must run one after the other.
+
+Not verified: a real Android back button, Android predictive back, and the iOS edge swipe in an installed app.
+Chrome can skip history entries that a page adds without a user gesture. Every push in 135-3 follows a tap, but this was not tested on a device.
+
 ## Known loss
 
 The phone list has no row menu.
@@ -164,6 +213,11 @@ The same loss is in `docs/open-items.md`.
 - [ ] A tab open before the update. After the update banner reloads it, the old drawer is gone.
 - [ ] A call on a real iPhone and a real Android phone. The call bar shows on the list and on a chat, and the audio plays.
 - [ ] Resize a desktop window across 767 px during a call. The audio does not stop. The 135-2 probe did this with emulation. A real window and a real phone are still open.
+- [ ] 135-3: a real Android phone. The back button closes a panel, then a thread, then returns from a chat to the list, then leaves chalk.
+- [ ] 135-3: Android with predictive back turned on. The same sequence works.
+- [ ] 135-3: an iPhone with chalk installed to the home screen. The edge swipe closes the same layers.
+- [ ] 135-3: on a device, the pushed entries stay in the history. Chrome can skip entries that a page adds without a user gesture.
+- [ ] 135-3: open the admin page and return with "back to chat". Then press back. The admin page does not open again.
 - [ ] 135-7: an interrupted call, such as an incoming phone call.
 - [ ] 135-7: an audio route change, such as a headset plugged in or removed.
 - [ ] 135-7: recovery after the user denies and then allows the microphone permission.
