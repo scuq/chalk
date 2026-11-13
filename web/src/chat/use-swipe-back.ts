@@ -26,9 +26,8 @@ import {
   type SwipeStart,
 } from "./swipe-back";
 
-// The mobile drawer's transition (.chalk-sidebar), the one other surface on
-// a phone that slides in and out. Same curve, same duration, so the two
-// gestures feel like they belong to the same app.
+// The settle duration of the back gesture, in milliseconds. The settle rule
+// in theme.css must use the same value.
 export const SWIPE_SETTLE_MS = 160;
 
 export interface SwipeBack {

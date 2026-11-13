@@ -602,10 +602,6 @@ export function App() {
   // 82-8: provenance of THIS device's copy of the active channel's key.
   const [keyProv, setKeyProv] = useState<KeyProvenance | null>(null);
 
-  // Mobile: below the phone breakpoint the roster stops being a column and
-  // becomes a drawer over the message list. Desktop never reads navOpen, but
-  // reset it when we widen so a drawer left open on a phone-sized window
-  // doesn't come back as a stuck overlay after a resize.
   const isMobile = useIsMobile();
   // 131-1: the room the session is in. The rail column exists while it is set.
   const railChannelID = useVoiceRoom();
@@ -617,7 +613,6 @@ export function App() {
   // mobile, so the iOS keyboard can't push the channel header off-screen.
   // A no-op on desktop; see web/src/viewport.ts.
   useKeyboardSafeShell(isMobile);
-  const [navOpen, setNavOpen] = useState(false);
   // 83-6: the server-identity wall. Set when the server proves a key other
   // than the one this device pinned; blocks the whole app until the user
   // compares fingerprints and chooses to trust the new key (operator
@@ -628,22 +623,17 @@ export function App() {
     seenPub: Uint8Array;
   } | null>(null);
 
-  // 62-6: Zuckermode. When the synced pref says "zucker" AND we're on a
-  // phone, the unified conversation list replaces the drawer navigation:
-  // the list is the home screen, a row opens its conversation full-screen,
-  // and the header's back arrow returns to the list. Desktop ignores the
-  // pref entirely (the chat.sidebarWidth precedent). Which screen is
-  // showing is local UI state at the same altitude as the drawer it
-  // replaces.
-  const zuckerActive =
-    isMobile && selectRosterPrefs(state.prefs).viewMode === "zucker";
+  // 62-6: the unified conversation list is the home screen of the phone.
+  // A row opens its conversation full-screen, and the header's back arrow
+  // returns to the list. Desktop does not show the list. The screen that
+  // shows is local UI state.
+  // 135-1: the phone always has the chat list. No preference turns it off.
+  const zuckerActive = isMobile;
   const [zuckerScreen, setZuckerScreen] = useState<"list" | "chat">("list");
   useEffect(() => {
     if (zuckerActive) {
-      // Entering the mode (toggle flipped, or a resize crossed the
-      // breakpoint) lands on the list; the drawer has no business open.
+      // A resize across the breakpoint to phone width lands on the list.
       setZuckerScreen("list");
-      setNavOpen(false);
     }
   }, [zuckerActive]);
   // A DM created from the friends panel auto-activates via the reducer's
@@ -848,17 +838,6 @@ export function App() {
     },
     [prefComposerHeight, state.prefs],
   );
-  useEffect(() => {
-    if (!isMobile) setNavOpen(false);
-  }, [isMobile]);
-  useEffect(() => {
-    if (!navOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setNavOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [navOpen]);
 
   // 61-2: Ctrl/Cmd+K toggles message search. Deliberately NOT gated on
   // isTypingTarget -- reaching for search from the composer is the common
@@ -4062,16 +4041,15 @@ export function App() {
   // 53-3: everything parking has to do to the shell, in one place, so the
   // sidebar row and the boss key cannot drift apart. The reducer takes care of
   // the panes that render messages; what is left is the navigation around them
-  // -- an open drawer, or Zuckermode sitting on the conversation list.
+  // -- the phone sitting on the conversation list.
   const park = useCallback(() => {
-    setNavOpen(false);
     setZuckerScreen("chat");
     dispatch({ kind: "set_parked", parked: true });
   }, []);
 
   // 53-4: and the way back. Nothing the shell did on the way in needs undoing
-  // -- the drawer is closed and Zuckermode is on its chat screen, which is
-  // where the restored conversation belongs -- so this is the panes alone.
+  // -- the phone is on its chat screen, which is where the restored
+  // conversation belongs -- so this is the panes alone.
   const unpark = useCallback(() => dispatch({ kind: "unpark" }), []);
 
   // 53-3/53-4: F9 parks from anywhere, including mid-sentence in the composer,
@@ -5871,7 +5849,7 @@ export function App() {
   // block for the message menu it holds.
   const shellStyle = [
     // 33-4: drives the sidebar grid column. Omitted on mobile, where the
-    // sidebar is a drawer sized by its own rule.
+    // sidebar is hidden and has no grid column.
     isMobile ? null : `--chalk-sidebar-w:${sidebarWidth}px`,
     chatSwipe.offset !== null ? `--chalk-swipe-x:${chatSwipe.offset}px` : null,
   ]
@@ -5884,24 +5862,11 @@ export function App() {
          pane itself -- see theme.css. The class is all this side of it: what
          gets covered is a CSS question, and answering it there is what makes a
          surface added later covered by default rather than by remembering. */
-      class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${railOn ? "chalk-app--rail" : ""} ${isMobile ? "chalk-app--mobile" : ""} ${navOpen && !zuckerActive ? "chalk-app--nav-open" : ""} ${zuckerActive ? "chalk-app--zucker" : ""} ${zuckerActive && zuckerScreen === "list" ? "chalk-app--zucker-list" : ""} ${chatSwipe.offset !== null ? "chalk-app--swiping" : ""} ${chatSwipe.settling ? "chalk-app--swiping-settle" : ""} ${screened ? "chalk-app--screened" : ""}`}
+      class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${railOn ? "chalk-app--rail" : ""} ${zuckerActive ? "chalk-app--zucker" : ""} ${zuckerActive && zuckerScreen === "list" ? "chalk-app--zucker-list" : ""} ${chatSwipe.offset !== null ? "chalk-app--swiping" : ""} ${chatSwipe.settling ? "chalk-app--swiping-settle" : ""} ${screened ? "chalk-app--screened" : ""}`}
       style={shellStyle || undefined}
     >
       <header class="chalk-header">
         <div class="chalk-header-left">
-          {isMobile && !zuckerActive && (
-            <button
-              type="button"
-              class="chalk-nav-toggle"
-              aria-label={navOpen ? "close channel list" : "open channel list"}
-              aria-expanded={navOpen}
-              aria-controls="chalk-roster"
-              data-testid="nav-toggle"
-              onClick={() => setNavOpen((open) => !open)}
-            >
-              ☰
-            </button>
-          )}
           <div class="chalk-brand">
             <Logo />
             <h1>chalk</h1>
@@ -5933,8 +5898,8 @@ export function App() {
             season, `season` is null and the neutral scenes show.
             129-10: in the always-on hours the scene stays up
             without a break. A second row for the scene in the header
-            would change the height of the header. 129-11: a phone in
-            zuckermode shows the scene in a row above the list instead (see the
+            would change the height of the header. 129-11: a phone
+            shows the scene in a row above the list instead (see the
             `scene` prop of ZuckerList). */}
         {seasonalOn && !isMobile && (
           <SeasonScene season={season} always={alwaysOn(seasonNow)} />
@@ -5978,17 +5943,9 @@ export function App() {
         />
       </header>
 
-      {isMobile && navOpen && !zuckerActive && (
-        <div
-          class="chalk-nav-backdrop"
-          data-testid="nav-backdrop"
-          onClick={() => setNavOpen(false)}
-        />
-      )}
-
       {/* 131-1: the call rail. Its own grid cell, left of the sidebar, for as
-          long as you are in a call. Desktop only: the phone has the drawer
-          and its own call bar. 131-7: it carries the duration and every
+          long as you are in a call. Desktop only: the phone has its own
+          call bar. 131-7: it carries the duration and every
           control, so the dock box and the footer bar do not render here. */}
       {railOn && state.user && (
         <CallRail
@@ -6004,25 +5961,6 @@ export function App() {
         />
       )}
       <aside class="chalk-sidebar" id="chalk-roster">
-        {/* The open drawer covers the header, so it carries its own close
-            control instead of relying on the ☰ button behind it. */}
-        {isMobile && (
-          <div class="chalk-drawer-head">
-            <span class="chalk-drawer-title">
-              <Logo />
-              chalk
-            </span>
-            <button
-              type="button"
-              class="chalk-drawer-close"
-              aria-label="close channel list"
-              data-testid="nav-close"
-              onClick={() => setNavOpen(false)}
-            >
-              ✕
-            </button>
-          </div>
-        )}
         <Sidebar
           // Phase 9.7f: nick colors in the roster context menu. hueForHandle
           // reports what a handle currently renders as (explicit pick, else
@@ -6226,9 +6164,6 @@ export function App() {
           unread={state.unread}
           onSelect={(id) => {
             dispatch({ kind: "set_active_channel", channelID: id });
-            // On mobile the roster covers the conversation, so picking one
-            // has to hand the screen back.
-            setNavOpen(false);
             // 30-5c click-to-join (Addendum C, core): selecting a voice room
             // connects to it, Discord-style. The actual join call lives in
             // the keyStatus-driven effect above (it fires off this same
@@ -6237,19 +6172,16 @@ export function App() {
             // of only on a later revisit.
           }}
           onFriendClick={(friendUserID) => {
-            setNavOpen(false);
             handleFriendClickInRoster(friendUserID);
           }}
           countdownNow={countdownNow}
           onCreateClick={() => {
-            setNavOpen(false);
             dispatch({ kind: "open_create_modal" });
           }}
           // 130-3: The + on the voice section. Set only if voice and guest rooms are on.
           onQuickRoomClick={
             state.voiceEnabled && (state.authConfig?.ephemeral_enabled ?? false)
               ? () => {
-                  setNavOpen(false);
                   setQuickRoomOpen(true);
                 }
               : undefined
@@ -6257,7 +6189,6 @@ export function App() {
           // 59-1: the friends "+" — the friends panel on its "add" tab,
           // where the server directory lists everyone addable.
           onAddFriendClick={() => {
-            setNavOpen(false);
             dispatch({ kind: "friends_panel_tab_change", tab: "add" });
             dispatch({ kind: "open_panel", panel: "friends" });
           }}
@@ -6266,12 +6197,8 @@ export function App() {
           parkingName={parking.hidden ? null : parking.name}
           parked={state.parked}
           onPark={park}
-          // 49-6: the thread inbox lives with the other unread dots now. On
-          // mobile the sidebar is a drawer, so opening the panel closes it.
-          onOpenThreads={() => {
-            setNavOpen(false);
-            dispatch({ kind: "open_panel", panel: "threads" });
-          }}
+          // 49-6: the thread inbox lives with the other unread dots now.
+          onOpenThreads={() => dispatch({ kind: "open_panel", panel: "threads" })}
           threadsUnread={threadsNeedingYou}
         />
         {/* 30-5c: the persistent-call dock -- app-level audio sinks + the
@@ -6282,8 +6209,8 @@ export function App() {
             dispatch({ kind: "set_active_channel", channelID: id })
           }
         />
-        {/* 33-4: resize handle. Desktop only -- on mobile the sidebar is a
-            fixed-width drawer and the grid column doesn't exist. */}
+        {/* 33-4: resize handle. Desktop only -- on mobile the sidebar is
+            hidden and the grid column does not exist. */}
         {!isMobile && (
           <SidebarResizer
             width={sidebarWidth}
@@ -6749,7 +6676,7 @@ export function App() {
             {state.voiceEnabled && (
               <VoiceControls
                 onOpenMicSettings={() => setMicSettingsOpen(true)}
-                hideIdle={zuckerActive}
+                hideIdle
               />
             )}
           </div>
@@ -6833,7 +6760,7 @@ export function App() {
         </div>
         {/* 126-2: the phone home screen's own voice bar. VoiceDock cannot
             reach this screen -- it mounts once inside the sidebar, and
-            Zuckermode hides the sidebar outright -- so this reads the same
+            the phone hides the sidebar outright -- so this reads the same
             session snapshot and shows a bar of its own. The mobile footer
             stacks in column-reverse, so being last here puts the bar at the
             top of the stack: above the composer on the chat screen, above
@@ -7445,17 +7372,6 @@ export function App() {
           rosterChannelSort={selectRosterPrefs(state.prefs).channelSort}
           onSetRosterChannelSort={(mode) => {
             writeRosterOrder((order) => ({ ...order, channelSort: mode }));
-          }}
-          zuckerEnabled={selectRosterPrefs(state.prefs).viewMode === "zucker"}
-          onSetZucker={(enabled) => {
-            const c = clientRef.current;
-            if (!c || !c.isOpen()) return;
-            // JSONB merge is shallow: resend the whole roster object so the
-            // grouping fields survive this write (54-3 precedent above).
-            const current = selectRosterPrefs(state.prefs);
-            c.send(TypePrefsSet, {
-              patch: { roster: { ...current, viewMode: enabled ? "zucker" : "classic" } },
-            });
           }}
           onClearImageCache={() => clearAttachmentCache()}
           pinStatus={pinStatus}

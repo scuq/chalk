@@ -408,7 +408,7 @@ export interface ChatPrefs {
   emoticons?: boolean;
   // 33-4: sidebar column width in px, set by dragging its edge. Clamped to
   // [SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX] on both write and read. Ignored
-  // on mobile, where the sidebar is a drawer with its own sizing.
+  // on mobile, where the sidebar is hidden.
   sidebarWidth?: number;
   // 91-1: composer height in px, set by dragging the divider above it. 0 (and
   // absent) mean auto -- the two rows the field has always been. Clamped on
@@ -573,10 +573,6 @@ export interface RosterPrefs {
   // 78-1: channels this user has taken off their roster, by channel id.
   // Typed loosely as stored; normalizeHidden owns what a valid entry is.
   hidden?: Record<string, { mode?: string; seq?: number }>;
-  // 62-5: "zucker" swaps the phone's drawer navigation for one WhatsApp-
-  // style conversation list (Zuckermode). Synced account-wide but consumed
-  // only on mobile -- the chat.sidebarWidth precedent: desktop ignores it.
-  viewMode?: "classic" | "zucker";
   // 106-3: "short" renders each channel's short name in the roster where
   // one is set; anything else (and absent) is the full name.
   nameStyle?: "full" | "short";
@@ -669,8 +665,6 @@ export interface ResolvedRosterPrefs {
   // (string values, non-empty after trim); everything else reads as "no
   // override" rather than a group named "" or a crash on junk prefs.
   groupOverrides: Record<string, string>;
-  // 62-5: anything but the exact string "zucker" resolves to classic.
-  viewMode: "classic" | "zucker";
   // 78-1: channel id -> hide entry, junk dropped. Whether an entry actually
   // hides the channel depends on live unread state -- see isHidden.
   hidden: Record<string, HiddenChannel>;
@@ -700,7 +694,6 @@ export function selectRosterPrefs(prefs: UserPrefs | undefined): ResolvedRosterP
   return {
     groupingEnabled: r.groupingEnabled ?? true,
     groupOverrides: overrides,
-    viewMode: r.viewMode === "zucker" ? "zucker" : "classic",
     hidden: normalizeHidden(r.hidden),
     nameStyle: r.nameStyle === "short" ? "short" : "full",
     ...resolveRosterOrder(r),

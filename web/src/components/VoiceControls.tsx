@@ -127,7 +127,7 @@ export function toggleCamOrEnable(): void {
 interface Props {
   onOpenMicSettings: () => void;
   // 95-1: render nothing outside a call. The "always present" argument above
-  // costs a 40px band across the bottom of a phone, which in Zuckermode is a
+  // costs a 40px band across the bottom of a phone, which on a phone is a
   // band the conversation list is paying for on every screen including the
   // ones with no voice in them. Set from App for the phone list; the panel
   // comes back the moment a room is joined, which is when the toggles have

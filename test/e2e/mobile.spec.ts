@@ -3,7 +3,8 @@
 // Covers what the node suite (which has no DOM) cannot verify and what is
 // easy to regress by touching an unrelated media query:
 //
-//   1) The roster drawer is a narrow overlay, not most of the screen.
+//   1) The chat list is the home screen. A row opens the chat, and the
+//      back button returns to the list.
 //   2) Touch gets no permanent row buttons and no ··· marker at all -- a
 //      long press is the whole gesture, and the marker gutter is zeroed so
 //      rows keep their full width.
@@ -79,29 +80,20 @@ function opacityOf(page: Page, selector: string) {
 }
 
 test.describe("mobile layout", () => {
-  test("roster drawer is a narrow overlay", async ({ browser }) => {
+  test("the chat list is the home screen, a row opens the chat, back returns", async ({ browser }) => {
     const page = await open(browser, PHONE);
 
-    const toggle = page.locator("[data-testid='nav-toggle']");
-    await expect(toggle).toBeVisible();
-    await toggle.click();
+    const list = page.locator("[data-testid='zucker-list']");
+    await expect(list).toBeVisible();
+    await expect(page.locator("[data-testid='nav-toggle']")).toHaveCount(0);
+    await expect(page.locator("#chalk-roster")).toBeHidden();
 
-    const drawer = page.locator("#chalk-roster");
-    await expect(drawer).toBeVisible();
+    await page.locator("[data-testid='zucker-row']").first().click();
+    await expect(page.locator("[data-testid='composer-input']")).toBeVisible();
+    await expect(list).toHaveCount(0);
 
-    const box = await drawer.boundingBox();
-    const viewport = page.viewportSize();
-    expect(box).not.toBeNull();
-    expect(viewport).not.toBeNull();
-
-    // min(70vw, 270px). The absolute cap is the assertion that matters;
-    // the proportional one documents why the cap exists -- a sliver of the
-    // conversation has to stay visible to orient against and tap away on.
-    expect(box!.width).toBeLessThanOrEqual(270);
-    expect(box!.width).toBeLessThan(viewport!.width * 0.75);
-
-    await page.locator("[data-testid='nav-close']").click();
-    await expect(drawer).toBeHidden();
+    await page.locator("[data-testid='zucker-back']").first().click();
+    await expect(list).toBeVisible();
 
     await page.context().close();
   });

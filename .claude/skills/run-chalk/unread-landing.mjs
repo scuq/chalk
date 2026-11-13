@@ -14,7 +14,7 @@
 //   swipe back
 //   enter channel 1 again  ->  "jumped back where the image started"
 //
-// MessageList unmounts on the way to the Zuckermode list screen (ZuckerList
+// MessageList unmounts on the way to the chat list screen (ZuckerList
 // replaces the whole conversation branch in App.tsx), so every entry runs the
 // landing afresh. Before 79-2 the landing chose "newest message" while the
 // unread run's photo was still a "decrypting…" strip, then the held anchor
@@ -358,9 +358,7 @@ await register(pageA, USER_A);
 await register(pageB, USER_B);
 
 say('friending');
-await pageA.locator("[data-testid='nav-toggle']").click();
-await pageA.waitForTimeout(400);
-await pageA.locator("[data-testid='sidebar-add-friend']").click();
+await pageA.locator("[data-testid='zucker-add-friend']").click();
 await pageA.waitForSelector("[data-testid='friends-panel']", { timeout: 8000 });
 await pageA.locator("[data-testid='friends-directory-row']", { hasText: USER_B })
   .locator("[data-testid='friends-directory-add']").click();
@@ -391,13 +389,13 @@ const LOREM =
 
 for (const [i, name] of CHANNELS.entries()) {
   say(`seeding channel ${name}`);
-  await pageA.locator("[data-testid='nav-toggle']").click();
-  await pageA.waitForTimeout(400);
-  await pageA.locator("[data-testid='sidebar-new']").click();
+  { const back = pageA.locator("[data-testid='zucker-back']:visible"); if (await back.count()) { await back.first().click(); await pageA.waitForTimeout(400); } }
+  await pageA.locator("[data-testid='zucker-new-channel']").click();
   await pageA.waitForSelector("[data-testid='create-modal']", { timeout: 8000 });
   await pageA.locator("[data-testid='create-modal-name']").fill(name);
   await pageA.locator("[data-testid='friend-picker-item']").first().click();
   await pageA.locator("[data-testid='create-modal-submit']").click();
+  await pageA.locator("[data-testid='zucker-row']", { hasText: name }).first().click({ timeout: 20000 });
   await pageA.waitForSelector("[data-testid='composer-input']", { timeout: 20000 });
   await pageA.waitForTimeout(800);
 
@@ -416,17 +414,6 @@ for (const [i, name] of CHANNELS.entries()) {
 }
 say('  read history seeded');
 
-// ---- Zuckermode -------------------------------------------------------
-say('enabling zuckermode');
-await pageA.locator("[data-testid='status-user-menu-trigger']").click();
-await pageA.waitForTimeout(300);
-await pageA.locator("[data-testid='status-user-menu-profile']").click();
-await pageA.waitForSelector("[data-testid='profile-panel']", { timeout: 8000 });
-await pageA.locator("[data-testid='profile-tab-chat']").click();
-await pageA.waitForTimeout(300);
-await pageA.locator("[data-testid='roster-zuckermode']").check();
-await pageA.waitForTimeout(600);
-await pageA.locator("[data-testid='profile-panel-close']").click();
 await pageA.waitForTimeout(600);
 
 // Reload: start from the list screen with a warm IndexedDB cache, which is

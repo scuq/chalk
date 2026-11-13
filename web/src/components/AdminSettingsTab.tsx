@@ -51,7 +51,7 @@ export function AdminSettingsTab({ state, onChange, onRetry }: Props) {
           </label>
           <p class="chalk-profile-hint">
             on by default. now and then a small animated scene for the season
-            shows in the middle of the top bar. a phone in zuckermode shows it in a row above the conversation list. off here
+            shows in the middle of the top bar. a phone shows it in a row above the conversation list. off here
             hides it for every account. each person can also turn it off for
             their own device under settings, appearance, seasonal. a change reaches other people's screens on their
             next page load.

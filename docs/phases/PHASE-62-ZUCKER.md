@@ -4,6 +4,9 @@
 changelog; the design notes are as-built, not a contemporaneous plan.
 
 **Status:** shipped, v0.5.0 (62-1…62-7), v0.5.1 (62-8, 62-9).
+**Update (135-1):** the opt-in toggle is retired. The chat list is the only
+phone layout, and the `roster.viewMode` preference is gone. See
+[PHASE-135-PHONE.md](PHASE-135-PHONE.md).
 **Tags:** `#unread`, `#roster` → `tools/where.sh -g unread`
 
 ## Why

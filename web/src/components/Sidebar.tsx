@@ -614,7 +614,7 @@ export function Sidebar({
   //
   // Hand-rolled on pointer events, the SidebarResizer precedent. Mouse only:
   // touch already has the long-press menu, and a touch drag would fight the
-  // drawer's swipe for the same gesture. Nothing about the ORDER depends on
+  // swipe for the same gesture. Nothing about the ORDER depends on
   // this -- it is a faster way to say what the menus above already say.
   //
   // The drop target is computed as a list of slots (one before each row, one

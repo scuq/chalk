@@ -19,8 +19,8 @@ import { useId } from "preact/hooks";
 // Logo draws the chalk mark. The tone is "brand" by default (green gradient)
 // or "theme" (the CSS colour of the element).
 export function Logo({ class: className, tone = "brand" }: { class?: string; tone?: "brand" | "theme" }) {
-  // Two instances can be mounted at once (header + mobile drawer), so the
-  // gradient needs a per-instance id to keep the document's ids unique.
+  // Two instances can be mounted at once (for example the header and an
+  // empty-state mark), so the gradient needs a per-instance id to keep the document's ids unique.
   const gradient = `chalk-logo-green-${useId()}`;
   const stops = tone === "theme"
     ? ["currentColor", "currentColor", "currentColor"]

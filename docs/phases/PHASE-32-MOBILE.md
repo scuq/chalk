@@ -4,6 +4,8 @@
 changelog; the design notes are as-built, not a contemporaneous plan.
 
 **Status:** shipped, v0.3.20 – v0.3.26. Extended by 33-6, 60, 64, 76.
+**Update (135-1):** the phone drawer is retired. The chat list is the only
+phone layout. See [PHASE-135-PHONE.md](PHASE-135-PHONE.md).
 **Tag:** `#mobile` → `tools/where.sh -g mobile`
 
 ## Why

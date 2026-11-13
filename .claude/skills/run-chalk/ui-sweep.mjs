@@ -36,8 +36,8 @@
 //                   and hal. Each one is a friend of ann.
 //   --sweep-only    After the first theme pass, the focus crops, and the
 //                   feed pass (<theme>-feed.png), stop.
-//   --phone         With --sweep-only, also write the feed and the open
-//                   drawer at 390 px width.
+//   --phone         With --sweep-only, also write the feed and the chat
+//                   list at 390 px width.
 //   (no mode flag)  Theme pass, focus crops, feed pass, then the composer
 //                   (empty, typed, in an edit, three themes, phone width)
 //                   and measurements of the header, the channel header,
@@ -225,6 +225,17 @@ async function createChannel(page, name, group) {
   await page.waitForTimeout(500);
 }
 
+// 135-1: a resize to phone width lands on the chat list. This sets the phone
+// size, and with a name it opens that row. A voice room is on the voice shelf.
+async function toPhone(page, height, name) {
+  await page.setViewportSize({ width: 390, height });
+  await page.waitForTimeout(600);
+  if (!name) return;
+  const row = page.locator("[data-testid='zucker-row']:visible", { hasText: name });
+  if (!(await row.count())) { await page.locator("[data-testid='zucker-voice']").click().catch(() => {}); await page.waitForTimeout(300); }
+  await row.first().click();
+  await page.waitForTimeout(600);
+}
 async function clearOverlaysEarly(page) {
   await page.waitForTimeout(300);
   for (const sel of ["[data-testid='whats-new-dismiss']", "[data-testid='avatar-nudge-later']", "[data-testid='avatar-nudge-close']"]) {
@@ -499,8 +510,7 @@ if (VOICE) {
       await A.locator("[data-testid='voice-layout-toggle']").click();
       await A.waitForTimeout(800);
       await A.screenshot({ path: OUT + 'vs-all-cams.png' });
-      await A.setViewportSize({ width: 390, height: 760 });
-      await A.waitForTimeout(800);
+      await toPhone(A, 760, 'lounge');
       await A.screenshot({ path: OUT + 'vs-all-cams-phone.png' });
       await A.setViewportSize({ width: 1280, height: 800 });
     }
@@ -510,16 +520,14 @@ if (VOICE) {
     console.log('share (B view)', JSON.stringify(await info(B)));
     await A.screenshot({ path: OUT + 'vs-share-A.png' });
     await B.screenshot({ path: OUT + 'vs-share-B.png' });
-    await B.setViewportSize({ width: 390, height: 760 });
-    await B.waitForTimeout(800);
+    await toPhone(B, 760, 'lounge');
     await B.screenshot({ path: OUT + 'vs-share-B-phone.png' });
     await browser.close();
     process.exit(0);
   }
   const stageInfo = () => A.evaluate(() => { const s = document.querySelector("[data-testid='voice-stage']"); const r = (q) => [...document.querySelectorAll(q)].map((e) => { const b = e.getBoundingClientRect(); return Math.round(b.width) + 'x' + Math.round(b.height); }); return { mode: s?.dataset.stageMode, clipped: !!s && (s.scrollHeight > s.clientHeight + 1 || [...s.querySelectorAll('.chalk-voice-peer')].some((e) => e.getBoundingClientRect().bottom > s.getBoundingClientRect().bottom + 0.5)), cards: r('.chalk-voice-peer--card'), videos: r('.chalk-voice-videos .chalk-voice-peer'), feed: r('.chalk-messages--ephemeral') }; });
   console.log('cards', JSON.stringify(await stageInfo()));
-  await A.setViewportSize({ width: 390, height: 760 });
-  await A.waitForTimeout(600);
+  await toPhone(A, 760, 'lounge');
   await A.screenshot({ path: OUT + 'voice-phone-cards.png' });
   await A.setViewportSize({ width: 1280, height: 800 });
   await A.waitForTimeout(400);
@@ -536,8 +544,7 @@ if (VOICE) {
   await A.waitForTimeout(3000);
   console.log('mixed', JSON.stringify(await stageInfo()));
   await A.screenshot({ path: OUT + 'voice-mixed.png' });
-  await A.setViewportSize({ width: 390, height: 760 });
-  await A.waitForTimeout(800);
+  await toPhone(A, 760, 'lounge');
   await A.screenshot({ path: OUT + 'voice-phone-mixed.png' });
   await A.locator("[data-testid='voice-cam']").first().click().catch(() => {});
   await A.waitForTimeout(1500);
@@ -615,13 +622,10 @@ for (const theme of THEMES) {
 }
 await A.evaluate(() => document.documentElement.removeAttribute('data-theme'));
 if (process.env.PHONE === '1') {
-  await A.setViewportSize({ width: 390, height: 760 });
-  await A.waitForTimeout(600);
+  await toPhone(A, 760);
+  await A.screenshot({ path: OUT + 'phone-list.png' });
+  await toPhone(A, 760, 'general');
   await A.screenshot({ path: OUT + 'phone-feed.png' });
-  await A.locator("[data-testid='nav-toggle']").click();
-  await A.waitForTimeout(600);
-  await A.screenshot({ path: OUT + 'phone-drawer.png' });
-  await A.keyboard.press('Escape');
   await A.setViewportSize({ width: 1280, height: 800 });
 }
 if (process.env.SWEEP_ONLY === '1') { await browser.close(); process.exit(0); }
@@ -656,8 +660,7 @@ for (const theme of ['light', 'cyberpunk', 'solarized-dark']) {
 }
 await input.fill('');
 await A.evaluate(() => document.documentElement.removeAttribute('data-theme'));
-await A.setViewportSize({ width: 390, height: 800 });
-await A.waitForTimeout(500);
+await toPhone(A, 800, 'general');
 await A.locator('footer.chalk-footer').screenshot({ path: `${OUT}composer-phone.png` });
 await A.setViewportSize({ width: 1280, height: 800 });
 console.log('composer', JSON.stringify({ editing, xBefore, xEdit }));

@@ -485,7 +485,7 @@ html {
 
    Only settling animates. During the drag the transition is off, or the
    surface would lag a finger it is supposed to be stuck to. 160ms ease-out
-   matches the roster drawer -- the one other thing on a phone that slides. */
+   matches SWIPE_SETTLE_MS in chat/use-swipe-back.ts. */
 .chalk-swipe-x {
   transform: translateX(var(--chalk-swipe-x, 0px));
 }
@@ -6633,8 +6633,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
 }
 
 /* Mobile thread layout lives in the mobile section at the end of this
-   file -- the old rule here kept a 220px sidebar column, which no longer
-   exists once the roster becomes a drawer. */
+   file -- the old rule here kept a 220px sidebar column, which does not
+   exist on a phone. */
 
 /* ============================================================
    Phase 10d: unread indicator suffix
@@ -9277,7 +9277,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
    .chalk-sidebar* rather than by restyling its children. Every rule
    under there reads the variables from the cascade, so the whole
    subtree -- filter box, nick menu, voice dock, and
-   the mobile drawer, which is the same element -- re-tints from one
+   and the hidden phone sidebar, which is the same element -- re-tints from one
    block and stays correct when new sidebar chrome is added later.
 
    The graphite is warm rather than the cool slate it would be in a
@@ -10405,9 +10405,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
    The fix is a different layout, not smaller type:
 
      - the shell drops to one column (header / main / footer) and the
-       roster becomes an off-canvas drawer over the messages, toggled by
-       the ☰ button in the header (App.tsx renders it via useIsMobile;
-       the breakpoint below must stay in sync with src/mobile.ts);
+       chat list in the main column replaces the roster. The roster is
+       hidden, not removed (App.tsx reads useIsMobile; the breakpoint
+       below must stay in sync with src/mobile.ts);
      - message rows put time + sender on their own line and give the
        body the full width;
      - thread panel and modals go full-screen instead of side-by-side;
@@ -10419,66 +10419,6 @@ body.chalk-resizing-y .chalk-composer-resizer {
    win over the desktop rule it replaces without an !important or a
    specificity hack.
    ============================================================ */
-
-/* Drawer chrome. Only rendered on mobile (App.tsx gates it on
-   useIsMobile), so these live outside the media query -- the elements
-   simply don't exist on desktop. */
-.chalk-nav-toggle {
-  background: transparent;
-  border: 1px solid var(--chalk-border);
-  border-radius: var(--chalk-radius);
-  color: var(--chalk-fg-bright);
-  font-family: inherit;
-  font-size: calc(16px * var(--chalk-font-scale));
-  line-height: 1;
-  padding: 6px 10px;
-  cursor: pointer;
-}
-
-.chalk-nav-toggle:focus-visible {
-  outline: 1px solid var(--chalk-fg-bright);
-  outline-offset: 1px;
-}
-
-.chalk-nav-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 45;
-  background: rgba(0, 0, 0, 0.6);
-}
-
-.chalk-drawer-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--chalk-s2) var(--chalk-s3) var(--chalk-s3);
-  border-bottom: 1px solid var(--chalk-border);
-  margin-bottom: var(--chalk-s2);
-}
-
-.chalk-drawer-title {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--chalk-s2);
-  color: var(--chalk-fg-bright);
-  letter-spacing: 0.08em;
-}
-
-.chalk-drawer-close {
-  background: transparent;
-  border: none;
-  color: var(--chalk-fg-dim);
-  font-family: inherit;
-  font-size: calc(18px * var(--chalk-font-scale));
-  line-height: 1;
-  padding: var(--chalk-s2);
-  cursor: pointer;
-}
-
-.chalk-drawer-close:focus-visible {
-  outline: 1px solid var(--chalk-fg-bright);
-  outline-offset: 1px;
-}
 
 @media (max-width: 767px) {
   /* -- shell ------------------------------------------------------- */
@@ -10524,38 +10464,13 @@ body.chalk-resizing-y .chalk-composer-resizer {
     display: none;
   }
 
-  /* -- roster drawer ------------------------------------------------ */
+  /* -- roster ------------------------------------------------------- */
 
+  /* 135-1: the phone hides the sidebar. The chat list in the main column
+     is the roster. The element stays mounted, because the VoiceDock inside
+     it holds the audio elements of a call. */
   .chalk-sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 50;
-    /* 33-6: narrower than the original min(84vw, 320px). At 84vw the drawer
-       covered ~80% of a phone screen for a list of short names, and left no
-       sliver of the conversation to orient against or tap to dismiss. The
-       desktop sidebar-width pref deliberately does not apply here -- a
-       fixed overlay and a grid column are different problems. */
-    width: min(70vw, 270px);
-    padding: max(var(--chalk-s3), env(safe-area-inset-top)) 0
-             max(var(--chalk-s3), env(safe-area-inset-bottom)) 0;
-    background: var(--chalk-bg-elev);
-    border-right: 1px solid var(--chalk-border);
-    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.6);
-    transform: translateX(-100%);
-    /* visibility (not just the transform) keeps the closed drawer out of
-       the tab order -- otherwise Tab from the header walks into an
-       off-screen roster. */
-    visibility: hidden;
-    transition: transform 160ms ease, visibility 160ms ease;
-    /* Scrolling the roster must not chain into the message list behind it. */
-    overscroll-behavior: contain;
-  }
-
-  .chalk-app--nav-open .chalk-sidebar {
-    transform: none;
-    visibility: visible;
+    display: none;
   }
 
   .chalk-sidebar-item {
@@ -10893,14 +10808,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
   }
 
   /* -- 62-6: Zuckermode ---------------------------------------------- */
-  /* The unified conversation list as the home screen. JS already gates
-     the mode to phones; these rules only exist inside the mobile block
+  /* The unified conversation list as the home screen. Since 135-1 the
+     list is the only phone layout. These rules sit inside the mobile block
      because that is the only place the class can appear. */
-
-  /* Belt-and-braces with the JSX: no drawer affordances in this mode. */
-  .chalk-app--zucker .chalk-nav-toggle {
-    display: none;
-  }
 
   /* The list owns the whole main column; the feed's usual padding would
      double up with the rows' own. */
@@ -12214,7 +12124,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
    Phase 129: seasonal -- a scene for the season, on by default.
    SeasonScene.tsx draws a pixel scene on a canvas in the empty middle of
    the top header, between the brand and the status bar. App.tsx mounts it
-   there only on a wide screen. 129-11: on a phone in zuckermode, App.tsx
+   there only on a wide screen. 129-11: on a phone, App.tsx
    passes it to ZuckerList as a row above the list (.chalk-season--row). The
    motion is the JavaScript loop of the component. The only CSS motion is the
    fade of the canvas and the height of the row. The reduced-motion block at
@@ -12259,7 +12169,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 .chalk-season-canvas--visible {
   opacity: 0.9;
 }
-/* 129-11: the row above the zuckermode list. Between visits it has no
+/* 129-11: the row above the phone chat list. Between visits it has no
    height, so it takes no space. The height transition opens and closes it, so
    the rows below move by 48 px over 1200 ms. align-self: auto and margin: 0
    undo the strip rules above. overflow: hidden keeps the canvas inside the

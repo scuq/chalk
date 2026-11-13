@@ -84,7 +84,8 @@ manual follow-up or a second run) land in `/tmp/chalk-driver/`.
 
 The driver is also the template for custom flows: `register()` gets you an
 authenticated page object; testids for the main surfaces are in the
-`--friend` branch (drawer `nav-toggle`, `sidebar-new`, `composer-input`,
+`--friend` branch (phone: `zucker-add-friend`, `zucker-new-channel`,
+`zucker-row`, `zucker-back`; desktop: `sidebar-new`; `composer-input`,
 `message-menu` via touch long-press…), more in `test/e2e/*.spec.ts`.
 
 ## Custom probes

@@ -1,6 +1,6 @@
 // 129-9: the scene for the season -- a small pixel animation in the header.
 // 129-10: in the always-on hours the scene stays up without a break.
-// 129-11: on a phone in zuckermode the scene is a row above the list.
+// 129-11: on a phone the scene is a row above the list.
 // 129-12: a date in no season shows the neutral scenes. 129-15: a visit holds
 // one scene. 129-16: the neutral scene has its own windows. 129-18: the neutral
 // scenes are ten scripts, and reduced motion holds the still frame of a script.
@@ -31,10 +31,9 @@
 // in the header, between the brand and the status bar. The box .chalk-season
 // takes the empty middle of the header. The canvas inside it is out of flow,
 // so the header keeps its height when the scene comes and goes.
-// On a phone in zuckermode, with the `row` prop, ZuckerList renders the
+// On a phone, with the `row` prop, ZuckerList renders the
 // component as the first child of the list screen. The row has no height
-// between visits and opens to 48 px while a visit shows. The classic phone
-// layout mounts no scene.
+// between visits and opens to 48 px while a visit shows.
 // The list screen unmounts when a conversation opens, so the component starts
 // again, with a first pause, when the user comes back to the list. The logs of
 // visits are in localStorage, so the daily caps and the neutral windows hold
@@ -166,7 +165,7 @@ interface Props {
   season: Season | null;
   /** true in the always-on hours: the scene stays up and no visit is claimed */
   always: boolean;
-  /** true for the row above the zuckermode list: the box has no height between visits */
+  /** true for the row above the phone chat list: the box has no height between visits */
   row?: boolean;
 }
 

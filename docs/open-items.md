@@ -9,12 +9,33 @@ Latest release: **v0.11.3** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 133 is the newest work. It is built, with the voice room, and seven
-points of it are open.
+Phase 135 is the newest work. It is in progress: 135-1 is built, and 135-2
+to 135-8 are planned.
+Phase 133 is built, with the voice room, and seven points of it are open.
 Phase 131 has two small open points.
 Phase 130 has two open points. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
+
+## Phase 135 — phone: IN PROGRESS, 135-1 built
+
+135-1, record in [phases/PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md).
+The chat list is the only phone layout. The menu button, the slide-in channel
+list, the Zuckermode setting, and the `roster.viewMode` preference are gone. The
+phone hides the sidebar but keeps it mounted, because the voice dock inside it
+holds the audio elements of a call. 135-2 to 135-8 are planned and have no
+code.
+
+- **The phone list has no row menu.** Hide, group, rename, manual order, and
+  the nick colour of a friend are not reachable on a phone until 135-8.
+- **The sidebar still mounts on the phone.** 135-2 moves the audio elements out
+  of it.
+- **A tab that did not reload can still show the old drawer.** The update
+  banner reloads it.
+- **The spec `test/e2e/mobile.spec.ts` is not executed.** Its header says why.
+  Only `driver.mjs` ran after 135-1. The other five changed probes were
+  checked for syntax only.
+- **The manual checklist in the phase doc is open.**
 
 ## Phase 133 — polish: built, with seven open points
 
@@ -59,9 +80,9 @@ probe ran on 2026-11-08 after 131-7, and all 25 checks passed. The manual
 checklist in the phase doc is still open.
 
 - **The phone list has no deafened state.** The rail and the room card show it.
-- **The phone drawer has no name list and no hover.** The drawer reuses the
-  sidebar and touch has no hover. Zuckermode keeps its own list, and the stage
-  shows the names once you join.
+- **The phone list has no name list and no hover.** Touch has no hover, and the
+  stage shows the names once you join. The phone drawer that reused the sidebar
+  is gone since 135-1.
 
 ## Phase 130 — guest flow: built, with two open points
 

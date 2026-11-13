@@ -200,7 +200,6 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
     keywords: [
       "grouping",
       "groups",
-      "zuckermode",
       "channels",
       "short name",
       "channel names",

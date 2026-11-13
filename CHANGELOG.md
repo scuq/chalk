@@ -10,6 +10,11 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Changed
+- On a phone, chalk now always opens on the conversation list. The menu button, the slide-in channel list, and the Zuckermode setting are gone.
+
 ## v0.11.3 — 9 November 2026 — Autumn nods and more off-season scenes while chalk is in focus
 
 ### Added

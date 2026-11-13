@@ -4,12 +4,12 @@
 // is a scroll write that the browser applies late, and web/test.mjs has no
 // browser. The pure rule is tested in chat/history-paging.test.ts.
 //
-// MessageList unmounts on the way to the Zuckermode list screen, so every
+// MessageList unmounts on the way to the chat list screen, so every
 // entry is a fresh mount. On a second visit the rows are already in state, so
 // the landing write runs in the mount commit, in the same frame as the
 // list-to-feed content swap.
 //
-// What it reproduces, on an iPhone 14 viewport in zucker mode:
+// What it reproduces, on an iPhone 14 viewport:
 //   - five steps: open a direct message, swipe back, open a group, swipe back,
 //     open the same direct message again
 //   - two steps: open the same direct message twice, with no group between
@@ -328,9 +328,7 @@ await register(pageB, USER_B);
 
 say('friending');
 await dismissNudge(pageA, 3000);
-await pageA.locator("[data-testid='nav-toggle']").click();
-await pageA.waitForTimeout(400);
-await pageA.locator("[data-testid='sidebar-add-friend']").click();
+await pageA.locator("[data-testid='zucker-add-friend']").click();
 await pageA.waitForSelector("[data-testid='friends-panel']", { timeout: 8000 });
 await pageA.locator("[data-testid='friends-directory-row']", { hasText: USER_B }).locator("[data-testid='friends-directory-add']").click();
 await pageA.waitForTimeout(700);
@@ -343,16 +341,6 @@ await pageB.locator("[data-testid='friends-action-accept']").first().click({ tim
 await pageB.waitForTimeout(700);
 await pageB.locator("[data-testid='friends-panel-close']").click();
 
-say('enabling zuckermode on the phone');
-await pageA.locator("[data-testid='status-user-menu-trigger']").click();
-await pageA.waitForTimeout(300);
-await pageA.locator("[data-testid='status-user-menu-profile']").click();
-await pageA.waitForSelector("[data-testid='profile-panel']", { timeout: 8000 });
-await pageA.locator("[data-testid='profile-tab-chat']").click();
-await pageA.waitForTimeout(300);
-await pageA.locator("[data-testid='roster-zuckermode']").check();
-await pageA.waitForTimeout(600);
-await pageA.locator("[data-testid='profile-panel-close']").click();
 await pageA.waitForSelector("[data-testid='zucker-list']", { timeout: 15000 });
 await pageA.waitForTimeout(500);
 

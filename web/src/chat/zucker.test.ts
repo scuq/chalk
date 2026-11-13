@@ -177,17 +177,13 @@ test("unknown order entries are skipped", () => {
   assert.deepEqual(rows.map((r) => r.id), ["a"]);
 });
 
-// ---- pref resolution (62-5) ------------------------------------------
+// ---- pref resolution (135-1) -----------------------------------------
 
-test("viewMode resolves junk-safely: only the exact string zucker turns it on", () => {
-  assert.equal(selectRosterPrefs(undefined).viewMode, "classic");
-  assert.equal(selectRosterPrefs({}).viewMode, "classic");
-  assert.equal(selectRosterPrefs({ roster: {} }).viewMode, "classic");
-  assert.equal(selectRosterPrefs({ roster: { viewMode: "zucker" } }).viewMode, "zucker");
-  assert.equal(
-    selectRosterPrefs({ roster: { viewMode: "whatsapp" as never } }).viewMode,
-    "classic",
-  );
+test("a stored viewMode is not in the resolved prefs, so the next roster write drops it", () => {
+  const stored = { roster: { viewMode: "classic", nameStyle: "short" } } as never;
+  const resolved = selectRosterPrefs(stored);
+  assert.equal("viewMode" in resolved, false);
+  assert.equal(resolved.nameStyle, "short");
 });
 
 // ---- buildFriendList (64-1) ------------------------------------------

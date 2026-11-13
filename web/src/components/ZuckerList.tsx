@@ -1,10 +1,10 @@
-// Zuckermode's home screen (62-6): one list of every conversation, DMs and
+// The phone's home screen (62-6, the only phone layout since 135-1): one list of every conversation, DMs and
 // channels mixed, newest activity first, each row previewing the last
 // message. Presentational only -- rows arrive pre-built from
 // buildConversationList (chat/zucker.ts), navigation lives in App.
 //
 // The pinned rows above the list keep the two non-conversation surfaces the
-// classic drawer carried (parking lot, thread inbox); the header buttons
+// removed phone drawer carried (parking lot, thread inbox); the header buttons
 // keep its two "+" entry points. 64-1 adds a third pinned row: friends,
 // expanding in place to the full roster with presence, because the
 // activity-sorted list buries anyone you haven't talked to lately.

@@ -2,9 +2,9 @@
 //
 // VoiceDock owns live audio: the hidden <audio> sinks for every peer, the
 // boost graph, the pop-out cleanup, and the autoplay-resume handler. It
-// mounts once, inside the sidebar. Zuckermode hides the sidebar -- it is a
-// fixed drawer translated off-screen, and the nav toggle is display: none --
-// so the dock's own bar and leave button are unreachable there.
+// mounts once, inside the sidebar. The phone hides the sidebar with
+// display: none, so the dock's own bar and leave button are unreachable
+// there.
 //
 // The alternative is moving the dock into the footer under zuckerActive.
 // That remounts it on every layout flip: a phone rotated to landscape
@@ -58,7 +58,7 @@ export function ZuckerCallBar({ activeChannelID, onJumpToChannel }: Props) {
     <div class="chalk-voice-dock chalk-zucker-callbar" data-testid="zucker-callbar">
       {snap.audioBlocked && (
         // 30-5i: the dock shows this same "tap to enable audio" nudge, but
-        // the dock sits inside the hidden drawer here, so the bar needs its
+        // the dock sits inside the hidden sidebar here, so the bar needs its
         // own copy.
         <div class="chalk-voice-dock-row chalk-voice-audionudge" data-testid="zucker-callbar-nudge">
           🔇 tap anywhere to enable audio

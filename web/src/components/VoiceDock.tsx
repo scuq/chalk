@@ -1,6 +1,6 @@
 // VoiceDock (Phase 30, slices 30-5c + 30-5f): the connection panel, mounted
 // ONCE at the app level. Since 131-7 the visible box (job 2) is the phone's:
-// it is in the sidebar drawer. On desktop the call rail carries the duration,
+// it is in the sidebar, which the phone hides. On desktop the call rail carries the duration,
 // the controls, and leave, and only the sinks and listeners render here.
 //
 // Jobs:
@@ -20,7 +20,7 @@
 //      forgetting a live screen share is the classic embarrassment.
 //
 // 126-2: job 2, the bar, has a phone sibling, ZuckerCallBar. Zuckermode
-// hides this dock inside the sidebar drawer, so the phone's home screen
+// hides this dock inside the sidebar, so the phone's home screen
 // reads the same session snapshot (useVoiceSession, below) and shows its
 // own bar and leave button instead.
 

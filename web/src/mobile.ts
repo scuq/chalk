@@ -2,8 +2,8 @@
 //
 // The mobile layout itself is pure CSS (see the "mobile layout" section at
 // the end of theme.css). This module exists for the parts CSS can't do:
-// the roster drawer needs open/closed state, and that state must not leak
-// into the desktop layout where the roster is a permanent column.
+// the phone shows the chat list and hides the roster, and that choice must
+// not leak into the desktop layout where the roster is a permanent column.
 //
 // The breakpoint is duplicated in theme.css -- CSS has no way to read a TS
 // constant. Change both together.

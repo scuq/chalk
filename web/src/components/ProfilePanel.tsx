@@ -228,10 +228,6 @@ interface Props {
   // 134-1: chaos mode, a desktop-only checkbox.
   rosterChaos?: boolean;
   onSetRosterChaos?: (enabled: boolean) => void;
-  // 62-5: Zuckermode -- the phone's unified conversation list. Synced
-  // account-wide, consumed only on mobile.
-  zuckerEnabled?: boolean;
-  onSetZucker?: (enabled: boolean) => void;
 }
 
 export function ProfilePanel({
@@ -267,8 +263,6 @@ export function ProfilePanel({
   onSetRosterChannelSort,
   rosterChaos,
   onSetRosterChaos,
-  zuckerEnabled,
-  onSetZucker,
   onClose,
   onEmailChangeDraft,
   onEmailChangeSubmit,
@@ -1112,8 +1106,8 @@ export function ProfilePanel({
                 <p class="chalk-profile-hint">
                   on by default. now and then a small animated scene for the
                   season shows in the middle of the top bar, with fireworks at
-                  new year and a graveyard around halloween. a phone in
-                  zuckermode shows it in a row above the conversation list. stored on this device only. the administrator can
+                  new year and a graveyard around halloween. a phone
+                  shows it in a row above the conversation list. stored on this device only. the administrator can
                   turn it off for the whole server, and it holds still when
                   your system asks for reduced motion.
                 </p>
@@ -1196,7 +1190,7 @@ export function ProfilePanel({
                   sidebar's edge, which is the faster gesture but invisible
                   until you hover it. Long channel names ellipsise to fit
                   whatever width is set. Desktop layout only -- on a phone
-                  the roster is a drawer with its own sizing. */}
+                  the sidebar is hidden. */}
               <div class="chalk-profile-field">
                 <label class="chalk-profile-label" for="sidebar-width">
                   sidebar width
@@ -1598,32 +1592,6 @@ export function ProfilePanel({
                       </option>
                     ))}
                   </select>
-                </div>
-              )}
-              {/* 62-5: Zuckermode. Rendered inside the channel-list section
-                  because it is a roster-presentation choice; the pref is
-                  synced but only phones act on it. */}
-              {zuckerEnabled !== undefined && onSetZucker && (
-                <div class="chalk-profile-field">
-                  <label class="chalk-profile-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={zuckerEnabled}
-                      onChange={(e) =>
-                        onSetZucker((e.target as HTMLInputElement).checked)
-                      }
-                      data-testid="roster-zuckermode"
-                    />
-                    <span>
-                      Zuckermode
-                      <span class="chalk-profile-desc">
-                        phones only: replaces the sidebar with one
-                        WhatsApp-style list of every conversation — people and
-                        channels together, newest first, with a preview of the
-                        last message
-                      </span>
-                    </span>
-                  </label>
                 </div>
               )}
             </section>

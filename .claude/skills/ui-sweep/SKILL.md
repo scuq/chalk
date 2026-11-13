@@ -23,7 +23,7 @@ Its header comment lists every flag.
 Flags:
 
 - `--themes=a,b,c` sets the themes for the theme passes. The default is green, light, warmwhite, lcars, and solarized-dark.
-- `--sweep-only` stops after the feed pass: every theme on the channel with messages. With `--phone`, it also writes the feed and the open drawer at 390 px width.
+- `--sweep-only` stops after the feed pass: every theme on the channel with messages. With `--phone`, it also writes the feed and the chat list at 390 px width.
 - With no mode flag, the script also writes the composer shots (empty, typed, in an edit, three themes, phone width). It prints measurements of the header, the channel header, the row heights, and the sidebar width.
 - `--voice` starts Chromium with a fake camera and microphone. Ann creates the voice room "lounge" with every friend, and the others join.
 - `--voice-only` (with `--voice`) screenshots the voice room and stops.
@@ -105,7 +105,7 @@ Screenshots to open:
 
 - `<theme>.png` and `<theme>-hover-sidebar.png`: the shell with an empty channel, and the sidebar with a hovered row.
 - `<theme>-feed.png`: the channel with messages, for each theme.
-- `phone-feed.png` and `phone-drawer.png`: the phone width (with `--phone`).
+- `phone-feed.png` and `phone-list.png`: the phone width (with `--phone`).
 - `focus-row.png` and `focus-search.png`: keyboard focus.
 - `composer-*.png`: the composer.
 - `voice-*.png`: the voice room (`--voice-only`).

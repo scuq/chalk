@@ -125,9 +125,17 @@ async function register(page, username) {
   console.log(`  registered ${username} (password: ${PASSWORD})`);
 }
 
+// 135-1: the phone has no drawer. Its roster is the chat list, so this goes
+// back to the list if a chat is open. On desktop it does nothing.
 const openDrawer = async (page) => {
-  const t = page.locator("[data-testid='nav-toggle']");
-  if (await t.isVisible().catch(() => false)) { await t.click(); await page.waitForTimeout(400); }
+  const back = page.locator("[data-testid='zucker-back']:visible");
+  if (await back.count()) { await back.first().click(); await page.waitForTimeout(400); }
+};
+// 135-1: on the phone a new channel does not open by itself. Open its row.
+const openNewChannel = async (page, name) => {
+  const row = page.locator("[data-testid='zucker-row']:visible", { hasText: name });
+  await row.first().waitFor({ state: 'visible', timeout: 4000 }).catch(() => {});
+  if (await row.count()) await row.first().click();
 };
 
 // ---- main ------------------------------------------------------------
@@ -158,7 +166,7 @@ if (FRIEND) {
 
   // A sends the request from the server directory (one-click add)...
   await openDrawer(pageA);
-  await pageA.locator("[data-testid='sidebar-add-friend']").click();
+  await pageA.locator(":is([data-testid='sidebar-add-friend'], [data-testid='zucker-add-friend']):visible").click();
   await pageA.waitForSelector("[data-testid='friends-panel']", { timeout: 5000 });
   await pageA.locator("[data-testid='friends-directory-row']", { hasText: USER_B })
     .locator("[data-testid='friends-directory-add']").click();
@@ -167,7 +175,7 @@ if (FRIEND) {
 
   // ...B accepts from the pending tab.
   await openDrawer(pageB);
-  await pageB.locator("[data-testid='sidebar-add-friend']").click();
+  await pageB.locator(":is([data-testid='sidebar-add-friend'], [data-testid='zucker-add-friend']):visible").click();
   await pageB.waitForSelector("[data-testid='friends-panel']", { timeout: 5000 });
   await pageB.locator("[data-testid='friends-tab-pending']").click();
   await pageB.locator("[data-testid='friends-action-accept']").first().click({ timeout: 8000 });
@@ -178,11 +186,12 @@ if (FRIEND) {
   // with zero friends picked.
   console.log('creating channel + sending a message');
   await openDrawer(pageA);
-  await pageA.locator("[data-testid='sidebar-new']").click();
+  await pageA.locator(":is([data-testid='sidebar-new'], [data-testid='zucker-new-channel']):visible").click();
   await pageA.waitForSelector("[data-testid='create-modal']", { timeout: 5000 });
   await pageA.locator("[data-testid='create-modal-name']").fill('driver-probe');
   await pageA.locator("[data-testid='friend-picker-item']").first().click();
   await pageA.locator("[data-testid='create-modal-submit']").click();
+  await openNewChannel(pageA, 'driver-probe');
   await pageA.waitForSelector("[data-testid='composer-input']", { timeout: 15000 });
 
   await pageA.locator("[data-testid='composer-input']").fill('driver probe message');

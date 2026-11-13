@@ -1,5 +1,5 @@
-// 126-1, 126-2: two theme.css assertions for the phone's Zuckermode footer,
-// checked against the stylesheet because jsdom has no layout to measure.
+// 126-1, 126-2: two theme.css assertions for the phone's footer, and 135-1:
+// one for the removed drawer rules. All three are checked against the stylesheet because jsdom has no layout to measure.
 //
 // The first is the "@ voice" shelf's flex-shrink: it must be 0, or the
 // shelf gives up part of a real column overflow to the conversation list
@@ -10,6 +10,9 @@
 // not a footer flush against the screen edge (126-2). The measurements and
 // the reported screenshot behind both are in
 // docs/phases/PHASE-126-ZUCKERCALL.md.
+//
+// The third test (135-1) checks that the stylesheet has no drawer rules and
+// that the phone block hides the sidebar.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -39,4 +42,14 @@ test("a zucker shelf keeps its rows whole when the list below overflows", () => 
 test("the call bar sits flush in the phone footer", () => {
   const decls = block(".chalk-zucker-callbar");
   assert.match(decls, /margin:\s*0;/, "the dock's sidebar margin does not apply in the footer");
+});
+
+test("the stylesheet has no drawer rules, and the phone block hides the sidebar", () => {
+  for (const gone of [".chalk-nav-toggle", ".chalk-nav-backdrop", ".chalk-drawer-", ".chalk-app--nav-open"]) {
+    assert.equal(css.includes(gone), false, `${gone} is still in theme.css`);
+  }
+  const at = css.indexOf("height: var(--chalk-shell-h, 100dvh)");
+  assert.ok(at > 0, "the phone shell rule is missing");
+  const phone = css.slice(at);
+  assert.match(phone, /\.chalk-sidebar\s*\{\s*display:\s*none;\s*\}/);
 });
