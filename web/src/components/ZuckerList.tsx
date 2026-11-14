@@ -21,7 +21,12 @@ import {
   type ZuckerRow,
 } from "../chat/zucker";
 import type { PresenceMap } from "../state/types";
-import { filterRoster } from "../chat/roster-filter";
+import {
+  ZUCKER_KINDS,
+  filterZuckerRows,
+  zuckerFilterActive,
+  type ZuckerKind,
+} from "../chat/zucker-filter";
 import { fmtRelative } from "../chat/reltime";
 import { formatCountdown, countdownUrgent } from "../chat/countdown";
 import { UnreadDot } from "./UnreadDot";
@@ -139,11 +144,14 @@ export function ZuckerList({
     if (shown && rowsRef.current) rowsRef.current.scrollTop = rowsScroll.current;
   }, [shown]);
   const [friendsOpen, setFriendsOpen] = useState(false);
-  // 64-2/64-5: quick filter over the conversation rows, same match rule as
-  // the sidebar's rosters (54-1). Hidden behind the header's magnifier
-  // toggle; closing it clears the query so no invisible filter lingers.
+  // 64-2/64-5, 137-9: the filter bar is behind the header's magnifier. It has
+  // a name field and a kind chip. The text matches as in the sidebar's
+  // rosters (54-1), on the row's match text when it has one. Closing the bar
+  // clears the text and the kind, so no invisible filter stays active.
   const [filterOpen, setFilterOpen] = useState(false);
   const [filter, setFilter] = useState("");
+  const [kind, setKind] = useState<ZuckerKind>("all");
+  const filtering = zuckerFilterActive(kind, filter);
   const filterRef = useRef<HTMLInputElement>(null);
   // Layout effect: focus at commit, before paint, so opening the filter
   // never shows an unfocused field first.
@@ -154,13 +162,14 @@ export function ZuckerList({
   // their own pinned row rather than in the activity-sorted list. Split before
   // the filter so the filter can then run over each half independently.
   const { rest: chatRows, rooms: voiceRows } = splitVoice(rows);
-  const visibleRows = filterRoster(chatRows, filter, (r) => r.name);
+  const visibleRows = filterZuckerRows(chatRows, kind, filter);
   const [voiceOpen, setVoiceOpen] = useState(false);
-  const shownVoice = filterRoster(voiceRows, filter, (r) => r.name);
+  const shownVoice = filterZuckerRows(voiceRows, kind, filter);
   // A collapsed row must not swallow a search hit: while filtering, the voice
   // list opens itself if it has matches (and stays shut when it has none, so
-  // the row does not flash open on every keystroke).
-  const voiceShowing = filter.trim() !== "" ? shownVoice.length > 0 : voiceOpen;
+  // the row does not flash open on every keystroke). 137-9: the kind counts
+  // as a filter, and the hidden shelf does the same below.
+  const voiceShowing = filtering ? shownVoice.length > 0 : voiceOpen;
   const liveRooms = voiceRows.filter(
     (r) => (voiceOccupants[r.id] ?? []).length > 0,
   ).length;
@@ -172,7 +181,9 @@ export function ZuckerList({
   // 78-3: the hidden shelf. Open state is component state, like the
   // sidebar's: a peek, not a setting.
   const [hiddenOpen, setHiddenOpen] = useState(false);
-  const shownHidden = filterRoster(hiddenRows, filter, (r) => r.name);
+  const shownHidden = filterZuckerRows(hiddenRows, kind, filter);
+  // 137-9: while filtering, the shelf opens on a hit and closes on none.
+  const hiddenShowing = filtering ? shownHidden.length > 0 : hiddenOpen;
   const hiddenUnread = hiddenRows.some((r) => r.unread);
   const hiddenMention = hiddenRows.some((r) => r.unread && r.mention);
   // One clock per render, the MessageList precedent: a list of relative
@@ -291,7 +302,10 @@ export function ZuckerList({
           type="button"
           class={`chalk-zucker-add ${filterOpen ? "chalk-zucker-add--active" : ""}`}
           onClick={() => {
-            if (filterOpen) setFilter("");
+            if (filterOpen) {
+              setFilter("");
+              setKind("all");
+            }
             setFilterOpen(!filterOpen);
           }}
           title="filter conversations"
@@ -323,7 +337,42 @@ export function ZuckerList({
         </button>
       </div>
 
-      {parkingName !== null && (
+      {/* 137-9: the bar is directly under the head and above the rows it
+          narrows. The chips scroll sideways. */}
+      {filterOpen && (
+        <div class="chalk-zucker-filter">
+          <input
+            type="text"
+            class="chalk-sidebar-filter-input"
+            data-testid="zucker-filter"
+            placeholder="name…"
+            value={filter}
+            ref={filterRef}
+            onInput={(e) => setFilter((e.target as HTMLInputElement).value)}
+            aria-label="filter conversations by name"
+          />
+          <div class="chalk-zucker-kinds" role="group" aria-label="show">
+            {ZUCKER_KINDS.map((k) => (
+              <button
+                key={k.kind}
+                type="button"
+                class={`chalk-zucker-chip chalk-zucker-kind ${kind === k.kind ? "chalk-zucker-kind--on" : ""}`}
+                aria-pressed={kind === k.kind}
+                onClick={() => setKind(k.kind)}
+                data-testid={`zucker-kind-${k.kind}`}
+              >
+                <span class="chalk-zucker-chip-pill">{k.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 137-9: while the bar is open, the rows that are not conversations
+          (parking lot, friends, threads) do not render. The bar then sits
+          above the rows it narrows, and the list keeps its height when the
+          keyboard is up. The voice row stays, because it can hold hits. */}
+      {!filterOpen && parkingName !== null && (
         <button
           type="button"
           class="chalk-zucker-pinned"
@@ -333,56 +382,60 @@ export function ZuckerList({
           {parkingName}
         </button>
       )}
-      <button
-        type="button"
-        class={`chalk-zucker-pinned ${!friendsOpen && friends.length > 0 ? "chalk-zucker-pinned--chips" : ""}`}
-        onClick={() => setFriendsOpen(!friendsOpen)}
-        aria-expanded={friendsOpen}
-        data-testid="zucker-friends"
-      >
-        <span>@ friends</span>
-        <span class="chalk-zucker-pinned-note">
-          {onlineCount}/{friends.length} online
-        </span>
-        {/* 137-4: the three rows that expand a sublist in place end with a
-            chevron. Parking and threads open a screen, so they have none. */}
-        <span class="chalk-zucker-chevron" aria-hidden="true"><ChevronIcon /></span>
-      </button>
-      {/* 137-8: an open row shows the full list and no chips, so a name never shows twice. */}
-      {!friendsOpen && (
-        <FriendChips
-          friends={friends}
-          onSelect={onFriendSelect}
-          onMore={() => setFriendsOpen(true)}
-        />
-      )}
-      {friendsOpen && (
-        <ul class="chalk-zucker-friends" data-testid="zucker-friends-list">
-          {friends.length === 0 && (
-            <li class="chalk-zucker-friends-empty">no friends yet</li>
-          )}
-          {friends.map((f) => (
-            <li key={f.userID}>
-              <button
-                type="button"
-                class="chalk-zucker-friend"
-                onClick={() => onFriendSelect(f.userID)}
-                data-testid="zucker-friend"
-                data-user-id={f.userID}
-                data-presence={f.presence}
-              >
-                <span
-                  class={`chalk-presence-dot ${presenceClass(f.presence)}`}
-                  aria-label={presenceLabel(f.presence)}
-                />
-                <span class="chalk-zucker-friend-name">
-                  <WaveName name={f.name} since={waves?.get(f.userID) ?? null} />
-                </span>
-                <span class="chalk-zucker-friend-state">{f.presence}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+      {!filterOpen && (
+        <>
+        <button
+          type="button"
+          class={`chalk-zucker-pinned ${!friendsOpen && friends.length > 0 ? "chalk-zucker-pinned--chips" : ""}`}
+          onClick={() => setFriendsOpen(!friendsOpen)}
+          aria-expanded={friendsOpen}
+          data-testid="zucker-friends"
+        >
+          <span>@ friends</span>
+          <span class="chalk-zucker-pinned-note">
+            {onlineCount}/{friends.length} online
+          </span>
+          {/* 137-4: the three rows that expand a sublist in place end with a
+              chevron. Parking and threads open a screen, so they have none. */}
+          <span class="chalk-zucker-chevron" aria-hidden="true"><ChevronIcon /></span>
+        </button>
+        {/* 137-8: an open row shows the full list and no chips, so a name never shows twice. */}
+        {!friendsOpen && (
+          <FriendChips
+            friends={friends}
+            onSelect={onFriendSelect}
+            onMore={() => setFriendsOpen(true)}
+          />
+        )}
+        {friendsOpen && (
+          <ul class="chalk-zucker-friends" data-testid="zucker-friends-list">
+            {friends.length === 0 && (
+              <li class="chalk-zucker-friends-empty">no friends yet</li>
+            )}
+            {friends.map((f) => (
+              <li key={f.userID}>
+                <button
+                  type="button"
+                  class="chalk-zucker-friend"
+                  onClick={() => onFriendSelect(f.userID)}
+                  data-testid="zucker-friend"
+                  data-user-id={f.userID}
+                  data-presence={f.presence}
+                >
+                  <span
+                    class={`chalk-presence-dot ${presenceClass(f.presence)}`}
+                    aria-label={presenceLabel(f.presence)}
+                  />
+                  <span class="chalk-zucker-friend-name">
+                    <WaveName name={f.name} since={waves?.get(f.userID) ?? null} />
+                  </span>
+                  <span class="chalk-zucker-friend-state">{f.presence}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        </>
       )}
       {/* 95-2: the rooms, behind one row, directly under the friends they are
           the other half of -- "who is around" and "where they are talking". */}
@@ -413,29 +466,16 @@ export function ZuckerList({
           )}
         </>
       )}
-      <button
-        type="button"
-        class="chalk-zucker-pinned"
-        onClick={onOpenThreads}
-        data-testid="zucker-threads"
-      >
-        <span>↳ threads</span>
-        {threadsUnread > 0 && <UnreadDot mention={false} />}
-      </button>
-
-      {filterOpen && (
-        <div class="chalk-zucker-filter">
-          <input
-            type="text"
-            class="chalk-sidebar-filter-input"
-            data-testid="zucker-filter"
-            placeholder="filter…"
-            value={filter}
-            ref={filterRef}
-            onInput={(e) => setFilter((e.target as HTMLInputElement).value)}
-            aria-label="filter conversations"
-          />
-        </div>
+      {!filterOpen && (
+        <button
+          type="button"
+          class="chalk-zucker-pinned"
+          onClick={onOpenThreads}
+          data-testid="zucker-threads"
+        >
+          <span>↳ threads</span>
+          {threadsUnread > 0 && <UnreadDot mention={false} />}
+        </button>
       )}
 
       <ul
@@ -446,9 +486,9 @@ export function ZuckerList({
           rowsScroll.current = (e.currentTarget as HTMLUListElement).scrollTop;
         }}
       >
-        {/* 95-2: "no matches" means nothing matched anywhere -- a filter that
-            only hits a voice room has a hit, it is just up in that list. */}
-        {rows.length > 0 && visibleRows.length === 0 && shownVoice.length === 0 && (
+        {/* 95-2, 137-9: "no matches" means that no list has a hit. A hit in the
+            voice list or in the hidden shelf is a hit, and its list is open. */}
+        {filtering && visibleRows.length === 0 && shownVoice.length === 0 && shownHidden.length === 0 && (
           <li class="chalk-zucker-friends-empty">no matches</li>
         )}
         {visibleRows.map((r) => conversationRow(r, false))}
@@ -460,9 +500,9 @@ export function ZuckerList({
             type="button"
             class="chalk-zucker-pinned"
             onClick={() => setHiddenOpen(!hiddenOpen)}
-            aria-expanded={hiddenOpen}
+            aria-expanded={hiddenShowing}
             data-testid="zucker-hidden-toggle"
-            data-open={hiddenOpen ? "true" : "false"}
+            data-open={hiddenShowing ? "true" : "false"}
           >
             <span>hidden</span>
             <span class="chalk-zucker-pinned-note">{hiddenRows.length}</span>
@@ -471,7 +511,7 @@ export function ZuckerList({
             {hiddenUnread && <UnreadDot mention={hiddenMention} />}
             <span class="chalk-zucker-chevron" aria-hidden="true"><ChevronIcon /></span>
           </button>
-          {hiddenOpen && (
+          {hiddenShowing && (
             <ul
               class="chalk-zucker-rows chalk-zucker-rows--shelf"
               data-testid="zucker-hidden-rows"

@@ -1,4 +1,4 @@
-// 126-1, 135-1, 137-3, 137-4, 137-8: assertions about theme.css, checked against the stylesheet
+// 126-1, 135-1, 137-3, 137-4, 137-8, 137-9: assertions about theme.css, checked against the stylesheet
 // because jsdom has no layout to measure.
 //
 // The first is the "@ voice" shelf's flex-shrink: it must be 0, or the
@@ -24,6 +24,13 @@
 //   - The closed friends row shows one 44px line of chips, and the open row shows the list instead.
 //   - A chip is a 44px target around a pill, no chip paints before it is measured,
 //     and the resize watcher attaches when the line appears.
+//
+// Three tests (137-9) check the filter bar:
+//   - The bar sits under the head with the name field and one chip for each kind.
+//   - Closing the bar clears the text and the kind, and an open bar hides the
+//     rows that are not conversations.
+//   - A filter opens the voice and hidden shelves on a hit, and "no matches"
+//     counts all three lists.
 //
 // 135-5 removed the call bar margin test with the bar it checked. The
 // phone call bar has its own assertions in theme-phone-call.test.ts.
@@ -64,7 +71,7 @@ test("a conversation row is 64px high, 16px in from the edge, and shades while p
 test("the head, the pinned rows, and the filter share the rows' 16px left edge", () => {
   assert.match(block(".chalk-zucker-head"), /padding:\s*var\(--chalk-s2\) var\(--chalk-s4\);/);
   assert.match(block(".chalk-zucker-pinned"), /padding:\s*0 var\(--chalk-s4\);/);
-  assert.match(block(".chalk-zucker-filter"), /padding:\s*var\(--chalk-s2\) var\(--chalk-s4\);/);
+  assert.match(block(".chalk-zucker-filter"), /padding:\s*var\(--chalk-s2\) var\(--chalk-s4\) 0 var\(--chalk-s4\);/);
 });
 
 // Every bundled font has only a 400 face and a 700 face, so a weight of 600
@@ -134,6 +141,33 @@ test("a chip is a 44px target around a small pill, and no chip paints before it 
   // must attach when the line appears, not only at the first render.
   const chipsSrc = readFileSync(join(resolve(process.cwd(), "src"), "components", "FriendChips.tsx"), "utf8");
   assert.match(chipsSrc, /ro\.observe\(el\);\s*return \(\) => ro\.disconnect\(\);\s*\}, \[empty\]\);/);
+});
+
+test("the filter bar sits under the head with the name field and one chip for each kind", () => {
+  const list = readFileSync(join(resolve(process.cwd(), "src"), "components", "ZuckerList.tsx"), "utf8");
+  const head = list.indexOf('class="chalk-zucker-head"');
+  const bar = list.indexOf('class="chalk-zucker-filter"');
+  const parking = list.indexOf('data-testid="zucker-parking"');
+  assert.ok(head > 0 && head < bar && bar < parking, "the bar must come after the head and before the pinned rows");
+  assert.match(list, /ZUCKER_KINDS\.map\(\(k\) => \(\s*<button[\s\S]*?aria-pressed=\{kind === k\.kind\}/);
+  const kinds = block(".chalk-zucker-kinds");
+  assert.match(kinds, /flex-wrap:\s*nowrap;/);
+  assert.match(kinds, /overflow-x:\s*auto;/);
+  assert.match(block(".chalk-zucker-kind--on .chalk-zucker-chip-pill"), /border-color:\s*var\(--chalk-fg-bright\);/);
+});
+
+test("closing the bar clears the text and the kind, and an open bar hides the rows that are not conversations", () => {
+  const list = readFileSync(join(resolve(process.cwd(), "src"), "components", "ZuckerList.tsx"), "utf8");
+  assert.match(list, /if \(filterOpen\) \{\s*setFilter\(""\);\s*setKind\("all"\);\s*\}/);
+  assert.match(list, /\{!filterOpen && parkingName !== null && \(/);
+  assert.equal(list.match(/\{!filterOpen && \(/g)?.length, 2);
+});
+
+test("a filter opens the voice and hidden shelves on a hit, and no matches counts all three lists", () => {
+  const list = readFileSync(join(resolve(process.cwd(), "src"), "components", "ZuckerList.tsx"), "utf8");
+  assert.match(list, /const voiceShowing = filtering \? shownVoice\.length > 0 : voiceOpen;/);
+  assert.match(list, /const hiddenShowing = filtering \? shownHidden\.length > 0 : hiddenOpen;/);
+  assert.match(list, /\{filtering && visibleRows\.length === 0 && shownVoice\.length === 0 && shownHidden\.length === 0 && \(/);
 });
 
 test("the last row of a shelf leaves the bottom line to the shelf", () => {

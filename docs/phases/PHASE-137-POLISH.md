@@ -1,6 +1,6 @@
 # Phase 137 — phone polish from the external design review
 
-**Status:** in progress. Slices 137-1 to 137-8 are built. 137-9 is not started. The device checks of 137-1 to 137-8 are open, in the manual checklist.
+**Status:** built (all nine slices). The device checks of 137-1 to 137-9 are open, in the manual checklist.
 **Tags:** `#composer`, `#mobile`, `#parking`, `#zucker` → `tools/where.sh -g composer`
 
 ## The problem
@@ -244,15 +244,37 @@ Measured in a headed iPhone 14 emulation, with six friends, three online and thr
 - A tap on a chip opens the chat with that friend.
 - Not seen: an away friend, because the emulation cannot stage one. Also not seen: more than 24 friends, and a waving name.
 
-### 137-9 Filter bar (planned, not started)
+### 137-9 Filter bar
 
-The list head has a magnifier button.
-137-9 makes it open one filter bar, with the name field and a scrollable row of type chips.
-The chips are all, unread, mentions, channels, DMs, and voice.
+The magnifier in the list head opens one filter bar.
+The bar sits directly under the head.
+It holds the name field (placeholder "name…") and one chip for each kind: all, unread, mentions, channels, DMs, and voice.
+The chips reuse the chip classes of 137-8.
+The chosen chip has `aria-pressed` and `chalk-zucker-kind--on`.
 
-- A tap on the magnifier opens the bar. Closing the bar clears the filter.
-- The name field must match both the full channel name and the short channel name.
-- A hit in the hidden shelf must open that shelf. The list must not show "no matches" while a hit is in the hidden shelf.
+- The kind and the text must both match. The text is a trimmed, case-insensitive substring match.
+- The kinds are in `web/src/chat/zucker-filter.ts`. A row counts as a mention only while it is unread. A channel is a row that is not a DM and not a voice room.
+- With no kind and no text, `filterZuckerRows` returns the same array.
+- The text matches `matchText` of a row, or its `name` when it has none. `buildConversationList` takes `matchTextFor` as an optional last parameter. `App.tsx` passes `filterText(channel)` for a channel, which holds the full name and the short name. It passes nothing for a DM.
+- This fixes an older fault. The phone filter matched only the label on screen, so with the short name style the full name of a channel did not match.
+- The conversations, the voice shelf, and the hidden shelf each go through `filterZuckerRows`.
+- While a filter is active, the voice shelf and the hidden shelf each open when they have a hit. They close when they have none. Before, a hit in a closed hidden shelf stayed invisible.
+- "no matches" shows only when all three lists are empty under an active filter. Before, it ignored the hidden shelf.
+- While the bar is open, the rows that are not conversations do not render. These are the parking lot, the friends row with its chips and list, and the threads row. The bar then sits directly above the rows it narrows. The list keeps its height when the keyboard is up. The voice row stays, because it can hold hits.
+- Closing the bar with the magnifier clears the text and the kind, so no hidden filter stays active.
+- Opening the bar still focuses the name field (the behavior of 64-5).
+- The CSS is in the phone block of `web/src/theme.css`. `.chalk-zucker-filter` has no bottom padding, because the 44 px chip row takes its place. `.chalk-zucker-kinds` is one `nowrap` line that scrolls sideways with no scrollbar. Negative margins pull it to the screen edges, so the chips scroll under the 16 px padding. Each rule uses the existing tokens.
+
+Measured in a headed iPhone 14 emulation, with three channels and one DM. Two channels were unread, and one of them had a mention:
+
+- The bar is 82 px high, directly under the head and directly above the first row.
+- The six chips are 44 px high each.
+- The chip row is 398 px of content in 374 px, so "voice" is partly off the screen and the row scrolls.
+- The name field has focus when the bar opens.
+- Unread shows the two unread channels, mentions shows one, channels shows three, and DMs shows one. Voice shows "no matches".
+- The text "sign" finds the channel design-review. The text "sign" with the DMs chip shows "no matches".
+- Closing the bar restores the four rows and the three pinned rows.
+- Not seen: a voice room, because voice is off on the dev stack. Also not seen: a hit in the hidden shelf, and a channel with a short name. A unit test covers the short name.
 
 ## Decisions
 
@@ -282,7 +304,7 @@ The chips are all, unread, mentions, channels, DMs, and voice.
 | 137-6 | built (2026-11-14) | Empty states |
 | 137-7 | built (2026-11-14) | List and chat transition |
 | 137-8 | built (2026-11-14) | Friends at a glance: a line of friend chips under the friends row |
-| 137-9 | not started | Filter bar behind the magnifier: name field and type chips |
+| 137-9 | built (2026-11-14) | Filter bar behind the magnifier: name field and kind chips |
 
 ## Left open
 
@@ -295,7 +317,8 @@ The chips are all, unread, mentions, channels, DMs, and voice.
 - The swipe settle uses a hard-coded 160 ms (`theme.css` and `SWIPE_SETTLE_MS` in `use-swipe-back.ts`). Reduced motion does not turn it off. This gap is older than 137-7 and is outside the slice.
 - The device checks of 137-7 are open, in the manual checklist.
 - The device checks of 137-8 are open, in the manual checklist.
-- 137-9 is not started.
+- The device checks of 137-9 are open, in the manual checklist.
+- On a real phone, opening the filter bar raises the keyboard, because the name field takes focus. It does so also when the user only wants a chip. The owner decides after a device check if the field must keep the automatic focus.
 - The index row of phase 136 links `docs/phases/PHASE-136-IOS.md`. This phase does not change it.
 
 ## Manual checklist
@@ -333,3 +356,8 @@ The chips are all, unread, mentions, channels, DMs, and voice.
 - [ ] 137-8: a phone, with a friend who has a long name. The name ends in an ellipsis and the chip stays inside the screen.
 - [ ] 137-8: a phone. Rotate it. The chips measure again, and "+N" shows the right count.
 - [ ] 137-8: a phone. Tap the chip of a friend with no chat yet. A chat with that friend opens.
+- [ ] 137-9: a phone. Tap the magnifier. The filter bar shows under the head. Note if the keyboard rises, and decide if the name field keeps the automatic focus.
+- [ ] 137-9: a phone. Swipe the chip row sideways. It scrolls, and "voice" comes fully into view.
+- [ ] 137-9: a phone, with a hidden conversation. Type part of its name. The hidden shelf opens and shows it, and "no matches" does not show.
+- [ ] 137-9: a phone, with the short name style and a channel that has a short name. Type part of the full name. The channel shows.
+- [ ] 137-9: a phone, with a live voice room. Tap the voice chip. The voice list opens and shows the room.

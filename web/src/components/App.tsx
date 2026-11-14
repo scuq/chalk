@@ -300,7 +300,7 @@ import {
   pruneRosterOrder,
   type LiveGroup,
 } from "../chat/roster-order";
-import { rosterLabel } from "../chat/channel-names"; // 106-3
+import { filterText, rosterLabel } from "../chat/channel-names"; // 106-3
 import { pruneHidden, splitHidden, type HideMode } from "../chat/channel-hide";
 import { HISTORY_PAGE_SIZE, pageMarksComplete } from "../chat/history-paging";
 // 61-3: the full-history search crawl.
@@ -807,6 +807,12 @@ export function App() {
         return rosterLabel(full, selectRosterPrefs(state.prefs).nameStyle);
       },
       (userID) => zuckerHandles[userID] ?? userID.slice(-8),
+      // 137-9: the phone filter finds a channel by its full and short name,
+      // as the sidebar filter does. A DM filters on the name it shows.
+      (ch) => {
+        const full = state.channels[ch.id];
+        return full && !full.isDM ? filterText(full) : undefined;
+      },
     );
   }, [
     zuckerActive,

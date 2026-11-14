@@ -75,6 +75,9 @@ export interface ZuckerChannel {
 export interface ZuckerRow {
   id: string;
   name: string;
+  // 137-9: the text the filter searches. When it is absent, the filter
+  // searches name. A channel row gives its full and short names.
+  matchText?: string;
   isDM: boolean;
   isVoice: boolean;
   // Sort key and the row's relative-time stamp: newest activity, falling
@@ -174,6 +177,9 @@ export function buildConversationList(
   voiceRoomID: string | null,
   nameFor: (ch: ZuckerChannel) => string,
   handleFor: (userID: string) => string,
+  // 137-9: gives the filter text of a channel, or undefined to filter on the
+  // shown name.
+  matchTextFor?: (ch: ZuckerChannel) => string | undefined,
 ): ZuckerRow[] {
   const rows: ZuckerRow[] = [];
   for (const id of order) {
@@ -204,6 +210,7 @@ export function buildConversationList(
     rows.push({
       id,
       name: nameFor(ch),
+      matchText: matchTextFor?.(ch),
       isDM: ch.isDM,
       isVoice,
       when: act?.ts ?? ch.createdAt.getTime(),

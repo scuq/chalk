@@ -11054,12 +11054,38 @@ body.chalk-resizing-y .chalk-composer-resizer {
     font-style: italic;
   }
 
-  /* 64-2: the conversation quick filter, above the rows it narrows. The
-     input reuses the sidebar filter's styling. */
+  /* 64-2, 137-9: the conversation filter bar, directly under the list head.
+     The input reuses the sidebar filter's styling. The chip row below it
+     takes the place of the bottom padding. */
   .chalk-zucker-filter {
     flex-shrink: 0;
-    padding: var(--chalk-s2) var(--chalk-s4);
+    padding: var(--chalk-s2) var(--chalk-s4) 0 var(--chalk-s4);
     border-bottom: 1px solid var(--chalk-border);
+  }
+
+  /* 137-9: one line of kind chips that scrolls sideways with no scrollbar.
+     The negative margins reach the screen edges, so a chip scrolls under the
+     16px padding and not under a clip edge. */
+  .chalk-zucker-kinds {
+    display: flex;
+    flex-wrap: nowrap;
+    column-gap: var(--chalk-s1);
+    margin: 0 calc(-1 * var(--chalk-s4));
+    padding: 0 var(--chalk-s4);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .chalk-zucker-kinds::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 137-9: the chosen kind, in existing tokens. */
+  .chalk-zucker-kind--on .chalk-zucker-chip-pill {
+    background: var(--chalk-bg-elev);
+    border-color: var(--chalk-fg-bright);
+    color: var(--chalk-fg-bright);
   }
 
   .chalk-zucker-rows {
