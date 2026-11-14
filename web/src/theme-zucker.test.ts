@@ -1,4 +1,4 @@
-// 126-1, 135-1, 137-3, 137-4: assertions about theme.css, checked against the stylesheet
+// 126-1, 135-1, 137-3, 137-4, 137-8: assertions about theme.css, checked against the stylesheet
 // because jsdom has no layout to measure.
 //
 // The first is the "@ voice" shelf's flex-shrink: it must be 0, or the
@@ -19,6 +19,11 @@
 // Two tests (137-4) check the phone list section rows:
 //   - The three rows that expand carry a chevron, and parking and threads do not.
 //   - The chevron turns with aria-expanded, the sublists fade in, and a pressed row shades.
+//
+// Two tests (137-8) check the friend chips:
+//   - The closed friends row shows one 44px line of chips, and the open row shows the list instead.
+//   - A chip is a 44px target around a pill, no chip paints before it is measured,
+//     and the resize watcher attaches when the line appears.
 //
 // 135-5 removed the call bar margin test with the bar it checked. The
 // phone call bar has its own assertions in theme-phone-call.test.ts.
@@ -104,6 +109,31 @@ test("the chevron turns with aria-expanded on the duration token, and a sublist 
   assert.match(block(".chalk-zucker-chevron"), /transition:\s*transform var\(--chalk-dur\);/);
   assert.match(block(".chalk-zucker-friends,\n  .chalk-zucker-rows--shelf"), /animation:\s*chalk-zucker-shelf-in var\(--chalk-dur\)/);
   assert.match(block(".chalk-zucker-pinned:active"), /background:\s*var\(--chalk-bg-hover\);/);
+});
+
+test("the closed friends row shows one line of chips, and the open row shows the list instead", () => {
+  const list = readFileSync(join(resolve(process.cwd(), "src"), "components", "ZuckerList.tsx"), "utf8");
+  assert.match(list, /\{!friendsOpen && \(\s*<FriendChips/);
+  assert.match(list, /onMore=\{\(\) => setFriendsOpen\(true\)\}/);
+  const chips = block(".chalk-zucker-chips");
+  assert.match(chips, /flex-wrap:\s*nowrap;/);
+  assert.match(chips, /overflow:\s*hidden;/);
+  assert.match(chips, /height:\s*44px;/);
+  assert.match(chips, /padding:\s*0 var\(--chalk-s4\);/);
+  // The chips line carries the bottom line of the two-line row.
+  assert.match(block(".chalk-zucker-pinned--chips"), /border-bottom:\s*none;/);
+  assert.match(chips, /border-bottom:\s*1px solid var\(--chalk-border\);/);
+});
+
+test("a chip is a 44px target around a small pill, and no chip paints before it is measured", () => {
+  assert.match(block(".chalk-zucker-chip"), /height:\s*44px;/);
+  assert.match(block(".chalk-zucker-chip-pill"), /border:\s*1px solid var\(--chalk-border\);/);
+  assert.match(block(".chalk-zucker-chips--measuring"), /visibility:\s*hidden;/);
+  assert.match(block(".chalk-zucker-chip-name"), /text-overflow:\s*ellipsis;/);
+  // The line does not exist while there are no friends. The resize watcher
+  // must attach when the line appears, not only at the first render.
+  const chipsSrc = readFileSync(join(resolve(process.cwd(), "src"), "components", "FriendChips.tsx"), "utf8");
+  assert.match(chipsSrc, /ro\.observe\(el\);\s*return \(\) => ro\.disconnect\(\);\s*\}, \[empty\]\);/);
 });
 
 test("the last row of a shelf leaves the bottom line to the shelf", () => {

@@ -10920,6 +10920,79 @@ body.chalk-resizing-y .chalk-composer-resizer {
     transform: rotate(90deg);
   }
 
+  /* 137-8: the line of friend chips under the closed friends row. The row has
+     no bottom border, and the chips line carries it. The line is pulled up
+     toward the row, and its overflow is hidden as a guard. FriendChips.tsx
+     measures the chips, so none passes the 16px edge. */
+  .chalk-zucker-pinned--chips {
+    border-bottom: none;
+  }
+
+  .chalk-zucker-chips {
+    flex-shrink: 0;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    column-gap: var(--chalk-s1);
+    height: 44px;
+    margin-top: calc(-1 * var(--chalk-s1));
+    padding: 0 var(--chalk-s4);
+    overflow: hidden;
+    border-bottom: 1px solid var(--chalk-border);
+  }
+
+  /* 137-8: the measuring pass. The chips take their space but do not paint. */
+  .chalk-zucker-chips--measuring {
+    visibility: hidden;
+  }
+
+  /* 137-8: the chip is a 44px target. The pill inside it is the visible part. */
+  .chalk-zucker-chip {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    height: 44px;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--chalk-fg);
+    font: inherit;
+    font-size: var(--chalk-size-small);
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .chalk-zucker-chip-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--chalk-s1);
+    padding: 3px var(--chalk-s2);
+    border: 1px solid var(--chalk-border);
+    border-radius: 999px;
+    transition: background-color var(--chalk-dur-fast);
+  }
+
+  .chalk-zucker-chip:active .chalk-zucker-chip-pill {
+    background: var(--chalk-bg-hover);
+  }
+
+  .chalk-zucker-chip-name {
+    max-width: 10ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chalk-zucker-chip[data-presence="online"] .chalk-zucker-chip-name {
+    color: var(--chalk-fg-bright);
+  }
+
+  .chalk-zucker-chip[data-presence="offline"] .chalk-zucker-chip-name,
+  .chalk-zucker-chip--more {
+    color: var(--chalk-fg-dim);
+  }
+
   .chalk-zucker-friends,
   .chalk-zucker-rows--shelf {
     animation: chalk-zucker-shelf-in var(--chalk-dur) ease-out;

@@ -30,6 +30,7 @@ import { WaveName } from "./WaveName"; // 115-3
 import { CamIcon, MicOffIcon, ScreenIcon } from "./Sidebar";
 import { ChannelGlyph, ChevronIcon } from "./icons";
 import { presenceClass, presenceLabel } from "../chat/presence";
+import { FriendChips } from "./FriendChips";
 
 interface Props {
   rows: ZuckerRow[];
@@ -334,7 +335,7 @@ export function ZuckerList({
       )}
       <button
         type="button"
-        class="chalk-zucker-pinned"
+        class={`chalk-zucker-pinned ${!friendsOpen && friends.length > 0 ? "chalk-zucker-pinned--chips" : ""}`}
         onClick={() => setFriendsOpen(!friendsOpen)}
         aria-expanded={friendsOpen}
         data-testid="zucker-friends"
@@ -347,6 +348,14 @@ export function ZuckerList({
             chevron. Parking and threads open a screen, so they have none. */}
         <span class="chalk-zucker-chevron" aria-hidden="true"><ChevronIcon /></span>
       </button>
+      {/* 137-8: an open row shows the full list and no chips, so a name never shows twice. */}
+      {!friendsOpen && (
+        <FriendChips
+          friends={friends}
+          onSelect={onFriendSelect}
+          onMore={() => setFriendsOpen(true)}
+        />
+      )}
       {friendsOpen && (
         <ul class="chalk-zucker-friends" data-testid="zucker-friends-list">
           {friends.length === 0 && (

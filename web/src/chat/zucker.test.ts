@@ -11,6 +11,7 @@ import {
   splitVoice,
   DELETED_PREVIEW,
   type ZuckerChannel,
+  chipsThatFit,
 } from "./zucker.ts";
 import {
   PLACEHOLDER_NO_KEY,
@@ -328,4 +329,23 @@ test("buildVoiceOccupants keeps empty rooms as empty lists", () => {
 test("buildVoiceOccupants with no viewer names every entry", () => {
   const out = buildVoiceOccupants({ r1: [dev(ME, "d1")] }, null, () => "dave");
   assert.equal(out.r1[0].name, "dave");
+});
+
+test("chipsThatFit shows every chip when the line holds them all, with no room kept for +N", () => {
+  // 3 x 60 + 2 x 4 = 188
+  assert.equal(chipsThatFit([60, 60, 60], 188, 4, 40), 3);
+  assert.equal(chipsThatFit([], 300, 4, 40), 0);
+});
+
+test("chipsThatFit keeps room for the +N chip once one chip does not fit", () => {
+  // 187 is 1px short of all three; two chips plus +N need 60+4+60+4+40 = 168.
+  assert.equal(chipsThatFit([60, 60, 60], 187, 4, 40), 2);
+  // Two chips fit alone in 150 (124), but not with +N (168): one chip and +N.
+  assert.equal(chipsThatFit([60, 60, 60], 150, 4, 40), 1);
+});
+
+test("chipsThatFit can come down to +N alone, and to nothing in no space", () => {
+  assert.equal(chipsThatFit([60, 60], 80, 4, 40), 0);
+  assert.equal(chipsThatFit([60, 60], 0, 4, 40), 0);
+  assert.equal(chipsThatFit([60, 60], NaN, 4, 40), 0);
 });

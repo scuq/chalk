@@ -1,7 +1,7 @@
 # Phase 137 — phone polish from the external design review
 
-**Status:** built (all seven slices, 2026-11-14). The device checks of 137-1 to 137-7 are open, in the manual checklist.
-**Tags:** `#composer`, `#mobile`, `#parking` → `tools/where.sh -g composer`
+**Status:** in progress. Slices 137-1 to 137-8 are built. 137-9 is not started. The device checks of 137-1 to 137-8 are open, in the manual checklist.
+**Tags:** `#composer`, `#mobile`, `#parking`, `#zucker` → `tools/where.sh -g composer`
 
 ## The problem
 
@@ -216,15 +216,55 @@ Measured in a headed iPhone 14 emulation, with real touch events for the swipe:
 - There is no horizontal overflow.
 - Reduced motion was not checked in the emulation. The token covers it.
 
+### 137-8 Friends at a glance
+
+Before 137-8, the closed "@ friends" row showed only a label.
+Now one line of friend chips sits under it.
+A chip is a button with a presence dot and the name of a friend. A tap opens the chat with that friend, through the same `onFriendSelect` as the full list.
+
+- The order is the order of `buildFriendList`: online, then away, then offline, and by name inside each group.
+- A name is cut at 10ch with an ellipsis. The name is bright for an online friend and dim for an offline friend.
+- Chips that do not fit fold into a last "+N" chip. A tap on it opens the full list, and the chips go.
+- An open row shows the full list and no chips, so a name never shows twice.
+- The row gets `chalk-zucker-pinned--chips` when it shows closed with at least one friend. It then has no bottom border, and the chips line carries it.
+- `FriendChips.tsx` is new in `web/src/components/`. `FRIEND_CHIPS_MAX` (24) and the pure `chipsThatFit(widths, available, gap, moreWidth)` are in `web/src/chat/zucker.ts`.
+- `chipsThatFit` returns the full count when every chip fits, and keeps no room for "+N". Otherwise it returns the largest count that leaves room for "+N". That count can be 0.
+- The component measures before paint. It renders every chip, up to `FRIEND_CHIPS_MAX`, and the "+N" chip with `visibility: hidden` (`chalk-zucker-chips--measuring`). A layout effect reads the widths, and `chipsThatFit` gives the count to keep.
+- It measures again when the friends or their names change, and when the width of the line changes (`ResizeObserver`). While a chat covers the list, the width is 0, so it measures again when the list returns.
+- The observer effect depends on `empty`, because the line does not exist while there are no friends. The first demo run had an effect that ran only at the first render. It never attached, and at 320 px the third chip ran past the edge.
+- The CSS is in the phone block of `web/src/theme.css`. The line is one `nowrap` row, 44 px high, with 16 px side padding and `overflow: hidden` as a guard. It sits 4 px up toward the row. A chip is a 44 px transparent target around a bordered pill, and a pressed chip shades the pill. Each rule uses the existing tokens.
+- The chips do not use `WaveName`, so a waving name does not show on a chip.
+
+Measured in a headed iPhone 14 emulation, with six friends, three online and three offline:
+
+- The row and the chips line together are 84 px high.
+- At 390 px, three chips and "+3" show. At 320 px, two chips and "+4" show. Nothing passes the 16 px edge.
+- Each chip is 44 px high.
+- A tap on "+N" opens the full list and the chips go.
+- A tap on a chip opens the chat with that friend.
+- Not seen: an away friend, because the emulation cannot stage one. Also not seen: more than 24 friends, and a waving name.
+
+### 137-9 Filter bar (planned, not started)
+
+The list head has a magnifier button.
+137-9 makes it open one filter bar, with the name field and a scrollable row of type chips.
+The chips are all, unread, mentions, channels, DMs, and voice.
+
+- A tap on the magnifier opens the bar. Closing the bar clears the filter.
+- The name field must match both the full channel name and the short channel name.
+- A hit in the hidden shelf must open that shelf. The list must not show "no matches" while a hit is in the hidden shelf.
+
 ## Decisions
 
 - The phase covers the full review, in slices.
 - The phone toolbar keeps all four tools: attach, GIF, emoji, and code.
 - A follow-up message in a group shows its time in the long-press menu.
-- The list and the chat get a short slide transition, as the last slice (137-7).
+- The list and the chat get a short slide transition (137-7).
+- A second mock-up asked for two more slices on the phone list: friends at a glance (137-8) and a filter bar (137-9).
 
 ## What was rejected
 
+- The "favorites" and "mod" filters of the second mock-up. The owner dropped both. Chalk has no favorite concept. The client does not receive the role of the viewer in a channel, so it cannot tell a mod channel from another.
 - A toolbar with three tools. The owner chose to keep all four.
 - A tap on a message to show the time of a follow-up message. The time goes in the long-press menu.
 - CSS `field-sizing`. 137-1 sizes the field with a script.
@@ -241,6 +281,8 @@ Measured in a headed iPhone 14 emulation, with real touch events for the swipe:
 | 137-5 | built (2026-11-14) | Headers |
 | 137-6 | built (2026-11-14) | Empty states |
 | 137-7 | built (2026-11-14) | List and chat transition |
+| 137-8 | built (2026-11-14) | Friends at a glance: a line of friend chips under the friends row |
+| 137-9 | not started | Filter bar behind the magnifier: name field and type chips |
 
 ## Left open
 
@@ -252,6 +294,8 @@ Measured in a headed iPhone 14 emulation, with real touch events for the swipe:
 - The device checks of 137-6 are open, in the manual checklist.
 - The swipe settle uses a hard-coded 160 ms (`theme.css` and `SWIPE_SETTLE_MS` in `use-swipe-back.ts`). Reduced motion does not turn it off. This gap is older than 137-7 and is outside the slice.
 - The device checks of 137-7 are open, in the manual checklist.
+- The device checks of 137-8 are open, in the manual checklist.
+- 137-9 is not started.
 - The index row of phase 136 links `docs/phases/PHASE-136-IOS.md`. This phase does not change it.
 
 ## Manual checklist
@@ -285,3 +329,7 @@ Measured in a headed iPhone 14 emulation, with real touch events for the swipe:
 - [ ] 137-7: a phone. Swipe back from the left edge of a chat. The list shows with no second slide.
 - [ ] 137-7: a phone, with reduced motion turned on. Opening a chat and tapping the back button show no slide.
 - [ ] 137-7: a phone. Tap a notification for a text conversation. The chat opens with the same slide from the right as a row tap.
+- [ ] 137-8: a phone, with an away friend. The dot of that chip shows the away state.
+- [ ] 137-8: a phone, with a friend who has a long name. The name ends in an ellipsis and the chip stays inside the screen.
+- [ ] 137-8: a phone. Rotate it. The chips measure again, and "+N" shows the right count.
+- [ ] 137-8: a phone. Tap the chip of a friend with no chat yet. A chat with that friend opens.

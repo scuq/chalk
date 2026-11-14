@@ -123,6 +123,44 @@ export function buildFriendList(
   return rows;
 }
 
+// 137-8: FRIEND_CHIPS_MAX is the most friend chips that FriendChips renders
+// and measures. Friends past this count appear only in the "+N" chip.
+export const FRIEND_CHIPS_MAX = 24;
+
+// 137-8: chipsThatFit returns how many chips the line shows, in order.
+// widths holds the width of each chip, available is the width of the line,
+// gap is the space between two items, and moreWidth is the width of the "+N" chip.
+// If every chip fits, it returns widths.length and keeps no room for "+N".
+// Otherwise it returns the largest count that still leaves room for "+N".
+// That count can be 0. If available is not a positive finite number, it returns 0.
+export function chipsThatFit(
+  widths: readonly number[],
+  available: number,
+  gap: number,
+  moreWidth: number,
+): number {
+  if (!Number.isFinite(available) || available <= 0) return 0;
+  let used = 0;
+  let all = true;
+  for (let i = 0; i < widths.length; i++) {
+    used += widths[i] + (i > 0 ? gap : 0);
+    if (used > available) {
+      all = false;
+      break;
+    }
+  }
+  if (all) return widths.length;
+  used = 0;
+  let n = 0;
+  for (let i = 0; i < widths.length; i++) {
+    const next = used + widths[i] + (i > 0 ? gap : 0);
+    if (next + gap + moreWidth > available) break;
+    used = next;
+    n = i + 1;
+  }
+  return n;
+}
+
 // buildConversationList flattens channels + activity + unread into the
 // sorted row list. Name resolution is injected (nameFor wraps App's
 // displayName; handleFor resolves a user id to a handle) so this module
