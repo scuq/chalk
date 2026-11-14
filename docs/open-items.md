@@ -9,17 +9,17 @@ Latest release: **v0.11.3** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 135 is the newest work. It is in progress: 135-1 to 135-5 and 135-7
-are built, and 135-6 and 135-8 are planned.
+Phase 135 is the newest work. It is in progress: 135-1 to 135-7
+are built, and 135-8 is planned.
 Phase 133 is built, with the voice room, and seven points of it are open.
 Phase 131 has two small open points.
 Phase 130 has two open points. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
 
-## Phase 135 — phone: IN PROGRESS, 135-1 to 135-5 and 135-7 built
+## Phase 135 — phone: IN PROGRESS, 135-1 to 135-7 built
 
-135-1 to 135-5 and 135-7, record in [phases/PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md).
+135-1 to 135-7, record in [phases/PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md).
 The chat list is the only phone layout. The menu button, the slide-in channel
 list, the Zuckermode setting, and the `roster.viewMode` preference are gone. The
 phone does not mount the sidebar (135-2). `VoiceSinks`, the audio of a call,
@@ -34,7 +34,9 @@ are gone.
 On the phone, a call keeps the screen on and shows on the lock screen with
 microphone, camera, and hang up where the phone supports them. A flip button
 switches between the front and the back camera (135-7). The owner chose to
-build 135-7 before 135-6. 135-6 and 135-8 are planned and have no code.
+build 135-7 before 135-6. When the page shows again, the client reconnects at
+once or checks the open socket with a ping, and an answer with the same ref
+proves it (135-6). 135-8 is planned and has no code.
 
 - **The phone list has no row menu.** Hide, group, rename, manual order, and
   the nick colour of a friend are not reachable on a phone until 135-8.
@@ -64,8 +66,14 @@ build 135-7 before 135-6. 135-6 and 135-8 are planned and have no code.
   frame or a failure, and the wake lock in an installed iOS 18.4 app. Interrupted
   calls, audio route changes, and recovery after a microphone permission change
   are also open.
-- **135-6 is not built.** The app does not nudge its connection when it returns
-  from the background. The plan is in the phase doc.
+- **The 135-6 device checks are open.** The live probe used emulation and a
+  switch that drops frames. Not tested on a device: a real iPhone or Android
+  phone that returns from the background, an installed iOS app with WebKit bug
+  308073, and a laptop that wakes from sleep.
+- **135-6 has three plan items not built.** There is no HTTP catch-up fallback
+  and no forced reload for a stuck iOS socket beyond the 5 s connect timeout.
+  There is no detection of a frozen page by timer drift. There is no new header
+  element, because the header status already shows the connection state.
 - **The `--phone` voice shots of `ui-sweep.mjs` changed.** They now land in the
   call view and not in the old room page. Its step that clicks `voice-cam`
   finds nothing. That step was already inside a catch.

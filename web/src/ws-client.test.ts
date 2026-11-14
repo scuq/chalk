@@ -4,6 +4,8 @@
 // video call and the tab stayed dead until a manual refresh. Ping
 // timeouts now arrive as app code 4008 and must schedule a reconnect;
 // genuine policy violations (1008) and protocol errors (1002) must not.
+// The tests at the end cover the resume checks of 135-6: the connect
+// timeout and nudge().
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -37,20 +39,26 @@ class FakeWebSocket {
 }
 
 interface ScheduledTimer {
+  id: number;
   fn: () => void;
   delay: number;
 }
 
 let scheduled: ScheduledTimer[] = [];
+let nextTimerID = 0;
 
 // WSClient only touches window.setTimeout/clearTimeout and the WebSocket
-// constructor; stub exactly those.
+// constructor; stub exactly those. The scheduled list holds the live
+// timers: setTimeout adds one, and clearTimeout removes it.
 (globalThis as { window?: unknown }).window = {
   setTimeout: (fn: () => void, delay: number) => {
-    scheduled.push({ fn, delay });
-    return scheduled.length;
+    const id = ++nextTimerID;
+    scheduled.push({ id, fn, delay });
+    return id;
   },
-  clearTimeout: () => {},
+  clearTimeout: (id: number) => {
+    scheduled = scheduled.filter((t) => t.id !== id);
+  },
   location: { origin: "http://test" },
 };
 (globalThis as { WebSocket?: unknown }).WebSocket = FakeWebSocket;
@@ -220,4 +228,82 @@ test("isSealed reflects the inner channel, not just being open", async () => {
   assert.equal(client.isSealed(), true);
   client.stop();
   assert.equal(client.isSealed(), false, "not sealed when not open");
+});
+
+// ---- 135-6: resume from the background -------------------------------
+
+test("a dial still not open after 5 s is given up and dialed again", async () => {
+  reset();
+  const states: StateEvent[] = [];
+  const client = newClient(states);
+  client.start();
+  const stuck = FakeWebSocket.instances[0];
+  const timer = scheduled.find((t) => t.delay === 5000);
+  assert.ok(timer, "expected a connect timer");
+  timer.fn();
+  assert.ok(stuck.closed, "the stuck socket is closed");
+  assert.equal(stuck.onclose, null, "its late close event is ignored");
+  assert.equal(FakeWebSocket.instances.length, 2, "a new dial starts at once");
+});
+
+test("a welcome clears the connect timer", async () => {
+  reset();
+  await openClient([]);
+  assert.equal(scheduled.filter((t) => t.delay === 5000).length, 0);
+});
+
+test("nudge skips the backoff wait and dials at once", async () => {
+  reset();
+  const states: StateEvent[] = [];
+  const { client, ws } = await openClient(states);
+  ws.onclose!({ code: 1006, reason: "" });
+  assert.equal(scheduled.filter((t) => t.delay === 250).length, 1);
+  const before = FakeWebSocket.instances.length;
+  client.nudge();
+  assert.equal(FakeWebSocket.instances.length, before + 1);
+  assert.equal(scheduled.filter((t) => t.delay === 250).length, 0, "the backoff timer is gone");
+});
+
+test("on an open socket nudge sends a ping, and an answer keeps the socket", async () => {
+  reset();
+  const { client, ws } = await openClient([]);
+  client.nudge();
+  const ping = JSON.parse(ws.sent[ws.sent.length - 1]);
+  assert.equal(ping.type, "ping");
+  ws.onmessage!({ data: JSON.stringify({ type: "pong", ref: ping.ref }) });
+  await flush();
+  assert.equal(scheduled.filter((t) => t.delay === 3000).length, 0, "the probe timer is cleared");
+  assert.equal(client.isOpen(), true);
+  assert.equal(ws.closed, null);
+});
+
+test("an error answer to the ping also proves the socket", async () => {
+  reset();
+  const { client, ws } = await openClient([]);
+  client.nudge();
+  const ping = JSON.parse(ws.sent[ws.sent.length - 1]);
+  ws.onmessage!({ data: JSON.stringify({ type: "error", ref: ping.ref, payload: { code: "unknown_type" } }) });
+  await flush();
+  assert.equal(client.isOpen(), true);
+});
+
+test("no answer to the ping within 3 s gives the socket up and dials again", async () => {
+  reset();
+  const states: StateEvent[] = [];
+  const { client, ws } = await openClient(states);
+  client.nudge();
+  const probe = scheduled.find((t) => t.delay === 3000);
+  assert.ok(probe, "expected a probe timer");
+  probe.fn();
+  assert.ok(ws.closed, "the silent socket is closed");
+  assert.equal(states[states.length - 1].state, "connecting");
+  assert.equal(FakeWebSocket.instances.length, 2);
+});
+
+test("a second nudge while a ping waits sends no second ping", async () => {
+  reset();
+  const { client, ws } = await openClient([]);
+  client.nudge();
+  client.nudge();
+  assert.equal(ws.sent.filter((d) => JSON.parse(d).type === "ping").length, 1);
 });

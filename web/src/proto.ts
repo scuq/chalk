@@ -639,6 +639,9 @@ export interface ReadStatePayload {
 
 export const TypeTyping = "typing";
 export const TypeTypingUpdate = "typing_update";
+// 135-6: an application-level liveness check. Answered with pong, same ref.
+export const TypePing = "ping";
+export const TypePong = "pong";
 
 // typing is fire-and-forget: no ack, nothing persisted. Re-send it every few
 // seconds while composing; the server throttles anything faster and drops it

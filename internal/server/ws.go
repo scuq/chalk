@@ -852,6 +852,8 @@ func (h *WSHandler) readLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			h.handleVoiceSignal(ctx, c, conn, f)
 		case proto.TypeVoiceState:
 			h.handleVoiceState(ctx, c, conn, f)
+		case proto.TypePing: // 135-6
+			h.sendPong(ctx, c, f.Ref)
 
 		default:
 			h.sendError(ctx, c, f.Ref, proto.ErrCodeUnknownType,
@@ -1218,6 +1220,27 @@ func (h *WSHandler) pingLoop(ctx context.Context, c *websocket.Conn, conn *Conn)
 			// this loop already sends is also a free round-trip measurement.
 			conn.SetRTT(time.Since(start))
 		}
+	}
+}
+
+// pongFrame returns the encoded answer to a ping with the given ref.
+func pongFrame(ref string) ([]byte, error) {
+	frame, err := proto.NewFrame(proto.TypePong, ref, nil)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(frame)
+}
+
+// sendPong answers a ping (135-6), so a client can tell that the socket
+// still carries frames after the page was in the background.
+func (h *WSHandler) sendPong(ctx context.Context, c *websocket.Conn, ref string) {
+	data, err := pongFrame(ref)
+	if err != nil {
+		return
+	}
+	if err := writeOne(ctx, c, data, h.cfg.WriteTimeout); err != nil {
+		h.logger.Printf("ws send pong: %v", err)
 	}
 }
 

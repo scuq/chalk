@@ -13,6 +13,7 @@ The engineering-level history (which slice shipped what) lives in
 ## Unreleased
 
 ### Added
+- When you return to chalk after it was in the background, chalk checks the connection and catches up at once. This holds on a phone and on a laptop that slept. Before, old messages could show until the connection timed out. This is not yet checked on a phone.
 - On a phone, a call now has a bar above the message box on every screen. The bar has mute and leave buttons.
 - On a phone, a tap on the call bar opens a full-screen call view with everyone in the call and large controls.
 - In the phone call view, a tap on a person opens a sheet with their volume and a mute for you only.

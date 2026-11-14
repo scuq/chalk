@@ -3916,6 +3916,30 @@ export function App() {
     return () => document.removeEventListener("visibilitychange", onChange);
   }, []);
 
+  // 135-6: catch up at once when the page comes back. A phone freezes a
+  // page in the background, and the socket can be dead behind an "open"
+  // state, or a reconnect can wait on its backoff. nudge() checks or
+  // reconnects (ws-client.ts, resume.ts). It runs on desktop too: a laptop
+  // that wakes from sleep has the same socket.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const nudge = () => clientRef.current?.nudge();
+    const onVisible = () => {
+      if (!document.hidden) nudge();
+    };
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) nudge();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("online", nudge);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("online", nudge);
+    };
+  }, []);
+
   // --- 50-3: banner teardown -------------------------------------------
   //
   // A banner announces something unread. The moment it stops being

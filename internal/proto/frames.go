@@ -800,6 +800,12 @@ const (
 	// own devices never receive it.
 	TypeTyping       = "typing"
 	TypeTypingUpdate = "typing_update"
+
+	// Phase 135-6: an application-level liveness check. A browser cannot see
+	// the WebSocket protocol ping, so a client that comes back from the
+	// background sends ping and expects pong with the same ref. No payload.
+	TypePing = "ping"
+	TypePong = "pong"
 )
 
 // MarkReadPayload raises the caller's read cursor for one channel. Seq is

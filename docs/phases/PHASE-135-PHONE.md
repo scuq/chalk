@@ -1,7 +1,7 @@
 # Phase 135 — phone: the chat list is the phone layout, with a call bar and a call view
 
-**Status:** in progress. 135-1 and 135-2 are built (2026-11-13). 135-3, 135-4, 135-5, and 135-7 are built (2026-11-14), and their device checks are open. The owner chose to build 135-7 before 135-6, so 135-6 is planned and not built. 135-8 is planned and has no code.
-**Tags:** `#zucker`, `#mobile`, `#roster`, `#themes`, `#voice` → `tools/where.sh -g zucker`
+**Status:** in progress. 135-1 and 135-2 are built (2026-11-13). 135-3 to 135-7 are built (2026-11-14), and their device checks are open. The owner chose to build 135-6 after 135-7. 135-8 is planned and has no code.
+**Tags:** `#zucker`, `#mobile`, `#roster`, `#themes`, `#voice`, `#websocket` → `tools/where.sh -g zucker`
 
 ## The problem
 
@@ -83,6 +83,15 @@ A custom property that uses `var()` resolves where it is declared, so `--chalk-f
 The `warmwhite` theme re-tints the muted colour inside the desktop sidebar, so `--chalk-fg-deco` is also declared in that block.
 On desktop, `--chalk-fg-deco` equals the muted colour, so the desktop output does not change.
 No component uses a portal, so every dialog and panel renders inside `.chalk-app` and gets the override. The sign-in screens render outside it and keep the muted colour.
+
+### Design decisions of 135-6
+
+- The liveness check is a `ping` frame of the chalk protocol, answered with `pong`. A browser cannot see the WebSocket protocol ping, so the page cannot tell a dead socket from a quiet one without its own frame.
+- Any answer with the ref of the ping proves the socket. A `pong` counts. An `error` frame with the ref also counts, because a server that does not know `ping` answers with one. A guest gets this `error` frame, because `ping` is not on the guest allowlist in `guest_ws.go`. The guest fence test passes unchanged.
+- The client does not wait for the close event of a silent socket. A frozen socket can fail to fire it. `abandon` detaches the handlers, closes the socket with code 4000, and dials at once.
+- A socket that answers the ping missed nothing, so it is kept. The catch-up is the existing resync on a fresh welcome.
+- The handlers run on desktop too. A laptop that wakes from sleep has the same problem.
+- The connect timeout is 5 s, because iOS can leave a new WebSocket in CONNECTING after a resume (WebKit bug 308073).
 
 ### Not adopted
 
@@ -219,9 +228,21 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
   `theme-sidebar.test.ts` and `theme-zucker.test.ts` changed for the removed classes. The call bar margin test of 126-2 is gone with the bar.
   The call view has no board, no pop-outs, no layout toggle, and no debug drawer.
   The layout and the navigation rules are above.
-- **135-6 — resume from the background.** Planned.
-  A 5 s connect timeout and a public `nudge()` in `ws-client.ts`, called on `visibilitychange` to visible, on `pageshow` with `persisted`, and on `online`.
-  A `ping` case in `internal/server/ws.go` acknowledges the ref.
+- **135-6 — resume from the background.** Built 2026-11-14, after 135-7 (the owner's choice).
+  When the page shows again, the client reconnects at once or checks the open socket with a ping. It then catches up through the resync of a fresh welcome.
+  Server: `internal/proto/frames.go` has `TypePing` and `TypePong`. In `internal/server/ws.go`, the read loop answers `ping` with `pong` and the same ref (`pongFrame`, `sendPong`). A `pong` has no payload.
+  Client: `proto.ts` has the two names. The new `web/src/resume.ts` has `resumeAction({ state, stopped, reconnectPending })`, which returns `none`, `reconnect-now`, `probe`, or `wait`.
+  `ws-client.ts` has a 5 s connect timeout: a dial with no welcome after 5 s is given up and dialed again at once.
+  It has a public `nudge()`. If a reconnect waits on its backoff timer, `nudge()` dials now and resets the backoff. If the socket is open, it sends a ping, and it gives the socket up when no answer with the ref comes within 3 s. A second `nudge()` while a ping waits sends no second ping.
+  The private `abandon(reason)` detaches the handlers, closes the socket with code 4000, sets the state to closed, resets the backoff, and dials at once. The connect timer is cleared on welcome, on close, and on `stop()`.
+  `App.tsx` has one effect that calls `nudge()` on `visibilitychange` to visible, on `pageshow` with `persisted`, and on `online`.
+  Not built from the plan: a new header element, because the header status already shows the connection state.
+  Also not built: detection of a frozen page by timer drift.
+  Also not built: an HTTP catch-up fallback, or a forced reload for the stuck iOS socket beyond the connect timeout.
+  Tests: new `web/src/resume.test.ts` and new `internal/server/ping_test.go`.
+  Seven new cases in `web/src/ws-client.test.ts` cover the connect timeout and a welcome that clears it.
+  They also cover `nudge()` that skips the backoff, a ping answered by pong, an error answer, no answer in 3 s, and no second ping.
+  The fake `clearTimeout` in that file now removes the timer from the list, so the older tests count only live timers.
 - **135-7 — call hygiene.** Built 2026-11-14, before 135-6 (the owner's choice).
   The phone keeps the screen on during a call, shows the call on the lock screen, and flips between the front and the back camera.
   A one-line note on an iPhone or an iPad says that the call pauses in the background.
@@ -357,6 +378,23 @@ Not verified on a device:
 - That a real phone flips without a black frame or a failure.
 - The wake lock in an installed iOS 18.4 app.
 
+## Verification of 135-6
+
+The full chain passed, with 1876 client tests.
+Live probe: Playwright with iPhone 14 emulation and a second user. The socket of the phone user ran through a switch that can drop all frames in both directions while the socket stays open. 5 of 5 checks passed:
+
+- The socket is open.
+- A resume with a live socket gets the `pong` and keeps the socket. No new dial starts in 4 s.
+- A silenced socket misses a message from the other user.
+- A resume gives the silent socket up and dials once.
+- The missed message shows 3328 ms after the resume. The limit in the probe was 8 s.
+
+Not verified on a device:
+
+- A real iPhone or Android phone that returns from the background.
+- An installed iOS app with WebKit bug 308073.
+- A laptop that wakes from sleep.
+
 ## Known loss
 
 The phone list has no row menu.
@@ -365,8 +403,8 @@ The same loss is in `docs/open-items.md`.
 
 ## Left open
 
-- The 135-5 and 135-7 device checks are open. See the manual checklist.
-- 135-6 is not built. Until it is, the app does not nudge its connection when it returns from the background.
+- The 135-5, 135-6, and 135-7 device checks are open. See the manual checklist.
+- 135-6 has no HTTP catch-up fallback and no forced reload for a stuck iOS socket beyond the connect timeout. It has no detection of a frozen page by timer drift.
 - The call view has no board, no pop-outs, no layout toggle, and no debug drawer. The desktop panel keeps them.
 
 ## Manual checklist
@@ -399,3 +437,7 @@ The same loss is in `docs/open-items.md`.
 - [ ] 135-7: an interrupted call, such as an incoming phone call.
 - [ ] 135-7: an audio route change, such as a headset plugged in or removed.
 - [ ] 135-7: recovery after the user denies and then allows the microphone permission.
+- [ ] 135-6: a real iPhone and a real Android phone. Send a message from another account, put chalk in the background for a minute, and return. The message shows within a few seconds.
+- [ ] 135-6: an installed iOS app, after a long time in the background. The app does not stay on a stale list. If it does, record it, because the connect timeout is the only guard for a stuck dial.
+- [ ] 135-6: a laptop that wakes from sleep with chalk open. The connection state returns to open and the missed messages show.
+- [ ] 135-6: switch the phone from Wi-Fi to mobile data and back. The app reconnects when the network returns.

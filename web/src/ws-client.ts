@@ -5,6 +5,8 @@
 //   * Send hello on connect, await welcome
 //   * Emit typed events to subscribers for incoming frames
 //   * Reconnect with exponential backoff on transport errors
+//   * Give up a dial that is not open after 5 s, and dial again (135-6)
+//   * Check an open socket with a ping when the page shows again (135-6)
 //   * Generate a stable per-browser device_id (localStorage-backed)
 //
 // Out of scope for phase 07:
@@ -16,7 +18,15 @@
 // to a 10 s ceiling, matching the server-side pubsub listener. If the
 // server tells us a hard policy violation (bad subprotocol, bad hello),
 // we stop reconnecting -- the cause won't fix itself.
+//
+// Two paths skip the backoff wait (135-6). A dial that has no welcome
+// after 5 s is given up and dialed again at once. nudge(), called when the
+// page shows again, dials at once if a reconnect waits on its timer. If
+// the socket is open, nudge() sends a ping. When no answer with the same
+// ref comes within 3 s, the client gives the socket up without waiting for
+// its close event, resets the backoff, and dials at once.
 
+import { resumeAction } from "./resume"; // 135-6
 import {
   Frame,
   HelloPayload,
@@ -24,6 +34,7 @@ import {
   SUBPROTOCOL,
   TypeHello,
   TypeWelcome,
+  TypePing,
   TypeInnerHello,
   TypeInnerAck,
   TypeInnerUnavailable,
@@ -60,6 +71,11 @@ export interface WSClientOptions {
 
 const BACKOFF_INITIAL_MS = 250;
 const BACKOFF_MAX_MS = 10_000;
+// 135-6: a dial that is still not open after this long is given up and
+// retried. iOS can leave a new WebSocket in CONNECTING after a resume.
+const CONNECT_TIMEOUT_MS = 5_000;
+// 135-6: after a resume, an open socket must answer a ping within this time.
+const PROBE_TIMEOUT_MS = 3_000;
 
 export class WSClient {
   private opts: WSClientOptions;
@@ -79,6 +95,9 @@ export class WSClient {
   // by request(); drained by onMessage() before onFrame() dispatch.
   private pending: Map<string, { resolve: (v: unknown) => void; reject: (e: unknown) => void }> = new Map();
   private refCounter = 0;
+  // 135-6: the timer of the current dial, and the ref of a resume ping.
+  private connectTimer: number | null = null;
+  private probeRef: string | null = null;
 
   constructor(opts: WSClientOptions) {
     this.opts = opts;
@@ -92,6 +111,7 @@ export class WSClient {
 
   stop(): void {
     this.stopped = true;
+    this.clearConnectTimer();
     if (this.reconnectTimer !== null) {
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -187,6 +207,95 @@ export class WSClient {
     this.ws.onmessage = (e) => this.onMessage(e);
     this.ws.onerror = (e) => this.onError(e);
     this.ws.onclose = (e) => this.onClose(e);
+    this.clearConnectTimer();
+    const dialed = this.ws;
+    this.connectTimer = window.setTimeout(() => {
+      this.connectTimer = null;
+      if (this.ws === dialed && this.state === "connecting") this.abandon("connect timed out");
+    }, CONNECT_TIMEOUT_MS);
+  }
+
+  private clearConnectTimer(): void {
+    if (this.connectTimer !== null) {
+      window.clearTimeout(this.connectTimer);
+      this.connectTimer = null;
+    }
+  }
+
+  /**
+   * nudge (135-6) is called when the page shows again. If a reconnect waits
+   * on its backoff, it connects now. If the socket is open, it sends a ping
+   * and gives the socket up when no answer comes. See resume.ts.
+   */
+  nudge(): void {
+    const action = resumeAction({
+      state: this.state,
+      stopped: this.stopped,
+      reconnectPending: this.reconnectTimer !== null,
+    });
+    if (action === "reconnect-now") {
+      window.clearTimeout(this.reconnectTimer!);
+      this.reconnectTimer = null;
+      this.backoff = BACKOFF_INITIAL_MS;
+      this.connect();
+    } else if (action === "probe") {
+      this.probe();
+    }
+  }
+
+  private probe(): void {
+    if (this.probeRef !== null || !this.ws) return;
+    this.refCounter++;
+    const ref = `p${Date.now().toString(36)}-${this.refCounter}`;
+    this.probeRef = ref;
+    const socket = this.ws;
+    const timer = window.setTimeout(() => {
+      this.pending.delete(ref);
+      if (this.probeRef !== ref) return;
+      this.probeRef = null;
+      if (this.ws === socket && this.state === "open") this.abandon("no answer to a ping after resume");
+    }, PROBE_TIMEOUT_MS);
+    // Any answer with the ref proves the socket: pong, or an error frame
+    // from a server that does not know ping.
+    const settle = () => {
+      window.clearTimeout(timer);
+      if (this.probeRef === ref) this.probeRef = null;
+    };
+    this.pending.set(ref, { resolve: settle, reject: settle });
+    try {
+      this.send(TypePing, undefined, ref);
+    } catch {
+      settle();
+      this.pending.delete(ref);
+    }
+  }
+
+  // abandon gives a socket up without waiting for its close event, which a
+  // frozen or stuck socket can fail to fire, and reconnects at once.
+  private abandon(reason: string): void {
+    const ws = this.ws;
+    this.clearConnectTimer();
+    this.probeRef = null;
+    if (ws) {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      try {
+        ws.close(4000, reason);
+      } catch {
+        // Already closed.
+      }
+    }
+    this.ws = null;
+    this.logger.warn(`WSClient: ${reason}`);
+    this.setState("closed", reason);
+    this.backoff = BACKOFF_INITIAL_MS;
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.connect();
   }
 
   private onOpen(): void {
@@ -361,6 +470,7 @@ export class WSClient {
     if (frame.type === TypeWelcome) {
       // Transition to open. Reset backoff -- we're back in business.
       this.backoff = BACKOFF_INITIAL_MS;
+      this.clearConnectTimer();
       this.setState("open");
       this.opts.onWelcome(frame.payload as WelcomePayload);
       return;
@@ -394,6 +504,8 @@ export class WSClient {
   private onClose(e: CloseEvent): void {
     const wasOpen = this.state === "open";
     this.ws = null;
+    this.clearConnectTimer();
+    this.probeRef = null;
     if (this.stopped) {
       this.setState("closed", `closed (code=${e.code})`);
       return;

@@ -66,6 +66,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #pwa            36        web/manifest.json web/icons/ web/build.mjs web/src/theme.css docs/phases/PHASE-36-PWA.md
 #csp            51        internal/server/server.go internal/server/spa_test.go docs/phases/PHASE-51-CSP.md
 #governance     -         internal/store/governance.go internal/server/governance_ws.go docs/phases/PHASE-00-29-FOUNDATION.md
+#websocket      4 7 135   web/src/ws-client.ts web/src/ws-client.test.ts web/src/resume.ts web/src/resume.test.ts web/src/proto.ts internal/proto/frames.go internal/server/ws.go internal/server/ping_test.go docs/phases/PHASE-135-PHONE.md
 #attachments    69        web/src/attachments/ internal/store/ docs/design/chalk-attachments-design-spec.md docs/phases/PHASE-69-PINNEDHEADER.md docs/phases/PHASE-00-29-FOUNDATION.md
 #chalkctl       72 73 82  internal/chalkctl/ cmd/chalkctl/ test/integration/backup_restore_test.go docs/deployment.md docs/phases/PHASE-72-BACKUP.md docs/phases/PHASE-73-METRICS.md
 #toolchain      128       go.mod docker/Dockerfile docker/Dockerfile.dev .github/workflows/ci.yml .github/workflows/release.yml web/package.json desktop/package.json test/e2e/package.json docs/phases/PHASE-128-TOOLCHAIN.md
