@@ -198,16 +198,30 @@ func serveSPA(w http.ResponseWriter, r *http.Request, dist fs.FS) {
 		http.Error(w, "internal: file not seekable", http.StatusInternalServerError)
 		return
 	}
-	// All non-index assets are content-hashed (see build.mjs / spaHandler
-	// doc), so a filename uniquely identifies its bytes: cache immutably for
-	// a year. A new bundle changes the hash and thus the URL, so there's no
-	// stale-cache risk and no revalidation traffic for unchanged assets.
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	// All assets except index.html and sw.js are content-hashed (see
+	// build.mjs and the spaHandler doc). A filename identifies its bytes, so
+	// the browser caches the file as immutable for one year. A new bundle
+	// changes the hash and the URL. The browser never reads a stale file and
+	// sends no revalidation request for an unchanged asset.
+	//
+	// 65-6: sw.js is the one hashed-asset exception. A browser keeps one
+	// service worker registration for each script URL, so the worker keeps
+	// its name across releases. The no-cache value makes the browser check
+	// for a new worker on every load.
+	if clean == serviceWorkerFile {
+		w.Header().Set("Cache-Control", "no-cache")
+	} else {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	}
 	if ct := contentTypeFor(clean); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
 	http.ServeContent(w, r, clean, info.ModTime(), rs)
 }
+
+// serviceWorkerFile is the dist path of the service worker (65-6). It is the
+// only asset that serveSPA serves with no-cache and a fixed name.
+const serviceWorkerFile = "sw.js"
 
 // contentTypeFor names the types http.ServeContent would otherwise have to
 // guess at, returning "" for everything it already knows.

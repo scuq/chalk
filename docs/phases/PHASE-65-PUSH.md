@@ -3,7 +3,7 @@
 Push notifications that reach an iPhone home-screen chalk with the app fully
 closed, without breaking the E2E privacy model and without any paid accounts.
 Planned against v0.5.2. **In progress, as of 14 November 2026** — slices 65-1
-to 65-5 are built, and the plan below was revised that day (next section).
+to 65-6 are built, and the plan below was revised that day (next section).
 
 ## Review of 14 November 2026
 
@@ -183,8 +183,9 @@ envelope signature against the pins before it shows any text.
   every start the page compares `PushManager.getSubscription()` with the
   server's row and uploads on a mismatch. Accepted cost: pushes are lost
   between the change and the next start. The service worker reads the VAPID
-  key from the old subscription's options or from IndexedDB, never from plain
-  HTTP.
+  key from the old subscription's options, never from plain HTTP. It keeps no
+  IndexedDB and no upload flag. If the old subscription is not available, the
+  worker does not subscribe, and the page subscribes at its next start.
 - **SSRF:** subscription endpoints are attacker-controllable URLs chalkd
   POSTs to. https-only + dial-time IP vetting — copy the ~40-line vet from
   `internal/linkpreview` (`vetDialAddr`, unexported there) into
@@ -214,19 +215,34 @@ envelope signature against the pins before it shows any text.
   (cmd/chalkd/main.go:185-231 nil-client pattern). Rotating the keypair
   invalidates every subscription; hence preserve. A `chalkctl` VAPID rotate
   command (65-3) is the recovery when the private key leaks.
-- **Service worker:** `web/src/sw.ts`, tiny, dependency-free, **no fetch
-  handler** (no offline/caching — the SPA stays network-served, the SW
-  cannot break serving): `push` → showNotification + setAppBadge;
-  `notificationclick` → focus an existing client or `openWindow('/')`
-  (opening the right chat is 65-9);
-  `pushsubscriptionchange` → re-subscribe locally and mark the subscription
-  for upload by the page. Built by a second
-  esbuild invocation in web/build.mjs (iife, no splitting) to **unhashed**
-  `dist/sw.js`, excluded from `assertNoUnhashedRefs`; served with a
-  special case in internal/server/spa.go bypassing the unconditional
-  `immutable` cache header (spa.go:205) → `Cache-Control: no-cache` (precedent: `serveIndex`, spa.go:265). CSP
-  already allows it (`worker-src 'self'`, spa.go:111, in the block at
-  :102-117).
+- **Service worker (built in 65-6):** `web/src/sw.ts` with the pure logic in
+  `web/src/sw-logic.ts`. It is small, has no dependency, and has **no fetch
+  handler** (no offline or caching — the SPA stays network-served, the SW
+  cannot break serving).
+  - `install` calls `skipWaiting`, and `activate` calls `clients.claim`.
+  - `push` always calls `showNotification`, because iOS revokes a
+    subscription that gets pushes without one. Then it calls `setAppBadge` or
+    `clearAppBadge` if the browser has them.
+  - A payload that does not parse gives the generic notification, "chalk" and
+    "New activity", with the tag `chalk-push`. It leaves the badge alone.
+  - The tags are `chalk-ch-<id>` and `chalk-th-<id>`. They are the tags of the
+    in-app banners (`notify/banners.ts`), so a later push replaces an earlier
+    one.
+  - `notificationclick` focuses a chalk window and posts
+    `{type: "chalk-open", channelID, threadID}` to it. If no window exists, it
+    calls `openWindow('/')`. The page listener for the message comes in 65-7
+    and 65-9.
+  - `pushsubscriptionchange` subscribes again with the `applicationServerKey`
+    of the old subscription. The worker keeps no state: the page reconciles
+    at its next start (65-7).
+  - Registration of the worker by the page is not in 65-6. It moves to 65-7
+    with the push manager.
+  - A second esbuild invocation in `web/build.mjs` (`swOpts`: iife, no
+    splitting) writes the **unhashed** `dist/sw.js`. The hashed icon-192 URL
+    enters the worker through the define `__CHALK_ICON__`. `serveSPA` in
+    `internal/server/spa.go` serves `sw.js` with `Cache-Control: no-cache`
+    and every other asset as `immutable`. A missing `sw.js` gives 404, not
+    `index.html`. CSP already allows the worker (`worker-src 'self'`).
 - **Client:** `web/src/notify/push.ts` (register, capability + iOS-standalone
   detection, subscribe/unsubscribe/getState over the WebSocket, logout cleanup) and a new
   "Push" section in NotificationsPanel (permission button already there,
@@ -258,7 +274,7 @@ envelope signature against the pins before it shows any text.
 | 65-3 (built) | Config + chalkctl: `internal/config/push.go`, VAPID keygen/preserve/backfill + `CHALK_VAPID_SUBJECT` (flag or config key, domain-derived default, preserved like the keys), `chalkctl push status\|enable\|disable\|rotate-key --yes`, env template, `push_enabled` only in /api/auth/config. chalkd builds the sender only if push is enabled, and `server.Options.Push` holds it. Nothing calls it before 65-4 and 65-5 | internal/config/, internal/chalkctl/, internal/auth/ | 290 |
 | 65-4 (built) | WebSocket frames inside the sealed channel: `push_state`, `push_subscribe`, and `push_unsubscribe`, each answered by `<type>_ack`. The connection carries its session token. Guests are refused. Validation covers the https endpoint and the key lengths. Migration `0064_push_subscription_vapid_key.sql` adds `vapid_key`. Replaces the old HTTP API slice | internal/server/, internal/proto/, internal/store/, migrations/, web/src/proto.ts | 220 |
 | 65-5 (built) | Dispatcher + send hook: payload builder (the plaintext choke point), recipient selection via presence, encrypt/send/prune, cooldown, InstanceID-guarded hook in handleMessageEvent, tests against an httptest fake relay, the new "third parties" section in `docs/threat-model.md` | internal/server/push_dispatch.go, internal/server/server.go, internal/presence/store.go, internal/store/push.go, docs/threat-model.md | 340 |
-| 65-6 | `web/src/sw.ts` + second esbuild invocation → unhashed dist/sw.js + spa.go no-cache special case, `pushsubscriptionchange` resubscribes locally and marks the subscription for upload | web/src/, web/build.mjs, internal/server/spa.go | 165 |
+| 65-6 (built) | `web/src/sw.ts` and `web/src/sw-logic.ts` + second esbuild invocation → unhashed dist/sw.js + spa.go no-cache special case, `pushsubscriptionchange` resubscribes locally (the page uploads at its next start, 65-7), kept probe `sw-push.mjs`. Registration by the page moves to 65-7 | web/src/, web/build.mjs, internal/server/spa.go, .claude/skills/run-chalk/ | 165 |
 | 65-7 | Client push manager `web/src/notify/push.ts`: subscribe and reconcile over the WebSocket at every start, logout cleanup, tests | web/src/notify/ | 210 |
 | 65-8 | NotificationsPanel "Push" section. **Changelog bullet.** | web/src/components/ | 150 |
 | 65-9 | Notification click opens the chat (open app, closed app, phone), real-device hardening + payload-contract doc update + changelog | small diffs | 80 |
@@ -288,6 +304,13 @@ Locally verifiable (no device, no deployment):
   an httptest relay does not work, because the sender refuses loopback addresses.
 - `curl -I /sw.js` → no-cache; hashed assets still immutable; the build's
   hash assertion still protects everything else.
+- `go test ./internal/server/ -run TestSPA` (65-6) covers the `sw.js` header
+  and the 404. `cd web && node test.mjs` runs `sw-logic.test.ts`.
+- `node .claude/skills/run-chalk/sw-push.mjs` (65-6, 11 checks) needs the dev
+  stack and `chromium.launch({ channel: "chromium" })`. It delivers pushes
+  through CDP and reads the notifications. The `notificationclick` path is not
+  covered, because CDP cannot click a notification. Check it by hand in headed
+  Chrome.
 - **Headed Chrome on localhost**: the full real loop through FCM —
   subscribe in the panel, close the tab (Chrome still running), send a
   message from a second account, notification appears. Headless

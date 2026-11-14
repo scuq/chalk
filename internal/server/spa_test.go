@@ -318,3 +318,56 @@ func TestContentTypeForLeavesKnownTypesAlone(t *testing.T) {
 		}
 	}
 }
+
+// 65-6: the service worker keeps its URL, so the browser must revalidate it.
+// Every other asset stays immutable.
+func TestSPA_ServiceWorkerNoCache(t *testing.T) {
+	srv := newSPATestServer(t, map[string]string{
+		"dist/index.html":      "<html></html>",
+		"dist/sw.js":           "self.addEventListener('push', () => {})",
+		"dist/index-ABCD12.js": "console.log('hi')",
+	})
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/sw.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if cc := resp.Header.Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("sw.js cache-control %q, want no-cache", cc)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "javascript") {
+		t.Errorf("sw.js content-type %q, want a JavaScript type", ct)
+	}
+	if resp.Header.Get("X-Content-Type-Options") != "nosniff" {
+		t.Error("sw.js lost nosniff")
+	}
+
+	resp, err = http.Get(srv.URL + "/index-ABCD12.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if cc := resp.Header.Get("Cache-Control"); cc != "public, max-age=31536000, immutable" {
+		t.Errorf("hashed asset cache-control %q", cc)
+	}
+}
+
+// A missing worker gives 404 and never index.html. A registration that
+// receives HTML fails with an error that looks like a script error.
+func TestSPA_MissingServiceWorkerIs404(t *testing.T) {
+	srv := newSPATestServer(t, map[string]string{"dist/index.html": "<html></html>"})
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/sw.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", resp.StatusCode)
+	}
+}

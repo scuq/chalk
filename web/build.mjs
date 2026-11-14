@@ -222,11 +222,36 @@ function rewriteIndexHTML(metafile) {
       "build: index.html did not contain the expected /index.js and /theme.css references to rewrite",
     );
   }
-  for (const [from, to] of emitStatic()) {
+  const urls = emitStatic();
+  for (const [from, to] of urls) {
     html = html.split(`"${from}"`).join(`"${to}"`);
   }
   assertNoUnhashedRefs(html, src);
   writeFileSync(`${outdir}/${src}`, html);
+  return urls;
+}
+
+// 65-6: the service worker is its own build. A worker script cannot load
+// chunks. Its URL must not change between releases, because a browser keeps
+// one registration for each script URL. So the build writes one iife file
+// with the fixed name sw.js, and spa.go serves that file with no-cache and
+// not immutable. The icon in a notification is hashed like every other icon.
+// It enters the worker through a define.
+function swOpts(urls) {
+  const icon = urls.get("/icons/icon-192.png");
+  if (!icon) throw new Error("build: no hashed /icons/icon-192.png for the service worker");
+  return {
+    entryPoints: ["src/sw.ts"],
+    bundle: true,
+    outdir,
+    format: "iife",
+    target: ["es2022"],
+    minify: !dev,
+    sourcemap: dev ? "inline" : false,
+    entryNames: "sw",
+    define: { __CHALK_ICON__: JSON.stringify(icon) },
+    logLevel: "info",
+  };
 }
 
 if (watch) {
@@ -252,10 +277,15 @@ if (watch) {
     ],
   });
   await ctx.watch();
+  // 65-6: the worker has its own watch context. The build reads the icon URL
+  // once, so after an icon change you must restart the watch.
+  const swCtx = await esbuild.context(swOpts(emitStatic()));
+  await swCtx.watch();
   console.log("watching for changes...");
 } else {
   const result = await esbuild.build(buildOpts);
-  rewriteIndexHTML(result.metafile);
+  const urls = rewriteIndexHTML(result.metafile);
+  await esbuild.build(swOpts(urls));
   console.log("build complete");
 }
 

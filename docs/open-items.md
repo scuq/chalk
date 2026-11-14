@@ -389,15 +389,16 @@ can reach packaging). Open:
   Mac can keep one on a second display — the two-screen check in the phase
   doc is still to run.
 
-## Phase 65 — web push: IN PROGRESS, 65-1 to 65-5 built
+## Phase 65 — web push: IN PROGRESS, 65-1 to 65-6 built
 
 65-1 is built: migration 0063 and `internal/store/push.go`. 65-2 is built:
 the `internal/webpush` package. 65-3 is built: the push config, the VAPID key
 pair in `chalkctl`, and `chalkctl push`. 65-4 is built: the three push frames
 on the sealed WebSocket and migration 0064. 65-5 is built: the dispatcher
 sends a push for each new message that the instance published, and the threat
-model has its section on third parties. No browser subscribes yet, because the
-client work starts in 65-6. 65-6 onward is open. Record in [phases/PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md). The plan
+model has its section on third parties. 65-6 is built: the service worker, its
+build, and the `no-cache` header for `sw.js`. No browser subscribes yet,
+because the page does not register the worker until 65-7. 65-7 onward is open. Record in [phases/PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md). The plan
 was revised on 14 November 2026 after a review against the threat model. A
 subscription belongs to a login session and goes with it. The VAPID key and
 all subscription frames travel only over the WebSocket. Guests cannot
@@ -408,7 +409,7 @@ subscribe.
   cannot drop a push without risking a revoked subscription on iOS. A channel
   muted in chalk still pushes under scope `all`.
 - **Open:** all real-device checks (an iPhone on a deployed HTTPS instance,
-  Android Chrome, headed Chrome on localhost). No slice after 65-5 is built.
+  Android Chrome, headed Chrome on localhost). No slice after 65-6 is built. The `notificationclick` path has no automated test.
   No automated test covers the path from a real NOTIFY to a real push service,
   because the sender refuses loopback addresses.
   The iPhone check includes this: chalk shows under Settings > Notifications
