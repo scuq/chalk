@@ -1,6 +1,6 @@
 # Phase 135 — phone: the chat list is the phone layout, with a call bar and a call view
 
-**Status:** in progress. 135-1 and 135-2 are built (2026-11-13). 135-3, 135-4, and 135-5 are built (2026-11-14), and their device checks are open. 135-6 to 135-8 are planned and have no code.
+**Status:** in progress. 135-1 and 135-2 are built (2026-11-13). 135-3, 135-4, 135-5, and 135-7 are built (2026-11-14), and their device checks are open. The owner chose to build 135-7 before 135-6, so 135-6 is planned and not built. 135-8 is planned and has no code.
 **Tags:** `#zucker`, `#mobile`, `#roster`, `#themes`, `#voice` → `tools/where.sh -g zucker`
 
 ## The problem
@@ -222,9 +222,24 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
 - **135-6 — resume from the background.** Planned.
   A 5 s connect timeout and a public `nudge()` in `ws-client.ts`, called on `visibilitychange` to visible, on `pageshow` with `persisted`, and on `online`.
   A `ping` case in `internal/server/ws.go` acknowledges the ref.
-- **135-7 — call hygiene.** Planned.
-  A screen wake lock during a call, media session actions, and a camera flip through `facing` in `DevicePrefs`.
-  A one-line notice on iOS says that the call pauses in the background.
+- **135-7 — call hygiene.** Built 2026-11-14, before 135-6 (the owner's choice).
+  The phone keeps the screen on during a call, shows the call on the lock screen, and flips between the front and the back camera.
+  A one-line note on an iPhone or an iPad says that the call pauses in the background.
+  Everything here runs on the phone only. App.tsx installs the wake lock and the media session when `zuckerActive` is true, next to `installVoiceHotkeys`. The desktop does not change.
+  Wake lock: `web/src/voice/wake-lock.ts`. `wantWakeLock(inCall, visible)` is true only in a call with a visible page. `installWakeLock(session, nav, doc)` asks for a screen wake lock in that case.
+  The browser releases the lock when the page hides, so it asks again when the page shows. It releases the lock when the call ends. Where `navigator.wakeLock` is absent, it does nothing.
+  Research: Chromium has the API. Installed web apps on iOS have it since 18.4.
+  Lock screen: `web/src/voice/media-session.ts`. `mediaSessionPlan` computes the title `chalk · <room>` and the state of the microphone and the camera. `installMediaSession(session, mediaSession, MediaMetadata, actions)` sets the metadata, the two states, and the `togglemicrophone`, `togglecamera`, and `hangup` handlers while in a call. It clears them when the call ends.
+  Each call is in its own try block, because support differs. Chromium 93 has the microphone and camera actions, and so has iOS 18.4. The `hangup` action is not on iOS.
+  Camera flip: `facing` (`""`, `"user"`, or `"environment"`) is a new field of `DevicePrefs` in `device-prefs.ts`. `normalizeDevicePrefs` turns any other stored value into `""`.
+  `cameraConstraints` returns `{ facingMode }` when `facing` is set. `facing` wins over `cameraId`. It is a plain hint and not `exact`, so a phone without that camera uses the one it has.
+  `flippedFacing` returns the other camera. With no facing chosen, the flip goes to the back. `cameraChanged` compares `cameraId` and `facing`.
+  The camera picker in `MicSettings.tsx` clears `facing` when the user picks a camera. The flip button clears `cameraId` and sets `facing`.
+  `call.ts` recaptures when `cameraChanged` is true. For a change of `facing`, it asks the camera chain to stop the old camera first.
+  `CameraChain.recapture(prefs, stopFirst?)` in `camera-chain.ts` has a stop-first path, because many phones cannot open both cameras at the same time. If the new camera fails, the old camera opens again and the error goes on to the caller. The new private `adopt` holds the tail that both paths share.
+  The call view (`PhoneCallSheet.tsx`) has a "flip" button beside "chat" while the user's camera is on. The back camera is not mirrored.
+  In the call on an iPhone or an iPad, the view shows the note "the call pauses while chalk is in the background". `isAppleMobile` in `phone-call.ts` decides. An iPad reports a Mac platform, so a Mac with touch points counts too. The style is `.chalk-pcall-ios` in `theme.css`.
+  Tests: new `wake-lock.test.ts` and `media-session.test.ts`, with fakes for the browser APIs. New cases in `device-prefs.test.ts` (facing, `flippedFacing`, `cameraChanged`, the facing constraint) and in `phone-call.test.ts` (`isAppleMobile`).
 - **135-8 — row menu on the phone list.** Planned.
   A long-press bottom sheet on list rows with hide, group, rename, and order, reusing the sidebar handlers.
 
@@ -319,6 +334,29 @@ Not verified:
 - Eight audio cards without a scroll (the probe had four).
 - The `ui-sweep.mjs` probe with `--phone`. Its voice shots now land in the call view and not in the old room page. Its step that clicks `voice-cam` finds nothing. That step was already inside a catch.
 
+## Verification of 135-7
+
+The full client chain passed, with 1868 client tests.
+Live probe: Playwright with iPhone 14 emulation, a fake camera, and three desktop users. 8 of 8 checks passed:
+
+- The metadata title of the lock screen is `chalk · lounge` in the call.
+- The iPhone note shows.
+- There is no flip button while the camera is off.
+- The flip button shows while the camera is on.
+- A flip stores `facing` as `environment`, and the camera stays on with a live track and no error.
+- The back camera is not mirrored.
+- A second flip stores `user`.
+- After leave, the metadata is null.
+
+The probe did not observe the wake lock. The browser was headless Chromium, where `navigator.wakeLock` exists. Only the unit tests cover the wake lock.
+
+Not verified on a device:
+
+- That the screen stays on.
+- The lock-screen buttons on Android and on iOS.
+- That a real phone flips without a black frame or a failure.
+- The wake lock in an installed iOS 18.4 app.
+
 ## Known loss
 
 The phone list has no row menu.
@@ -327,7 +365,8 @@ The same loss is in `docs/open-items.md`.
 
 ## Left open
 
-- The 135-5 device checks are open. See the manual checklist.
+- The 135-5 and 135-7 device checks are open. See the manual checklist.
+- 135-6 is not built. Until it is, the app does not nudge its connection when it returns from the background.
 - The call view has no board, no pop-outs, no layout toggle, and no debug drawer. The desktop panel keeps them.
 
 ## Manual checklist
@@ -351,6 +390,12 @@ The same loss is in `docs/open-items.md`.
 - [ ] 135-5: the system back, the Android back gesture, and the iOS edge swipe close the call view. Each returns to the screen under it, and the call continues.
 - [ ] 135-5: eight people in a call. All cards show without a scroll.
 - [ ] 135-5: on a small phone, the controls of the call view are 44 px or more. The foot clears the home indicator.
+- [ ] 135-7: a call on an Android phone and on an iPhone. The screen stays on. Lock the phone and unlock it. The screen stays on again.
+- [ ] 135-7: an installed iOS 18.4 app. The screen stays on during a call.
+- [ ] 135-7: lock the phone in a call. On Android, the lock screen shows the call with the microphone, camera, and hang up buttons. On iOS, it shows the microphone and camera buttons. Each button works.
+- [ ] 135-7: tap "flip" on a real phone. The back camera shows without a black frame or an error. A second tap returns to the front camera.
+- [ ] 135-7: pick a camera in the settings after a flip. The picked camera shows, and a phone without the back camera keeps the camera it has.
+- [ ] 135-7: an iPhone. The note about the background shows in the call.
 - [ ] 135-7: an interrupted call, such as an incoming phone call.
 - [ ] 135-7: an audio route change, such as a headset plugged in or removed.
 - [ ] 135-7: recovery after the user denies and then allows the microphone permission.

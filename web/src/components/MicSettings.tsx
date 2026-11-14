@@ -828,7 +828,7 @@ export function MicSettings({ tab, voicePrefs, onVoicePrefsChange }: MicSettings
             fallbackName="camera"
             devices={devices.videoinput}
             value={dev.cameraId}
-            onChange={(cameraId) => setDev({ cameraId })}
+            onChange={(cameraId) => setDev({ cameraId, facing: "" })}
             testId="camera-device"
           />
 

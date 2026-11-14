@@ -136,7 +136,7 @@ import {
   shouldDropCandidate,
   type NetPrefs,
 } from "./net-prefs";
-import { cameraConstraints, loadDevicePrefs, type DevicePrefs } from "./device-prefs";
+import { cameraChanged, cameraConstraints, loadDevicePrefs, type DevicePrefs } from "./device-prefs";
 import { VoiceDiagRing, describePair } from "./diag";
 export type { VoiceDiagEvent } from "./diag";
 import { SpeakingTracker, SPEAKING_POLL_MS } from "./speaking";
@@ -803,6 +803,7 @@ export class VoiceCall {
 
   /**
    * applyDevicePrefs (44-9) pushes a camera change into the live call.
+   * A camera change is a new cameraId or a new facing (135-7).
    *
    * The output device is not handled here: playback belongs to the <audio>
    * elements VoiceSinks owns, and this class never touches them.
@@ -820,7 +821,7 @@ export class VoiceCall {
     if (prev.backgroundBlur !== next.backgroundBlur) {
       await this.applyBackgroundBlur(next.backgroundBlur);
     }
-    if (prev.cameraId === next.cameraId) return;
+    if (!cameraChanged(prev, next)) return;
     // No graph: either an audio-only join (which picks the new camera up when
     // the mid-call add acquires) or the raw-publish fallback, where there is
     // no stable published track to swap behind. A fresh join reads the pref
@@ -835,13 +836,15 @@ export class VoiceCall {
     }
 
     try {
-      await this.cameraChain.recapture(next);
+      // 135-7: a flip between front and back stops the old camera first.
+      const flip = prev.facing !== next.facing;
+      await this.cameraChain.recapture(next, flip ? { fallback: prev } : undefined);
     } catch (err) {
       this.devicePrefs = prev;
       this.o.callbacks.onError(describeMediaError("camera", err) + " — kept the previous camera");
       return;
     }
-    this.diag(`camera switched: device=${next.cameraId || "default"}`);
+    this.diag(`camera switched: device=${next.cameraId || "default"} facing=${next.facing || "default"}`);
   }
 
   /**

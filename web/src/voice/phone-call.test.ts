@@ -94,3 +94,11 @@ test("screen share needs getDisplayMedia", () => {
   assert.equal(canShareScreen({}), false);
   assert.equal(canShareScreen({ getDisplayMedia: () => null }), true);
 });
+
+test("iPhone and iPad are Apple mobile, a Mac without touch and Android are not", async () => {
+  const { isAppleMobile } = await import("./phone-call");
+  assert.equal(isAppleMobile("Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X)", "iPhone", 5), true);
+  assert.equal(isAppleMobile("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "MacIntel", 5), true);
+  assert.equal(isAppleMobile("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "MacIntel", 0), false);
+  assert.equal(isAppleMobile("Mozilla/5.0 (Linux; Android 15; Pixel 9)", "Linux armv8l", 5), false);
+});

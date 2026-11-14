@@ -10,7 +10,8 @@ import type { ChannelSummary, VoiceParticipant } from "../state/types";
 import { voiceSession } from "../voice/session";
 import { fmtDuration } from "../voice/duration";
 import { railTiles, type RailTile } from "../voice/rail-tiles";
-import { callLayout, canShareScreen, cardColumns, stageGrid } from "../voice/phone-call";
+import { callLayout, canShareScreen, cardColumns, isAppleMobile, stageGrid } from "../voice/phone-call";
+import { flippedFacing, useDevicePrefs } from "../voice/device-prefs";
 import { Avatar } from "./Avatar";
 import { occupantName } from "./Sidebar";
 import { DeafIcon, MicOffIcon, ScreenIcon } from "./VoiceBadges";
@@ -45,6 +46,11 @@ interface Props {
   onOpenSettings: () => void;
 }
 
+// 135-7: iOS suspends the page, and the call, while it is in the background.
+const APPLE_MOBILE =
+  typeof navigator !== "undefined" &&
+  isAppleMobile(navigator.userAgent, navigator.platform, navigator.maxTouchPoints ?? 0);
+
 // A swipe down on the head that goes past this closes the view.
 const CLOSE_DRAG_PX = 90;
 // Two taps on a video within this time show it large.
@@ -53,6 +59,9 @@ const DOUBLE_TAP_MS = 280;
 /** PhoneCallSheet draws the call view of one room. */
 export function PhoneCallSheet(p: Props) {
   const snap = useVoiceSession();
+  // 135-7: the camera the flip button chose. The back camera is not mirrored.
+  const [dev, setDev] = useDevicePrefs();
+  const mirrorSelf = dev.facing !== "environment";
   const [, setTick] = useState(0);
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [personKey, setPersonKey] = useState<string | null>(null);
@@ -229,7 +238,7 @@ export function PhoneCallSheet(p: Props) {
               data-testid="phone-call-card"
               data-peer={t.key}
             >
-              {t.hasLiveVideo && t.stream && <TileVideo stream={t.stream} mirrored={t.isSelf} />}
+              {t.hasLiveVideo && t.stream && <TileVideo stream={t.stream} mirrored={t.isSelf && mirrorSelf} />}
               <span class="chalk-pcall-name">{tileName(t)}</span>
               <span class="chalk-pcall-badge">{badge(t)}</span>
               {face(t)}
@@ -260,7 +269,7 @@ export function PhoneCallSheet(p: Props) {
             ))}
             {layout.corner?.stream && (
               <div class="chalk-pcall-corner" data-testid="phone-call-corner">
-                <TileVideo stream={layout.corner.stream} mirrored />
+                <TileVideo stream={layout.corner.stream} mirrored={mirrorSelf} />
               </div>
             )}
           </div>
@@ -287,6 +296,11 @@ export function PhoneCallSheet(p: Props) {
       )}
 
       {inCall && snap.error && <div class="chalk-pcall-error">{snap.error}</div>}
+      {inCall && APPLE_MOBILE && (
+        <div class="chalk-pcall-note chalk-pcall-ios" data-testid="phone-call-ios-note">
+          the call pauses while chalk is in the background
+        </div>
+      )}
       {snap.audioBlocked && inCall && (
         <div class="chalk-pcall-note chalk-pcall-nudge" data-testid="phone-call-nudge">
           tap anywhere to turn on the sound
@@ -302,6 +316,20 @@ export function PhoneCallSheet(p: Props) {
             chat
             {p.chatUnread && <span class="chalk-pcall-dot" aria-label="unread messages" />}
           </button>
+          {inCall && snap.camOn && (
+            <button
+              type="button"
+              class="chalk-pcall-chat"
+              onClick={() => setDev({ cameraId: "", facing: flippedFacing(dev.facing) })}
+              aria-label="switch between the front and the back camera"
+              data-testid="phone-call-flip"
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 9a8 8 0 0 1 14-3l2 2M20 15a8 8 0 0 1-14 3l-2-2M20 4v4h-4M4 20v-4h4" />
+              </svg>
+              flip
+            </button>
+          )}
         </div>
         {inCall && (
           <div class="chalk-pcall-controls" data-testid="phone-call-controls">

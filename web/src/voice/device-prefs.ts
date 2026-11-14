@@ -15,9 +15,10 @@
 // browsers implement it. canChooseOutput() is what the UI asks before offering
 // a picker nothing can act on.
 //
-// The pure half (normalizeDevicePrefs, cameraConstraints) is unit-tested; the
-// localStorage wrappers and the DOM helpers are not, which is the convention
-// mic-prefs and net-prefs already set.
+// The pure half (normalizeDevicePrefs, cameraConstraints, flippedFacing,
+// cameraChanged) is unit-tested; the localStorage wrappers and the DOM
+// helpers are not, which is the convention mic-prefs and net-prefs already
+// set.
 
 import { useCallback, useEffect, useState } from "preact/hooks";
 
@@ -32,7 +33,15 @@ export interface DevicePrefs {
    * camera and CPU, so "on" on the desktop should not follow you to the phone.
    */
   backgroundBlur: boolean;
+  /**
+   * 135-7: the camera that the phone's flip button chose: "user" (front) or
+   * "environment" (back). "" means none. It wins over cameraId, and the
+   * settings picker clears it.
+   */
+  facing: CameraFacing;
 }
+
+export type CameraFacing = "" | "user" | "environment";
 
 const STORAGE_KEY = "chalk.devices.v1";
 
@@ -40,6 +49,7 @@ export const DEFAULT_DEVICE_PREFS: DevicePrefs = {
   cameraId: "",
   outputId: "",
   backgroundBlur: false,
+  facing: "",
 };
 
 /** normalizeDevicePrefs fills every field from a possibly-garbage stored value.
@@ -54,6 +64,7 @@ export function normalizeDevicePrefs(raw: unknown): DevicePrefs {
       typeof o.backgroundBlur === "boolean"
         ? o.backgroundBlur
         : DEFAULT_DEVICE_PREFS.backgroundBlur,
+    facing: o.facing === "user" || o.facing === "environment" ? o.facing : "",
   };
 }
 
@@ -66,7 +77,21 @@ export function normalizeDevicePrefs(raw: unknown): DevicePrefs {
  * good webcam shouldn't lock you out of the call.
  */
 export function cameraConstraints(prefs: DevicePrefs): MediaTrackConstraints | boolean {
+  // 135-7: a plain hint too, so a phone without that camera uses the one it has.
+  if (prefs.facing) return { facingMode: prefs.facing };
   return prefs.cameraId ? { deviceId: prefs.cameraId } : true;
+}
+
+/** flippedFacing returns the camera the flip button turns to. With no
+ * facing chosen, the phone shows the front camera, so a flip goes to the
+ * back. (135-7) */
+export function flippedFacing(current: CameraFacing): "user" | "environment" {
+  return current === "environment" ? "user" : "environment";
+}
+
+/** cameraChanged reports whether two prefs ask for a different camera. */
+export function cameraChanged(a: DevicePrefs, b: DevicePrefs): boolean {
+  return a.cameraId !== b.cameraId || a.facing !== b.facing;
 }
 
 export function loadDevicePrefs(): DevicePrefs {

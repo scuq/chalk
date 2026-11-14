@@ -16,6 +16,10 @@ The engineering-level history (which slice shipped what) lives in
 - On a phone, a call now has a bar above the message box on every screen. The bar has mute and leave buttons.
 - On a phone, a tap on the call bar opens a full-screen call view with everyone in the call and large controls.
 - In the phone call view, a tap on a person opens a sheet with their volume and a mute for you only.
+- On a phone, chalk asks the browser to keep the screen on during a call. This is not yet checked on a phone.
+- On a phone, chalk shows the call on the lock screen with buttons for the microphone, the camera, and hang up. A phone shows only the buttons it supports. This is not yet checked on a phone.
+- On a phone, a flip button in the call view switches between the front and the back camera while your camera is on. The back camera is not mirrored.
+- On an iPhone or an iPad, the call view says that the call pauses while chalk is in the background.
 
 ### Changed
 - On a phone, a tap on a voice room opens the call view and asks you to tap join. Before, a tap joined the call.

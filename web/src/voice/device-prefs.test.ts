@@ -12,7 +12,7 @@ import {
 } from "./device-prefs.ts";
 
 test("normalize keeps a valid pref untouched", () => {
-  const prefs = { cameraId: "cam-1", outputId: "spk-2", backgroundBlur: true };
+  const prefs = { cameraId: "cam-1", outputId: "spk-2", backgroundBlur: true, facing: "user" as const };
   assert.deepEqual(normalizeDevicePrefs(prefs), prefs);
 });
 
@@ -71,4 +71,27 @@ test("upgrading from a pre-52 stored pref keeps the devices", () => {
   assert.equal(p.cameraId, "cam-1");
   assert.equal(p.outputId, "spk-2");
   assert.equal(p.backgroundBlur, false);
+});
+
+// ---- 135-7: the flip between the front and the back camera ----
+
+test("facing survives a round trip, and junk reads as none", async () => {
+  const { flippedFacing, cameraChanged } = await import("./device-prefs");
+  assert.equal(normalizeDevicePrefs({ facing: "environment" }).facing, "environment");
+  assert.equal(normalizeDevicePrefs({ facing: "user" }).facing, "user");
+  assert.equal(normalizeDevicePrefs({ facing: "sideways" }).facing, "");
+  assert.equal(normalizeDevicePrefs({ facing: 1 }).facing, "");
+  assert.equal(flippedFacing(""), "environment");
+  assert.equal(flippedFacing("environment"), "user");
+  assert.equal(flippedFacing("user"), "environment");
+  const base = normalizeDevicePrefs({});
+  assert.equal(cameraChanged(base, { ...base, facing: "user" }), true);
+  assert.equal(cameraChanged(base, { ...base, cameraId: "x" }), true);
+  assert.equal(cameraChanged(base, { ...base, outputId: "y" }), false);
+});
+
+test("a chosen facing wins over a chosen camera, as a plain hint", () => {
+  const p = normalizeDevicePrefs({ cameraId: "cam-1", facing: "environment" });
+  assert.deepEqual(cameraConstraints(p), { facingMode: "environment" });
+  assert.deepEqual(cameraConstraints({ ...p, facing: "" }), { deviceId: "cam-1" });
 });

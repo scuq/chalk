@@ -70,3 +70,10 @@ export function barLine(s: BarState): string {
 export function canShareScreen(mediaDevices: unknown): boolean {
   return !!mediaDevices && typeof (mediaDevices as { getDisplayMedia?: unknown }).getDisplayMedia === "function";
 }
+
+/** isAppleMobile reports whether the browser runs on an iPhone or an iPad.
+ * iOS suspends a web page in the background, and the call with it. An iPad
+ * reports a Mac platform, so a Mac with touch points counts too. (135-7) */
+export function isAppleMobile(userAgent: string, platform: string, maxTouchPoints: number): boolean {
+  return /iPhone|iPad|iPod/.test(userAgent) || (platform === "MacIntel" && maxTouchPoints > 1);
+}

@@ -391,14 +391,40 @@ export class CameraChain {
   }
 
   /**
-   * recapture swaps in a new camera without disturbing the published track:
-   * capture first, and only tear the old one down once the new one is in
-   * hand, so a camera that is gone or busy leaves the user still visible.
-   * The rule MicChain.recapture follows, for the same reason.
+   * recapture swaps in a new camera without disturbing the published track.
+   * By default it captures first, and it tears the old camera down only
+   * after the new one is in hand, so a camera that is gone or busy leaves
+   * the user still visible. The rule MicChain.recapture follows, for the
+   * same reason.
+   *
+   * 135-7: with stopFirst, it stops the old camera before it captures,
+   * because many phones cannot open the front and the back camera at the
+   * same time. If the new capture fails, it opens the camera of
+   * stopFirst.fallback again, and it rejects with the error of the new
+   * capture.
    */
-  async recapture(prefs: DevicePrefs): Promise<void> {
+  async recapture(prefs: DevicePrefs, stopFirst?: { fallback: DevicePrefs }): Promise<void> {
     if (this.closed) return;
+    // 135-7: many phones cannot open the front and the back camera at the
+    // same time, so a flip stops the old camera first. If the new one fails,
+    // the old one opens again and the error goes on to the caller.
+    if (stopFirst) {
+      for (const t of this.raw.getTracks()) t.stop();
+      let next: MediaStream;
+      try {
+        next = await navigator.mediaDevices.getUserMedia({ video: cameraConstraints(prefs) });
+      } catch (err) {
+        await this.recapture(stopFirst.fallback).catch(() => {});
+        throw err;
+      }
+      return this.adopt(next);
+    }
     const next = await navigator.mediaDevices.getUserMedia({ video: cameraConstraints(prefs) });
+    return this.adopt(next);
+  }
+
+  // Puts a freshly captured camera behind the published track.
+  private async adopt(next: MediaStream): Promise<void> {
     if (this.closed) {
       for (const t of next.getTracks()) t.stop();
       return;

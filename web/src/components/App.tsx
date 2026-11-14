@@ -323,6 +323,9 @@ import { voiceBus } from "../voice/bus";
 import { voiceSession } from "../voice/session";
 import { applyRemoteMicPrefs, setMicPrefsPublisher } from "../voice/mic-prefs"; // 44-4
 import { installVoiceHotkeys } from "../voice/hotkeys";
+import { installWakeLock } from "../voice/wake-lock"; // 135-7
+import { installMediaSession } from "../voice/media-session"; // 135-7
+import { toggleCamOrEnable } from "./VoiceControls";
 import { installParkingHotkey } from "../parking-hotkey";
 import { installIdleWatch, type IdleWatch } from "../presence/idle";
 import { useIdlePrefs } from "../presence/idle-prefs";
@@ -4082,6 +4085,30 @@ export function App() {
   // the app's lifetime -- the handlers no-op when nothing is bound, and the
   // session ignores mute/deafen outside a call.
   useEffect(() => installVoiceHotkeys(), []);
+  // 135-7: on the phone, the screen stays on during a call, and the call
+  // shows on the lock screen with mute, camera, and hang up.
+  useEffect(() => {
+    if (!zuckerActive) return;
+    const offLock = installWakeLock(
+      voiceSession,
+      navigator as unknown as Parameters<typeof installWakeLock>[1],
+      document,
+    );
+    const offMedia = installMediaSession(
+      voiceSession,
+      ("mediaSession" in navigator ? navigator.mediaSession : undefined) as unknown as Parameters<typeof installMediaSession>[1],
+      typeof MediaMetadata === "function" ? (MediaMetadata as unknown as Parameters<typeof installMediaSession>[2]) : undefined,
+      {
+        toggleMic: () => voiceSession.toggleMute(),
+        toggleCam: toggleCamOrEnable,
+        hangUp: () => void voiceSession.leave(),
+      },
+    );
+    return () => {
+      offLock();
+      offMedia();
+    };
+  }, [zuckerActive]);
 
   // 53-3: everything parking has to do to the shell, in one place, so the
   // sidebar row and the boss key cannot drift apart. The reducer takes care of

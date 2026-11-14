@@ -12122,6 +12122,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-size: var(--chalk-size-small);
 }
 
+.chalk-pcall-ios {
+  flex: none;
+  padding: var(--chalk-s1) var(--chalk-s3);
+  border-top: 1px solid var(--chalk-border);
+}
+
 .chalk-pcall-nudge {
   flex: none;
   padding: var(--chalk-s1) var(--chalk-s3);
