@@ -4,7 +4,8 @@
 // Each layer on the phone is one browser history entry. The Android back
 // button and the iOS back gesture then remove the top layer. The URL does
 // not change. An entry stores its depth in history.state.chalkDepth. The
-// list is depth 1. A chat, a thread, and a panel each add one.
+// list is depth 1. A chat, a thread, a panel, a call view, and a row sheet
+// each add one.
 //
 // Four rules keep the history and the state equal:
 //   - The app opens a layer: history follows state. The app pushes entries.
@@ -19,14 +20,16 @@ export interface PhoneLayers {
   panel: boolean;
   /** 135-5: the call view over the screen. */
   call: boolean;
+  /** 135-8: the sheet of a list row. */
+  menu: boolean;
 }
 
 /** One action that closes one layer. */
-export type PopStep = "close-panel" | "close-call" | "close-thread" | "to-list";
+export type PopStep = "close-menu" | "close-panel" | "close-call" | "close-thread" | "to-list";
 
 /** stackDepth returns the number of history entries the open layers need. */
 export function stackDepth(l: PhoneLayers): number {
-  return 1 + (l.screen === "chat" ? 1 : 0) + (l.thread ? 1 : 0) + (l.panel ? 1 : 0) + (l.call ? 1 : 0);
+  return 1 + (l.screen === "chat" ? 1 : 0) + (l.thread ? 1 : 0) + (l.panel ? 1 : 0) + (l.call ? 1 : 0) + (l.menu ? 1 : 0);
 }
 
 /** historyDepth returns the depth stored in the state of a history entry.
@@ -53,6 +56,7 @@ export function popSteps(l: PhoneLayers, toDepth: number): PopStep[] {
   const steps: PopStep[] = [];
   let depth = stackDepth(l);
   const order: [PopStep, boolean][] = [
+    ["close-menu", l.menu],
     ["close-panel", l.panel],
     ["close-call", l.call],
     ["close-thread", l.thread],

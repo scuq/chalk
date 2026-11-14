@@ -38,8 +38,8 @@ test("the controls are 64px, muted is amber, and leave is red", () => {
   assert.match(block(".chalk-pcall-ctl--leave"), /color:\s*var\(--chalk-error\)/);
 });
 
-test("nothing in the call view moves under reduced motion", () => {
-  const m = /@media \(prefers-reduced-motion: reduce\) \{\s*\.chalk-pcall,\s*\.chalk-pcall--speaking,\s*\.chalk-pcall-level i \{\s*animation:\s*none !important;/.exec(css);
+test("nothing in the call view or the row sheet moves under reduced motion", () => {
+  const m = /@media \(prefers-reduced-motion: reduce\) \{\s*\.chalk-pcall,\s*\.chalk-prow-sheet,\s*\.chalk-pcall--speaking,\s*\.chalk-pcall-level i \{\s*animation:\s*none !important;/.exec(css);
   assert.ok(m, "no reduced-motion rule for the call view");
 });
 

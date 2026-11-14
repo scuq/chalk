@@ -13,6 +13,7 @@
 
 import type { ComponentChildren } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
+import { LONG_PRESS_MS, pressMoved } from "../chat/long-press"; // 135-8
 import {
   splitVoice,
   type ZuckerFriend,
@@ -32,9 +33,10 @@ import { presenceClass, presenceLabel } from "../chat/presence";
 
 interface Props {
   rows: ZuckerRow[];
-  // 78-3: conversations this user has hidden from their roster (the sidebar
-  // menu is where that happens). Held behind a "hidden" row under the list
-  // so the two views agree about what the roster looks like.
+  // 78-3: conversations this user has hidden from their roster. The sidebar
+  // menu hides them, and the row sheet (135-8) hides them on the phone. Held
+  // behind a "hidden" row under the list so the two views agree about what
+  // the roster looks like.
   hiddenRows?: ZuckerRow[];
   presence: PresenceMap;
   friends: ZuckerFriend[];
@@ -67,6 +69,9 @@ interface Props {
    * hidden element loses its scroll offset. The list saves the offset of
    * its rows on scroll and restores it when this prop becomes true. */
   shown?: boolean;
+  /** 135-8: called with the channel id when a long press or a right-click
+   * on a row asks for its sheet. */
+  onRowMenu?: (channelID: string) => void;
 }
 
 export function ZuckerList({
@@ -89,7 +94,44 @@ export function ZuckerList({
   waves,
   scene,
   shown = true,
+  onRowMenu,
 }: Props) {
+  // 135-8: one long press at a time. The fired flag stops the click that
+  // ends a long press from also opening the conversation.
+  const press = useRef<{ id: string; x: number; y: number; timer: number } | null>(null);
+  const fired = useRef(false);
+  const endPress = () => {
+    if (press.current) window.clearTimeout(press.current.timer);
+    press.current = null;
+  };
+  const pressHandlers = (id: string) =>
+    onRowMenu
+      ? {
+          onPointerDown: (e: PointerEvent) => {
+            if (e.button !== 0) return;
+            endPress();
+            fired.current = false;
+            const timer = window.setTimeout(() => {
+              press.current = null;
+              fired.current = true;
+              onRowMenu(id);
+            }, LONG_PRESS_MS);
+            press.current = { id, x: e.clientX, y: e.clientY, timer };
+          },
+          onPointerMove: (e: PointerEvent) => {
+            const p = press.current;
+            if (p && pressMoved(e.clientX - p.x, e.clientY - p.y)) endPress();
+          },
+          onPointerUp: endPress,
+          onPointerCancel: endPress,
+          onContextMenu: (e: MouseEvent) => {
+            e.preventDefault();
+            endPress();
+            fired.current = true;
+            onRowMenu(id);
+          },
+        }
+      : {};
   const rowsRef = useRef<HTMLUListElement>(null);
   const rowsScroll = useRef(0);
   useLayoutEffect(() => {
@@ -148,7 +190,14 @@ export function ZuckerList({
         <button
           type="button"
           class={`chalk-zucker-row ${hidden ? "chalk-zucker-row--hidden" : ""}`}
-          onClick={() => onSelect(r.id)}
+          onClick={() => {
+            if (fired.current) {
+              fired.current = false;
+              return;
+            }
+            onSelect(r.id);
+          }}
+          {...pressHandlers(r.id)}
           data-testid="zucker-row"
           data-channel-id={r.id}
           data-hidden={hidden ? "true" : "false"}

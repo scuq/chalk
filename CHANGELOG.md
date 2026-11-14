@@ -19,6 +19,7 @@ The engineering-level history (which slice shipped what) lives in
 - In the phone call view, a tap on a person opens a sheet with their volume and a mute for you only.
 - On a phone, chalk asks the browser to keep the screen on during a call. This is not yet checked on a phone.
 - On a phone, chalk shows the call on the lock screen with buttons for the microphone, the camera, and hang up. A phone shows only the buttons it supports. This is not yet checked on a phone.
+- On a phone, a long press on a conversation in the list opens a menu. The menu changes its notifications, hides it or shows it again, and moves it to a group. As the owner, you can also rename it.
 - On a phone, a flip button in the call view switches between the front and the back camera while your camera is on. The back camera is not mirrored.
 - On an iPhone or an iPad, the call view says that the call pauses while chalk is in the background.
 

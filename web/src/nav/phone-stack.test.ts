@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { historyDepth, hasDepth, popSteps, reconcile, stackDepth, type PhoneLayers } from "./phone-stack";
 
-const L = (screen: "list" | "chat", thread = false, panel = false, call = false): PhoneLayers => ({ screen, thread, panel, call });
+const L = (screen: "list" | "chat", thread = false, panel = false, call = false, menu = false): PhoneLayers => ({ screen, thread, panel, call, menu });
 
 test("the list is depth 1, and each open layer adds one", () => {
   assert.equal(stackDepth(L("list")), 1);
@@ -50,4 +50,9 @@ test("the call view is a layer above the chat and below a panel", () => {
   assert.equal(stackDepth(L("chat", false, false, true)), 3);
   assert.deepEqual(popSteps(L("chat", false, true, true), 2), ["close-panel", "close-call"]);
   assert.deepEqual(popSteps(L("list", false, false, true), 1), ["close-call"]);
+});
+
+test("a row sheet is the top layer and closes first", () => {
+  assert.equal(stackDepth(L("list", false, false, false, true)), 2);
+  assert.deepEqual(popSteps(L("list", false, true, false, true), 1), ["close-menu", "close-panel"]);
 });

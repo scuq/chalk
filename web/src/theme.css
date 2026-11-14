@@ -10837,6 +10837,11 @@ body.chalk-resizing-y .chalk-composer-resizer {
     font: inherit;
     text-align: left;
     cursor: pointer;
+    /* 135-8: a long press opens the row's sheet, so the press must not
+       select text or raise the browser's own callout. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
 
   .chalk-zucker-row-badge {
@@ -12581,8 +12586,61 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-size: var(--chalk-size-small);
 }
 
+/* 135-8: the sheet of a phone list row. It uses the call view's sheet and
+   rows, over a backdrop that covers the whole screen. */
+.chalk-prow-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.chalk-prow-sheet {
+  max-height: 80%;
+  overflow-y: auto;
+  animation: chalk-pcall-in 160ms ease-out;
+}
+
+.chalk-prow-label {
+  flex: none;
+  min-width: 96px;
+  color: var(--chalk-fg-dim);
+}
+
+.chalk-prow-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 var(--chalk-s2);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  background: var(--chalk-bg);
+  color: var(--chalk-fg);
+  font: inherit;
+}
+
+.chalk-prow-reset {
+  flex: none;
+  min-height: 44px;
+  padding: 0 var(--chalk-s3);
+  border: 1px solid var(--chalk-border);
+  border-radius: var(--chalk-radius);
+  background: none;
+  color: var(--chalk-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.chalk-pcall-sheet-item .chalk-notify-priority-select {
+  flex: 1 1 auto;
+  min-height: 44px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chalk-pcall,
+  .chalk-prow-sheet,
   .chalk-pcall--speaking,
   .chalk-pcall-level i {
     animation: none !important;

@@ -153,3 +153,24 @@ export function saveCollapsedGroups(collapsed: Set<string>): void {
     // Nothing to do; the fold still applies until reload.
   }
 }
+
+/** What a typed group name changes, for the sidebar menu and the phone
+ * sheet (135-8). "clear" drops the override, because the name is the
+ * creator's suggestion again. "set" stores the canonical name. null means
+ * no change. */
+export type GroupChange = { kind: "clear" } | { kind: "set"; group: string } | null;
+
+/** groupDraftChange returns what a typed group name changes for a channel. */
+export function groupDraftChange(
+  ch: ChannelSummary,
+  draft: string,
+  known: string[],
+  overrides: Record<string, string> = {},
+): GroupChange {
+  const next = canonicalizeGroup(draft, known);
+  const suggested = ch.groupName.trim() || DEFAULT_GROUP;
+  if (next.toLowerCase() === suggested.toLowerCase()) {
+    return overrides[ch.id] !== undefined ? { kind: "clear" } : null;
+  }
+  return next !== effectiveGroup(ch, overrides) ? { kind: "set", group: next } : null;
+}

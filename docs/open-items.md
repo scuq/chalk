@@ -9,17 +9,17 @@ Latest release: **v0.11.3** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 135 is the newest work. It is in progress: 135-1 to 135-7
-are built, and 135-8 is planned.
+Phase 135 is the newest work. All eight slices are built. The device checks
+are open.
 Phase 133 is built, with the voice room, and seven points of it are open.
 Phase 131 has two small open points.
 Phase 130 has two open points. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
 
-## Phase 135 — phone: IN PROGRESS, 135-1 to 135-7 built
+## Phase 135 — phone: built, the device checks are open
 
-135-1 to 135-7, record in [phases/PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md).
+135-1 to 135-8, record in [phases/PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md).
 The chat list is the only phone layout. The menu button, the slide-in channel
 list, the Zuckermode setting, and the `roster.viewMode` preference are gone. The
 phone does not mount the sidebar (135-2). `VoiceSinks`, the audio of a call,
@@ -36,10 +36,17 @@ microphone, camera, and hang up where the phone supports them. A flip button
 switches between the front and the back camera (135-7). The owner chose to
 build 135-7 before 135-6. When the page shows again, the client reconnects at
 once or checks the open socket with a ping, and an answer with the same ref
-proves it (135-6). 135-8 is planned and has no code.
+proves it (135-6). A long press or a right-click on a list row opens a sheet
+with notifications, hide, group, and, for the owner, rename (135-8). The sheet
+is a history layer, and the sidebar and the sheet call the same handlers.
 
-- **The phone list has no row menu.** Hide, group, rename, manual order, and
-  the nick colour of a friend are not reachable on a phone until 135-8.
+- **Three things are not on the phone.** The order within a group has no
+  effect on the phone list, which sorts by newest activity. The channel header
+  image has a desktop dialog as its editor. The nick colour of a friend is in
+  the friend-row menu of the sidebar.
+- **The 135-8 device checks are open.** The live probe used a mouse long press
+  with emulation. Not tested on a device: a finger long press on iOS and on
+  Android, and the iOS text-selection callout.
 - **A tab that did not reload can still show the old drawer.** The update
   banner reloads it.
 - **The spec `test/e2e/mobile.spec.ts` is not executed.** Its header says why.

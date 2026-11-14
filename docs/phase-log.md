@@ -126,6 +126,7 @@ as-built rather than a contemporaneous plan.
 | 132 | friend columns — compact friend rows, and a two-column friends list when the names fit the sidebar | [PHASE-132-FRIENDCOLUMNS.md](phases/PHASE-132-FRIENDCOLUMNS.md) |
 | 133 | polish — semantic tokens and a refined shell, one look for hover, selected, and unread in every theme, and an adaptive voice room | [PHASE-133-POLISH.md](phases/PHASE-133-POLISH.md) |
 | 134 | chaos mode — one list of the text channels, newest activity on top, and each row shows its group as a small tag | [PHASE-134-CHAOS.md](phases/PHASE-134-CHAOS.md) |
+| 135 | phone — the chat list is the phone layout, with a call bar and view, back-gesture layers, and a row sheet *(device checklist open)* | [PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
@@ -876,6 +877,18 @@ name of its group, at the right end of the row. The tag shows only if more than
 one group exists. Voice rows and hidden rows get no tag. When the row is short
 of space, the tag shortens before the channel name does. Every change is in the
 client.
+
+**135 — phone** (2026-11-13 to 2026-11-14). The phone had a drawer for the
+channel list, and a call had no single screen. 135-1 made the chat list the
+only phone layout and removed the drawer. 135-2 stopped the phone from
+mounting the sidebar. 135-3 made each layer a history entry, so the back
+button and the back gesture close the top layer. 135-4 made tap targets 44 px
+and stopped pull-to-refresh. 135-5 added a call bar and a full-screen call
+view. 135-6 made the client check the socket with a ping when the page returns
+from the background. 135-7 added the wake lock, the lock-screen controls, and
+the camera flip. 135-8 added a sheet for a list row, opened by a long press or
+a right-click, with notifications, hide, group, and the owner's rename. Every
+change is in the client. The device checks are open.
 
 **Not started.** 65 (web push), 86 (ties), 87
 (message reminders), 90 (a local idle agent) and 99 (database-credential

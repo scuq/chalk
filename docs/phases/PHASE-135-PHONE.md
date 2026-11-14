@@ -1,6 +1,6 @@
 # Phase 135 — phone: the chat list is the phone layout, with a call bar and a call view
 
-**Status:** in progress. 135-1 and 135-2 are built (2026-11-13). 135-3 to 135-7 are built (2026-11-14), and their device checks are open. The owner chose to build 135-6 after 135-7. 135-8 is planned and has no code.
+**Status:** built in code. All eight slices are built. 135-1 and 135-2 are built (2026-11-13). 135-3 to 135-8 are built (2026-11-14). The owner chose to build 135-6 after 135-7. The device checks of 135-3 to 135-8 are open, in the manual checklist.
 **Tags:** `#zucker`, `#mobile`, `#roster`, `#themes`, `#voice`, `#websocket` → `tools/where.sh -g zucker`
 
 ## The problem
@@ -261,8 +261,21 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
   The call view (`PhoneCallSheet.tsx`) has a "flip" button beside "chat" while the user's camera is on. The back camera is not mirrored.
   In the call on an iPhone or an iPad, the view shows the note "the call pauses while chalk is in the background". `isAppleMobile` in `phone-call.ts` decides. An iPad reports a Mac platform, so a Mac with touch points counts too. The style is `.chalk-pcall-ios` in `theme.css`.
   Tests: new `wake-lock.test.ts` and `media-session.test.ts`, with fakes for the browser APIs. New cases in `device-prefs.test.ts` (facing, `flippedFacing`, `cameraChanged`, the facing constraint) and in `phone-call.test.ts` (`isAppleMobile`).
-- **135-8 — row menu on the phone list.** Planned.
-  A long-press bottom sheet on list rows with hide, group, rename, and order, reusing the sidebar handlers.
+- **135-8 — row menu on the phone list.** Built 2026-11-14.
+  A long press on a list row, or a right-click, opens a bottom sheet for that row. A tap still opens the conversation.
+  `long-press.ts` holds `LONG_PRESS_MS` (500), `LONG_PRESS_SLOP_PX` (10), and the pure `pressMoved`. A press held 500 ms without a move of more than 10 px opens the sheet.
+  `ZuckerList.tsx` has the new prop `onRowMenu`. A `fired` flag stops the click that ends a long press from also opening the conversation. The `contextmenu` event opens the sheet and cancels the browser menu.
+  In `theme.css` the list row has `user-select: none` and `-webkit-touch-callout: none`, so a press does not select text or raise the browser callout.
+  `PhoneRowSheet.tsx` is the sheet. It has:
+  - Notifications: `PrioritySelect`, with the same notification rules as the sidebar.
+  - "hide until a new message" and "hide". For a hidden row, the sheet has "show in the list again" in place of both.
+  - Group, for text channels only. It is a text field with the known groups, and a reset when the group is overridden.
+  - Name and short name, for the owner of a non-DM channel that is not in democratic mode. The server enforces the same rule.
+  The CSS is `.chalk-prow-*` in the 135-5 block. The sheet reuses the sheet rows of the call view. It does not move with reduced motion.
+  `channel-groups.ts` has the new pure `groupDraftChange`. It returns what a typed group name changes. If the name is the suggestion of the creator again, it clears the override. Otherwise it sets the canonical name, or changes nothing. The sidebar group commit uses it, and its behavior does not change.
+  In `App.tsx` the group, rename, and hide handlers moved out of the sidebar props into the named functions `setChannelGroupPref`, `updateChannelMeta`, and `setChannelHiddenPref`. The sidebar and the phone sheet both call them.
+  The sheet is a history layer. `menu` in `phone-stack.ts` is closed first, by the step `close-menu`, so the back gesture closes the sheet.
+  Tests: new `long-press.test.ts`. Two new tests in `channel-groups.test.ts`. A menu layer in `phone-stack.test.ts`. `theme-phone-call.test.ts` checks that reduced motion includes the row sheet.
 
 ## Verification of 135-1
 
@@ -395,15 +408,38 @@ Not verified on a device:
 - An installed iOS app with WebKit bug 308073.
 - A laptop that wakes from sleep.
 
-## Known loss
+### Design decisions of 135-8
 
-The phone list has no row menu.
-Hide, group, rename, manual order, and the nick colour of a friend are not reachable on a phone until 135-8.
-The same loss is in `docs/open-items.md`.
+- The gesture is a long press, with a right-click as the second way in. Both open the same sheet. A plain tap is unchanged.
+- The sheet calls the handlers of the sidebar. A group, a hide, or a rename on the phone is the same setting as on the desktop. The server rules do not change.
+- The sheet is a history layer, so the back button and the back gesture close it, as for every other layer.
+- Group is in the sheet, although the phone list shows no groups. It is the same synced setting, and it files the channel in the sidebar on a desktop.
+- The order within a group is not in the sheet. The phone list sorts by newest activity and shows no groups, so an order has no effect there.
+- The channel header image is not in the sheet. Its editor is a desktop dialog.
+- The nick colour of a friend is not on the phone. It is in the friend-row menu of the sidebar.
+
+## Verification of 135-8
+
+The full chain passed, with 1880 client tests.
+Live probe: Playwright with iPhone 14 emulation and a mouse long press. 10 of 10 checks passed:
+
+- A long press opens the sheet and not the chat, at history depth 2.
+- The owner sees the rename and group fields.
+- Back closes the sheet.
+- Hide moves the row to the hidden shelf.
+- A hidden row offers "show in the list again".
+- Show puts the row back.
+- A rename shows in the list.
+- A right-click opens the sheet.
+- A plain tap still opens the chat.
+- The group set on the phone shows in the sidebar on the desktop.
+
+Not verified on a device: a real finger long press on iOS and on Android. The probe used a mouse press. Touch pointer events and the iOS text-selection callout behave differently on a device.
 
 ## Left open
 
-- The 135-5, 135-6, and 135-7 device checks are open. See the manual checklist.
+- The 135-5, 135-6, 135-7, and 135-8 device checks are open. See the manual checklist.
+- The row sheet answers the loss of hide, group, and rename that 135-1 caused. Three things are still not on the phone: the order within a group, the channel header image, and the nick colour of a friend.
 - 135-6 has no HTTP catch-up fallback and no forced reload for a stuck iOS socket beyond the connect timeout. It has no detection of a frozen page by timer drift.
 - The call view has no board, no pop-outs, no layout toggle, and no debug drawer. The desktop panel keeps them.
 
@@ -441,3 +477,5 @@ The same loss is in `docs/open-items.md`.
 - [ ] 135-6: an installed iOS app, after a long time in the background. The app does not stay on a stale list. If it does, record it, because the connect timeout is the only guard for a stuck dial.
 - [ ] 135-6: a laptop that wakes from sleep with chalk open. The connection state returns to open and the missed messages show.
 - [ ] 135-6: switch the phone from Wi-Fi to mobile data and back. The app reconnects when the network returns.
+- [ ] 135-8: a real iPhone and a real Android phone. A finger long press on a list row opens the sheet. The iOS text-selection callout does not show. A scroll that starts on a row does not open the sheet. A tap on a row still opens the chat.
+- [ ] 135-8: on a device, the back gesture closes the sheet. After a hide, a group change, or a rename, the list shows the change.

@@ -299,7 +299,7 @@ import {
   type LiveGroup,
 } from "../chat/roster-order";
 import { rosterLabel } from "../chat/channel-names"; // 106-3
-import { pruneHidden, splitHidden } from "../chat/channel-hide";
+import { pruneHidden, splitHidden, type HideMode } from "../chat/channel-hide";
 import { HISTORY_PAGE_SIZE, pageMarksComplete } from "../chat/history-paging";
 // 61-3: the full-history search crawl.
 import {
@@ -313,6 +313,7 @@ import {
 import { VoiceCallPanel } from "./VoiceCallPanel";
 import { PhoneCallBar } from "./PhoneCallBar"; // 135-5
 import { PhoneCallSheet } from "./PhoneCallSheet"; // 135-5
+import { PhoneRowSheet } from "./PhoneRowSheet"; // 135-8
 import { VoiceSinks, useVoiceRoom } from "./VoiceDock";
 import { CallRail } from "./CallRail"; // 131-1
 import { RecIndicator } from "./RecIndicator"; // 131-9
@@ -811,8 +812,13 @@ export function App() {
   );
   // 135-5: the room whose call view covers the phone screen, or null.
   const [callView, setCallView] = useState<string | null>(null);
+  // 135-8: the list row whose sheet is open, or null.
+  const [rowMenu, setRowMenu] = useState<string | null>(null);
   useEffect(() => {
-    if (!zuckerActive) setCallView(null);
+    if (!zuckerActive) {
+      setCallView(null);
+      setRowMenu(null);
+    }
   }, [zuckerActive]);
   // A leave closes the call view of the room you left.
   const prevCallRoom = useRef<string | null>(railChannelID);
@@ -834,10 +840,12 @@ export function App() {
       thread: state.openThread !== null,
       panel: state.openPanel !== null,
       call: callView !== null,
+      menu: rowMenu !== null,
     },
     (steps) => {
       for (const step of steps) {
-        if (step === "close-panel") dispatch({ kind: "close_panel" });
+        if (step === "close-menu") setRowMenu(null);
+        else if (step === "close-panel") dispatch({ kind: "close_panel" });
         else if (step === "close-call") setCallView(null);
         else if (step === "close-thread") dispatch({ kind: "close_thread" });
         else backToList();
@@ -5952,12 +5960,59 @@ export function App() {
   // block for the message menu it holds.
   const shellStyle = [
     // 33-4: drives the sidebar grid column. Omitted on mobile, where the
-    // sidebar is hidden and has no grid column.
+    // the sidebar is not mounted (135-2) and has no grid column.
     isMobile ? null : `--chalk-sidebar-w:${sidebarWidth}px`,
     chatSwipe.offset !== null ? `--chalk-swipe-x:${chatSwipe.offset}px` : null,
   ]
     .filter(Boolean)
     .join(";");
+
+  // 135-8: the sidebar (desktop) and the phone row sheet both call these
+  // three functions. They moved here from the Sidebar props.
+  const setChannelGroupPref = (channelID: string, group: string | null) => {
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    const current = selectRosterPrefs(state.prefs);
+    // Rebuild keeping only channels still in the roster, so
+    // overrides for channels you've since left don't pile up in
+    // prefs forever. Whole roster object over the wire, as always.
+    const next: Record<string, string> = {};
+    for (const [id, g] of Object.entries(current.groupOverrides)) {
+      if (state.channels[id]) next[id] = g;
+    }
+    if (group === null) delete next[channelID];
+    else next[channelID] = group;
+    c.send(TypePrefsSet, { patch: { roster: { ...current, groupOverrides: next } } });
+  };
+  const updateChannelMeta = (channelID: string, patch: { name?: string; shortName?: string }) => {
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    const payload: UpdateChannelPayload = { channel_id: channelID };
+    if (patch.name !== undefined) payload.name = patch.name;
+    if (patch.shortName !== undefined) payload.short_name = patch.shortName;
+    c.send<UpdateChannelPayload>(TypeUpdateChannel, payload, "upch-" + Date.now());
+  };
+  const setChannelHiddenPref = (channelID: string, mode: HideMode | null) => {
+    const c = clientRef.current;
+    if (!c || !c.isOpen()) return;
+    const current = selectRosterPrefs(state.prefs);
+    const next = pruneHidden(
+      current.hidden,
+      Object.values(state.channels),
+      lastSeqOfChannel,
+    );
+    if (mode === null) {
+      delete next[channelID];
+    } else if (mode === "always") {
+      next[channelID] = { mode: "always" };
+    } else {
+      const ch = state.channels[channelID];
+      // The watermark is the newest message as of right now; the
+      // channel returns as soon as something lands past it.
+      next[channelID] = { mode: "untilNew", seq: ch ? lastSeqOfChannel(ch) : 0 };
+    }
+    c.send(TypePrefsSet, { patch: { roster: { ...current, hidden: next } } });
+  };
 
   return (
     <div
@@ -6108,38 +6163,20 @@ export function App() {
             // 134-1: chaos mode is desktop only.
             chaos={selectRosterPrefs(state.prefs).chaos && !isMobile}
             groupOverrides={selectRosterPrefs(state.prefs).groupOverrides}
-            onSetChannelGroup={(channelID, group) => {
-              const c = clientRef.current;
-              if (!c || !c.isOpen()) return;
-              const current = selectRosterPrefs(state.prefs);
-              // Rebuild keeping only channels still in the roster, so
-              // overrides for channels you've since left don't pile up in
-              // prefs forever. Whole roster object over the wire, as always.
-              const next: Record<string, string> = {};
-              for (const [id, g] of Object.entries(current.groupOverrides)) {
-                if (state.channels[id]) next[id] = g;
-              }
-              if (group === null) delete next[channelID];
-              else next[channelID] = group;
-              c.send(TypePrefsSet, { patch: { roster: { ...current, groupOverrides: next } } });
-            }}
-            // 78-2: hiding a channel. Same shape as the group override above:
-            // per-user, prefs-synced, and rebuilt on every write so entries for
-            // channels you have left -- and watermarks a message has already
-            // passed -- don't pile up.
+            onSetChannelGroup={setChannelGroupPref}
+            // 78-2: hiding a channel. The group override above and the hide
+            // setting are per-user and synced in prefs. setChannelGroupPref
+            // and setChannelHiddenPref (135-8, defined before the return)
+            // rebuild them on every write, so entries for channels you have
+            // left and watermarks that a message has passed do not pile up.
+            // The phone row sheet calls the same functions.
             // 106-3: which name each row shows. 106-2: the owner's rename /
-            // short-name edit, from the same context menu. The ack and the
+            // short-name edit, from the same context menu and from the phone row
+            // sheet (135-8). The ack and the
             // channel_event push carry the result; nothing is applied
             // optimistically, so a refused rename leaves the row untouched.
             nameStyle={selectRosterPrefs(state.prefs).nameStyle}
-            onUpdateChannel={(channelID, patch) => {
-              const c = clientRef.current;
-              if (!c || !c.isOpen()) return;
-              const payload: UpdateChannelPayload = { channel_id: channelID };
-              if (patch.name !== undefined) payload.name = patch.name;
-              if (patch.shortName !== undefined) payload.short_name = patch.shortName;
-              c.send<UpdateChannelPayload>(TypeUpdateChannel, payload, "upch-" + Date.now());
-            }}
+            onUpdateChannel={updateChannelMeta}
             // 111-2/111-9: the banner. The menu picks a file or asks to edit;
             // the upload belongs here, where the channel crypto is -- the blob
             // is encrypted under the channel key exactly like a posted image.
@@ -6186,27 +6223,7 @@ export function App() {
             cardAvatars={showRosterAvatarsPref || (flair && flairFrames) ? state.avatars : undefined}
             attachmentController={attControllerRef.current ?? undefined}
             hiddenChannels={selectRosterPrefs(state.prefs).hidden}
-            onSetChannelHidden={(channelID, mode) => {
-              const c = clientRef.current;
-              if (!c || !c.isOpen()) return;
-              const current = selectRosterPrefs(state.prefs);
-              const next = pruneHidden(
-                current.hidden,
-                Object.values(state.channels),
-                lastSeqOfChannel,
-              );
-              if (mode === null) {
-                delete next[channelID];
-              } else if (mode === "always") {
-                next[channelID] = { mode: "always" };
-              } else {
-                const ch = state.channels[channelID];
-                // The watermark is the newest message as of right now; the
-                // channel returns as soon as something lands past it.
-                next[channelID] = { mode: "untilNew", seq: ch ? lastSeqOfChannel(ch) : 0 };
-              }
-              c.send(TypePrefsSet, { patch: { roster: { ...current, hidden: next } } });
-            }}
+            onSetChannelHidden={setChannelHiddenPref}
             // 114: what order the roster renders in. The reads are the
             // Sidebar's; every write goes through writeRosterOrder, which
             // prunes and size-checks before it sends and hands back a hint
@@ -6414,6 +6431,7 @@ export function App() {
               onCreateChannel={() => dispatch({ kind: "open_create_modal" })}
               countdownNow={countdownNow}
               shown={zuckerScreen === "list"}
+              onRowMenu={(id) => setRowMenu(id)}
             />
           </div>
         )}
@@ -6886,6 +6904,32 @@ export function App() {
           />
         )}
       </footer>
+
+      {/* 135-8: the sheet of a phone list row. */}
+      {zuckerActive && rowMenu !== null && state.channels[rowMenu] && (() => {
+        const ch = state.channels[rowMenu];
+        const roster = selectRosterPrefs(state.prefs);
+        const hiddenNow = zuckerSplit.hidden.some((r) => r.id === rowMenu);
+        const row = [...zuckerSplit.visible, ...zuckerSplit.hidden].find((r) => r.id === rowMenu);
+        return (
+          <PhoneRowSheet
+            key={rowMenu}
+            channel={ch}
+            title={row?.name ?? ch.name}
+            ownUserID={state.user?.id ?? null}
+            hidden={hiddenNow ? roster.hidden[rowMenu] : undefined}
+            overrides={roster.groupOverrides}
+            groupNames={knownGroups(
+              state.channelOrder.map((id) => state.channels[id]).filter((c) => c && c.channelType !== "voice"),
+              roster.groupOverrides,
+            )}
+            onSetHidden={(mode) => setChannelHiddenPref(rowMenu, mode)}
+            onSetGroup={(group) => setChannelGroupPref(rowMenu, group)}
+            onUpdate={(patch) => updateChannelMeta(rowMenu, patch)}
+            onClose={() => setRowMenu(null)}
+          />
+        );
+      })()}
 
       {/* 135-5: the phone's call view, over the screen under it. */}
       {zuckerActive && callView !== null && state.user && (

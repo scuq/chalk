@@ -209,3 +209,20 @@ test("groupTagNames tags each channel with its group's display name", () => {
   assert.equal(tags.get("c"), "Dev");
   assert.equal(tags.get("d"), "Friday-Boardgame-Night");
 });
+
+// ---- 135-8: what a typed group name changes ----------------------------
+
+test("groupDraftChange: the creator's suggestion clears an override, and only an override", async () => {
+  const { groupDraftChange } = await import("./channel-groups");
+  const ch = channel({ id: "c1", groupName: "dev" });
+  assert.deepEqual(groupDraftChange(ch, "DEV", ["dev", "ops"], { c1: "ops" }), { kind: "clear" });
+  assert.equal(groupDraftChange(ch, "dev", ["dev", "ops"], {}), null);
+});
+
+test("groupDraftChange: a new name is stored in the casing the roster already uses", async () => {
+  const { groupDraftChange } = await import("./channel-groups");
+  const ch = channel({ id: "c1", groupName: "dev" });
+  assert.deepEqual(groupDraftChange(ch, "OPS", ["dev", "ops"], {}), { kind: "set", group: "ops" });
+  assert.deepEqual(groupDraftChange(ch, "  music ", ["dev"], {}), { kind: "set", group: "music" });
+  assert.equal(groupDraftChange(ch, "ops", ["dev", "ops"], { c1: "ops" }), null);
+});

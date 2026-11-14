@@ -29,6 +29,7 @@ import {
   DEFAULT_GROUP,
   canonicalizeGroup,
   effectiveGroup,
+  groupDraftChange,
   groupRoster,
   groupTagNames,
   knownGroups,
@@ -849,15 +850,10 @@ export function Sidebar({
     if (!channelMenu || !onSetChannelGroup) return;
     const ch = channels.find((c) => c.id === channelMenu.channelID);
     if (!ch) return;
-    const next = canonicalizeGroup(groupDraft, groupNames);
-    const suggested = ch.groupName.trim() || DEFAULT_GROUP;
-    const current = effectiveGroup(ch, overrides);
-    if (next.toLowerCase() === suggested.toLowerCase()) {
-      if (overrides[ch.id] !== undefined) onSetChannelGroup(ch.id, null);
-    } else if (next !== current) {
-      onSetChannelGroup(ch.id, next);
-    }
-    setGroupDraft(next);
+    const change = groupDraftChange(ch, groupDraft, groupNames, overrides); // 135-8
+    if (change?.kind === "clear") onSetChannelGroup(ch.id, null);
+    else if (change?.kind === "set") onSetChannelGroup(ch.id, change.group);
+    setGroupDraft(canonicalizeGroup(groupDraft, groupNames));
   };
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
     loadCollapsedGroups()
