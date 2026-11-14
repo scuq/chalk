@@ -6,7 +6,8 @@ import type { ComponentChildren } from "preact";
 // of the text (currentColor). The stroke is 2, or 1.8 with the fine prop,
 // which the composer icons use. A hover or selected state in CSS recolors the
 // icon with no extra rule. The voice-status badges and the call controls are
-// not part of this family.
+// not part of this family. The phone list section rows (137-4) also draw
+// from it.
 
 // The base of every icon. With a label, the icon is an image that a screen
 // reader announces. Without a label, the icon is decoration and is hidden
@@ -157,6 +158,17 @@ export function CodeIcon() {
     <Icon size={17} fine>
       <path d="M8 6l-6 6 6 6" />
       <path d="M16 6l6 6-6 6" />
+    </Icon>
+  );
+}
+
+// 137-4: ChevronIcon is the right-pointing arrow of a list section row, 14px.
+// It is decoration. The row button carries aria-expanded, so a screen reader
+// hears the state from the button and not from the icon.
+export function ChevronIcon() {
+  return (
+    <Icon size={14} fine>
+      <path d="M9 6l6 6-6 6" />
     </Icon>
   );
 }

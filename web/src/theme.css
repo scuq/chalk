@@ -10796,6 +10796,58 @@ body.chalk-resizing-y .chalk-composer-resizer {
     color: var(--chalk-fg-dim);
   }
 
+  /* 137-4: the pinned section rows. A pressed row shades and an expanded row
+     has a brighter label, so the open section is visible without a color
+     change. The chevron turns 90 degrees with aria-expanded. A note or an
+     unread dot takes the auto margin, so the chevron sits beside it. The
+     note and the dot both had margin-left: auto before, so the free space
+     split between them and the dot floated mid-row. The sublists fade in.
+     The collapse is instant, because the sublists unmount. The duration
+     tokens are 0 ms under reduced motion. */
+  .chalk-zucker-pinned {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--chalk-dur-fast);
+  }
+
+  .chalk-zucker-pinned:active {
+    background: var(--chalk-bg-hover);
+  }
+
+  .chalk-zucker-pinned[aria-expanded="true"] {
+    color: var(--chalk-fg-bright);
+  }
+
+  .chalk-zucker-chevron {
+    flex: 0 0 auto;
+    display: inline-flex;
+    margin-left: auto;
+    color: var(--chalk-fg-dim);
+    transition: transform var(--chalk-dur);
+  }
+
+  .chalk-zucker-pinned-note ~ .chalk-zucker-chevron,
+  .chalk-zucker-pinned .chalk-unread-dot ~ .chalk-zucker-chevron,
+  .chalk-zucker-pinned-note ~ .chalk-unread-dot {
+    margin-left: 0;
+  }
+
+  .chalk-zucker-pinned[aria-expanded="true"] .chalk-zucker-chevron {
+    transform: rotate(90deg);
+  }
+
+  .chalk-zucker-friends,
+  .chalk-zucker-rows--shelf {
+    animation: chalk-zucker-shelf-in var(--chalk-dur) ease-out;
+  }
+
+  @keyframes chalk-zucker-shelf-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+
   /* 64-1: the expanded friends sublist. Indented past the pinned rows so
      it reads as nested; capped so a big roster can't swallow the screen. */
   .chalk-zucker-friends {

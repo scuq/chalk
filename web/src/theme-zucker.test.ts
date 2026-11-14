@@ -1,4 +1,4 @@
-// 126-1, 135-1, 137-3: assertions about theme.css, checked against the stylesheet
+// 126-1, 135-1, 137-3, 137-4: assertions about theme.css, checked against the stylesheet
 // because jsdom has no layout to measure.
 //
 // The first is the "@ voice" shelf's flex-shrink: it must be 0, or the
@@ -15,6 +15,10 @@
 //   - Only an unread name is bold.
 //   - The unread dot is at the end of the preview line.
 //   - The last row of a shelf has no bottom border.
+//
+// Two tests (137-4) check the phone list section rows:
+//   - The three rows that expand carry a chevron, and parking and threads do not.
+//   - The chevron turns with aria-expanded, the sublists fade in, and a pressed row shades.
 //
 // 135-5 removed the call bar margin test with the bar it checked. The
 // phone call bar has its own assertions in theme-phone-call.test.ts.
@@ -77,6 +81,29 @@ test("the unread dot sits at the end of the preview line, so the times line up o
   );
   assert.match(block(".chalk-zucker-row-bottom"), /display:\s*flex;/);
   assert.match(block(".chalk-zucker-row-preview"), /flex:\s*1 1 auto;/);
+});
+
+test("the three rows that expand carry a chevron, and the rows that open a screen do not", () => {
+  const list = readFileSync(join(resolve(process.cwd(), "src"), "components", "ZuckerList.tsx"), "utf8");
+  const chevrons = list.match(/<span class="chalk-zucker-chevron" aria-hidden="true"><ChevronIcon \/><\/span>/g) ?? [];
+  assert.equal(chevrons.length, 3);
+  for (const id of ["zucker-friends", "zucker-voice", "zucker-hidden-toggle"]) {
+    const at = list.indexOf(`data-testid="${id}"`);
+    assert.ok(at > 0, id);
+    assert.match(list.slice(at, list.indexOf("</button>", at)), /chalk-zucker-chevron/, `${id} has no chevron`);
+  }
+  for (const id of ["zucker-parking", "zucker-threads"]) {
+    const at = list.indexOf(`data-testid="${id}"`);
+    assert.doesNotMatch(list.slice(at, list.indexOf("</button>", at)), /chalk-zucker-chevron/, `${id} has a chevron`);
+  }
+  assert.doesNotMatch(list, /"▾" : "▸"/);
+});
+
+test("the chevron turns with aria-expanded on the duration token, and a sublist fades in", () => {
+  assert.match(block('.chalk-zucker-pinned[aria-expanded="true"] .chalk-zucker-chevron'), /transform:\s*rotate\(90deg\);/);
+  assert.match(block(".chalk-zucker-chevron"), /transition:\s*transform var\(--chalk-dur\);/);
+  assert.match(block(".chalk-zucker-friends,\n  .chalk-zucker-rows--shelf"), /animation:\s*chalk-zucker-shelf-in var\(--chalk-dur\)/);
+  assert.match(block(".chalk-zucker-pinned:active"), /background:\s*var\(--chalk-bg-hover\);/);
 });
 
 test("the last row of a shelf leaves the bottom line to the shelf", () => {

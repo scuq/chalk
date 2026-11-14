@@ -28,7 +28,7 @@ import { UnreadDot } from "./UnreadDot";
 import { Flame } from "./Flame"; // 115-2
 import { WaveName } from "./WaveName"; // 115-3
 import { CamIcon, MicOffIcon, ScreenIcon } from "./Sidebar";
-import { ChannelGlyph } from "./icons";
+import { ChannelGlyph, ChevronIcon } from "./icons";
 import { presenceClass, presenceLabel } from "../chat/presence";
 
 interface Props {
@@ -343,6 +343,9 @@ export function ZuckerList({
         <span class="chalk-zucker-pinned-note">
           {onlineCount}/{friends.length} online
         </span>
+        {/* 137-4: the three rows that expand a sublist in place end with a
+            chevron. Parking and threads open a screen, so they have none. */}
+        <span class="chalk-zucker-chevron" aria-hidden="true"><ChevronIcon /></span>
       </button>
       {friendsOpen && (
         <ul class="chalk-zucker-friends" data-testid="zucker-friends-list">
@@ -389,6 +392,7 @@ export function ZuckerList({
               {liveRooms}/{voiceRows.length} live
             </span>
             {voiceUnread && <UnreadDot mention={voiceMention} />}
+            <span class="chalk-zucker-chevron" aria-hidden="true"><ChevronIcon /></span>
           </button>
           {voiceShowing && (
             <ul
@@ -451,11 +455,12 @@ export function ZuckerList({
             data-testid="zucker-hidden-toggle"
             data-open={hiddenOpen ? "true" : "false"}
           >
-            <span>{hiddenOpen ? "▾" : "▸"} hidden</span>
+            <span>hidden</span>
             <span class="chalk-zucker-pinned-note">{hiddenRows.length}</span>
             {/* Hiding is not muting: a hidden conversation that needs you
                 still says so from behind the row. */}
             {hiddenUnread && <UnreadDot mention={hiddenMention} />}
+            <span class="chalk-zucker-chevron" aria-hidden="true"><ChevronIcon /></span>
           </button>
           {hiddenOpen && (
             <ul

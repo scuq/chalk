@@ -1,6 +1,6 @@
 # Phase 137 — phone polish from the external design review
 
-**Status:** in progress. 137-1, 137-2, and 137-3 are built (2026-11-14). 137-4 to 137-7 are not started. The device checks of 137-1, 137-2, and 137-3 are open, in the manual checklist.
+**Status:** in progress. 137-1 to 137-4 are built (2026-11-14). 137-5 to 137-7 are not started. The device checks of 137-1 to 137-4 are open, in the manual checklist.
 **Tags:** `#composer`, `#mobile` → `tools/where.sh -g composer`
 
 ## The problem
@@ -113,9 +113,29 @@ Measured in a headed iPhone 14 emulation, at 390 px and at 320 px:
 The pinned rows are parking, friends, voice, threads, and hidden.
 Only friends, voice, and hidden expand.
 
-- The three rows that expand get a chevron as the last child. The chevron turns 90 degrees when the row is expanded. Parking and threads get no chevron, because they open a screen.
-- The hidden row drops its text glyph and keeps the word "hidden".
-- An expanded sublist has a short enter animation. The collapse stays instant.
+- The three rows that expand get a chevron as the last child: `<span class="chalk-zucker-chevron" aria-hidden="true"><ChevronIcon /></span>`. Parking and threads get no chevron, because they open a screen.
+- `ChevronIcon` is new in `web/src/components/icons.tsx`. It is 14 px with the fine stroke, in the shared icon family. The plan named a text glyph. An SVG icon matches the other icons and turns without a font change.
+- The chevron is decoration. The row button carries `aria-expanded`.
+- The hidden row drops its old text glyph (a down or right triangle before the word) and keeps the word "hidden".
+- The chevron is dim and sits at the right end of the row. It turns 90 degrees under `[aria-expanded="true"]` on the `--chalk-dur` transition.
+- When a note or an unread dot comes first, they take the auto margin and the chevron sits beside them.
+- The label of an expanded row is `--chalk-fg-bright`. This is an understated mark of the open section.
+- A pinned row has `touch-action: manipulation` and a transparent `-webkit-tap-highlight-color`. A pressed row (`:active`) has `--chalk-bg-hover` as its background, with a `--chalk-dur-fast` transition.
+- The friends list and every shelf (`.chalk-zucker-friends` and `.chalk-zucker-rows--shelf`) fade in with a 4 px slide (`chalk-zucker-shelf-in`, `--chalk-dur`). The collapse stays instant.
+
+The slice also fixes an older fault.
+The note and the unread dot both had `margin-left: auto`, so the free space split between them.
+On the voice and hidden rows the dot floated in the middle of the row.
+The rule `.chalk-zucker-pinned-note ~ .chalk-unread-dot { margin-left: 0 }` fixes it.
+
+Measured in a headed iPhone 14 emulation at 390 px:
+
+- Each section row is 44 px high.
+- The right edge of the friends chevron is at 366 px. This is the edge of the conversation-row times.
+- The collapsed chevron has `transform: none`. The expanded chevron has `matrix(0, 1, -1, 0, 0, 0)`, which is 90 degrees.
+- The friends list runs the `chalk-zucker-shelf-in` animation.
+- There is no horizontal overflow.
+- The voice row was not seen, because voice rooms are off on the dev stack. It has the same markup and the same rules.
 
 ### 137-5 Headers
 
@@ -160,7 +180,7 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 | 137-1 | built | Composer: full-width field, tools row below |
 | 137-2 | built (2026-11-14) | Message grouping and phone typography |
 | 137-3 | built (2026-11-14) | Conversation rows |
-| 137-4 | not started | List section rows |
+| 137-4 | built (2026-11-14) | List section rows |
 | 137-5 | not started | Headers |
 | 137-6 | not started | Empty states |
 | 137-7 | not started | List and chat transition |
@@ -170,6 +190,7 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 - Only a real iPhone PWA shows the keyboard behavior. The device checks of 137-1 are open.
 - The device checks of 137-2 are open, in the manual checklist.
 - The device checks of 137-3 are open, in the manual checklist.
+- The device checks of 137-4 are open, in the manual checklist.
 - The index row of phase 136 links `docs/phases/PHASE-136-IOS.md`. This phase does not change it.
 
 ## Manual checklist
@@ -188,3 +209,7 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 - [ ] 137-3: a phone. Press a conversation row and hold. The row shows the pressed shade. The shade clears when you lift your finger or a tap opens the chat.
 - [ ] 137-3: a phone, with a voice room that has people in it and an unread message. The row shows the names of the people, and the unread dot is at the right end of that line, under the time.
 - [ ] 137-3: a phone, with the hidden shelf open. The last row of the shelf has no doubled bottom line.
+- [ ] 137-4: a phone, with a live voice room and an unread dot. The voice row shows the live count, then the dot, then the chevron. The dot is not in the middle of the row.
+- [ ] 137-4: a phone, with hidden conversations and an unread one among them. The hidden row shows its count, the dot, and the chevron, with no text triangle.
+- [ ] 137-4: a phone. Tap each of the three rows. The chevron turns, the label gets brighter, and the sublist fades in. A second tap closes it at once.
+- [ ] 137-4: a phone, with reduced motion turned on. The sublist appears with no fade and the chevron turns with no animation.
