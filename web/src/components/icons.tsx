@@ -173,6 +173,18 @@ export function ChevronIcon() {
   );
 }
 
+// 137-5: SearchIcon is the magnifier of the channel search button on the
+// phone, 18px. It is decoration. The button carries aria-label "search
+// messages".
+export function SearchIcon() {
+  return (
+    <Icon size={18} fine>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16l4.5 4.5" />
+    </Icon>
+  );
+}
+
 // SendIcon is the outline paper plane of the send button, 18px.
 export function SendIcon() {
   return (

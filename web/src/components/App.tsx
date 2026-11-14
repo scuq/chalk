@@ -217,7 +217,7 @@ import { Logo } from "./Logo";
 import { VersionLink } from "./VersionLink";
 import { StatusBar } from "./StatusBar";
 import { Sidebar } from "./Sidebar";
-import { ChannelGlyph } from "./icons";
+import { ChannelGlyph, SearchIcon } from "./icons";
 // 62-6: Zuckermode -- the phone's unified conversation list.
 import { ZuckerList } from "./ZuckerList";
 import {
@@ -6598,7 +6598,9 @@ export function App() {
                     call
                   </button>
                 )}
-                {/* 61-2: message search. Also on Ctrl/Cmd+K. */}
+                {/* 61-2: message search. Also on Ctrl/Cmd+K. 137-5: the phone
+                    shows an icon, so this button has the same square size as
+                    the other buttons of the header. */}
                 <button
                   type="button"
                   class="chalk-channel-search"
@@ -6607,7 +6609,7 @@ export function App() {
                   aria-label="search messages"
                   data-testid="channel-search-button"
                 >
-                  search
+                  {isMobile ? <SearchIcon /> : "search"}
                 </button>
               </div>
               {/* Renders nothing without a banner, without the channel key,

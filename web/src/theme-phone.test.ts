@@ -1,5 +1,6 @@
-// 135-4: the phone shell. These assertions read theme.css and index.html as
-// text, because the test suite has no layout engine.
+// 135-4 and 137-5: the phone shell and the headers. These assertions read
+// theme.css, index.html, and two components as text, because the test suite
+// has no layout engine.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -43,4 +44,36 @@ test("the last phone block gives the header, channel header and dialog controls 
     assert.ok(block.includes(sel), `${sel} is not in the last phone block`);
   }
   assert.match(block, /min-height:\s*44px;/);
+});
+
+// An indented rule, as it sits inside a media block.
+function phoneRule(selector: string): string {
+  const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = new RegExp(`\\n  ${esc}\\s*\\{([^}]*)\\}`).exec(css);
+  assert.ok(m, `no indented "${selector} { ... }" rule`);
+  return m[1];
+}
+
+test("the phone header stays one row, and a long name gives way before the brand", () => {
+  const header = phoneRule(".chalk-header");
+  assert.match(header, /flex-wrap:\s*nowrap;/);
+  // The header is a grid item of .chalk-app. Without min-width: 0 its
+  // automatic minimum width is the sum of what its children need. The grid
+  // then widens the column, and the name does not shrink.
+  assert.match(header, /min-width:\s*0;/);
+  assert.match(phoneRule(".chalk-header-left"), /flex:\s*0 0 auto;/);
+  assert.match(phoneRule(".chalk-status"), /min-width:\s*0;/);
+  assert.match(phoneRule(".chalk-status-menu-trigger"), /min-width:\s*0;/);
+  const name = phoneRule(".chalk-status-menu-name");
+  assert.match(name, /overflow:\s*hidden;/);
+  assert.match(name, /text-overflow:\s*ellipsis;/);
+  const bar = readFileSync(join(root, "src", "components", "StatusBar.tsx"), "utf8");
+  assert.match(bar, /<span class="chalk-status-menu-name">you \(\{displayName \?\? "—"\}\)<\/span> ▾/);
+});
+
+test("in the channel header only the name shrinks, and search is an icon on the phone", () => {
+  assert.match(phoneRule(".chalk-channel-header-name"), /flex:\s*1 1 auto;/);
+  assert.match(phoneRule(".chalk-channel-header > :not(.chalk-channel-header-name)"), /flex-shrink:\s*0;/);
+  const app = readFileSync(join(root, "src", "components", "App.tsx"), "utf8");
+  assert.match(app, /\{isMobile \? <SearchIcon \/> : "search"\}/);
 });

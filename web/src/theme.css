@@ -10330,16 +10330,58 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
   /* -- header ------------------------------------------------------- */
 
+  /* 137-5: the header is one row and never wraps. It is a grid item of
+     .chalk-app, so its automatic minimum width is the sum of what its
+     children need. min-width: 0 on the children does not lower that sum.
+     Without min-width: 0 here, a 32-character username made the header
+     471px wide on a 390px screen, and the grid pushed the column 81px off
+     the left edge. */
   .chalk-header {
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    min-width: 0;
     gap: var(--chalk-s2);
     padding: max(var(--chalk-s2), env(safe-area-inset-top)) 0 var(--chalk-s2) 0;
   }
 
   .chalk-header-left {
+    flex: 0 0 auto;
     align-items: center;
     gap: var(--chalk-s2);
+  }
+
+  /* 137-5: the brand and the presence picker keep their size. The status
+     block, the account menu, and the trigger can shrink, so only the
+     username gives way. */
+  .chalk-status {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .chalk-presence-picker {
+    flex: 0 0 auto;
+  }
+
+  .chalk-status-menu {
+    display: flex;
+    min-width: 0;
+  }
+
+  /* The trigger is an inline-flex button here, and a flex container drops
+     the space before the arrow, so the gap token replaces it. */
+  .chalk-status-menu-trigger {
+    min-width: 0;
+    max-width: 100%;
+    gap: var(--chalk-s1);
+    white-space: nowrap;
+  }
+
+  /* text-overflow cannot cut a bare text node inside a flex container.
+     The span can carry the ellipsis. */
+  .chalk-status-menu-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .chalk-header h1 {
@@ -10350,8 +10392,8 @@ body.chalk-resizing-y .chalk-composer-resizer {
     font-size: calc(16px * var(--chalk-font-scale));
   }
 
-  /* Connection detail text ("connected to ...") is the first thing to go
-     when the header has to fit next to the ☰ button. */
+  /* The connection detail text ("connected to ...") is hidden, so the
+     header fits in one row. */
   .chalk-status-detail {
     display: none;
   }
@@ -10414,11 +10456,19 @@ body.chalk-resizing-y .chalk-composer-resizer {
     height: 120px;
   }
 
+  /* 137-5: the name takes the free space and is the only child that
+     shrinks. The rule below keeps the badges and the buttons at their
+     44px size, grouped on the right. */
   .chalk-channel-header-name {
+    flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .chalk-channel-header > :not(.chalk-channel-header-name) {
+    flex-shrink: 0;
   }
 
   /* Two lines per message: meta above, full-width body below. The

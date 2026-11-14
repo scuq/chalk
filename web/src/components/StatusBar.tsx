@@ -296,7 +296,9 @@ export function StatusBar({ avatars, attachmentController, state, detail, user, 
               {...selfCardHandlers}
             >
               {selfAvatar}
-              you ({displayName ?? "—"}) ▾
+              {/* 137-5: the span lets the phone CSS cut a long name with an
+                  ellipsis. A bare text node in a flex button cannot be cut. */}
+              <span class="chalk-status-menu-name">you ({displayName ?? "—"})</span> ▾
               {showPending && (
                 <span
                   class="chalk-status-menu-badge"

@@ -1,6 +1,6 @@
 # Phase 137 — phone polish from the external design review
 
-**Status:** in progress. 137-1 to 137-4 are built (2026-11-14). 137-5 to 137-7 are not started. The device checks of 137-1 to 137-4 are open, in the manual checklist.
+**Status:** in progress. 137-1 to 137-5 are built (2026-11-14). 137-6 and 137-7 are not started. The device checks of 137-1 to 137-5 are open, in the manual checklist.
 **Tags:** `#composer`, `#mobile` → `tools/where.sh -g composer`
 
 ## The problem
@@ -139,8 +139,32 @@ Measured in a headed iPhone 14 emulation at 390 px:
 
 ### 137-5 Headers
 
-- The global header is one row that does not wrap on the phone. A long username gets an ellipsis, so it cannot break the row. The trigger stays 44 px high.
-- In the channel header, the back button, the icons, and search are 44 px by 44 px with one gap token. The action buttons do not shrink.
+Before 137-5, the global header could wrap onto two rows when the username was long.
+Now it is one row on the phone, and a long username ends in an ellipsis.
+In the channel header, a long channel name pushed the buttons off the screen.
+Now only the name shrinks.
+
+- `StatusBar.tsx` puts the text "you (name)" of the account menu trigger in `<span class="chalk-status-menu-name">`, with " ▾" after it. The trigger is an inline-flex button on the phone. `text-overflow` cannot cut a bare text node inside a flex container, but it can cut a span. A flex container also drops the space before the arrow, so the trigger has a gap of `--chalk-s1`.
+- `.chalk-header` has `flex-wrap: nowrap` and `min-width: 0`. The brand cluster (`.chalk-header-left`) and the presence picker have `flex: 0 0 auto`. `.chalk-status`, `.chalk-status-menu`, and the trigger have `min-width: 0` and can shrink. The trigger stays 44 px high.
+- `SearchIcon` is new in `web/src/components/icons.tsx`. It is 18 px with the fine stroke, in the shared icon family. The plan did not have it. On the phone, the search button of the channel header shows the icon. It is a square icon button like the other buttons of the header. On desktop it shows the word "search". The button keeps `aria-label="search messages"`. The voice room button "call" keeps its text.
+- In the channel header, `.chalk-channel-header-name` has `flex: 1 1 auto`, and every other child has `flex-shrink: 0`. Only the name gives way. The back button, the mode badge, the encryption indicator, and search are each 44 px by 44 px and stay grouped on the right.
+- The comment of the header rule named a "☰ button". That button no longer exists, so the comment now says the header fits in one row.
+
+The key finding is the grid item.
+`.chalk-header` is a grid item of `.chalk-app`, so its automatic minimum width is the sum of what its children need.
+`min-width: 0` on the children does not lower that sum.
+Without `min-width: 0` on the header, a 32-character username made the header 471 px wide on a 390 px screen.
+The grid then pushed the whole column 81 px off the left edge.
+The first demo run showed this.
+
+Measured in a headed iPhone 14 emulation, with a 32-character username and a 52-character channel name:
+
+- At 390 px, the header is one row, 61 px high, inside the screen.
+- At 390 px, the brand is 79 px wide, the presence picker is 73 px, and the account trigger is 206 px with the name cut by an ellipsis.
+- At 320 px, the account trigger is 136 px.
+- In the channel header, the back button, the mode badge, the encryption indicator, and search are each 44 px by 44 px.
+- The channel name is 129 px wide at 390 px and 59 px at 320 px, with an ellipsis.
+- There is no horizontal overflow at either width.
 
 ### 137-6 Empty states
 
@@ -181,7 +205,7 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 | 137-2 | built (2026-11-14) | Message grouping and phone typography |
 | 137-3 | built (2026-11-14) | Conversation rows |
 | 137-4 | built (2026-11-14) | List section rows |
-| 137-5 | not started | Headers |
+| 137-5 | built (2026-11-14) | Headers |
 | 137-6 | not started | Empty states |
 | 137-7 | not started | List and chat transition |
 
@@ -191,6 +215,7 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 - The device checks of 137-2 are open, in the manual checklist.
 - The device checks of 137-3 are open, in the manual checklist.
 - The device checks of 137-4 are open, in the manual checklist.
+- The device checks of 137-5 are open, in the manual checklist.
 - The index row of phase 136 links `docs/phases/PHASE-136-IOS.md`. This phase does not change it.
 
 ## Manual checklist
@@ -213,3 +238,7 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 - [ ] 137-4: a phone, with hidden conversations and an unread one among them. The hidden row shows its count, the dot, and the chevron, with no text triangle.
 - [ ] 137-4: a phone. Tap each of the three rows. The chevron turns, the label gets brighter, and the sublist fades in. A second tap closes it at once.
 - [ ] 137-4: a phone, with reduced motion turned on. The sublist appears with no fade and the chevron turns with no animation.
+- [ ] 137-5: a phone, with a long display name. The header is one row, the name ends in an ellipsis, and the page does not move sideways.
+- [ ] 137-5: a phone. Tap the account menu trigger. The menu opens and fits inside the screen.
+- [ ] 137-5: a phone, in a voice room. The channel header shows the "call" button, and all buttons stay inside the screen beside a long room name.
+- [ ] 137-5: a phone, in a direct message. The header shows the "dm" tag, and a long name ends in an ellipsis with the buttons in place.
