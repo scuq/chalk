@@ -180,6 +180,11 @@ type HTTPDeps struct {
 	JoinStore        joinStoreAPI
 	join             joinState
 
+	// 65-3: true if Web Push is on (CHALK_PUSH_ENABLED with a valid VAPID
+	// key). Only this boolean reaches /api/auth/config. The VAPID public
+	// key will travel over the sealed WebSocket (65-4).
+	PushEnabled bool
+
 	// OnGuestJoined is called after a FIRST redemption materializes a guest,
 	// so the server can push member_added to the room's members (their
 	// clients otherwise show the guest's messages under a UUID stub until
@@ -365,6 +370,9 @@ type configResponse struct {
 	// the fields above it is read from the database on every call and can
 	// change while chalkd runs; the 60 s cache below bounds the staleness.
 	SeasonalDecorations bool `json:"seasonal_decorations"`
+	// 65-3: true if the server sends Web Push. The SPA shows the push
+	// settings only if this field is true.
+	PushEnabled bool `json:"push_enabled"`
 }
 
 // ---- handlers ----------------------------------------------------------
@@ -394,6 +402,7 @@ func (d *HTTPDeps) handleConfig(w http.ResponseWriter, r *http.Request) {
 		LinkPreviewDomains:  d.LinkPreviewDomains,
 		EphemeralEnabled:    d.EphemeralEnabled,
 		SeasonalDecorations: settings.SeasonalDecorations,
+		PushEnabled:         d.PushEnabled,
 	})
 }
 

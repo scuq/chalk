@@ -30,7 +30,11 @@ import (
 	"github.com/scuq/chalk/internal/server"
 	"github.com/scuq/chalk/internal/store"
 	"github.com/scuq/chalk/internal/version"
+	"github.com/scuq/chalk/internal/webpush"
 )
+
+// pushSendTimeout is the longest time that one push to a push service can take.
+const pushSendTimeout = 10 * time.Second
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -210,6 +214,22 @@ func run(args []string) error {
 		log.Printf("linkpreview: disabled (CHALK_LINKPREVIEW_ENABLED=false)")
 	}
 
+	// 65-3: build the Web Push sender if push is on. config.Validate has
+	// already checked the key pair and the subject. If push is off,
+	// pushSender stays nil, chalkd sends no push, and /api/auth/config
+	// reports push_enabled=false.
+	var pushSender *webpush.Sender
+	if cfg.Push.Enabled {
+		key, err := cfg.Push.Key()
+		if err != nil {
+			return fmt.Errorf("push: %w", err)
+		}
+		pushSender = webpush.NewSender(key, pushSendTimeout)
+		log.Printf("push: enabled (subject=%s)", cfg.Push.Subject)
+	} else {
+		log.Printf("push: disabled (CHALK_PUSH_ENABLED=false)")
+	}
+
 	authDeps := &auth.HTTPDeps{
 		Service:       authSvc,
 		Cache:         ceremonyCache,
@@ -240,6 +260,9 @@ func run(args []string) error {
 
 		// 85-1: security-event logging (lockouts, rate limits, login outcomes).
 		SecurityLog: cfg.Oplog.SecurityEvents,
+
+		// 65-3: true if Web Push is on.
+		PushEnabled: pushSender != nil,
 	}
 	log.Printf("auth: rp_id=%q rp_name=%q rp_origins=%v open_registration=%v dev=%v",
 		authCfg.RPID, authCfg.RPDisplayName, authCfg.RPOrigins,
@@ -365,6 +388,8 @@ func run(args []string) error {
 		// 85-2/85-3: operational logging.
 		SnapshotInterval: cfg.Oplog.SnapshotInterval,
 		SlowRequest:      cfg.Oplog.SlowRequest,
+		// 65-3: nil if push is disabled.
+		Push: pushSender,
 	})
 	if err != nil {
 		return fmt.Errorf("server: %w", err)

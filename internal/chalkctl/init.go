@@ -142,6 +142,7 @@ func Init(o InitOptions) error {
 	//     current env file, or the running DB (with its old password) would
 	//     reject the newly-generated one.
 	var pg, appPw, guestPw, turn, totp, decoy, adminBoot, serverKey string
+	var vapidPriv, vapidPub string // 65-3
 	preserve := o.Force && initialized && !o.DropDB
 	if preserve {
 		existing, rerr := readEnvSecrets(o.EnvPath)
@@ -209,6 +210,18 @@ func Init(o InitOptions) error {
 			}
 			o.logf("generating CHALK_SERVER_ID_KEY (phase 83 server identity)")
 		}
+		// 65-3: the Web Push key pair. Keep it if it is present, because every
+		// subscription is bound to the public key. It is absent only on
+		// deployments that were initialized before phase 65.
+		if vapidPriv, vapidPub, err = vapidPair(existing, o.EnvPath); err != nil {
+			return err
+		}
+		if vapidPriv == "" {
+			if vapidPriv, vapidPub, err = genVAPIDKey(); err != nil {
+				return err
+			}
+			o.logf("generating CHALK_VAPID_* (phase 65 web push key pair)")
+		}
 	} else {
 		if pg, err = genSecret(24); err != nil {
 			return err
@@ -234,6 +247,9 @@ func Init(o InitOptions) error {
 			return err
 		}
 		if serverKey, err = genServerIDKey(); err != nil {
+			return err
+		}
+		if vapidPriv, vapidPub, err = genVAPIDKey(); err != nil {
 			return err
 		}
 	}
@@ -292,6 +308,12 @@ func Init(o InitOptions) error {
 		EphemeralInviteHours:    cfg.EphemeralInviteHours,
 		EphemeralMaxGuests:      cfg.EphemeralMaxGuests,
 		WrapSigRequired:         cfg.WrapSigRequired, // 82-6
+
+		// 65-3: Web Push.
+		PushEnabled:     cfg.PushEnabled,
+		VAPIDPublicKey:  vapidPub,
+		VAPIDPrivateKey: vapidPriv,
+		VAPIDSubject:    pushSubject(cfg.PushSubject, cfg.Domain),
 
 		// A re-apply during a maintenance window must not quietly put the
 		// site back in front of users -- you are in maintenance because work

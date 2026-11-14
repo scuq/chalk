@@ -3,7 +3,7 @@
 Push notifications that reach an iPhone home-screen chalk with the app fully
 closed, without breaking the E2E privacy model and without any paid accounts.
 Planned against v0.5.2. **In progress, as of 14 November 2026** — slices 65-1
-and 65-2 are built, and the plan below was revised that day (next section).
+to 65-3 are built, and the plan below was revised that day (next section).
 
 ## Review of 14 November 2026
 
@@ -205,8 +205,10 @@ envelope signature against the pins before it shows any text.
   `sub` claim and must be a `mailto:` or `https:` contact URL — Apple
   rejects tokens without a valid one (`BadJwtToken`), so it is not optional
   on iOS. Unlike the keypair it cannot be generated: it is the operator's
-  own contact, so chalkctl prompts on init and defaults to
-  `https://<instance domain>`. chalkctl generates on init, preserves on
+  own contact, so chalkctl takes it from the `--push-subject` flag or the
+  `PUSH_SUBJECT` config key and defaults to `https://<instance domain>`.
+  chalkctl has no interactive prompt for values, so the plan to prompt on init
+  was dropped in 65-3. chalkctl generates on init, preserves on
   `--force`, backfills on `update` — the `ensureTOTPEncKey` pattern
   (internal/chalkctl/secret.go:96) — plus a `{{- if}}`-gated block in
   `internal/chalkctl/templates/chalk.env.tmpl`. Nil dispatcher when keys are absent
@@ -254,7 +256,7 @@ envelope signature against the pins before it shows any text.
 |---|---|---|---|
 | 65-1 (built) | Migration `0063_push_subscriptions.sql` + `internal/store/push.go`: session-bound upsert with the 8-per-user cap, get/delete by session, delete by id, touch, `ListPushSubscriptionsForUsers(userIDs, isDM)` with scope and session-validity filter, tests | migrations/, internal/store/ | 280 |
 | 65-2 (built) | `internal/webpush`: RFC 8291 aes128gcm encrypt w/ fixed-length padding, RFC 8292 VAPID ES256 JWT (`aud` = origin of *this* endpoint, computed per-send, not a fixed value and not chalk's own origin — a cached token is reusable only across subscriptions sharing a host), https-only sender with IP vet, Topic/TTL/Urgency, typed ErrGone; tests incl. the Appendix A vector byte-exact and constant ciphertext length across differing handles | internal/webpush/ (new) | 450 |
-| 65-3 | Config + chalkctl: `internal/config/push.go`, VAPID keygen/preserve/backfill + `CHALK_VAPID_SUBJECT` (prompt on init, domain-derived default, preserved like the keys), a VAPID rotate command, env template, `push_enabled` only in /api/auth/config | internal/config/, internal/chalkctl/, internal/auth/ | 290 |
+| 65-3 (built) | Config + chalkctl: `internal/config/push.go`, VAPID keygen/preserve/backfill + `CHALK_VAPID_SUBJECT` (flag or config key, domain-derived default, preserved like the keys), `chalkctl push status\|enable\|disable\|rotate-key --yes`, env template, `push_enabled` only in /api/auth/config. chalkd builds the sender only if push is enabled, and `server.Options.Push` holds it. Nothing calls it before 65-4 and 65-5 | internal/config/, internal/chalkctl/, internal/auth/ | 290 |
 | 65-4 | WebSocket frames inside the sealed channel: push config (VAPID public key), subscribe, unsubscribe, and state. The connection carries its session token. Guests are refused. Validation covers the https endpoint and the key lengths. Replaces the old HTTP API slice | internal/server/, internal/proto/ | 220 |
 | 65-5 | Dispatcher + send hook: payload builder (the plaintext choke point), recipient selection via presence, encrypt/send/prune, cooldown, InstanceID-guarded hook in handleMessageEvent, tests against an httptest fake relay, the new "third parties" section in `docs/threat-model.md` | internal/server/push_dispatch.go, cmd/chalkd/, docs/threat-model.md | 340 |
 | 65-6 | `web/src/sw.ts` + second esbuild invocation → unhashed dist/sw.js + spa.go no-cache special case, `pushsubscriptionchange` resubscribes locally and marks the subscription for upload | web/src/, web/build.mjs, internal/server/spa.go | 165 |
@@ -299,6 +301,23 @@ Requires real hardware:
   badge still showing the full count), subscription survives relaunch.
   After the grant, chalk shows under Settings > Notifications.
 - Android Chrome: same flow, one pass.
+
+## Decisions and open points from 65-3
+
+- **Update leaves push off.** `chalkctl update` backfills the key pair, the
+  subject, and `CHALK_PUSH_ENABLED=false`. It also writes `PUSH_ENABLED=false`
+  to the chalkctl config file if that file exists and has no such key. Then a
+  later `init --force` does not turn push on from the default. Push contacts
+  the services of Apple and Google, so the operator turns it on with
+  `chalkctl push enable`. A fresh `init` writes it on. Each user still opts in
+  for each device.
+- **Open for 65-4 or 65-5: rotation leaves stale rows.** After
+  `chalkctl push rotate-key --yes`, the rows of devices that have not opened
+  chalk again stay in `push_subscriptions`, and pushes to them fail. 65-4 or
+  65-5 must store the public key for each subscription, or delete the rows on
+  rotation.
+- **Restore carries the pair only as a whole.** If the archive holds one half,
+  the pair that `init` generated stays.
 
 ## Risks
 

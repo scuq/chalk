@@ -21,6 +21,7 @@ import (
 	"github.com/scuq/chalk/internal/proto"
 	"github.com/scuq/chalk/internal/pubsub"
 	"github.com/scuq/chalk/internal/store"
+	"github.com/scuq/chalk/internal/webpush"
 )
 
 // Options bundles dependencies and tunables.
@@ -77,6 +78,9 @@ type Options struct {
 	// config.OplogConfig); SlowRequest 0 disables the slow-request line.
 	SnapshotInterval time.Duration
 	SlowRequest      time.Duration
+
+	// 65-3: the Web Push sender. It is nil if push is disabled.
+	Push *webpush.Sender
 }
 
 // Server wraps the http.Server, hub, pubsub listener, presence/friends
@@ -107,6 +111,9 @@ type Server struct {
 
 	// 85-2: connection-snapshot interval; 0 means the loop never starts.
 	snapshotInterval time.Duration
+
+	// 65-3: the sender from Options.Push.
+	push *webpush.Sender
 }
 
 // NewServer constructs and binds (but does not yet serve) a Server.
@@ -146,6 +153,7 @@ func NewServer(opts Options) (*Server, error) {
 
 		attachOrphanTTL:  opts.AttachOrphanTTL,
 		snapshotInterval: opts.SnapshotInterval,
+		push:             opts.Push,
 	}
 	if s.attachOrphanTTL <= 0 {
 		s.attachOrphanTTL = 24 * time.Hour

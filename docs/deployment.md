@@ -59,6 +59,10 @@ All flags are also available as `CHALK_*` env vars (e.g. `--listen` ↔ `CHALK_L
 | `--shutdown-grace` | `CHALK_SHUTDOWN_GRACE` | `20s` | |
 | `--instance-id` | `CHALK_INSTANCE_ID` | (auto UUID) | |
 | — | `CHALK_SERVER_ID_KEY` | (chalkctl-generated) | phase 83 server identity (Ed25519 seed, b64); see “Server identity” below |
+| — | `CHALK_PUSH_ENABLED` | `false` | phase 65: master switch for web push. `chalkctl init` writes `true`, `update` writes `false`. See “Web push” below |
+| — | `CHALK_VAPID_PUBLIC_KEY` | (chalkctl-generated) | phase 65: web push public key, base64url. It must belong to the private key |
+| — | `CHALK_VAPID_PRIVATE_KEY` | (chalkctl-generated) | phase 65: web push private key, base64url. Keep it secret |
+| — | `CHALK_VAPID_SUBJECT` | `https://<domain>` | phase 65: your contact for the push services, a `mailto:` or `https:` URL |
 | | `CHALK_VOICE_ENABLED` | `false` | phase 30: master switch for voice/video |
 | | `CHALK_VOICE_MAX_PARTICIPANTS` | `5` | mesh room cap (2..16) |
 | | `CHALK_VOICE_FORCE_RELAY` | `false` | test knob: clients use relay-only ICE |
@@ -197,6 +201,53 @@ wall showing the fingerprint it pinned and the one now presented; each user
 compares the presented one against your announcement and chooses to trust
 it. A client that sees a changed key you did NOT announce is looking at an
 interception — that is the wall doing its job.
+
+## Web push (phase 65)
+
+Web push lets chalk wake a closed app on a phone. Push is not yet delivered:
+chalkd does not send a push in this version. The settings exist now, so the
+key pair is in place when the sending code ships.
+
+chalkd identifies itself to the push services of Apple and Google with a
+VAPID key pair. VAPID is the standard that lets a push service know which
+server sends a push. The pair is `CHALK_VAPID_PUBLIC_KEY` and
+`CHALK_VAPID_PRIVATE_KEY` in the env file. `CHALK_VAPID_SUBJECT` is your
+contact for the push services. It must be a `mailto:` or `https:` URL, and
+the default is `https://<domain>`.
+
+If `CHALK_PUSH_ENABLED` is `true`, chalkd checks the key pair and the subject
+at start. chalkd does not start if the private key does not parse or the
+public key does not belong to it.
+
+- `chalkctl init` generates the pair and sets push on. Use `--push=false` to
+  set it off. Use `--push-subject <url>` to set the subject.
+- `init --force` keeps the pair. If both halves are absent, it generates a
+  pair. If only one half is present, it stops with an error.
+- `update` backfills the pair and the subject on old deployments. It leaves
+  push off, because push contacts Apple and Google. You turn it on with
+  `chalkctl push enable`.
+- `restore` carries the pair from the archive. It carries the pair only if
+  the archive holds both halves.
+
+Commands:
+
+    chalkctl push status                 # the switch, the subject, the public key
+    chalkctl push enable                 # set push on and restart chalkd
+    chalkctl push disable                # set push off and restart chalkd
+    chalkctl push rotate-key --yes       # replace the key pair and restart chalkd
+
+`enable` stops with an error if the env file has no key pair or no subject.
+`enable` and `disable` also write `PUSH_ENABLED` to the chalkctl config file
+if that file exists. Then a later `init --force` keeps your choice.
+
+CAUTION: `rotate-key` replaces the key pair. Every stored subscription is
+bound to the old public key, so no device gets a push until it opens chalk
+and subscribes again. Rotate the key if a copy of the env file is lost,
+because the private key lets its holder send notifications that look like
+they come from your server.
+
+Each user must still turn push on for each device. `/api/auth/config`
+reports only `push_enabled`. It never carries key material.
 
 ## Backups
 

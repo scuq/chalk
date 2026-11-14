@@ -91,6 +91,14 @@ type Config struct {
 	// (docs/phases/PHASE-82-SIGNEDWRAP.md), and flipping early strands members whose
 	// wrap has not been re-signed yet.
 	WrapSigRequired bool // CHALK_WRAP_SIG_REQUIRED
+
+	// 65-3: Web Push. PushEnabled is true by default on init. `chalkctl
+	// update` backfills false into an existing deployment, and `chalkctl push
+	// enable` turns it on. PushSubject is the operator contact in every VAPID
+	// token, a mailto: or https: URL. If it is empty, the subject is
+	// https://<Domain>.
+	PushEnabled bool   // CHALK_PUSH_ENABLED
+	PushSubject string // CHALK_VAPID_SUBJECT
 }
 
 // DefaultConfig returns the baseline before file/flag overlays.
@@ -114,6 +122,10 @@ func DefaultConfig() Config {
 		// construction there. `chalkctl update` does NOT flip an existing
 		// deployment; see ensurePhase82Env in secret.go.
 		WrapSigRequired: true,
+
+		// 65-3: a new deployment has no subscriptions. Each user still turns
+		// push on for each device.
+		PushEnabled: true,
 	}
 }
 
@@ -234,6 +246,14 @@ func LoadConfigFile(cfg Config, path string) (Config, error) {
 				return cfg, fmt.Errorf("%s:%d: WRAP_SIG_REQUIRED not a bool: %q", path, line, v)
 			}
 			cfg.WrapSigRequired = b
+		case "PUSH_ENABLED":
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return cfg, fmt.Errorf("%s:%d: PUSH_ENABLED not a bool: %q", path, line, v)
+			}
+			cfg.PushEnabled = b
+		case "PUSH_SUBJECT":
+			cfg.PushSubject = v
 		case "EPHEMERAL_MAX_TTL_HOURS":
 			n, err := strconv.Atoi(v)
 			if err != nil {
@@ -298,6 +318,10 @@ func (c Config) Save(path string) error {
 	fmt.Fprintf(&b, "PG_STAT_STATEMENTS=%t\n", c.PgStatStatements)
 	fmt.Fprintf(&b, "EPHEMERAL_ENABLED=%t\n", c.EphemeralEnabled)
 	fmt.Fprintf(&b, "WRAP_SIG_REQUIRED=%t\n", c.WrapSigRequired)
+	fmt.Fprintf(&b, "PUSH_ENABLED=%t\n", c.PushEnabled)
+	if c.PushSubject != "" {
+		fmt.Fprintf(&b, "PUSH_SUBJECT=%s\n", c.PushSubject)
+	}
 	if c.EphemeralMaxTTLHours > 0 {
 		fmt.Fprintf(&b, "EPHEMERAL_MAX_TTL_HOURS=%d\n", c.EphemeralMaxTTLHours)
 	}

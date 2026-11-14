@@ -46,6 +46,8 @@ import (
 //   - CHALK_RP_ID / CHALK_RP_ORIGINS must match the domain actually being
 //     served, not the one the backup came from;
 //   - CHALK_ADMIN_* only seed a first-boot row that the restore replaces.
+//
+// The Web Push key pair is also carried, but only as a pair. See carryVAPID.
 var carriedEnvKeys = []string{"CHALK_TOTP_ENC_KEY", "CHALK_SERVER_ID_KEY"}
 
 // RestoreWipeSQL is prepended to the dump so the load starts from a clean
@@ -317,6 +319,30 @@ func carryEnv(envPath string, archived []byte, logf func(string, ...any)) error 
 			logf("carried %s from the archive into %s", key, envPath)
 		} else {
 			logf("%s already matches the archive", key)
+		}
+	}
+	return carryVAPID(envPath, old, logf)
+}
+
+// carryVAPID copies the Web Push key pair (65-3) from the archived env into
+// the live one. Every subscription in the dump is bound to the old public
+// key, so the restored server keeps the old pair.
+// The pair moves as a whole. If the archive does not hold both halves, the
+// pair that init generated stays, and each device subscribes again the next
+// time it opens chalk.
+func carryVAPID(envPath string, old map[string]string, logf func(string, ...any)) error {
+	priv, pub := old["CHALK_VAPID_PRIVATE_KEY"], old["CHALK_VAPID_PUBLIC_KEY"]
+	if priv == "" || pub == "" {
+		logf("the archive has no complete web push key pair; keeping this host's (devices subscribe again when they open chalk)")
+		return nil
+	}
+	for _, kv := range [][2]string{{"CHALK_VAPID_PUBLIC_KEY", pub}, {"CHALK_VAPID_PRIVATE_KEY", priv}} {
+		changed, err := setEnvValue(envPath, kv[0], kv[1])
+		if err != nil {
+			return fmt.Errorf("write %s to %s: %w", kv[0], envPath, err)
+		}
+		if changed {
+			logf("carried %s from the archive into %s", kv[0], envPath)
 		}
 	}
 	return nil

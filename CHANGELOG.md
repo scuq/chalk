@@ -12,6 +12,9 @@ The engineering-level history (which slice shipped what) lives in
 
 ## Unreleased
 
+### Added
+- `chalkctl` now creates a web push key for your deployment and has a `chalkctl push` command to show, turn on, turn off, and replace it. A fresh `chalkctl init` turns push on. `chalkctl update` leaves push off until you run `chalkctl push enable`. Push notifications do not arrive yet. They come in a later release.
+
 ### Fixed
 - After a short connection loss during a call, chalk keeps the microphone and the camera. An iPhone does not ask for permission again when the app returns from the background.
 

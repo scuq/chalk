@@ -57,6 +57,15 @@ type InitParams struct {
 	// that has to be discovered in docs first never gets flipped.
 	WrapSigRequired bool
 
+	// 65-3: Web Push. The template writes these values in all cases, so the
+	// switch is visible in the env file. The key pair is generated once and
+	// kept. After a rotation, each subscription stops working until its
+	// device opens chalk again.
+	PushEnabled     bool
+	VAPIDPublicKey  string
+	VAPIDPrivateKey string
+	VAPIDSubject    string
+
 	// 72-5: maintenance mode. Caddyfile-only -- when set, Caddy serves the
 	// notice instead of proxying chalkd. The message is already HTML-escaped
 	// by the time it gets here (see Maint).

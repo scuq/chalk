@@ -73,6 +73,8 @@ func run(args []string) error {
 		return runWrapSig(args[1:])
 	case "serverkey":
 		return runServerKey(args[1:])
+	case "push":
+		return runPush(args[1:])
 	case "self-update", "rollback", "logs":
 		return fmt.Errorf("%q is not implemented yet in this build (arrives in a later ops slice)", cmd)
 	default:
@@ -117,6 +119,8 @@ func runInit(args []string) error {
 		ephGuests   = fs.Int("ephemeral-max-guests", 0, "CHALK_EPHEMERAL_MAX_GUESTS invites per channel (0 = chalkd default of 8)")
 		turnVerbose = fs.Bool("turn-verbose", true, "coturn --verbose logging (default on)")
 		publicIP    = fs.String("public-ip", "", "coturn listening/relay/external IPv4 (default: detect)")
+		pushOn      = fs.Bool("push", true, "enable web push notifications (each user still chooses for each device)")
+		pushSubject = fs.String("push-subject", "", "CHALK_VAPID_SUBJECT operator contact, a mailto: or https: URL (default: https://<domain>)")
 	)
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -175,6 +179,12 @@ func runInit(args []string) error {
 	}
 	if set["linkpreview-domains"] {
 		cfg.LinkPreviewDomains = *lpDomains
+	}
+	if set["push"] {
+		cfg.PushEnabled = *pushOn
+	}
+	if set["push-subject"] {
+		cfg.PushSubject = *pushSubject
 	}
 	if set["thread-active-window-hours"] {
 		cfg.ThreadActiveWindowHours = *threadWin
@@ -365,6 +375,7 @@ func runUpdate(args []string) error {
 		Version:    *version,
 		Verifier:   verifier,
 		SkipHealth: *skipHealth,
+		ConfigPath: *configPath,
 	})
 }
 
@@ -508,6 +519,43 @@ func runMaint(args []string) error {
 		Message:   *message,
 		StatePath: *statePath,
 	})
+}
+
+// runPush runs `chalkctl push` (65-3): status, enable, disable, or rotate-key.
+func runPush(args []string) error {
+	fs := flag.NewFlagSet("push", flag.ContinueOnError)
+	var (
+		configPath = fs.String("config", chalkctl.DefaultConfigPath, "config file")
+		envPath    = fs.String("env", chalkctl.DefaultEnvPath, "env file path")
+		yes        = fs.Bool("yes", false, "with `rotate-key`: confirm the key change (each device gets no push until it opens chalk)")
+	)
+	rest, err := parsePositional(fs, args)
+	if err != nil {
+		return err
+	}
+	const use = "usage: chalkctl push [status|enable|disable|rotate-key --yes]"
+	sub := "status"
+	if len(rest) == 1 {
+		sub = rest[0]
+	} else if len(rest) > 1 {
+		return fmt.Errorf(use)
+	}
+	if err := chalkctl.RequireRoot(); err != nil {
+		return err
+	}
+	opts := chalkctl.PushOptions{EnvPath: *envPath, ConfigPath: *configPath}
+	switch sub {
+	case "status":
+		return chalkctl.PushStatus(opts)
+	case "enable":
+		return chalkctl.PushEnable(opts)
+	case "disable":
+		return chalkctl.PushDisable(opts)
+	case "rotate-key":
+		return chalkctl.PushRotateKey(opts, *yes)
+	default:
+		return fmt.Errorf(use)
+	}
 }
 
 // runMetrics prints what Postgres already knows about its own performance.
@@ -688,6 +736,7 @@ Commands:
   ephemeral    list | purge [--channel <id>] | disable -- guest voice rooms
   wrapsig      status | enable [--force] | disable -- require signed channel keys
   serverkey    show | rotate --yes                -- the server identity clients pin (phase 83)
+  push         status | enable | disable | rotate-key --yes -- web push notifications (phase 65)
   self-update  update the chalkctl binary itself
   rollback     re-pin the previous chalk image
   logs         tail the stack's logs
@@ -714,6 +763,9 @@ init flags:
   --ephemeral-max-guests     invites per channel (0 = chalkd default of 8)
                              (default: YouTube + Steam)
   --turn-verbose[=false]     coturn verbose logging (default on)
+  --push[=false]             enable web push notifications (default on)
+  --push-subject <url>       operator contact for the push services, a mailto:
+                             or https: URL (default: https://<domain>)
   --open-registration[=false] let anyone register (default on; tighten later)
   --force                    re-apply config over an existing deploy (keeps DB)
   --drop-db                  with --force: WIPE the database (prompts to confirm)

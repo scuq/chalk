@@ -4,9 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"github.com/scuq/chalk/internal/innerchan"
 	"io"
 	"os"
+
+	"github.com/scuq/chalk/internal/innerchan"
+	"github.com/scuq/chalk/internal/webpush"
 )
 
 // genSecret returns a URL-safe base64 secret from nBytes of CSPRNG entropy.
@@ -178,5 +180,83 @@ func ensurePhase85Env(envPath string, log io.Writer) error {
 	_, err := appendEnvVar(envPath, "CHALK_OPLOG_SLOW_REQUEST", "2s",
 		"log HTTP requests slower than this; 0 = off (backfilled by chalkctl)",
 		log)
+	return err
+}
+
+// genVAPIDKey returns a new Web Push key pair (65-3) as base64url strings.
+// private is the scalar for CHALK_VAPID_PRIVATE_KEY. public is the point for
+// CHALK_VAPID_PUBLIC_KEY.
+func genVAPIDKey() (private, public string, err error) {
+	return webpush.GenerateVAPIDKey()
+}
+
+// pushSubject returns the VAPID subject. If override is not empty, it returns
+// override. Otherwise it returns the https origin of domain.
+func pushSubject(override, domain string) string {
+	if override != "" {
+		return override
+	}
+	return "https://" + domain
+}
+
+// vapidPair reads the VAPID key pair from env. If only one half is present,
+// it returns an error, because a new half cannot match the half that exists.
+// path names the env file in the error text.
+func vapidPair(env map[string]string, path string) (private, public string, err error) {
+	private, public = env["CHALK_VAPID_PRIVATE_KEY"], env["CHALK_VAPID_PUBLIC_KEY"]
+	if (private == "") != (public == "") {
+		return "", "", fmt.Errorf("%s has only one of CHALK_VAPID_PRIVATE_KEY and CHALK_VAPID_PUBLIC_KEY; set both, or remove both and run `chalkctl update` to generate a new pair", path)
+	}
+	return private, public, nil
+}
+
+// ensurePhase65Env backfills the Web Push settings into an existing env file.
+//
+// The key pair is generated only if both halves are absent. A present pair is
+// never changed, because every subscription is bound to its public key.
+//
+// CHALK_PUSH_ENABLED is backfilled as false. Push contacts the push services
+// of Apple and Google, so the operator must turn it on in a running
+// deployment with `chalkctl push enable`. The same false goes into the
+// chalkctl config file at configPath if that file exists and has no
+// PUSH_ENABLED. Then a later `init --force` does not turn push on from the
+// default.
+func ensurePhase65Env(envPath, configPath, domain, subject string, log io.Writer) error {
+	env, err := readEnvSecrets(envPath)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", envPath, err)
+	}
+	priv, _, err := vapidPair(env, envPath)
+	if err != nil {
+		return err
+	}
+	if priv == "" {
+		priv, pub, err := genVAPIDKey()
+		if err != nil {
+			return err
+		}
+		if _, err := appendEnvVar(envPath, "CHALK_VAPID_PUBLIC_KEY", pub,
+			"web push key pair (backfilled by chalkctl; keep it, see `chalkctl push`)", log); err != nil {
+			return err
+		}
+		if _, err := appendEnvVar(envPath, "CHALK_VAPID_PRIVATE_KEY", priv,
+			"web push private key (backfilled by chalkctl)", log); err != nil {
+			return err
+		}
+	}
+	if _, err := appendEnvVar(envPath, "CHALK_VAPID_SUBJECT", pushSubject(subject, domain),
+		"web push operator contact, a mailto: or https: URL (backfilled by chalkctl)", log); err != nil {
+		return err
+	}
+	added, err := appendEnvVar(envPath, "CHALK_PUSH_ENABLED", "false",
+		"web push (backfilled off by chalkctl; `chalkctl push enable` turns it on)", log)
+	if err != nil || !added {
+		return err
+	}
+	if _, serr := os.Stat(configPath); serr != nil {
+		return nil
+	}
+	_, err = appendEnvVar(configPath, "PUSH_ENABLED", "false",
+		"web push (backfilled off by chalkctl update)", log)
 	return err
 }

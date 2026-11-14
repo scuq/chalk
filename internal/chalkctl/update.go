@@ -17,6 +17,9 @@ type UpdateOptions struct {
 	StatePath string
 	EnvPath   string // DefaultEnvPath
 	Out       io.Writer
+	// ConfigPath is the chalkctl config file. If it is empty, the default is
+	// DefaultConfigPath. 65-3: update copies a backfilled push switch into it.
+	ConfigPath string
 
 	// HealthURL is polled after the swap; default https://<domain>/healthz.
 	HealthURL string
@@ -38,6 +41,9 @@ func (o *UpdateOptions) defaults() {
 	}
 	if o.EnvPath == "" {
 		o.EnvPath = DefaultEnvPath
+	}
+	if o.ConfigPath == "" {
+		o.ConfigPath = DefaultConfigPath
 	}
 	if o.Version == "" {
 		o.Version = firstNonEmpty(o.Cfg.Channel, "stable")
@@ -136,6 +142,11 @@ func Update(o UpdateOptions) error {
 	// 85-1: surface the operational-logging knobs, snapshot pinned off.
 	if err := ensurePhase85Env(o.EnvPath, o.Out); err != nil {
 		return fmt.Errorf("ensure phase 85 env: %w", err)
+	}
+	// 65-3: backfill the Web Push key pair and subject. Push stays off until
+	// the operator runs `chalkctl push enable`.
+	if err := ensurePhase65Env(o.EnvPath, o.ConfigPath, o.Cfg.Domain, o.Cfg.PushSubject, o.Out); err != nil {
+		return fmt.Errorf("ensure phase 65 env: %w", err)
 	}
 
 	oldDigest := st.CurrentDigest

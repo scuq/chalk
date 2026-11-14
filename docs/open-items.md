@@ -389,11 +389,12 @@ can reach packaging). Open:
   Mac can keep one on a second display — the two-screen check in the phase
   doc is still to run.
 
-## Phase 65 — web push: IN PROGRESS, 65-1 and 65-2 built
+## Phase 65 — web push: IN PROGRESS, 65-1 to 65-3 built
 
 65-1 is built: migration 0063 and `internal/store/push.go`. 65-2 is built:
-the `internal/webpush` package, which nothing calls yet. 65-3 onward is
-open. Record in [phases/PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md). The plan
+the `internal/webpush` package. 65-3 is built: the push config, the VAPID key
+pair in `chalkctl`, and `chalkctl push`. Nothing sends a push yet. 65-4 onward
+is open. Record in [phases/PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md). The plan
 was revised on 14 November 2026 after a review against the threat model. A
 subscription belongs to a login session and goes with it. The VAPID key and
 all subscription frames travel only over the WebSocket. Guests cannot
@@ -404,10 +405,14 @@ subscribe.
   cannot drop a push without risking a revoked subscription on iOS. A channel
   muted in chalk still pushes under scope `all`.
 - **Open:** all real-device checks (an iPhone on a deployed HTTPS instance,
-  Android Chrome, headed Chrome on localhost). No slice after 65-2 is built.
+  Android Chrome, headed Chrome on localhost). No slice after 65-3 is built.
   The iPhone check includes this: chalk shows under Settings > Notifications
   only after the permission prompt. It is not in the main list of apps.
 - **Open:** the `docs/threat-model.md` section on third parties, written in 65-5.
+- **Open for 65-4 or 65-5:** after `chalkctl push rotate-key --yes`, rows of
+  devices that have not opened chalk again stay in `push_subscriptions`, and
+  pushes to them fail. Store the public key for each subscription, or remove
+  the rows on rotation.
 
 ## Phase 93-3 — the resizable thread pane: designed, not started
 
@@ -507,3 +512,8 @@ Two deliberate exclusions:
 
   Reasons are in the Deferred section of
   [phases/PHASE-128-TOOLCHAIN.md](phases/PHASE-128-TOOLCHAIN.md).
+- `chalkctl init --force` takes `WRAP_SIG_REQUIRED` from `DefaultConfig`, which
+  is `true`. If the chalkctl config file of an updated deployment has no such
+  key, `init --force` turns the requirement on. 65-3 handled the same problem for
+  push: `update` writes `PUSH_ENABLED=false` to the config file. No such
+  backfill exists for `WRAP_SIG_REQUIRED`.

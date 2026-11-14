@@ -167,6 +167,10 @@ type Config struct {
 	// 85-1: operational logging knobs (CHALK_OPLOG_*). See OplogConfig in
 	// oplog.go.
 	Oplog OplogConfig
+
+	// 65-3: Web Push (CHALK_PUSH_ENABLED, CHALK_VAPID_*). See PushConfig in
+	// push.go.
+	Push PushConfig
 }
 
 // GovernanceDefaults are the server-wide default governance parameters,
@@ -260,6 +264,9 @@ func Default() Config {
 
 		// 85-1: operational logging.
 		Oplog: defaultOplogConfig(),
+
+		// 65-3: Web Push.
+		Push: defaultPushConfig(),
 	}
 }
 
@@ -416,6 +423,9 @@ func (c *Config) applyEnv() {
 
 	// 85-1: operational logging from CHALK_OPLOG_* env vars.
 	c.Oplog.applyEnv()
+
+	// 65-3: Web Push from CHALK_PUSH_ENABLED and CHALK_VAPID_* env vars.
+	c.Push.applyEnv()
 }
 
 // envBool reads a boolean env var. Returns (false, false) when unset so
@@ -569,6 +579,11 @@ func (c Config) Validate() error {
 
 	// 85-1: operational logging.
 	if err := c.Oplog.Validate(); err != nil {
+		return err
+	}
+
+	// 65-3: Web Push.
+	if err := c.Push.Validate(); err != nil {
 		return err
 	}
 
