@@ -13,50 +13,135 @@ Accounts are password + TOTP; passkeys are an optional convenience on top,
 never a bypass of the second factor.
 
 > **Crypto status.** chalk is **end-to-end encrypted**. Messages, edits,
-> reactions and attachments are encrypted client-side under per-channel space
-> keys (identity-wrapped, native WebCrypto, AES-256-GCM); the server stores
-> only ciphertext. Two intended guarantees are **not met yet**: channel-key
-> wraps are not signed, so a *malicious* server can still substitute a key it
-> knows, and messages carry no sender signature. See
-> [docs/threat-model.md](docs/threat-model.md) for what holds today, what
-> doesn't, and the metadata the server sees regardless.
+> reactions and attachments are encrypted in the browser under per-channel
+> space keys (AES-256-GCM), and the server stores only ciphertext. Every
+> message, edit and reaction is also an Ed25519-signed envelope that the client
+> checks against pinned identities. The client pins the identity of the server
+> it registered with, and it stops at a changed server key. Three limits
+> remain:
+>
+> - chalkd is trusted. Channel membership is server-asserted by design, so a
+>   chalkd that lies about the members can be handed a channel key by a
+>   member's client.
+> - With `CHALK_WRAP_SIG_REQUIRED` off, a server can substitute a channel key
+>   on a channel before any current-build member opens it. It is on by default
+>   for a new deployment. An older deployment must run `chalkctl wrapsig
+>   enable`.
+> - Guest messages are unsigned, and the app has no screen to rotate your
+>   encryption phrase.
+>
+> See [docs/threat-model.md](docs/threat-model.md) for what holds today, what
+> does not, and the metadata the server sees regardless.
 
 ## What's in it
 
-- **Messaging** — channels, DMs and threads; replies; @mentions; per-user
-  unread tracking with a new-messages divider, synced across your devices.
-- **Message actions** — react with emoji, edit your own message within 15
-  minutes (marked `(edited)`), and delete under per-channel rules: your own
-  words are always yours to retract, someone else's are the channel owner's
-  call in dictator mode or a vote in democratic mode.
-- **Attachments & GIFs** — encrypted uploads with encrypted previews,
-  drag-drop / clipboard paste, and Giphy behind a per-user opt-in.
-- **Voice & video** — voice channels with a WebRTC mesh, coturn as the
-  mandatory relay, screen/game sharing and adaptive quality. Off by default
-  (`CHALK_VOICE_ENABLED`).
-- **Governance** — each channel is `dictator` or `democratic`; membership
-  changes, deletions and mode changes can run as proposals the members vote on.
-- **Accounts** — password + mandatory TOTP, optional passkeys, two separate
-  24-word phrases (one resets your login, one is your encryption identity),
-  and multi-device onboarding by re-entering the encryption phrase.
-- **Client** — desktop and mobile layouts, installable as a PWA, fifteen
-  themes, per-device font and text-size settings (Hack, JetBrains Mono, Fira
-  Code and Cascadia Code all bundled), per-user nick colours.
-- **Ops** — `chalkctl` deploys, updates, backs up and migrates a whole host
-  from cosign-verified container images, with a maintenance page for when the
-  app is down on purpose.
+Everything here is built and released. Features that are off by default say so.
+
+- **Messaging**: channels, direct messages, threads with titles and a thread
+  inbox, replies, quoting a message, @mentions with autocomplete, typing
+  indicators, per-user unread tracking with a new-messages divider that syncs
+  across your devices, day marks while you scroll back, and search of the
+  messages on your device (Ctrl/Cmd+K) that can walk the full history.
+- **Message actions and formatting**: react with emoji and see who reacted,
+  edit your own messages within 15 minutes (marked `(edited)`), and delete under
+  per-channel rules (your own words are always yours to retract). Also an emoji
+  picker, typed emoticons that become emoji, code blocks, compact link labels,
+  and link previews for YouTube and Steam that you opt in to. Nano markdown
+  (italics, bold, code) is off until you turn it on.
+- **Attachments and media**: encrypted uploads with encrypted previews, drag and
+  drop, clipboard paste, per-file progress, a tile grid for several pictures, a
+  gallery that pages and zooms, and video that shows a poster frame and plays in
+  the chat. Giphy is a per-user opt-in. A channel owner can pin a banner image.
+  Profile pictures with a crop step are off until you turn them on.
+- **Voice and video**: voice channels over a WebRTC mesh with coturn as the
+  mandatory relay, camera and screen or game sharing together, adaptive quality,
+  background blur, device pickers, microphone modes and push-to-talk keys,
+  per-person volume that can go past 100%, call sounds, pop-out windows, and a
+  scratchpad. Temporary rooms with guest links are also available. Voice is off
+  by default (`CHALK_VOICE_ENABLED`). Guest rooms are off unless the operator
+  enables them.
+- **Notifications**: notification sounds in selectable themes, per-channel
+  notification priority and rules that follow you across devices (encrypted),
+  desktop banners, a blinking tab, and an unread count in the tab title. Web
+  push is per device. It is off until the administrator runs `chalkctl push
+  enable`. A push names the sender and the channel and never shows the message.
+- **Privacy and encryption**: end-to-end encryption with signed envelopes,
+  pinned identities and key-changed warnings, picture-word verification, a
+  pinned server identity with its fingerprint in settings, notices for roster
+  changes that your device observes, a channel key that rotates after a member
+  leaves, signed voice fingerprints, a backup of your pins, and a parking lot
+  (F9) that hides chalk from a passer-by. The caveats are in the crypto status
+  box above.
+- **Governance and channel types**: text channels, voice channels, and
+  temporary voice rooms. Each channel is `dictator` or `democratic`. In
+  democratic mode, membership changes, deletions and mode changes run as
+  proposals that the members vote on. A democratic channel cannot be renamed.
+  The owner of a channel can rename it and give it a short name.
+- **Accounts and identity**: password and mandatory TOTP, optional passkeys, two
+  separate 24-word phrases (one resets your login, one is your encryption
+  identity), multi-device onboarding with the encryption phrase, a security
+  panel (change password, reset TOTP, passkeys), sessions that end 90 days after
+  sign-in, and an in-app admin panel for block, unblock, soft-delete, purge, and
+  an email blacklist.
+- **Roster and organisation**: a friends list with a directory and one-click
+  add, hover cards, online and away status, channel groups and a roster filter,
+  an order by creation, by activity or by hand (drag and drop on a desktop),
+  hidden channels, and chaos mode (one list of text channels, newest first),
+  which is on by default on a desktop.
+- **Phone layout**: the conversation list is the phone layout, with friend
+  chips, a filter bar, icon buttons for the parking lot, threads, filter, add a
+  friend and new channel, a full-width message box, grouped messages, a slide
+  between the list and a chat, and a swipe back. In a call, the phone has a call
+  bar, a call view with a camera flip button, and a screen wake lock. A long
+  press on a row opens a sheet. Some checks on a real phone are still open (see
+  [docs/open-items.md](docs/open-items.md)).
+- **Desktop app**: an Electron app for Windows, macOS and Linux with a tray,
+  close to tray, a system default browser for links, OS-level away detection,
+  and signed self-update. See [Desktop app](#desktop-app).
+- **Look and feel**: fifteen themes (five light, ten dark), four bundled
+  monospace fonts with sans and serif, text-size steps, a full-window width,
+  a resizable sidebar and message box, hidden scrollbars as an option, per-user
+  nick colours, an installable PWA, a version badge, and a what's-new note after
+  an update. Flair (animated frames, flame and wave) is off by default. A
+  seasonal scene in the top bar has a switch per device and a server switch.
+- **Operations**: `chalkctl` deploys, updates, backs up, restores and migrates a
+  whole host from cosign-verified container images, with a weekly update timer
+  and Caddy for TLS. It also gives a maintenance page, `chalkctl metrics` for
+  Postgres, `chalkctl push`, `chalkctl wrapsig`, `chalkctl ephemeral`, and
+  `chalkctl serverkey show`. The server can log sign-in events, slow requests,
+  a connected-user snapshot, and a web access log.
 
 ## Screenshots
 
-The default theme (fourteen more in settings), on a dev instance:
+The default dark theme (fourteen more in settings) and the light theme, on a
+dev instance. The two shots show the same conversation.
 
-![A channel in the desktop layout: sidebar with friends and channels, a conversation with reactions, an @mention, and a thread indicator](docs/screenshots/chat-desktop.png)
+### Desktop
 
-![The same channel with the thread panel open on the right, showing two replies and their own composer](docs/screenshots/chat-thread.png)
+![A channel in the dark default theme. The sidebar lists a friend, the Parking Lot, threads and two channels. The conversation shows reactions, an @mention and a thread indicator with two replies](docs/screenshots/chat-desktop.png)
+
+![The same channel in the light theme: a cream page with dark green text, and the same sidebar, messages and reactions](docs/screenshots/chat-desktop-light.png)
+
+![The dark theme with the thread panel open on the right, showing the first message of the thread, two replies and the reply box](docs/screenshots/chat-thread.png)
+
+### Voice and video
+
+A voice room with two cameras on, in the dark and the light theme. The video is
+a test pattern from Chromium's built-in fake camera, because the browser that
+took the shots has no real camera.
+
+![A voice room in the dark theme. Two camera tiles show a test pattern (a green screen with a counter and a pie shape) above the room scratchpad. A column at the left holds the call timer and the mute, deafen, camera, share, settings and leave buttons](docs/screenshots/voice-desktop.png)
+
+![The same voice room in the light theme, with the same two test-pattern camera tiles](docs/screenshots/voice-desktop-light.png)
+
+### Phone
+
+The conversation list, a conversation, and the call view.
 
 <p>
-<img src="docs/screenshots/chat-mobile-list.png" width="300" alt="The phone conversation list: five icon buttons, two friend chips, an unread channel, an unread direct conversation, and a read channel">
-<img src="docs/screenshots/chat-mobile.png" width="300" alt="The phone layout: a channel with a reaction, and a composer with a full-width field above a row of tools and send">
+<img src="docs/screenshots/chat-mobile-list.png" width="250" alt="The phone conversation list: five icon buttons, two friend chips, an unread channel, an unread direct conversation, and a read channel">
+<img src="docs/screenshots/chat-mobile.png" width="250" alt="A phone conversation. A channel shows a reaction. The message box has a full-width field above a row of tools and the send button">
+<img src="docs/screenshots/voice-mobile.png" width="250" alt="The phone call view. The other person fills the screen as a test pattern, and your own camera is a small tile in the corner. The controls are muted, deafen, camera, share and leave">
 </p>
 
 ## Quick start (development)

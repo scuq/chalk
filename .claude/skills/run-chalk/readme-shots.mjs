@@ -1,6 +1,7 @@
-// README screenshot run: three users, a real conversation, a reaction, and a thread.
-// The script writes four PNGs to /tmp/chalk-driver/readme/:
-// chat-desktop.png, chat-thread.png, chat-mobile.png, and chat-mobile-list.png.
+// README screenshot run: three users, a real conversation, a reaction, a thread, and a voice room.
+// The script writes eight PNGs to /tmp/chalk-driver/readme/:
+// chat-desktop.png, chat-desktop-light.png, chat-thread.png, chat-mobile.png,
+// chat-mobile-list.png, voice-desktop.png, voice-desktop-light.png, and voice-mobile.png.
 // Based on run-chalk/driver.mjs.
 //
 // Copy the PNGs to docs/screenshots/ when they look right.
@@ -13,6 +14,12 @@
 // An overlay (the what's-new note or the avatar nudge) can open after sign-in.
 // A locator handler closes it before each action.
 // A handler runs only before an action, so the script also clears overlays before each screenshot.
+//
+// The voice shots need chalkd started with CHALK_VOICE_ENABLED=true,
+// CHALK_TURN_URLS=turn:localhost:3478, and CHALK_TURN_SECRET=devsecret.
+// They also need the dev TURN server. Start it with `make dev-turn-up`.
+// Chromium runs with a fake camera and microphone, so the video in these shots is a test pattern.
+// If voice is off, the script skips the voice step and says so.
 import { chromium, devices } from '@playwright/test';
 import { createHmac } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -160,11 +167,16 @@ const USER_A = process.env.README_USER_A || 'ada';
 const USER_B = process.env.README_USER_B || 'kai';
 const USER_C = process.env.README_USER_C || 'noa';
 
-const browser = await chromium.launch({ args: ['--no-sandbox'] });
+// These flags give Chromium a fake camera and microphone, and accept the
+// permission prompt. The voice room shots need them. Voice must be on in
+// chalkd, and the dev TURN server must run (see the header).
+const MEDIA = ['--no-sandbox', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
+const browser = await chromium.launch({ args: MEDIA });
 const ctxA = await browser.newContext({
   viewport: { width: 1440, height: 860 }, deviceScaleFactor: 2, baseURL: BASE,
+  permissions: ['camera', 'microphone'],
 });
-const ctxB = await browser.newContext({ ...devices['iPhone 14'], baseURL: BASE });
+const ctxB = await browser.newContext({ ...devices['iPhone 14'], baseURL: BASE, permissions: ['camera', 'microphone'] });
 const ctxC = await browser.newContext({ viewport: { width: 1280, height: 800 }, baseURL: BASE });
 const pageA = await ctxA.newPage();
 const pageB = await ctxB.newPage();
@@ -319,6 +331,55 @@ await openChannel(pageA, 'gamenight');
 await send(pageA, 'who has the expansion box?');
 await pageB.waitForTimeout(2500);
 await shoot(pageB, 'chat-mobile-list.png');
+
+// Set the theme of a page. The function writes the data-theme attribute, as the
+// theme setting does, and removes it for the default theme. It does not change
+// a preference on the account.
+const setTheme = (page, t) => page.evaluate((x) => {
+  if (x === 'green') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', x);
+}, t);
+await openChannel(pageA, 'general');
+await pageA.mouse.move(0, 0);
+await setTheme(pageA, 'light');
+await pageA.waitForTimeout(400);
+await shoot(pageA, 'chat-desktop-light.png');
+await setTheme(pageA, 'green');
+
+// Stage a voice room with both cameras on. Shoot the desktop stage in the dark
+// and the light theme, and the call view on the phone.
+let voiceOk = false;
+try {
+  console.log('staging the voice room');
+  await clearOverlays(pageA);
+  await pageA.locator("[data-testid='sidebar-new']:visible").click();
+  await pageA.waitForSelector("[data-testid='create-modal']", { timeout: 5000 });
+  await pageA.locator("[data-testid='create-modal-name']").fill('lounge');
+  await pageA.locator("[data-testid='create-modal-voice']").check();
+  const items = pageA.locator("[data-testid='friend-picker-item']");
+  for (let i = 0, k = await items.count(); i < k; i++) await items.nth(i).click();
+  await pageA.locator("[data-testid='create-modal-submit']").click();
+  await pageA.waitForSelector("[data-testid='call-rail-foot']", { timeout: 20000 });
+  await pageB.waitForTimeout(1500);
+  await clearOverlays(pageB);
+  const room = pageB.locator("[data-testid='zucker-row']:visible", { hasText: 'lounge' });
+  if (!(await room.count())) await pageB.locator("[data-testid='zucker-voice']").click();
+  await room.first().click();
+  await pageB.locator("[data-testid='phone-call-join']").click({ timeout: 10000 });
+  await pageB.waitForTimeout(2500);
+  await pageB.locator("[data-testid='phone-call-cam']").click();
+  await pageA.locator("[data-testid='call-rail-cam']").click();
+  await pageA.waitForTimeout(4000);
+  await pageA.mouse.move(0, 0);
+  await shoot(pageA, 'voice-desktop.png');
+  await setTheme(pageA, 'light');
+  await pageA.waitForTimeout(400);
+  await shoot(pageA, 'voice-desktop-light.png');
+  await setTheme(pageA, 'green');
+  await shoot(pageB, 'voice-mobile.png');
+  voiceOk = true;
+} catch (e) { console.log('voice skipped:', e.message.split('\n')[0].slice(0, 160)); }
+if (!voiceOk) console.log('no voice shots: is chalkd running with CHALK_VOICE_ENABLED and the dev TURN server?');
 
 writeFileSync(OUT + 'credentials.txt',
   `base: ${BASE}\nuser A: ${USER_A}\nuser B: ${USER_B}\nuser C: ${USER_C}\npassword: ${PASSWORD}\n`);
