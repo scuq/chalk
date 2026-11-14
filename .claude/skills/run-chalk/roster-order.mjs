@@ -13,8 +13,10 @@
 //
 // Two findings worth keeping, both of which cost a run to learn:
 //   * the 112 "add a picture?" nudge reappears after a reload and its modal
-//     backdrop swallows every pointer event aimed at the sidebar. Dismiss it
-//     or the drags silently hit the backdrop instead of a row.
+//     backdrop swallows every pointer event aimed at the sidebar. If you do
+//     not close it, the drags silently hit the backdrop instead of a row.
+//     The `register` helper closes the nudge and the "what's new" note with
+//     locator handlers.
 //   * a drag needs the intermediate move: Playwright's mouse.move(steps: n)
 //     is what pushes it past the 4px threshold. down() + one move() lands as
 //     a click.
@@ -70,6 +72,18 @@ const ss = async (page, name) => {
 };
 
 async function register(page, username) {
+  // 135: The "what's new" note opens at an unknown time after sign-in.
+  // Its backdrop blocks every click, so the handler closes the note.
+  // The handler dispatches the click event and uses `noWaitAfter: true`,
+  // so the run never waits for the note to disappear.
+  await page.addLocatorHandler(page.locator("[data-testid='whats-new-backdrop']"), async () => {
+    await page.locator("[data-testid='whats-new-dismiss']").dispatchEvent('click').catch(() => {});
+  }, { noWaitAfter: true });
+  // The avatar nudge opens at an unknown time too. Its backdrop also blocks
+  // every click, and the handler closes it the same way.
+  await page.addLocatorHandler(page.locator("[data-testid='avatar-nudge-backdrop']"), async () => {
+    await page.locator("[data-testid='avatar-nudge-later'], [data-testid='avatar-nudge-close']").first().dispatchEvent('click').catch(() => {});
+  }, { noWaitAfter: true });
   await page.goto('/');
   await page.waitForSelector("[data-testid='password-login']", { timeout: 15000 });
   await page.locator('button.chalk-auth-link', { hasText: 'create an account' }).click();
@@ -235,6 +249,21 @@ await pageB.locator("[data-testid='friends-tab-pending']").click();
 await pageB.locator("[data-testid='friends-action-accept']").first().click({ timeout: 8000 });
 await pageB.waitForTimeout(600);
 await pageB.locator("[data-testid='friends-panel-close']").click();
+
+// 135: Phase 134-1 made chaos mode (one list by activity, no group headers)
+// the desktop default. This probe checks the grouped roster, so it turns
+// chaos mode off.
+await pageA.locator("[data-testid='status-user-menu-trigger']").click();
+await pageA.waitForTimeout(300);
+await pageA.locator("[data-testid='status-user-menu-profile']").click();
+await pageA.waitForTimeout(800);
+await pageA.locator("[data-testid='profile-tab-chat']").click();
+await pageA.waitForTimeout(400);
+const chaosBox = pageA.locator("[data-testid='roster-chaos']");
+if (await chaosBox.isChecked().catch(() => false)) await chaosBox.uncheck();
+await pageA.waitForTimeout(600);
+await pageA.locator("[data-testid='profile-panel-close']").click();
+await pageA.waitForTimeout(400);
 
 // Two groups, two channels each. Creation order is the roster's default
 // order, newest first -- so "alpha" ends up last in its group.

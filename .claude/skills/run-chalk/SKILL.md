@@ -165,6 +165,7 @@ cd web && npx tsc --noEmit && node test.mjs && node build.mjs   # 815 tests, 0 f
 - **The web bundle is embedded in the chalkd binary** (`embed.go`). A CSS/TS
   change is not served until `node build.mjs` AND a chalkd rebuild+restart —
   rerunning `tools/dev.sh` without the SKIP vars does both.
+- **Two overlays block clicks at an unknown time after sign-in.** The "what's new" note and the avatar nudge open late, and their backdrops block every click. The probes close them with `addLocatorHandler`, dispatch the click event, and set `noWaitAfter: true`. `roster-order.mjs` also turns chaos mode off, because it checks the grouped roster.
 - **The signup password step takes tens of seconds.** Client-side Argon2id
   at 256 MiB; the driver waits up to 120 s. Don't shorten that timeout.
 - **Use `http://localhost:8443` in the browser, not `127.0.0.1`.** WebAuthn

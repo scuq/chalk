@@ -66,6 +66,21 @@ async function ss(page, name) {
 }
 
 async function register(page, username) {
+  // 135: The "what's new" note opens at an unknown time after sign-in.
+  // Its backdrop blocks every click, so the handler closes the note.
+  // The handler dispatches the click event and uses `noWaitAfter: true`,
+  // so the run never waits for the note to disappear.
+  // Without `noWaitAfter`, this probe hung. The note opened while the
+  // parking privacy screen was on, and the handler waited for a backdrop
+  // that did not go away. The reason the click did not close it is unknown.
+  await page.addLocatorHandler(page.locator("[data-testid='whats-new-backdrop']"), async () => {
+    await page.locator("[data-testid='whats-new-dismiss']").dispatchEvent('click').catch(() => {});
+  }, { noWaitAfter: true });
+  // The avatar nudge opens at an unknown time too. Its backdrop also blocks
+  // every click, and the handler closes it the same way.
+  await page.addLocatorHandler(page.locator("[data-testid='avatar-nudge-backdrop']"), async () => {
+    await page.locator("[data-testid='avatar-nudge-later'], [data-testid='avatar-nudge-close']").first().dispatchEvent('click').catch(() => {});
+  }, { noWaitAfter: true });
   await page.goto('/');
   await page.waitForSelector("[data-testid='password-login']", { timeout: 15000 });
   await page.locator('button.chalk-auth-link', { hasText: 'create an account' }).click();
