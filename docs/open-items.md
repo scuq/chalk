@@ -389,7 +389,7 @@ can reach packaging). Open:
   Mac can keep one on a second display — the two-screen check in the phase
   doc is still to run.
 
-## Phase 65 — web push: IN PROGRESS, 65-1 to 65-7 built
+## Phase 65 — web push: IN PROGRESS, 65-1 to 65-8 built
 
 65-1 is built: migration 0063 and `internal/store/push.go`. 65-2 is built:
 the `internal/webpush` package. 65-3 is built: the push config, the VAPID key
@@ -398,8 +398,8 @@ on the sealed WebSocket and migration 0064. 65-5 is built: the dispatcher
 sends a push for each new message that the instance published, and the threat
 model has its section on third parties. 65-6 is built: the service worker, its
 build, and the `no-cache` header for `sw.js`. 65-7 is built: the page registers the
-worker and reconciles the browser subscription at every welcome. No browser subscribes
-until the 65-8 button calls `enablePush`. 65-8 onward is open. Record in [phases/PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md). The plan
+worker and reconciles the browser subscription at every welcome. 65-8 is built: the push
+part in Settings > notifications calls `enablePush` and `disablePush`. 65-9 onward is open. Record in [phases/PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md). The plan
 was revised on 14 November 2026 after a review against the threat model. A
 subscription belongs to a login session and goes with it. The VAPID key and
 all subscription frames travel only over the WebSocket. Guests cannot
@@ -410,7 +410,7 @@ subscribe.
   cannot drop a push without risking a revoked subscription on iOS. A channel
   muted in chalk still pushes under scope `all`.
 - **Open:** all real-device checks (an iPhone on a deployed HTTPS instance,
-  Android Chrome, headed Chrome on localhost). No slice after 65-7 is built. The `notificationclick` path has no automated test.
+  Android Chrome, headed Chrome on localhost). No slice after 65-8 is built. The `notificationclick` path has no automated test.
   No automated test covers the path from a real NOTIFY to a real push service,
   because the sender refuses loopback addresses.
   The iPhone check includes this: chalk shows under Settings > Notifications
@@ -532,6 +532,10 @@ Two deliberate exclusions:
   fails at HEAD with "no session". It dials without a session cookie, and the
   WebSocket upgrade has required a session since 09b-5. The test in
   `test/integration/push_ws_test.go` shows how to send the cookie.
+- `web/build.mjs` never removes old hashed files from `web/dist`. A dev tree
+  collects them (933 MB here), and chalkd embeds all of them (a 991 MB dev
+  binary). Release builds start from a clean checkout and are not affected.
+  Workaround: empty `web/dist` before `node build.mjs`.
 - `docs/wire-protocol.md` is stale. It lists `chalk_sid` and `presence_set`,
   and it lacks `ping`, the `inner_*` frames, and the push frames. Do not
   rewrite it from itself. `internal/proto` and `web/src/proto.ts` are the

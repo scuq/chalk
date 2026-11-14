@@ -158,7 +158,7 @@ committed from it would describe whatever question came last.
 | `thread-refresh.mjs` | 42-10: cuts A's websocket, has B reply in a thread, and asks whether the pane catches up — reopened and left open, desktop and mobile. Its header carries the finding that makes it work: `setOffline()` does not touch an established WebSocket, so it takes `routeWebSocket` to stage this at all. 8 checks |
 | `flair-demo.mjs` | 115: not a probe — a scene. A headed window signed in as you, four bots chatting in bursts, one flipping away/online, one DMing you, three wearing frames; runs until killed. The `flair-demo` skill is its front door |
 | `sw-push.mjs` | 65-6: registers `/sw.js` on the dev stack, delivers pushes through CDP `ServiceWorker.deliverPushMessage`, and reads `getNotifications()`. It holds the title, body, tag, icon, and open target, a replaced tag, the generic notification, and a page that still loads. Needs `chromium.launch({ channel: "chromium" })`, because the default headless shell has no notification permission. `notificationclick` is not covered. 11 checks |
-| `push-page.mjs` | 65-7: the page side of web push. Registers two users, the second as a friend, to create two channels. It tests six things. The page registers `/sw.js` after welcome. A session that did not opt in has no browser subscription. Reconcile drops a leftover browser subscription. A `chalk-open` message opens the channel. Logout drops the browser subscription. The console shows no push errors. Needs chalkd with push on and the sealed channel, and the dev VAPID pair. Uses a persistent profile in `/tmp/chalk-probe/profile`. Steps go to `/tmp/chalk-probe/steps.log`. 6 checks |
+| `push-page.mjs` | 65-8: the page side of web push. Registers two users, the second as a friend, to create two channels. It tests 10 things. The page registers `/sw.js` after welcome. A session that did not opt in has no browser subscription. Reconcile drops a leftover browser subscription. A `chalk-open` message opens the channel. The push toggle in Settings > notifications starts off. Turning it on subscribes and uploads. The scope and the toggle survive a reload. A message from the second user arrives as a real push notification through FCM while no chalk page of the first user is open. Logout drops the browser subscription. The console shows no push errors. It closes the avatar nudge on the second account and the friends panel. Needs chalkd with push on and the sealed channel, and the dev VAPID pair. Uses a persistent profile in `/tmp/chalk-probe/profile`. Steps go to `/tmp/chalk-probe/steps.log`. 10 checks |
 | `ui-sweep.mjs` | 133: screenshots and measures the UI. Fifteen themes on the shell, the composer and keyboard focus, phone width, and the voice room with up to eight users (a `CLIPPED` line when a tile passes the stage edge). With `--headed` it is a demo and runs until killed. The `ui-sweep` skill is its front door |
 
 Each exists because the assertion needs a real browser and `web/test.mjs` has
@@ -197,6 +197,9 @@ cd web && npx tsc --noEmit && node test.mjs && node build.mjs   # 815 tests, 0 f
 - **A fresh account cannot create a channel.** `create-modal-submit` is
   disabled with zero friends and requires ≥1 member selected. Use
   `--friend`, which does the two-user dance.
+- **`CHALK_DEV_SKIP_NPM=1` also skips the web build.** In `tools/dev.sh` it
+  skips the whole SPA step, not only `npm install`. The old `web/dist` stays,
+  so a change in `web/src` does not reach the binary.
 - **The web bundle is embedded in the chalkd binary** (`embed.go`). A CSS/TS
   change is not served until `node build.mjs` AND a chalkd rebuild+restart —
   rerunning `tools/dev.sh` without the SKIP vars does both.

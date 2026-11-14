@@ -92,6 +92,8 @@ export interface AuthConfig {
   // 129-1: the administrator's switch for the seasonal scene. Absent from
   // older servers -> on, which is the default.
   seasonal_decorations?: boolean;
+  // 65-8: whether the server sends web push. Absent from older servers -> off.
+  push_enabled?: boolean;
 }
 
 // RegistrationForm is the SPA-side draft state of the registration

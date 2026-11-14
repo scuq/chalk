@@ -1,12 +1,18 @@
-// 65-7 probe: the page side of web push. It registers two users, and the
+// 65-8 probe: the page side of web push. It registers two users, and the
 // second is a friend, so the first can create two channels. It checks that:
 // - the page registers /sw.js after welcome,
 // - a session that did not opt in has no browser subscription,
 // - reconcile drops a leftover browser subscription,
 // - a chalk-open message opens the channel,
+// - the push toggle in Settings > notifications starts off,
+// - turning the toggle on subscribes and uploads the subscription,
+// - the scope and the toggle survive a reload,
+// - a message from the second user arrives as a push notification through
+//   FCM while no chalk page of the first user is open,
 // - logout drops the browser subscription,
 // - the console shows no push errors.
-// It runs 6 checks.
+// It runs 10 checks. It closes the avatar nudge on the second account with
+// "no thanks", and it closes the friends panel.
 //
 // It needs chalkd with push on and the sealed channel (CHALK_SERVER_ID_KEY).
 // It reads the dev VAPID pair from ~/.cache/chalk-dev-vapid, in the lines
@@ -31,7 +37,11 @@ const PUB = /PUB=(\S+)/.exec(readFileSync(homedir() + "/.cache/chalk-dev-vapid",
 const log = [];
 const step = (m) => appendFileSync("/tmp/chalk-probe/steps.log", `${new Date().toISOString()} ${m}\n`);
 const results = [];
-const check = (name, ok, detail = "") => results.push(`${ok ? "PASS" : "FAIL"} ${name}${detail ? " -- " + detail : ""}`);
+const check = (name, ok, detail = "") => {
+  const line = `${ok ? "PASS" : "FAIL"} ${name}${detail ? " -- " + detail : ""}`;
+  results.push(line);
+  step(line);
+};
 
 function base32Decode(s) {
   const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -110,7 +120,7 @@ const ctx = await chromium.launchPersistentContext(OUT + "/profile", {
   channel: "chromium", baseURL: BASE, viewport: { width: 1280, height: 800 },
 });
 await ctx.grantPermissions(["notifications"]);
-const page = ctx.pages()[0] ?? (await ctx.newPage());
+let page = ctx.pages()[0] ?? (await ctx.newPage());
 page.on("console", (m) => step(`console ${m.type()}: ${m.text()}`));
 page.on("pageerror", (e) => log.push(`pageerror: ${e.message}`));
 
@@ -157,6 +167,10 @@ step("open message");
 step("friend");
 const ctxB = await browser.newContext({ baseURL: BASE });
 const pageB = await ctxB.newPage();
+// The avatar nudge opens on a new account and blocks clicks (parking-privacy.mjs).
+await pageB.addLocatorHandler(pageB.locator("[data-testid='avatar-nudge-backdrop']"), async () => {
+  await pageB.getByRole("button", { name: "no thanks" }).click().catch(() => {});
+});
 await register(pageB, USER + "b");
 await page.locator("[data-testid='sidebar-add-friend']:visible").click();
 await page.locator("[data-testid='friends-directory-row']", { hasText: USER + "b" }).locator("[data-testid='friends-directory-add']").click();
@@ -166,6 +180,7 @@ await pageB.locator("[data-testid='sidebar-add-friend']:visible").click();
 await pageB.locator("[data-testid='friends-tab-pending']").click();
 await pageB.locator("[data-testid='friends-action-accept']").first().click({ timeout: 8000 });
 await pageB.waitForTimeout(600);
+await pageB.locator("[data-testid='friends-panel-close']").click();
 for (const name of ["push-a", "push-b"]) {
   await page.locator("[data-testid='sidebar-new']:visible").click();
   await page.locator("[data-testid='create-modal-name']").fill(name);
@@ -189,6 +204,63 @@ if (!target) {
   await page.waitForTimeout(500);
   const active = await page.locator(`[data-testid='sidebar-item'][data-channel-id='${target.id}']`).getAttribute("data-active");
   check("a chalk-open message opens the channel", active === "true", `${target.id} was ${target.active}, now ${active} (${ids.length} rows)`);
+}
+
+// 65-8: the settings section turns push on, changes the scope, and a real
+// push through FCM reaches the worker while no chalk page is open.
+const openPushSettings = async () => {
+  await page.locator("[data-testid='status-user-menu-trigger']").click();
+  await page.locator("[data-testid='status-user-menu-profile']").click();
+  await page.locator("[data-testid='profile-tab-notifications']").click();
+  await page.locator("[data-testid='notify-push-toggle']").waitFor({ timeout: 10000 });
+  await page.waitForFunction(() => !document.querySelector("[data-testid='notify-push-toggle']").disabled, null, { timeout: 10000 });
+};
+if (subTry.startsWith("ok")) {
+  step("push settings");
+  await openPushSettings();
+  const toggle = page.locator("[data-testid='notify-push-toggle']");
+  check("the push toggle starts off", !(await toggle.isChecked()));
+  await toggle.click(); // controlled: it turns on after the server answers
+  await page.waitForFunction(() => document.querySelector("[data-testid='notify-push-toggle']").checked, null, { timeout: 15000 }).catch(() => {});
+  const err1 = await page.locator("[data-testid='notify-push-error']").innerText().catch(() => "");
+  st = await swState(page);
+  check("turning push on subscribes and uploads", (await toggle.isChecked()) && st.sub !== null && !err1, `${err1} ${st.sub?.slice(0, 40)}`);
+  await page.locator("[data-testid='notify-push-scope']").selectOption("all");
+  await page.waitForTimeout(1500);
+  await page.keyboard.press("Escape");
+  await page.reload();
+  await page.waitForSelector("[data-state='open']", { timeout: 30000 });
+  await dismissWhatsNew(page);
+  await openPushSettings();
+  check("the scope and the toggle survive a reload",
+    (await page.locator("[data-testid='notify-push-scope']").inputValue()) === "all" && (await toggle.isChecked()));
+  await page.keyboard.press("Escape");
+
+  // Close every chalk page of A, so A is offline, then B writes in push-a.
+  step("real push");
+  const keep = await ctx.newPage(); // about:blank keeps the context alive
+  await page.close();
+  await pageB.waitForTimeout(1500);
+  await pageB.locator("[data-testid='sidebar-item']", { hasText: "push-a" }).click();
+  await pageB.locator("[data-testid='composer-input']").fill("push probe message");
+  await pageB.locator("[data-testid='composer-send']").click();
+  let seen = [];
+  const p2 = await ctx.newPage();
+  await p2.goto(BASE + "/sw.js"); // same origin, no app: A stays offline
+  for (let i = 0; i < 30 && seen.length === 0; i++) {
+    await p2.waitForTimeout(1000);
+    seen = await p2.evaluate(async () => {
+      const r = await navigator.serviceWorker.getRegistration("/");
+      return r ? (await r.getNotifications()).map((n) => `${n.title} | ${n.body} | ${n.tag}`) : ["no registration"];
+    });
+    if (seen[0] === "no registration") break;
+  }
+  check("a message from B arrives as a push notification", seen.some((s) => s.includes(`@${USER}b in #push-a`)), seen.join(" ; "));
+  await keep.close();
+  page = p2;
+  await page.goto(BASE + "/");
+  await page.waitForSelector("[data-state='open']", { timeout: 30000 });
+  await dismissWhatsNew(page);
 }
 
 // Logout drops the browser subscription. Subscribe again first, if this Chromium can.

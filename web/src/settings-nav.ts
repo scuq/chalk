@@ -259,6 +259,7 @@ export const SETTINGS_SECTIONS: SectionMeta[] = [
       "badges",
       "rules",
       "alerts",
+      "push",
     ],
   },
   {

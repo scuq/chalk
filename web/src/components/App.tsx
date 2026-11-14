@@ -7467,6 +7467,8 @@ export function App() {
           me={state.me}
           emailChange={state.emailChange}
           serverSealed={clientRef.current?.isSealed() ?? false}
+          pushEnabled={state.authConfig?.push_enabled ?? false}
+          pushClient={() => clientRef.current}
           onClose={() => dispatch({ kind: "close_panel" })}
           onEmailChangeDraft={(value) =>
             dispatch({ kind: "email_change_draft_change", value })

@@ -14,6 +14,8 @@
 // survive the round-trip.
 
 import { HueSlider } from "./HueSlider"; // 117-1
+import { PushSettings } from "./PushSettings"; // 65-8
+import type { PushClient } from "../notify/push";
 import {
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
@@ -86,6 +88,10 @@ interface Props {
   emailChange: EmailChangeState;
   /** 83-9: whether the live connection runs the sealed inner channel. */
   serverSealed?: boolean;
+  /** 65-8: the push_enabled value from /api/auth/config. If false or absent, the push part shows nothing. */
+  pushEnabled?: boolean;
+  /** 65-8: returns the live connection, or null if it does not exist yet. If absent, the push part is not mounted. */
+  pushClient?: () => PushClient | null;
   onClose: () => void;
   onEmailChangeDraft: (value: string) => void;
   onEmailChangeSubmit: () => void;
@@ -234,6 +240,8 @@ export function ProfilePanel({
   me,
   emailChange,
   serverSealed,
+  pushEnabled,
+  pushClient,
   theme,
   onSetTheme,
   chatPrefs,
@@ -1766,6 +1774,10 @@ export function ProfilePanel({
                   </span>
                 </label>
               </div>
+
+              {pushClient && (
+                <PushSettings serverEnabled={!!pushEnabled} client={pushClient} sealed={!!serverSealed} />
+              )}
 
               {/* 102-1: the sound theme. Per-device, like the volume. The
                   rows below preview in whichever theme is selected here, so

@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { openTargetFromMessage, planReconcile, subscribePayload, type BrowserSub } from "./push";
+import {
+  openTargetFromMessage,
+  planReconcile,
+  pushAvailability,
+  pushErrorText,
+  subscribePayload,
+  type BrowserSub,
+  type PushEnv,
+} from "./push";
 import type { PushStatePayload } from "../proto";
 
 const keyBytes = new Uint8Array(65).map((_, i) => (i * 7 + 4) & 0xff);
@@ -93,4 +101,34 @@ test("only a chalk-open message with a channel opens a chat", () => {
   assert.equal(openTargetFromMessage({ type: "other", channelID: "c1" }), null);
   assert.equal(openTargetFromMessage(null), null);
   assert.equal(openTargetFromMessage("chalk-open"), null);
+});
+
+const env = (over: Partial<PushEnv> = {}): PushEnv => ({
+  serverEnabled: true,
+  supported: true,
+  sealed: true,
+  appleMobile: false,
+  standalone: false,
+  permission: "default",
+  ...over,
+});
+
+test("push availability goes from the server switch down to the permission", () => {
+  assert.equal(pushAvailability(env({ serverEnabled: false, supported: false })), "server-off");
+  assert.equal(pushAvailability(env({ appleMobile: true, supported: false })), "ios-home-screen");
+  assert.equal(pushAvailability(env({ appleMobile: true, standalone: true })), "ready");
+  assert.equal(pushAvailability(env({ supported: false })), "unsupported");
+  assert.equal(pushAvailability(env({ sealed: false })), "unsealed");
+  assert.equal(pushAvailability(env({ permission: "denied" })), "denied");
+  assert.equal(pushAvailability(env({ permission: "granted" })), "ready");
+  assert.equal(pushAvailability(env()), "ready");
+});
+
+test("push errors map to settings text by their code", () => {
+  assert.match(pushErrorText(new Error("push_permission_denied")), /blocked/);
+  assert.match(pushErrorText(new Error("push_disabled: push is off")), /off on this server/);
+  assert.match(pushErrorText(new Error("push_key_stale: old key")), /try again/);
+  assert.match(pushErrorText(new Error("push_no_session: gone")), /sign in again/);
+  assert.equal(pushErrorText(new Error("boom")), "push failed: boom");
+  assert.equal(pushErrorText("x"), "push failed: x");
 });

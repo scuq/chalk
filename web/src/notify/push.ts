@@ -135,6 +135,72 @@ export function openTargetFromMessage(data: unknown): OpenTarget | null {
   return t.channelID ? t : null;
 }
 
+/** What the push settings can offer on this device. */
+export type PushAvailability =
+  | "server-off"
+  | "ios-home-screen"
+  | "unsupported"
+  | "unsealed"
+  | "denied"
+  | "ready";
+
+/** The facts about this device and session that pushAvailability reads. */
+export interface PushEnv {
+  serverEnabled: boolean;
+  supported: boolean;
+  sealed: boolean;
+  appleMobile: boolean;
+  standalone: boolean;
+  permission: NotificationPermission | null;
+}
+
+/**
+ * pushAvailability returns what the push settings can offer in env. It checks
+ * the conditions in this order and returns the first that holds:
+ *
+ *   - "server-off": the server has push off.
+ *   - "ios-home-screen": an iPhone or iPad runs chalk outside the Home Screen app.
+ *   - "unsupported": the browser has no push support.
+ *   - "unsealed": the connection is not sealed.
+ *   - "denied": the user blocked notifications.
+ *
+ * If none of these holds, it returns "ready".
+ */
+export function pushAvailability(e: PushEnv): PushAvailability {
+  if (!e.serverEnabled) return "server-off";
+  if (e.appleMobile && !e.standalone) return "ios-home-screen";
+  if (!e.supported) return "unsupported";
+  if (!e.sealed) return "unsealed";
+  if (e.permission === "denied") return "denied";
+  return "ready";
+}
+
+/**
+ * pushErrorText returns the text that the push settings show for err, an
+ * error from enablePush or disablePush. It matches the error code before the
+ * first colon. For an unknown code, it returns "push failed: " and the message.
+ */
+export function pushErrorText(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  const code = msg.split(":")[0].trim();
+  switch (code) {
+    case "push_permission_denied":
+      return "notifications are blocked for chalk in this browser.";
+    case "push_disabled":
+      return "push is off on this server.";
+    case "push_unsupported":
+      return "this browser cannot receive push.";
+    case "push_unsealed":
+      return "push needs the sealed connection to this server.";
+    case "push_no_session":
+      return "your session ended. sign in again.";
+    case "push_key_stale":
+      return "the server changed its push key. try again.";
+    default:
+      return `push failed: ${msg}`;
+  }
+}
+
 // ---- Browser half ------------------------------------------------------
 
 const WORKER_URL = "/sw.js";

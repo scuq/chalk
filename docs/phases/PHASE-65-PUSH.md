@@ -3,7 +3,7 @@
 Push notifications that reach an iPhone home-screen chalk with the app fully
 closed, without breaking the E2E privacy model and without any paid accounts.
 Planned against v0.5.2. **In progress, as of 14 November 2026** — slices 65-1
-to 65-7 are built, and the plan below was revised that day (next section).
+to 65-8 are built, and the plan below was revised that day (next section).
 
 ## Review of 14 November 2026
 
@@ -245,8 +245,7 @@ envelope signature against the pins before it shows any text.
     `index.html`. CSP already allows the worker (`worker-src 'self'`).
 - **Client:** `web/src/notify/push.ts` (register, capability + iOS-standalone
   detection, subscribe/unsubscribe/getState over the WebSocket, logout cleanup) and a new
-  "Push" section in NotificationsPanel (permission button already there,
-  `web/src/components/NotificationsPanel.tsx:168-175`): per-device toggle bound to the real
+  "Push" part in Settings > notifications (`ProfilePanel`) with a per-device toggle bound to the real
   `PushManager.getSubscription()` state, DMs-only/all radio, disabled-state
   explanations, "Add to Home Screen first" hint on iOS outside standalone.
   `web/manifest.json` exists (`display: standalone`), so the iOS
@@ -254,7 +253,7 @@ envelope signature against the pins before it shows any text.
   iOS lists the installed app under Settings > Notifications only after the
   permission prompt. The app never shows in the main list of apps or in the
   Privacy lists. Today the only caller of `Notification.requestPermission()` is
-  the button at `web/src/components/NotificationsPanel.tsx:168-179`. The panel
+  the button at `web/src/components/NotificationsPanel.tsx:168-179`, and its denied hint is at lines 180-185. The panel
   shows it only when `"Notification" in window` (`web/src/notify/banners.ts:129-131`).
   Unknown: if that button shows in the installed iOS app. The comments at
   `banners.ts:16-20` and `NotificationsPanel.tsx:18-21` say iOS has no
@@ -276,7 +275,7 @@ envelope signature against the pins before it shows any text.
 | 65-5 (built) | Dispatcher + send hook: payload builder (the plaintext choke point), recipient selection via presence, encrypt/send/prune, cooldown, InstanceID-guarded hook in handleMessageEvent, tests against an httptest fake relay, the new "third parties" section in `docs/threat-model.md` | internal/server/push_dispatch.go, internal/server/server.go, internal/presence/store.go, internal/store/push.go, docs/threat-model.md | 340 |
 | 65-6 (built) | `web/src/sw.ts` and `web/src/sw-logic.ts` + second esbuild invocation → unhashed dist/sw.js + spa.go no-cache special case, `pushsubscriptionchange` resubscribes locally (the page uploads at its next start, 65-7), kept probe `sw-push.mjs`. Registration by the page moves to 65-7 | web/src/, web/build.mjs, internal/server/spa.go, .claude/skills/run-chalk/ | 165 |
 | 65-7 (built) | Client push manager: `web/src/notify/push.ts`, and `push.test.ts` with 11 tests on `planReconcile`, `subscribePayload`, and `openTargetFromMessage`. `App.tsx` calls reconcile in `onWelcome`, installs the open listener beside the banner navigate handler, and calls `dropBrowserSubscription` at logout. Kept probe `push-page.mjs`. No page code calls `enablePush` or `disablePush` yet (65-8) | web/src/notify/, web/src/components/App.tsx, .claude/skills/run-chalk/ | 210 |
-| 65-8 | NotificationsPanel "Push" section. **Changelog bullet.** | web/src/components/ | 150 |
+| 65-8 (built) | The "Push" part in Settings > notifications: `PushSettings.tsx`, mounted in `ProfilePanel.tsx` after "do not disturb". It has a switch for push on this device and a select for direct messages or all messages. It shows hints for an iPhone or iPad outside the Home Screen, a browser without push, an unsealed connection, and blocked notifications. It renders nothing if the server has push off. Also `pushAvailability` and `pushErrorText` in `push.ts`, `AuthConfig.push_enabled`, the settings search keyword `push`, tests, and 10 checks in `push-page.mjs`. Changelog bullet | web/src/components/, web/src/notify/, web/src/auth/types.ts, web/src/settings-nav.ts, .claude/skills/run-chalk/ | 300 |
 | 65-9 | Notification click opens the chat (open app, closed app, phone), real-device hardening + payload-contract doc update + changelog | small diffs | 80 |
 | 65-10 (optional, deferred) | "Hide details" lock-screen mode (generic "new activity" text). `generic` column ships in 0063 up front so no second migration. | — | 60 |
 
@@ -462,7 +461,28 @@ Requires real hardware:
 - **Open check.** The opt-in path needs the 65-8 button: `enablePush`, then
   `push_subscribe`, then a real push through FCM. The kept probe
   `push-page.mjs` covers the rest. It needs the dev stack with push on and
-  the sealed channel.
+  the sealed channel. 65-8 closed this check (see the next section).
+
+## Decisions from 65-8
+
+- **Place.** The part lives in Settings > notifications (`ProfilePanel`), not
+  in the notification-rules modal (`NotificationsPanel`), as the slice table
+  first said. Push is a per-device switch, like the sounds and do not disturb.
+  The settings search keyword `push` lands there. The settings field styles
+  are scoped to that panel.
+- **Scope.** The scope select calls `enablePush` again with the new scope.
+  The server replaces the row.
+- **Switch.** The checkbox turns on only after the server answers. Until
+  then it stays off and is disabled.
+- **Availability.** `pushAvailability` picks one state, in this order: server
+  off, iPhone or iPad outside the Home Screen, no browser support, unsealed
+  connection, blocked notifications, ready. If the server has push off, the
+  part renders nothing.
+- **Live result.** On the dev stack, the probe delivered a real push through
+  FCM from end to end. A message from the second user arrived as a
+  notification while no chalk page of the first user was open.
+- **Open checks.** A real iPhone (Home Screen app) and Android Chrome. Both
+  are in 65-9.
 
 ## Risks
 
