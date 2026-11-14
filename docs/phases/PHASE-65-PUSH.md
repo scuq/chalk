@@ -2,8 +2,8 @@
 
 Push notifications that reach an iPhone home-screen chalk with the app fully
 closed, without breaking the E2E privacy model and without any paid accounts.
-Planned against v0.5.2. **In progress, as of 14 November 2026** — slice 65-1
-is built, and the plan below was revised that day (next section).
+Planned against v0.5.2. **In progress, as of 14 November 2026** — slices 65-1
+and 65-2 are built, and the plan below was revised that day (next section).
 
 ## Review of 14 November 2026
 
@@ -190,6 +190,15 @@ envelope signature against the pins before it shows any text.
   POSTs to. https-only + dial-time IP vetting — copy the ~40-line vet from
   `internal/linkpreview` (`vetDialAddr`, unexported there) into
   `internal/webpush`; extract a shared package only if a third user appears.
+  Built in 65-2. The sender uses no proxy, because a proxy would make the
+  vet check the address of the proxy and not the address of the endpoint.
+  The sender follows no redirect. It returns a redirect as a `StatusError`.
+- **Sender record (65-2):** the plaintext is always 1024 bytes, with the
+  delimiter and the padding. Every body is therefore 1126 bytes. The record
+  size in the header is 4096. A VAPID token lives 12 hours, and the sender
+  replaces it 1 hour before it expires. The token cache holds at most 64
+  audiences, because the endpoint host comes from a client. The answers 404
+  and 410 map to `ErrGone`.
 - **VAPID config:** `internal/config/push.go` sub-config module (pattern:
   linkpreview.go): `CHALK_PUSH_ENABLED`, `CHALK_VAPID_PUBLIC_KEY`,
   `CHALK_VAPID_PRIVATE_KEY`, `CHALK_VAPID_SUBJECT`. The subject is the JWT's
@@ -244,7 +253,7 @@ envelope signature against the pins before it shows any text.
 | Slice | What | Files | ~LOC |
 |---|---|---|---|
 | 65-1 (built) | Migration `0063_push_subscriptions.sql` + `internal/store/push.go`: session-bound upsert with the 8-per-user cap, get/delete by session, delete by id, touch, `ListPushSubscriptionsForUsers(userIDs, isDM)` with scope and session-validity filter, tests | migrations/, internal/store/ | 280 |
-| 65-2 | `internal/webpush`: RFC 8291 aes128gcm encrypt w/ fixed-length padding, RFC 8292 VAPID ES256 JWT (`aud` = origin of *this* endpoint, computed per-send, not a fixed value and not chalk's own origin — a cached token is reusable only across subscriptions sharing a host), https-only sender with IP vet, Topic/TTL/Urgency, typed ErrGone; tests incl. the Appendix A vector byte-exact and constant ciphertext length across differing handles | internal/webpush/ (new) | 450 |
+| 65-2 (built) | `internal/webpush`: RFC 8291 aes128gcm encrypt w/ fixed-length padding, RFC 8292 VAPID ES256 JWT (`aud` = origin of *this* endpoint, computed per-send, not a fixed value and not chalk's own origin — a cached token is reusable only across subscriptions sharing a host), https-only sender with IP vet, Topic/TTL/Urgency, typed ErrGone; tests incl. the Appendix A vector byte-exact and constant ciphertext length across differing handles | internal/webpush/ (new) | 450 |
 | 65-3 | Config + chalkctl: `internal/config/push.go`, VAPID keygen/preserve/backfill + `CHALK_VAPID_SUBJECT` (prompt on init, domain-derived default, preserved like the keys), a VAPID rotate command, env template, `push_enabled` only in /api/auth/config | internal/config/, internal/chalkctl/, internal/auth/ | 290 |
 | 65-4 | WebSocket frames inside the sealed channel: push config (VAPID public key), subscribe, unsubscribe, and state. The connection carries its session token. Guests are refused. Validation covers the https endpoint and the key lengths. Replaces the old HTTP API slice | internal/server/, internal/proto/ | 220 |
 | 65-5 | Dispatcher + send hook: payload builder (the plaintext choke point), recipient selection via presence, encrypt/send/prune, cooldown, InstanceID-guarded hook in handleMessageEvent, tests against an httptest fake relay, the new "third parties" section in `docs/threat-model.md` | internal/server/push_dispatch.go, cmd/chalkd/, docs/threat-model.md | 340 |
@@ -263,6 +272,7 @@ Locally verifiable (no device, no deployment):
 
 - `CHALK_TEST_PGURL=... go test ./internal/store/ -run TestPushSubscriptions`
   (7 subtests; they pass in 65-1).
+- `go test ./internal/webpush/` (8 tests; they pass in 65-2).
 - The RFC 8291 Appendix A vector reproduces byte-exactly — the strongest
   crypto signal; if the vector passes, iOS will decrypt.
 - Dispatcher vs an httptest fake relay: offline user → exactly one POST with

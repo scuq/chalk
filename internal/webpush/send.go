@@ -1,0 +1,228 @@
+package webpush
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/netip"
+	"net/url"
+	"strconv"
+	"syscall"
+	"time"
+)
+
+// ErrGone is returned when the push service answers 404 or 410. The
+// subscription no longer exists. The caller must delete it.
+var ErrGone = errors.New("webpush: subscription is gone")
+
+// ErrEndpoint is returned for an endpoint that is not an https URL with a
+// host and without credentials.
+var ErrEndpoint = errors.New("webpush: endpoint must be an https URL")
+
+// errDisallowedAddr is the error of the dial-time address guard.
+var errDisallowedAddr = errors.New("webpush: address is not public")
+
+// A StatusError is an answer of the push service that is neither a success
+// (status 200 to 299) nor ErrGone. A redirect is a StatusError, because the
+// Sender does not follow redirects.
+type StatusError struct {
+	Code       int
+	RetryAfter string // the Retry-After header, if the service sent one
+}
+
+// Error returns the message of e, with the status code.
+func (e *StatusError) Error() string {
+	return "webpush: push service answered " + strconv.Itoa(e.Code)
+}
+
+// Urgency is the Urgency header of RFC 8030.
+type Urgency string
+
+// The values of the Urgency header.
+const (
+	UrgencyVeryLow Urgency = "very-low"
+	UrgencyLow     Urgency = "low"
+	UrgencyNormal  Urgency = "normal"
+	UrgencyHigh    Urgency = "high"
+)
+
+// Options are the delivery headers of one push.
+// Send writes TTL in whole seconds, also when TTL is zero.
+type Options struct {
+	TTL     time.Duration // how long the push service keeps an undelivered push
+	Topic   string        // a later push with the same topic replaces this one
+	Urgency Urgency       // empty means the service default, normal
+}
+
+// A Subscription is the part of a browser's push registration that a send
+// needs.
+type Subscription struct {
+	Endpoint string // the https URL of the push service
+	P256dh   []byte // the browser public key, 65 bytes
+	Auth     []byte // the authentication secret, 16 bytes
+}
+
+// A Sender posts encrypted pushes to push services. It is safe for
+// concurrent use.
+type Sender struct {
+	key *VAPIDKey
+	hc  *http.Client
+	now func() time.Time
+}
+
+// NewSender returns a Sender that signs with key and gives up on one push
+// after timeout. Its HTTP client connects only to public addresses and
+// follows no redirect.
+func NewSender(key *VAPIDKey, timeout time.Duration) *Sender {
+	// The dial-time guard checks the address of each connection after DNS.
+	// The transport sets Proxy to nil on purpose. With a proxy, the guard
+	// would check the address of the proxy and not the address of the
+	// endpoint.
+	dialer := &net.Dialer{
+		Timeout: timeout,
+		Control: func(_, address string, _ syscall.RawConn) error {
+			return vetDialAddr(address)
+		},
+	}
+	return &Sender{
+		key: key,
+		now: time.Now,
+		hc: &http.Client{
+			Timeout:   timeout,
+			Transport: &http.Transport{DialContext: dialer.DialContext, Proxy: nil},
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+	}
+}
+
+// PublicKey returns the VAPID public key of the Sender.
+func (s *Sender) PublicKey() string { return s.key.PublicKey() }
+
+// ValidateEndpoint returns ErrEndpoint unless endpoint is an https URL with
+// a host and without credentials. It returns the origin, which is the VAPID
+// audience.
+func ValidateEndpoint(endpoint string) (origin string, err error) {
+	u, perr := url.Parse(endpoint)
+	if perr != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+		return "", ErrEndpoint
+	}
+	return "https://" + u.Host, nil
+}
+
+// Send encrypts payload to sub and posts it to the endpoint.
+//
+// It returns ErrGone if the subscription no longer exists, ErrEndpoint or
+// ErrPayloadTooLarge for bad input, and a *StatusError for every other
+// answer that is not a success.
+func (s *Sender) Send(ctx context.Context, sub Subscription, payload []byte, opts Options) error {
+	origin, err := ValidateEndpoint(sub.Endpoint)
+	if err != nil {
+		return err
+	}
+	body, err := Encrypt(payload, sub.P256dh, sub.Auth)
+	if err != nil {
+		return err
+	}
+	authz, err := s.key.authorization(origin, s.now())
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sub.Endpoint, bytes.NewReader(body))
+	if err != nil {
+		return ErrEndpoint
+	}
+	req.Header.Set("Authorization", authz)
+	req.Header.Set("Content-Encoding", "aes128gcm")
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("TTL", strconv.FormatInt(int64(opts.TTL/time.Second), 10))
+	if opts.Topic != "" {
+		req.Header.Set("Topic", opts.Topic)
+	}
+	if opts.Urgency != "" {
+		req.Header.Set("Urgency", string(opts.Urgency))
+	}
+
+	resp, err := s.hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("webpush: send: %w", err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+
+	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		return nil
+	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone:
+		return ErrGone
+	}
+	return &StatusError{Code: resp.StatusCode, RetryAfter: resp.Header.Get("Retry-After")}
+}
+
+// The rest of this file is the dial-time address guard. It is copied from
+// internal/linkpreview.
+
+// deniedV4 lists the IPv4 ranges that isPublicAddr rejects in addition to
+// the ranges that the net/netip methods reject.
+
+var deniedV4 = []netip.Prefix{
+	netip.MustParsePrefix("100.64.0.0/10"),   // CGNAT
+	netip.MustParsePrefix("192.0.0.0/24"),    // IETF protocol assignments
+	netip.MustParsePrefix("192.0.2.0/24"),    // TEST-NET-1
+	netip.MustParsePrefix("198.18.0.0/15"),   // benchmarking
+	netip.MustParsePrefix("198.51.100.0/24"), // TEST-NET-2
+	netip.MustParsePrefix("203.0.113.0/24"),  // TEST-NET-3
+	netip.MustParsePrefix("240.0.0.0/4"),     // reserved + broadcast
+}
+
+// deniedV6 lists the IPv6 ranges that isPublicAddr rejects in addition to
+// the ranges that the net/netip methods reject.
+var deniedV6 = []netip.Prefix{
+	netip.MustParsePrefix("2001:db8::/32"), // documentation
+	netip.MustParsePrefix("64:ff9b::/96"),  // NAT64: can embed a private v4
+}
+
+// vetDialAddr returns an error if a dial target is not a public unicast
+// address. address is the "ip:port" of the transport, after DNS, so a
+// hostname that resolves to an internal address fails here. An address that
+// does not parse also fails.
+func vetDialAddr(address string) error {
+	ap, err := netip.ParseAddrPort(address)
+	if err != nil {
+		return errDisallowedAddr
+	}
+	if !isPublicAddr(ap.Addr()) {
+		return fmt.Errorf("%w: %s", errDisallowedAddr, ap.Addr())
+	}
+	return nil
+}
+
+// isPublicAddr reports whether a is a globally routable unicast address.
+func isPublicAddr(a netip.Addr) bool {
+	a = a.Unmap()
+	if !a.IsValid() ||
+		a.IsLoopback() ||
+		a.IsPrivate() ||
+		a.IsLinkLocalUnicast() ||
+		a.IsLinkLocalMulticast() ||
+		a.IsInterfaceLocalMulticast() ||
+		a.IsMulticast() ||
+		a.IsUnspecified() {
+		return false
+	}
+	denied := deniedV4
+	if a.Is6() {
+		denied = deniedV6
+	}
+	for _, p := range denied {
+		if p.Contains(a) {
+			return false
+		}
+	}
+	return true
+}

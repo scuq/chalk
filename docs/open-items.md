@@ -389,9 +389,10 @@ can reach packaging). Open:
   Mac can keep one on a second display — the two-screen check in the phase
   doc is still to run.
 
-## Phase 65 — web push: IN PROGRESS, 65-1 built
+## Phase 65 — web push: IN PROGRESS, 65-1 and 65-2 built
 
-65-1 is built: migration 0063 and `internal/store/push.go`. 65-2 onward is
+65-1 is built: migration 0063 and `internal/store/push.go`. 65-2 is built:
+the `internal/webpush` package, which nothing calls yet. 65-3 onward is
 open. Record in [phases/PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md). The plan
 was revised on 14 November 2026 after a review against the threat model. A
 subscription belongs to a login session and goes with it. The VAPID key and
@@ -403,7 +404,7 @@ subscribe.
   cannot drop a push without risking a revoked subscription on iOS. A channel
   muted in chalk still pushes under scope `all`.
 - **Open:** all real-device checks (an iPhone on a deployed HTTPS instance,
-  Android Chrome, headed Chrome on localhost). No slice after 65-1 is built.
+  Android Chrome, headed Chrome on localhost). No slice after 65-2 is built.
   The iPhone check includes this: chalk shows under Settings > Notifications
   only after the permission prompt. It is not in the main list of apps.
 - **Open:** the `docs/threat-model.md` section on third parties, written in 65-5.
