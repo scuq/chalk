@@ -1,6 +1,6 @@
 # Phase 137 — phone polish from the external design review
 
-**Status:** in progress. 137-1 to 137-6 are built (2026-11-14). 137-7 is not started. The device checks of 137-1 to 137-6 are open, in the manual checklist.
+**Status:** built (all seven slices, 2026-11-14). The device checks of 137-1 to 137-7 are open, in the manual checklist.
 **Tags:** `#composer`, `#mobile`, `#parking` → `tools/where.sh -g composer`
 
 ## The problem
@@ -191,13 +191,30 @@ Measured in a headed iPhone 14 emulation:
 
 ### 137-7 List and chat transition
 
-The switch between the list and a chat is an instant `hidden` toggle.
-A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
+Before 137-7, the switch between the list and a chat was an instant `hidden` toggle.
+A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`), and it already moves the chat off to the right.
+Now the chat and the list slide in for a short time.
 
-- The slice has enter animations only. No unmount is delayed, and `web/src/nav/phone-stack.ts` does not change.
-- The chat content slides in from the right when the list hides. The list slides in from the left when it shows. The duration is the `--chalk-dur` token.
-- A back navigation that the swipe completed must not play the list animation again. The swipe completion signal skips it.
-- If the two motions cannot work together without a change to the swipe logic, stop and ask the owner.
+- The slice has enter animations only. It delays no unmount. `web/src/nav/phone-stack.ts` and `use-swipe-back.ts` do not change.
+- `.chalk-main` and `.chalk-footer-main` play `chalk-phone-chat-in` when the shell is on the chat screen. The chat starts at opacity 0 and 24 px to the right.
+- `.chalk-phone-list` plays `chalk-phone-list-in` when the shell is on the list screen. The list starts at opacity 0 and 24 px to the left.
+- Both animations run on `--chalk-dur` with `ease-out`. Reduced motion sets the token to 0 ms, so the slice has no reduced-motion rule.
+- The animations restart with no script. The class changes in the same render as the screen, and the list and the footer come back from `display: none`, which restarts an animation.
+- The transform exists only inside the keyframes. There is no fill mode. A transform at rest makes `.chalk-main` the containing block of the fixed message menu and the lightbox (see the 64-12 comment in `theme.css`). A long press takes 500 ms, so the menu cannot open during the 160 ms animation.
+- A completed swipe must not play the list animation, because the swipe already showed the list. `App.tsx` has a `backBySwipe` state. `swipeBackToList` sets it and then calls `backToList`. `useSwipeBack` receives `swipeBackToList`.
+- The hook calls its back callback only when a swipe completes. A cancel, a rescue, or a finger that interrupts the settle never calls it. The wrapper is therefore an exact signal.
+- While `backBySwipe` is true, the shell has the class `chalk-app--back-by-swipe`, and the list rule does not match. An effect clears the state when `zuckerScreen` becomes `"chat"`.
+- The header back button and the system back do not set the state, so they get the slide.
+- When chalk opens on a phone, the list is the first screen, so it fades in once.
+
+Measured in a headed iPhone 14 emulation, with real touch events for the swipe:
+
+- A tap on a row runs `chalk-phone-chat-in`. It was caught at +12 px. After 500 ms, `.chalk-main` has no transform.
+- The back button runs `chalk-phone-list-in`. It was caught at -20 px. No transform remains after it.
+- A completed swipe leaves the list shown with the state set and no animation running.
+- Entering a chat again clears the state. The back button then slides the list in again.
+- There is no horizontal overflow.
+- Reduced motion was not checked in the emulation. The token covers it.
 
 ## Decisions
 
@@ -223,7 +240,7 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 | 137-4 | built (2026-11-14) | List section rows |
 | 137-5 | built (2026-11-14) | Headers |
 | 137-6 | built (2026-11-14) | Empty states |
-| 137-7 | not started | List and chat transition |
+| 137-7 | built (2026-11-14) | List and chat transition |
 
 ## Left open
 
@@ -233,6 +250,8 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 - The device checks of 137-4 are open, in the manual checklist.
 - The device checks of 137-5 are open, in the manual checklist.
 - The device checks of 137-6 are open, in the manual checklist.
+- The swipe settle uses a hard-coded 160 ms (`theme.css` and `SWIPE_SETTLE_MS` in `use-swipe-back.ts`). Reduced motion does not turn it off. This gap is older than 137-7 and is outside the slice.
+- The device checks of 137-7 are open, in the manual checklist.
 - The index row of phase 136 links `docs/phases/PHASE-136-IOS.md`. This phase does not change it.
 
 ## Manual checklist
@@ -261,3 +280,8 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 - [ ] 137-5: a phone, in a direct message. The header shows the "dm" tag, and a long name ends in an ellipsis with the buttons in place.
 - [ ] 137-6: a phone. Park chalk and unpark it. The mark is small, centered, and dim, and the screen does not move sideways.
 - [ ] 137-6: a phone, with a light theme. The dim mark is still visible on the parking lot.
+- [ ] 137-7: a phone. Tap a conversation row. The chat slides in from the right for a short time, and the message menu still opens on a long press.
+- [ ] 137-7: a phone. Tap the back button of the chat. The list slides in from the left.
+- [ ] 137-7: a phone. Swipe back from the left edge of a chat. The list shows with no second slide.
+- [ ] 137-7: a phone, with reduced motion turned on. Opening a chat and tapping the back button show no slide.
+- [ ] 137-7: a phone. Tap a notification for a text conversation. The chat opens with the same slide from the right as a row tap.

@@ -9,8 +9,7 @@ Latest release: **v0.12.0** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 137 is the newest work. It is in progress: 137-1 to 137-6 are built, and
-137-7 is not started.
+Phase 137 is the newest work. It is built, all seven slices, and the device checks are open.
 Phase 135 is built. All eight slices are built. The device checks are open.
 Phase 133 is built, with the voice room, and seven points of it are open.
 Phase 131 has two small open points.
@@ -18,15 +17,15 @@ Phase 130 has two open points. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
 
-## Phase 137 — phone polish: in progress, the device checks are open
+## Phase 137 — phone polish: built, the device checks are open
 
-137-1 to 137-6 are built, record in [phases/PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md).
+137-1 to 137-7 are built, record in [phases/PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md).
 On the phone, the composer is one outlined box. The field is full width and
 grows with the draft. The tools and send are in a row below it. Consecutive messages
 from one person group on the phone. The conversation rows are taller, an unread name
 is bold, and the unread dot sits under the time. The friends, voice, and hidden rows have a chevron
 that turns, and an open section fades in. The headers stay on one row, and a long name is cut.
-The parking lot mark is small. 137-7 is not started.
+The parking lot mark is small. The chat and the list slide in for a short time, and a swipe back does not slide a second time.
 
 - **The 137-1 device checks are open.** The live probe used an iPhone 14
   emulation. Not tested on a device: the composer above the keyboard on an
@@ -48,7 +47,13 @@ The parking lot mark is small. 137-7 is not started.
   with the "call" button, and a direct message header with the "dm" tag.
 - **The 137-6 device checks are open.** Not tested on a device: the parking
   lot mark at 96 px after you park and unpark, and the mark in a light theme.
-- **137-7 is not started.** It is the list and chat transition.
+- **The 137-7 device checks are open.** Not tested on a device: the slide on a
+  row tap and on the back button, no second slide after a swipe back, no slide
+  with reduced motion turned on, and a notification tap that opens a chat. The
+  emulation did not check reduced motion.
+- **Deferred: the swipe settle ignores reduced motion.** The settle uses a
+  hard-coded 160 ms (`theme.css` and `SWIPE_SETTLE_MS` in `use-swipe-back.ts`).
+  Reduced motion does not turn it off.
 
 ## Phase 135 — phone: built, the device checks are open
 

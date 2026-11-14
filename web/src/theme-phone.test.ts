@@ -1,6 +1,6 @@
-// 135-4 and 137-5: the phone shell and the headers. These assertions read
-// theme.css, index.html, and two components as text, because the test suite
-// has no layout engine.
+// 135-4, 137-5, and 137-7: the phone shell, the headers, and the list and chat
+// slide. These assertions read theme.css, index.html, and the components as
+// text, because the test suite has no layout engine.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -76,4 +76,31 @@ test("in the channel header only the name shrinks, and search is an icon on the 
   assert.match(phoneRule(".chalk-channel-header > :not(.chalk-channel-header-name)"), /flex-shrink:\s*0;/);
   const app = readFileSync(join(root, "src", "components", "App.tsx"), "utf8");
   assert.match(app, /\{isMobile \? <SearchIcon \/> : "search"\}/);
+});
+
+test("the chat and the list slide in on the duration token, so reduced motion stops them", () => {
+  assert.match(
+    phoneRule(".chalk-app--zucker:not(.chalk-app--zucker-list) .chalk-main,\n  .chalk-app--zucker:not(.chalk-app--zucker-list) .chalk-footer-main"),
+    /animation:\s*chalk-phone-chat-in var\(--chalk-dur\) ease-out;/,
+  );
+  assert.match(
+    phoneRule(".chalk-app--zucker-list:not(.chalk-app--back-by-swipe) .chalk-phone-list"),
+    /animation:\s*chalk-phone-list-in var\(--chalk-dur\) ease-out;/,
+  );
+  // A transform at rest would move the anchor of the fixed message menu, so
+  // the slide exists only inside the keyframes and ends with the animation.
+  for (const name of ["chalk-phone-chat-in", "chalk-phone-list-in"]) {
+    const m = new RegExp(`@keyframes ${name} \\{\\s*from \\{([^}]*)\\}\\s*\\}`).exec(css);
+    assert.ok(m, `no ${name} keyframes with a single from step`);
+    assert.match(m[1], /opacity:\s*0;/);
+  }
+  assert.doesNotMatch(css, /animation-fill-mode|chalk-phone-(chat|list)-in[^;]*\bforwards\b/);
+});
+
+test("only a completed swipe marks the way back, and entering a chat clears the mark", () => {
+  const app = readFileSync(join(root, "src", "components", "App.tsx"), "utf8");
+  assert.match(app, /useSwipeBack\(\s*zuckerActive && zuckerScreen === "chat",\s*swipeBackToList,\s*\)/);
+  assert.match(app, /if \(zuckerScreen === "chat"\) setBackBySwipe\(false\);/);
+  assert.equal(app.match(/setBackBySwipe\(true\)/g)?.length, 1);
+  assert.match(app, /backBySwipe \? "chalk-app--back-by-swipe" : ""/);
 });

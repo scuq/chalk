@@ -10782,6 +10782,40 @@ body.chalk-resizing-y .chalk-composer-resizer {
     min-height: 0;
   }
 
+  /* 137-7: the list and the chat slide in when they show. Enter animations
+     only: nothing delays an unmount. The animation restarts with no script,
+     because the class changes in the same render as the screen, and the list
+     and the footer come back from display: none. The transform exists only
+     inside the keyframes and there is no fill mode. A transform at rest
+     would make .chalk-main the containing block of the fixed message menu
+     and the lightbox (see 64-12). A long press takes 500 ms, so the menu
+     cannot open during the animation. --chalk-dur is 0ms under reduced
+     motion, so no extra rule is necessary. */
+  .chalk-app--zucker:not(.chalk-app--zucker-list) .chalk-main,
+  .chalk-app--zucker:not(.chalk-app--zucker-list) .chalk-footer-main {
+    animation: chalk-phone-chat-in var(--chalk-dur) ease-out;
+  }
+
+  /* 137-7: after a completed swipe the list is already uncovered, so the
+     shell has the back-by-swipe class and the list does not slide again. */
+  .chalk-app--zucker-list:not(.chalk-app--back-by-swipe) .chalk-phone-list {
+    animation: chalk-phone-list-in var(--chalk-dur) ease-out;
+  }
+
+  @keyframes chalk-phone-chat-in {
+    from {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+  }
+
+  @keyframes chalk-phone-list-in {
+    from {
+      opacity: 0;
+      transform: translateX(-24px);
+    }
+  }
+
   .chalk-zucker {
     display: flex;
     flex-direction: column;

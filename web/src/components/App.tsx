@@ -847,9 +847,25 @@ export function App() {
     if (state.parked) dispatch({ kind: "set_parked", parked: false });
     setZuckerScreen("list");
   }, [state.parked]);
+  // 137-7: set when a completed swipe took the user back to the list. The
+  // swipe already moved the chat off to the right and uncovered the list, so
+  // a list slide-in after it would play the motion twice. The shell class
+  // chalk-app--back-by-swipe turns that slide off.
+  const [backBySwipe, setBackBySwipe] = useState(false);
+  // 137-7: useSwipeBack calls this only when a swipe completes. A cancel, a
+  // rescue, or a finger that interrupts the settle never calls it. The header
+  // back button and the system back call backToList directly, so they slide.
+  const swipeBackToList = useCallback(() => {
+    setBackBySwipe(true);
+    backToList();
+  }, [backToList]);
+  // 137-7: a new chat clears the mark, so the next back button press slides.
+  useEffect(() => {
+    if (zuckerScreen === "chat") setBackBySwipe(false);
+  }, [zuckerScreen]);
   const chatSwipe = useSwipeBack(
     zuckerActive && zuckerScreen === "chat",
-    backToList,
+    swipeBackToList,
   );
   // 135-5: the room whose call view covers the phone screen, or null.
   const [callView, setCallView] = useState<string | null>(null);
@@ -6067,7 +6083,7 @@ export function App() {
          pane itself -- see theme.css. The class is all this side of it: what
          gets covered is a CSS question, and answering it there is what makes a
          surface added later covered by default rather than by remembering. */
-      class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${railOn ? "chalk-app--rail" : ""} ${zuckerActive ? "chalk-app--zucker" : ""} ${zuckerActive && zuckerScreen === "list" ? "chalk-app--zucker-list" : ""} ${chatSwipe.offset !== null ? "chalk-app--swiping" : ""} ${chatSwipe.settling ? "chalk-app--swiping-settle" : ""} ${screened ? "chalk-app--screened" : ""}`}
+      class={`chalk-app chalk-app--phase08b ${state.openThread ? "chalk-app--thread-open" : ""} ${railOn ? "chalk-app--rail" : ""} ${zuckerActive ? "chalk-app--zucker" : ""} ${zuckerActive && zuckerScreen === "list" ? "chalk-app--zucker-list" : ""} ${backBySwipe ? "chalk-app--back-by-swipe" : ""} ${chatSwipe.offset !== null ? "chalk-app--swiping" : ""} ${chatSwipe.settling ? "chalk-app--swiping-settle" : ""} ${screened ? "chalk-app--screened" : ""}`}
       style={shellStyle || undefined}
     >
       {/* 135-2: the audio of a call. It must stay the first child of this
