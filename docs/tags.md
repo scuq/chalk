@@ -86,6 +86,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #desktop        104 128   desktop/ web/src/presence/desktop-idle.ts tools/make-signing-cert.sh .github/workflows/release.yml docs/phases/PHASE-104-DESKTOP.md
 #video          121       web/src/attachments/types.ts web/src/attachments/preview.ts web/src/attachments/tiles.ts web/src/attachments/pipeline.ts web/src/components/AttachmentView.tsx web/src/components/Lightbox.tsx web/src/components/Composer.tsx web/src/theme.css docs/phases/PHASE-121-VIDEO.md
 #selfupdate     105       desktop/src/selfupdate/ tools/make-release-key.sh .github/workflows/release.yml docs/phases/PHASE-105-SELFUPDATE.md
+#ios            136       docs/phases/PHASE-136-IOS.md
 
 ## Phase docs
 

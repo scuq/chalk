@@ -459,6 +459,11 @@ same space.
   2026-08-09 trust-model revision** (it was sketched against fanout's
   membership layer); needs a re-sketch against the new phase 83, then
   its own review, before any code.
+- **An iOS wrapper app** (136, [phases/PHASE-136-IOS.md](phases/PHASE-136-IOS.md)):
+  designed, not started. It starts with a device test on a real iPhone, and
+  that test decides if the phase continues. Installs that last longer than
+  7 days need a paid Apple Developer account. Until then the call pauses in
+  the background on an iPhone, and the call view says so.
 - **The SFU seam** (voice design Slice I) for rooms too large for a mesh.
 - **Governance `set_config` proposals.**
 - **Database-credential hardening** (99, [phases/PHASE-99-DBCREDS.md](phases/PHASE-99-DBCREDS.md)):

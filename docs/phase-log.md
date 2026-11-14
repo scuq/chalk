@@ -127,6 +127,7 @@ as-built rather than a contemporaneous plan.
 | 133 | polish — semantic tokens and a refined shell, one look for hover, selected, and unread in every theme, and an adaptive voice room | [PHASE-133-POLISH.md](phases/PHASE-133-POLISH.md) |
 | 134 | chaos mode — one list of the text channels, newest activity on top, and each row shows its group as a small tag | [PHASE-134-CHAOS.md](phases/PHASE-134-CHAOS.md) |
 | 135 | phone — the chat list is the phone layout, with a call bar and view, back-gesture layers, and a row sheet *(device checklist open)* | [PHASE-135-PHONE.md](phases/PHASE-135-PHONE.md) |
+| 136 | ios: a wrapper app keeps a call running in the background — **planned, not started** | [PHASE-136-IOS.md](phases/PHASE-136-IOS.md) |
 
 Every number above is claimed by a topic in `docs/tags.md`, so the code behind
 any of them is reachable with `tools/where.sh -g <topic>`.
