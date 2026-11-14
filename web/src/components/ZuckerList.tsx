@@ -7,7 +7,8 @@
 // parking lot, the thread inbox, add a friend, and new channel. The filter
 // button is also in the head. Since 137-10 each is an icon button, and the
 // parking lot and the threads are no longer pinned rows. The friends row
-// (64-1) is a pinned row above the list. It expands in place to the full
+// (64-1) is a bar above the list. Since 137-11 it shows friend chips in up to
+// two lines, and a count button at the right expands it in place to the full
 // roster with presence, because the activity-sorted list buries anyone you
 // have not talked to lately.
 //
@@ -415,30 +416,34 @@ export function ZuckerList({
           keyboard is up. The voice row stays, because it can hold hits. */}
       {!filterOpen && (
         <>
-        <button
-          type="button"
-          class={`chalk-zucker-pinned ${!friendsOpen && friends.length > 0 ? "chalk-zucker-pinned--chips" : ""}`}
-          onClick={() => setFriendsOpen(!friendsOpen)}
-          aria-expanded={friendsOpen}
-          data-testid="zucker-friends"
-        >
-          <span>@ friends</span>
-          <span class="chalk-zucker-pinned-note">
-            {onlineCount}/{friends.length} online
-          </span>
-          {/* 137-4: the three rows that expand a sublist in place end with a
-              chevron. The parking lot and the threads were rows that opened
-              a screen and had none, and since 137-10 they are head buttons. */}
-          <span class="chalk-zucker-chevron" aria-hidden="true"><ChevronIcon /></span>
-        </button>
-        {/* 137-8: an open row shows the full list and no chips, so a name never shows twice. */}
-        {!friendsOpen && (
-          <FriendChips
-            friends={friends}
-            onSelect={onFriendSelect}
-            onMore={() => setFriendsOpen(true)}
-          />
-        )}
+        {/* 137-11: the friends bar. The chips fill the bar, and the count button
+            sits at the right end. The "@ friends" label shows only when there
+            are no chips: an open list, or no friends. */}
+        <div class="chalk-zucker-friendsbar">
+          {friendsOpen || friends.length === 0 ? (
+            <span class="chalk-zucker-friendsbar-label">@ friends</span>
+          ) : (
+            <FriendChips
+              friends={friends}
+              onSelect={onFriendSelect}
+              onMore={() => setFriendsOpen(true)}
+            />
+          )}
+          <button
+            type="button"
+            class="chalk-zucker-friends-toggle"
+            onClick={() => setFriendsOpen(!friendsOpen)}
+            aria-expanded={friendsOpen}
+            aria-label={`friends, ${onlineCount} of ${friends.length} online`}
+            title={`${onlineCount} of ${friends.length} friends online`}
+            data-testid="zucker-friends"
+          >
+            <span class="chalk-zucker-pinned-note">
+              {onlineCount}/{friends.length}
+            </span>
+            <span class="chalk-zucker-chevron" aria-hidden="true"><ChevronIcon /></span>
+          </button>
+        </div>
         {friendsOpen && (
           <ul class="chalk-zucker-friends" data-testid="zucker-friends-list">
             {friends.length === 0 && (

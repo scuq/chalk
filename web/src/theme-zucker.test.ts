@@ -1,4 +1,4 @@
-// 126-1, 135-1, 137-3, 137-4, 137-8, 137-9, 137-10: assertions about theme.css, checked against the stylesheet
+// 126-1, 135-1, 137-3, 137-4, 137-8, 137-9, 137-10, 137-11: assertions about theme.css, checked against the stylesheet
 // because jsdom has no layout to measure.
 //
 // The first is the "@ voice" shelf's flex-shrink: it must be 0, or the
@@ -21,8 +21,11 @@
 //     without one in 137-4, and 137-10 made them head buttons.
 //   - The chevron turns with aria-expanded, the sublists fade in, and a pressed row shades.
 //
-// Two tests (137-8) check the friend chips:
-//   - The closed friends row shows one 44px line of chips, and the open row shows the list instead.
+// Four tests (137-8, 137-11) check the friends bar and the friend chips:
+//   - The bar has no label while it shows chips, and the count and the chevron
+//     sit at its right end (137-11).
+//   - The chips wrap to two lines beside a 44px toggle, and the name cut comes
+//     from the measured fit (137-11).
 //   - A chip is a 44px target around a pill, no chip paints before it is measured,
 //     and the resize watcher attaches when the line appears.
 //
@@ -125,25 +128,40 @@ test("the chevron turns with aria-expanded on the duration token, and a sublist 
   assert.match(block(".chalk-zucker-pinned:active"), /background:\s*var\(--chalk-bg-hover\);/);
 });
 
-test("the closed friends row shows one line of chips, and the open row shows the list instead", () => {
+test("the friends bar has no label while it shows chips, and the count and chevron sit at its right end", () => {
   const list = readFileSync(join(resolve(process.cwd(), "src"), "components", "ZuckerList.tsx"), "utf8");
-  assert.match(list, /\{!friendsOpen && \(\s*<FriendChips/);
-  assert.match(list, /onMore=\{\(\) => setFriendsOpen\(true\)\}/);
+  const bar = list.slice(list.indexOf('class="chalk-zucker-friendsbar"'), list.indexOf('class="chalk-zucker-friends"'));
+  // The label shows only when there are no chips: an open list, or no friends.
+  assert.match(bar, /\{friendsOpen \|\| friends\.length === 0 \? \(\s*<span class="chalk-zucker-friendsbar-label">@ friends<\/span>\s*\) : \(\s*<FriendChips/);
+  assert.match(bar, /onMore=\{\(\) => setFriendsOpen\(true\)\}/);
+  assert.ok(bar.indexOf("<FriendChips") < bar.indexOf('data-testid="zucker-friends"'), "the toggle must come after the chips");
+  assert.match(bar, /\{onlineCount\}\/\{friends\.length\}\s*<\/span>/);
+  assert.doesNotMatch(bar, /online\s*<\/span>/);
+  // The count alone says little to a screen reader, so the button names it.
+  assert.match(bar, /aria-label=\{`friends, \$\{onlineCount\} of \$\{friends\.length\} online`\}/);
+});
+
+test("the chips wrap to two lines beside a 44px toggle, and the name cut comes from the measured fit", () => {
   const chips = block(".chalk-zucker-chips");
-  assert.match(chips, /flex-wrap:\s*nowrap;/);
+  assert.match(chips, /flex-wrap:\s*wrap;/);
+  assert.match(chips, /max-height:\s*88px;/);
   assert.match(chips, /overflow:\s*hidden;/);
-  assert.match(chips, /height:\s*44px;/);
-  assert.match(chips, /padding:\s*0 var\(--chalk-s4\);/);
-  // The chips line carries the bottom line of the two-line row.
-  assert.match(block(".chalk-zucker-pinned--chips"), /border-bottom:\s*none;/);
-  assert.match(chips, /border-bottom:\s*1px solid var\(--chalk-border\);/);
+  assert.match(chips, /flex:\s*1 1 0;/);
+  const toggle = block(".chalk-zucker-friends-toggle");
+  assert.match(toggle, /flex:\s*0 0 auto;/);
+  assert.match(toggle, /height:\s*44px;/);
+  assert.match(block('.chalk-zucker-friends-toggle[aria-expanded="true"] .chalk-zucker-chevron'), /transform:\s*rotate\(90deg\);/);
+  assert.match(block(".chalk-zucker-chip-name"), /max-width:\s*var\(--chalk-chip-name-max, none\);/);
+  const chipsSrc = readFileSync(join(resolve(process.cwd(), "src"), "components", "FriendChips.tsx"), "utf8");
+  assert.match(chipsSrc, /--chalk-chip-name-max:\$\{Math\.floor\(fit\.nameCap\)\}px/);
 });
 
 test("a chip is a 44px target around a small pill, and no chip paints before it is measured", () => {
   assert.match(block(".chalk-zucker-chip"), /height:\s*44px;/);
   assert.match(block(".chalk-zucker-chip-pill"), /border:\s*1px solid var\(--chalk-border\);/);
   assert.match(block(".chalk-zucker-chips--measuring"), /visibility:\s*hidden;/);
-  assert.match(block(".chalk-zucker-chip-name"), /text-overflow:\s*ellipsis;/);
+  // An ellipsis costs one letter of a four-letter name. The pill edge shows the cut.
+  assert.match(block(".chalk-zucker-chip-name"), /text-overflow:\s*clip;/);
   // The line does not exist while there are no friends. The resize watcher
   // must attach when the line appears, not only at the first render.
   const chipsSrc = readFileSync(join(resolve(process.cwd(), "src"), "components", "FriendChips.tsx"), "utf8");

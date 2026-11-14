@@ -130,38 +130,92 @@ export function buildFriendList(
 // and measures. Friends past this count appear only in the "+N" chip.
 export const FRIEND_CHIPS_MAX = 24;
 
-// 137-8: chipsThatFit returns how many chips the line shows, in order.
-// widths holds the width of each chip, available is the width of the line,
-// gap is the space between two items, and moreWidth is the width of the "+N" chip.
-// If every chip fits, it returns widths.length and keeps no room for "+N".
-// Otherwise it returns the largest count that still leaves room for "+N".
-// That count can be 0. If available is not a positive finite number, it returns 0.
-export function chipsThatFit(
-  widths: readonly number[],
-  available: number,
-  gap: number,
-  moreWidth: number,
-): number {
-  if (!Number.isFinite(available) || available <= 0) return 0;
+// 137-11: FRIEND_CHIPS_LINES is the most lines that the friend chips fill.
+export const FRIEND_CHIPS_LINES = 2;
+
+// 137-11: FRIEND_CHIPS_WANT is the number of chips that fitFriendChips tries to
+// show. Names are shortened to reach it.
+export const FRIEND_CHIPS_WANT = 8;
+
+// 137-11: A ChipFitInput holds the measured widths for fitFriendChips. All
+// values are pixels.
+//
+//   - nameWidths: the natural width of each name, in friend order.
+//   - overhead: the width of a chip minus the width of its name.
+//   - gap: the space between two chips in one line.
+//   - moreWidth: the width of the "+N" chip.
+//   - lineWidth: the width of one line.
+//   - minName: the smallest name width. A name is never cut below it.
+export interface ChipFitInput {
+  nameWidths: readonly number[];
+  overhead: number;
+  gap: number;
+  moreWidth: number;
+  lineWidth: number;
+  minName: number;
+}
+
+// 137-11: A ChipFit is the result of fitFriendChips. Count is the number of
+// chips to show. NameCap is the widest a name can be, in pixels.
+export interface ChipFit {
+  count: number;
+  nameCap: number;
+}
+
+// chipLines returns how many lines a greedy wrap of the chips needs. A chip
+// goes on the current line if it fits there, and starts a new line if not.
+function chipLines(widths: readonly number[], gap: number, lineWidth: number): number {
+  let lines = 1;
   let used = 0;
-  let all = true;
-  for (let i = 0; i < widths.length; i++) {
-    used += widths[i] + (i > 0 ? gap : 0);
-    if (used > available) {
-      all = false;
-      break;
+  for (const w of widths) {
+    if (used === 0) {
+      used = w;
+    } else if (used + gap + w <= lineWidth) {
+      used += gap + w;
+    } else {
+      lines++;
+      used = w;
     }
   }
-  if (all) return widths.length;
-  used = 0;
-  let n = 0;
-  for (let i = 0; i < widths.length; i++) {
-    const next = used + widths[i] + (i > 0 ? gap : 0);
-    if (next + gap + moreWidth > available) break;
-    used = next;
-    n = i + 1;
+  return lines;
+}
+
+// chipsAtCap returns how many chips fit in FRIEND_CHIPS_LINES lines when no
+// name is wider than cap. If all chips fit, it returns all of them. Otherwise
+// it returns the largest count that still leaves room for the "+N" chip.
+function chipsAtCap(input: ChipFitInput, cap: number): number {
+  const chip = input.nameWidths.map((w) => Math.min(w, cap) + input.overhead);
+  if (chipLines(chip, input.gap, input.lineWidth) <= FRIEND_CHIPS_LINES) return chip.length;
+  for (let n = chip.length - 1; n >= 0; n--) {
+    if (chipLines([...chip.slice(0, n), input.moreWidth], input.gap, input.lineWidth) <= FRIEND_CHIPS_LINES) return n;
   }
-  return n;
+  return 0;
+}
+
+// 137-11: fitFriendChips returns how many chips to show and how wide a name can
+// be. The target count is FRIEND_CHIPS_WANT, or all friends if there are fewer,
+// or the count that fits at minName if FRIEND_CHIPS_WANT cannot fit. The result
+// is the widest name cap, in whole pixels, that still reaches the target. A name
+// is never widened and never cut below minName.
+// If there are no friends, or lineWidth is not a positive finite number, it
+// returns a count of 0.
+export function fitFriendChips(input: ChipFitInput): ChipFit {
+  const n = input.nameWidths.length;
+  const widest = Math.max(0, ...input.nameWidths);
+  if (n === 0 || !Number.isFinite(input.lineWidth) || input.lineWidth <= 0) {
+    return { count: 0, nameCap: widest };
+  }
+  const floor = Math.min(widest, Math.max(0, input.minName));
+  const target = Math.min(FRIEND_CHIPS_WANT, n, chipsAtCap(input, floor));
+  let lo = 0;
+  let hi = Math.ceil(widest - floor);
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (chipsAtCap(input, Math.min(widest, floor + mid)) >= target) lo = mid;
+    else hi = mid - 1;
+  }
+  const nameCap = Math.min(widest, floor + lo);
+  return { count: chipsAtCap(input, nameCap), nameCap };
 }
 
 // buildConversationList flattens channels + activity + unread into the

@@ -1,6 +1,6 @@
 # Phase 137 — phone polish from the external design review
 
-**Status:** built (all ten slices). The device checks of 137-1 to 137-10 are open, in the manual checklist.
+**Status:** built (all eleven slices). The device checks of 137-1 to 137-11 are open, in the manual checklist.
 **Tags:** `#composer`, `#mobile`, `#parking`, `#zucker` → `tools/where.sh -g composer`
 
 ## The problem
@@ -222,6 +222,7 @@ Measured in a headed iPhone 14 emulation, with real touch events for the swipe:
 
 Before 137-8, the closed "@ friends" row showed only a label.
 Now one line of friend chips sits under it.
+137-11 changed this layout. See "Changed by 137-11" below.
 A chip is a button with a presence dot and the name of a friend. A tap opens the chat with that friend, through the same `onFriendSelect` as the full list.
 
 - The order is the order of `buildFriendList`: online, then away, then offline, and by name inside each group.
@@ -237,6 +238,8 @@ A chip is a button with a presence dot and the name of a friend. A tap opens the
 - The CSS is in the phone block of `web/src/theme.css`. The line is one `nowrap` row, 44 px high, with 16 px side padding and `overflow: hidden` as a guard. It sits 4 px up toward the row. A chip is a 44 px transparent target around a bordered pill, and a pressed chip shades the pill. Each rule uses the existing tokens.
 - The chips do not use `WaveName`, so a waving name does not show on a chip.
 
+Changed by 137-11: the chips no longer sit in one line under a row with a label. They wrap to two lines inside the friends bar, and the bar has no "@ friends" label while it shows chips. `chipsThatFit` is gone, and `fitFriendChips` replaces it. A name no longer ends at 10ch with an ellipsis. The component shortens names to reach eight chips. `chalk-zucker-pinned--chips` is gone. The text above is the history of 137-8.
+
 Measured in a headed iPhone 14 emulation, with six friends, three online and three offline:
 
 - The row and the chips line together are 84 px high.
@@ -245,6 +248,40 @@ Measured in a headed iPhone 14 emulation, with six friends, three online and thr
 - A tap on "+N" opens the full list and the chips go.
 - A tap on a chip opens the chat with that friend.
 - Not seen: an away friend, because the emulation cannot stage one. Also not seen: more than 24 friends, and a waving name.
+
+### 137-11 Friends bar: two lines of chips and a count button
+
+A marked-up screenshot of the phone list asked for three changes.
+The "@ friends" label goes, and its space goes to the chips.
+The list shows at least eight chips, and names are shortened where necessary.
+The online count and the expand control sit at the far right, in as little space as possible.
+
+- The friends row is now `.chalk-zucker-friendsbar`. The chips are on the left. A compact toggle button is on the right (`data-testid="zucker-friends"`, `aria-expanded`).
+- The toggle shows only "online/total", for example "5/9", and the chevron. Its `aria-label` and its `title` carry the words, for example "friends, 5 of 9 online".
+- The "@ friends" label shows only when there are no chips: when the list is open, or when the user has no friends. The open list does not change.
+- The chips wrap to two lines. `.chalk-zucker-chips` has `max-height: 88px` and `overflow: hidden` as a guard.
+- The bar has 16 px of left padding. Its right padding is 16 px minus the 13 px that the toggle keeps inside. So the right edge of the chevron lines up with the head icons and the row times.
+- `fitFriendChips(input)` in `web/src/chat/zucker.ts` replaces `chipsThatFit`. The new constants are `FRIEND_CHIPS_LINES` (2) and `FRIEND_CHIPS_WANT` (8). `FRIEND_CHIPS_MAX` (24) stays.
+- The target is eight chips. It is all friends if there are fewer. It is the count that fits at the name floor if eight cannot fit.
+- A binary search over whole pixels finds the widest name cap that still reaches the target. The search cuts names only as far as necessary, and spare width goes back to the names. A name is never widened and never cut below `minName`.
+- With no friends or no width, `fitFriendChips` returns a count of 0.
+- `FriendChips.tsx` reads these widths: each name, the overhead of a chip, the gap, "+N", the line, and the mean character. The line width is 1 px under the real width. A rounded fraction then cannot wrap a line.
+- The component turns the cap into a whole number of characters, never under 4 (`MIN_NAME_CHARS`). It renders each name cut to that many characters as text. The CSS variable `--chalk-chip-name-max` stays as a guard for a proportional font, where the mean width is only an estimate.
+
+The demo tried two cuts and rejected both:
+
+- An ellipsis. It costs one letter of a four-letter name.
+- A CSS clip as the only cut. It slices a glyph in half.
+
+Measured in a headed iPhone 14 emulation, with nine friends, five online and four offline, and names of 6 to 21 characters:
+
+- At 390 px, eight chips in two lines and "+1" show. The names show four letters, for example "bob_" and "fran". The bar is 89 px high with its border.
+- At 320 px, six chips and "+3" show.
+- The toggle is 55 px wide and reads "5/9".
+- The right edge of the chevron equals the right edge of the last head icon. It is 366 px at 390 px, and 296 px at 320 px.
+- An open bar shows the "@ friends" label and the list of nine, and no chips.
+- The page does not move sideways.
+- Not seen: eight or fewer friends with full names (the unit tests cover it), an away friend, and a proportional font.
 
 ### 137-9 Filter bar
 
@@ -324,6 +361,7 @@ Measured in a headed iPhone 14 emulation:
 - A follow-up message in a group shows its time in the long-press menu.
 - The list and the chat get a short slide transition (137-7).
 - A second mock-up asked for two more slices on the phone list: friends at a glance (137-8) and a filter bar (137-9).
+- A second marked-up screenshot asked for 137-11. The "@ friends" label goes. The list shows at least eight chips with shortened names. The count and the expand control sit at the far right.
 - A marked-up screenshot of the phone list asked for 137-10. The Parking Lot and the threads become head buttons. Every head button gets an icon.
 - The name field of the filter bar keeps its automatic focus when the bar opens (137-9).
 - The rows that are not conversations stay hidden while the filter bar is open (137-9).
@@ -347,9 +385,10 @@ Measured in a headed iPhone 14 emulation:
 | 137-5 | built (2026-11-14) | Headers |
 | 137-6 | built (2026-11-14) | Empty states |
 | 137-7 | built (2026-11-14) | List and chat transition |
-| 137-8 | built (2026-11-14) | Friends at a glance: a line of friend chips under the friends row |
+| 137-8 | built (2026-11-14) | Friends at a glance: a line of friend chips under the friends row (layout changed by 137-11) |
 | 137-9 | built (2026-11-14) | Filter bar behind the magnifier: name field and kind chips |
 | 137-10 | built (2026-11-14) | Head buttons with icons: parking lot and threads leave their rows |
+| 137-11 | built (2026-11-15) | Friends bar: two lines of chips, no label, and a compact count button at the right |
 
 ## Left open
 
@@ -364,6 +403,7 @@ Measured in a headed iPhone 14 emulation:
 - The device checks of 137-8 are open, in the manual checklist.
 - The device checks of 137-9 are open, in the manual checklist.
 - The device checks of 137-10 are open, in the manual checklist.
+- The device checks of 137-11 are open, in the manual checklist.
 - The index row of phase 136 links `docs/phases/PHASE-136-IOS.md`. This phase does not change it.
 
 ## Manual checklist
@@ -398,7 +438,7 @@ Measured in a headed iPhone 14 emulation:
 - [ ] 137-7: a phone, with reduced motion turned on. Opening a chat and tapping the back button show no slide.
 - [ ] 137-7: a phone. Tap a notification for a text conversation. The chat opens with the same slide from the right as a row tap.
 - [ ] 137-8: a phone, with an away friend. The dot of that chip shows the away state.
-- [ ] 137-8: a phone, with a friend who has a long name. The name ends in an ellipsis and the chip stays inside the screen.
+- [ ] 137-8: a phone, with a friend who has a long name. The chip stays inside the screen. Since 137-11 the name is cut with no ellipsis.
 - [ ] 137-8: a phone. Rotate it. The chips measure again, and "+N" shows the right count.
 - [ ] 137-8: a phone. Tap the chip of a friend with no chat yet. A chat with that friend opens.
 - [ ] 137-9: a phone. Tap the filter button. The filter bar shows under the head, and the name field has focus.
@@ -411,3 +451,8 @@ Measured in a headed iPhone 14 emulation:
 - [ ] 137-10: the narrowest phone available. The head shows the five buttons inside the screen, each button is easy to hit, and the page does not move sideways.
 - [ ] 137-10: a phone, with the parking lot renamed. The parking button is still found, and its label is the new name.
 - [ ] 137-10: a phone, with the parking lot hidden in the settings. The head shows four buttons.
+- [ ] 137-11: a phone, with eight friends or fewer. The chips show full names.
+- [ ] 137-11: a phone, with nine friends or more. The chips show at least eight names in two lines, and "+N" shows the rest.
+- [ ] 137-11: a phone. The count button at the right is easy to hit, and a tap opens the full list.
+- [ ] 137-11: a phone, with a proportional font. The chips do not wrap to a third line.
+- [ ] 137-11: a phone. Rotate it. The chips measure again, and the count of chips fits the new width.

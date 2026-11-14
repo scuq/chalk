@@ -10972,25 +10972,68 @@ body.chalk-resizing-y .chalk-composer-resizer {
     transform: rotate(90deg);
   }
 
-  /* 137-8: the line of friend chips under the closed friends row. The row has
-     no bottom border, and the chips line carries it. The line is pulled up
-     toward the row, and its overflow is hidden as a guard. FriendChips.tsx
-     measures the chips, so none passes the 16px edge. */
-  .chalk-zucker-pinned--chips {
-    border-bottom: none;
-  }
-
-  .chalk-zucker-chips {
+  /* 137-11: the friends bar. The chips take the left, and the toggle takes the
+     right in as little space as its text needs. The right padding is 16px
+     minus the 13px that the toggle keeps inside, so the chevron lines up with
+     the head icons and the row times. The bar carries the bottom border. */
+  .chalk-zucker-friendsbar {
     flex-shrink: 0;
     display: flex;
-    flex-wrap: nowrap;
-    align-items: center;
-    column-gap: var(--chalk-s1);
-    height: 44px;
-    margin-top: calc(-1 * var(--chalk-s1));
-    padding: 0 var(--chalk-s4);
-    overflow: hidden;
+    align-items: flex-start;
+    padding: 0 calc(var(--chalk-s4) - 13px) 0 var(--chalk-s4);
     border-bottom: 1px solid var(--chalk-border);
+  }
+
+  .chalk-zucker-friendsbar-label {
+    flex: 1 1 auto;
+    line-height: 44px;
+  }
+
+  /* 137-11: the toggle shows the count and the chevron. It is 44px high and as
+     narrow as its content. The chevron turns with aria-expanded. */
+  .chalk-zucker-friends-toggle {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 44px;
+    min-width: 44px;
+    justify-content: flex-end;
+    padding: 0 13px 0 var(--chalk-s1);
+    background: none;
+    border: none;
+    border-radius: var(--chalk-radius);
+    font: inherit;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--chalk-dur-fast);
+  }
+
+  .chalk-zucker-friends-toggle:active {
+    background: var(--chalk-bg-hover);
+  }
+
+  .chalk-zucker-friends-toggle .chalk-zucker-chevron {
+    margin-left: 0;
+  }
+
+  .chalk-zucker-friends-toggle[aria-expanded="true"] .chalk-zucker-chevron {
+    transform: rotate(90deg);
+  }
+
+  /* 137-8, 137-11: the friend chips wrap to two lines. FriendChips.tsx measures
+     them and shortens the names, so the chips fit. The max height of two
+     44px lines and the hidden overflow are a guard. */
+  .chalk-zucker-chips {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    column-gap: var(--chalk-s1);
+    max-height: 88px;
+    overflow: hidden;
   }
 
   /* 137-8: the measuring pass. The chips take their space but do not paint. */
@@ -11029,10 +11072,14 @@ body.chalk-resizing-y .chalk-composer-resizer {
     background: var(--chalk-bg-hover);
   }
 
+  /* 137-11: FriendChips.tsx cuts a name to whole characters as text. This cap
+     is a guard for a proportional font, where the character width is only an
+     estimate. The clip shows no ellipsis, because an ellipsis costs one letter
+     of a four-letter name. */
   .chalk-zucker-chip-name {
-    max-width: 10ch;
+    max-width: var(--chalk-chip-name-max, none);
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: clip;
     white-space: nowrap;
   }
 

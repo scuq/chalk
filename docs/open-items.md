@@ -9,7 +9,7 @@ Latest release: **v0.12.0** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 137 is the newest work. It is built, with all ten slices, and the device checks are open.
+Phase 137 is the newest work. It is built, with all eleven slices, and the device checks are open.
 Phase 135 is built. All eight slices are built. The device checks are open.
 Phase 133 is built, with the voice room, and seven points of it are open.
 Phase 131 has two small open points.
@@ -19,14 +19,14 @@ phases are *planned, not started*.
 
 ## Phase 137 — phone polish: built, the device checks are open
 
-All ten slices are built, record in [phases/PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md).
+All eleven slices are built, record in [phases/PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md).
 On the phone, the composer is one outlined box. The field is full width and
 grows with the draft. The tools and send are in a row below it. Consecutive messages
 from one person group on the phone. The conversation rows are taller, an unread name
 is bold, and the unread dot sits under the time. The friends, voice, and hidden rows have a chevron
 that turns, and an open section fades in. The headers stay on one row, and a long name is cut.
 The parking lot mark is small. The chat and the list slide in for a short time, and a swipe back does not slide a second time.
-A line of friend chips sits under the closed friends row.
+Friend chips fill the top of the list in up to two lines, with a count button at the right.
 The filter button opens a filter bar with a name field and kind chips, and the list then shows only conversations.
 The Parking Lot and the threads are icon buttons in the list head, with filter, add a friend, and new channel.
 
@@ -58,6 +58,7 @@ The Parking Lot and the threads are icon buttons in the list head, with filter, 
   away friend, a long friend name, the chips measuring again after the phone
   rotates, and a chip tap for a friend with no chat yet. The emulation could not
   stage an away friend. It did not test more than 24 friends or a waving name.
+  137-11 changed the layout of the chips, and its own checks cover the cut of a long name.
 - **The 137-9 device checks are open.** Not tested on a device: the chip row
   scrolling sideways, a hit in the hidden shelf that opens it, a channel found
   by its full name while short names show, and a live voice room under the
@@ -67,6 +68,10 @@ The Parking Lot and the threads are icon buttons in the list head, with filter, 
   reply, the head on the narrowest phone, and a renamed parking lot that is
   still found. The emulation did not show the unread dot or the head with no
   parking lot (four buttons).
+- **The 137-11 device checks are open.** Not tested on a device: full names with
+  eight friends or fewer, a count button that is easy to hit, a proportional
+  font with no third line of chips, and the chips after the phone rotates. The
+  emulation had nine friends and no away friend.
 - **Deferred: the swipe settle ignores reduced motion.** The settle uses a
   hard-coded 160 ms (`theme.css` and `SWIPE_SETTLE_MS` in `use-swipe-back.ts`).
   Reduced motion does not turn it off.

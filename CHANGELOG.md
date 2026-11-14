@@ -24,7 +24,7 @@ The engineering-level history (which slice shipped what) lives in
 - On a phone, a long username no longer breaks the top bar onto two lines. The bar shortens the name. The conversation header shows search as an icon. All its buttons have the same size. A long channel name no longer pushes them off the screen.
 - On a phone, the Parking Lot shows a small chalk mark. Before, the mark filled half the screen.
 - On a phone, opening a conversation and going back to the list now slide briefly. A swipe back does not slide a second time. The slide is off when the phone asks for reduced motion.
-- On a phone, the friends row now shows a line of your friends with their status, online first. Tap a name to open the chat. Tap "+N" for the full list.
+- On a phone, the top of the conversation list now shows up to two lines of friend names with their status, online first. The list shows at least eight friends when you have them, and it shortens long names. Tap a name to open the chat. Tap the count at the right, for example "5/9", for the full list.
 - On a phone, the filter button in the conversation list now opens a filter. The filter has a name field and buttons for all, unread, mentions, channels, DMs, and voice. While the filter is open, the list shows only conversations.
 - On a phone, the Parking Lot and the threads are now buttons at the top of the conversation list. They sit next to filter, add a friend, and new channel. Every button has an icon. The list gains the room of two rows.
 

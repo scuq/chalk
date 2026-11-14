@@ -11,7 +11,7 @@ import {
   splitVoice,
   DELETED_PREVIEW,
   type ZuckerChannel,
-  chipsThatFit,
+  fitFriendChips,
 } from "./zucker.ts";
 import {
   PLACEHOLDER_NO_KEY,
@@ -331,21 +331,40 @@ test("buildVoiceOccupants with no viewer names every entry", () => {
   assert.equal(out.r1[0].name, "dave");
 });
 
-test("chipsThatFit shows every chip when the line holds them all, with no room kept for +N", () => {
-  // 3 x 60 + 2 x 4 = 188
-  assert.equal(chipsThatFit([60, 60, 60], 188, 4, 40), 3);
-  assert.equal(chipsThatFit([], 300, 4, 40), 0);
+// A name is 60px wide, a chip adds 30px around it, the gap is 4px, and "+N" is 40px.
+const fit = (names: number[], lineWidth: number) =>
+  fitFriendChips({ nameWidths: names, overhead: 30, gap: 4, moreWidth: 40, lineWidth, minName: 20 });
+
+test("fitFriendChips keeps full names while the chips fit in two lines", () => {
+  // Three 90px chips to a 290px line (278px used), so six fit in two lines.
+  assert.deepEqual(fit([60, 60, 60, 60, 60, 60], 290), { count: 6, nameCap: 60 });
+  assert.deepEqual(fit([60], 290), { count: 1, nameCap: 60 });
 });
 
-test("chipsThatFit keeps room for the +N chip once one chip does not fit", () => {
-  // 187 is 1px short of all three; two chips plus +N need 60+4+60+4+40 = 168.
-  assert.equal(chipsThatFit([60, 60, 60], 187, 4, 40), 2);
-  // Two chips fit alone in 150 (124), but not with +N (168): one chip and +N.
-  assert.equal(chipsThatFit([60, 60, 60], 150, 4, 40), 1);
+test("fitFriendChips cuts the names only as far as eight chips need", () => {
+  // Eight chips need 4 to a line: 4 x (cap + 30) + 12 <= 290, so the cap is 39px.
+  const got = fit([60, 60, 60, 60, 35, 60, 60, 60], 290);
+  assert.equal(got.count, 8);
+  assert.equal(got.nameCap, 39);
 });
 
-test("chipsThatFit can come down to +N alone, and to nothing in no space", () => {
-  assert.equal(chipsThatFit([60, 60], 80, 4, 40), 0);
-  assert.equal(chipsThatFit([60, 60], 0, 4, 40), 0);
-  assert.equal(chipsThatFit([60, 60], NaN, 4, 40), 0);
+test("fitFriendChips folds the rest into +N and gives the spare width back to the names", () => {
+  // Twelve friends: eight chips and "+N". The second line holds four chips
+  // and "+N": 4 x (cap + 30) + 12 + 44 <= 290, so the cap is 28px, not the 20px floor.
+  const got = fit(Array(12).fill(60), 290);
+  assert.equal(got.count, 8);
+  assert.equal(got.nameCap, 28);
+});
+
+test("fitFriendChips shows what fits when eight cannot, and nothing in no space", () => {
+  // A 120px line holds two chips: three chips and "+N" in two lines, and the
+  // first line allows 2 x (cap + 30) + 4 <= 120, a cap of 28px.
+  assert.deepEqual(fit(Array(8).fill(60), 120), { count: 3, nameCap: 28 });
+  assert.deepEqual(fit([60, 60], 0), { count: 0, nameCap: 60 });
+  assert.deepEqual(fit([], 290), { count: 0, nameCap: 0 });
+});
+
+test("fitFriendChips never widens a short name and never cuts below the floor", () => {
+  const got = fit([10, 10, 10], 290);
+  assert.deepEqual(got, { count: 3, nameCap: 10 });
 });
