@@ -1,6 +1,6 @@
 # Phase 137 — phone polish from the external design review
 
-**Status:** in progress. 137-1 is built (2026-11-14). 137-2 to 137-7 are not started. The device checks of 137-1 are open, in the manual checklist.
+**Status:** in progress. 137-1 and 137-2 are built (2026-11-14). 137-3 to 137-7 are not started. The device checks of 137-1 and 137-2 are open, in the manual checklist.
 **Tags:** `#composer`, `#mobile` → `tools/where.sh -g composer`
 
 ## The problem
@@ -55,18 +55,28 @@ Measured in a headed iPhone 14 emulation:
 
 ### 137-2 Message grouping and phone typography
 
-No grouping exists today. Each row shows time and sender.
+Before 137-2, each row showed its time and its sender.
+Now the phone shows them on the first row of a group only.
+Desktop does not change.
 
-- A new pure module, `web/src/chat/message-runs.ts`, has `continuesRun(prev, cur)`. It returns true when all of these are true:
+- A new pure module, `web/src/chat/message-runs.ts`, has `continuesRun(prev, cur)` and `RUN_GAP_MS` (five minutes). `continuesRun` returns true when all of these are true:
 
-  - The two messages have the same sender.
-  - The two messages are five minutes or less apart.
   - Neither message is deleted.
-  - No day divider and no unread divider is between them.
-- `MessageList.tsx` adds the class `chalk-message--cont` when `continuesRun` is true. The time and sender stay in the DOM for screen readers and for desktop.
-- The phone CSS hides the time and the sender of a continued row. A row that starts a group gets a larger top padding. The body text gets `line-height: 1.5`.
-- `MessageMenu.tsx` gets the formatted time of the message and shows it as a first line. Only the phone block shows that line.
-- Check `.chalk-message-code` and long URLs at 320 px. Add a wrap rule to the phone block only where the check shows an overflow.
+  - Both messages have the same non-empty author.
+  - The second message is 0 ms to `RUN_GAP_MS` after the first. The limit is inclusive.
+- The author is the user id. If the user id is empty, the author is the device id. If both are empty, as for a purged sender, the author is empty and the message never joins a run. Two devices of one account are one author.
+- `MessageList.tsx` sets a `cont` flag for each row and adds the class `chalk-message--cont` when it is true. A day mark or the unread divider at that index always starts a new run. The time and the sender stay in the DOM for screen readers and for desktop.
+- The phone CSS gives each row a top padding of `--chalk-s2`. A continued row has 1 px, and its time and sender are hidden.
+- `MessageList.tsx` passes `m.ts.toLocaleString()` to `MessageMenu` as the new optional prop `when`. The menu shows it as its first line (`.chalk-msgmenu-when`). The base rule hides that line, because desktop keeps the time on every row and in its title tooltip. Only the phone block shows it.
+- The row of an open menu has `--chalk-bg-hover` as its pressed state.
+- On the phone, `.chalk-message-body` is 15 px times `--chalk-font-scale`, with `line-height: 1.5`. The existing rule `overflow-wrap: anywhere` stays.
+
+Measured in a headed iPhone 14 emulation:
+
+- The first row of a group is 51 px high. A follow-up row is 28 px high.
+- The body text is 15 px.
+- A long URL and a long unbroken string wrap with no horizontal overflow at 390 px and at 320 px. No new wrap rule was necessary.
+- A long press on a follow-up row opens the menu with the full timestamp as its first line, inside the viewport.
 
 ### 137-3 Conversation rows
 
@@ -125,7 +135,7 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 | Slice | Status | Content |
 |---|---|---|
 | 137-1 | built | Composer: full-width field, tools row below |
-| 137-2 | not started | Message grouping and phone typography |
+| 137-2 | built (2026-11-14) | Message grouping and phone typography |
 | 137-3 | not started | Conversation rows |
 | 137-4 | not started | List section rows |
 | 137-5 | not started | Headers |
@@ -135,6 +145,7 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 ## Left open
 
 - Only a real iPhone PWA shows the keyboard behavior. The device checks of 137-1 are open.
+- The device checks of 137-2 are open, in the manual checklist.
 - The index row of phase 136 links `docs/phases/PHASE-136-IOS.md`. This phase does not change it.
 
 ## Manual checklist
@@ -147,3 +158,6 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 - [ ] 137-1: an Android phone in Chrome. The same five checks give the same results.
 - [ ] 137-1: edit a message on a phone. The tools are hidden, the row keeps its height, and save stays on the right.
 - [ ] 137-1: open a thread on a phone. The thread composer has the same layout.
+- [ ] 137-2: a phone. Long-press a follow-up row. The menu shows the full time of that message as its first line, inside the screen.
+- [ ] 137-2: a phone, with timestamps turned off in settings. Messages still group, and a long press still shows the time.
+- [ ] 137-2: a phone. Open a thread. The reply head row shows its name and time, and the replies group as in a channel.

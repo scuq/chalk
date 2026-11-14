@@ -6221,6 +6221,12 @@ body.chalk-resizing-y .chalk-composer-resizer {
   font-size: var(--chalk-size-small);
 }
 
+/* 137-2: the phone block shows this line. Desktop keeps the time on every row
+   and in its title tooltip, so the menu does not repeat it. */
+.chalk-msgmenu-when {
+  display: none;
+}
+
 /* The one-click reactions. A single row above the rest, because reacting is
    what most people came to the menu for. */
 .chalk-msgmenu-quick {
@@ -10428,6 +10434,37 @@ body.chalk-resizing-y .chalk-composer-resizer {
     grid-template-columns: 1fr;
   }
 
+  /* 137-2: every row gets space above it, so a group has air between it and
+     the next one. */
+  .chalk-message {
+    padding-top: var(--chalk-s2);
+  }
+
+  /* 137-2: a follow-up row sits close to its group. The time and the sender
+     stay in the DOM for screen readers and for desktop. */
+  .chalk-message--cont {
+    padding-top: 1px;
+  }
+
+  .chalk-message--cont .chalk-message-time,
+  .chalk-message--cont .chalk-message-sender {
+    display: none;
+  }
+
+  /* 137-2: the pressed state of a long press, while the menu is open. */
+  .chalk-message--menu-open {
+    background: var(--chalk-bg-hover);
+  }
+
+  /* 137-2: the time of the message, because a follow-up row hides it. */
+  .chalk-msgmenu-when {
+    display: block;
+    padding: var(--chalk-s1) var(--chalk-s2);
+    color: var(--chalk-fg-dim);
+    border-bottom: 1px solid var(--chalk-border);
+    margin-bottom: 4px;
+  }
+
   .chalk-message-time {
     grid-column: 1;
   }
@@ -10461,6 +10498,9 @@ body.chalk-resizing-y .chalk-composer-resizer {
     /* A pasted URL is one unbreakable token; let it break anywhere rather
        than push the whole column wider than the screen. */
     overflow-wrap: anywhere;
+    /* 137-2: 15px is easier to read on a phone. The font scale still applies. */
+    font-size: calc(15px * var(--chalk-font-scale));
+    line-height: 1.5;
   }
 
   .chalk-message-thread-meta,

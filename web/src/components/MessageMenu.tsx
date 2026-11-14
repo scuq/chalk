@@ -20,6 +20,8 @@ import {
 
 interface Props {
   items: MessageMenuItem[];
+  /** The full timestamp of the message. The phone shows it as the first line of the menu. */
+  when?: string;
   /** Viewport coordinates of the anchor: the pointer, or the marker's corner. */
   x: number;
   y: number;
@@ -37,7 +39,7 @@ const LABELS: Record<MessageMenuItem["kind"], string> = {
   delete: "delete",
 };
 
-export function MessageMenu({ items, x, y, onPick, onQuickReact, onClose }: Props) {
+export function MessageMenu({ items, when, x, y, onPick, onQuickReact, onClose }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
@@ -121,6 +123,11 @@ export function MessageMenu({ items, x, y, onPick, onQuickReact, onClose }: Prop
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
+      {when && (
+        <div class="chalk-msgmenu-when" data-testid="message-menu-when">
+          {when}
+        </div>
+      )}
       {showsQuickReactions(items) && (
         <div class="chalk-msgmenu-quick" data-testid="message-menu-quick">
           {QUICK_REACTIONS.map((emoji) => (

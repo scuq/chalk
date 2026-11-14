@@ -33,6 +33,7 @@ import { decideLinkPreviewRender } from "../linkpreview/linkpreview";
 import { decideCodeRender } from "../code/code";
 import { clipboardText, messageText } from "../chat/bodytext";
 import { dayMarkIndices, pinnedBottom } from "../chat/daymarks"; // 113-1
+import { continuesRun } from "../chat/message-runs";
 import { DEFAULT_SELF_HUE, nickTintStyle, resolveNickHue } from "../chat/nickcolor";
 import { linkDisplayText, splitBodyParts } from "../chat/links";
 import { splitBodyBlocks, splitBodyNano, type NanoPart } from "../chat/nanomd";
@@ -1277,6 +1278,12 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
           && m.senderUserID !== "" && m.senderUserID === ownUserID;
         const ownByDevice = ownDevice !== null && m.sender === ownDevice;
         const own = ownByUser || ownByDevice;
+        // 137-2: a day mark or the unread divider always starts a new run.
+        const cont =
+          mi > 0 &&
+          !dayMarks.has(mi) &&
+          mi !== dividerIndex &&
+          continuesRun(messages[mi - 1], m);
         // Sender label: prefer member handle (resolved via
         // sender_user_id), fall back to device-id slice for legacy
         // / purged-user messages. `handle` is still wanted on its own for
@@ -1355,7 +1362,7 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
             }}
           >
           <div
-            class={`chalk-message ${own ? "chalk-message--own" : ""} ${isUnread ? "chalk-message--unread" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"} ${editingMessageID === m.id ? "chalk-message--editing" : ""} ${menu?.id === m.id ? "chalk-message--menu-open" : ""} ${flashMessageID === m.id ? "chalk-message--flash" : ""} ${noBody ? "chalk-message--no-body" : ""}`}
+            class={`chalk-message ${own ? "chalk-message--own" : ""} ${isUnread ? "chalk-message--unread" : ""} ${display_.showTimestamps ? "" : "chalk-message--no-time"} ${editingMessageID === m.id ? "chalk-message--editing" : ""} ${menu?.id === m.id ? "chalk-message--menu-open" : ""} ${flashMessageID === m.id ? "chalk-message--flash" : ""} ${noBody ? "chalk-message--no-body" : ""} ${cont ? "chalk-message--cont" : ""}`}
             style={`--chalk-msg-sender-col:${senderColCh}ch`}
             data-testid="message"
             data-message-id={m.id}
@@ -1692,6 +1699,8 @@ export function MessageList({ messages: allMessages, channelID, unreadMark, ownD
         return (
           <MessageMenu
             items={menuItemsFor(m)}
+            // 137-2: the phone hides the time of a follow-up row, so the menu shows it.
+            when={m.ts.toLocaleString()}
             x={menu.x}
             y={menu.y}
             onClose={closeMenu}
