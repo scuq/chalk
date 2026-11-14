@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { JSX } from "preact";
 import { type PendingAttachment, classifyKind, humanSize } from "../attachments/types";
 import {
@@ -47,6 +47,7 @@ import {
   matchMentionHandles,
 } from "../chat/mention-complete";
 import { useIsMobile } from "../mobile";
+import { composerAutoHeight } from "../chat/composer-height";
 import { AttachIcon, CodeIcon, EmojiIcon, GifIcon, SendIcon } from "./icons";
 
 // Phase 9.6g: disabledReason distinguishes the two reasons the
@@ -204,6 +205,42 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
   const [codeOpen, setCodeOpen] = useState(false);
   const [stagedCode, setStagedCode] = useState<CodePayload | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerRef = useRef<HTMLDivElement | null>(null);
+
+  // 137-1: on the phone the field grows with its draft up to the CSS maximum,
+  // and then scrolls. The height is reset to auto first, because scrollHeight
+  // does not shrink while an inline height holds the field open. On desktop
+  // the inline height is cleared, so the 91-1 drag height applies again.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    if (!isMobile) {
+      el.style.height = "";
+      return;
+    }
+    el.style.height = "auto";
+    const cs = getComputedStyle(el);
+    el.style.height = `${composerAutoHeight(
+      el.scrollHeight + parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth),
+      parseFloat(cs.minHeight),
+      parseFloat(cs.maxHeight),
+    )}px`;
+  }, [draft, isMobile]);
+
+  // 137-1: the emoji picker needs the composer height, which changes with the
+  // draft. CSS cannot read it, so the observer copies it to a custom property.
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el || !isMobile || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      el.style.setProperty("--chalk-composer-block", `${Math.round(el.offsetHeight)}px`);
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      el.style.removeProperty("--chalk-composer-block");
+    };
+  }, [isMobile]);
   // 42-1: the last emoticon we swapped for an emoji, so an immediate
   // Backspace can put the typed characters back. Cleared by any other edit.
   const undoEmoticon = useRef<{ caret: number; text: string; emoji: string } | null>(null);
@@ -891,6 +928,7 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
 
   return (
     <div
+      ref={composerRef}
       class={`chalk-composer ${railed ? "chalk-composer--railed" : ""} ${editing ? "chalk-composer--editing" : ""} ${dragActive ? "chalk-composer--drag-active" : ""}`}
       onDragEnter={enableAttachments ? onDragEnter : undefined}
       onDragOver={enableAttachments ? onDragOver : undefined}
@@ -1144,9 +1182,8 @@ export function Composer({ disabled, disabledReason, onSend, placeholder, enable
         <div class="chalk-composer-row">
           {/* 44-5: the tool block, immediately left of the field it acts on.
               133-5: on a desktop the block is one row on a shared surface, from
-              the design review. 133-14 centers it on the field. The phone keeps the 2x2 block, which makes the
-              rail as high as the two-row input (74-2: CODE took the fourth
-              cell). The block stays mounted during an edit and gets
+              the design review. 133-14 centers it on the field. 137-1: the phone puts the block in a row
+              under the full-width field (74-2: CODE took the fourth tool). The block stays mounted during an edit and gets
               chalk-composer-tools--hidden and aria-hidden. One row is about
               120px wide, so unmounting the block would slide the field
               sideways mid-edit. Hidden buttons also leave the tab order. */}

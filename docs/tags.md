@@ -45,7 +45,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #whatsnew       116       web/src/whats-new.ts web/src/whats-new.test.ts web/src/components/WhatsNewNudge.tsx web/src/components/AvatarNudge.tsx web/src/components/App.tsx web/src/components/ProfilePanel.tsx web/src/settings-nav.ts web/src/state/types.ts web/src/theme.css docs/phases/PHASE-116-WHATSNEW.md
 #rosterorder    114       web/src/chat/roster-order.ts web/src/chat/zucker.ts web/src/components/Sidebar.tsx web/src/components/App.tsx web/src/components/ProfilePanel.tsx web/src/state/types.ts web/src/settings-nav.ts web/src/theme.css docs/phases/PHASE-114-ROSTERORDER.md
 #mentions       56        web/src/chat/ web/src/components/Composer.tsx docs/phases/PHASE-56-MENTIONS.md
-#composer       91 94 133 web/src/chat/composer-height.ts web/src/chat/composer-keys.ts web/src/components/ComposerResizer.tsx web/src/components/Composer.tsx web/src/theme.css web/src/theme-composer.test.ts docs/phases/PHASE-91-COMPOSERSIZE.md docs/phases/PHASE-94-PHONECOMPOSER.md
+#composer       91 94 133 137 web/src/chat/composer-height.ts web/src/chat/composer-keys.ts web/src/components/ComposerResizer.tsx web/src/components/Composer.tsx web/src/theme.css web/src/theme-composer.test.ts web/src/chat/composer-height.test.ts docs/phases/PHASE-91-COMPOSERSIZE.md docs/phases/PHASE-94-PHONECOMPOSER.md docs/phases/PHASE-137-POLISH.md
 #linkpreview    57 67     internal/linkpreview/ web/src/linkpreview/ web/src/chat/links.ts docs/phases/PHASE-57-LINKPREVIEW.md docs/phases/PHASE-67-LINKLABELS.md
 #code           74        web/src/code/ web/src/chat/bodytext.ts web/src/components/CodeModal.tsx web/src/components/CodeBlockView.tsx docs/phases/PHASE-74-CODEBLOCKS.md
 #nanomd         77 107    web/src/chat/nanomd.ts web/src/components/MessageList.tsx web/src/theme.css docs/phases/PHASE-77-NANOMD.md docs/phases/PHASE-107-QUOTE.md
@@ -56,7 +56,7 @@ than adding a second entry. `-g` warns when a listed path no longer exists.
 #presence       34 45 60 92 104  internal/presence/ internal/server/ web/src/chat/hovercard.ts web/src/chat/presence.ts web/src/presence/ web/src/components/HoverCard.tsx web/src/components/MessageList.tsx web/src/auth/display-names.ts web/src/state/ desktop/src/idle.ts desktop/src/idle-clock.ts docs/phases/PHASE-34-PRESENCE.md docs/phases/PHASE-45-SCRATCHPAD.md docs/phases/PHASE-92-HOVERCARD.md docs/phases/PHASE-104-DESKTOP.md
 #spacekeys      25 38     web/src/crypto/ internal/store/ docs/phases/PHASE-38-KEYDELIVERY.md docs/phases/PHASE-00-29-FOUNDATION.md
 #deletion       35        web/src/chat/ web/src/components/ docs/phases/PHASE-35-DELETION.md
-#mobile         32 60 64 76 94 125 135 web/src/mobile.ts web/src/nav/ web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/chat/long-press.ts web/src/components/ web/src/theme.css web/src/viewport.ts web/index.html web/src/theme-phone.test.ts docs/phases/PHASE-32-MOBILE.md docs/phases/PHASE-60-MOBILEFIT.md docs/phases/PHASE-64-SWIPEBACK.md docs/phases/PHASE-94-PHONECOMPOSER.md docs/phases/PHASE-125-KEYBOARD.md docs/phases/PHASE-135-PHONE.md
+#mobile         32 60 64 76 94 125 135 137 web/src/mobile.ts web/src/nav/ web/src/chat/swipe-back.ts web/src/chat/use-swipe-back.ts web/src/chat/press.ts web/src/chat/long-press.ts web/src/components/ web/src/theme.css web/src/viewport.ts web/index.html web/src/theme-phone.test.ts docs/phases/PHASE-32-MOBILE.md docs/phases/PHASE-60-MOBILEFIT.md docs/phases/PHASE-64-SWIPEBACK.md docs/phases/PHASE-94-PHONECOMPOSER.md docs/phases/PHASE-125-KEYBOARD.md docs/phases/PHASE-135-PHONE.md docs/phases/PHASE-137-POLISH.md
 #settings       68 70 76 124 132  web/src/settings-nav.ts web/src/display-prefs.ts web/src/components/ProfilePanel.tsx web/src/components/MicSettings.tsx web/src/components/MicSettingsDialog.tsx web/src/theme.css docs/phases/PHASE-68-SETTINGSTABS.md docs/phases/PHASE-70-APPEARANCE.md docs/phases/PHASE-76-SHORTCUTS.md docs/phases/PHASE-124-SETTINGSROWS.md
 #fullwidth      93        web/src/display-prefs.ts web/src/theme.css web/src/components/ProfilePanel.tsx docs/phases/PHASE-93-WIDTH.md
 #themes         133 135   web/src/theme.css web/src/theme-phone.test.ts web/src/theme-palette.test.ts web/src/theme-tokens.test.ts web/src/theme-empty.test.ts web/src/components/Logo.tsx web/src/components/ProfilePanel.tsx web/src/chat/nickcolor.ts web/src/components/icons.tsx web/src/theme-icons.test.ts docs/theming.md docs/phases/PHASE-133-POLISH.md
@@ -101,7 +101,7 @@ Phase numbers that appear in the source but are not claimed above. Left here
 rather than guessed at, so the legend stays trustworthy; move one into a tag
 line when its topic is clear.
 
-    (none — 25 through 133 are all claimed)
+    (none — 25 through 137 are all claimed)
 
 Phases below 25 predate the tagging convention and carry no `// NN-n:` comments
 to find. They are recorded in `docs/phases/PHASE-00-29-FOUNDATION.md` instead —

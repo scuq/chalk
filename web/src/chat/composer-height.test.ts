@@ -7,6 +7,7 @@ import {
   COMPOSER_HEIGHT_MIN,
   clampComposerDrag,
   clampComposerHeight,
+  composerAutoHeight,
   composerHeightCeiling,
 } from "./composer-height";
 import { selectChatPrefs } from "../state/types";
@@ -53,6 +54,22 @@ test("clampComposerDrag never collapses to auto", () => {
 test("clampComposerDrag stops at the viewport ceiling", () => {
   assert.equal(clampComposerDrag(900, 800), 480);
   assert.equal(clampComposerDrag(200, 800), 200);
+});
+
+test("composerAutoHeight follows the content between the bounds", () => {
+  assert.equal(composerAutoHeight(90, 72, 300), 90);
+  assert.equal(composerAutoHeight(20, 72, 300), 72);
+  assert.equal(composerAutoHeight(900, 72, 300), 300);
+  assert.equal(composerAutoHeight(90.4, 72, 300), 90);
+});
+
+test("composerAutoHeight survives unparsed bounds and a junk content height", () => {
+  // getComputedStyle gives "none" for an unset max-height, which parses to NaN.
+  assert.equal(composerAutoHeight(900, 72, NaN), 900);
+  assert.equal(composerAutoHeight(90, NaN, 300), 90);
+  assert.equal(composerAutoHeight(NaN, 72, 300), 72);
+  // A max under the min cannot shrink the field below the min.
+  assert.equal(composerAutoHeight(90, 72, 40), 90);
 });
 
 test("selectChatPrefs defaults composerHeight to auto when absent", () => {

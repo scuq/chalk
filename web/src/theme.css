@@ -8823,7 +8823,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
 /* 44-5: the tool block sits against the left edge of the input.
    133-5: on a desktop it is one flex row on one surface, with a 2px gap and
-   3px of padding. The phone block below returns to the 2x2 grid. */
+   3px of padding. 137-1: the phone block below makes it a row under the field. */
 .chalk-composer-tools {
   display: flex;
   align-items: center;
@@ -9897,7 +9897,7 @@ body.chalk-resizing-y .chalk-composer-resizer {
 /* Icon variant: square buttons that centre their glyph. The SVGs stroke with
    currentColor, so they inherit the button's colour and hover state and need
    no per-theme rules. On a desktop the buttons are 30px by 32px in one row.
-   The phone block below sets 44px squares in a 2x2 grid. */
+   137-1: The phone block below sets 44px squares in a row under the field. */
 .chalk-composer-rail--icons .chalk-composer-tool {
   display: inline-flex;
   align-items: center;
@@ -10489,54 +10489,64 @@ body.chalk-resizing-y .chalk-composer-resizer {
     align-items: stretch;
   }
 
-  .chalk-composer-input {
-    min-width: 0;
-  }
-
-  /* 94-2: the button is the field's height on both layouts now.
-     94-4: and it is already a full-height target, so the extra horizontal
-     padding was buying nothing -- 94-2 widened it for a thumb back when it was
-     a 26px chip. The arrow plus s2 is still a field-height target, at least
-     44px wide (133-14), and the width it gives back goes to the field
-     beside it. */
-  .chalk-composer-send {
-    padding: 0 var(--chalk-s2);
-  }
-
-  /* 94-4: the gap between the tool block, the field and send. s2 is the
-     desktop rhythm, where there is width to spend on it; here every 4px is a
-     character and a half of the line you are typing. */
+  /* 137-1: the row is one outlined box. The field is full width on top, and
+     the tools and send share the row below it. The field gives up its own
+     outline, so the box does not show two borders. */
   .chalk-composer-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "input input"
+      "tools send";
+    align-items: end;
     gap: var(--chalk-s1);
+    padding: var(--chalk-s1);
+    background: var(--chalk-bg-elev);
+    border: 1px solid var(--chalk-border);
+    border-radius: var(--chalk-radius-md);
   }
 
-  /* 133-5: the phone keeps the 2x2 grid and the bordered buttons of 44-5. */
+  /* 137-1: the accent outline shows that the field has focus or that an edit
+     is open, in place of the field's own outline. */
+  .chalk-composer-row:focus-within,
+  .chalk-composer--editing .chalk-composer-row {
+    border-color: var(--chalk-accent);
+  }
+
+  /* 137-1: the minimum is two lines. The maximum follows the shell height,
+     which the keyboard shrinks, so a long draft cannot push the feed off the
+     screen. Past the maximum the field scrolls inside. The :focus selector
+     stops the base :focus rule from restoring its background. */
+  .chalk-composer-input,
+  .chalk-composer-input:focus {
+    grid-area: input;
+    min-width: 0;
+    min-height: calc(3em + 2 * var(--chalk-s1));
+    max-height: calc(var(--chalk-shell-h, 100dvh) * 0.4);
+    padding: var(--chalk-s1) var(--chalk-s2);
+    background: transparent;
+    border: none;
+    resize: none;
+  }
+
+  /* 137-1: the tools sit in a row under the field, on the left. */
+  .chalk-composer-rail {
+    grid-area: tools;
+    align-self: center;
+  }
+
   .chalk-composer-tools {
-    display: grid;
-    grid-template-columns: repeat(2, auto);
-    align-content: end;
+    display: flex;
+    align-items: center;
     gap: var(--chalk-s1);
     padding: 0;
     background: transparent;
     border: none;
   }
 
-  .chalk-composer-tool {
-    border: 1px solid var(--chalk-border);
-  }
-
-  /* 44-5: bigger squares for thumbs, 44px since 135-4. The block is then
-     2 x 44px + the gap, so the field is given the same height rather than
-     leaving dead space beside it -- two lines of input on a phone is no
-     hardship. */
-  .chalk-composer-rail--icons .chalk-composer-tool {
-    width: 44px;
-    height: 44px;
-  }
-
-  /* 94-1: the text labels are initials here, so the same 44px square as the
-     icons. "F" with padding alone would be a 24px target, which is awkward
-     to hit. The rail is then the same width whichever style you picked. */
+  /* 137-1: every tool is a 44px square, with icons or with initials, so a
+     thumb can hit it and the row has the same height in both styles. */
+  .chalk-composer-rail--icons .chalk-composer-tool,
   .chalk-composer-rail--text .chalk-composer-tool {
     width: 44px;
     height: 44px;
@@ -10544,13 +10554,25 @@ body.chalk-resizing-y .chalk-composer-resizer {
     text-align: center;
   }
 
-  .chalk-composer-rail {
-    min-width: calc(2 * 44px + var(--chalk-s1));
-    align-self: auto;
+  /* 137-1: send is on the right of the tool row and is 44px high. */
+  .chalk-composer-send {
+    grid-area: send;
+    align-self: center;
+    height: 44px;
+    padding: 0 var(--chalk-s3);
   }
 
-  .chalk-composer-input {
-    min-height: 72px;
+  /* 137-1: the picker sits above the composer. The fixed 96px of the old
+     layout is wrong now, because the composer grows with the draft. The
+     composer script writes its height to --chalk-composer-block. The 132px
+     fallback is the height of an empty composer. */
+  .chalk-emoji-picker {
+    left: var(--chalk-s2);
+    bottom: calc(
+      var(--chalk-composer-block, 132px) + var(--chalk-s2) +
+        max(var(--chalk-s2), env(safe-area-inset-bottom))
+    );
+    width: min(360px, calc(100vw - 2 * var(--chalk-s2)));
   }
 
   /* -- thread panel: full screen instead of a third column ----------- */

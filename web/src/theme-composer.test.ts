@@ -24,12 +24,31 @@ test("desktop composer tools are one row on a shared surface", () => {
   assert.match(block(".chalk-composer-tool"), /border:\s*none;/);
 });
 
-test("the phone keeps its 2x2 block of bordered squares", () => {
-  const tools = block(".chalk-composer-tools", "  ");
-  assert.match(tools, /display:\s*grid;/);
-  assert.match(tools, /grid-template-columns:\s*repeat\(2, auto\);/);
-  assert.match(block(".chalk-composer-tool", "  "), /border:\s*1px solid var\(--chalk-border\)/);
-  assert.match(block(".chalk-composer-rail--icons .chalk-composer-tool", "  "), /width:\s*44px;/);
+test("the phone composer is one outlined box: the field above, the tools and send below", () => {
+  const row = block(".chalk-composer-row", "  ");
+  assert.match(row, /display:\s*grid;/);
+  assert.match(row, /grid-template-areas:\s*"input input"\s*"tools send";/);
+  assert.match(row, /border:\s*1px solid var\(--chalk-border\)/);
+  assert.match(block(".chalk-composer-tools", "  "), /display:\s*flex;/);
+  assert.match(block(".chalk-composer-send", "  "), /grid-area:\s*send;/);
+  // The row draws the outline, so the field has none of its own.
+  const input = block(".chalk-composer-input,\n  .chalk-composer-input:focus", "  ");
+  assert.match(input, /grid-area:\s*input;/);
+  assert.match(input, /border:\s*none;/);
+  assert.match(input, /max-height:\s*calc\(var\(--chalk-shell-h, 100dvh\) \* 0\.4\);/);
+});
+
+test("every phone tool is a 44px square in both tool styles", () => {
+  const tool = block(".chalk-composer-rail--icons .chalk-composer-tool,\n  .chalk-composer-rail--text .chalk-composer-tool", "  ");
+  assert.match(tool, /width:\s*44px;/);
+  assert.match(tool, /height:\s*44px;/);
+  assert.match(block(".chalk-composer-send", "  "), /height:\s*44px;/);
+});
+
+test("the phone emoji picker sits above the composer at its measured height", () => {
+  assert.match(block(".chalk-emoji-picker", "  "), /var\(--chalk-composer-block, 132px\)/);
+  assert.match(composer, /--chalk-composer-block/);
+  assert.match(composer, /composerAutoHeight\(/);
 });
 
 test("send is filled with the accent and readable through the on-accent token", () => {

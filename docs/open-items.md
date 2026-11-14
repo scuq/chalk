@@ -9,13 +9,29 @@ Latest release: **v0.12.0** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 135 is the newest work. All eight slices are built. The device checks
-are open.
+Phase 137 is the newest work. It is in progress: 137-1 is built, and 137-2 to
+137-7 are not started.
+Phase 135 is built. All eight slices are built. The device checks are open.
 Phase 133 is built, with the voice room, and seven points of it are open.
 Phase 131 has two small open points.
 Phase 130 has two open points. The phase-doc index at the top of
 [phase-log.md](phase-log.md) is the complete list of what exists and which
 phases are *planned, not started*.
+
+## Phase 137 — phone polish: in progress, the device checks are open
+
+137-1 is built, record in [phases/PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md).
+On the phone, the composer is one outlined box. The field is full width and
+grows with the draft. The tools and send are in a row below it. 137-2 to 137-7
+are not started.
+
+- **The 137-1 device checks are open.** The live probe used an iPhone 14
+  emulation. Not tested on a device: the composer above the keyboard on an
+  iPhone and on Android, no jump when the field gets focus, a grown field with
+  the keyboard open, and the emoji picker position above the composer.
+- **137-2 to 137-7 are not started.** They are message grouping, conversation
+  rows, list section rows, headers, empty states, and the list and chat
+  transition.
 
 ## Phase 135 — phone: built, the device checks are open
 

@@ -38,6 +38,18 @@ export function composerHeightCeiling(viewportHeight: number): number {
   return Math.max(COMPOSER_HEIGHT_MIN, Math.min(COMPOSER_HEIGHT_MAX, cap));
 }
 
+// composerAutoHeight returns the height in pixels for a field that holds a
+// draft of the given scrollHeight, limited to the range min to max. A min that
+// is not a positive number counts as 0. A max that is not a number, or is
+// smaller than min, sets no upper limit. If scrollHeight is not a number, the
+// result is min.
+export function composerAutoHeight(scrollHeight: number, min: number, max: number): number {
+  const lo = Number.isFinite(min) && min > 0 ? min : 0;
+  const hi = Number.isFinite(max) && max >= lo ? max : Infinity;
+  if (!Number.isFinite(scrollHeight)) return Math.round(lo);
+  return Math.round(Math.min(hi, Math.max(lo, scrollHeight)));
+}
+
 // clampComposerDrag bounds an in-flight drag. Unlike the stored value this one
 // never collapses to auto: dragging the divider to the floor should leave a
 // usable one-line field, not silently hand control back to the default.
