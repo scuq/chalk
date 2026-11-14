@@ -56,7 +56,7 @@ as-built rather than a contemporaneous plan.
 | 62 | zuckermode conversation list | [PHASE-62-ZUCKER.md](phases/PHASE-62-ZUCKER.md) *(backfilled)* |
 | 63 | call grid, speaking dot, mic by label | [PHASE-63-CALLTILES.md](phases/PHASE-63-CALLTILES.md) *(backfilled)* |
 | 64 | the back swipe | [PHASE-64-SWIPEBACK.md](phases/PHASE-64-SWIPEBACK.md) *(backfilled)* |
-| 65 | web push — **planned, not started** | [PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md) |
+| 65 | web push — sessions own their subscriptions, and the socket carries every push frame *(in progress, 65-1 built)* | [PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md) |
 | 66 | call preferences that follow the account | [PHASE-66-CALLPREFS.md](phases/PHASE-66-CALLPREFS.md) *(backfilled)* |
 | 67 | link labels | [PHASE-67-LINKLABELS.md](phases/PHASE-67-LINKLABELS.md) *(backfilled)* |
 | 68 | settings tabs, cross-tab filter | [PHASE-68-SETTINGSTABS.md](phases/PHASE-68-SETTINGSTABS.md) *(backfilled)* |
@@ -887,10 +887,12 @@ and stopped pull-to-refresh. 135-5 added a call bar and a full-screen call
 view. 135-6 made the client check the socket with a ping when the page returns
 from the background. 135-7 added the wake lock, the lock-screen controls, and
 the camera flip. 135-8 added a sheet for a list row, opened by a long press or
-a right-click, with notifications, hide, group, and the owner's rename. Every
-change is in the client. The device checks are open.
+a right-click, with notifications, hide, group, and the owner's rename. 135-9
+parks the microphone and camera of a call when the connection drops, so the
+rejoin does not capture again and an installed iOS app does not show the
+permission prompt again. Every change is in the client. The device checks are open.
 
-**Not started.** 65 (web push), 86 (ties), 87
+**Not started.** 86 (ties), 87
 (message reminders), 90 (a local idle agent) and 99 (database-credential
 hardening, the R18 mitigation) — each planned in its own `PHASE-*.md`, and each marked
 *planned, not started* in the index above. [open-items.md](open-items.md) is the

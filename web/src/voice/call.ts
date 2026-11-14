@@ -2,7 +2,8 @@
 // mesh.
 //
 // One instance == one live membership in one voice room. It owns:
-//   * the local capture stream (getUserMedia; audio always, camera optional)
+//   * the local capture stream (getUserMedia, or a parked capture from the
+//     session after a connection drop; audio always, camera optional)
 //   * one RTCPeerConnection per remote (user, device) -- full mesh
 //   * the signaling handshake over voice_signal frames, E2E-encrypted under
 //     the channel space key (signal-crypto.sealSignal/openSignal)
@@ -124,6 +125,7 @@ import {
 } from "./signal-crypto";
 import { MicChain } from "./mic-chain";
 import { CameraChain } from "./camera-chain";
+import { canAdopt, closeParked, type ParkedMedia } from "./parked-media";
 // Static import, but NOT of MediaPipe: camera-blur is a small module that
 // import()s the ~12 MB runtime itself, so nothing heavy reaches this bundle.
 import { applyBlurTo, type BlurStats } from "./camera-blur";
@@ -209,6 +211,13 @@ export interface VoiceCallCallbacks {
   onSpeaking?(keys: string[]): void;
 }
 
+/**
+ * CallParkedMedia is the microphone chain and the camera chain of a dropped
+ * call, kept open so the next call can use them. [VoiceCall.detachMedia]
+ * makes one and [VoiceCallOptions.adoptMedia] takes one.
+ */
+export type CallParkedMedia = ParkedMedia<MicChain, CameraChain>;
+
 export interface VoiceCallOptions {
   channelID: string;
   selfUserID: string;
@@ -222,6 +231,11 @@ export interface VoiceCallOptions {
    * device untouched (indicator dark); the camera button then acquires one
    * mid-call through enableCameraMidCall. */
   startWithVideo: boolean;
+  /** 135-9: the capture of a dropped call, parked by the session. join uses it
+   * instead of calling getUserMedia again, which on an installed iOS web app
+   * can show the permission prompt a second time. join closes it when it
+   * cannot use it, and leave closes it when no join used it. */
+  adoptMedia?: CallParkedMedia | null;
   /** 97-1: the diagnostics ring, normally the session's page-lifetime one so
    * events survive this call's teardown. Absent (guest room), the call makes
    * a private ring and behaves like the 30-4c original. */
@@ -557,6 +571,10 @@ export class VoiceCall {
    * on mid-call now costs one renegotiation (enableCameraMidCall) and, the
    * first time, a camera permission prompt of its own. That is the price of
    * "off" meaning the device is not open.
+   *
+   * 135-9: if adoptMedia holds a usable parked capture, join uses it and does
+   * not call getUserMedia. The paragraphs above then describe only the capture
+   * in captureLocalMedia.
    */
   async join(): Promise<void> {
     if (this.joined || this.closed) return;
@@ -567,6 +585,137 @@ export class VoiceCall {
     // user's first join. Only the audio half is then handed to the graph.
     this.micPrefs = loadMicPrefs();
     this.devicePrefs = loadDevicePrefs();
+    // 135-9: a parked capture first, a new capture only when there is none to use.
+    if (!(await this.adoptParkedMedia())) await this.captureLocalMedia();
+    // Every join starts with the video track disabled and the graph parked,
+    // even when a camera was acquired: the session enables it once the join is
+    // through, so a failed join never publishes a frame. With 66-2's audio-only
+    // join there is simply nothing here to disable.
+    this.videoEnabled = false;
+    for (const t of this.localStream?.getVideoTracks() ?? []) t.enabled = false;
+    this.cameraChain?.setActive(false);
+    this.o.callbacks.onLocalStream(this.localStream);
+
+    let ack: VoiceJoinAckPayload;
+    try {
+      ack = await this.o.transport.request<{ channel_id: string }, VoiceJoinAckPayload>(
+        TypeVoiceJoin,
+        { channel_id: this.o.channelID },
+      );
+    } catch (err) {
+      this.stopLocalMedia();
+      throw err;
+    }
+    this.iceServers = (ack.ice_servers ?? []).map(iceServerFromWire);
+    this.forceRelay = !!ack.force_relay;
+    this.joined = true;
+    this.diag(
+      `join ack: roster=${(ack.roster ?? []).length} ice_servers=${this.iceServers.length}` +
+        ` force_relay=${this.forceRelay}`,
+    );
+    // 30-8: adaptive policy + the pre-stream probe (D1). The probe fires
+    // NOW -- concurrent with the signaling handshake but before real media
+    // bandwidth ramps (GCC starts each stream at ~15% and climbs over
+    // ~30 s, so the seconds-long probe finishes before media competes).
+    this.adaptiveCfg = parseAdaptiveWire(ack.adaptive);
+    if (this.adaptiveCfg.probeEnabled) {
+      void probeUplink(this.adaptiveCfg.probeBytes).then((bps) => {
+        if (this.closed) return;
+        this.probeBps = bps;
+        this.diag(
+          bps === null
+            ? "uplink probe failed — planning from stats + fallback"
+            : `uplink probe: ≈${Math.round(bps / 1000)} kbps`,
+        );
+        this.applyBudget();
+      });
+    }
+    this.startAdaptiveTimers();
+    this.startSpeakingPoll();
+    this.startDeviceWatch();
+    // 30-5h: camera starts OFF and mic starts UNMUTED, both matching the
+    // server's default participant row (muted=false, video_on=false), so no
+    // post-join state broadcast is needed -- the roster badges are already
+    // correct. Toggling either later broadcasts via setMuted/setVideoEnabled.
+
+    // Glare-free: the joiner (us) offers to exactly the ack roster.
+    for (const p of ack.roster ?? []) {
+      const key = peerKey(p.user_id, p.device_id);
+      if (key === this.selfKey) continue; // server excludes us, but be safe
+      this.diag(`offering to existing peer ${key}`);
+      this.enqueue(this.ensurePeer(p.user_id, p.device_id), (peer) => this.offerTo(peer));
+    }
+  }
+
+  /**
+   * adoptParkedMedia reports whether join now holds the parked capture of
+   * adoptMedia. It always clears adoptMedia.
+   *
+   * It returns false, and closes both chains, if canAdopt refuses the capture.
+   * If the join does not want video, it closes the parked camera and keeps the
+   * microphone. It does not call reportMicCapture, because no capture happened.
+   */
+  private async adoptParkedMedia(): Promise<boolean> {
+    const parked = this.o.adoptMedia;
+    if (!parked) return false;
+    this.o.adoptMedia = null;
+    if (!canAdopt(parked, this.o.startWithVideo, Date.now())) {
+      this.diag("parked capture not usable — capturing again");
+      closeParked(parked);
+      return false;
+    }
+    const mic = parked.micChain;
+    const camera = this.o.startWithVideo ? parked.cameraChain : null;
+    if (!camera) parked.cameraChain?.close();
+    await mic.wake();
+    mic.setPrefs(this.micPrefs);
+    mic.setMuted(this.muted);
+    mic.onGateChange((open) => this.o.callbacks.onMicGate?.(open));
+    this.micChain = mic;
+    this.cameraChain = camera;
+    this.hasVideo = camera !== null;
+    if (camera) void this.applyBackgroundBlur(this.devicePrefs.backgroundBlur);
+    this.localStream = new MediaStream([mic.track, ...(camera ? [camera.track] : [])]);
+    this.diag(`kept the capture across the drop (video=${this.hasVideo})`);
+    return true;
+  }
+
+  /**
+   * detachMedia hands the microphone chain and the camera chain to the caller
+   * and returns them as a parked capture. The caller must close them or give
+   * them to a later call.
+   *
+   * It mutes the raw microphone and sets the camera inactive, so nothing
+   * enters the graph while the capture is parked. At that time no peer
+   * connection exists. It clears localStream, so stopLocalMedia cannot stop the
+   * published tracks of the parked chains.
+   *
+   * It returns null if the call has no MicChain (the raw fallback), if the call
+   * was never joined, or if the call is closed. A screen share is never parked.
+   * leave stops it as before.
+   */
+  detachMedia(): CallParkedMedia | null {
+    const mic = this.micChain;
+    if (this.closed || !this.joined || !mic) return null;
+    const camera = this.cameraChain;
+    mic.onGateChange(null);
+    mic.setKeyHeld(false);
+    mic.setMuted(true);
+    camera?.setActive(false);
+    this.micChain = null;
+    this.cameraChain = null;
+    this.blurStats = null;
+    this.localStream = null;
+    this.o.callbacks.onLocalStream(null);
+    return { micChain: mic, cameraChain: camera, parkedAt: Date.now() };
+  }
+
+  /**
+   * captureLocalMedia opens the microphone, and the camera if startWithVideo
+   * is true, with getUserMedia. It builds the chains and localStream. join
+   * calls it when there is no parked capture to adopt.
+   */
+  private async captureLocalMedia(): Promise<void> {
     // 122-1: the audio half goes through captureMic -- the saved mic (id +
     // label, 63-3) resolved against today's device list, an exact id, a
     // landing check and retries -- with the default as the last resort, since
@@ -630,64 +779,6 @@ export class VoiceCall {
       this.micChain ? this.micChain.track : micStream.getAudioTracks()[0],
       ...(this.cameraChain ? [this.cameraChain.track] : cameraTracks),
     ]);
-    // Every join starts with the video track disabled and the graph parked,
-    // even when a camera was acquired: the session enables it once the join is
-    // through, so a failed join never publishes a frame. With 66-2's audio-only
-    // join there is simply nothing here to disable.
-    this.videoEnabled = false;
-    for (const t of this.localStream.getVideoTracks()) t.enabled = false;
-    this.cameraChain?.setActive(false);
-    this.o.callbacks.onLocalStream(this.localStream);
-
-    let ack: VoiceJoinAckPayload;
-    try {
-      ack = await this.o.transport.request<{ channel_id: string }, VoiceJoinAckPayload>(
-        TypeVoiceJoin,
-        { channel_id: this.o.channelID },
-      );
-    } catch (err) {
-      this.stopLocalMedia();
-      throw err;
-    }
-    this.iceServers = (ack.ice_servers ?? []).map(iceServerFromWire);
-    this.forceRelay = !!ack.force_relay;
-    this.joined = true;
-    this.diag(
-      `join ack: roster=${(ack.roster ?? []).length} ice_servers=${this.iceServers.length}` +
-        ` force_relay=${this.forceRelay}`,
-    );
-    // 30-8: adaptive policy + the pre-stream probe (D1). The probe fires
-    // NOW -- concurrent with the signaling handshake but before real media
-    // bandwidth ramps (GCC starts each stream at ~15% and climbs over
-    // ~30 s, so the seconds-long probe finishes before media competes).
-    this.adaptiveCfg = parseAdaptiveWire(ack.adaptive);
-    if (this.adaptiveCfg.probeEnabled) {
-      void probeUplink(this.adaptiveCfg.probeBytes).then((bps) => {
-        if (this.closed) return;
-        this.probeBps = bps;
-        this.diag(
-          bps === null
-            ? "uplink probe failed — planning from stats + fallback"
-            : `uplink probe: ≈${Math.round(bps / 1000)} kbps`,
-        );
-        this.applyBudget();
-      });
-    }
-    this.startAdaptiveTimers();
-    this.startSpeakingPoll();
-    this.startDeviceWatch();
-    // 30-5h: camera starts OFF and mic starts UNMUTED, both matching the
-    // server's default participant row (muted=false, video_on=false), so no
-    // post-join state broadcast is needed -- the roster badges are already
-    // correct. Toggling either later broadcasts via setMuted/setVideoEnabled.
-
-    // Glare-free: the joiner (us) offers to exactly the ack roster.
-    for (const p of ack.roster ?? []) {
-      const key = peerKey(p.user_id, p.device_id);
-      if (key === this.selfKey) continue; // server excludes us, but be safe
-      this.diag(`offering to existing peer ${key}`);
-      this.enqueue(this.ensurePeer(p.user_id, p.device_id), (peer) => this.offerTo(peer));
-    }
   }
 
   /** leave exits the room and tears everything down. Idempotent. */
@@ -703,6 +794,11 @@ export class VoiceCall {
     this.glareTimers.clear();
     for (const key of [...this.peers.keys()]) this.dropPeer(key, false);
     this.stopLocalMedia();
+    // 135-9: a parked capture that no join used still holds the devices open.
+    if (this.o.adoptMedia) {
+      closeParked(this.o.adoptMedia);
+      this.o.adoptMedia = null;
+    }
     if (wasJoined && this.o.transport.isOpen()) {
       try {
         await this.o.transport.request(TypeVoiceLeave, { channel_id: this.o.channelID });

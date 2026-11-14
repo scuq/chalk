@@ -50,7 +50,8 @@ opened"):
   the device, so `CameraChain.releaseDevice()` can stop the raw
   `getUserMedia` tracks while the canvas track stays in every peer
   connection (disabled, black). `setVideoEnabled(true)` runs
-  `recapture(prefs)` — permission is already granted, so no prompt — then
+  `recapture(prefs)` — permission is already granted, so no prompt in a
+  browser (an installed iOS web app can show the prompt again, see phase 135-9) — then
   un-parks the graph and re-applies the blur preference. Toggles during the
   reacquire are honoured by reading the desired state once it lands. A
   reacquire that fails (device unplugged, taken by another app) leaves the

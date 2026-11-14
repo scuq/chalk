@@ -77,6 +77,12 @@ is a history layer, and the sidebar and the sheet call the same handlers.
   switch that drops frames. Not tested on a device: a real iPhone or Android
   phone that returns from the background, an installed iOS app with WebKit bug
   308073, and a laptop that wakes from sleep.
+- **The 135-9 device checks are open.** Not tested on a device: an installed
+  iOS app that returns from the background keeps the microphone and camera
+  without a prompt (5 s and 60 s), the camera returns without a prompt, the
+  microphone indicator goes off 30 s after a drop that does not recover, and a
+  desktop rejoin keeps the same microphone. Unknown: how often iOS stops the
+  capture tracks in the background.
 - **135-6 has three plan items not built.** There is no HTTP catch-up fallback
   and no forced reload for a stuck iOS socket beyond the 5 s connect timeout.
   There is no detection of a frozen page by timer drift. There is no new header
@@ -383,6 +389,25 @@ can reach packaging). Open:
   Mac can keep one on a second display — the two-screen check in the phase
   doc is still to run.
 
+## Phase 65 — web push: IN PROGRESS, 65-1 built
+
+65-1 is built: migration 0063 and `internal/store/push.go`. 65-2 onward is
+open. Record in [phases/PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md). The plan
+was revised on 14 November 2026 after a review against the threat model. A
+subscription belongs to a login session and goes with it. The VAPID key and
+all subscription frames travel only over the WebSocket. Guests cannot
+subscribe.
+
+- **Accepted property:** there is no per-channel mute for push. Notification
+  rules are sealed, so the server cannot read them, and the service worker
+  cannot drop a push without risking a revoked subscription on iOS. A channel
+  muted in chalk still pushes under scope `all`.
+- **Open:** all real-device checks (an iPhone on a deployed HTTPS instance,
+  Android Chrome, headed Chrome on localhost). No slice after 65-1 is built.
+  The iPhone check includes this: chalk shows under Settings > Notifications
+  only after the permission prompt. It is not in the main list of apps.
+- **Open:** the `docs/threat-model.md` section on third parties, written in 65-5.
+
 ## Phase 93-3 — the resizable thread pane: designed, not started
 
 The thread pane's edge as a drag handle, width stored per device in
@@ -399,8 +424,6 @@ questions in it are scuq's to answer.
 Each is fully planned in its own doc; read it before designing anything in the
 same space.
 
-- **Web push notifications** (65, [phases/PHASE-65-PUSH.md](phases/PHASE-65-PUSH.md)):
-  hand-rolled `internal/webpush`, DMs-only default, content-free payloads.
 - **Ties** (86, [phases/PHASE-86-TIES.md](phases/PHASE-86-TIES.md)): say "this
   answers that" across an interleaved channel without quoting — a sealed
   per-user side record on the reactions pattern, drawn as a gutter mark plus a

@@ -390,6 +390,15 @@ export class CameraChain {
     return this.released;
   }
 
+  /** captureLive reports whether the chain is open, not released, and all
+   * raw video tracks are live. A camera that is only inactive still counts as
+   * live. */
+  get captureLive(): boolean {
+    if (this.closed || this.released) return false;
+    const tracks = this.raw.getVideoTracks();
+    return tracks.length > 0 && tracks.every((t) => t.readyState === "live");
+  }
+
   /**
    * recapture swaps in a new camera without disturbing the published track.
    * By default it captures first, and it tears the old camera down only

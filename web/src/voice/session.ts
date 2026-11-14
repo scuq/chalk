@@ -27,7 +27,13 @@ import type { ChannelCrypto } from "../crypto/channel-crypto";
 import { loadIdentity } from "../crypto/idb";
 import { notifySounds } from "../notify";
 import { voiceBus } from "./bus";
-import { VoiceCall, type VoiceDiagnostics, type ScreenShareMode } from "./call";
+import {
+  VoiceCall,
+  type CallParkedMedia,
+  type VoiceDiagnostics,
+  type ScreenShareMode,
+} from "./call";
+import { PARK_MS, closeParked } from "./parked-media";
 import { VoiceDiagRing, type VoiceDiagEvent } from "./diag";
 import { subscribeMicPrefs } from "./mic-prefs";
 import { subscribeNetPrefs } from "./net-prefs";
@@ -253,6 +259,12 @@ export interface JoinArgs {
 
 class VoiceSessionImpl {
   private call: VoiceCall | null = null;
+  /** 135-9: the capture of the call that a connection drop ended, kept open
+   * for the rejoin. null when nothing is parked. */
+  private parked: CallParkedMedia | null = null;
+  /** 135-9: the timer that closes parked after PARK_MS. Set only while parked
+   * is not null. */
+  private parkTimer: number | null = null;
   /** 97-1: the diagnostics ring, session-owned so it survives each call --
    * handed into every VoiceCall this session creates. */
   private readonly diagRing = new VoiceDiagRing();
@@ -420,6 +432,7 @@ class VoiceSessionImpl {
         // 66-2: camera off = the device is not opened, so the browser's camera
         // indicator stays dark. The mid-call add covers turning it on later.
         startWithVideo: this.global.camOn,
+        adoptMedia: this.takeParked(),
         callbacks: {
           onPeerStream: (key, userID, deviceID, stream) => {
             // 71-1: the arrival sound follows the TILE, so what you hear is
@@ -580,6 +593,40 @@ class VoiceSessionImpl {
   }
 
   /**
+   * park keeps media for the next join and starts the PARK_MS timer. It first
+   * closes any capture that is already parked. If media is null, it parks
+   * nothing. When the timer fires, it closes the capture.
+   */
+  private park(media: CallParkedMedia | null): void {
+    this.dropParked();
+    if (!media) return;
+    this.parked = media;
+    this.diagRing.push("session: capture parked for the rejoin");
+    this.parkTimer = window.setTimeout(() => {
+      this.parkTimer = null;
+      if (!this.parked) return;
+      this.diagRing.push("session: parked capture expired — closed");
+      this.dropParked();
+    }, PARK_MS);
+  }
+
+  /** takeParked returns the parked capture and clears it and its timer. It
+   * does not close the capture: the caller owns it now. */
+  private takeParked(): CallParkedMedia | null {
+    const media = this.parked;
+    this.parked = null;
+    if (this.parkTimer !== null) window.clearTimeout(this.parkTimer);
+    this.parkTimer = null;
+    return media;
+  }
+
+  /** dropParked closes the parked capture, if any, and clears its timer. */
+  private dropParked(): void {
+    const media = this.takeParked();
+    if (media) closeParked(media);
+  }
+
+  /**
    * micLevel is the live capture level, 0..1 post-gain, or null when no call
    * is running. Lets the profile panel meter the real call rather than opening
    * a second capture of the same device.
@@ -594,11 +641,21 @@ class VoiceSessionImpl {
    * userInitiated (default true) clears the refresh-rejoin hint: an explicit
    * "leave" means don't offer to rejoin. The App's unmount/teardown paths
    * pass false so a page reload keeps the hint and can offer a rejoin.
+   *
+   * 135-9: parkMedia (default false) keeps the capture of the call open for
+   * up to PARK_MS instead of closing it, so the next join does not call
+   * getUserMedia again. Only handleWsDown sets it. A user leave closes any
+   * parked capture, because it would hold a live microphone after the user
+   * hung up.
    */
-  async leave(userInitiated = true): Promise<void> {
+  async leave(userInitiated = true, parkMedia = false): Promise<void> {
     if (userInitiated) clearRejoinHint();
     const call = this.call;
     this.call = null;
+    // 135-9: park on a connection drop, close on a user leave. Other leaves
+    // keep an earlier parked capture, which its timer still closes.
+    if (parkMedia && call) this.park(call.detachMedia());
+    else if (userInitiated) this.dropParked();
     this.stopPrefsWatch();
     this.set({
       phase: "idle",
@@ -644,7 +701,12 @@ class VoiceSessionImpl {
    * back: we leave the SAME rejoin hint a page reload does, but in memory
    * too, and App re-arms its auto-rejoin consumer on every drop. No fresh
    * user gesture is needed -- the one that joined the call originally
-   * already unlocked audio playback. */
+   * already unlocked audio playback.
+   *
+   * 135-9: the capture is parked for up to PARK_MS and the rejoin adopts it.
+   * A new getUserMedia call on an installed iOS web app can show the
+   * permission prompt again. If the rejoin does not come in time, the capture
+   * closes and the microphone indicator goes off. */
   handleWsDown(): void {
     if (this.s.phase === "idle") return;
     // 97-1: the drop is the event the whole ring exists for -- count it and
@@ -657,7 +719,7 @@ class VoiceSessionImpl {
     // leave(false) keeps the sessionStorage hint; the synchronous part of
     // leave() resets the snapshot before our set() below layers the hint
     // and the banner on top.
-    void this.leave(false);
+    void this.leave(false, true);
     this.set({
       error: "connection lost — rejoining voice once the connection is back",
       rejoinHint: channelID ? { channelID, channelName, wsDrop: true } : this.s.rejoinHint,
@@ -811,6 +873,8 @@ class VoiceSessionImpl {
   /** 30-5h: user declined the post-reload rejoin (or it was consumed). */
   dismissRejoin(): void {
     clearRejoinHint();
+    // 135-9: no rejoin will come, so the parked capture would only hold the devices.
+    this.dropParked();
     if (this.s.rejoinHint) this.set({ rejoinHint: null });
   }
 

@@ -1,6 +1,6 @@
 # Phase 135 — phone: the chat list is the phone layout, with a call bar and a call view
 
-**Status:** built in code. All eight slices are built. 135-1 and 135-2 are built (2026-11-13). 135-3 to 135-8 are built (2026-11-14). The owner chose to build 135-6 after 135-7. The device checks of 135-3 to 135-8 are open, in the manual checklist.
+**Status:** built in code. All nine slices are built. 135-1 and 135-2 are built (2026-11-13). 135-3 to 135-9 are built (2026-11-14). The owner chose to build 135-6 after 135-7. The device checks of 135-3 to 135-9 are open, in the manual checklist.
 **Tags:** `#zucker`, `#mobile`, `#roster`, `#themes`, `#voice`, `#websocket` → `tools/where.sh -g zucker`
 
 ## The problem
@@ -276,6 +276,13 @@ No claim about voice security goes on screen before `docs/threat-model.md` is ch
   In `App.tsx` the group, rename, and hide handlers moved out of the sidebar props into the named functions `setChannelGroupPref`, `updateChannelMeta`, and `setChannelHiddenPref`. The sidebar and the phone sheet both call them.
   The sheet is a history layer. `menu` in `phone-stack.ts` is closed first, by the step `close-menu`, so the back gesture closes the sheet.
   Tests: new `long-press.test.ts`. Two new tests in `channel-groups.test.ts`. A menu layer in `phone-stack.test.ts`. `theme-phone-call.test.ts` checks that reduced motion includes the row sheet.
+- **135-9 — the capture survives a connection drop.** Built 2026-11-14.
+  On a connection drop, the session parks the `MicChain` and the `CameraChain` of the call. The next join adopts them and does not call `getUserMedia` again. See "Keeping the capture across a drop (135-9)".
+  `parked-media.ts` is new. It has `PARK_MS` (30 s), `ParkableChain`, `ParkedMedia`, `canAdopt`, and `closeParked`. `canAdopt` refuses a capture that is older than `PARK_MS`, has a microphone that is not live, or lacks a live camera when the join wants video.
+  `MicChain` and `CameraChain` have the new getter `captureLive`. `MicChain.wake` resumes the `AudioContext`, which iOS can leave not running after the background.
+  `VoiceCall` has the new option `adoptMedia`. `join` calls the new `adoptParkedMedia` and falls back to `captureLocalMedia`, which is the old capture code moved unchanged. The new `detachMedia` returns the parked capture. `leave` closes an `adoptMedia` that no join used.
+  `VoiceSession` has the new fields `parked` and `parkTimer` and the new methods `park`, `takeParked`, and `dropParked`. `leave(userInitiated, parkMedia)` parks the capture if `parkMedia` is true, and `handleWsDown` sets it. `dismissRejoin` drops the parked capture.
+  Tests: new `parked-media.test.ts`.
 
 ## Verification of 135-1
 
@@ -436,9 +443,53 @@ Live probe: Playwright with iPhone 14 emulation and a mouse long press. 10 of 10
 
 Not verified on a device: a real finger long press on iOS and on Android. The probe used a mouse press. Touch pointer events and the iOS text-selection callout behave differently on a device.
 
+## Keeping the capture across a drop (135-9)
+
+### The problem
+
+An installed iPhone web app that returns from the background can find a dead socket. The 135-6 connection check finds it, and `handleWsDown` leaves the room.
+The leave closed the microphone and the camera. The automatic rejoin then captured them again with `getUserMedia`.
+On an installed iOS web app, a new `getUserMedia` call can show the permission prompt again.
+
+### The design
+
+On a connection drop, the session parks the capture. It parks the `MicChain` and the `CameraChain` of the dropped call. The next join adopts them in place of a new capture.
+
+- `detachMedia` mutes the raw microphone and sets the camera inactive. Nothing enters the graph while the capture is parked, and no peer connection exists.
+- `detachMedia` clears `localStream`, so `stopLocalMedia` cannot stop the published tracks of the parked chains.
+- `detachMedia` returns null if the call has no `MicChain` (the raw fallback) or was never joined.
+- A screen share is never parked. It stops as before.
+- The join wakes the microphone chain with `wake`, because iOS can leave the `AudioContext` not running.
+- If the join does not want video, it closes the adopted camera.
+- `reportMicCapture` is not called on the adopt path, because no capture happened.
+
+The parked capture closes in these cases:
+
+- The 30 s timer ends.
+- The user leaves the call.
+- `reset` runs. It goes through `leave()`.
+- `dismissRejoin` runs.
+- A join cannot use the capture.
+
+### What was rejected
+
+- Keeping the capture across a leave that the user starts. It holds a live microphone after the user hung up.
+- Limiting the rule to Apple mobile devices. One code path is simpler, and a desktop also saves one device reopen for each drop.
+
+### Cost and unknown
+
+After a drop that does not recover, the microphone indicator stays on for up to 30 s.
+
+Unknown: iOS can stop the capture tracks by itself in the background. Then `canAdopt` refuses the capture, the join captures again, and the prompt can show. Only a device test shows how often this happens.
+
+### iOS facts that are not chalk's to change
+
+- A Home Screen web app never shows in the main Settings list. It also never shows under Settings > Privacy > Microphone or Camera. Those lists hold native apps only.
+- iOS does not keep a media grant for a web app across an app restart. One prompt for each app start stays.
+
 ## Left open
 
-- The 135-5, 135-6, 135-7, and 135-8 device checks are open. See the manual checklist.
+- The 135-5, 135-6, 135-7, 135-8, and 135-9 device checks are open. See the manual checklist.
 - The row sheet answers the loss of hide, group, and rename that 135-1 caused. Three things are still not on the phone: the order within a group, the channel header image, and the nick colour of a friend.
 - 135-6 has no HTTP catch-up fallback and no forced reload for a stuck iOS socket beyond the connect timeout. It has no detection of a frozen page by timer drift.
 - The call view has no board, no pop-outs, no layout toggle, and no debug drawer. The desktop panel keeps them.
@@ -479,3 +530,8 @@ Not verified on a device: a real finger long press on iOS and on Android. The pr
 - [ ] 135-6: switch the phone from Wi-Fi to mobile data and back. The app reconnects when the network returns.
 - [ ] 135-8: a real iPhone and a real Android phone. A finger long press on a list row opens the sheet. The iOS text-selection callout does not show. A scroll that starts on a row does not open the sheet. A tap on a row still opens the chat.
 - [ ] 135-8: on a device, the back gesture closes the sheet. After a hide, a group change, or a rename, the list shows the change.
+- [ ] 135-9: an installed iOS app, in a call. Go to the Home Screen for 5 s and return. No prompt shows, the call rejoins, and the other side hears audio.
+- [ ] 135-9: the same with 60 s in the background. iOS can show one prompt. The call rejoins.
+- [ ] 135-9: the camera is on before the drop. The camera returns without a prompt.
+- [ ] 135-9: a drop that does not recover. The microphone indicator goes off after 30 s.
+- [ ] 135-9: on a desktop, stop the server for 5 s in a call. The call rejoins with the same microphone.

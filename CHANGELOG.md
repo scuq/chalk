@@ -10,6 +10,11 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
+## Unreleased
+
+### Fixed
+- After a short connection loss during a call, chalk keeps the microphone and the camera. An iPhone does not ask for permission again when the app returns from the background.
+
 ## v0.12.0 — 14 November 2026 — The phone around the conversation list, with a call bar and a call view
 
 ### Added

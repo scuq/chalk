@@ -189,6 +189,27 @@ export class MicChain {
     return t?.getSettings().deviceId ?? null;
   }
 
+  /** captureLive reports whether the chain is open and all raw audio tracks
+   * are live. iOS can end the tracks of a capture while the app is in the
+   * background. */
+  get captureLive(): boolean {
+    if (this.closed) return false;
+    const tracks = this.raw.getAudioTracks();
+    return tracks.length > 0 && tracks.every((t) => t.readyState === "live");
+  }
+
+  /** wake resumes the AudioContext if it is not running. iOS can leave it
+   * suspended or interrupted after the app was in the background. It does
+   * nothing on a closed chain, and it does not throw if the resume fails. */
+  async wake(): Promise<void> {
+    if (this.closed || this.ctx.state === "running") return;
+    try {
+      await this.ctx.resume();
+    } catch {
+      /* Same as fromStream: publishing still works in most engines. */
+    }
+  }
+
   /** setGain applies instantly; no renegotiation, no capture restart. */
   setGain(gain: number): void {
     if (this.closed) return;
