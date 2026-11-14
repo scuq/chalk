@@ -9,8 +9,8 @@ Latest release: **v0.12.0** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 137 is the newest work. It is in progress: 137-1 to 137-5 are built, and
-137-6 and 137-7 are not started.
+Phase 137 is the newest work. It is in progress: 137-1 to 137-6 are built, and
+137-7 is not started.
 Phase 135 is built. All eight slices are built. The device checks are open.
 Phase 133 is built, with the voice room, and seven points of it are open.
 Phase 131 has two small open points.
@@ -20,12 +20,13 @@ phases are *planned, not started*.
 
 ## Phase 137 — phone polish: in progress, the device checks are open
 
-137-1 to 137-5 are built, record in [phases/PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md).
+137-1 to 137-6 are built, record in [phases/PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md).
 On the phone, the composer is one outlined box. The field is full width and
 grows with the draft. The tools and send are in a row below it. Consecutive messages
 from one person group on the phone. The conversation rows are taller, an unread name
 is bold, and the unread dot sits under the time. The friends, voice, and hidden rows have a chevron
-that turns, and an open section fades in. The headers stay on one row, and a long name is cut. 137-6 and 137-7 are not started.
+that turns, and an open section fades in. The headers stay on one row, and a long name is cut.
+The parking lot mark is small. 137-7 is not started.
 
 - **The 137-1 device checks are open.** The live probe used an iPhone 14
   emulation. Not tested on a device: the composer above the keyboard on an
@@ -45,8 +46,9 @@ that turns, and an open section fades in. The headers stay on one row, and a lon
 - **The 137-5 device checks are open.** Not tested on a device: a long display
   name in the header, the account menu opening and fitting, a voice room header
   with the "call" button, and a direct message header with the "dm" tag.
-- **137-6 and 137-7 are not started.** They are empty states and the list and
-  chat transition.
+- **The 137-6 device checks are open.** Not tested on a device: the parking
+  lot mark at 96 px after you park and unpark, and the mark in a light theme.
+- **137-7 is not started.** It is the list and chat transition.
 
 ## Phase 135 — phone: built, the device checks are open
 

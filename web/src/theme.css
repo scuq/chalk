@@ -11850,6 +11850,16 @@ body.chalk-resizing-y .chalk-composer-resizer {
   opacity: 0.28;
 }
 
+/* 137-6: on the phone the mark is 96px wide. The base width, `min(55%, 45vh)`,
+   gave about 205px on a 390px screen, half of it. This rule has its own media
+   block here, because the base parking rules come after the main phone block.
+   A rule in that block would lose to them at equal weight. */
+@media (max-width: 767px) {
+  .chalk-parking-mark {
+    width: 96px;
+  }
+}
+
 /* Hidden, not unmounted: the composer keeps its draft and its pending
    attachments while parked. */
 .chalk-footer-main--parked {

@@ -22,6 +22,7 @@ The engineering-level history (which slice shipped what) lives in
 - On a phone, the conversation list has taller rows. The name of a conversation with unread messages is bold. The unread mark sits under the time, so all times line up. A row shows a shade while you press it.
 - On a phone, the friends, voice, and hidden rows show an arrow that turns when the section opens. An open section fades in. The unread mark on those rows sits at the right edge.
 - On a phone, a long username no longer breaks the top bar onto two lines. The bar shortens the name. The conversation header shows search as an icon. All its buttons have the same size. A long channel name no longer pushes them off the screen.
+- On a phone, the Parking Lot shows a small chalk mark. Before, the mark filled half the screen.
 
 ### Fixed
 - After a short connection loss during a call, chalk keeps the microphone and the camera. An iPhone does not ask for permission again when the app returns from the background.

@@ -1,7 +1,7 @@
 # Phase 137 — phone polish from the external design review
 
-**Status:** in progress. 137-1 to 137-5 are built (2026-11-14). 137-6 and 137-7 are not started. The device checks of 137-1 to 137-5 are open, in the manual checklist.
-**Tags:** `#composer`, `#mobile` → `tools/where.sh -g composer`
+**Status:** in progress. 137-1 to 137-6 are built (2026-11-14). 137-7 is not started. The device checks of 137-1 to 137-6 are open, in the manual checklist.
+**Tags:** `#composer`, `#mobile`, `#parking` → `tools/where.sh -g composer`
 
 ## The problem
 
@@ -168,10 +168,26 @@ Measured in a headed iPhone 14 emulation, with a 32-character username and a 52-
 
 ### 137-6 Empty states
 
-The parking lot mark is `min(55%, 45vh)` wide at an opacity of 0.28.
-A phone rule sets the width to 96 px.
-The opacity and the color do not change.
+The parking lot mark was `min(55%, 45vh)` wide at an opacity of 0.28.
+On a 390 px phone this is about 205 px, half the screen.
+Now a phone rule sets the width to 96 px.
+The opacity and the color do not change, and desktop keeps `min(55%, 45vh)`.
 The titled empty feed has a 72 px mark and stays as it is.
+
+- The rule has its own `@media (max-width: 767px)` block, right after the base `.chalk-parking-mark` rule in `web/src/theme.css`.
+  The base parking rules come after the main phone block in the file.
+  A rule in the main phone block has the same weight, so the base rule would win.
+  `web/src/theme-parking.test.ts` checks the order.
+- The parking lot has no description text.
+  It is a privacy screen, and nothing on it asks to be read.
+  It already has an `aria-label` for screen readers.
+
+Measured in a headed iPhone 14 emulation:
+
+- The mark is 96 px by 96 px at 390 px and at 320 px.
+- The mark sits in the center of the pane, with an opacity of 0.28.
+- There is no horizontal overflow.
+- At 1280 px the mark is 360 px wide, as before.
 
 ### 137-7 List and chat transition
 
@@ -206,7 +222,7 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 | 137-3 | built (2026-11-14) | Conversation rows |
 | 137-4 | built (2026-11-14) | List section rows |
 | 137-5 | built (2026-11-14) | Headers |
-| 137-6 | not started | Empty states |
+| 137-6 | built (2026-11-14) | Empty states |
 | 137-7 | not started | List and chat transition |
 
 ## Left open
@@ -216,6 +232,7 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 - The device checks of 137-3 are open, in the manual checklist.
 - The device checks of 137-4 are open, in the manual checklist.
 - The device checks of 137-5 are open, in the manual checklist.
+- The device checks of 137-6 are open, in the manual checklist.
 - The index row of phase 136 links `docs/phases/PHASE-136-IOS.md`. This phase does not change it.
 
 ## Manual checklist
@@ -242,3 +259,5 @@ A live swipe-back drag exists (`web/src/chat/use-swipe-back.ts`).
 - [ ] 137-5: a phone. Tap the account menu trigger. The menu opens and fits inside the screen.
 - [ ] 137-5: a phone, in a voice room. The channel header shows the "call" button, and all buttons stay inside the screen beside a long room name.
 - [ ] 137-5: a phone, in a direct message. The header shows the "dm" tag, and a long name ends in an ellipsis with the buttons in place.
+- [ ] 137-6: a phone. Park chalk and unpark it. The mark is small, centered, and dim, and the screen does not move sideways.
+- [ ] 137-6: a phone, with a light theme. The dim mark is still visible on the parking lot.
