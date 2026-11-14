@@ -232,6 +232,9 @@ The server still sees metadata in every case:
 - who reacted to which message and when — **not which emoji**: a reaction is
   one row per (message, reactor) holding that reactor's emoji set sealed
   under the channel key
+- which devices of a user subscribed to web push, with the scope of each, and
+  when each device last received a push (`last_used_at`), as long as the
+  operator has turned push on
 
 ### Stolen credentials
 
@@ -389,6 +392,81 @@ gated on a signature, not on where the bytes came from:
   real key (that is the key holder), and downgrade to an older *signed*
   release is prevented only by the version comparison (`isNewer`), not by a
   signed timestamp — a future rotation note in the phase doc.
+
+## Third parties: web push (phase 65)
+
+Web push is the first feature in which chalkd contacts a service that the
+operator does not run. The service is the push service of the browser
+vendor, for example Apple, Google, or Mozilla. chalkd contacts it only if
+two conditions hold:
+
+- The operator turned push on with `chalkctl push enable`.
+- A user turned push on for one device, and that browser gave chalkd a
+  subscription.
+
+Without both, chalkd sends nothing to any third party. Guests cannot
+subscribe. The browser sends its subscription to chalkd only over the
+sealed WebSocket (phase 83). A network attacker therefore cannot swap the
+endpoint or the VAPID key (the key that identifies the sender to the push
+service).
+
+### What the push service learns
+
+For each push, the push service sees:
+
+- The endpoint. The push service minted it, so it knows the device.
+- The time of the push. This tells it that someone behind that device is
+  being messaged now. It is the largest leak, and chalk does not defend
+  against it (see "Traffic analysis").
+- The source address of chalkd.
+- The VAPID public key and the VAPID subject. Both are stable. They link
+  all devices of one deployment to one operator contact.
+
+The push service does not learn the content, the sender, or the channel.
+
+- The payload is encrypted to the browser (RFC 8291). The sender handle,
+  the channel name, and the ids are inside it.
+- The payload is padded to one fixed plaintext length. Every body has the
+  same size, so the size does not identify a sender or a channel.
+- The `Topic`, `TTL`, and `Urgency` headers have the same value on every
+  push.
+
+chalkd sends at most one push per user and channel in 60 seconds. The count
+is in process memory, so a restart of chalkd resets it. Each chalkd process
+counts alone.
+
+### What chalkd sends to the browser
+
+The payload holds no message content. The server has only ciphertext, and
+the payload type has no field for a message body. A test checks this. The
+payload does hold metadata that the server already has: the sender handle
+(for a guest, the display name), the channel name (not for a direct
+message), ids, and a badge count. The badge count is the number of direct
+message channels with unread messages plus the pending friend requests, at
+most 99.
+
+chalkd sends a push to a channel member only if all of these are true:
+
+- The member is not the sender.
+- The member has no device in state `online`. A user whose devices are all
+  `away` gets pushes.
+- The member has a subscription made with the current VAPID key.
+- The scope of the subscription fits the channel. Direct messages go to
+  every scope. Other channels go only to scope `all`.
+
+Muted channels still push under scope `all`. The server cannot read the
+sealed notification rules, so this is an accepted property.
+
+### Theft of the VAPID private key
+
+The VAPID private key is in the environment file of chalkd. Mallory can
+steal a copy of that file together with a copy of the subscription table.
+Mallory can then send notifications to the subscribed devices that look
+like they come from this server. Mallory cannot read a message, because the
+key and the table contain no message content. Claim 2 holds. The attack
+continues until the operator runs `chalkctl push rotate-key --yes`. After
+the rotation, the stored subscriptions no longer match the key, and chalkd
+does not use them. Each device must subscribe again.
 
 ## Out of scope
 

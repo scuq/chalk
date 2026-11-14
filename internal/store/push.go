@@ -241,3 +241,45 @@ func (s *Store) ListPushSubscriptionsForUsers(
 	}
 	return out, nil
 }
+
+// MaxPushBadge is the highest badge count that a push carries.
+const MaxPushBadge = 99
+
+// PushBadges returns, for each user in userIDs, the badge count that a push
+// carries (65-5). The count is the number of DM channels with unread
+// messages plus the number of pending friend requests to the user. It is at
+// most MaxPushBadge. The app also counts mentions and threads, which the
+// server cannot see. The app corrects the badge when it opens.
+func (s *Store) PushBadges(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	out := make(map[uuid.UUID]int, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.Pool.Query(ctx,
+		`SELECT u.id, LEAST($2::int,
+		        (SELECT count(*)
+		           FROM channel_members cm
+		           JOIN channels c ON c.id = cm.channel_id AND c.is_dm
+		           LEFT JOIN channel_seq cs ON cs.channel_id = c.id
+		           LEFT JOIN channel_reads cr ON cr.channel_id = c.id AND cr.user_id = u.id
+		          WHERE cm.user_id = u.id
+		            AND GREATEST(COALESCE(cs.next_seq, 1) - 1, 0) > COALESCE(cr.last_read_seq, 0))
+		      + (SELECT count(*) FROM friendships f
+		          WHERE f.user_b = u.id AND f.status = 'pending'))
+		   FROM unnest($1::uuid[]) AS u(id)`,
+		userIDs, MaxPushBadge,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("push badges: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, fmt.Errorf("push badges: %w", err)
+		}
+		out[id] = n
+	}
+	return out, rows.Err()
+}

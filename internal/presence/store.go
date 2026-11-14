@@ -501,3 +501,30 @@ func (s *Store) withTx(ctx context.Context, fn func(pgx.Tx) error) (err error) {
 	}
 	return tx.Commit(ctx)
 }
+
+// OnlineUsers returns the users in userIDs that have at least one device in
+// StateOnline (65-5). A user with only away devices is not in the map, so
+// web push sends to that user.
+func (s *Store) OnlineUsers(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]bool, error) {
+	out := map[uuid.UUID]bool{}
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.Pool.Query(ctx,
+		`SELECT DISTINCT user_id FROM device_presence
+		  WHERE user_id = ANY($1) AND state = $2`,
+		userIDs, string(StateOnline),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("online users: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("online users: %w", err)
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}

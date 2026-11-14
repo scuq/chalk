@@ -114,6 +114,9 @@ type Server struct {
 
 	// 65-3: the sender from Options.Push.
 	push *webpush.Sender
+
+	// 65-5: sends the pushes for new messages. Nil if push is off or the store is nil.
+	pushD *pushDispatcher
 }
 
 // NewServer constructs and binds (but does not yet serve) a Server.
@@ -154,6 +157,13 @@ func NewServer(opts Options) (*Server, error) {
 		attachOrphanTTL:  opts.AttachOrphanTTL,
 		snapshotInterval: opts.SnapshotInterval,
 		push:             opts.Push,
+	}
+	if opts.Push != nil && opts.Store != nil {
+		data := storePushData{st: opts.Store}
+		if opts.Presence != nil {
+			data.pr = opts.Presence
+		}
+		s.pushD = newPushDispatcher(data, opts.Push, opts.InstanceID, opts.Logger)
 	}
 	if s.attachOrphanTTL <= 0 {
 		s.attachOrphanTTL = 24 * time.Hour
@@ -284,6 +294,15 @@ func (s *Server) Serve(ctx context.Context) error {
 			if err := s.pubsub.Run(bgCtx); err != nil && err != context.Canceled {
 				s.logger.Printf("pubsub listener exited: %v", err)
 			}
+		}()
+	}
+
+	// 65-5: start the web push workers.
+	if s.pushD != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.pushD.run(bgCtx)
 		}()
 	}
 
@@ -560,6 +579,10 @@ func (s *Server) handlePubsubEvent(ev pubsub.Event) {
 func (s *Server) handleMessageEvent(ev pubsub.Event) {
 	if s.store == nil {
 		return
+	}
+	// 65-5: queue the pushes. Only the publishing instance sends them.
+	if s.pushD != nil {
+		s.pushD.onMessage(ev)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()

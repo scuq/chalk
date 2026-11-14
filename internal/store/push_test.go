@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/scuq/chalk/internal/presence"
 )
 
 func TestPushSubscriptions(t *testing.T) {
@@ -228,6 +230,78 @@ func TestPushSubscriptions(t *testing.T) {
 		}
 		if _, err := s.GetPushSubscriptionForSession(ctx, first); !errors.Is(err, ErrNotFound) {
 			t.Fatalf("oldest survived the cap: %v", err)
+		}
+	})
+
+	t.Run("the badge counts unread DMs and waiting friend requests", func(t *testing.T) {
+		erin, frank, gina := mkUser("erin"), mkUser("frank"), mkUser("gina")
+		dm1, err := s.CreateChannel(ctx, CreateChannelInput{Name: "dm-a", IsDM: true, CreatedBy: frank, MemberIDs: []uuid.UUID{frank, erin}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		dm2, err := s.CreateChannel(ctx, CreateChannelInput{Name: "dm-b", IsDM: true, CreatedBy: gina, MemberIDs: []uuid.UUID{gina, erin}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		group, err := s.CreateChannel(ctx, CreateChannelInput{Name: "group", CreatedBy: frank, MemberIDs: []uuid.UUID{frank, erin}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Each channel holds five messages. erin has read dm2 and nothing else.
+		for _, ch := range []uuid.UUID{dm1.ID, dm2.ID, group.ID} {
+			if _, err := pool.Exec(ctx,
+				`INSERT INTO channel_seq (channel_id, next_seq) VALUES ($1, 6)
+				 ON CONFLICT (channel_id) DO UPDATE SET next_seq = 6`, ch); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO channel_reads (user_id, channel_id, last_read_seq) VALUES ($1, $2, 5)`, erin, dm2.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO friendships (user_a, user_b, status) VALUES ($1, $2, 'pending'), ($3, $1, 'pending')`,
+			gina, erin, frank); err != nil {
+			t.Fatal(err)
+		}
+		got, err := s.PushBadges(ctx, []uuid.UUID{erin, frank})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// erin has dm1 unread and one request from gina.
+		// dm2 is read, and the group is not a DM.
+		// frank has dm1 unread, because he never read it, and no request.
+		if got[erin] != 2 || got[frank] != 1 {
+			t.Fatalf("badges = %v, want erin 2, frank 1", got)
+		}
+	})
+
+	t.Run("online users are those with a device in state online", func(t *testing.T) {
+		hank, ivy, jo := mkUser("hank"), mkUser("ivy"), mkUser("joan")
+		if _, err := pool.Exec(ctx, `INSERT INTO instances (id) VALUES ('push-test')`); err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range []struct {
+			user  uuid.UUID
+			state string
+		}{{hank, "online"}, {hank, "away"}, {ivy, "away"}} {
+			dev, err := s.CreateDevice(ctx, row.user, DeviceBrowserUnknown, "probe")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pool.Exec(ctx,
+				`INSERT INTO device_presence (device_id, user_id, instance_id, device_type, state)
+				 VALUES ($1, $2, 'push-test', 'desktop', $3)`, dev.ID, row.user, row.state); err != nil {
+				t.Fatal(err)
+			}
+		}
+		pr := &presence.Store{Pool: pool}
+		got, err := pr.OnlineUsers(ctx, []uuid.UUID{hank, ivy, jo})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got[hank] || got[ivy] || got[jo] || len(got) != 1 {
+			t.Fatalf("online = %v, want only hank", got)
 		}
 	})
 

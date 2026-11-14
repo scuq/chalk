@@ -3,7 +3,7 @@
 Push notifications that reach an iPhone home-screen chalk with the app fully
 closed, without breaking the E2E privacy model and without any paid accounts.
 Planned against v0.5.2. **In progress, as of 14 November 2026** — slices 65-1
-to 65-4 are built, and the plan below was revised that day (next section).
+to 65-5 are built, and the plan below was revised that day (next section).
 
 ## Review of 14 November 2026
 
@@ -110,14 +110,14 @@ envelope signature against the pins before it shows any text.
 
 ## Design
 
-- **When to push:** only to users with **no online device anywhere** —
-  `presence.AggregateUserState` (internal/presence/store.go:317) != online.
+- **When to push:** only to users with **no device in state `online`** —
+  `presence.Store.OnlineUsers` (65-5). A user whose devices are all `away`
+  gets pushes (see "Decisions from 65-5"). The first plan used
+  `AggregateUserState`, which counts `away` as present.
   Cross-instance-correct (device_presence is the connectivity truth, not the
   per-instance hub). Never to the sender. New messages only; thread replies
   count as messages in their channel; edits/deletes/reactions/voice/typing
-  never push. Known gap: an active-looking desktop at home suppresses pushes
-  while the user is out — acceptable v1, a per-user "always push" pref can
-  come later.
+  never push.
 - **Payload:** `{v, kind, channel_id, message_id, sender_handle,
   channel_name, is_dm, unread}`. Notification title `@handle` (DM) /
   `@handle in #channel`, static body ("New message"), no message text ever.
@@ -125,10 +125,9 @@ envelope signature against the pins before it shows any text.
   padding delimiter, which aes128gcm already carries) so ciphertext size is
   constant — unpadded, the length varies with handle and channel-name length
   and weakly fingerprints the sender to the relay.
-- **Badge:** payload carries the server-computed unread total (one aggregate
-  over channel_members ⋈ channel_seq ⋈ channel_reads, capped at 99). The
-  join already lives in `ListChannelsForUser`
-  (internal/store/channels.go:358-373), but the total needs a new query. The SW calls
+- **Badge:** payload carries a server-computed count, capped at 99. 65-5
+  defines it as the unread DM channels plus the pending friend requests (see
+  "Decisions from 65-5"). It is not the unread total of this plan. The SW calls
   `setAppBadge(unread)` next to `showNotification`. No badge-only pushes —
   Apple revokes subscriptions after ~3 pushes with no visible notification,
   so every push shows one, and the SW handler fail-safes to a generic
@@ -258,7 +257,7 @@ envelope signature against the pins before it shows any text.
 | 65-2 (built) | `internal/webpush`: RFC 8291 aes128gcm encrypt w/ fixed-length padding, RFC 8292 VAPID ES256 JWT (`aud` = origin of *this* endpoint, computed per-send, not a fixed value and not chalk's own origin — a cached token is reusable only across subscriptions sharing a host), https-only sender with IP vet, Topic/TTL/Urgency, typed ErrGone; tests incl. the Appendix A vector byte-exact and constant ciphertext length across differing handles | internal/webpush/ (new) | 450 |
 | 65-3 (built) | Config + chalkctl: `internal/config/push.go`, VAPID keygen/preserve/backfill + `CHALK_VAPID_SUBJECT` (flag or config key, domain-derived default, preserved like the keys), `chalkctl push status\|enable\|disable\|rotate-key --yes`, env template, `push_enabled` only in /api/auth/config. chalkd builds the sender only if push is enabled, and `server.Options.Push` holds it. Nothing calls it before 65-4 and 65-5 | internal/config/, internal/chalkctl/, internal/auth/ | 290 |
 | 65-4 (built) | WebSocket frames inside the sealed channel: `push_state`, `push_subscribe`, and `push_unsubscribe`, each answered by `<type>_ack`. The connection carries its session token. Guests are refused. Validation covers the https endpoint and the key lengths. Migration `0064_push_subscription_vapid_key.sql` adds `vapid_key`. Replaces the old HTTP API slice | internal/server/, internal/proto/, internal/store/, migrations/, web/src/proto.ts | 220 |
-| 65-5 | Dispatcher + send hook: payload builder (the plaintext choke point), recipient selection via presence, encrypt/send/prune, cooldown, InstanceID-guarded hook in handleMessageEvent, tests against an httptest fake relay, the new "third parties" section in `docs/threat-model.md` | internal/server/push_dispatch.go, cmd/chalkd/, docs/threat-model.md | 340 |
+| 65-5 (built) | Dispatcher + send hook: payload builder (the plaintext choke point), recipient selection via presence, encrypt/send/prune, cooldown, InstanceID-guarded hook in handleMessageEvent, tests against an httptest fake relay, the new "third parties" section in `docs/threat-model.md` | internal/server/push_dispatch.go, internal/server/server.go, internal/presence/store.go, internal/store/push.go, docs/threat-model.md | 340 |
 | 65-6 | `web/src/sw.ts` + second esbuild invocation → unhashed dist/sw.js + spa.go no-cache special case, `pushsubscriptionchange` resubscribes locally and marks the subscription for upload | web/src/, web/build.mjs, internal/server/spa.go | 165 |
 | 65-7 | Client push manager `web/src/notify/push.ts`: subscribe and reconcile over the WebSocket at every start, logout cleanup, tests | web/src/notify/ | 210 |
 | 65-8 | NotificationsPanel "Push" section. **Changelog bullet.** | web/src/components/ | 150 |
@@ -281,10 +280,12 @@ Locally verifiable (no device, no deployment):
   the real sealed handshake.
 - The RFC 8291 Appendix A vector reproduces byte-exactly — the strongest
   crypto signal; if the vector passes, iOS will decrypt.
-- Dispatcher vs an httptest fake relay: offline user → exactly one POST with
-  a valid aes128gcm body; online user → none; sender → never; 410 → row
-  pruned. (Test flag to allow loopback through the IP vet — linkpreview
-  tests have the precedent.)
+- Dispatcher with a fake store and a fake sender (`go test ./internal/server/
+  -run TestPush`, 65-5): recipients, payload, DM scope, skips, cooldown,
+  prune on `ErrGone`, instance guard, full queue, stop with the context, and
+  payload size. The `PushBadges` and `OnlineUsers` subtests in
+  `TestPushSubscriptions` need `CHALK_TEST_PGURL`. The plan to test against
+  an httptest relay does not work, because the sender refuses loopback addresses.
 - `curl -I /sw.js` → no-cache; hashed assets still immutable; the build's
   hash assertion still protects everything else.
 - **Headed Chrome on localhost**: the full real loop through FCM —
@@ -354,6 +355,59 @@ Requires real hardware:
   `key_current` false in the state and subscribes again.
 - **For 65-5.** The dispatcher must pass the current VAPID public key to
   `ListPushSubscriptionsForUsers`. A wrong key lists no row.
+
+## Decisions from 65-5
+
+- **The hook.** `Server.handleMessageEvent` calls `onMessage` for each new
+  message event. The dispatcher queues the event only if `InstanceID` is this
+  instance. Every instance that listens on the channel receives the event, and
+  only the publisher pushes, so each message is pushed once. `onMessage` never
+  blocks the pubsub listener: the queue holds 256 events, and a full queue
+  drops the event and logs. Four workers run, joined to the `Serve` wait group
+  and stopped by its context, with 30 seconds for each event.
+- **Away users get pushes.** The recipients are the channel members other than
+  the sender who have no device in state `online`. A user whose only devices
+  are `away` (an idle desktop, a phone in the background) gets pushes. This
+  closes the "active-looking desktop" gap of the first plan.
+  `presence.Store.OnlineUsers` is a batch query for this.
+- **Scope.** Direct messages go to every scope. Other channels go only to
+  scope `all`.
+- **Skipped channels.** The default channel has no members, so it never
+  pushes. The chat of a voice room never pushes, as the app badge also leaves
+  voice rooms out.
+- **Thread replies and guests.** A thread reply pushes like a message and
+  carries `thread_id`. A message from a guest pushes to the members like any
+  other message. The sender handle is then the display name of the guest.
+- **Cooldown.** At most one push per user and channel in 60 seconds. The
+  dispatcher decides once for each user, so all devices of a user get the same
+  pushes. The count is in memory in each process. This fits because only the
+  publishing instance pushes, but a restart resets the count, and messages
+  that different instances publish are counted apart.
+- **Payload.** `pushPayload` has the fields `v`, `kind` (always `message`),
+  `channel_id`, `message_id`, `thread_id` (replies only), `sender_handle`,
+  `channel_name`, `is_dm`, and `unread`. It has no field for content, and a
+  test asserts that the ciphertext body never reaches it. `channel_name` is
+  empty for a DM, because the stored name of a DM is a client label and the
+  title of a DM push is the sender. Names are cut at 80 runes, so the payload
+  always fits the 1023-byte limit (a test checks it). The headers are
+  constant: `Topic` `chalk`, `TTL` 24 hours, `Urgency` `normal`.
+- **Badge definition (a deviation from the plan).** `store.PushBadges` counts
+  the DM channels with unread messages plus the pending friend requests to the
+  user, at most 99 (`MaxPushBadge`). The plan said "unread total". The app
+  badge also counts mentions and threads. Mentions are sealed, and thread
+  state is not in the query, so the server cannot see them. The number can
+  therefore be lower than the number in the app. The app corrects it when it
+  opens. This is a decision to keep: a server count of all channels would
+  show a number that the app never shows.
+- **Results.** On success, the dispatcher touches the subscription
+  (`TouchPushSubscription`). On 404 or 410 (`ErrGone`) it deletes the row.
+  After any other error it only logs.
+- **Threat model.** The section "Third parties: web push (phase 65)" of
+  `docs/threat-model.md` is written.
+- **Still open: the end-to-end check.** No automated test covers the path from
+  a real NOTIFY to a real push service. The sender refuses loopback, so the
+  check needs a real browser subscription. Do it in headed Chrome through FCM
+  from 65-7 onward, and on a real iPhone in 65-9.
 
 ## Risks
 
