@@ -25,7 +25,8 @@ The engineering-level history (which slice shipped what) lives in
 - On a phone, the Parking Lot shows a small chalk mark. Before, the mark filled half the screen.
 - On a phone, opening a conversation and going back to the list now slide briefly. A swipe back does not slide a second time. The slide is off when the phone asks for reduced motion.
 - On a phone, the friends row now shows a line of your friends with their status, online first. Tap a name to open the chat. Tap "+N" for the full list.
-- On a phone, the magnifier in the conversation list now opens a filter. The filter has a name field and buttons for all, unread, mentions, channels, DMs, and voice. While the filter is open, the list shows only conversations.
+- On a phone, the filter button in the conversation list now opens a filter. The filter has a name field and buttons for all, unread, mentions, channels, DMs, and voice. While the filter is open, the list shows only conversations.
+- On a phone, the Parking Lot and the threads are now buttons at the top of the conversation list. They sit next to filter, add a friend, and new channel. Every button has an icon. The list gains the room of two rows.
 
 ### Fixed
 - On a phone, the conversation filter now finds a channel by its full name and by its short name. A match among hidden conversations now shows instead of "no matches".

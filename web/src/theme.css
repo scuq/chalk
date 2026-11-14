@@ -10836,25 +10836,77 @@ body.chalk-resizing-y .chalk-composer-resizer {
 
   .chalk-zucker-title {
     flex: 1 1 auto;
+    min-width: 0;
+    margin-right: var(--chalk-s2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--chalk-fg-bright);
   }
 
+  /* 137-10: the head holds the title and five icon buttons. The buttons have
+     no gap and no border, because five boxes and the title do not fit a
+     375px screen. An 18px icon in a 44px button has 13px of air on each
+     side, so the head takes 13px from its right padding. The last icon then
+     ends on the same edge as the row times. */
+  .chalk-zucker-head {
+    gap: 0;
+    padding-right: calc(var(--chalk-s4) - 13px);
+  }
+
+  /* 137-10: a head button is a 44px square. */
   .chalk-zucker-add {
-    min-width: 44px;
-    min-height: 44px;
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
     background: none;
     color: var(--chalk-fg);
-    border: 1px solid var(--chalk-border);
+    border: none;
     border-radius: var(--chalk-radius);
     font: inherit;
     cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--chalk-dur-fast), color var(--chalk-dur-fast);
   }
 
-  /* 64-5: the filter toggle while its input is showing. */
+  .chalk-zucker-add:active {
+    background: var(--chalk-bg-hover);
+  }
+
+  /* 64-5, 137-10: the filter button while its input is showing. */
   .chalk-zucker-add--active {
     background: var(--chalk-bg-elev);
-    color: var(--chalk-fg-bright);
-    border-color: var(--chalk-fg-bright);
+    color: var(--chalk-accent);
+  }
+
+  /* 137-10: the dot of unread replies on the threads button. */
+  .chalk-zucker-add-dot {
+    position: absolute;
+    top: 9px;
+    right: 9px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--chalk-unread);
+  }
+
+  /* 137-10: below 360px the title does not show, and the five buttons spread
+     over the row. */
+  @media (max-width: 359px) {
+    .chalk-zucker-title {
+      display: none;
+    }
+
+    .chalk-zucker-head {
+      justify-content: space-between;
+      padding-left: calc(var(--chalk-s4) - 13px);
+    }
   }
 
   .chalk-zucker-pinned {

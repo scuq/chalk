@@ -254,6 +254,8 @@ the threads entry (`Sidebar.tsx:699-723`) with a different glyph: title,
 `data-testid="sidebar-reminders"`, section chrome copied from
 `.chalk-sidebar-section--threads` (`theme.css:8853`).
 
+Note: the phone parking row became a head button in 137-10, so the phone list has no parking row to put the Reminders entry above. This plan must pick a new place when it is built.
+
 Zuckermode re-implements the same entry points as pinned buttons, so it needs the
 row too (`ZuckerList.tsx:188`/`:235` are the parking and threads ones) or the
 feature disappears for anyone using that shell. And like every other sidebar

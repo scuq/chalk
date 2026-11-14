@@ -1,4 +1,4 @@
-// 126-1, 135-1, 137-3, 137-4, 137-8, 137-9: assertions about theme.css, checked against the stylesheet
+// 126-1, 135-1, 137-3, 137-4, 137-8, 137-9, 137-10: assertions about theme.css, checked against the stylesheet
 // because jsdom has no layout to measure.
 //
 // The first is the "@ voice" shelf's flex-shrink: it must be 0, or the
@@ -17,7 +17,8 @@
 //   - The last row of a shelf has no bottom border.
 //
 // Two tests (137-4) check the phone list section rows:
-//   - The three rows that expand carry a chevron, and parking and threads do not.
+//   - The three rows that expand carry a chevron. Parking and threads were rows
+//     without one in 137-4, and 137-10 made them head buttons.
 //   - The chevron turns with aria-expanded, the sublists fade in, and a pressed row shades.
 //
 // Two tests (137-8) check the friend chips:
@@ -28,9 +29,15 @@
 // Three tests (137-9) check the filter bar:
 //   - The bar sits under the head with the name field and one chip for each kind.
 //   - Closing the bar clears the text and the kind, and an open bar hides the
-//     rows that are not conversations.
+//     rows that are not conversations (only the friends row since 137-10).
 //   - A filter opens the voice and hidden shelves on a hit, and "no matches"
 //     counts all three lists.
+//
+// Two tests (137-10) check the buttons of the list head:
+//   - The head holds five icon buttons in order, with no text glyph, and the
+//     parking lot button carries the name of the parking lot.
+//   - A button is a 44px square with no box, and the title gives way on a
+//     narrow phone.
 //
 // 135-5 removed the call bar margin test with the bar it checked. The
 // phone call bar has its own assertions in theme-phone-call.test.ts.
@@ -147,8 +154,8 @@ test("the filter bar sits under the head with the name field and one chip for ea
   const list = readFileSync(join(resolve(process.cwd(), "src"), "components", "ZuckerList.tsx"), "utf8");
   const head = list.indexOf('class="chalk-zucker-head"');
   const bar = list.indexOf('class="chalk-zucker-filter"');
-  const parking = list.indexOf('data-testid="zucker-parking"');
-  assert.ok(head > 0 && head < bar && bar < parking, "the bar must come after the head and before the pinned rows");
+  const friends = list.indexOf('data-testid="zucker-friends"');
+  assert.ok(head > 0 && head < bar && bar < friends, "the bar must come after the head and before the pinned rows");
   assert.match(list, /ZUCKER_KINDS\.map\(\(k\) => \(\s*<button[\s\S]*?aria-pressed=\{kind === k\.kind\}/);
   const kinds = block(".chalk-zucker-kinds");
   assert.match(kinds, /flex-wrap:\s*nowrap;/);
@@ -159,8 +166,7 @@ test("the filter bar sits under the head with the name field and one chip for ea
 test("closing the bar clears the text and the kind, and an open bar hides the rows that are not conversations", () => {
   const list = readFileSync(join(resolve(process.cwd(), "src"), "components", "ZuckerList.tsx"), "utf8");
   assert.match(list, /if \(filterOpen\) \{\s*setFilter\(""\);\s*setKind\("all"\);\s*\}/);
-  assert.match(list, /\{!filterOpen && parkingName !== null && \(/);
-  assert.equal(list.match(/\{!filterOpen && \(/g)?.length, 2);
+  assert.equal(list.match(/\{!filterOpen && \(/g)?.length, 1);
 });
 
 test("a filter opens the voice and hidden shelves on a hit, and no matches counts all three lists", () => {
@@ -168,6 +174,35 @@ test("a filter opens the voice and hidden shelves on a hit, and no matches count
   assert.match(list, /const voiceShowing = filtering \? shownVoice\.length > 0 : voiceOpen;/);
   assert.match(list, /const hiddenShowing = filtering \? shownHidden\.length > 0 : hiddenOpen;/);
   assert.match(list, /\{filtering && visibleRows\.length === 0 && shownVoice\.length === 0 && shownHidden\.length === 0 && \(/);
+});
+
+test("the head holds five icon buttons: parking, threads, filter, add friend, new channel", () => {
+  const list = readFileSync(join(resolve(process.cwd(), "src"), "components", "ZuckerList.tsx"), "utf8");
+  const head = list.slice(list.indexOf('class="chalk-zucker-head"'), list.indexOf('class="chalk-zucker-filter"'));
+  const order = ["zucker-parking", "zucker-threads", "zucker-filter-toggle", "zucker-add-friend", "zucker-new-channel"].map((id) =>
+    head.indexOf(`data-testid="${id}"`),
+  );
+  assert.ok(order.every((at) => at > 0), "a head button is missing");
+  assert.deepEqual([...order].sort((a, b) => a - b), order);
+  for (const icon of ["<ParkingIcon size={18} />", "<ThreadsIcon />", "<FilterIcon />", "<AddFriendIcon />", "<NewChannelIcon />"]) {
+    assert.ok(head.includes(icon), `${icon} is not in the head`);
+  }
+  // No text glyph stands in for an icon, and parking and threads are no longer rows.
+  assert.doesNotMatch(head, /⌕|@\+/);
+  assert.doesNotMatch(list, /↳ threads/);
+  // The parking lot can have any name, so the button carries it for a screen reader.
+  assert.match(head, /aria-label=\{parkingName\}/);
+});
+
+test("a head button is a 44px square with no box, and the title gives way on a narrow phone", () => {
+  const add = block(".chalk-zucker-add");
+  assert.match(add, /width:\s*44px;/);
+  assert.match(add, /height:\s*44px;/);
+  assert.match(add, /border:\s*none;/);
+  assert.match(block(".chalk-zucker-add:active"), /background:\s*var\(--chalk-bg-hover\);/);
+  assert.match(block(".chalk-zucker-add-dot"), /background:\s*var\(--chalk-unread\);/);
+  assert.match(block(".chalk-zucker-title"), /text-overflow:\s*ellipsis;/);
+  assert.match(css, /@media \(max-width: 359px\) \{\s*\.chalk-zucker-title \{\s*display:\s*none;/);
 });
 
 test("the last row of a shelf leaves the bottom line to the shelf", () => {

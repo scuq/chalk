@@ -9,7 +9,7 @@ Latest release: **v0.12.0** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 137 is the newest work. It is built, with all nine slices, and the device checks are open.
+Phase 137 is the newest work. It is built, with all ten slices, and the device checks are open.
 Phase 135 is built. All eight slices are built. The device checks are open.
 Phase 133 is built, with the voice room, and seven points of it are open.
 Phase 131 has two small open points.
@@ -19,7 +19,7 @@ phases are *planned, not started*.
 
 ## Phase 137 — phone polish: built, the device checks are open
 
-All nine slices are built, record in [phases/PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md).
+All ten slices are built, record in [phases/PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md).
 On the phone, the composer is one outlined box. The field is full width and
 grows with the draft. The tools and send are in a row below it. Consecutive messages
 from one person group on the phone. The conversation rows are taller, an unread name
@@ -27,7 +27,8 @@ is bold, and the unread dot sits under the time. The friends, voice, and hidden 
 that turns, and an open section fades in. The headers stay on one row, and a long name is cut.
 The parking lot mark is small. The chat and the list slide in for a short time, and a swipe back does not slide a second time.
 A line of friend chips sits under the closed friends row.
-The magnifier opens a filter bar with a name field and kind chips, and the list then shows only conversations.
+The filter button opens a filter bar with a name field and kind chips, and the list then shows only conversations.
+The Parking Lot and the threads are icon buttons in the list head, with filter, add a friend, and new channel.
 
 - **The 137-1 device checks are open.** The live probe used an iPhone 14
   emulation. Not tested on a device: the composer above the keyboard on an
@@ -61,10 +62,11 @@ The magnifier opens a filter bar with a name field and kind chips, and the list 
   scrolling sideways, a hit in the hidden shelf that opens it, a channel found
   by its full name while short names show, and a live voice room under the
   voice chip. The emulation had no voice room, no hidden hit, and no short name.
-- **Open point of 137-9: the keyboard on open.** On a real phone, opening the
-  filter bar raises the keyboard, because the name field takes focus. It does so
-  also when the user only wants a chip. The owner decides after a device check
-  if the field must keep the automatic focus.
+- **The 137-10 device checks are open.** Not tested on a device: the five head
+  icons are easy to tell apart, the dot on the threads button with an unread
+  reply, the head on the narrowest phone, and a renamed parking lot that is
+  still found. The emulation did not show the unread dot or the head with no
+  parking lot (four buttons).
 - **Deferred: the swipe settle ignores reduced motion.** The settle uses a
   hard-coded 160 ms (`theme.css` and `SWIPE_SETTLE_MS` in `use-swipe-back.ts`).
   Reduced motion does not turn it off.

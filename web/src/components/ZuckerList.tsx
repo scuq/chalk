@@ -3,11 +3,13 @@
 // message. Presentational only -- rows arrive pre-built from
 // buildConversationList (chat/zucker.ts), navigation lives in App.
 //
-// The pinned rows above the list keep the two non-conversation surfaces the
-// removed phone drawer carried (parking lot, thread inbox); the header buttons
-// keep its two "+" entry points. 64-1 adds a third pinned row: friends,
-// expanding in place to the full roster with presence, because the
-// activity-sorted list buries anyone you haven't talked to lately.
+// The head buttons keep the entry points of the removed phone drawer: the
+// parking lot, the thread inbox, add a friend, and new channel. The filter
+// button is also in the head. Since 137-10 each is an icon button, and the
+// parking lot and the threads are no longer pinned rows. The friends row
+// (64-1) is a pinned row above the list. It expands in place to the full
+// roster with presence, because the activity-sorted list buries anyone you
+// have not talked to lately.
 //
 // 129-11: the seasonal scene can sit above the header as a row (`scene`).
 
@@ -33,7 +35,15 @@ import { UnreadDot } from "./UnreadDot";
 import { Flame } from "./Flame"; // 115-2
 import { WaveName } from "./WaveName"; // 115-3
 import { CamIcon, MicOffIcon, ScreenIcon } from "./Sidebar";
-import { ChannelGlyph, ChevronIcon } from "./icons";
+import {
+  AddFriendIcon,
+  ChannelGlyph,
+  ChevronIcon,
+  FilterIcon,
+  NewChannelIcon,
+  ParkingIcon,
+  ThreadsIcon,
+} from "./icons";
 import { presenceClass, presenceLabel } from "../chat/presence";
 import { FriendChips } from "./FriendChips";
 
@@ -144,8 +154,8 @@ export function ZuckerList({
     if (shown && rowsRef.current) rowsRef.current.scrollTop = rowsScroll.current;
   }, [shown]);
   const [friendsOpen, setFriendsOpen] = useState(false);
-  // 64-2/64-5, 137-9: the filter bar is behind the header's magnifier. It has
-  // a name field and a kind chip. The text matches as in the sidebar's
+  // 64-2/64-5, 137-9: the filter bar is behind the filter button of the head
+  // (a funnel icon since 137-10). It has a name field and a kind chip. The text matches as in the sidebar's
   // rosters (54-1), on the row's match text when it has one. Closing the bar
   // clears the text and the kind, so no invisible filter stays active.
   const [filterOpen, setFilterOpen] = useState(false);
@@ -154,7 +164,8 @@ export function ZuckerList({
   const filtering = zuckerFilterActive(kind, filter);
   const filterRef = useRef<HTMLInputElement>(null);
   // Layout effect: focus at commit, before paint, so opening the filter
-  // never shows an unfocused field first.
+  // never shows an unfocused field first. The owner decided in 137-9 that the
+  // name field keeps this automatic focus.
   useLayoutEffect(() => {
     if (filterOpen) filterRef.current?.focus();
   }, [filterOpen]);
@@ -296,8 +307,37 @@ export function ZuckerList({
   return (
     <div class="chalk-zucker" data-testid="zucker-list">
       {scene}
+      {/* 137-10: five icon buttons follow the title: parking lot, threads,
+          filter, add a friend, and new channel. Each icon is decoration and
+          the button carries the label. The parking lot button has the name
+          of the parking lot, because a user can rename it. It does not show
+          when parkingName is null. */}
       <div class="chalk-zucker-head">
         <span class="chalk-zucker-title">conversations</span>
+        {parkingName !== null && (
+          <button
+            type="button"
+            class="chalk-zucker-add"
+            onClick={onPark}
+            title={parkingName}
+            aria-label={parkingName}
+            data-testid="zucker-parking"
+          >
+            <ParkingIcon size={18} />
+          </button>
+        )}
+        <button
+          type="button"
+          class="chalk-zucker-add"
+          onClick={onOpenThreads}
+          title={threadsUnread > 0 ? "threads, unread replies" : "threads"}
+          aria-label={threadsUnread > 0 ? "threads, unread replies" : "threads"}
+          data-testid="zucker-threads"
+        >
+          <ThreadsIcon />
+          {/* A dot on the button shows unread replies. */}
+          {threadsUnread > 0 && <span class="chalk-zucker-add-dot" aria-hidden="true" />}
+        </button>
         <button
           type="button"
           class={`chalk-zucker-add ${filterOpen ? "chalk-zucker-add--active" : ""}`}
@@ -313,7 +353,7 @@ export function ZuckerList({
           aria-pressed={filterOpen}
           data-testid="zucker-filter-toggle"
         >
-          ⌕
+          <FilterIcon />
         </button>
         <button
           type="button"
@@ -323,7 +363,7 @@ export function ZuckerList({
           aria-label="add a friend"
           data-testid="zucker-add-friend"
         >
-          @+
+          <AddFriendIcon />
         </button>
         <button
           type="button"
@@ -333,7 +373,7 @@ export function ZuckerList({
           aria-label="new channel"
           data-testid="zucker-new-channel"
         >
-          +
+          <NewChannelIcon />
         </button>
       </div>
 
@@ -369,19 +409,10 @@ export function ZuckerList({
       )}
 
       {/* 137-9: while the bar is open, the rows that are not conversations
-          (parking lot, friends, threads) do not render. The bar then sits
+          do not render. Since 137-10 this is only the friends row, because
+          the parking lot and the threads are head buttons. The bar then sits
           above the rows it narrows, and the list keeps its height when the
           keyboard is up. The voice row stays, because it can hold hits. */}
-      {!filterOpen && parkingName !== null && (
-        <button
-          type="button"
-          class="chalk-zucker-pinned"
-          onClick={onPark}
-          data-testid="zucker-parking"
-        >
-          {parkingName}
-        </button>
-      )}
       {!filterOpen && (
         <>
         <button
@@ -396,7 +427,8 @@ export function ZuckerList({
             {onlineCount}/{friends.length} online
           </span>
           {/* 137-4: the three rows that expand a sublist in place end with a
-              chevron. Parking and threads open a screen, so they have none. */}
+              chevron. The parking lot and the threads were rows that opened
+              a screen and had none, and since 137-10 they are head buttons. */}
           <span class="chalk-zucker-chevron" aria-hidden="true"><ChevronIcon /></span>
         </button>
         {/* 137-8: an open row shows the full list and no chips, so a name never shows twice. */}
@@ -465,17 +497,6 @@ export function ZuckerList({
             </ul>
           )}
         </>
-      )}
-      {!filterOpen && (
-        <button
-          type="button"
-          class="chalk-zucker-pinned"
-          onClick={onOpenThreads}
-          data-testid="zucker-threads"
-        >
-          <span>↳ threads</span>
-          {threadsUnread > 0 && <UnreadDot mention={false} />}
-        </button>
       )}
 
       <ul

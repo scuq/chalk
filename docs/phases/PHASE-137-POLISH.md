@@ -1,6 +1,6 @@
 # Phase 137 — phone polish from the external design review
 
-**Status:** built (all nine slices). The device checks of 137-1 to 137-9 are open, in the manual checklist.
+**Status:** built (all ten slices). The device checks of 137-1 to 137-10 are open, in the manual checklist.
 **Tags:** `#composer`, `#mobile`, `#parking`, `#zucker` → `tools/where.sh -g composer`
 
 ## The problem
@@ -112,6 +112,8 @@ Measured in a headed iPhone 14 emulation, at 390 px and at 320 px:
 
 The pinned rows are parking, friends, voice, threads, and hidden.
 Only friends, voice, and hidden expand.
+
+Changed by 137-10: parking and threads are head buttons and no longer rows. The pinned rows that remain are friends, voice, and hidden.
 
 - The three rows that expand get a chevron as the last child: `<span class="chalk-zucker-chevron" aria-hidden="true"><ChevronIcon /></span>`. Parking and threads get no chevron, because they open a screen.
 - `ChevronIcon` is new in `web/src/components/icons.tsx`. It is 14 px with the fine stroke, in the shared icon family. The plan named a text glyph. An SVG icon matches the other icons and turns without a font change.
@@ -247,6 +249,7 @@ Measured in a headed iPhone 14 emulation, with six friends, three online and thr
 ### 137-9 Filter bar
 
 The magnifier in the list head opens one filter bar.
+Changed by 137-10: the button is now a funnel icon, and the bar rules below are unchanged.
 The bar sits directly under the head.
 It holds the name field (placeholder "name…") and one chip for each kind: all, unread, mentions, channels, DMs, and voice.
 The chips reuse the chip classes of 137-8.
@@ -260,9 +263,9 @@ The chosen chip has `aria-pressed` and `chalk-zucker-kind--on`.
 - The conversations, the voice shelf, and the hidden shelf each go through `filterZuckerRows`.
 - While a filter is active, the voice shelf and the hidden shelf each open when they have a hit. They close when they have none. Before, a hit in a closed hidden shelf stayed invisible.
 - "no matches" shows only when all three lists are empty under an active filter. Before, it ignored the hidden shelf.
-- While the bar is open, the rows that are not conversations do not render. These are the parking lot, the friends row with its chips and list, and the threads row. The bar then sits directly above the rows it narrows. The list keeps its height when the keyboard is up. The voice row stays, because it can hold hits.
+- While the bar is open, the rows that are not conversations do not render. These are the parking lot, the friends row with its chips and list, and the threads row. Since 137-10 only the friends row is left, because the parking lot and the threads are head buttons. The bar then sits directly above the rows it narrows. The list keeps its height when the keyboard is up. The voice row stays, because it can hold hits.
 - Closing the bar with the magnifier clears the text and the kind, so no hidden filter stays active.
-- Opening the bar still focuses the name field (the behavior of 64-5).
+- Opening the bar still focuses the name field (the behavior of 64-5). The owner decided that it keeps this automatic focus.
 - The CSS is in the phone block of `web/src/theme.css`. `.chalk-zucker-filter` has no bottom padding, because the 44 px chip row takes its place. `.chalk-zucker-kinds` is one `nowrap` line that scrolls sideways with no scrollbar. Negative margins pull it to the screen edges, so the chips scroll under the 16 px padding. Each rule uses the existing tokens.
 
 Measured in a headed iPhone 14 emulation, with three channels and one DM. Two channels were unread, and one of them had a mention:
@@ -276,6 +279,44 @@ Measured in a headed iPhone 14 emulation, with three channels and one DM. Two ch
 - Closing the bar restores the four rows and the three pinned rows.
 - Not seen: a voice room, because voice is off on the dev stack. Also not seen: a hit in the hidden shelf, and a channel with a short name. A unit test covers the short name.
 
+### 137-10 Head buttons with icons
+
+A marked-up screenshot of the phone list asked for two changes.
+The Parking Lot and the threads move out of their full-width rows into buttons in the list head.
+Every head button gets a better icon that a user remembers.
+Before 137-10, the head held the title and three bordered buttons with text glyphs: a magnifier, "@+", and "+".
+Now the head holds the title and five icon buttons, and the list has 88 px more height.
+
+- The order is parking lot, threads, filter, add a friend, and new channel. The parking lot button shows only when `parkingName` is not null.
+- The parking lot button has the name of the parking lot as its `title` and `aria-label`, because a user can rename it. The icon alone does not say it.
+- The threads button has `aria-label` "threads". With unread replies, a dot (`.chalk-zucker-add-dot`, 8 px, `--chalk-unread`) shows on the button, and the label is "threads, unread replies".
+- `ParkingIcon` takes an optional `size`. The default is 14, the size of the desktop sidebar. Above 14 it uses the fine stroke.
+- Four icons are new in `web/src/components/icons.tsx`. They are 18 px with the fine stroke, in the shared family:
+
+  - `ThreadsIcon`: a reply arrow that goes down and then right, the shape of the old "↳".
+  - `FilterIcon`: a funnel.
+  - `AddFriendIcon`: a person with a plus.
+  - `NewChannelIcon`: a speech bubble with a plus.
+
+  Each icon is decoration. The button carries the label.
+- The two pinned rows and their markup are gone. The filter bar rule "hide the rows that are not conversations" now concerns only the friends row.
+- The test ids do not change: `zucker-parking`, `zucker-threads`, `zucker-filter-toggle`, `zucker-add-friend`, and `zucker-new-channel`.
+- In the phone block of `web/src/theme.css`, `.chalk-zucker-add` is a 44 px square with no border. Five bordered boxes and the title do not fit 375 px. The composer tools lost their boxes for the same reason in 137-1. A pressed button shows `--chalk-bg-hover`. The buttons have no gap.
+- The active filter button has `--chalk-bg-elev` and the accent color.
+- The head has a right padding of 16 px minus 13 px. An 18 px icon in a 44 px button has 13 px of air on each side. The last icon then ends on the same edge as the row times.
+- The title can shrink with an ellipsis. Below 360 px it does not show, and the five buttons spread over the row.
+
+Measured in a headed iPhone 14 emulation:
+
+- The head is 61 px high.
+- At 390 px and at 375 px the title shows in full, and the five buttons are each 44 px by 44 px.
+- The right edge of the last icon equals the right edge of the row times. It is 366 px at 390 px, 351 px at 375 px, and 296 px at 320 px.
+- At 320 px the title is hidden and the buttons spread over the width.
+- The only pinned row left is friends.
+- The threads button opens the thread inbox. The parking button opens the parking lot.
+- There is no horizontal overflow.
+- Not seen: the unread dot on the threads button, and the head with no parking lot (four buttons).
+
 ## Decisions
 
 - The phase covers the full review, in slices.
@@ -283,6 +324,9 @@ Measured in a headed iPhone 14 emulation, with three channels and one DM. Two ch
 - A follow-up message in a group shows its time in the long-press menu.
 - The list and the chat get a short slide transition (137-7).
 - A second mock-up asked for two more slices on the phone list: friends at a glance (137-8) and a filter bar (137-9).
+- A marked-up screenshot of the phone list asked for 137-10. The Parking Lot and the threads become head buttons. Every head button gets an icon.
+- The name field of the filter bar keeps its automatic focus when the bar opens (137-9).
+- The rows that are not conversations stay hidden while the filter bar is open (137-9).
 
 ## What was rejected
 
@@ -305,6 +349,7 @@ Measured in a headed iPhone 14 emulation, with three channels and one DM. Two ch
 | 137-7 | built (2026-11-14) | List and chat transition |
 | 137-8 | built (2026-11-14) | Friends at a glance: a line of friend chips under the friends row |
 | 137-9 | built (2026-11-14) | Filter bar behind the magnifier: name field and kind chips |
+| 137-10 | built (2026-11-14) | Head buttons with icons: parking lot and threads leave their rows |
 
 ## Left open
 
@@ -318,7 +363,7 @@ Measured in a headed iPhone 14 emulation, with three channels and one DM. Two ch
 - The device checks of 137-7 are open, in the manual checklist.
 - The device checks of 137-8 are open, in the manual checklist.
 - The device checks of 137-9 are open, in the manual checklist.
-- On a real phone, opening the filter bar raises the keyboard, because the name field takes focus. It does so also when the user only wants a chip. The owner decides after a device check if the field must keep the automatic focus.
+- The device checks of 137-10 are open, in the manual checklist.
 - The index row of phase 136 links `docs/phases/PHASE-136-IOS.md`. This phase does not change it.
 
 ## Manual checklist
@@ -356,8 +401,13 @@ Measured in a headed iPhone 14 emulation, with three channels and one DM. Two ch
 - [ ] 137-8: a phone, with a friend who has a long name. The name ends in an ellipsis and the chip stays inside the screen.
 - [ ] 137-8: a phone. Rotate it. The chips measure again, and "+N" shows the right count.
 - [ ] 137-8: a phone. Tap the chip of a friend with no chat yet. A chat with that friend opens.
-- [ ] 137-9: a phone. Tap the magnifier. The filter bar shows under the head. Note if the keyboard rises, and decide if the name field keeps the automatic focus.
+- [ ] 137-9: a phone. Tap the filter button. The filter bar shows under the head, and the name field has focus.
 - [ ] 137-9: a phone. Swipe the chip row sideways. It scrolls, and "voice" comes fully into view.
 - [ ] 137-9: a phone, with a hidden conversation. Type part of its name. The hidden shelf opens and shows it, and "no matches" does not show.
 - [ ] 137-9: a phone, with the short name style and a channel that has a short name. Type part of the full name. The channel shows.
 - [ ] 137-9: a phone, with a live voice room. Tap the voice chip. The voice list opens and shows the room.
+- [ ] 137-10: a phone. Look at the five head icons without their labels. They are easy to tell apart.
+- [ ] 137-10: a phone, with an unread reply in a thread. The threads button shows the dot, and a screen reader says "threads, unread replies".
+- [ ] 137-10: the narrowest phone available. The head shows the five buttons inside the screen, each button is easy to hit, and the page does not move sideways.
+- [ ] 137-10: a phone, with the parking lot renamed. The parking button is still found, and its label is the new name.
+- [ ] 137-10: a phone, with the parking lot hidden in the settings. The head shows four buttons.

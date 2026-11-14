@@ -6,8 +6,8 @@ import type { ComponentChildren } from "preact";
 // of the text (currentColor). The stroke is 2, or 1.8 with the fine prop,
 // which the composer icons use. A hover or selected state in CSS recolors the
 // icon with no extra rule. The voice-status badges and the call controls are
-// not part of this family. The phone list section rows (137-4) also draw
-// from it.
+// not part of this family. The phone list section rows (137-4) and the
+// buttons of the phone list head (137-10) also draw from it.
 
 // The base of every icon. With a label, the icon is an image that a screen
 // reader announces. Without a label, the icon is decoration and is hidden
@@ -70,12 +70,14 @@ function VoiceChannelIcon() {
   );
 }
 
-// ParkingIcon is the icon of the parking lot row: an eye with a line through
-// it. A user can rename the row, so the icon alone must say that what is here
-// is not shown. It is decoration and has no label.
-export function ParkingIcon() {
+// ParkingIcon is the icon of the parking lot: an eye with a line through it.
+// A user can rename the parking lot, so the icon alone must say that what is
+// here is not shown. It is decoration and has no label. The size is 14px by
+// default, as in the desktop sidebar. Above 14px it uses the fine stroke
+// (137-10, the phone list head uses 18px).
+export function ParkingIcon({ size = 14 }: { size?: number }) {
   return (
-    <Icon size={14}>
+    <Icon size={size} fine={size > 14}>
       <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" />
       <circle cx="12" cy="12" r="2.6" />
       <line x1="3" y1="21" x2="21" y2="3" />
@@ -181,6 +183,55 @@ export function SearchIcon() {
     <Icon size={18} fine>
       <circle cx="11" cy="11" r="6.5" />
       <path d="M16 16l4.5 4.5" />
+    </Icon>
+  );
+}
+
+// 137-10: ThreadsIcon is the threads button of the phone list head, 18px. It
+// is a reply arrow that goes down and then right, the shape of the "↳" that
+// the old threads row used. It is decoration. The button carries the label.
+export function ThreadsIcon() {
+  return (
+    <Icon size={18} fine>
+      <path d="M5 4v7a4 4 0 0 0 4 4h10" />
+      <path d="M15 11l4 4-4 4" />
+    </Icon>
+  );
+}
+
+// 137-10: FilterIcon is a funnel, the filter button of the phone list head,
+// 18px. It replaced a text magnifier. It is decoration. The button carries
+// aria-label "filter conversations".
+export function FilterIcon() {
+  return (
+    <Icon size={18} fine>
+      <path d="M3.5 5h17l-6.5 7.5v5.5l-4 2v-7.5z" />
+    </Icon>
+  );
+}
+
+// 137-10: AddFriendIcon is a person with a plus, the add a friend button of
+// the phone list head, 18px. It is decoration. The button carries the label.
+export function AddFriendIcon() {
+  return (
+    <Icon size={18} fine>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+      <path d="M19 7v6" />
+      <path d="M16 10h6" />
+    </Icon>
+  );
+}
+
+// 137-10: NewChannelIcon is a speech bubble with a plus, the new channel
+// button of the phone list head, 18px. It is decoration. The button carries
+// the label.
+export function NewChannelIcon() {
+  return (
+    <Icon size={18} fine>
+      <path d="M4 4.5h16v12H10l-4.5 3.5v-3.5H4z" />
+      <path d="M12 7.5v6" />
+      <path d="M9 10.5h6" />
     </Icon>
   );
 }
