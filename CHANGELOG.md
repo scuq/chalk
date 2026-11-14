@@ -27,6 +27,7 @@ The engineering-level history (which slice shipped what) lives in
 - On a phone, the top of the conversation list now shows up to two lines of friend names with their status, online first. The list shows at least eight friends when you have them, and it shortens long names. Tap a name to open the chat. Tap the count at the right, for example "5/9", for the full list.
 - On a phone, the filter button in the conversation list now opens a filter. The filter has a name field and buttons for all, unread, mentions, channels, DMs, and voice. While the filter is open, the list shows only conversations.
 - On a phone, the Parking Lot and the threads are now buttons at the top of the conversation list. They sit next to filter, add a friend, and new channel. Every button has an icon. The list gains the room of two rows.
+- On a phone, a direct conversation in the list now shows the name of the friend with no "@". The status dot at the left of the row marks it.
 
 ### Fixed
 - On a phone, the conversation filter now finds a channel by its full name and by its short name. A match among hidden conversations now shows instead of "no matches".

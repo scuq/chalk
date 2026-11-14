@@ -1,6 +1,6 @@
 # Phase 137 — phone polish from the external design review
 
-**Status:** built (all eleven slices). The device checks of 137-1 to 137-11 are open, in the manual checklist.
+**Status:** built (all twelve slices). The device checks of 137-1 to 137-12 are open, in the manual checklist.
 **Tags:** `#composer`, `#mobile`, `#parking`, `#zucker` → `tools/where.sh -g composer`
 
 ## The problem
@@ -283,6 +283,28 @@ Measured in a headed iPhone 14 emulation, with nine friends, five online and fou
 - The page does not move sideways.
 - Not seen: eight or fewer friends with full names (the unit tests cover it), an away friend, and a proportional font.
 
+### 137-12 DM row: the dot replaces the "@"
+
+The owner asked for one change in the phone list.
+A direct conversation showed "@bob".
+It now shows "bob".
+
+The reason is that the badge column of a DM row already holds the presence dot of the partner.
+A channel has its glyph in the same column.
+So the dot marks a DM, and the "@" said the same thing twice.
+
+- `rowLabel(row)` in `web/src/chat/zucker.ts` returns the name that the row shows. For a DM whose name starts with "@" and has more than one character, it returns the name without the "@". Otherwise it returns the name as it is.
+- A channel keeps a leading "@" in its name. A name that is only "@" stays, so a row never has an empty name.
+- `ZuckerList.tsx` renders `rowLabel(r)` in the row name.
+- `ZuckerRow.name` does not change. So the filter still matches the "@" form, and "@bob" still finds the DM.
+- The DMs chip, the friend chips, the channel header ("@bob"), and the desktop sidebar do not change.
+
+Measured in a headed iPhone 14 emulation, with two DMs and one channel:
+
+- The DM rows show the plain names, with an online dot and an offline dot in the badge column and no glyph.
+- The channel row keeps its glyph and its name.
+- The name filter with "@bob" still shows the DM row.
+
 ### 137-9 Filter bar
 
 The magnifier in the list head opens one filter bar.
@@ -389,6 +411,7 @@ Measured in a headed iPhone 14 emulation:
 | 137-9 | built (2026-11-14) | Filter bar behind the magnifier: name field and kind chips |
 | 137-10 | built (2026-11-14) | Head buttons with icons: parking lot and threads leave their rows |
 | 137-11 | built (2026-11-15) | Friends bar: two lines of chips, no label, and a compact count button at the right |
+| 137-12 | built (2026-11-15) | DM row: the presence dot replaces the "@" before the name |
 
 ## Left open
 
@@ -404,6 +427,7 @@ Measured in a headed iPhone 14 emulation:
 - The device checks of 137-9 are open, in the manual checklist.
 - The device checks of 137-10 are open, in the manual checklist.
 - The device checks of 137-11 are open, in the manual checklist.
+- The device checks of 137-12 are open, in the manual checklist.
 - The index row of phase 136 links `docs/phases/PHASE-136-IOS.md`. This phase does not change it.
 
 ## Manual checklist
@@ -456,3 +480,4 @@ Measured in a headed iPhone 14 emulation:
 - [ ] 137-11: a phone. The count button at the right is easy to hit, and a tap opens the full list.
 - [ ] 137-11: a phone, with a proportional font. The chips do not wrap to a third line.
 - [ ] 137-11: a phone. Rotate it. The chips measure again, and the count of chips fits the new width.
+- [ ] 137-12: a phone, with a friend in a DM. The row shows the dot and the name with no "@". The dot changes when the friend goes away or offline.

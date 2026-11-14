@@ -95,6 +95,16 @@ export interface ZuckerRow {
   expiresAt?: number;
 }
 
+// 137-12: rowLabel returns the name that a row of the conversation list
+// shows. For a DM it drops the leading "@", because the badge column of the
+// row already shows the presence dot of the partner. The dot marks a DM, so the
+// "@" said the same thing twice. A channel keeps its name as it is. A name that
+// is only "@" stays, so a row never has an empty name. ZuckerRow.name does not
+// change, so the filter still matches the "@" form.
+export function rowLabel(row: Pick<ZuckerRow, "name" | "isDM">): string {
+  return row.isDM && row.name.length > 1 && row.name.startsWith("@") ? row.name.slice(1) : row.name;
+}
+
 // 64-1: the pinned friends sublist -- every friend with their presence,
 // online first, so finding someone doesn't mean scanning a conversation
 // list that is sorted by activity, not by name.

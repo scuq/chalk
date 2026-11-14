@@ -18,6 +18,7 @@ import type { ComponentChildren } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import { LONG_PRESS_MS, pressMoved } from "../chat/long-press"; // 135-8
 import {
+  rowLabel,
   splitVoice,
   type ZuckerFriend,
   type ZuckerOccupant,
@@ -244,7 +245,7 @@ export function ZuckerList({
             <span class="chalk-zucker-row-top">
               {/* 115-2: before the name, where a narrow screen cannot lose it. */}
               {hotChannels?.has(r.id) && <Flame channelID={r.id} minutes={burstMinutes} />}
-              <span class="chalk-zucker-row-name">{r.name}</span>
+              <span class="chalk-zucker-row-name">{rowLabel(r)}</span>
               {r.expiresAt != null && countdownNow != null && (
                 <span
                   class={

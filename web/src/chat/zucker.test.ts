@@ -12,6 +12,7 @@ import {
   DELETED_PREVIEW,
   type ZuckerChannel,
   fitFriendChips,
+  rowLabel,
 } from "./zucker.ts";
 import {
   PLACEHOLDER_NO_KEY,
@@ -367,4 +368,13 @@ test("fitFriendChips shows what fits when eight cannot, and nothing in no space"
 test("fitFriendChips never widens a short name and never cuts below the floor", () => {
   const got = fit([10, 10, 10], 290);
   assert.deepEqual(got, { count: 3, nameCap: 10 });
+});
+
+test("rowLabel drops the @ of a DM, because the presence dot of the row marks it", () => {
+  assert.equal(rowLabel({ name: "@bob", isDM: true }), "bob");
+  // A channel keeps its name as it is, also when the name starts with @.
+  assert.equal(rowLabel({ name: "@work", isDM: false }), "@work");
+  assert.equal(rowLabel({ name: "bob", isDM: true }), "bob");
+  // A bare @ stays, so a row never has an empty name.
+  assert.equal(rowLabel({ name: "@", isDM: true }), "@");
 });

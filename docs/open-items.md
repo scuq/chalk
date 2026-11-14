@@ -9,7 +9,7 @@ Latest release: **v0.12.0** — keep this in step with the topmost `## vX.Y.Z`
 heading in `CHANGELOG.md`. The `/release` skill updates it as part of cutting a
 release. A stale pointer is worse than none, because it still reads as current.
 
-Phase 137 is the newest work. It is built, with all eleven slices, and the device checks are open.
+Phase 137 is the newest work. It is built, with all twelve slices, and the device checks are open.
 Phase 135 is built. All eight slices are built. The device checks are open.
 Phase 133 is built, with the voice room, and seven points of it are open.
 Phase 131 has two small open points.
@@ -19,7 +19,7 @@ phases are *planned, not started*.
 
 ## Phase 137 — phone polish: built, the device checks are open
 
-All eleven slices are built, record in [phases/PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md).
+All twelve slices are built, record in [phases/PHASE-137-POLISH.md](phases/PHASE-137-POLISH.md).
 On the phone, the composer is one outlined box. The field is full width and
 grows with the draft. The tools and send are in a row below it. Consecutive messages
 from one person group on the phone. The conversation rows are taller, an unread name
@@ -29,6 +29,7 @@ The parking lot mark is small. The chat and the list slide in for a short time, 
 Friend chips fill the top of the list in up to two lines, with a count button at the right.
 The filter button opens a filter bar with a name field and kind chips, and the list then shows only conversations.
 The Parking Lot and the threads are icon buttons in the list head, with filter, add a friend, and new channel.
+A direct conversation shows the name with no "@", and the presence dot marks it.
 
 - **The 137-1 device checks are open.** The live probe used an iPhone 14
   emulation. Not tested on a device: the composer above the keyboard on an
@@ -72,6 +73,9 @@ The Parking Lot and the threads are icon buttons in the list head, with filter, 
   eight friends or fewer, a count button that is easy to hit, a proportional
   font with no third line of chips, and the chips after the phone rotates. The
   emulation had nine friends and no away friend.
+- **The 137-12 device checks are open.** Not tested on a device: a DM row shows
+  the presence dot and no "@", and the dot changes when the friend goes away or
+  offline.
 - **Deferred: the swipe settle ignores reduced motion.** The settle uses a
   hard-coded 160 ms (`theme.css` and `SWIPE_SETTLE_MS` in `use-swipe-back.ts`).
   Reduced motion does not turn it off.
