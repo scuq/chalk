@@ -10,7 +10,7 @@ The engineering-level history (which slice shipped what) lives in
 
 ---
 
-## Unreleased
+## v0.12.0 — 14 November 2026 — The phone around the conversation list, with a call bar and a call view
 
 ### Added
 - When you return to chalk after it was in the background, chalk checks the connection and catches up at once. This holds on a phone and on a laptop that slept. Before, old messages could show until the connection timed out. This is not yet checked on a phone.
